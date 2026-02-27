@@ -1,2 +1,2 @@
-import type { Command } from "commander";
+import { Command } from "commander";
 export declare const initCommand: Command;

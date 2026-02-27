@@ -24,7 +24,7 @@
           "id": "T003",
           "title": "Create biome.json lint + format configuration",
           "description": "Create biome.json: formatter enabled (indentStyle space, indentWidth 2), linter enabled with recommended rules, organizeImports enabled. Add rule noExplicitAny with error severity. REMEDIATION: REVIEW FAIL (lint): Missing ignore for dist/ — .agent/rules/coding-style.md. WHERE: biome.json. EXPECTED: \"files\": { \"ignore\": [\"dist\"] }. ACTUAL: (missing). FIX: Add \"files\": { \"ignore\": [\"dist\"] } to biome.json to prevent linting generated files.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh"
         },
         {
@@ -45,7 +45,7 @@
           "id": "T006",
           "title": "Create CLI entry point in src/cli.ts with Commander",
           "description": "Create src/cli.ts: import Commander, create program with name 'gwrk', version from package.json, description. Register init command (from src/commands/init.ts). Parse process.argv. Add shebang line #!/usr/bin/env node. Wire up config loading at startup (but skip for init command since .gwrkrc.json doesn't exist yet). REMEDIATION: REVIEW FAIL (code): Version not from package.json — FR-001/TC-003. WHERE: src/cli.ts:11. EXPECTED: .version(pkg.version). ACTUAL: .version(\"0.1.0\"). FIX: Import package.json and use its version field.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh"
         },
         {

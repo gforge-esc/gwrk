@@ -25,3 +25,20 @@
 [35m═══════════════════════════════════════════════[0m
 
 [2m23:09:41[0m [35m[STAGE][0m Running agent-run.sh review-code 001-cli-core 1
+[2m23:12:21[0m [36m[INFO][0m Pushing review commits...
+[2m23:12:26[0m [36m[INFO][0m Checking tasks.json verdict...
+[2m23:12:26[0m [33m[WARN][0m Code review: NO-GO — open tasks remain
+[2m23:12:26[0m [33m[WARN][0m Code review NO-GO. Re-implementing (iteration 2)...
+
+[35m═══════════════════════════════════════════════[0m
+[35m  IMPLEMENT — Iteration 2/3[0m
+[35m═══════════════════════════════════════════════[0m
+
+[2m23:12:26[0m [35m[STAGE][0m Running agent-run.sh implement 001-cli-core 1
+[2m23:13:41[0m [36m[INFO][0m Pushing implementation commits...
+
+[35m═══════════════════════════════════════════════[0m
+[35m  CODE REVIEW — Iteration 2/3[0m
+[35m═══════════════════════════════════════════════[0m
+
+[2m23:13:42[0m [35m[STAGE][0m Running agent-run.sh review-code 001-cli-core 1
