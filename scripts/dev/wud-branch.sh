@@ -38,8 +38,8 @@ else
     echo "[wud-branch] Tracking remote branch $BRANCH"
     git checkout -b "$BRANCH" "origin/$BRANCH"
   else
-    echo "[wud-branch] Creating new branch $BRANCH from main"
-    git checkout -b "$BRANCH" main
+    echo "[wud-branch] Creating new branch $BRANCH from develop"
+    git checkout -b "$BRANCH" develop
   fi
 fi
 

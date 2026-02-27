@@ -219,12 +219,12 @@ else
   echo -e "${CYAN}│${RESET}  ${GREEN}✓ No orphaned processes${RESET}"
 fi
 
-# Verify .beads-id exists for execution workflows
+# Verify .gwrk/tasks.json exists for execution workflows
 if [[ "$WORKFLOW" == "implement" ]] || [[ "$WORKFLOW" == "review-code" ]] || [[ "$WORKFLOW" == "review-uat" ]]; then
-  if [[ -f "$REPO_ROOT/$SPEC_DIR/.beads-id" ]]; then
-    echo -e "${CYAN}│${RESET}  ${GREEN}✓ .beads-id found${RESET}"
+  if [[ -f "$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json" ]]; then
+    echo -e "${CYAN}│${RESET}  ${GREEN}✓ .gwrk/tasks.json found${RESET}"
   else
-    echo -e "${CYAN}│${RESET}  ${YELLOW}⚠ No .beads-id — Run /plan-to-beads first${RESET}"
+    echo -e "${CYAN}│${RESET}  ${YELLOW}⚠ No .gwrk/tasks.json — Run /plan-to-tasks first${RESET}"
   fi
 fi
 

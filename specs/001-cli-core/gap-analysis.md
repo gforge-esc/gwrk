@@ -1,34 +1,56 @@
 # Gap Analysis: 001 CLI Core
 
 **Date**: 2026-02-26
-**Status**: Greenfield Audit
+**Status**: All Greenfield
+
+---
+
+## Phase 1: Project Bootstrap & `gwrk init`
+
+| File | Contract Method | Status | Notes |
+|---|---|---|---|
+| `package.json` | — | 🟢 greenfield | Does not exist. Create with commander, zod, vitest, biome, tsx |
+| `tsconfig.json` | — | 🟢 greenfield | ES2022, ESM, strict, NodeNext |
+| `biome.json` | — | 🟢 greenfield | Lint + format, no `any` |
+| `.gitignore` | — | 🟡 exists | Needs `dist/`, `node_modules/` entries |
+| `src/cli.ts` | — | 🟢 greenfield | Commander program, version, command routing |
+| `src/commands/init.ts` | — | 🟢 greenfield | Scaffold dirs, create `.gwrkrc.json` |
+| `src/utils/config.ts` | `loadConfig()`, `GwrkConfigSchema` | 🟢 greenfield | Zod schema, fail-fast |
+| `src/utils/exec.ts` | `runGate()` | 🟢 greenfield | execFile wrapper |
+
+## Phase 2: Agent Dispatch Commands
+
+| File | Contract Method | Status | Notes |
+|---|---|---|---|
+| `src/commands/specify.ts` | — | 🟢 greenfield | Wraps `dispatchAgent()` with `/specify` workflow |
+| `src/commands/plan.ts` | — | 🟢 greenfield | Wraps `dispatchAgent()` with `/plan` workflow |
+| `src/commands/analyze.ts` | — | 🟢 greenfield | Wraps `dispatchAgent()` with `/analyze` workflow |
+| `src/commands/effort.ts` | — | 🟢 greenfield | Wraps `dispatchAgent()` with `/effort` workflow |
+| `src/utils/agent.ts` | `dispatchAgent()`, `AgentBackend` | 🟢 greenfield | Backend resolution, CLI arg building |
+
+## Phase 3: Task Engine
+
+| File | Contract Method | Status | Notes |
+|---|---|---|---|
+| `src/commands/tasks.ts` | — | 🟢 greenfield | Commander subcommands: generate, list, next, done |
+| `src/utils/state.ts` | `loadTaskState()`, `saveTaskState()`, `markTaskComplete()`, `listTasks()`, `nextTask()` | 🟢 greenfield | Zod-validated state management |
+| `src/utils/parser.ts` | `parsePlan()` | 🟢 greenfield | Markdown → phases + tasks |
+| `src/utils/gate-gen.ts` | `generateGates()` | 🟢 greenfield | Gate script generation |
+| `src/utils/history.ts` | `appendHistory()` | 🟢 greenfield | JSONL append |
+
+## Phase 4: Task Query
+
+| File | Contract Method | Status | Notes |
+|---|---|---|---|
+| `src/commands/tasks.ts` | `listTasks()`, `nextTask()` | 🟡 depends on Phase 3 | Add `list` and `next` subcommands |
+
+---
 
 ## Summary
-All files identified in the Implementation Plan are currently missing. This is a 100% greenfield implementation.
 
-## Detailed Findings
+- **Greenfield files**: 18
+- **Modified files**: 2 (`.gitignore`, `tasks.ts` in Phase 4)
+- **Existing implementations**: 0
+- **Contract violations**: 0 (nothing exists to violate)
 
-| File / Component | Status | Finding | Recommendation |
-|---|---|---|---|
-| `package.json` | `greenfield` | Project manifest missing. | Initialize with Commander, Vitest, and Biome. |
-| `tsconfig.json` | `greenfield` | TypeScript config missing. | Configure for ES2022. |
-| `src/cli.ts` | `greenfield` | CLI entry point missing. | Implement Commander route registration. |
-| `src/utils/exec.ts` | `greenfield` | Execution utility missing. | Implement `runAgent` and `runGate`. |
-| `src/commands/specify.ts` | `greenfield` | Specify command missing. | Implement wrapper for gemini specify. |
-| `src/commands/plan.ts` | `greenfield` | Plan command missing. | Implement wrapper for gemini plan. |
-| `src/utils/parser.ts` | `greenfield` | Markdown parser missing. | Implement extraction of phases/tasks from plan.md. |
-| `src/utils/gate-gen.ts` | `greenfield` | Gate generator missing. | Implement shell script emission. |
-| `src/commands/plan-to-tasks.ts` | `greenfield` | plan-to-tasks command missing. | Orchestrate parsing and gate generation. |
-| `src/utils/state.ts` | `greenfield` | State service missing. | Implement Zod-validated state persistence. |
-| `src/commands/tasks.ts` | `greenfield` | Tasks command missing. | Implement `done` logic and status mutation. |
-
-## Contract Audit
-
-| Contract | File | Match? | Notes |
-|---|---|---|---|
-| `tasks.md` | `src/utils/state.ts` | `greenfield` | Must implement `getTaskState`, `saveTaskState`, `markTaskComplete`. |
-| `tasks.md` | `src/utils/exec.ts` | `greenfield` | Must implement `runGate`, `runAgent`. |
-
-## Governance Compliance
-- **TC-003 (Fail-Fast)**: Ensure Zod validation in `src/utils/state.ts` uses strict checking without defaults.
-- **TC-004 (Hard Gates)**: Ensure `tasks.json` is only mutated via `gwrk tasks done` success.
+This is a pure greenfield build. Every task is a `create from scratch` task.
