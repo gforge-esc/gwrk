@@ -1,0 +1,111 @@
+// src/utils/wud-state.test.ts
+// RED tests — Phase 1: WUD state persistence
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  saveWudState,
+  loadWudState,
+  type WudState,
+} from "./wud-state.js"; // RED — module does not exist yet
+
+const TEST_STATE_DIR = "/tmp/wud-state-test";
+const TEST_STATE_FILE = path.join(TEST_STATE_DIR, "test_p1.state");
+
+beforeEach(() => {
+  fs.mkdirSync(TEST_STATE_DIR, { recursive: true });
+});
+
+afterEach(() => {
+  fs.rmSync(TEST_STATE_DIR, { recursive: true, force: true });
+});
+
+describe("FR-008: WUD state persistence — saveWudState()", () => {
+  it("US-005 #1: writes valid JSON state to disk", () => {
+    const state: WudState = {
+      stage: "IMPLEMENTING",
+      iteration: 1,
+      feature: "004-wud-loop",
+      phase: "1",
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveWudState(TEST_STATE_FILE, state);
+
+    const raw = fs.readFileSync(TEST_STATE_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    expect(parsed.stage).toBe("IMPLEMENTING");
+    expect(parsed.iteration).toBe(1);
+    expect(parsed.feature).toBe("004-wud-loop");
+  });
+
+  it("US-005 #2: includes optional prNumber when set", () => {
+    const state: WudState = {
+      stage: "CI_WAIT",
+      iteration: 2,
+      feature: "004-wud-loop",
+      phase: "1",
+      prNumber: 42,
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveWudState(TEST_STATE_FILE, state);
+
+    const raw = fs.readFileSync(TEST_STATE_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    expect(parsed.prNumber).toBe(42);
+  });
+
+  it("rejects invalid state: missing required fields", () => {
+    // FR-008 error state — incomplete state object
+    const incomplete = { stage: "IMPLEMENTING" } as any;
+    expect(() => saveWudState(TEST_STATE_FILE, incomplete)).toThrow();
+  });
+});
+
+describe("FR-008: WUD state persistence — loadWudState()", () => {
+  it("US-005 #3: returns null when no state file exists", () => {
+    const result = loadWudState("/tmp/nonexistent_state_file.state");
+    expect(result).toBeNull();
+  });
+
+  it("US-005 #4: loads and validates saved state", () => {
+    const state: WudState = {
+      stage: "CODE_REVIEW",
+      iteration: 1,
+      feature: "004-wud-loop",
+      phase: "1",
+      updatedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(TEST_STATE_FILE, JSON.stringify(state));
+
+    const loaded = loadWudState(TEST_STATE_FILE);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.stage).toBe("CODE_REVIEW");
+    expect(loaded!.iteration).toBe(1);
+  });
+
+  it("US-005 #5: resets terminal states (DONE/FAILED/CIRCUIT_BREAK) to BRANCH_SETUP", () => {
+    const state = {
+      stage: "DONE",
+      iteration: 3,
+      feature: "004-wud-loop",
+      phase: "1",
+      updatedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(TEST_STATE_FILE, JSON.stringify(state));
+
+    const loaded = loadWudState(TEST_STATE_FILE);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.stage).toBe("BRANCH_SETUP");
+    expect(loaded!.iteration).toBe(1);
+  });
+
+  it("rejects invalid state: corrupt JSON auto-heals", () => {
+    // FR-008 error state — corrupt state file
+    fs.writeFileSync(TEST_STATE_FILE, "{corrupt json");
+    const loaded = loadWudState(TEST_STATE_FILE);
+    // Should auto-heal: return null or reset (not throw)
+    expect(loaded).toBeNull();
+  });
+});
