@@ -37,12 +37,12 @@ agent-plan: ## Run agent planning: make agent-plan SPEC=001-pipeline-setup
 	fi
 	@$(AGENT_RUNNER) plan $(SPEC)
 
-agent-plan-to-beads: ## Generate beads import scripts: make agent-plan-to-beads SPEC=001-pipeline-setup
+agent-plan-to-tasks: ## Generate JSON tasks and hard gates: make agent-plan-to-tasks SPEC=001-pipeline-setup
 	@if [ -z "$(SPEC)" ]; then \
-		echo "Usage: make agent-plan-to-beads SPEC=<feature>"; \
+		echo "Usage: make agent-plan-to-tasks SPEC=<feature>"; \
 		exit 2; \
 	fi
-	@$(AGENT_RUNNER) plan-to-beads $(SPEC)
+	@$(AGENT_RUNNER) plan-to-tasks $(SPEC)
 
 agent-specify: ## Run agent specification: make agent-specify SPEC=001-pipeline-setup
 	@if [ -z "$(SPEC)" ]; then \

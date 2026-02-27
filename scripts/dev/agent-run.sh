@@ -50,7 +50,7 @@ ${BOLD}Workflows:${RESET}
   review-code      Technical code review (yolo mode — needs shell)
   review-uat       User acceptance testing (yolo mode — needs shell)
   plan             Generate implementation plan (yolo mode)
-  plan-to-beads    Generate beads import scripts from spec+plan (yolo mode)
+  plan-to-tasks    Generate structure JSON tasks and hard gates (yolo mode)
   specify          Create feature specification (yolo mode)
   analyze          Read-only consistency audit (plan mode)
   checklist        Generate quality gate checklists (yolo mode)
@@ -129,10 +129,10 @@ case "$WORKFLOW" in
     DEFAULT_MODE="plan"
     LABEL="Analyzing (read-only)"
     ;;
-  plan-to-beads)
-    COMMAND="/plan-to-beads ${SPEC_DIR}"
+  plan-to-tasks)
+    COMMAND="/plan-to-tasks ${SPEC_DIR}"
     DEFAULT_MODE="yolo"
-    LABEL="Generating beads import scripts"
+    LABEL="Generating JSON tasks and Hard Gates"
     ;;
   checklist)
     DOMAIN="${PHASE:-infrastructure}"  # reuse phase arg for domain

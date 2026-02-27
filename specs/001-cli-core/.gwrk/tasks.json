@@ -1,0 +1,150 @@
+{
+  "featureId": "001-cli-core",
+  "phases": [
+    {
+      "id": 1,
+      "title": "CLI Bootstrap & Basic Command Routing",
+      "description": "Initialize project structure and implement basic agent orchestration commands.",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Initialize project manifest and config",
+          "description": "Create package.json and tsconfig.json with required dependencies and settings.",
+          "status": "open",
+          "gate": "gates/T001-gate.sh",
+          "assertions": [
+            "test -f package.json",
+            "grep -q '"commander":' package.json",
+            "test -f tsconfig.json"
+          ]
+        },
+        {
+          "id": "T002",
+          "title": "Implement execution utility",
+          "description": "Create src/utils/exec.ts with runAgent and runGate functions.",
+          "status": "open",
+          "gate": "gates/T002-gate.sh",
+          "assertions": [
+            "test -f src/utils/exec.ts",
+            "grep -q 'export const runAgent' src/utils/exec.ts",
+            "grep -q 'export const runGate' src/utils/exec.ts"
+          ]
+        },
+        {
+          "id": "T003",
+          "title": "Implement CLI entry point",
+          "description": "Create src/cli.ts using Commander to route commands.",
+          "status": "open",
+          "gate": "gates/T003-gate.sh",
+          "assertions": [
+            "test -f src/cli.ts",
+            "grep -q 'new Command()' src/cli.ts",
+            "grep -q '.parse()' src/cli.ts"
+          ]
+        },
+        {
+          "id": "T004",
+          "title": "Implement specify command",
+          "description": "Create src/commands/specify.ts to orchestrate agent specification.",
+          "status": "open",
+          "gate": "gates/T004-gate.sh",
+          "assertions": [
+            "test -f src/commands/specify.ts",
+            "grep -q 'specify' src/commands/specify.ts"
+          ]
+        },
+        {
+          "id": "T005",
+          "title": "Implement plan command",
+          "description": "Create src/commands/plan.ts to orchestrate agent planning.",
+          "status": "open",
+          "gate": "gates/T005-gate.sh",
+          "assertions": [
+            "test -f src/commands/plan.ts",
+            "grep -q 'plan' src/commands/plan.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Plan Parsing and Task Generation",
+      "description": "Implement markdown parsing and automatic gate generation from plan.md.",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Implement markdown parser",
+          "description": "Create src/utils/parser.ts to extract phases and tasks from plan.md.",
+          "status": "open",
+          "gate": "gates/T006-gate.sh",
+          "assertions": [
+            "test -f src/utils/parser.ts",
+            "grep -q 'export const parsePlan' src/utils/parser.ts"
+          ]
+        },
+        {
+          "id": "T007",
+          "title": "Implement gate generator",
+          "description": "Create src/utils/gate-gen.ts to emit executable .sh scripts from assertions.",
+          "status": "open",
+          "gate": "gates/T007-gate.sh",
+          "assertions": [
+            "test -f src/utils/gate-gen.ts",
+            "grep -q 'export const generateGate' src/utils/gate-gen.ts"
+          ]
+        },
+        {
+          "id": "T008",
+          "title": "Implement plan-to-tasks command",
+          "description": "Create src/commands/plan-to-tasks.ts to orchestrate parsing and gate generation.",
+          "status": "open",
+          "gate": "gates/T008-gate.sh",
+          "assertions": [
+            "test -f src/commands/plan-to-tasks.ts",
+            "grep -q 'plan-to-tasks' src/commands/plan-to-tasks.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Task Management & Enforcement",
+      "description": "Implement task state persistence and the hard-gate enforcement loop.",
+      "tasks": [
+        {
+          "id": "T009",
+          "title": "Implement state service",
+          "description": "Create src/utils/state.ts for atomic Zod-validated state persistence.",
+          "status": "open",
+          "gate": "gates/T009-gate.sh",
+          "assertions": [
+            "test -f src/utils/state.ts",
+            "grep -q 'export const getTaskState' src/utils/state.ts",
+            "grep -q 'export const saveTaskState' src/utils/state.ts"
+          ]
+        },
+        {
+          "id": "T010",
+          "title": "Implement tasks done command",
+          "description": "Create src/commands/tasks.ts with the 'done' subcommand to enforce gates.",
+          "status": "open",
+          "gate": "gates/T010-gate.sh",
+          "assertions": [
+            "test -f src/commands/tasks.ts",
+            "grep -q 'done' src/commands/tasks.ts"
+          ]
+        },
+        {
+          "id": "T011",
+          "title": "E2E Bootstrapping verification",
+          "description": "Implement VR-001 E2E test verifying a full loop from plan to tasks done.",
+          "status": "open",
+          "gate": "gates/T011-gate.sh",
+          "assertions": [
+            "test -f tests/e2e/bootstrap.test.ts"
+          ]
+        }
+      ]
+    }
+  ]
+}
