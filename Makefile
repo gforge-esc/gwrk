@@ -3,7 +3,7 @@
 
 HELP_WIDTH ?= 24
 
-.PHONY: help agent-review-code agent-review-uat agent-plan agent-plan-to-beads agent-specify agent-analyze \
+.PHONY: help agent-review-code agent-review-uat agent-plan agent-plan-to-tasks agent-specify agent-analyze \
 	agent-wud agent-dus agent-kill
 
 help: ## Show available make targets with descriptions
@@ -66,7 +66,7 @@ agent-wud: ## Work-Until-Done: autonomous phase lifecycle (implement→review→
 	fi
 	@$(AGENT_RUNNER) work-until-done $(SPEC) $(PHASE) $(ISSUE)
 
-agent-dus: ## Define-Until-Solid: autonomous definitional lifecycle (plan-to-beads→analyze→tests→import)
+agent-dus: ## Define-Until-Solid: autonomous definitional lifecycle (plan-to-tasks→analyze→tests→import)
 	@if [ -z "$(SPEC)" ]; then \
 		echo "Usage: make agent-dus SPEC=<feature> [PHASE=<n>] [SKIP_TESTS=true]"; \
 		echo "  e.g. make agent-dus SPEC=001-monorepo-scaffold"; \

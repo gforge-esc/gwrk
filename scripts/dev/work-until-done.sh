@@ -6,7 +6,7 @@
 #   UAT_REVIEW → (re-implement if NO-GO) → PR + CI → DONE
 #
 # Shell is the control plane. LLM (gemini) is the compute plane.
-# Beads (`bd`) is the sole source of truth for task state.
+# tasks.json (ADR-001) is the sole source of truth for task state.
 #
 # Usage:
 #   ./scripts/dev/work-until-done.sh <feature> <phase> [tracking_issue]
@@ -192,8 +192,8 @@ run_code_review() {
   log INFO "Pushing review commits..."
   "$WUD_BRANCH" "$FEATURE" push
 
-  # Check verdict via beads
-  log INFO "Checking beads verdict..."
+  # Check verdict via tasks.json
+  log INFO "Checking tasks.json verdict..."
   if "$WUD_VERDICT" "$REPO_ROOT/$SPEC_DIR" "$PHASE"; then
     log OK "Code review: GO"
     return 0
@@ -217,8 +217,8 @@ run_uat_review() {
   log INFO "Pushing UAT review commits..."
   "$WUD_BRANCH" "$FEATURE" push
 
-  # Check verdict via beads
-  log INFO "Checking beads verdict..."
+  # Check verdict via tasks.json
+  log INFO "Checking tasks.json verdict..."
   if "$WUD_VERDICT" "$REPO_ROOT/$SPEC_DIR" "$PHASE"; then
     log OK "UAT review: GO"
     return 0
@@ -243,23 +243,24 @@ run_pr_and_ci() {
   spec_name=$(basename "$SPEC_DIR")
 
   # Check for existing PR
-  PR_NUMBER=$(gh pr list --head "$feature_branch" --base main --json number --jq '.[0].number' 2>/dev/null || echo "")
+  PR_NUMBER=$(gh pr list --head "$feature_branch" --base develop --json number --jq '.[0].number' 2>/dev/null || echo "")
 
   if [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "null" ]]; then
     log OK "PR #${PR_NUMBER} already exists"
   else
-    # Create PR body using beads
+    # Create PR body using tasks.json (ADR-001)
+    local tasks_file="$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json"
     local phase_id
-    phase_id=$(jq -r --arg n "$PHASE" '.phases[$n]' "$REPO_ROOT/$SPEC_DIR/.beads-id" 2>/dev/null || echo "")
+    phase_id=$(printf "phase-%02d" "$PHASE")
 
     cat > /tmp/wud-pr-body.md <<PR_BODY
 ## feat(${spec_name#*-}): Phase ${PHASE}
 
 ### Tasks Completed
-$(if [[ -n "$phase_id" ]]; then bd children "$phase_id" --json 2>/dev/null | jq -r '.[] | "- [\(if .status == "closed" then "x" else " " end)] \(.title)"' 2>/dev/null || echo "- See beads for task list"; else echo "- See beads for task list"; fi)
+$(if [[ -f "$tasks_file" ]]; then jq -r --arg pid "$phase_id" '.phases[] | select(.id == $pid) | .tasks[] | "- [\(if .status == "completed" then "x" else " " end)] \(.title)"' "$tasks_file" 2>/dev/null || echo "- See tasks.json for task list"; else echo "- See tasks.json for task list"; fi)
 
 ### Verification
-- [x] All tasks verified via beads
+- [x] All tasks verified via Hard Gates
 - [x] Code review: GO
 - [x] UAT: GO
 
@@ -328,9 +329,9 @@ if [[ "${DRY_RUN:-false}" == "true" ]]; then
   echo -e "${YELLOW}[DRY RUN]${RESET} Planned stages:"
   echo "  1. Branch setup: feat/${FEATURE}"
   echo "  2. IMPLEMENT (via gemini)"
-  echo "  3. CODE_REVIEW (via gemini) → beads verdict"
+  echo "  3. CODE_REVIEW (via gemini) → tasks.json verdict"
   echo "     ↳ NO-GO: loop to IMPLEMENT (max ${MAX_ITERATIONS}x)"
-  echo "  4. UAT_REVIEW (via gemini) → beads verdict"
+  echo "  4. UAT_REVIEW (via gemini) → tasks.json verdict"
   echo "     ↳ NO-GO: loop to IMPLEMENT (max ${MAX_ITERATIONS}x)"
   echo "  5. PR + CI gate (gh pr checks --watch, ${CI_TIMEOUT}m timeout)"
   echo "     ↳ CI fail: loop to IMPLEMENT (max ${MAX_ITERATIONS}x)"

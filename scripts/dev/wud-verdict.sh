@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# wud-verdict.sh — Deterministic GO/NO-GO verdict via beads
+# wud-verdict.sh — Deterministic GO/NO-GO verdict via tasks.json
 #
-# Beads (`bd`) is the SOLE source of truth for task completion.
-# Markdown task lists are static design; beads is the dynamic execution state.
+# Flat-file tasks.json (ADR-001) is the SOLE source of truth for task completion.
+# Replaces beads (bd) with jq on specs/<feature>/.gwrk/tasks.json.
 #
 # Usage: ./scripts/dev/wud-verdict.sh <spec_dir> <phase_number>
 #
 # Exit codes:
-#   0 - GO (all tasks done/closed)
+#   0 - GO (all tasks in phase are completed)
 #   1 - NO-GO (open/in_progress tasks remain)
-#   2 - Error (missing .beads-id, bd unavailable, etc.)
+#   2 - Error (missing tasks.json, jq unavailable, etc.)
 
 set -euo pipefail
 
@@ -21,14 +21,9 @@ if [[ -z "$SPEC_DIR" ]] || [[ -z "$PHASE_NUM" ]]; then
   exit 2
 fi
 
-BEADS_ID_FILE="$SPEC_DIR/.beads-id"
-if [[ ! -f "$BEADS_ID_FILE" ]]; then
-  echo "[wud-verdict] ERROR: .beads-id not found in $SPEC_DIR" >&2
-  exit 2
-fi
-
-if ! command -v bd &>/dev/null; then
-  echo "[wud-verdict] ERROR: bd command not found" >&2
+TASKS_FILE="$SPEC_DIR/.gwrk/tasks.json"
+if [[ ! -f "$TASKS_FILE" ]]; then
+  echo "[wud-verdict] ERROR: .gwrk/tasks.json not found in $SPEC_DIR" >&2
   exit 2
 fi
 
@@ -37,27 +32,35 @@ if ! command -v jq &>/dev/null; then
   exit 2
 fi
 
-# Resolve phase ID from .beads-id mapping
-PHASE_ID=$(jq -r --arg n "$PHASE_NUM" '.phases[$n] // empty' "$BEADS_ID_FILE")
+# Build the phase ID pattern (phase-01, phase-02, etc.)
+PHASE_ID=$(printf "phase-%02d" "$PHASE_NUM")
 
-if [[ -z "$PHASE_ID" ]]; then
-  echo "[wud-verdict] ERROR: Phase $PHASE_NUM not mapped in .beads-id" >&2
+# Check phase exists in tasks.json
+PHASE_EXISTS=$(jq -r --arg pid "$PHASE_ID" '[.phases[] | select(.id == $pid)] | length' "$TASKS_FILE")
+if [[ "$PHASE_EXISTS" -eq 0 ]]; then
+  echo "[wud-verdict] ERROR: Phase $PHASE_ID not found in tasks.json" >&2
   exit 2
 fi
 
-# Query beads for open/in_progress children of this phase
-CHILDREN_JSON=$(bd children "$PHASE_ID" --json 2>/dev/null || echo "[]")
+# Count open/in_progress vs total tasks for this phase
+OPEN_COUNT=$(jq --arg pid "$PHASE_ID" \
+  '[.phases[] | select(.id == $pid) | .tasks[] | select(.status == "open" or .status == "in_progress")] | length' \
+  "$TASKS_FILE")
 
-OPEN_COUNT=$(echo "$CHILDREN_JSON" | jq '[.[] | select(.status == "open" or .status == "in_progress")] | length')
-TOTAL_COUNT=$(echo "$CHILDREN_JSON" | jq 'length')
+TOTAL_COUNT=$(jq --arg pid "$PHASE_ID" \
+  '[.phases[] | select(.id == $pid) | .tasks[]] | length' \
+  "$TASKS_FILE")
+
 DONE_COUNT=$(( TOTAL_COUNT - OPEN_COUNT ))
 
 if [[ "$OPEN_COUNT" -eq 0 ]]; then
-  echo "[wud-verdict] GO — ${DONE_COUNT}/${TOTAL_COUNT} tasks complete (phase $PHASE_ID)"
+  echo "[wud-verdict] GO — ${DONE_COUNT}/${TOTAL_COUNT} tasks complete (${PHASE_ID})"
   exit 0
 else
-  echo "[wud-verdict] NO-GO — ${OPEN_COUNT}/${TOTAL_COUNT} tasks still open (phase $PHASE_ID)"
+  echo "[wud-verdict] NO-GO — ${OPEN_COUNT}/${TOTAL_COUNT} tasks still open (${PHASE_ID})"
   # Print the open task titles for context
-  echo "$CHILDREN_JSON" | jq -r '.[] | select(.status == "open" or .status == "in_progress") | "  ⦿ \(.id): \(.title)"'
+  jq -r --arg pid "$PHASE_ID" \
+    '.phases[] | select(.id == $pid) | .tasks[] | select(.status == "open" or .status == "in_progress") | "  ⦿ \(.id): \(.title)"' \
+    "$TASKS_FILE"
   exit 1
 fi
