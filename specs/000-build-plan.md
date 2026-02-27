@@ -21,6 +21,8 @@ graph TD
     P3 --> P9[Phase 9: Agent-DUT]
     P6 --> P10[Phase 10: GForge Integration]
     P7 --> P10
+    P2 --> P11[Phase 11: Glass Dashboard]
+    P3 --> P11
 ```
 
 ---
@@ -28,13 +30,13 @@ graph TD
 ## Critical Path
 
 ```
-P0 → P1 → P2 → P3
+P0 → P1 → P2 → P3 → P11
               → P4 → P5 → P8
          → P6
          → P7
 ```
 
-**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure and the flat-file task tracking system. P2 (Build Server) and P4 (WUD Loop) are the next-order dependencies that unlock the daemon and autonomous execution.
+**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure and the flat-file task tracking system. P2 (Build Server) and P4 (WUD Loop) are the next-order dependencies that unlock the daemon and autonomous execution. P11 (Glass Dashboard) depends on both P2 (Fastify daemon) and P3 (Telegram magic link auth).
 
 ---
 
@@ -262,6 +264,38 @@ Unified Pulse + Compression dashboard across repos.
 
 ---
 
+### Phase 11 — Glass Dashboard
+
+Mobile-first real-time ops view with remote access via tunnel + Telegram magic link.
+
+| Spec | Content | Gate |
+|---|---|---|
+| `011-glass-dashboard` | Embedded SPA, SSE endpoints, Ops/Pulse/Compression views, tunnel layer, Telegram magic link auth | `/dashboard` Telegram command returns a magic link; tapping it shows live agent activity on a phone |
+
+**Dependencies:** Phase 2 (Fastify daemon), Phase 3 (Telegram bot for magic link auth)
+**Agent:** Gemini CLI (multi-file SPA generation)
+
+#### What ships:
+
+```bash
+gwrk dashboard                     # Open Glass Dashboard in local browser
+gwrk tunnel start                  # Start tunnel (ngrok/cloudflared/tailscale)
+gwrk tunnel start --provider ngrok # Explicit provider
+gwrk tunnel status                 # Show tunnel URL
+gwrk tunnel stop                   # Tear down tunnel
+# Telegram: /dashboard             # Get magic link for mobile browser
+```
+
+#### Key files:
+- `src/server/dashboard.ts` — Fastify static asset serving + SSE endpoint
+- `src/server/tunnel.ts` — Tunnel provider abstraction (ngrok/cloudflared/tailscale)
+- `src/server/auth.ts` — JWT generation for Telegram magic links
+- `src/commands/dashboard.ts` — `gwrk dashboard` command (opens browser)
+- `src/commands/tunnel.ts` — `gwrk tunnel start/stop/status`
+- `dashboard/` — Vite SPA (React, mobile-first, SSE consumer)
+
+---
+
 ## Wave Strategy
 
 | Wave | Phases | Parallelizable? | Theme |
@@ -269,7 +303,7 @@ Unified Pulse + Compression dashboard across repos.
 | **Wave 1** | P1 | No (keystone) | Bootstrap: CLI exits cleanly, tasks enforce gates |
 | **Wave 2** | P2, P4, P6, P7 | Yes (independent after P1) | Core engines: server, execution, productivity |
 | **Wave 3** | P3, P5 | Partially (P3 needs P2, P5 needs P2+P4) | Multipliers: Telegram, parallelism |
-| **Wave 4** | P8, P9 | Yes (independent) | Intelligence: smart routing, mobile ideation |
+| **Wave 4** | P8, P9, P11 | Yes (P8 needs P5; P9 needs P3; P11 needs P2+P3) | Intelligence + Observability: smart routing, mobile ideation, Glass Dashboard |
 | **Wave 5** | P10 | No (needs P6+P7) | Integration: unified dashboard |
 
 ---
@@ -289,10 +323,17 @@ Unified Pulse + Compression dashboard across repos.
 | P8 (Agent Router) | 8 | TS | 40h |
 | P9 (Agent-DUT) | 8 | TS | 40h |
 | P10 (Integration) | 5 | TS | 25h |
-| **Total** | **84 SP** | | **405h** |
+| P11 (Glass Dashboard) | 8 | TS | 40h |
+| **Total** | **92 SP** | | **445h** |
 
 ---
 
 ## Open Questions Blocking Architecture
 
-None. The PRD-PRFAQ (§23) has 12 open questions, but none block the P0→P1→P2 critical path. They affect P8 (router learning), P9 (DUT model selection), and P3 (multi-user Telegram), which are all Wave 3+.
+None. The PRD-PRFAQ (§23) has 18 open questions, but none block the P0→P1→P2 critical path. They affect P8 (router learning), P9 (DUT model selection), P3 (multi-user Telegram), and P11 (tunnel provider default, read-only vs. write), which are all Wave 3+.
+
+---
+
+## Changelog
+
+- 2026-02-27: Added Spec 011 (Glass Dashboard). Wave 4. Dependencies: [P2, P3]. Impact: +8 SP, updated critical path P0→P1→P2→P3→P11, updated wave 4 to include P11 alongside P8/P9. Total SP: 84 → 92.

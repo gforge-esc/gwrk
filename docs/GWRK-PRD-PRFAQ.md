@@ -92,6 +92,12 @@ gwrk borrows three key architectural ideas from OpenClaw: (1) the **Gateway mode
 ### What is Pulse and how is it different from server monitoring?
 Pulse is NOT an observability/monitoring stack. It's a **productivity snapshot** — a dashboard that answers "what have I shipped, what's in progress, and what's defined?" across all your repositories. It tracks published LOC on main branches, draft LOC on feature/dev branches, weekly add/delete velocity, specification word counts, and effort estimates. Think of it as a portfolio view of your entire body of work, not a Grafana panel of CPU utilization.
 
+### What is the Glass Dashboard?
+The **Glass Dashboard** is a mobile-first web UI embedded in the gwrk daemon (served at `:18790/dashboard`). While Pulse answers "what have I built?", the Glass Dashboard answers **"what is the daemon doing right now?"** — active agents, dispatch queue, system resources, streaming event logs, feature phase progress, and gate status. Telegram handles commands and approvals; the Glass Dashboard handles *watching*.
+
+### How do I see the dashboard from my phone?
+gwrk ships with a **tunnel layer** that exposes the local daemon to the internet. Run `gwrk tunnel start` to spin up an ngrok, Cloudflare Tunnel, or Tailscale Funnel connection. Then text `/dashboard` to the gwrk Telegram bot — it replies with a **magic link** (time-limited JWT in the URL). Tap the link, and you're watching your build server live from a park bench. The dashboard is **read-only** — you watch through the browser, you act through Telegram.
+
 ### What is Compression?
 Compression is gwrk's core metric. It compares the forecasted effort (from story points and role multipliers) against actual delivery time. There are two dimensions: **Point Compression** (estimated coding hours ÷ actual coding time from git commit activity) measures how fast agents wrote the code. **Total Compression** (estimated elapsed time ÷ actual wall-clock time from first implementation commit to merge) measures how fast the feature shipped end-to-end. gwrk tracks timestamps carefully: spec creation time, first commit, last commit, and merge — so a feature that sat dormant for 6 months but was pounded out in 45 minutes correctly shows the burst, not the dormancy.
 
@@ -257,6 +263,27 @@ develop
         └── phase/<feature-name>-phase-03  (owned by WUD #3)
 ```
 
+### Pattern 4: Glass Dashboard + Tunnel (Remote Observability)
+
+gwrk extends the OpenClaw model with a **Glass Dashboard** — a mobile-first web UI served by the Fastify daemon at `:18790/dashboard`. Combined with a tunnel layer (ngrok / Cloudflare Tunnel / Tailscale Funnel), the dashboard is reachable from your phone via a **Telegram magic link**:
+
+| Capability | Implementation |
+|---|---|
+| **Ops View** | Active agents, dispatch queue, system resources, event stream |
+| **Pulse View** | LOC trends, spec progress, repo snapshots |
+| **Compression View** | Point/Total ratios, feature timelines |
+| **Feature View** | Phase progress, gate status, agent assignments |
+| **Remote Access** | `gwrk tunnel start` → Telegram `/dashboard` → magic link |
+| **Auth** | Telegram-issued time-limited JWT; dashboard is read-only |
+| **Mobile-First** | Touch targets, dark mode, SSE reconnect, progressive disclosure |
+
+The two remote channels complement each other:
+
+| Channel | Best For |
+|---|---|
+| **Telegram** | Commands, approvals, alerts, DUT ideation (push + pull) |
+| **Glass Dashboard** | Watching, monitoring, exploring, understanding (pull) |
+
 ---
 
 # 6. The Principal Engineer Thesis
@@ -419,7 +446,7 @@ Codex Cloud **requires manual per-project setup** via the Codex Web UI:
 
 **gwrk walks you through this**: `gwrk codex setup` checks for an existing Codex configuration and guides you through linking, environment setup, and `AGENTS.md` generation from your `.agent/rules/` directory.
 
-See [`docs/codex-lab.md`](file:///Users/gonzo/Code/gwrk/docs/codex-lab.md) for the full Codex Cloud reference and orchestration blueprint.
+See [`docs/reference/codex-lab.md`](file:///Users/gonzo/Code/gwrk/docs/reference/codex-lab.md) for the full Codex Cloud reference and orchestration blueprint.
 
 ### Local Agents: The Parallelism Problem
 
@@ -893,6 +920,14 @@ gwrk codex setup                   # Walk through Codex Cloud project setup
 gwrk codex status                  # Check Codex Cloud connection + environment
 gwrk codex agents-md               # Generate AGENTS.md from .agent/rules/
 
+# === Dashboard & Remote Access ===
+gwrk dashboard                     # Open Glass Dashboard in local browser
+gwrk tunnel start                  # Start tunnel (ngrok/cloudflared/tailscale)
+gwrk tunnel start --provider ngrok # Explicit provider selection
+gwrk tunnel status                 # Show tunnel URL
+gwrk tunnel stop                   # Tear down tunnel
+# Telegram: /dashboard             # Get magic link for mobile access
+
 # === Parallelism & System ===
 gwrk config set parallelism.local.clones 3    # Max simultaneous local repo clones
 gwrk config set parallelism.local.maxCpu 80   # CPU throttle (%, default 80)
@@ -1050,6 +1085,41 @@ gwrk pulse scan /Users/gonzo/Code/code-red
 ```
 
 This replaces GForge.ai's 902-line `PulseStore`, its scheduler worker, and its Prisma-backed `CodebaseMetricSnapshot` table — all with a single Git log scan.
+
+## Glass Dashboard (Mobile-First Real-Time View)
+
+While Pulse answers "what have I built?", the **Glass Dashboard** answers "what is the daemon doing *right now*?"
+
+The dashboard is a mobile-first SPA embedded in the Fastify daemon at `:18790/dashboard`:
+
+| Panel | Content | Data Source |
+|---|---|---|
+| **Ops View** | Active agents, dispatch queue, system resources (CPU/MEM/disk) | `/api/status` (REST) |
+| **Event Stream** | Live gate results, agent dispatches, CI outcomes | `/api/events` (SSE) |
+| **Feature Timeline** | Phase progress bars, gate pass/fail, agent assignments | `/api/features` (REST) |
+| **Pulse View** | LOC trends, spec progress, repo snapshots | `/api/pulse` (REST) |
+| **Compression View** | Point/Total ratios, per-feature timelines | `/api/compression` (REST) |
+
+### Remote Access via Tunnel
+
+The daemon runs on `localhost:18790`. To reach it from your phone:
+
+| Tunnel | Command | URL |
+|---|---|---|
+| **ngrok** | `ngrok http 18790` | `https://xyz.ngrok-free.app` |
+| **Cloudflare Tunnel** | `cloudflared tunnel run gwrk` | `https://gwrk.yourdomain.com` |
+| **Tailscale Funnel** | `tailscale funnel 18790` | `https://macbook.tail1234.ts.net` |
+
+### Magic Link Authentication
+
+Since Telegram is already paired to the daemon, authentication is zero-friction:
+
+1. You text `/dashboard` to the gwrk Telegram bot.
+2. The daemon generates a time-limited JWT.
+3. The bot replies with the tunnel URL + token as a tappable link.
+4. The SPA loads, consumes the token, stores it in `sessionStorage`, and removes it from the URL.
+
+The dashboard is **read-only by design** — you *watch* through the browser, you *act* through Telegram.
 
 ---
 
@@ -1359,6 +1429,29 @@ Agent-DUS **MUST** generate a corresponding shell script `gates/T0xx-gate.sh` fo
 ## FR-12: State-Compliance Enforcement (P1)
 The `gwrk tasks done` command **MUST** execute the corresponding gate script before updating the task status to `completed` in `tasks.json`. If the script fails, the command must exit with an error, preventing the implementation agent from proceeding.
 
+## FR-13: Glass Dashboard (P1)
+
+| Requirement | Detail |
+|---|---|
+| **Embedded SPA** | Mobile-first web UI served at `:18790/dashboard` by the Fastify daemon |
+| **Ops View** | Real-time active agents, dispatch queue, system resources (CPU/MEM/disk) |
+| **Event Stream** | Server-Sent Events (SSE) for live gate results, dispatches, CI outcomes |
+| **Feature Timeline** | Phase progress, gate status, agent assignment per feature |
+| **Pulse integration** | Pulse and Compression data surfaced alongside ops data |
+| **Dark mode** | Respect `prefers-color-scheme` |
+| **SSE reconnect** | Auto-reconnect on phone wake / network recovery |
+
+## FR-14: Tunnel + Magic Link (P1)
+
+| Requirement | Detail |
+|---|---|
+| **Tunnel start/stop** | `gwrk tunnel start/stop` with provider abstraction (ngrok, cloudflared, tailscale) |
+| **Provider config** | `tunnel.provider` in `.gwrkrc.json`, fail-fast if not configured |
+| **Telegram magic link** | `/dashboard` command returns tunnel URL with time-limited JWT |
+| **Auth model** | JWT consumed on load, stored in `sessionStorage`, cleared from URL |
+| **Read-only** | Dashboard is view-only; all mutations go through Telegram |
+| **Rate limiting** | Fastify rate-limit plugin, 100 req/min per IP |
+
 ---
 
 # 18. Technology Stack
@@ -1376,6 +1469,9 @@ The `gwrk tasks done` command **MUST** execute the corresponding gate script bef
 | **Pulse Engine** | Git log parser (custom) | No database required for scan mode |
 | **Effort Engine** | Markdown parser + SP calculator | Deterministic from spec artifacts |
 | **Task Tracking** | Native Flat JSON/JSONL | `.gwrk/tasks.json`, `.gwrk/history.jsonl` |
+| **Glass Dashboard** | Vite SPA (React, embedded static assets) | Mobile-first, bundled into daemon, no CDN |
+| **Tunnel Layer** | ngrok / cloudflared / tailscale (provider abstraction) | Remote access to local daemon |
+| **Dashboard Auth** | JWT (jsonwebtoken) via Telegram magic link | Read-only, time-limited, zero-friction |
 | **Configuration** | Zod schemas | Fail-fast validation |
 
 ---
@@ -1446,6 +1542,7 @@ The only tool that combines:
 | **8** | **Multi-Agent Router** | Agent router, per-backend invocation, Done Done! protocol, retry + escalation | Dispatch to Codex, retry on Claude, feature ships |
 | **9** | **Agent-DUT** | Telegram conversational ideation, voice notes, spec generation, ship action | `/dream` produces a spec.md from mobile conversation |
 | **10** | **GForge Integration** | Pulse + Compression replaces PulseStore, unified dashboard | Single pane across repos |
+| **11** | **Glass Dashboard** | Mobile-first embedded SPA, SSE endpoints, Ops/Pulse/Compression views, tunnel layer, Telegram magic link auth | Open browser on phone via `/dashboard` and see live agent activity |
 
 ---
 
@@ -1466,6 +1563,8 @@ The only tool that combines:
 | `gwrk init` to first `gwrk specify` | < 5 minutes | User testing |
 | **DUT: idea-to-spec via Telegram** | **< 30 minutes of conversation** | DUT thread timestamps |
 | **DUT: spec acceptance rate** | **> 80% of DUT specs ship without major revision** | Spec edit history |
+| **Dashboard: Telegram `/dashboard` to live view** | **< 10 seconds** | Tunnel + JWT + page load |
+| **Dashboard: SSE reconnect after phone sleep** | **< 3 seconds** | Client-side reconnect timing |
 
 ---
 
@@ -1489,6 +1588,8 @@ The only tool that combines:
 | 14 | Which LLM backend should power DUT's conversational loop? Same router, or dedicated model for ideation? | David | DUT | 🟡 Open |
 | 15 | Should DUT support image input (whiteboard photos, UI sketches) or text/voice only for MVP? | David | DUT | 🟡 Open |
 | 16 | Should DUT threads be stored in-repo (`.gwrk/dreams/`) or only in the Telegram thread? | David | DUT | 🟡 Open |
+| 17 | Which tunnel provider should be the default? ngrok (easiest), Cloudflare Tunnel (stable URL), Tailscale Funnel (P2P encrypted)? | David | Dashboard | 🟡 Open |
+| 18 | Should the Glass Dashboard support any write actions (e.g., pause/resume from browser), or remain strictly read-only with all mutations via Telegram? | David | Dashboard | 🟡 Open |
 
 ---
 

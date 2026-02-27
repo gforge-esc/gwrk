@@ -2,7 +2,9 @@
   "name": "@gwrk/cli",
   "version": "0.1.0",
   "type": "module",
-  "bin": "./dist/cli.js",
+  "bin": {
+    "gwrk": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

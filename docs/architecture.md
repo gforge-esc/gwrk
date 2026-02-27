@@ -1,7 +1,7 @@
 # gwrk: Architecture & Workflow Specification
 
 > **Status:** Authoritative · **Date:** 2026-02-26
-> **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/ADR-001-task-tracking.md)
+> **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md)
 
 ---
 
@@ -40,14 +40,22 @@
 │  │ Git log scanner  │  │ /review-code     │ │ SP vs Git timestamps │ │
 │  │ Snapshot gen     │  │ /review-uat      │ │ Point & Total ratios │ │
 │  └──────────────────┘  └──────────────────┘ └──────────────────────┘ │
+│                                                                       │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │ Glass Dashboard (:18790/dashboard)                               │ │
+│  │ Mobile-first SPA · SSE events · Ops/Pulse/Compression views     │ │
+│  │ Tunnel: ngrok / cloudflared / tailscale                          │ │
+│  │ Auth: Telegram magic link (time-limited JWT)                     │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────────┘
         │              │               │
         ▼              ▼               ▼
   ┌── Phone ──┐  ┌── Local ──┐  ┌── Agent Backends ──────────────────┐
   │ Telegram  │  │ Agent-ZFG │  │ Codex Cloud (true parallelism)     │
   │ interface │  │ owns orch │  │ Claude Code (deep context, local)  │
-  └──────────┘  └───────────┘  │ Gemini CLI  (multi-file, local)    │
-                                └────────────────────────────────────┘
+  │ Dashboard │  └───────────┘  │ Gemini CLI  (multi-file, local)    │
+  │ via tunnel│                 └────────────────────────────────────┘
+  └──────────┘
 ```
 
 ---
@@ -144,6 +152,10 @@ gwrk/
 | **Linting** | Biome | Lint + format |
 | **Testing** | Vitest | Unit + integration |
 | **Language** | TypeScript (ES2022) | `.ts` only, no `.js` in `src/` |
+| **Glass Dashboard** | Vite SPA (React, embedded static assets) | Mobile-first, served at `:18790/dashboard` |
+| **Dashboard Streaming** | Server-Sent Events (SSE) | Real-time ops events via Fastify |
+| **Tunnel** | ngrok / cloudflared / tailscale | Provider abstraction, remote access |
+| **Dashboard Auth** | JWT via Telegram magic link | Read-only, time-limited, zero-friction |
 
 ### Why Commander.js, Not Ink
 
@@ -158,6 +170,18 @@ Ink (React for the terminal) was considered and **rejected** for the CLI layer:
 | **Appropriate for** | `gwrk pulse`, `gwrk status`, `gwrk tasks list` | A full-screen dashboard app |
 
 **Ink is not off the table forever** — `gwrk pulse dashboard` could be a future Ink-based TUI. But the core CLI is Commander.js commands that exit cleanly.
+
+### Why Glass Dashboard, Not Grafana
+
+A Prometheus/Grafana/Loki stack was considered and **rejected** for v1:
+
+| Concern | Glass Dashboard (embedded SPA) | Grafana Stack |
+|---|---|---|
+| **Weight** | Zero external deps — bundled into daemon | 3 separate services (Prometheus, Grafana, Loki) |
+| **Remote access** | Single port + tunnel + Telegram magic link | Three ports to tunnel |
+| **Auth** | JWT from Telegram (already paired) | Separate Grafana auth |
+| **Mobile** | Mobile-first by design | Grafana has responsive views, but not mobile-first |
+| **Appropriate for** | Single-user local daemon | Team build server, gwrk-as-a-service |
 
 ---
 
