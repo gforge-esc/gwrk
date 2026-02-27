@@ -64,4 +64,55 @@ describe("loadConfig", () => {
       expect.stringContaining("Configuration error"),
     );
   });
+
+  // ─── 006-pulse: Pulse config extension tests (RED) ───────────
+
+  it("should load config with pulse.repos section", () => {
+    // TR-010 / FR-001: pulse config with repos
+    const config = {
+      project: { name: "test-project" },
+      agents: { define: "gemini", implement: "codex-cloud" },
+      pulse: { repos: ["/tmp/repo-a", "/tmp/repo-b"] },
+    };
+    fs.writeFileSync(
+      path.join(tempDir, ".gwrkrc.json"),
+      JSON.stringify(config),
+    );
+
+    const result = loadConfig(tempDir);
+    expect(result).toHaveProperty("pulse");
+    expect(result.pulse?.repos).toEqual(["/tmp/repo-a", "/tmp/repo-b"]);
+    expect(result.pulse?.repos).toHaveLength(2);
+  });
+
+  it("should load config without pulse section (optional)", () => {
+    // TC-003: pulse is optional — existing configs must not break
+    const config = {
+      project: { name: "test-project" },
+      agents: { define: "gemini", implement: "codex-cloud" },
+    };
+    fs.writeFileSync(
+      path.join(tempDir, ".gwrkrc.json"),
+      JSON.stringify(config),
+    );
+
+    const result = loadConfig(tempDir);
+    expect(result).not.toHaveProperty("pulse");
+  });
+
+  it("should load config with empty pulse.repos array", () => {
+    // Edge case: empty repos array is valid config (error caught at command level)
+    const config = {
+      project: { name: "test-project" },
+      agents: { define: "gemini", implement: "codex-cloud" },
+      pulse: { repos: [] },
+    };
+    fs.writeFileSync(
+      path.join(tempDir, ".gwrkrc.json"),
+      JSON.stringify(config),
+    );
+
+    const result = loadConfig(tempDir);
+    expect(result.pulse?.repos).toEqual([]);
+  });
 });
