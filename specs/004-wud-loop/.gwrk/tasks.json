@@ -1,0 +1,89 @@
+{
+  "feature": "004-wud-loop",
+  "phases": [
+    {
+      "id": "1",
+      "name": "Phase 1: Implement Command",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create branch management utility",
+          "description": "Create src/utils/branch.ts implementing ensureBranch() and pushBranch() per contracts/branch.md. ensureBranch() creates feat/<feature> from develop if missing, checks out and merges develop if exists. pushBranch() pushes with --force-with-lease and retries once. Port logic from scripts/dev/wud-branch.sh to TypeScript using child_process.execFileSync for git commands.",
+          "status": "open"
+        },
+        {
+          "id": "T002",
+          "title": "Create WUD state persistence utility",
+          "description": "Create src/utils/wud-state.ts implementing saveWudState() and loadWudState() per contracts/wud.md state persistence section. Define WudState Zod schema with fields: stage (enum), iteration (number), feature (string), phase (string), trackingIssue (optional), prNumber (optional), updatedAt (ISO 8601). saveWudState() writes JSON to .runs/<feature>_p<phase>.state atomically. loadWudState() reads and validates, returns null if missing, resets terminal states (DONE/FAILED/CIRCUIT_BREAK) to BRANCH_SETUP.",
+          "status": "open"
+        },
+        {
+          "id": "T003",
+          "title": "Create WUD run logger",
+          "description": "Create src/utils/log.ts implementing a timestamped logger for WUD runs. Constructor takes feature name and phase number, creates log file at .runs/<timestamp>_wud_<feature>_p<phase>.log. Methods: log(level, message) writes timestamped entry, banner(text) writes section headers. Log levels: INFO, OK, WARN, ERROR, STAGE. Ensure .runs/ directory is created if missing.",
+          "status": "open"
+        },
+        {
+          "id": "T004",
+          "title": "Create implement command — task loop and gate enforcement",
+          "description": "Create src/commands/implement.ts implementing executePhase() and runPreFlight() per contracts/implement.md. Commander subcommand: gwrk implement <feature> <phase> [--dry-run]. executePhase() loads tasks.json via loadTaskState(), iterates tasks in phase via nextTask(), runs pre-flight gate (expects FAIL — skip on PASS with warning), dispatches agent via dispatchAgent() with implement backend from config, runs post-flight gate (expects PASS), calls markTaskComplete(), commits with 'feat: T0xx done'. Handles errors per FR-001 error states. Export as Commander Command object.",
+          "status": "open"
+        },
+        {
+          "id": "T005",
+          "title": "Create implement command unit tests",
+          "description": "Create src/commands/implement.test.ts with Vitest tests: (1) verify task loop iterates all phase tasks calling runGate pre/post and markTaskComplete, (2) verify branch created from develop when missing, (3) verify tasks skipped when pre-flight gate exits 0, (4) verify agent backend resolved from .gwrkrc.json agents.defaults.implement. Mock execFileSync, loadTaskState, dispatchAgent.",
+          "status": "open"
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "Phase 2: WUD State Machine",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Create verdict checker utility",
+          "description": "Create src/utils/verdict.ts implementing checkPhaseVerdict() per contracts/verdict.md. Loads tasks.json via loadTaskState(), filters to phase-NN, returns VerdictResult with verdict (GO/NO-GO), totalTasks, completedTasks, and openTasks array. Port logic from scripts/dev/wud-verdict.sh.",
+          "status": "open"
+        },
+        {
+          "id": "T007",
+          "title": "Create PR + CI gate utility",
+          "description": "Create src/utils/pr.ts implementing createPR() and waitForCI() per contracts/pr.md. createPR() checks for existing PR via gh pr list, creates one via gh pr create --base develop if missing, builds PR body from tasks.json completed tasks. waitForCI() waits via gh pr checks --watch with configurable timeout. Special case: no checks + no .github/workflows/ → pass-through. Port logic from scripts/dev/wud-ci-wait.sh.",
+          "status": "open"
+        },
+        {
+          "id": "T008",
+          "title": "Create WUD command — state machine orchestrator",
+          "description": "Create src/commands/wud.ts implementing runWudLoop() per contracts/wud.md. Commander subcommand: gwrk wud <feature> <phase> [--max-iterations N] [--ci-timeout N] [--dry-run] [--tracking-issue N]. State machine: BRANCH_SETUP → IMPLEMENTING (calls executePhase) → CODE_REVIEW (dispatches agent with /review-code, checks verdict) → UAT_REVIEW (dispatches agent with /review-uat, checks verdict) → PR_CI (calls createPR + waitForCI) → DONE. On NO-GO: increment iteration, loop to IMPLEMENTING. On circuit break: save CIRCUIT_BREAK state, exit 1. Calls saveWudState() before every stage transition. On restart: loadWudState() and resume. On DONE: delete state file. Export as Commander Command object.",
+          "status": "open"
+        },
+        {
+          "id": "T009",
+          "title": "Create WUD command unit tests",
+          "description": "Create src/commands/wud.test.ts with Vitest tests: (1) verify full state machine transition BRANCH_SETUP→DONE, (2) verify loop back to IMPLEMENTING on code review NO-GO, (3) verify loop back on UAT NO-GO, (4) verify PR created via gh pr create --base develop, (5) verify circuit breaker exits with code 1 after MAX_ITERATIONS, (6) verify crash recovery — write state file then resume from saved stage, (7) verify state file deleted on DONE, (8) verify log file created in .runs/. Mock executePhase, dispatchAgent, checkPhaseVerdict, createPR, waitForCI.",
+          "status": "open"
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Phase 3: CLI Registration + Integration",
+      "tasks": [
+        {
+          "id": "T010",
+          "title": "Register implement and wud commands in cli.ts",
+          "description": "Modify src/cli.ts to import implementCommand from './commands/implement.js' and wudCommand from './commands/wud.js'. Add program.addCommand(implementCommand) and program.addCommand(wudCommand) alongside existing initCommand registration.",
+          "status": "open"
+        },
+        {
+          "id": "T011",
+          "title": "Verify CLI integration and dry-run modes",
+          "description": "Verify: (1) gwrk implement --help shows usage with <feature> <phase> args, (2) gwrk wud --help shows usage with <feature> args, (3) gwrk implement 004-wud-loop 1 --dry-run prints planned actions without executing, (4) npx tsc --noEmit passes with zero errors. Fix any integration issues found.",
+          "status": "open"
+        }
+      ]
+    }
+  ]
+}

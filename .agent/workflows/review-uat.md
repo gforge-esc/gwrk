@@ -9,7 +9,7 @@ description: User acceptance testing of implementation against spec.
 
 <scope_constraints>
 - Do NOT modify source code to fix issues. Document and re-open.
-- DO re-open failed beads tasks with structured remediation notes.
+- DO re-open failed tasks in tasks.json with structured remediation notes.
 - DO re-open the phase if any tasks fail.
 - DO post review summary as a PR comment.
 - DO capture screenshot evidence for UI findings.
@@ -25,7 +25,7 @@ description: User acceptance testing of implementation against spec.
 ## Prerequisites
 
 - `/review-code` has passed (GO verdict) for this phase
-- `{feature_dir}/.beads-id` exists with phase mapping
+- `{feature_dir}/.gwrk/tasks.json` exists with phase and task entries
 
 ## Algorithm
 
@@ -47,8 +47,7 @@ make up
 ### 1. Load Context
 
 ```bash
-FEATURE_ID=$(jq -r '.feature' {feature_dir}/.beads-id)
-PHASE_ID=$(jq -r --arg n "{phase_number}" '.phases[$n]' {feature_dir}/.beads-id)
+TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
 ```
 
 Read:
@@ -59,8 +58,8 @@ Read:
 ### 2. Get Closed Tasks
 
 ```bash
-TASKS=$(bd children $PHASE_ID --json)
-CLOSED=$(echo $TASKS | jq '[.[] | select(.status == "closed")]')
+TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
+CLOSED=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status == "completed")]' "$TASKS_FILE")
 ```
 
 ### 3. Infrastructure Verification
@@ -110,23 +109,22 @@ Use browser tool to capture screenshots for:
 
 Save to `{feature_dir}/reviews/uat-phase-{N}/` for audit trail.
 
-### 6. Apply Beads State Changes
+### 6. Apply Task State Changes
 
-For each failed acceptance criterion, identify the related beads task(s) and:
+For each failed acceptance criterion, identify the related task(s) and:
 
 ```bash
+TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
+
 # Re-open the task
-bd update $TASK_ID --status open
+jq --arg n "{phase_number}" --arg t "$TASK_ID" \
+  '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).status = "open"' \
+  "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
 
-# Attach structured remediation notes
-bd update $TASK_ID --notes "REVIEW FAIL (uat): {story_name} — {what_user_expects}. Actual: {what_happened}. See spec.md > {story_ref}. Fix: {specific_remediation}."
-```
-
-If any tasks failed, re-open the phase:
-
-```bash
-bd update $PHASE_ID --status in_progress
-bd update $PHASE_ID --notes "UAT: NO-GO. {PASS_COUNT}/{TOTAL} stories pass, {FAIL_COUNT} re-opened. Next: /implement {feature_dir} {phase_number}"
+# Append structured remediation notes
+jq --arg n "{phase_number}" --arg t "$TASK_ID" --arg note "REVIEW FAIL (uat): {story_name} — Expected: {what_user_expects}. Actual: {what_happened}. See spec.md > {story_ref}. Fix: {specific_remediation}." \
+  '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).description += "\n\n" + $note' \
+  "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
 ```
 
 ### 7. Post PR Comment
@@ -166,10 +164,10 @@ Next:
 <closed_loop_contract>
 | UAT finds... | Action taken | `/implement` sees... |
 |--------------|-------------|---------------------|
-| Story fails golden path | `bd update --status open --notes` | Task in ready queue with UX notes |
-| Visual fidelity issue | `bd update --status open --notes` | Task with screenshot refs |
-| Error state missing | `bd update --status open --notes` | Task with expected error behavior |
-| Edge case breaks | `bd update --status open --notes` | Task with boundary details |
+| Story fails golden path | Update status to open + append note | Task in ready queue with UX notes |
+| Visual fidelity issue | Update status to open + append note | Task with screenshot refs |
+| Error state missing | Update status to open + append note | Task with expected error behavior |
+| Edge case breaks | Update status to open + append note | Task with boundary details |
 </closed_loop_contract>
 
 <note_format>
@@ -183,7 +181,7 @@ REVIEW FAIL (uat): {story_name} — Expected: {what_user_expects}. Actual: {what
 ## Anti-Patterns
 
 - ❌ Fix source code (re-open the task instead)
-- ❌ Leave failed tasks in closed state
+- ❌ Leave failed tasks in completed state
 - ❌ Run UAT before `/review-code` passes
 - ❌ Skip screenshot evidence for visual findings
 - ❌ Evaluate code quality (that's `/review-code`'s job)

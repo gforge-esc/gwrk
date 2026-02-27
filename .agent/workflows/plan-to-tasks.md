@@ -126,7 +126,7 @@ Structure:
 ### 7. Emit Verification Gates (Hard Gate Architecture)
 
 For each task in the JSON, generate `{feature_dir}/gates/{task_id}-gate.sh`.
-Gates MUST exit 0 on pass, non-zero on fail. 
+Gates MUST exit 0 on pass, non-zero on fail. Also generate `gates/run-all-gates.sh` that runs all `T*-gate.sh` scripts in order and reports pass/fail counts.
 
 > [!CAUTION]
 > **Gates MUST be generated FROM contracts, not from task description prose.**
@@ -139,6 +139,11 @@ For each task:
 3. Assert the EXACT type signature, not just that a function exists.
 4. For each `## Files to Modify` entry:
    - Assert the **Target state** is present (not just that the file exists)
+5. **Number every assertion sequentially** with a comment `# Assertion #1`, `# Assertion #2`, etc.
+   This is MANDATORY so `/review-code` can reference SPECIFIC failures in its GATE field:
+   `gates/T012-gate.sh assertion #3`
+6. **Generate `gates/run-all-gates.sh`** — a runner that executes all `T*-gate.sh` scripts
+   in order and reports pass/fail counts. `/review-code` Step 5 depends on this file existing.
 </gate_generation_rules>
 
 ### 8. Make Gates Executable
@@ -166,4 +171,6 @@ Notify user with the hierarchy summary.
 ## Next Step
 
 After JSON and gates are generated:
+- Run `/analyze {feature_dir}` to validate cross-artifact consistency
+- Run `/define-tests {feature_dir} {phase_number}` to generate RED tests
 - Run `/implement {feature_dir} {phase_number}` to begin execution

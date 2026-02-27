@@ -9,7 +9,7 @@ description: Create a technical implementation plan from a spec.
 
 <scope_constraints>
 - Create ONLY plan.md (and optionally data-model.md, contracts/).
-- Do not create tasks.md (that's /plan-to-beads).
+- Do not create tasks.json (that's /plan-to-tasks).
 - Do not implement any code.
 - Reference existing monorepo structure from `docs/architecture.md`.
 </scope_constraints>
@@ -136,17 +136,9 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 - Not just type shapes — specify which service methods must exist, what they accept, what they return.
 - Write to `{feature_dir}/contracts/`.
 
-### 7. Update beads feature issue
+### 7. Report via notify_user
 
-```bash
-BEAD_ID=$(jq -r '.feature' {feature_dir}/.beads-id)
-bd update $BEAD_ID --notes "Plan: {feature_dir}/plan.md"
-bd label $BEAD_ID add plan-ready
-```
-
-### 8. Report via notify_user
-
-> "Plan created: {paths}. Next: `/plan-to-beads` to generate beads import scripts."
+> "Plan created: {paths}. Next: `/plan-to-tasks` to generate tasks.json and verification gates."
 
 <quality_gate>
 Before reporting, verify the plan includes:
@@ -172,8 +164,7 @@ If any are missing, add them before reporting.
 ## Next Step
 
 After plan is created:
-- Run `/plan-to-beads` to generate beads import scripts
-- Run the generated `beads/import-all.sh` in your terminal
+- Run `/plan-to-tasks` to generate tasks.json and verification gates
 - Run `/analyze` to validate cross-artifact consistency
 
 ## Anti-Patterns

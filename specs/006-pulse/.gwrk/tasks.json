@@ -1,0 +1,131 @@
+{
+  "feature": "006-pulse",
+  "phases": [
+    {
+      "id": "1",
+      "name": "Phase 1: Pulse Engine",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create Pulse type definitions and Zod schemas",
+          "description": "Create src/engine/types.ts with PulseSnapshot, WeeklyBucket, PulseReport, SpecProgress interfaces and their corresponding Zod schemas (PulseSnapshotSchema, WeeklyBucketSchema, PulseReportSchema, SpecProgressSchema). Export both types and schemas.",
+          "status": "open"
+        },
+        {
+          "id": "T002",
+          "title": "Create git shell helpers",
+          "description": "Create src/utils/git.ts with: (1) detectDefaultBranch(repoPath) — uses git symbolic-ref refs/remotes/origin/HEAD with fallback to main/master/trunk, throws on failure. (2) gitLog(repoPath, branch?) — runs git log --numstat --format='%H|%aI' and returns raw stdout. (3) gitBranches(repoPath) — runs git branch -a and returns branch list. (4) gitLineCount(repoPath, ref) — runs git ls-files piped through wc -l for LOC count at a ref. All functions use execFileSync from node:child_process.",
+          "status": "open"
+        },
+        {
+          "id": "T003",
+          "title": "Create git helper unit tests",
+          "description": "Create src/utils/git.test.ts with unit tests: (1) detectDefaultBranch returns 'main' when symbolic-ref succeeds, (2) detectDefaultBranch falls back to 'master' when symbolic-ref fails but master exists, (3) detectDefaultBranch throws when no known branch found, (4) gitLog returns raw string output. Mock execFileSync for all tests.",
+          "status": "open"
+        },
+        {
+          "id": "T004",
+          "title": "Implement parseGitLog parser",
+          "description": "In src/engine/pulse.ts, implement parseGitLog(raw: string): ParsedCommit[] that parses git log --numstat output. Each commit block has format 'hash|timestamp' followed by numstat lines 'added\\tdeleted\\tfilepath'. Return array of ParsedCommit objects with hash, timestamp, and files array.",
+          "status": "open"
+        },
+        {
+          "id": "T005",
+          "title": "Implement bucketByWeek weekly grouping",
+          "description": "In src/engine/pulse.ts, implement bucketByWeek(commits: ParsedCommit[], defaultBranch: string): WeeklyBucket[] that groups ParsedCommit arrays into ISO-week buckets. Each bucket has weekStart (Monday ISO date), totalMain (cumulative), totalDrafts (cumulative), added (weekly), deleted (weekly). Sort oldest-first.",
+          "status": "open"
+        },
+        {
+          "id": "T006",
+          "title": "Implement scanRepository entry point",
+          "description": "In src/engine/pulse.ts, implement scanRepository(repoPath: string): PulseSnapshot that: (1) validates repoPath exists and is a git repo, (2) calls detectDefaultBranch, (3) calls gitLog + parseGitLog, (4) calls bucketByWeek, (5) calls gitLineCount for mainLoc and draftLoc, (6) assembles and returns PulseSnapshot. Validate output with PulseSnapshotSchema.",
+          "status": "open"
+        },
+        {
+          "id": "T007",
+          "title": "Create pulse engine unit tests",
+          "description": "Create src/engine/pulse.test.ts with unit tests: (1) TR-001: parseGitLog correctly parses sample git log --numstat output into ParsedCommit[], (2) TR-001: bucketByWeek groups commits into correct weekly buckets with add/delete sums, (3) TR-002: scanRepository separates mainLoc vs draftLoc correctly (mock git helpers).",
+          "status": "open"
+        },
+        {
+          "id": "T008",
+          "title": "Create pulse engine integration test",
+          "description": "Create src/engine/pulse-integration.test.ts (TR-007): Create a real temp git repo in /tmp/ with commits across 3 calendar weeks on main and a feature branch. Run scanRepository against it. Verify: (1) weeklyBuckets has 3+ entries, (2) mainLoc > 0, (3) draftLoc > 0, (4) defaultBranch is 'main', (5) weekly added/deleted values match known commit content.",
+          "status": "open"
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "Phase 2: CLI Commands + Config",
+      "tasks": [
+        {
+          "id": "T009",
+          "title": "Extend GwrkConfigSchema with pulse section",
+          "description": "In src/utils/config.ts, extend GwrkConfigSchema with an optional pulse section: pulse: z.object({ repos: z.array(z.string().min(1)) }).optional(). Export PulseConfig type. The pulse key is optional so existing configs without it still validate.",
+          "status": "open"
+        },
+        {
+          "id": "T010",
+          "title": "Add pulse config tests",
+          "description": "In src/utils/config.test.ts, add tests: (1) valid config with pulse.repos loads correctly, (2) config without pulse section still loads (optional), (3) config with empty pulse.repos array loads correctly.",
+          "status": "open"
+        },
+        {
+          "id": "T011",
+          "title": "Create gwrk pulse scan command",
+          "description": "In src/commands/pulse.ts, implement registerPulseCommands(program) that adds a 'pulse' command group. Add 'pulse scan <path>' subcommand: resolves path to absolute, validates it exists, calls scanRepository(), outputs JSON if --json, else calls renderSnapshotTable(). Handle errors with correct stderr messages and exit codes per FR-002 error states.",
+          "status": "open"
+        },
+        {
+          "id": "T012",
+          "title": "Create gwrk pulse command (single-repo placeholder)",
+          "description": "In src/commands/pulse.ts, add the root 'pulse' command (no subcommand): reads config.pulse.repos, validates non-empty, calls scanRepository for each repo, outputs JSON if --json. For Phase 2 this renders per-repo snapshots sequentially. Full multi-repo aggregation is Phase 3.",
+          "status": "open"
+        },
+        {
+          "id": "T013",
+          "title": "Register pulse command in CLI entrypoint",
+          "description": "In src/cli.ts, import registerPulseCommands from ./commands/pulse.js and call registerPulseCommands(program) to wire up the pulse command group.",
+          "status": "open"
+        },
+        {
+          "id": "T014",
+          "title": "Create pulse command unit tests",
+          "description": "Create src/commands/pulse.test.ts with tests: (1) TR-004: gwrk pulse reads pulse.repos from config and invokes scanner (mock engine), (2) TR-005: gwrk pulse scan validates path and calls engine, outputs JSON when --json, (3) TR-006: non-existent path → exit 1, non-git-repo → exit 1, missing pulse.repos when running gwrk pulse → exit 1 with correct stderr.",
+          "status": "open"
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Phase 3: Multi-Repo Aggregation + Spec Progress",
+      "tasks": [
+        {
+          "id": "T015",
+          "title": "Implement scanSpecProgress",
+          "description": "In src/engine/pulse.ts, implement scanSpecProgress(projectRoot: string): SpecProgress that scans specs/*/spec.md and specs/*/plan.md using fs.readdirSync + fs.existsSync. Returns { totalSpecs, totalPlans }.",
+          "status": "open"
+        },
+        {
+          "id": "T016",
+          "title": "Implement generatePulseReport multi-repo aggregation",
+          "description": "In src/engine/pulse.ts, implement generatePulseReport(config: GwrkConfig): PulseReport that iterates config.pulse.repos, calls scanRepository for each, calls scanSpecProgress for the current project, and assembles a PulseReport with all snapshots and spec progress.",
+          "status": "open"
+        },
+        {
+          "id": "T017",
+          "title": "Wire multi-repo report into gwrk pulse command",
+          "description": "In src/commands/pulse.ts, update the root 'pulse' command to call generatePulseReport instead of looping scanRepository manually. Add renderPulseTable() for terminal output matching PRD §14 format (repo name, LOC counts, weekly trends, spec progress line).",
+          "status": "open"
+        },
+        {
+          "id": "T018",
+          "title": "Create multi-repo and spec progress tests",
+          "description": "In src/engine/pulse.test.ts, add: (1) TR-008: scanSpecProgress with mock specs/ directory returns correct counts, (2) generatePulseReport aggregates multiple repos. In src/commands/pulse.test.ts, add: renderPulseTable produces expected terminal output format.",
+          "status": "open"
+        }
+      ]
+    }
+  ]
+}

@@ -22,7 +22,7 @@ See `.agent/rules/seeding-governance.md` for fixture and test corpus rules.
 ## Specification Workflow
 - **Spec-First**: No implementation proceeds without an approved `spec.md` and `plan.md`.
 - **Checklist Gating**: Implementation is BLOCKED until all checklists in `FEATURE_DIR/checklists/` pass.
-- **Beads (bd)**: Execution state is tracked via `bd`. Markdown task lists are the static design; `bd` is the dynamic source of truth.
+- **Tasks (tasks.json)**: Execution state is tracked via `.gwrk/tasks.json`. Markdown task lists are the static design; `tasks.json` is the dynamic source of truth.
 - **RAGB Governance**:
     - 🔴 RED: At risk. Stop and flag.
     - 🟡 AMBER: In progress. Standard operating risk.

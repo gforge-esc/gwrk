@@ -10,7 +10,7 @@ description: Technical code review of implementation against spec.
 <scope_constraints>
 - Do NOT modify source code to fix issues. Document and re-open.
 - DO auto-fix deterministic lint errors (`biome lint --write`).
-- DO re-open failed beads tasks with structured remediation notes.
+- DO re-open failed tasks in tasks.json with structured remediation notes.
 - DO re-open the phase if any tasks fail.
 - DO post review summary as a PR comment.
 - Evaluate against spec and plan, not personal preference.
@@ -24,8 +24,8 @@ description: Technical code review of implementation against spec.
 
 ## Prerequisites
 
-- `{feature_dir}/.beads-id` exists with phase mapping
-- Phase and tasks exist in beads (created via `/plan-to-beads`)
+- `{feature_dir}/.gwrk/tasks.json` exists with phase and task entries
+- Tasks exist in tasks.json (created via `/plan-to-tasks`)
 
 ## Algorithm
 
@@ -46,8 +46,7 @@ make up
 ### 1. Load Context
 
 ```bash
-FEATURE_ID=$(jq -r '.feature' {feature_dir}/.beads-id)
-PHASE_ID=$(jq -r --arg n "{phase_number}" '.phases[$n]' {feature_dir}/.beads-id)
+TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
 ```
 
 Read:
@@ -57,15 +56,14 @@ Read:
 ### 2. Get Closed Tasks
 
 ```bash
-# Get all tasks in the phase
-TASKS=$(bd children $PHASE_ID --json)
+TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
 
-# Separate closed vs other
-CLOSED=$(echo $TASKS | jq '[.[] | select(.status == "closed")]')
-NOT_CLOSED=$(echo $TASKS | jq '[.[] | select(.status != "closed")]')
+# Get all tasks in the phase
+CLOSED=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status == "completed")]' "$TASKS_FILE")
+NOT_CLOSED=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status != "completed")]' "$TASKS_FILE")
 ```
 
-If tasks are not yet closed, they were never implemented — flag as NOT IMPLEMENTED.
+If tasks are not yet completed, they were never implemented — flag as NOT IMPLEMENTED.
 
 ### 3. Infrastructure Check
 
@@ -99,11 +97,11 @@ fi
 ```
 
 - PASS: All gates exit 0. Record gate score.
-- FAIL: Document which gates fail. Map failed gates to beads tasks for re-opening.
+- FAIL: Document which gates fail. Map failed gates to tasks in tasks.json for re-opening.
 
 ### 6. Task Review Loop
 
-For each task (closed or not) in the phase:
+For each task (completed or not) in the phase:
 
 a. **File Check**: Do referenced files exist?
    - PASS: File exists at expected path.
@@ -135,16 +133,20 @@ make test-e2e 2>&1
 - FAIL: Mark as blocking.
 - SKIP: Only if phase has no UI. Document reason.
 
-### 8. Apply Beads State Changes
+### 8. Apply Task State Changes
 
 For each failed task:
 
 ```bash
-# Re-open the task
-bd update $TASK_ID --status open
+TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
 
-# Attach structured remediation notes (enhanced format for implement agent parsing)
-bd update $TASK_ID --notes "$(cat <<'EOF'
+# Re-open the task
+jq --arg n "{phase_number}" --arg t "$TASK_ID" \
+  '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).status = "open"' \
+  "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+
+# Append structured remediation notes to the task description
+jq --arg n "{phase_number}" --arg t "$TASK_ID" --arg note "$(cat <<'EOF'
 REVIEW FAIL (code): {check_name} — {FR_REF}.
   WHERE: {file_path}:{line_range}
   EXPECTED: {exact_expected_code_or_pattern}
@@ -153,21 +155,17 @@ REVIEW FAIL (code): {check_name} — {FR_REF}.
   GATE: {gate_script_path} assertion #{N}
   REF: plan.md Phase {N} > {section}
 EOF
-)"
+)" '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).description += "\n\n" + $note' \
+  "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
 ```
 
 For tasks never implemented (still open/in_progress):
 
 ```bash
-bd update $TASK_ID --status open
-bd update $TASK_ID --notes "REVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase {N} for requirements."
-```
-
-If any tasks failed, re-open the phase:
-
-```bash
-bd update $PHASE_ID --status in_progress
-bd update $PHASE_ID --notes "CODE REVIEW: NO-GO. {PASS_COUNT}/{TOTAL} pass, {FAIL_COUNT} re-opened. Next: /implement {feature_dir} {phase_number}"
+# Append NOT IMPLEMENTED note
+jq --arg n "{phase_number}" --arg t "$TASK_ID" \
+  '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).description += "\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase {N} for requirements."' \
+  "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
 ```
 
 ### 9. Post PR Comment
@@ -187,7 +185,7 @@ git add -A && git commit -m "review: code review Phase {phase_number} - {GO|NO-G
 ```
 
 <verdict_criteria>
-- **GO**: All tasks remain closed. Lint clean. Tests pass.
+- **GO**: All tasks remain completed. Lint clean. Tests pass.
 - **NO-GO**: Any task re-opened. Blocking findings exist.
 </verdict_criteria>
 
@@ -207,8 +205,8 @@ Next:
 <closed_loop_contract>
 | Review finds... | Action taken | `/implement` sees... |
 |-----------------|-------------|---------------------|
-| Task not implemented | `bd update --status open --notes` | Task in ready queue with notes |
-| Task fails spec match | `bd update --status open --notes` | Task in ready queue with remediation |
+| Task not implemented | Update status to open + append note | Task in ready queue with notes |
+| Task fails spec match | Update status to open + append note | Task in ready queue with remediation |
 | Auto-fixable lint | `biome lint --write` + commit | Clean lint (resolved) |
 | Non-fixable lint | Note on relevant task | Task in ready queue with lint details |
 | Test failures | Note on relevant task(s) | Task(s) in ready queue with test output |
@@ -241,11 +239,10 @@ REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
 
 - ❌ Fix source code (re-open the task instead)
 - ❌ Skip gate execution when gates/*.sh exist
-- ❌ Leave failed tasks in closed state
-- ❌ Reference `tasks.md` or `phases/*.md` (beads is the source of truth)
+- ❌ Leave failed tasks in completed state
+- ❌ Reference `tasks.md` or `phases/*.md` (tasks.json is the source of truth)
 - ❌ Skip the PR comment (it's the audit trail)
 - ❌ Write vague notes ("needs fix" — always include the specific remediation)
-- ❌ Use `bd create` to re-open a task (ALWAYS `bd update $TASK_ID --status open`. Creating a new bead for a failed task is a data corruption bug that produces duplicate tasks.)
 
 ## Next Step
 

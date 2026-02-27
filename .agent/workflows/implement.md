@@ -13,7 +13,7 @@ You are executing a phase to completion. Keep going until all tasks in the phase
 
 ## Purpose
 
-Executes ALL TASKS in a phase greedily via beads' ready queue. Each task is tracked individually in beads. Phase completion is derived from all child tasks being closed.
+Executes ALL TASKS in a phase greedily via the tasks.json ready queue. Each task is tracked individually in tasks.json. Phase completion is derived from all tasks in the phase having status "completed".
 
 <scope_constraints>
 - Execute ALL tasks in the specified phase
@@ -79,52 +79,51 @@ else
     git checkout -b "$BRANCH_NAME"
 fi
 
-# Verify .beads-id exists and has the phase
-PHASE_ID=$(jq -r --arg n "{phase_number}" '.phases[$n]' {feature_dir}/.beads-id)
-if [[ -z "$PHASE_ID" || "$PHASE_ID" == "null" ]]; then
-  STOP: "Phase {phase_number} not in .beads-id. Run /plan-to-beads first."
+# Verify tasks.json exists and has the phase
+TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
+if [[ ! -f "$TASKS_FILE" ]]; then
+  STOP: "tasks.json not found. Run /plan-to-tasks first."
 fi
 
-# Claim the phase
-bd update $PHASE_ID --status in_progress
+PHASE=$(jq -e --arg n "{phase_number}" '.phases[] | select(.id == $n)' "$TASKS_FILE")
+if [[ -z "$PHASE" ]]; then
+  STOP: "Phase {phase_number} not in tasks.json. Run /plan-to-tasks first."
+fi
 
 # DETERMINISTIC FAILSAFE: Stop if no work found
-# Do NOT "Self-Heal" or run import scripts. If no tasks are ready, the phase is either complete or un-planned.
-READY_COUNT=$(bd ready --parent $PHASE_ID --json | jq length)
+READY_COUNT=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status == "open")] | length' "$TASKS_FILE")
 if [[ "$READY_COUNT" -eq 0 ]]; then
-  echo "✓ No ready tasks for Phase {phase_number}. Assuming completion."
+  echo "✓ No open tasks for Phase {phase_number}. Assuming completion."
   exit 0
 fi
 ```
 
 <stop_criteria>
-- STOP if `bd ready --parent $PHASE_ID` returns 0 tasks (phase is complete or un-planned)
+- STOP if tasks.json has 0 open tasks for this phase (phase is complete or un-planned)
 - STOP if a task reaches Round 4+ of escalation (3+ review failures)
 - STOP if `make up` or `verify-dev-stack.sh` fails (infrastructure broken)
 - STOP if the agent cannot determine which files to modify (missing plan.md context)
 - Do NOT stop between tasks — continue to next ready task
 - Do NOT stop to ask clarifying questions — implement from task description
-- Do NOT "self-heal" by running import scripts when no work is found
+- Do NOT "self-heal" by running setup scripts when no work is found
 </stop_criteria>
 
 ### 2. Task Loop (Greedy)
 
 ```
 while true:
+    TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
+
     # Get next open task in this phase
-    NEXT_TASK=$(bd ready --parent $PHASE_ID --limit 1 --json | jq -r '.[0].id // empty')
+    NEXT_TASK=$(jq -r --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status == "open")][0].id // empty' "$TASKS_FILE")
 
     if [[ -z "$NEXT_TASK" ]]:
         break  # All tasks complete
 
     # === Load Context ===
-    TASK_DESC=$(bd show $NEXT_TASK --json | jq -r '.description // .title')
-    TASK_NOTES=$(bd show $NEXT_TASK --json | jq -r '.notes // empty')
+    TASK_DESC=$(jq -r --arg n "{phase_number}" --arg t "$NEXT_TASK" '.phases[] | select(.id == $n) | .tasks[] | select(.id == $t) | .description // .title' "$TASKS_FILE")
     # Read plan.md and relevant source files for context
-    # If TASK_NOTES is non-empty, it contains review remediation — follow it
-
-    # === Claim ===
-    bd update $NEXT_TASK --status in_progress
+    # If task has review remediation notes, follow them
 
 <read_before_write>
 Before writing ANY code for a task, the agent MUST:
@@ -137,12 +136,17 @@ Rationale: "Never speculate about code you have not opened" (Claude 4.6 guide).
 "Map the scope before coding" (GPT-5.2 guide).
 </read_before_write>
 
+    # === Mark in-progress ===
+    jq --arg n "{phase_number}" --arg t "$NEXT_TASK" \
+      '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).status = "in_progress"' \
+      "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+
     # === IMPLEMENT ===
     # Agent implements based on task description, plan.md, and spec.md
     # Task descriptions contain literal code — apply the diff
 
 <review_notes_priority>
-If TASK_NOTES contains "REVIEW FAIL", the agent MUST:
+If task description contains "REVIEW FAIL", the agent MUST:
 1. Address the SPECIFIC remediation in the notes FIRST
 2. Verify the remediation manually (e.g., grep, jq check)
 3. ONLY THEN run the gate script
@@ -152,7 +156,7 @@ The gate is necessary but NOT sufficient when notes exist.
 </review_notes_priority>
 
 <escalation_protocol>
-Check how many times this task has been re-opened (count REVIEW FAIL entries in notes).
+Check how many times this task has been re-opened (count REVIEW FAIL entries in description).
 Adjust strategy based on round:
 
 Round 1 (first attempt — no REVIEW FAIL notes):
@@ -177,7 +181,7 @@ Round 4+ (third+ review fail): STOP. Report to user with:
   - Your implementation vs contract diff (field-by-field)
   - Your hypothesis for why the gate still fails
   - Proposed approach for human review
-  `bd update $NEXT_TASK --status blocked --notes "Escalation: 3+ rounds failed. <details>"`
+  Mark task as blocked in tasks.json.
 </escalation_protocol>
 
 <skill_gates>
@@ -191,7 +195,7 @@ The agent reads and follows — no interpretation.
 </skill_gates>
 
 <verification_rules>
-Run the pre-committed gate script (written by /plan-to-beads, NOT by this agent):
+Run the pre-committed gate script (written by /plan-to-tasks, NOT by this agent):
   `bash {feature_dir}/gates/{task_id}-gate.sh`
 
 - Gate exits 0 = PASS, non-zero = FAIL
@@ -201,27 +205,30 @@ Run the pre-committed gate script (written by /plan-to-beads, NOT by this agent)
 </verification_rules>
 
     # === Complete ===
-    bd close $NEXT_TASK
+    jq --arg n "{phase_number}" --arg t "$NEXT_TASK" \
+      '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).status = "completed"' \
+      "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
     git add -A && git commit -m "feat: $NEXT_TASK done"
 ```
 
 ### 3. Phase Completion
 
 ```bash
-bd close $PHASE_ID
 git add -A && git commit -m "feat: Phase {phase_number} complete"
 ```
 
 ### 4. Create Pull Request
 
 ```bash
+TASKS_SUMMARY=$(jq -r --arg n "{phase_number}" '.phases[] | select(.id == $n) | .tasks[] | "- [x] \(.title)"' "$TASKS_FILE")
+
 gh pr create \
   --title "feat($(basename {feature_dir})): Phase {phase_number} - {phase_name}" \
   --body "## Summary
 {Brief description}
 
 ## Tasks Completed
-$(bd children $PHASE_ID --json | jq -r '.[] | "- [x] \(.title)"')
+$TASKS_SUMMARY
 
 ## Verification
 - [x] All tasks verified
@@ -238,10 +245,8 @@ pkill -f 'pnpm.*dev' || true
 
 ```
 Phase {phase_number} COMPLETE.
-Tasks: $(bd children $PHASE_ID --json | jq length) completed
+Tasks: $(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[]] | length' "$TASKS_FILE") completed
 PR: #{pr_number}
-
-Next: bd ready --parent $FEATURE_ID
 ```
 
 <quality_gate>
@@ -260,8 +265,7 @@ Before closing any task, verify:
 - ❌ Skip to "easier" tasks
 - ❌ Batch commits (each task = one commit)
 - ❌ Proceed to next phase without user instruction
-- ❌ Reference `tasks.md` or `phases/*.md` (beads is the source of truth)
+- ❌ Reference `tasks.md` or `phases/*.md` (tasks.json is the source of truth)
 - ❌ Run bare `pnpm dev` without `make up` first (I-007)
 - ❌ Leave dev processes running after phase completion (I-007)
-- ❌ Run any script that creates or imports beads (e.g., `import-all.sh`, `create-phases.sh`, `*-tasks.sh`). Implementation is for EXECUTION ONLY.
-- ❌ Attempt to "Self-Heal" if `bd ready` is empty by running setup scripts. If no work is found, report and STOP.
+- ❌ Attempt to "Self-Heal" if no open tasks are found by running setup scripts. If no work is found, report and STOP.

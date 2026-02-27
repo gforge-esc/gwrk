@@ -22,7 +22,7 @@ description: Cross-artifact consistency analysis (read-only).
 
 - `{feature_dir}/spec.md` exists.
 - `{feature_dir}/plan.md` exists.
-- `{feature_dir}/.beads-id` exists (beads is the tracking source of truth).
+- `{feature_dir}/.gwrk/tasks.json` exists (tasks.json is the tracking source of truth).
 
 ## Steps
 
@@ -34,27 +34,18 @@ Read all available definition artifacts:
 |----------|---------|----------|
 | `spec.md` | Requirements, user stories, TRs | ✅ |
 | `plan.md` | Architecture, phases, file changes | ✅ |
-| `.beads-id` | Tracking IDs (feature + phase mappings) | ✅ |
-| `beads/*.sh` | Task import scripts (if present) | Optional |
+| `.gwrk/tasks.json` | Task tracking (phases, tasks, statuses) | ✅ |
+| `gates/*.sh` | Verification gate scripts (if present) | Optional |
 | `data-model.md` | Domain entities | Optional |
 | `contracts/` | Zod schemas, API contracts | Optional |
 | `checklists/` | Quality gate checklists | Optional |
 
-> **Note**: `tasks.md` and `phases/*.md` are DEPRECATED artifacts. If found,
-> flag their existence as an inconsistency — beads is the source of truth.
+### 2. Load Task State
 
-### 2. Load Beads State
-
-If tasks are already imported into beads, examine live state:
+Read the current tracking state from `tasks.json`:
 
 ```bash
-FEATURE_ID=$(jq -r '.feature' {feature_dir}/.beads-id)
-bd children $FEATURE_ID --json 2>&1
-
-# For each phase, get tasks
-for phase_id in $(bd children $FEATURE_ID --json | jq -r '.[].id'); do
-  bd children $phase_id --json 2>&1
-done
+cat {feature_dir}/.gwrk/tasks.json | jq '.phases[] | {name, tasks: [.tasks[] | {id, title, status}]}'
 ```
 
 ### 3. Run Detection Passes
@@ -63,10 +54,9 @@ done
 
 - **Duplication**: Near-duplicate requirements across spec sections
 - **Ambiguity**: Vague terms (fast, scalable, robust, appropriate)
-- **Coverage**: Requirements in spec.md with no corresponding task in beads
-- **Orphan Tasks**: Tasks in beads with no traceable requirement in spec.md
+- **Coverage**: Requirements in spec.md with no corresponding task in tasks.json
+- **Orphan Tasks**: Tasks in tasks.json with no traceable requirement in spec.md
 - **Schema Match**: Entities in spec vs domain types
-- **Deprecated Artifacts**: `tasks.md` or `phases/` files exist alongside beads
 
 #### B. TDD Quality (CRITICAL)
 
@@ -78,7 +68,7 @@ This is the highest-weight detection pass. Every task must be test-drivable:
   - Unit tests for business logic?
   - If TR section missing: **CRITICAL** gap.
 
-- **Per-Task Test Gates**: For each task in beads (or beads scripts):
+- **Per-Task Test Gates**: For each task in tasks.json:
   - Does the task description include verifiable ACCEPTANCE criteria?
   - Are acceptance criteria specific and measurable (not prose)?
     - ❌ BAD: "Sidebar looks correct"
@@ -90,32 +80,25 @@ This is the highest-weight detection pass. Every task must be test-drivable:
   test-gate definitions → report as `{N}/{TOTAL} tasks have test gates`.
   Score < 80%: **CRITICAL** gap.
 
-#### C. Beads Script Quality (if `{feature_dir}/beads/` exists)
+#### C. Gate Script Quality (if `{feature_dir}/gates/` exists)
 
-When `/plan-to-beads` has already generated scripts, analyze their quality:
+When `/plan-to-tasks` has already generated gate scripts, analyze their quality:
 
-- **Idempotency**: Do all scripts guard with existence checks?
-  - Pattern: `if echo "$EXISTING" | grep -q "T0XX"; then ... skip ... fi`
-  - Scripts that blindly `bd create` without checking: **HIGH** finding.
+- **Assertion Strength**: Read each gate script:
+  - Does it assert EXACT type signatures (not just file existence)?
+  - Does it use `grep -q` or `jq -e` against implementation files?
+  - Gates that only check `[ -f file ]`: **HIGH** finding.
 
-- **Description Density**: Read each task body (heredoc in scripts):
-  - Does it specify FILES to modify/create?
-  - Does it include ACCEPTANCE criteria?
-  - Does it include PLAYWRIGHT or test assertions?
-  - Does it reference spec requirements (FR-###, TR-###)?
-  - Tasks with <3 lines of description: **HIGH** finding.
+- **Contract Derivation**: Are gates derived from `contracts/`, not task prose?
+  - Gates that paraphrase task descriptions instead of testing contracts: **HIGH** finding.
 
-- **Numbering Gaps**: Does task numbering follow the convention?
-  - T0XX = Phase 0, T01X = Phase 1, T02X = Phase 2, etc.
-  - Naming collisions across scripts: **HIGH** finding.
+- **Assertion Numbering**: Are assertions numbered sequentially (#1, #2, ...)?
+  - Unnumbered assertions make `/review-code` GATE field references impossible: **MEDIUM** finding.
 
-- **Dependency Wiring**: Does the dependency wiring script exist?
-  - Does it wire cross-phase deps?
-  - Does it wire TDD deps (impl tasks → test task)?
-  - Missing dependency wiring: **MEDIUM** finding.
+- **Coverage**: Does every task in tasks.json have a corresponding gate script?
+  - Missing gate for a task: **MEDIUM** finding.
 
-- **Import Runner**: Does `import-all.sh` exist?
-  - Does it auto-commit after import?
+- **Runner**: Does `gates/run-all-gates.sh` exist?
   - Missing runner: **MEDIUM** finding.
 
 #### D. State Synchronization (frontend specs)
@@ -138,8 +121,8 @@ Reference applicable governance rules from `.agent/rules/`:
 | Level | Criteria |
 |-------|----------|
 | **CRITICAL** | Missing core artifact, zero coverage, missing TR/E2E requirements, TDD score < 80% |
-| **HIGH** | Orphan tasks, conflicting requirements, task without acceptance criteria, script without idempotency |
-| **MEDIUM** | Terminology drift, missing dependency wiring, thin description |
+| **HIGH** | Orphan tasks, conflicting requirements, task without acceptance criteria, gate without contract-derived assertions |
+| **MEDIUM** | Terminology drift, missing gate runner, thin description |
 | **LOW** | Style improvements, naming suggestions |
 </severity_criteria>
 
@@ -155,10 +138,10 @@ Report via notify_user (do NOT write files):
 |-------|----------------------|-------|---------| 
 | Phase N | M/T | XX% | ✅/❌ |
 
-### Beads Script Quality (if applicable)
-| Script | Idempotent | Descriptions | Test Gates | Verdict |
-|--------|-----------|--------------|------------|---------| 
-| 01-phase-N-tasks.sh | ✅/❌ | N/T dense | M/T have tests | ✅/❌ |
+### Gate Script Quality (if applicable)
+| Gate | Contract-derived | Assertion strength | Numbered | Verdict |
+|------|-----------------|-------------------|----------|---------|
+| T0XX-gate.sh | ✅/❌ | strong/weak | ✅/❌ | ✅/❌ |
 
 ### Findings
 | ID | Category | Severity | Location | Issue | Recommendation |
@@ -181,14 +164,14 @@ Report via notify_user (do NOT write files):
 
 ## Anti-Patterns
 
-- ❌ Reference `tasks.md` as source of truth (beads → scripts → bd are truth)
+- ❌ Reference `tasks.md` or `phases/*.md` as source of truth (tasks.json is truth)
 - ❌ Modify any files (this is read-only analysis)
 - ❌ Accept vague acceptance criteria ("looks correct", "works properly")
-- ❌ Skip beads script review when scripts exist
+- ❌ Skip gate script review when gates exist
 - ❌ Report >50 findings (prioritize by severity)
 
 ## Next Step
 
 After analysis:
-- If NOT READY: Iterate on spec/plan/scripts, then re-run `/analyze`
+- If NOT READY: Iterate on spec/plan/gates, then re-run `/analyze`
 - If READY: Run `/implement {feature_dir} {phase_number}`
