@@ -42,3 +42,23 @@
 [35m═══════════════════════════════════════════════[0m
 
 [2m23:13:42[0m [35m[STAGE][0m Running agent-run.sh review-code 001-cli-core 1
+[2m23:15:01[0m [36m[INFO][0m Pushing review commits...
+[2m23:15:02[0m [36m[INFO][0m Checking tasks.json verdict...
+[2m23:15:02[0m [32m[OK][0m Code review: GO
+
+[35m═══════════════════════════════════════════════[0m
+[35m  UAT REVIEW — Iteration 2/3[0m
+[35m═══════════════════════════════════════════════[0m
+
+[2m23:15:02[0m [35m[STAGE][0m Running agent-run.sh review-uat 001-cli-core 1
+[2m23:16:33[0m [36m[INFO][0m Pushing UAT review commits...
+[2m23:16:34[0m [36m[INFO][0m Checking tasks.json verdict...
+[2m23:16:34[0m [32m[OK][0m UAT review: GO
+
+[35m═══════════════════════════════════════════════[0m
+[35m  PR + CI GATE[0m
+[35m═══════════════════════════════════════════════[0m
+
+[2m23:16:35[0m [36m[INFO][0m Creating/updating PR...
+[2m23:16:37[0m [33m[WARN][0m Could not extract PR number — skipping CI gate
+[2m23:16:37[0m [32m[OK][0m DONE in 10m 42s after 2 iteration(s)
