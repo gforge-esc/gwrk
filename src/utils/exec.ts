@@ -1,9 +1,42 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 
 export interface ExecResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+}
+
+export function execCommand(
+  command: string,
+  args: string[],
+): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    execFile(command, args, { encoding: "utf-8" }, (error, stdout, stderr) => {
+      if (error) {
+        const err = error as { code?: string; status?: number };
+        if (err.code === "ENOENT") {
+          resolve({
+            exitCode: 127,
+            stdout: "",
+            stderr: `Command not found: ${command}`,
+          });
+          return;
+        }
+
+        resolve({
+          exitCode: err.status ?? 1,
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+        });
+      } else {
+        resolve({
+          exitCode: 0,
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+        });
+      }
+    });
+  });
 }
 
 export function runGate(gateScript: string): ExecResult {
