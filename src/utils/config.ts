@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 const AgentBackendSchema = z.enum(["gemini", "claude", "codex", "codex-cloud"]);
+export type AgentBackend = z.infer<typeof AgentBackendSchema>;
 
 export const GwrkConfigSchema = z.object({
   project: z.object({

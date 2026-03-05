@@ -1,14 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T009 — Agent dispatch abstraction in src/utils/agent.ts
+# Gate: T009 — Implement src/db/index.ts
+# Asserts: Derived from task description
 
-test -f src/utils/agent.ts
-grep -q 'dispatchAgent' src/utils/agent.ts
-grep -q 'AgentBackend' src/utils/agent.ts
-grep -q 'gemini' src/utils/agent.ts
-grep -q 'claude' src/utils/agent.ts
-grep -q 'codex' src/utils/agent.ts
-grep -q 'execFile\|spawn' src/utils/agent.ts
-grep -q 'exitCode' src/utils/agent.ts
+test -f src/db/index.ts
 
-echo "PASS: T009 — agent.ts has dispatchAgent with all backends"
+echo "PASS: T009 — Implement src/db/index.ts"

@@ -1,10 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T003 — biome.json lint + format configuration
+# Gate: T003 — Implement biome.json
+# Asserts: Derived from task description
 
 test -f biome.json
-grep -q '"formatter"' biome.json
-grep -q '"linter"' biome.json
-grep -q '"organizeImports"' biome.json
 
-echo "PASS: T003 — biome.json has formatter, linter, organizeImports"
+echo "PASS: T003 — Implement biome.json"

@@ -1,12 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T021 — Unit tests for task query commands (TR-005)
+# Gate: T021 — Implement src/utils/parser.ts
+# Asserts: Derived from task description
 
-test -f src/commands/tasks-query.test.ts
-grep -q 'describe\|test\|it(' src/commands/tasks-query.test.ts
-grep -q 'list' src/commands/tasks-query.test.ts
-grep -q 'next' src/commands/tasks-query.test.ts
-# Tests must pass
-pnpm test --run src/commands/tasks-query.test.ts
+test -f src/utils/parser.ts
+test -f specs/001-cli-core/plan.md
 
-echo "PASS: T021 — task query tests exist and pass"
+echo "PASS: T021 — Implement src/utils/parser.ts"

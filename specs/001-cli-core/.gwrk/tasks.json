@@ -1,67 +1,114 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-02-26T22:37:00Z",
+  "createdAt": "2026-03-05T02:32:37.659Z",
   "phases": [
     {
       "id": "phase-01",
-      "title": "Project Bootstrap & gwrk init",
+      "title": "Project Bootstrap, `gwrk init`, `gwrk new`",
       "tasks": [
         {
           "id": "T001",
-          "title": "Create package.json with project manifest and dependencies",
-          "description": "Create package.json at project root with: name '@gwrk/cli', type 'module', bin entry './dist/cli.js', dependencies (commander, zod), devDependencies (vitest, @biomejs/biome, tsx, typescript, @types/node). Scripts: build (tsc), test (vitest run), lint (biome check), format (biome format --write).",
+          "title": "Implement package.json",
+          "description": "NEW: Project manifest \u2014 commander, zod, vitest, biome, tsx",
           "status": "completed",
-          "gateScript": "gates/T001-gate.sh"
+          "gateScript": "gates/T001-gate.sh",
+          "completedAt": "2026-03-05T02:49:49.546Z"
         },
         {
           "id": "T002",
-          "title": "Create tsconfig.json with ES2022 + ESM + strict",
-          "description": "Create tsconfig.json: target ES2022, module NodeNext, moduleResolution NodeNext, strict true, outDir ./dist, rootDir ./src, declaration true, esModuleInterop true, skipLibCheck true, resolveJsonModule true.",
+          "title": "Implement tsconfig.json",
+          "description": "NEW: ES2022 target, ESM, strict mode, NodeNext module resolution",
           "status": "completed",
-          "gateScript": "gates/T002-gate.sh"
+          "gateScript": "gates/T002-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T003",
-          "title": "Create biome.json lint + format configuration",
-          "description": "Create biome.json: formatter enabled (indentStyle space, indentWidth 2), linter enabled with recommended rules, organizeImports enabled. Add rule noExplicitAny with error severity. REMEDIATION: REVIEW FAIL (lint): Missing ignore for dist/ — .agent/rules/coding-style.md. WHERE: biome.json. EXPECTED: \"files\": { \"ignore\": [\"dist\"] }. ACTUAL: (missing). FIX: Add \"files\": { \"ignore\": [\"dist\"] } to biome.json to prevent linting generated files.",
+          "title": "Implement biome.json",
+          "description": "NEW: Lint + format config, no `any` allowed",
           "status": "completed",
-          "gateScript": "gates/T003-gate.sh"
+          "gateScript": "gates/T003-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T004",
-          "title": "Create GwrkConfigSchema and loadConfig in src/utils/config.ts",
-          "description": "Implement the Zod schema from contracts/config.md: GwrkConfigSchema with project.name (string), agents.define (enum), agents.implement (enum). Implement loadConfig(projectRoot) that reads .gwrkrc.json, validates with Zod, calls process.exit(1) on missing file or invalid schema. Export GwrkConfig type. NO .default() calls.",
+          "title": "Implement .gitignore",
+          "description": "MODIFY: Add `dist/`, `node_modules/`",
           "status": "completed",
-          "gateScript": "gates/T004-gate.sh"
+          "gateScript": "gates/T004-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T005",
-          "title": "Create shell execution wrapper in src/utils/exec.ts",
-          "description": "Implement runGate(gateScript) from contracts/tasks.md: execFileSync wrapper that returns { exitCode, stdout, stderr }. Does NOT throw on non-zero exit. Uses child_process.execFileSync with encoding 'utf-8'. Catches ENOENT for missing scripts.",
+          "title": "Implement src/cli.ts",
+          "description": "NEW: Commander program definition, version, top-level command routing",
           "status": "completed",
-          "gateScript": "gates/T005-gate.sh"
+          "gateScript": "gates/T005-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T006",
-          "title": "Create CLI entry point in src/cli.ts with Commander",
-          "description": "Create src/cli.ts: import Commander, create program with name 'gwrk', version from package.json, description. Register init command (from src/commands/init.ts). Parse process.argv. Add shebang line #!/usr/bin/env node. Wire up config loading at startup (but skip for init command since .gwrkrc.json doesn't exist yet). REMEDIATION: REVIEW FAIL (code): Version not from package.json — FR-001/TC-003. WHERE: src/cli.ts:11. EXPECTED: .version(pkg.version). ACTUAL: .version(\"0.1.0\"). FIX: Import package.json and use its version field.",
+          "title": "Implement src/commands/init.ts",
+          "description": "NEW: `gwrk init` \u2014 scaffold directories, detect CLIs, provision context files, create Slack channel, register in SQLite",
           "status": "completed",
-          "gateScript": "gates/T006-gate.sh"
+          "gateScript": "gates/T006-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T007",
-          "title": "Create gwrk init command in src/commands/init.ts",
-          "description": "Implement FR-001: create .agent/workflows/, .agent/rules/, .specify/templates/, specs/ directories. Create .gwrkrc.json with default config (project.name from directory name, agents.define 'gemini', agents.implement 'codex-cloud'). Idempotent: if .agent/ exists, print 'gwrk already initialized' and exit 0. Copy template files from bundled defaults.",
+          "title": "Implement src/commands/new.ts",
+          "description": "NEW: `gwrk new <name>` \u2014 mkdir, git init, gh repo create, then delegates to init",
           "status": "completed",
-          "gateScript": "gates/T007-gate.sh"
+          "gateScript": "gates/T007-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T008",
-          "title": "Write unit tests for init and config",
-          "description": "Create src/commands/init.test.ts (TR-001): test scaffold creation in temp dir, test idempotency. Create src/utils/config.test.ts (TR-008): test valid config loads, test missing field crashes, test missing file crashes, test invalid type crashes. All tests must use Vitest with beforeEach/afterEach for temp directory cleanup.",
+          "title": "Implement src/utils/config.ts",
+          "description": "NEW: Zod schema for `.gwrkrc.json`, fail-fast loader",
           "status": "completed",
-          "gateScript": "gates/T008-gate.sh"
+          "gateScript": "gates/T008-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T009",
+          "title": "Implement src/db/index.ts",
+          "description": "NEW: SQLite connection to `~/.gwrk/gwrk.db`, schema init via migrations",
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T010",
+          "title": "Implement src/db/migrations/001-initial.sql",
+          "description": "NEW: Create tables: projects, tasks, task_types, runs, compression, history",
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T011",
+          "title": "Implement src/utils/exec.ts",
+          "description": "NEW: Shell command execution wrapper via `child_process.execFile`",
+          "status": "completed",
+          "gateScript": "gates/T011-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T012",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T012-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
+      ],
+      "doneWhen": [
+        "`pnpm install` exits 0",
+        "`pnpm exec tsc --noEmit` exits 0",
+        "`node --import tsx src/cli.ts --help` prints commands including `init`",
+        "`node --import tsx src/cli.ts init` creates scaffold directories in a temp dir",
+        "`pnpm test` passes TR-001 and TR-008"
       ]
     },
     {
@@ -69,115 +116,150 @@
       "title": "Agent Dispatch Commands",
       "tasks": [
         {
-          "id": "T009",
-          "title": "Create agent dispatch abstraction in src/utils/agent.ts",
-          "description": "Implement dispatchAgent(opts: DispatchOptions) from contracts/agent.md. Define AgentBackend type ('gemini' | 'claude' | 'codex' | 'codex-cloud'). Build CLI args per backend: gemini uses '-p', claude uses '-p --output-format json', codex uses 'exec --full-auto', codex-cloud uses 'run --cloud --non-interactive --full-auto'. Spawn via child_process.execFile. Return { exitCode, stdout, stderr }.",
-          "status": "open",
-          "gateScript": "gates/T009-gate.sh"
-        },
-        {
-          "id": "T010",
-          "title": "Create gwrk specify command in src/commands/specify.ts",
-          "description": "Implement FR-002: Commander command 'specify' taking <prompt> argument. Load config, resolve backend from config.agents.define, call dispatchAgent with workflowPath '.agent/workflows/specify.md' and the prompt. Register command in cli.ts.",
-          "status": "open",
-          "gateScript": "gates/T010-gate.sh"
-        },
-        {
-          "id": "T011",
-          "title": "Create gwrk plan command in src/commands/plan.ts",
-          "description": "Implement FR-003: Commander command 'plan' taking <feature> argument. Validate specs/<feature>/spec.md exists (exit 1 with 'spec.md not found' if missing). Load config, dispatch agent with '/plan' workflow targeting the feature directory.",
-          "status": "open",
-          "gateScript": "gates/T011-gate.sh"
-        },
-        {
-          "id": "T012",
-          "title": "Create gwrk analyze and effort commands",
-          "description": "Implement FR-009 (src/commands/analyze.ts): Commander command 'analyze' taking <feature>, dispatches with '/analyze' workflow. Implement FR-010 (src/commands/effort.ts): Commander command 'effort' taking <feature>, dispatches with '/effort' workflow. Register both in cli.ts.",
-          "status": "open",
-          "gateScript": "gates/T012-gate.sh"
-        },
-        {
           "id": "T013",
-          "title": "Write unit tests for agent dispatch commands",
-          "description": "Create test files for TR-002 (specify.test.ts), TR-003 (plan.test.ts), TR-009 (analyze.test.ts), TR-010 (effort.test.ts). Mock execFile via vi.mock. Assert correct workflow path, prompt, and backend are passed to dispatchAgent. Test plan command rejects when spec.md is missing.",
-          "status": "open",
-          "gateScript": "gates/T013-gate.sh"
+          "title": "Implement src/commands/specify.ts",
+          "description": "NEW: `gwrk specify <prompt>` \u2014 dispatches agent with `/specify` workflow",
+          "status": "completed",
+          "gateScript": "gates/T013-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T014",
+          "title": "Implement src/commands/plan.ts",
+          "description": "NEW: `gwrk plan <feature>` \u2014 dispatches agent with `/plan` workflow",
+          "status": "completed",
+          "gateScript": "gates/T014-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T015",
+          "title": "Implement src/commands/analyze.ts",
+          "description": "NEW: `gwrk analyze <feature>` \u2014 dispatches agent with `/analyze` workflow",
+          "status": "completed",
+          "gateScript": "gates/T015-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T016",
+          "title": "Implement src/commands/effort.ts",
+          "description": "NEW: `gwrk effort <feature>` \u2014 dispatches agent with `/effort` workflow",
+          "status": "completed",
+          "gateScript": "gates/T016-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T017",
+          "title": "Implement src/utils/agent.ts",
+          "description": "NEW: Agent dispatch abstraction \u2014 resolves backend from config, builds CLI args, invokes via `exec.ts`",
+          "status": "completed",
+          "gateScript": "gates/T017-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T018",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T018-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
+      ],
+      "doneWhen": [
+        "`node --import tsx src/cli.ts specify \"test feature\"` spawns the configured agent process",
+        "`node --import tsx src/cli.ts plan 001-cli-core` spawns the agent with correct workflow",
+        "`pnpm test` passes TR-002, TR-003, TR-009, TR-010"
       ]
     },
     {
       "id": "phase-03",
-      "title": "Task Engine — State, Gates & History",
+      "title": "Task Engine \u2014 State, Gates & History",
       "tasks": [
         {
-          "id": "T014",
-          "title": "Create Zod schemas and state management in src/utils/state.ts",
-          "description": "Implement from contracts/tasks.md and data-model.md DM-001: TaskStateSchema, PhaseSchema, TaskSchema with Zod. Implement loadTaskState(featureDir) — reads .gwrk/tasks.json, validates with Zod, exits on invalid. Implement saveTaskState(featureDir, state) — validates then writes atomically. Implement markTaskComplete(state, taskId) — pure function, returns new state with status 'completed' and completedAt timestamp. Throws on not-found or already-completed.",
-          "status": "open",
-          "gateScript": "gates/T014-gate.sh"
-        },
-        {
-          "id": "T015",
-          "title": "Create plan parser in src/utils/parser.ts",
-          "description": "Implement parsePlan(planPath) from contracts/tasks.md. Parse plan.md markdown: extract Phase headers (### Phase N: Name), extract file lists, extract Done When assertions. Return { phases: ParsedPhase[] } where ParsedPhase has id, title, and extracted tasks with titles and descriptions derived from the phase content.",
-          "status": "open",
-          "gateScript": "gates/T015-gate.sh"
-        },
-        {
-          "id": "T016",
-          "title": "Create gate script generator in src/utils/gate-gen.ts",
-          "description": "Implement generateGates(featureDir, tasks) from contracts/tasks.md. For each task, write gates/T0xx-gate.sh with: #!/bin/bash header, set -euo pipefail, grep/test assertions derived from the task's Done When criteria. Set chmod +x on each file.",
-          "status": "open",
-          "gateScript": "gates/T016-gate.sh"
-        },
-        {
-          "id": "T017",
-          "title": "Create history logger in src/utils/history.ts",
-          "description": "Implement appendHistory(entry: HistoryEntry) from contracts/tasks.md and data-model.md DM-002. Validate entry with HistoryEntrySchema (Zod). Append JSON line to .gwrk/history.jsonl. Create file if it doesn't exist. Each line is a complete JSON object (JSONL format).",
-          "status": "open",
-          "gateScript": "gates/T017-gate.sh"
-        },
-        {
-          "id": "T018",
-          "title": "Create gwrk tasks command with generate and done subcommands",
-          "description": "Implement src/commands/tasks.ts: Commander command 'tasks' with subcommands. 'generate <feature>': call parsePlan, create .gwrk/tasks.json via saveTaskState, call generateGates. 'done <feature> <taskId>': load state, find task (exit 1 if not found), check not already completed (exit 1), run gate via runGate (exit 1 if fails with 'Gate failed for <taskId>. State unchanged.'), call markTaskComplete, save state, call appendHistory. Register in cli.ts.",
-          "status": "open",
-          "gateScript": "gates/T018-gate.sh"
-        },
-        {
           "id": "T019",
-          "title": "Write unit tests for task engine",
-          "description": "TR-004 (tasks-generate.test.ts): parsePlan produces valid JSON, gates created with +x. TR-006 (tasks-done.test.ts): passing gate → completed, failing gate → open, missing gate → exit 1, already completed → exit 1. TR-007 (state.test.ts): atomic read/write, Zod rejects invalid state, appendHistory writes valid JSONL.",
-          "status": "open",
-          "gateScript": "gates/T019-gate.sh"
+          "title": "Implement src/commands/tasks.ts",
+          "description": "NEW: Commander subcommands \u2014 `generate`, `list`, `next`, `done`",
+          "status": "completed",
+          "gateScript": "gates/T019-gate.sh",
+          "completedAt": "2026-03-05T02:49:21.858Z"
+        },
+        {
+          "id": "T020",
+          "title": "Implement src/utils/state.ts",
+          "description": "NEW: Read/write task state via SQLite, atomic operations, export to tasks.json",
+          "status": "completed",
+          "gateScript": "gates/T020-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T021",
+          "title": "Implement src/utils/parser.ts",
+          "description": "NEW: Parse plan.md \u2192 extract phases and tasks",
+          "status": "completed",
+          "gateScript": "gates/T021-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T022",
+          "title": "Implement src/utils/gate-gen.ts",
+          "description": "NEW: Generate `gates/T0xx-gate.sh` from plan task assertions",
+          "status": "completed",
+          "gateScript": "gates/T022-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T023",
+          "title": "Implement src/utils/history.ts",
+          "description": "NEW: Insert into SQLite `history` table on every state transition",
+          "status": "completed",
+          "gateScript": "gates/T023-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T024",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T024-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
+      ],
+      "doneWhen": [
+        "`node --import tsx src/cli.ts tasks generate 001-cli-core` creates `specs/001-cli-core/.gwrk/tasks.json` and `specs/001-cli-core/gates/T*-gate.sh`",
+        "`jq '.phases | length' specs/001-cli-core/.gwrk/tasks.json` returns \u2265 1",
+        "`ls specs/001-cli-core/gates/T*-gate.sh | wc -l` matches task count",
+        "Gate files have `+x` permission: `test -x specs/001-cli-core/gates/T001-gate.sh`",
+        "`node --import tsx src/cli.ts tasks done 001-cli-core T001` with a failing gate exits 1",
+        "`node --import tsx src/cli.ts tasks done 001-cli-core T001` with a passing gate exits 0 and updates tasks.json",
+        "`tail -1 .gwrk/history.jsonl | jq -r '.taskId'` outputs `T001`",
+        "`pnpm test` passes TR-004, TR-006, TR-007"
       ]
     },
     {
       "id": "phase-04",
-      "title": "Task Query & Integration Tests",
+      "title": "Task Query Commands",
       "tasks": [
         {
-          "id": "T020",
-          "title": "Add list and next subcommands to gwrk tasks",
-          "description": "Implement FR-005 in src/commands/tasks.ts: 'list <feature>' subcommand — loadTaskState, flatten tasks via listTasks, output formatted table or JSON (--json flag). 'next <feature> <phase>' subcommand — call nextTask(state, phaseId), output the task or 'All tasks completed' message. --json flag outputs raw JSON.",
-          "status": "open",
-          "gateScript": "gates/T020-gate.sh"
+          "id": "T025",
+          "title": "Implement src/commands/tasks.ts",
+          "description": "MODIFY: Add `list` and `next` subcommands with `--json` output",
+          "status": "completed",
+          "gateScript": "gates/T025-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
-          "id": "T021",
-          "title": "Write unit tests for task query commands",
-          "description": "TR-005 (tasks-query.test.ts): list returns all tasks with correct count, next returns first open task for phase, next returns null when all completed, --json flag outputs valid JSON parseable by jq.",
-          "status": "open",
-          "gateScript": "gates/T021-gate.sh"
-        },
-        {
-          "id": "T022",
-          "title": "Write integration tests for full lifecycle",
-          "description": "VR-001 (tests/integration/lifecycle.test.ts): E2E test — init temp dir → create mock spec/plan → tasks generate → verify tasks.json + gates → mock passing gate → tasks done → verify state updated + history.jsonl entry. VR-002: Same but with failing gate → verify state NOT changed, exit 1. VR-003 (tests/integration/config.test.ts): Remove required field from .gwrkrc.json → verify crash with Zod error.",
-          "status": "open",
-          "gateScript": "gates/T022-gate.sh"
+          "id": "T026",
+          "title": "Implement test strategy for Phase 4",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T026-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
+      ],
+      "doneWhen": [
+        "`node --import tsx src/cli.ts tasks list 001-cli-core --json | jq '.tasks | length'` returns task count",
+        "`node --import tsx src/cli.ts tasks next 001-cli-core 1 --json | jq -r '.id'` returns a task ID",
+        "`pnpm test` passes TR-005, VR-001, VR-002, VR-003",
+        "All tests pass: `pnpm test` exits 0"
       ]
     }
   ]

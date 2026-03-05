@@ -16,7 +16,7 @@
 
 **gwrk** is a CLI and local build server that orchestrates fleets of AI coding agents through governed, parallelized pipelines — and lets you control the whole thing from your phone.
 
-It takes your architectural vision, decomposes it into executable phases, dispatches AI agents to build them in parallel, drives the results through review gates, CI, and merge — and reports back to you on Telegram. You ship features while walking the dog.
+It takes your architectural vision, decomposes it into executable phases, dispatches AI agents to build them in parallel, drives the results through review gates, CI, and merge — and reports back to you on Slack. You ship features while walking the dog.
 
 gwrk is not another AI code generator. It's the **general contractor** for your software factory. Your agents are the workforce; gwrk is the one who makes sure the building actually gets built.
 
@@ -91,7 +91,7 @@ Every gwrk agent maps directly to a Foxtrot Charlie pillar:
 
 | FC Pillar | gwrk Agent | What It Does |
 |---|---|---|
-| **Discovery** | **DUT** — Dream Until Told | Extracts truth. Lives in Telegram. Turns your half-formed ideas — voice notes from a walk, 2am brainstorms — into structured insight. DUT asks the hard questions: scope, risk, architecture, feasibility. It doesn't generate features; it extracts the truth about what should be built. |
+| **Discovery** | **DUT** — Dream Until Told | Extracts truth. Lives in Slack threads. Turns your half-formed ideas — messages from a walk, 2am brainstorms — into structured insight. DUT asks the hard questions: scope, risk, architecture, feasibility. It doesn't generate features; it extracts the truth about what should be built. |
 | **Definition** | **DUS** — Define Until Solid | Creates clarity. Takes extracted truth and converts it into buildable, testable commitments: `spec.md` → `plan.md` → `tasks.json` → gate scripts. Binary acceptance criteria. Explicit ownership. Written artifacts, not conversations. |
 | **Shipping** | **ZFG** — Zero F\*cks Given | Creates throughput. The local orchestrator decomposes plans into parallelizable phases, dispatches agents, manages the git tree, resolves merge conflicts, and drives work through review gates and CI. No heroics; shipping is a reflex. |
 | **Shipping** | **WUD** — Work Until Done | Creates throughput. The ephemeral worker receives a phase, writes code, runs tests, opens a PR, and terminates. Maniacal commitment to completion — if one backend fails, gwrk retries on another. Done, Done! |
@@ -115,9 +115,9 @@ Foxtrot Charlie assumes three failure modes. gwrk handles each:
 
 | Failure | FC Diagnosis | gwrk Response |
 |---|---|---|
-| **Truth is missing** | Return to Discovery | DUT conversation in Telegram — re-extract, re-clarify |
+| **Truth is missing** | Return to Discovery | DUT conversation in Slack — re-extract, re-clarify |
 | **Clarity is broken** | Rewrite commitments | DUS loop — regenerate spec, plan, tasks, gates |
-| **Throughput is stalled** | Reduce batch size and ship | ZFG re-decomposes phases, retries on different backend, escalates via Telegram |
+| **Throughput is stalled** | Reduce batch size and ship | ZFG re-decomposes phases, retries on different backend, escalates via Slack |
 
 No new process is added. No ceremonies are created. The system tightens around reality.
 
@@ -140,7 +140,7 @@ This is Foxtrot Charlie's thesis made executable: tools don't extract truth — 
 gwrk runs a persistent local daemon — inspired by [OpenClaw](https://github.com/nicepkg/openclaw)'s Gateway model — that serves as the control plane for your entire development pipeline:
 
 ```
-You + Phone (Telegram)
+You + Phone (Slack)
     │
     ▼
 ┌── gwrk daemon (localhost:18790) ──────────────────┐
@@ -151,27 +151,26 @@ You + Phone (Telegram)
 │   Review Gate      → code review → UAT → GO       │
 │   Pulse Engine     → LOC trends, velocity          │
 │   Compression      → effort forecast vs. actual    │
-│   Glass Dashboard  → mobile-first real-time UI     │
-│   Telegram Bot     → commands, approvals, DUT      │
+│   Slack Channel    → @slack/bolt Socket Mode       │
 │                                                    │
 └────────────────────────────────────────────────────┘
     │              │               │
     ▼              ▼               ▼
   Phone        Local Agents    Cloud Agents
- (Telegram)   (Claude/Gemini)  (Codex Cloud)
+ (Slack)      (Claude/Gemini)  (Codex Cloud)
 ```
 
 ### The Pipeline Is the Four Pillars
 
 ```
-🔍 DISCOVER       → DUT on Telegram — extract truth (voice notes, text, sketches)
+🔍 DISCOVER       → DUT in Slack — extract truth (messages, text, sketches)
 📋 DEFINE         → DUS generates spec → plan → tasks → gates (written commitments)
 🏗️ SHIP           → ZFG dispatches WUD agents in parallel (throughput)
 📊 DELIVER        → Pulse + Compression — prove value (what shipped, how fast)
                    ↩️ New truth feeds back into Discovery
 ```
 
-**You dream it on your phone. gwrk builds it while you sleep.**
+**You dream it in Slack. gwrk builds it while you sleep.**
 
 ---
 
@@ -180,11 +179,11 @@ You + Phone (Telegram)
 | Capability | What It Does |
 |---|---|
 | **Multi-Agent Dispatch** | Routes tasks to Codex Cloud, Claude Code, or Gemini CLI — in tandem, with retry and escalation |
-| **Telegram Control Plane** | Approve reviews, triage failures, dispatch work — all from your phone. Compresses decision latency to zero |
-| **Agent-DUT** | Turn half-formed ideas into executable specs via Telegram conversation. Discovery on demand |
+| **Slack Control Plane** | Approve reviews, triage failures, dispatch work — all from your phone via Slack. Channel-per-project, threaded DUT, reactions |
+| **Agent-DUT** | Turn half-formed ideas into executable specs via Slack threaded conversation. Discovery on demand |
 | **Pulse** | Productivity dashboard: LOC trends, spec progress, velocity across all your repos. The state of your work, not a narrative about it |
 | **Compression** | The headline metric: estimated effort ÷ actual delivery time. Value measured in outcomes, not activity |
-| **Glass Dashboard** | Mobile-first real-time UI: active agents, event stream, feature progress. Access via tunnel + magic link |
+| **App Home Tab** | Real-time dashboard in Slack: active agents, project status, Pulse, Compression. No separate SPA |
 | **Governed Pipeline** | Spec-first. Gate scripts. Review verdicts. Audit trails. All commitments as written artifacts |
 | **Git Automation** | Branch creation, parallel phase isolation, merge conflict resolution — all automatic |
 
@@ -196,10 +195,13 @@ You + Phone (Telegram)
 # Install
 npm install -g gwrk
 
-# Initialize in your project
+# Create a new project
+gwrk new my-project
+
+# Or initialize gwrk in an existing project
 gwrk init
 
-# Dream up a feature from Telegram
+# Dream up a feature from Slack
 /dream "I want historical git analysis with weekly LOC trends"
 
 # Or specify locally
@@ -210,9 +212,6 @@ gwrk plan 003-ast-diff
 
 # Build it
 gwrk dispatch 003-ast-diff
-
-# Watch the magic
-gwrk dashboard
 ```
 
 ---
@@ -232,7 +231,7 @@ gwrk borrows three key ideas from [OpenClaw](https://github.com/nicepkg/openclaw
 
 1. **The Gateway model** — a local daemon as the control plane
 2. **The sandbox model** — Docker-based isolation for agent execution
-3. **The Telegram channel** — conversational interface via grammY
+3. **The comms channel** — conversational interface reachable from your phone (Slack via Socket Mode)
 
 OpenClaw has a lobster. gwrk has a flamingo. Both get the job done. 🦞🦩
 
@@ -244,11 +243,11 @@ OpenClaw has a lobster. gwrk has a flamingo. Both get the job done. 🦞🦩
 |---|---|
 | CLI | TypeScript, Commander.js |
 | Daemon | Fastify (localhost:18790) |
-| Telegram | grammY |
+| Comms | `@slack/bolt` (Socket Mode) |
 | Agent Backends | Codex CLI/Cloud, Claude Code, Gemini CLI |
 | Sandboxes | Docker (per-phase isolation) |
-| Dashboard | Vite SPA (React, embedded static assets) |
-| Database | SQLite (embedded, local file) |
+| Dashboard | Slack App Home Tab (Block Kit) |
+| Execution Ledger | SQLite via `better-sqlite3` (`~/.gwrk/gwrk.db`) |
 | Config | Zod schemas, fail-fast validation |
 
 ---

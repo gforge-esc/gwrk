@@ -1,11 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T020 — list and next subcommands in tasks.ts
+# Gate: T020 — Implement src/utils/state.ts
+# Asserts: Derived from task description
 
-grep -q 'list' src/commands/tasks.ts
-grep -q 'next' src/commands/tasks.ts
-grep -q 'listTasks\|list.*tasks' src/commands/tasks.ts
-grep -q 'nextTask\|next.*task' src/commands/tasks.ts
-grep -q '\-\-json\|json' src/commands/tasks.ts
+test -f src/utils/state.ts
+test -f tasks.json
 
-echo "PASS: T020 — tasks.ts has list and next with --json output"
+echo "PASS: T020 — Implement src/utils/state.ts"

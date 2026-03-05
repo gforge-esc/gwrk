@@ -1,47 +1,52 @@
-import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { dispatchAgent } from "../utils/agent.js";
 import { effortCommand } from "./effort.js";
 
-/**
- * RED tests for src/commands/effort.ts
- * Contract: contracts/effort-engine.md → effortCommand()
- * FR-011: JSON output mode for effort
- * FR-004: Fail-fast on missing spec or no user stories
- */
+vi.mock("../utils/agent.js", () => ({
+  dispatchAgent: vi.fn().mockResolvedValue({
+    exitCode: 0,
+    stdout: "Success",
+    stderr: "",
+  }),
+}));
 
-describe("FR-011: effortCommand — JSON output mode", () => {
-  // TR-011: --json flag outputs valid JSON with totalSP, roles fields
-  it("TR-011: --json outputs structured JSON with totalSP field", () => {
-    // This will fail because the module doesn't exist yet
-    const command = effortCommand;
-    expect(command).toBeDefined();
-    expect(typeof command).toBe("object"); // Commander command
-  });
+describe("effortCommand", () => {
+  let tempDir: string;
 
-  it("command is registered with 'effort' name", () => {
-    const command = effortCommand;
-    expect(command.name()).toBe("effort");
-  });
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-effort-test-"));
+    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit(${code})`);
+    });
 
-  it("accepts <feature> argument", () => {
-    const command = effortCommand;
-    // Commander commands with arguments have them registered
-    expect(command).toBeDefined();
-  });
-
-  it("supports --json option", () => {
-    const command = effortCommand;
-    const options = command.options || [];
-    const jsonOpt = options.find(
-      (o: { long: string }) => o.long === "--json"
+    // Create .gwrkrc.json
+    fs.writeFileSync(
+      path.join(tempDir, ".gwrkrc.json"),
+      JSON.stringify({
+        project: { name: "test-project" },
+        agents: { define: "gemini", implement: "codex-cloud" },
+      }),
     );
-    expect(jsonOpt).toBeDefined();
   });
-});
 
-describe("FR-004: effortCommand — error handling", () => {
-  // US-002: fails on missing spec
-  it("US-002: exits with code 1 for nonexistent feature", () => {
-    // Would need to mock process.exit or capture exit code
-    expect(effortCommand).toBeDefined();
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("should dispatch agent with correct workflow and feature", async () => {
+    await effortCommand.parseAsync(["feature-x"], { from: "user" });
+
+    expect(dispatchAgent).toHaveBeenCalledWith({
+      backend: "gemini",
+      workflowPath: ".agent/workflows/effort.md",
+      featureDir: "specs/feature-x",
+    });
   });
 });

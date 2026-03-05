@@ -1,12 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T012 — gwrk analyze and effort commands
+# Gate: T012 — Implement test strategy for Phase 1
+# Asserts: Derived from task description
 
-test -f src/commands/analyze.ts
-test -f src/commands/effort.ts
-grep -q 'analyze' src/commands/analyze.ts
-grep -q 'effort' src/commands/effort.ts
-grep -q 'dispatchAgent\|agent' src/commands/analyze.ts
-grep -q 'dispatchAgent\|agent' src/commands/effort.ts
 
-echo "PASS: T012 — analyze.ts and effort.ts dispatch agents"
+# Phase Acceptance Criteria
+pnpm install
+pnpm exec tsc --noEmit
+node --import tsx src/cli.ts --help
+node --import tsx src/cli.ts init
+pnpm test
+
+echo "PASS: T012 — Implement test strategy for Phase 1"
