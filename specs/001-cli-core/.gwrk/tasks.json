@@ -4,70 +4,103 @@
   "phases": [
     {
       "id": "phase-01",
-      "title": "Project Bootstrap & `gwrk init`",
+      "title": "Project Bootstrap, `gwrk init`, `gwrk new`",
       "tasks": [
         {
           "id": "T001",
           "title": "Implement package.json",
-          "description": "NEW: Project manifest — commander, zod, vitest, biome, tsx",
-          "status": "open",
-          "gateScript": "gates/T001-gate.sh"
+          "description": "NEW: Project manifest \u2014 commander, zod, vitest, biome, tsx",
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh",
+          "completedAt": "2026-03-05T02:49:49.546Z"
         },
         {
           "id": "T002",
           "title": "Implement tsconfig.json",
           "description": "NEW: ES2022 target, ESM, strict mode, NodeNext module resolution",
-          "status": "open",
-          "gateScript": "gates/T002-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T003",
           "title": "Implement biome.json",
           "description": "NEW: Lint + format config, no `any` allowed",
-          "status": "open",
-          "gateScript": "gates/T003-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T004",
           "title": "Implement .gitignore",
           "description": "MODIFY: Add `dist/`, `node_modules/`",
-          "status": "open",
-          "gateScript": "gates/T004-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T005",
           "title": "Implement src/cli.ts",
           "description": "NEW: Commander program definition, version, top-level command routing",
-          "status": "open",
-          "gateScript": "gates/T005-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T006",
           "title": "Implement src/commands/init.ts",
-          "description": "NEW: `gwrk init` — scaffold directories, copy templates, create `.gwrkrc.json`",
-          "status": "open",
-          "gateScript": "gates/T006-gate.sh"
+          "description": "NEW: `gwrk init` \u2014 scaffold directories, detect CLIs, provision context files, create Slack channel, register in SQLite",
+          "status": "completed",
+          "gateScript": "gates/T006-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T007",
-          "title": "Implement src/utils/config.ts",
-          "description": "NEW: Zod schema for `.gwrkrc.json`, fail-fast loader",
-          "status": "open",
-          "gateScript": "gates/T007-gate.sh"
+          "title": "Implement src/commands/new.ts",
+          "description": "NEW: `gwrk new <name>` \u2014 mkdir, git init, gh repo create, then delegates to init",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T008",
-          "title": "Implement src/utils/exec.ts",
-          "description": "NEW: Shell command execution wrapper via `child_process.execFile`",
-          "status": "open",
-          "gateScript": "gates/T008-gate.sh"
+          "title": "Implement src/utils/config.ts",
+          "description": "NEW: Zod schema for `.gwrkrc.json`, fail-fast loader",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T009",
+          "title": "Implement src/db/index.ts",
+          "description": "NEW: SQLite connection to `~/.gwrk/gwrk.db`, schema init via migrations",
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T010",
+          "title": "Implement src/db/migrations/001-initial.sql",
+          "description": "NEW: Create tables: projects, tasks, task_types, runs, compression, history",
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T011",
+          "title": "Implement src/utils/exec.ts",
+          "description": "NEW: Shell command execution wrapper via `child_process.execFile`",
+          "status": "completed",
+          "gateScript": "gates/T011-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T012",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T009-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T012-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
       ],
       "doneWhen": [
@@ -83,46 +116,52 @@
       "title": "Agent Dispatch Commands",
       "tasks": [
         {
-          "id": "T010",
-          "title": "Implement src/commands/specify.ts",
-          "description": "NEW: `gwrk specify <prompt>` — dispatches agent with `/specify` workflow",
-          "status": "open",
-          "gateScript": "gates/T010-gate.sh"
-        },
-        {
-          "id": "T011",
-          "title": "Implement src/commands/plan.ts",
-          "description": "NEW: `gwrk plan <feature>` — dispatches agent with `/plan` workflow",
-          "status": "open",
-          "gateScript": "gates/T011-gate.sh"
-        },
-        {
-          "id": "T012",
-          "title": "Implement src/commands/analyze.ts",
-          "description": "NEW: `gwrk analyze <feature>` — dispatches agent with `/analyze` workflow",
-          "status": "open",
-          "gateScript": "gates/T012-gate.sh"
-        },
-        {
           "id": "T013",
-          "title": "Implement src/commands/effort.ts",
-          "description": "NEW: `gwrk effort <feature>` — dispatches agent with `/effort` workflow",
-          "status": "open",
-          "gateScript": "gates/T013-gate.sh"
+          "title": "Implement src/commands/specify.ts",
+          "description": "NEW: `gwrk specify <prompt>` \u2014 dispatches agent with `/specify` workflow",
+          "status": "completed",
+          "gateScript": "gates/T013-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T014",
-          "title": "Implement src/utils/agent.ts",
-          "description": "NEW: Agent dispatch abstraction — resolves backend from config, builds CLI args, invokes via `exec.ts`",
-          "status": "open",
-          "gateScript": "gates/T014-gate.sh"
+          "title": "Implement src/commands/plan.ts",
+          "description": "NEW: `gwrk plan <feature>` \u2014 dispatches agent with `/plan` workflow",
+          "status": "completed",
+          "gateScript": "gates/T014-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T015",
+          "title": "Implement src/commands/analyze.ts",
+          "description": "NEW: `gwrk analyze <feature>` \u2014 dispatches agent with `/analyze` workflow",
+          "status": "completed",
+          "gateScript": "gates/T015-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T016",
+          "title": "Implement src/commands/effort.ts",
+          "description": "NEW: `gwrk effort <feature>` \u2014 dispatches agent with `/effort` workflow",
+          "status": "completed",
+          "gateScript": "gates/T016-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T017",
+          "title": "Implement src/utils/agent.ts",
+          "description": "NEW: Agent dispatch abstraction \u2014 resolves backend from config, builds CLI args, invokes via `exec.ts`",
+          "status": "completed",
+          "gateScript": "gates/T017-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T018",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T015-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T018-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
       ],
       "doneWhen": [
@@ -133,54 +172,60 @@
     },
     {
       "id": "phase-03",
-      "title": "Task Engine — State, Gates & History",
+      "title": "Task Engine \u2014 State, Gates & History",
       "tasks": [
         {
-          "id": "T016",
-          "title": "Implement src/commands/tasks.ts",
-          "description": "NEW: Commander subcommands — `generate`, `list`, `next`, `done`",
-          "status": "open",
-          "gateScript": "gates/T016-gate.sh"
-        },
-        {
-          "id": "T017",
-          "title": "Implement src/utils/state.ts",
-          "description": "NEW: Read/write `tasks.json` with Zod validation, atomic writes",
-          "status": "open",
-          "gateScript": "gates/T017-gate.sh"
-        },
-        {
-          "id": "T018",
-          "title": "Implement src/utils/parser.ts",
-          "description": "NEW: Parse plan.md → extract phases and tasks",
-          "status": "open",
-          "gateScript": "gates/T018-gate.sh"
-        },
-        {
           "id": "T019",
-          "title": "Implement src/utils/gate-gen.ts",
-          "description": "NEW: Generate `gates/T0xx-gate.sh` from plan task assertions",
-          "status": "open",
-          "gateScript": "gates/T019-gate.sh"
+          "title": "Implement src/commands/tasks.ts",
+          "description": "NEW: Commander subcommands \u2014 `generate`, `list`, `next`, `done`",
+          "status": "completed",
+          "gateScript": "gates/T019-gate.sh",
+          "completedAt": "2026-03-05T02:49:21.858Z"
         },
         {
           "id": "T020",
-          "title": "Implement src/utils/history.ts",
-          "description": "NEW: Append to `.gwrk/history.jsonl` on every state transition",
-          "status": "open",
-          "gateScript": "gates/T020-gate.sh"
+          "title": "Implement src/utils/state.ts",
+          "description": "NEW: Read/write task state via SQLite, atomic operations, export to tasks.json",
+          "status": "completed",
+          "gateScript": "gates/T020-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
           "id": "T021",
+          "title": "Implement src/utils/parser.ts",
+          "description": "NEW: Parse plan.md \u2192 extract phases and tasks",
+          "status": "completed",
+          "gateScript": "gates/T021-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T022",
+          "title": "Implement src/utils/gate-gen.ts",
+          "description": "NEW: Generate `gates/T0xx-gate.sh` from plan task assertions",
+          "status": "completed",
+          "gateScript": "gates/T022-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T023",
+          "title": "Implement src/utils/history.ts",
+          "description": "NEW: Insert into SQLite `history` table on every state transition",
+          "status": "completed",
+          "gateScript": "gates/T023-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
+        },
+        {
+          "id": "T024",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T021-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T024-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
       ],
       "doneWhen": [
         "`node --import tsx src/cli.ts tasks generate 001-cli-core` creates `specs/001-cli-core/.gwrk/tasks.json` and `specs/001-cli-core/gates/T*-gate.sh`",
-        "`jq '.phases | length' specs/001-cli-core/.gwrk/tasks.json` returns ≥ 1",
+        "`jq '.phases | length' specs/001-cli-core/.gwrk/tasks.json` returns \u2265 1",
         "`ls specs/001-cli-core/gates/T*-gate.sh | wc -l` matches task count",
         "Gate files have `+x` permission: `test -x specs/001-cli-core/gates/T001-gate.sh`",
         "`node --import tsx src/cli.ts tasks done 001-cli-core T001` with a failing gate exits 1",
@@ -194,18 +239,20 @@
       "title": "Task Query Commands",
       "tasks": [
         {
-          "id": "T022",
+          "id": "T025",
           "title": "Implement src/commands/tasks.ts",
           "description": "MODIFY: Add `list` and `next` subcommands with `--json` output",
-          "status": "open",
-          "gateScript": "gates/T022-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T025-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         },
         {
-          "id": "T023",
+          "id": "T026",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T023-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T026-gate.sh",
+          "completedAt": "2026-03-05T18:11:21.000Z"
         }
       ],
       "doneWhen": [

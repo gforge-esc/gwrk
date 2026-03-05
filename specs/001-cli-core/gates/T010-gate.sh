@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T010 — Implement src/commands/specify.ts
+# Gate: T010 — Implement src/db/migrations/001-initial.sql
 # Asserts: Derived from task description
 
-test -f src/commands/specify.ts
+test -f src/db/migrations/001-initial.sql
 
-echo "PASS: T010 — Implement src/commands/specify.ts"
+echo "PASS: T010 — Implement src/db/migrations/001-initial.sql"

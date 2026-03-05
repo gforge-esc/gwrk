@@ -1,7 +1,8 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-02-26
+> **Status:** Authoritative · **Date:** 2026-03-05 (v2)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
+> **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger)
 
 ---
 
@@ -12,7 +13,7 @@ graph TD
     P0[Phase 0: Extraction] --> P1[Phase 1: CLI Core]
     P1 --> P2[Phase 2: Build Server]
     P1 --> P4[Phase 4: WUD Loop]
-    P2 --> P3[Phase 3: Telegram]
+    P2 --> P3[Phase 3: Slack]
     P2 --> P5[Phase 5: Parallel Dispatch]
     P4 --> P5
     P1 --> P6[Phase 6: Pulse]
@@ -21,8 +22,7 @@ graph TD
     P3 --> P9[Phase 9: Agent-DUT]
     P6 --> P10[Phase 10: GForge Integration]
     P7 --> P10
-    P2 --> P11[Phase 11: Glass Dashboard]
-    P3 --> P11
+    P3 --> P11[Phase 11: App Home Tab]
 ```
 
 ---
@@ -36,7 +36,7 @@ P0 → P1 → P2 → P3 → P11
          → P7
 ```
 
-**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure and the flat-file task tracking system. P2 (Build Server) and P4 (WUD Loop) are the next-order dependencies that unlock the daemon and autonomous execution. P11 (Glass Dashboard) depends on both P2 (Fastify daemon) and P3 (Telegram magic link auth).
+**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure, multi-CLI provisioning, and the SQLite execution ledger (ADR-002). P2 (Build Server) and P4 (WUD Loop) are the next-order dependencies. P3 is now Slack (Socket Mode + Bolt SDK), replacing Telegram. P11 (App Home Tab) is Slack-native, depending only on P3.
 
 ---
 
@@ -59,11 +59,11 @@ Extract the code-red agent workflow system into the gwrk repository.
 
 ### Phase 1 — CLI Core
 
-Bootstrap the gwrk TypeScript CLI with the foundational commands and the flat-file task tracking system (ADR-001).
+Bootstrap the gwrk TypeScript CLI with foundational commands, multi-CLI provisioning, and the SQLite execution ledger (ADR-002).
 
 | Spec | Content | Gate |
 |---|---|---|
-| `001-cli-core` | CLI entry, Commander routing, `specify`, `plan`, `plan-to-tasks`, `tasks` | `gwrk tasks done` enforces gates |
+| `001-cli-core` | CLI entry, Commander routing, `gwrk new`, `gwrk init`, multi-CLI provisioning, `specify`, `plan`, `plan-to-tasks`, `tasks`, SQLite init | `gwrk new <project>` scaffolds everything; `gwrk tasks done` enforces gates |
 
 **Dependencies:** Phase 0
 **Agent:** Gemini CLI (definition + multi-file generation)
@@ -71,24 +71,42 @@ Bootstrap the gwrk TypeScript CLI with the foundational commands and the flat-fi
 #### What ships:
 
 ```bash
+gwrk new <project-name>        # Full provisioning: dir, git, GitHub, Slack channel,
+                                # CLI detection, scaffold, SQLite registration, server start
+gwrk init                      # Add gwrk to existing project: scaffold + CLI provisioning
+                                # + Slack channel + SQLite registration
 gwrk specify <feature>         # Wrapper: invokes gemini with /specify workflow
 gwrk plan <feature>            # Wrapper: invokes gemini with /plan workflow
-gwrk tasks <feature>           # List tasks from .gwrk/tasks.json
+gwrk tasks <feature>           # List tasks from SQLite (exported to .gwrk/tasks.json)
 gwrk tasks done <feature> <id> # Gate-enforced state transition
-gwrk init                      # Scaffold .agent/, .specify/, specs/ in a new project
 ```
+
+#### `gwrk new` vs `gwrk init`:
+- **`gwrk new <name>`** — From scratch. Requires explicit project name (or description → extracted name). Creates directory, `git init`, `gh repo create`, Slack channel, full scaffold, CLI provisioning, SQLite registration. Does everything it can, then reports what it couldn't with next steps.
+- **`gwrk init`** — "I'm working here, add gwrk." Detects existing project context. Scaffolds `.agent/`, `.specify/`, `specs/`. Provisions detected CLIs (`GEMINI.md`, `CLAUDE.md`, `AGENTS.md`). Creates Slack channel. Registers in SQLite.
+
+#### Multi-CLI provisioning:
+- Detects `gemini`, `claude`, `codex` via `which`/`command -v`
+- Provisions CLI-specific context files referencing shared `.agent/` directory
+- Generates CLI-specific settings from `.gwrkrc.json` defaults
 
 #### Key files:
 - `src/cli.ts` — Commander entry point
+- `src/commands/new.ts` — Full project provisioning
+- `src/commands/init.ts` — Add gwrk to existing project
 - `src/commands/specify.ts`, `plan.ts`, `tasks.ts`
-- `src/utils/exec.ts` — Shell command runner (wraps `child_process`)
-- `src/utils/state.ts` — Read/write `tasks.json` with Zod validation
+- `src/utils/exec.ts` — Shell command runner
+- `src/utils/config.ts` — `.gwrkrc.json` loader (Zod, fail-fast)
+- `src/db/index.ts` — SQLite connection + schema init
+- `src/db/migrations/` — Versioned schema files
+- `src/utils/state.ts` — Task read/write via SQLite
+- `src/utils/history.ts` — History inserts via SQLite
 - `src/utils/parser.ts` — Extract phases/tasks from `plan.md`
 - `src/utils/gate-gen.ts` — Generate `gates/T0xx-gate.sh` from contracts
-- `src/utils/config.ts` — `.gwrkrc.json` loader (Zod, fail-fast)
 
 #### Tech decisions:
 - **Commander.js** for CLI routing (not Ink — see architecture.md §4)
+- **better-sqlite3** for execution ledger (ADR-002)
 - **Zod** for all schema validation
 - **Vitest** for testing
 - **Biome** for lint + format
@@ -117,19 +135,19 @@ gwrk status                    # Active agents, clones, system resources
 
 #### Key files:
 - `src/server/index.ts` — Fastify bootstrap
-- `src/server/dispatch.ts` — Phase dispatch queue + retry logic
+- `src/server/dispatch.ts` — Phase dispatch queue + retry logic (writes to `runs` table)
 - `src/server/sandbox.ts` — Docker container lifecycle
 - `src/server/git-manager.ts` — Branch creation, merge, conflict resolution
 
 ---
 
-### Phase 3 — Telegram
+### Phase 3 — Slack
 
-grammY bot integration for mobile control plane.
+Slack integration for the comms layer via Socket Mode + Bolt SDK. Channel-per-project model.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `003-telegram` | Bot setup, status notifications, inline buttons, commands | Receive and approve a review from Telegram |
+| `003-slack` | Socket Mode app, Bolt SDK, slash commands, interactive messages, threads, channel provisioning | Send status update and approve a review verdict from Slack |
 
 **Dependencies:** Phase 2
 **Agent:** Gemini CLI
@@ -137,10 +155,18 @@ grammY bot integration for mobile control plane.
 #### What ships:
 
 ```bash
-gwrk telegram setup            # BotFather pairing
-gwrk telegram pair             # Pair Telegram account
-# Telegram commands: /status, /approve, /reject, /dispatch, /pulse
+gwrk setup slack               # Fully automated: create app, install, write tokens, test
+# Slack commands: /gwrk status, /gwrk dispatch, /gwrk approve, /gwrk pulse
+# Interactive: review verdict buttons, threaded DUT conversations
+# Reactions: ✅ react-to-approve for lightweight confirmation
+# Presence: notification throttling (active=verbose, away=batched)
 ```
+
+#### Key files:
+- `src/server/slack.ts` — Bolt SDK Socket Mode integration
+- `src/server/slack-commands.ts` — Slash command handlers
+- `src/server/slack-actions.ts` — Interactive message action handlers
+- `src/commands/setup-slack.ts` — Automated Slack app provisioning
 
 ---
 
@@ -150,7 +176,7 @@ Autonomous implement → review → PR → CI loop.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `004-wud-loop` | `gwrk wud`, `gwrk implement`, review gates, PR creation | Agent completes a phase and opens a PR |
+| `004-wud-loop` | `gwrk wud`, `gwrk implement`, review gates, PR creation, run recording | Agent completes a phase and opens a PR |
 
 **Dependencies:** Phase 1
 **Agent:** Codex Cloud (autonomous execution)
@@ -161,6 +187,12 @@ Autonomous implement → review → PR → CI loop.
 gwrk implement <feature> <phase>   # Execute a single phase
 gwrk wud <feature>                 # Autonomous lifecycle
 ```
+
+#### SQLite integration:
+- Every WUD dispatch writes a `runs` record (backend, model, attempt, timestamps)
+- Gate results recorded in `runs.gate_result`
+- Review verdicts in `runs.review_verdict`
+- Retry reasons in `runs.retry_reason`
 
 ---
 
@@ -200,55 +232,67 @@ Productivity dashboard with historical git analysis.
 ```bash
 gwrk pulse                     # Current snapshot across repos
 gwrk pulse scan [path]         # Scan any existing git repo
-gwrk pulse dashboard           # Future: Ink-based TUI (stretch)
 ```
 
 ---
 
 ### Phase 7 — Effort + Compression
 
-SP-driven estimation and delivery speed measurement.
+SP-driven estimation and delivery speed measurement with leading compression indicators.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `007-effort-compression` | Story extraction, role bracketing, timestamp collection, compression ratios | `gwrk compression` produces a report |
+| `007-effort-compression` | Story extraction, role bracketing, timestamp collection, compression ratios, leading indicators: convergence (first-pass rate, avg attempts), density (lines/SP, files/SP, tool calls/SP), spec quality (contract count, gate count) | `gwrk compression` produces a report with Point + Total ratios and leading indicators |
 
-**Dependencies:** Phase 1
+**Dependencies:** Phase 1, SQLite (ADR-002)
 **Agent:** Gemini CLI
 
 #### What ships:
 
 ```bash
 gwrk effort <feature>          # Generate effort estimate from spec stories
-gwrk compression <feature>     # Show compression ratios
-gwrk compression --all         # Summary across all features
+gwrk compression <feature>     # Compression ratios + leading indicators
+gwrk compression --all         # Summary across all features with trends
 ```
+
+#### SP additivity invariant:
+Feature SP = Σ Phase SP = Σ Task SP. No orphan points. gwrk validates on `plan-to-tasks`.
 
 ---
 
 ### Phase 8 — Multi-Agent Router
 
-Agent backend selection, Done Done! protocol, retry + escalation.
+Agent backend selection, Done Done! protocol, retry + escalation, learning from execution history.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `008-agent-router` | Router logic, per-backend invocation, fallback chain, tandem dispatch | Dispatch to Codex, retry on Claude, feature ships |
+| `008-agent-router` | Router logic, per-backend invocation, fallback chain, tandem dispatch, **SQLite-backed learning** | Dispatch to Codex, retry on Claude, feature ships |
 
-**Dependencies:** Phase 5
+**Dependencies:** Phase 5, SQLite (ADR-002)
 **Agent:** Claude Code
+
+#### Learning engine:
+- Queries global SQLite `runs` + `task_types` tables
+- Selects backend based on historical success rate × task SP × language
+- Adapts over time as more execution data accumulates
 
 ---
 
 ### Phase 9 — Agent-DUT
 
-Telegram conversational ideation → spec generation.
+Slack-native conversational ideation → spec generation, aligned to Foxtrot Charlie.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `009-agent-dut` | DUT conversational loop, voice notes, spec generation, ship action | `/dream` produces a `spec.md` from conversation |
+| `009-agent-dut` | DUT conversational loop in Slack threads, FC-aligned protocol (SPARK→PROBE→DISAMBIGUATE→SHAPE→PRESS→GROUND→REVIEW→COMMIT), analyze-as-core-perspective | `/dream` in Slack produces a `spec.md` from threaded conversation |
 
 **Dependencies:** Phase 3
 **Agent:** Gemini CLI
+
+#### Foxtrot Charlie alignment:
+- **Discovery (Truth):** SPARK → PROBE → DISAMBIGUATE (analyze lens active)
+- **Definition (Clarity):** SHAPE → PRESS → GROUND → REVIEW → COMMIT
+- Analyze perspective runs continuously, not as a separate step
 
 ---
 
@@ -264,35 +308,32 @@ Unified Pulse + Compression dashboard across repos.
 
 ---
 
-### Phase 11 — Glass Dashboard
+### Phase 11 — App Home Tab
 
-Mobile-first real-time ops view with remote access via tunnel + Telegram magic link.
+Slack App Home Tab as the real-time ops dashboard. Replaces the Glass Dashboard SPA.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `011-glass-dashboard` | Embedded SPA, SSE endpoints, Ops/Pulse/Compression views, tunnel layer, Telegram magic link auth | `/dashboard` Telegram command returns a magic link; tapping it shows live agent activity on a phone |
+| `011-app-home-tab` | Block Kit views: Ops, Projects, Pulse, Compression, Events, Quick Actions. Auto-refresh. Tunnel for remote access. | Open gwrk in Slack → see live agent activity, project progress, compression |
 
-**Dependencies:** Phase 2 (Fastify daemon), Phase 3 (Telegram bot for magic link auth)
-**Agent:** Gemini CLI (multi-file SPA generation)
+**Dependencies:** Phase 3 (Slack)
+**Agent:** Gemini CLI
 
 #### What ships:
 
 ```bash
-gwrk dashboard                     # Open Glass Dashboard in local browser
-gwrk tunnel start                  # Start tunnel (ngrok/cloudflared/tailscale)
-gwrk tunnel start --provider ngrok # Explicit provider
-gwrk tunnel status                 # Show tunnel URL
-gwrk tunnel stop                   # Tear down tunnel
-# Telegram: /dashboard             # Get magic link for mobile browser
+gwrk tunnel start                  # Start Cloudflare Tunnel
+gwrk tunnel start --provider tailscale
+gwrk tunnel status
+gwrk tunnel stop
 ```
 
-#### Key files:
-- `src/server/dashboard.ts` — Fastify static asset serving + SSE endpoint
-- `src/server/tunnel.ts` — Tunnel provider abstraction (ngrok/cloudflared/tailscale)
-- `src/server/auth.ts` — JWT generation for Telegram magic links
-- `src/commands/dashboard.ts` — `gwrk dashboard` command (opens browser)
-- `src/commands/tunnel.ts` — `gwrk tunnel start/stop/status`
-- `dashboard/` — Vite SPA (React, mobile-first, SSE consumer)
+#### Why App Home Tab, not SPA:
+- No separate web server to run
+- No tunnel needed just for dashboard (tunnel is for remote Slack access)
+- Already authenticated via Slack
+- Already mobile
+- One less thing to build
 
 ---
 
@@ -300,10 +341,10 @@ gwrk tunnel stop                   # Tear down tunnel
 
 | Wave | Phases | Parallelizable? | Theme |
 |---|---|---|---|
-| **Wave 1** | P1 | No (keystone) | Bootstrap: CLI exits cleanly, tasks enforce gates |
-| **Wave 2** | P2, P4, P6, P7 | Yes (independent after P1) | Core engines: server, execution, productivity |
-| **Wave 3** | P3, P5 | Partially (P3 needs P2, P5 needs P2+P4) | Multipliers: Telegram, parallelism |
-| **Wave 4** | P8, P9, P11 | Yes (P8 needs P5; P9 needs P3; P11 needs P2+P3) | Intelligence + Observability: smart routing, mobile ideation, Glass Dashboard |
+| **Wave 1** | P1 | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning, gwrk new/init |
+| **Wave 2** | P2, P4, P6, P7 | Yes (independent after P1) | Core engines: server, execution, productivity, compression |
+| **Wave 3** | P3, P5 | Partially (P3 needs P2, P5 needs P2+P4) | Multipliers: Slack, parallelism |
+| **Wave 4** | P8, P9, P11 | Yes (P8 needs P5; P9 needs P3; P11 needs P3) | Intelligence + Comms: smart routing, DUT ideation, App Home Tab |
 | **Wave 5** | P10 | No (needs P6+P7) | Integration: unified dashboard |
 
 ---
@@ -313,27 +354,36 @@ gwrk tunnel stop                   # Tear down tunnel
 | Phase | SP | Primary Role | Est. Hours |
 |---|---|---|---|
 | P0 (Extraction) | 3 | PE | Done |
-| P1 (CLI Core) | 13 | TS | 65h |
+| P1 (CLI Core) | 21 | TS | 105h |
 | P2 (Build Server) | 13 | TS | 65h |
-| P3 (Telegram) | 8 | TS | 40h |
+| P3 (Slack) | 13 | TS | 65h |
 | P4 (WUD Loop) | 8 | TS | 40h |
 | P5 (Parallel Dispatch) | 8 | TS | 40h |
 | P6 (Pulse) | 5 | TS | 25h |
-| P7 (Effort + Compression) | 5 | TS | 25h |
+| P7 (Effort + Compression) | 8 | TS | 40h |
 | P8 (Agent Router) | 8 | TS | 40h |
 | P9 (Agent-DUT) | 8 | TS | 40h |
 | P10 (Integration) | 5 | TS | 25h |
-| P11 (Glass Dashboard) | 8 | TS | 40h |
-| **Total** | **92 SP** | | **445h** |
+| P11 (App Home Tab) | 5 | TS | 25h |
+| **Total** | **105 SP** | | **510h** |
+
+**Changes from v1:** P1 increased (13→21 SP: gwrk new, gwrk init, multi-CLI, SQLite). P3 increased (8→13 SP: Slack is richer than Telegram). P7 increased (5→8 SP: leading indicators). P11 decreased (8→5 SP: App Home Tab is simpler than SPA).
 
 ---
 
 ## Open Questions Blocking Architecture
 
-None. The PRD-PRFAQ (§23) has 18 open questions, but none block the P0→P1→P2 critical path. They affect P8 (router learning), P9 (DUT model selection), P3 (multi-user Telegram), and P11 (tunnel provider default, read-only vs. write), which are all Wave 3+.
+None for P0→P1→P2 critical path. Remaining questions:
+
+| # | Question | Affects | Status |
+|---|---|---|---|
+| 1 | SP → Phase → Task additivity enforcement: warn or hard fail? | P7 | 🟡 Open |
+| 2 | Cloudflare Tunnel automation: can we provision without pre-config? | P11 | 🟡 Open (spike needed) |
+| 3 | Slack presence throttling: granularity beyond active/away? | P3 | 🟡 Open |
 
 ---
 
 ## Changelog
 
-- 2026-02-27: Added Spec 011 (Glass Dashboard). Wave 4. Dependencies: [P2, P3]. Impact: +8 SP, updated critical path P0→P1→P2→P3→P11, updated wave 4 to include P11 alongside P8/P9. Total SP: 84 → 92.
+- **2026-03-05 (v2):** Major update per strategic vision v2. Phase 3: Telegram → Slack (Socket Mode + Bolt SDK). Phase 11: Glass Dashboard → App Home Tab. P1 expanded (gwrk new/init, multi-CLI provisioning, SQLite). SQLite execution ledger (ADR-002) replaces flat JSON. P7 adds leading compression indicators. P9 DUT moves to Slack, aligns to Foxtrot Charlie. Telegram cut from MVP. Updated SP estimates. Total: 92→105 SP.
+- 2026-02-27: Added Spec 011 (Glass Dashboard). Wave 4. Dependencies: [P2, P3]. Impact: +8 SP.

@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T014 — Implement src/utils/agent.ts
+# Gate: T014 — Implement src/commands/plan.ts
 # Asserts: Derived from task description
 
-test -f src/utils/agent.ts
+test -f src/commands/plan.ts
 
-echo "PASS: T014 — Implement src/utils/agent.ts"
+echo "PASS: T014 — Implement src/commands/plan.ts"

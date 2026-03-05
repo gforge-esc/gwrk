@@ -33,12 +33,13 @@ Start here. Read in this order.
 ### `decisions/` — Architectural Decision Records
 | Document | Decision |
 |---|---|
-| [ADR-001-task-tracking.md](decisions/ADR-001-task-tracking.md) | Flat JSON/JSONL over Beads/Dolt for task tracking |
+| [ADR-001-task-tracking.md](decisions/ADR-001-task-tracking.md) | Flat JSON/JSONL over Beads/Dolt for task tracking (superseded by ADR-002 for storage) |
+| [ADR-002-sqlite-execution-ledger.md](decisions/ADR-002-sqlite-execution-ledger.md) | Global SQLite execution ledger for tasks, runs, compression, learning |
 
 ### `reference/` — Supporting Material
 | Document | Contents |
 |---|---|
-| [architecture-diagrams.md](reference/architecture-diagrams.md) | Mermaid visualizations — agent pipeline, system architecture, Done Done! protocol, git branching, Glass Dashboard |
+| [architecture-diagrams.md](reference/architecture-diagrams.md) | Mermaid visualizations — agent pipeline, system architecture, Done Done! protocol, git branching, App Home Tab |
 | [codex-lab.md](reference/codex-lab.md) | Codex Cloud integration reference — setup, invocation, orchestration blueprint |
 | [extraction-manifest.md](reference/extraction-manifest.md) | Exhaustive inventory of the 78-file CodeRed workflow system being extracted into gwrk |
 

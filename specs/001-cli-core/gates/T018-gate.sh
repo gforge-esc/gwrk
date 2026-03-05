@@ -1,9 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T018 — Implement src/utils/parser.ts
+# Gate: T018 — Implement test strategy for Phase 2
 # Asserts: Derived from task description
 
-test -f src/utils/parser.ts
-test -f specs/001-cli-core/plan.md
 
-echo "PASS: T018 — Implement src/utils/parser.ts"
+# Phase Acceptance Criteria
+node --import tsx src/cli.ts specify "test feature"
+node --import tsx src/cli.ts plan 001-cli-core
+pnpm test
+
+echo "PASS: T018 — Implement test strategy for Phase 2"

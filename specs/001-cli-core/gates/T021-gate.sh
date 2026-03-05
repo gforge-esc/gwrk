@@ -1,17 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T021 — Implement test strategy for Phase 3
+# Gate: T021 — Implement src/utils/parser.ts
 # Asserts: Derived from task description
 
+test -f src/utils/parser.ts
+test -f specs/001-cli-core/plan.md
 
-# Phase Acceptance Criteria
-node --import tsx src/cli.ts tasks generate 001-cli-core
-jq '.phases | length' specs/001-cli-core/.gwrk/tasks.json
-ls specs/001-cli-core/gates/T*-gate.sh | wc -l
-test -x specs/001-cli-core/gates/T001-gate.sh
-node --import tsx src/cli.ts tasks done 001-cli-core T001
-node --import tsx src/cli.ts tasks done 001-cli-core T001
-tail -1 .gwrk/history.jsonl | jq -r '.taskId'
-pnpm test
-
-echo "PASS: T021 — Implement test strategy for Phase 3"
+echo "PASS: T021 — Implement src/utils/parser.ts"

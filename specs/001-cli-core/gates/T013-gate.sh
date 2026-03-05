@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T013 — Implement src/commands/effort.ts
+# Gate: T013 — Implement src/commands/specify.ts
 # Asserts: Derived from task description
 
-test -f src/commands/effort.ts
+test -f src/commands/specify.ts
 
-echo "PASS: T013 — Implement src/commands/effort.ts"
+echo "PASS: T013 — Implement src/commands/specify.ts"

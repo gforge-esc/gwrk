@@ -42,7 +42,7 @@
 
 Today, GForge ESC launched **gwrk** (pronounced "gee-work"), a CLI and build server that turns one experienced architect into a software factory — orchestrating fleets of AI coding agents through governed, parallelized pipelines while keeping you in control from your phone.
 
-gwrk is not another AI code generator. It's the **Principal Engineer's operating system** — taking your architectural vision, decomposing it into executable phases, dispatching AI agents to build them in parallel, and driving the results through review gates, CI, and merge — all while reporting back to you on Telegram.
+gwrk is not another AI code generator. It's the **Principal Engineer's operating system** — taking your architectural vision, decomposing it into executable phases, dispatching AI agents to build them in parallel, and driving the results through review gates, CI, and merge — all while reporting back to you on Slack.
 
 > "I built gwrk because I kept doing the same thing across two codebases: writing specs, decomposing plans, dispatching agents, watching CI, resolving merge conflicts, reviewing code — all while trying to stay productive myself. gwrk is the extraction of that entire lifecycle into something you install in five minutes and control from your couch."
 > — David Gonzalez, Technical Product Lead
@@ -51,11 +51,11 @@ gwrk is not another AI code generator. It's the **Principal Engineer's operating
 
 gwrk introduces the **Agent-ZFG / Agent-WUD / Agent-DUT** model:
 
-- **Agent-ZFG** ("Zero F*cks Given") is the local orchestrator. It plans, delegates, merges, and resolves. It runs on your laptop as a persistent daemon — inspired by OpenClaw's local Gateway. And it talks to you on **Telegram** — sending status updates, asking for approval on review verdicts, reporting CI failures, and accepting commands — so you never have to be at your desk to unblock the pipeline.
+- **Agent-ZFG** ("Zero F*cks Given") is the local orchestrator. It plans, delegates, merges, and resolves. It runs on your laptop as a persistent daemon — inspired by OpenClaw's local Gateway. And it talks to you on **Slack** — sending status updates to your project channel, asking for approval on review verdicts, reporting CI failures, and accepting slash commands — so you never have to be at your desk to unblock the pipeline.
 
 - **Agent-WUD** ("Work Until Done") is the ephemeral cloud worker. It receives a phase, writes code, runs tests, opens a PR, and terminates. Each instance runs in an isolated Docker sandbox, borrowing OpenClaw's proven sandbox model. And here's the key: **gwrk dispatches to whichever agent backend will get the job done** — Gemini CLI, Codex CLI, or Claude Code — running them in tandem, routing by task type, and retrying on a different backend if the first one fails. This is the OpenClaw ethos: maniacal commitment to completion.
 
-- **Agent-DUT** ("Dream Until Told") is the ideation partner. It lives in Telegram and turns your half-formed ideas — voice notes from a walk, quick messages from a café, a 2am brainstorm — into structured specifications. You talk to it like a thought partner; it asks clarifying questions, proposes architecture, identifies risks, and ultimately produces a `spec.md` that feeds directly into the pipeline. **DUT → DUS → ZFG → WUD** — dream it on your phone, and gwrk builds it while you sleep.
+- **Agent-DUT** ("Dream Until Told") is the ideation partner. It lives in Slack threads and turns your half-formed ideas — messages from a café, a 2am brainstorm — into structured specifications. You talk to it like a thought partner; it asks clarifying questions, proposes architecture, identifies risks, and ultimately produces a `spec.md` that feeds directly into the pipeline. **DUT → DUS → ZFG → WUD** — dream it in Slack, and gwrk builds it while you sleep.
 
 gwrk ships with **Pulse** — a productivity dashboard that shows the *state of your work* across every repository you touch: published LOC on main, draft LOC on feature branches, weekly velocity trends, specification progress, and agent output — not server metrics, but a living portrait of what you've shipped, what's in progress, and what's defined. Point gwrk at any existing git repository and it generates a Pulse from the commit history, including historical trends back to the repo's creation.
 
@@ -72,31 +72,31 @@ gwrk also ships with an **Effort Estimation Engine** — replacing the manual `/
 # 2. Frequently Asked Questions
 
 ### What is gwrk?
-gwrk is a CLI and local build server that orchestrates AI coding agents through a governed specification-to-delivery pipeline. It manages the full lifecycle: planning → task decomposition → parallel agent dispatch → code review → CI → merge. And it's reachable via Telegram so you can oversee everything from your phone.
+gwrk is a CLI and local build server that orchestrates AI coding agents through a governed specification-to-delivery pipeline. It manages the full lifecycle: planning → task decomposition → parallel agent dispatch → code review → CI → merge. And it's reachable via Slack so you can oversee everything from your phone.
 
 ### Who is gwrk for?
 Architects and experienced engineers who know how software should be structured but want to multiply their output. The core skill gwrk demands is **Principal Engineer judgment** — system decomposition, interface design, dependency ordering, and review rigor. The smarter you are at architecture, the better gwrk performs.
 
 ### How is gwrk different from just using an AI coding agent?
-Individual agents write code. gwrk orchestrates *fleets*. It handles branching, parallel execution, merge conflict resolution, code review gates, CI monitoring, and audit trails. But more importantly — gwrk doesn't need you to sit at a terminal. It messages you on Telegram when it needs a decision, sends you review summaries, and lets you approve or reject from your phone.
+Individual agents write code. gwrk orchestrates *fleets*. It handles branching, parallel execution, merge conflict resolution, code review gates, CI monitoring, and audit trails. But more importantly — gwrk doesn't need you to sit at a terminal. It messages you on Slack when it needs a decision, sends you review summaries, and lets you approve or reject from your phone.
 
-### Why Telegram?
-Because the bottleneck in automated development isn't code generation — it's *the human in the loop*. When an agent fails a review, hits a merge conflict, or CI goes red, the pipeline stalls until someone makes a decision. Telegram means you can unblock that pipeline from anywhere — your couch, a restaurant, a walk — without opening a laptop.
+### Why Slack?
+Because the bottleneck in automated development isn't code generation — it's *the human in the loop*. When an agent fails a review, hits a merge conflict, or CI goes red, the pipeline stalls until someone makes a decision. Slack means you can unblock that pipeline from anywhere — your couch, a restaurant, a walk — without opening a laptop. And unlike single-threaded messaging apps, Slack's channel-per-project model means you can manage multiple projects concurrently.
 
 ### Why extract this from Code-Red and GForge.ai?
 We built 78 files and ~7,450 lines of workflow infrastructure across two production codebases. The infrastructure is project-agnostic — it works for a courtroom code forensics tool the same way it works for an epistemic publishing engine. Extraction means we maintain it once and benefit everywhere.
 
 ### What's the relationship to OpenClaw?
-gwrk borrows three key architectural ideas from OpenClaw: (1) the **Gateway model** — a local daemon as the control plane; (2) the **sandbox model** — Docker-based per-session containers for isolated agent execution; and (3) the **Telegram channel** — using grammY to give the build server a conversational interface reachable from your phone. Future channels (Slack, Discord, WhatsApp) are planned.
+gwrk borrows three key architectural ideas from OpenClaw: (1) the **Gateway model** — a local daemon as the control plane; (2) the **sandbox model** — Docker-based per-session containers for isolated agent execution; and (3) the **comms channel** — giving the build server a conversational interface reachable from your phone. gwrk uses Slack (Socket Mode via `@slack/bolt`) as its native comms layer.
 
 ### What is Pulse and how is it different from server monitoring?
 Pulse is NOT an observability/monitoring stack. It's a **productivity snapshot** — a dashboard that answers "what have I shipped, what's in progress, and what's defined?" across all your repositories. It tracks published LOC on main branches, draft LOC on feature/dev branches, weekly add/delete velocity, specification word counts, and effort estimates. Think of it as a portfolio view of your entire body of work, not a Grafana panel of CPU utilization.
 
-### What is the Glass Dashboard?
-The **Glass Dashboard** is a mobile-first web UI embedded in the gwrk daemon (served at `:18790/dashboard`). While Pulse answers "what have I built?", the Glass Dashboard answers **"what is the daemon doing right now?"** — active agents, dispatch queue, system resources, streaming event logs, feature phase progress, and gate status. Telegram handles commands and approvals; the Glass Dashboard handles *watching*.
+### What is the App Home Tab?
+The **App Home Tab** is gwrk's real-time dashboard, rendered natively in Slack via Block Kit. While Pulse answers "what have I built?", the App Home Tab answers **"what is the daemon doing right now?"** — active agents, dispatch queue, system resources, feature phase progress, and gate status. Slack slash commands handle actions; the App Home Tab handles *watching*.
 
 ### How do I see the dashboard from my phone?
-gwrk ships with a **tunnel layer** that exposes the local daemon to the internet. Run `gwrk tunnel start` to spin up an ngrok, Cloudflare Tunnel, or Tailscale Funnel connection. Then text `/dashboard` to the gwrk Telegram bot — it replies with a **magic link** (time-limited JWT in the URL). Tap the link, and you're watching your build server live from a park bench. The dashboard is **read-only** — you watch through the browser, you act through Telegram.
+Open the gwrk app in Slack — the App Home Tab is your live dashboard. For remote access to the build server itself, gwrk ships with a tunnel layer: `gwrk tunnel start` spins up a Cloudflare Tunnel or Tailscale Funnel connection.
 
 ### What is Compression?
 Compression is gwrk's core metric. It compares the forecasted effort (from story points and role multipliers) against actual delivery time. There are two dimensions: **Point Compression** (estimated coding hours ÷ actual coding time from git commit activity) measures how fast agents wrote the code. **Total Compression** (estimated elapsed time ÷ actual wall-clock time from first implementation commit to merge) measures how fast the feature shipped end-to-end. gwrk tracks timestamps carefully: spec creation time, first commit, last commit, and merge — so a feature that sat dormant for 6 months but was pounded out in 45 minutes correctly shows the burst, not the dormancy.
@@ -117,7 +117,7 @@ gwrk ships with an **Agent Router** that selects backends based on task characte
 Yes, productively so. gwrk expects a `specs/` directory for feature specifications, a `.agent/` directory for workflow definitions and governance rules, and a `.specify/` directory for templates and scripts. For existing repos without this structure, `gwrk init` scaffolds it.
 
 ### What is Agent-DUT?
-Agent-DUT ("Dream Until Told") is gwrk's conversational ideation agent. It lives in Telegram and turns your unstructured ideas into executable specs. You message it from your phone — voice notes, text, sketches — and it asks clarifying questions, proposes system decomposition, identifies edge cases, and progressively refines your idea into a `spec.md`. When you say "ship it," DUT writes the spec, and the pipeline (ZFG → WUD) takes over. It's the bridge between "I had an idea on a walk" and "here's a PR."
+Agent-DUT ("Dream Until Told") is gwrk's conversational ideation agent. It lives in Slack threads and turns your unstructured ideas into executable specs. You message it from your phone — text, sketches — and it asks clarifying questions, proposes system decomposition, identifies edge cases, and progressively refines your idea into a `spec.md`. When you say "ship it," DUT writes the spec, and the pipeline (ZFG → WUD) takes over. It's the bridge between "I had an idea on a walk" and "here's a PR."
 
 ---
 
@@ -133,7 +133,7 @@ AI coding agents can implement entire features. But the tooling treats each as a
 
 The most expensive bottleneck in AI-assisted development is **the human approval loop**. When an agent fails code review, hits a CI failure, or produces a merge conflict, the pipeline stalls until you sit down at a terminal and make a decision. This is unacceptable when agents can work 24/7 but humans can't.
 
-The solution is obvious from OpenClaw: make the build server **reachable from your phone**. Telegram gives you a conversational interface to the entire pipeline — approve reviews, triage failures, dispatch new work — without opening a laptop.
+The solution is obvious from OpenClaw: make the build server **reachable from your phone**. Slack gives you a conversational interface to the entire pipeline — approve reviews, triage failures, dispatch new work — without opening a laptop.
 
 ### Problem 3: You Can't See What You've Built.
 
@@ -147,7 +147,7 @@ GForge.ai's internal codebase comprehension pipeline — collecting metrics, agg
 
 ## The gwrk Thesis
 
-> **gwrk is a force multiplier for Principal Engineers.** It takes your architectural decomposition, distributes it to parallelized agent workers, and keeps you in the loop via Telegram — so you ship features while walking the dog.
+> **gwrk is a force multiplier for Principal Engineers.** It takes your architectural decomposition, distributes it to parallelized agent workers, and keeps you in the loop via Slack — so you ship features while walking the dog.
 >
 > The rarer your architectural skill, the more gwrk amplifies it.
 
@@ -214,7 +214,7 @@ Like OpenClaw's Gateway (`ws://127.0.0.1:18789`), Agent-ZFG is a persistent loca
 │   │     gh pr list, gh run watch                          │
 │   ├── Review Gate                                          │
 │   │     /review-code → /review-uat → GO/NO-GO            │
-│   ├── Telegram Channel (grammY)                           │
+│   ├── Slack Channel (@slack/bolt)                         │
 │   │     Status updates, approval requests, commands       │
 │   ├── Pulse Engine                                         │
 │   │     Git log analysis, snapshot generation             │
@@ -224,8 +224,8 @@ Like OpenClaw's Gateway (`ws://127.0.0.1:18789`), Agent-ZFG is a persistent loca
           │              │               │
           ▼              ▼               ▼
     ┌── Phone ──┐  ┌── Local ──┐  ┌── Cloud Agent(s) ──┐
-    │ Telegram  │  │ Agent-ZFG │  │ Agent-WUD instances │
-    │ interface │  │ owns orch │  │ (ephemeral sandboxes)│
+    │ Slack     │  │ Agent-ZFG │  │ Agent-WUD instances │
+    │ channels  │  │ owns orch │  │ (ephemeral sandboxes)│
     └──────────┘  └───────────┘  └─────────────────────┘
 ```
 
@@ -241,17 +241,18 @@ Like OpenClaw's sandbox model (`agents.defaults.sandbox`), each WUD instance run
 | `sandbox.docker.binds` | Repository mounted, plus agent context payload |
 | `sandbox.docker.network` | Network access for `gh` CLI operations |
 
-### Pattern 3: Telegram Channel
+### Pattern 3: Slack Channel
 
-Like OpenClaw's Telegram integration (grammY + BotFather), gwrk's build server is a Telegram bot:
+Like OpenClaw's messaging integration, gwrk's build server communicates via Slack (Socket Mode — outbound WebSocket, no public URL):
 
-| OpenClaw Feature | gwrk Equivalent |
+| Capability | gwrk Implementation |
 |---|---|
-| DM policy with pairing | gwrk requires pairing for authorized users |
-| Custom commands (`/setMyCommands`) | `/status`, `/approve`, `/reject`, `/dispatch`, `/pulse` |
-| Inline buttons | Review verdict buttons (GO / NO-GO / NEEDS REWORK) |
-| Live stream preview (message edits) | Streaming agent output during implementation |
-| Group support | Team channels for shared build visibility |
+| Channel-per-project | `gwrk new` / `gwrk init` creates `#<project-name>` |
+| Slash commands | `/gwrk status`, `/gwrk approve`, `/gwrk dispatch`, `/dream` |
+| Interactive buttons | Review verdict buttons (GO / NO-GO / NEEDS REWORK) |
+| Threaded DUT | Ideation conversations happen in threads |
+| Reactions | ✅ react-to-approve for lightweight confirmation |
+| Presence | Notification throttling (active=verbose, away=batched) |
 
 ### Git Branching Model
 
@@ -263,26 +264,26 @@ develop
         └── phase/<feature-name>-phase-03  (owned by WUD #3)
 ```
 
-### Pattern 4: Glass Dashboard + Tunnel (Remote Observability)
+### Pattern 4: App Home Tab + Tunnel (Remote Observability)
 
-gwrk extends the OpenClaw model with a **Glass Dashboard** — a mobile-first web UI served by the Fastify daemon at `:18790/dashboard`. Combined with a tunnel layer (ngrok / Cloudflare Tunnel / Tailscale Funnel), the dashboard is reachable from your phone via a **Telegram magic link**:
+gwrk extends the OpenClaw model with a **Slack App Home Tab** — a real-time dashboard rendered natively in Slack via Block Kit. Combined with a tunnel layer (Cloudflare Tunnel / Tailscale Funnel), the build server is accessible remotely:
 
 | Capability | Implementation |
 |---|---|
-| **Ops View** | Active agents, dispatch queue, system resources, event stream |
+| **Ops View** | Active agents, dispatch queue, system resources |
 | **Pulse View** | LOC trends, spec progress, repo snapshots |
 | **Compression View** | Point/Total ratios, feature timelines |
-| **Feature View** | Phase progress, gate status, agent assignments |
-| **Remote Access** | `gwrk tunnel start` → Telegram `/dashboard` → magic link |
-| **Auth** | Telegram-issued time-limited JWT; dashboard is read-only |
-| **Mobile-First** | Touch targets, dark mode, SSE reconnect, progressive disclosure |
+| **Project View** | Phase progress, gate status, agent assignments |
+| **Remote Access** | `gwrk tunnel start` → Cloudflare Tunnel |
+| **Auth** | Slack-native (already authenticated) |
+| **Mobile-First** | Slack app on phone, Block Kit rendering |
 
-The two remote channels complement each other:
+The two interaction modes complement each other:
 
-| Channel | Best For |
+| Mode | Best For |
 |---|---|
-| **Telegram** | Commands, approvals, alerts, DUT ideation (push + pull) |
-| **Glass Dashboard** | Watching, monitoring, exploring, understanding (pull) |
+| **Slack Commands + Reactions** | Actions: approvals, dispatch, DUT ideation (push + pull) |
+| **App Home Tab** | Watching, monitoring, understanding (pull) |
 
 ---
 
@@ -329,17 +330,19 @@ Your architecture skill → Better specs → Better plans → Better phases
 
 ---
 
-# 7. Telegram: The Mobile Control Plane
+# 7. Slack: The Comms Layer
 
-## Why Telegram Changes Everything
+## Why Slack Changes Everything
 
-The single biggest bottleneck in AI-automated development is **decision latency**. When a pipeline stalls — failed CI, review rejection, merge conflict — it stays stalled until a human sits at a terminal. Telegram eliminates this bottleneck entirely.
+The single biggest bottleneck in AI-automated development is **decision latency**. When a pipeline stalls — failed CI, review rejection, merge conflict — it stays stalled until a human sits at a terminal. Slack eliminates this bottleneck entirely — and unlike single-threaded messaging apps, Slack supports **multiple projects concurrently** through its channel-per-project model.
 
 ## How It Works
 
-gwrk's build server runs a Telegram bot (grammY library, same as OpenClaw) that serves as a conversational interface to the entire pipeline:
+gwrk's build server runs a Slack app via **Socket Mode** (`@slack/bolt`) — an outbound WebSocket connection that requires no public URL and runs behind your firewall. Zero phone-home. Channel-per-project model: `#gwrk`, `#code-red`, `#gforge-ai`.
 
 ### Status Updates (gwrk → You)
+
+Posted to the project's channel with Block Kit formatting:
 
 ```
 🏗️ [code-red] Phase 02: Engine Foundation
@@ -361,24 +364,25 @@ gwrk's build server runs a Telegram bot (grammY library, same as OpenClaw) that 
    gwrk:      +620 LOC (main)
 ```
 
-### Commands (You → gwrk)
+### Slash Commands (You → gwrk)
 
 | Command | Action |
 |---|---|
-| `/status` | Current state of all active features across all repos |
-| `/status <feature>` | Detailed phase-by-phase breakdown |
-| `/approve <feature> <phase>` | Accept review verdict and merge PR |
-| `/reject <feature> <phase> <reason>` | Reject with feedback, re-dispatch agent |
-| `/dispatch <feature>` | Start/resume feature implementation |
-| `/pause <feature>` | Halt all active agents for a feature |
-| `/pulse` | Productivity snapshot across all repos |
-| `/pulse <repo>` | Detailed repo metrics with trends |
-| `/effort <feature>` | Run effort estimation for a feature |
-| `/logs <feature> <phase>` | Get recent agent output logs |
+| `/gwrk status` | Current state of all active features across all repos |
+| `/gwrk status <feature>` | Detailed phase-by-phase breakdown |
+| `/gwrk approve <feature> <phase>` | Accept review verdict and merge PR |
+| `/gwrk reject <feature> <phase> <reason>` | Reject with feedback, re-dispatch agent |
+| `/gwrk dispatch <feature>` | Start/resume feature implementation |
+| `/gwrk pause <feature>` | Halt all active agents for a feature |
+| `/gwrk pulse` | Productivity snapshot across all repos |
+| `/gwrk pulse <repo>` | Detailed repo metrics with trends |
+| `/gwrk effort <feature>` | Run effort estimation for a feature |
+| `/gwrk logs <feature> <phase>` | Get recent agent output logs |
+| `/dream <description>` | Start DUT ideation thread |
 
-### Inline Buttons for Reviews
+### Interactive Buttons for Reviews
 
-When a phase completes and a review is ready, gwrk sends a Telegram message with inline buttons:
+When a phase completes and a review is ready, gwrk posts a message with interactive buttons:
 
 ```
 📋 Review: code-red / 002-engine-foundation / Phase 01
@@ -393,18 +397,25 @@ UAT Verdict: GO ✅
 [✅ Merge] [🔄 Request Changes] [🔍 View Full Review]
 ```
 
-Tap **Merge** from your phone. The pipeline continues.
+Tap **Merge** from your phone. The pipeline continues. Or just react with ✅ for lightweight approval.
+
+### Threaded DUT Conversations
+
+DUT ideation happens in **threads** within the project channel. Multiple ideation conversations, multiple projects, all concurrent, all searchable.
+
+### Presence-Aware Notifications
+
+gwrk observes your Slack presence: Active → verbose updates. Away → batched summaries. Don't wake up to 47 phase updates at 2am.
 
 ### Future Channels
 
-Telegram is the MVP channel. The architecture supports OpenClaw's multi-channel model:
+Slack is the MVP channel. The architecture supports additional channels:
 
 | Channel | Priority | Status |
 |---|---|---|
-| **Telegram** | MVP | grammY integration |
-| Slack | P2 | Slack App with Block Kit |
+| **Slack** | MVP | `@slack/bolt` Socket Mode |
+| Telegram | P2 | grammY (future, for non-Slack users) |
 | Discord | P3 | Discord.js bot |
-| WhatsApp | P4 | Via OpenClaw bridge |
 
 ---
 
@@ -412,7 +423,7 @@ Telegram is the MVP channel. The architecture supports OpenClaw's multi-channel 
 
 ## The Principle: Done, Done!
 
-Borrowed from OpenClaw's ethos: **maniacal commitment to completion**. gwrk doesn't dispatch a task and hope. It dispatches, monitors, evaluates, and — if the agent fails — retries with a different backend. The pipeline doesn't stop until the work is done or all options are exhausted and a human is escalated via Telegram.
+Borrowed from OpenClaw's ethos: **maniacal commitment to completion**. gwrk doesn't dispatch a task and hope. It dispatches, monitors, evaluates, and — if the agent fails — retries with a different backend. The pipeline doesn't stop until the work is done or all options are exhausted and a human is escalated via Slack.
 
 ## The Execution Topology: Cloud vs. Local
 
@@ -485,7 +496,7 @@ gwrk monitors system resources and **throttles local agent dispatch** to keep yo
 | Monitor | Default Limit | Action When Exceeded |
 |---|---|---|
 | CPU usage | 80% | Pause queued local dispatches, let running agents finish |
-| Memory usage | 70% | Pause queued dispatches, warn via Telegram |
+| Memory usage | 70% | Pause queued dispatches, warn via Slack |
 | Disk free | 10 GB minimum | Refuse to create new clones, alert user |
 | Agent count | 3 concurrent local | Queue excess phases until a slot opens |
 
@@ -637,8 +648,8 @@ Every WUD dispatch follows the **Done, Done! protocol** — the task isn't marke
 5. NOT DONE?   → If checks fail:
                   a. Retry same agent with error context (up to 3 retries)
                   b. Escalate to next backend in fallbackOrder
-                  c. If all backends exhausted: Telegram alert to human
-6. DONE, DONE! → PR merged, compression recorded, clone cleaned up, Telegram 🏆
+                  c. If all backends exhausted: Slack alert to human
+6. DONE, DONE! → PR merged, compression recorded, clone cleaned up, Slack 🏆
 ```
 
 ### Retry with Escalation
@@ -681,11 +692,11 @@ The gwrk pipeline starts at `spec.md`. But where does the spec come from?
 
 Today: you sit at your laptop, open a text editor, and write it. The best ideas come at the worst times — walking the dog, cooking dinner, 2am when you can't sleep. By the time you're back at your desk, the spark is dimmer.
 
-**Agent-DUT makes Telegram your spec factory.** You message it like a collaborator. It thinks like a Principal Engineer.
+**Agent-DUT makes Slack your spec factory.** You message it like a collaborator. It thinks like a Principal Engineer.
 
 ## How DUT Works
 
-Agent-DUT is a **conversational loop** that runs entirely in Telegram:
+Agent-DUT is a **conversational loop** that runs in Slack threads:
 
 ```
 You:   "I want to add historical git analysis to gwrk. Like, you
@@ -767,8 +778,8 @@ This means DUT's questions are informed. It doesn't ask generic questions — it
 
 | Capability | How |
 |---|---|
-| **Text ideation** | Standard Telegram messages — describe what you want |
-| **Voice notes** | Telegram voice-to-text transcription → DUT processes the transcript |
+| **Text ideation** | Standard Slack messages — describe what you want |
+| **Voice notes** | Slack audio clips or text transcription → DUT processes |
 | **Image/screenshot input** | Forward a whiteboard sketch or UI mockup → DUT interprets |
 | **Multi-session threads** | Return to an idea days later; DUT keeps the thread alive |
 | **Effort preview** | DUT runs a quick estimate: "This looks like ~13 SP, 97h, RE+TS roles" |
@@ -776,7 +787,7 @@ This means DUT's questions are informed. It doesn't ask generic questions — it
 | **Auto-plan option** | If you tap [Ship It + Plan], DUT also generates `plan.md` before handing off |
 | **Repo-aware suggestions** | "You already have a git-log parser in pulse.ts — should this extend it?" |
 
-## Telegram Commands for DUT
+## Slack Commands for DUT
 
 | Command | Action |
 |---|---|
@@ -791,7 +802,7 @@ This means DUT's questions are informed. It doesn't ask generic questions — it
 
 | Agent | Name | Role | Environment | Loop | Hands Off To |
 |---|---|---|---|---|---|
-| **DUT** | Dream Until Told | Ideate, clarify, spec | **Telegram** | Conversation → Ship It | → DUS |
+| **DUT** | Dream Until Told | Ideate, clarify, spec | **Slack threads** | Conversation → Ship It | → DUS |
 | **DUS** | Define Until Solid | Spec → plan → tasks → analyze | Local CLI | Quality gate loop | → ZFG |
 | **ZFG** | Zero F*cks Given | Orchestrate, merge, resolve | Local daemon | Feature lifecycle | → WUD |
 | **WUD** | Work Until Done | Implement, test, PR | Cloud VM or local clone | Phase → Done, Done! | → ✅ merge |
@@ -799,7 +810,7 @@ This means DUT's questions are informed. It doesn't ask generic questions — it
 ### The Full Pipeline
 
 ```
-📱 Telegram          💻 Local CLI           💻 Local Daemon         ☁️/💻 Cloud or Local
+📱 Slack              💻 Local CLI           💻 Local Daemon         ☁️/💻 Cloud or Local
 ───────────────────   ─────────────────────   ─────────────────────   ───────────────────────
   DUT                    DUS                     ZFG                     WUD
   │                      │                       │                       │
@@ -826,17 +837,17 @@ This means DUT's questions are informed. It doesn't ask generic questions — it
  📱◀── 🏆 Done, Done! ──│────────────────────│────────────────────│─────────────────────│
 ```
 
-DUT is the only agent that runs *inside* Telegram rather than alongside it. It doesn't report to Telegram — it *lives* there. And when the whole chain fires — DUT → DUS → ZFG → WUD — you go from a voice note on a walk to a merged PR without ever opening a laptop.
+DUT is the only agent that runs *inside* Slack threads rather than alongside it. It doesn't report to Slack — it *lives* there. And when the whole chain fires — DUT → DUS → ZFG → WUD — you go from a message on a walk to a merged PR without ever opening a laptop.
 
 ---
 
 # 10. Jobs To Be Done
 
 ### The Architect Who Dreams on the Move
-> When I have an idea for a new feature — on a walk, in a café, at 2am — I want to **message it to gwrk on Telegram and have a real conversation** that shapes the idea into a structured spec, so that by the time I'm back at my desk, the spec is written and the pipeline is already running.
+> When I have an idea for a new feature — on a walk, in a café, at 2am — I want to **type `/dream` in Slack and have a real conversation** that shapes the idea into a structured spec, so that by the time I'm back at my desk, the spec is written and the pipeline is already running.
 
 ### The Architect Who Builds Alone at Scale
-> When I'm the sole developer on multiple simultaneous projects and I have strong architectural opinions, I want to **turn my specs into shipped features without sitting at a terminal for every step** — dispatching agents, monitoring results, and approving merges from my phone via Telegram so I can stay productive even when I'm not at my desk.
+> When I'm the sole developer on multiple simultaneous projects and I have strong architectural opinions, I want to **turn my specs into shipped features without sitting at a terminal for every step** — dispatching agents, monitoring results, and approving merges from my phone via Slack so I can stay productive even when I'm not at my desk.
 
 ### The Principal Engineer Who Wants Visibility
 > When I'm shipping code across multiple repos, I want a **single productivity dashboard that shows me what's published, what's in progress, and what's defined** — not server metrics, but a real picture of my body of work. And I want it generated from existing Git history, not requiring a special setup.
@@ -857,9 +868,9 @@ DUT is the only agent that runs *inside* Telegram rather than alongside it. It d
 | ID | As a… | I want to… | So that… | SP |
 |---|---|---|---|---:|
 | **US-01** | Architect | Run `gwrk feature <name>` and have the entire spec→plan→implement→review→merge lifecycle execute autonomously | I ship features while I sleep | 13 |
-| **US-02** | Architect | Receive Telegram notifications for review verdicts, CI results, and merge conflicts | I can unblock the pipeline from my phone | 8 |
-| **US-03** | Architect | Approve or reject reviews via Telegram inline buttons | I never need to open a laptop to keep the pipeline moving | 5 |
-| **US-04** | Architect | Message `/dream` on Telegram and have a conversation that produces a spec.md | I turn ideas into specced features from my phone | 8 |
+| **US-02** | Architect | Receive Slack notifications for review verdicts, CI results, and merge conflicts | I can unblock the pipeline from my phone | 8 |
+| **US-03** | Architect | Approve or reject reviews via Slack interactive buttons or ✅ reactions | I never need to open a laptop to keep the pipeline moving | 5 |
+| **US-04** | Architect | Type `/dream` in Slack and have a threaded conversation that produces a spec.md | I turn ideas into specced features from my phone | 8 |
 | **US-04** | Architect | Have multiple agents work on different phases simultaneously | Feature delivery is parallelized, not serialized | 8 |
 | **US-05** | Architect | Have merge conflicts automatically resolved using AI | I don't manually untangle git conflicts from agent output | 8 |
 | **US-06** | PE | See a Pulse dashboard showing published/draft LOC, weekly trends, and spec progress across all repos | I know the state of my work at a glance | 5 |
@@ -871,7 +882,7 @@ DUT is the only agent that runs *inside* Telegram rather than alongside it. It d
 | **US-12** | Platform Eng | Install gwrk via `npm install -g gwrk` and scaffold the `.agent/` directory | Setup takes 5 minutes, not 5 hours | 3 |
 | **US-13** | Platform Eng | Run `gwrk server start` and have a local build server with Docker sandboxes | Cloud agents have a secure local execution target | 8 |
 | **US-14** | Builder | Run `gwrk define <feature>` for the definition-until-solid loop | All definition work is complete before implementation starts | 8 |
-| **US-15** | Builder | Request `/pulse` via Telegram and get a summary including compression ratios | I track velocity and compression without context-switching | 3 |
+| **US-15** | Builder | Request `/gwrk pulse` via Slack and get a summary including compression ratios | I track velocity and compression without context-switching | 3 |
 
 **Total estimated story points: 120 SP**
 
@@ -911,9 +922,8 @@ gwrk effort <feature>              # Generate effort estimate from spec stories
 gwrk compression <feature>         # Show compression ratios for a shipped feature
 gwrk compression --all             # Summary compression across all features
 
-# === Telegram ===
-gwrk telegram setup                # BotFather pairing + config
-gwrk telegram pair                 # Pair your Telegram account
+# === Slack ===
+gwrk setup slack                   # Automated Slack app provisioning (Socket Mode)
 
 # === Codex Cloud ===
 gwrk codex setup                   # Walk through Codex Cloud project setup
@@ -921,12 +931,11 @@ gwrk codex status                  # Check Codex Cloud connection + environment
 gwrk codex agents-md               # Generate AGENTS.md from .agent/rules/
 
 # === Dashboard & Remote Access ===
-gwrk dashboard                     # Open Glass Dashboard in local browser
-gwrk tunnel start                  # Start tunnel (ngrok/cloudflared/tailscale)
-gwrk tunnel start --provider ngrok # Explicit provider selection
+# Open gwrk App Home Tab in Slack for real-time dashboard
+gwrk tunnel start                  # Start tunnel (cloudflared/tailscale)
+gwrk tunnel start --provider cloudflared  # Explicit provider selection
 gwrk tunnel status                 # Show tunnel URL
 gwrk tunnel stop                   # Tear down tunnel
-# Telegram: /dashboard             # Get magic link for mobile access
 
 # === Parallelism & System ===
 gwrk config set parallelism.local.clones 3    # Max simultaneous local repo clones
@@ -975,10 +984,10 @@ The build server is a local daemon modeled after OpenClaw's Gateway:
 │                    (localhost:18790)                           │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │ Dispatch      │  │ Git Manager  │  │ Telegram Channel   │  │
+│  │ Dispatch      │  │ Git Manager  │  │ Slack Channel      │  │
 │  │ Queue         │  │              │  │                    │  │
-│  │ - Phase pool  │  │ - Branch ops │  │ - grammY bot       │  │
-│  │ - Agent pool  │  │ - Merge      │  │ - Inline buttons   │  │
+│  │ - Phase pool  │  │ - Branch ops │  │ - Slack Channel    │  │
+│  │ - Agent pool  │  │ - Merge      │  │ - @slack/bolt      │  │
 │  │ - Retry logic │  │ - Conflict   │  │ - Command handling │  │
 │  └──────┬───────┘  └──────┬───────┘  └─────────┬──────────┘  │
 │         │                 │                     │              │
@@ -994,7 +1003,7 @@ The build server is a local daemon modeled after OpenClaw's Gateway:
 │  ┌─────────────────────┐  ┌────────────────────────────────┐  │
 │  │ Pulse Engine        │  │ Review & CI Engine              │  │
 │  │ - Git log scanner   │  │ /review-code → /review-uat      │  │
-│  │ - Snapshot generator│  │ → verdict → Telegram → merge    │  │
+│  │ - Snapshot generator│  │ → verdict → Slack → merge        │  │
 │  │ - Historical trends │  └────────────────────────────────┘  │
 │  └─────────────────────┘                                      │
 └──────────────────────────────────────────────────────────────┘
@@ -1086,40 +1095,34 @@ gwrk pulse scan /Users/gonzo/Code/code-red
 
 This replaces GForge.ai's 902-line `PulseStore`, its scheduler worker, and its Prisma-backed `CodebaseMetricSnapshot` table — all with a single Git log scan.
 
-## Glass Dashboard (Mobile-First Real-Time View)
+## App Home Tab (Real-Time Dashboard)
 
-While Pulse answers "what have I built?", the **Glass Dashboard** answers "what is the daemon doing *right now*?"
+While Pulse answers "what have I built?", the **App Home Tab** answers "what is the daemon doing *right now*?"
 
-The dashboard is a mobile-first SPA embedded in the Fastify daemon at `:18790/dashboard`:
+The dashboard is a Slack-native view rendered via Block Kit `views.publish` in the gwrk app's App Home Tab:
 
-| Panel | Content | Data Source |
-|---|---|---|
-| **Ops View** | Active agents, dispatch queue, system resources (CPU/MEM/disk) | `/api/status` (REST) |
-| **Event Stream** | Live gate results, agent dispatches, CI outcomes | `/api/events` (SSE) |
-| **Feature Timeline** | Phase progress bars, gate pass/fail, agent assignments | `/api/features` (REST) |
-| **Pulse View** | LOC trends, spec progress, repo snapshots | `/api/pulse` (REST) |
-| **Compression View** | Point/Total ratios, per-feature timelines | `/api/compression` (REST) |
+| Panel | Content |
+|---|---|
+| **Ops View** | Active agents, dispatch queue, system resources |
+| **Project Status** | Phase progress bars, gate pass/fail per project |
+| **Pulse View** | LOC trends, spec progress, repo snapshots |
+| **Compression View** | Point/Total ratios, per-feature timelines |
+| **Quick Actions** | Buttons for dispatch, pulse, view logs |
+
+### Auto-Refresh
+
+The App Home Tab updates every 30 seconds while open. No SSE, no WebSocket reconnect logic — just Block Kit re-publish.
 
 ### Remote Access via Tunnel
 
-The daemon runs on `localhost:18790`. To reach it from your phone:
+Slack provides remote access natively — the App Home Tab is available from any device with Slack installed. For direct access to the build server API:
 
 | Tunnel | Command | URL |
 |---|---|---|
-| **ngrok** | `ngrok http 18790` | `https://xyz.ngrok-free.app` |
 | **Cloudflare Tunnel** | `cloudflared tunnel run gwrk` | `https://gwrk.yourdomain.com` |
 | **Tailscale Funnel** | `tailscale funnel 18790` | `https://macbook.tail1234.ts.net` |
 
-### Magic Link Authentication
-
-Since Telegram is already paired to the daemon, authentication is zero-friction:
-
-1. You text `/dashboard` to the gwrk Telegram bot.
-2. The daemon generates a time-limited JWT.
-3. The bot replies with the tunnel URL + token as a tappable link.
-4. The SPA loads, consumes the token, stores it in `sessionStorage`, and removes it from the URL.
-
-The dashboard is **read-only by design** — you *watch* through the browser, you *act* through Telegram.
+The App Home Tab handles actions natively via Slack's authenticated context — no magic links, no JWTs, no separate auth flow.
 
 ---
 
@@ -1307,9 +1310,9 @@ gwrk compression --all
 | Low Point Compression, Low Total Compression | Neither agents nor pipeline are performing. Revisit specs, review agent selection, check for governance friction. |
 | Compression ratio < 1× | You're slower than human estimates. Something is fundamentally broken — bad decomposition, excessive rework cycles, or agents writing code that fails review. |
 
-## Compression in Telegram
+## Compression in Slack
 
-When a feature merges, gwrk sends a compression summary to Telegram:
+When a feature merges, gwrk sends a compression summary to the project's Slack channel:
 
 ```
 🏆 Feature Shipped: 002-engine-foundation
@@ -1333,16 +1336,18 @@ When a feature merges, gwrk sends a compression summary to Telegram:
 | **Pipeline stage commands** | Individual `gwrk specify/plan/tasks/implement/review-*` |
 | **Agent backend agnostic** | Works with Gemini CLI, Claude Code, OpenClaw, Codex |
 
-## FR-2: Telegram Channel (P0)
+## FR-2: Slack Comms Layer (P0)
 
 | Requirement | Detail |
 |---|---|
-| **Bot setup** | BotFather integration, pairing flow |
-| **Status notifications** | Phase start/complete, CI results, review verdicts |
-| **Inline action buttons** | Approve/Reject/Retry for reviews |
-| **Command interface** | `/status`, `/approve`, `/reject`, `/dispatch`, `/pulse`, `/effort` |
-| **Live streaming** | Agent output streamed via message edits (OpenClaw pattern) |
-| **DM policy** | Pairing-based access control (OpenClaw pattern) |
+| **App provisioning** | Fully automated via `gwrk setup slack` (Socket Mode manifest) |
+| **Channel-per-project** | `gwrk new` / `gwrk init` creates `#<project-name>` channel |
+| **Status notifications** | Phase start/complete, CI results, review verdicts (Block Kit) |
+| **Interactive buttons** | Approve/Reject/Retry for reviews |
+| **Slash commands** | `/gwrk status`, `/gwrk approve`, `/gwrk dispatch`, `/gwrk pulse`, `/dream` |
+| **Threaded DUT** | DUT ideation via project channel threads |
+| **Reactions** | ✅ react-to-approve for lightweight confirmation |
+| **Presence** | Notification throttling (active=verbose, away=batched) |
 
 ## FR-3: Build Server (P0)
 
@@ -1381,7 +1386,7 @@ When a feature merges, gwrk sends a compression summary to Telegram:
 | **Published/draft separation** | Main branch ↔ published, feature branches ↔ drafts |
 | **Weekly buckets** | LOC added/deleted/total per week |
 | **Multi-repo aggregation** | Unified view across all tracked repositories |
-| **Telegram delivery** | `/pulse` command for snapshot summary |
+| **Slack delivery** | `/gwrk pulse` slash command for snapshot summary |
 
 ## FR-7: Effort Estimation Engine (P1)
 
@@ -1404,7 +1409,7 @@ When a feature merges, gwrk sends a compression summary to Telegram:
 | **Dormancy tracking** | Time between spec creation / plan approval and first implementation commit |
 | **Per-feature reports** | `gwrk compression <feature>` with full timeline breakdown |
 | **Cross-feature summary** | `gwrk compression --all` with trends and best/worst analysis |
-| **Telegram delivery** | Compression summary sent on feature merge |
+| **Slack delivery** | Compression summary posted to project channel on feature merge |
 
 ## FR-9: Multi-Agent Dispatch (P0)
 
@@ -1418,10 +1423,10 @@ When a feature merges, gwrk sends a compression summary to Telegram:
 | **Done, Done! completion protocol** | Post-exit verification: tests, lint, build before marking complete |
 | **Retry + escalation** | Up to 3 retries per backend, then fallback to next backend |
 | **Tandem dispatch** | Different backends for different phases, simultaneously |
-| **Telegram escalation** | Human notified when all backends exhausted |
+| **Slack escalation** | Human notified in project channel when all backends exhausted |
 
 ## FR-10: Agent-DUT Conversational Ideation (P1)
-Agent-DUT **MUST** provide a conversational interface via Telegram for feature ideation, producing a high-quality `spec.md` with effort previews and a [Ship It] confirmation.
+Agent-DUT **MUST** provide a conversational interface via Slack threads for feature ideation, producing a high-quality `spec.md` with effort previews and a [Ship It] confirmation. The DUT protocol aligns to Foxtrot Charlie: Discovery (SPARK → PROBE → DISAMBIGUATE) then Definition (SHAPE → PRESS → GROUND → REVIEW → COMMIT).
 
 ## FR-11: Hard Gate Generation (P1)
 Agent-DUS **MUST** generate a corresponding shell script `gates/T0xx-gate.sh` for every task it imports into the system. These scripts must contain deterministic assertions (e.g., `test -f`, `grep`, `gh pr status`) that return 0 for pass and 1 for fail.
@@ -1429,28 +1434,25 @@ Agent-DUS **MUST** generate a corresponding shell script `gates/T0xx-gate.sh` fo
 ## FR-12: State-Compliance Enforcement (P1)
 The `gwrk tasks done` command **MUST** execute the corresponding gate script before updating the task status to `completed` in `tasks.json`. If the script fails, the command must exit with an error, preventing the implementation agent from proceeding.
 
-## FR-13: Glass Dashboard (P1)
+## FR-13: Slack App Home Tab (P1)
 
 | Requirement | Detail |
 |---|---|
-| **Embedded SPA** | Mobile-first web UI served at `:18790/dashboard` by the Fastify daemon |
-| **Ops View** | Real-time active agents, dispatch queue, system resources (CPU/MEM/disk) |
-| **Event Stream** | Server-Sent Events (SSE) for live gate results, dispatches, CI outcomes |
-| **Feature Timeline** | Phase progress, gate status, agent assignment per feature |
-| **Pulse integration** | Pulse and Compression data surfaced alongside ops data |
-| **Dark mode** | Respect `prefers-color-scheme` |
-| **SSE reconnect** | Auto-reconnect on phone wake / network recovery |
+| **App Home Tab** | Slack-native dashboard via Block Kit `views.publish` |
+| **Ops View** | Real-time active agents, dispatch queue, system resources |
+| **Project Status** | Phase progress bars, gate status per project |
+| **Pulse integration** | Pulse and Compression data surfaced in App Home |
+| **Quick Actions** | Buttons for dispatch, pulse, view logs |
+| **Auto-refresh** | Updated every 30s while App Home is open |
 
-## FR-14: Tunnel + Magic Link (P1)
+## FR-14: Tunnel (P1)
 
 | Requirement | Detail |
 |---|---|
-| **Tunnel start/stop** | `gwrk tunnel start/stop` with provider abstraction (ngrok, cloudflared, tailscale) |
+| **Tunnel start/stop** | `gwrk tunnel start/stop` with provider abstraction (cloudflared, tailscale) |
 | **Provider config** | `tunnel.provider` in `.gwrkrc.json`, fail-fast if not configured |
-| **Telegram magic link** | `/dashboard` command returns tunnel URL with time-limited JWT |
-| **Auth model** | JWT consumed on load, stored in `sessionStorage`, cleared from URL |
-| **Read-only** | Dashboard is view-only; all mutations go through Telegram |
-| **Rate limiting** | Fastify rate-limit plugin, 100 req/min per IP |
+| **Default provider** | Cloudflare Tunnel (free, unlimited bandwidth, persistent URL) |
+| **Domain config** | User provisions custom domain (e.g., `project.gforge.ai`) |
 
 ---
 
@@ -1458,9 +1460,9 @@ The `gwrk tasks done` command **MUST** execute the corresponding gate script bef
 
 | Layer | Technology | Rationale |
 |---|---|---|
-| **CLI** | TypeScript + Commander/Oclif | Cross-platform, npm distribution |
+| **CLI** | TypeScript + Commander.js | Cross-platform, npm distribution |
 | **Build Server** | Node.js + Fastify | Lightweight daemon |
-| **Telegram** | grammY | Same library as OpenClaw, production-proven |
+| **Comms** | `@slack/bolt` (Socket Mode) | Channel-per-project, threads, App Home Tab, no public URL |
 | **Sandbox Runtime** | Docker | Proven isolation (OpenClaw pattern) |
 | **Git Operations** | `gh` CLI + `git` | GitHub-native |
 | **Agent: Codex** | `codex exec --full-auto` | OpenAI, non-interactive, built-in review, sandbox-write |
@@ -1468,10 +1470,9 @@ The `gwrk tasks done` command **MUST** execute the corresponding gate script bef
 | **Agent: Gemini** | `gemini -p --json` | Google, headless, auto-routing, GEMINI.md context |
 | **Pulse Engine** | Git log parser (custom) | No database required for scan mode |
 | **Effort Engine** | Markdown parser + SP calculator | Deterministic from spec artifacts |
-| **Task Tracking** | Native Flat JSON/JSONL | `.gwrk/tasks.json`, `.gwrk/history.jsonl` |
-| **Glass Dashboard** | Vite SPA (React, embedded static assets) | Mobile-first, bundled into daemon, no CDN |
-| **Tunnel Layer** | ngrok / cloudflared / tailscale (provider abstraction) | Remote access to local daemon |
-| **Dashboard Auth** | JWT (jsonwebtoken) via Telegram magic link | Read-only, time-limited, zero-friction |
+| **Execution Ledger** | SQLite via `better-sqlite3` | Global `~/.gwrk/gwrk.db`, ADR-002 |
+| **Dashboard** | Slack App Home Tab (Block Kit) | Mobile-first, no separate SPA |
+| **Tunnel Layer** | Cloudflare Tunnel (default) / Tailscale Funnel | Remote access, persistent URLs |
 | **Configuration** | Zod schemas | Fail-fast validation |
 
 ---
@@ -1481,10 +1482,10 @@ The `gwrk tasks done` command **MUST** execute the corresponding gate script bef
 | Tool | Category | Strength | What gwrk Adds |
 |---|---|---|---|
 | **Gemini CLI** | AI Agent | Multi-file reasoning, auto-routing | Orchestration, tandem dispatch, governance, completion protocol |
-| **Codex CLI** | AI Agent | Autonomous execution, built-in review | Fleet orchestration, spec pipeline, Telegram, Pulse |
+| **Codex CLI** | AI Agent | Autonomous execution, built-in review | Fleet orchestration, spec pipeline, Slack, Pulse |
 | **Claude Code** | AI Agent | Deep context, long refactors | Multi-agent tandem, parallel dispatch, compression tracking |
 | **OpenClaw** | AI Gateway | Personal assistant, sandboxing, Telegram | Build/dev orchestration, spec pipeline, multi-backend |
-| **Cursor** | AI IDE | Inline code assist | No spec-first pipeline, no headless dispatch, no Telegram |
+| **Cursor** | AI IDE | Inline code assist | No spec-first pipeline, no headless dispatch, no Slack |
 | **GitHub Copilot Workspace** | AI Dev | Issue-to-PR | Cloud-only, single vendor, limited governance |
 | **Devin / SWE-Agent** | AI Dev | Autonomous coding | Opaque, single model, no governance, no multi-agent |
 
@@ -1495,7 +1496,7 @@ The only tool that combines:
 2. **Multi-agent tandem dispatch** — Gemini, Codex, Claude working simultaneously
 3. **Done, Done! completion protocol** — retry + escalate until the work ships
 4. Parallel agent dispatch with sandbox isolation
-5. **Telegram-based mobile control plane**
+5. **Slack-based multi-project control plane** (channel-per-project, threaded DUT)
 6. Productivity dashboard (Pulse) with historical git analysis
 7. **Compression metrics** — auditable proof of acceleration
 8. SP-driven effort estimation
@@ -1510,7 +1511,7 @@ The only tool that combines:
 | Tier | Price | Includes |
 |---|---|---|
 | **gwrk CLI** | Free (MIT) | CLI, workflows, governance, templates |
-| **gwrk Server** | Free (MIT) | Build server, sandboxes, Git management, Telegram |
+| **gwrk Server** | Free (MIT) | Build server, sandboxes, Git management, Slack |
 | **gwrk Pulse** | Free (MIT) | Productivity dashboard, git scan |
 | **gwrk Cloud** (future) | Paid | Managed cloud agents, hosted Pulse, team features |
 
@@ -1518,10 +1519,10 @@ The only tool that combines:
 
 1. **Launch on GitHub** — MIT licensed, zero friction
 2. **Dogfood relentlessly** — use gwrk to build Code-Red, GForge.ai, and gwrk itself
-3. **Telegram-first demos** — screen recordings of approving reviews from a phone
+3. **Slack-first demos** — screen recordings of approving reviews from your phone in Slack
 4. **Pulse showcase** — "point gwrk at any repo and see your productivity history"
 5. **Integration guides** — setup with every major AI agent
-6. **DUT showcases** — "idea on a walk → spec on Telegram → shipped PR" screen recordings
+6. **DUT showcases** — "idea on a walk → `/dream` in Slack → shipped PR" screen recordings
 
 ---
 
@@ -1532,17 +1533,17 @@ The only tool that combines:
 | Phase | Name | Contents | Gate |
 |---|---|---|---|
 | **0** | **Extraction** | Extract workflows, rules, templates, scripts from Code-Red | `gwrk init` scaffolds correctly |
-| **1** | **CLI Core** | `gwrk specify/plan/tasks` commands, agent-run integration | `gwrk specify` generates a spec |
+| **1** | **CLI Core** | `gwrk new/init`, multi-CLI provisioning, `specify/plan/tasks`, SQLite ledger | `gwrk new <project>` scaffolds everything |
 | **2** | **Build Server** | Docker sandbox manager, Git tree manager, dispatch queue | `gwrk server start` creates sandboxes |
-| **3** | **Telegram** | grammY bot setup, status notifications, inline buttons, commands | Receive and approve a review from Telegram |
-| **4** | **WUD Loop** | `gwrk wud` — autonomous implement→review→PR→CI loop | Agent completes a phase and opens a PR |
+| **3** | **Slack** | Socket Mode app, Bolt SDK, slash commands, interactive messages, threads, channels | Send status update and approve review from Slack |
+| **4** | **WUD Loop** | `gwrk wud` — autonomous implement→review→PR→CI loop, run recording | Agent completes a phase and opens a PR |
 | **5** | **Parallel Dispatch** | Multi-phase concurrent execution, conflict resolution | Three agents work simultaneously |
-| **6** | **Pulse** | Git log scanner, PulseSnapshot generation, historical scan, dashboard | `gwrk pulse scan` produces historical data |
-| **7** | **Effort + Compression** | Story extraction, role bracketing, timestamp collection, compression ratios | `gwrk compression` produces a report with Point + Total ratios |
-| **8** | **Multi-Agent Router** | Agent router, per-backend invocation, Done Done! protocol, retry + escalation | Dispatch to Codex, retry on Claude, feature ships |
-| **9** | **Agent-DUT** | Telegram conversational ideation, voice notes, spec generation, ship action | `/dream` produces a spec.md from mobile conversation |
+| **6** | **Pulse** | Git log scanner, PulseSnapshot generation, historical scan | `gwrk pulse scan` produces historical data |
+| **7** | **Effort + Compression** | Story extraction, role bracketing, compression ratios, leading indicators | `gwrk compression` with convergence/density/spec quality metrics |
+| **8** | **Multi-Agent Router** | Agent router, per-backend invocation, SQLite-backed learning, retry + escalation | Dispatch to Codex, retry on Claude, feature ships |
+| **9** | **Agent-DUT** | Slack threaded ideation, FC-aligned protocol (SPARK→COMMIT), analyze lens | `/dream` in Slack produces spec.md from threaded conversation |
 | **10** | **GForge Integration** | Pulse + Compression replaces PulseStore, unified dashboard | Single pane across repos |
-| **11** | **Glass Dashboard** | Mobile-first embedded SPA, SSE endpoints, Ops/Pulse/Compression views, tunnel layer, Telegram magic link auth | Open browser on phone via `/dashboard` and see live agent activity |
+| **11** | **App Home Tab** | Slack App Home Tab with Block Kit: Ops, Projects, Pulse, Compression views | Open gwrk in Slack → see live agent activity |
 
 ---
 
@@ -1553,18 +1554,18 @@ The only tool that combines:
 | Time from `gwrk feature` to merged PR (3-phase feature) | < 2 hours (wall clock) | Build server logs |
 | **Average Point Compression across features** | **> 50×** | Compression engine |
 | **Average Total Compression across features** | **> 10×** | Compression engine |
-| Review decision latency via Telegram | < 5 minutes (from notification to approval tap) | Telegram message timestamps |
+| Review decision latency via Slack | < 5 minutes (from notification to approval tap/react) | Slack message timestamps |
 | Agent parallelization ratio | ≥ 3 concurrent WUD instances per feature | Sandbox count |
-| **Done, Done! completion rate** | **> 95% of phases complete without human escalation** | Dispatch logs |
+| **Done, Done! completion rate** | **> 95% of phases complete without human escalation** | SQLite `runs` table |
 | Merge conflict auto-resolution rate | > 80% | Git manager logs |
-| **Multi-backend fallback success rate** | **> 90% (phase completes after retry/escalation)** | Agent router logs |
+| **Multi-backend fallback success rate** | **> 90% (phase completes after retry/escalation)** | SQLite `runs` table |
 | `gwrk pulse scan` on 50K-commit repo | < 60 seconds | Benchmark |
 | Effort report generation from spec | < 30 seconds | CLI timing |
-| `gwrk init` to first `gwrk specify` | < 5 minutes | User testing |
-| **DUT: idea-to-spec via Telegram** | **< 30 minutes of conversation** | DUT thread timestamps |
+| `gwrk new` to first `/dream` | < 3 minutes | User testing |
+| **DUT: idea-to-spec via Slack thread** | **< 30 minutes of conversation** | DUT thread timestamps |
 | **DUT: spec acceptance rate** | **> 80% of DUT specs ship without major revision** | Spec edit history |
-| **Dashboard: Telegram `/dashboard` to live view** | **< 10 seconds** | Tunnel + JWT + page load |
-| **Dashboard: SSE reconnect after phone sleep** | **< 3 seconds** | Client-side reconnect timing |
+| **First-pass gate success rate** | **> 60% (agent's first attempt passes gate)** | SQLite `runs` table |
+| **Average compression across features** | **Trending upward over time** | SQLite `compression` table |
 
 ---
 
@@ -1574,22 +1575,22 @@ The only tool that combines:
 |---|---|---|---|---|
 | 1 | ~~Which agent backends to support at launch?~~ **All three: Gemini CLI, Codex CLI, Claude Code.** | David | ✅ Resolved | 🟢 Closed |
 | 2 | Should the build server require Docker, or also support podman/containerd? | David | Packaging | 🟡 Open |
-| 3 | How should gwrk handle LLM rate limits (429) during heavy parallel dispatch across 3 vendors? | David | Reliability | 🟡 Open |
+| 3 | ~~How should gwrk handle LLM rate limits (429)?~~ **Exponential backoff in agent-run.sh (ADR-002, I-WUD-011).** | David | ✅ Resolved | 🟢 Closed |
 | 4 | Should Pulse support non-Git sources (e.g., word count from markdown files in a content repo)? | David | Scope | 🟡 Open |
-| 5 | ~~Should gwrk ship its own Beads binary, or expect `bd` to be installed separately?~~ **N/A: gwrk uses native flat JSON/JSONL.** | David | ✅ Resolved | 🟢 Closed |
+| 5 | ~~Should gwrk ship its own Beads binary?~~ **N/A: gwrk uses SQLite (ADR-002).** | David | ✅ Resolved | 🟢 Closed |
 | 6 | How deeply should gwrk integrate with OpenClaw's skill system? Can a gwrk workflow be a skill? | David | Integration | 🟡 Open |
-| 7 | Should the Telegram bot support multi-user teams, or is MVP strictly single-user? | David | Scope | 🟡 Open |
+| 7 | ~~Should the comms bot support multi-user teams?~~ **Slack channels support multi-user natively.** | David | ✅ Resolved | 🟢 Closed |
 | 8 | Should Pulse separate "authored LOC" from "AI-generated LOC" using commit metadata? | David | Metrics | 🟡 Open |
 | 9 | What's the right session-gap threshold for active coding detection? 30 min default — configurable? | David | Compression | 🟡 Open |
 | 10 | Should compression count definition time (spec writing, plan review) as effort, or only impl? | David | Compression | 🟡 Open |
-| 11 | Should the agent router use historical compression data to auto-select backends? How much learning? | David | Router | 🟡 Open |
+| 11 | ~~Should the agent router use historical data to auto-select backends?~~ **Yes. SQLite `runs` table (ADR-002).** | David | ✅ Resolved | 🟢 Closed |
 | 12 | How to handle model pricing differences when routing? Codex/Claude/Gemini have different cost profiles. | David | Economics | 🟡 Open |
 | 13 | Should Done, Done! verification be customizable per-project (e.g., skip lint, require E2E)? | David | Completion | 🟡 Open |
 | 14 | Which LLM backend should power DUT's conversational loop? Same router, or dedicated model for ideation? | David | DUT | 🟡 Open |
 | 15 | Should DUT support image input (whiteboard photos, UI sketches) or text/voice only for MVP? | David | DUT | 🟡 Open |
-| 16 | Should DUT threads be stored in-repo (`.gwrk/dreams/`) or only in the Telegram thread? | David | DUT | 🟡 Open |
-| 17 | Which tunnel provider should be the default? ngrok (easiest), Cloudflare Tunnel (stable URL), Tailscale Funnel (P2P encrypted)? | David | Dashboard | 🟡 Open |
-| 18 | Should the Glass Dashboard support any write actions (e.g., pause/resume from browser), or remain strictly read-only with all mutations via Telegram? | David | Dashboard | 🟡 Open |
+| 16 | ~~Should DUT threads be stored in-repo or only in the Telegram thread?~~ **In-repo at `specs/<feature>/.gwrk/dreams/` AND in Slack thread.** | David | ✅ Resolved | 🟢 Closed |
+| 17 | ~~Which tunnel provider should be the default?~~ **Cloudflare Tunnel (free, persistent URL, unlimited bandwidth).** | David | ✅ Resolved | 🟢 Closed |
+| 18 | ~~Should the Dashboard support write actions?~~ **App Home Tab includes Quick Action buttons; mutations go through Slack commands.** | David | ✅ Resolved | 🟢 Closed |
 
 ---
 
