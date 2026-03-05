@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T009 — Agent dispatch abstraction in src/utils/agent.ts
+# Gate: T009 — Implement test strategy for Phase 1
+# Asserts: Derived from task description
 
-test -f src/utils/agent.ts
-grep -q 'dispatchAgent' src/utils/agent.ts
-grep -q 'AgentBackend' src/utils/agent.ts
-grep -q 'gemini' src/utils/agent.ts
-grep -q 'claude' src/utils/agent.ts
-grep -q 'codex' src/utils/agent.ts
-grep -q 'execCommand' src/utils/agent.ts
-grep -q 'ExecResult' src/utils/agent.ts
 
-echo "PASS: T009 — agent.ts has dispatchAgent with all backends"
+# Phase Acceptance Criteria
+pnpm install
+pnpm exec tsc --noEmit
+node --import tsx src/cli.ts --help
+node --import tsx src/cli.ts init
+pnpm test
+
+echo "PASS: T009 — Implement test strategy for Phase 1"

@@ -1,11 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T006 — CLI entry point in src/cli.ts with Commander
+# Gate: T006 — Implement src/commands/init.ts
+# Asserts: Derived from task description
 
-test -f src/cli.ts
-grep -q 'commander\|Command' src/cli.ts
-grep -q 'gwrk' src/cli.ts
-grep -q 'parse\|parseAsync' src/cli.ts
-grep -q 'init' src/cli.ts
+test -f src/commands/init.ts
 
-echo "PASS: T006 — cli.ts has Commander program with init command"
+echo "PASS: T006 — Implement src/commands/init.ts"

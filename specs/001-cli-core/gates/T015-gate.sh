@@ -1,10 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T015 — Plan parser in src/utils/parser.ts
+# Gate: T015 — Implement test strategy for Phase 2
+# Asserts: Derived from task description
 
-test -f src/utils/parser.ts
-grep -q 'parsePlan' src/utils/parser.ts
-grep -q 'phases\|Phase' src/utils/parser.ts
-grep -q 'readFileSync\|readFile' src/utils/parser.ts
 
-echo "PASS: T015 — parser.ts has parsePlan that extracts phases"
+# Phase Acceptance Criteria
+node --import tsx src/cli.ts specify "test feature"
+node --import tsx src/cli.ts plan 001-cli-core
+pnpm test
+
+echo "PASS: T015 — Implement test strategy for Phase 2"

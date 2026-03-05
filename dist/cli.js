@@ -6,6 +6,7 @@ import { effortCommand } from "./commands/effort.js";
 import { initCommand } from "./commands/init.js";
 import { planCommand } from "./commands/plan.js";
 import { specifyCommand } from "./commands/specify.js";
+import { tasksCommand } from "./commands/tasks.js";
 import { loadConfig } from "./utils/config.js";
 const program = new Command();
 program
@@ -17,6 +18,7 @@ program.addCommand(specifyCommand);
 program.addCommand(planCommand);
 program.addCommand(analyzeCommand);
 program.addCommand(effortCommand);
+program.addCommand(tasksCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
     if (actionCommand.name() !== "init") {
         // This will process.exit(1) if config is missing or invalid

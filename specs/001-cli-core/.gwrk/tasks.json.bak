@@ -1,6 +1,6 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-03-05T02:32:37.659Z",
+  "createdAt": "2026-03-05T02:28:21.150Z",
   "phases": [
     {
       "id": "phase-01",
@@ -69,13 +69,6 @@
           "status": "open",
           "gateScript": "gates/T009-gate.sh"
         }
-      ],
-      "doneWhen": [
-        "`pnpm install` exits 0",
-        "`pnpm exec tsc --noEmit` exits 0",
-        "`node --import tsx src/cli.ts --help` prints commands including `init`",
-        "`node --import tsx src/cli.ts init` creates scaffold directories in a temp dir",
-        "`pnpm test` passes TR-001 and TR-008"
       ]
     },
     {
@@ -124,11 +117,6 @@
           "status": "open",
           "gateScript": "gates/T015-gate.sh"
         }
-      ],
-      "doneWhen": [
-        "`node --import tsx src/cli.ts specify \"test feature\"` spawns the configured agent process",
-        "`node --import tsx src/cli.ts plan 001-cli-core` spawns the agent with correct workflow",
-        "`pnpm test` passes TR-002, TR-003, TR-009, TR-010"
       ]
     },
     {
@@ -177,16 +165,6 @@
           "status": "open",
           "gateScript": "gates/T021-gate.sh"
         }
-      ],
-      "doneWhen": [
-        "`node --import tsx src/cli.ts tasks generate 001-cli-core` creates `specs/001-cli-core/.gwrk/tasks.json` and `specs/001-cli-core/gates/T*-gate.sh`",
-        "`jq '.phases | length' specs/001-cli-core/.gwrk/tasks.json` returns ≥ 1",
-        "`ls specs/001-cli-core/gates/T*-gate.sh | wc -l` matches task count",
-        "Gate files have `+x` permission: `test -x specs/001-cli-core/gates/T001-gate.sh`",
-        "`node --import tsx src/cli.ts tasks done 001-cli-core T001` with a failing gate exits 1",
-        "`node --import tsx src/cli.ts tasks done 001-cli-core T001` with a passing gate exits 0 and updates tasks.json",
-        "`tail -1 .gwrk/history.jsonl | jq -r '.taskId'` outputs `T001`",
-        "`pnpm test` passes TR-004, TR-006, TR-007"
       ]
     },
     {
@@ -207,12 +185,6 @@
           "status": "open",
           "gateScript": "gates/T023-gate.sh"
         }
-      ],
-      "doneWhen": [
-        "`node --import tsx src/cli.ts tasks list 001-cli-core --json | jq '.tasks | length'` returns task count",
-        "`node --import tsx src/cli.ts tasks next 001-cli-core 1 --json | jq -r '.id'` returns a task ID",
-        "`pnpm test` passes TR-005, VR-001, VR-002, VR-003",
-        "All tests pass: `pnpm test` exits 0"
       ]
     }
   ]
