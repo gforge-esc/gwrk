@@ -1,4 +1,43 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import type { StdioOptions } from "node:child_process";
+
+export interface RunOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  stdio?: StdioOptions;
+}
+
+/**
+ * Run a command with streaming output (stdio: inherit by default).
+ * Returns a promise that resolves on success or rejects with exit code.
+ */
+export function run(
+  command: string,
+  args: string[],
+  opts?: RunOptions,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: opts?.cwd,
+      env: opts?.env ?? process.env,
+      stdio: opts?.stdio ?? "inherit",
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        const err = new Error(`Process exited with code ${code}`) as Error & { exitCode: number };
+        err.exitCode = code ?? 1;
+        reject(err);
+      }
+    });
+
+    child.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
 
 export interface ExecResult {
   exitCode: number;
