@@ -72,35 +72,35 @@
           "id": "T009",
           "title": "Create agent dispatch abstraction in src/utils/agent.ts",
           "description": "Implement dispatchAgent(opts: DispatchOptions) from contracts/agent.md. Define AgentBackend type ('gemini' | 'claude' | 'codex' | 'codex-cloud'). Build CLI args per backend: gemini uses '-p', claude uses '-p --output-format json', codex uses 'exec --full-auto', codex-cloud uses 'run --cloud --non-interactive --full-auto'. Spawn via child_process.execFile. Return { exitCode, stdout, stderr }. REMEDIATION: REVIEW FAIL (uat): Agent Dispatch — Expected: Successful agent invocation. Actual: Crashes with 'Cannot use both a positional prompt and the --prompt (-p) flag together'. WHERE: src/utils/agent.ts. FIX: Refactor argument construction for 'gemini' and 'claude' to pass workflow content via stdin or avoid positional/flag conflict. See spec.md > US-002/US-003.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh"
         },
         {
           "id": "T010",
           "title": "Create gwrk specify command in src/commands/specify.ts",
           "description": "Implement FR-002: Commander command 'specify' taking <prompt> argument. Load config, resolve backend from config.agents.define, call dispatchAgent with workflowPath '.agent/workflows/specify.md' and the prompt. Register command in cli.ts. REMEDIATION: REVIEW FAIL (uat): US-002 — Expected: spec.md generation. Actual: Agent dispatch crash. FIX: Dependencies on T009. Ensure prompt is passed correctly to backend.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh"
         },
         {
           "id": "T011",
           "title": "Create gwrk plan command in src/commands/plan.ts",
           "description": "Implement FR-003: Commander command 'plan' taking <feature> argument. Validate specs/<feature>/spec.md exists (exit 1 with 'spec.md not found' if missing). Load config, dispatch agent with '/plan' workflow targeting the feature directory. REMEDIATION: REVIEW FAIL (uat): US-003 — Expected: plan.md generation. Actual: Agent dispatch crash. FIX: Dependencies on T009. Ensure feature directory is passed correctly to backend.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh"
         },
         {
           "id": "T012",
           "title": "Create gwrk analyze and effort commands",
           "description": "Implement FR-009 (src/commands/analyze.ts): Commander command 'analyze' taking <feature>, dispatches with '/analyze' workflow. Implement FR-010 (src/commands/effort.ts): Commander command 'effort' taking <feature>, dispatches with '/effort' workflow. Register both in cli.ts. REMEDIATION: REVIEW FAIL (uat): US-009/US-010 — Expected: Workflow dispatch. Actual: Agent dispatch crash. FIX: Dependencies on T009.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh"
         },
         {
           "id": "T013",
           "title": "Write unit tests for agent dispatch commands",
           "description": "Create test files for TR-002 (specify.test.ts), TR-003 (plan.test.ts), TR-009 (analyze.test.ts), TR-010 (effort.test.ts). Mock execFile via vi.mock. Assert correct workflow path, prompt, and backend are passed to dispatchAgent. Test plan command rejects when spec.md is missing. REMEDIATION: REVIEW FAIL (uat): TR-002/TR-003 — Expected: Tests verify real-world CLI compatibility. Actual: Tests pass against broken argument construction. FIX: Update test assertions to match the fixed argument structure from T009.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh"
         }
       ]

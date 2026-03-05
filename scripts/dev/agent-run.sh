@@ -146,6 +146,12 @@ case "$WORKFLOW" in
     DEFAULT_MODE="yolo"
     LABEL="Defining red tests for Phase ${PHASE}"
     ;;
+  gap-analysis)
+    [[ -z "$PHASE" ]] && { echo -e "${RED}✗${RESET} Phase required for gap-analysis"; usage 1; }
+    COMMAND="/gap-analysis ${SPEC_DIR} ${PHASE}"
+    DEFAULT_MODE="yolo"
+    LABEL="Gap Analysis for Phase ${PHASE}"
+    ;;
   define-until-solid)
     # Delegate to the DUS orchestrator — it manages its own gemini calls
     exec "$SCRIPT_DIR/define-until-solid.sh" "$FEATURE" "${PHASE:-}"
