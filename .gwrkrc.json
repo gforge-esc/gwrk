@@ -1,0 +1,9 @@
+{
+  "project": {
+    "name": "gwrk"
+  },
+  "agents": {
+    "define": "gemini",
+    "implement": "codex-cloud"
+  }
+}
