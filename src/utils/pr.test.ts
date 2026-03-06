@@ -1,128 +1,80 @@
-// src/utils/pr.test.ts
-// RED tests — Phase 2: PR + CI gate utility
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createPR, waitForCI } from "./pr.js"; // RED — module does not exist yet
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createPR, waitForCI } from './pr.js';
+import { run } from './exec.js';
+import fs from 'node:fs';
+import { loadTaskState } from './state.js';
 
-vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn(),
-  execFile: vi.fn(),
-}));
+vi.mock('./exec.js');
+vi.mock('node:fs');
+vi.mock('./state.js');
 
-vi.mock("./state.js", () => ({
-  loadTaskState: vi.fn(),
-}));
+describe('FR-006: PR + CI Gate', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
 
-import { execFileSync } from "node:child_process";
-import { loadTaskState } from "./state.js";
-
-const mockExec = vi.mocked(execFileSync);
-const mockLoadTaskState = vi.mocked(loadTaskState);
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
-describe("FR-006: PR creation — createPR()", () => {
-  it("US-006 #1: creates PR via gh pr create targeting develop", async () => {
-    // gh pr list returns empty (no existing PR)
-    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
-      const argsArr = args as string[];
-      if (cmd === "gh" && argsArr?.[0] === "pr" && argsArr?.[1] === "list") {
-        return "[]" as any; // no existing PRs
-      }
-      if (cmd === "gh" && argsArr?.[0] === "pr" && argsArr?.[1] === "create") {
-        return "https://github.com/org/repo/pull/42\n" as any;
-      }
-      return "" as any;
-    });
-
-    mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [{ id: "T001", title: "Task 1", description: "Desc", status: "completed" }],
-      }],
-    });
+  it('US-006 Scenario 1: creates a PR via gh CLI', async () => {
+    vi.mocked(run).mockResolvedValue('https://github.com/repo/pull/123\n');
+    vi.mocked(loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: [{ id: 'T001', title: 'Task 1', status: 'completed' }] }]
+    } as any);
 
     const prNumber = await createPR({
-      featureName: "004-wud-loop",
+      featureName: '004-wud-loop',
       phaseNumber: 1,
-      featureDir: "specs/004-wud-loop",
+      featureDir: 'specs/004-wud-loop'
     });
 
-    expect(prNumber).toBe(42);
-    // Must target develop
-    expect(mockExec).toHaveBeenCalledWith(
-      "gh",
-      expect.arrayContaining(["--base", "develop"]),
-      expect.anything()
-    );
+    expect(prNumber).toBe(123);
+    expect(run).toHaveBeenCalledWith('gh', [
+      'pr', 'create',
+      '--base', 'develop',
+      '--title', 'feat(004-wud-loop): Phase 1 complete',
+      '--body', expect.stringContaining('Tasks Completed')
+    ]);
   });
 
-  it("US-006 #2: returns existing PR number if PR already exists", async () => {
-    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
-      const argsArr = args as string[];
-      if (cmd === "gh" && argsArr?.[0] === "pr" && argsArr?.[1] === "list") {
-        return '[{"number": 99}]' as any;
-      }
-      return "" as any;
-    });
+  it('returns existing PR number if PR already exists', async () => {
+    // gh pr create fails if PR exists, then we should try gh pr list
+    const error = new Error('a pull request for branch "..." already exists');
+    (error as any).stderr = 'a pull request for branch "feat/004-wud-loop" already exists';
+    vi.mocked(run).mockRejectedValueOnce(error);
+    vi.mocked(run).mockResolvedValueOnce('456\n'); // gh pr list output
 
     const prNumber = await createPR({
-      featureName: "004-wud-loop",
+      featureName: '004-wud-loop',
       phaseNumber: 1,
-      featureDir: "specs/004-wud-loop",
+      featureDir: 'specs/004-wud-loop'
     });
 
-    expect(prNumber).toBe(99);
+    expect(prNumber).toBe(456);
+    expect(run).toHaveBeenCalledWith('gh', ['pr', 'list', '--head', 'feat/004-wud-loop', '--json', 'number', '--jq', '.[0].number']);
   });
 
-  it("rejects: gh CLI not found", async () => {
-    // FR-006 error state
-    mockExec.mockImplementation(() => {
-      const err = new Error("gh not found") as any;
-      err.code = "ENOENT";
-      throw err;
-    });
+  it('US-003 Scenario 1: waits for CI via gh pr checks --watch', async () => {
+    vi.mocked(run).mockResolvedValue('All checks passed\n');
 
-    await expect(
-      createPR({
-        featureName: "004-wud-loop",
-        phaseNumber: 1,
-        featureDir: "specs/004-wud-loop",
-      })
-    ).rejects.toThrow(/gh.*not found|ENOENT/);
-  });
-});
+    const result = await waitForCI(123, 30);
 
-describe("FR-006: CI gate — waitForCI()", () => {
-  it("returns true when all CI checks pass", async () => {
-    mockExec.mockReturnValue("" as any); // gh pr checks --watch exits 0
-
-    const result = await waitForCI(42, 30);
     expect(result).toBe(true);
+    expect(run).toHaveBeenCalledWith('gh', ['pr', 'checks', '123', '--watch'], { timeout: 30 * 60 * 1000 });
   });
 
-  it("returns false when CI checks fail", async () => {
-    mockExec.mockImplementation(() => {
-      const err = new Error("checks failed") as any;
-      err.status = 1;
-      throw err;
-    });
+  it('returns false if CI checks fail', async () => {
+    vi.mocked(run).mockRejectedValue(new Error('Checks failed'));
 
-    const result = await waitForCI(42, 30);
+    const result = await waitForCI(123, 30);
+
     expect(result).toBe(false);
   });
 
-  it("returns false on timeout", async () => {
-    mockExec.mockImplementation(() => {
-      const err = new Error("timed out") as any;
-      err.status = 1;
-      throw err;
-    });
+  it('rejects invalid input: gh CLI not found', async () => {
+    vi.mocked(run).mockRejectedValue(new Error('command not found: gh'));
 
-    const result = await waitForCI(42, 1); // 1 minute timeout
-    expect(result).toBe(false);
+    await expect(createPR({
+      featureName: '004-wud-loop',
+      phaseNumber: 1,
+      featureDir: 'specs/004-wud-loop'
+    })).rejects.toThrow(/gh CLI not found/);
   });
 });

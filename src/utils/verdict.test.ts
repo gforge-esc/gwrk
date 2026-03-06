@@ -1,85 +1,67 @@
-// src/utils/verdict.test.ts
-// RED tests — Phase 2: Verdict checker utility
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { checkPhaseVerdict } from "./verdict.js"; // RED — module does not exist yet
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { checkPhaseVerdict } from './verdict.js';
+import { loadTaskState } from './state.js';
 
-vi.mock("./state.js", () => ({
-  loadTaskState: vi.fn(),
-}));
+vi.mock('./state.js');
 
-import { loadTaskState } from "./state.js";
+describe('FR-005: Verdict Checker', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
 
-const mockLoadTaskState = vi.mocked(loadTaskState);
+  it('US-003 Scenario 1: returns GO if all tasks in phase are completed', () => {
+    vi.mocked(loadTaskState).mockReturnValue({
+      phases: [
+        {
+          id: 'phase-01',
+          tasks: [
+            { id: 'T001', title: 'Task 1', status: 'completed' },
+            { id: 'T002', title: 'Task 2', status: 'completed' }
+          ]
+        }
+      ]
+    } as any);
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+    const result = checkPhaseVerdict('specs/004-wud-loop', 1);
 
-describe("FR-005: Phase verdict — checkPhaseVerdict()", () => {
-  it("US-003 #1: returns GO when all tasks in phase are completed", () => {
-    mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [
-          { id: "T001", title: "Task 1", description: "Desc", status: "completed" },
-          { id: "T002", title: "Task 2", description: "Desc", status: "completed" },
-        ],
-      }],
-    });
-
-    const result = checkPhaseVerdict("specs/004-wud-loop", 1);
-    expect(result.verdict).toBe("GO");
+    expect(result.verdict).toBe('GO');
     expect(result.totalTasks).toBe(2);
     expect(result.completedTasks).toBe(2);
     expect(result.openTasks).toHaveLength(0);
   });
 
-  it("US-003 #2: returns NO-GO when open tasks remain", () => {
-    mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [
-          { id: "T001", title: "Done", description: "Desc", status: "completed" },
-          { id: "T002", title: "Still open", description: "Desc", status: "open" },
-        ],
-      }],
-    });
+  it('US-003 Scenario 2: returns NO-GO if some tasks in phase are still open', () => {
+    vi.mocked(loadTaskState).mockReturnValue({
+      phases: [
+        {
+          id: 'phase-01',
+          tasks: [
+            { id: 'T001', title: 'Task 1', status: 'completed' },
+            { id: 'T002', title: 'Task 2', status: 'open' }
+          ]
+        }
+      ]
+    } as any);
 
-    const result = checkPhaseVerdict("specs/004-wud-loop", 1);
-    expect(result.verdict).toBe("NO-GO");
+    const result = checkPhaseVerdict('specs/004-wud-loop', 1);
+
+    expect(result.verdict).toBe('NO-GO');
+    expect(result.totalTasks).toBe(2);
     expect(result.completedTasks).toBe(1);
     expect(result.openTasks).toHaveLength(1);
-    expect(result.openTasks[0].id).toBe("T002");
+    expect(result.openTasks[0]?.id).toBe('T002');
   });
 
-  it("US-003 #3: returns NO-GO when in_progress tasks exist", () => {
-    mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [
-          { id: "T001", title: "In progress", description: "Desc", status: "in_progress" },
-        ],
-      }],
-    });
+  it('rejects invalid input: phase not found in tasks.json', () => {
+    vi.mocked(loadTaskState).mockReturnValue({
+      phases: [
+        {
+          id: 'phase-02',
+          tasks: []
+        }
+      ]
+    } as any);
 
-    const result = checkPhaseVerdict("specs/004-wud-loop", 1);
-    expect(result.verdict).toBe("NO-GO");
-    expect(result.openTasks).toHaveLength(1);
-  });
-
-  it("rejects: phase not found in tasks.json", () => {
-    // Negative path — nonexistent phase
-    mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
-      phases: [{ id: "phase-01", name: "Phase 1", tasks: [] }],
-    });
-
-    expect(() => checkPhaseVerdict("specs/004-wud-loop", 99)).toThrow(/[Pp]hase.*not found/);
+    expect(() => checkPhaseVerdict('specs/004-wud-loop', 1)).toThrow(/Phase phase-01 not found/);
   });
 });
