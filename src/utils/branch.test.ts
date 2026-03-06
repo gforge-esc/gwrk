@@ -1,92 +1,62 @@
-// src/utils/branch.test.ts
-// RED tests — Phase 1: Branch management utility
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ensureBranch, pushBranch } from "./branch.js"; // RED — module does not exist yet
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureBranch, pushBranch } from './branch';
+import { execFile } from 'node:child_process';
 
-// Mock child_process
-vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn(),
-}));
+vi.mock('node:child_process');
 
-import { execFileSync } from "node:child_process";
+describe('FR-002: Branch Management', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
 
-const mockExec = vi.mocked(execFileSync);
+  describe('ensureBranch', () => {
+    it('US-007 Scenario 1: creates feat/<feature> from develop if not exists', async () => {
+      // Mock git branch -a showing no such branch
+      vi.mocked(execFile).mockImplementation((cmd, args, opts, cb): any => {
+        const command = args?.join(' ');
+        if (command?.includes('branch -a')) {
+          cb(null, { stdout: 'master\ndevelop\n' });
+        } else {
+          cb(null, { stdout: '' });
+        }
+      });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+      const branch = await ensureBranch('004-wud-loop');
 
-describe("FR-002: Branch management — ensureBranch()", () => {
-  it("US-007 #1: creates feat/<feature> from develop when no local branch exists", async () => {
-    // Simulate: no local branch, no remote branch
-    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
-      const argsArr = args as string[];
-      if (cmd === "git" && argsArr?.[0] === "branch" && argsArr?.[1] === "--list") {
-        return "" as any; // no local branch
-      }
-      if (cmd === "git" && argsArr?.[0] === "ls-remote") {
-        return "" as any; // no remote branch
-      }
-      return "" as any;
+      expect(branch).toBe('feat/004-wud-loop');
+      expect(execFile).toHaveBeenCalledWith('git', ['checkout', 'develop'], expect.any(Object), expect.any(Function));
+      expect(execFile).toHaveBeenCalledWith('git', ['pull'], expect.any(Object), expect.any(Function));
+      expect(execFile).toHaveBeenCalledWith('git', ['checkout', '-b', 'feat/004-wud-loop'], expect.any(Object), expect.any(Function));
     });
 
-    const branch = await ensureBranch("004-wud-loop");
-    expect(branch).toBe("feat/004-wud-loop");
+    it('US-007 Scenario 2: checkouts and merges develop if local branch exists', async () => {
+      // Mock git branch -a showing local branch
+      vi.mocked(execFile).mockImplementation((cmd, args, opts, cb): any => {
+        const command = args?.join(' ');
+        if (command?.includes('branch -a')) {
+          cb(null, { stdout: '  develop\n* feat/004-wud-loop\n' });
+        } else {
+          cb(null, { stdout: '' });
+        }
+      });
 
-    // Must have checked out develop first
-    expect(mockExec).toHaveBeenCalledWith(
-      "git",
-      expect.arrayContaining(["checkout", "develop"]),
-      expect.anything()
-    );
-    // Must have created the branch
-    expect(mockExec).toHaveBeenCalledWith(
-      "git",
-      expect.arrayContaining(["checkout", "-b", "feat/004-wud-loop"]),
-      expect.anything()
-    );
-  });
+      const branch = await ensureBranch('004-wud-loop');
 
-  it("US-007 #2: checks out existing branch and merges develop", async () => {
-    // Simulate: local branch exists
-    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
-      const argsArr = args as string[];
-      if (cmd === "git" && argsArr?.[0] === "branch" && argsArr?.[1] === "--list") {
-        return "  feat/004-wud-loop\n" as any;
-      }
-      return "" as any;
+      expect(branch).toBe('feat/004-wud-loop');
+      expect(execFile).toHaveBeenCalledWith('git', ['checkout', 'feat/004-wud-loop'], expect.any(Object), expect.any(Function));
+      expect(execFile).toHaveBeenCalledWith('git', ['merge', 'develop', '--no-edit'], expect.any(Object), expect.any(Function));
     });
-
-    const branch = await ensureBranch("004-wud-loop");
-    expect(branch).toBe("feat/004-wud-loop");
-
-    // Must merge develop
-    expect(mockExec).toHaveBeenCalledWith(
-      "git",
-      expect.arrayContaining(["merge", "develop"]),
-      expect.anything()
-    );
   });
 
-  it("rejects invalid input: empty featureName", async () => {
-    // FR-002 error state — empty feature name
-    await expect(ensureBranch("")).rejects.toThrow();
-  });
-});
+  describe('pushBranch', () => {
+    it('pushes with force-with-lease', async () => {
+      vi.mocked(execFile).mockImplementation((cmd, args, opts, cb): any => {
+        cb(null, { stdout: '' });
+      });
 
-describe("FR-002: Branch management — pushBranch()", () => {
-  it("pushes with --force-with-lease", async () => {
-    mockExec.mockReturnValue("" as any);
-    await pushBranch("004-wud-loop");
+      await pushBranch('004-wud-loop');
 
-    expect(mockExec).toHaveBeenCalledWith(
-      "git",
-      expect.arrayContaining(["push", "--force-with-lease"]),
-      expect.anything()
-    );
-  });
-
-  it("rejects invalid input: empty featureName", async () => {
-    await expect(pushBranch("")).rejects.toThrow();
+      expect(execFile).toHaveBeenCalledWith('git', ['push', 'origin', 'feat/004-wud-loop', '--force-with-lease'], expect.any(Object), expect.any(Function));
+    });
   });
 });

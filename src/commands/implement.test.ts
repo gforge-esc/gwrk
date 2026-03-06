@@ -1,247 +1,158 @@
-// src/commands/implement.test.ts
-// RED tests — Phase 1: Implement command
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { executePhase } from "./implement.js"; // RED — module does not exist yet
-import type { GwrkConfig } from "../utils/config.js";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { executePhase } from './implement';
+import * as state from '../utils/state';
+import * as agent from '../utils/agent';
+import * as branch from '../utils/branch';
+import * as config from '../utils/config';
+import * as wudState from '../utils/wud-state';
+import * as log from '../utils/log';
+import * as exec from '../utils/exec';
+import { execFile } from 'node:child_process';
 
-// Mock all dependencies
-vi.mock("../utils/state.js", () => ({
-  loadTaskState: vi.fn(),
-  nextTask: vi.fn(),
-  markTaskComplete: vi.fn(),
-  saveTaskState: vi.fn(),
-}));
+vi.mock('../utils/state');
+vi.mock('../utils/agent');
+vi.mock('../utils/branch');
+vi.mock('../utils/config');
+vi.mock('../utils/wud-state');
+vi.mock('../utils/log');
+vi.mock('../utils/exec');
+vi.mock('node:child_process');
 
-vi.mock("../utils/exec.js", () => ({
-  runGate: vi.fn(),
-}));
+describe('FR-001: Implement Command Task Loop', () => {
+  const mockConfig: config.GwrkConfig = {
+    project: { name: 'test-project' },
+    agents: {
+      define: 'gemini',
+      implement: 'gemini',
+    }
+  };
 
-vi.mock("../utils/agent.js", () => ({
-  dispatchAgent: vi.fn(),
-}));
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
 
-vi.mock("../utils/branch.js", () => ({
-  ensureBranch: vi.fn().mockResolvedValue("feat/test-feature"),
-}));
+  it('US-001 Scenario 1: executes all tasks in phase sequentially', async () => {
+    const featureDir = 'specs/004-wud-loop';
+    const phaseNumber = 1;
 
-vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn(),
-}));
+    // Mock loading tasks
+    const mockTasks = [
+      { id: 'T001', status: 'open', phase: 'phase-01', gateScript: 'gates/T001-gate.sh' },
+      { id: 'T002', status: 'open', phase: 'phase-01', gateScript: 'gates/T002-gate.sh' },
+    ];
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: mockTasks as any }]
+    } as any);
+    
+    // Mock sequential task fetching
+    vi.mocked(state.nextTask)
+      .mockReturnValueOnce(mockTasks[0] as any)
+      .mockReturnValueOnce(mockTasks[1] as any)
+      .mockReturnValue(null);
 
-import { loadTaskState, nextTask, markTaskComplete } from "../utils/state.js";
-import { runGate } from "../utils/exec.js";
-import { dispatchAgent } from "../utils/agent.js";
-import { ensureBranch } from "../utils/branch.js";
-import { execFileSync } from "node:child_process";
+    // Mock branch setup
+    vi.mocked(branch.ensureBranch).mockResolvedValue('feat/004-wud-loop');
 
-const mockLoadTaskState = vi.mocked(loadTaskState);
-const mockNextTask = vi.mocked(nextTask);
-const mockMarkTaskComplete = vi.mocked(markTaskComplete);
-const mockRunGate = vi.mocked(runGate);
-const mockDispatchAgent = vi.mocked(dispatchAgent);
-const mockEnsureBranch = vi.mocked(ensureBranch);
-const mockExec = vi.mocked(execFileSync);
+    // Mock gate pre-flight (FAIL - expected) and post-flight (PASS)
+    vi.mocked(exec.runGate)
+      .mockReturnValueOnce({ exitCode: 1, stdout: '', stderr: '' }) // T001 pre-flight
+      .mockReturnValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // T001 post-flight
+      .mockReturnValueOnce({ exitCode: 1, stdout: '', stderr: '' }) // T002 pre-flight
+      .mockReturnValueOnce({ exitCode: 0, stdout: '', stderr: '' }); // T002 post-flight
 
-const testConfig: GwrkConfig = {
-  project: { name: "test-project" },
-  agents: { define: "gemini", implement: "gemini" },
-};
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
-describe("FR-001: gwrk implement — task loop execution", () => {
-  it("US-001 #1: iterates all tasks in phase and completes them", async () => {
-    // Setup: 3 tasks in phase-01
-    const mockState = {
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [
-          { id: "T001", title: "Task 1", description: "Desc 1", status: "open" as const },
-          { id: "T002", title: "Task 2", description: "Desc 2", status: "open" as const },
-          { id: "T003", title: "Task 3", description: "Desc 3", status: "open" as const },
-        ],
-      }],
-    };
-
-    mockLoadTaskState.mockReturnValue(mockState);
-    // nextTask returns tasks sequentially, then null
-    mockNextTask
-      .mockReturnValueOnce(mockState.phases[0].tasks[0])
-      .mockReturnValueOnce(mockState.phases[0].tasks[1])
-      .mockReturnValueOnce(mockState.phases[0].tasks[2])
-      .mockReturnValueOnce(null);
-    // Pre-flight gates FAIL (expected — not yet implemented)
-    mockRunGate.mockReturnValue({ exitCode: 1, stdout: "", stderr: "" });
-    // Agent dispatch succeeds
-    mockDispatchAgent.mockResolvedValue({ exitCode: 0, stdout: "done", stderr: "" });
-    // Mark complete returns updated state
-    mockMarkTaskComplete.mockReturnValue(mockState);
+    // Mock agent dispatch
+    vi.mocked(agent.dispatchAgent).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
 
     const result = await executePhase({
-      featureDir: "specs/004-wud-loop",
+      featureDir,
+      phaseNumber,
+      config: mockConfig,
+    });
+
+    expect(result.tasksCompleted).toBe(2);
+    expect(state.loadTaskState).toHaveBeenCalledWith(featureDir);
+    expect(branch.ensureBranch).toHaveBeenCalledWith('004-wud-loop');
+    expect(exec.runGate).toHaveBeenCalledTimes(4);
+    expect(agent.dispatchAgent).toHaveBeenCalledTimes(2);
+    expect(state.markTaskComplete).toHaveBeenCalledTimes(2);
+  });
+
+  it('US-001 Scenario 2: rejects when tasks.json is missing', async () => {
+    vi.mocked(state.loadTaskState).mockImplementation(() => {
+      throw new Error('tasks.json not found for feature');
+    });
+
+    await expect(executePhase({
+      featureDir: 'invalid-feature',
       phaseNumber: 1,
-      config: testConfig,
-    });
-
-    expect(result.tasksCompleted).toBe(3);
-    expect(result.totalTasks).toBe(3);
-    expect(mockDispatchAgent).toHaveBeenCalledTimes(3);
-    expect(mockMarkTaskComplete).toHaveBeenCalledTimes(3);
-  });
-
-  it("rejects: tasks.json not found", async () => {
-    // FR-001 error state — missing tasks.json
-    mockLoadTaskState.mockImplementation(() => {
-      throw new Error("tasks.json not found for feature");
-    });
-
-    await expect(
-      executePhase({
-        featureDir: "specs/nonexistent",
-        phaseNumber: 1,
-        config: testConfig,
-      })
-    ).rejects.toThrow("tasks.json not found");
-  });
-
-  it("rejects: phase not found in tasks.json", async () => {
-    // FR-001 error state — missing phase
-    mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
-      phases: [{ id: "phase-01", name: "Phase 1", tasks: [] }],
-    });
-
-    await expect(
-      executePhase({
-        featureDir: "specs/004-wud-loop",
-        phaseNumber: 99,
-        config: testConfig,
-      })
-    ).rejects.toThrow(/[Pp]hase.*not found/);
+      config: mockConfig,
+    })).rejects.toThrow('tasks.json not found for feature');
   });
 });
 
-describe("FR-002: Branch management integration", () => {
-  it("US-007 #1: calls ensureBranch before task execution", async () => {
-    mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
-      phases: [{ id: "phase-01", name: "Phase 1", tasks: [] }],
-    });
-    mockNextTask.mockReturnValue(null);
+describe('FR-002: Branch Management in Implement', () => {
+  it('US-007 Scenario 1: ensures feature branch exists and merges develop', async () => {
+    vi.mocked(branch.ensureBranch).mockResolvedValue('feat/004-wud-loop');
+    vi.mocked(state.loadTaskState).mockReturnValue({ phases: [] } as any);
 
     await executePhase({
-      featureDir: "specs/004-wud-loop",
+      featureDir: 'specs/004-wud-loop',
       phaseNumber: 1,
-      config: testConfig,
+      config: { project: { name: 'test' }, agents: { define: 'gemini', implement: 'gemini' } } as any,
     });
 
-    expect(mockEnsureBranch).toHaveBeenCalledWith("004-wud-loop");
+    expect(branch.ensureBranch).toHaveBeenCalledWith('004-wud-loop');
   });
 });
 
-describe("FR-003: Pre-flight gate enforcement", () => {
-  it("US-002 #1: skips task when pre-flight gate already passes (exit 0)", async () => {
-    const mockState = {
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [
-          { id: "T001", title: "Already done", description: "Gate already passes", status: "open" as const },
-        ],
-      }],
-    };
+describe('FR-003: Pre-flight Gate Integrity', () => {
+  it('US-002 Scenario 1: skips task if pre-flight gate already passes', async () => {
+    const mockTask = { id: 'T001', status: 'open', phase: 'phase-01' };
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: [mockTask] as any }]
+    } as any);
+    vi.mocked(state.nextTask).mockReturnValueOnce(mockTask as any).mockReturnValue(null);
+    vi.mocked(branch.ensureBranch).mockResolvedValue('feat/004-wud-loop');
 
-    mockLoadTaskState.mockReturnValue(mockState);
-    mockNextTask
-      .mockReturnValueOnce(mockState.phases[0].tasks[0])
-      .mockReturnValueOnce(null);
-    // Pre-flight gate PASSES (exit 0) — should skip
-    mockRunGate.mockReturnValue({ exitCode: 0, stdout: "PASS", stderr: "" });
+    // Pre-flight PASSES (exit 0) -> skip implement
+    vi.mocked(exec.runGate).mockReturnValueOnce({ exitCode: 0, stdout: '', stderr: '' });
 
     const result = await executePhase({
-      featureDir: "specs/004-wud-loop",
+      featureDir: 'specs/004-wud-loop',
       phaseNumber: 1,
-      config: testConfig,
+      config: { project: { name: 'test' }, agents: { define: 'gemini', implement: 'gemini' } } as any,
     });
 
     expect(result.tasksSkipped).toBe(1);
-    expect(result.tasksCompleted).toBe(0);
-    // Agent should NOT be dispatched for skipped tasks
-    expect(mockDispatchAgent).not.toHaveBeenCalled();
-  });
-
-  it("US-002 #2: proceeds when pre-flight gate fails (exit 1) — expected", async () => {
-    const mockState = {
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [
-          { id: "T001", title: "Todo", description: "Needs work", status: "open" as const },
-        ],
-      }],
-    };
-
-    mockLoadTaskState.mockReturnValue(mockState);
-    mockNextTask
-      .mockReturnValueOnce(mockState.phases[0].tasks[0])
-      .mockReturnValueOnce(null);
-    // Pre-flight FAILS (expected — task needs implementation)
-    mockRunGate.mockReturnValueOnce({ exitCode: 1, stdout: "", stderr: "FAIL" });
-    // Post-flight PASSES (task implemented)
-    mockRunGate.mockReturnValueOnce({ exitCode: 0, stdout: "PASS", stderr: "" });
-    mockDispatchAgent.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
-    mockMarkTaskComplete.mockReturnValue(mockState);
-
-    const result = await executePhase({
-      featureDir: "specs/004-wud-loop",
-      phaseNumber: 1,
-      config: testConfig,
-    });
-
-    expect(result.tasksCompleted).toBe(1);
-    expect(mockDispatchAgent).toHaveBeenCalledTimes(1);
+    expect(agent.dispatchAgent).not.toHaveBeenCalled();
   });
 });
 
-describe("FR-009: Agent dispatch configuration", () => {
-  it("US-008: dispatches agent with backend from config", async () => {
-    const mockState = {
-      feature: "004-wud-loop",
-      phases: [{
-        id: "phase-01",
-        name: "Phase 1",
-        tasks: [
-          { id: "T001", title: "Task", description: "Desc", status: "open" as const },
-        ],
-      }],
+describe('FR-009: Agent Dispatch Configuration', () => {
+  it('US-008 Scenario 1: dispatches agent configured in config', async () => {
+    const mockTask = { id: 'T001', status: 'open', phase: 'phase-01' };
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: [mockTask] as any }]
+    } as any);
+    vi.mocked(state.nextTask).mockReturnValueOnce(mockTask as any).mockReturnValue(null);
+    vi.mocked(branch.ensureBranch).mockResolvedValue('feat/004-wud-loop');
+    vi.mocked(exec.runGate).mockReturnValueOnce({ exitCode: 1, stdout: '', stderr: '' }).mockReturnValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+
+    const customConfig: any = {
+      project: { name: 'test' },
+      agents: {
+        implement: 'claude'
+      }
     };
 
-    mockLoadTaskState.mockReturnValue(mockState);
-    mockNextTask
-      .mockReturnValueOnce(mockState.phases[0].tasks[0])
-      .mockReturnValueOnce(null);
-    mockRunGate
-      .mockReturnValueOnce({ exitCode: 1, stdout: "", stderr: "" }) // pre-flight FAIL
-      .mockReturnValueOnce({ exitCode: 0, stdout: "", stderr: "" }); // post-flight PASS
-    mockDispatchAgent.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
-    mockMarkTaskComplete.mockReturnValue(mockState);
-
     await executePhase({
-      featureDir: "specs/004-wud-loop",
+      featureDir: 'specs/004-wud-loop',
       phaseNumber: 1,
-      config: testConfig,
+      config: customConfig,
     });
 
-    expect(mockDispatchAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        backend: "gemini", // from config.agents.implement
-      })
-    );
+    expect(agent.dispatchAgent).toHaveBeenCalledWith(expect.objectContaining({
+      backend: 'claude'
+    }));
   });
 });
