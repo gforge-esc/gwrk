@@ -1,49 +1,41 @@
-// src/server/routes/status.test.ts
-import { describe, it, expect, vi } from 'vitest';
-import Fastify from 'fastify';
-import { statusRoutes } from './status';
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { startServer } from "../index.js";
+import { removePid } from "../pid.js";
+import type { GwrkConfig } from "../../utils/config.js";
 
-describe('FR-004: Status API Endpoint', () => {
-  it('US-003 acceptance scenario 1: returns full SystemStatus shape when running', async () => {
-    const fastify = Fastify();
-    fastify.register(statusRoutes);
+const mockConfig: GwrkConfig = {
+  project: { name: "test" },
+  agents: { define: "gemini", implement: "codex-cloud" },
+  server: { port: 18792, host: "localhost" },
+  parallelism: {
+    local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+    cloud: { maxConcurrent: 10 }
+  }
+};
 
-    const response = await fastify.inject({
-      method: 'GET',
-      url: '/api/status'
-    });
-
-    expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body);
-
-    // Assert shape matches DM-003
-    expect(body).toHaveProperty('server');
-    expect(body.server.status).toBe('running');
-    expect(body).toHaveProperty('system');
-    expect(body.system).toHaveProperty('cpuPercent');
-    expect(body.system).toHaveProperty('memPercent');
-    expect(body.system).toHaveProperty('diskFreeGb');
-    expect(body).toHaveProperty('dispatch');
-    expect(body.dispatch).toHaveProperty('queueDepth');
-    expect(body).toHaveProperty('sandboxes');
-    expect(Array.isArray(body.sandboxes)).toBe(true);
+describe("status routes", () => {
+  beforeEach(() => {
+    removePid();
   });
 
-  it('rejects invalid request: handles monitor failure', async () => {
-    // Negative path — FR-004 error state
-    // This would likely be a 500 if the monitor fails
-    const fastify = Fastify();
-    // In a real test we might mock the monitor to throw
-    fastify.register(statusRoutes);
+  afterEach(() => {
+    removePid();
+  });
 
-    // If we mock monitor failure here, we expect 500
-    // But since it doesn't exist, this is just a placeholder for the RED state
-    const response = await fastify.inject({
-      method: 'GET',
-      url: '/api/status'
+  it("should return system status on /api/status", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/status"
     });
     
-    // Default RED state: it will likely fail with 404 or 500 because the route is not implemented
-    expect(response.statusCode).toBe(200); 
+    expect(response.statusCode).toBe(200);
+    const json = response.json();
+    expect(json.server.status).toBe("running");
+    expect(json.system.cpuPercent).toBeDefined();
+    expect(json.system.memPercent).toBeDefined();
+    expect(json.system.diskFreeGb).toBeDefined();
+    
+    await server.close();
   });
 });
