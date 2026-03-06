@@ -1,17 +1,13 @@
-#!/usr/bin/env bash
-# Gate: T008 — Implement status CLI command
+#!/bin/bash
 set -euo pipefail
+# Gate: T008 — Implement test strategy for Phase 1
+# Asserts: Derived from task description
 
-# Assertion #1: src/commands/status.ts exists
-test -f src/commands/status.ts || { echo "FAIL: src/commands/status.ts not found"; exit 1; }
 
-# Assertion #2: status command defined
-grep -q "new Command('status')" src/commands/status.ts || { echo "FAIL: 'status' command not defined"; exit 1; }
+# Phase Acceptance Criteria
+pnpm vitest run src/commands/server.test.ts
+pnpm vitest run src/server/index.test.ts
+test -f src/server/index.ts && test -f src/server/pid.ts && test -f src/commands/server.ts
+grep -q '"fastify"' package.json
 
-# Assertion #3: status command registered in src/cli.ts
-grep -q "status" src/cli.ts || { echo "FAIL: status command not registered in src/cli.ts"; exit 1; }
-
-# Assertion #4: queries /api/status endpoint
-grep -q "/api/status" src/commands/status.ts || { echo "FAIL: status command does not query /api/status"; exit 1; }
-
-echo "PASS: T008"
+echo "PASS: T008 — Implement test strategy for Phase 1"
