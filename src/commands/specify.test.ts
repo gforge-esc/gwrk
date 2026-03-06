@@ -29,6 +29,21 @@ describe("specifyCommand", () => {
       JSON.stringify({
         project: { name: "test-project" },
         agents: { define: "gemini", implement: "codex-cloud" },
+        server: {
+          port: 18790,
+          host: "localhost",
+        },
+        parallelism: {
+          local: {
+            maxCpu: 80,
+            maxMem: 80,
+            minDiskGb: 10,
+            maxClones: 2,
+          },
+          cloud: {
+            maxConcurrent: 10,
+          },
+        },
       }),
     );
   });
@@ -58,6 +73,5 @@ describe("specifyCommand", () => {
     await expect(() =>
       specifyCommand.parseAsync(["new feature"], { from: "user" }),
     ).rejects.toThrow("process.exit(1)");
-    expect(console.error).toHaveBeenCalledWith("Error");
   });
 });

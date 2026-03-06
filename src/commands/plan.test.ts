@@ -29,6 +29,21 @@ describe("planCommand", () => {
       JSON.stringify({
         project: { name: "test-project" },
         agents: { define: "gemini", implement: "codex-cloud" },
+        server: {
+          port: 18790,
+          host: "localhost",
+        },
+        parallelism: {
+          local: {
+            maxCpu: 80,
+            maxMem: 80,
+            minDiskGb: 10,
+            maxClones: 2,
+          },
+          cloud: {
+            maxConcurrent: 10,
+          },
+        },
       }),
     );
   });
@@ -42,7 +57,9 @@ describe("planCommand", () => {
     await expect(() =>
       planCommand.parseAsync(["feature-x"], { from: "user" }),
     ).rejects.toThrow("process.exit(1)");
-    expect(console.error).toHaveBeenCalledWith("spec.md not found");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("spec.md not found"),
+    );
   });
 
   it("should dispatch agent if spec.md exists", async () => {
@@ -57,5 +74,18 @@ describe("planCommand", () => {
       workflowPath: ".agent/workflows/plan.md",
       featureDir: "specs/feature-x",
     });
+  });
+
+  it("should fail if spec.md is marked as a Stub", async () => {
+    const featureDir = path.join(tempDir, "specs/feature-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+    fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec\n> **Status:** Stub\n");
+
+    await expect(() =>
+      planCommand.parseAsync(["feature-x"], { from: "user" }),
+    ).rejects.toThrow("process.exit(1)");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("is marked as a Stub"),
+    );
   });
 });

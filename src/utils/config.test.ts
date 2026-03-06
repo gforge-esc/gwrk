@@ -25,6 +25,11 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
+      server: { port: 18790, host: "localhost" },
+      parallelism: {
+        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+        cloud: { maxConcurrent: 10 },
+      },
     };
     fs.writeFileSync(
       path.join(tempDir, ".gwrkrc.json"),
@@ -72,6 +77,11 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
+      server: { port: 18790, host: "localhost" },
+      parallelism: {
+        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+        cloud: { maxConcurrent: 10 },
+      },
       pulse: { repos: ["/tmp/repo-a", "/tmp/repo-b"] },
     };
     fs.writeFileSync(
@@ -90,6 +100,11 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
+      server: { port: 18790, host: "localhost" },
+      parallelism: {
+        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+        cloud: { maxConcurrent: 10 },
+      },
     };
     fs.writeFileSync(
       path.join(tempDir, ".gwrkrc.json"),
@@ -105,6 +120,11 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
+      server: { port: 18790, host: "localhost" },
+      parallelism: {
+        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+        cloud: { maxConcurrent: 10 },
+      },
       pulse: { repos: [] },
     };
     fs.writeFileSync(

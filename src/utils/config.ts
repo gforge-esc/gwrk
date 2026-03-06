@@ -13,6 +13,24 @@ export const GwrkConfigSchema = z.object({
     define: AgentBackendSchema,
     implement: AgentBackendSchema,
   }),
+  server: z.object({
+    port: z.number().int().min(1024).max(65535),
+    host: z.string().min(1),
+  }),
+  parallelism: z.object({
+    local: z.object({
+      maxCpu: z.number().int().min(1).max(100),
+      maxMem: z.number().int().min(1).max(100),
+      minDiskGb: z.number().int().min(1),
+      maxClones: z.number().int().min(1),
+    }),
+    cloud: z.object({
+      maxConcurrent: z.number().int().min(1),
+    }),
+  }),
+  pulse: z.object({
+    repos: z.array(z.string().min(1)),
+  }).optional(),
 });
 
 export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;
