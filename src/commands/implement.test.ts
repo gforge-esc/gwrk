@@ -18,15 +18,15 @@ vi.mock('../utils/log');
 vi.mock('../utils/exec');
 vi.mock('node:child_process');
 
-describe('FR-001: Implement Command Task Loop', () => {
-  const mockConfig: config.GwrkConfig = {
-    project: { name: 'test-project' },
-    agents: {
-      define: 'gemini',
-      implement: 'gemini',
-    }
-  };
+const mockConfig: config.GwrkConfig = {
+  project: { name: 'test-project' },
+  agents: {
+    define: 'gemini',
+    implement: 'gemini',
+  }
+};
 
+describe('FR-001: Implement Command Task Loop', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
@@ -88,6 +88,50 @@ describe('FR-001: Implement Command Task Loop', () => {
       config: mockConfig,
     })).rejects.toThrow('tasks.json not found for feature');
   });
+
+  it('rejects when phase is not found in tasks.json', async () => {
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-02', tasks: [] }]
+    } as any);
+
+    await expect(executePhase({
+      featureDir: 'specs/004-wud-loop',
+      phaseNumber: 1,
+      config: mockConfig,
+    })).rejects.toThrow('Phase phase-01 not found in tasks.json');
+  });
+
+  it('rejects when no tasks found in phase', async () => {
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: [] }]
+    } as any);
+
+    await expect(executePhase({
+      featureDir: 'specs/004-wud-loop',
+      phaseNumber: 1,
+      config: mockConfig,
+    })).rejects.toThrow('No tasks found in phase-01');
+  });
+
+  it('rejects when gate script is missing', async () => {
+    const mockTask = { id: 'T001', status: 'open', phase: 'phase-01', gateScript: 'gates/T001-gate.sh' };
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: [mockTask] as any }]
+    } as any);
+    vi.mocked(state.nextTask).mockReturnValueOnce(mockTask as any).mockReturnValue(null);
+    vi.mocked(branch.ensureBranch).mockResolvedValue('feat/004-wud-loop');
+    
+    // Mock runGate to throw "file not found" or similar
+    vi.mocked(exec.runGate).mockImplementation(() => {
+      throw new Error('Gate script gates/T001-gate.sh not found');
+    });
+
+    await expect(executePhase({
+      featureDir: 'specs/004-wud-loop',
+      phaseNumber: 1,
+      config: mockConfig,
+    })).rejects.toThrow('Gate script gates/T001-gate.sh not found');
+  });
 });
 
 describe('FR-002: Branch Management in Implement', () => {
@@ -102,6 +146,16 @@ describe('FR-002: Branch Management in Implement', () => {
     });
 
     expect(branch.ensureBranch).toHaveBeenCalledWith('004-wud-loop');
+  });
+
+  it('rejects when branch management fails', async () => {
+    vi.mocked(branch.ensureBranch).mockRejectedValue(new Error('Git error'));
+
+    await expect(executePhase({
+      featureDir: 'specs/004-wud-loop',
+      phaseNumber: 1,
+      config: mockConfig,
+    })).rejects.toThrow('Git error');
   });
 });
 
@@ -125,6 +179,29 @@ describe('FR-003: Pre-flight Gate Integrity', () => {
 
     expect(result.tasksSkipped).toBe(1);
     expect(agent.dispatchAgent).not.toHaveBeenCalled();
+  });
+
+  it('rejects when post-flight gate fails', async () => {
+    const mockTask = { id: 'T001', status: 'open', phase: 'phase-01', gateScript: 'gates/T001-gate.sh' };
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: [mockTask] as any }]
+    } as any);
+    vi.mocked(state.nextTask).mockReturnValueOnce(mockTask as any).mockReturnValue(null);
+    vi.mocked(branch.ensureBranch).mockResolvedValue('feat/004-wud-loop');
+
+    // Pre-flight FAIL (exit 1) - GOOD
+    // Post-flight FAIL (exit 1) - BAD
+    vi.mocked(exec.runGate)
+      .mockReturnValueOnce({ exitCode: 1, stdout: '', stderr: '' })
+      .mockReturnValueOnce({ exitCode: 1, stdout: '', stderr: '' });
+    
+    vi.mocked(agent.dispatchAgent).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
+
+    await expect(executePhase({
+      featureDir: 'specs/004-wud-loop',
+      phaseNumber: 1,
+      config: mockConfig,
+    })).rejects.toThrow('Post-flight gate failed for T001');
   });
 });
 
