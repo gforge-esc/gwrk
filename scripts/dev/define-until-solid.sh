@@ -2,8 +2,8 @@
 # define-until-solid.sh — Autonomous definitional orchestrator
 #
 # Runs the COMPLETE definitional lifecycle after spec + plan are approved:
-#   PLAN_TO_BEADS → CHECKLIST → ANALYZE → (re-iterate if NOT READY) →
-#   DEFINE_TESTS → BEADS_IMPORT → DONE
+#   PLAN_TO_TASKS → CHECKLIST → ANALYZE → (re-iterate if NOT READY) →
+#   DEFINE_TESTS → DONE
 #
 # Shell is the control plane. LLM (gemini) is the compute plane.
 # Quality gates from /analyze are the pass/fail oracle.
@@ -69,8 +69,8 @@ ${BOLD}Environment:${RESET}
   APPROVAL_MODE=yolo Override gemini approval mode
 
 ${BOLD}State Machine:${RESET}
-  PLAN_TO_BEADS → CHECKLIST → ANALYZE → DEFINE_TESTS → BEADS_IMPORT → DONE
-  Loops back to PLAN_TO_BEADS on ANALYZE NOT READY verdict.
+  PLAN_TO_TASKS → CHECKLIST → ANALYZE → DEFINE_TESTS → DONE
+  Loops back to PLAN_TO_TASKS on ANALYZE NOT READY verdict.
   Circuit breaker at ${MAX_ITERATIONS} iterations.
 EOF
   exit "${1:-0}"
@@ -129,14 +129,14 @@ load_state() {
     STAGE=$(jq -r '.stage' "$STATE_FILE")
     ITERATION=$(jq -r '.iteration' "$STATE_FILE")
     if [[ "$STAGE" == "FAILED" ]] || [[ "$STAGE" == "CIRCUIT_BREAK" ]] || [[ "$STAGE" == "DONE" ]]; then
-      echo -e "${YELLOW}⟳ Previous state was ${STAGE}. Resetting to PLAN_TO_BEADS iteration 1.${RESET}"
-      STAGE="PLAN_TO_BEADS"
+      echo -e "${YELLOW}⟳ Previous state was ${STAGE}. Resetting to PLAN_TO_TASKS iteration 1.${RESET}"
+      STAGE="PLAN_TO_TASKS"
       ITERATION=1
     else
       echo -e "${YELLOW}⟳ Resuming from state: ${STAGE}, iteration ${ITERATION}${RESET}"
     fi
   else
-    STAGE="PLAN_TO_BEADS"
+    STAGE="PLAN_TO_TASKS"
     ITERATION=1
   fi
 }
@@ -170,19 +170,19 @@ banner() {
 # ──────────────────────────────────────────────────────────────────
 # Stage Executors
 # ──────────────────────────────────────────────────────────────────
-run_plan_to_beads() {
-  banner "PLAN-TO-BEADS — Iteration ${ITERATION}/${MAX_ITERATIONS}"
-  log STAGE "Running agent-run.sh plan-to-beads ${FEATURE}"
-  save_state "PLAN_TO_BEADS" "$ITERATION"
+run_plan_to_tasks() {
+  banner "PLAN-TO-TASKS — Iteration ${ITERATION}/${MAX_ITERATIONS}"
+  log STAGE "Running agent-run.sh plan-to-tasks ${FEATURE}"
+  save_state "PLAN_TO_TASKS" "$ITERATION"
 
-  if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" plan-to-beads "$FEATURE"; then
-    log ERROR "plan-to-beads failed (exit $?)"
+  if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" plan-to-tasks "$FEATURE"; then
+    log ERROR "plan-to-tasks failed (exit $?)"
     return 1
   fi
 
-  # Verify outputs: beads scripts + gates generated
-  if [[ ! -d "$REPO_ROOT/$SPEC_DIR/beads" ]]; then
-    log ERROR "No beads/ directory generated"
+  # Verify outputs: tasks.json + gates generated
+  if [[ ! -f "$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json" ]]; then
+    log ERROR "No .gwrk/tasks.json generated"
     return 1
   fi
 
@@ -191,7 +191,7 @@ run_plan_to_beads() {
   else
     local gate_count
     gate_count=$(find "$REPO_ROOT/$SPEC_DIR/gates" -name '*-gate.sh' | wc -l | tr -d ' ')
-    log OK "plan-to-beads complete: beads/ + ${gate_count} gate files"
+    log OK "plan-to-tasks complete: tasks.json + ${gate_count} gate files"
   fi
 
   return 0
@@ -253,11 +253,11 @@ run_define_tests() {
       return 1
     fi
   else
-    # Run for all phases found in .beads-id
+    # Run for all phases found in .gwrk/tasks.json
     local phases
-    phases=$(jq -r '.phases | keys[]' "$REPO_ROOT/$SPEC_DIR/.beads-id" 2>/dev/null || echo "")
+    phases=$(jq -r '.phases[].id' "$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json" 2>/dev/null | sed -E 's/^phase-//' || echo "")
     if [[ -z "$phases" ]]; then
-      log WARN "No phases found in .beads-id — skipping define-tests"
+      log WARN "No phases found in .gwrk/tasks.json — skipping define-tests"
       return 0
     fi
     for p in $phases; do
@@ -273,35 +273,7 @@ run_define_tests() {
   return 0
 }
 
-run_beads_import() {
-  banner "BEADS IMPORT"
-  save_state "BEADS_IMPORT" "$ITERATION"
-
-  local import_script="$REPO_ROOT/$SPEC_DIR/beads/import-all.sh"
-  if [[ ! -f "$import_script" ]]; then
-    log WARN "No import-all.sh found — beads scripts may need manual import"
-    return 0
-  fi
-
-  log INFO "Running beads import: $import_script"
-  if ! bash "$import_script"; then
-    log ERROR "Beads import failed"
-    return 1
-  fi
-
-  # Verify beads populated
-  local feature_id
-  feature_id=$(jq -r '.feature' "$REPO_ROOT/$SPEC_DIR/.beads-id" 2>/dev/null || echo "")
-  if [[ -n "$feature_id" ]]; then
-    local task_count
-    task_count=$(bd children "$feature_id" --json 2>/dev/null | jq 'length' 2>/dev/null || echo "0")
-    log OK "Beads import complete: ${task_count} phases populated"
-  else
-    log OK "Beads import complete"
-  fi
-
-  return 0
-}
+# Beads import has been removed along with the beads dependency.
 
 # ──────────────────────────────────────────────────────────────────
 # Pre-flight
@@ -336,15 +308,14 @@ HEADER
 # ──────────────────────────────────────────────────────────────────
 if [[ "${DRY_RUN:-false}" == "true" ]]; then
   echo -e "${YELLOW}[DRY RUN]${RESET} Planned stages:"
-  echo "  1. PLAN_TO_BEADS — generate beads scripts + verification gates"
+  echo "  1. PLAN_TO_TASKS — generate tasks.json + verification gates"
   echo "  2. CHECKLIST — generate quality gate checklists"
   echo "  3. ANALYZE — cross-artifact consistency + TDD readiness"
-  echo "     ↳ NOT READY: loop to PLAN_TO_BEADS (max ${MAX_ITERATIONS}x)"
+  echo "     ↳ NOT READY: loop to PLAN_TO_TASKS (max ${MAX_ITERATIONS}x)"
   if [[ "$SKIP_TESTS" != "true" ]]; then
     echo "  4. DEFINE_TESTS — generate red test files from spec/plan/contracts"
   fi
-  echo "  5. BEADS_IMPORT — run import-all.sh"
-  echo "  6. DONE"
+  echo "  5. DONE"
   exit 0
 fi
 
@@ -359,10 +330,10 @@ cd "$REPO_ROOT"
 # Main loop
 while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
 
-  # Stage: Plan-to-Beads
-  if [[ "$STAGE" == "PLAN_TO_BEADS" ]]; then
-    if ! run_plan_to_beads; then
-      log ERROR "plan-to-beads failed on iteration ${ITERATION}. Aborting."
+  # Stage: Plan-to-Tasks
+  if [[ "$STAGE" == "PLAN_TO_TASKS" ]]; then
+    if ! run_plan_to_tasks; then
+      log ERROR "plan-to-tasks failed on iteration ${ITERATION}. Aborting."
       save_state "FAILED" "$ITERATION"
       exit 1
     fi
@@ -382,7 +353,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
     if run_analyze; then
       # READY — proceed to tests
       if [[ "$SKIP_TESTS" == "true" ]]; then
-        STAGE="BEADS_IMPORT"
+        STAGE="DONE"
+        break
       else
         STAGE="DEFINE_TESTS"
       fi
@@ -395,7 +367,7 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
         save_state "CIRCUIT_BREAK" "$ITERATION"
         exit 1
       fi
-      STAGE="PLAN_TO_BEADS"
+      STAGE="PLAN_TO_TASKS"
       continue
     fi
   fi
@@ -404,16 +376,6 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
   if [[ "$STAGE" == "DEFINE_TESTS" ]]; then
     if ! run_define_tests; then
       log ERROR "define-tests failed. Aborting."
-      save_state "FAILED" "$ITERATION"
-      exit 1
-    fi
-    STAGE="BEADS_IMPORT"
-  fi
-
-  # Stage: Beads Import
-  if [[ "$STAGE" == "BEADS_IMPORT" ]]; then
-    if ! run_beads_import; then
-      log ERROR "Beads import failed. Aborting."
       save_state "FAILED" "$ITERATION"
       exit 1
     fi

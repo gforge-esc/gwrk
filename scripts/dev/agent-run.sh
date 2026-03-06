@@ -78,6 +78,7 @@ EOF
 WORKFLOW="${1:-}"
 FEATURE="${2:-}"
 PHASE="${3:-}"
+TASK_ID="${4:-}"
 
 if [[ -z "$WORKFLOW" ]] || [[ -z "$FEATURE" ]]; then
   usage 1
@@ -98,9 +99,14 @@ fi
 case "$WORKFLOW" in
   implement)
     [[ -z "$PHASE" ]] && { echo -e "${RED}✗${RESET} Phase required for implement"; usage 1; }
-    COMMAND="/implement ${SPEC_DIR} ${PHASE}"
+    if [[ -n "$TASK_ID" ]]; then
+      COMMAND="/implement ${SPEC_DIR} ${PHASE} ${TASK_ID}"
+      LABEL="Implementing Task ${TASK_ID} (Phase ${PHASE})"
+    else
+      COMMAND="/implement ${SPEC_DIR} ${PHASE}"
+      LABEL="Implementing Phase ${PHASE}"
+    fi
     DEFAULT_MODE="yolo"
-    LABEL="Implementing Phase ${PHASE}"
     ;;
   review-code)
     [[ -z "$PHASE" ]] && { echo -e "${RED}✗${RESET} Phase required for review-code"; usage 1; }

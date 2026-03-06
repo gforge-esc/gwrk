@@ -160,15 +160,50 @@ banner() {
 }
 
 # ──────────────────────────────────────────────────────────────────
+# DB Recording
+# ──────────────────────────────────────────────────────────────────
+record_run() {
+  local cmd="$1"; shift
+  local exit_code="$1"; shift
+  local duration="$1"; shift
+  local extra_args=("$@")
+
+  # Use gwrk db record to log the step
+  # We assume 'gwrk' is in the PATH or we use the one in REPO_ROOT/dist/cli.js
+  local gwrk_cmd="gwrk"
+  if ! command -v gwrk &>/dev/null; then
+    gwrk_cmd="node $REPO_ROOT/dist/cli.js"
+  fi
+
+  $gwrk_cmd db record \
+    --feature "$FEATURE" \
+    --phase "$PHASE" \
+    --command "$cmd" \
+    --exit-code "$exit_code" \
+    --duration "$duration" \
+    --log "${WUD_LOG##*/}" \
+    "${extra_args[@]}" >/dev/null 2>&1 || true
+}
+
+# ──────────────────────────────────────────────────────────────────
 # Stage Executors
 # ──────────────────────────────────────────────────────────────────
 run_implement() {
+  local start_time=$(date +%s)
   banner "IMPLEMENT — Iteration ${ITERATION}/${MAX_ITERATIONS}"
   log STAGE "Running agent-run.sh implement ${FEATURE} ${PHASE}"
   save_state "IMPLEMENTING" "$ITERATION"
 
+  local exit_code=0
   if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" implement "$FEATURE" "$PHASE"; then
-    log ERROR "Implementation failed (exit $?)"
+    exit_code=$?
+    log ERROR "Implementation failed (exit $exit_code)"
+  fi
+
+  local duration=$(( $(date +%s) - start_time ))
+  record_run "implement" "$exit_code" "$duration" --workflow "implement"
+
+  if [[ "$exit_code" -ne 0 ]]; then
     return 1
   fi
 
@@ -179,13 +214,15 @@ run_implement() {
 }
 
 run_code_review() {
+  local start_time=$(date +%s)
   banner "CODE REVIEW — Iteration ${ITERATION}/${MAX_ITERATIONS}"
   log STAGE "Running agent-run.sh review-code ${FEATURE} ${PHASE}"
   save_state "CODE_REVIEW" "$ITERATION"
 
+  local agent_exit=0
   if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" review-code "$FEATURE" "$PHASE"; then
-    log ERROR "Code review agent failed (exit $?)"
-    return 1
+    agent_exit=$?
+    log ERROR "Code review agent failed (exit $agent_exit)"
   fi
 
   # Push review commits (task unchecks, review notes)
@@ -194,23 +231,32 @@ run_code_review() {
 
   # Check verdict via tasks.json
   log INFO "Checking tasks.json verdict..."
+  local verdict="NO-GO"
+  local exit_code=1
   if "$WUD_VERDICT" "$REPO_ROOT/$SPEC_DIR" "$PHASE"; then
     log OK "Code review: GO"
-    return 0
+    verdict="GO"
+    exit_code=0
   else
     log WARN "Code review: NO-GO — open tasks remain"
-    return 1
   fi
+
+  local duration=$(( $(date +%s) - start_time ))
+  record_run "review-code" "$agent_exit" "$duration" --workflow "review-code" --verdict "$verdict"
+
+  return "$exit_code"
 }
 
 run_uat_review() {
+  local start_time=$(date +%s)
   banner "UAT REVIEW — Iteration ${ITERATION}/${MAX_ITERATIONS}"
   log STAGE "Running agent-run.sh review-uat ${FEATURE} ${PHASE}"
   save_state "UAT_REVIEW" "$ITERATION"
 
+  local agent_exit=0
   if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" review-uat "$FEATURE" "$PHASE"; then
-    log ERROR "UAT review agent failed (exit $?)"
-    return 1
+    agent_exit=$?
+    log ERROR "UAT review agent failed (exit $agent_exit)"
   fi
 
   # Push review commits
@@ -219,16 +265,24 @@ run_uat_review() {
 
   # Check verdict via tasks.json
   log INFO "Checking tasks.json verdict..."
+  local verdict="NO-GO"
+  local exit_code=1
   if "$WUD_VERDICT" "$REPO_ROOT/$SPEC_DIR" "$PHASE"; then
     log OK "UAT review: GO"
-    return 0
+    verdict="GO"
+    exit_code=0
   else
     log WARN "UAT review: NO-GO — open tasks remain"
-    return 1
   fi
+
+  local duration=$(( $(date +%s) - start_time ))
+  record_run "review-uat" "$agent_exit" "$duration" --workflow "review-uat" --verdict "$verdict"
+
+  return "$exit_code"
 }
 
 run_pr_and_ci() {
+  local start_time=$(date +%s)
   banner "PR + CI GATE"
   save_state "PR_CI" "$ITERATION"
 
@@ -271,10 +325,12 @@ PR_BODY
     PR_NUMBER=$(gh pr create \
       --title "feat(${spec_name#*-}): Phase ${PHASE}" \
       --body-file /tmp/wud-pr-body.md \
-      --base main 2>&1 | grep -oE '[0-9]+$' || echo "")
+      --base develop 2>&1 | grep -oE '[0-9]+$' || echo "")
 
     if [[ -z "$PR_NUMBER" ]]; then
       log WARN "Could not extract PR number — skipping CI gate"
+      local duration=$(( $(date +%s) - start_time ))
+      record_run "pr-create" "1" "$duration"
       return 0
     fi
     log OK "PR #${PR_NUMBER} created"
@@ -284,13 +340,20 @@ PR_BODY
 
   # Wait for CI
   log INFO "Waiting for CI checks on PR #${PR_NUMBER}..."
-  if "$WUD_CI_WAIT" "$PR_NUMBER" "$CI_TIMEOUT"; then
-    log OK "CI passed on PR #${PR_NUMBER}"
-    return 0
-  else
+  local exit_code=0
+  local gate_result="PASS"
+  if ! "$WUD_CI_WAIT" "$PR_NUMBER" "$CI_TIMEOUT"; then
     log WARN "CI failed on PR #${PR_NUMBER}"
-    return 1
+    exit_code=1
+    gate_result="FAIL"
+  else
+    log OK "CI passed on PR #${PR_NUMBER}"
   fi
+
+  local duration=$(( $(date +%s) - start_time ))
+  record_run "ci-gate" "$exit_code" "$duration" --gate "$gate_result"
+
+  return "$exit_code"
 }
 
 # ──────────────────────────────────────────────────────────────────
@@ -349,9 +412,20 @@ cd "$REPO_ROOT"
 
 # Stage: Branch Setup
 if [[ "$STAGE" == "BRANCH_SETUP" ]]; then
+  local start_time=$(date +%s)
   banner "BRANCH SETUP"
   log INFO "Ensuring feat/${FEATURE} branch..."
-  "$WUD_BRANCH" "$FEATURE"
+  local exit_code=0
+  if ! "$WUD_BRANCH" "$FEATURE"; then
+    exit_code=$?
+    log ERROR "Branch setup failed"
+  fi
+  local duration=$(( $(date +%s) - start_time ))
+  record_run "branch-setup" "$exit_code" "$duration"
+  
+  if [[ "$exit_code" -ne 0 ]]; then
+    exit 1
+  fi
   STAGE="IMPLEMENTING"
 fi
 
@@ -379,6 +453,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after code review."
         save_state "CIRCUIT_BREAK" "$ITERATION"
+        local duration=$(( $(date +%s) - START_TIME ))
+        record_run "circuit-break" "1" "$duration" --retry-reason "Max iterations reached after code review"
         exit 1
       fi
       STAGE="IMPLEMENTING"
@@ -397,6 +473,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after UAT."
         save_state "CIRCUIT_BREAK" "$ITERATION"
+        local duration=$(( $(date +%s) - START_TIME ))
+        record_run "circuit-break" "1" "$duration" --retry-reason "Max iterations reached after UAT review"
         exit 1
       fi
       STAGE="IMPLEMENTING"
@@ -416,6 +494,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after CI failure."
         save_state "CIRCUIT_BREAK" "$ITERATION"
+        local duration=$(( $(date +%s) - START_TIME ))
+        record_run "circuit-break" "1" "$duration" --retry-reason "Max iterations reached after CI failure"
         exit 1
       fi
       STAGE="IMPLEMENTING"
@@ -435,6 +515,8 @@ TOTAL_SECS=$(( TOTAL % 60 ))
 
 if [[ "$STAGE" == "DONE" ]]; then
   save_state "DONE" "$ITERATION"
+  local duration=$(( $(date +%s) - START_TIME ))
+  record_run "wud-complete" "0" "$duration"
   echo ""
   echo -e "${GREEN}╔═════════════════════════════════════════════════╗${RESET}"
   echo -e "${GREEN}║${RESET}  ${BOLD}✓ WORK UNTIL DONE — COMPLETE${RESET}                   ${GREEN}║${RESET}"
@@ -451,6 +533,8 @@ if [[ "$STAGE" == "DONE" ]]; then
   rm -f "$STATE_FILE"
   exit 0
 else
+  local duration=$(( $(date +%s) - START_TIME ))
+  record_run "wud-failed" "1" "$duration"
   echo ""
   echo -e "${RED}╔═════════════════════════════════════════════════╗${RESET}"
   echo -e "${RED}║${RESET}  ${BOLD}✗ WORK UNTIL DONE — FAILED${RESET}                     ${RED}║${RESET}"
