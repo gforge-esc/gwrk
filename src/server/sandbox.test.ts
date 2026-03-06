@@ -1,124 +1,181 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  createSandbox,
-  destroySandbox,
-  destroyAllSandboxes,
-  listSandboxes,
-} from "./sandbox.js";
-import type { SandboxOptions } from "./types.js";
+// src/server/sandbox.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+// @ts-ignore - Module does not exist yet (RED)
+import { createSandbox, destroySandbox, listSandboxes, destroyAllSandboxes } from './sandbox';
+// @ts-ignore - Types do not exist yet (RED)
+import { SandboxOptions } from './sandbox';
+import Docker from 'dockerode';
 
-// Mock dockerode
-vi.mock("dockerode", () => {
-  const mockContainer = {
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
-    remove: vi.fn().mockResolvedValue(undefined),
-    inspect: vi.fn().mockResolvedValue({ Id: "abc123", State: { Running: true } }),
-  };
-  const mockDocker = {
-    createContainer: vi.fn().mockResolvedValue(mockContainer),
-    listContainers: vi.fn().mockResolvedValue([]),
-    getContainer: vi.fn().mockReturnValue(mockContainer),
-  };
-  return { default: vi.fn().mockReturnValue(mockDocker) };
-});
+vi.mock('dockerode');
 
-const TEST_OPTS: SandboxOptions = {
-  featureId: "001-cli-core",
-  phaseId: "phase-01",
-  branchName: "phase/001-cli-core-phase-01",
-  repoPath: "/tmp/gwrk-test-repo",
-  backend: "gemini",
-  contextPath: "/tmp/gwrk-test-repo/.gwrk/phase-context.md",
-};
-
-// FR-006: Docker container lifecycle
-describe("FR-006: Docker Sandbox Manager", () => {
+describe('T014: Implement Docker sandbox manager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // US-004 #1: createSandbox creates container with correct labels
-  describe("createSandbox()", () => {
-    it("US-004 #1: creates container with gwrk.feature and gwrk.phase labels", async () => {
-      const info = await createSandbox(TEST_OPTS);
-      expect(info.featureId).toBe("001-cli-core");
-      expect(info.phaseId).toBe("phase-01");
-      expect(info.backend).toBe("gemini");
-      expect(info.status).toBe("running");
+  describe('createSandbox', () => {
+    it('creates and starts a Docker container with correct labels and mounts (US-004)', async () => {
+      const opts: any = {
+        featureId: '002-build-server',
+        phaseId: 'phase-04',
+        branchName: 'phase/002-build-server-phase-04',
+        repoPath: '/tmp/gwrk-repo',
+        backend: 'gemini',
+        contextPath: '/tmp/gwrk-context.md'
+      };
+
+      const mockContainer = {
+        start: vi.fn().mockResolvedValue({}),
+        id: 'mock-container-id'
+      };
+
+      const mockDocker = {
+        createContainer: vi.fn().mockResolvedValue(mockContainer),
+        getImage: vi.fn().mockReturnValue({
+          inspect: vi.fn().mockResolvedValue({ id: 'mock-image-id' })
+        })
+      };
+
+      (Docker as any).mockImplementation(() => mockDocker);
+
+      const result = await createSandbox(opts);
+
+      expect(mockDocker.createContainer).toHaveBeenCalledWith(expect.objectContaining({
+        Image: 'gwrk-sandbox:bookworm-slim',
+        Labels: {
+          'gwrk.feature': '002-build-server',
+          'gwrk.phase': 'phase-04',
+          'gwrk.backend': 'gemini'
+        },
+        HostConfig: expect.objectContaining({
+          Binds: expect.arrayContaining([
+            '/tmp/gwrk-repo:/workspace:rw'
+          ])
+        })
+      }));
+      expect(mockContainer.start).toHaveBeenCalled();
+      expect(result).toMatchObject({
+        containerId: 'mock-container-id',
+        status: 'running',
+        featureId: '002-build-server',
+        phaseId: 'phase-04',
+        backend: 'gemini'
+      });
+      expect(result.startedAt).toBeDefined();
     });
 
-    it("US-004 #2: mounts repoPath at /workspace", async () => {
-      const Dockerode = (await import("dockerode")).default;
-      const docker = new Dockerode();
-      await createSandbox(TEST_OPTS);
-
-      expect(docker.createContainer).toHaveBeenCalledWith(
-        expect.objectContaining({
-          HostConfig: expect.objectContaining({
-            Binds: expect.arrayContaining([
-              expect.stringContaining("/workspace"),
-            ]),
-          }),
+    it('rejects if Docker daemon is not reachable (FR-005 error state)', async () => {
+      const mockDocker = {
+        getImage: vi.fn().mockImplementation(() => {
+          throw new Error('Docker daemon not reachable');
         })
-      );
+      };
+      (Docker as any).mockImplementation(() => mockDocker);
+
+      await expect(createSandbox({} as any)).rejects.toThrow('Docker daemon not reachable');
     });
 
-    it("US-008 #1: uses gwrk-sandbox:bookworm-slim image", async () => {
-      const Dockerode = (await import("dockerode")).default;
-      const docker = new Dockerode();
-      await createSandbox(TEST_OPTS);
-
-      expect(docker.createContainer).toHaveBeenCalledWith(
-        expect.objectContaining({
-          Image: "gwrk-sandbox:bookworm-slim",
+    it('rejects if gwrk-sandbox image is not found (US-008)', async () => {
+      const mockDocker = {
+        getImage: vi.fn().mockReturnValue({
+          inspect: vi.fn().mockRejectedValue(new Error('no such image'))
         })
-      );
-    });
+      };
+      (Docker as any).mockImplementation(() => mockDocker);
 
-    // TC-006: Docker label convention
-    it("TC-006: container has gwrk.feature, gwrk.phase, gwrk.backend labels", async () => {
-      const Dockerode = (await import("dockerode")).default;
-      const docker = new Dockerode();
-      await createSandbox(TEST_OPTS);
-
-      expect(docker.createContainer).toHaveBeenCalledWith(
-        expect.objectContaining({
-          Labels: expect.objectContaining({
-            "gwrk.feature": "001-cli-core",
-            "gwrk.phase": "phase-01",
-            "gwrk.backend": "gemini",
-          }),
-        })
-      );
+      await expect(createSandbox({} as any)).rejects.toThrow(/image gwrk-sandbox:bookworm-slim not found/i);
     });
   });
 
-  // US-004 #3: destroySandbox stops and removes container
-  describe("destroySandbox()", () => {
-    it("US-004 #3: stops and removes the container", async () => {
-      await destroySandbox("abc123");
-      const Dockerode = (await import("dockerode")).default;
-      const docker = new Dockerode();
-      const container = docker.getContainer("abc123");
-      expect(container.stop).toHaveBeenCalled();
-      expect(container.remove).toHaveBeenCalled();
+  describe('destroySandbox', () => {
+    it('stops and removes the container (US-002)', async () => {
+      const mockContainer = {
+        stop: vi.fn().mockResolvedValue({}),
+        remove: vi.fn().mockResolvedValue({})
+      };
+
+      const mockDocker = {
+        getContainer: vi.fn().mockReturnValue(mockContainer)
+      };
+
+      (Docker as any).mockImplementation(() => mockDocker);
+
+      await destroySandbox('mock-id');
+
+      expect(mockDocker.getContainer).toHaveBeenCalledWith('mock-id');
+      expect(mockContainer.stop).toHaveBeenCalled();
+      expect(mockContainer.remove).toHaveBeenCalled();
+    });
+
+    it('gracefully handles containers that are already stopped', async () => {
+      const mockContainer = {
+        stop: vi.fn().mockRejectedValue({ statusCode: 304 }), // Docker 304 means already stopped
+        remove: vi.fn().mockResolvedValue({})
+      };
+
+      const mockDocker = {
+        getContainer: vi.fn().mockReturnValue(mockContainer)
+      };
+
+      (Docker as any).mockImplementation(() => mockDocker);
+
+      await destroySandbox('mock-id');
+
+      expect(mockContainer.remove).toHaveBeenCalled();
     });
   });
 
-  // TC-007: destroyAllSandboxes for graceful shutdown
-  describe("destroyAllSandboxes()", () => {
-    it("TC-007: destroys all gwrk-labeled containers", async () => {
+  describe('listSandboxes', () => {
+    it('returns a list of gwrk-labeled containers (US-004)', async () => {
+      const mockContainers = [
+        {
+          Id: 'id-1',
+          Labels: { 'gwrk.feature': 'f1', 'gwrk.phase': 'p1', 'gwrk.backend': 'gemini' },
+          State: 'running',
+          Created: 123456789
+        }
+      ];
+
+      const mockDocker = {
+        listContainers: vi.fn().mockResolvedValue(mockContainers)
+      };
+
+      (Docker as any).mockImplementation(() => mockDocker);
+
+      const results = await listSandboxes();
+
+      expect(mockDocker.listContainers).toHaveBeenCalledWith({
+        filters: JSON.stringify({ label: ['gwrk.feature'] })
+      });
+      expect(results).toHaveLength(1);
+      expect(results[0].containerId).toBe('id-1');
+    });
+  });
+
+  describe('destroyAllSandboxes', () => {
+    it('destroys all containers with gwrk labels (US-002)', async () => {
+      const mockContainers = [
+        { Id: 'id-1' },
+        { Id: 'id-2' }
+      ];
+
+      const mockContainer = {
+        stop: vi.fn().mockResolvedValue({}),
+        remove: vi.fn().mockResolvedValue({})
+      };
+
+      const mockDocker = {
+        listContainers: vi.fn().mockResolvedValue(mockContainers),
+        getContainer: vi.fn().mockReturnValue(mockContainer)
+      };
+
+      (Docker as any).mockImplementation(() => mockDocker);
+
       const count = await destroyAllSandboxes();
-      expect(typeof count).toBe("number");
-    });
-  });
 
-  // listSandboxes
-  describe("listSandboxes()", () => {
-    it("US-003 #1: returns array of SandboxInfo", async () => {
-      const sandboxes = await listSandboxes();
-      expect(Array.isArray(sandboxes)).toBe(true);
+      expect(count).toBe(2);
+      expect(mockContainer.stop).toHaveBeenCalledTimes(2);
+      expect(mockContainer.remove).toHaveBeenCalledTimes(2);
     });
   });
 });
