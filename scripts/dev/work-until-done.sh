@@ -412,16 +412,16 @@ cd "$REPO_ROOT"
 
 # Stage: Branch Setup
 if [[ "$STAGE" == "BRANCH_SETUP" ]]; then
-  local start_time=$(date +%s)
+  branch_start_time=$(date +%s)
   banner "BRANCH SETUP"
   log INFO "Ensuring feat/${FEATURE} branch..."
-  local exit_code=0
+  branch_exit_code=0
   if ! "$WUD_BRANCH" "$FEATURE"; then
-    exit_code=$?
+    branch_exit_code=$?
     log ERROR "Branch setup failed"
   fi
-  local duration=$(( $(date +%s) - start_time ))
-  record_run "branch-setup" "$exit_code" "$duration"
+  branch_duration=$(( $(date +%s) - branch_start_time ))
+  record_run "branch-setup" "$branch_exit_code" "$branch_duration"
   
   if [[ "$exit_code" -ne 0 ]]; then
     exit 1
@@ -453,8 +453,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after code review."
         save_state "CIRCUIT_BREAK" "$ITERATION"
-        local duration=$(( $(date +%s) - START_TIME ))
-        record_run "circuit-break" "1" "$duration" --retry-reason "Max iterations reached after code review"
+        cb_duration=$(( $(date +%s) - START_TIME ))
+        record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after code review"
         exit 1
       fi
       STAGE="IMPLEMENTING"
@@ -473,8 +473,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after UAT."
         save_state "CIRCUIT_BREAK" "$ITERATION"
-        local duration=$(( $(date +%s) - START_TIME ))
-        record_run "circuit-break" "1" "$duration" --retry-reason "Max iterations reached after UAT review"
+        cb_duration=$(( $(date +%s) - START_TIME ))
+        record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after UAT review"
         exit 1
       fi
       STAGE="IMPLEMENTING"
@@ -494,8 +494,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after CI failure."
         save_state "CIRCUIT_BREAK" "$ITERATION"
-        local duration=$(( $(date +%s) - START_TIME ))
-        record_run "circuit-break" "1" "$duration" --retry-reason "Max iterations reached after CI failure"
+        cb_duration=$(( $(date +%s) - START_TIME ))
+        record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after CI failure"
         exit 1
       fi
       STAGE="IMPLEMENTING"
@@ -515,8 +515,8 @@ TOTAL_SECS=$(( TOTAL % 60 ))
 
 if [[ "$STAGE" == "DONE" ]]; then
   save_state "DONE" "$ITERATION"
-  local duration=$(( $(date +%s) - START_TIME ))
-  record_run "wud-complete" "0" "$duration"
+  final_duration=$(( $(date +%s) - START_TIME ))
+  record_run "wud-complete" "0" "$final_duration"
   echo ""
   echo -e "${GREEN}╔═════════════════════════════════════════════════╗${RESET}"
   echo -e "${GREEN}║${RESET}  ${BOLD}✓ WORK UNTIL DONE — COMPLETE${RESET}                   ${GREEN}║${RESET}"
@@ -533,8 +533,8 @@ if [[ "$STAGE" == "DONE" ]]; then
   rm -f "$STATE_FILE"
   exit 0
 else
-  local duration=$(( $(date +%s) - START_TIME ))
-  record_run "wud-failed" "1" "$duration"
+  final_duration=$(( $(date +%s) - START_TIME ))
+  record_run "wud-failed" "1" "$final_duration"
   echo ""
   echo -e "${RED}╔═════════════════════════════════════════════════╗${RESET}"
   echo -e "${RED}║${RESET}  ${BOLD}✗ WORK UNTIL DONE — FAILED${RESET}                     ${RED}║${RESET}"
