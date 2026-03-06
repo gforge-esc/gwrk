@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 004-wud-loop
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Contract: WUD State Machine
 
 **Feature**: 004-wud-loop
@@ -5,47 +11,21 @@
 
 ---
 
-## `runWudLoop(opts: WudOptions): Promise<WudResult>`
+## `ship done <feature> <phase>`
 
-**Source**: `src/commands/wud.ts`
+**Source**: `src/commands/ship.ts` (wrapper for `scripts/dev/work-until-done.sh`)
 **Consumed by**: CLI
 
 Orchestrates the full WUD state machine. Persists state after every stage transition for crash recovery.
 
-```typescript
-interface WudOptions {
-  featureDir: string;        // e.g. "specs/004-wud-loop"
-  phaseNumber: number;       // e.g. 1
-  config: GwrkConfig;        // From loadConfig()
-  maxIterations?: number;    // Default from config or 3
-  ciTimeout?: number;        // Minutes, default 30
-  dryRun?: boolean;          // Print state machine plan without executing
-  trackingIssue?: string;    // Optional GitHub issue number for PR body
-}
-
-interface WudResult {
-  stage: WudStage;
-  iteration: number;
-  prNumber?: number;
-  durationMs: number;
-}
-
-type WudStage =
-  | "BRANCH_SETUP"
-  | "IMPLEMENTING"
-  | "CODE_REVIEW"
-  | "UAT_REVIEW"
-  | "PR_CI"
-  | "CI_WAIT"
-  | "DONE"
-  | "FAILED"
-  | "CIRCUIT_BREAK";
-
-function runWudLoop(opts: WudOptions): Promise<WudResult>
-```
-
-**Returns**: Final state with stage, iteration count, PR number, and duration.
-**Exit code**: 0 on DONE, 1 on FAILED or CIRCUIT_BREAK.
+### Options
+| Option | Type | Description |
+|---|---|---|
+| `feature` | `string` | e.g. "004-wud-loop" |
+| `phase` | `string` | e.g. "1" |
+| `--max-iterations` | `number` | Max implement→review cycles (default: 3) |
+| `--ci-timeout` | `number` | Minutes, default 30 |
+| `--dry-run` | `boolean` | Print state machine plan without executing |
 
 ---
 

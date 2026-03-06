@@ -1,3 +1,9 @@
+---
+type: specification
+feature: 003-slack
+last_modified: "2026-03-05T11:12:27Z"
+---
+
 # 003 Slack — Feature Specification
 
 > **Status:** Stub · **Date:** 2026-03-05

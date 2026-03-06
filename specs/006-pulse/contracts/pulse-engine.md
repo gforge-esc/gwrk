@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 006-pulse
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Contract: Pulse Engine
 
 **Feature**: 006-pulse

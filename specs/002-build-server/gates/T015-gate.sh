@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
-# Gate: T015 — Create Git branch manager
-# Contract: src/server/git-manager.ts must export createPhaseBranch, mergePhaseBack, isClean, hasConflicts
+# Gate: T015 — Implement dispatch persistence
 set -euo pipefail
 
-FILE="src/server/git-manager.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
+# Assertion #1: src/server/persistence.ts exists
+test -f src/server/persistence.ts || { echo "FAIL: src/server/persistence.ts not found"; exit 1; }
 
-# Assertion #2
-grep -q 'export.*function createPhaseBranch\|export async function createPhaseBranch' "$FILE" || { echo "FAIL: createPhaseBranch not exported"; exit 1; }
-# Assertion #3
-grep -q 'export.*function mergePhaseBack\|export async function mergePhaseBack' "$FILE" || { echo "FAIL: mergePhaseBack not exported"; exit 1; }
-# Assertion #4
-grep -q 'export.*function isClean\|export async function isClean' "$FILE" || { echo "FAIL: isClean not exported"; exit 1; }
-# Assertion #5
-grep -q 'export.*function hasConflicts\|export async function hasConflicts' "$FILE" || { echo "FAIL: hasConflicts not exported"; exit 1; }
+# Assertion #2: persistDispatch exported
+grep -q "export.*persistDispatch" src/server/persistence.ts || { echo "FAIL: persistDispatch not exported"; exit 1; }
 
-# Verify git operations via child_process
-# Assertion #6
-grep -q 'execFile\|exec\|child_process' "$FILE" || { echo "FAIL: child_process not used for git operations"; exit 1; }
+# Assertion #3: appends to dispatches.jsonl
+grep -q "dispatches.jsonl" src/server/persistence.ts && grep -q "append" src/server/persistence.ts || { echo "FAIL: dispatches.jsonl append logic missing"; exit 1; }
+
+# Assertion #4: uses JSON.stringify
+grep -q "JSON.stringify" src/server/persistence.ts || { echo "FAIL: JSON stringification missing"; exit 1; }
 
 echo "PASS: T015"

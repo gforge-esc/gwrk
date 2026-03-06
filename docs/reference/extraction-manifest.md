@@ -13,10 +13,10 @@ The Makefile is the user-facing CLI. All agent invocations go through `make agen
 | Target | Purpose | Delegates To |
 |---|---|---|
 | `agent-wud` | Work-Until-Done: autonomous implement→review→PR→CI lifecycle | [scripts/dev/work-until-done.sh](file:///Users/gonzo/Code/code-red/scripts/dev/work-until-done.sh) |
-| `agent-dus` | Define-Until-Solid: plan-to-beads→analyze→tests→import | [scripts/dev/define-until-solid.sh](file:///Users/gonzo/Code/code-red/scripts/dev/define-until-solid.sh) |
+| `agent-dus` | Define-Until-Solid: plan-to-tasks→analyze→tests→import | [scripts/dev/define-until-solid.sh](file:///Users/gonzo/Code/code-red/scripts/dev/define-until-solid.sh) |
 | `agent-specify` | Specification from natural language | `scripts/dev/agent-run.sh specify` |
 | `agent-plan` | Technical implementation plan | `scripts/dev/agent-run.sh plan` |
-| `agent-plan-to-beads` | Generate beads import scripts | `scripts/dev/agent-run.sh plan-to-beads` |
+| `agent-plan-to-tasks` | Generate beads import scripts | `scripts/dev/agent-run.sh plan-to-tasks` |
 | `agent-analyze` | Read-only cross-artifact consistency analysis | `scripts/dev/agent-run.sh analyze` |
 | `agent-review-code` | Technical code review | `scripts/dev/agent-run.sh review-code` |
 | `agent-review-uat` | User acceptance testing | `scripts/dev/agent-run.sh review-uat` |
@@ -55,7 +55,7 @@ Parses review output (from `/review-code` and `/review-uat`) to determine GO/NO-
 ### Define-Until-Solid (DUS) Orchestrator
 
 #### [define-until-solid.sh](file:///Users/gonzo/Code/code-red/scripts/dev/define-until-solid.sh) — 465 lines
-**The autonomous definition loop.** Orchestrates: plan-to-beads → analyze → define-tests → beads import. Ensures all definition artifacts are solid before implementation begins.
+**The autonomous definition loop.** Orchestrates: plan-to-tasks → analyze → define-tests → beads import. Ensures all definition artifacts are solid before implementation begins.
 
 ### Shared Utilities
 
@@ -82,7 +82,7 @@ The workflow definitions. These are markdown files that agents read and execute 
 |---|---|---|---|---|
 | [specify.md](file:///Users/gonzo/Code/code-red/.agent/workflows/specify.md) | 151 | `/specify` | Product Manager | Create spec.md from feature description |
 | [plan.md](file:///Users/gonzo/Code/code-red/.agent/workflows/plan.md) | 189 | `/plan` | Senior Architect | Create plan.md from spec |
-| [plan-to-beads.md](file:///Users/gonzo/Code/code-red/.agent/workflows/plan-to-beads.md) | 325 | `/plan-to-beads` | Senior Architect + Auditor | Generate beads import scripts from spec + plan + code audit |
+| [plan-to-tasks.md](file:///Users/gonzo/Code/code-red/.agent/workflows/plan-to-tasks.md) | 325 | `/plan-to-tasks` | Senior Architect + Auditor | Generate beads import scripts from spec + plan + code audit |
 | [define-tests.md](file:///Users/gonzo/Code/code-red/.agent/workflows/define-tests.md) | 183 | `/define-tests` | QA Architect | Generate RED test files before implementation |
 
 ### Execution Pipeline (Implement → Review → Ship)
@@ -120,7 +120,7 @@ Binding policy documents referenced by workflows at runtime. The `<scope_constra
 |---|---|---|
 | [operating-model.md](file:///Users/gonzo/Code/code-red/.agent/rules/operating-model.md) | 43 | All workflows (Foxtrot Charlie principles, RAGB definitions) |
 | [workspace.md](file:///Users/gonzo/Code/code-red/.agent/rules/workspace.md) | 70 | plan.md (UI components, config hygiene), checklist.md |
-| [seeding-governance.md](file:///Users/gonzo/Code/code-red/.agent/rules/seeding-governance.md) | 58 | plan.md (fixture/seed changes), plan-to-beads.md |
+| [seeding-governance.md](file:///Users/gonzo/Code/code-red/.agent/rules/seeding-governance.md) | 58 | plan.md (fixture/seed changes), plan-to-tasks.md |
 | [coding-style.md](file:///Users/gonzo/Code/code-red/.agent/rules/coding-style.md) | 54 | implement.md (compile-gate skill) |
 | [api-architecture.md](file:///Users/gonzo/Code/code-red/.agent/rules/api-architecture.md) | 170 | plan.md (hexagonal registry, API design) |
 | [observability-governance.md](file:///Users/gonzo/Code/code-red/.agent/rules/observability-governance.md) | 62 | checklist.md (observability dimension) |
@@ -153,7 +153,7 @@ Templates injected into agent context at workflow runtime. These provide the age
 |---|---|---|
 | [monorepo-context.md](file:///Users/gonzo/Code/code-red/.agent/templates/monorepo-context.md) | 71 | plan.md Step 2 (required reading for file path generation) |
 | [e2e-patterns.md](file:///Users/gonzo/Code/code-red/.agent/templates/e2e-patterns.md) | 167 | define-tests.md (Playwright test patterns) |
-| [verification-gate.md](file:///Users/gonzo/Code/code-red/.agent/templates/verification-gate.md) | 90 | plan-to-beads.md Step 7a (gate script format) |
+| [verification-gate.md](file:///Users/gonzo/Code/code-red/.agent/templates/verification-gate.md) | 90 | plan-to-tasks.md Step 7a (gate script format) |
 
 ---
 
@@ -167,8 +167,8 @@ Output templates that workflows fill with `{{PLACEHOLDER}}` tokens. These ensure
 |---|---|---|
 | [spec-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/spec-template.md) | 95 | `/specify` Step 6 |
 | [plan-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/plan-template.md) | 80 | `/plan` Step 4 |
-| [task-description-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/task-description-template.md) | 36 | `/plan-to-beads` Step 7 |
-| [gap-analysis-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/gap-analysis-template.md) | 22 | `/plan-to-beads` Step 4a |
+| [task-description-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/task-description-template.md) | 36 | `/plan-to-tasks` Step 7 |
+| [gap-analysis-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/gap-analysis-template.md) | 22 | `/plan-to-tasks` Step 4a |
 | [checklist-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/checklist-template.md) | 18 | `/checklist` Step 3 |
 | [test-unit-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/test-unit-template.md) | 28 | `/define-tests` Step 3 |
 | [review-code-comment-template.md](file:///Users/gonzo/Code/code-red/.specify/templates/review-code-comment-template.md) | 18 | `/review-code` Step 9 |
@@ -297,7 +297,7 @@ graph TD
     subgraph "Workflow Definitions"
         SP[/specify]
         PL[/plan]
-        PTB[/plan-to-beads]
+        PTB[/plan-to-tasks]
         DT[/define-tests]
         IM[/implement]
         RC[/review-code]

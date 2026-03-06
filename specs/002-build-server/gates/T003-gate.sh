@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# Gate: T003 — Create PID file manager
-# Contract: src/server/pid.ts must export writePid, readPid, removePid
+# Gate: T003 — Implement PID management utility
 set -euo pipefail
 
-FILE="src/server/pid.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
+# Assertion #1: src/server/pid.ts exists
+test -f src/server/pid.ts || { echo "FAIL: src/server/pid.ts not found"; exit 1; }
 
-# Assertion #2
-grep -q 'export.*function writePid' "$FILE" || grep -q 'export function writePid' "$FILE" || { echo "FAIL: writePid not exported"; exit 1; }
-# Assertion #3
-grep -q 'export.*function readPid' "$FILE" || grep -q 'export function readPid' "$FILE" || { echo "FAIL: readPid not exported"; exit 1; }
-# Assertion #4
-grep -q 'export.*function removePid' "$FILE" || grep -q 'export function removePid' "$FILE" || { echo "FAIL: removePid not exported"; exit 1; }
+# Assertion #2: writePid function exists and exports
+grep -q "export.*writePid" src/server/pid.ts || { echo "FAIL: writePid function not exported"; exit 1; }
 
-# Verify readPid returns number | null
-# Assertion #5
-grep -q 'number | null\|number|null' "$FILE" || { echo "FAIL: readPid must return number | null"; exit 1; }
+# Assertion #3: readPid function exists and exports
+grep -q "export.*readPid" src/server/pid.ts || { echo "FAIL: readPid function not exported"; exit 1; }
+
+# Assertion #4: removePid function exists and exports
+grep -q "export.*removePid" src/server/pid.ts || { echo "FAIL: removePid function not exported"; exit 1; }
+
+# Assertion #5: readPid performs process check (kill pid, 0)
+grep -q "kill(.*0)" src/server/pid.ts || { echo "FAIL: readPid does not check process liveness"; exit 1; }
 
 echo "PASS: T003"

@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 002-build-server
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Contract: Server Lifecycle
 
 **Feature**: 002-build-server

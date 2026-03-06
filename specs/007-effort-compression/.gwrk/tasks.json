@@ -1,136 +1,217 @@
 {
-  "feature": "007-effort-compression",
+  "featureId": "007-effort-compression",
+  "createdAt": "2026-03-06T20:24:34.972Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "9181446fcd67b99b639b92a05de761fc49b5f754cc83cce0a8c57867fc742742",
+      "modifiedAt": "2026-03-06T20:13:56.823Z"
+    }
+  },
   "phases": [
     {
-      "id": "1",
-      "name": "Phase 1: Effort Engine",
+      "id": "phase-01",
+      "title": "Effort Engine",
       "tasks": [
         {
           "id": "T001",
-          "title": "Create shared type definitions",
-          "description": "Create src/engine/types.ts with all shared interfaces: EffortReport, RoleBreakdown, StoryEstimate, RoleConfig, EffortForecast, CompressionReport, DeliveryActuals, CompressionRatios, CompressionSummary, CommitCluster. All types must match the DM-001, DM-002, DM-003 schemas from spec.md exactly.",
-          "status": "open"
+          "title": "Implement src/engine/effort.ts",
+          "description": "NEW: effort engine — story extraction, role bracketing, hour computation, report generation",
+          "status": "open",
+          "gateScript": "gates/T001-gate.sh"
         },
         {
           "id": "T002",
-          "title": "Create spec parser for story extraction",
-          "description": "Create src/engine/spec-parser.ts implementing extractStories(specPath: string): StoryEstimate[]. Parse spec.md markdown to extract US-### blocks with SP values, role assignments (RE/TS/PM/PE/DE), and titles. Stories without explicit SP get sp:0 and unestimated:true. Must throw with stderr 'spec.md not found' if file missing.",
-          "status": "open"
+          "title": "Implement src/engine/spec-parser.ts",
+          "description": "NEW: markdown parser that extracts US-### blocks with SP values and role assignments from spec.md",
+          "status": "open",
+          "gateScript": "gates/T002-gate.sh"
         },
         {
           "id": "T003",
-          "title": "Create spec parser tests",
-          "description": "Create src/engine/spec-parser.test.ts with Vitest tests: (1) extract stories from valid spec with US-001..US-003, verify storyId/title/sp/roles, (2) handle stories without SP (unestimated flag), (3) handle sub-stories US-001a, (4) throw on missing spec.md file.",
-          "status": "open"
+          "title": "Implement src/engine/types.ts",
+          "description": "NEW: shared TypeScript interfaces for EffortReport, RoleBreakdown, StoryEstimate, CompressionReport, DeliveryActuals, CompressionRatios, CompressionSummary, LeadingIndicators",
+          "status": "open",
+          "gateScript": "gates/T003-gate.sh"
         },
         {
           "id": "T004",
-          "title": "Create role multiplier resolver",
-          "description": "Create src/engine/roles.ts implementing resolveRoleMultipliers(config: GwrkConfig): RoleConfig[]. Canonical defaults: RE=6, TS=4, PM=2, PE=1.5, DE=5. Merge with overrides from config.effort.roles.<CODE>.hoursPerSP if present. Return full RoleConfig[] array.",
-          "status": "open"
+          "title": "Implement src/engine/roles.ts",
+          "description": "NEW: canonical role multiplier defaults — RE=6, TS=4, PM=2, PE=1.5, DE=5 — and config override resolution",
+          "status": "open",
+          "gateScript": "gates/T004-gate.sh"
         },
         {
           "id": "T005",
-          "title": "Create effort computation engine",
-          "description": "Create src/engine/effort.ts implementing computeEffort(stories: StoryEstimate[], roles: RoleConfig[], overheadFactor: number): EffortReport. Pure function: for each story, match roles to multipliers, compute rawHours = sp * hoursPerSP, apply overhead. Aggregate into RoleBreakdown[] and totals. Default overheadFactor=1.25.",
-          "status": "open"
+          "title": "Implement src/engine/report-writer.ts",
+          "description": "NEW: generates effort markdown report to `docs/assessments/effort-<feature>-YYYY-MM-DD.md`",
+          "status": "open",
+          "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
-          "title": "Create effort report markdown writer",
-          "description": "Create src/engine/report-writer.ts implementing writeEffortReport(report: EffortReport, outputDir: string): string. Generate markdown report matching the PRD §15 format: executive summary, role breakdown table, per-story table, methodology section. Write to docs/assessments/effort-<featureId>-YYYY-MM-DD.md. Return absolute path. Create outputDir if missing.",
-          "status": "open"
+          "title": "Implement src/engine/effort.test.ts",
+          "description": "NEW: unit tests — story extraction, hour calculation, report generation, missing spec fail-fast",
+          "status": "open",
+          "gateScript": "gates/T006-gate.sh"
         },
         {
           "id": "T007",
-          "title": "Create effort engine tests",
-          "description": "Create src/engine/effort.test.ts with Vitest tests: (1) 5 SP × TS(4h) = 20h raw, 25h with 1.25× overhead (TR-002), (2) report file written to docs/assessments/ (TR-003), (3) missing spec.md → exit 1 (TR-004), (4) config override TS=6h/SP takes precedence (TR-013), (5) multi-role story hours summed correctly.",
-          "status": "open"
+          "title": "Implement src/engine/spec-parser.test.ts",
+          "description": "NEW: unit tests — US block extraction, SP parsing, role parsing, edge cases",
+          "status": "open",
+          "gateScript": "gates/T007-gate.sh"
+        },
+        {
+          "id": "T008",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T008-gate.sh"
         }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/engine/effort.test.ts` exits 0",
+        "`pnpm vitest run src/engine/spec-parser.test.ts` exits 0",
+        "`test -f src/engine/effort.ts` exits 0",
+        "`test -f src/engine/spec-parser.ts` exits 0",
+        "`test -f src/engine/roles.ts` exits 0",
+        "`test -f src/engine/report-writer.ts` exits 0",
+        "`test -f src/engine/types.ts` exits 0"
       ]
     },
     {
-      "id": "2",
-      "name": "Phase 2: Compression Engine",
+      "id": "phase-02",
+      "title": "Compression Engine",
       "tasks": [
         {
-          "id": "T008",
-          "title": "Create git timestamp collector",
-          "description": "Create src/engine/git-timestamps.ts implementing collectTimestamps(featureDir: string): DeliveryActuals. Collect: specCreatedAt (OS birthtime or first git commit on spec.md), planApprovedAt (last plan.md commit before impl), firstImplCommit/lastImplCommit (git log on src/ files), prMergedAt (gh pr view, degrade gracefully to lastImplCommit if gh unavailable). Throw with 'No implementation commits found' if no impl commits.",
-          "status": "open"
-        },
-        {
           "id": "T009",
-          "title": "Create git timestamp collector tests",
-          "description": "Create src/engine/git-timestamps.test.ts with Vitest tests: (1) extract spec creation date from mocked git log (TR-005), (2) extract first/last impl commit timestamps, (3) graceful gh degradation — when gh fails, use lastImplCommit as delivery endpoint, (4) throw on no impl commits (TR-010), (5) OS file birthtime fallback.",
-          "status": "open"
+          "title": "Implement src/engine/compression.ts",
+          "description": "NEW: compression engine — ratio computation, leading indicators, summary generation, SQLite persistence",
+          "status": "open",
+          "gateScript": "gates/T009-gate.sh"
         },
         {
           "id": "T010",
-          "title": "Create commit clustering algorithm",
-          "description": "Create src/engine/commit-cluster.ts implementing clusterCommits(timestamps: string[], gapMinutes: number): CommitCluster[]. Pure function: sort ISO 8601 timestamps, group by gap threshold (default 30 min). Each cluster has startedAt, endedAt, commitCount, durationMinutes. Edge cases: single commit → 1 cluster with duration 0, empty array → empty array.",
-          "status": "open"
+          "title": "Implement src/engine/git-timestamps.ts",
+          "description": "NEW: extracts spec creation date, first/last impl commit, PR merge time from Git log and `gh` CLI",
+          "status": "open",
+          "gateScript": "gates/T010-gate.sh"
         },
         {
           "id": "T011",
-          "title": "Create commit clustering tests",
-          "description": "Create src/engine/commit-cluster.test.ts with Vitest tests: (1) timestamps [0,5,10,120,125] min → 2 sessions, 15 min active (TR-006), (2) single commit → 1 cluster duration 0, (3) all within gap → 1 cluster, (4) empty array → empty array, (5) custom gap threshold of 60 min.",
-          "status": "open"
+          "title": "Implement src/engine/commit-cluster.ts",
+          "description": "NEW: clusters commits by gap threshold, computes active coding time",
+          "status": "open",
+          "gateScript": "gates/T011-gate.sh"
         },
         {
           "id": "T012",
-          "title": "Create compression ratio calculator",
-          "description": "Create src/engine/compression.ts implementing computeCompression(forecast: EffortForecast, actuals: DeliveryActuals): CompressionRatios. Point Compression = estimatedHours / (activeCodingMinutes / 60). Total Compression = estimatedDays / (deliveryWindowHours / 24). Handle division by zero (report as Infinity).",
-          "status": "open"
+          "title": "Implement src/engine/compression.test.ts",
+          "description": "NEW: unit tests — ratios, indicators, summary, fail-fast on no impl, SQLite persistence",
+          "status": "open",
+          "gateScript": "gates/T012-gate.sh"
         },
         {
           "id": "T013",
-          "title": "Create cross-feature summary generator",
-          "description": "Add generateSummary(reports: CompressionReport[]): CompressionSummary to src/engine/compression.ts. Aggregate totals, compute averages, identify best/worst by pointCompression, determine trend ('improving'/'declining'/'stable') from 3 most recent features.",
-          "status": "open"
+          "title": "Implement src/engine/git-timestamps.test.ts",
+          "description": "NEW: unit tests — Git log parsing, `gh` fallback",
+          "status": "open",
+          "gateScript": "gates/T013-gate.sh"
         },
         {
           "id": "T014",
-          "title": "Create compression engine tests",
-          "description": "Create src/engine/compression.test.ts with Vitest tests: (1) 287.5h / 0.75h = 383× point compression (TR-007), (2) 36 days / 0.73 days = 49× total compression (TR-008), (3) summary across 3 features with best/worst/trend (TR-009), (4) no impl commits → exit 1 (TR-010), (5) dormancy correctly excluded from ratios.",
-          "status": "open"
-        }
-      ]
-    },
-    {
-      "id": "3",
-      "name": "Phase 3: CLI Commands + Integration",
-      "tasks": [
+          "title": "Implement src/engine/commit-cluster.test.ts",
+          "description": "NEW: unit tests — gap detection, session boundaries",
+          "status": "open",
+          "gateScript": "gates/T014-gate.sh"
+        },
         {
           "id": "T015",
-          "title": "Extend GwrkConfigSchema for effort and compression",
-          "description": "Modify src/utils/config.ts: extend GwrkConfigSchema with optional effort.roles (object keyed by role code with hoursPerSP: number) and optional compression.sessionGapMinutes (number). Use z.optional() — these are additive, not required. Add corresponding tests to src/utils/config.test.ts for valid/invalid overrides.",
-          "status": "open"
+          "title": "Implement src/db/compression.ts",
+          "description": "NEW: SQLite adapters for `compression` table — insert, query, aggregate",
+          "status": "open",
+          "gateScript": "gates/T015-gate.sh"
         },
         {
           "id": "T016",
-          "title": "Create gwrk effort Commander command",
-          "description": "Create src/commands/effort.ts: Commander command 'effort <feature>' with --json flag. Loads config, resolves role multipliers, calls extractStories() and computeEffort(), then either writes markdown report via writeEffortReport() or outputs JSON to stdout. Handle errors: spec missing, no stories.",
-          "status": "open"
-        },
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T016-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/engine/compression.test.ts` exits 0",
+        "`pnpm vitest run src/engine/git-timestamps.test.ts` exits 0",
+        "`pnpm vitest run src/engine/commit-cluster.test.ts` exits 0",
+        "`test -f src/db/compression.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "CLI Commands + Integration",
+      "tasks": [
         {
           "id": "T017",
-          "title": "Create gwrk compression Commander command",
-          "description": "Create src/commands/compression.ts: Commander command 'compression [feature]' with --json and --all flags. For single feature: loads effort data, calls collectTimestamps(), clusterCommits(), computeCompression(), formats output. For --all: iterates all feature dirs, generates summary via generateSummary(). Handle errors: no feature, no impl commits, no effort data.",
-          "status": "open"
+          "title": "Implement src/commands/effort.ts",
+          "description": "NEW: Commander command — loads config, calls effort engine, writes report",
+          "status": "open",
+          "gateScript": "gates/T017-gate.sh"
         },
         {
           "id": "T018",
-          "title": "Register effort and compression commands in CLI",
-          "description": "Modify src/cli.ts: import effortCommand and compressionCommand, register with program.addCommand(). Verify both commands appear in gwrk --help output.",
-          "status": "open"
+          "title": "Implement src/commands/compression.ts",
+          "description": "NEW: Commander command — calls compression engine, formats output, persistence",
+          "status": "open",
+          "gateScript": "gates/T018-gate.sh"
         },
         {
           "id": "T019",
-          "title": "Create CLI command tests",
-          "description": "Create src/commands/effort.test.ts and src/commands/compression.test.ts with Vitest tests: (1) effort --json outputs valid JSON with totalSP and roles fields (TR-011), (2) compression --json outputs valid JSON with pointCompression and totalCompression fields (TR-012), (3) compression --all returns summary, (4) error cases for missing feature/spec.",
-          "status": "open"
+          "title": "Implement src/commands/effort.test.ts",
+          "description": "NEW: unit tests — command wiring, `--json` output",
+          "status": "open",
+          "gateScript": "gates/T019-gate.sh"
+        },
+        {
+          "id": "T020",
+          "title": "Implement src/commands/compression.test.ts",
+          "description": "NEW: unit tests — command wiring, indicators in output",
+          "status": "open",
+          "gateScript": "gates/T020-gate.sh"
+        },
+        {
+          "id": "T021",
+          "title": "Implement src/cli.ts",
+          "description": "MODIFY: register `measure effort` and `measure compression` subcommands",
+          "status": "open",
+          "gateScript": "gates/T021-gate.sh"
+        },
+        {
+          "id": "T022",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: extend `GwrkConfigSchema` with `effort.roles` and `compression.sessionGapMinutes`",
+          "status": "open",
+          "gateScript": "gates/T022-gate.sh"
+        },
+        {
+          "id": "T023",
+          "title": "Implement src/utils/config.test.ts",
+          "description": "MODIFY: add tests for extended config schema",
+          "status": "open",
+          "gateScript": "gates/T023-gate.sh"
+        },
+        {
+          "id": "T024",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T024-gate.sh"
         }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/commands/effort.test.ts` exits 0",
+        "`pnpm vitest run src/commands/compression.test.ts` exits 0",
+        "`grep -q 'measure effort' src/cli.ts` exits 0"
       ]
     }
   ]

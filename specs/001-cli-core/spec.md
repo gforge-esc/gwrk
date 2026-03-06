@@ -1,250 +1,294 @@
+---
+type: specification
+feature: 001-cli-core
+last_modified: "2026-03-06T00:23:47Z"
+---
+
 # Feature Specification: 001 CLI Core
 
 **Feature Branch**: `001-cli-core`
 **Created**: 2026-02-26
-**Status**: Draft
-**Input**: gwrk CLI infrastructure — the TypeScript CLI entry point, command routing, flat-file task tracking with Hard Gate enforcement, project scaffolding, and agent dispatch wrappers
+**Revised**: 2026-03-06
+**Status**: Active (Rewrite v2)
+**Input**: gwrk CLI — the TypeScript entry point, hierarchical command routing, flat-file task tracking with Hard Gate enforcement, agent dispatch wrappers, SQLite execution ledger, and shell-script orchestration passthroughs.
 
 ---
 
-## 2. User Scenarios & Testing
+## 1. Design Decisions
 
-### US-001 - Project Initialization (Priority: P0)
-As a developer adopting gwrk, I want to run `gwrk init` in my project root so that the `.agent/`, `.specify/`, `specs/`, and `.gwrkrc.json` files are scaffolded and I can start using gwrk workflows immediately.
+### Command Taxonomy
+
+The CLI uses a **Foxtrot Charlie pillar-based hierarchy** to organize commands by user intent (Clarity → Throughput → Value).
+
+| Pillar | Category | Commands | Purpose |
+|---|---|---|---|
+| **Clarity** | **Define** | `define <feature>`, `define spec`, `define plan`, `define tasks` | Specification, planning, and task decomposition (DUS loop) |
+| **Throughput**| **Ship** | `ship <feature> <phase>`, `ship done` | Implementation and autonomous execution (ZFG/WUD loop) |
+| **Value** | **Measure**| `measure pulse`, `measure effort`, `measure compression` | Productivity, estimation, and ratio reporting |
+| **-** | **Task Engine** | `tasks list`, `tasks next`, `tasks done` | Task state management with Hard Gate enforcement |
+| **-** | **Data** | `db runs`, `db stats` | SQLite execution ledger queries |
+| **-** | **Scaffolding**| `init` | Project setup |
+
+### Architecture Principles
+
+1. **Shell scripts ARE the product.** `define`, `ship`, and `ship done` are thin CLI wrappers around `scripts/dev/define-until-solid.sh`, `scripts/dev/agent-run.sh`, and `scripts/dev/work-until-done.sh`. The TS layer adds SQLite run recording and CLI UX — it does NOT reimplement orchestration logic.
+2. **Git-native task state.** `tasks.json` lives in `specs/<feature>/.gwrk/tasks.json` alongside the spec. Branch checkouts carry isolated state.
+3. **SQLite is the analytical ledger.** `~/.gwrk/gwrk.db` records execution history for compression tracking and agent routing. It is NOT the source of truth for task state.
+4. **Fail-fast config.** Zod validation with no `.default()` calls. Missing config → `process.exit(1)`.
+5. **Streaming output.** All agent dispatch uses `spawn` with `stdio: 'inherit'`. No buffering.
+6. **Private by default.** All local data (SQLite, tasks) and upstream integrations (GitHub visibility) default to private.
+
+---
+
+## 2. User Scenarios & Acceptance Criteria
+
+### US-001 - Project Initialization (P0)
+As a developer, I want to run `gwrk init` to scaffold a gwrk project.
 
 **Implements**: FR-001
 
-**Independent Test**: Run `gwrk init` in a temp directory and verify all scaffold directories exist.
+**Acceptance**:
+1. `gwrk init` in an empty directory creates `.agent/workflows/`, `.agent/rules/`, `.specify/templates/`, `specs/`, `.gwrkrc.json`.
+2. `gwrk init` does NOT create a `.gwrk/` directory. Per-feature `.gwrk/` dirs are created by `gwrk define tasks`. The global ledger lives at `~/.gwrk/gwrk.db`.
+3. Running `gwrk init` again prints `gwrk already initialized` and exits 0 (idempotent).
 
-**Acceptance Scenarios**:
-1. **Given** an empty directory, **When** the user runs `gwrk init`, **Then**:
-   - `test -d .agent/workflows` exits 0
-   - `test -d .agent/rules` exits 0
-   - `test -d .specify/templates` exits 0
-   - `test -d specs` exits 0
-   - `test -f .gwrkrc.json` exits 0
-2. **Given** a directory that already has `.agent/`, **When** the user runs `gwrk init`, **Then**:
-   - `gwrk init 2>&1 | grep -q 'already initialized'` exits 0
-
-### US-002 - Agent Specification (Priority: P0)
-As a Principal Engineer, I want to run `gwrk specify "my feature"` so that the `/specify` workflow is dispatched against a configured agent backend and a `spec.md` is generated.
+### US-002 - Agent Specification (P0)
+As a PE, I want `gwrk define spec <feature> [--refs <path>]` to dispatch the `/specify` workflow.
 
 **Implements**: FR-002
 
-**Independent Test**: Run `gwrk specify "test feature"` and verify the spec file is created.
+**Acceptance**:
+1. `gwrk define spec "a calculator"` dispatches the configured agent and streams output to terminal.
+2. Agent exit code propagates to CLI exit code.
+3. `--dry-run` prints the agent backend and workflow path without dispatching.
 
-**Acceptance Scenarios**:
-1. **Given** a gwrk project, **When** the user runs `gwrk specify "a calculator"`, **Then**:
-   - `test -f specs/*-calculator/spec.md` exits 0
-
-### US-003 - Agent Planning (Priority: P0)
-As a Senior Architect, I want to run `gwrk plan <feature>` so that the `/plan` workflow generates a `plan.md` from the spec.
+### US-003 - Agent Planning (P0)
+As a PE, I want `gwrk define plan <feature> [--refs <path>]` to generate `plan.md`.
 
 **Implements**: FR-003
 
-**Independent Test**: Run `gwrk plan 001-cli-core` and verify `plan.md` is created.
+**Acceptance**:
+1. `gwrk define plan 001-cli-core` dispatches the agent with `/plan` workflow.
+2. If `spec.md` is missing, exits 1 with `spec.md not found`.
+3. If `spec.md` is marked `**Status:** Stub`, exits 1 with `[BLOCKED]` error.
+4. `--dry-run` prints the agent backend and workflow path without dispatching.
 
-**Acceptance Scenarios**:
-1. **Given** a valid `spec.md` exists, **When** the user runs `gwrk plan <feature>`, **Then**:
-   - `test -f specs/<feature>/plan.md` exits 0
-
-### US-004 - Task Decomposition with Hard Gates (Priority: P0)
-As the DUS persona, I want to run `gwrk tasks generate <feature>` so that `plan.md` is decomposed into `.gwrk/tasks.json` and every task gets a corresponding `gates/T0xx-gate.sh` script.
+### US-004 - Task Decomposition (P0)
+As the DUS persona, I want `gwrk define tasks <feature>` to create tasks.json + gate scripts from plan.md.
 
 **Implements**: FR-004
 
-**Independent Test**: Run `gwrk tasks generate 001-cli-core` and verify tasks.json and gate scripts exist.
+**Acceptance**:
+1. Creates `specs/<feature>/.gwrk/tasks.json` with valid schema.
+2. Creates `gates/T0xx-gate.sh` for every task.
+3. Gate count equals task count.
 
-**Acceptance Scenarios**:
-1. **Given** an approved `plan.md`, **When** the user runs `gwrk tasks generate <feature>`, **Then**:
-   - `test -f specs/<feature>/.gwrk/tasks.json` exits 0
-   - `test -d specs/<feature>/gates` exits 0
-   - `ls specs/<feature>/gates/T*-gate.sh | wc -l | grep -qv '^0$'` exits 0
-2. **Given** tasks.json with N tasks, **When** counting gate files, **Then**:
-   - `jq '.tasks | length' specs/<feature>/.gwrk/tasks.json` equals `ls specs/<feature>/gates/T*-gate.sh | wc -l`
-
-### US-005 - Task State Query (Priority: P0)
-As a WUD agent, I want to run `gwrk tasks list <feature>` and `gwrk tasks next <feature> <phase>` so that I can discover available work without parsing JSON manually.
+### US-005 - Task State Query (P0)
+As a WUD agent, I want `gwrk tasks list <feature>` and `gwrk tasks next <feature> <phase>` to discover work.
 
 **Implements**: FR-005
 
-**Independent Test**: Given tasks with mixed statuses, `gwrk tasks next` returns only the next unblocked task.
+**Acceptance**:
+1. `gwrk tasks list <feature>` shows all tasks with status indicators.
+2. `gwrk tasks list <feature> --json` returns valid JSON.
+3. `gwrk tasks next <feature> <phase>` returns the next open task.
+4. When no open tasks remain, `gwrk tasks next` prints exactly: `All tasks completed or phase not found`.
 
-**Acceptance Scenarios**:
-1. **Given** a tasks.json with open and completed tasks, **When** running `gwrk tasks list <feature>`, **Then**:
-   - `gwrk tasks list <feature> --json | jq '.tasks | length'` returns the total task count
-2. **Given** a tasks.json with one open task in phase 1, **When** running `gwrk tasks next <feature> 1`, **Then**:
-   - `gwrk tasks next <feature> 1 --json | jq -r '.id'` returns the task ID
-
-### US-006 - Hard Gate Enforcement (Priority: P0)
-As the WUD engine, I want `gwrk tasks done <feature> <taskId>` to execute the corresponding gate script and only update state if exit code is 0, so that tasks cannot be marked complete without passing assertions.
+### US-006 - Hard Gate Enforcement (P0)
+As the WUD engine, I want `gwrk tasks done <feature> <taskId>` to execute the gate script and only update state on exit 0.
 
 **Implements**: FR-006
 
-**Independent Test**: Given a failing gate, `gwrk tasks done` must fail and state must remain unchanged.
+**Acceptance**:
+1. Failing gate → exit 1, state unchanged.
+2. Passing gate → exit 0, task marked `completed`, history.jsonl entry appended.
+3. Missing gate → exit 1 with `CRITICAL: gates/<taskId>-gate.sh not found`.
+4. Already completed → exit 1 with `Task <taskId> already completed`.
+5. After success: `tail -1 .gwrk/history.jsonl | jq -r '.taskId'` returns the completed task ID.
+6. After success: `tail -1 .gwrk/history.jsonl | jq -r '.toStatus'` returns `completed`.
 
-**Acceptance Scenarios**:
-1. **Given** a failing gate script for T001, **When** the user runs `gwrk tasks done <feature> T001`, **Then**:
-   - Command exits with code 1
-   - `jq '.tasks[] | select(.id == "T001") | .status' specs/<feature>/.gwrk/tasks.json | grep -q '"open"'` exits 0
-2. **Given** a passing gate script for T001, **When** the user runs `gwrk tasks done <feature> T001`, **Then**:
-   - Command exits with code 0
-   - `jq '.tasks[] | select(.id == "T001") | .status' specs/<feature>/.gwrk/tasks.json | grep -q '"completed"'` exits 0
-3. **Given** a missing gate script for T099, **When** the user runs `gwrk tasks done <feature> T099`, **Then**:
-   - Command exits with code 1
-   - `gwrk tasks done <feature> T099 2>&1 | grep -q 'Gate script .* not found'` exits 0
-
-### US-007 - Status Transition History (Priority: P1)
-As the Compression engine (future), I want every status transition to be appended to `.gwrk/history.jsonl` with timestamps, so that delivery timing can be measured.
+### US-007 - Status Transition History (P1)
+As the compression engine, I want state transitions appended to `.gwrk/history.jsonl`.
 
 **Implements**: FR-007
 
-**Independent Test**: After completing a task, verify a JSONL entry was appended.
+**Acceptance**:
+1. After `gwrk tasks done` succeeds, `tail -1 .gwrk/history.jsonl | jq -r '.taskId'` returns the task ID.
 
-**Acceptance Scenarios**:
-1. **Given** a task T001, **When** `gwrk tasks done <feature> T001` succeeds, **Then**:
-   - `tail -1 .gwrk/history.jsonl | jq -r '.taskId'` outputs `T001`
-   - `tail -1 .gwrk/history.jsonl | jq -r '.toStatus'` outputs `completed`
-   - `tail -1 .gwrk/history.jsonl | jq -r '.timestamp'` matches ISO 8601 format
-
-### US-008 - Configuration Validation (Priority: P0)
-As a developer, I want `.gwrkrc.json` loaded and validated at CLI startup with Zod so that missing configuration crashes immediately rather than failing silently downstream.
+### US-008 - Configuration Validation (P0)
+As a developer, I want `.gwrkrc.json` validated by Zod at startup.
 
 **Implements**: FR-008
 
-**Independent Test**: Remove a required field from `.gwrkrc.json` and verify the CLI crashes on startup.
+**Acceptance**:
+1. Missing `.gwrkrc.json` → exit 1 with `Configuration file .gwrkrc.json not found`.
+2. Invalid schema → exit 1 with Zod error.
+3. Valid config → command proceeds.
 
-**Acceptance Scenarios**:
-1. **Given** a malformed `.gwrkrc.json`, **When** running any `gwrk` command, **Then**:
-   - Command exits with code 1
-   - `gwrk tasks list foo 2>&1 | grep -q 'Configuration error'` exits 0
-2. **Given** a valid `.gwrkrc.json`, **When** running `gwrk --version`, **Then**:
-   - Command exits with code 0
-
-### US-009 - Agent Cross-Artifact Analysis (Priority: P1)
-As a Principal Engineer, I want to run `gwrk analyze <feature>` so that a read-only consistency audit runs across the spec, plan, and task artifacts.
-
-**Implements**: FR-009
-
-**Independent Test**: Run `gwrk analyze 001-cli-core` and verify the agent is dispatched with the `/analyze` workflow.
-
-**Acceptance Scenarios**:
-1. **Given** a feature with spec.md, plan.md, and tasks.json, **When** running `gwrk analyze <feature>`, **Then**:
-   - The agent process exits with code 0
-
-### US-010 - Effort Estimation (Priority: P1)
-As a Principal Engineer, I want to run `gwrk effort <feature>` so that an SP-driven effort estimate is generated from the spec stories.
+### US-010 - Effort Estimation (P1)
+As a PE, I want `gwrk measure effort <feature>` to generate SP-driven estimates.
 
 **Implements**: FR-010
 
-**Independent Test**: Run `gwrk effort 001-cli-core` and verify a report markdown file is created.
+**Acceptance**:
+1. Creates `docs/assessments/effort-<feature>-<date>.md`.
 
-**Acceptance Scenarios**:
-1. **Given** a feature with a spec.md containing user stories, **When** running `gwrk effort <feature>`, **Then**:
-   - `test -f docs/assessments/effort-*.md` exits 0
+### US-011 - Define Pillar (P0)
+As a PE, I want `gwrk define <feature>` to run the full DUS loop: spec→plan→tasks→checklist→analyze→tests.
+
+**Implements**: FR-011
+
+**Acceptance**:
+1. Wraps `scripts/dev/define-until-solid.sh`.
+2. Records run in SQLite (start time, exit code, duration).
+3. Streams output to terminal.
+4. `--dry-run` prints the command without executing.
+5. `analyze`, `checklist`, and `tests` run internally as DUS stages.
+
+### US-012 - Ship Pillar (P0)
+As a PE, I want `gwrk ship <feature> <phase>` to dispatch agent implementation.
+
+**Implements**: FR-012
+
+**Acceptance**:
+1. Wraps `scripts/dev/agent-run.sh implement`.
+2. Records run in SQLite.
+3. Streams output to terminal.
+
+### US-013 - Work Until Done (P0)
+As a PE, I want `gwrk ship done <feature> <phase> [--max-iterations]` to run the full autonomous loop.
+
+**Implements**: FR-013
+
+**Acceptance**:
+1. Wraps `scripts/dev/work-until-done.sh`.
+2. Records run in SQLite.
+3. Supports `--max-iterations` and `--ci-timeout`.
+4. Streams output to terminal.
+
+### US-014 - Execution History Query (P1)
+As a PE, I want `gwrk db runs <feature>` to show execution history.
+
+**Implements**: FR-014
+
+**Acceptance**:
+1. Renders a table with column headers: `#`, `Command`, `Phase`, `Agent`, `Exit`, `Duration`, `Started`.
+2. `--json` returns structured output.
+3. When no runs exist, prints `No runs found for <feature>`.
+
+### US-015 - Aggregate Statistics (P1)
+As a PE, I want `gwrk db stats` to show success rates by command/agent.
+
+**Implements**: FR-015
+
+**Acceptance**:
+1. Shows aggregate stats: command, workflow, agent, run count, success%, avg duration.
+
+### US-016 - Compression Tracking (P1)
+As a PE, I want `gwrk measure compression <feature>` to show SP vs actual delivery time.
+
+**Implements**: FR-016
+
+**Acceptance**:
+1. Shows point compression, total compression, coding time, elapsed window.
+
+### US-017 - Pulse Dashboard (P1)
+As a PE, I want `gwrk measure pulse [--days N]` to scan git history and show productivity metrics.
+
+**Implements**: FR-017
+
+**Acceptance**:
+1. `gwrk measure pulse` scans git log.
+2. Shows commit density, active features, recent activity.
+
+### US-018 - CLI E2E Surface Verification (P0)
+As a developer, I want `gwrk --help` to show exactly the settled command hierarchy with no stubs.
+
+**Implements**: FR-018
+
+**Acceptance**:
+1. `gwrk --help` shows: `init`, `define`, `ship`, `measure`, `db`, `tasks`.
+2. `gwrk define --help` shows: `spec`, `plan`, `tasks`.
+3. `gwrk ship --help` shows: `done`.
+4. `gwrk measure --help` shows: `pulse`, `effort`, `compression`.
+5. `gwrk db --help` shows: `runs`, `stats`.
+6. No other top-level commands exist (no `specify`, `plan`, `analyze`, `effort`, `pulse`, `metrics`, `run`, `implement`, `wud`).
 
 ---
 
-## 3. Roles, Scopes & Permissions
+## 3. Functional Requirements
 
-_Leverages shared RBAC. No feature-specific roles. See RP-000._
+- **FR-001**: `gwrk init` — scaffold project. Idempotent. (US-001)
+- **FR-002**: `gwrk define spec <feature>` — dispatch `/specify` workflow. Streaming. (US-002)
+- **FR-003**: `gwrk define plan <feature>` — dispatch `/plan` workflow. Validate spec exists and is not a Stub. (US-003)
+- **FR-004**: `gwrk define tasks <feature>` — parse plan.md → tasks.json + gate scripts. (US-004)
+- **FR-005**: `gwrk tasks list/next` — query task state. (US-005)
+- **FR-006**: `gwrk tasks done <feature> <taskId>` — gate-enforced state transition. (US-006)
+- **FR-007**: History.jsonl append on every state transition. (US-007)
+- **FR-008**: Zod config validation, fail-fast. (US-008)
+- **FR-010**: `gwrk measure effort <feature>` — deterministic SP estimation. (US-010)
+- **FR-011**: `gwrk define <feature>` — DUS loop wrapper with SQLite recording. (US-011)
+- **FR-012**: `gwrk ship <feature> <phase>` — agent dispatch wrapper with SQLite recording. (US-012)
+- **FR-013**: `gwrk ship done <feature> <phase>` — WUD loop wrapper with SQLite recording. (US-013)
+- **FR-014**: `gwrk db runs <feature>` — query execution history. (US-014)
+- **FR-015**: `gwrk db stats` — aggregate success rates. (US-015)
+- **FR-016**: `gwrk measure compression <feature>` — SP vs actual. (US-016)
+- **FR-017**: `gwrk measure pulse` — git log scanner. (US-017)
+- **FR-018**: CLI surface shows exactly the settled hierarchy. No stubs. (US-018)
 
----
+### Error States
 
-## 4. Functional Requirements
-
-- **FR-001**: System MUST provide a `gwrk init` command that scaffolds `.agent/`, `.specify/`, `specs/`, and `.gwrkrc.json` in the current directory. Idempotent — running twice must not overwrite existing files. (Implements: US-001)
-- **FR-002**: System MUST provide a `gwrk specify <prompt>` command that dispatches the configured agent backend with the `/specify` workflow and the provided prompt. (Implements: US-002)
-- **FR-003**: System MUST provide a `gwrk plan <feature>` command that dispatches the configured agent backend with the `/plan` workflow targeting the specified feature directory. (Implements: US-003)
-- **FR-004**: System MUST provide a `gwrk tasks generate <feature>` command that parses `plan.md`, writes `specs/<feature>/.gwrk/tasks.json`, and generates an executable `gates/T0xx-gate.sh` for every task. (Implements: US-004)
-- **FR-005**: System MUST provide `gwrk tasks list <feature>` and `gwrk tasks next <feature> <phase>` commands that query `tasks.json` and return task state as structured JSON (when `--json` is passed) or formatted terminal output. (Implements: US-005)
-- **FR-006**: System MUST provide a `gwrk tasks done <feature> <taskId>` command that executes `gates/<taskId>-gate.sh` and updates `tasks.json` status to `completed` ONLY if the gate script exits with code 0. If the gate fails, the task status MUST remain unchanged. (Implements: US-006)
-- **FR-007**: System MUST append an entry to `.gwrk/history.jsonl` for every state transition, containing: `timestamp` (ISO 8601), `featureId`, `taskId`, `fromStatus`, `toStatus`, `agentId` (optional). (Implements: US-007)
-- **FR-008**: System MUST load and validate `.gwrkrc.json` using a Zod schema at CLI startup. Missing required fields MUST cause `process.exit(1)` with a clear error message. No `.default()` calls. (Implements: US-008)
-- **FR-009**: System MUST provide a `gwrk analyze <feature>` command that dispatches the `/analyze` workflow for cross-artifact consistency auditing. (Implements: US-009)
-- **FR-010**: System MUST provide a `gwrk effort <feature>` command that dispatches the `/effort` workflow for SP-driven estimation. (Implements: US-010)
-
-#### FR-001 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Already initialized | `gwrk already initialized` | 0 (idempotent) |
-| No write permission | `Cannot write to directory` | 1 |
-
-#### FR-004 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| plan.md not found | `plan.md not found for feature` | 1 |
-| spec.md not found | `spec.md not found — run gwrk specify first` | 1 |
-
-#### FR-006 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Gate script returns non-zero | `Gate failed for <taskId>. State unchanged.` | 1 |
-| Gate script missing | `CRITICAL: gates/<taskId>-gate.sh not found` | 1 |
-| Task not found | `Task <taskId> not found in tasks.json` | 1 |
-| Task already completed | `Task <taskId> already completed` | 1 |
-
-#### FR-008 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| .gwrkrc.json missing | `Configuration file .gwrkrc.json not found` | 1 |
-| Invalid schema | `Configuration error: <zod error message>` | 1 |
+| FR | Condition | stderr contains | Exit code |
+|---|---|---|---|
+| FR-001 | Already initialized | `gwrk already initialized` | 0 |
+| FR-003 | spec.md missing | `spec.md not found` | 1 |
+| FR-003 | spec.md is Stub | `[BLOCKED] Spec ... is marked as a Stub` | 1 |
+| FR-006 | Gate fails | `Gate failed for <taskId>` | 1 |
+| FR-006 | Gate missing | `CRITICAL: gates/<taskId>-gate.sh not found` | 1 |
+| FR-006 | Already completed | `Task <taskId> already completed` | 1 |
+| FR-008 | Config missing | `Configuration file .gwrkrc.json not found` | 1 |
+| FR-008 | Config invalid | `Configuration error: <zod message>` | 1 |
 
 ---
 
-## 5. Data Model Requirements
+## 4. Data Model
 
-### DM-001: Task State (`tasks.json`)
-
-Per ADR-001, task state is stored as flat JSON in `specs/<feature>/.gwrk/tasks.json`. Schema:
+### DM-001: Task State (`specs/<feature>/.gwrk/tasks.json`)
 
 ```typescript
 interface TaskState {
-  featureId: string;          // e.g. "001-cli-core"
+  featureId: string;
   createdAt: string;          // ISO 8601
   phases: Phase[];
 }
 
 interface Phase {
-  id: string;                 // e.g. "phase-01"
+  id: string;                 // "phase-01"
   title: string;
   tasks: Task[];
 }
 
 interface Task {
-  id: string;                 // e.g. "T001"
+  id: string;                 // "T001"
   title: string;
   description: string;
   status: "open" | "in_progress" | "completed";
-  gateScript: string;         // relative path: "gates/T001-gate.sh"
-  completedAt?: string;       // ISO 8601
+  gateScript: string;         // "gates/T001-gate.sh"
+  completedAt?: string;
 }
 ```
 
 ### DM-002: History Log (`.gwrk/history.jsonl`)
 
-Append-only JSONL, one entry per status transition:
-
-```typescript
-interface HistoryEntry {
-  timestamp: string;           // ISO 8601
-  featureId: string;
-  taskId: string;
-  fromStatus: string;
-  toStatus: string;
-  agentId?: string;            // optional: which agent performed the transition
-}
-```
+Append-only JSONL per state transition.
 
 ### DM-003: Configuration (`.gwrkrc.json`)
 
-Validated by Zod at startup. Fail-fast — no defaults.
+Validated by Zod at startup. No defaults.
 
 ```typescript
 interface GwrkConfig {
-  project: {
-    name: string;
-  };
+  project: { name: string };
   agents: {
     define: "gemini" | "claude" | "codex";
     implement: "gemini" | "claude" | "codex" | "codex-cloud";
@@ -252,62 +296,89 @@ interface GwrkConfig {
 }
 ```
 
----
+### DM-004: SQLite Execution Ledger (`~/.gwrk/gwrk.db`)
 
-## 6. Technical Constraints
-
-- **TC-001**: Determinism — Task IDs (`T001`, `T002`) are assigned sequentially per-phase. No UUIDs.
-- **TC-002**: Air-Gapped — gwrk CLI itself makes no network calls. Agent dispatch is via `child_process.execFile`. Network calls are the agent backend's responsibility.
-- **TC-003**: Fail-Fast Config — Zod validation with no `.default()` calls. Missing config field → `process.exit(1)`.
-- **TC-004**: Hard Gates — Agents cannot update JSON task state directly. Only `gwrk tasks done` can mutate state, and only upon exit 0 of the gate script.
-- **TC-005**: TypeScript Only — No `.js` or `.jsx` files in `src/`. TypeScript (`.ts`) is the source of truth.
-- **TC-006**: ESM Modules — ES2022 target, ESM output. No CommonJS.
-- **TC-007**: Branch-Scoped State — `.gwrk/tasks.json` lives alongside the spec so that branch checkouts carry isolated state (ADR-001 §5).
+Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 
 ---
 
-## 7. Testing Requirements
+## 5. Technical Constraints
 
-- **TR-001**: `src/commands/init.test.ts` — Verify `init` creates scaffold directories and `.gwrkrc.json`. Verify idempotency. Vitest. (FR-001)
-- **TR-002**: `src/commands/specify.test.ts` — Verify `specify` invokes the agent backend with correct args. Mock `execFile`. Vitest. (FR-002)
-- **TR-003**: `src/commands/plan.test.ts` — Verify `plan` invokes the agent with `/plan` workflow and validates spec.md existence. Vitest. (FR-003)
-- **TR-004**: `src/commands/tasks-generate.test.ts` — Verify `tasks generate` parses plan.md, creates tasks.json with correct schema, and writes gate scripts with `+x` permissions. Vitest. (FR-004)
-- **TR-005**: `src/commands/tasks-query.test.ts` — Verify `tasks list` returns all tasks, `tasks next` returns only the next unblocked task for a given phase. Vitest. (FR-005)
-- **TR-006**: `src/commands/tasks-done.test.ts` — Verify `done` executes gate script, updates state on exit 0, rejects on exit 1, rejects on missing gate. Vitest. (FR-006)
-- **TR-007**: `src/utils/state.test.ts` — Verify atomic read/write of tasks.json, history.jsonl append, and Zod validation of task state. Vitest. (FR-006, FR-007)
-- **TR-008**: `src/utils/config.test.ts` — Verify Zod schema validation: valid config passes, missing fields crash, invalid types crash. Vitest. (FR-008)
-- **TR-009**: `src/commands/analyze.test.ts` — Verify `analyze` invokes agent with `/analyze` workflow. Mock dispatch. Vitest. (FR-009)
-- **TR-010**: `src/commands/effort.test.ts` — Verify `effort` invokes agent with `/effort` workflow. Mock dispatch. Vitest. (FR-010)
+- **TC-001**: Sequential task IDs (`T001`, `T002`). No UUIDs.
+- **TC-002**: Air-gapped CLI. No network calls. Agents handle network.
+- **TC-003**: Fail-fast config. No `.default()`.
+- **TC-004**: Hard Gates. Only `gwrk tasks done` can mutate task state.
+- **TC-005**: TypeScript only. No `.js` in `src/`.
+- **TC-006**: ESM (ES2022).
+- **TC-007**: Branch-scoped state. `tasks.json` lives with the spec.
+- **TC-008**: Streaming output. `spawn` with `stdio: 'inherit'` for all agent dispatch.
 
 ---
 
-## 8. Success Criteria
+## 6. Testing Requirements
 
-- **SC-001**: `gwrk init` scaffolds a project in under 2 seconds with zero network calls.
-- **SC-002**: `gwrk tasks done` enforces gates strictly — a failing gate NEVER updates state.
-- **SC-003**: The gwrk CLI can bootstrap its own second feature (`002-build-server`) using only `gwrk specify`, `gwrk plan`, `gwrk tasks generate`, and `gwrk tasks done`.
+- **TR-001**: `src/commands/init.test.ts` — scaffold + idempotency (FR-001)
+- **TR-002**: `src/commands/specify.test.ts` — agent dispatch mock (FR-002)
+- **TR-003**: `src/commands/plan.test.ts` — agent dispatch + spec validation + stub rejection (FR-003)
+- **TR-004**: `src/commands/tasks-generate.test.ts` — plan.md parsing, tasks.json schema, gate scripts (FR-004)
+- **TR-005**: `src/commands/tasks-query.test.ts` — list + next queries (FR-005)
+- **TR-006**: `src/commands/tasks-done.test.ts` — gate enforcement, state mutation, history append (FR-006, FR-007)
+- **TR-007**: `src/utils/state.test.ts` — atomic read/write, Zod validation (FR-006, FR-007)
+- **TR-008**: `src/utils/config.test.ts` — Zod schema validation (FR-008)
+- **TR-009**: `src/commands/analyze.test.ts` — agent dispatch + stub rejection (FR-009)
+- **TR-010**: `src/commands/effort.test.ts` — effort report generation (FR-010)
+- **TR-011**: `src/commands/define.test.ts` — shell passthrough + SQLite recording (FR-011)
+- **TR-012**: `src/utils/agent.test.ts` — streaming dispatch with `stdio: 'inherit'` (FR-002, FR-003, FR-009)
+- **TR-013**: `src/db/db.test.ts` — SQLite schema, startRun, finishRun, listRuns (FR-014, FR-015)
+- **TR-014**: `src/commands/runs.test.ts` — execution history query (FR-014)
+- **TR-015**: `src/commands/stats.test.ts` — aggregate statistics (FR-015)
+- **TR-016**: `src/commands/compression.test.ts` — compression ratio calculation (FR-016)
+- **TR-017**: `src/commands/pulse.test.ts` — git log scanning (FR-017)
+- **TR-018**: `src/cli.test.ts` — command registration hierarchy (FR-018)
+- **TR-019**: `src/cli.e2e.test.ts` — compiled binary E2E: `--help` output, stub rejection (FR-018, FR-003)
 
 ---
 
-## 9. Verification Requirements
+## 7. Success Criteria
 
-- **VR-001**: E2E integration test: `gwrk init` → create mock spec.md + plan.md → `gwrk tasks generate` → verify tasks.json + gates → mock gate passes → `gwrk tasks done` → verify state updated + history.jsonl entry.
-- **VR-002**: Negative test: `gwrk tasks done` with a failing gate script → verify state is NOT mutated and exit code is 1.
-- **VR-003**: Config validation: remove required field from `.gwrkrc.json` → verify any gwrk command crashes with Zod error.
+- **SC-001**: `gwrk --help` shows exactly the settled hierarchy. No stubs. No dead commands.
+- **SC-002**: `gwrk tasks done` enforces gates strictly — failing gate NEVER updates state.
+- **SC-003**: `gwrk define <feature>` runs the full DUS loop and records the run in SQLite.
+- **SC-004**: `gwrk wud <feature> <phase>` runs the full WUD loop and records the run in SQLite.
+- **SC-005**: `pnpm test` passes with 100% of tests GREEN.
+- **SC-006**: `pnpm run build` compiles clean with zero TypeScript errors.
 
 ---
 
-## 10. Coverage Matrix
+## 8. Verification Requirements
 
-| US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
-|--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001 | FR-001 | US-001 | TR-001 |
-| US-002 | FR-002 | FR-002 | US-002 | TR-002 |
-| US-003 | FR-003 | FR-003 | US-003 | TR-003 |
-| US-004 | FR-004 | FR-004 | US-004 | TR-004 |
-| US-005 | FR-005 | FR-005 | US-005 | TR-005 |
-| US-006 | FR-006 | FR-006 | US-006 | TR-006, TR-007 |
-| US-007 | FR-007 | FR-007 | US-007 | TR-007 |
-| US-008 | FR-008 | FR-008 | US-008 | TR-008 |
-| US-009 | FR-009 | FR-009 | US-009 | TR-009 |
-| US-010 | FR-010 | FR-010 | US-010 | TR-010 |
+- **VR-001**: E2E: `gwrk init` → mock spec/plan → `gwrk tasks generate` → gate pass → `gwrk tasks done` → verify state + history.
+- **VR-002**: Negative: `gwrk tasks done` with failing gate → state unchanged, exit 1.
+- **VR-003**: Config: remove required field → any gwrk command crashes with Zod error.
+- **VR-004**: E2E: `gwrk --help` output matches FR-018 exactly.
+- **VR-005**: E2E: `gwrk run plan` with stub spec → `[BLOCKED]` error, exit 1.
+
+---
+
+## 9. Coverage Matrix
+
+| US | FR | TR |
+|---|---|---|
+| US-001 | FR-001 | TR-001 |
+| US-002 | FR-002 | TR-002, TR-012 |
+| US-003 | FR-003 | TR-003, TR-012, TR-019 |
+| US-004 | FR-004 | TR-004 |
+| US-005 | FR-005 | TR-005 |
+| US-006 | FR-006 | TR-006, TR-007 |
+| US-007 | FR-007 | TR-007 |
+| US-008 | FR-008 | TR-008 |
+| US-009 | FR-009 | TR-009, TR-019 |
+| US-010 | FR-010 | TR-010 |
+| US-011 | FR-011 | TR-011, TR-013 |
+| US-012 | FR-012 | TR-013 |
+| US-013 | FR-013 | TR-013 |
+| US-014 | FR-014 | TR-014, TR-013 |
+| US-015 | FR-015 | TR-015, TR-013 |
+| US-016 | FR-016 | TR-016 |
+| US-017 | FR-017 | TR-017 |
+| US-018 | FR-018 | TR-018, TR-019 |

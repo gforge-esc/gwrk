@@ -75,7 +75,7 @@ To support parallel cloud execution without blocking, ZFG enforces a strict hier
 
 1. **Trigger**: User runs `make agent-zfg FEATURE=<feature_name>`.
 2. **Scaffolding**: ZFG creates `feature/<feature_name>-wip` from `develop` and pushes it to `origin`.
-3. **Planning**: ZFG analyzes `specs/<feature>/spec.md` using `.agent/workflows/plan-to-beads.md`.
+3. **Planning**: ZFG analyzes `specs/<feature>/spec.md` using `.agent/workflows/plan-to-tasks.md`.
 4. **Output**: ZFG generates atomic phase scripts (e.g., `specs/<feature>/beads/01-phase-1-tasks.sh`) and records the phase IDs in `.phase-ids.json`.
 
 ### Step 2: Delegation & Dispatch (Local -> Cloud)

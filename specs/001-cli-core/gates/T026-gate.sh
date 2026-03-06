@@ -1,13 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T026 — Implement test strategy for Phase 4
+# Gate: T026 — Implement src/commands/measure.ts
 # Asserts: Derived from task description
 
+test -f src/commands/measure.ts
 
-# Phase Acceptance Criteria
-node --import tsx src/cli.ts tasks list 001-cli-core --json | jq '.tasks | length'
-node --import tsx src/cli.ts tasks next 001-cli-core 1 --json | jq -r '.id'
-pnpm test
-pnpm test
-
-echo "PASS: T026 — Implement test strategy for Phase 4"
+echo "PASS: T026 — Implement src/commands/measure.ts"

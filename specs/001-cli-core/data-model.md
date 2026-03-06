@@ -1,15 +1,21 @@
+---
+type: data_model
+feature: 001-cli-core
+last_modified: "2026-03-06T00:23:51Z"
+---
+
 # Data Model: 001 CLI Core
 
 **Feature**: 001-cli-core
-**Date**: 2026-02-26
-**Storage**: Flat JSON/JSONL files (ADR-001)
+**Date**: 2026-03-05
+**Storage**: SQLite Execution Ledger (ADR-002) + Task State Export (Flat JSON)
 
 ---
 
-## DM-001: Task State (`tasks.json`)
+## DM-001: Task State Export (`tasks.json`)
 
 **Location**: `specs/<feature>/.gwrk/tasks.json`
-**Scope**: Per-feature, branch-scoped
+**Scope**: Per-feature, branch-scoped. Generated from SQLite for git visibility.
 
 ```typescript
 import { z } from 'zod';
@@ -22,7 +28,7 @@ const TaskSchema = z.object({
   description: z.string(),
   status: TaskStatusSchema,
   gateScript: z.string(),                       // "gates/T001-gate.sh"
-  completedAt: z.string().datetime().optional(), // ISO 8601, set on completion
+  completedAt: z.string().datetime().optional(), // ISO 8601
 });
 
 const PhaseSchema = z.object({
@@ -32,124 +38,97 @@ const PhaseSchema = z.object({
 });
 
 export const TaskStateSchema = z.object({
-  featureId: z.string().min(1),                  // "001-cli-core"
-  createdAt: z.string().datetime(),              // ISO 8601
+  featureId: z.string().min(1),
+  createdAt: z.string().datetime(),
   phases: z.array(PhaseSchema).min(1),
 });
-
-export type Task = z.infer<typeof TaskSchema>;
-export type Phase = z.infer<typeof PhaseSchema>;
-export type TaskState = z.infer<typeof TaskStateSchema>;
-```
-
-### Example
-
-```json
-{
-  "featureId": "001-cli-core",
-  "createdAt": "2026-02-26T22:00:00Z",
-  "phases": [
-    {
-      "id": "phase-01",
-      "title": "Project Bootstrap & gwrk init",
-      "tasks": [
-        {
-          "id": "T001",
-          "title": "Create package.json with dependencies",
-          "description": "...",
-          "status": "open",
-          "gateScript": "gates/T001-gate.sh"
-        }
-      ]
-    }
-  ]
-}
 ```
 
 ---
 
-## DM-002: History Log (`history.jsonl`)
+## DM-002: History Log Export (`history.jsonl`)
 
-**Location**: `.gwrk/history.jsonl` (repo-wide)
-**Format**: Append-only JSONL (one JSON object per line)
+**Location**: `.gwrk/history.jsonl`
+**Scope**: Project-wide. Append-only export from SQLite `history` table.
 
 ```typescript
-import { z } from 'zod';
-
 export const HistoryEntrySchema = z.object({
-  timestamp: z.string().datetime(),              // ISO 8601
+  timestamp: z.string().datetime(),
   featureId: z.string().min(1),
   taskId: z.string().regex(/^T\d{3}$/),
   fromStatus: z.enum(['open', 'in_progress', 'completed']),
   toStatus: z.enum(['open', 'in_progress', 'completed']),
-  agentId: z.string().optional(),                // Which agent performed this
+  agentId: z.string().optional(),
 });
-
-export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;
-```
-
-### Example
-
-```jsonl
-{"timestamp":"2026-02-26T22:15:00Z","featureId":"001-cli-core","taskId":"T001","fromStatus":"open","toStatus":"completed"}
-{"timestamp":"2026-02-26T22:16:00Z","featureId":"001-cli-core","taskId":"T002","fromStatus":"open","toStatus":"in_progress","agentId":"gemini"}
 ```
 
 ---
 
 ## DM-003: Configuration (`.gwrkrc.json`)
 
-**Location**: Project root `.gwrkrc.json`
-**Validation**: Zod schema, fail-fast at CLI startup
+**Location**: Project root
+**Validation**: Zod schema, fail-fast at startup.
 
 ```typescript
-import { z } from 'zod';
-
-const AgentBackendSchema = z.enum(['gemini', 'claude', 'codex', 'codex-cloud']);
+const AgentBackendSchema = z.enum(['gemini', 'claude', 'codex']);
 
 export const GwrkConfigSchema = z.object({
   project: z.object({
     name: z.string().min(1),
   }),
+  github: z.object({
+    org: z.string().min(1),
+    visibility: z.enum(['public', 'private']).default('private'),
+  }),
   agents: z.object({
     define: AgentBackendSchema,
     implement: AgentBackendSchema,
+    // Token tracking is optional if agent does not report it
+    trackTokens: z.boolean().default(true),
   }),
 });
-
-export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;
 ```
 
-### Example
+---
 
-```json
-{
-  "project": {
-    "name": "gwrk"
-  },
-  "agents": {
-    "define": "gemini",
-    "implement": "codex-cloud"
-  }
-}
-```
+## DM-004: SQLite Execution Ledger (`~/.gwrk/gwrk.db`)
 
-### Fail-Fast Behavior
+**Scope**: Global analytical ledger. WAL mode. No UPDATE/DELETE (audit trail).
 
-```typescript
-// src/utils/config.ts
-export function loadConfig(projectRoot: string): GwrkConfig {
-  const configPath = path.join(projectRoot, '.gwrkrc.json');
-  if (!fs.existsSync(configPath)) {
-    console.error('Configuration file .gwrkrc.json not found');
-    process.exit(1);
-  }
-  const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  const result = GwrkConfigSchema.safeParse(raw);
-  if (!result.success) {
-    console.error(`Configuration error: ${result.error.message}`);
-    process.exit(1);
-  }
-  return result.data;
-}
-```
+### Table: `runs`
+Records every agent dispatch and orchestration run.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PRIMARY KEY | Auto-increment |
+| `feature_id` | TEXT | e.g. "001-cli-core" |
+| `command` | TEXT | e.g. "plan", "implement", "wud" |
+| `phase_id` | TEXT | e.g. "phase-01" (optional) |
+| `agent_backend` | TEXT | e.g. "gemini" |
+| `workflow` | TEXT | Workflow path or shell script name |
+| `exit_code` | INTEGER | Process exit code (NULL if running) |
+| `duration_s` | INTEGER | Duration in seconds |
+| `started_at` | DATETIME | ISO 8601 (DEFAULT CURRENT_TIMESTAMP) |
+
+### Table: `history`
+Records every task state transition for compression tracking.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PRIMARY KEY | Auto-increment |
+| `feature_id` | TEXT | e.g. "001-cli-core" |
+| `task_id` | TEXT | e.g. "T001" |
+| `from_status` | TEXT | Previous status |
+| `to_status` | TEXT | New status |
+| `agent_id` | TEXT | Optional agent identifier |
+| `created_at` | DATETIME | ISO 8601 (DEFAULT CURRENT_TIMESTAMP) |
+
+### Table: `projects`
+Registration for projects managed by gwrk.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PRIMARY KEY | Auto-increment |
+| `name` | TEXT | Project name |
+| `root_path` | TEXT | Absolute path to project |
+| `created_at` | DATETIME | ISO 8601 |

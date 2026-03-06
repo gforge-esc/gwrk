@@ -1,21 +1,27 @@
+---
+type: implementation_plan
+feature: 007-effort-compression
+last_modified: "2026-03-06T15:00:00Z"
+---
+
 # Implementation Plan: 007 Effort + Compression
 
-**Branch**: `007-effort-compression` | **Date**: 2026-02-27 | **Spec**: [spec.md](./spec.md)
+**Branch**: `007-effort-compression` | **Date**: 2026-03-06 | **Spec**: [spec.md](./spec.md) | **Data Model**: [data-model.md](./data-model.md)
 
 ## Summary
 
-Phase 7 ships the **Effort Engine** (story extraction, role bracketing, SP-derived hours, markdown reports) and the **Compression Engine** (timestamp collection, commit clustering, Point/Total compression ratios, dormancy tracking, cross-feature summaries). Both engines are pure TypeScript — deterministic from spec artifacts and Git log, no LLM required.
+Phase 7 ships the **Effort Engine** (story extraction, role bracketing, SP-derived hours, markdown reports) and the **Compression Engine** (timestamp collection, commit clustering, Point/Total compression ratios, leading indicators, dormancy tracking, cross-feature summaries). Both engines are pure TypeScript — deterministic from spec artifacts, Git log, and SQLite execution ledger, no LLM required.
 
 The plan is split into 3 phases aligned with the architecture from `docs/architecture.md` §3:
 - **Phase 1**: Effort Engine — `src/engine/effort.ts` + spec parser + report writer
-- **Phase 2**: Compression Engine — `src/engine/compression.ts` + Git timestamp collector + commit clustering
+- **Phase 2**: Compression Engine — `src/engine/compression.ts` + Git timestamp collector + commit clustering + leading indicators + SQLite persistence
 - **Phase 3**: CLI Commands + Integration — `src/commands/effort.ts`, `src/commands/compression.ts`, config schema extension, `--json` output
 
-**Dependencies**: Phase 1 (CLI Core) must ship first — this plan consumes `src/utils/config.ts` (`loadConfig()`), `src/utils/exec.ts` (`runGate()`), and the Commander routing in `src/cli.ts`.
+**Dependencies**: Phase 1 (CLI Core) must ship first — this plan consumes `src/utils/config.ts` (`loadConfig()`), `src/db/index.ts` (SQLite connection), and the Commander routing in `src/cli.ts`.
 
 **Cross-spec compatibility**: 
-- `001-cli-core/contracts/agent.md` lists `effort.ts` as a consumer of `dispatchAgent()` — but per TC-005, the effort engine is deterministic from artifacts, NOT agent-dispatched. The `001-cli-core` `gwrk effort` command (FR-010) is a thin CLI wrapper that calls the engine directly. No conflict.
-- `001-cli-core/contracts/config.md` defines `GwrkConfigSchema` — this plan extends it additively with `effort.roles` and `compression.sessionGapMinutes`. No breaking change.
+- `001-cli-core`: Uses the `runs` table from the shared SQLite ledger for leading indicators.
+- `006-pulse`: Complementary Git analysis. Pulse focus on velocity/LOC; Compression focus on SP vs Actuals.
 
 ---
 
@@ -28,7 +34,7 @@ Core effort estimation: parse spec.md for user stories, bracket by role, compute
 **Files (7):**
 - `src/engine/effort.ts` (NEW: effort engine — story extraction, role bracketing, hour computation, report generation)
 - `src/engine/spec-parser.ts` (NEW: markdown parser that extracts US-### blocks with SP values and role assignments from spec.md)
-- `src/engine/types.ts` (NEW: shared TypeScript interfaces for EffortReport, RoleBreakdown, StoryEstimate, CompressionReport, DeliveryActuals, CompressionRatios, CompressionSummary)
+- `src/engine/types.ts` (NEW: shared TypeScript interfaces for EffortReport, RoleBreakdown, StoryEstimate, CompressionReport, DeliveryActuals, CompressionRatios, CompressionSummary, LeadingIndicators)
 - `src/engine/roles.ts` (NEW: canonical role multiplier defaults — RE=6, TS=4, PM=2, PE=1.5, DE=5 — and config override resolution)
 - `src/engine/report-writer.ts` (NEW: generates effort markdown report to `docs/assessments/effort-<feature>-YYYY-MM-DD.md`)
 - `src/engine/effort.test.ts` (NEW: unit tests — story extraction, hour calculation, report generation, missing spec fail-fast)
@@ -72,68 +78,71 @@ Core effort estimation: parse spec.md for user stories, bracket by role, compute
 
 ### Phase 2: Compression Engine
 
-Timestamp collection from Git log and OS file dates, commit clustering with configurable gap threshold, Point/Total compression ratio calculation, dormancy tracking, cross-feature summary aggregation.
+Timestamp collection from Git log, commit clustering, Point/Total compression ratio calculation, leading indicator computation (convergence, density, spec quality), dormancy tracking, SQLite persistence, and summary aggregation.
 
-**Files (6):**
-- `src/engine/compression.ts` (NEW: compression engine — timestamp collection, ratio computation, summary generation)
-- `src/engine/git-timestamps.ts` (NEW: extracts spec creation date, first/last impl commit, PR merge time from Git log and `gh` CLI, with graceful degradation)
-- `src/engine/commit-cluster.ts` (NEW: clusters commits by configurable gap threshold, computes session count and active coding time)
-- `src/engine/compression.test.ts` (NEW: unit tests — timestamp collection, clustering, ratios, summary, fail-fast on no impl)
-- `src/engine/git-timestamps.test.ts` (NEW: unit tests — Git log parsing, `gh` fallback, OS file dates)
-- `src/engine/commit-cluster.test.ts` (NEW: unit tests — gap detection, session boundaries, edge cases)
+**Files (7):**
+- `src/engine/compression.ts` (NEW: compression engine — ratio computation, leading indicators, summary generation, SQLite persistence)
+- `src/engine/git-timestamps.ts` (NEW: extracts spec creation date, first/last impl commit, PR merge time from Git log and `gh` CLI)
+- `src/engine/commit-cluster.ts` (NEW: clusters commits by gap threshold, computes active coding time)
+- `src/engine/compression.test.ts` (NEW: unit tests — ratios, indicators, summary, fail-fast on no impl, SQLite persistence)
+- `src/engine/git-timestamps.test.ts` (NEW: unit tests — Git log parsing, `gh` fallback)
+- `src/engine/commit-cluster.test.ts` (NEW: unit tests — gap detection, session boundaries)
+- `src/db/compression.ts` (NEW: SQLite adapters for `compression` table — insert, query, aggregate)
 
-**Requirements Addressed:** FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, US-003, US-004, US-005, US-006, TC-001, TC-002, TC-004, TC-006, DM-002, DM-003
+**Requirements Addressed:** FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-013, FR-014, US-003, US-004, US-005, US-006, US-009, US-010, TC-001, TC-002, TC-004, TC-006, DM-002, DM-003
 
-**Dependencies:** Phase 1 of this plan (effort engine provides the forecast data for compression ratios).
+**Dependencies:** Phase 1 of this plan (effort forecast data). 001-cli-core (SQLite ledger).
 
 **Contract Mapping:**
 - `contracts/compression-engine.md` → `collectTimestamps()` → `src/engine/git-timestamps.ts`
 - `contracts/compression-engine.md` → `clusterCommits()` → `src/engine/commit-cluster.ts`
 - `contracts/compression-engine.md` → `computeCompression()` → `src/engine/compression.ts`
+- `contracts/compression-engine.md` → `computeIndicators()` → `src/engine/compression.ts`
 - `contracts/compression-engine.md` → `generateSummary()` → `src/engine/compression.ts`
 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| workspace.md | TypeScript only, no `.js` in `src/`, fail-fast config |
+| workspace.md | TypeScript only, fail-fast config |
+| seeding-governance.md | SQLite migrations and seed data for summary testing |
 | compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-005 | Unit | `src/engine/git-timestamps.test.ts` | Spec creation date, first/last impl commit extracted from mocked `git log` output |
-| TR-006 | Unit | `src/engine/commit-cluster.test.ts` | Timestamps [0,5,10,120,125] → 2 sessions, 15 min active |
+| TR-005 | Unit | `src/engine/git-timestamps.test.ts` | Timestamps extracted from mocked `git log` |
+| TR-006 | Unit | `src/engine/commit-cluster.test.ts` | [0,5,10,120,125] → 2 sessions, 15 min active |
 | TR-007 | Unit | `src/engine/compression.test.ts` | 287.5h / 0.75h = 383× point compression |
 | TR-008 | Unit | `src/engine/compression.test.ts` | 36 days / 0.73 days = 49× total compression |
-| TR-009 | Unit | `src/engine/compression.test.ts` | Summary across 3 features with best/worst/trend |
-| TR-010 | Unit | `src/engine/compression.test.ts` | No impl commits → exit 1, stderr "No implementation commits found" |
+| TR-009 | Unit | `src/engine/compression.test.ts` | Summary across features with best/worst/trend |
+| TR-010 | Unit | `src/engine/compression.test.ts` | No impl commits → exit 1 |
+| TR-014 | Unit | `src/db/db.test.ts` | SQLite record inserted/queried from `compression` table |
+| TR-015 | Unit | `src/engine/compression.test.ts` | Convergence and density indicators computed correctly from mock runs and git |
 
 #### Done When
 - `pnpm vitest run src/engine/compression.test.ts` exits 0
 - `pnpm vitest run src/engine/git-timestamps.test.ts` exits 0
 - `pnpm vitest run src/engine/commit-cluster.test.ts` exits 0
-- `test -f src/engine/compression.ts` exits 0
-- `test -f src/engine/git-timestamps.ts` exits 0
-- `test -f src/engine/commit-cluster.ts` exits 0
+- `test -f src/db/compression.ts` exits 0
 
 ---
 
 ### Phase 3: CLI Commands + Integration
 
-Commander commands `gwrk effort` and `gwrk compression`, `--json` output mode, config schema extension for role multipliers and session gap threshold. Wires the engine modules from Phase 1 and Phase 2 into the CLI and registers them in `src/cli.ts`.
+Commander commands `measure effort` and `measure compression`, `--json` output mode, config schema extension. Wires engines into `src/cli.ts`.
 
 **Files (7):**
-- `src/commands/effort.ts` (NEW: Commander command — loads config, calls effort engine, writes report, supports `--json`)
-- `src/commands/compression.ts` (NEW: Commander command — loads config, calls compression engine, formats output, supports `--json` and `--all`)
-- `src/commands/effort.test.ts` (NEW: unit tests — command wiring, `--json` output schema, error handling)
-- `src/commands/compression.test.ts` (NEW: unit tests — command wiring, `--json` output, `--all` flag, error handling)
-- `src/cli.ts` (MODIFY: register `effort` and `compression` subcommands)
+- `src/commands/effort.ts` (NEW: Commander command — loads config, calls effort engine, writes report)
+- `src/commands/compression.ts` (NEW: Commander command — calls compression engine, formats output, persistence)
+- `src/commands/effort.test.ts` (NEW: unit tests — command wiring, `--json` output)
+- `src/commands/compression.test.ts` (NEW: unit tests — command wiring, indicators in output)
+- `src/cli.ts` (MODIFY: register `measure effort` and `measure compression` subcommands)
 - `src/utils/config.ts` (MODIFY: extend `GwrkConfigSchema` with `effort.roles` and `compression.sessionGapMinutes`)
 - `src/utils/config.test.ts` (MODIFY: add tests for extended config schema)
 
-**Requirements Addressed:** FR-011, FR-012, US-007, US-008, TC-003, TC-004
+**Requirements Addressed:** FR-011, FR-012, FR-015, US-007, US-008, US-010, TC-003, TC-004
 
-**Dependencies:** Phase 1 and Phase 2 of this plan. Also depends on `001-cli-core` for Commander setup and config infrastructure.
+**Dependencies:** Phase 1 and Phase 2 of this plan. 001-cli-core for CLI structure.
 
 **Contract Mapping:**
 - `contracts/effort-engine.md` → `effortCommand()` → `src/commands/effort.ts`
@@ -142,22 +151,19 @@ Commander commands `gwrk effort` and `gwrk compression`, `--json` output mode, c
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| workspace.md | TypeScript only, fail-fast config, no `.default()` for required fields |
+| workspace.md | TypeScript only, fail-fast config |
 | compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-011 | Unit | `src/commands/effort.test.ts` | `--json` flag outputs valid JSON with `totalSP`, `roles` fields |
-| TR-012 | Unit | `src/commands/compression.test.ts` | `--json` flag outputs valid JSON with `pointCompression`, `totalCompression` fields |
-| TR-013 | Unit | `src/utils/config.test.ts` | Config with `effort.roles.TS.hoursPerSP: 6` → effort engine uses 6h/SP |
+| TR-011 | Unit | `src/commands/effort.test.ts` | `--json` flag outputs valid JSON with `totalSP` |
+| TR-012 | Unit | `src/commands/compression.test.ts` | Indicators appear in output and JSON |
 
 #### Done When
 - `pnpm vitest run src/commands/effort.test.ts` exits 0
 - `pnpm vitest run src/commands/compression.test.ts` exits 0
-- `pnpm vitest run src/utils/config.test.ts` exits 0
-- `grep -q 'effort' src/cli.ts` exits 0
-- `grep -q 'compression' src/cli.ts` exits 0
+- `grep -q 'measure effort' src/cli.ts` exits 0
 
 ---
 
@@ -169,12 +175,12 @@ Commander commands `gwrk effort` and `gwrk compression`, `--json` output mode, c
 | `RoleBreakdown` | `src/engine/types.ts` | `src/engine/effort.ts`, `src/engine/report-writer.ts` |
 | `StoryEstimate` | `src/engine/types.ts` | `src/engine/effort.ts`, `src/engine/spec-parser.ts` |
 | `RoleConfig` | `src/engine/types.ts` | `src/engine/roles.ts`, `src/utils/config.ts` |
-| `CompressionReport` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts` |
+| `CompressionReport` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts`, `src/db/compression.ts` |
 | `DeliveryActuals` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/engine/git-timestamps.ts` |
 | `CompressionRatios` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts` |
+| `LeadingIndicators` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts`, `src/db/compression.ts` |
 | `CompressionSummary` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts` |
 | `CommitCluster` | `src/engine/types.ts` | `src/engine/commit-cluster.ts`, `src/engine/compression.ts` |
-| `GwrkConfig` (extended) | `src/utils/config.ts` | `src/commands/effort.ts`, `src/commands/compression.ts`, `src/engine/roles.ts` |
 
 ---
 
@@ -188,8 +194,8 @@ _No mockups exist for this feature._
 
 | Spec Item | Title | Reason | Target |
 |---|---|---|---|
-| FR-008 (Telegram) | Compression summary on merge | Requires Phase 3 (Telegram) infrastructure | Spec 003-telegram |
-| SC-003 | Cross-feature `--all` trend analysis | Requires ≥2 shipped features to meaningfully test | VR-002 covers math; real validation at GForge integration (Phase 10) |
+| FR-### | Compression summary in Slack | Requires Phase 3 (Slack) infrastructure | Spec 003-slack |
+| SC-003 | Cross-feature `--all` trend analysis | Requires ≥3 shipped features to meaningfully test | VR-002 covers math |
 
 ---
 
@@ -205,6 +211,8 @@ _No mockups exist for this feature._
 | US-006 | Phase 2 | Planned |
 | US-007 | Phase 3 | Planned |
 | US-008 | Phase 3 | Planned |
+| US-009 | Phase 2 | Planned |
+| US-010 | Phase 2, Phase 3 | Planned |
 | FR-001 | Phase 1 | Planned |
 | FR-002 | Phase 1 | Planned |
 | FR-003 | Phase 1 | Planned |
@@ -217,6 +225,9 @@ _No mockups exist for this feature._
 | FR-010 | Phase 2 | Planned |
 | FR-011 | Phase 3 | Planned |
 | FR-012 | Phase 1, Phase 3 | Planned |
+| FR-013 | Phase 2 | Planned |
+| FR-014 | Phase 2 | Planned |
+| FR-015 | Phase 3 | Planned |
 | TC-001 | Phase 1, Phase 2 | Planned |
 | TC-002 | Phase 2 | Planned |
 | TC-003 | Phase 3 | Planned |
@@ -239,6 +250,8 @@ _No mockups exist for this feature._
 | TR-011 | Phase 3 | Planned |
 | TR-012 | Phase 3 | Planned |
 | TR-013 | Phase 1, Phase 3 | Planned |
+| TR-014 | Phase 2 | Planned |
+| TR-015 | Phase 2 | Planned |
 | SC-001 | Phase 1 | Planned |
 | SC-002 | Phase 2 | Planned |
 | SC-003 | Phase 2 | Deferred (see above) |

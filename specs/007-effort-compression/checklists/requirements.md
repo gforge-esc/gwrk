@@ -1,14 +1,16 @@
 # Requirements Checklist: 007 Effort + Compression
 
 ## User Stories
-- [ ] US-001: Effort Estimation for a Single Feature (`gwrk effort <feature>`)
+- [ ] US-001: Effort Estimation for a Single Feature (`gwrk measure effort <feature>`)
 - [ ] US-002: Effort Report Handles Missing Spec (fail-fast)
-- [ ] US-003: Single Feature Compression Report (`gwrk compression <feature>`)
+- [ ] US-003: Single Feature Compression Report (`gwrk measure compression <feature>`)
 - [ ] US-004: Active Coding Detection via Commit Clustering
-- [ ] US-005: Cross-Feature Compression Summary (`gwrk compression --all`)
+- [ ] US-005: Cross-Feature Compression Summary (`gwrk measure compression --all`)
 - [ ] US-006: Compression Handles Unshipped Features (fail-fast)
 - [ ] US-007: JSON Output Mode (`--json`)
 - [ ] US-008: Role Multiplier Configuration (`.gwrkrc.json`)
+- [ ] US-009: Persistent Compression History (SQLite)
+- [ ] US-010: Leading Compression Indicators (Convergence & Density)
 
 ## Functional Requirements
 - [ ] FR-001: Parse spec.md and extract user stories with SP/role
@@ -23,18 +25,22 @@
 - [ ] FR-010: Fail-fast on features with no impl commits
 - [ ] FR-011: JSON output mode for effort and compression
 - [ ] FR-012: Role multiplier overrides from `.gwrkrc.json`
+- [ ] FR-013: Record results in SQLite `compression` table
+- [ ] FR-014: Compute leading indicators (convergence, density, spec quality)
+- [ ] FR-015: Include leading indicators in reports (CLI/JSON)
 
 ## Technical Constraints
-- [ ] TC-001: Deterministic output given same inputs
+- [ ] TC-001: Deterministic output given same inputs (SHA256 invariants)
 - [ ] TC-002: Air-gapped — local Git only, `gh` degrades gracefully
 - [ ] TC-003: Fail-fast config — no `.default()` calls
 - [ ] TC-004: Session gap threshold configurable (no magic values)
 - [ ] TC-005: Effort engine is deterministic from artifacts (no LLM)
 - [ ] TC-006: Compression depends on effort data
+- [ ] TC-007: Relational fidelity (SQLite schema follows ADR-002)
 
 ## Data Model
 - [ ] DM-001: EffortReport schema (roles, stories, totals)
-- [ ] DM-002: CompressionReport schema (forecast, actuals, ratios)
+- [ ] DM-002: CompressionReport schema (forecast, actuals, ratios, indicators)
 - [ ] DM-003: CompressionSummary schema (features, totals, best/worst/trend)
 
 ## Tests
@@ -51,6 +57,8 @@
 - [ ] TR-011: Effort `--json` output validation
 - [ ] TR-012: Compression `--json` output validation
 - [ ] TR-013: Role multiplier override from config
+- [ ] TR-014: SQLite persistence validation (compression table)
+- [ ] TR-015: Leading indicator calculation validation
 
 ## Verification
 - [ ] VR-001: E2E effort report generation
@@ -58,4 +66,4 @@
 - [ ] VR-003: Negative test — missing spec.md
 - [ ] VR-004: Negative test — no impl commits
 - [ ] VR-005: Dormancy exclusion from compression
-- [ ] VR-006: Commit clustering correctness
+- [ ] VR-006: SQLite persistence (VR-006)

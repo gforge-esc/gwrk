@@ -1,3 +1,9 @@
+---
+type: implementation_plan
+feature: 002-build-server
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Implementation Plan: 002 Build Server
 
 **Branch**: `002-build-server` | **Date**: 2026-02-27 | **Spec**: [spec.md](./spec.md)

@@ -1,3 +1,9 @@
+---
+type: implementation_plan
+feature: 004-wud-loop
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Implementation Plan: 004 WUD Loop
 
 **Branch**: `004-wud-loop` | **Date**: 2026-02-27 | **Spec**: [spec.md](./spec.md)

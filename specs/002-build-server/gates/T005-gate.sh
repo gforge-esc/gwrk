@@ -1,24 +1,17 @@
 #!/usr/bin/env bash
-# Gate: T005 — Create server CLI commands
-# Contract: src/commands/server.ts must export serverCommand with start and stop subcommands
+# Gate: T005 — Implement server CLI commands
 set -euo pipefail
 
-FILE="src/commands/server.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
+# Assertion #1: src/commands/server.ts exists
+test -f src/commands/server.ts || { echo "FAIL: src/commands/server.ts not found"; exit 1; }
 
-# Verify exports
-# Assertion #2
-grep -q 'export.*serverCommand\|export const serverCommand\|export function' "$FILE" || { echo "FAIL: serverCommand not exported"; exit 1; }
+# Assertion #2: server command group defined
+grep -q "new Command('server')" src/commands/server.ts || { echo "FAIL: 'server' command group not defined"; exit 1; }
 
-# Verify start and stop subcommands
-# Assertion #3
-grep -q "'start'\|\"start\"" "$FILE" || { echo "FAIL: 'start' subcommand not defined"; exit 1; }
-# Assertion #4
-grep -q "'stop'\|\"stop\"" "$FILE" || { echo "FAIL: 'stop' subcommand not defined"; exit 1; }
+# Assertion #3: start/stop subcommands exist
+grep -q ".command('start')" src/commands/server.ts && grep -q ".command('stop')" src/commands/server.ts || { echo "FAIL: start or stop subcommands missing"; exit 1; }
 
-# Verify startServer import
-# Assertion #5
-grep -q 'startServer' "$FILE" || { echo "FAIL: startServer not imported"; exit 1; }
+# Assertion #4: server command registered in src/cli.ts
+grep -q "server" src/cli.ts || { echo "FAIL: server command group not registered in src/cli.ts"; exit 1; }
 
 echo "PASS: T005"

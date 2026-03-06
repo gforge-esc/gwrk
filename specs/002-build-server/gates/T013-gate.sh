@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# Gate: T013 — Unit tests for Phase 2
+# Gate: T013 — Create gwrk-sandbox Dockerfile
 set -euo pipefail
 
-# Assertion #1
-test -f src/server/monitor.test.ts || { echo "FAIL: monitor.test.ts not found"; exit 1; }
-# Assertion #2
-test -f src/server/routes/status.test.ts || { echo "FAIL: routes/status.test.ts not found"; exit 1; }
+# Assertion #1: Dockerfile.sandbox exists
+test -f Dockerfile.sandbox || { echo "FAIL: Dockerfile.sandbox not found"; exit 1; }
 
-# Assertion #3
-grep -q 'describe\|test\|it(' src/server/monitor.test.ts || { echo "FAIL: monitor.test.ts has no test cases"; exit 1; }
-# Assertion #4
-grep -q 'describe\|test\|it(' src/server/routes/status.test.ts || { echo "FAIL: status.test.ts has no test cases"; exit 1; }
+# Assertion #2: bookworm-slim base
+grep -q "bookworm-slim" Dockerfile.sandbox || { echo "FAIL: Dockerfile.sandbox base image not bookworm-slim"; exit 1; }
 
-# Assertion #5
-pnpm vitest run src/server/monitor.test.ts src/server/routes/status.test.ts --reporter=verbose || { echo "FAIL: Phase 2 tests failed"; exit 1; }
+# Assertion #3: Node.js LTS installed
+grep -q "node" Dockerfile.sandbox || { echo "FAIL: node installation missing in Dockerfile.sandbox"; exit 1; }
+
+# Assertion #4: git installed
+grep -q "git" Dockerfile.sandbox || { echo "FAIL: git installation missing in Dockerfile.sandbox"; exit 1; }
+
+# Assertion #5: gh CLI installed
+grep -q "gh" Dockerfile.sandbox || { echo "FAIL: gh CLI installation missing in Dockerfile.sandbox"; exit 1; }
+
+# Assertion #6: WORKDIR set to /workspace
+grep -q "WORKDIR /workspace" Dockerfile.sandbox || { echo "FAIL: WORKDIR not set to /workspace"; exit 1; }
 
 echo "PASS: T013"

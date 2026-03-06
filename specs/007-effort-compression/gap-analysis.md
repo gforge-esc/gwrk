@@ -1,3 +1,9 @@
+---
+type: gap_analysis
+feature: 007-effort-compression
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Gap Analysis: 007 Effort + Compression
 
 **Date**: 2026-02-27 | **Spec**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md)

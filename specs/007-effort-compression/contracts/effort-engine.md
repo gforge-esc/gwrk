@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 007-effort-compression
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Contract: Effort Engine
 
 **Feature**: 007-effort-compression

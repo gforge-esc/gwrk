@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 001-cli-core
+last_modified: "2026-02-27T00:04:35Z"
+---
+
 # Contract: Agent Dispatch
 
 **Feature**: 001-cli-core

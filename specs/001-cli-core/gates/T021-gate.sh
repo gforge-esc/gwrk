@@ -1,9 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T021 — Implement src/utils/parser.ts
+# Gate: T021 — Implement src/commands/wud.ts
 # Asserts: Derived from task description
 
-test -f src/utils/parser.ts
-test -f specs/001-cli-core/plan.md
+test -f src/commands/wud.ts
 
-echo "PASS: T021 — Implement src/utils/parser.ts"
+echo "PASS: T021 — Implement src/commands/wud.ts"

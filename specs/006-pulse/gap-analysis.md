@@ -1,43 +1,66 @@
-# Gap Analysis: 006 Pulse
-
-**Date**: 2026-02-27
-**Feature**: [spec.md](./spec.md) | [plan.md](./plan.md)
-
+---
+type: gap_analysis
+feature: 006-pulse
+last_modified: "2026-03-05T21:50:05Z"
 ---
 
-## Phase 1: Pulse Engine
+# Gap Analysis: 006 Pulse
 
-| File | Status | Gap |
+**Date**: 2026-03-05
+**Feature**: 006-pulse
+
+## 1. Overview of Existing State
+
+A substantial portion of the Pulse feature has been implemented, including the core engine, git utilities, CLI commands, and multi-repo aggregation. However, several critical functional gaps and technical refinements remain to fully satisfy the specifications and contracts.
+
+### Implemented Files
+- `src/engine/pulse.ts`: Core scanning logic, weekly bucketing, spec progress.
+- `src/engine/types.ts`: Zod schemas and TypeScript types for Pulse.
+- `src/utils/git.ts`: Git shell helpers for log, branches, line counts.
+- `src/commands/pulse.ts`: CLI command registration and basic table rendering.
+- `src/utils/config.ts`: Configuration extension for `pulse.repos`.
+- `src/cli.ts`: Registration of the `pulse` command.
+
+## 2. Gap Analysis
+
+### Functional Gaps
+
+| Requirement | Status | Gap Description |
 |---|---|---|
-| `src/engine/pulse.ts` | `greenfield` | Create: `scanRepository()`, `parseGitLog()`, `bucketByWeek()`. All contract methods. |
-| `src/engine/types.ts` | `greenfield` | Create: `PulseSnapshot`, `WeeklyBucket`, `PulseReport`, `SpecProgress` Zod schemas + TS types. |
-| `src/utils/git.ts` | `greenfield` | Create: `detectDefaultBranch()`, `gitLog()`, `gitBranches()`, `gitLineCount()` shell helpers. |
-| `src/engine/pulse.test.ts` | `greenfield` | Create: Unit tests for TR-001, TR-002, TR-003. |
-| `src/utils/git.test.ts` | `greenfield` | Create: Unit tests for git helpers (TR-003). |
-| `src/engine/pulse-integration.test.ts` | `greenfield` | Create: Integration test with real temp git repo (TR-007). |
+| **FR-003: Draft separation** | `partial` | `totalDrafts` in `WeeklyBucket` is hardcoded to 0. `mainLoc` and `draftLoc` in `PulseSnapshot` are computed but not for historical buckets. |
+| **FR-004: Weekly bucketing** | `partial` | `totalMain` in `WeeklyBucket` is a running total of `added - deleted`, which is an approximation of LOC at that time. |
+| **FR-008: Default branch** | `partial` | `detectDefaultBranch` doesn't support the `--branch` override parameter in its signature, though the CLI accepts it. |
+| **FR-001: Terminal Table** | `wrong` | Current tables use simple text/dashes. Contract specifies "Unicode box-drawing characters" and "PRD §14 example format". |
+| **US-007: Performance** | `missing` | `gitLineCount` uses a slow per-file `git show` loop in a bash pipeline. Needs a more performant approach for large repos. |
 
-## Phase 2: CLI Commands + Config
+### Technical Gaps
 
-| File | Status | Gap |
+| Area | Gap Description |
+|---|---|
+| **Contracts** | `scanRepository` signature in `src/engine/pulse.ts` lacks the `branch` override defined in `contracts/pulse-engine.md`. |
+| **Robustness** | `parseGitLog` needs more robust handling of complex git renames and binary file markers in `--numstat`. |
+| **Tests** | Existing tests are "RED" stubs and need to be verified/updated to match implementation. `src/engine/pulse-integration.test.ts` exists but implementation completeness is unknown. |
+
+### Governance & Standards Gaps
+
+| Rule | Status | Gap Description |
 |---|---|---|
-| `src/commands/pulse.ts` | `greenfield` | Create: `registerPulseCommands()`, `renderPulseTable()`, `renderSnapshotTable()`. |
-| `src/commands/pulse.test.ts` | `greenfield` | Create: Unit tests for TR-004, TR-005, TR-006. |
-| `src/utils/config.ts` | `missing` | Exists, but `GwrkConfigSchema` lacks `pulse` section. Need to add optional `pulse: { repos: z.array(z.string()) }`. Current schema only has `project` and `agents`. |
-| `src/utils/config.test.ts` | `missing` | Exists, but no tests for `pulse` config. Need tests for: valid pulse config, missing pulse.repos triggers error in pulse command. |
-| `src/cli.ts` | `missing` | Exists, but no `pulse` command registered. Only `initCommand` is registered. Need to import and add `pulseCommand`. |
+| **workspace.md** | `wrong` | Hardcoded values in `renderSnapshotTable` (e.g., `.slice(-4)`) should be configurable or follow "no magic values" rule. |
 
-## Phase 3: Multi-Repo Aggregation
+## 3. Classification
 
-| File | Status | Gap |
-|---|---|---|
-| `src/engine/pulse.ts` | `missing` | `generatePulseReport()` and `scanSpecProgress()` not yet implemented (Phase 1 creates the file, Phase 3 adds these methods). |
-| `src/engine/pulse.test.ts` | `missing` | Tests for multi-repo aggregation and spec progress (TR-008) not yet present. |
-| `src/commands/pulse.ts` | `missing` | Multi-repo wiring in `gwrk pulse` command not yet implemented (Phase 2 creates the file, Phase 3 extends it). |
-| `src/commands/pulse.test.ts` | `missing` | Tests for multi-repo output formatting not yet present. |
+- `greenfield`: None. All core files exist.
+- `wrong`: `renderPulseTable` (style), `bucketByWeek` (missing `totalDrafts`), `gitLineCount` (performance).
+- `missing`: Historical `totalDrafts` in buckets, `--branch` override propagation to engine.
 
-## Summary
+## 4. Proposed Adjustments to Plan
 
-- **Greenfield files**: 8 (entire engine, git helpers, CLI commands, all test files)
-- **Files needing extension**: 3 (`config.ts`, `config.test.ts`, `cli.ts`)
-- **Contract conflicts**: None
-- **Governance violations**: None
+The original Phase 1/2/3 structure is mostly complete, so the remaining work should focus on **Fulfillment & Refinement**:
+
+1.  **Refine Git Utils**: Improve `gitLineCount` performance, implement `detectDefaultBranch` override, and fix `gitDraftLineCount` overlap.
+2.  **Enhance Engine**: Implement `totalDrafts` bucketing in `bucketByWeek` and propagate branch overrides.
+3.  **Polish CLI**: Update table rendering to match PRD/Contract style (Unicode box-drawing).
+4.  **Validate**: Complete and run all unit and integration tests.
+
+---
+**Status**: Awaiting approval to proceed to task generation.

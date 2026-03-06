@@ -2,7 +2,8 @@
 
 **Purpose**: Track implementation coverage for the Build Server spec
 **Created**: 2026-02-27
-**Feature**: [spec.md](file:///Users/gonzo/Code/gwrk/specs/002-build-server/spec.md)
+**Revised**: 2026-03-06
+**Feature**: [spec.md](spec.md)
 
 ## User Stories
 - [ ] US-001: Start Build Server (`gwrk server start`)
@@ -25,7 +26,7 @@
 - [ ] FR-006: Docker container lifecycle (create, label, destroy)
 - [ ] FR-007: Agent context compilation into phase-context.md
 - [ ] FR-008: Dispatch queue with parallelism limits
-- [ ] FR-009: Retry logic (3×) + backend escalation
+- [ ] FR-009: Retry logic (3×) + backend escalation + SQLite recording
 - [ ] FR-010: Git branch lifecycle (create, merge-back, conflict detection)
 - [ ] FR-011: PID file management
 - [ ] FR-012: Dockerfile.sandbox with node/git/gh
@@ -33,34 +34,30 @@
 - [ ] FR-014: System resource monitoring + dispatch throttling
 
 ## Technical Constraints
-- [ ] TC-001: UUID dispatch IDs, FIFO ordering
+- [ ] TC-001: Determinism — SHA256 stability, UUID IDs, FIFO ordering
 - [ ] TC-002: Air-gapped daemon — no external network calls
 - [ ] TC-003: Fail-fast config — no `.default()` calls
-- [ ] TC-004: Localhost only binding (no 0.0.0.0)
+- [ ] TC-004: Localhost only binding
 - [ ] TC-005: PID file discipline
-- [ ] TC-006: Docker label convention (gwrk.feature, gwrk.phase)
+- [ ] TC-006: Docker label convention
 - [ ] TC-007: Graceful shutdown (30s timeout)
 - [ ] TC-008: No in-process agent execution
 
 ## Data Model
-- [ ] DM-001: DispatchRecord schema (dispatches.jsonl)
-- [ ] DM-002: GwrkServerConfig extension (.gwrkrc.json)
-- [ ] DM-003: SystemStatus schema
+- [ ] DM-001: SQLite Execution Ledger (`runs`, `history` tables)
+- [ ] DM-002: Dispatch Record (In-Memory)
 
 ## Tests
 - [ ] TR-001: server command tests (start/stop, PID)
 - [ ] TR-002: Fastify bootstrap tests (health, status, dispatch endpoints)
-- [ ] TR-003: dispatch queue tests (FIFO, throttle, retry)
+- [ ] TR-003: dispatch queue tests (FIFO, throttle, retry, SQLite)
 - [ ] TR-004: sandbox lifecycle tests (Docker mock)
 - [ ] TR-005: git-manager tests (branch create, merge-back)
 - [ ] TR-006: context compilation tests
 - [ ] TR-007: resource monitor tests
 - [ ] TR-008: Integration test (daemon subprocess + Docker)
-- [ ] TR-009: Dockerfile.sandbox build test
 
 ## Verification
-- [ ] VR-001: E2E lifecycle (start → dispatch → sandbox → dispatches.jsonl → stop)
-- [ ] VR-002: Port conflict error test
-- [ ] VR-003: No server running error test
-- [ ] VR-004: Queue throttle test (maxClones + 1)
-- [ ] VR-005: Retry escalation test (3× fail → fallback backend)
+- [ ] VR-001: E2E lifecycle (start → dispatch → sandbox → SQLite → stop)
+- [ ] VR-002: Queue throttle test (maxClones + 1)
+- [ ] VR-003: Retry escalation test (3× fail → fallback backend)

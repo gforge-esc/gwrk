@@ -1,140 +1,116 @@
 # Implementation Plan: 006 Pulse
 
-**Branch**: `006-pulse` | **Date**: 2026-02-27 | **Spec**: [spec.md](./spec.md)
+**Branch**: `006-pulse` | **Date**: 2026-03-06 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
-Implement the Pulse productivity dashboard engine and CLI commands. Pulse walks the Git log of any repository, generates weekly LOC buckets separated by published (main branch) vs. draft (feature branches), and aggregates across multiple tracked repos. The implementation is split into three phases: (1) the core git log scanning engine, (2) the CLI commands and config integration, (3) multi-repo aggregation and spec progress scanning.
-
-**Upstream dependency**: Phase 1 (`001-cli-core`) — provides Commander.js CLI framework, `loadConfig()`, Zod-validated `.gwrkrc.json`.
-
-**Downstream consumers**: Phase 10 (`010-gforge-integration`), Phase 11 (`011-glass-dashboard`, Pulse View panel).
-
-**Cross-reference notes**:
-- `001-cli-core` contracts: Pulse extends `GwrkConfig` with `pulse.repos`. `loadConfig()` from `src/utils/config.ts` will be the config entry point.
-- `007-effort-compression`: No shared types. Compression's Git timestamp collection (commit clustering) is separate from Pulse's LOC bucketing. Both consume `git log` but with different `--format` flags and for different purposes.
+This plan addresses the remaining gaps in the Pulse productivity dashboard. While the basic structure exists, this implementation will focus on ensuring high-performance git scanning, accurate historical "Draft" line counts, robust default branch detection with overrides, and polished Unicode terminal output. It also fulfills the requirement for multi-repo aggregation and spec progress tracking.
 
 ---
 
 ## Phases and File Structure
 
-### Phase 1: Pulse Engine (Git Log Scanner + PulseSnapshot)
+### Phase 1: Engine & Git Utility Refinement
 
-Core engine that scans a single git repository and produces a `PulseSnapshot` — the foundational data structure for all Pulse operations.
-
-**Files (6):**
-- `src/engine/pulse.ts` (NEW: Git log scanner, weekly bucket generator, branch separator, default branch detector)
-- `src/engine/pulse.test.ts` (NEW: Unit tests for git log parsing, bucketing, branch separation, default branch detection)
-- `src/engine/types.ts` (NEW: `PulseSnapshot`, `WeeklyBucket`, `PulseReport`, `SpecProgress` type definitions + Zod schemas)
-- `src/utils/git.ts` (NEW: Git shell helpers — `gitLog()`, `gitDefaultBranch()`, `gitBranches()`, `gitLineCount()`)
-- `src/utils/git.test.ts` (NEW: Unit tests for git helpers with mocked `execFileSync`)
-- `src/engine/pulse-integration.test.ts` (NEW: Integration test using real temp git repo)
-
-**Requirements Addressed:** FR-002, FR-003, FR-004, FR-007, FR-008, US-002, US-003, US-004, US-007, US-008, TC-001, TC-002, TC-004, TC-005, DM-001
-
-**Dependencies:** None (engine is standalone)
-
-**Contract Mapping:**
-- `contracts/pulse-engine.md` → `scanRepository(repoPath)` → `src/engine/pulse.ts`
-- `contracts/pulse-engine.md` → `detectDefaultBranch(repoPath)` → `src/utils/git.ts`
-- `contracts/pulse-engine.md` → `parseGitLog(raw)` → `src/engine/pulse.ts`
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| `workspace.md` | TypeScript only, no `.js` in `src/` |
-| `workspace.md` | No magic values — session gap thresholds, bucket sizes from config or constants |
-| compile-gate | Always |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-001 | Unit | `src/engine/pulse.test.ts` | Given mock `git log --numstat` output, verify weekly buckets match expected counts |
-| TR-002 | Unit | `src/engine/pulse.test.ts` | Given mock branch listing + commit ancestry, verify `mainLoc` and `draftLoc` separation |
-| TR-003 | Unit | `src/utils/git.test.ts` | Mock `git symbolic-ref` → verify fallback chain: `main` → `master` → `trunk` → error |
-| TR-007 | Integration | `src/engine/pulse-integration.test.ts` | Create real git repo in `/tmp/`, commits across 3 weeks, verify bucket counts |
-
-#### Done When
-- `npx vitest run src/engine/pulse.test.ts` exits 0
-- `npx vitest run src/utils/git.test.ts` exits 0
-- `npx vitest run src/engine/pulse-integration.test.ts` exits 0
-- `npx tsc --noEmit` exits 0
-
----
-
-### Phase 2: CLI Commands + Config Integration
-
-Commander.js commands for `gwrk pulse` and `gwrk pulse scan [path]`, plus Zod config extension for `pulse.repos`.
-
-**Files (5):**
-- `src/commands/pulse.ts` (NEW: `gwrk pulse` and `gwrk pulse scan [path]` Commander subcommands, terminal table renderer)
-- `src/commands/pulse.test.ts` (NEW: Unit tests for pulse commands — config reading, path validation, JSON output, error cases)
-- `src/utils/config.ts` (MODIFY: Extend `GwrkConfigSchema` with optional `pulse` section containing `repos: string[]`)
-- `src/utils/config.test.ts` (MODIFY: Add tests for pulse config extension)
-- `src/cli.ts` (MODIFY: Register `pulse` command group with Commander)
-
-**Requirements Addressed:** FR-001, FR-006, US-001, US-006, TC-003, DM-003
-
-**Dependencies:** Phase 1 (engine must exist)
-
-**Contract Mapping:**
-- `contracts/pulse-cli.md` → `registerPulseCommands(program)` → `src/commands/pulse.ts`
-- `contracts/config.md` (001-cli-core) → `loadConfig()` → `src/utils/config.ts` (extended)
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| `workspace.md` | Fail-fast config — no `.default()` calls on required fields |
-| `workspace.md` | TypeScript only |
-| compile-gate | Always |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-004 | Unit | `src/commands/pulse.test.ts` | Mock engine, verify `gwrk pulse` reads `pulse.repos` from config and invokes scanner per repo |
-| TR-005 | Unit | `src/commands/pulse.test.ts` | Verify `gwrk pulse scan <path>` validates path, calls engine, outputs JSON when `--json` |
-| TR-006 | Unit | `src/commands/pulse.test.ts` | Verify error cases: non-existent path → exit 1, non-git-repo → exit 1, missing config → exit 1 |
-
-#### Done When
-- `npx vitest run src/commands/pulse.test.ts` exits 0
-- `npx vitest run src/utils/config.test.ts` exits 0
-- `npx tsc --noEmit` exits 0
-- `node dist/cli.js pulse --help` exits 0
-- `node dist/cli.js pulse scan --help` exits 0
-
----
-
-### Phase 3: Multi-Repo Aggregation + Spec Progress
-
-Multi-repo Pulse report generation, spec progress scanning, and terminal table formatting.
+Focus on improving the performance of the git scanner and ensuring the engine supports branch overrides and accurate historical bucketing of draft LOC.
 
 **Files (4):**
-- `src/engine/pulse.ts` (MODIFY: Add `generatePulseReport()` for multi-repo aggregation and `scanSpecProgress()` for spec counting)
-- `src/engine/pulse.test.ts` (MODIFY: Add tests for multi-repo aggregation and spec progress scanning)
-- `src/commands/pulse.ts` (MODIFY: Wire multi-repo aggregation into `gwrk pulse` command, add terminal table renderer)
-- `src/commands/pulse.test.ts` (MODIFY: Add tests for multi-repo output formatting)
+- `src/utils/git.ts` (MODIFY: Update `detectDefaultBranch` to support overrides; Replace slow `gitLineCount` loop with a single `git rev-list --objects --all` or `git ls-tree` based approach for better performance; Implement `gitDraftLineCount` correctly.)
+- `src/engine/pulse.ts` (MODIFY: Update `scanRepository` and `bucketByWeek` signatures to accept `branch` override; Implement `totalDrafts` calculation in `bucketByWeek`.)
+- `src/engine/types.ts` (MODIFY: Ensure Zod schemas align with DM-001/DM-002; remove hardcoded stubs.)
+- `src/utils/config.ts` (MODIFY: Verify `pulse.repos` Zod validation.)
 
-**Requirements Addressed:** FR-001, FR-005, US-001, US-005, DM-002
+**Requirements Addressed**: FR-003, FR-004, FR-007, FR-008, US-003, US-004, US-007, US-008, TC-001, TC-003
 
-**Dependencies:** Phase 1 (engine), Phase 2 (CLI commands)
+**Dependencies**: None
+
+**Contract Mapping**:
+- `specs/006-pulse/contracts/pulse-engine.md` → `scanRepository` → `src/engine/pulse.ts`
+- `specs/006-pulse/contracts/pulse-engine.md` → `detectDefaultBranch` → `src/utils/git.ts`
+- `specs/006-pulse/contracts/pulse-engine.md` → `bucketByWeek` → `src/engine/pulse.ts`
 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| `workspace.md` | TypeScript only |
+| .agent/rules/coding-style.md | Ensure idiomatic TypeScript and consistent error handling. |
 | compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-004 | Unit | `src/commands/pulse.test.ts` | Verify multi-repo aggregation renders all repos in terminal table |
-| TR-008 | Unit | `src/engine/pulse.test.ts` | Given mock `specs/` directory, verify correct `totalSpecs` and `totalPlans` counts |
+| TR-001 | Unit | `src/engine/pulse.test.ts` | Verify weekly buckets (added/deleted) from mock git log. |
+| TR-002 | Unit | `src/engine/pulse.test.ts` | Verify mainLoc vs draftLoc separation with branch ancestry. |
+| TR-003 | Unit | `src/engine/pulse.test.ts` | Verify default branch detection fallback chain. |
+| TR-007 | Integration | `src/engine/pulse-integration.test.ts` | Scan real temp repo; verify LOC totals and performance (<60s). |
 
 #### Done When
-- `npx vitest run src/engine/pulse.test.ts` exits 0
-- `npx vitest run src/commands/pulse.test.ts` exits 0
-- `npx tsc --noEmit` exits 0
-- `gwrk pulse --json | jq '.specProgress.totalSpecs'` exits 0
+- `npm test src/engine/pulse.test.ts` exits 0
+- `npm test src/engine/pulse-integration.test.ts` exits 0
+
+### Phase 2: CLI Commands & Terminal Rendering
+
+Update the CLI implementation to support all flags, handle multi-repo aggregation, and render high-quality terminal tables using Unicode box-drawing characters.
+
+**Files (2):**
+- `src/commands/pulse.ts` (MODIFY: Implement `renderPulseTable` and `renderSnapshotTable` using Unicode box-drawing; Support `--branch` and `--json` flags; Implement `gwrk pulse` multi-repo logic.)
+- `src/engine/pulse.ts` (MODIFY: Complete `generatePulseReport` and `scanSpecProgress` implementation.)
+
+**Requirements Addressed**: FR-001, FR-002, FR-005, FR-006, US-001, US-002, US-005, US-006
+
+**Dependencies**: Phase 1
+
+**Contract Mapping**:
+- `specs/006-pulse/contracts/pulse-cli.md` → `registerPulseCommands` → `src/commands/pulse.ts`
+- `specs/006-pulse/contracts/pulse-cli.md` → `renderPulseTable` → `src/commands/pulse.ts`
+- `specs/006-pulse/contracts/pulse-engine.md` → `generatePulseReport` → `src/engine/pulse.ts`
+- `specs/006-pulse/contracts/pulse-engine.md` → `scanSpecProgress` → `src/engine/pulse.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| .agent/rules/workspace.md | Follow terminal output standards and Unicode usage rules. |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-004 | Unit | `src/commands/pulse.test.ts` | `gwrk pulse` reads config and aggregates repos. |
+| TR-005 | Unit | `src/commands/pulse.test.ts` | `gwrk pulse scan` validates path and outputs JSON. |
+| TR-008 | Unit | `src/engine/pulse.test.ts` | `scanSpecProgress` returns correct counts for `specs/`. |
+
+#### Done When
+- `npm test src/commands/pulse.test.ts` exits 0
+- `gwrk pulse --json | jq '.'` (in a repo with config) exits 0
+
+### Phase 3: Final Verification & E2E
+
+Perform exhaustive testing of all user scenarios, error states, and cross-feature compatibility (especially with 007-effort-compression).
+
+**Files (2):**
+- `src/cli.test.ts` (MODIFY: Add E2E scenarios for `pulse` and `pulse scan`.)
+- `src/engine/pulse-integration.test.ts` (MODIFY: Add performance benchmark and large-repo simulation.)
+
+**Requirements Addressed**: VR-001, VR-002, VR-003, VR-004, SC-001, SC-002, SC-003, SC-004
+
+**Dependencies**: Phase 2
+
+**Contract Mapping**: None (Verification Phase)
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-006 | Unit | `src/commands/pulse.test.ts` | Verify stderr and exit codes for all error conditions. |
+| VR-001 | E2E | `src/cli.test.ts` | Full scan of temp repo matches expected JSON schema and values. |
+| VR-004 | E2E | `src/cli.test.ts` | Determinism: two runs on same repo produce identical JSON output. |
+
+#### Done When
+- `npm test` (all tests) exits 0
+- `npx tsc` (full project) exits 0
 
 ---
 
@@ -142,18 +118,15 @@ Multi-repo Pulse report generation, spec progress scanning, and terminal table f
 
 | Shared Type | Defined In | Consumed By |
 |---|---|---|
-| `PulseSnapshot` | `src/engine/types.ts` | `src/engine/pulse.ts`, `src/commands/pulse.ts`, future: `010-gforge-integration` |
-| `WeeklyBucket` | `src/engine/types.ts` | `src/engine/pulse.ts`, `src/commands/pulse.ts` |
-| `PulseReport` | `src/engine/types.ts` | `src/commands/pulse.ts`, future: `011-glass-dashboard` |
-| `SpecProgress` | `src/engine/types.ts` | `src/engine/pulse.ts`, `src/commands/pulse.ts` |
-| `PulseConfig` | `src/utils/config.ts` | `src/commands/pulse.ts` (config extension within GwrkConfig) |
-| `GwrkConfig` | `src/utils/config.ts` (001-cli-core) | Extended with `pulse?: PulseConfig` |
+| PulseSnapshot | `src/engine/types.ts` | `src/engine/pulse.ts`, `src/commands/pulse.ts`, `007-effort-compression` |
+| PulseReport | `src/engine/types.ts` | `src/engine/pulse.ts`, `src/commands/pulse.ts` |
+| WeeklyBucket | `src/engine/types.ts` | `src/engine/pulse.ts` |
 
 ---
 
 ## Mockup-to-Selector Mapping
 
-_No mockups exist for this feature._
+_No mockups exist for this feature (Terminal-based)._
 
 ---
 
@@ -161,7 +134,7 @@ _No mockups exist for this feature._
 
 | Spec Item | Title | Reason | Target |
 |---|---|---|---|
-| US-007 / FR-007 | Performance on 50K-commit repos | Performance validation requires large synthetic repo; constraint is enforced by design (single-pass `git log --numstat`) but formal 60s benchmark deferred to integration testing during `/implement` | Phase 1 integration test |
+| US-007 | 50K Commit Perf | Validated via simulation, but full validation against massive real-world mono-repos is deferred to Phase 4 (Profiling). | Future |
 
 ---
 
@@ -169,43 +142,41 @@ _No mockups exist for this feature._
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| US-001 | Phase 2, Phase 3 | Planned |
-| US-002 | Phase 1 | Planned |
-| US-003 | Phase 1 | Planned |
-| US-004 | Phase 1 | Planned |
-| US-005 | Phase 3 | Planned |
-| US-006 | Phase 2 | Planned |
-| US-007 | Phase 1 (deferred benchmark) | Planned |
-| US-008 | Phase 1 | Planned |
-| FR-001 | Phase 2, Phase 3 | Planned |
-| FR-002 | Phase 1 | Planned |
-| FR-003 | Phase 1 | Planned |
-| FR-004 | Phase 1 | Planned |
-| FR-005 | Phase 3 | Planned |
-| FR-006 | Phase 2 | Planned |
-| FR-007 | Phase 1 | Planned |
-| FR-008 | Phase 1 | Planned |
-| TR-001 | Phase 1 | Planned |
-| TR-002 | Phase 1 | Planned |
-| TR-003 | Phase 1 | Planned |
-| TR-004 | Phase 2, Phase 3 | Planned |
-| TR-005 | Phase 2 | Planned |
-| TR-006 | Phase 2 | Planned |
-| TR-007 | Phase 1 | Planned |
-| TR-008 | Phase 3 | Planned |
-| TC-001 | Phase 1 | Planned |
-| TC-002 | Phase 1 | Planned |
-| TC-003 | Phase 2 | Planned |
-| TC-004 | Phase 1 | Planned |
-| TC-005 | Phase 1 | Planned |
-| DM-001 | Phase 1 | Planned |
-| DM-002 | Phase 3 | Planned |
-| DM-003 | Phase 2 | Planned |
-| SC-001 | Phase 1 | Planned |
-| SC-002 | Phase 2, Phase 3 | Planned |
-| SC-003 | Phase 1 | Planned |
-| SC-004 | Phase 1 | Planned |
-| VR-001 | Phase 1 | Planned |
-| VR-002 | Phase 2 | Planned |
-| VR-003 | Phase 2 | Planned |
-| VR-004 | Phase 1 | Planned |
+| FR-001 | 2 | PLANNED |
+| FR-002 | 2 | PLANNED |
+| FR-003 | 1 | PLANNED |
+| FR-004 | 1 | PLANNED |
+| FR-005 | 2 | PLANNED |
+| FR-006 | 2 | PLANNED |
+| FR-007 | 1 | PLANNED |
+| FR-008 | 1 | PLANNED |
+| US-001 | 2 | PLANNED |
+| US-002 | 2 | PLANNED |
+| US-003 | 1 | PLANNED |
+| US-004 | 1 | PLANNED |
+| US-005 | 2 | PLANNED |
+| US-006 | 2 | PLANNED |
+| US-007 | 1 | PLANNED |
+| US-008 | 1 | PLANNED |
+| DM-001 | 1 | PLANNED |
+| DM-002 | 1 | PLANNED |
+| DM-003 | 1 | PLANNED |
+| TC-001 | 1, 3 | PLANNED |
+| TC-002 | 1 | PLANNED |
+| TC-003 | 1 | PLANNED |
+| TR-001 | 1 | PLANNED |
+| TR-002 | 1 | PLANNED |
+| TR-003 | 1 | PLANNED |
+| TR-004 | 2 | PLANNED |
+| TR-005 | 2 | PLANNED |
+| TR-006 | 3 | PLANNED |
+| TR-007 | 1, 3 | PLANNED |
+| TR-008 | 2 | PLANNED |
+| SC-001 | 3 | PLANNED |
+| SC-002 | 3 | PLANNED |
+| SC-003 | 3 | PLANNED |
+| SC-004 | 3 | PLANNED |
+| VR-001 | 3 | PLANNED |
+| VR-002 | 3 | PLANNED |
+| VR-003 | 3 | PLANNED |
+| VR-004 | 3 | PLANNED |

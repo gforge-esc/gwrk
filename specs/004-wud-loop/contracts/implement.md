@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 004-wud-loop
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Contract: Implement Command
 
 **Feature**: 004-wud-loop

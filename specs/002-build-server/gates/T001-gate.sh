@@ -1,22 +1,14 @@
 #!/usr/bin/env bash
-# Gate: T001 — Extend GwrkConfigSchema with server config
-# Contract: src/utils/config.ts must contain server.port and server.host in GwrkConfigSchema
+# Gate: T001 — Setup server dependencies and ESM configuration
 set -euo pipefail
 
-FILE="src/utils/config.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
+# Assertion #1: fastify in package.json
+grep -q '"fastify":' package.json || { echo "FAIL: fastify dependency not found in package.json"; exit 1; }
 
-# Verify server config fields exist in the schema
-# Assertion #2
-grep -q 'server:' "$FILE" || { echo "FAIL: 'server:' block missing from GwrkConfigSchema"; exit 1; }
-# Assertion #3
-grep -q 'port:' "$FILE" || { echo "FAIL: 'port:' field missing from server config"; exit 1; }
-# Assertion #4
-grep -q 'host:' "$FILE" || { echo "FAIL: 'host:' field missing from server config"; exit 1; }
+# Assertion #2: module is ESNext in tsconfig.json
+grep -q '"module": "ESNext"' tsconfig.json || { echo "FAIL: tsconfig.json module not set to ESNext"; exit 1; }
 
-# Verify no .default() calls on server fields
-# Assertion #5
-! grep -E 'server.*\.default\(' "$FILE" || { echo "FAIL: .default() found on server config fields"; exit 1; }
+# Assertion #3: moduleResolution is set to Node or Bundler
+grep -q '"moduleResolution": "Node"\|"moduleResolution": "Bundler"\|"moduleResolution": "node"' tsconfig.json || { echo "FAIL: tsconfig.json moduleResolution not set correctly for ESM"; exit 1; }
 
 echo "PASS: T001"

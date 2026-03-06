@@ -1,21 +1,8 @@
-#!/usr/bin/env bash
-# Gate: T013 — Create cross-feature summary generator
-# Contract: src/engine/compression.ts must also export generateSummary()
+#!/bin/bash
 set -euo pipefail
+# Gate: T013 — Implement src/engine/git-timestamps.test.ts
+# Asserts: Derived from task description
 
-FILE="src/engine/compression.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE does not exist" >&2; exit 1; }
+test -f src/engine/git-timestamps.test.ts
 
-# Assertion #2
-grep -q 'export.*function generateSummary' "$FILE" || \
-# Assertion #3
-grep -q 'export function generateSummary' "$FILE" || \
-  { echo "FAIL: generateSummary function not exported" >&2; exit 1; }
-
-# Assertion #4
-grep -q 'CompressionSummary' "$FILE" || { echo "FAIL: CompressionSummary return type not referenced" >&2; exit 1; }
-# Assertion #5
-grep -q 'trend' "$FILE" || { echo "FAIL: trend calculation not found" >&2; exit 1; }
-
-echo "PASS: T013 — compression engine exports generateSummary with trend"
+echo "PASS: T013 — Implement src/engine/git-timestamps.test.ts"

@@ -1,18 +1,12 @@
-#!/usr/bin/env bash
-# Gate: T011 — Verify CLI integration and dry-run modes
-# Contract: plan.md Phase 3 (SC-001, SC-002, VR-001, VR-002)
+#!/bin/bash
 set -euo pipefail
+# Gate: T011 — Implement test strategy for Phase 2
+# Asserts: Derived from task description
 
-# #1 TypeScript must compile
-npx tsc --noEmit 2>&1 || \
-  { echo "FAIL #1: TypeScript compilation failed" >&2; exit 1; }
 
-# #2 gwrk implement --help must work
-node --import tsx src/cli.ts implement --help 2>&1 | grep -q 'implement' || \
-  { echo "FAIL #2: gwrk implement --help does not show usage" >&2; exit 1; }
+# Phase Acceptance Criteria
+npx vitest run src/commands/wud.test.ts
+npx tsc --noEmit
+grep -c 'BRANCH_SETUP\|IMPLEMENTING\|CODE_REVIEW\|UAT_REVIEW\|PR_CI\|DONE' src/commands/wud.ts
 
-# #3 gwrk wud --help must work
-node --import tsx src/cli.ts wud --help 2>&1 | grep -q 'wud' || \
-  { echo "FAIL #3: gwrk wud --help does not show usage" >&2; exit 1; }
-
-echo "PASS: T011 — CLI integration verified, TypeScript compiles, help works"
+echo "PASS: T011 — Implement test strategy for Phase 2"

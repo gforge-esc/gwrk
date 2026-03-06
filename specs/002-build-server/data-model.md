@@ -1,3 +1,9 @@
+---
+type: data_model
+feature: 002-build-server
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Data Model: 002 Build Server
 
 **Feature**: 002-build-server

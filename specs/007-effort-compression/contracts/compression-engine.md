@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 007-effort-compression
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Contract: Compression Engine
 
 **Feature**: 007-effort-compression
@@ -72,18 +78,19 @@ interface CommitCluster {
 
 ---
 
-## `computeCompression(forecast: EffortForecast, actuals: DeliveryActuals): CompressionRatios`
+## `computeCompression(featureId: string, forecast: EffortForecast, actuals: DeliveryActuals): CompressionReport`
 
 **Source**: `src/engine/compression.ts`
 **Consumed by**: `src/commands/compression.ts`
 
-Pure function. Computes Point Compression and Total Compression ratios from forecast and actual delivery data.
+Orchestrates the computation of Point Compression, Total Compression, and Leading Indicators. Returns a full `CompressionReport` suitable for persistence and display.
 
 ```typescript
 function computeCompression(
+  featureId: string,
   forecast: EffortForecast,
   actuals: DeliveryActuals
-): CompressionRatios
+): CompressionReport
 ```
 
 ### Formulas
@@ -93,10 +100,31 @@ Point Compression = forecast.estimatedHours / (actuals.activeCodingMinutes / 60)
 Total Compression = forecast.estimatedDays / (actuals.deliveryWindowHours / 24)
 ```
 
-**Returns**: `CompressionRatios`
+**Returns**: `CompressionReport` (including `indicators: LeadingIndicators`)
 **Edge cases**:
 - `activeCodingMinutes = 0` → `pointCompression = Infinity` (report as "∞")
 - `deliveryWindowHours = 0` → `totalCompression = Infinity` (report as "∞")
+
+---
+
+## `computeIndicators(featureId: string): LeadingIndicators`
+
+**Source**: `src/engine/compression.ts`
+**Consumed by**: `src/engine/compression.ts`
+
+Queries the SQLite `runs` table and scans the filesystem to compute leading indicators of delivery quality.
+
+| Indicator | Source | Computation |
+|---|---|---|
+| `firstPassRate` | `runs` table | `(tasks with attempt=1) / total tasks` |
+| `avgAttempts` | `runs` table | `sum(attempts) / total tasks` |
+| `linesPerSP` | git + forecast | `total LOC added / forecast.totalSP` |
+| `filesPerSP` | git + forecast | `count(files modified) / forecast.totalSP` |
+| `toolCallsPerSP`| `runs` + forecast| `sum(tool_calls) / forecast.totalSP` |
+| `contractCount` | filesystem | `count(specs/<feature>/contracts/*.md)` |
+| `gateCount` | filesystem | `count(specs/<feature>/gates/*.sh)` |
+
+**Returns**: `LeadingIndicators`
 
 ---
 

@@ -7,44 +7,32 @@
       "tasks": [
         {
           "id": "T001",
-          "title": "Extend GwrkConfigSchema with server config",
-          "description": "In src/utils/config.ts, add server.port (number, 1024-65535) and server.host (string) fields to GwrkConfigSchema. No .default() calls. Export the extended type.",
+          "title": "Setup server dependencies and ESM configuration",
+          "description": "Add 'fastify' to package.json dependencies and ensure tsconfig.json has 'module': 'ESNext' and 'moduleResolution': 'bundler' or 'node' for ESM support.",
           "status": "open"
         },
         {
           "id": "T002",
-          "title": "Add fastify dependency",
-          "description": "Add 'fastify' to dependencies in package.json. Run pnpm install.",
+          "title": "Extend GwrkConfigSchema for server and parallelism",
+          "description": "Modify src/utils/config.ts to add 'server' (port, host) and 'parallelism' (local, cloud) sections to GwrkConfigSchema as defined in DM-002.",
           "status": "open"
         },
         {
           "id": "T003",
-          "title": "Create PID file manager",
-          "description": "Create src/server/pid.ts with writePid(pidPath), readPid(pidPath), removePid(pidPath). writePid writes process.pid. readPid returns number|null, validates process is alive via kill(pid,0). removePid deletes the file (no-op if missing).",
+          "title": "Implement PID management utility",
+          "description": "Create src/server/pid.ts with writePid, readPid (with process-alive check), and removePid functions as defined in the server.md contract.",
           "status": "open"
         },
         {
           "id": "T004",
-          "title": "Create Fastify server bootstrap",
-          "description": "Create src/server/index.ts with startServer(config: GwrkConfig) that: creates Fastify instance, registers GET /health (returns 200), writes PID file via writePid(), binds to config.server.host:config.server.port. Export stopServer(instance) that: waits 30s for active work, calls removePid(), closes Fastify. Register SIGTERM/SIGINT handlers.",
+          "title": "Implement Fastify server bootstrap and lifecycle",
+          "description": "Create src/server/index.ts with startServer (binds port, writes PID, /health endpoint) and stopServer (graceful shutdown) as defined in server.md.",
           "status": "open"
         },
         {
           "id": "T005",
-          "title": "Create server CLI commands",
-          "description": "Create src/commands/server.ts with Commander subcommands: 'gwrk server start' (calls startServer, checks existing PID, checks Docker availability) and 'gwrk server stop' (reads PID, sends SIGTERM, waits for exit, verifies port released).",
-          "status": "open"
-        },
-        {
-          "id": "T006",
-          "title": "Register server command in CLI",
-          "description": "In src/cli.ts, import serverCommand from ./commands/server.js and add program.addCommand(serverCommand). Exclude 'server start' from preAction config validation if server.* fields are missing (server start implicitly validates).",
-          "status": "open"
-        },
-        {
-          "id": "T007",
-          "title": "Unit tests for Phase 1",
-          "description": "Create src/commands/server.test.ts: verify start creates PID, binds port, /health returns 200; verify stop removes PID, releases port; verify start when already running shows error. Create src/server/index.test.ts: verify Fastify bootstrap and /health endpoint. Create src/server/pid.test.ts: verify write/read/remove PID lifecycle.",
+          "title": "Implement server CLI commands",
+          "description": "Create src/commands/server.ts with 'start' and 'stop' subcommands. Register 'server' command group in src/cli.ts.",
           "status": "open"
         }
       ]
@@ -54,39 +42,21 @@
       "name": "Phase 2: System Monitor & Status",
       "tasks": [
         {
+          "id": "T006",
+          "title": "Implement SystemMonitor resource sampling",
+          "description": "Create src/server/monitor.ts with SystemMonitor class implementing sample() and isThrottled() using 'os' and 'df' as defined in monitor.md.",
+          "status": "open"
+        },
+        {
+          "id": "T007",
+          "title": "Implement status API route",
+          "description": "Create src/server/routes/status.ts implementing GET /api/status returning the SystemStatus data model (DM-003). Register route in src/server/index.ts.",
+          "status": "open"
+        },
+        {
           "id": "T008",
-          "title": "Extend GwrkConfigSchema with parallelism config",
-          "description": "In src/utils/config.ts, add parallelism.local.maxClones (int, positive), parallelism.local.maxCpu (1-100), parallelism.local.maxMem (1-100), parallelism.local.minDiskGb (positive number), parallelism.cloud.maxConcurrent (int, positive) to GwrkConfigSchema. No .default() calls.",
-          "status": "open"
-        },
-        {
-          "id": "T009",
-          "title": "Create SystemMonitor class",
-          "description": "Create src/server/monitor.ts with class SystemMonitor: constructor(config), sample() returns {cpuPercent, memPercent, diskFreeGb}, isThrottled() returns boolean (checks against config limits), startPolling(intervalMs) caches samples, stopPolling() clears interval, getStatus() returns full SystemStatus object.",
-          "status": "open"
-        },
-        {
-          "id": "T010",
-          "title": "Create /api/status route",
-          "description": "Create src/server/routes/status.ts exporting a Fastify route plugin. GET /api/status calls monitor.getStatus() and returns SystemStatus JSON.",
-          "status": "open"
-        },
-        {
-          "id": "T011",
-          "title": "Create gwrk status CLI command",
-          "description": "Create src/commands/status.ts with Commander command: 'gwrk status' queries http://localhost:<port>/api/status. If daemon is not running, return {server:{status:'stopped'}}. Support --json flag for raw JSON output.",
-          "status": "open"
-        },
-        {
-          "id": "T012",
-          "title": "Register status command in CLI",
-          "description": "In src/cli.ts, import statusCommand from ./commands/status.js and add program.addCommand(statusCommand).",
-          "status": "open"
-        },
-        {
-          "id": "T013",
-          "title": "Unit tests for Phase 2",
-          "description": "Create src/server/monitor.test.ts: verify sample() returns valid numbers, isThrottled() returns true when limits exceeded, polling starts/stops. Create src/server/routes/status.test.ts: verify /api/status returns correct SystemStatus shape.",
+          "title": "Implement status CLI command",
+          "description": "Create src/commands/status.ts to query the daemon's status API and display results. Register in src/cli.ts.",
           "status": "open"
         }
       ]
@@ -96,27 +66,21 @@
       "name": "Phase 3: Git Manager & Context Compiler",
       "tasks": [
         {
-          "id": "T014",
-          "title": "Create shared server types",
-          "description": "Create src/server/types.ts with Zod schemas and inferred types: DispatchRecord, DispatchAttempt, DispatchStatus, SystemStatus, SandboxInfo, AgentBackend (re-export from config). All validated with Zod, no .default() calls.",
+          "id": "T009",
+          "title": "Define shared domain types",
+          "description": "Create src/server/types.ts and export Zod schemas and types for DispatchRecord, DispatchAttempt, DispatchStatus, SystemStatus, and SandboxInfo (DM-001, DM-003).",
           "status": "open"
         },
         {
-          "id": "T015",
-          "title": "Create Git branch manager",
-          "description": "Create src/server/git-manager.ts with: createPhaseBranch(feature, phase) creates phase/<feature>-<phase> from feature/<feature>-wip via child_process.execFile; mergePhaseBack(feature, phase) merges phase branch into feature branch; isClean(cwd) checks git status --porcelain; hasConflicts(feature, phase) dry-run merge check.",
+          "id": "T010",
+          "title": "Implement Git Manager for phase branches",
+          "description": "Create src/server/git-manager.ts with createPhaseBranch, mergePhaseBack, isClean, and hasConflicts as defined in git-manager.md.",
           "status": "open"
         },
         {
-          "id": "T016",
-          "title": "Create context compiler",
-          "description": "Create src/server/context.ts with: compileContext(featureDir, phaseId) reads .agent/rules/*.md, spec.md, plan.md, .gwrk/tasks.json (filtered to phase), gate scripts, and concatenates into single Markdown; writeContextToSandbox(containerId, context) writes to /workspace/.gwrk/phase-context.md via docker exec.",
-          "status": "open"
-        },
-        {
-          "id": "T017",
-          "title": "Unit tests for Phase 3",
-          "description": "Create src/server/git-manager.test.ts: verify branch creation, merge-back, conflict detection, dirty tree rejection. Mock child_process. Create src/server/context.test.ts: verify compiled context contains rules, spec, plan, tasks sections. Mock fs reads.",
+          "id": "T011",
+          "title": "Implement Context Compiler and sandbox injector",
+          "description": "Create src/server/context.ts with compileContext (aggregates rules/spec/plan/tasks) and writeContextToSandbox functions as defined in context.md.",
           "status": "open"
         }
       ]
@@ -126,27 +90,21 @@
       "name": "Phase 4: Docker Sandbox Manager",
       "tasks": [
         {
-          "id": "T018",
-          "title": "Add dockerode dependency",
-          "description": "Add 'dockerode' to dependencies and '@types/dockerode' to devDependencies in package.json. Run pnpm install.",
+          "id": "T012",
+          "title": "Setup Docker dependencies and ignore patterns",
+          "description": "Add 'dockerode' and '@types/dockerode' to package.json. Create/update .dockerignore to exclude node_modules and .git from sandbox builds.",
           "status": "open"
         },
         {
-          "id": "T019",
-          "title": "Create sandbox Dockerfile",
-          "description": "Create Dockerfile.sandbox based on debian:bookworm-slim. Install Node.js LTS, Git, gh CLI. Set WORKDIR /workspace. Label as gwrk-sandbox.",
+          "id": "T013",
+          "title": "Create gwrk-sandbox Dockerfile",
+          "description": "Create Dockerfile.sandbox based on bookworm-slim with Node.js LTS, Git, and gh CLI installed. Set WORKDIR to /workspace.",
           "status": "open"
         },
         {
-          "id": "T020",
-          "title": "Create Docker sandbox manager",
-          "description": "Create src/server/sandbox.ts with: createSandbox(opts: SandboxOptions) creates container from gwrk-sandbox:bookworm-slim, bind mounts repoPath:/workspace:rw, sets labels gwrk.feature/gwrk.phase/gwrk.backend, starts container; destroySandbox(containerId) stops and removes; destroyAllSandboxes() lists gwrk.* containers and destroys all; listSandboxes() returns SandboxInfo[].",
-          "status": "open"
-        },
-        {
-          "id": "T021",
-          "title": "Unit tests for Phase 4",
-          "description": "Create src/server/sandbox.test.ts: verify createSandbox sets correct labels, mounts at /workspace, uses correct image; verify destroySandbox stops and removes; verify destroyAllSandboxes; verify listSandboxes. Mock dockerode.",
+          "id": "T014",
+          "title": "Implement Docker sandbox manager",
+          "description": "Create src/server/sandbox.ts with createSandbox, destroySandbox, destroyAllSandboxes, and listSandboxes using dockerode as defined in sandbox.md.",
           "status": "open"
         }
       ]
@@ -156,45 +114,33 @@
       "name": "Phase 5: Dispatch Queue & Orchestrator",
       "tasks": [
         {
-          "id": "T022",
-          "title": "Create JSONL persistence writer",
-          "description": "Create src/server/persistence.ts with persistDispatch(record: DispatchRecord) that appends JSON line to .gwrk/dispatches.jsonl. Creates file if missing. Zod-validates record before writing.",
+          "id": "T015",
+          "title": "Implement dispatch persistence",
+          "description": "Create src/server/persistence.ts with persistDispatch function for append-only logging to .gwrk/dispatches.jsonl (DM-001).",
           "status": "open"
         },
         {
-          "id": "T023",
-          "title": "Create DispatchQueue class",
-          "description": "Create src/server/dispatch.ts with class DispatchQueue: constructor(deps: DispatchDeps), enqueue(request) creates DispatchRecord with status queued and triggers processNext(), processNext() dequeues if under maxClones and not throttled, handleCompletion() retries 3x on same backend then escalates via fallbackOrder, getQueue() returns active/queued/throttled, getDispatch() returns record by feature+phase.",
+          "id": "T016",
+          "title": "Implement core Dispatch Queue engine",
+          "description": "Create src/server/dispatch.ts with DispatchQueue class implementing enqueue() and processNext() logic (throttle/maxClones check).",
           "status": "open"
         },
         {
-          "id": "T024",
-          "title": "Create dispatch API routes",
-          "description": "Create src/server/routes/dispatch.ts with: POST /api/dispatch (accepts {featureId, phaseId, backend}, calls queue.enqueue), GET /api/dispatch/:feature/:phase (calls queue.getDispatch), GET /api/dispatch/queue (calls queue.getQueue).",
+          "id": "T017",
+          "title": "Implement dispatch retry and escalation logic",
+          "description": "Add handleCompletion to src/server/dispatch.ts with 3x retry on same backend followed by escalation to next backend as defined in dispatch.md.",
           "status": "open"
         },
         {
-          "id": "T025",
-          "title": "Wire dispatch routes and monitor into server",
-          "description": "In src/server/index.ts, register dispatch routes, instantiate DispatchQueue with sandbox/gitManager/context/monitor deps, wire monitor.startPolling() to server startup and monitor.stopPolling() to shutdown.",
+          "id": "T018",
+          "title": "Implement dispatch API routes",
+          "description": "Create src/server/routes/dispatch.ts with POST /api/dispatch, GET /api/dispatch/:id, and GET /api/dispatch/queue. Register in src/server/index.ts.",
           "status": "open"
         },
         {
-          "id": "T026",
-          "title": "Unit tests for dispatch queue",
-          "description": "Create src/server/dispatch.test.ts: verify FIFO ordering, maxClones throttle, 3x retry on same backend + escalation to fallbackOrder, attempt recording with timestamps/exit codes/stderr. Mock sandbox/gitManager/monitor.",
-          "status": "open"
-        },
-        {
-          "id": "T027",
-          "title": "Unit tests for dispatch routes",
-          "description": "Create src/server/routes/dispatch.test.ts: verify POST /api/dispatch returns 200 with dispatch record, GET queue returns correct shape, GET by feature/phase returns record or 404.",
-          "status": "open"
-        },
-        {
-          "id": "T028",
-          "title": "Integration test for end-to-end dispatch",
-          "description": "Create src/server/integration.test.ts: start daemon in subprocess, POST /api/dispatch, verify container created with correct labels, verify dispatch record in dispatches.jsonl, stop daemon, verify cleanup.",
+          "id": "T019",
+          "title": "End-to-end system integration and wiring",
+          "description": "Connect SystemMonitor to DispatchQueue for auto-throttle. Create src/server/integration.test.ts to verify full lifecycle: POST -> Sandbox -> Complete -> Merge.",
           "status": "open"
         }
       ]

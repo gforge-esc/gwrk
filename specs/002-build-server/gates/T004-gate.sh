@@ -1,34 +1,20 @@
 #!/usr/bin/env bash
-# Gate: T004 — Create Fastify server bootstrap
-# Contract: src/server/index.ts must export startServer and stopServer
+# Gate: T004 — Implement Fastify server bootstrap and lifecycle
 set -euo pipefail
 
-FILE="src/server/index.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
+# Assertion #1: src/server/index.ts exists
+test -f src/server/index.ts || { echo "FAIL: src/server/index.ts not found"; exit 1; }
 
-# Verify startServer export
-# Assertion #2
-grep -q 'export.*function startServer\|export async function startServer' "$FILE" || { echo "FAIL: startServer not exported"; exit 1; }
+# Assertion #2: startServer function exists and exports
+grep -q "export.*startServer" src/server/index.ts || { echo "FAIL: startServer function not exported"; exit 1; }
 
-# Verify stopServer export
-# Assertion #3
-grep -q 'export.*function stopServer\|export async function stopServer' "$FILE" || { echo "FAIL: stopServer not exported"; exit 1; }
+# Assertion #3: stopServer function exists and exports
+grep -q "export.*stopServer" src/server/index.ts || { echo "FAIL: stopServer function not exported"; exit 1; }
 
-# Verify Fastify import
-# Assertion #4
-grep -q 'fastify\|Fastify' "$FILE" || { echo "FAIL: Fastify not imported"; exit 1; }
+# Assertion #4: /health endpoint registered
+grep -q "/health" src/server/index.ts || { echo "FAIL: /health route missing"; exit 1; }
 
-# Verify /health route
-# Assertion #5
-grep -q '/health' "$FILE" || { echo "FAIL: /health route not defined"; exit 1; }
-
-# Verify PID file integration
-# Assertion #6
-grep -q 'writePid\|readPid\|removePid' "$FILE" || { echo "FAIL: PID file functions not referenced"; exit 1; }
-
-# Verify SIGTERM/SIGINT handler
-# Assertion #7
-grep -q 'SIGTERM\|SIGINT' "$FILE" || { echo "FAIL: Signal handlers not registered"; exit 1; }
+# Assertion #5: writes PID during startup
+grep -q "writePid" src/server/index.ts || { echo "FAIL: startServer does not write PID"; exit 1; }
 
 echo "PASS: T004"

@@ -1,3 +1,9 @@
+---
+type: contract
+feature: 006-pulse
+last_modified: "2026-03-05T11:12:20Z"
+---
+
 # Contract: Pulse CLI Commands
 
 **Feature**: 006-pulse
@@ -8,11 +14,11 @@
 ## `registerPulseCommands(program: Command): void`
 
 **Source**: `src/commands/pulse.ts`
-**Consumed by**: `src/cli.ts`
+**Consumed by**: `src/commands/measure.ts`
 
-Registers the `pulse` command group with Commander.js:
-- `gwrk pulse` — generates a multi-repo PulseReport from config
-- `gwrk pulse scan [path]` — scans a single repo at the given path
+Registers the `pulse` command group under `gwrk measure`:
+- `gwrk measure pulse` — generates a multi-repo PulseReport from config
+- `gwrk measure pulse scan [path]` — scans a single repo at the given path
 
 Both commands support `--json` flag for structured output.
 
@@ -20,7 +26,7 @@ Both commands support `--json` flag for structured output.
 function registerPulseCommands(program: Command): void
 ```
 
-### Subcommand: `gwrk pulse`
+### Subcommand: `gwrk measure pulse`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -33,7 +39,7 @@ function registerPulseCommands(program: Command): void
 4. If `--json`: outputs JSON to stdout
 5. Else: renders formatted terminal table
 
-### Subcommand: `gwrk pulse scan <path>`
+### Subcommand: `gwrk measure pulse scan <path>`
 
 | Argument | Type | Required | Description |
 |---|---|---|---|

@@ -1,80 +1,66 @@
+---
+type: gap_analysis
+feature: 002-build-server
+last_modified: "2026-03-05T21:36:07Z"
+---
+
 # Gap Analysis: 002 Build Server
 
 **Feature**: 002-build-server
-**Date**: 2026-02-27
-**Status**: Audited
+**Date**: 2026-03-05
 
----
+## Audit Summary
 
-## Summary
+The Build Server feature is currently in a `greenfield` state. While the specification (`spec.md`), implementation plan (`plan.md`), and method contracts (`contracts/*.md`) are well-defined, no implementation code exists in the `src/` directory. A draft `tasks.json` and some "weak" verification gates exist, but they need to be refined to match the strictness required by the workspace governance.
 
-All build server functionality is **greenfield** — the daemon, sandbox manager, dispatch queue, Git manager, and monitoring subsystems do not exist yet. Four files from 001-cli-core require modification to integrate the build server.
+## File-by-File Status
 
----
-
-## Phase 1: Daemon Bootstrap
-
-| File | Status | Gap | Detail |
+| Phase | File | Status | Notes |
 |---|---|---|---|
-| `src/server/index.ts` | greenfield | Full implementation | Fastify bootstrap, `/health`, graceful shutdown. Contract: `startServer()`, `stopServer()` |
-| `src/server/pid.ts` | greenfield | Full implementation | PID file read/write/check/remove. Contract: `writePid()`, `readPid()`, `removePid()` |
-| `src/commands/server.ts` | greenfield | Full implementation | `gwrk server start` and `gwrk server stop` subcommands via Commander |
-| `src/cli.ts` | EXISTS | missing | Server command not registered. Need `program.addCommand(serverCommand)` and import |
-| `src/utils/config.ts` | EXISTS | missing | `GwrkConfigSchema` lacks `server.port`, `server.host` fields. Need to extend Zod schema |
-| `package.json` | EXISTS | missing | No `fastify` dependency. Need to add `fastify` |
-| `tsconfig.json` | EXISTS | — | ESM output already configured. No changes needed |
+| 1 | `src/server/index.ts` | `greenfield` | Fastify bootstrap, route registration, and lifecycle management missing. |
+| 1 | `src/server/pid.ts` | `greenfield` | PID file management (read/write/check) missing. |
+| 1 | `src/commands/server.ts` | `greenfield` | `gwrk server start/stop` CLI commands missing. |
+| 1 | `src/cli.ts` | `missing` | Needs registration of the `server` command group. |
+| 1 | `src/utils/config.ts` | `missing` | `GwrkConfigSchema` needs extension for `server` and `parallelism`. |
+| 1 | `package.json` | `missing` | `fastify` dependency missing. |
+| 1 | `tsconfig.json` | `missing` | Needs verification for ESM compatibility with Fastify. |
+| 2 | `src/server/monitor.ts` | `greenfield` | `SystemMonitor` class for resource sampling missing. |
+| 2 | `src/server/routes/status.ts` | `greenfield` | `GET /api/status` route implementation missing. |
+| 2 | `src/commands/status.ts` | `greenfield` | `gwrk status` CLI command missing. |
+| 3 | `src/server/git-manager.ts` | `greenfield` | Git branch lifecycle (create/merge/conflict) missing. |
+| 3 | `src/server/context.ts` | `greenfield` | Agent context compiler and sandbox injector missing. |
+| 3 | `src/server/types.ts` | `greenfield` | Shared domain types (DispatchRecord, etc.) missing. |
+| 4 | `src/server/sandbox.ts` | `greenfield` | Docker container lifecycle manager via `dockerode` missing. |
+| 4 | `Dockerfile.sandbox` | `greenfield` | Sandbox image definition missing. |
+| 5 | `src/server/dispatch.ts` | `greenfield` | `DispatchQueue` engine with retry/escalation missing. |
+| 5 | `src/server/routes/dispatch.ts` | `greenfield` | Dispatch API routes (POST/GET) missing. |
+| 5 | `src/server/persistence.ts` | `greenfield` | Append-only `dispatches.jsonl` writer missing. |
 
----
+## Contract Verification
 
-## Phase 2: System Monitor & Status
-
-| File | Status | Gap | Detail |
+| Contract | Method | Implemented? | Notes |
 |---|---|---|---|
-| `src/server/monitor.ts` | greenfield | Full implementation | `SystemMonitor` class: `sample()`, `isThrottled()`, `startPolling()`, `stopPolling()`, `getStatus()` |
-| `src/server/routes/status.ts` | greenfield | Full implementation | `GET /api/status` route |
-| `src/commands/status.ts` | greenfield | Full implementation | `gwrk status` command — HTTP GET to daemon or offline fallback |
-| `src/cli.ts` | EXISTS | missing | Status command not registered |
-| `src/utils/config.ts` | EXISTS | missing | `parallelism.local.*` and `parallelism.cloud.*` fields missing from schema |
+| `server.md` | `startServer(config)` | No | Source: `src/server/index.ts` |
+| `server.md` | `stopServer(instance)` | No | Source: `src/server/index.ts` |
+| `server.md` | `writePid(pidPath)` | No | Source: `src/server/pid.ts` |
+| `server.md` | `readPid(pidPath)` | No | Source: `src/server/pid.ts` |
+| `monitor.md` | `SystemMonitor.sample()` | No | Source: `src/server/monitor.ts` |
+| `monitor.md` | `SystemMonitor.isThrottled()` | No | Source: `src/server/monitor.ts` |
+| `git-manager.md` | `createPhaseBranch(f, p)` | No | Source: `src/server/git-manager.ts` |
+| `git-manager.md` | `mergePhaseBack(f, p)` | No | Source: `src/server/git-manager.ts` |
+| `context.md` | `compileContext(dir, id)` | No | Source: `src/server/context.ts` |
+| `sandbox.md` | `createSandbox(opts)` | No | Source: `src/server/sandbox.ts` |
+| `dispatch.md` | `Queue.enqueue(request)` | No | Source: `src/server/dispatch.ts` |
+| `dispatch.md` | `Queue.processNext()` | No | Source: `src/server/dispatch.ts` |
 
----
+## Findings & Recommendations
 
-## Phase 3: Git Manager & Context Compiler
+1.  **Strict Gate Generation**: Existing gates in `gates/` are "weak" (only file/grep checks). They must be regenerated to assert exact type signatures and contract adherence (e.g., using `grep` for full function signatures).
+2.  **Dependencies**: `package.json` update must be the first task in Phase 1 to unblock server development.
+3.  **Config First**: Extending `src/utils/config.ts` is a high-priority task as multiple components depend on the new schema.
+4.  **PID Management**: The PID manager should ensure `.gwrk/` exists, which is a common point of failure.
+5.  **Integration Testing**: Phase 5 requires a running Docker daemon. Verification gates for Phase 4/5 should check for Docker availability.
 
-| File | Status | Gap | Detail |
-|---|---|---|---|
-| `src/server/git-manager.ts` | greenfield | Full implementation | `createPhaseBranch()`, `mergePhaseBack()`, `isClean()`, `hasConflicts()` |
-| `src/server/context.ts` | greenfield | Full implementation | `compileContext()`, `writeContextToSandbox()` |
-| `src/server/types.ts` | greenfield | Full implementation | `DispatchRecord`, `DispatchAttempt`, `DispatchStatus`, `SystemStatus`, `SandboxInfo` |
+## Conclusion
 
----
-
-## Phase 4: Docker Sandbox Manager
-
-| File | Status | Gap | Detail |
-|---|---|---|---|
-| `src/server/sandbox.ts` | greenfield | Full implementation | `createSandbox()`, `destroySandbox()`, `destroyAllSandboxes()`, `listSandboxes()` |
-| `Dockerfile.sandbox` | greenfield | Full implementation | `gwrk-sandbox:bookworm-slim` with node/git/gh |
-| `package.json` | EXISTS | missing | No `dockerode` or `@types/dockerode` dependency |
-
----
-
-## Phase 5: Dispatch Queue & Orchestrator
-
-| File | Status | Gap | Detail |
-|---|---|---|---|
-| `src/server/dispatch.ts` | greenfield | Full implementation | `DispatchQueue` class: `enqueue()`, `processNext()`, `handleCompletion()`, `getQueue()`, `getDispatch()` |
-| `src/server/routes/dispatch.ts` | greenfield | Full implementation | `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue` |
-| `src/server/persistence.ts` | greenfield | Full implementation | JSONL append-only writer for `dispatches.jsonl` |
-| `src/server/index.ts` | EXISTS (Phase 1) | missing | Dispatch routes not registered; Monitor → Queue throttle not wired |
-
----
-
-## Classification Summary
-
-| Classification | Count | Files |
-|---|---|---|
-| **greenfield** | 15 | All `src/server/*` files, `Dockerfile.sandbox`, test files |
-| **missing** | 4 | `src/cli.ts` (commands), `src/utils/config.ts` (schema), `package.json` (deps), `src/server/index.ts` (route wiring) |
-| **wrong** | 0 | — |
-
-**No conflicts detected.** All gaps are additive — no existing behavior needs to be changed, only extended.
+The project is ready for task decomposition. The existing `tasks.json` structure is a good baseline but will be refined to ensure "Halving Rule" compliance and "Zero Interpretation" task descriptions.
