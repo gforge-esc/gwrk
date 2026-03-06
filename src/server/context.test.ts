@@ -1,83 +1,114 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { compileContext, writeContextToSandbox } from "./context.js";
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
+// src/server/context.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { compileContext, writeContextToSandbox } from './context';
+import { readFile, readdir } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 
-// FR-007 / FR-013: Context compilation
-describe("FR-007/FR-013: Context Compiler", () => {
-  const tmpDir = path.join(os.tmpdir(), `gwrk-ctx-test-${Date.now()}`);
-  const featureDir = path.join(tmpDir, "specs", "001-cli-core");
-  const rulesDir = path.join(tmpDir, ".agent", "rules");
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn(),
+  readdir: vi.fn(),
+}));
+
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(),
+}));
+
+describe('FR-007: Agent Context Compilation', () => {
+  const featureDir = '/specs/001-cli-core';
+  const phaseId = 'phase-01';
 
   beforeEach(() => {
-    // Create mock spec structure
-    fs.mkdirSync(featureDir, { recursive: true });
-    fs.mkdirSync(path.join(featureDir, ".gwrk"), { recursive: true });
-    fs.mkdirSync(rulesDir, { recursive: true });
-
-    fs.writeFileSync(
-      path.join(featureDir, "spec.md"),
-      "# Spec\nUS-001: Test story"
-    );
-    fs.writeFileSync(
-      path.join(featureDir, "plan.md"),
-      "# Plan\nPhase 1: Bootstrap"
-    );
-    fs.writeFileSync(
-      path.join(featureDir, ".gwrk", "tasks.json"),
-      JSON.stringify({
-        feature: "001-cli-core",
-        phases: [{ id: "1", name: "Phase 1", tasks: [] }],
-      })
-    );
-    fs.writeFileSync(
-      path.join(rulesDir, "workspace.md"),
-      "# Workspace Rules\nNo defaults."
-    );
+    vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+  describe('compileContext', () => {
+    it('US-009 scenario 1: Compiles context from spec, plan, rules, and tasks', async () => {
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().includes('rules')) return ['rule1.md'] as any;
+        if (path.toString().includes('gates')) return ['gate1.sh'] as any;
+        return [] as any;
+      });
+
+      vi.mocked(readFile).mockImplementation(async (path) => {
+        if (path.toString().includes('rule1.md')) return 'Rule 1 content';
+        if (path.toString().includes('spec.md')) return 'Spec content';
+        if (path.toString().includes('plan.md')) return 'Plan content';
+        if (path.toString().includes('tasks.json')) return JSON.stringify({
+          tasks: [{ id: 'task-1', phase: 'phase-01', description: 'Task 1' }]
+        });
+        if (path.toString().includes('gate1.sh')) return 'Gate 1 content';
+        return '';
+      });
+
+      const context = await compileContext(featureDir, phaseId);
+
+      expect(context).toContain('# Phase Context: 001-cli-core / phase-01');
+      expect(context).toContain('## Governance Rules');
+      expect(context).toContain('Rule 1 content');
+      expect(context).toContain('## Feature Specification');
+      expect(context).toContain('Spec content');
+      expect(context).toContain('## Implementation Plan');
+      expect(context).toContain('Plan content');
+      expect(context).toContain('## Current Tasks');
+      expect(context).toContain('Task 1');
+      expect(context).toContain('## Gate Scripts');
+      expect(context).toContain('Gate 1 content');
+    });
+
+    it('rejects invalid input: spec.md not found (FR-013 error state)', async () => {
+      vi.mocked(readFile).mockImplementation(async (path) => {
+        if (path.toString().includes('spec.md')) {
+          const error = new Error('ENOENT');
+          (error as any).code = 'ENOENT';
+          throw error;
+        }
+        return '';
+      });
+
+      await expect(compileContext(featureDir, phaseId)).rejects.toThrow(/spec.md not found/);
+    });
+
+    it('rejects invalid input: .agent/rules/ directory missing (FR-013 error state)', async () => {
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().includes('rules')) {
+          const error = new Error('ENOENT');
+          (error as any).code = 'ENOENT';
+          throw error;
+        }
+        return [] as any;
+      });
+
+      await expect(compileContext(featureDir, phaseId)).rejects.toThrow(/.agent\/rules\/ directory not found/);
+    });
   });
 
-  // US-009 #1: compileContext produces Markdown with all sections
-  describe("compileContext()", () => {
-    it("US-009 #1: output contains Governance Rules section", async () => {
-      const result = await compileContext(featureDir, "phase-01");
-      expect(result).toContain("Governance Rules");
+  describe('writeContextToSandbox', () => {
+    it('writes context to sandbox via docker exec', async () => {
+      const containerId = 'test-container';
+      const context = 'Some compiled context';
+
+      vi.mocked(execFile).mockImplementation((cmd, args, cb) => {
+        (cb as any)(null, { stdout: '' });
+      });
+
+      await writeContextToSandbox(containerId, context);
+
+      expect(execFile).toHaveBeenCalledWith(
+        'docker',
+        expect.arrayContaining(['exec', '-i', containerId, 'bash', '-c', 'mkdir -p /workspace/.gwrk && cat > /workspace/.gwrk/phase-context.md']),
+        expect.any(Function)
+      );
     });
 
-    it("US-009 #2: output contains Feature Specification section", async () => {
-      const result = await compileContext(featureDir, "phase-01");
-      expect(result).toContain("Feature Specification");
-      expect(result).toContain("US-001: Test story");
-    });
+    it('throws if docker exec fails', async () => {
+        const containerId = 'test-container';
+        const context = 'Some compiled context';
 
-    it("US-009 #3: output contains Implementation Plan section", async () => {
-      const result = await compileContext(featureDir, "phase-01");
-      expect(result).toContain("Implementation Plan");
-    });
+        vi.mocked(execFile).mockImplementation((cmd, args, cb) => {
+          (cb as any)(new Error('Docker fail'), { stderr: 'Docker fail' });
+        });
 
-    it("US-009 #4: output contains Current Tasks section", async () => {
-      const result = await compileContext(featureDir, "phase-01");
-      expect(result).toContain("Current Tasks");
-    });
-
-    // Error: spec.md not found
-    it("ERROR #1: throws when spec.md is missing", async () => {
-      fs.rmSync(path.join(featureDir, "spec.md"));
-      await expect(
-        compileContext(featureDir, "phase-01")
-      ).rejects.toThrow(/spec\.md not found/);
-    });
-
-    // Error: .agent/rules/ missing
-    it("ERROR #2: throws when .agent/rules/ is missing", async () => {
-      fs.rmSync(rulesDir, { recursive: true });
-      await expect(
-        compileContext(featureDir, "phase-01")
-      ).rejects.toThrow(/\.agent\/rules\/ directory not found/);
+        await expect(writeContextToSandbox(containerId, context)).rejects.toThrow('Docker fail');
     });
   });
 });
