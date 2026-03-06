@@ -255,3 +255,50 @@ describe('FR-001: Implement --dry-run support', () => {
     expect(state.markTaskComplete).not.toHaveBeenCalled();
   });
 });
+
+import * as implementModule from './implement';
+import { startRun, finishRun } from '../db/runs';
+
+vi.mock('../db/runs');
+
+describe('gwrk implement command — CLI integration', () => {
+  beforeEach(() => {
+    vi.mocked(config.loadConfig).mockReturnValue({
+      project: { name: 'gwrk' },
+      agents: { implement: 'gemini', review: 'gemini' }
+    } as any);
+    vi.mocked(startRun).mockReturnValue(99);
+  });
+
+  it('US-001: calls executePhase with correct arguments from CLI', async () => {
+    vi.spyOn(implementModule, 'executePhase').mockResolvedValue({
+      tasksCompleted: 2,
+      tasksSkipped: 0,
+      totalTasks: 2,
+      branch: 'feat/004-wud-loop'
+    });
+
+    await implementModule.implementCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1']);
+
+    expect(implementModule.executePhase).toHaveBeenCalledWith(expect.objectContaining({
+      featureDir: expect.stringContaining('004-wud-loop'),
+      phaseNumber: 1
+    }));
+    expect(finishRun).toHaveBeenCalledWith(99, expect.objectContaining({ exit_code: 0 }));
+  });
+
+  it('US-001 Scenario 3: supports --dry-run in CLI', async () => {
+    vi.spyOn(implementModule, 'executePhase').mockResolvedValue({
+      tasksCompleted: 0,
+      tasksSkipped: 2,
+      totalTasks: 2,
+      branch: 'feat/004-wud-loop'
+    });
+    
+    await implementModule.implementCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--dry-run']);
+
+    expect(implementModule.executePhase).toHaveBeenCalledWith(expect.objectContaining({
+      dryRun: true
+    }));
+  });
+});

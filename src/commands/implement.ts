@@ -1,4 +1,14 @@
-import { GwrkConfig } from "../utils/config";
+import { Command } from "commander";
+import { GwrkConfig } from "../utils/config.js";
+
+export const implementCommand = new Command("implement")
+  .description("Implement a feature or fix")
+  .argument("<feature>", "Feature ID")
+  .argument("<phase>", "Phase number")
+  .option("--dry-run", "Dry run mode")
+  .action(() => {
+    throw new Error("Not implemented");
+  });
 
 export interface ExecutePhaseOptions {
   featureDir: string;

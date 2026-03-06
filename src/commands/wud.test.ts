@@ -45,7 +45,7 @@ describe('FR-004: WUD State Machine orchestrator', () => {
     vi.mocked(waitForCI).mockResolvedValue(true);
   });
 
-  it('TR-004: walks the happy path state machine', async () => {
+  it('US-003 Scenario 1: walks the happy path state machine', async () => {
     // US-003 Scenario 1: Happy path BRANCH_SETUP → IMPLEMENTING → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE
     const result = await runWudLoop(mockOpts);
 
@@ -62,7 +62,7 @@ describe('FR-004: WUD State Machine orchestrator', () => {
     expect(saveWudState).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ stage: 'DONE' }));
   });
 
-  it('FR-005 / TR-005: loops back to IMPLEMENTING on NO-GO from review', async () => {
+  it('US-003 Scenario 2: loops back to IMPLEMENTING on NO-GO from review', async () => {
     // First iteration: NO-GO from code review
     vi.mocked(dispatchAgent)
       .mockResolvedValueOnce({ verdict: 'NO-GO' } as any) // CODE_REVIEW NO-GO
@@ -84,7 +84,7 @@ describe('FR-004: WUD State Machine orchestrator', () => {
     expect(executePhase).toHaveBeenCalledTimes(2);
   });
 
-  it('FR-007 / TR-007: triggers circuit breaker after MAX_ITERATIONS', async () => {
+  it('US-004 Scenario 1: triggers circuit breaker after MAX_ITERATIONS', async () => {
     // US-004 Scenario 1: MAX_ITERATIONS reached
     vi.mocked(dispatchAgent).mockResolvedValue({ verdict: 'NO-GO' } as any);
 
@@ -95,8 +95,8 @@ describe('FR-004: WUD State Machine orchestrator', () => {
     expect(saveWudState).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ stage: 'CIRCUIT_BREAK' }));
   });
 
-  it('FR-008 / TR-008: US-005: resumes from saved state', async () => {
-    // Crash recovery: start from CODE_REVIEW
+  it('US-005 Scenario 1: resumes from saved state', async () => {
+    // US-005 Scenario 1: Crash recovery: start from CODE_REVIEW
     vi.mocked(loadWudState).mockReturnValue({
       stage: 'CODE_REVIEW',
       iteration: 1,
@@ -112,13 +112,13 @@ describe('FR-004: WUD State Machine orchestrator', () => {
     expect(result.stage).toBe('DONE');
   });
 
-  it('FR-010 / TR-010: logs stage transitions', async () => {
+  it('US-009 Scenario 1: logs stage transitions', async () => {
     await runWudLoop(mockOpts);
     expect(mockLogger.stage).toHaveBeenCalledWith('IMPLEMENTING', 1, 3);
     expect(mockLogger.stage).toHaveBeenCalledWith('CODE_REVIEW', 1, 3);
   });
 
-  it('FR-006: waits for CI and fails if checks fail', async () => {
+  it('US-006 Scenario 1: waits for CI and fails if checks fail', async () => {
     vi.mocked(waitForCI).mockResolvedValue(false);
 
     const result = await runWudLoop(mockOpts);
@@ -136,6 +136,8 @@ describe('FR-004: WUD State Machine orchestrator', () => {
   });
 });
 
+import * as wudModule from './wud.js';
+
 describe('gwrk wud command — CLI integration', () => {
   beforeEach(() => {
     vi.mocked(loadConfig).mockReturnValue({
@@ -145,24 +147,24 @@ describe('gwrk wud command — CLI integration', () => {
     vi.mocked(startRun).mockReturnValue(88);
   });
 
-  it('calls runWudLoop with correct arguments', async () => {
-    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
+  it('US-003: calls runWudLoop with correct arguments from CLI', async () => {
+    vi.spyOn(wudModule, 'runWudLoop').mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
 
-    await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1']);
+    await wudModule.wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1']);
 
-    expect(runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
+    expect(wudModule.runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
       featureDir: expect.stringContaining('004-wud-loop'),
       phaseNumber: 1
     }));
     expect(finishRun).toHaveBeenCalledWith(88, expect.objectContaining({ exit_code: 0 }));
   });
 
-  it('handles circuit breaker exit code', async () => {
-    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'CIRCUIT_BREAK', iteration: 3, durationMs: 5000 });
+  it('US-004: handles circuit breaker exit code in CLI', async () => {
+    vi.spyOn(wudModule, 'runWudLoop').mockResolvedValue({ stage: 'CIRCUIT_BREAK', iteration: 3, durationMs: 5000 });
     const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit'); });
 
     try {
-      await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1']);
+      await wudModule.wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1']);
     } catch (e) {
       // ignore process.exit error
     }
@@ -171,32 +173,32 @@ describe('gwrk wud command — CLI integration', () => {
     expect(finishRun).toHaveBeenCalledWith(88, expect.objectContaining({ exit_code: 1 }));
   });
 
-  it('FR-001: supports --dry-run in CLI', async () => {
-    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
+  it('US-003: supports --dry-run in CLI', async () => {
+    vi.spyOn(wudModule, 'runWudLoop').mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
     
-    await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--dry-run']);
+    await wudModule.wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--dry-run']);
 
-    expect(runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
+    expect(wudModule.runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
       dryRun: true
     }));
   });
 
-  it('FR-007: supports --max-iterations in CLI', async () => {
-    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
+  it('US-004: supports --max-iterations in CLI', async () => {
+    vi.spyOn(wudModule, 'runWudLoop').mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
     
-    await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--max-iterations', '5']);
+    await wudModule.wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--max-iterations', '5']);
 
-    expect(runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
+    expect(wudModule.runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
       maxIterations: 5
     }));
   });
 
-  it('FR-006: supports --ci-timeout in CLI', async () => {
-    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
+  it('US-003 / US-006: supports --ci-timeout in CLI', async () => {
+    vi.spyOn(wudModule, 'runWudLoop').mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
     
-    await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--ci-timeout', '60']);
+    await wudModule.wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--ci-timeout', '60']);
 
-    expect(runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
+    expect(wudModule.runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
       ciTimeout: 60
     }));
   });
