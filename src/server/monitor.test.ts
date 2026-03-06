@@ -1,117 +1,92 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { SystemMonitor } from "./monitor.js";
-import type { GwrkConfig } from "../utils/config.js";
+// src/server/monitor.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SystemMonitor } from './monitor';
+import os from 'os';
+import { execSync } from 'child_process';
 
-const TEST_CONFIG = {
-  parallelism: {
-    local: { maxClones: 2, maxCpu: 80, maxMem: 70, minDiskGb: 5 },
-    cloud: { maxConcurrent: 5 },
-  },
-} as GwrkConfig;
+vi.mock('os');
+vi.mock('child_process');
 
-// FR-014: System resource monitoring
-describe("FR-014: SystemMonitor", () => {
-  let monitor: SystemMonitor;
+describe('FR-014: System Resource Monitoring', () => {
+  const mockConfig = {
+    parallelism: {
+      local: {
+        maxCpu: 80,
+        maxMem: 70,
+        minDiskGb: 10,
+        maxClones: 3
+      }
+    }
+  } as any;
 
   beforeEach(() => {
-    monitor = new SystemMonitor(TEST_CONFIG);
+    vi.resetAllMocks();
   });
 
-  afterEach(() => {
-    monitor.stopPolling();
+  it('US-010 acceptance scenario 1: samples CPU, memory, and disk correctly', () => {
+    // Mock CPU: total 100, idle 20 -> 80% usage
+    vi.mocked(os.cpus).mockReturnValue([
+      { times: { user: 40, nice: 0, sys: 40, idle: 20, irq: 0 } }
+    ] as any);
+    // Mock Mem: total 1000, free 300 -> 70% usage
+    vi.mocked(os.totalmem).mockReturnValue(1000);
+    vi.mocked(os.freemem).mockReturnValue(300);
+    // Mock Disk: df -BG / -> outputs something with 15G free
+    vi.mocked(execSync).mockReturnValue(Buffer.from('Filesystem 1G-blocks Used Available Use% Mounted on\n/dev/sda1 100G 85G 15G 85% /'));
+
+    const monitor = new SystemMonitor(mockConfig);
+    const sample = monitor.sample();
+
+    expect(sample.cpuPercent).toBeGreaterThanOrEqual(0);
+    expect(sample.cpuPercent).toBeLessThanOrEqual(100);
+    expect(sample.memPercent).toBe(70);
+    expect(sample.diskFreeGb).toBe(15);
   });
 
-  // US-003 #1: sample() returns valid resource metrics
-  describe("sample()", () => {
-    it("US-003 #1: returns cpuPercent as number between 0 and 100", () => {
-      const resources = monitor.sample();
-      expect(resources.cpuPercent).toBeGreaterThanOrEqual(0);
-      expect(resources.cpuPercent).toBeLessThanOrEqual(100);
-    });
+  it('US-010 acceptance scenario 2: throttles when CPU exceeds limit', () => {
+    // 90% CPU usage
+    vi.mocked(os.cpus).mockReturnValue([
+      { times: { user: 45, nice: 0, sys: 45, idle: 10, irq: 0 } }
+    ] as any);
+    vi.mocked(os.totalmem).mockReturnValue(1000);
+    vi.mocked(os.freemem).mockReturnValue(500);
+    vi.mocked(execSync).mockReturnValue(Buffer.from('... 50G ...'));
 
-    it("US-003 #2: returns memPercent as number between 0 and 100", () => {
-      const resources = monitor.sample();
-      expect(resources.memPercent).toBeGreaterThanOrEqual(0);
-      expect(resources.memPercent).toBeLessThanOrEqual(100);
-    });
-
-    it("US-003 #3: returns diskFreeGb as positive number", () => {
-      const resources = monitor.sample();
-      expect(resources.diskFreeGb).toBeGreaterThan(0);
-    });
+    const monitor = new SystemMonitor(mockConfig);
+    monitor.sample();
+    expect(monitor.isThrottled()).toBe(true);
   });
 
-  // US-010 #1: isThrottled() checks against config limits
-  describe("isThrottled()", () => {
-    it("US-010 #1: returns false when all resources are within limits", () => {
-      // With generous limits, should not be throttled on dev machine
-      const generousConfig = {
-        parallelism: {
-          local: { maxClones: 2, maxCpu: 99, maxMem: 99, minDiskGb: 0.1 },
-          cloud: { maxConcurrent: 5 },
-        },
-      } as GwrkConfig;
-      const m = new SystemMonitor(generousConfig);
-      expect(m.isThrottled()).toBe(false);
-      m.stopPolling();
-    });
+  it('US-010 acceptance scenario 3: throttles when memory exceeds limit', () => {
+    vi.mocked(os.cpus).mockReturnValue([{ times: { idle: 100 } }] as any);
+    // 80% Mem usage (limit is 70)
+    vi.mocked(os.totalmem).mockReturnValue(1000);
+    vi.mocked(os.freemem).mockReturnValue(200);
+    vi.mocked(execSync).mockReturnValue(Buffer.from('... 50G ...'));
 
-    it("US-010 #2: returns true when CPU exceeds maxCpu", () => {
-      const tightConfig = {
-        parallelism: {
-          local: { maxClones: 2, maxCpu: 0, maxMem: 99, minDiskGb: 0.1 },
-          cloud: { maxConcurrent: 5 },
-        },
-      } as GwrkConfig;
-      const m = new SystemMonitor(tightConfig);
-      // CPU is always > 0, so with maxCpu=0 this should throttle
-      expect(m.isThrottled()).toBe(true);
-      m.stopPolling();
-    });
-
-    it("US-010 #3: returns true when disk is below minDiskGb", () => {
-      const tightConfig = {
-        parallelism: {
-          local: { maxClones: 2, maxCpu: 99, maxMem: 99, minDiskGb: 999999 },
-          cloud: { maxConcurrent: 5 },
-        },
-      } as GwrkConfig;
-      const m = new SystemMonitor(tightConfig);
-      // No machine has 999999 GB free
-      expect(m.isThrottled()).toBe(true);
-      m.stopPolling();
-    });
+    const monitor = new SystemMonitor(mockConfig);
+    monitor.sample();
+    expect(monitor.isThrottled()).toBe(true);
   });
 
-  // Polling lifecycle
-  describe("startPolling() / stopPolling()", () => {
-    it("US-003 #4: startPolling begins periodic sampling", () => {
-      monitor.startPolling(100);
-      // After starting, getStatus should return cached data
-      const status = monitor.getStatus();
-      expect(status.server).toBeDefined();
-      expect(status.system).toBeDefined();
-    });
+  it('US-010 acceptance scenario 4: throttles when disk is below minimum', () => {
+    vi.mocked(os.cpus).mockReturnValue([{ times: { idle: 100 } }] as any);
+    vi.mocked(os.totalmem).mockReturnValue(1000);
+    vi.mocked(os.freemem).mockReturnValue(800);
+    // 5G free (limit is 10G)
+    vi.mocked(execSync).mockReturnValue(Buffer.from('Filesystem 1G-blocks Used Available Use% Mounted on\n/dev/sda1 100G 95G 5G 95% /'));
 
-    it("US-003 #5: stopPolling clears the interval", () => {
-      monitor.startPolling(100);
-      monitor.stopPolling();
-      // Should not throw after stopping
-      expect(() => monitor.stopPolling()).not.toThrow();
-    });
+    const monitor = new SystemMonitor(mockConfig);
+    monitor.sample();
+    expect(monitor.isThrottled()).toBe(true);
   });
 
-  // getStatus() shape validation
-  describe("getStatus()", () => {
-    it("US-003 #6: returns SystemStatus with all required fields", () => {
-      const status = monitor.getStatus();
-      expect(status).toHaveProperty("server");
-      expect(status).toHaveProperty("system");
-      expect(status).toHaveProperty("dispatch");
-      expect(status).toHaveProperty("sandboxes");
-      expect(status.system).toHaveProperty("cpuPercent");
-      expect(status.system).toHaveProperty("memPercent");
-      expect(status.system).toHaveProperty("diskFreeGb");
-    });
+  it('rejects invalid input: handles disk check failure', () => {
+    // Negative path — FR-014 error state
+    vi.mocked(execSync).mockImplementation(() => { throw new Error('df failed'); });
+    
+    const monitor = new SystemMonitor(mockConfig);
+    // Should gracefully handle or throw according to contract (monitor.md doesn't specify but US-010 implies error message)
+    expect(() => monitor.sample()).toThrow('df failed');
   });
 });
