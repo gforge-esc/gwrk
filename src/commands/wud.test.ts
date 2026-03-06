@@ -170,4 +170,34 @@ describe('gwrk wud command — CLI integration', () => {
     expect(processExitSpy).toHaveBeenCalledWith(1);
     expect(finishRun).toHaveBeenCalledWith(88, expect.objectContaining({ exit_code: 1 }));
   });
+
+  it('FR-001: supports --dry-run in CLI', async () => {
+    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
+    
+    await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--dry-run']);
+
+    expect(runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
+      dryRun: true
+    }));
+  });
+
+  it('FR-007: supports --max-iterations in CLI', async () => {
+    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
+    
+    await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--max-iterations', '5']);
+
+    expect(runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
+      maxIterations: 5
+    }));
+  });
+
+  it('FR-006: supports --ci-timeout in CLI', async () => {
+    vi.mocked(runWudLoop).mockResolvedValue({ stage: 'DONE', iteration: 1, durationMs: 1000 });
+    
+    await wudCommand.parseAsync(['node', 'cli.js', '004-wud-loop', '1', '--ci-timeout', '60']);
+
+    expect(runWudLoop).toHaveBeenCalledWith(expect.objectContaining({
+      ciTimeout: 60
+    }));
+  });
 });

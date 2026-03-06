@@ -156,3 +156,25 @@ describe('FR-009: Agent Dispatch Configuration', () => {
     }));
   });
 });
+
+describe('FR-001: Implement --dry-run support', () => {
+  it('US-001 Scenario 3: skips implementation and logging when dry-run is enabled', async () => {
+    const mockTask = { id: 'T001', status: 'open', phase: 'phase-01' };
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      phases: [{ id: 'phase-01', tasks: [mockTask] as any }]
+    } as any);
+    vi.mocked(state.nextTask).mockReturnValueOnce(mockTask as any).mockReturnValue(null);
+    vi.mocked(branch.ensureBranch).mockResolvedValue('feat/004-wud-loop');
+
+    const result = await executePhase({
+      featureDir: 'specs/004-wud-loop',
+      phaseNumber: 1,
+      config: { project: { name: 'test' }, agents: { define: 'gemini', implement: 'gemini' } } as any,
+      dryRun: true,
+    });
+
+    expect(result.tasksCompleted).toBe(0);
+    expect(agent.dispatchAgent).not.toHaveBeenCalled();
+    expect(state.markTaskComplete).not.toHaveBeenCalled();
+  });
+});
