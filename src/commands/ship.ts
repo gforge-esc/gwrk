@@ -1,0 +1,85 @@
+import { Command } from "commander";
+import path from "node:path";
+import { startRun, finishRun } from "../db/runs.js";
+import { run } from "../utils/exec.js";
+import { loadConfig } from "../utils/config.js";
+import { banner, success, fail, dryRun as dryRunFmt } from "../utils/format.js";
+import { implementCommand } from "./implement.js";
+
+/**
+ * gwrk ship — The ZFG/WUD Pillar (Throughput)
+ *
+ * Everything that creates throughput — implementing and completing work.
+ *
+ *   gwrk ship <feature> <phase>              Single implementation run
+ *   gwrk ship done <feature> <phase>         WUD autonomous loop
+ */
+export const shipCommand = new Command("ship")
+  .description("Ship: implement phases and complete work (ZFG/WUD)")
+  .argument("<feature>", "Feature ID")
+  .argument("<phase>", "Phase number")
+  .option("--dry-run", "Dry run mode")
+  .action(async (feature: string, phase: string, opts: { dryRun?: boolean }) => {
+    // Delegate to implement command logic
+    await implementCommand.parseAsync([process.argv[0], "implement", feature, phase, ...(opts.dryRun ? ["--dry-run"] : [])]);
+  });
+
+// gwrk ship done <feature> <phase> — WUD loop
+shipCommand
+  .command("done")
+  .description("Work Until Done — autonomous implement→review→PR loop")
+  .argument("<feature>", "Feature ID")
+  .argument("<phase>", "Phase number")
+  .option("--dry-run", "Dry run mode")
+  .option("--max-iterations <n>", "Max iterations", "3")
+  .action(async (feature: string, phase: string, opts: { dryRun?: boolean; maxIterations: string }) => {
+    const cwd = process.cwd();
+    const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
+
+    const config = loadConfig(cwd);
+    const backend = config.agents.implement;
+
+    if (opts.dryRun) {
+      dryRunFmt(`${scriptPath} ${feature} ${phase}`);
+      return;
+    }
+
+    const runId = startRun({
+      feature_id: feature,
+      command: "ship done",
+      agent_backend: backend,
+      workflow: "work-until-done",
+    });
+
+    banner("ship done", {
+      Feature: feature,
+      Phase: phase,
+      Agent: backend,
+      "Max Iter": opts.maxIterations,
+      "Run ID": `${runId}`,
+    });
+
+    const startTime = Date.now();
+
+    try {
+      await run(scriptPath, [feature, phase], {
+        cwd,
+        env: {
+          ...process.env,
+          APPROVAL_MODE: "yolo",
+          MAX_ITERATIONS: opts.maxIterations,
+        },
+        stdio: "inherit",
+      });
+
+      const durationS = Math.round((Date.now() - startTime) / 1000);
+      finishRun(runId, { exit_code: 0, duration_s: durationS });
+      success("ship done", durationS, runId);
+    } catch (err: unknown) {
+      const durationS = Math.round((Date.now() - startTime) / 1000);
+      const exitCode = err instanceof Error && "code" in err ? (err as { code: number }).code : 1;
+      finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+      fail("ship done", exitCode, durationS, runId);
+      process.exit(exitCode);
+    }
+  });

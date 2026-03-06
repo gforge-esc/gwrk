@@ -1,25 +1,5 @@
 import { Command } from "commander";
-import { GwrkConfig } from "../utils/config.js";
-
-export interface WudLoopOptions {
-  featureDir: string;
-  phaseNumber: number;
-  config: GwrkConfig;
-  maxIterations?: number;
-  ciTimeout?: number;
-  dryRun?: boolean;
-}
-
-export interface WudLoopResult {
-  stage: string;
-  iteration: number;
-  prNumber?: number;
-  durationMs: number;
-}
-
-export async function runWudLoop(opts: WudLoopOptions): Promise<WudLoopResult> {
-  throw new Error("Not implemented");
-}
+import { shipCommand } from "./ship.js";
 
 export const wudCommand = new Command("wud")
   .description("Work Until Done — autonomous implement→review→PR loop")
@@ -28,6 +8,17 @@ export const wudCommand = new Command("wud")
   .option("--dry-run", "Dry run mode")
   .option("--max-iterations <n>", "Max iterations", "3")
   .option("--ci-timeout <m>", "CI timeout in minutes", "30")
-  .action(() => {
-    throw new Error("Not implemented");
+  .action(async (feature: string, phase: string, opts: { dryRun?: boolean; maxIterations: string; ciTimeout: string }) => {
+    // Delegate to gwrk ship done
+    const args = [
+      process.argv[0],
+      "ship",
+      "done",
+      feature,
+      phase,
+      "--max-iterations",
+      opts.maxIterations,
+      ...(opts.dryRun ? ["--dry-run"] : []),
+    ];
+    await shipCommand.parseAsync(args);
   });
