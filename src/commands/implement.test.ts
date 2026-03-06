@@ -28,6 +28,12 @@ vi.mock("../utils/state.js", () => ({
       },
     ],
   }),
+  markTaskComplete: vi.fn(),
+  saveTaskState: vi.fn(),
+}));
+
+vi.mock("../utils/history.js", () => ({
+  appendHistory: vi.fn(),
 }));
 
 vi.mock("../db/runs.js", () => ({
@@ -44,6 +50,13 @@ vi.mock("node:fs", () => ({
 describe("implementCommand", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Default mock: fail pre-flight (exit 1), pass post-flight (exit 0)
+    const gateCalls: Record<string, number> = {};
+    vi.mocked(runGate).mockImplementation((p: string) => {
+      gateCalls[p] = (gateCalls[p] || 0) + 1;
+      return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
+    });
   });
 
   it("iterates through tasks and calls agent-run.sh", async () => {
@@ -56,10 +69,12 @@ describe("implementCommand", () => {
   });
 
   it("skips tasks that already pass pre-flight gate", async () => {
-    // T001 passes, T002 fails
-    (runGate as any).mockImplementation((path: string) => {
-      if (path.includes("T001")) return { exitCode: 0, stdout: "", stderr: "" };
-      return { exitCode: 1, stdout: "", stderr: "" };
+    // T001 passes pre-flight, T002 fails pre-flight then passes post-flight
+    const gateCalls: Record<string, number> = {};
+    vi.mocked(runGate).mockImplementation((p: string) => {
+      if (p.includes("T001")) return { exitCode: 0, stdout: "", stderr: "" };
+      gateCalls[p] = (gateCalls[p] || 0) + 1;
+      return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
     });
 
     await implementCommand.parseAsync(["node", "implement", "004-wud-loop", "1"]);
