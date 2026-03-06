@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { initCommand } from "./commands/init.js";
+import { newCommand } from "./commands/new.js";
 import { defineCommand } from "./commands/define.js";
 import { shipCommand } from "./commands/ship.js";
 import { measureCommand } from "./commands/measure.js";
@@ -32,7 +33,7 @@ program
         if (cmds.length > 0) {
             // Foxtrot Charlie pillars
             const pillars = ["define", "ship", "measure"];
-            const ops = ["init", "tasks", "db", "server", "status"];
+            const ops = ["new", "init", "tasks", "db", "server", "status"];
             out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
             for (const name of pillars) {
                 const sub = cmds.find(c => c.name() === name);
@@ -68,6 +69,7 @@ program
     },
 });
 program.addCommand(initCommand);
+program.addCommand(newCommand);
 // The Foxtrot Charlie Pillars
 program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze (DUS)
 program.addCommand(shipCommand); // Ship: implement phases (ZFG/WUD)
@@ -78,7 +80,7 @@ program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
-    if (actionCommand.name() !== "init") {
+    if (actionCommand.name() !== "init" && actionCommand.name() !== "new") {
         // This will process.exit(1) if config is missing or invalid
         loadConfig(process.cwd());
     }

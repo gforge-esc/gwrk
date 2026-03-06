@@ -10,7 +10,7 @@ last_modified: "2026-03-06T12:00:00Z"
 **Created**: 2026-02-27
 **Revised**: 2026-03-06
 **Status**: Settled
-**Input**: Autonomous implement → review → PR → CI loop — `gwrk ship` and `gwrk ship done` CLI commands (wrappers for `agent-run.sh` and `work-until-done.sh`) that orchestrate the full phase lifecycle: branch creation, agent dispatch, code review, UAT review, PR creation, CI gate, retry with escalation, and SQLite execution ledger recording.
+**Input**: Autonomous implement → review → PR → CI loop — `gwrk ship` and `gwrk ship` CLI commands (wrappers for `agent-run.sh` and `work-until-done.sh`) that orchestrate the full phase lifecycle: branch creation, agent dispatch, code review, UAT review, PR creation, CI gate, retry with escalation, and SQLite execution ledger recording.
 
 ---
 
@@ -41,17 +41,17 @@ As the WUD engine, I want each task's gate script to FAIL before implementation 
    - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'T001.*pre-flight PASS.*skipping'` exits 0
 
 ### US-003 - Autonomous WUD Lifecycle (Priority: P0)
-As a Principal Engineer, I want to run `gwrk ship done <feature> <phase>` so that the full lifecycle — implement → code review → UAT review → PR → CI — is executed autonomously with retry on failure and each step recorded in SQLite.
+As a Principal Engineer, I want to run `gwrk ship <feature> <phase>` so that the full lifecycle — implement → code review → UAT review → PR → CI — is executed autonomously with retry on failure and each step recorded in SQLite.
 
 **Implements**: FR-004, FR-005, FR-006, FR-007, FR-011
 
-**Independent Test**: Run `gwrk ship done` with mock agent backends and verify the full state machine completes.
+**Independent Test**: Run `gwrk ship` with mock agent backends and verify the full state machine completes.
 
 **Acceptance Scenarios**:
-1. **Given** a feature with open tasks, passing gates, and mock review agents, **When** running `gwrk ship done 004-wud-loop 1`, **Then**:
+1. **Given** a feature with open tasks, passing gates, and mock review agents, **When** running `gwrk ship 004-wud-loop 1`, **Then**:
    - `test -f .runs/004-wud-loop_p1.state` exits 1 (state file cleaned on success)
-   - `gwrk ship done 004-wud-loop 1 2>&1 | grep -q 'WORK UNTIL DONE.*COMPLETE'` exits 0
-   - `gwrk db runs 004-wud-loop --json | jq '[.[] | select(.command == "ship done")] | length'` returns `>= 1`
+   - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'WORK UNTIL DONE.*COMPLETE'` exits 0
+   - `gwrk db runs 004-wud-loop --json | jq '[.[] | select(.command == "ship")] | length'` returns `>= 1`
 
 ### US-004 - Circuit Breaker (Priority: P0)
 As a Principal Engineer, I want the WUD loop to stop after a configurable number of retry iterations so that infinite loops are prevented and I am escalated via stderr.
@@ -61,9 +61,9 @@ As a Principal Engineer, I want the WUD loop to stop after a configurable number
 **Independent Test**: Set `MAX_ITERATIONS=2` and force repeated review failures; verify WUD exits with circuit-breaker message.
 
 **Acceptance Scenarios**:
-1. **Given** `MAX_ITERATIONS=2` and a review that always returns NO-GO, **When** running `gwrk ship done 004-wud-loop 1`, **Then**:
+1. **Given** `MAX_ITERATIONS=2` and a review that always returns NO-GO, **When** running `gwrk ship 004-wud-loop 1`, **Then**:
    - Command exits with code 1
-   - `gwrk ship done 004-wud-loop 1 2>&1 | grep -q 'Circuit breaker'` exits 0
+   - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'Circuit breaker'` exits 0
    - `test -f .runs/004-wud-loop_p1.state && jq -r '.stage' .runs/004-wud-loop_p1.state` outputs `CIRCUIT_BREAK`
 
 ### US-005 - Crash Recovery (Priority: P1)
@@ -74,15 +74,15 @@ As the WUD engine, I want the state machine to persist its stage and iteration t
 **Independent Test**: Kill WUD mid-run; restart and verify it resumes from the last stage.
 
 **Acceptance Scenarios**:
-1. **Given** a state file `.runs/004-wud-loop_p1.state` with `{"stage": "CODE_REVIEW", "iteration": 1}`, **When** running `gwrk ship done 004-wud-loop 1`, **Then**:
-   - `gwrk ship done 004-wud-loop 1 2>&1 | grep -q 'Resuming from state: CODE_REVIEW'` exits 0
+1. **Given** a state file `.runs/004-wud-loop_p1.state` with `{"stage": "CODE_REVIEW", "iteration": 1}`, **When** running `gwrk ship 004-wud-loop 1`, **Then**:
+   - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'Resuming from state: CODE_REVIEW'` exits 0
 
 ### US-006 - PR Creation (Priority: P0)
 As the WUD engine, I want a PR to be created after all reviews pass, targeting `develop`, so that the phase work is ready for merge.
 
 **Implements**: FR-006
 
-**Independent Test**: Run `gwrk ship done` to completion and verify `gh pr list` shows the PR targeting `develop`.
+**Independent Test**: Run `gwrk ship` to completion and verify `gh pr list` shows the PR targeting `develop`.
 
 **Acceptance Scenarios**:
 1. **Given** a completed phase with passing reviews, **When** WUD creates a PR, **Then**:
@@ -101,7 +101,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-001**: System MUST provide a `gwrk ship <feature> <phase>` command that executes all tasks in a single phase sequentially — loading each task from `tasks.json`, dispatching the configured agent backend, and verifying via gate scripts. (Implements: US-001)
 - **FR-002**: System MUST create a `feat/<feature>` branch from `develop` if it doesn't exist, or checkout and rebase/merge latest `develop` if it does, before any implementation begins. (Implements: US-001, US-007)
 - **FR-003**: System MUST execute a pre-flight check for each task — running `gates/T0xx-gate.sh` and confirming it FAILS (exit != 0) before dispatching the agent. If the gate already passes, the task MUST be skipped with a warning logged. (Implements: US-001, US-002)
-- **FR-004**: System MUST provide a `gwrk ship done <feature> <phase>` command that orchestrates the full WUD state machine: BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE. (Implements: US-003)
+- **FR-004**: System MUST provide a `gwrk ship <feature> <phase>` command that orchestrates the full WUD state machine: BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE. (Implements: US-003)
 - **FR-005**: System MUST dispatch agent-driven code review (`/review-code` workflow) and UAT review (`/review-uat` workflow) after implementation, checking the `tasks.json` verdict to determine GO or NO-GO. On NO-GO, the system MUST loop back to IMPLEMENT. (Implements: US-003)
 - **FR-006**: System MUST create a GitHub PR via `gh pr create` targeting `develop` after both reviews pass, then wait for CI checks via `gh pr checks --watch`. (Implements: US-003, US-006)
 - **FR-007**: System MUST enforce a configurable circuit breaker (`MAX_ITERATIONS`, default 3). After exceeding the limit, WUD MUST exit with code 1 and a `CIRCUIT_BREAK` state persisted to `.runs/`. (Implements: US-004)
@@ -172,7 +172,7 @@ Plain text log file.
 ### DM-003: SQLite Execution Ledger (`runs` table)
 
 Every transition and agent dispatch must be recorded.
-- `command`: "ship", "ship done", "implement", "review-code", "review-uat"
+- `command`: "ship", "ship", "implement", "review-code", "review-uat"
 - `workflow`: mapping to `.agent/workflows/`
 - `exit_code`: outcome of the step
 - `duration_s`: time taken
@@ -205,14 +205,14 @@ Every transition and agent dispatch must be recorded.
 ## 8. Success Criteria
 
 - **SC-001**: `gwrk ship` completes tasks with enforced gates.
-- **SC-002**: `gwrk ship done` runs autonomous loop to merge-ready PR.
+- **SC-002**: `gwrk ship` runs autonomous loop to merge-ready PR.
 - **SC-003**: Every agent dispatch is audit-ready in SQLite `runs` table.
 
 ---
 
 ## 9. Verification Requirements
 
-- **VR-001**: E2E: Run `gwrk ship done` → verify PR targeting `develop` → verify SQLite contains records for implement, review-code, and review-uat.
+- **VR-001**: E2E: Run `gwrk ship` → verify PR targeting `develop` → verify SQLite contains records for implement, review-code, and review-uat.
 
 ---
 

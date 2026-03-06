@@ -8,6 +8,8 @@ export type AgentBackend = z.infer<typeof AgentBackendSchema>;
 export const GwrkConfigSchema = z.object({
   project: z.object({
     name: z.string().min(1),
+    githubRepo: z.string().optional(),
+    slackChannel: z.string().optional(),
   }),
   agents: z.object({
     define: AgentBackendSchema,

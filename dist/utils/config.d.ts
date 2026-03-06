@@ -4,10 +4,16 @@ export type AgentBackend = z.infer<typeof AgentBackendSchema>;
 export declare const GwrkConfigSchema: z.ZodObject<{
     project: z.ZodObject<{
         name: z.ZodString;
+        githubRepo: z.ZodOptional<z.ZodString>;
+        slackChannel: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         name: string;
+        githubRepo?: string | undefined;
+        slackChannel?: string | undefined;
     }, {
         name: string;
+        githubRepo?: string | undefined;
+        slackChannel?: string | undefined;
     }>;
     agents: z.ZodObject<{
         define: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
@@ -84,6 +90,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     project: {
         name: string;
+        githubRepo?: string | undefined;
+        slackChannel?: string | undefined;
     };
     agents: {
         define: "gemini" | "codex-cloud" | "claude" | "codex";
@@ -110,6 +118,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
 }, {
     project: {
         name: string;
+        githubRepo?: string | undefined;
+        slackChannel?: string | undefined;
     };
     agents: {
         define: "gemini" | "codex-cloud" | "claude" | "codex";

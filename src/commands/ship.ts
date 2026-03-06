@@ -9,25 +9,12 @@ import { implementCommand } from "./implement.js";
 /**
  * gwrk ship — The ZFG/WUD Pillar (Throughput)
  *
- * Everything that creates throughput — implementing and completing work.
+ * Everything that creates throughput — implementing and completing work autonomously.
  *
- *   gwrk ship <feature> <phase>              Single implementation run
- *   gwrk ship done <feature> <phase>         WUD autonomous loop
+ *   gwrk ship <feature> <phase>      Work Until Done (implement→review→PR loop)
  */
 export const shipCommand = new Command("ship")
-  .description("Ship: implement phases and complete work (ZFG/WUD)")
-  .argument("<feature>", "Feature ID")
-  .argument("<phase>", "Phase number")
-  .option("--dry-run", "Dry run mode")
-  .action(async (feature: string, phase: string, opts: { dryRun?: boolean }) => {
-    // Delegate to implement command logic
-    await implementCommand.parseAsync([process.argv[0], "implement", feature, phase, ...(opts.dryRun ? ["--dry-run"] : [])]);
-  });
-
-// gwrk ship done <feature> <phase> — WUD loop
-shipCommand
-  .command("done")
-  .description("Work Until Done — autonomous implement→review→PR loop")
+  .description("Ship: autonomous implement→review→PR loop (ZFG/WUD)")
   .argument("<feature>", "Feature ID")
   .argument("<phase>", "Phase number")
   .option("--dry-run", "Dry run mode")
@@ -46,12 +33,13 @@ shipCommand
 
     const runId = startRun({
       feature_id: feature,
-      command: "ship done",
+      phase_id: `phase-${phase.padStart(2, "0")}`,
+      command: "ship",
       agent_backend: backend,
       workflow: "work-until-done",
     });
 
-    banner("ship done", {
+    banner("ship", {
       Feature: feature,
       Phase: phase,
       Agent: backend,
@@ -74,12 +62,12 @@ shipCommand
 
       const durationS = Math.round((Date.now() - startTime) / 1000);
       finishRun(runId, { exit_code: 0, duration_s: durationS });
-      success("ship done", durationS, runId);
+      success("ship", durationS, runId);
     } catch (err: unknown) {
       const durationS = Math.round((Date.now() - startTime) / 1000);
       const exitCode = err instanceof Error && "code" in err ? (err as { code: number }).code : 1;
       finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-      fail("ship done", exitCode, durationS, runId);
+      fail("ship", exitCode, durationS, runId);
       process.exit(exitCode);
     }
   });

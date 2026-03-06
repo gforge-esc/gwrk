@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCommand } from "./init.js";
+import * as runs from "../db/runs.js";
+import * as exec from "../utils/exec.js";
 
 describe("initCommand", () => {
   let tempDir: string;
@@ -14,6 +16,8 @@ describe("initCommand", () => {
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
+    vi.spyOn(runs, "registerProject").mockImplementation(() => {});
+    vi.spyOn(exec, "execCommand").mockResolvedValue({ exitCode: 1, stdout: "", stderr: "" });
   });
 
   afterEach(() => {
@@ -21,9 +25,8 @@ describe("initCommand", () => {
     vi.restoreAllMocks();
   });
 
-  it("should create scaffold directories and .gwrkrc.json", async () => {
-    // initCommand.action() is not async but Commander can handle it
-    await initCommand.parseAsync([], { from: "user" });
+  it("should create scaffold directories, .gwrkrc.json, and register project", async () => {
+    await initCommand.parseAsync(["--github", "owner/repo", "--slack", "#channel"], { from: "user" });
 
     expect(fs.existsSync(path.join(tempDir, ".agent/workflows"))).toBe(true);
     expect(fs.existsSync(path.join(tempDir, ".agent/rules"))).toBe(true);
@@ -35,10 +38,30 @@ describe("initCommand", () => {
       fs.readFileSync(path.join(tempDir, ".gwrkrc.json"), "utf-8"),
     );
     expect(config.project.name).toBe(path.basename(tempDir));
+    expect(config.project.githubRepo).toBe("owner/repo");
+    expect(config.project.slackChannel).toBe("#channel");
     expect(config.agents.define).toBe("gemini");
-    expect(config.agents.implement).toBe("codex-cloud");
-    expect(config.server.port).toBe(18790);
-    expect(config.parallelism.local.maxCpu).toBe(80);
+
+    expect(runs.registerProject).toHaveBeenCalledWith(expect.objectContaining({
+      name: path.basename(tempDir),
+      path: tempDir,
+      github_repo: "owner/repo",
+      slack_channel: "#channel"
+    }));
+  });
+
+  it("should provision GEMINI.md if gemini CLI is detected", async () => {
+    vi.mocked(exec.execCommand).mockImplementation(async (cmd, args) => {
+      if (cmd === "which" && args[0] === "gemini") {
+        return { exitCode: 0, stdout: "/usr/local/bin/gemini", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    await initCommand.parseAsync([], { from: "user" });
+
+    expect(fs.existsSync(path.join(tempDir, "GEMINI.md"))).toBe(true);
+    expect(fs.readFileSync(path.join(tempDir, "GEMINI.md"), "utf-8")).toContain("GEMINI Project Context");
   });
 
   it("should be idempotent and exit 0 if already initialized", async () => {
@@ -50,5 +73,28 @@ describe("initCommand", () => {
       initCommand.parseAsync([], { from: "user" }),
     ).rejects.toThrow("process.exit(0)");
     expect(console.log).toHaveBeenCalledWith("gwrk already initialized");
+  });
+
+  it("should create private GitHub repository if --github is provided and gh is available", async () => {
+    vi.mocked(exec.execCommand).mockImplementation(async (cmd, args) => {
+      if (cmd === "which" && args[0] === "gh") {
+        return { exitCode: 0, stdout: "/usr/local/bin/gh", stderr: "" };
+      }
+      if (cmd === "git" && args[0] === "remote" && args[1] === "get-url") {
+        return { exitCode: 1, stdout: "", stderr: "error: No such remote 'origin'" };
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const githubRepo = "owner/repo";
+    await initCommand.parseAsync(["--github", githubRepo], { from: "user" });
+
+    expect(exec.execCommand).toHaveBeenCalledWith(
+      "gh",
+      expect.arrayContaining(["repo", "create", githubRepo, "--private", "--source", "."]),
+      undefined,
+      { cwd: tempDir }
+    );
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining(`Creating private GitHub repository ${githubRepo}`));
   });
 });

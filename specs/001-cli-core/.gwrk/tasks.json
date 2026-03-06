@@ -282,15 +282,17 @@
           "id": "T033",
           "title": "Implement src/commands/init.ts",
           "description": "MODIFY: Add CLI detection, SQLite registration, Slack optional",
-          "status": "open",
-          "gateScript": "gates/T033-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T033-gate.sh",
+          "completedAt": "2026-03-06T21:26:06.775Z"
         },
         {
           "id": "T034",
           "title": "Implement src/commands/new.ts",
           "description": "NEW: `gwrk new <name>` — mkdir, git init, gh repo create, then delegates to init",
-          "status": "open",
-          "gateScript": "gates/T034-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T034-gate.sh",
+          "completedAt": "2026-03-06T21:26:10.527Z"
         }
       ],
       "doneWhen": [

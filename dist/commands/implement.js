@@ -4,7 +4,8 @@ import fs from "node:fs";
 import { startRun, finishRun } from "../db/runs.js";
 import { run, runGate } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
-import { loadTaskState } from "../utils/state.js";
+import { loadTaskState, markTaskComplete, saveTaskState } from "../utils/state.js";
+import { appendHistory } from "../utils/history.js";
 import { banner, success, fail, dryRun, color } from "../utils/format.js";
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 export const implementCommand = new Command("implement")
@@ -64,6 +65,32 @@ export const implementCommand = new Command("implement")
                 env: { ...process.env, APPROVAL_MODE: "yolo" },
                 stdio: "inherit",
             });
+            // Verify the gate after agent execution
+            if (fs.existsSync(gatePath)) {
+                console.log(`\n${DIM}Verifying gate for ${task.id}...${RESET}`);
+                const postResult = runGate(gatePath);
+                if (postResult.exitCode === 0) {
+                    console.log(`${GREEN}✓${RESET} ${task.id} gate passed. Marking completed.`);
+                    const currentState = loadTaskState(specDir);
+                    const newState = markTaskComplete(currentState, task.id);
+                    saveTaskState(specDir, newState);
+                    appendHistory({
+                        timestamp: new Date().toISOString(),
+                        featureId: feature,
+                        taskId: task.id,
+                        fromStatus: "open",
+                        toStatus: "completed",
+                    });
+                }
+                else {
+                    console.log(`${YELLOW}⚠${RESET} ${task.id} gate failed after implementation.`);
+                    if (postResult.stdout)
+                        process.stdout.write(postResult.stdout);
+                    if (postResult.stderr)
+                        process.stderr.write(postResult.stderr);
+                    throw new Error(`Gate failed for ${task.id}`);
+                }
+            }
         }
         const durationS = Math.round((Date.now() - startTime) / 1000);
         finishRun(runId, { exit_code: 0, duration_s: durationS });

@@ -15,5 +15,8 @@ export interface ExecResult {
     stdout: string;
     stderr: string;
 }
-export declare function execCommand(command: string, args: string[], stdin?: string): Promise<ExecResult>;
+export declare function execCommand(command: string, args: string[], stdin?: string, opts?: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+}): Promise<ExecResult>;
 export declare function runGate(gateScript: string): ExecResult;

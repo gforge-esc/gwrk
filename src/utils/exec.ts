@@ -60,12 +60,17 @@ export function execCommand(
   command: string,
   args: string[],
   stdin?: string,
+  opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
     const child = execFile(
       command,
       args,
-      { encoding: "utf-8" },
+      {
+        encoding: "utf-8",
+        cwd: opts?.cwd,
+        env: opts?.env ?? process.env,
+      },
       (error, stdout, stderr) => {
         if (error) {
           const err = error as { code?: string; status?: number };
