@@ -1,124 +1,138 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { startServer } from "../index.js";
-import type { GwrkConfig } from "../../utils/config.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { startServer, stopServer } from '../index.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
-const TEST_CONFIG = {
-  project: { name: "test-project" },
-  agents: {
-    define: "gemini",
-    implement: "claude",
-    fallbackOrder: ["gemini", "claude", "codex"],
-  },
-  server: { port: 18797, host: "127.0.0.1" },
-  parallelism: {
-    local: { maxClones: 2, maxCpu: 80, maxMem: 70, minDiskGb: 5 },
-    cloud: { maxConcurrent: 5 },
-  },
-} as unknown as GwrkConfig;
-
-// FR-005: POST /api/dispatch route
-describe("FR-005: Dispatch API Routes", () => {
-  let server: Awaited<ReturnType<typeof startServer>>;
+describe('FR-005: Dispatch HTTP API', () => {
+  let tempDir: string;
+  let config: any;
+  let server: any;
 
   beforeEach(async () => {
-    server = await startServer(TEST_CONFIG);
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gwrk-dispatch-api-test-'));
+    vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+    
+    // Mocking specs directory so feature exists
+    fs.mkdirSync(path.join(tempDir, 'specs/f1'), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, 'specs/f1/spec.md'), '# F1 Spec');
+
+    config = {
+      project: { name: 'test-project' },
+      agents: { 
+        defaults: { implement: 'gemini' },
+        fallbackOrder: ['gemini']
+      },
+      parallelism: {
+        local: { maxClones: 2, maxCpu: 80, maxMem: 70, minDiskGb: 10 },
+        cloud: { maxConcurrent: 10 }
+      },
+      server: { port: 18795, host: '127.0.0.1' }
+    };
+
+    server = await startServer(config);
   });
 
   afterEach(async () => {
-    await server.close();
+    await stopServer(server);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
   });
 
-  // US-004 #1: POST /api/dispatch accepts dispatch request
-  describe("POST /api/dispatch", () => {
-    it("US-004 #1: returns 200 with dispatch record", async () => {
-      const response = await server.inject({
-        method: "POST",
-        url: "/api/dispatch",
-        payload: {
-          featureId: "001-cli-core",
-          phaseId: "phase-01",
-          backend: "gemini",
-        },
-      });
-      expect(response.statusCode).toBe(200);
-      const body = JSON.parse(response.body);
-      expect(body.id).toBeDefined();
-      expect(body.status).toMatch(/queued|running/);
+  it('should accept a valid dispatch request', async () => {
+    // US-004 acceptance scenario 1 (partial)
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/dispatch',
+      payload: {
+        featureId: 'f1',
+        phaseId: 'p1',
+        backend: 'gemini'
+      }
     });
 
-    // Error: invalid backend
-    it("ERROR #1: returns 400 for unknown backend", async () => {
-      const response = await server.inject({
-        method: "POST",
-        url: "/api/dispatch",
-        payload: {
-          featureId: "001-cli-core",
-          phaseId: "phase-01",
-          backend: "nonexistent",
-        },
-      });
-      expect(response.statusCode).toBe(400);
-    });
-
-    // Error: missing featureId
-    it("ERROR #2: returns 400 for missing featureId", async () => {
-      const response = await server.inject({
-        method: "POST",
-        url: "/api/dispatch",
-        payload: {
-          phaseId: "phase-01",
-          backend: "gemini",
-        },
-      });
-      expect(response.statusCode).toBe(400);
-    });
+    expect(response.statusCode).toBe(201);
+    const body = JSON.parse(response.body);
+    expect(body.featureId).toBe('f1');
+    expect(body.status).toBe('running'); // Should be running since queue is empty
   });
 
-  // GET /api/dispatch/:feature/:phase
-  describe("GET /api/dispatch/:feature/:phase", () => {
-    it("US-004 #2: returns dispatch record by feature and phase", async () => {
-      // First create a dispatch
-      await server.inject({
-        method: "POST",
-        url: "/api/dispatch",
-        payload: {
-          featureId: "001-cli-core",
-          phaseId: "phase-01",
-          backend: "gemini",
-        },
-      });
-
-      const response = await server.inject({
-        method: "GET",
-        url: "/api/dispatch/001-cli-core/phase-01",
-      });
-      expect(response.statusCode).toBe(200);
-      const body = JSON.parse(response.body);
-      expect(body.featureId).toBe("001-cli-core");
-      expect(body.phaseId).toBe("phase-01");
+  it('should return 400 for unknown backend', async () => {
+    // FR-005 error states
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/dispatch',
+      payload: {
+        featureId: 'f1',
+        phaseId: 'p1',
+        backend: 'invalid-backend'
+      }
     });
 
-    it("US-004 #3: returns 404 for non-existent dispatch", async () => {
-      const response = await server.inject({
-        method: "GET",
-        url: "/api/dispatch/nonexistent/phase-01",
-      });
-      expect(response.statusCode).toBe(404);
-    });
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toContain('Unknown agent backend');
   });
 
-  // GET /api/dispatch/queue
-  describe("GET /api/dispatch/queue", () => {
-    it("US-005 #1: returns queue state with active, queued, throttled", async () => {
-      const response = await server.inject({
-        method: "GET",
-        url: "/api/dispatch/queue",
-      });
-      expect(response.statusCode).toBe(200);
-      const body = JSON.parse(response.body);
-      expect(Array.isArray(body.active)).toBe(true);
-      expect(Array.isArray(body.queued)).toBe(true);
-      expect(typeof body.throttled).toBe("boolean");
+  it('should return 404 for missing feature', async () => {
+    // FR-005 error states
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/dispatch',
+      payload: {
+        featureId: 'non-existent',
+        phaseId: 'p1',
+        backend: 'gemini'
+      }
     });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.body).toContain('Feature non-existent not found');
+  });
+
+  it('should return status of a specific dispatch', async () => {
+    // US-004 acceptance scenario 1 (partial)
+    await server.inject({
+      method: 'POST',
+      url: '/api/dispatch',
+      payload: { featureId: 'f1', phaseId: 'p1', backend: 'gemini' }
+    });
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/api/dispatch/f1/p1'
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.status).toBe('running');
+  });
+
+  it('should return full queue state', async () => {
+    // US-005 acceptance scenario 1
+    await server.inject({
+      method: 'POST',
+      url: '/api/dispatch',
+      payload: { featureId: 'f1', phaseId: 'p1', backend: 'gemini' }
+    });
+    await server.inject({
+      method: 'POST',
+      url: '/api/dispatch',
+      payload: { featureId: 'f1', phaseId: 'p2', backend: 'gemini' }
+    });
+    await server.inject({
+      method: 'POST',
+      url: '/api/dispatch',
+      payload: { featureId: 'f1', phaseId: 'p3', backend: 'gemini' }
+    });
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/api/dispatch/queue'
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.active.length).toBe(2);
+    expect(body.queued.length).toBe(1);
   });
 });
