@@ -28,6 +28,21 @@ export const initCommand = new Command("init")
             define: "gemini",
             implement: "codex-cloud",
         },
+        server: {
+            port: 18790,
+            host: "localhost",
+        },
+        parallelism: {
+            local: {
+                maxCpu: 80,
+                maxMem: 80,
+                minDiskGb: 10,
+                maxClones: 2,
+            },
+            cloud: {
+                maxConcurrent: 10,
+            },
+        },
     };
     fs.writeFileSync(path.join(projectRoot, ".gwrkrc.json"), JSON.stringify(config, null, 2));
     // Placeholder for "copying template files"

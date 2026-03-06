@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import { getTestDb } from "./index.js";
-import { startRun, finishRun, listRuns, registerProject, listProjects } from "./runs.js";
+import { startRun, finishRun, listRuns, registerProject, listProjects, getStats } from "./runs.js";
 
 describe("SQLite execution ledger", () => {
   let db: Database.Database;
@@ -100,5 +100,43 @@ describe("SQLite execution ledger", () => {
     const projects = listProjects(db);
     expect(projects).toHaveLength(1);
     expect((projects[0] as { name: string }).name).toBe("gwrk-updated");
+  });
+
+  it("should aggregate run statistics with getStats", () => {
+    // Run 1: wud, gemini, success
+    const id1 = startRun({ feature_id: "f1", command: "wud", agent_backend: "gemini", workflow: "work-until-done" }, db);
+    finishRun(id1, { exit_code: 0, duration_s: 100 }, db);
+
+    // Run 2: wud, gemini, success
+    const id2 = startRun({ feature_id: "f2", command: "wud", agent_backend: "gemini", workflow: "work-until-done" }, db);
+    finishRun(id2, { exit_code: 0, duration_s: 200 }, db);
+
+    // Run 3: wud, gemini, failure
+    const id3 = startRun({ feature_id: "f3", command: "wud", agent_backend: "gemini", workflow: "work-until-done" }, db);
+    finishRun(id3, { exit_code: 1, duration_s: 50 }, db);
+
+    // Run 4: define, claude, success
+    const id4 = startRun({ feature_id: "f4", command: "define", agent_backend: "claude", workflow: "define-until-solid" }, db);
+    finishRun(id4, { exit_code: 0, duration_s: 300 }, db);
+
+    // Run 5: analyze, unfinished (should not be included in stats since exit_code is null)
+    startRun({ feature_id: "f5", command: "analyze", agent_backend: "openai", workflow: "analyze" }, db);
+
+    const stats = getStats(db);
+    
+    expect(stats).toHaveLength(2);
+    
+    // Ordered by total_runs DESC
+    expect(stats[0]!.command).toBe("wud");
+    expect(stats[0]!.agent_backend).toBe("gemini");
+    expect(stats[0]!.total_runs).toBe(3);
+    expect(stats[0]!.success_runs).toBe(2);
+    expect(stats[0]!.avg_duration_s).toBe(350 / 3);
+
+    expect(stats[1]!.command).toBe("define");
+    expect(stats[1]!.agent_backend).toBe("claude");
+    expect(stats[1]!.total_runs).toBe(1);
+    expect(stats[1]!.success_runs).toBe(1);
+    expect(stats[1]!.avg_duration_s).toBe(300);
   });
 });

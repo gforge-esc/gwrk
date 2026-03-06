@@ -1,0 +1,100 @@
+import { execFileSync } from "node:child_process";
+/**
+ * Auto-detects the default branch of a repository.
+ * Tries `git symbolic-ref refs/remotes/origin/HEAD` first.
+ * Then falls back to checking if 'main', 'master', or 'trunk' exist.
+ */
+export function detectDefaultBranch(repoPath) {
+    try {
+        const stdout = execFileSync("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], { cwd: repoPath, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
+        const ref = stdout.toString().trim();
+        return ref.split("/").pop() ?? "main";
+    }
+    catch (_e) {
+        // Fallback: list local branches and look for main/master/trunk
+        const stdout = execFileSync("git", ["branch", "--format=%(refname:short)"], {
+            cwd: repoPath,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        const branches = stdout.toString().split("\n").map((b) => b.replace(/^\*\s*/, "").trim()).filter(Boolean);
+        if (branches.includes("main"))
+            return "main";
+        if (branches.includes("master"))
+            return "master";
+        if (branches.includes("trunk"))
+            return "trunk";
+        throw new Error(`Cannot detect default branch for ${repoPath}. Use --branch <name>`);
+    }
+}
+/**
+ * Gets raw git log output formatted for parsing.
+ */
+export function gitLog(repoPath) {
+    return execFileSync("git", ["log", "--all", "--numstat", "--date=iso-strict", "--format=%H|%aI"], { cwd: repoPath, encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 }).toString();
+}
+/**
+ * Lists all branch names in the repository.
+ */
+export function gitBranches(repoPath) {
+    const stdout = execFileSync("git", ["branch", "-a", "--format=%(refname:short)"], {
+        cwd: repoPath,
+        encoding: "utf-8",
+    });
+    return stdout.toString().split("\n").map(b => b.replace(/^\*\s*/, "").trim()).filter(Boolean);
+}
+/**
+ * Counts total lines of code at a specific ref using ls-files and wc.
+ */
+export function gitLineCount(repoPath, ref) {
+    try {
+        // This pipeline counts lines in all tracked files at the given ref.
+        // We use a shell command to pipe git archive into tar and wc.
+        // (git ls-files doesn't work well for bare refs, so we check out to index or use archive)
+        // A simpler approximation for active repo is `git ls-files | xargs wc -l`
+        // For FR-003, we need LOC at a specific ref.
+        // git ls-tree -r $ref --name-only | xargs git show | wc -l
+        const stdout = execFileSync("bash", ["-c", `git ls-tree -r ${ref} --name-only | grep -v 'png\\|jpg\\|jpeg\\|gif\\|webp\\|mp4\\|mov' | xargs -I {} git show ${ref}:"{}" 2>/dev/null | wc -l`], { cwd: repoPath, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+        return Number.parseInt(stdout.toString().trim(), 10) || 0;
+    }
+    catch (_e) {
+        return 0;
+    }
+}
+/**
+ * Counts total lines of code added in draft/feature branches that are not merged into defaultBranch.
+ */
+export function gitDraftLineCount(repoPath, defaultBranch) {
+    try {
+        // Get all branches except the default
+        const stdout = execFileSync("git", ["branch", "--format=%(refname:short)"], {
+            cwd: repoPath,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        const branches = stdout.toString().split("\n").map((b) => b.trim()).filter(b => b && b !== defaultBranch);
+        let totalDraftLines = 0;
+        for (const branch of branches) {
+            try {
+                // diff --shortstat main...feature
+                const diffOut = execFileSync("git", ["diff", "--shortstat", `${defaultBranch}...${branch}`], {
+                    cwd: repoPath,
+                    encoding: "utf-8",
+                    stdio: ["ignore", "pipe", "pipe"],
+                });
+                // Output looks like: " 2 files changed, 10 insertions(+), 2 deletions(-)"
+                const insertionsMatch = diffOut.toString().match(/(\d+)\s+insertion/);
+                if (insertionsMatch?.[1]) {
+                    totalDraftLines += Number.parseInt(insertionsMatch[1], 10);
+                }
+            }
+            catch (e) {
+                // diff might fail if branch has no history in common, etc. Just skip.
+            }
+        }
+        return totalDraftLines;
+    }
+    catch (_e) {
+        return 0;
+    }
+}

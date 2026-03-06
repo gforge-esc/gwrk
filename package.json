@@ -7,6 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
     "test": "vitest run",
     "lint": "biome check",
     "format": "biome format --write"
@@ -14,11 +15,14 @@
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "commander": "^13.1.0",
+    "dockerode": "^4.0.9",
+    "fastify": "^5.8.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/dockerode": "^4.0.1",
     "@types/node": "^22.13.5",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",

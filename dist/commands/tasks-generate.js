@@ -1,0 +1,156 @@
+import fs from "node:fs";
+import path from "node:path";
+import { Command } from "commander";
+import { generateGates } from "../utils/gate-gen.js";
+import { parsePlan } from "../utils/parser.js";
+import { contentHash, loadTaskState, saveTaskState, } from "../utils/state.js";
+import { banner, success, fail, blocked } from "../utils/format.js";
+/**
+ * gwrk define tasks <feature> — Decompose plan → tasks.json + gates
+ *
+ * Without flags:      refuses to overwrite existing tasks.json.
+ * With --force:       blows away existing tasks.json + gates and regenerates fresh.
+ * With --reconcile:   merges new plan into existing tasks, preserving completed status.
+ */
+export const tasksGenerateCommand = new Command("tasks")
+    .description("Decompose plan into tasks.json + gate scripts")
+    .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
+    .option("--force", "Overwrite existing tasks.json and gate scripts")
+    .option("--reconcile", "Merge updated plan, preserving completed task status")
+    .action((feature, opts) => {
+    const projectRoot = process.cwd();
+    const featureDir = path.join(projectRoot, "specs", feature);
+    const planPath = path.join(featureDir, "plan.md");
+    const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
+    const gatesDir = path.join(featureDir, "gates");
+    banner("define tasks", { Feature: feature });
+    const startTime = Date.now();
+    // Guard: refuse to overwrite without --force or --reconcile
+    if (fs.existsSync(tasksPath) && !opts.force && !opts.reconcile) {
+        blocked(`tasks.json already exists for ${feature}.\n` +
+            `  Regenerate:  gwrk define tasks ${feature} --force\n` +
+            `  Reconcile:   gwrk define tasks ${feature} --reconcile`);
+        process.exit(1);
+    }
+    try {
+        console.log("  Parsing plan.md...");
+        const parsedPlan = parsePlan(planPath);
+        const planHash = contentHash(planPath);
+        const planMtime = fs.statSync(planPath).mtime.toISOString();
+        console.log(`  Found ${parsedPlan.phases.length} phases in plan.md`);
+        // Load existing state for reconcile mode
+        let existingState = null;
+        if (opts.reconcile && fs.existsSync(tasksPath)) {
+            try {
+                existingState = loadTaskState(featureDir);
+                console.log(`  Loaded existing tasks (${existingState.phases.reduce((n, p) => n + p.tasks.length, 0)} tasks)`);
+            }
+            catch {
+                // If we can't load, fall through to fresh generation
+            }
+        }
+        // If --force, wipe existing gates
+        if (opts.force && fs.existsSync(gatesDir)) {
+            const existing = fs.readdirSync(gatesDir).filter(f => f.match(/^T\d+-gate\.sh$/));
+            if (existing.length > 0) {
+                console.log(`  Removing ${existing.length} old gate scripts...`);
+            }
+            for (const f of existing) {
+                fs.unlinkSync(path.join(gatesDir, f));
+            }
+        }
+        // Build new tasks from plan
+        let taskCounter = 1;
+        const newPhases = parsedPlan.phases.map((p) => {
+            const phaseTasks = p.tasks.map((t) => {
+                const taskId = `T${taskCounter.toString().padStart(3, "0")}`;
+                taskCounter++;
+                // In reconcile mode, preserve status from matching existing task
+                let status = "open";
+                let completedAt;
+                if (opts.reconcile && existingState) {
+                    // Match by title across all existing phases
+                    const existingTask = existingState.phases
+                        .flatMap((ep) => ep.tasks)
+                        .find((et) => et.title === t.title);
+                    if (existingTask && (existingTask.status === "completed" || existingTask.status === "in_progress")) {
+                        status = existingTask.status;
+                        completedAt = existingTask.completedAt;
+                    }
+                }
+                return {
+                    id: taskId,
+                    title: t.title,
+                    description: t.description,
+                    status,
+                    gateScript: `gates/${taskId}-gate.sh`,
+                    completedAt,
+                };
+            });
+            return {
+                id: p.id,
+                title: p.title,
+                tasks: phaseTasks,
+                doneWhen: p.doneWhen,
+            };
+        });
+        // In reconcile mode, find tasks that were in the old state but not in the new plan
+        if (opts.reconcile && existingState) {
+            const newTitles = new Set(newPhases.flatMap((p) => p.tasks.map((t) => t.title)));
+            const removedTasks = [];
+            for (const phase of existingState.phases) {
+                for (const task of phase.tasks) {
+                    if (!newTitles.has(task.title) && task.status !== "cancelled") {
+                        const cancelledId = `T${taskCounter.toString().padStart(3, "0")}`;
+                        taskCounter++;
+                        removedTasks.push({
+                            id: cancelledId,
+                            title: task.title,
+                            description: task.description,
+                            status: "cancelled",
+                            gateScript: task.gateScript,
+                            completedAt: task.completedAt,
+                        });
+                    }
+                }
+            }
+            // Append cancelled tasks to the last phase
+            if (removedTasks.length > 0) {
+                const lastPhase = newPhases[newPhases.length - 1];
+                lastPhase.tasks.push(...removedTasks);
+            }
+        }
+        const taskState = {
+            featureId: feature,
+            createdAt: existingState?.createdAt ?? new Date().toISOString(),
+            generatedFrom: {
+                plan: { hash: planHash, modifiedAt: planMtime },
+            },
+            phases: newPhases,
+        };
+        console.log("  Writing tasks.json...");
+        saveTaskState(featureDir, taskState);
+        console.log("  Generating gate scripts...");
+        generateGates(featureDir, taskState.phases);
+        const totalTasks = taskState.phases.reduce((n, p) => n + p.tasks.length, 0);
+        const activeTasks = taskState.phases.reduce((n, p) => n + p.tasks.filter((t) => t.status !== "cancelled").length, 0);
+        const cancelledTasks = totalTasks - activeTasks;
+        const completedTasks = taskState.phases.reduce((n, p) => n + p.tasks.filter((t) => t.status === "completed").length, 0);
+        console.log("");
+        const summary = [`${taskState.phases.length} phases`, `${activeTasks} tasks`, `${activeTasks} gates`];
+        if (completedTasks > 0)
+            summary.push(`${completedTasks} preserved`);
+        if (cancelledTasks > 0)
+            summary.push(`${cancelledTasks} cancelled`);
+        console.log(`  ✓ ${summary.join(", ")}`);
+        const durationS = Math.round((Date.now() - startTime) / 1000);
+        success("define tasks", durationS);
+    }
+    catch (error) {
+        const durationS = Math.round((Date.now() - startTime) / 1000);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Error generating tasks: ${message}`);
+        fail("define tasks", 1, durationS);
+        process.exit(1);
+    }
+});
