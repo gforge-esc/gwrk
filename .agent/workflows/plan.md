@@ -9,7 +9,7 @@ description: Create a technical implementation plan from a spec.
 
 <scope_constraints>
 - Create ONLY plan.md (and optionally data-model.md, contracts/).
-- Do not create tasks.json (that's /plan-to-tasks).
+- Do not create tasks.json (that's `gwrk define tasks`).
 - Do not implement any code.
 - Reference existing monorepo structure from `docs/architecture.md`.
 </scope_constraints>
@@ -55,7 +55,7 @@ Database Standards:
 .specify/scripts/bash/check-prerequisites.sh --json
 ```
 - PASS: `FEATURE_DIR` contains spec.md.
-- FAIL: Stop. Run `/specify` first.
+- FAIL: Stop. Run `gwrk define spec <feature>` first.
 
 ### 2. Load context
 
@@ -138,7 +138,7 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 
 ### 7. Report via notify_user
 
-> "Plan created: {paths}. Next: `/plan-to-tasks` to generate tasks.json and verification gates."
+> "Plan created: {paths}. Next: `gwrk define tasks <feature>` to generate tasks.json and verification gates."
 
 <quality_gate>
 Before reporting, verify the plan includes:
@@ -164,8 +164,8 @@ If any are missing, add them before reporting.
 ## Next Step
 
 After plan is created:
-- Run `/plan-to-tasks` to generate tasks.json and verification gates
-- Run `/analyze` to validate cross-artifact consistency
+- Run `gwrk define tasks <feature>` to generate tasks.json and verification gates
+- Run `gwrk define <feature>` for full DUS loop (includes analyze)
 
 ## Anti-Patterns
 

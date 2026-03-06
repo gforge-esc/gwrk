@@ -106,7 +106,7 @@ Before specifying, load these files for context:
 8. Create `specs/{feature}/checklists/requirements.md` using template.
 
 9. Report via notify_user:
-   > "Spec created: {path}. Next: `/plan` to create implementation plan."
+   > "Spec created: {path}. Next: `gwrk define plan <feature>` to create implementation plan."
 
 <quality_gate>
 Before reporting, verify the spec passes ALL checks:
@@ -128,14 +128,13 @@ If any check fails, fix the spec before reporting. Do NOT defer to `/checklist`.
 ## Next Step
 
 After spec is created:
-- Run `/plan` to create technical implementation plan
-- Optionally run `/analyze` for early spec-level validation before planning
+- Run `gwrk define plan <feature>` to create technical implementation plan
+- Or run `gwrk define <feature>` for full DUS loop (spec → plan → tasks → analyze)
 
 ## Validation: Missing TR Requirements
 
 If the spec is created WITHOUT Testing Requirements (TR-###):
-- `/checklist` will flag this as a **CRITICAL** gap
-- `/analyze` will flag this as a **CRITICAL** coverage issue
+- The DUS `analyze` stage will flag this as a **CRITICAL** coverage issue
 - **Implementation is BLOCKED** until Testing Requirements are added
 
 ## Anti-Patterns

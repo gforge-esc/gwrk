@@ -146,12 +146,17 @@ Report via notify_user (do NOT write files):
 ### Findings
 | ID | Category | Severity | Location | Issue | Recommendation |
 |----|----------|----------|----------|-------|----------------|
+
+### Final Verdict
+Verdict: [READY or NOT READY]
 ```
 
 <quality_gate>
 - **READY**: No CRITICAL findings. TDD readiness >= 80%.
+  You MUST output exactly `Verdict: READY` on its own line at the end of the report.
   → Ready for `/implement`.
 - **NOT READY**: CRITICAL findings or TDD < 80%.
+  You MUST output exactly `Verdict: NOT READY` on its own line at the end of the report.
   → Fix issues, then re-run `/analyze`.
 </quality_gate>
 
