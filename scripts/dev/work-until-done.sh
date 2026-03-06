@@ -423,7 +423,7 @@ if [[ "$STAGE" == "BRANCH_SETUP" ]]; then
   branch_duration=$(( $(date +%s) - branch_start_time ))
   record_run "branch-setup" "$branch_exit_code" "$branch_duration"
   
-  if [[ "$exit_code" -ne 0 ]]; then
+  if [[ "$branch_exit_code" -ne 0 ]]; then
     exit 1
   fi
   STAGE="IMPLEMENTING"
