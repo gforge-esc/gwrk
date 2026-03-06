@@ -1,25 +1,37 @@
 import path from "node:path";
 import { Command } from "commander";
-import { dispatchAgent } from "../utils/agent.js";
+import { extractStories } from "../engine/spec-parser.js";
+import { resolveRoleMultipliers } from "../engine/roles.js";
+import { computeEffort } from "../engine/effort.js";
+import { writeEffortReport } from "../engine/report-writer.js";
 import { loadConfig } from "../utils/config.js";
 
 export const effortCommand = new Command("effort")
-  .description("Estimate the development effort for a feature")
-  .argument("<feature>", "The feature directory under specs/")
-  .action(async (feature) => {
-    const projectRoot = process.cwd();
-    const relativeFeatureDir = path.join("specs", feature);
-    const config = loadConfig(projectRoot);
-    const result = await dispatchAgent({
-      backend: config.agents.define,
-      workflowPath: ".agent/workflows/effort.md",
-      featureDir: relativeFeatureDir,
-    });
+  .description("Calculate deterministic effort estimation from spec stories")
+  .argument("<feature>", "The feature directory under specs/ (e.g. 001-cli-core)")
+  .option("--json", "Output structured JSON report to stdout")
+  .action((feature, options) => {
+    try {
+      const projectRoot = process.cwd();
+      const featureDir = path.join(projectRoot, "specs", feature);
+      
+      const config = loadConfig(projectRoot);
+      const roleMultipliers = resolveRoleMultipliers(config);
+      
+      const stories = extractStories(featureDir);
+      
+      const report = computeEffort(stories, roleMultipliers, 1.25);
+      report.featureId = feature;
 
-    if (result.exitCode !== 0) {
-      if (result.stderr) console.error(result.stderr);
-      process.exit(result.exitCode);
+      if (options.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        const outDir = path.join(projectRoot, "docs", "assessments");
+        const filePath = writeEffortReport(report, outDir);
+        console.log(`Effort report generated at: ${path.relative(projectRoot, filePath)}`);
+      }
+    } catch (err: unknown) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
     }
-
-    if (result.stdout) console.log(result.stdout);
   });

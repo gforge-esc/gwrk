@@ -10,7 +10,15 @@ import {
   scanSpecProgress,
 } from "./pulse.js"; // RED — module does not exist yet
 import type { PulseSnapshot, WeeklyBucket } from "./types.js"; // RED — module does not exist yet
-import { PulseSnapshotSchema, WeeklyBucketSchema } from "./types.js"; // RED — module does not exist yet
+import { PulseSnapshotSchema, WeeklyBucketSchema } from "./types.js";
+
+vi.mock("../utils/git.js", () => ({
+  gitLog: vi.fn(() => ""),
+  detectDefaultBranch: vi.fn(() => "main"),
+  gitBranches: vi.fn(() => []),
+  gitLineCount: vi.fn(() => 0),
+  gitDraftLineCount: vi.fn(() => 0),
+}));
 
 // ─── Phase 1 Tests ───────────────────────────────────────────────
 
@@ -193,12 +201,30 @@ describe("FR-001: generatePulseReport multi-repo aggregation", () => {
       pulse: { repos: ["/tmp/repo-a", "/tmp/repo-b"] },
     };
 
+    // Need to mock fs to avoid "Path not found" since we call the real scanRepository
+    const fs = require("node:fs");
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readdirSync").mockReturnValue([]);
+
+    // Also need to mock git helpers imported by pulse.js
+    // We achieve this generically by mocking the whole git.js module or specific functions
+    // Since we can't reliably vi.mock in the middle of a test for an already imported module,
+    // we should mock it at the top of the file.
+    // Wait, let's just use what's returned.
+    // Actually, detectDefaultBranch will fail if git isn't mocked.
+    
+    // Instead of mocking inside the test which is hard for ESM, let's just 
+    // mock the imported functions. But we didn't import them...
+    // Let me add the vi.mock at the top of the file in another edit.
+
     const report = generatePulseReport(mockConfig);
 
     expect(report).toHaveProperty("repositories");
     expect(report).toHaveProperty("specProgress");
     expect(report).toHaveProperty("generatedAt");
     expect(report.repositories).toHaveLength(2);
+
+    vi.restoreAllMocks();
   });
 
   it("rejects: throws when pulse.repos is empty (FR-001 error state)", () => {

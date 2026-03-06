@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import { describe, it, expect, vi } from "vitest";
 import { computeEffort } from "./effort.js";
 import { resolveRoleMultipliers } from "./roles.js";
 import { writeEffortReport } from "./report-writer.js";
@@ -17,6 +18,56 @@ import type {
  * FR-003: Generate markdown effort report to docs/assessments/
  * FR-012: Role multiplier overrides from .gwrkrc.json
  */
+
+describe("FR-001: extractStories — parsing markdown spec", () => {
+  it("TR-001: extracts stories with SP and role brackets", () => {
+    
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readFileSync").mockReturnValue(
+      "### US-001 - Some story [5 SP, TS, PE]\n### US-002 - Another story [2 SP, RE]"
+    );
+
+    const stories = extractStories("/tmp/fake");
+    expect(stories).toHaveLength(2);
+    expect(stories[0]!.storyId).toBe("US-001");
+    expect(stories[0]!.sp).toBe(5);
+    expect(stories[0]!.roles).toEqual(["TS", "PE"]);
+
+    expect(stories[1]!.storyId).toBe("US-002");
+    expect(stories[1]!.sp).toBe(2);
+    expect(stories[1]!.roles).toEqual(["RE"]);
+
+    vi.restoreAllMocks();
+  });
+
+  it("TR-001: handles unestimated stories", () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readFileSync").mockReturnValue("### US-003 - Unestimated story");
+    
+    const stories = extractStories("/tmp/fake");
+    expect(stories[0]!.sp).toBe(0);
+    expect(stories[0]!.roles).toEqual([]);
+    
+    vi.restoreAllMocks();
+  });
+
+  it("TR-004: throws when spec.md is missing", () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    
+    expect(() => extractStories("/tmp/missing")).toThrow(/spec\.md not found/);
+    
+    vi.restoreAllMocks();
+  });
+
+  it("TR-004: throws when no stories are found", () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readFileSync").mockReturnValue("# Just a spec\nNo stories here.");
+    
+    expect(() => extractStories("/tmp/empty")).toThrow(/No user stories found/);
+    
+    vi.restoreAllMocks();
+  });
+});
 
 describe("FR-002: computeEffort — role-bracketed hour computation", () => {
   const defaultRoles: RoleConfig[] = [

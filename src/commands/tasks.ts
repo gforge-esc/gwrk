@@ -2,92 +2,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { runGate } from "../utils/exec.js";
-import { generateGates } from "../utils/gate-gen.js";
 import { appendHistory } from "../utils/history.js";
-import { parsePlan } from "../utils/parser.js";
+import { color } from "../utils/format.js";
 import {
+  contentHash,
   listTasks,
   loadTaskState,
   markTaskComplete,
   nextTask,
   saveTaskState,
 } from "../utils/state.js";
-import type { Task, TaskState } from "../utils/state.js";
+import type { TaskState } from "../utils/state.js";
 
 export const tasksCommand = new Command("tasks").description(
-  "Manage feature tasks",
+  "Query and manage task state",
 );
 
-tasksCommand
-  .command("generate <feature>")
-  .description("Generate tasks and gates from plan.md")
-  .action((feature: string) => {
-    const projectRoot = process.cwd();
-    const featureDir = path.join(projectRoot, "specs", feature);
-    const planPath = path.join(featureDir, "plan.md");
-    const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
-
-    try {
-      const parsedPlan = parsePlan(planPath);
-
-      // Load existing state if it exists
-      let existingState: TaskState | null = null;
-      if (fs.existsSync(tasksPath)) {
-        try {
-          existingState = loadTaskState(featureDir);
-        } catch (e) {
-          console.warn(`Warning: Could not load existing task state: ${e}`);
-        }
-      }
-
-      const taskState: TaskState = {
-        featureId: feature,
-        createdAt: existingState?.createdAt || new Date().toISOString(),
-        phases: [],
-      };
-
-      let taskCounter = 1;
-      for (const p of parsedPlan.phases) {
-        const existingPhase = existingState?.phases.find(
-          (ep) => ep.id === p.id,
-        );
-
-        const phaseTasks: Task[] = p.tasks.map((t) => {
-          const taskId = `T${taskCounter.toString().padStart(3, "0")}`;
-          taskCounter++;
-
-          // Try to find existing task to preserve status
-          const existingTask = existingPhase?.tasks.find(
-            (et) => et.title === t.title,
-          );
-
-          return {
-            id: taskId,
-            title: t.title,
-            description: t.description,
-            status: existingTask?.status || "open",
-            gateScript: `gates/${taskId}-gate.sh`,
-            completedAt: existingTask?.completedAt,
-          };
-        });
-
-        taskState.phases.push({
-          id: p.id,
-          title: p.title,
-          tasks: phaseTasks,
-          doneWhen: p.doneWhen,
-        });
-      }
-
-      saveTaskState(featureDir, taskState);
-      generateGates(featureDir, taskState.phases);
-      console.log(`Successfully generated tasks for ${feature}`);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Error generating tasks: ${message}`);
-      process.exit(1);
-    }
-  });
+// generate is now under `gwrk define tasks` — see tasks-generate.ts
 
 tasksCommand
   .command("done <feature> <taskId>")
@@ -152,6 +83,20 @@ tasksCommand
     }
   });
 
+/** Check if tasks.json was generated from the current plan.md */
+function checkDrift(featureDir: string, state: TaskState, feature: string): void {
+  const planPath = path.join(featureDir, "plan.md");
+  if (!state.generatedFrom?.plan || !fs.existsSync(planPath)) return;
+
+  const currentHash = contentHash(planPath);
+  if (currentHash !== state.generatedFrom.plan.hash) {
+    const { YELLOW, DIM, RESET, BOLD } = color;
+    console.log(`${YELLOW}⚠ plan.md has changed since tasks were generated${RESET}`);
+    console.log(`${DIM}  Run: ${BOLD}gwrk define tasks ${feature} --force${RESET}`);
+    console.log("");
+  }
+}
+
 tasksCommand
   .command("list <feature>")
   .description("List all tasks for a feature")
@@ -161,6 +106,10 @@ tasksCommand
     const featureDir = path.join(projectRoot, "specs", feature);
     const state = loadTaskState(featureDir);
     const allTasks = listTasks(state);
+
+    if (!options.json) {
+      checkDrift(featureDir, state, feature);
+    }
 
     if (options.json) {
       console.log(JSON.stringify({ tasks: allTasks }, null, 2));

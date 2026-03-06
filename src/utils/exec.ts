@@ -5,6 +5,7 @@ export interface RunOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   stdio?: StdioOptions;
+  input?: string;
 }
 
 /**
@@ -17,11 +18,21 @@ export function run(
   opts?: RunOptions,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    let stdio = opts?.stdio ?? "inherit";
+    if (opts?.input && stdio === "inherit") {
+      stdio = ["pipe", "inherit", "inherit"];
+    }
+
     const child = spawn(command, args, {
       cwd: opts?.cwd,
       env: opts?.env ?? process.env,
-      stdio: opts?.stdio ?? "inherit",
+      stdio,
     });
+
+    if (opts?.input && child.stdin) {
+      child.stdin.write(opts.input);
+      child.stdin.end();
+    }
 
     child.on("close", (code) => {
       if (code === 0) {

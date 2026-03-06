@@ -1,10 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { tasksCommand } from "./tasks.js";
+import { tasksGenerateCommand } from "./tasks-generate.js";
 
-describe("gwrk tasks generate", () => {
+describe("gwrk define tasks", () => {
   const tempDir = path.join(process.cwd(), "temp-test-generate");
 
   beforeEach(() => {
@@ -44,7 +43,7 @@ describe("gwrk tasks generate", () => {
       // Mock console.log to avoid output during tests
       vi.spyOn(console, "log").mockImplementation(() => {});
 
-      await tasksCommand.parseAsync(["generate", "test-feature"], {
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], {
         from: "user",
       });
 

@@ -37,6 +37,8 @@ describe("initCommand", () => {
     expect(config.project.name).toBe(path.basename(tempDir));
     expect(config.agents.define).toBe("gemini");
     expect(config.agents.implement).toBe("codex-cloud");
+    expect(config.server.port).toBe(18790);
+    expect(config.parallelism.local.maxCpu).toBe(80);
   });
 
   it("should be idempotent and exit 0 if already initialized", async () => {

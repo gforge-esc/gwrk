@@ -1,8 +1,9 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
-const TaskStatusSchema = z.enum(["open", "in_progress", "completed"]);
+const TaskStatusSchema = z.enum(["open", "in_progress", "completed", "cancelled"]);
 
 export const TaskSchema = z.object({
   id: z.string().regex(/^T\d{3}$/),
@@ -20,9 +21,17 @@ export const PhaseSchema = z.object({
   doneWhen: z.array(z.string()).optional(),
 });
 
+const SourceProvenanceSchema = z.object({
+  hash: z.string(),
+  modifiedAt: z.string().datetime(),
+});
+
 export const TaskStateSchema = z.object({
   featureId: z.string().min(1),
   createdAt: z.string().datetime(),
+  generatedFrom: z.object({
+    plan: SourceProvenanceSchema,
+  }).optional(),
   phases: z.array(PhaseSchema).min(1),
 });
 
@@ -108,4 +117,10 @@ export function nextTask(state: TaskState, phaseId: string): Task | null {
     return null;
   }
   return phase.tasks.find((t) => t.status === "open") || null;
+}
+
+/** SHA256 of file contents — used for provenance tracking */
+export function contentHash(filePath: string): string {
+  const content = fs.readFileSync(filePath, "utf-8");
+  return crypto.createHash("sha256").update(content).digest("hex");
 }

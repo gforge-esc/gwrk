@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { computeCompression, generateSummary } from "./compression.js";
+import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import { describe, it, expect, vi } from "vitest";
+import { computeCompression, generateSummary, gatherDeliveryActuals } from "./compression.js";
 import type {
   CompressionRatios,
   CompressionReport,
@@ -8,6 +10,9 @@ import type {
   EffortForecast,
 } from "./types.js";
 
+vi.mock("node:fs");
+vi.mock("node:child_process");
+
 /**
  * RED tests for src/engine/compression.ts
  * Contract: contracts/compression-engine.md → computeCompression(), generateSummary()
@@ -15,6 +20,49 @@ import type {
  * FR-008: Compute Total Compression ratio
  * FR-009: Cross-feature compression summary with trends
  */
+
+describe("FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit clustering", () => {
+  it("TR-005 & TR-006: extracts timestamps and clusters commits (15 mins active across 2 sessions)", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ birthtime: new Date("2026-01-01T00:00:00Z"), mtime: new Date("2026-01-01T00:00:00Z") } as any);
+    
+    vi.mocked(execFileSync).mockImplementation(((cmd: string) => {
+      if (cmd === "git") {
+        return "2026-01-02T10:00:00Z\n2026-01-02T10:05:00Z\n2026-01-02T10:10:00Z\n2026-01-02T12:00:00Z\n2026-01-02T12:05:00Z\n";
+      }
+      throw new Error("gh command failed");
+    }) as any);
+
+    const actuals = gatherDeliveryActuals("/mock/feat-a", 30);
+    
+    expect(actuals.sessionCount).toBe(2);
+    // Session 1: 10:00 -> 10:10 (10 mins)
+    // Session 2: 12:00 -> 12:05 (5 mins)
+    // Total: 15 mins
+    expect(actuals.activeCodingMinutes).toBe(15);
+    expect(actuals.dormancyDays).toBe(1); // 2026-01-01 to 2026-01-02
+    
+    vi.resetAllMocks();
+  });
+
+  it("TR-010: throws when feature has no implementation commits", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ birthtime: new Date(), mtime: new Date() } as any);
+    vi.mocked(execFileSync).mockReturnValue("" as any); // empty git log
+
+    expect(() => gatherDeliveryActuals("/mock/empty-feat")).toThrow(/No implementation commits found/);
+
+    vi.resetAllMocks();
+  });
+
+  it("TR-010: throws feature directory not found", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    expect(() => gatherDeliveryActuals("/mock/not-real")).toThrow(/Feature directory not found/);
+
+    vi.resetAllMocks();
+  });
+});
 
 describe("FR-007: computeCompression — Point Compression", () => {
   // TR-007: 287.5h / 0.75h = 383× point compression

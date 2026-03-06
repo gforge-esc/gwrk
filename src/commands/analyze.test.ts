@@ -31,6 +31,21 @@ describe("analyzeCommand", () => {
       JSON.stringify({
         project: { name: "test-project" },
         agents: { define: "gemini", implement: "codex-cloud" },
+        server: {
+          port: 18790,
+          host: "localhost",
+        },
+        parallelism: {
+          local: {
+            maxCpu: 80,
+            maxMem: 80,
+            minDiskGb: 10,
+            maxClones: 2,
+          },
+          cloud: {
+            maxConcurrent: 10,
+          },
+        },
       }),
     );
   });

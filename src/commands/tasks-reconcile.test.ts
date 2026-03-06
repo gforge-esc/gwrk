@@ -1,0 +1,186 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tasksGenerateCommand } from "./tasks-generate.js";
+
+/**
+ * RED tests for --reconcile behavior.
+ * These cover known scenarios:
+ *   1. Preserves completed task status when title matches
+ *   2. New tasks from updated plan appear as "open"
+ *   3. Removed tasks from updated plan are marked "cancelled"
+ *   4. Task IDs are reassigned sequentially (no gaps)
+ *   5. generatedFrom.plan.hash is updated to current plan
+ */
+describe("gwrk define tasks --reconcile", () => {
+  const tempDir = path.join(process.cwd(), "temp-test-reconcile");
+
+  function writePlan(content: string) {
+    const specsDir = path.join(tempDir, "specs", "test-feature");
+    fs.mkdirSync(specsDir, { recursive: true });
+    fs.writeFileSync(path.join(specsDir, "plan.md"), content);
+  }
+
+  function readTasks(): Record<string, unknown> {
+    const tasksPath = path.join(tempDir, "specs", "test-feature", ".gwrk", "tasks.json");
+    return JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
+  }
+
+  const PLAN_V1 = `# Implementation Plan: test-feature
+
+### Phase 1: Setup
+
+**Files (2):**
+- \`src/config.ts\` (NEW: Configuration module)
+- \`src/utils.ts\` (NEW: Utility helpers)
+
+#### Done When
+- Config loads
+`;
+
+  const PLAN_V2 = `# Implementation Plan: test-feature
+
+### Phase 1: Setup
+
+**Files (3):**
+- \`src/config.ts\` (NEW: Configuration module)
+- \`src/logger.ts\` (NEW: Logging system)
+- \`src/utils.ts\` (NEW: Utility helpers)
+
+#### Done When
+- Config loads
+- Logger initializes
+`;
+
+  const PLAN_V3_REMOVED = `# Implementation Plan: test-feature
+
+### Phase 1: Setup
+
+**Files (1):**
+- \`src/logger.ts\` (NEW: Logging system)
+
+#### Done When
+- Logger initializes
+`;
+
+  beforeEach(() => {
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(tempDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("preserves completed task status when title matches", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      // Generate initial tasks
+      writePlan(PLAN_V1);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+
+      // Mark first task as completed by editing tasks.json directly
+      const tasks = readTasks() as { phases: Array<{ tasks: Array<{ status: string; completedAt?: string }> }> };
+      tasks.phases[0].tasks[0].status = "completed";
+      tasks.phases[0].tasks[0].completedAt = new Date().toISOString();
+      const tasksPath = path.join("specs", "test-feature", ".gwrk", "tasks.json");
+      fs.writeFileSync(tasksPath, JSON.stringify(tasks, null, 2));
+
+      // Update plan and reconcile
+      writePlan(PLAN_V2);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+
+      const reconciled = readTasks() as { phases: Array<{ tasks: Array<{ title: string; status: string }> }> };
+      const configTask = reconciled.phases[0].tasks.find(
+        (t: { title: string }) => t.title === "Implement src/config.ts",
+      );
+      expect(configTask).toBeDefined();
+      expect(configTask?.status).toBe("completed");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("adds new tasks from updated plan as open", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      writePlan(PLAN_V1);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+
+      writePlan(PLAN_V2);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+
+      const reconciled = readTasks() as { phases: Array<{ tasks: Array<{ title: string; status: string }> }> };
+      const loggerTask = reconciled.phases[0].tasks.find(
+        (t: { title: string }) => t.title === "Implement src/logger.ts",
+      );
+      expect(loggerTask).toBeDefined();
+      expect(loggerTask?.status).toBe("open");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("marks removed tasks as cancelled", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      writePlan(PLAN_V2);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+
+      writePlan(PLAN_V3_REMOVED);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+
+      const reconciled = readTasks() as { phases: Array<{ tasks: Array<{ title: string; status: string }> }> };
+      const allTasks = reconciled.phases.flatMap((p: { tasks: Array<{ title: string; status: string }> }) => p.tasks);
+
+      // config.ts and utils.ts were removed — should be cancelled
+      const configTask = allTasks.find((t: { title: string }) => t.title === "Implement src/config.ts");
+      const utilsTask = allTasks.find((t: { title: string }) => t.title === "Implement src/utils.ts");
+      expect(configTask?.status).toBe("cancelled");
+      expect(utilsTask?.status).toBe("cancelled");
+
+      // logger.ts remains open
+      const loggerTask = allTasks.find((t: { title: string }) => t.title === "Implement src/logger.ts");
+      expect(loggerTask?.status).toBe("open");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("updates generatedFrom hash to current plan", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      writePlan(PLAN_V1);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+
+      const beforeHash = (readTasks() as { generatedFrom?: { plan: { hash: string } } }).generatedFrom?.plan.hash;
+
+      writePlan(PLAN_V2);
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+
+      const afterHash = (readTasks() as { generatedFrom?: { plan: { hash: string } } }).generatedFrom?.plan.hash;
+      expect(afterHash).not.toBe(beforeHash);
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+});

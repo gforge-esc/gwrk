@@ -1,87 +1,118 @@
-import fs from "node:fs";
-import { describe, expect, it, vi } from "vitest";
-import { dispatchAgent } from "./agent.js";
-import { execCommand } from "./exec.js";
-
-vi.mock("./exec.js", () => ({
-  execCommand: vi
-    .fn()
-    .mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" }),
-}));
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { buildCommand } from "./agent.js";
 
 vi.mock("node:fs", () => ({
   default: {
     readFileSync: vi.fn().mockReturnValue("mock workflow content"),
+    mkdirSync: vi.fn(),
+    createWriteStream: vi.fn(() => ({
+      write: vi.fn(),
+      end: vi.fn(),
+    })),
   },
 }));
 
-describe("dispatchAgent", () => {
-  it("should build correct command and args for gemini", async () => {
-    await dispatchAgent({
-      backend: "gemini",
-      workflowPath: ".agent/workflows/specify.md",
-      prompt: "test feature",
-      approvalMode: "yolo",
-    });
+describe("buildCommand — agent backend routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    expect(execCommand).toHaveBeenCalledWith(
-      "gemini",
-      ["test feature", "--approve-mode=yolo"],
+  it("builds gemini slash command with -p flag matching agent-run.sh", () => {
+    const result = buildCommand(
+      {
+        backend: "gemini",
+        workflowPath: ".agent/workflows/specify.md",
+        prompt: "test feature",
+      },
       "mock workflow content",
     );
+
+    expect(result.command).toBe("gemini");
+    // Should produce: gemini -p "/specify test feature" --approval-mode yolo
+    expect(result.args).toEqual(["-p", "/specify test feature", "--approval-mode", "yolo"]);
+    expect(result.stdin).toBeUndefined();
   });
 
-  it("should build correct command and args for claude", async () => {
-    await dispatchAgent({
-      backend: "claude",
-      workflowPath: ".agent/workflows/plan.md",
-      featureDir: "specs/test-feature",
-    });
-
-    expect(execCommand).toHaveBeenCalledWith(
-      "claude",
-      ["--output-format", "json", "specs/test-feature"],
+  it("builds gemini plan command with featureDir", () => {
+    const result = buildCommand(
+      {
+        backend: "gemini",
+        workflowPath: ".agent/workflows/plan.md",
+        featureDir: "specs/001-cli-core",
+      },
       "mock workflow content",
     );
+
+    expect(result.command).toBe("gemini");
+    expect(result.args).toEqual(["-p", "/plan specs/001-cli-core", "--approval-mode", "yolo"]);
   });
 
-  it("should build correct command and args for codex", async () => {
-    await dispatchAgent({
-      backend: "codex",
-      workflowPath: ".agent/workflows/analyze.md",
-      featureDir: "specs/test-feature",
-    });
-
-    expect(execCommand).toHaveBeenCalledWith(
-      "codex",
-      [
-        "exec",
-        "--full-auto",
-        ".agent/workflows/analyze.md",
-        "specs/test-feature",
-      ],
-      undefined,
+  it("uses plan approval mode for analyze (read-only)", () => {
+    const result = buildCommand(
+      {
+        backend: "gemini",
+        workflowPath: ".agent/workflows/analyze.md",
+        featureDir: "specs/001-cli-core",
+      },
+      "mock workflow content",
     );
+
+    expect(result.args).toEqual(["-p", "/analyze specs/001-cli-core", "--approval-mode", "plan"]);
   });
 
-  it("should build correct command and args for codex-cloud", async () => {
-    await dispatchAgent({
-      backend: "codex-cloud",
-      workflowPath: ".agent/workflows/effort.md",
-      featureDir: "specs/test-feature",
-    });
-
-    expect(execCommand).toHaveBeenCalledWith(
-      "codex",
-      [
-        "run",
-        "--cloud",
-        "--non-interactive",
-        "--full-auto",
-        ".agent/workflows/effort.md",
-        "specs/test-feature",
-      ],
-      undefined,
+  it("builds correct command for claude with -p flag", () => {
+    const result = buildCommand(
+      {
+        backend: "claude",
+        workflowPath: ".agent/workflows/plan.md",
+        featureDir: "specs/test-feature",
+      },
+      "mock workflow content",
     );
+
+    expect(result.command).toBe("claude");
+    expect(result.args).toContain("-p");
+    expect(result.args).toContain("--output-format");
+    expect(result.args).toContain("specs/test-feature");
+  });
+
+  it("builds correct command for codex with exec --full-auto", () => {
+    const result = buildCommand(
+      {
+        backend: "codex",
+        workflowPath: ".agent/workflows/analyze.md",
+        featureDir: "specs/test-feature",
+      },
+      "mock workflow content",
+    );
+
+    expect(result.command).toBe("codex");
+    expect(result.args).toEqual([
+      "exec",
+      "--full-auto",
+      ".agent/workflows/analyze.md",
+      "specs/test-feature",
+    ]);
+  });
+
+  it("builds correct command for codex-cloud with run --cloud", () => {
+    const result = buildCommand(
+      {
+        backend: "codex-cloud",
+        workflowPath: ".agent/workflows/effort.md",
+        featureDir: "specs/test-feature",
+      },
+      "mock workflow content",
+    );
+
+    expect(result.command).toBe("codex");
+    expect(result.args).toEqual([
+      "run",
+      "--cloud",
+      "--non-interactive",
+      "--full-auto",
+      ".agent/workflows/effort.md",
+      "specs/test-feature",
+    ]);
   });
 });
