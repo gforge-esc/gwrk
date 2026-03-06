@@ -26,10 +26,10 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-AGENT_RUNNER="$SCRIPT_DIR/agent-run.sh"
-WUD_VERDICT="$SCRIPT_DIR/wud-verdict.sh"
-WUD_BRANCH="$SCRIPT_DIR/wud-branch.sh"
-WUD_CI_WAIT="$SCRIPT_DIR/wud-ci-wait.sh"
+AGENT_RUNNER="${AGENT_RUNNER_BIN:-$SCRIPT_DIR/agent-run.sh}"
+WUD_VERDICT="${WUD_VERDICT_BIN:-$SCRIPT_DIR/wud-verdict.sh}"
+WUD_BRANCH="${WUD_BRANCH_BIN:-$SCRIPT_DIR/wud-branch.sh}"
+WUD_CI_WAIT="${WUD_CI_WAIT_BIN:-$SCRIPT_DIR/wud-ci-wait.sh}"
 
 RUNS_DIR="$REPO_ROOT/.runs"
 
@@ -166,7 +166,11 @@ record_run() {
   local cmd="$1"; shift
   local exit_code="$1"; shift
   local duration="$1"; shift
-  local extra_args=("$@")
+  # macOS bash 3.2 bugs out on empty "$@" under set -u
+  local extra_args=()
+  if [[ $# -gt 0 ]]; then
+    extra_args=("$@")
+  fi
 
   # Use gwrk db record to log the step
   # We assume 'gwrk' is in the PATH or we use the one in REPO_ROOT/dist/cli.js
@@ -175,14 +179,24 @@ record_run() {
     gwrk_cmd="node $REPO_ROOT/dist/cli.js"
   fi
 
-  $gwrk_cmd db record \
-    --feature "$FEATURE" \
-    --phase "$PHASE" \
-    --command "$cmd" \
-    --exit-code "$exit_code" \
-    --duration "$duration" \
-    --log "${WUD_LOG##*/}" \
-    "${extra_args[@]}" >/dev/null 2>&1 || true
+  if [[ ${#extra_args[@]} -gt 0 ]]; then
+    $gwrk_cmd db record \
+      --feature "$FEATURE" \
+      --phase "$PHASE" \
+      --command "$cmd" \
+      --exit-code "$exit_code" \
+      --duration "$duration" \
+      --log "${WUD_LOG##*/}" \
+      "${extra_args[@]}" >/dev/null 2>&1 || true
+  else
+    $gwrk_cmd db record \
+      --feature "$FEATURE" \
+      --phase "$PHASE" \
+      --command "$cmd" \
+      --exit-code "$exit_code" \
+      --duration "$duration" \
+      --log "${WUD_LOG##*/}" >/dev/null 2>&1 || true
+  fi
 }
 
 # ──────────────────────────────────────────────────────────────────
@@ -194,9 +208,11 @@ run_implement() {
   log STAGE "Running agent-run.sh implement ${FEATURE} ${PHASE}"
   save_state "IMPLEMENTING" "$ITERATION"
 
-  local exit_code=0
-  if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" implement "$FEATURE" "$PHASE"; then
-    exit_code=$?
+  set +e
+  APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" implement "$FEATURE" "$PHASE"
+  local exit_code=$?
+  set -e
+  if [[ "$exit_code" -ne 0 ]]; then
     log ERROR "Implementation failed (exit $exit_code)"
   fi
 
@@ -219,9 +235,11 @@ run_code_review() {
   log STAGE "Running agent-run.sh review-code ${FEATURE} ${PHASE}"
   save_state "CODE_REVIEW" "$ITERATION"
 
-  local agent_exit=0
-  if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" review-code "$FEATURE" "$PHASE"; then
-    agent_exit=$?
+  set +e
+  APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" review-code "$FEATURE" "$PHASE"
+  local agent_exit=$?
+  set -e
+  if [[ "$agent_exit" -ne 0 ]]; then
     log ERROR "Code review agent failed (exit $agent_exit)"
   fi
 
@@ -253,9 +271,11 @@ run_uat_review() {
   log STAGE "Running agent-run.sh review-uat ${FEATURE} ${PHASE}"
   save_state "UAT_REVIEW" "$ITERATION"
 
-  local agent_exit=0
-  if ! APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" review-uat "$FEATURE" "$PHASE"; then
-    agent_exit=$?
+  set +e
+  APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" review-uat "$FEATURE" "$PHASE"
+  local agent_exit=$?
+  set -e
+  if [[ "$agent_exit" -ne 0 ]]; then
     log ERROR "UAT review agent failed (exit $agent_exit)"
   fi
 
@@ -415,9 +435,12 @@ if [[ "$STAGE" == "BRANCH_SETUP" ]]; then
   branch_start_time=$(date +%s)
   banner "BRANCH SETUP"
   log INFO "Ensuring feat/${FEATURE} branch..."
-  branch_exit_code=0
-  if ! "$WUD_BRANCH" "$FEATURE"; then
-    branch_exit_code=$?
+  set +e
+  "$WUD_BRANCH" "$FEATURE"
+  branch_exit_code=$?
+  set -e
+  
+  if [[ "$branch_exit_code" -ne 0 ]]; then
     log ERROR "Branch setup failed"
   fi
   branch_duration=$(( $(date +%s) - branch_start_time ))
@@ -437,7 +460,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
     if ! run_implement; then
       log ERROR "Implementation failed on iteration ${ITERATION}. Aborting."
       save_state "FAILED" "$ITERATION"
-      exit 1
+      STAGE="FAILED"
+      break
     fi
     STAGE="CODE_REVIEW"
   fi
@@ -455,7 +479,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
         save_state "CIRCUIT_BREAK" "$ITERATION"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after code review"
-        exit 1
+        STAGE="CIRCUIT_BREAK"
+        break
       fi
       STAGE="IMPLEMENTING"
       continue
@@ -475,7 +500,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
         save_state "CIRCUIT_BREAK" "$ITERATION"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after UAT review"
-        exit 1
+        STAGE="CIRCUIT_BREAK"
+        break
       fi
       STAGE="IMPLEMENTING"
       continue
@@ -496,7 +522,8 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
         save_state "CIRCUIT_BREAK" "$ITERATION"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after CI failure"
-        exit 1
+        STAGE="CIRCUIT_BREAK"
+        break
       fi
       STAGE="IMPLEMENTING"
       continue
