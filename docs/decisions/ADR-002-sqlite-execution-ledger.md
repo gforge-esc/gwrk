@@ -42,31 +42,24 @@ The system has since grown beyond task CRUD. The PRD now envisions:
 ### Storage Location
 
 ```
-~/.gwrk/gwrk.db          ← Global execution ledger (source of truth)
+~/.gwrk/gwrk.db          ← Global execution ledger (telemetry & metrics)
+specs/<feature>/.gwrk/tasks.json ← Local operational ledger (state & intent)
 ```
 
-**Why global, not per-project:**
-- The Agent Router needs cross-project data ("Claude is best for Rust across all my projects")
-- Compression trends need cross-project aggregation
-- The Slack App Home Tab shows all projects in one view
-- Per-project state is derived, not primary
+**The Division of Labor:**
+- **Git (`tasks.json`) is the operational source of truth.** Task state is fundamentally bound to the git commit hash. Agents working in air-gapped or remote VMs (like Codex Cloud) only need standard Git credentials to report progress. Task state mutations (`[x] completed`) are atomic with the code mutations that satisfy the task.
+- **SQLite (`gwrk.db`) is the analytical execution ledger.** It tracks cross-project execution history, attempt durations, gate flaps, agent routing preferences, and compression indicators.
 
-### Branch Scoping (Modified)
+### Branch Scoping
 
-ADR-001 argued that `.gwrk/tasks.json` follows the branch automatically. With a global DB, branch scoping works differently:
+ADR-001 correctly argued that `.gwrk/tasks.json` follows the branch automatically. 
+- When a developer switches branches, their task board time-travels perfectly to match their code.
+- `gwrk tasks list` reads solely from the local JSON file.
+- `gwrk tasks done` mutates the local JSON file and commits it.
 
-- Tasks are **tagged with feature + phase + branch** in the DB
-- When ZFG dispatches WUD to a phase branch, gwrk writes a **context export** (`tasks.json`) to the branch for agent consumption
-- The agent reads the export. The DB is the source of truth.
-- `gwrk tasks done` updates the DB, then regenerates the export.
+### The Learning Loop Extraction
 
-### Generated Export
-
-```
-specs/<feature>/.gwrk/
-  ├── tasks.json        ← Generated from DB (for git diffs + agent readability)
-  └── gates/            ← Hard Gate shell scripts (unchanged)
-```
+When an agent pushes a completed task or phase, the Build Server (or the agent itself) writes the execution telemetry into SQLite. This data powers the Agent Router and Compression Engine.
 
 ---
 
@@ -80,31 +73,6 @@ CREATE TABLE projects (
   github_repo TEXT,
   slack_channel TEXT,
   created_at  TEXT NOT NULL
-);
-
-CREATE TABLE tasks (
-  id            TEXT NOT NULL,
-  feature_id    TEXT NOT NULL,
-  phase_id      TEXT NOT NULL,
-  project_id    TEXT REFERENCES projects(id),
-  title         TEXT NOT NULL,
-  description   TEXT,
-  status        TEXT NOT NULL DEFAULT 'open',
-  sp            INTEGER,
-  created_at    TEXT NOT NULL,
-  completed_at  TEXT,
-  gate_script   TEXT,
-  PRIMARY KEY (id, feature_id)
-);
-
-CREATE TABLE task_types (
-  task_id         TEXT NOT NULL,
-  feature_id      TEXT NOT NULL,
-  language        TEXT,
-  estimated_files INTEGER,
-  contract_count  INTEGER,
-  gate_count      INTEGER,
-  FOREIGN KEY (task_id, feature_id) REFERENCES tasks(id, feature_id)
 );
 
 CREATE TABLE runs (
@@ -185,7 +153,7 @@ CREATE TABLE history (
 
 | Component | Change |
 |---|---|
-| `src/utils/state.ts` (not yet built) | Reads/writes SQLite instead of JSON |
+| `src/utils/state.ts` (built) | **No change required.** Continues to read/write JSON. |
 | `src/utils/history.ts` (not yet built) | Inserts into `history` table |
 | `src/commands/init.ts` (built) | Also registers project in `~/.gwrk/gwrk.db` |
 | `scripts/dev/agent-run.sh` (built) | Gains: writes run metadata to DB after execution |

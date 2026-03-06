@@ -45,7 +45,7 @@
 │                                                                       │
 │  ┌──────────────────────────────────────────────────────────────────┐ │
 │  │ SQLite Execution Ledger (~/.gwrk/gwrk.db)                       │ │
-│  │ tasks · runs · task_types · compression · history · projects    │ │
+│  │ projects · runs · compression · history                         │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────────┘
         │              │               │
@@ -98,7 +98,7 @@ gwrk/
 │   └── NNN-feature-name/
 │       ├── spec.md
 │       ├── plan.md
-│       ├── .gwrk/tasks.json       # Generated export from SQLite (for git diffs)
+│       ├── .gwrk/tasks.json       # Source of truth for task state
 │       ├── contracts/             # Method-level interface contracts
 │       ├── gates/                 # Hard Gate shell scripts (T0xx-gate.sh)
 │       └── gap-analysis.md        # Code audit findings
@@ -138,7 +138,7 @@ gwrk/
 │   │   └── router.ts              # Agent backend selection (learns from DB)
 │   └── utils/                     # Shared utilities
 │       ├── exec.ts                # Shell command execution
-│       ├── state.ts               # Task read/write via SQLite
+│       ├── state.ts               # Task read/write via local JSON
 │       ├── history.ts             # History inserts via SQLite
 │       ├── parser.ts              # Markdown → structured data
 │       └── config.ts              # .gwrkrc.json loader (Zod, fail-fast)
