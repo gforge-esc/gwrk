@@ -39,11 +39,12 @@ describe("work-until-done.sh execution flow", () => {
             WUD_CI_WAIT_BIN: mockWrapper("wud-ci-wait.sh", "exit 0"),
             PATH: `${MOCKS_DIR}:${process.env.PATH}`,
             MAX_ITERATIONS: "1",
+            RUNS_DIR: path.join(ROOT, ".test-runs-e2e"),
         };
     });
 
     const cleanupState = () => {
-        fs.rmSync(path.join(ROOT, ".runs"), { recursive: true, force: true });
+        fs.rmSync(path.join(ROOT, ".test-runs-e2e"), { recursive: true, force: true });
     };
 
     beforeAll(() => {

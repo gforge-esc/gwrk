@@ -31,7 +31,7 @@ WUD_VERDICT="${WUD_VERDICT_BIN:-$SCRIPT_DIR/wud-verdict.sh}"
 WUD_BRANCH="${WUD_BRANCH_BIN:-$SCRIPT_DIR/wud-branch.sh}"
 WUD_CI_WAIT="${WUD_CI_WAIT_BIN:-$SCRIPT_DIR/wud-ci-wait.sh}"
 
-RUNS_DIR="$REPO_ROOT/.runs"
+RUNS_DIR="${RUNS_DIR:-$REPO_ROOT/.runs}"
 
 MAX_ITERATIONS="${MAX_ITERATIONS:-3}"
 CI_TIMEOUT="${CI_TIMEOUT:-30}"
@@ -148,15 +148,17 @@ log() {
     ERROR) color="$RED" ;;
     STAGE) color="$MAGENTA" ;;
   esac
-  printf "${DIM}%s${RESET} ${color}[%s]${RESET} %s\n" "$ts" "$level" "$*" | tee -a "$WUD_LOG"
+  mkdir -p "$RUNS_DIR"
+  printf "${DIM}%s${RESET} ${color}[%s]${RESET} %s\n" "$ts" "$level" "$*" | tee -a "$WUD_LOG" || true
 }
 
 banner() {
-  echo "" | tee -a "$WUD_LOG"
-  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$WUD_LOG"
-  echo -e "${MAGENTA}  $1${RESET}" | tee -a "$WUD_LOG"
-  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$WUD_LOG"
-  echo "" | tee -a "$WUD_LOG"
+  mkdir -p "$RUNS_DIR"
+  echo "" | tee -a "$WUD_LOG" || true
+  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$WUD_LOG" || true
+  echo -e "${MAGENTA}  $1${RESET}" | tee -a "$WUD_LOG" || true
+  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$WUD_LOG" || true
+  echo "" | tee -a "$WUD_LOG" || true
 }
 
 # ──────────────────────────────────────────────────────────────────

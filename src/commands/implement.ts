@@ -10,12 +10,7 @@ import { banner, success, fail, dryRun, color } from "../utils/format.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 
-export const implementCommand = new Command("implement")
-  .description("Implement a feature or fix")
-  .argument("<feature>", "Feature ID")
-  .argument("<phase>", "Phase number")
-  .option("--dry-run", "Dry run mode")
-  .action(async (feature: string, phase: string, opts: { dryRun?: boolean }) => {
+export const implementAction = async (feature: string, phase: string, opts: { dryRun?: boolean }) => {
     const cwd = process.cwd();
     const specDir = path.join(cwd, "specs", feature);
     const scriptPath = path.join(cwd, "scripts/dev/agent-run.sh");
@@ -112,4 +107,11 @@ export const implementCommand = new Command("implement")
       fail("implement", exitCode, durationS, runId);
       process.exit(exitCode);
     }
-  });
+};
+
+export const implementCommand = new Command("implement")
+  .description("Implement a feature or fix")
+  .argument("<feature>", "Feature ID")
+  .argument("<phase>", "Phase number")
+  .option("--dry-run", "Dry run mode")
+  .action(implementAction);

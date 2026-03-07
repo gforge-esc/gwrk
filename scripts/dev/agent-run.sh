@@ -21,7 +21,7 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-RUNS_DIR="$REPO_ROOT/.runs"
+RUNS_DIR="${RUNS_DIR:-$REPO_ROOT/.runs}"
 
 # ANSI
 BOLD=$'\033[1m'
@@ -328,11 +328,18 @@ END_TIME=$(date +%s)
 TOTAL=$(( END_TIME - START_TIME ))
 TOTAL_MINS=$(( TOTAL / 60 ))
 TOTAL_SECS=$(( TOTAL % 60 ))
-LOG_SIZE=$(wc -c < "$LOG_FILE" | tr -d ' ')
-LOG_LINES=$(wc -l < "$LOG_FILE" | tr -d ' ')
+# Safely calculate log size, recreating directory if a test wiped it mid-flight
+mkdir -p "$RUNS_DIR"
+if [[ -f "$LOG_FILE" ]]; then
+  LOG_SIZE=$(wc -c < "$LOG_FILE" | tr -d ' ')
+  LOG_LINES=$(wc -l < "$LOG_FILE" | tr -d ' ')
+else
+  LOG_SIZE=0
+  LOG_LINES=0
+fi
 
 # Append footer to log
-cat >> "$LOG_FILE" << EOF
+cat >> "$LOG_FILE" << EOF || true
 
 # [END] $(date +%Y-%m-%dT%H:%M:%S%z)
 # Duration  : ${TOTAL_MINS}m ${TOTAL_SECS}s

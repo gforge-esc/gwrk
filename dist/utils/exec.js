@@ -51,7 +51,7 @@ export function execCommand(command, args, stdin, opts) {
                     return;
                 }
                 resolve({
-                    exitCode: err.status ?? 1,
+                    exitCode: typeof err.code === "number" ? err.code : (err.status ?? 1),
                     stdout: stdout.toString(),
                     stderr: stderr.toString(),
                 });

@@ -18,24 +18,58 @@ async function runCli(args: string): Promise<{ stdout: string; stderr: string; e
 }
 
 describe("CLI E2E Integration (UI / Command Surface)", () => {
-  it("shows Foxtrot Charlie pillar hierarchy on --help", async () => {
+  it("shows exactly the settled hierarchy on --help (US-018)", async () => {
     const { stdout, exitCode } = await runCli("--help");
     expect(exitCode).toBe(0);
     
-    // Foxtrot Charlie pillars
-    expect(stdout).toMatch(/define/);
-    expect(stdout).toMatch(/ship/);
-    expect(stdout).toMatch(/measure/);
+    // Foxtrot Charlie pillars must be present
+    expect(stdout).toMatch(/^\s+define\s+/m);
+    expect(stdout).toMatch(/^\s+ship\s+/m);
+    expect(stdout).toMatch(/^\s+measure\s+/m);
 
-    // Operational queries
-    expect(stdout).toMatch(/tasks/);
-    expect(stdout).toMatch(/db/);
+    // Core operational commands must be present
+    expect(stdout).toMatch(/^\s+init\s+/m);
+    expect(stdout).toMatch(/^\s+tasks\s+/m);
+    expect(stdout).toMatch(/^\s+db\s+/m);
 
-    // Eliminated — must NOT appear as top-level
-    expect(stdout).not.toMatch(/^\s+run\b/m);
-    expect(stdout).not.toMatch(/^\s+metrics\b/m);
-    expect(stdout).not.toMatch(/^\s+implement\b/m);
-    expect(stdout).not.toMatch(/^\s+wud\b/m);
+    // Eliminated / Hidden — must NOT appear as top-level in help
+    const hidden = [
+      "run", "metrics", "implement", "wud", "specify", "plan", "analyze", 
+      "effort", "pulse", "compression", "server", "status"
+    ];
+    for (const cmd of hidden) {
+      const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
+      expect(stdout, `Command ${cmd} should not be in top-level help`).not.toMatch(regex);
+    }
+  });
+
+  it("gwrk define --help shows settled hierarchy (US-018)", async () => {
+    const { stdout, exitCode } = await runCli("define --help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^\s+spec\b/m);
+    expect(stdout).toMatch(/^\s+plan\b/m);
+    expect(stdout).toMatch(/^\s+tasks\b/m);
+  });
+
+  it("gwrk ship --help shows settled hierarchy (US-018)", async () => {
+    const { stdout, exitCode } = await runCli("ship --help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^\s+done\b/m);
+  });
+
+  it("gwrk measure --help shows settled hierarchy (US-018)", async () => {
+    const { stdout, exitCode } = await runCli("measure --help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^\s+pulse\b/m);
+    expect(stdout).toMatch(/^\s+effort\b/m);
+    expect(stdout).toMatch(/^\s+compression\b/m);
+  });
+
+  it("gwrk db --help shows settled hierarchy (US-018)", async () => {
+    const { stdout, exitCode } = await runCli("db --help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^\s+runs\b/m);
+    expect(stdout).toMatch(/^\s+stats\b/m);
   });
 
   it("fails gracefully with correct error when spec is a Stub during analysis", async () => {

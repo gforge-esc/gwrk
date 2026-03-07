@@ -4,15 +4,20 @@ import { startRun, finishRun } from "../db/runs.js";
 import { run } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, success, fail, dryRun as dryRunFmt } from "../utils/format.js";
+import { implementAction } from "./implement.js";
 /**
  * gwrk ship — The ZFG/WUD Pillar (Throughput)
  *
  * Everything that creates throughput — implementing and completing work autonomously.
- *
- *   gwrk ship <feature> <phase>      Work Until Done (implement→review→PR loop)
  */
 export const shipCommand = new Command("ship")
     .description("Ship: autonomous implement→review→PR loop (ZFG/WUD)")
+    .argument("<feature>", "Feature ID")
+    .argument("<phase>", "Phase number")
+    .option("--dry-run", "Dry run mode")
+    .action(implementAction);
+shipCommand.command("done")
+    .description("Work Until Done (implement→review→PR loop)")
     .argument("<feature>", "Feature ID")
     .argument("<phase>", "Phase number")
     .option("--dry-run", "Dry run mode")
@@ -29,11 +34,11 @@ export const shipCommand = new Command("ship")
     const runId = startRun({
         feature_id: feature,
         phase_id: `phase-${phase.padStart(2, "0")}`,
-        command: "ship",
+        command: "ship done",
         agent_backend: backend,
         workflow: "work-until-done",
     });
-    banner("ship", {
+    banner("ship done", {
         Feature: feature,
         Phase: phase,
         Agent: backend,
@@ -53,13 +58,13 @@ export const shipCommand = new Command("ship")
         });
         const durationS = Math.round((Date.now() - startTime) / 1000);
         finishRun(runId, { exit_code: 0, duration_s: durationS });
-        success("ship", durationS, runId);
+        success("ship done", durationS, runId);
     }
     catch (err) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
         const exitCode = err instanceof Error && "code" in err ? err.code : 1;
         finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-        fail("ship", exitCode, durationS, runId);
+        fail("ship done", exitCode, durationS, runId);
         process.exit(exitCode);
     }
 });

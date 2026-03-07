@@ -33,7 +33,7 @@ program
         if (cmds.length > 0) {
             // Foxtrot Charlie pillars
             const pillars = ["define", "ship", "measure"];
-            const ops = ["new", "init", "tasks", "db", "server", "status"];
+            const ops = ["init", "tasks", "db"];
             out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
             for (const name of pillars) {
                 const sub = cmds.find(c => c.name() === name);
