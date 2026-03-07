@@ -310,8 +310,9 @@
           "id": "T035",
           "title": "Implement src/commands/run.ts",
           "description": "DELETE: Dead `run` group — commands moved to `define`",
-          "status": "open",
-          "gateScript": "gates/T035-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T035-gate.sh",
+          "completedAt": "2026-03-07T12:00:00Z"
         },
         {
           "id": "T036",
