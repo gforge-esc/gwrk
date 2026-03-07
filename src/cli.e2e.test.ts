@@ -22,6 +22,11 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     const { stdout, exitCode } = await runCli("--help");
     expect(exitCode).toBe(0);
     
+    // Branding and Headers
+    expect(stdout).toMatch(/🦩 gwrk/);
+    expect(stdout).toMatch(/Foxtrot Charlie/);
+    expect(stdout).toMatch(/Operations/);
+
     // Foxtrot Charlie pillars must be present
     expect(stdout).toMatch(/^\s+define\s+/m);
     expect(stdout).toMatch(/^\s+ship\s+/m);
@@ -35,7 +40,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     // Eliminated / Hidden — must NOT appear as top-level in help
     const hidden = [
       "run", "metrics", "implement", "wud", "specify", "plan", "analyze", 
-      "effort", "pulse", "compression", "server", "status"
+      "effort", "pulse", "compression", "server", "status", "new", "record"
     ];
     for (const cmd of hidden) {
       const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
@@ -49,12 +54,26 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).toMatch(/^\s+spec\b/m);
     expect(stdout).toMatch(/^\s+plan\b/m);
     expect(stdout).toMatch(/^\s+tasks\b/m);
+    
+    // No other subcommands
+    const hidden = ["analyze", "specify", "generate", "implement", "wud"];
+    for (const cmd of hidden) {
+      const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
+      expect(stdout).not.toMatch(regex);
+    }
   });
 
   it("gwrk ship --help shows settled hierarchy (US-018)", async () => {
     const { stdout, exitCode } = await runCli("ship --help");
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^\s+done\b/m);
+
+    // No other subcommands
+    const hidden = ["implement", "wud", "run", "start"];
+    for (const cmd of hidden) {
+      const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
+      expect(stdout).not.toMatch(regex);
+    }
   });
 
   it("gwrk measure --help shows settled hierarchy (US-018)", async () => {
@@ -63,6 +82,13 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).toMatch(/^\s+pulse\b/m);
     expect(stdout).toMatch(/^\s+effort\b/m);
     expect(stdout).toMatch(/^\s+compression\b/m);
+
+    // No other subcommands
+    const hidden = ["metrics", "status", "runs", "stats"];
+    for (const cmd of hidden) {
+      const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
+      expect(stdout).not.toMatch(regex);
+    }
   });
 
   it("gwrk db --help shows settled hierarchy (US-018)", async () => {
@@ -70,6 +96,17 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^\s+runs\b/m);
     expect(stdout).toMatch(/^\s+stats\b/m);
+    
+    // record should be hidden
+    expect(stdout).not.toMatch(/^\s+record\b/m);
+  });
+
+  it("gwrk tasks --help shows settled hierarchy (US-005, US-006)", async () => {
+    const { stdout, exitCode } = await runCli("tasks --help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/^\s+list\b/m);
+    expect(stdout).toMatch(/^\s+next\b/m);
+    expect(stdout).toMatch(/^\s+done\b/m);
   });
 
   it("fails gracefully with correct error when spec is a Stub during analysis", async () => {

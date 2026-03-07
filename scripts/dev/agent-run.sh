@@ -246,9 +246,18 @@ echo ""
 # ──────────────────────────────────────────────────────────────────
 # Dry run check
 # ──────────────────────────────────────────────────────────────────
+AGENT_SLUG="${AGENT_BACKEND:-gemini}"
+case "$AGENT_SLUG" in
+  "gemini")       AGENT_NAME="Gemini" ;;
+  "claude")       AGENT_NAME="Claude" ;;
+  "codex")        AGENT_NAME="Codex" ;;
+  "codex-cloud")  AGENT_NAME="Codex Cloud" ;;
+  *)              AGENT_NAME="$AGENT_SLUG" ;;
+esac
+
 if [[ "${DRY_RUN:-false}" == "true" ]]; then
   echo -e "${YELLOW}[DRY RUN]${RESET} Would execute:"
-  echo "  gemini -p \"${COMMAND}\" --approval-mode ${MODE}"
+  echo "  $AGENT_SLUG -p \"${COMMAND}\" --approval-mode ${MODE}"
   echo "  Log: ${LOG_FILE}"
   exit 0
 fi
@@ -266,13 +275,13 @@ strip_ansi() {
 START_TIME=$(date +%s)
 echo "# [START] $(date +%Y-%m-%dT%H:%M:%S%z)" >> "$LOG_FILE"
 
-echo -e "${GREEN}▶${RESET} Starting Gemini agent...  ${DIM}(log: ${LOG_FILE##*/})${RESET}"
+echo -e "${GREEN}▶${RESET} Starting ${AGENT_NAME} agent...  ${DIM}(log: ${LOG_FILE##*/})${RESET}"
 echo ""
 
 cd "$REPO_ROOT"
 
-# Run gemini, tee full output to log, truncate for terminal
-gemini -p "${COMMAND}" --approval-mode "${MODE}" 2>&1 \
+# Run the dynamic agent, tee full output to log, truncate for terminal
+"$AGENT_SLUG" -p "${COMMAND}" --approval-mode "${MODE}" 2>&1 \
   | tee -a "$LOG_FILE" \
   | {
     SQUELCH=0        # 0 = normal, 1 = inside 429 error block

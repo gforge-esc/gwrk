@@ -16,6 +16,7 @@ export const shipCommand = new Command("ship")
   .argument("[feature]", "Feature ID")
   .argument("[phase]", "Phase number")
   .option("--dry-run", "Dry run mode")
+  .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
   .action(async (feature, phase, opts) => {
     if (!feature || !phase) {
       shipCommand.help();
@@ -30,13 +31,14 @@ shipCommand.command("done")
   .argument("<phase>", "Phase number")
   .option("--dry-run-wud", "Dry run mode")
   .option("--max-iterations <n>", "Max iterations", "3")
+  .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
   .action(async (feature: string, phase: string, options: any, cmd: Command) => {
     const opts = cmd.opts();
     const cwd = process.cwd();
     const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
 
     const config = loadConfig(cwd);
-    const backend = config.agents.implement;
+    const backend = opts.agent || options.agent || config.agents.implement;
 
     const isDryRun = opts.dryRunWud || options.dryRunWud;
 
@@ -70,6 +72,7 @@ shipCommand.command("done")
           ...process.env,
           APPROVAL_MODE: "yolo",
           MAX_ITERATIONS: opts.maxIterations,
+          AGENT_BACKEND: backend,
         },
         stdio: "inherit",
       });

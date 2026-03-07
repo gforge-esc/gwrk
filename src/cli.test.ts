@@ -29,7 +29,7 @@ describe('FR-001 / FR-004: CLI Command Registration', () => {
     expect(commandNames).toContain('db');
     
     // Eliminated groups — must NOT exist as top-level
-    const eliminated = ['run', 'metrics', 'implement', 'wud', 'pulse', 'specify', 'plan', 'analyze'];
+    const eliminated = ['run', 'metrics', 'implement', 'wud', 'pulse', 'specify', 'plan', 'analyze', 'server', 'status', 'new'];
     for (const cmd of eliminated) {
       expect(commandNames).not.toContain(cmd);
     }

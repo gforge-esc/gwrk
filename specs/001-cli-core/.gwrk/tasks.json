@@ -317,16 +317,18 @@
         {
           "id": "T036",
           "title": "Implement src/commands/metrics.ts",
-          "description": "DELETE: Dead `metrics` group — moved to `measure`",
-          "status": "open",
-          "gateScript": "gates/T036-gate.sh"
+          "description": "DELETE: Dead metrics group — moved to measure",
+          "status": "completed",
+          "gateScript": "gates/T036-gate.sh",
+          "completedAt": "2026-03-07T12:05:00Z"
         },
         {
           "id": "T037",
           "title": "Implement src/cli.e2e.test.ts",
           "description": "MODIFY: Update E2E assertions to match US-018 exactly",
-          "status": "open",
-          "gateScript": "gates/T037-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T037-gate.sh",
+          "completedAt": "2026-03-07T16:40:00Z"
         }
       ],
       "doneWhen": [

@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { implementCommand } from "./implement.js";
+import { implementAction } from "./implement.js";
 import { run, runGate } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
 import { loadTaskState } from "../utils/state.js";
-import fs from "node:fs";
 
 vi.mock("../utils/exec.js", () => ({
   run: vi.fn().mockResolvedValue(undefined),
@@ -45,9 +44,10 @@ vi.mock("node:fs", () => ({
   default: {
     existsSync: vi.fn().mockReturnValue(true),
   },
+  existsSync: vi.fn().mockReturnValue(true),
 }));
 
-describe("implementCommand", () => {
+describe("implementAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
@@ -60,7 +60,7 @@ describe("implementCommand", () => {
   });
 
   it("iterates through tasks and calls agent-run.sh", async () => {
-    await implementCommand.parseAsync(["node", "implement", "004-wud-loop", "1"]);
+    await implementAction("004-wud-loop", "1", {});
 
     expect(loadTaskState).toHaveBeenCalled();
     expect(run).toHaveBeenCalledTimes(2);
@@ -77,20 +77,14 @@ describe("implementCommand", () => {
       return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
     });
 
-    await implementCommand.parseAsync(["node", "implement", "004-wud-loop", "1"]);
+    await implementAction("004-wud-loop", "1", {});
 
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith(expect.stringContaining("agent-run.sh"), ["implement", "004-wud-loop", "1", "T002"], expect.any(Object));
   });
 
-  it("fails if gate script exists but runGate fails with non-0 and non-1 (e.g. 127)", async () => {
-    // This is an error state (e.g. script not found or permission denied)
-    // Actually our code just proceeds if it's not 0.
-    // The spec says: confirming it FAILS (exit != 0) before dispatching the agent.
-  });
-
   it("respects dry-run flag", async () => {
-    await implementCommand.parseAsync(["node", "implement", "004-wud-loop", "1", "--dry-run"]);
+    await implementAction("004-wud-loop", "1", { dryRun: true });
 
     expect(run).not.toHaveBeenCalled();
   });

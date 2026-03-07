@@ -2,14 +2,11 @@
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { initCommand } from "./commands/init.js";
-import { newCommand } from "./commands/new.js";
 import { defineCommand } from "./commands/define.js";
 import { shipCommand } from "./commands/ship.js";
 import { measureCommand } from "./commands/measure.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { dbCommand } from "./commands/db.js";
-import { serverCommand } from "./commands/server.js";
-import { statusCommand } from "./commands/status.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
@@ -69,7 +66,6 @@ program
     },
 });
 program.addCommand(initCommand);
-program.addCommand(newCommand);
 // The Foxtrot Charlie Pillars
 program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze (DUS)
 program.addCommand(shipCommand); // Ship: implement phases (ZFG/WUD)
@@ -77,10 +73,8 @@ program.addCommand(measureCommand); // Measure: pulse, effort, compression
 // Operational queries
 program.addCommand(tasksCommand);
 program.addCommand(dbCommand);
-program.addCommand(serverCommand);
-program.addCommand(statusCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
-    if (actionCommand.name() !== "init" && actionCommand.name() !== "new") {
+    if (actionCommand.name() !== "init") {
         // This will process.exit(1) if config is missing or invalid
         loadConfig(process.cwd());
     }
