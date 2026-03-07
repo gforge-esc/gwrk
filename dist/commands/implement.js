@@ -47,6 +47,19 @@ export const implementAction = async (feature, phase, opts) => {
                 const result = runGate(gatePath);
                 if (result.exitCode === 0) {
                     console.log(`${YELLOW}⚠${RESET} ${task.id} pre-flight PASS — gate already satisfied, skipping`);
+                    const currentState = loadTaskState(specDir);
+                    const currentTask = currentState.phases.flatMap(p => p.tasks).find(t => t.id === task.id);
+                    if (currentTask && currentTask.status !== "completed") {
+                        const newState = markTaskComplete(currentState, task.id);
+                        saveTaskState(specDir, newState);
+                        appendHistory({
+                            timestamp: new Date().toISOString(),
+                            featureId: feature,
+                            taskId: task.id,
+                            fromStatus: task.status,
+                            toStatus: "completed",
+                        });
+                    }
                     continue;
                 }
             }
@@ -67,15 +80,18 @@ export const implementAction = async (feature, phase, opts) => {
                 if (postResult.exitCode === 0) {
                     console.log(`${GREEN}✓${RESET} ${task.id} gate passed. Marking completed.`);
                     const currentState = loadTaskState(specDir);
-                    const newState = markTaskComplete(currentState, task.id);
-                    saveTaskState(specDir, newState);
-                    appendHistory({
-                        timestamp: new Date().toISOString(),
-                        featureId: feature,
-                        taskId: task.id,
-                        fromStatus: "open",
-                        toStatus: "completed",
-                    });
+                    const currentTask = currentState.phases.flatMap(p => p.tasks).find(t => t.id === task.id);
+                    if (currentTask && currentTask.status !== "completed") {
+                        const newState = markTaskComplete(currentState, task.id);
+                        saveTaskState(specDir, newState);
+                        appendHistory({
+                            timestamp: new Date().toISOString(),
+                            featureId: feature,
+                            taskId: task.id,
+                            fromStatus: task.status,
+                            toStatus: "completed",
+                        });
+                    }
                 }
                 else {
                     console.log(`${YELLOW}⚠${RESET} ${task.id} gate failed after implementation.`);
