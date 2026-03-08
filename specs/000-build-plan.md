@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-05 (v2)
+> **Status:** Authoritative · **Date:** 2026-03-08 (v3)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger)
 
@@ -116,11 +116,11 @@ gwrk tasks done <feature> <id> # Gate-enforced state transition
 
 ### Phase 2 — Build Server
 
-Local persistent daemon that serves as the control plane.
+Local persistent daemon that serves as the control plane. Includes macOS sleep/wake resilience, network connectivity awareness, and component-level health reporting.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `002-build-server` | Fastify daemon, dispatch queue, Docker sandbox manager | `gwrk server start` creates sandboxes |
+| `002-build-server` | Fastify daemon, dispatch queue, Docker sandbox manager, sleep/wake lifecycle, network monitor, rich health endpoint | `gwrk server start` creates sandboxes; dispatch queue pauses on sleep/offline |
 
 **Dependencies:** Phase 1
 **Agent:** Claude Code (long-context server architecture)
@@ -335,6 +335,8 @@ gwrk tunnel stop
 - Already mobile
 - One less thing to build
 
+> **Tunnel resilience note:** The tunnel process manager (`gwrk tunnel start/stop`) ships in Phase 11 but depends on Phase 2's sleep/wake event bus (`server:wake` + `network:up` → tunnel auto-restart). This is a consumer relationship, not a new dependency edge — Phase 11 already depends on Phase 2 transitively via Phase 3.
+
 ---
 
 ## Wave Strategy
@@ -355,7 +357,7 @@ gwrk tunnel stop
 |---|---|---|---|
 | P0 (Extraction) | 3 | PE | Done |
 | P1 (CLI Core) | 21 | TS | 105h |
-| P2 (Build Server) | 13 | TS | 65h |
+| P2 (Build Server) | 18 | TS | 90h |
 | P3 (Slack) | 13 | TS | 65h |
 | P4 (WUD Loop) | 8 | TS | 40h |
 | P5 (Parallel Dispatch) | 8 | TS | 40h |
@@ -365,7 +367,7 @@ gwrk tunnel stop
 | P9 (Agent-DUT) | 8 | TS | 40h |
 | P10 (Integration) | 5 | TS | 25h |
 | P11 (App Home Tab) | 5 | TS | 25h |
-| **Total** | **105 SP** | | **510h** |
+| **Total** | **110 SP** | | **535h** |
 
 **Changes from v1:** P1 increased (13→21 SP: gwrk new, gwrk init, multi-CLI, SQLite). P3 increased (8→13 SP: Slack is richer than Telegram). P7 increased (5→8 SP: leading indicators). P11 decreased (8→5 SP: App Home Tab is simpler than SPA).
 
@@ -385,5 +387,6 @@ None for P0→P1→P2 critical path. Remaining questions:
 
 ## Changelog
 
+- **2026-03-08 (v3):** Added resilience requirements to Phase 2 (Build Server). New user scenarios: US-011 (macOS sleep/wake), US-012 (network connectivity), US-013 (rich health). Seven new FRs (FR-015–FR-021). New Phase 6 in 002-build-server plan (Resilience & Connectivity). Phase 11 tunnel dependency on Phase 2 event bus clarified. P2 SP: 13→18 (+5 SP for resilience phase). Total: 105→110 SP.
 - **2026-03-05 (v2):** Major update per strategic vision v2. Phase 3: Telegram → Slack (Socket Mode + Bolt SDK). Phase 11: Glass Dashboard → App Home Tab. P1 expanded (gwrk new/init, multi-CLI provisioning, SQLite). SQLite execution ledger (ADR-002) replaces flat JSON. P7 adds leading compression indicators. P9 DUT moves to Slack, aligns to Foxtrot Charlie. Telegram cut from MVP. Updated SP estimates. Total: 92→105 SP.
 - 2026-02-27: Added Spec 011 (Glass Dashboard). Wave 4. Dependencies: [P2, P3]. Impact: +8 SP.

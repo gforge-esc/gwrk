@@ -1,14 +1,14 @@
 ---
 type: specification
 feature: 002-build-server
-last_modified: "2026-03-06T12:00:00Z"
+last_modified: "2026-03-08T18:40:00Z"
 ---
 
 # Feature Specification: 002 Build Server
 
 **Feature Branch**: `002-build-server`
 **Created**: 2026-02-27
-**Revised**: 2026-03-06
+**Revised**: 2026-03-08
 **Status**: Active
 **Input**: Local persistent Fastify daemon that serves as the control plane — dispatch queue, Docker sandbox manager, Git branch lifecycle, system resource monitoring, and SQLite execution ledger (ADR-002) integration.
 
@@ -156,6 +156,57 @@ As the build server, I want to monitor CPU, memory, and disk usage and pause que
 2. **Given** `parallelism.local.minDiskGb` is set to 10 and free disk is below 10 GB, **When** a clone is requested, **Then**:
    - `curl -s http://localhost:18790/api/dispatch -X POST -d '{}' 2>&1 | grep -q 'Insufficient disk space'` exits 0
 
+### US-011 - Survive macOS Sleep/Wake (Priority: P0)
+As the build server daemon, I want to detect macOS sleep and wake events so that dispatches pause during sleep, sandboxes freeze, and the queue resumes only after all downstream systems (Docker, network) are verified healthy on wake.
+
+**Implements**: FR-015, FR-016, FR-019
+
+**Independent Test**: Simulate a sleep/wake cycle (heartbeat drift injection) and verify dispatch queue pauses and resumes.
+
+**Acceptance Scenarios**:
+1. **Given** the daemon is running with active dispatches, **When** the system sleeps (heartbeat drift > `3 × interval`), **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `sleeping`
+   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `true`
+   - All active sandbox containers are in `paused` state (`docker inspect --format '{{.State.Paused}}' <id>` outputs `true`)
+2. **Given** the daemon has detected sleep, **When** the system wakes and network is available, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `ready`
+   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `false`
+   - Previously paused sandbox containers are in `running` state
+3. **Given** the system wakes but network is unavailable, **When** the wake protocol runs, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `degraded`
+   - Dispatch queue remains paused
+
+### US-012 - Network Connectivity Awareness (Priority: P0)
+As the build server daemon, I want to monitor network interface state so that dispatches pause when the machine goes offline of the network and resume when connectivity is restored.
+
+**Implements**: FR-017, FR-018
+
+**Independent Test**: Simulate network loss (mock interface watcher) and verify dispatch queue pauses.
+
+**Acceptance Scenarios**:
+1. **Given** the daemon is running and network is available, **When** network connectivity is lost, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.network.status'` outputs `offline`
+   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `true`
+2. **Given** network is offline, **When** connectivity is restored, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.network.status'` outputs `online`
+   - Dispatch queue resumes after health re-check
+
+### US-013 - Rich Health Check (Priority: P1)
+As a Principal Engineer, I want the `/health` endpoint to report component-level readiness (server, Docker, network) so that `gwrk status` shows the real operational state, not just "daemon is listening."
+
+**Implements**: FR-020, FR-021
+
+**Independent Test**: Query `/health` and verify it includes component-level status fields.
+
+**Acceptance Scenarios**:
+1. **Given** the daemon is running with Docker available and network online, **When** `/health` is queried, **Then**:
+   - `curl -s http://localhost:18790/health | jq -e '.components.server'` outputs `ok`
+   - `curl -s http://localhost:18790/health | jq -e '.components.docker'` outputs `ok`
+   - `curl -s http://localhost:18790/health | jq -e '.components.network'` outputs `ok`
+2. **Given** Docker daemon is unreachable, **When** `/health` is queried, **Then**:
+   - `curl -s http://localhost:18790/health | jq -r '.components.docker'` outputs `unavailable`
+   - `curl -s -o /dev/null -w '%{http_code}' http://localhost:18790/health` outputs `200` (degraded, not dead)
+
 ---
 
 ## 3. Roles, Scopes & Permissions
@@ -180,6 +231,13 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-012**: The project MUST include a `Dockerfile.sandbox` that builds `gwrk-sandbox:bookworm-slim` with Node.js, Git, `gh` CLI, and configured agent CLIs. (Implements: US-008)
 - **FR-013**: The dispatch engine MUST compile agent context by reading `.agent/rules/*.md`, the persona file, `specs/<feature>/spec.md`, `specs/<feature>/plan.md`, and `specs/<feature>/.gwrk/tasks.json`. (Implements: US-009)
 - **FR-014**: The daemon MUST monitor system resources (CPU, memory, disk) and throttle queued dispatches when limits from `.gwrkrc.json` are exceeded. (Implements: US-010)
+- **FR-015**: The daemon MUST detect macOS sleep/wake via wall-clock heartbeat drift. If elapsed time between heartbeat ticks exceeds `3 × heartbeatInterval`, the daemon MUST emit a `server:sleep` event, pause the dispatch queue, and call `docker pause` on all active gwrk sandbox containers. (Implements: US-011)
+- **FR-016**: On wake detection, the daemon MUST execute a Graceful Reconnect Protocol: (1) re-sample system resources, (2) verify Docker daemon reachability, (3) verify network connectivity, (4) emit `server:ready` only when all checks pass. The dispatch queue MUST NOT resume and sandboxes MUST NOT unpause until `server:ready` is emitted. (Implements: US-011)
+- **FR-017**: The daemon MUST monitor network interface state (via `os.networkInterfaces()` polling or platform-appropriate watcher) and emit `network:down` / `network:up` events. (Implements: US-012)
+- **FR-018**: When `network:down` is emitted, the dispatch queue MUST pause. When `network:up` is emitted, the Graceful Reconnect Protocol (FR-016) MUST execute before the queue resumes. (Implements: US-012)
+- **FR-019**: On `server:sleep`, the daemon MUST call `docker pause` on all containers labeled `gwrk.feature=*`. On `server:ready`, the daemon MUST call `docker unpause` on those containers and reset their internal timeout tracking. (Implements: US-011)
+- **FR-020**: The `/health` endpoint MUST return a JSON object with component-level readiness: `{ status: "ok" | "degraded", components: { server, docker, network } }`. Each component MUST report `ok`, `unavailable`, or `degraded`. (Implements: US-013)
+- **FR-021**: The daemon MUST expose a `server.lifecycle` field on the `/api/status` endpoint reporting one of: `starting`, `ready`, `sleeping`, `degraded`, `stopping`. (Implements: US-011, US-013)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -227,6 +285,8 @@ interface DispatchRecord {
 - **TC-006**: Docker Label Convention — labeled with `gwrk.feature=<featureId>` and `gwrk.phase=<phaseId>`.
 - **TC-007**: Graceful Shutdown — On SIGTERM/SIGINT, stop accepting new dispatches, wait for sandboxes (30s timeout), destroy containers, remove PID.
 - **TC-008**: No In-Process Agent Execution — Agents are ALWAYS invoked via Docker sandbox or `child_process`.
+- **TC-009**: Sleep Detection Cross-Platform — Sleep detection MUST use wall-clock heartbeat drift (pure JS). No native addons. IOKit/`caffeinate` integration is explicitly out of scope for initial implementation.
+- **TC-010**: Network Detection — Network state MUST use `os.networkInterfaces()` polling (configurable interval via `server.networkCheckIntervalMs` in `.gwrkrc.json`). No platform-specific watchers.
 
 ---
 
@@ -241,6 +301,9 @@ interface DispatchRecord {
 - **TR-007**: `src/server/monitor.test.ts` — Resource monitoring and throttling. Vitest. (FR-014)
 - **TR-008**: Integration test — subprocess daemon + POST dispatch + Docker. Vitest. (FR-001, FR-005)
 - **TR-009**: `Dockerfile.sandbox` — Build sandbox image, verify `node`, `git`, `gh` are available. Shell test. (FR-012)
+- **TR-010**: `src/server/lifecycle.test.ts` — Heartbeat drift sleep detection, wake protocol, event emission. Vitest. (FR-015, FR-016, FR-021)
+- **TR-011**: `src/server/network.test.ts` — Network state detection, `isOnline()`, event emission. Vitest. (FR-017, FR-018)
+- **TR-012**: `src/server/routes/health.test.ts` — Component-level health response shape, degraded states. Vitest. (FR-020)
 
 
 ---
@@ -251,6 +314,8 @@ interface DispatchRecord {
 - **SC-002**: `gwrk server stop` gracefully shuts down within 30 seconds.
 - **SC-003**: Dispatch request creates a Docker sandbox with correct branch and context.
 - **SC-004**: Every dispatch attempt is recorded in the SQLite `runs` table.
+- **SC-005**: Dispatch queue pauses within 1 heartbeat interval of sleep detection and resumes only after wake health checks pass.
+- **SC-006**: `/health` endpoint reports component-level status for server, Docker, and network.
 
 ---
 
@@ -259,6 +324,7 @@ interface DispatchRecord {
 - **VR-001**: E2E lifecycle test: start → dispatch → sandbox → check SQLite → stop.
 - **VR-002**: Queue throttle test: verify Nth+1 dispatch is queued.
 - **VR-003**: Retry escalation test: verify 3× fail → fallback backend.
+- **VR-004**: Sleep/wake lifecycle test: inject heartbeat drift, verify queue pauses, sandbox freezes, wake protocol runs, queue resumes.
 
 ---
 
@@ -280,3 +346,10 @@ interface DispatchRecord {
 | US-008 | FR-012 | FR-012 | US-008 | TR-009 |
 | US-009 | FR-013 | FR-013 | US-009 | TR-006 |
 | US-010 | FR-014 | FR-014 | US-010 | TR-007 |
+| US-011 | FR-015, FR-016, FR-019 | FR-015 | US-011 | TR-010 |
+| US-011 | FR-015, FR-016, FR-019 | FR-016 | US-011 | TR-010 |
+| US-011 | FR-015, FR-016, FR-019 | FR-019 | US-011 | TR-010 |
+| US-012 | FR-017, FR-018 | FR-017 | US-012 | TR-011 |
+| US-012 | FR-017, FR-018 | FR-018 | US-012 | TR-011 |
+| US-013 | FR-020, FR-021 | FR-020 | US-013 | TR-012 |
+| US-013 | FR-020, FR-021 | FR-021 | US-011, US-013 | TR-010 |

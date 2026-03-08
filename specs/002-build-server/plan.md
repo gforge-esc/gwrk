@@ -1,7 +1,7 @@
 ---
 type: implementation_plan
 feature: 002-build-server
-last_modified: "2026-03-05T11:12:20Z"
+last_modified: "2026-03-08T18:40:00Z"
 ---
 
 # Implementation Plan: 002 Build Server
@@ -10,13 +10,14 @@ last_modified: "2026-03-05T11:12:20Z"
 
 ## Summary
 
-Build the gwrk Build Server — a persistent Fastify daemon on `localhost:18790` that serves as the control plane for multi-agent dispatch. The plan is structured in 5 phases:
+Build the gwrk Build Server — a persistent Fastify daemon on `localhost:18790` that serves as the control plane for multi-agent dispatch. The plan is structured in 6 phases:
 
 1. **Daemon Bootstrap** — Fastify server, health endpoint, PID management, `gwrk server start/stop` commands.
 2. **System Monitor & Status** — Resource monitoring (CPU/MEM/disk), `gwrk status` command, throttle logic.
 3. **Git Manager & Context Compiler** — Branch lifecycle, context compilation from rules/spec/plan/tasks.
 4. **Docker Sandbox Manager** — Container lifecycle, `Dockerfile.sandbox`, workspace mounting, label conventions.
 5. **Dispatch Queue & Orchestrator** — Queue engine, `POST /api/dispatch`, retry + escalation, dispatches.jsonl persistence.
+6. **Resilience & Connectivity** — macOS sleep/wake detection, network state monitoring, dispatch pause/resume, sandbox freeze/thaw, component-level health endpoint.
 
 **Dependency**: Phase 1 of this plan (CLI commands) depends on 001-cli-core's Commander infrastructure, config loader (`loadConfig`), and agent dispatch contract (`dispatchAgent`).
 
@@ -257,7 +258,52 @@ _No mockups exist for this feature._
 |---|---|---|---|
 | US-010 (partial) | Resource throttle: disk-free check on clone | Requires sandbox clone detection (Phase 5 parallel dispatch, spec 005) | 005-parallel-dispatch |
 
-All other spec items are fully covered in Phases 1–5.
+All other spec items are fully covered in Phases 1–6.
+
+---
+
+### Phase 6: Resilience & Connectivity
+
+Add macOS sleep/wake detection, network state monitoring, dispatch queue pause/resume on connectivity loss, sandbox freeze/thaw, and enhanced component-level health endpoint.
+
+**Files (8):**
+- `src/server/lifecycle.ts` (NEW: Heartbeat-drift sleep/wake detector. Emits `server:sleep`, `server:wake` events. Drives Graceful Reconnect Protocol.)
+- `src/server/network.ts` (NEW: Network interface watcher via `os.networkInterfaces()` polling. `isOnline()`. Emits `network:down`, `network:up` events.)
+- `src/server/routes/health.ts` (NEW: Enhanced `/health` endpoint returning component-level readiness JSON for server, Docker, network.)
+- `src/server/index.ts` (MODIFY: Wire lifecycle + network events → dispatch queue `pause()`/`resume()`, sandbox `pauseAll()`/`unpauseAll()`. Expose `server.lifecycle` on `/api/status`.)
+- `src/server/sandbox.ts` (MODIFY: Add `pauseAll()` and `unpauseAll()` methods using `docker pause`/`docker unpause`.)
+- `src/server/dispatch.ts` (MODIFY: Add `pause()` and `resume()` methods alongside existing `isThrottled()`.)
+- `src/utils/config.ts` (MODIFY: Extend schema with `server.heartbeatIntervalMs`, `server.networkCheckIntervalMs`.)
+- `src/server/types.ts` (MODIFY: Add `ServerLifecycle` type, `HealthResponse` type, `NetworkStatus` type.)
+
+**Requirements Addressed:** FR-015, FR-016, FR-017, FR-018, FR-019, FR-020, FR-021, US-011, US-012, US-013, TC-009, TC-010
+
+**Dependencies:** Phase 2 (monitor), Phase 4 (sandbox — needs `pauseAll`), Phase 5 (dispatch — needs `pause`)
+
+**Contract Mapping:**
+- `contracts/lifecycle.md` → `LifecycleMonitor.start()`, `LifecycleMonitor.onSleep()`, `LifecycleMonitor.onWake()` → `src/server/lifecycle.ts`
+- `contracts/network.md` → `NetworkMonitor.start()`, `NetworkMonitor.isOnline()` → `src/server/network.ts`
+- `contracts/health.md` → `getComponentHealth()` → `src/server/routes/health.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| `workspace.md` | Config validation — `heartbeatIntervalMs`, `networkCheckIntervalMs` required, no defaults |
+| `workspace.md` | No native addons (TC-009) |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-010 | Unit | `src/server/lifecycle.test.ts` | Heartbeat drift → `server:sleep` event; reconnect protocol → `server:ready` only when all checks pass |
+| TR-011 | Unit | `src/server/network.test.ts` | Interface removal → `network:down`; interface restoration → `network:up`; `isOnline()` reflects state |
+| TR-012 | Unit | `src/server/routes/health.test.ts` | Component-level JSON shape; degraded states; Docker unavailable → `components.docker: unavailable` |
+
+#### Done When
+- `pnpm vitest run src/server/lifecycle.test.ts` exits 0
+- `pnpm vitest run src/server/network.test.ts` exits 0
+- `pnpm vitest run src/server/routes/health.test.ts` exits 0
+- `test -f src/server/lifecycle.ts && test -f src/server/network.ts && test -f src/server/routes/health.ts` exits 0
 
 ---
 
@@ -275,6 +321,9 @@ All other spec items are fully covered in Phases 1–5.
 | US-008 | Phase 4 | Planned |
 | US-009 | Phase 3 | Planned |
 | US-010 | Phase 2 | Planned (disk-free clone deferred) |
+| US-011 | Phase 6 | Planned |
+| US-012 | Phase 6 | Planned |
+| US-013 | Phase 6 | Planned |
 | FR-001 | Phase 1 | Planned |
 | FR-002 | Phase 1 | Planned |
 | FR-003 | Phase 1 | Planned |
@@ -289,6 +338,13 @@ All other spec items are fully covered in Phases 1–5.
 | FR-012 | Phase 4 | Planned |
 | FR-013 | Phase 3 | Planned |
 | FR-014 | Phase 2 | Planned |
+| FR-015 | Phase 6 | Planned |
+| FR-016 | Phase 6 | Planned |
+| FR-017 | Phase 6 | Planned |
+| FR-018 | Phase 6 | Planned |
+| FR-019 | Phase 6 | Planned |
+| FR-020 | Phase 6 | Planned |
+| FR-021 | Phase 6 | Planned |
 | DM-001 | Phase 3 (types), Phase 5 (persist) | Planned |
 | DM-002 | Phase 1, 2 (config) | Planned |
 | DM-003 | Phase 2 (status) | Planned |
@@ -300,6 +356,8 @@ All other spec items are fully covered in Phases 1–5.
 | TC-006 | Phase 4 | Planned |
 | TC-007 | Phase 1 | Planned |
 | TC-008 | Phase 4 | Planned |
+| TC-009 | Phase 6 | Planned |
+| TC-010 | Phase 6 | Planned |
 | TR-001 | Phase 1 | Planned |
 | TR-002 | Phase 1, 2 | Planned |
 | TR-003 | Phase 5 | Planned |
@@ -309,13 +367,17 @@ All other spec items are fully covered in Phases 1–5.
 | TR-007 | Phase 2 | Planned |
 | TR-008 | Phase 5 | Planned |
 | TR-009 | Phase 4 | Planned |
+| TR-010 | Phase 6 | Planned |
+| TR-011 | Phase 6 | Planned |
+| TR-012 | Phase 6 | Planned |
 | SC-001 | Phase 1 | Planned |
 | SC-002 | Phase 1 | Planned |
 | SC-003 | Phase 5 | Planned |
 | SC-004 | Phase 5 | Planned |
-| SC-005 | Phase 5 | Planned |
+| SC-005 | Phase 6 | Planned |
+| SC-006 | Phase 6 | Planned |
 | VR-001 | Phase 5 | Planned |
 | VR-002 | Phase 1 | Planned |
 | VR-003 | Phase 1 | Planned |
-| VR-004 | Phase 5 | Planned |
+| VR-004 | Phase 6 | Planned |
 | VR-005 | Phase 5 | Planned |
