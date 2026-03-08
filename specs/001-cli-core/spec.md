@@ -1,7 +1,7 @@
 ---
 type: specification
 feature: 001-cli-core
-last_modified: "2026-03-06T00:23:47Z"
+last_modified: "2026-03-08T14:22:00Z"
 ---
 
 # Feature Specification: 001 CLI Core
@@ -214,6 +214,28 @@ As a developer, I want `gwrk --help` to show exactly the settled command hierarc
 5. `gwrk db --help` shows: `runs`, `stats`.
 6. No other top-level commands exist (no `specify`, `plan`, `analyze`, `effort`, `pulse`, `metrics`, `run`, `implement`, `ship done`).
 
+### US-019 - Execution Manifest Writer (P1)
+As a PE, I want every `gwrk ship` and `gwrk define` run to write a structured execution manifest to `specs/<feature>/.gwrk/runs/` so that distributed agents produce durable analytical data via git alone.
+
+**Implements**: FR-019
+
+**Acceptance**:
+1. After any `ship` or `define` run completes, a JSON manifest is written to `specs/<feature>/.gwrk/runs/<timestamp>_<command>_<phase>_<agent>.json`.
+2. Manifest contains: `runId`, `feature`, `phase`, `command`, `agent`, `model`, `startedAt`, `finishedAt`, `durationS`, `exitCode`, `attempt`, `gateResult`, `reviewVerdict`, `filesChanged`, `linesAdded`, `linesDeleted`, `gitCommit`, `gitBranch`.
+3. Manifest is committed alongside code changes by the agent.
+4. Manifest file size is under 1KB.
+
+### US-020 - Post-Merge Task Verification (P1)
+As a PE, I want `gwrk tasks verify <feature>` to validate task state integrity after merge operations.
+
+**Implements**: FR-020
+
+**Acceptance**:
+1. Validates `tasks.json` schema via Zod.
+2. Checks every `completed` task has a corresponding execution manifest in `runs/`.
+3. Reports orphaned tasks (manifest exists but task is not `completed`) or regressed tasks (was `completed`, now `open`).
+4. Exit 0 if clean, exit 1 with report if issues found.
+
 ---
 
 ## 3. Functional Requirements
@@ -235,6 +257,9 @@ As a developer, I want `gwrk --help` to show exactly the settled command hierarc
 - **FR-016**: `gwrk measure compression <feature>` — SP vs actual. (US-016)
 - **FR-017**: `gwrk measure pulse` — git log scanner. (US-017)
 - **FR-018**: CLI surface shows exactly the settled hierarchy. No stubs. (US-018)
+- **FR-019**: Execution manifest writer. Every `ship`/`define` run → `.gwrk/runs/*.json`. (US-019)
+- **FR-020**: `gwrk tasks verify <feature>` — post-merge schema + orphan + regression check. (US-020)
+- **FR-021**: `history.jsonl` deprecation. Reads still supported; writes redirected to `gwrk.db history` + manifest. Removal deferred until `gwrk harvest` is operational.
 
 ### Error States
 
@@ -278,9 +303,36 @@ interface Task {
 }
 ```
 
-### DM-002: History Log (`.gwrk/history.jsonl`)
+### DM-002: History Log (`.gwrk/history.jsonl`) — **DEPRECATED**
 
-Append-only JSONL per state transition.
+Append-only JSONL per state transition. Superseded by `gwrk.db history` table and `git log --follow tasks.json`. Will be removed once `gwrk harvest` is operational. See [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md).
+
+### DM-005: Execution Manifest (`specs/<feature>/.gwrk/runs/*.json`)
+
+Git-tracked structured JSON per agent run. See [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) §3 for full schema.
+
+```typescript
+interface ExecutionManifest {
+  runId: string;          // "2026-03-08T14:02:33Z_ship_p01"
+  feature: string;
+  phase: string;
+  command: string;        // "ship" | "define"
+  agent: string;          // "gemini" | "claude" | "codex" | "codex-cloud"
+  model: string;
+  startedAt: string;      // ISO 8601
+  finishedAt: string;
+  durationS: number;
+  exitCode: number;
+  attempt: number;
+  gateResult?: string;
+  reviewVerdict?: string;
+  filesChanged?: number;
+  linesAdded?: number;
+  linesDeleted?: number;
+  gitCommit: string;
+  gitBranch: string;
+}
+```
 
 ### DM-003: Configuration (`.gwrkrc.json`)
 
@@ -344,9 +396,11 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **SC-001**: `gwrk --help` shows exactly the settled hierarchy. No stubs. No dead commands.
 - **SC-002**: `gwrk tasks done` enforces gates strictly — failing gate NEVER updates state.
 - **SC-003**: `gwrk define <feature>` runs the full DUS loop and records the run in SQLite.
-- **SC-004**: `gwrk ship done <feature> <phase>` runs the full WUD loop and records the run in SQLite.
+- **SC-004**: `gwrk ship done <feature> <phase>` runs the full ship loop and records the run in SQLite.
 - **SC-005**: `pnpm test` passes with 100% of tests GREEN.
 - **SC-006**: `pnpm run build` compiles clean with zero TypeScript errors.
+- **SC-007**: Every `ship`/`define` run produces a manifest in `.gwrk/runs/` that survives git push.
+- **SC-008**: `gwrk tasks verify <feature>` detects and reports post-merge state corruption.
 
 ---
 
@@ -382,3 +436,5 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 | US-016 | FR-016 | TR-016 |
 | US-017 | FR-017 | TR-017 |
 | US-018 | FR-018 | TR-018, TR-019 |
+| US-019 | FR-019 | TR-020 |
+| US-020 | FR-020 | TR-021 |

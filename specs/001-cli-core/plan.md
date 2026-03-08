@@ -1,7 +1,7 @@
 ---
 type: implementation_plan
 feature: 001-cli-core
-last_modified: "2026-03-06T19:45:00Z"
+last_modified: "2026-03-08T14:22:00Z"
 ---
 
 # Implementation Plan: 001 CLI Core
@@ -12,7 +12,7 @@ last_modified: "2026-03-06T19:45:00Z"
 
 The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), project scaffolding (`init`), agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
 
-> **Status**: Phases 1–6 are **implemented and tested** (132 tests, 26 files, all passing). Phases 7–8 require completion.
+> **Status**: Phases 1–8 are **implemented and tested** (191 tests, 38 files, all passing). Phase 9 (State Contract) is next.
 
 ---
 
@@ -191,6 +191,30 @@ Final verification that the CLI surface matches US-018 exactly. Clean up dead co
 
 ---
 
+### Phase 9: State Contract — Execution Manifests & Merge Safety
+
+Implement the two-tier state architecture ([ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md)): git-native execution manifests for distributed agents, `.gitattributes` merge protection, and `tasks verify` post-merge guard.
+
+**Files (4):**
+- `src/utils/manifest.ts` (NEW) — Write `ExecutionManifest` JSON to `specs/<feature>/.gwrk/runs/`
+- `src/commands/tasks.ts` (MODIFY) — Add `verify <feature>` subcommand
+- `src/commands/ship.ts` (MODIFY) — Call manifest writer after run completion
+- `src/commands/define.ts` (MODIFY) — Call manifest writer after run completion
+
+**Requirements Addressed:** FR-019, FR-020, FR-021, US-019, US-020, SC-007, SC-008
+
+**Tests:**
+- `src/utils/manifest.test.ts` (NEW) — Manifest schema, file naming, idempotency
+- `src/commands/tasks-verify.test.ts` (NEW) — Schema validation, orphan detection, regression check
+
+#### Done When
+- Every `ship`/`define` run writes a manifest to `.gwrk/runs/`
+- `gwrk tasks verify <feature>` validates schema + manifest coverage
+- `history.jsonl` writes are replaced with manifest + `gwrk.db history`
+- All tests pass
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -212,6 +236,8 @@ Final verification that the CLI surface matches US-018 exactly. Clean up dead co
 | US-016 | 6 | ✅ Done |
 | US-017 | 6 | ✅ Done |
 | US-018 | 8 | ✅ Done |
+| US-019 | 9 | ☐ Open |
+| US-020 | 9 | ☐ Open |
 | FR-001 | 1, 7 | ✅ Done |
 | FR-002 | 3 | ✅ Done |
 | FR-003 | 3 | ✅ Done |
@@ -229,7 +255,11 @@ Final verification that the CLI surface matches US-018 exactly. Clean up dead co
 | FR-016 | 6 | ✅ Done |
 | FR-017 | 6 | ✅ Done |
 | FR-018 | 8 | ✅ Done |
+| FR-019 | 9 | ☐ Open |
+| FR-020 | 9 | ☐ Open |
+| FR-021 | 9 | ☐ Open |
 
 ## Deferred Items
 
-- US-009 / FR-009: Cross-artifact analysis — now internal DUS stage, no standalone command.
+- US-009 / FR-009: Cross-artifact analysis — now internal definition stage, no standalone command.
+- `history.jsonl` removal: Deferred until `gwrk harvest` is operational (Phase 2 Build Server).

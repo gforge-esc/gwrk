@@ -1,8 +1,8 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-08 (v4)
+> **Status:** Authoritative · **Date:** 2026-03-08 (v5)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
-> **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger)
+> **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract)
 
 ---
 
@@ -121,7 +121,7 @@ Local persistent daemon that serves as the control plane. Includes macOS sleep/w
 
 | Spec | Content | Gate |
 |---|---|---|
-| `002-build-server` | Fastify daemon, dispatch queue, Docker sandbox manager, sleep/wake lifecycle, network monitor, rich health endpoint | `gwrk server start` creates sandboxes; dispatch queue pauses on sleep/offline |
+| `002-build-server` | Fastify daemon, dispatch queue, Docker sandbox manager, sleep/wake lifecycle, network monitor, rich health endpoint, **`gwrk harvest` manifest ETL** | `gwrk server start` creates sandboxes; dispatch queue pauses on sleep/offline; harvest upserts manifests into SQLite |
 
 **Dependencies:** Phase 1
 **Agent:** Claude Code (long-context server architecture)
@@ -404,7 +404,7 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 | Phase | SP | Primary Role | Est. Hours |
 |---|---|---|---|
 | P0 (Extraction) | 3 | PE | Done |
-| P1 (CLI Core) | 21 | TS | 105h |
+| P1 (CLI Core) | 25 | TS | 125h |
 | P2 (Build Server) | 18 | TS | 90h |
 | P3 (Slack) | 13 | TS | 65h |
 | P4 (Ship Loop) | 8 | TS | 40h |
@@ -416,7 +416,7 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 | P10 (Integration) | 5 | TS | 25h |
 | P11 (App Home Tab) | 5 | TS | 25h |
 | P12 (Knowledge Work) | 8 | TS | 40h |
-| **Total** | **122 SP** | | **595h** |
+| **Total** | **126 SP** | | **615h** |
 
 **Changes from v1:** P1 increased (13→21 SP: gwrk new, gwrk init, multi-CLI, SQLite). P3 increased (8→13 SP: Slack is richer than Telegram). P7 increased (5→8 SP: leading indicators). P11 decreased (8→5 SP: App Home Tab is simpler than SPA).
 
@@ -436,6 +436,7 @@ None for P0→P1→P2 critical path. Remaining questions:
 
 ## Changelog
 
+- **2026-03-08 (v5):** Execution State Contract (ADR-003). Two-tier architecture: git-native execution manifests (Tier 1, operational) + build-server-side SQLite harvest (Tier 2, analytical). `.gitignore` for `.runs/`, `.gitattributes` for `.gwrk/` merge safety. P1 gains Phase 9 (manifest writer, `tasks verify`, `history.jsonl` deprecation path). P2 gains `gwrk harvest`. P1 SP: 21→25. `history.jsonl`(DM-002) deprecated. Total: 122→126 SP.
 - **2026-03-08 (v4):** Three additions. (1) Phase 4 renamed WUD→Ship to align with FC Pillar 3. (2) Agent Registry: P5 gets capacity gate (per-backend rate limiting), P8 gets registry schema + context size estimator + mini-model fallback. Backend constraints documented in `docs/references/agent-backends.md`. P5 SP: 8→10, P8 SP: 8→10. (3) New Phase 12 (Knowledge Work): first-class Foxtrot Charlie Discovery pillar support — fieldnote capture, discovery compilation, kw-specify/plan/build-plan. Wave 2 eligible. +8 SP. Total: 110→122 SP.
 - **2026-03-08 (v3):** Added resilience requirements to Phase 2 (Build Server). New user scenarios: US-011 (macOS sleep/wake), US-012 (network connectivity), US-013 (rich health). Seven new FRs (FR-015–FR-021). New Phase 6 in 002-build-server plan (Resilience & Connectivity). Phase 11 tunnel dependency on Phase 2 event bus clarified. P2 SP: 13→18 (+5 SP for resilience phase). Total: 105→110 SP.
 - **2026-03-05 (v2):** Major update per strategic vision v2. Phase 3: Telegram → Slack (Socket Mode + Bolt SDK). Phase 11: Glass Dashboard → App Home Tab. P1 expanded (gwrk new/init, multi-CLI provisioning, SQLite). SQLite execution ledger (ADR-002) replaces flat JSON. P7 adds leading compression indicators. P9 DUT moves to Slack, aligns to Foxtrot Charlie. Telegram cut from MVP. Updated SP estimates. Total: 92→105 SP.

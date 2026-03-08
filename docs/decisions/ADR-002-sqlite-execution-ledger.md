@@ -59,7 +59,9 @@ ADR-001 correctly argued that `.gwrk/tasks.json` follows the branch automaticall
 
 ### The Learning Loop Extraction
 
-When an agent pushes a completed task or phase, the Build Server (or the agent itself) writes the execution telemetry into SQLite. This data powers the Agent Router and Compression Engine.
+> **Updated by [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md):** Agents do NOT write to SQLite directly. Instead, agents write git-native **execution manifests** (`specs/<feature>/.gwrk/runs/*.json`) that are committed alongside code. The build server harvests these manifests into SQLite via `gwrk harvest`. This supports fully distributed execution where agents only have git access.
+
+For local runs (where SQLite is available), `ship.ts` and `define.ts` also write directly to `gwrk.db` for immediate feedback. The harvest process is idempotent and deduplicates by `runId`.
 
 ---
 

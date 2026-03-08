@@ -1,0 +1,11 @@
+# gwrk merge strategies — protect task state across branches
+#
+# tasks.json: Keep the current branch version on conflict.
+# Manual reconciliation required after merge.
+specs/**/.gwrk/tasks.json merge=ours
+
+# Execution manifests: binary merge (both sides' files survive as separate files).
+specs/**/.gwrk/runs/*.json merge=binary
+
+# History (deprecated, will be removed): append-only union merge.
+specs/**/.gwrk/history.jsonl merge=union
