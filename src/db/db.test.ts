@@ -31,9 +31,9 @@ describe("SQLite execution ledger", () => {
       {
         feature_id: "001-cli-core",
         phase_id: "phase-01",
-        command: "wud",
+        command: "ship",
         agent_backend: "gemini",
-        workflow: "work-until-done",
+        workflow: "ship-done",
       },
       db,
     );
@@ -61,8 +61,8 @@ describe("SQLite execution ledger", () => {
 
   it("should list runs most recent first", () => {
     const id1 = startRun({ feature_id: "test-feature", command: "define", workflow: "define-until-solid" }, db);
-    const id2 = startRun({ feature_id: "test-feature", command: "wud", workflow: "work-until-done" }, db);
-    startRun({ feature_id: "other-feature", command: "wud", workflow: "work-until-done" }, db);
+    const id2 = startRun({ feature_id: "test-feature", command: "ship", workflow: "ship-done" }, db);
+    startRun({ feature_id: "other-feature", command: "ship", workflow: "ship-done" }, db);
 
     const runs = listRuns("test-feature", db);
     expect(runs).toHaveLength(2);
@@ -103,16 +103,16 @@ describe("SQLite execution ledger", () => {
   });
 
   it("should aggregate run statistics with getStats", () => {
-    // Run 1: wud, gemini, success
-    const id1 = startRun({ feature_id: "f1", command: "wud", agent_backend: "gemini", workflow: "work-until-done" }, db);
+    // Run 1: ship, gemini, success
+    const id1 = startRun({ feature_id: "f1", command: "ship", agent_backend: "gemini", workflow: "ship-done" }, db);
     finishRun(id1, { exit_code: 0, duration_s: 100 }, db);
 
-    // Run 2: wud, gemini, success
-    const id2 = startRun({ feature_id: "f2", command: "wud", agent_backend: "gemini", workflow: "work-until-done" }, db);
+    // Run 2: ship, gemini, success
+    const id2 = startRun({ feature_id: "f2", command: "ship", agent_backend: "gemini", workflow: "ship-done" }, db);
     finishRun(id2, { exit_code: 0, duration_s: 200 }, db);
 
-    // Run 3: wud, gemini, failure
-    const id3 = startRun({ feature_id: "f3", command: "wud", agent_backend: "gemini", workflow: "work-until-done" }, db);
+    // Run 3: ship, gemini, failure
+    const id3 = startRun({ feature_id: "f3", command: "ship", agent_backend: "gemini", workflow: "ship-done" }, db);
     finishRun(id3, { exit_code: 1, duration_s: 50 }, db);
 
     // Run 4: define, claude, success
@@ -127,7 +127,7 @@ describe("SQLite execution ledger", () => {
     expect(stats).toHaveLength(2);
     
     // Ordered by total_runs DESC
-    expect(stats[0]!.command).toBe("wud");
+    expect(stats[0]!.command).toBe("ship");
     expect(stats[0]!.agent_backend).toBe("gemini");
     expect(stats[0]!.total_runs).toBe(3);
     expect(stats[0]!.success_runs).toBe(2);

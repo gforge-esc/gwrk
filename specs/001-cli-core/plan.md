@@ -59,15 +59,15 @@ Global SQLite at `~/.gwrk/gwrk.db` for run recording and analytics.
 
 ---
 
-### Phase 3: Clarity Pillar — Define (DUS) ✅
+### Phase 3: Clarity Pillar — Define ✅
 
-Agent dispatch wrappers under `gwrk define` for spec, plan, tasks, and bare DUS loop.
+Agent dispatch wrappers under `gwrk define` for spec, plan, tasks, and bare definition loop.
 
 **Files (8):**
-- `src/commands/define.ts` ✅ — Parent: bare=DUS loop, subcommands: spec, plan, tasks
+- `src/commands/define.ts` ✅ — Parent: bare=definition loop, subcommands: spec, plan, tasks
 - `src/commands/specify.ts` ✅ — `gwrk define spec <feature> [--refs]`
 - `src/commands/plan.ts` ✅ — `gwrk define plan <feature> [--refs]`
-- `src/commands/analyze.ts` ✅ — Internal DUS stage (not user-facing)
+- `src/commands/analyze.ts` ✅ — Internal definition stage (not user-facing)
 - `src/commands/tasks-generate.ts` ✅ — `gwrk define tasks` with `--force` and `--reconcile`
 - `src/utils/agent.ts` ✅ — Agent dispatch: backend resolution, log streaming, logPath return
 - `src/utils/parser.ts` ✅ — Parse plan.md → phases and tasks
@@ -87,12 +87,12 @@ Agent dispatch wrappers under `gwrk define` for spec, plan, tasks, and bare DUS 
 
 ---
 
-### Phase 4: Throughput Pillar — Ship (ZFG/WUD) ✅
+### Phase 4: Throughput Pillar — Ship ✅
 
 `gwrk ship <feature> <phase>` for the autonomous implement→review→PR loop.
 
 **Files (2):**
-- `src/commands/ship.ts` ✅ — Ship (WUD)
+- `src/commands/ship.ts` ✅ — Ship
 - `src/commands/implement.ts` ✅ — Internal isolated delegate (no WUD loop)
 
 **Requirements Addressed:** FR-012, FR-013, US-012, US-013

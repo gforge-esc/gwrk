@@ -39,7 +39,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
 
     // Eliminated / Hidden — must NOT appear as top-level in help
     const hidden = [
-      "run", "metrics", "implement", "wud", "specify", "plan", "analyze", 
+      "run", "metrics", "implement", "specify", "plan", "analyze", 
       "effort", "pulse", "compression", "server", "status", "new", "record"
     ];
     for (const cmd of hidden) {
@@ -56,7 +56,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).toMatch(/^\s+tasks\b/m);
     
     // No other subcommands
-    const hidden = ["analyze", "specify", "generate", "implement", "wud"];
+    const hidden = ["analyze", "specify", "generate", "implement", "ship"];
     for (const cmd of hidden) {
       const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
       expect(stdout).not.toMatch(regex);
@@ -69,7 +69,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).toMatch(/^\s+done\b/m);
 
     // No other subcommands
-    const hidden = ["implement", "wud", "run", "start"];
+    const hidden = ["implement", "ship", "run", "start"];
     for (const cmd of hidden) {
       const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
       expect(stdout).not.toMatch(regex);

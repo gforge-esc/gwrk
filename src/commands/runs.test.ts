@@ -14,7 +14,7 @@ describe("runsCommand — CLI and JSON output", () => {
       {
         id: 1,
         feature_id: "001-cli-core",
-        command: "wud",
+        command: "ship",
         agent_backend: "gemini",
         exit_code: 0,
         duration_s: 120,
@@ -23,7 +23,7 @@ describe("runsCommand — CLI and JSON output", () => {
       {
         id: 2,
         feature_id: "001-cli-core",
-        command: "wud",
+        command: "ship",
         agent_backend: "claude",
         exit_code: null,
         duration_s: null,
@@ -52,7 +52,7 @@ describe("runsCommand — CLI and JSON output", () => {
 
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed.length).toBe(2);
-    expect(parsed[0].command).toBe("wud");
+    expect(parsed[0].command).toBe("ship");
     expect(parsed[1].agent_backend).toBe("claude");
   });
 

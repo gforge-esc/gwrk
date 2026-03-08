@@ -60,22 +60,22 @@ describe("defineCommand — Define Until Solid wrapper", () => {
   });
 
   it("handles --dry-run without executing scripts", async () => {
-    await defineCommand.parseAsync(["node", "cli.js", "004-wud-loop", "--dry-run"]);
+    await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop", "--dry-run"]);
     
     expect(startRun).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
     
     const output = consoleLogSpy.mock.calls.map(c => c[0]).join("\n");
     expect(output).toContain("[DRY RUN]");
-    expect(output).toContain("define-until-solid.sh 004-wud-loop");
+    expect(output).toContain("define-until-solid.sh 004-ship-loop");
   });
 
   it("executes define scripts and records success", async () => {
-    await defineCommand.parseAsync(["node", "cli.js", "004-wud-loop"]);
+    await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);
     
     expect(loadConfig).toHaveBeenCalled();
     expect(startRun).toHaveBeenCalledWith({
-      feature_id: "004-wud-loop",
+      feature_id: "004-ship-loop",
       command: "define",
       agent_backend: "gemini",
       workflow: "define-until-solid",
@@ -84,7 +84,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     expect(run).toHaveBeenCalled();
     const [scriptPath, args, opts] = vi.mocked(run).mock.calls[0]!;
     expect(scriptPath).toContain("scripts/dev/define-until-solid.sh");
-    expect(args).toEqual(["004-wud-loop"]);
+    expect(args).toEqual(["004-ship-loop"]);
     expect(opts?.cwd).toBe("/Users/gonzo/Code/gwrk");
 
     expect(finishRun).toHaveBeenCalledWith(42, expect.objectContaining({ exit_code: 0 }));
@@ -101,7 +101,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
 
     let _err: Error | undefined;
     try {
-      await defineCommand.parseAsync(["node", "cli.js", "004-wud-loop"]);
+      await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);
     } catch (e) {
       _err = e as Error;
     }

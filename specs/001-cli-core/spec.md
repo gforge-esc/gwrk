@@ -22,8 +22,8 @@ The CLI uses a **Foxtrot Charlie pillar-based hierarchy** to organize commands b
 
 | Pillar | Category | Commands | Purpose |
 |---|---|---|---|
-| **Clarity** | **Define** | `define <feature>`, `define spec`, `define plan`, `define tasks` | Specification, planning, and task decomposition (DUS loop) |
-| **Throughput**| **Ship** | `ship <feature> <phase>`, `ship done` | Implementation and autonomous execution (ZFG/WUD loop) |
+| **Clarity** | **Define** | `define <feature>`, `define spec`, `define plan`, `define tasks` | Specification, planning, and task decomposition (definition loop) |
+| **Throughput**| **Ship** | `ship <feature> <phase>`, `ship done` | Implementation and autonomous execution (ship loop) |
 | **Value** | **Measure**| `measure pulse`, `measure effort`, `measure compression` | Productivity, estimation, and ratio reporting |
 | **-** | **Task Engine** | `tasks list`, `tasks next`, `tasks done` | Task state management with Hard Gate enforcement |
 | **-** | **Data** | `db runs`, `db stats` | SQLite execution ledger queries |
@@ -74,7 +74,7 @@ As a PE, I want `gwrk define plan <feature> [--refs <path>]` to generate `plan.m
 4. `--dry-run` prints the agent backend and workflow path without dispatching.
 
 ### US-004 - Task Decomposition (P0)
-As the DUS persona, I want `gwrk define tasks <feature>` to create tasks.json + gate scripts from plan.md.
+As the definition engine, I want `gwrk define tasks <feature>` to create tasks.json + gate scripts from plan.md.
 
 **Implements**: FR-004
 
@@ -84,7 +84,7 @@ As the DUS persona, I want `gwrk define tasks <feature>` to create tasks.json + 
 3. Gate count equals task count.
 
 ### US-005 - Task State Query (P0)
-As a WUD agent, I want `gwrk tasks list <feature>` and `gwrk tasks next <feature> <phase>` to discover work.
+As a ship engine, I want `gwrk tasks list <feature>` and `gwrk tasks next <feature> <phase>` to discover work.
 
 **Implements**: FR-005
 
@@ -95,7 +95,7 @@ As a WUD agent, I want `gwrk tasks list <feature>` and `gwrk tasks next <feature
 4. When no open tasks remain, `gwrk tasks next` prints exactly: `All tasks completed or phase not found`.
 
 ### US-006 - Hard Gate Enforcement (P0)
-As the WUD engine, I want `gwrk tasks done <feature> <taskId>` to execute the gate script and only update state on exit 0.
+As the ship engine, I want `gwrk tasks done <feature> <taskId>` to execute the gate script and only update state on exit 0.
 
 **Implements**: FR-006
 
@@ -212,7 +212,7 @@ As a developer, I want `gwrk --help` to show exactly the settled command hierarc
 3. `gwrk ship --help` shows: `done`.
 4. `gwrk measure --help` shows: `pulse`, `effort`, `compression`.
 5. `gwrk db --help` shows: `runs`, `stats`.
-6. No other top-level commands exist (no `specify`, `plan`, `analyze`, `effort`, `pulse`, `metrics`, `run`, `implement`, `wud`).
+6. No other top-level commands exist (no `specify`, `plan`, `analyze`, `effort`, `pulse`, `metrics`, `run`, `implement`, `ship done`).
 
 ---
 
@@ -229,7 +229,7 @@ As a developer, I want `gwrk --help` to show exactly the settled command hierarc
 - **FR-010**: `gwrk measure effort <feature>` — deterministic SP estimation. (US-010)
 - **FR-011**: `gwrk define <feature>` — DUS loop wrapper with SQLite recording. (US-011)
 - **FR-012**: `gwrk implement <feature> <phase>` — Internal agent dispatch wrapper with SQLite recording. (US-012)
-- **FR-013**: `gwrk ship <feature> <phase>` — Autonomous WUD loop wrapper with SQLite recording. (US-013)
+- **FR-013**: `gwrk ship <feature> <phase>` — Autonomous ship loop wrapper with SQLite recording. (US-013)
 - **FR-014**: `gwrk db runs <feature>` — query execution history. (US-014)
 - **FR-015**: `gwrk db stats` — aggregate success rates. (US-015)
 - **FR-016**: `gwrk measure compression <feature>` — SP vs actual. (US-016)
@@ -344,7 +344,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **SC-001**: `gwrk --help` shows exactly the settled hierarchy. No stubs. No dead commands.
 - **SC-002**: `gwrk tasks done` enforces gates strictly — failing gate NEVER updates state.
 - **SC-003**: `gwrk define <feature>` runs the full DUS loop and records the run in SQLite.
-- **SC-004**: `gwrk wud <feature> <phase>` runs the full WUD loop and records the run in SQLite.
+- **SC-004**: `gwrk ship done <feature> <phase>` runs the full WUD loop and records the run in SQLite.
 - **SC-005**: `pnpm test` passes with 100% of tests GREEN.
 - **SC-006**: `pnpm run build` compiles clean with zero TypeScript errors.
 

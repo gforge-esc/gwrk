@@ -118,19 +118,19 @@ describe("shipCommand", () => {
     it("ship done should pass custom max-iterations", async () => {
         mockRun.mockResolvedValueOnce(undefined);
 
-        await program.parseAsync(["node", "test", "ship", "done", "004-wud-loop", "1", "--max-iterations", "5"]);
+        await program.parseAsync(["node", "test", "ship", "done", "004-ship-loop", "1", "--max-iterations", "5"]);
 
         expect(execModule.run).toHaveBeenCalledTimes(1);
         const [, , options] = mockRun.mock.calls[0];
         expect(options.env.MAX_ITERATIONS).toBe("5");
     });
 
-    it("should safely handle execution failures from the WUD script", async () => {
+    it("should safely handle execution failures from the ship done script", async () => {
         const errorWithCode = new Error("shell error");
         (errorWithCode as any).code = 127;
         mockRun.mockRejectedValueOnce(errorWithCode);
 
-        await expect(program.parseAsync(["node", "test", "ship", "done", "004-wud-loop", "1"]))
+        await expect(program.parseAsync(["node", "test", "ship", "done", "004-ship-loop", "1"]))
             .rejects.toThrow('process.exit unexpectedly called with "127"');
 
         expect(runsModule.finishRun).toHaveBeenCalledWith(999, expect.objectContaining({ exit_code: 127 }));
@@ -138,7 +138,7 @@ describe("shipCommand", () => {
     });
 
     it("should support dry-run mode on done subcommand", async () => {
-        await program.parseAsync(["node", "test", "ship", "done", "001-cli-core", "7", "--dry-run-wud"]);
+        await program.parseAsync(["node", "test", "ship", "done", "001-cli-core", "7", "--dry-run"]);
 
         expect(execModule.run).not.toHaveBeenCalled();
         expect(uiModule.dryRun).toHaveBeenCalled();

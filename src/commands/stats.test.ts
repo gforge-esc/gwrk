@@ -18,9 +18,9 @@ describe("FR: statsCommand — CLI and JSON output", () => {
 
     vi.mocked(getStats).mockReturnValue([
       {
-        command: "wud",
+        command: "ship",
         agent_backend: "gemini",
-        workflow: "work-until-done",
+        workflow: "ship-done",
         total_runs: 10,
         success_runs: 8,
         avg_duration_s: 120.5,
@@ -58,7 +58,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
 
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed.length).toBe(2);
-    expect(parsed[0].command).toBe("wud");
+    expect(parsed[0].command).toBe("ship");
     expect(parsed[1].success_runs).toBe(5);
   });
 
@@ -75,7 +75,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
 
     const fullOutput = consoleLogSpy.mock.calls.map(c => c[0]).join("\n");
     expect(fullOutput).toContain("=== EXECUTION STATISTICS ===");
-    expect(fullOutput).toContain("wud");
+    expect(fullOutput).toContain("ship");
     expect(fullOutput).toContain("80%");
     expect(fullOutput).toContain("121s");
     expect(fullOutput).toContain("define");

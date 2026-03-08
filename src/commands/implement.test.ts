@@ -60,12 +60,12 @@ describe("implementAction", () => {
   });
 
   it("iterates through tasks and calls agent-run.sh", async () => {
-    await implementAction("004-wud-loop", "1", {});
+    await implementAction("004-ship-loop", "1", {});
 
     expect(loadTaskState).toHaveBeenCalled();
     expect(run).toHaveBeenCalledTimes(2);
-    expect(run).toHaveBeenNthCalledWith(1, expect.stringContaining("agent-run.sh"), ["implement", "004-wud-loop", "1", "T001"], expect.any(Object));
-    expect(run).toHaveBeenNthCalledWith(2, expect.stringContaining("agent-run.sh"), ["implement", "004-wud-loop", "1", "T002"], expect.any(Object));
+    expect(run).toHaveBeenNthCalledWith(1, expect.stringContaining("agent-run.sh"), ["implement", "004-ship-loop", "1", "T001"], expect.any(Object));
+    expect(run).toHaveBeenNthCalledWith(2, expect.stringContaining("agent-run.sh"), ["implement", "004-ship-loop", "1", "T002"], expect.any(Object));
   });
 
   it("skips tasks that already pass pre-flight gate", async () => {
@@ -77,14 +77,14 @@ describe("implementAction", () => {
       return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
     });
 
-    await implementAction("004-wud-loop", "1", {});
+    await implementAction("004-ship-loop", "1", {});
 
     expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith(expect.stringContaining("agent-run.sh"), ["implement", "004-wud-loop", "1", "T002"], expect.any(Object));
+    expect(run).toHaveBeenCalledWith(expect.stringContaining("agent-run.sh"), ["implement", "004-ship-loop", "1", "T002"], expect.any(Object));
   });
 
   it("respects dry-run flag", async () => {
-    await implementAction("004-wud-loop", "1", { dryRun: true });
+    await implementAction("004-ship-loop", "1", { dryRun: true });
 
     expect(run).not.toHaveBeenCalled();
   });
