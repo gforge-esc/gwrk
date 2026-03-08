@@ -1,6 +1,6 @@
 # gwrk: Architecture & Workflow Specification
 
-> **Status:** Authoritative · **Date:** 2026-03-05 (v2)
+> **Status:** Authoritative · **Date:** 2026-03-08 (v3)
 > **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md), [ADR-002-sqlite-execution-ledger.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md)
 
 ---
@@ -11,7 +11,7 @@
 
 ```
 ┌── gwrk CLI ───────────────────────────────────────────────────────────┐
-│  Commands: new, init, specify, plan, tasks, implement, wud, pulse, … │
+│  Commands: new, init, specify, plan, tasks, implement, ship, pulse, discover, kw, … │
 │  npm install -g gwrk                                                  │
 └───────────┬───────────────────────────────────────────────────────────┘
             │
@@ -31,8 +31,7 @@
 │  ┌──────▼─────────────────▼─────────────────────────▼──────────────┐  │
 │  │              Docker Sandbox Manager                              │  │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐                      │  │
-│  │  │ Phase 01 │  │ Phase 02 │  │ Phase 03 │  ...                  │  │
-│  │  │ WUD #1   │  │ WUD #2   │  │ WUD #3   │                      │  │
+│  │  │ Ship #1  │  │ Ship #2  │  │ Ship #3  │                      │  │
 │  │  └──────────┘  └──────────┘  └──────────┘                      │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                       │
@@ -52,10 +51,10 @@
         ▼              ▼               ▼
   ┌── Phone ──┐  ┌── Local ──┐  ┌── Agent Backends ──────────────────┐
   │ Slack     │  │ Agent-ZFG │  │ Codex Cloud (true parallelism)     │
-  │ channels  │  │ owns orch │  │ Claude Code (deep context, local)  │
-  │ App Home  │  └───────────┘  │ Gemini CLI  (multi-file, local)    │
-  │ via tunnel│                 └────────────────────────────────────┘
-  └──────────┘
+  │ channels  │  │ owns orch │  │ Codex Local (local CLI)            │
+  │ App Home  │  └───────────┘  │ Claude Code (deep context, local)  │
+  │ via tunnel│                 │ Gemini CLI  (multi-file, local)    │
+  └──────────┘                 └────────────────────────────────────┘
 ```
 
 ---
@@ -70,6 +69,8 @@
 | **WUD** | Work Until Done | Implement, test, PR | Cloud VM or local clone | → ✅ merge |
 
 **Pipeline**: `DUT → DUS → ZFG → WUD → Done, Done!`
+
+> **Naming note:** The WUD agent identity stays as "Work Until Done" internally. The user-facing CLI command is `gwrk ship` (aligned to Foxtrot Charlie Pillar 3: Shipping).
 
 ---
 
@@ -92,6 +93,7 @@ gwrk/
 ├── .gemini/settings.json          # Gemini CLI model routing + tool config
 ├── .claude/settings.json          # Claude Code model preferences + permissions
 ├── docs/                          # Architecture, PRD, ADRs
+│   └── references/                # Agent backend constraints, provisioning guides
 ├── scripts/dev/                   # Shell orchestrators (agent-run.sh, etc.)
 ├── specs/                         # Feature Specifications (Foxtrot Charlie)
 │   ├── 000-build-plan.md          # Master dependency graph
@@ -111,8 +113,10 @@ gwrk/
 │   │   ├── plan.ts
 │   │   ├── tasks.ts               # tasks list/ready/next/done
 │   │   ├── implement.ts
-│   │   ├── wud.ts                 # Work Until Done loop
+│   │   ├── ship.ts                 # Ship loop (was: wud.ts)
 │   │   ├── feature.ts             # End-to-end lifecycle
+│   │   ├── discover.ts            # Discovery: fieldnote, compile, list
+│   │   ├── kw.ts                  # Knowledge work: specify, plan, build-plan
 │   │   ├── pulse.ts               # Productivity dashboard
 │   │   ├── compression.ts         # Effort vs. actual ratios
 │   │   ├── effort.ts              # SP-driven estimation

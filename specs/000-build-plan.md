@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-08 (v3)
+> **Status:** Authoritative · **Date:** 2026-03-08 (v4)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger)
 
@@ -23,6 +23,7 @@ graph TD
     P6 --> P10[Phase 10: GForge Integration]
     P7 --> P10
     P3 --> P11[Phase 11: App Home Tab]
+    P1 --> P12[Phase 12: Knowledge Work]
 ```
 
 ---
@@ -170,13 +171,13 @@ gwrk setup slack               # Fully automated: create app, install, write tok
 
 ---
 
-### Phase 4 — WUD Loop
+### Phase 4 — Ship Loop
 
-Autonomous implement → review → PR → CI loop.
+Autonomous implement → review → PR → CI loop. (Renamed from WUD to align with Foxtrot Charlie Pillar 3: Shipping.)
 
 | Spec | Content | Gate |
 |---|---|---|
-| `004-wud-loop` | `gwrk wud`, `gwrk implement`, review gates, PR creation, run recording | Agent completes a phase and opens a PR |
+| `004-ship-loop` | `gwrk ship`, `gwrk implement`, review gates, PR creation, run recording | Agent completes a phase and opens a PR |
 
 **Dependencies:** Phase 1
 **Agent:** Codex Cloud (autonomous execution)
@@ -185,11 +186,11 @@ Autonomous implement → review → PR → CI loop.
 
 ```bash
 gwrk implement <feature> <phase>   # Execute a single phase
-gwrk wud <feature>                 # Autonomous lifecycle
+gwrk ship <feature>                # Autonomous lifecycle (was: gwrk wud)
 ```
 
 #### SQLite integration:
-- Every WUD dispatch writes a `runs` record (backend, model, attempt, timestamps)
+- Every Ship dispatch writes a `runs` record (backend, model, attempt, timestamps)
 - Gate results recorded in `runs.gate_result`
 - Review verdicts in `runs.review_verdict`
 - Retry reasons in `runs.retry_reason`
@@ -202,7 +203,7 @@ Multi-phase concurrent execution with conflict resolution.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `005-parallel-dispatch` | Concurrent sandboxes, merge ordering, managed repo clones | Three agents work simultaneously |
+| `005-parallel-dispatch` | Concurrent sandboxes, merge ordering, managed repo clones, **per-backend capacity gate** | Three agents work simultaneously without exceeding backend rate limits |
 
 **Dependencies:** Phase 2, Phase 4
 **Agent:** Claude Code
@@ -213,6 +214,11 @@ Multi-phase concurrent execution with conflict resolution.
 gwrk feature <feature>         # Full end-to-end lifecycle
 gwrk config set parallelism.local.clones 3
 ```
+
+#### Agent capacity gate:
+- Before `processNext()` assigns a backend, checks: (a) is backend at `maxConcurrent`? (b) hit `rateLimit` in sliding window? → skip to next in `fallbackOrder`
+- On 429/rate-limit error: record in `runs`, exponential backoff with jitter on that backend
+- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md) for per-backend constraints
 
 ---
 
@@ -262,14 +268,20 @@ Feature SP = Σ Phase SP = Σ Task SP. No orphan points. gwrk validates on `plan
 
 ### Phase 8 — Multi-Agent Router
 
-Agent backend selection, Done Done! protocol, retry + escalation, learning from execution history.
+Agent backend selection, Done Done! protocol, retry + escalation, learning from execution history. **Agent registry with per-backend rate/token limits.**
 
 | Spec | Content | Gate |
 |---|---|---|
-| `008-agent-router` | Router logic, per-backend invocation, fallback chain, tandem dispatch, **SQLite-backed learning** | Dispatch to Codex, retry on Claude, feature ships |
+| `008-agent-router` | Router logic, per-backend invocation, fallback chain, tandem dispatch, **SQLite-backed learning**, **agent registry schema**, **context size estimator** | Dispatch to Codex, retry on Claude, mini-model fallback, feature ships |
 
 **Dependencies:** Phase 5, SQLite (ADR-002)
 **Agent:** Claude Code
+
+#### Agent registry:
+- `.gwrkrc.json` → `agents.registry` map. Each backend declares: `contextWindow`, `maxConcurrent`, `rateLimit`, `models[]`, `invocation` command template
+- Context Size Estimator: rough token count for `phase-context.md` vs backend's `contextWindow`. Too large → skip backend
+- Mini-model fallback: if primary at capacity, try mini variant (e.g., `gpt-5.1-codex-mini`) before escalating
+- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md) for documented constraints
 
 #### Learning engine:
 - Queries global SQLite `runs` + `task_types` tables
@@ -339,12 +351,48 @@ gwrk tunnel stop
 
 ---
 
+### Phase 12 — Knowledge Work
+
+First-class support for Foxtrot Charlie's Discovery pillar. Fieldnote capture, discovery compilation, and knowledge work workflows (kw-specify, kw-plan, kw-build-plan) as gwrk commands.
+
+| Spec | Content | Gate |
+|---|---|---|
+| `012-knowledge-work` | `gwrk discover`, `gwrk kw`, fieldnotes, discovery digest, kw-specify/plan/build-plan, datetime orientation, SQLite `fieldnotes` table | `gwrk discover fieldnote` captures from stdin; `gwrk kw specify` produces `kw-spec.md` |
+
+**Dependencies:** Phase 1
+**Agent:** Gemini CLI
+
+#### What ships:
+
+```bash
+gwrk discover fieldnote            # Capture fieldnote from stdin/file/URL
+gwrk discover compile              # Assemble discovery digest
+gwrk discover list                 # List fieldnotes with recency indicators
+gwrk kw specify <deliverable>      # Knowledge work specification
+gwrk kw plan <deliverable>         # Knowledge work execution plan
+gwrk kw build-plan                 # Manage 000-deliverables-plan.md
+```
+
+#### Datetime orientation:
+- Every fieldnote carries: `createdAt`, `sourceDate`, `source`, `project`, `tags`, `supersedes`
+- Files stored as `docs/discovery/fieldnotes/YYYY-MM-DD-{slug}.md` with YAML frontmatter
+- SQLite `fieldnotes` table enables recency queries, burst detection, staleness warnings
+- `--since <date>` and `--stale <days>` filters on `discover list`
+
+#### Discovery directory convention:
+- `docs/discovery/fieldnotes/` — timestamped fieldnotes
+- `docs/discovery/references/` — primary/secondary reference materials
+- `docs/deliverables/` — knowledge work deliverable directories
+- Provisioned by `gwrk init`
+
+---
+
 ## Wave Strategy
 
 | Wave | Phases | Parallelizable? | Theme |
 |---|---|---|---|
 | **Wave 1** | P1 | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning, gwrk new/init |
-| **Wave 2** | P2, P4, P6, P7 | Yes (independent after P1) | Core engines: server, execution, productivity, compression |
+| **Wave 2** | P2, P4, P6, P7, P12 | Yes (independent after P1) | Core engines: server, execution, productivity, compression, discovery |
 | **Wave 3** | P3, P5 | Partially (P3 needs P2, P5 needs P2+P4) | Multipliers: Slack, parallelism |
 | **Wave 4** | P8, P9, P11 | Yes (P8 needs P5; P9 needs P3; P11 needs P3) | Intelligence + Comms: smart routing, DUT ideation, App Home Tab |
 | **Wave 5** | P10 | No (needs P6+P7) | Integration: unified dashboard |
@@ -359,15 +407,16 @@ gwrk tunnel stop
 | P1 (CLI Core) | 21 | TS | 105h |
 | P2 (Build Server) | 18 | TS | 90h |
 | P3 (Slack) | 13 | TS | 65h |
-| P4 (WUD Loop) | 8 | TS | 40h |
-| P5 (Parallel Dispatch) | 8 | TS | 40h |
+| P4 (Ship Loop) | 8 | TS | 40h |
+| P5 (Parallel Dispatch) | 10 | TS | 50h |
 | P6 (Pulse) | 5 | TS | 25h |
 | P7 (Effort + Compression) | 8 | TS | 40h |
-| P8 (Agent Router) | 8 | TS | 40h |
+| P8 (Agent Router) | 10 | TS | 50h |
 | P9 (Agent-DUT) | 8 | TS | 40h |
 | P10 (Integration) | 5 | TS | 25h |
 | P11 (App Home Tab) | 5 | TS | 25h |
-| **Total** | **110 SP** | | **535h** |
+| P12 (Knowledge Work) | 8 | TS | 40h |
+| **Total** | **122 SP** | | **595h** |
 
 **Changes from v1:** P1 increased (13→21 SP: gwrk new, gwrk init, multi-CLI, SQLite). P3 increased (8→13 SP: Slack is richer than Telegram). P7 increased (5→8 SP: leading indicators). P11 decreased (8→5 SP: App Home Tab is simpler than SPA).
 
@@ -387,6 +436,7 @@ None for P0→P1→P2 critical path. Remaining questions:
 
 ## Changelog
 
+- **2026-03-08 (v4):** Three additions. (1) Phase 4 renamed WUD→Ship to align with FC Pillar 3. (2) Agent Registry: P5 gets capacity gate (per-backend rate limiting), P8 gets registry schema + context size estimator + mini-model fallback. Backend constraints documented in `docs/references/agent-backends.md`. P5 SP: 8→10, P8 SP: 8→10. (3) New Phase 12 (Knowledge Work): first-class Foxtrot Charlie Discovery pillar support — fieldnote capture, discovery compilation, kw-specify/plan/build-plan. Wave 2 eligible. +8 SP. Total: 110→122 SP.
 - **2026-03-08 (v3):** Added resilience requirements to Phase 2 (Build Server). New user scenarios: US-011 (macOS sleep/wake), US-012 (network connectivity), US-013 (rich health). Seven new FRs (FR-015–FR-021). New Phase 6 in 002-build-server plan (Resilience & Connectivity). Phase 11 tunnel dependency on Phase 2 event bus clarified. P2 SP: 13→18 (+5 SP for resilience phase). Total: 105→110 SP.
 - **2026-03-05 (v2):** Major update per strategic vision v2. Phase 3: Telegram → Slack (Socket Mode + Bolt SDK). Phase 11: Glass Dashboard → App Home Tab. P1 expanded (gwrk new/init, multi-CLI provisioning, SQLite). SQLite execution ledger (ADR-002) replaces flat JSON. P7 adds leading compression indicators. P9 DUT moves to Slack, aligns to Foxtrot Charlie. Telegram cut from MVP. Updated SP estimates. Total: 92→105 SP.
 - 2026-02-27: Added Spec 011 (Glass Dashboard). Wave 4. Dependencies: [P2, P3]. Impact: +8 SP.
