@@ -4,48 +4,52 @@ import { startRun, finishRun } from "../db/runs.js";
 import { run } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, success, fail, dryRun as dryRunFmt } from "../utils/format.js";
-import { implementCommand } from "./implement.js";
+import { implementAction } from "./implement.js";
 
 /**
  * gwrk ship — The ZFG/WUD Pillar (Throughput)
  *
- * Everything that creates throughput — implementing and completing work.
- *
- *   gwrk ship <feature> <phase>              Single implementation run
- *   gwrk ship done <feature> <phase>         WUD autonomous loop
+ * Everything that creates throughput — implementing and completing work autonomously.
  */
 export const shipCommand = new Command("ship")
-  .description("Ship: implement phases and complete work (ZFG/WUD)")
-  .argument("<feature>", "Feature ID")
-  .argument("<phase>", "Phase number")
+  .description("Ship: autonomous implement→review→PR loop (ZFG/WUD)")
+  .argument("[feature]", "Feature ID")
+  .argument("[phase]", "Phase number")
   .option("--dry-run", "Dry run mode")
-  .action(async (feature: string, phase: string, opts: { dryRun?: boolean }) => {
-    // Delegate to implement command logic
-    await implementCommand.parseAsync([process.argv[0], "implement", feature, phase, ...(opts.dryRun ? ["--dry-run"] : [])]);
+  .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
+  .action(async (feature, phase, opts) => {
+    if (!feature || !phase) {
+      shipCommand.help();
+      return;
+    }
+    await implementAction(feature, phase, opts);
   });
 
-// gwrk ship done <feature> <phase> — WUD loop
-shipCommand
-  .command("done")
-  .description("Work Until Done — autonomous implement→review→PR loop")
+shipCommand.command("done")
+  .description("Work Until Done (implement→review→PR loop)")
   .argument("<feature>", "Feature ID")
   .argument("<phase>", "Phase number")
-  .option("--dry-run", "Dry run mode")
+  .option("--dry-run-wud", "Dry run mode")
   .option("--max-iterations <n>", "Max iterations", "3")
-  .action(async (feature: string, phase: string, opts: { dryRun?: boolean; maxIterations: string }) => {
+  .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
+  .action(async (feature: string, phase: string, options: any, cmd: Command) => {
+    const opts = cmd.opts();
     const cwd = process.cwd();
     const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
 
     const config = loadConfig(cwd);
-    const backend = config.agents.implement;
+    const backend = opts.agent || options.agent || config.agents.implement;
 
-    if (opts.dryRun) {
+    const isDryRun = opts.dryRunWud || options.dryRunWud;
+
+    if (isDryRun) {
       dryRunFmt(`${scriptPath} ${feature} ${phase}`);
       return;
     }
 
     const runId = startRun({
       feature_id: feature,
+      phase_id: `phase-${phase.padStart(2, "0")}`,
       command: "ship done",
       agent_backend: backend,
       workflow: "work-until-done",
@@ -68,6 +72,7 @@ shipCommand
           ...process.env,
           APPROVAL_MODE: "yolo",
           MAX_ITERATIONS: opts.maxIterations,
+          AGENT_BACKEND: backend,
         },
         stdio: "inherit",
       });

@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 AGENT_RUNNER="$SCRIPT_DIR/agent-run.sh"
 
-RUNS_DIR="$REPO_ROOT/.runs"
+RUNS_DIR="${RUNS_DIR:-$REPO_ROOT/.runs}"
 
 MAX_ITERATIONS="${MAX_ITERATIONS:-3}"
 APPROVAL_MODE="${APPROVAL_MODE:-yolo}"
@@ -156,15 +156,17 @@ log() {
     ERROR) color="$RED" ;;
     STAGE) color="$MAGENTA" ;;
   esac
-  printf "${DIM}%s${RESET} ${color}[%s]${RESET} %s\n" "$ts" "$level" "$*" | tee -a "$DUS_LOG"
+  mkdir -p "$RUNS_DIR"
+  printf "${DIM}%s${RESET} ${color}[%s]${RESET} %s\n" "$ts" "$level" "$*" | tee -a "$DUS_LOG" || true
 }
 
 banner() {
-  echo "" | tee -a "$DUS_LOG"
-  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$DUS_LOG"
-  echo -e "${MAGENTA}  $1${RESET}" | tee -a "$DUS_LOG"
-  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$DUS_LOG"
-  echo "" | tee -a "$DUS_LOG"
+  mkdir -p "$RUNS_DIR"
+  echo "" | tee -a "$DUS_LOG" || true
+  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$DUS_LOG" || true
+  echo -e "${MAGENTA}  $1${RESET}" | tee -a "$DUS_LOG" || true
+  echo -e "${MAGENTA}═══════════════════════════════════════════════${RESET}" | tee -a "$DUS_LOG" || true
+  echo "" | tee -a "$DUS_LOG" || true
 }
 
 # ──────────────────────────────────────────────────────────────────

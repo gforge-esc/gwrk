@@ -93,13 +93,14 @@ export function listRuns(featureId, db) {
 export function registerProject(project, db) {
     const conn = db ?? getDb();
     conn
-        .prepare(`INSERT OR REPLACE INTO projects (id, name, path, github_repo)
-       VALUES (@id, @name, @path, @github_repo)`)
+        .prepare(`INSERT OR REPLACE INTO projects (id, name, path, github_repo, slack_channel)
+       VALUES (@id, @name, @path, @github_repo, @slack_channel)`)
         .run({
         id: project.id,
         name: project.name,
         path: project.path,
         github_repo: project.github_repo ?? null,
+        slack_channel: project.slack_channel ?? null,
     });
 }
 /**

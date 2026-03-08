@@ -138,20 +138,21 @@ export function listRuns(featureId: string, db?: Database.Database): RunRecord[]
  * Register a project in the global DB. Upserts by path.
  */
 export function registerProject(
-  project: { id: string; name: string; path: string; github_repo?: string },
+  project: { id: string; name: string; path: string; github_repo?: string; slack_channel?: string },
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT OR REPLACE INTO projects (id, name, path, github_repo)
-       VALUES (@id, @name, @path, @github_repo)`,
+      `INSERT OR REPLACE INTO projects (id, name, path, github_repo, slack_channel)
+       VALUES (@id, @name, @path, @github_repo, @slack_channel)`,
     )
     .run({
       id: project.id,
       name: project.name,
       path: project.path,
       github_repo: project.github_repo ?? null,
+      slack_channel: project.slack_channel ?? null,
     });
 }
 

@@ -9,6 +9,8 @@
     "build": "tsc",
     "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest watch",
     "lint": "biome check",
     "format": "biome format --write"
   },
@@ -24,6 +26,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/dockerode": "^4.0.1",
     "@types/node": "^22.13.5",
+    "@vitest/coverage-v8": "^3.2.4",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
     "vitest": "^3.0.6"

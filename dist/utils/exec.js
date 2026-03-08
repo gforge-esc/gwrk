@@ -33,9 +33,13 @@ export function run(command, args, opts) {
         });
     });
 }
-export function execCommand(command, args, stdin) {
+export function execCommand(command, args, stdin, opts) {
     return new Promise((resolve) => {
-        const child = execFile(command, args, { encoding: "utf-8" }, (error, stdout, stderr) => {
+        const child = execFile(command, args, {
+            encoding: "utf-8",
+            cwd: opts?.cwd,
+            env: opts?.env ?? process.env,
+        }, (error, stdout, stderr) => {
             if (error) {
                 const err = error;
                 if (err.code === "ENOENT") {
@@ -47,7 +51,7 @@ export function execCommand(command, args, stdin) {
                     return;
                 }
                 resolve({
-                    exitCode: err.status ?? 1,
+                    exitCode: typeof err.code === "number" ? err.code : (err.status ?? 1),
                     stdout: stdout.toString(),
                     stderr: stderr.toString(),
                 });

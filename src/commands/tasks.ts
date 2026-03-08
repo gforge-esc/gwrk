@@ -115,9 +115,31 @@ tasksCommand
       console.log(JSON.stringify({ tasks: allTasks }, null, 2));
     } else {
       console.log(`Tasks for ${feature}:`);
-      for (const t of allTasks) {
-        const statusChar = t.status === "completed" ? "✓" : " ";
-        console.log(`[${statusChar}] ${t.id}: ${t.title}`);
+      const { CYAN, BOLD, RESET, GREEN, RED, DIM } = color;
+      
+      for (const phase of state.phases) {
+        if (phase.tasks.length === 0) continue;
+        
+        const phaseNum = Number.parseInt(phase.id.replace("phase-", ""), 10);
+        console.log(`\n  ${CYAN}${BOLD}Phase ${phaseNum}: ${phase.title}${RESET}`);
+        
+        for (const t of phase.tasks) {
+          let statusChar = " ";
+          const bracketColor = DIM;
+          let textColor = RESET;
+
+          if (t.status === "completed") {
+            statusChar = `${GREEN}✓${RESET}`;
+            textColor = DIM; // Dim completed tasks to reduce noise
+          } else if (t.status === "cancelled") {
+            statusChar = `${RED}✗${RESET}`;
+            textColor = DIM; // Dim cancelled tasks
+          } else if (t.status === "in_progress") {
+            statusChar = `${CYAN}▸${RESET}`;
+          }
+
+          console.log(`  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`);
+        }
       }
     }
   });

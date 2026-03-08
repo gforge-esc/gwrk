@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { implementCommand } from "./implement.js";
+import { implementAction } from "./implement.js";
 import { run, runGate } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
 import { loadTaskState } from "../utils/state.js";
-import fs from "node:fs";
 
 vi.mock("../utils/exec.js", () => ({
   run: vi.fn().mockResolvedValue(undefined),
@@ -28,6 +27,12 @@ vi.mock("../utils/state.js", () => ({
       },
     ],
   }),
+  markTaskComplete: vi.fn(),
+  saveTaskState: vi.fn(),
+}));
+
+vi.mock("../utils/history.js", () => ({
+  appendHistory: vi.fn(),
 }));
 
 vi.mock("../db/runs.js", () => ({
@@ -39,15 +44,23 @@ vi.mock("node:fs", () => ({
   default: {
     existsSync: vi.fn().mockReturnValue(true),
   },
+  existsSync: vi.fn().mockReturnValue(true),
 }));
 
-describe("implementCommand", () => {
+describe("implementAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Default mock: fail pre-flight (exit 1), pass post-flight (exit 0)
+    const gateCalls: Record<string, number> = {};
+    vi.mocked(runGate).mockImplementation((p: string) => {
+      gateCalls[p] = (gateCalls[p] || 0) + 1;
+      return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
+    });
   });
 
   it("iterates through tasks and calls agent-run.sh", async () => {
-    await implementCommand.parseAsync(["node", "implement", "004-wud-loop", "1"]);
+    await implementAction("004-wud-loop", "1", {});
 
     expect(loadTaskState).toHaveBeenCalled();
     expect(run).toHaveBeenCalledTimes(2);
@@ -56,26 +69,22 @@ describe("implementCommand", () => {
   });
 
   it("skips tasks that already pass pre-flight gate", async () => {
-    // T001 passes, T002 fails
-    (runGate as any).mockImplementation((path: string) => {
-      if (path.includes("T001")) return { exitCode: 0, stdout: "", stderr: "" };
-      return { exitCode: 1, stdout: "", stderr: "" };
+    // T001 passes pre-flight, T002 fails pre-flight then passes post-flight
+    const gateCalls: Record<string, number> = {};
+    vi.mocked(runGate).mockImplementation((p: string) => {
+      if (p.includes("T001")) return { exitCode: 0, stdout: "", stderr: "" };
+      gateCalls[p] = (gateCalls[p] || 0) + 1;
+      return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
     });
 
-    await implementCommand.parseAsync(["node", "implement", "004-wud-loop", "1"]);
+    await implementAction("004-wud-loop", "1", {});
 
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith(expect.stringContaining("agent-run.sh"), ["implement", "004-wud-loop", "1", "T002"], expect.any(Object));
   });
 
-  it("fails if gate script exists but runGate fails with non-0 and non-1 (e.g. 127)", async () => {
-    // This is an error state (e.g. script not found or permission denied)
-    // Actually our code just proceeds if it's not 0.
-    // The spec says: confirming it FAILS (exit != 0) before dispatching the agent.
-  });
-
   it("respects dry-run flag", async () => {
-    await implementCommand.parseAsync(["node", "implement", "004-wud-loop", "1", "--dry-run"]);
+    await implementAction("004-wud-loop", "1", { dryRun: true });
 
     expect(run).not.toHaveBeenCalled();
   });

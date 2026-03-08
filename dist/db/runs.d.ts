@@ -45,6 +45,7 @@ export declare function registerProject(project: {
     name: string;
     path: string;
     github_repo?: string;
+    slack_channel?: string;
 }, db?: Database.Database): void;
 export interface RunStats {
     command: string;

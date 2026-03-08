@@ -34,4 +34,4 @@ export const dbCommand = new Command("db")
     .description("Query the local execution ledger")
     .addCommand(runsCommand)
     .addCommand(statsCommand)
-    .addCommand(recordCommand);
+    .addCommand(recordCommand, { hidden: true });

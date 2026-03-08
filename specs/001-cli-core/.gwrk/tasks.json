@@ -283,14 +283,16 @@
           "title": "Implement src/commands/init.ts",
           "description": "MODIFY: Add CLI detection, SQLite registration, Slack optional",
           "status": "open",
-          "gateScript": "gates/T033-gate.sh"
+          "gateScript": "gates/T033-gate.sh",
+          "completedAt": "2026-03-06T21:26:06.775Z"
         },
         {
           "id": "T034",
           "title": "Implement src/commands/new.ts",
           "description": "NEW: `gwrk new <name>` — mkdir, git init, gh repo create, then delegates to init",
           "status": "open",
-          "gateScript": "gates/T034-gate.sh"
+          "gateScript": "gates/T034-gate.sh",
+          "completedAt": "2026-03-06T21:26:10.527Z"
         }
       ],
       "doneWhen": [
@@ -309,21 +311,24 @@
           "title": "Implement src/commands/run.ts",
           "description": "DELETE: Dead `run` group — commands moved to `define`",
           "status": "open",
-          "gateScript": "gates/T035-gate.sh"
+          "gateScript": "gates/T035-gate.sh",
+          "completedAt": "2026-03-07T12:00:00Z"
         },
         {
           "id": "T036",
           "title": "Implement src/commands/metrics.ts",
-          "description": "DELETE: Dead `metrics` group — moved to `measure`",
+          "description": "DELETE: Dead metrics group — moved to measure",
           "status": "open",
-          "gateScript": "gates/T036-gate.sh"
+          "gateScript": "gates/T036-gate.sh",
+          "completedAt": "2026-03-07T12:05:00Z"
         },
         {
           "id": "T037",
           "title": "Implement src/cli.e2e.test.ts",
           "description": "MODIFY: Update E2E assertions to match US-018 exactly",
           "status": "open",
-          "gateScript": "gates/T037-gate.sh"
+          "gateScript": "gates/T037-gate.sh",
+          "completedAt": "2026-03-07T16:40:00Z"
         }
       ],
       "doneWhen": [

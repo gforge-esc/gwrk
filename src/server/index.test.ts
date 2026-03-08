@@ -6,7 +6,7 @@ import type { GwrkConfig } from "../utils/config.js";
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "codex-cloud" },
-  server: { port: 18791, host: "localhost" },
+  server: { port: 18891, host: "localhost" },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
     cloud: { maxConcurrent: 10 }
