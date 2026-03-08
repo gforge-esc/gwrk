@@ -9,19 +9,19 @@ import { specifyCommand } from "./specify.js";
 import { planCommand } from "./plan.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 /**
- * gwrk define — The DUS Pillar (Clarity)
+ * gwrk define — The Definition Pillar (Clarity)
  *
  * User-facing commands:
- *   gwrk define <feature> [--refs <path>]     Full DUS loop
+ *   gwrk define <feature> [--refs <path>]     Full definition loop
  *   gwrk define spec <feature>                Create/refine spec
  *   gwrk define plan <feature>                Create implementation plan
  *   gwrk define tasks <feature>               Decompose plan → tasks + gates
  *
- * Internal DUS stages (NOT exposed as subcommands):
- *   analyze, checklist, tests — run inside the DUS loop automatically
+ * Internal definition stages (NOT exposed as subcommands):
+ *   analyze, checklist, tests — run inside the definition loop automatically
  */
 export const defineCommand = new Command("define")
-    .description("Define Until Solid — spec → plan → tasks → analyze (DUS)")
+    .description("Define: spec → plan → tasks → analyze")
     .argument("[feature]", "Feature ID (e.g. 001-cli-core)")
     .option("--refs <path>", "Path to additional reference docs")
     .option("--dry-run", "Print the command without executing")
@@ -30,7 +30,7 @@ export const defineCommand = new Command("define")
         defineCommand.help();
         return;
     }
-    // Bare `gwrk define <feature>` = full DUS loop
+    // Bare `gwrk define <feature>` = full definition loop
     const cwd = process.cwd();
     const scriptPath = path.join(cwd, "scripts/dev/define-until-solid.sh");
     const config = loadConfig(cwd);

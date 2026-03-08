@@ -1,6 +1,6 @@
 import { Command } from "commander";
 /**
- * gwrk ship — The ZFG/WUD Pillar (Throughput)
+ * gwrk ship — The Shipping Pillar (Throughput)
  *
  * Everything that creates throughput — implementing and completing work autonomously.
  */

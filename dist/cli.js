@@ -67,8 +67,8 @@ program
 });
 program.addCommand(initCommand);
 // The Foxtrot Charlie Pillars
-program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze (DUS)
-program.addCommand(shipCommand); // Ship: implement phases (ZFG/WUD)
+program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze
+program.addCommand(shipCommand); // Ship: autonomous implement → review → PR loop
 program.addCommand(measureCommand); // Measure: pulse, effort, compression
 // Operational queries
 program.addCommand(tasksCommand);
