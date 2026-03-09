@@ -1,12 +1,12 @@
 ---
 type: contract
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-05T11:12:20Z"
 ---
 
 # Contract: PR + CI Gate
 
-**Feature**: 004-wud-loop
+**Feature**: 004-ship-loop
 **Scope**: GitHub PR creation and CI check waiting
 
 ---
@@ -20,7 +20,7 @@ Creates a GitHub PR via `gh pr create` targeting `develop`. If a PR already exis
 
 ```typescript
 interface CreatePROptions {
-  featureName: string;       // e.g. "004-wud-loop"
+  featureName: string;       // e.g. "004-ship-loop"
   phaseNumber: number;
   featureDir: string;        // For reading tasks.json to build PR body
 }

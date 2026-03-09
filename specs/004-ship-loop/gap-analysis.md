@@ -1,12 +1,12 @@
 ---
 type: gap_analysis
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-05T21:50:58Z"
 ---
 
 # Gap Analysis: 004 WUD Loop
 
-**Feature**: 004-wud-loop
+**Feature**: 004-ship-loop
 **Date**: 2026-03-05
 **Method**: Deep audit of current source vs. contracts
 

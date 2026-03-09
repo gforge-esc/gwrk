@@ -1,12 +1,12 @@
 ---
 type: contract
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-05T11:12:20Z"
 ---
 
 # Contract: Implement Command
 
-**Feature**: 004-wud-loop
+**Feature**: 004-ship-loop
 **Scope**: Single-phase task execution with gate enforcement
 
 ---
@@ -20,7 +20,7 @@ Executes all tasks in a single phase sequentially: pre-flight gate → agent dis
 
 ```typescript
 interface ExecutePhaseOptions {
-  featureDir: string;       // e.g. "specs/004-wud-loop"
+  featureDir: string;       // e.g. "specs/004-ship-loop"
   phaseNumber: number;      // e.g. 1
   config: GwrkConfig;       // From loadConfig()
   dryRun?: boolean;         // Print plan without executing
@@ -30,7 +30,7 @@ interface ExecutePhaseResult {
   tasksCompleted: number;
   tasksSkipped: number;     // Pre-flight already passing
   totalTasks: number;
-  branch: string;           // e.g. "feat/004-wud-loop"
+  branch: string;           // e.g. "feat/004-ship-loop"
 }
 
 function executePhase(opts: ExecutePhaseOptions): Promise<ExecutePhaseResult>

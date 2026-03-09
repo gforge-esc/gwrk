@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { recordHistory } from "../db/runs.js";
 
 export const HistoryEntrySchema = z.object({
   timestamp: z.string().datetime(),
@@ -27,6 +28,20 @@ export function appendHistory(entry: HistoryEntry): void {
     process.exit(1);
   }
 
+  // Write to legacy JSONL
   const line = `${JSON.stringify(entry)}\n`;
   fs.appendFileSync(historyPath, line, "utf-8");
+
+  // Write to SQLite DB
+  try {
+    recordHistory({
+      feature_id: entry.featureId,
+      task_id: entry.taskId,
+      from_status: entry.fromStatus,
+      to_status: entry.toStatus,
+      metadata: entry.agentId ? JSON.stringify({ agentId: entry.agentId }) : undefined,
+    });
+  } catch (error) {
+    console.warn(`Warning: Could not record history in DB: ${error}`);
+  }
 }

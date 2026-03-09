@@ -1,12 +1,12 @@
 ---
 type: contract
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-05T11:12:20Z"
 ---
 
 # Contract: Branch Management
 
-**Feature**: 004-wud-loop
+**Feature**: 004-ship-loop
 **Scope**: Git branch creation, checkout, and develop merge for feature work
 
 ---
@@ -24,9 +24,9 @@ function ensureBranch(featureName: string): Promise<string>
 
 | Parameter | Type | Description |
 |---|---|---|
-| `featureName` | `string` | Feature identifier, e.g. `004-wud-loop` |
+| `featureName` | `string` | Feature identifier, e.g. `004-ship-loop` |
 
-**Returns**: Branch name (e.g. `feat/004-wud-loop`)
+**Returns**: Branch name (e.g. `feat/004-ship-loop`)
 
 **Behavior**:
 1. If current branch is already `feat/<featureName>`: no-op, return branch name.

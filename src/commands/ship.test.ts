@@ -4,6 +4,7 @@ import { shipCommand } from "./ship.js";
 import * as execModule from "../utils/exec.js";
 import * as runsModule from "../db/runs.js";
 import * as uiModule from "../utils/format.js";
+import * as stateModule from "../utils/state.js";
 
 // Mock dependencies
 vi.mock("../utils/exec.js", () => ({
@@ -42,6 +43,17 @@ vi.mock("../utils/format.js", () => ({
     },
 }));
 
+vi.mock("../utils/state.js", () => ({
+    loadTaskState: vi.fn().mockReturnValue({
+        phases: [
+            { id: "phase-01", tasks: [{ id: "T001", title: "Task 1", status: "open" }] },
+            { id: "phase-02", tasks: [{ id: "T002", title: "Task 2", status: "open" }] },
+        ]
+    }),
+    markTaskComplete: vi.fn(),
+    saveTaskState: vi.fn(),
+}));
+
 vi.mock("../utils/manifest.js", () => ({
     writeManifest: vi.fn(),
     generateRunId: vi.fn().mockReturnValue("mock-run-id"),
@@ -54,24 +66,22 @@ vi.mock("../utils/git.js", () => ({
 }));
 
 describe("shipCommand", () => {
-    let mockRun: any;
+    let mockRun: ReturnType<typeof vi.fn>;
     let program: Command;
 
     beforeEach(() => {
         vi.clearAllMocks();
         mockRun = vi.mocked(execModule.run);
 
-        // Create a fresh program for each test
         program = new Command();
         program.addCommand(shipCommand);
 
-        // Prevent process.exit from killing the vitest runner
         vi.spyOn(process, "exit").mockImplementation((code) => {
             throw new Error(`process.exit unexpectedly called with "${code}"`);
         });
     });
 
-    it("ship should execute scripts/dev/work-until-done.sh (full lifecycle)", async () => {
+    it("ship with phase should execute work-until-done.sh for that phase", async () => {
         mockRun.mockResolvedValueOnce(undefined);
 
         await program.parseAsync(["node", "test", "ship", "001-cli-core", "7"]);
@@ -81,13 +91,24 @@ describe("shipCommand", () => {
 
         expect(scriptPath).toContain("work-until-done.sh");
         expect(args).toEqual(["001-cli-core", "7"]);
-        
+
         expect(runsModule.startRun).toHaveBeenCalledWith(
             expect.objectContaining({
                 command: "ship",
                 workflow: "work-until-done",
             })
         );
+    });
+
+    it("ship without phase should ship all phases from tasks.json", async () => {
+        mockRun.mockResolvedValue(undefined);
+
+        await program.parseAsync(["node", "test", "ship", "001-cli-core"]);
+
+        // Should call work-until-done.sh twice (phase-01, phase-02 from mock)
+        expect(execModule.run).toHaveBeenCalledTimes(2);
+        expect(mockRun.mock.calls[0][1]).toEqual(["001-cli-core", "01"]);
+        expect(mockRun.mock.calls[1][1]).toEqual(["001-cli-core", "02"]);
     });
 
     it("ship should pass custom max-iterations", async () => {
@@ -110,14 +131,16 @@ describe("shipCommand", () => {
         expect(options.env.CI_TIMEOUT).toBe("60");
     });
 
-    it("should safely handle execution failures", async () => {
+    it("should stop on first phase failure", async () => {
         const errorWithCode = new Error("shell error");
-        (errorWithCode as any).code = 127;
+        (errorWithCode as unknown as { code: number }).code = 127;
         mockRun.mockRejectedValueOnce(errorWithCode);
 
-        await expect(program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]))
+        // Ship without phase — should fail on phase-01 and not attempt phase-02
+        await expect(program.parseAsync(["node", "test", "ship", "001-cli-core"]))
             .rejects.toThrow('process.exit unexpectedly called with "127"');
 
+        expect(execModule.run).toHaveBeenCalledTimes(1);
         expect(runsModule.finishRun).toHaveBeenCalledWith(999, expect.objectContaining({ exit_code: 127 }));
         expect(uiModule.fail).toHaveBeenCalled();
     });
@@ -127,5 +150,13 @@ describe("shipCommand", () => {
 
         expect(execModule.run).not.toHaveBeenCalled();
         expect(uiModule.dryRun).toHaveBeenCalled();
+    });
+
+    it("should support dry-run mode for all phases", async () => {
+        await program.parseAsync(["node", "test", "ship", "--dry-run", "001-cli-core"]);
+
+        expect(execModule.run).not.toHaveBeenCalled();
+        // Should print dry-run for each phase
+        expect(uiModule.dryRun).toHaveBeenCalledTimes(2);
     });
 });

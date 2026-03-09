@@ -1,12 +1,12 @@
 ---
 type: contract
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-05T11:12:20Z"
 ---
 
 # Contract: Verdict Checker
 
-**Feature**: 004-wud-loop
+**Feature**: 004-ship-loop
 **Scope**: Phase completion verdict via tasks.json
 
 ---

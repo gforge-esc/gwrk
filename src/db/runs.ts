@@ -194,3 +194,44 @@ export function listProjects(db?: Database.Database) {
   const conn = db ?? getDb();
   return conn.prepare("SELECT * FROM projects ORDER BY created_at DESC").all();
 }
+
+export interface HistoryRecord {
+  id?: number;
+  timestamp?: string;
+  project_id?: string;
+  feature_id: string;
+  task_id?: string;
+  from_status?: string;
+  to_status?: string;
+  run_id?: number;
+  metadata?: string;
+}
+
+/**
+ * Record a task status change in the history table.
+ */
+export function recordHistory(
+  entry: HistoryRecord,
+  db?: Database.Database,
+): number {
+  const conn = db ?? getDb();
+  const result = conn
+    .prepare(
+      `INSERT INTO history (
+         project_id, feature_id, task_id, from_status, to_status, run_id, metadata
+       )
+       VALUES (
+         @project_id, @feature_id, @task_id, @from_status, @to_status, @run_id, @metadata
+       )`,
+    )
+    .run({
+      project_id: entry.project_id ?? null,
+      feature_id: entry.feature_id,
+      task_id: entry.task_id ?? null,
+      from_status: entry.from_status ?? null,
+      to_status: entry.to_status ?? null,
+      run_id: entry.run_id ?? null,
+      metadata: entry.metadata ?? null,
+    });
+  return Number(result.lastInsertRowid);
+}

@@ -1,8 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T036 — Delete src/commands/metrics.ts (dead metrics group)
+# Gate: T036 — Implement src/cli.e2e.test.ts
 # Asserts: Derived from task description
 
-! test -f src/commands/metrics.ts
+test -f src/cli.e2e.test.ts
 
-echo "PASS: T036 — Delete src/commands/metrics.ts"
+# Phase Acceptance Criteria
+pnpm test
+gwrk --help
+
+echo "PASS: T036 — Implement src/cli.e2e.test.ts"

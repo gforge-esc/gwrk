@@ -1,12 +1,12 @@
 ---
 type: implementation_plan
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-05T11:12:20Z"
 ---
 
 # Implementation Plan: 004 WUD Loop
 
-**Branch**: `004-wud-loop` | **Date**: 2026-02-27 | **Spec**: [spec.md](./spec.md)
+**Branch**: `004-ship-loop` | **Date**: 2026-02-27 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
@@ -143,7 +143,7 @@ Wire `implement` and `wud` commands into `cli.ts`, add `--dry-run` flag, and val
 #### Done When
 - `gwrk implement --help 2>&1 | grep -q 'implement <feature> <phase>'` exits 0
 - `gwrk wud --help 2>&1 | grep -q 'wud <feature>'` exits 0
-- `gwrk implement 004-wud-loop 1 --dry-run 2>&1 | grep -q 'DRY RUN'` exits 0
+- `gwrk implement 004-ship-loop 1 --dry-run 2>&1 | grep -q 'DRY RUN'` exits 0
 - `npx tsc --noEmit` exits 0
 
 ---

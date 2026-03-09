@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T021 — Implement src/commands/tasks.ts
+# Gate: T038 — Implement src/commands/tasks.ts
 # Asserts: Derived from task description
 
 test -f src/commands/tasks.ts
 
-echo "PASS: T021 — Implement src/commands/tasks.ts"
+echo "PASS: T038 — Implement src/commands/tasks.ts"

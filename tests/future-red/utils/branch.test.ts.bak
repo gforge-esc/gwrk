@@ -30,8 +30,8 @@ describe("FR-002: Branch management — ensureBranch()", () => {
       return "" as any;
     });
 
-    const branch = await ensureBranch("004-wud-loop");
-    expect(branch).toBe("feat/004-wud-loop");
+    const branch = await ensureBranch("004-ship-loop");
+    expect(branch).toBe("feat/004-ship-loop");
 
     // Must have checked out develop first
     expect(mockExec).toHaveBeenCalledWith(
@@ -42,7 +42,7 @@ describe("FR-002: Branch management — ensureBranch()", () => {
     // Must have created the branch
     expect(mockExec).toHaveBeenCalledWith(
       "git",
-      expect.arrayContaining(["checkout", "-b", "feat/004-wud-loop"]),
+      expect.arrayContaining(["checkout", "-b", "feat/004-ship-loop"]),
       expect.anything()
     );
   });
@@ -52,13 +52,13 @@ describe("FR-002: Branch management — ensureBranch()", () => {
     mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
       const argsArr = args as string[];
       if (cmd === "git" && argsArr?.[0] === "branch" && argsArr?.[1] === "--list") {
-        return "  feat/004-wud-loop\n" as any;
+        return "  feat/004-ship-loop\n" as any;
       }
       return "" as any;
     });
 
-    const branch = await ensureBranch("004-wud-loop");
-    expect(branch).toBe("feat/004-wud-loop");
+    const branch = await ensureBranch("004-ship-loop");
+    expect(branch).toBe("feat/004-ship-loop");
 
     // Must merge develop
     expect(mockExec).toHaveBeenCalledWith(
@@ -77,7 +77,7 @@ describe("FR-002: Branch management — ensureBranch()", () => {
 describe("FR-002: Branch management — pushBranch()", () => {
   it("pushes with --force-with-lease", async () => {
     mockExec.mockReturnValue("" as any);
-    await pushBranch("004-wud-loop");
+    await pushBranch("004-ship-loop");
 
     expect(mockExec).toHaveBeenCalledWith(
       "git",

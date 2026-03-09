@@ -1,12 +1,12 @@
 ---
 type: specification
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-06T12:00:00Z"
 ---
 
 # Feature Specification: 004 WUD Loop
 
-**Feature Branch**: `004-wud-loop`
+**Feature Branch**: `004-ship-loop`
 **Created**: 2026-02-27
 **Revised**: 2026-03-06
 **Status**: Settled
@@ -24,10 +24,10 @@ As a Principal Engineer, I want to run `gwrk ship <feature> <phase>` so that a s
 **Independent Test**: Run `gwrk ship` against a feature with a prepared `tasks.json` and gate scripts; verify tasks transition to `completed` and commits are created.
 
 **Acceptance Scenarios**:
-1. **Given** a feature `004-wud-loop` with `tasks.json` containing 3 open tasks in phase-01 and passing gate scripts, **When** running `gwrk ship 004-wud-loop 1`, **Then**:
-   - `jq '[.phases[] | select(.id == "phase-01") | .tasks[] | select(.status == "completed")] | length' specs/004-wud-loop/.gwrk/tasks.json` outputs `3`
+1. **Given** a feature `004-ship-loop` with `tasks.json` containing 3 open tasks in phase-01 and passing gate scripts, **When** running `gwrk ship 004-ship-loop 1`, **Then**:
+   - `jq '[.phases[] | select(.id == "phase-01") | .tasks[] | select(.status == "completed")] | length' specs/004-ship-loop/.gwrk/tasks.json` outputs `3`
    - `git log --oneline --format='%s' -3 | grep -c 'feat:'` outputs `3`
-   - `gwrk db runs 004-wud-loop --json | jq '. | length'` returns `>= 1`
+   - `gwrk db runs 004-ship-loop --json | jq '. | length'` returns `>= 1`
 
 ### US-002 - Hard Gate Pre-flight (Priority: P0)
 As the WUD engine, I want each task's gate script to FAIL before implementation begins (verify RED), so that the gate is proven to detect the unimplemented state before the agent writes code.
@@ -37,8 +37,8 @@ As the WUD engine, I want each task's gate script to FAIL before implementation 
 **Independent Test**: Run implement against a task whose gate already passes; verify the task is skipped with a warning.
 
 **Acceptance Scenarios**:
-1. **Given** a task T001 whose gate script already exits 0, **When** `gwrk ship 004-wud-loop 1` reaches T001, **Then**:
-   - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'T001.*pre-flight PASS.*skipping'` exits 0
+1. **Given** a task T001 whose gate script already exits 0, **When** `gwrk ship 004-ship-loop 1` reaches T001, **Then**:
+   - `gwrk ship 004-ship-loop 1 2>&1 | grep -q 'T001.*pre-flight PASS.*skipping'` exits 0
 
 ### US-003 - Autonomous WUD Lifecycle (Priority: P0)
 As a Principal Engineer, I want to run `gwrk ship <feature> <phase>` so that the full lifecycle — implement → code review → UAT review → PR → CI — is executed autonomously with retry on failure and each step recorded in SQLite.
@@ -48,10 +48,10 @@ As a Principal Engineer, I want to run `gwrk ship <feature> <phase>` so that the
 **Independent Test**: Run `gwrk ship` with mock agent backends and verify the full state machine completes.
 
 **Acceptance Scenarios**:
-1. **Given** a feature with open tasks, passing gates, and mock review agents, **When** running `gwrk ship 004-wud-loop 1`, **Then**:
-   - `test -f .runs/004-wud-loop_p1.state` exits 1 (state file cleaned on success)
-   - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'WORK UNTIL DONE.*COMPLETE'` exits 0
-   - `gwrk db runs 004-wud-loop --json | jq '[.[] | select(.command == "ship")] | length'` returns `>= 1`
+1. **Given** a feature with open tasks, passing gates, and mock review agents, **When** running `gwrk ship 004-ship-loop 1`, **Then**:
+   - `test -f .runs/004-ship-loop_p1.state` exits 1 (state file cleaned on success)
+   - `gwrk ship 004-ship-loop 1 2>&1 | grep -q 'WORK UNTIL DONE.*COMPLETE'` exits 0
+   - `gwrk db runs 004-ship-loop --json | jq '[.[] | select(.command == "ship")] | length'` returns `>= 1`
 
 ### US-004 - Circuit Breaker (Priority: P0)
 As a Principal Engineer, I want the WUD loop to stop after a configurable number of retry iterations so that infinite loops are prevented and I am escalated via stderr.
@@ -61,10 +61,10 @@ As a Principal Engineer, I want the WUD loop to stop after a configurable number
 **Independent Test**: Set `MAX_ITERATIONS=2` and force repeated review failures; verify WUD exits with circuit-breaker message.
 
 **Acceptance Scenarios**:
-1. **Given** `MAX_ITERATIONS=2` and a review that always returns NO-GO, **When** running `gwrk ship 004-wud-loop 1`, **Then**:
+1. **Given** `MAX_ITERATIONS=2` and a review that always returns NO-GO, **When** running `gwrk ship 004-ship-loop 1`, **Then**:
    - Command exits with code 1
-   - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'Circuit breaker'` exits 0
-   - `test -f .runs/004-wud-loop_p1.state && jq -r '.stage' .runs/004-wud-loop_p1.state` outputs `CIRCUIT_BREAK`
+   - `gwrk ship 004-ship-loop 1 2>&1 | grep -q 'Circuit breaker'` exits 0
+   - `test -f .runs/004-ship-loop_p1.state && jq -r '.stage' .runs/004-ship-loop_p1.state` outputs `CIRCUIT_BREAK`
 
 ### US-005 - Crash Recovery (Priority: P1)
 As the WUD engine, I want the state machine to persist its stage and iteration to disk so that if the process crashes, it can resume from the last completed stage.
@@ -74,8 +74,8 @@ As the WUD engine, I want the state machine to persist its stage and iteration t
 **Independent Test**: Kill WUD mid-run; restart and verify it resumes from the last stage.
 
 **Acceptance Scenarios**:
-1. **Given** a state file `.runs/004-wud-loop_p1.state` with `{"stage": "CODE_REVIEW", "iteration": 1}`, **When** running `gwrk ship 004-wud-loop 1`, **Then**:
-   - `gwrk ship 004-wud-loop 1 2>&1 | grep -q 'Resuming from state: CODE_REVIEW'` exits 0
+1. **Given** a state file `.runs/004-ship-loop_p1.state` with `{"stage": "CODE_REVIEW", "iteration": 1}`, **When** running `gwrk ship 004-ship-loop 1`, **Then**:
+   - `gwrk ship 004-ship-loop 1 2>&1 | grep -q 'Resuming from state: CODE_REVIEW'` exits 0
 
 ### US-006 - PR Creation (Priority: P0)
 As the WUD engine, I want a PR to be created after all reviews pass, targeting `develop`, so that the phase work is ready for merge.
@@ -86,7 +86,7 @@ As the WUD engine, I want a PR to be created after all reviews pass, targeting `
 
 **Acceptance Scenarios**:
 1. **Given** a completed phase with passing reviews, **When** WUD creates a PR, **Then**:
-   - `gh pr list --head feat/004-wud-loop --base develop --json number --jq '.[0].number'` returns a PR number
+   - `gh pr list --head feat/004-ship-loop --base develop --json number --jq '.[0].number'` returns a PR number
 
 ---
 
@@ -163,7 +163,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 ### DM-001: WUD Run State (`.runs/<feature>_p<phase>.state`)
 
-Matches `004-wud-loop` contract. Persisted JSON.
+Matches `004-ship-loop` contract. Persisted JSON.
 
 ### DM-002: WUD Run Log (`.runs/<timestamp>_wud_<feature>_p<phase>.log`)
 

@@ -1,10 +1,10 @@
 {
   "featureId": "002-build-server",
-  "createdAt": "2026-03-06T20:34:05.850Z",
+  "createdAt": "2026-03-09T14:20:58.776Z",
   "generatedFrom": {
     "plan": {
-      "hash": "c01641d07567eb09a10cba0eb8502ec1edb21c41574a31dfb7844c47b091efe8",
-      "modifiedAt": "2026-03-06T16:01:37.954Z"
+      "hash": "1176c83845b9b4a2d20166b66d4c44cb36a20b856363b469b2a73e6279d9cf48",
+      "modifiedAt": "2026-03-08T18:43:07.406Z"
     }
   },
   "phases": [
@@ -301,6 +301,81 @@
         "`pnpm vitest run src/server/routes/dispatch.test.ts` exits 0",
         "`pnpm vitest run src/server/integration.test.ts` exits 0",
         "`test -f src/server/dispatch.ts && test -f src/server/routes/dispatch.ts && test -f src/server/persistence.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-06",
+      "title": "Resilience & Connectivity",
+      "tasks": [
+        {
+          "id": "T035",
+          "title": "Implement src/server/lifecycle.ts",
+          "description": "NEW: Heartbeat-drift sleep/wake detector. Emits `server:sleep`, `server:wake` events. Drives Graceful Reconnect Protocol.",
+          "status": "open",
+          "gateScript": "gates/T035-gate.sh"
+        },
+        {
+          "id": "T036",
+          "title": "Implement src/server/network.ts",
+          "description": "NEW: Network interface watcher via `os.networkInterfaces(",
+          "status": "open",
+          "gateScript": "gates/T036-gate.sh"
+        },
+        {
+          "id": "T037",
+          "title": "Implement src/server/routes/health.ts",
+          "description": "NEW: Enhanced `/health` endpoint returning component-level readiness JSON for server, Docker, network.",
+          "status": "open",
+          "gateScript": "gates/T037-gate.sh"
+        },
+        {
+          "id": "T038",
+          "title": "Implement src/server/index.ts",
+          "description": "MODIFY: Wire lifecycle + network events → dispatch queue `pause(",
+          "status": "open",
+          "gateScript": "gates/T038-gate.sh"
+        },
+        {
+          "id": "T039",
+          "title": "Implement src/server/sandbox.ts",
+          "description": "MODIFY: Add `pauseAll(",
+          "status": "open",
+          "gateScript": "gates/T039-gate.sh"
+        },
+        {
+          "id": "T040",
+          "title": "Implement src/server/dispatch.ts",
+          "description": "MODIFY: Add `pause(",
+          "status": "open",
+          "gateScript": "gates/T040-gate.sh"
+        },
+        {
+          "id": "T041",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: Extend schema with `server.heartbeatIntervalMs`, `server.networkCheckIntervalMs`.",
+          "status": "open",
+          "gateScript": "gates/T041-gate.sh"
+        },
+        {
+          "id": "T042",
+          "title": "Implement src/server/types.ts",
+          "description": "MODIFY: Add `ServerLifecycle` type, `HealthResponse` type, `NetworkStatus` type.",
+          "status": "open",
+          "gateScript": "gates/T042-gate.sh"
+        },
+        {
+          "id": "T043",
+          "title": "Implement test strategy for Phase 6",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T043-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/lifecycle.test.ts` exits 0",
+        "`pnpm vitest run src/server/network.test.ts` exits 0",
+        "`pnpm vitest run src/server/routes/health.test.ts` exits 0",
+        "`test -f src/server/lifecycle.ts && test -f src/server/network.ts && test -f src/server/routes/health.ts` exits 0"
       ]
     }
   ]

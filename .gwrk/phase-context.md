@@ -955,7 +955,7 @@ Build the gwrk Build Server — a persistent Fastify daemon on `localhost:18790`
 **Dependency**: Phase 1 of this plan (CLI commands) depends on 001-cli-core's Commander infrastructure, config loader (`loadConfig`), and agent dispatch contract (`dispatchAgent`).
 
 **Cross-reference notes**:
-- **004-wud-loop**: Complementary — WUD uses `feat/<feature>` branches locally; Build Server uses `phase/<feature>-<phase>` inside Docker sandboxes. No conflict.
+- **004-ship-loop**: Complementary — WUD uses `feat/<feature>` branches locally; Build Server uses `phase/<feature>-<phase>` inside Docker sandboxes. No conflict.
 - **001-cli-core**: Build Server extends `.gwrkrc.json` (DM-002) with `server.*` and `parallelism.*` sections.
 
 ---

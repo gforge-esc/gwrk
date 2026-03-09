@@ -37,7 +37,7 @@ describe("FR-006: PR creation — createPR()", () => {
     });
 
     mockLoadTaskState.mockReturnValue({
-      feature: "004-wud-loop",
+      feature: "004-ship-loop",
       phases: [{
         id: "phase-01",
         name: "Phase 1",
@@ -46,9 +46,9 @@ describe("FR-006: PR creation — createPR()", () => {
     });
 
     const prNumber = await createPR({
-      featureName: "004-wud-loop",
+      featureName: "004-ship-loop",
       phaseNumber: 1,
-      featureDir: "specs/004-wud-loop",
+      featureDir: "specs/004-ship-loop",
     });
 
     expect(prNumber).toBe(42);
@@ -70,9 +70,9 @@ describe("FR-006: PR creation — createPR()", () => {
     });
 
     const prNumber = await createPR({
-      featureName: "004-wud-loop",
+      featureName: "004-ship-loop",
       phaseNumber: 1,
-      featureDir: "specs/004-wud-loop",
+      featureDir: "specs/004-ship-loop",
     });
 
     expect(prNumber).toBe(99);
@@ -88,9 +88,9 @@ describe("FR-006: PR creation — createPR()", () => {
 
     await expect(
       createPR({
-        featureName: "004-wud-loop",
+        featureName: "004-ship-loop",
         phaseNumber: 1,
-        featureDir: "specs/004-wud-loop",
+        featureDir: "specs/004-ship-loop",
       })
     ).rejects.toThrow(/gh.*not found|ENOENT/);
   });

@@ -1,12 +1,12 @@
 ---
 type: contract
-feature: 004-wud-loop
+feature: 004-ship-loop
 last_modified: "2026-03-05T11:12:20Z"
 ---
 
 # Contract: WUD State Machine
 
-**Feature**: 004-wud-loop
+**Feature**: 004-ship-loop
 **Scope**: Autonomous lifecycle orchestrator — implement → review → PR → CI → done
 
 ---
@@ -21,7 +21,7 @@ Orchestrates the full WUD state machine. Persists state after every stage transi
 ### Options
 | Option | Type | Description |
 |---|---|---|
-| `feature` | `string` | e.g. "004-wud-loop" |
+| `feature` | `string` | e.g. "004-ship-loop" |
 | `phase` | `string` | e.g. "1" |
 | `--max-iterations` | `number` | Max implement→review cycles (default: 3) |
 | `--ci-timeout` | `number` | Minutes, default 30 |

@@ -1,10 +1,10 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-03-06T19:53:08.961Z",
+  "createdAt": "2026-03-09T14:20:01.554Z",
   "generatedFrom": {
     "plan": {
-      "hash": "c67d96c972feb756175ebd3149d85e9e748ea7f45e4f6a61f355d0b632ec739e",
-      "modifiedAt": "2026-03-06T19:53:02.651Z"
+      "hash": "2190b71f8c30a2be635eb9a3a048502a4a5580c3f7af82a246179b8ebd28e553",
+      "modifiedAt": "2026-03-08T20:26:04.761Z"
     }
   },
   "phases": [
@@ -94,7 +94,7 @@
     },
     {
       "id": "phase-03",
-      "title": "Clarity Pillar — Define (DUS) ✅",
+      "title": "Clarity Pillar — Define ✅",
       "tasks": [
         {
           "id": "T011",
@@ -157,7 +157,7 @@
     },
     {
       "id": "phase-04",
-      "title": "Throughput Pillar — Ship (ZFG/WUD) ✅",
+      "title": "Throughput Pillar — Ship ✅",
       "tasks": [
         {
           "id": "T019",
@@ -172,13 +172,6 @@
           "description": "Implement changes for src/commands/implement.ts",
           "status": "open",
           "gateScript": "gates/T020-gate.sh"
-        },
-        {
-          "id": "T021",
-          "title": "Implement src/commands/wud.ts",
-          "description": "Implement changes for src/commands/wud.ts",
-          "status": "open",
-          "gateScript": "gates/T021-gate.sh"
         }
       ],
       "doneWhen": []
@@ -188,32 +181,32 @@
       "title": "Task Engine — State, Gates & History ✅",
       "tasks": [
         {
-          "id": "T022",
+          "id": "T021",
           "title": "Implement src/commands/tasks.ts",
           "description": "Implement changes for src/commands/tasks.ts",
+          "status": "open",
+          "gateScript": "gates/T021-gate.sh"
+        },
+        {
+          "id": "T022",
+          "title": "Implement src/utils/state.ts",
+          "description": "Implement changes for src/utils/state.ts",
           "status": "open",
           "gateScript": "gates/T022-gate.sh"
         },
         {
           "id": "T023",
-          "title": "Implement src/utils/state.ts",
-          "description": "Implement changes for src/utils/state.ts",
+          "title": "Implement src/utils/gate-gen.ts",
+          "description": "Implement changes for src/utils/gate-gen.ts",
           "status": "open",
           "gateScript": "gates/T023-gate.sh"
         },
         {
           "id": "T024",
-          "title": "Implement src/utils/gate-gen.ts",
-          "description": "Implement changes for src/utils/gate-gen.ts",
-          "status": "open",
-          "gateScript": "gates/T024-gate.sh"
-        },
-        {
-          "id": "T025",
           "title": "Implement src/utils/history.ts",
           "description": "Implement changes for src/utils/history.ts",
           "status": "open",
-          "gateScript": "gates/T025-gate.sh"
+          "gateScript": "gates/T024-gate.sh"
         }
       ],
       "doneWhen": []
@@ -223,118 +216,157 @@
       "title": "Value Pillar — Measure ✅",
       "tasks": [
         {
-          "id": "T026",
+          "id": "T025",
           "title": "Implement src/commands/measure.ts",
           "description": "Implement changes for src/commands/measure.ts",
+          "status": "open",
+          "gateScript": "gates/T025-gate.sh"
+        },
+        {
+          "id": "T026",
+          "title": "Implement src/commands/pulse.ts",
+          "description": "Implement changes for src/commands/pulse.ts",
           "status": "open",
           "gateScript": "gates/T026-gate.sh"
         },
         {
           "id": "T027",
-          "title": "Implement src/commands/pulse.ts",
-          "description": "Implement changes for src/commands/pulse.ts",
+          "title": "Implement src/commands/effort.ts",
+          "description": "Implement changes for src/commands/effort.ts",
           "status": "open",
           "gateScript": "gates/T027-gate.sh"
         },
         {
           "id": "T028",
-          "title": "Implement src/commands/effort.ts",
-          "description": "Implement changes for src/commands/effort.ts",
+          "title": "Implement src/commands/compression.ts",
+          "description": "Implement changes for src/commands/compression.ts",
           "status": "open",
           "gateScript": "gates/T028-gate.sh"
         },
         {
           "id": "T029",
-          "title": "Implement src/commands/compression.ts",
-          "description": "Implement changes for src/commands/compression.ts",
+          "title": "Implement src/engine/pulse.ts",
+          "description": "Implement changes for src/engine/pulse.ts",
           "status": "open",
           "gateScript": "gates/T029-gate.sh"
         },
         {
           "id": "T030",
-          "title": "Implement src/engine/pulse.ts",
-          "description": "Implement changes for src/engine/pulse.ts",
+          "title": "Implement src/engine/effort.ts",
+          "description": "Implement changes for src/engine/effort.ts",
           "status": "open",
           "gateScript": "gates/T030-gate.sh"
         },
         {
           "id": "T031",
-          "title": "Implement src/engine/effort.ts",
-          "description": "Implement changes for src/engine/effort.ts",
-          "status": "open",
-          "gateScript": "gates/T031-gate.sh"
-        },
-        {
-          "id": "T032",
           "title": "Implement src/engine/compression.ts",
           "description": "Implement changes for src/engine/compression.ts",
           "status": "open",
-          "gateScript": "gates/T032-gate.sh"
+          "gateScript": "gates/T031-gate.sh"
         }
       ],
       "doneWhen": []
     },
     {
       "id": "phase-07",
-      "title": "Init Hardening ☐",
+      "title": "Init Hardening ✅",
       "tasks": [
         {
-          "id": "T033",
+          "id": "T032",
           "title": "Implement src/commands/init.ts",
-          "description": "MODIFY: Add CLI detection, SQLite registration, Slack optional",
-          "status": "completed",
-          "gateScript": "gates/T033-gate.sh",
-          "completedAt": "2026-03-06T21:26:06.775Z"
+          "description": "Implement changes for src/commands/init.ts",
+          "status": "open",
+          "gateScript": "gates/T032-gate.sh"
         },
         {
-          "id": "T034",
+          "id": "T033",
           "title": "Implement src/commands/new.ts",
-          "description": "NEW: `gwrk new <name>` — mkdir, git init, gh repo create, then delegates to init",
-          "status": "completed",
-          "gateScript": "gates/T034-gate.sh",
-          "completedAt": "2026-03-06T21:26:10.527Z"
+          "description": "Implement changes for src/commands/new.ts",
+          "status": "open",
+          "gateScript": "gates/T033-gate.sh"
         }
       ],
       "doneWhen": [
-        "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md",
-        "`gwrk init` registers project in `~/.gwrk/gwrk.db`",
-        "`gwrk new test-project` creates dir, initializes git, runs init",
-        "Running `gwrk init` twice is idempotent"
+        "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
+        "`gwrk init` registers project in `~/.gwrk/gwrk.db` ✅",
+        "`gwrk new test-project` creates dir, initializes git, runs init ✅",
+        "Running `gwrk init` twice is idempotent ✅"
       ]
     },
     {
       "id": "phase-08",
-      "title": "E2E Surface Hardening ☐",
+      "title": "E2E Surface Hardening ✅",
       "tasks": [
         {
-          "id": "T035",
+          "id": "T034",
           "title": "Implement src/commands/run.ts",
-          "description": "DELETE: Dead `run` group — commands moved to `define`",
-          "status": "completed",
-          "gateScript": "gates/T035-gate.sh",
-          "completedAt": "2026-03-07T12:00:00Z"
+          "description": "Implement changes for src/commands/run.ts",
+          "status": "open",
+          "gateScript": "gates/T034-gate.sh"
+        },
+        {
+          "id": "T035",
+          "title": "Implement src/commands/metrics.ts",
+          "description": "Implement changes for src/commands/metrics.ts",
+          "status": "open",
+          "gateScript": "gates/T035-gate.sh"
         },
         {
           "id": "T036",
-          "title": "Implement src/commands/metrics.ts",
-          "description": "DELETE: Dead metrics group — moved to measure",
-          "status": "completed",
-          "gateScript": "gates/T036-gate.sh",
-          "completedAt": "2026-03-07T12:05:00Z"
-        },
-        {
-          "id": "T037",
           "title": "Implement src/cli.e2e.test.ts",
-          "description": "MODIFY: Update E2E assertions to match US-018 exactly",
-          "status": "completed",
-          "gateScript": "gates/T037-gate.sh",
-          "completedAt": "2026-03-07T16:40:00Z"
+          "description": "Implement changes for src/cli.e2e.test.ts",
+          "status": "open",
+          "gateScript": "gates/T036-gate.sh"
         }
       ],
       "doneWhen": [
-        "All dead files removed",
-        "`pnpm test` — all passing",
-        "`gwrk --help` output matches spec US-018 acceptance criteria exactly"
+        "All dead files removed ✅",
+        "`pnpm test` — all passing (verified CLI core tests) ✅",
+        "`gwrk --help` output matches spec US-018 acceptance criteria exactly ✅"
+      ]
+    },
+    {
+      "id": "phase-09",
+      "title": "State Contract — Execution Manifests & Merge Safety",
+      "tasks": [
+        {
+          "id": "T037",
+          "title": "Implement src/utils/manifest.ts",
+          "description": "NEW",
+          "status": "completed",
+          "gateScript": "gates/T037-gate.sh",
+          "completedAt": "2026-03-09T14:23:30.216Z"
+        },
+        {
+          "id": "T038",
+          "title": "Implement src/commands/tasks.ts",
+          "description": "MODIFY",
+          "status": "completed",
+          "gateScript": "gates/T038-gate.sh",
+          "completedAt": "2026-03-09T14:23:46.997Z"
+        },
+        {
+          "id": "T039",
+          "title": "Implement src/commands/ship.ts",
+          "description": "MODIFY",
+          "status": "completed",
+          "gateScript": "gates/T039-gate.sh",
+          "completedAt": "2026-03-09T14:23:47.211Z"
+        },
+        {
+          "id": "T040",
+          "title": "Implement src/commands/define.ts",
+          "description": "MODIFY",
+          "status": "completed",
+          "gateScript": "gates/T040-gate.sh",
+          "completedAt": "2026-03-09T14:40:00.000Z"
+        }
+      ],
+      "doneWhen": [
+        "Every `ship`/`define` run writes a manifest to `.gwrk/runs/`",
+        "`gwrk tasks verify <feature>` validates schema + manifest coverage",
+        "`history.jsonl` writes are replaced with manifest + `gwrk.db history`",
+        "All tests pass"
       ]
     }
   ]

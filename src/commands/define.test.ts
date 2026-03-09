@@ -1,12 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { defineCommand } from "./define.js";
-import { startRun, finishRun } from "../db/runs.js";
+import { startRun, finishRun, recordHistory } from "../db/runs.js";
 import { run } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
+import { writeManifest, generateRunId } from "../utils/manifest.js";
+import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
 
-vi.mock("../db/runs.js");
+vi.mock("../db/runs.js", () => ({
+  startRun: vi.fn(),
+  finishRun: vi.fn(),
+  recordHistory: vi.fn(),
+}));
 vi.mock("../utils/exec.js");
 vi.mock("../utils/config.js");
+vi.mock("../utils/manifest.js", () => ({
+  writeManifest: vi.fn(),
+  generateRunId: vi.fn().mockReturnValue("mock-run-id"),
+}));
+vi.mock("../utils/git.js", () => ({
+  getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
+  getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
+  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 }),
+}));
 
 describe("defineCommand — Define Until Solid wrapper", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -42,6 +57,9 @@ describe("defineCommand — Define Until Solid wrapper", () => {
 
     vi.mocked(startRun).mockReturnValue(42);
     vi.mocked(run).mockResolvedValue(true as never);
+    vi.mocked(getDiffStats).mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 });
+    vi.mocked(getCurrentCommit).mockReturnValue("mock-commit");
+    vi.mocked(getCurrentBranch).mockReturnValue("mock-branch");
   });
 
   afterEach(() => {

@@ -3,37 +3,22 @@ import path from "node:path";
 import { startRun, finishRun, recordHistory } from "../db/runs.js";
 import { run } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
-import { banner, success, fail, dryRun as dryRunFmt } from "../utils/format.js";
+import { banner, success, fail, dryRun as dryRunFmt, color } from "../utils/format.js";
 import { writeManifest, generateRunId } from "../utils/manifest.js";
 import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
+import { loadTaskState } from "../utils/state.js";
+const { GREEN, DIM, RESET } = color;
 /**
- * gwrk ship — The Shipping Pillar (Throughput)
- *
- * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
- * Delegates to scripts/dev/work-until-done.sh which orchestrates the complete
- * state machine with crash recovery and circuit breaking.
+ * Ship a single phase through the full lifecycle.
+ * Returns the exit code (0 = success, non-zero = failure).
  */
-export const shipCommand = new Command("ship")
-    .description("Ship: autonomous branch→implement→review→PR→CI loop")
-    .argument("<feature>", "Feature ID")
-    .argument("<phase>", "Phase number")
-    .option("--dry-run", "Dry run mode")
-    .option("--max-iterations <n>", "Max implement→review cycles", "3")
-    .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
-    .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
-    .action(async (feature, phase, opts) => {
-    const cwd = process.cwd();
+async function shipPhase(feature, phase, backend, opts, cwd) {
     const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
-    const config = loadConfig(cwd);
-    const backend = opts.agent || config.agents.implement;
-    if (opts.dryRun) {
-        dryRunFmt(`${scriptPath} ${feature} ${phase}`);
-        return;
-    }
+    const phaseId = `phase-${phase.padStart(2, "0")}`;
     const startedAt = new Date().toISOString();
     const runId = startRun({
         feature_id: feature,
-        phase_id: `phase-${phase.padStart(2, "0")}`,
+        phase_id: phaseId,
         command: "ship",
         agent_backend: backend,
         workflow: "work-until-done",
@@ -77,7 +62,6 @@ export const shipCommand = new Command("ship")
         const gitCommit = getCurrentCommit(cwd);
         const gitBranch = getCurrentBranch(cwd);
         const { filesChanged, linesAdded, linesDeleted } = getDiffStats(cwd, `${gitCommit}~1`);
-        const phaseId = `phase-${phase.padStart(2, "0")}`;
         const manifestId = generateRunId(startedAt, "ship", phaseId);
         const featureDir = path.join(cwd, "specs", feature);
         writeManifest(featureDir, {
@@ -98,7 +82,6 @@ export const shipCommand = new Command("ship")
             gitCommit,
             gitBranch,
         });
-        // Record in history table
         recordHistory({
             feature_id: feature,
             run_id: runId,
@@ -110,7 +93,49 @@ export const shipCommand = new Command("ship")
     catch (manifestError) {
         console.warn(`Warning: Could not write execution manifest: ${manifestError}`);
     }
-    if (exitCode !== 0) {
-        process.exit(exitCode);
+    return exitCode;
+}
+/**
+ * gwrk ship — The Shipping Pillar (Throughput)
+ *
+ * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
+ * Phase is optional — when omitted, ships all phases of the feature sequentially.
+ */
+export const shipCommand = new Command("ship")
+    .description("Ship: autonomous branch→implement→review→PR→CI loop")
+    .argument("<feature>", "Feature ID")
+    .argument("[phase]", "Phase number (omit to ship all phases)")
+    .option("--dry-run", "Dry run mode")
+    .option("--max-iterations <n>", "Max implement→review cycles", "3")
+    .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
+    .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
+    .action(async (feature, phase, opts) => {
+    const cwd = process.cwd();
+    const config = loadConfig(cwd);
+    const backend = opts.agent || config.agents.implement;
+    // Determine which phases to ship
+    let phases;
+    if (phase) {
+        phases = [phase];
+    }
+    else {
+        const specDir = path.join(cwd, "specs", feature);
+        const taskState = loadTaskState(specDir);
+        phases = taskState.phases.map(p => p.id.replace("phase-", ""));
+        console.log(`${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map(p => `P${p}`).join(", ")})${RESET}`);
+    }
+    if (opts.dryRun) {
+        const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
+        for (const p of phases) {
+            dryRunFmt(`${scriptPath} ${feature} ${p}`);
+        }
+        return;
+    }
+    // Ship each phase sequentially — stop on first failure
+    for (const p of phases) {
+        const exitCode = await shipPhase(feature, p, backend, opts, cwd);
+        if (exitCode !== 0) {
+            process.exit(exitCode);
+        }
     }
 });
