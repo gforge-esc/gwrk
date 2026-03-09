@@ -23,7 +23,7 @@ The CLI uses a **Foxtrot Charlie pillar-based hierarchy** to organize commands b
 | Pillar | Category | Commands | Purpose |
 |---|---|---|---|
 | **Clarity** | **Define** | `define <feature>`, `define spec`, `define plan`, `define tasks` | Specification, planning, and task decomposition (definition loop) |
-| **Throughput**| **Ship** | `ship <feature> <phase>`, `ship done` | Implementation and autonomous execution (ship loop) |
+| **Throughput**| **Ship** | `ship <feature> <phase>` | Full autonomous shipping lifecycle (branch→implement→review→PR→CI) |
 | **Value** | **Measure**| `measure pulse`, `measure effort`, `measure compression` | Productivity, estimation, and ratio reporting |
 | **-** | **Task Engine** | `tasks list`, `tasks next`, `tasks done` | Task state management with Hard Gate enforcement |
 | **-** | **Data** | `db runs`, `db stats` | SQLite execution ledger queries |
@@ -31,7 +31,7 @@ The CLI uses a **Foxtrot Charlie pillar-based hierarchy** to organize commands b
 
 ### Architecture Principles
 
-1. **Shell scripts ARE the product.** `define`, `ship`, and `ship done` are thin CLI wrappers around `scripts/dev/define-until-solid.sh`, `scripts/dev/agent-run.sh`, and `scripts/dev/work-until-done.sh`. The TS layer adds SQLite run recording and CLI UX — it does NOT reimplement orchestration logic.
+1. **Shell scripts ARE the product.** `define` and `ship` are thin CLI wrappers around `scripts/dev/define-until-solid.sh` and `scripts/dev/work-until-done.sh`. The TS layer adds SQLite run recording, manifest writing, and CLI UX — it does NOT reimplement orchestration logic.
 2. **Git-native task state.** `tasks.json` lives in `specs/<feature>/.gwrk/tasks.json` alongside the spec. Branch checkouts carry isolated state.
 3. **SQLite is the analytical ledger.** `~/.gwrk/gwrk.db` records execution history for compression tracking and agent routing. It is NOT the source of truth for task state.
 4. **Fail-fast config.** Zod validation with no `.default()` calls. Missing config → `process.exit(1)`.
@@ -155,8 +155,8 @@ As a PE, I want `gwrk ship <feature> <phase>` to dispatch agent implementation.
 2. Records run in SQLite.
 3. Streams output to terminal.
 
-### US-013 - Work Until Done (P0)
-As a PE, I want `gwrk ship done <feature> <phase> [--max-iterations]` to run the full autonomous loop.
+### US-013 - Ship (Full Lifecycle) (P0)
+As a PE, I want `gwrk ship <feature> <phase> [--max-iterations] [--ci-timeout]` to run the full autonomous lifecycle: branch → implement → review → PR → CI.
 
 **Implements**: FR-013
 
@@ -165,6 +165,7 @@ As a PE, I want `gwrk ship done <feature> <phase> [--max-iterations]` to run the
 2. Records run in SQLite.
 3. Supports `--max-iterations` and `--ci-timeout`.
 4. Streams output to terminal.
+5. Creates feature branch, pushes commits, creates PR, waits for CI.
 
 ### US-014 - Execution History Query (P1)
 As a PE, I want `gwrk db runs <feature>` to show execution history.
@@ -209,10 +210,10 @@ As a developer, I want `gwrk --help` to show exactly the settled command hierarc
 **Acceptance**:
 1. `gwrk --help` shows: `init`, `define`, `ship`, `measure`, `db`, `tasks`.
 2. `gwrk define --help` shows: `spec`, `plan`, `tasks`.
-3. `gwrk ship --help` shows: `done`.
+3. `gwrk ship --help` shows options: `--dry-run`, `--max-iterations`, `--ci-timeout`, `--agent`.
 4. `gwrk measure --help` shows: `pulse`, `effort`, `compression`.
 5. `gwrk db --help` shows: `runs`, `stats`.
-6. No other top-level commands exist (no `specify`, `plan`, `analyze`, `effort`, `pulse`, `metrics`, `run`, `implement`, `ship done`).
+6. No other top-level commands exist (no `specify`, `plan`, `analyze`, `effort`, `pulse`, `metrics`, `run`, `implement`).
 
 ### US-019 - Execution Manifest Writer (P1)
 As a PE, I want every `gwrk ship` and `gwrk define` run to write a structured execution manifest to `specs/<feature>/.gwrk/runs/` so that distributed agents produce durable analytical data via git alone.
@@ -396,7 +397,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **SC-001**: `gwrk --help` shows exactly the settled hierarchy. No stubs. No dead commands.
 - **SC-002**: `gwrk tasks done` enforces gates strictly — failing gate NEVER updates state.
 - **SC-003**: `gwrk define <feature>` runs the full DUS loop and records the run in SQLite.
-- **SC-004**: `gwrk ship done <feature> <phase>` runs the full ship loop and records the run in SQLite.
+- **SC-004**: `gwrk ship <feature> <phase>` runs the full ship lifecycle (branch→implement→review→PR→CI) and records the run in SQLite.
 - **SC-005**: `pnpm test` passes with 100% of tests GREEN.
 - **SC-006**: `pnpm run build` compiles clean with zero TypeScript errors.
 - **SC-007**: Every `ship`/`define` run produces a manifest in `.gwrk/runs/` that survives git push.

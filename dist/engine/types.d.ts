@@ -6,17 +6,17 @@ export declare const WeeklyBucketSchema: z.ZodObject<{
     added: z.ZodNumber;
     deleted: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
+    added: number;
+    deleted: number;
     weekStart: string;
     totalMain: number;
     totalDrafts: number;
-    added: number;
-    deleted: number;
 }, {
+    added: number;
+    deleted: number;
     weekStart: string;
     totalMain: number;
     totalDrafts: number;
-    added: number;
-    deleted: number;
 }>;
 export type WeeklyBucket = z.infer<typeof WeeklyBucketSchema>;
 export declare const PulseSnapshotSchema: z.ZodObject<{
@@ -33,17 +33,17 @@ export declare const PulseSnapshotSchema: z.ZodObject<{
         added: z.ZodNumber;
         deleted: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
+        added: number;
+        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
-        added: number;
-        deleted: number;
     }, {
+        added: number;
+        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
-        added: number;
-        deleted: number;
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     repoPath: string;
@@ -53,11 +53,11 @@ export declare const PulseSnapshotSchema: z.ZodObject<{
     mainLoc: number;
     draftLoc: number;
     weeklyBuckets: {
+        added: number;
+        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
-        added: number;
-        deleted: number;
     }[];
 }, {
     repoPath: string;
@@ -67,11 +67,11 @@ export declare const PulseSnapshotSchema: z.ZodObject<{
     mainLoc: number;
     draftLoc: number;
     weeklyBuckets: {
+        added: number;
+        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
-        added: number;
-        deleted: number;
     }[];
 }>;
 export type PulseSnapshot = z.infer<typeof PulseSnapshotSchema>;
@@ -102,17 +102,17 @@ export declare const PulseReportSchema: z.ZodObject<{
             added: z.ZodNumber;
             deleted: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
+            added: number;
+            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
-            added: number;
-            deleted: number;
         }, {
+            added: number;
+            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
-            added: number;
-            deleted: number;
         }>, "many">;
     }, "strip", z.ZodTypeAny, {
         repoPath: string;
@@ -122,11 +122,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
+            added: number;
+            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
-            added: number;
-            deleted: number;
         }[];
     }, {
         repoPath: string;
@@ -136,11 +136,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
+            added: number;
+            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
-            added: number;
-            deleted: number;
         }[];
     }>, "many">;
     specProgress: z.ZodObject<{
@@ -163,11 +163,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
+            added: number;
+            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
-            added: number;
-            deleted: number;
         }[];
     }[];
     specProgress: {
@@ -184,11 +184,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
+            added: number;
+            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
-            added: number;
-            deleted: number;
         }[];
     }[];
     specProgress: {

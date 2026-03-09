@@ -20,3 +20,19 @@ export declare function gitLineCount(repoPath: string, ref: string): number;
  * Counts total lines of code added in draft/feature branches that are not merged into defaultBranch.
  */
 export declare function gitDraftLineCount(repoPath: string, defaultBranch: string): number;
+/**
+ * Gets the current commit hash (HEAD).
+ */
+export declare function getCurrentCommit(repoPath: string): string;
+/**
+ * Gets the current branch name.
+ */
+export declare function getCurrentBranch(repoPath: string): string;
+/**
+ * Gets the diff stats between current state and a ref (defaults to HEAD~1).
+ */
+export declare function getDiffStats(repoPath: string, ref?: string): {
+    filesChanged: number;
+    linesAdded: number;
+    linesDeleted: number;
+};

@@ -98,3 +98,63 @@ export function gitDraftLineCount(repoPath, defaultBranch) {
         return 0;
     }
 }
+/**
+ * Gets the current commit hash (HEAD).
+ */
+export function getCurrentCommit(repoPath) {
+    try {
+        const stdout = execFileSync("git", ["rev-parse", "HEAD"], {
+            cwd: repoPath,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        return stdout.trim();
+    }
+    catch (_e) {
+        return "unknown";
+    }
+}
+/**
+ * Gets the current branch name.
+ */
+export function getCurrentBranch(repoPath) {
+    try {
+        const stdout = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+            cwd: repoPath,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        return stdout.trim();
+    }
+    catch (_e) {
+        return "unknown";
+    }
+}
+/**
+ * Gets the diff stats between current state and a ref (defaults to HEAD~1).
+ */
+export function getDiffStats(repoPath, ref = "HEAD~1") {
+    try {
+        const stdout = execFileSync("git", ["diff", "--numstat", ref], {
+            cwd: repoPath,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        let filesChanged = 0;
+        let linesAdded = 0;
+        let linesDeleted = 0;
+        const lines = stdout.trim().split("\n").filter(Boolean);
+        filesChanged = lines.length;
+        for (const line of lines) {
+            const [added, deleted] = line.split(/\s+/);
+            if (added !== "-")
+                linesAdded += Number.parseInt(added, 10);
+            if (deleted !== "-")
+                linesDeleted += Number.parseInt(deleted, 10);
+        }
+        return { filesChanged, linesAdded, linesDeleted };
+    }
+    catch (_e) {
+        return { filesChanged: 0, linesAdded: 0, linesDeleted: 0 };
+    }
+}

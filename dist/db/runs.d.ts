@@ -63,3 +63,18 @@ export declare function getStats(db?: Database.Database): RunStats[];
  * List all projects.
  */
 export declare function listProjects(db?: Database.Database): unknown[];
+export interface HistoryRecord {
+    id?: number;
+    timestamp?: string;
+    project_id?: string;
+    feature_id: string;
+    task_id?: string;
+    from_status?: string;
+    to_status?: string;
+    run_id?: number;
+    metadata?: string;
+}
+/**
+ * Record a task status change in the history table.
+ */
+export declare function recordHistory(entry: HistoryRecord, db?: Database.Database): number;

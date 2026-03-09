@@ -1,69 +1,59 @@
 import { Command } from "commander";
 import path from "node:path";
-import { startRun, finishRun } from "../db/runs.js";
+import { startRun, finishRun, recordHistory } from "../db/runs.js";
 import { run } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, success, fail, dryRun as dryRunFmt } from "../utils/format.js";
-import { implementAction } from "./implement.js";
+import { writeManifest, generateRunId } from "../utils/manifest.js";
+import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
 
 /**
  * gwrk ship — The Shipping Pillar (Throughput)
  *
- * Everything that creates throughput — implementing and completing work autonomously.
+ * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
+ * Delegates to scripts/dev/work-until-done.sh which orchestrates the complete
+ * state machine with crash recovery and circuit breaking.
  */
 export const shipCommand = new Command("ship")
-  .description("Ship: autonomous implement→review→PR loop")
-  .argument("[feature]", "Feature ID")
-  .argument("[phase]", "Phase number")
-  .option("--dry-run", "Dry run mode")
-  .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
-  .action(async (feature, phase, opts) => {
-    if (!feature || !phase) {
-      shipCommand.help();
-      return;
-    }
-    await implementAction(feature, phase, opts);
-  });
-
-shipCommand.command("done")
-  .description("Autonomous implement→review→PR loop")
+  .description("Ship: autonomous branch→implement→review→PR→CI loop")
   .argument("<feature>", "Feature ID")
   .argument("<phase>", "Phase number")
   .option("--dry-run", "Dry run mode")
-  .option("--max-iterations <n>", "Max iterations", "3")
+  .option("--max-iterations <n>", "Max implement→review cycles", "3")
+  .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
   .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
-  .action(async (feature: string, phase: string, options: any, cmd: Command) => {
-    const opts = cmd.opts();
+  .action(async (feature: string, phase: string, opts: any) => {
     const cwd = process.cwd();
     const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
 
     const config = loadConfig(cwd);
-    const backend = opts.agent || options.agent || config.agents.implement;
+    const backend = opts.agent || config.agents.implement;
 
-    const isDryRun = opts.dryRun || options.dryRun || cmd.parent?.opts().dryRun;
-
-    if (isDryRun) {
+    if (opts.dryRun) {
       dryRunFmt(`${scriptPath} ${feature} ${phase}`);
       return;
     }
 
+    const startedAt = new Date().toISOString();
     const runId = startRun({
       feature_id: feature,
       phase_id: `phase-${phase.padStart(2, "0")}`,
-      command: "ship done",
+      command: "ship",
       agent_backend: backend,
       workflow: "work-until-done",
     });
 
-    banner("ship done", {
+    banner("ship", {
       Feature: feature,
       Phase: phase,
       Agent: backend,
       "Max Iter": opts.maxIterations,
+      "CI Timeout": `${opts.ciTimeout}m`,
       "Run ID": `${runId}`,
     });
 
     const startTime = Date.now();
+    let exitCode = 0;
 
     try {
       await run(scriptPath, [feature, phase], {
@@ -72,6 +62,7 @@ shipCommand.command("done")
           ...process.env,
           APPROVAL_MODE: "yolo",
           MAX_ITERATIONS: opts.maxIterations,
+          CI_TIMEOUT: opts.ciTimeout,
           AGENT_BACKEND: backend,
         },
         stdio: "inherit",
@@ -79,12 +70,59 @@ shipCommand.command("done")
 
       const durationS = Math.round((Date.now() - startTime) / 1000);
       finishRun(runId, { exit_code: 0, duration_s: durationS });
-      success("ship done", durationS, runId);
+      success("ship", durationS, runId);
     } catch (err: unknown) {
       const durationS = Math.round((Date.now() - startTime) / 1000);
-      const exitCode = err instanceof Error && "code" in err ? (err as { code: number }).code : 1;
+      exitCode = err instanceof Error && "code" in err ? (err as { code: number }).code : 1;
       finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-      fail("ship done", exitCode, durationS, runId);
+      fail("ship", exitCode, durationS, runId);
+    }
+
+    // Write Execution Manifest (ADR-003)
+    try {
+      const finishedAt = new Date().toISOString();
+      const durationS = Math.round((Date.now() - startTime) / 1000);
+      const gitCommit = getCurrentCommit(cwd);
+      const gitBranch = getCurrentBranch(cwd);
+      const { filesChanged, linesAdded, linesDeleted } = getDiffStats(cwd, `${gitCommit}~1`);
+      
+      const phaseId = `phase-${phase.padStart(2, "0")}`;
+      const manifestId = generateRunId(startedAt, "ship", phaseId);
+      const featureDir = path.join(cwd, "specs", feature);
+
+      writeManifest(featureDir, {
+        runId: manifestId,
+        feature,
+        phase: phaseId,
+        command: "ship",
+        agent: backend,
+        model: "unknown",
+        startedAt,
+        finishedAt,
+        durationS,
+        exitCode,
+        attempt: 1,
+        filesChanged,
+        linesAdded,
+        linesDeleted,
+        gitCommit,
+        gitBranch,
+      });
+
+      // Record in history table
+      recordHistory({
+        feature_id: feature,
+        run_id: runId,
+        from_status: "open",
+        to_status: exitCode === 0 ? "completed" : "open",
+        metadata: JSON.stringify({ command: "ship", manifestId }),
+      });
+
+    } catch (manifestError) {
+      console.warn(`Warning: Could not write execution manifest: ${manifestError}`);
+    }
+
+    if (exitCode !== 0) {
       process.exit(exitCode);
     }
   });

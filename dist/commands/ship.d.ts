@@ -2,6 +2,8 @@ import { Command } from "commander";
 /**
  * gwrk ship — The Shipping Pillar (Throughput)
  *
- * Everything that creates throughput — implementing and completing work autonomously.
+ * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
+ * Delegates to scripts/dev/work-until-done.sh which orchestrates the complete
+ * state machine with crash recovery and circuit breaking.
  */
 export declare const shipCommand: Command;

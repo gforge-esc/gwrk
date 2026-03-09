@@ -1,9 +1,11 @@
 import { Command } from "commander";
 import path from "node:path";
-import { startRun, finishRun } from "../db/runs.js";
+import { startRun, finishRun, recordHistory } from "../db/runs.js";
 import { run } from "../utils/exec.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, success, fail, dryRun as dryRunFmt } from "../utils/format.js";
+import { writeManifest, generateRunId } from "../utils/manifest.js";
+import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
 import { planCommand } from "./plan.js";
@@ -39,6 +41,7 @@ export const defineCommand = new Command("define")
         dryRunFmt(`${scriptPath} ${feature}`);
         return;
     }
+    const startedAt = new Date().toISOString();
     const runId = startRun({
         feature_id: feature,
         command: "define",
@@ -52,6 +55,7 @@ export const defineCommand = new Command("define")
         ...(opts.refs ? { Refs: opts.refs } : {}),
     });
     const startTime = Date.now();
+    let exitCode = 0;
     try {
         const envVars = {
             ...process.env,
@@ -70,11 +74,52 @@ export const defineCommand = new Command("define")
     }
     catch (error) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
-        const exitCode = error instanceof Error && "exitCode" in error
+        exitCode = error instanceof Error && "exitCode" in error
             ? error.exitCode
             : 1;
         finishRun(runId, { exit_code: exitCode, duration_s: durationS });
         fail("define", exitCode, durationS, runId);
+    }
+    // Write Execution Manifest (ADR-003)
+    try {
+        const finishedAt = new Date().toISOString();
+        const durationS = Math.round((Date.now() - startTime) / 1000);
+        const gitCommit = getCurrentCommit(cwd);
+        const gitBranch = getCurrentBranch(cwd);
+        const { filesChanged, linesAdded, linesDeleted } = getDiffStats(cwd, `${gitCommit}~1`);
+        const manifestId = generateRunId(startedAt, "define", "p00");
+        const featureDir = path.join(cwd, "specs", feature);
+        writeManifest(featureDir, {
+            runId: manifestId,
+            feature,
+            phase: "p00",
+            command: "define",
+            agent: backend,
+            model: "unknown",
+            startedAt,
+            finishedAt,
+            durationS,
+            exitCode,
+            attempt: 1,
+            filesChanged,
+            linesAdded,
+            linesDeleted,
+            gitCommit,
+            gitBranch,
+        });
+        // Record in history table
+        recordHistory({
+            feature_id: feature,
+            run_id: runId,
+            from_status: "open", // Simplified
+            to_status: exitCode === 0 ? "completed" : "open",
+            metadata: JSON.stringify({ command: "define", manifestId }),
+        });
+    }
+    catch (manifestError) {
+        console.warn(`Warning: Could not write execution manifest: ${manifestError}`);
+    }
+    if (exitCode !== 0) {
         process.exit(exitCode);
     }
 });

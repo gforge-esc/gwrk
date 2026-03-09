@@ -66,10 +66,13 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
   it("gwrk ship --help shows settled hierarchy (US-018)", async () => {
     const { stdout, exitCode } = await runCli("ship --help");
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/^\s+done\b/m);
+    // Ship is now a standalone command with options, no subcommands
+    expect(stdout).toMatch(/--dry-run/);
+    expect(stdout).toMatch(/--max-iterations/);
+    expect(stdout).toMatch(/--ci-timeout/);
 
-    // No other subcommands
-    const hidden = ["implement", "ship", "run", "start"];
+    // No subcommands should exist
+    const hidden = ["implement", "done", "run", "start"];
     for (const cmd of hidden) {
       const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
       expect(stdout).not.toMatch(regex);
