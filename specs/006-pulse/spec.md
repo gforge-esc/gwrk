@@ -97,11 +97,11 @@ As a Principal Engineer, I want `gwrk measure pulse scan` to complete within 60 
 
 **Implements**: FR-007
 
-**Independent Test**: Generate a synthetic repo with 50K commits, measure scan time.
+**Independent Test**: Clone `git/git` (https://github.com/git/git, ~75K commits) and measure scan time.
 
 **Acceptance Scenarios**:
-1. **Given** a git repo with 50,000 commits, **When** running `gwrk measure pulse scan <path>`, **Then**:
-   - `time gwrk measure pulse scan <path>` exits 0
+1. **Given** a clone of `git/git` (~75K commits), **When** running `gwrk measure pulse scan <path>`, **Then**:
+   - `time gwrk measure pulse scan <path>` exits 0 in under 60 seconds
 
 ### US-008 - Default Branch Detection (Priority: P0)
 As a user, I want `gwrk measure pulse scan` to automatically detect the repository's default branch (main, master, trunk, etc.) so that I don't have to specify it manually.
