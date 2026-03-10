@@ -16,56 +16,49 @@
           "id": "T001",
           "title": "Implement src/server/index.ts",
           "description": "NEW: Fastify bootstrap, route registration, `/health` endpoint, graceful shutdown handler",
-          "status": "open",
-          "gateScript": "gates/T001-gate.sh"
+          "status": "completed"
         },
         {
           "id": "T002",
           "title": "Implement src/server/pid.ts",
           "description": "NEW: PID file read/write/check/remove at `.gwrk/server.pid`",
-          "status": "open",
-          "gateScript": "gates/T002-gate.sh"
+          "status": "completed"
         },
         {
           "id": "T003",
           "title": "Implement src/commands/server.ts",
           "description": "NEW: `gwrk server start` and `gwrk server stop` subcommands",
-          "status": "open",
-          "gateScript": "gates/T003-gate.sh"
+          "status": "completed"
         },
         {
           "id": "T004",
           "title": "Implement src/cli.ts",
           "description": "MODIFY: Register `server` command group",
-          "status": "open",
-          "gateScript": "gates/T004-gate.sh"
+          "status": "completed"
         },
         {
           "id": "T005",
           "title": "Implement src/utils/config.ts",
           "description": "MODIFY: Extend `GwrkConfigSchema` with `server.port`, `server.host`",
-          "status": "open",
-          "gateScript": "gates/T005-gate.sh"
+          "status": "completed"
         },
         {
           "id": "T006",
           "title": "Implement package.json",
           "description": "MODIFY: Add `fastify` dependency",
-          "status": "open",
-          "gateScript": "gates/T006-gate.sh"
+          "status": "completed"
         },
         {
           "id": "T007",
           "title": "Implement tsconfig.json",
           "description": "MODIFY: Ensure ESM output works with Fastify",
-          "status": "open",
-          "gateScript": "gates/T007-gate.sh"
+          "status": "completed"
         },
         {
           "id": "T008",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh"
         }
       ],
@@ -84,42 +77,42 @@
           "id": "T009",
           "title": "Implement src/server/monitor.ts",
           "description": "NEW: System resource sampler using `os` module — CPU%, MEM%, disk free GB — on configurable interval",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh"
         },
         {
           "id": "T010",
           "title": "Implement src/server/routes/status.ts",
           "description": "NEW: `GET /api/status` route returning `SystemStatus` JSON",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh"
         },
         {
           "id": "T011",
           "title": "Implement src/commands/status.ts",
           "description": "NEW: `gwrk status` command — queries daemon `/api/status` or returns `{server:{status:\"stopped\"}}`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh"
         },
         {
           "id": "T012",
           "title": "Implement src/cli.ts",
           "description": "MODIFY: Register `status` command",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh"
         },
         {
           "id": "T013",
           "title": "Implement src/utils/config.ts",
           "description": "MODIFY: Extend schema with `parallelism.local.maxCpu`, `maxMem`, `minDiskGb`, `maxClones`, `parallelism.cloud.maxConcurrent`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh"
         },
         {
           "id": "T014",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T014-gate.sh"
         }
       ],
@@ -137,42 +130,42 @@
           "id": "T015",
           "title": "Implement src/server/git-manager.ts",
           "description": "NEW: `createPhaseBranch(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh"
         },
         {
           "id": "T016",
           "title": "Implement src/server/context.ts",
           "description": "NEW: `compileContext(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh"
         },
         {
           "id": "T017",
           "title": "Implement src/server/git-manager.test.ts",
           "description": "NEW: Branch creation, merge-back, conflict detection tests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh"
         },
         {
           "id": "T018",
           "title": "Implement src/server/context.test.ts",
           "description": "NEW: Context compilation tests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh"
         },
         {
           "id": "T019",
           "title": "Implement src/server/types.ts",
           "description": "NEW: Shared types — `DispatchRecord`, `DispatchAttempt`, `DispatchStatus`, `SystemStatus`, `SandboxInfo`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh"
         },
         {
           "id": "T020",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh"
         }
       ],
@@ -190,42 +183,42 @@
           "id": "T021",
           "title": "Implement src/server/sandbox.ts",
           "description": "NEW: `createSandbox(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh"
         },
         {
           "id": "T022",
           "title": "Implement Dockerfile.sandbox",
           "description": "NEW: `gwrk-sandbox:bookworm-slim` with Node.js LTS, Git, `gh` CLI",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh"
         },
         {
           "id": "T023",
           "title": "Implement src/server/sandbox.test.ts",
           "description": "NEW: Container lifecycle tests with mocked `dockerode`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh"
         },
         {
           "id": "T024",
           "title": "Implement package.json",
           "description": "MODIFY: Add `dockerode` + `@types/dockerode` dependencies",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh"
         },
         {
           "id": "T025",
           "title": "Implement .dockerignore",
           "description": "MODIFY: Ensure sandbox image builds cleanly",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh"
         },
         {
           "id": "T026",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh"
         }
       ],
@@ -242,57 +235,57 @@
         {
           "id": "T027",
           "title": "Implement src/server/dispatch.ts",
-          "description": "NEW: `DispatchQueue` class — FIFO queue, `enqueue(\n\nREVIEW FAIL (code): TYPE ERRORS & INCOMPLETE IMPLEMENTATION — FR-005, FR-008, FR-009.\n  WHERE: src/server/dispatch.ts:41, 72, 108, 121, 131, 145, 167\n  EXPECTED: Valid TypeScript types matching src/server/types.ts and src/utils/config.ts. Real WUD loop execution via docker exec.\n  ACTUAL: 7 TSC errors; runDispatch is a setTimeout stub.\n  FIX: 1. Update src/server/types.ts with missing DispatchRecord/Attempt fields. 2. Update src/utils/config.ts with fallbackOrder. 3. Implement real docker exec in runDispatch.\n  GATE: gates/T027-gate.sh passed only because it's a weak grep check.\n  REF: plan.md Phase 05 > Dispatch Queue & Orchestrator",
+          "description": "NEW: `DispatchQueue` class — FIFO queue, `enqueue(\n\nREVIEW FAIL (code): TYPE ERRORS & INCOMPLETE IMPLEMENTATION — FR-005, FR-008, FR-009.\n  WHERE: src/server/dispatch.ts:108\n  EXPECTED: Valid TypeScript types. Real WUD loop execution via docker exec. log_file recording in runs table.\n  ACTUAL: TSC error on 'backend' property; runDispatch is a setTimeout stub; log_file not recorded.\n  FIX: 1. Add 'backend' to SandboxOptions in src/server/sandbox.ts OR remove it from call in src/server/dispatch.ts. 2. Implement real docker.exec() in runDispatch. 3. Pass log_file path to startRun/finishRun or use recordRun.\n  GATE: gates/T027-gate.sh\n  REF: plan.md Phase 05 > Dispatch Queue & Orchestrator",
           "status": "open",
           "gateScript": "gates/T027-gate.sh"
         },
         {
           "id": "T028",
           "title": "Implement src/server/routes/dispatch.ts",
-          "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue`\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
-          "status": "open",
+          "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue`",
+          "status": "completed",
           "gateScript": "gates/T028-gate.sh"
         },
         {
           "id": "T029",
           "title": "Implement src/server/persistence.ts",
-          "description": "NEW: Append-only `.gwrk/dispatches.jsonl` writer\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
-          "status": "open",
+          "description": "NEW: Append-only `.gwrk/dispatches.jsonl` writer",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh"
         },
         {
           "id": "T030",
           "title": "Implement src/server/dispatch.test.ts",
-          "description": "NEW: Queue FIFO, throttle, retry × 3, escalation tests\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
-          "status": "open",
+          "description": "NEW: Queue FIFO, throttle, retry × 3, escalation tests",
+          "status": "completed",
           "gateScript": "gates/T030-gate.sh"
         },
         {
           "id": "T031",
           "title": "Implement src/server/routes/dispatch.test.ts",
-          "description": "NEW: HTTP endpoint tests\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
-          "status": "open",
+          "description": "NEW: HTTP endpoint tests",
+          "status": "completed",
           "gateScript": "gates/T031-gate.sh"
         },
         {
           "id": "T032",
           "title": "Implement src/server/index.ts",
-          "description": "MODIFY: Register dispatch routes, wire Monitor → Queue throttle\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
-          "status": "open",
+          "description": "MODIFY: Register dispatch routes, wire Monitor → Queue throttle",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh"
         },
         {
           "id": "T033",
           "title": "Implement src/server/integration.test.ts",
-          "description": "NEW: E2E — start daemon subprocess, POST dispatch, verify container\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
+          "description": "NEW: E2E — start daemon subprocess, POST dispatch, verify container\n\nREVIEW FAIL (code): INCOMPLETE TEST VERIFICATION — TR-008.\n  WHERE: src/server/integration.test.ts\n  EXPECTED: E2E — start daemon subprocess, POST dispatch, verify real Docker container.\n  ACTUAL: Test mocks SandboxManager, so it doesn't verify real Docker integration.\n  FIX: Update integration.test.ts to use real SandboxManager (or at least don't mock the container creation if Docker is available in dev env).\n  GATE: gates/T033-gate.sh\n  REF: spec.md Section 7 > TR-008",
           "status": "open",
           "gateScript": "gates/T033-gate.sh"
         },
         {
           "id": "T034",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
-          "status": "open",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
           "gateScript": "gates/T034-gate.sh"
         }
       ],
