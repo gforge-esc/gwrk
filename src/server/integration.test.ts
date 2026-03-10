@@ -69,7 +69,7 @@ describe("Server E2E Integration", () => {
       },
     });
 
-    expect(postResponse.statusCode).toBe(200);
+    expect(postResponse.statusCode).toBe(201);
     const record = postResponse.json();
     expect(record.featureId).toBe("feat-1");
     expect(record.status).toBe("running"); // Should be running immediately since not throttled
