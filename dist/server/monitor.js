@@ -36,9 +36,16 @@ export class SystemMonitor {
         }
         const cpuPercent = totalTick > 0 ? (1 - totalIdle / totalTick) * 100 : 0;
         this.lastCpus = currentCpus;
-        const memFree = os.freemem();
         const memTotal = os.totalmem();
-        const memPercent = (1 - memFree / memTotal) * 100;
+        // os.freemem() on macOS returns only truly free memory (excludes
+        // cached/purgeable), so it always reads near 0.  Node 22+ provides
+        // os.availableMemory() which accounts for reclaimable pages.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const osExt = os;
+        const memAvailable = typeof osExt.availableMemory === "function"
+            ? osExt.availableMemory()
+            : os.freemem();
+        const memPercent = ((memTotal - memAvailable) / memTotal) * 100;
         let diskFreeGb = 0;
         try {
             const stats = fs.statfsSync(".");
