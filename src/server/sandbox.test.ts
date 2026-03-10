@@ -1,5 +1,5 @@
 import Docker from "dockerode";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import { SandboxManager } from "./sandbox.js";
 
 vi.mock("dockerode", () => {
@@ -15,7 +15,12 @@ vi.mock("dockerode", () => {
 
 describe("SandboxManager", () => {
   let sandboxManager: SandboxManager;
-  let mockDocker: any;
+  let mockDocker: {
+    ping: Mock;
+    createContainer: Mock;
+    getContainer: Mock;
+    listContainers: Mock;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,5 +86,40 @@ describe("SandboxManager", () => {
     expect(mockDocker.getContainer).toHaveBeenCalledWith("test-id");
     expect(mockContainer.stop).toHaveBeenCalled();
     expect(mockContainer.remove).toHaveBeenCalled();
+  });
+
+  it("should list sandboxes", async () => {
+    const mockContainers = [
+      {
+        Id: "id-1",
+        State: "running",
+        Labels: {
+          "gwrk.feature": "f1",
+          "gwrk.phase": "p1",
+          "gwrk.backend": "b1",
+          "gwrk.startedAt": "2026-03-09T00:00:00Z",
+        },
+      },
+    ];
+    mockDocker.listContainers.mockResolvedValueOnce(mockContainers);
+
+    const sandboxes = await sandboxManager.listSandboxes();
+
+    expect(sandboxes).toHaveLength(1);
+    expect(sandboxes[0]).toEqual({
+      containerId: "id-1",
+      featureId: "f1",
+      phaseId: "p1",
+      backend: "b1",
+      status: "running",
+      startedAt: "2026-03-09T00:00:00Z",
+    });
+    expect(mockDocker.listContainers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: {
+          label: ["gwrk.feature"],
+        },
+      }),
+    );
   });
 });

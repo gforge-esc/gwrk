@@ -14,6 +14,12 @@ export async function startServer(config, options = { handleSignals: true }) {
     const monitor = new SystemMonitor(config);
     monitor.startPolling();
     const sandbox = new SandboxManager();
+    // Check Docker availability on start
+    if (!(await sandbox.checkDocker())) {
+        server.log.error("Docker daemon not reachable");
+        console.error("Docker daemon not reachable");
+        process.exit(1);
+    }
     const git = new GitManager(projectRoot);
     const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
     server.get("/health", async () => {

@@ -190,42 +190,42 @@
           "id": "T021",
           "title": "Implement src/server/sandbox.ts",
           "description": "NEW: `createSandbox(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh"
         },
         {
           "id": "T022",
           "title": "Implement Dockerfile.sandbox",
           "description": "NEW: `gwrk-sandbox:bookworm-slim` with Node.js LTS, Git, `gh` CLI",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh"
         },
         {
           "id": "T023",
           "title": "Implement src/server/sandbox.test.ts",
           "description": "NEW: Container lifecycle tests with mocked `dockerode`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh"
         },
         {
           "id": "T024",
           "title": "Implement package.json",
           "description": "MODIFY: Add `dockerode` + `@types/dockerode` dependencies",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh"
         },
         {
           "id": "T025",
           "title": "Implement .dockerignore",
           "description": "MODIFY: Ensure sandbox image builds cleanly",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh"
         },
         {
           "id": "T026",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh"
         }
       ],
