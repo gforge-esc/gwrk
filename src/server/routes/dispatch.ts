@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { DispatchQueue, DispatchRequest } from "../dispatch.js";
+import type { DispatchQueue, DispatchRequest } from "../dispatch.js";
 
 export async function dispatchRoutes(fastify: FastifyInstance, queue: DispatchQueue) {
   fastify.post("/api/dispatch", async (request) => {

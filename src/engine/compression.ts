@@ -9,13 +9,13 @@ export function computeCompression(forecast: EffortForecast, actuals: DeliveryAc
   const actualHours = actuals.activeCodingMinutes / 60;
   const pointCompression = actualHours > 0 
     ? forecast.estimatedHours / actualHours 
-    : Infinity;
+    : Number.POSITIVE_INFINITY;
 
   // Total Compression = Estimated Elapsed Days / Actual Elapsed Days
   const actualDays = actuals.deliveryWindowHours / 24;
   const totalCompression = actualDays > 0 
     ? forecast.estimatedDays / actualDays 
-    : Infinity;
+    : Number.POSITIVE_INFINITY;
 
   return {
     pointCompression,
@@ -37,7 +37,7 @@ export function generateSummary(reports: CompressionReport[]): CompressionSummar
       avgTotalCompression: 0,
     },
     best: { featureId: "", pointCompression: 0 },
-    worst: { featureId: "", pointCompression: Infinity },
+    worst: { featureId: "", pointCompression: Number.POSITIVE_INFINITY },
     trend: "stable",
   };
 

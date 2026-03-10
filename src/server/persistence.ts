@@ -10,7 +10,7 @@ export function persistDispatch(record: DispatchRecord): void {
     fs.mkdirSync(dir, { recursive: true });
   }
   
-  const line = JSON.stringify(record) + "\n";
+  const line = `${JSON.stringify(record)}\n`;
   fs.appendFileSync(DISPATCHES_FILE, line, "utf8");
 }
 

@@ -89,7 +89,7 @@ describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
     await compressionCommand.parseAsync(["node", "test", "001-mock", "--json"]);
 
     expect(consoleLogSpy).toHaveBeenCalled();
-    const output = consoleLogSpy.mock.calls[0]![0] as string;
+    const output = consoleLogSpy.mock.calls[0]?.[0] as string;
     const parsed = JSON.parse(output);
 
     expect(parsed.compression.pointCompression).toBe(25);

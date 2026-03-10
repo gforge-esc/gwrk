@@ -29,7 +29,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(err + "\n"); });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(`${err}\n`); });
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });

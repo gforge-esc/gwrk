@@ -1,6 +1,6 @@
-import { execFileSync } from "child_process";
-import fs from "fs";
-import path from "path";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 
 function findShellScripts(dir: string, fileList: string[] = []): string[] {

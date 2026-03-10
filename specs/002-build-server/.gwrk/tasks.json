@@ -16,56 +16,56 @@
           "id": "T001",
           "title": "Implement src/server/index.ts",
           "description": "NEW: Fastify bootstrap, route registration, `/health` endpoint, graceful shutdown handler",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh"
         },
         {
           "id": "T002",
           "title": "Implement src/server/pid.ts",
           "description": "NEW: PID file read/write/check/remove at `.gwrk/server.pid`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh"
         },
         {
           "id": "T003",
           "title": "Implement src/commands/server.ts",
           "description": "NEW: `gwrk server start` and `gwrk server stop` subcommands",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh"
         },
         {
           "id": "T004",
           "title": "Implement src/cli.ts",
           "description": "MODIFY: Register `server` command group",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh"
         },
         {
           "id": "T005",
           "title": "Implement src/utils/config.ts",
           "description": "MODIFY: Extend `GwrkConfigSchema` with `server.port`, `server.host`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
           "title": "Implement package.json",
           "description": "MODIFY: Add `fastify` dependency",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh"
         },
         {
           "id": "T007",
           "title": "Implement tsconfig.json",
           "description": "MODIFY: Ensure ESM output works with Fastify",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh"
         },
         {
           "id": "T008",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh"
         }
       ],

@@ -3,9 +3,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import type { DispatchRecord, DispatchAttempt, SystemStatus } from "./types.js";
 import type { GwrkConfig, AgentBackend } from "../utils/config.js";
-import { SystemMonitor } from "./monitor.js";
-import { SandboxManager } from "./sandbox.js";
-import { GitManager } from "./git-manager.js";
+import type { SystemMonitor } from "./monitor.js";
+import type { SandboxManager } from "./sandbox.js";
+import type { GitManager } from "./git-manager.js";
 import { compileContext } from "./context.js";
 import { persistDispatch } from "./persistence.js";
 

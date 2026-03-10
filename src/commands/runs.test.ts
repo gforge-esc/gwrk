@@ -47,7 +47,7 @@ describe("runsCommand — CLI and JSON output", () => {
   it("--json flag outputs valid JSON", async () => {
     await runsCommand.parseAsync(["node", "cli.js", "001-cli-core", "--json"]);
     
-    const outputString = consoleLogSpy.mock.calls[0]![0];
+    const outputString = consoleLogSpy.mock.calls[0]?.[0];
     const parsed = JSON.parse(outputString);
 
     expect(Array.isArray(parsed)).toBe(true);

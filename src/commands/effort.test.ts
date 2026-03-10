@@ -32,7 +32,7 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-effort-"));
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(err + "\n"); });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(`${err}\n`); });
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
@@ -88,7 +88,7 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
 
     expect(computeEffort).toHaveBeenCalled();
     expect(consoleLogSpy).toHaveBeenCalled();
-    const output = consoleLogSpy.mock.calls[0]![0] as string;
+    const output = consoleLogSpy.mock.calls[0]?.[0] as string;
     
     // Output must be valid JSON
     const parsed = JSON.parse(output);
@@ -100,7 +100,7 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
     await effortCommand.parseAsync(["node", "test", "001-cli-core"]);
 
     expect(consoleLogSpy).toHaveBeenCalled();
-    const output = consoleLogSpy.mock.calls[0]![0] as string;
+    const output = consoleLogSpy.mock.calls[0]?.[0] as string;
     expect(output).toMatch(/Effort report generated at:/);
   });
 });

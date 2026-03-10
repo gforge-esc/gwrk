@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import fs from "fs";
-import path from "path";
-import { execFileSync } from "child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 const ROOT = process.cwd();
 const MOCKS_DIR = path.join(ROOT, ".test-mocks-ship");

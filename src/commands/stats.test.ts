@@ -11,7 +11,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(err + "\n"); });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(`${err}\n`); });
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
@@ -53,7 +53,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
     expect(getStats).toHaveBeenCalledTimes(1);
 
     // Grab the first line of output
-    const outputString = consoleLogSpy.mock.calls[0]![0];
+    const outputString = consoleLogSpy.mock.calls[0]?.[0];
     const parsed = JSON.parse(outputString);
 
     expect(Array.isArray(parsed)).toBe(true);

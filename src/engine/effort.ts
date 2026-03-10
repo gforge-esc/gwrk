@@ -6,7 +6,7 @@ import type { EffortReport, RoleBreakdown, RoleConfig, StoryEstimate } from "./t
 export function computeEffort(
   stories: StoryEstimate[],
   roleMultipliers: RoleConfig[],
-  overheadFactor: number = 1.25
+  overheadFactor = 1.25
 ): EffortReport {
   let totalSP = 0;
   let totalRawHours = 0;

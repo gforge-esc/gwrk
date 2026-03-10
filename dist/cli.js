@@ -7,6 +7,7 @@ import { shipCommand } from "./commands/ship.js";
 import { measureCommand } from "./commands/measure.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { dbCommand } from "./commands/db.js";
+import { serverCommand } from "./commands/server.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
@@ -30,7 +31,7 @@ program
         if (cmds.length > 0) {
             // Foxtrot Charlie pillars
             const pillars = ["define", "ship", "measure"];
-            const ops = ["init", "tasks", "db"];
+            const ops = ["init", "tasks", "db", "server"];
             out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
             for (const name of pillars) {
                 const sub = cmds.find(c => c.name() === name);
@@ -73,6 +74,7 @@ program.addCommand(measureCommand); // Measure: pulse, effort, compression
 // Operational queries
 program.addCommand(tasksCommand);
 program.addCommand(dbCommand);
+program.addCommand(serverCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
     if (actionCommand.name() !== "init") {
         // This will process.exit(1) if config is missing or invalid

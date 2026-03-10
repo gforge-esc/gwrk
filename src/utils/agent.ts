@@ -111,15 +111,15 @@ export async function dispatchAgent(
 
   // Write structured header to log
   const branch = process.env.GIT_BRANCH ?? "unknown";
-  logStream.write(`# gwrk Agent Run Log\n`);
-  logStream.write(`# ────────────────────────────────────────\n`);
+  logStream.write("# gwrk Agent Run Log\n");
+  logStream.write("# ────────────────────────────────────────\n");
   logStream.write(`# Timestamp : ${new Date().toISOString()}\n`);
   logStream.write(`# Workflow  : ${workflow}\n`);
   logStream.write(`# Feature   : ${feature}\n`);
   logStream.write(`# Backend   : ${opts.backend}\n`);
   logStream.write(`# Branch    : ${branch}\n`);
   logStream.write(`# Command   : ${command} ${args.join(" ")}\n`);
-  logStream.write(`# ────────────────────────────────────────\n\n`);
+  logStream.write("# ────────────────────────────────────────\n\n");
 
   return new Promise((resolve) => {
     const startEpoch = Date.now();
@@ -191,7 +191,7 @@ export async function dispatchAgent(
     });
 
     child.on("error", () => {
-      logStream.write(`\n# [ERROR] Agent process failed to start\n`);
+      logStream.write("\n# [ERROR] Agent process failed to start\n");
       logStream.end();
       resolve({ exitCode: 1, logPath });
     });

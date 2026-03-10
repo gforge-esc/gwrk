@@ -29,13 +29,13 @@ describe("FR-001: extractStories — parsing markdown spec", () => {
 
     const stories = extractStories("/tmp/fake");
     expect(stories).toHaveLength(2);
-    expect(stories[0]!.storyId).toBe("US-001");
-    expect(stories[0]!.sp).toBe(5);
-    expect(stories[0]!.roles).toEqual(["TS", "PE"]);
+    expect(stories[0]?.storyId).toBe("US-001");
+    expect(stories[0]?.sp).toBe(5);
+    expect(stories[0]?.roles).toEqual(["TS", "PE"]);
 
-    expect(stories[1]!.storyId).toBe("US-002");
-    expect(stories[1]!.sp).toBe(2);
-    expect(stories[1]!.roles).toEqual(["RE"]);
+    expect(stories[1]?.storyId).toBe("US-002");
+    expect(stories[1]?.sp).toBe(2);
+    expect(stories[1]?.roles).toEqual(["RE"]);
 
     vi.restoreAllMocks();
   });
@@ -45,8 +45,8 @@ describe("FR-001: extractStories — parsing markdown spec", () => {
     vi.spyOn(fs, "readFileSync").mockReturnValue("### US-003 - Unestimated story");
     
     const stories = extractStories("/tmp/fake");
-    expect(stories[0]!.sp).toBe(0);
-    expect(stories[0]!.roles).toEqual([]);
+    expect(stories[0]?.sp).toBe(0);
+    expect(stories[0]?.roles).toEqual([]);
     
     vi.restoreAllMocks();
   });
@@ -146,8 +146,8 @@ describe("FR-002: computeEffort — role-bracketed hour computation", () => {
       (r: RoleBreakdown) => r.role === "TS"
     );
     expect(tsBreakdown).toBeDefined();
-    expect(tsBreakdown!.spAssigned).toBe(8);
-    expect(tsBreakdown!.rawHours).toBe(32); // 8 × 4
+    expect(tsBreakdown?.spAssigned).toBe(8);
+    expect(tsBreakdown?.rawHours).toBe(32); // 8 × 4
   });
 
   it("handles zero SP stories without crashing", () => {
@@ -170,7 +170,7 @@ describe("FR-012: resolveRoleMultipliers — config override", () => {
 
     const ts = roles.find((r: RoleConfig) => r.role === "TS");
     expect(ts).toBeDefined();
-    expect(ts!.hoursPerSP).toBe(4);
+    expect(ts?.hoursPerSP).toBe(4);
   });
 
   it("TR-013: config override TS.hoursPerSP=6 takes precedence over default", () => {
@@ -182,7 +182,7 @@ describe("FR-012: resolveRoleMultipliers — config override", () => {
 
     const ts = roles.find((r: RoleConfig) => r.role === "TS");
     expect(ts).toBeDefined();
-    expect(ts!.hoursPerSP).toBe(6);
+    expect(ts?.hoursPerSP).toBe(6);
   });
 
   it("returns all 5 canonical roles even when no overrides", () => {

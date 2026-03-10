@@ -129,7 +129,7 @@ export function listRuns(featureId: string, db?: Database.Database): RunRecord[]
   const conn = db ?? getDb();
   return conn
     .prepare(
-      `SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC`,
+      "SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC",
     )
     .all(featureId) as RunRecord[];
 }

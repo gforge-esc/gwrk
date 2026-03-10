@@ -127,16 +127,16 @@ describe("SQLite execution ledger", () => {
     expect(stats).toHaveLength(2);
     
     // Ordered by total_runs DESC
-    expect(stats[0]!.command).toBe("ship");
-    expect(stats[0]!.agent_backend).toBe("gemini");
-    expect(stats[0]!.total_runs).toBe(3);
-    expect(stats[0]!.success_runs).toBe(2);
-    expect(stats[0]!.avg_duration_s).toBe(350 / 3);
+    expect(stats[0]?.command).toBe("ship");
+    expect(stats[0]?.agent_backend).toBe("gemini");
+    expect(stats[0]?.total_runs).toBe(3);
+    expect(stats[0]?.success_runs).toBe(2);
+    expect(stats[0]?.avg_duration_s).toBe(350 / 3);
 
-    expect(stats[1]!.command).toBe("define");
-    expect(stats[1]!.agent_backend).toBe("claude");
-    expect(stats[1]!.total_runs).toBe(1);
-    expect(stats[1]!.success_runs).toBe(1);
-    expect(stats[1]!.avg_duration_s).toBe(300);
+    expect(stats[1]?.command).toBe("define");
+    expect(stats[1]?.agent_backend).toBe("claude");
+    expect(stats[1]?.total_runs).toBe(1);
+    expect(stats[1]?.success_runs).toBe(1);
+    expect(stats[1]?.avg_duration_s).toBe(300);
   });
 });

@@ -43,7 +43,7 @@ export const implementAction = async (feature: string, phase: string, opts: { dr
   });
 
   const startTime = Date.now();
-  let exitCode = 0;
+  const exitCode = 0;
 
   try {
     for (const task of phaseData.tasks) {

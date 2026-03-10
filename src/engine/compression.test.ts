@@ -109,7 +109,7 @@ describe("FR-007: computeCompression — Point Compression", () => {
     };
 
     const ratios = computeCompression(forecast, actuals);
-    expect(ratios.pointCompression).toBe(Infinity);
+    expect(ratios.pointCompression).toBe(Number.POSITIVE_INFINITY);
   });
 });
 
