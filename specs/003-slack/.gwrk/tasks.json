@@ -1,228 +1,286 @@
 {
-  "feature": "003-slack",
-  "createdAt": "2026-03-10T21:35:00Z",
+  "featureId": "003-slack",
+  "createdAt": "2026-03-10T23:14:10.202Z",
   "generatedFrom": {
-    "plan": "specs/003-slack/plan.md",
-    "spec": "specs/003-slack/spec.md",
-    "gapAnalysis": "specs/003-slack/gap-analysis.md"
+    "plan": {
+      "hash": "bd0012204f8256cec44697f37511865efb6f67d601fe78e031b0163f56fb04b9",
+      "modifiedAt": "2026-03-10T21:34:03.353Z"
+    }
   },
   "phases": [
     {
       "id": "phase-01",
-      "title": "Phase 1: Setup & Provisioning",
+      "title": "Setup & Provisioning",
       "tasks": [
         {
           "id": "T001",
-          "title": "Add @slack/bolt dependency",
-          "description": "Add @slack/bolt to package.json dependencies. Run pnpm install. Verify bolt is importable.",
+          "title": "Implement package.json",
+          "description": "Modify: Add `@slack/bolt` dependency",
           "status": "open",
           "gateScript": "gates/T001-gate.sh"
         },
         {
           "id": "T002",
-          "title": "Create Slack token loader and client wrapper",
-          "description": "Create src/utils/slack-client.ts. Load SLACK_BOT_TOKEN and SLACK_APP_TOKEN from ~/.gwrk/.env via dotenv. Export SlackSetupResult type. Fail-fast with process.exit(1) if tokens are missing when Slack is required.",
+          "title": "Implement src/commands/setup-slack.ts",
+          "description": "New: `gwrk setup slack [--verify]` command",
           "status": "open",
           "gateScript": "gates/T002-gate.sh"
         },
         {
           "id": "T003",
-          "title": "Extend config schema for Slack tokens",
-          "description": "In src/utils/config.ts, add Zod schema fields for Slack project config: channelId (string), channelName (string). Replace the existing slackChannel optional string with the structured SlackProjectConfig object.",
+          "title": "Implement src/utils/slack-client.ts",
+          "description": "New: Slack client wrapper, token loader from `~/.gwrk/.env`",
           "status": "open",
           "gateScript": "gates/T003-gate.sh"
         },
         {
           "id": "T004",
-          "title": "Implement gwrk setup slack command",
-          "description": "Create src/commands/setup-slack.ts. Implement setupSlack() per contracts/slack-setup.md: create Slack app config, write tokens to ~/.gwrk/.env, verify Socket Mode connection. Support --verify flag for test-only mode. Idempotent — detect existing config.",
+          "title": "Implement src/cli.ts",
+          "description": "Modify: Register `setup slack` subcommand",
           "status": "open",
           "gateScript": "gates/T004-gate.sh"
         },
         {
           "id": "T005",
-          "title": "Register setup slack in CLI",
-          "description": "In src/cli.ts, register 'setup slack' as a subcommand using Commander. Wire to setupSlack handler. Ensure --verify flag is passed through.",
+          "title": "Implement src/utils/config.ts",
+          "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation",
           "status": "open",
           "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
-          "title": "Unit tests for setup and client",
-          "description": "Create src/commands/setup-slack.test.ts (TR-001): mock Slack API, verify app creation, token write, idempotency, --verify mode. Create src/server/slack.test.ts (TR-002): mock Bolt App init, verify Socket Mode config.",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "open",
           "gateScript": "gates/T006-gate.sh"
         }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/commands/setup-slack.test.ts` exits 0",
+        "`pnpm vitest run src/server/slack.test.ts` exits 0",
+        "`pnpm build` exits 0",
+        "`node dist/cli.js setup slack --help` shows `--verify` flag"
       ]
     },
     {
       "id": "phase-02",
-      "title": "Phase 2: Server Integration & Channel Management",
+      "title": "Server Integration & Channel Management",
       "tasks": [
         {
           "id": "T007",
-          "title": "Create Bolt App instance with server lifecycle",
-          "description": "Create src/server/slack.ts. Initialize Bolt App with Socket Mode config from slack-client.ts. Start on server:ready event, stop on server:shutdown event. Export BoltLifecycle interface (start, stop, isConnected).",
+          "title": "Implement src/server/slack.ts",
+          "description": "New: Bolt App instance, start/stop with Fastify lifecycle",
           "status": "open",
           "gateScript": "gates/T007-gate.sh"
         },
         {
           "id": "T008",
-          "title": "Wire Bolt into Fastify server",
-          "description": "Modify src/server/index.ts. Import and start Bolt App after Fastify is listening. Stop Bolt on server shutdown. Conditionally start only if Slack tokens are configured.",
+          "title": "Implement src/server/index.ts",
+          "description": "Modify: Start Bolt on `server:ready`, stop on `server:shutdown`",
           "status": "open",
           "gateScript": "gates/T008-gate.sh"
         },
         {
           "id": "T009",
-          "title": "Create channel-per-project logic",
-          "description": "Create src/server/slack-channel.ts. Implement createOrReuseChannel() using Slack conversations.create API. Re-use existing channel if name collision. Update .gwrkrc.json with channelId and channelName.",
+          "title": "Implement src/server/slack-channel.ts",
+          "description": "New: `conversations.create`/reuse logic",
           "status": "open",
           "gateScript": "gates/T009-gate.sh"
         },
         {
           "id": "T010",
-          "title": "Wire channel creation into gwrk init",
-          "description": "Modify src/commands/init.ts. After project scaffold, call createOrReuseChannel() if Slack is configured. Replace existing --slack string flag with Slack API integration.",
+          "title": "Implement src/commands/init.ts",
+          "description": "Modify: Call channel creation when Slack is configured",
           "status": "open",
           "gateScript": "gates/T010-gate.sh"
         },
         {
           "id": "T011",
-          "title": "Unit tests for channel management",
-          "description": "Create src/server/slack-channel.test.ts (TR-009): mock conversations.create, verify re-use on duplicate, config update with channelId/channelName.",
+          "title": "Implement src/utils/config.ts",
+          "description": "Modify: Extend `.gwrkrc.json` schema with `channelId`, `channelName`",
           "status": "open",
           "gateScript": "gates/T011-gate.sh"
+        },
+        {
+          "id": "T012",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T012-gate.sh"
         }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/slack-channel.test.ts` exits 0",
+        "`pnpm vitest run src/server/slack.test.ts` exits 0",
+        "`pnpm build` exits 0"
       ]
     },
     {
       "id": "phase-03",
-      "title": "Phase 3: Block Kit Status Updates",
+      "title": "Block Kit Status Updates",
       "tasks": [
         {
-          "id": "T012",
-          "title": "Create Block Kit message builders",
-          "description": "Create src/server/slack-messages.ts. Implement MessageBuilder with methods: phaseStart(), phaseComplete(), phaseFail(), ciResult(), pulseSummary(), doneDone(). Each returns SlackMessage with blocks array and fallback text. Per contracts/block-kit-messages.md.",
-          "status": "open",
-          "gateScript": "gates/T012-gate.sh"
-        },
-        {
           "id": "T013",
-          "title": "Create notification dispatcher",
-          "description": "Create src/server/slack-notify.ts. Implement unified notification dispatcher that resolves project channel from config, posts Block Kit messages via Slack chat.postMessage. Export SlackEvent and SlackMessage types.",
+          "title": "Implement src/server/slack-messages.ts",
+          "description": "New: Block Kit message builders for 7 event types",
           "status": "open",
           "gateScript": "gates/T013-gate.sh"
         },
         {
           "id": "T014",
-          "title": "Add notification hooks to ship and dispatch",
-          "description": "Modify src/commands/ship.ts: emit Slack notifications on phase start/complete/fail. Modify src/server/dispatch.ts: emit events consumed by slack-notify for dispatch lifecycle.",
+          "title": "Implement src/server/slack-notify.ts",
+          "description": "New: Unified notification dispatcher, channel resolution",
           "status": "open",
           "gateScript": "gates/T014-gate.sh"
         },
         {
           "id": "T015",
-          "title": "Unit tests for Block Kit messages",
-          "description": "Create src/server/slack-messages.test.ts (TR-005): verify Block Kit JSON structure for all 7 event types. Assert each message has valid blocks array, text fallback, and correct section types.",
+          "title": "Implement src/commands/ship.ts",
+          "description": "Modify: Add Slack notification hooks for phase lifecycle events",
           "status": "open",
           "gateScript": "gates/T015-gate.sh"
-        }
-      ]
-    },
-    {
-      "id": "phase-04",
-      "title": "Phase 4: Slash Commands & Interactive Review",
-      "tasks": [
+        },
         {
           "id": "T016",
-          "title": "Create slash command handlers",
-          "description": "Create src/server/slack-commands.ts. Implement SlashCommandHandler for 8 commands: status, dispatch, approve, reject, pause, pulse, effort, logs. Each returns Block Kit ephemeral or in-channel response. Per contracts/slash-commands.md.",
+          "title": "Implement src/server/dispatch.ts",
+          "description": "Modify: Emit events consumed by slack-notify",
           "status": "open",
           "gateScript": "gates/T016-gate.sh"
         },
         {
           "id": "T017",
-          "title": "Create interactive action handlers",
-          "description": "Create src/server/slack-actions.ts. Handle Merge/Request Changes/View Review button taps. Handle ✅ reaction-to-approve via reaction_added event. Merge triggers gh pr merge. Per contracts/block-kit-messages.md ReviewAction.",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "open",
           "gateScript": "gates/T017-gate.sh"
-        },
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/slack-messages.test.ts` exits 0",
+        "`pnpm build` exits 0"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Slash Commands & Interactive Review",
+      "tasks": [
         {
           "id": "T018",
-          "title": "Register handlers with Bolt and add health check",
-          "description": "Modify src/server/slack.ts: register all slash commands and action handlers with Bolt App. Modify src/server/routes/health.ts: add Slack connection status (isConnected) to health endpoint components.",
+          "title": "Implement src/server/slack-commands.ts",
+          "description": "New: 8 slash command handlers",
           "status": "open",
           "gateScript": "gates/T018-gate.sh"
         },
         {
           "id": "T019",
-          "title": "Unit tests for commands and actions",
-          "description": "Create src/server/slack-commands.test.ts (TR-003): verify each slash command response format. Create src/server/slack-actions.test.ts (TR-004): verify Merge triggers gh pr merge, reaction handler triggers merge flow.",
+          "title": "Implement src/server/slack-actions.ts",
+          "description": "New: Interactive button handler, ✅ reaction-to-approve",
           "status": "open",
           "gateScript": "gates/T019-gate.sh"
         },
         {
           "id": "T020",
-          "title": "Integration test for slash commands",
-          "description": "Create src/server/slack-integration.test.ts (TR-010): start mock Bolt app, send simulated slash command, verify Block Kit response structure.",
+          "title": "Implement src/server/slack.ts",
+          "description": "Modify: Register command/action handlers with Bolt",
           "status": "open",
           "gateScript": "gates/T020-gate.sh"
-        }
-      ]
-    },
-    {
-      "id": "phase-05",
-      "title": "Phase 5: Presence-Aware Notification Throttling",
-      "tasks": [
+        },
         {
           "id": "T021",
-          "title": "Create presence poller and notification queue",
-          "description": "Create src/server/slack-presence.ts. Implement presence poller (60s interval via users.getPresence). Queue notifications when user is away. Deliver batched summary when presence changes to active. Cap batch at 100 events.",
+          "title": "Implement src/server/routes/health.ts",
+          "description": "Modify: Add Slack connection status to health endpoint",
           "status": "open",
           "gateScript": "gates/T021-gate.sh"
         },
         {
           "id": "T022",
-          "title": "Wire presence gate into notification dispatcher",
-          "description": "Modify src/server/slack-notify.ts: route messages through presence gate before posting. If user is away, queue in BatchedNotification. Add batchedSummary() method to src/server/slack-messages.ts.",
+          "title": "Implement test strategy for Phase 4",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "open",
           "gateScript": "gates/T022-gate.sh"
-        },
-        {
-          "id": "T023",
-          "title": "Unit tests for presence throttling",
-          "description": "Create src/server/slack-presence.test.ts (TR-006): mock user presence changes, verify immediate delivery when active, batched delivery when status changes from away to active, verify batch summary format.",
-          "status": "open",
-          "gateScript": "gates/T023-gate.sh"
         }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/slack-commands.test.ts` exits 0",
+        "`pnpm vitest run src/server/slack-actions.test.ts` exits 0",
+        "`pnpm vitest run src/server/slack-integration.test.ts` exits 0",
+        "`pnpm build` exits 0"
       ]
     },
     {
-      "id": "phase-06",
-      "title": "Phase 6: App Home Tab",
+      "id": "phase-05",
+      "title": "Presence-Aware Notification Throttling",
       "tasks": [
         {
+          "id": "T023",
+          "title": "Implement src/server/slack-presence.ts",
+          "description": "New: Presence poller, notification queue, batch delivery",
+          "status": "open",
+          "gateScript": "gates/T023-gate.sh"
+        },
+        {
           "id": "T024",
-          "title": "Create App Home Tab builder",
-          "description": "Create src/server/slack-home.ts. Build Block Kit view with 5 sections: Active Agents, Dispatch Queue, System Resources (CPU/mem/disk), Feature Progress (per-project RAGB status), Pulse summary. Handle app_home_opened event via views.publish.",
+          "title": "Implement src/server/slack-notify.ts",
+          "description": "Modify: Route through presence gate before posting",
           "status": "open",
           "gateScript": "gates/T024-gate.sh"
         },
         {
           "id": "T025",
-          "title": "Register Home Tab handler and export status data",
-          "description": "Modify src/server/slack.ts: register app_home_opened event handler. Modify src/server/routes/status.ts: export collectStatus() function for Home Tab consumption (not just HTTP handler).",
+          "title": "Implement src/server/slack-messages.ts",
+          "description": "Modify: Add `batchedSummary(",
           "status": "open",
           "gateScript": "gates/T025-gate.sh"
         },
         {
           "id": "T026",
-          "title": "Unit tests for App Home Tab",
-          "description": "Create src/server/slack-home.test.ts (TR-007): mock daemon state (active agents, queue, resources, feature progress), verify Block Kit sections render for all 5 dashboard areas. Verify Server: Offline fallback when server unreachable.",
+          "title": "Implement test strategy for Phase 5",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "open",
           "gateScript": "gates/T026-gate.sh"
         }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/slack-presence.test.ts` exits 0",
+        "`pnpm build` exits 0"
+      ]
+    },
+    {
+      "id": "phase-06",
+      "title": "App Home Tab",
+      "tasks": [
+        {
+          "id": "T027",
+          "title": "Implement src/server/slack-home.ts",
+          "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler",
+          "status": "open",
+          "gateScript": "gates/T027-gate.sh"
+        },
+        {
+          "id": "T028",
+          "title": "Implement src/server/slack.ts",
+          "description": "Modify: Register `app_home_opened` event handler",
+          "status": "open",
+          "gateScript": "gates/T028-gate.sh"
+        },
+        {
+          "id": "T029",
+          "title": "Implement src/server/routes/status.ts",
+          "description": "Modify: Export status data for Home Tab consumption",
+          "status": "open",
+          "gateScript": "gates/T029-gate.sh"
+        },
+        {
+          "id": "T030",
+          "title": "Implement test strategy for Phase 6",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T030-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/slack-home.test.ts` exits 0",
+        "`pnpm build` exits 0"
       ]
     }
   ]

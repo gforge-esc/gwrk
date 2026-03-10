@@ -1,10 +1,13 @@
 #!/bin/bash
-set -e
-echo "Gate T006: Unit tests for setup and client"
-# Assertion #1: setup-slack test file
-test -f src/commands/setup-slack.test.ts || { echo "FAIL: setup-slack.test.ts not found"; exit 1; }
-# Assertion #2: slack test file  
-test -f src/server/slack.test.ts || { echo "FAIL: slack.test.ts not found"; exit 1; }
-# Assertion #3: Tests pass
-pnpm vitest run src/commands/setup-slack.test.ts src/server/slack.test.ts --reporter=verbose 2>&1 | tail -5
-echo "PASS"
+set -euo pipefail
+# Gate: T006 — Implement test strategy for Phase 1
+# Asserts: Derived from task description
+
+
+# Phase Acceptance Criteria
+pnpm vitest run src/commands/setup-slack.test.ts
+pnpm vitest run src/server/slack.test.ts
+pnpm build
+node dist/cli.js setup slack --help
+
+echo "PASS: T006 — Implement test strategy for Phase 1"

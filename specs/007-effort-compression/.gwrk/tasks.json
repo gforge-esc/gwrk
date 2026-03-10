@@ -1,10 +1,10 @@
 {
   "featureId": "007-effort-compression",
-  "createdAt": "2026-03-06T20:36:25.228Z",
+  "createdAt": "2026-03-10T23:15:35.954Z",
   "generatedFrom": {
     "plan": {
       "hash": "9181446fcd67b99b639b92a05de761fc49b5f754cc83cce0a8c57867fc742742",
-      "modifiedAt": "2026-03-06T20:13:56.823Z"
+      "modifiedAt": "2026-03-10T04:38:34.375Z"
     }
   },
   "phases": [

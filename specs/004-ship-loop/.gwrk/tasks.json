@@ -1,10 +1,10 @@
 {
   "featureId": "004-ship-loop",
-  "createdAt": "2026-03-10T04:27:52.492Z",
+  "createdAt": "2026-03-10T23:14:41.959Z",
   "generatedFrom": {
     "plan": {
       "hash": "c3ac2197831566e632b241f8ef4ee8fa26f8b4c3e6ad23fa7f02d895cbe7ffe3",
-      "modifiedAt": "2026-03-10T04:25:29.508Z"
+      "modifiedAt": "2026-03-10T04:38:34.360Z"
     }
   },
   "phases": [

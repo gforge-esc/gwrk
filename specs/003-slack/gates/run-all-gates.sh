@@ -1,27 +1,37 @@
 #!/bin/bash
-set -o pipefail
-GATES_DIR="$(cd "$(dirname "$0")" && pwd)"
-PASS=0
-FAIL=0
-FAILED_GATES=()
+# Hard Gate Runner — Sequential execution of all verification gates
+set -e
 
-for gate in "$GATES_DIR"/T*-gate.sh; do
-  gate_name=$(basename "$gate" .sh)
-  if bash "$gate" > /dev/null 2>&1; then
-    echo "✅ $gate_name"
-    ((PASS++))
-  else
-    echo "❌ $gate_name"
-    ((FAIL++))
-    FAILED_GATES+=("$gate_name")
-  fi
+PASSED=0
+FAILED=0
+TOTAL=0
+
+# Gather all gate scripts
+GATES=$(ls $(dirname "$0")/T*-gate.sh | sort)
+
+echo "────────────────────────────────────────"
+echo "  GWRK HARD GATE RUNNER"
+echo "────────────────────────────────────────"
+
+for gate in $GATES; do
+    TOTAL=$((TOTAL + 1))
+    GATE_NAME=$(basename "$gate")
+    
+    echo -n "▸ Running $GATE_NAME... "
+    if "$gate" > /dev/null 2>&1; then
+        echo "✅ PASS"
+        PASSED=$((PASSED + 1))
+    else
+        echo "❌ FAIL"
+        FAILED=$((FAILED + 1))
+    fi
 done
 
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Results: $PASS passed, $FAIL failed ($(($PASS + $FAIL)) total)"
-if [ $FAIL -gt 0 ]; then
-  echo "Failed: ${FAILED_GATES[*]}"
-  exit 1
+echo "────────────────────────────────────────"
+echo "  RESULTS: $PASSED passed, $FAILED failed / $TOTAL total"
+echo "────────────────────────────────────────"
+
+if [ $FAILED -gt 0 ]; then
+    exit 1
 fi
-echo "All gates passed ✅"
+exit 0

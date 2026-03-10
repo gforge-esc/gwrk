@@ -1,12 +1,11 @@
 #!/bin/bash
-set -e
-echo "Gate T017: Interactive action handlers"
-# Assertion #1: File exists
-test -f src/server/slack-actions.ts || { echo "FAIL: src/server/slack-actions.ts not found"; exit 1; }
-# Assertion #2: Merge action
-grep -q "merge\|Merge\|merge_pr" src/server/slack-actions.ts || { echo "FAIL: No merge action handler"; exit 1; }
-# Assertion #3: Reaction handler
-grep -q "reaction\|Reaction\|reaction_added" src/server/slack-actions.ts || { echo "FAIL: No reaction handler"; exit 1; }
-# Assertion #4: gh pr merge reference
-grep -q "gh.*pr.*merge\|pr.*merge\|mergePR" src/server/slack-actions.ts || { echo "FAIL: No gh pr merge reference"; exit 1; }
-echo "PASS"
+set -euo pipefail
+# Gate: T017 — Implement test strategy for Phase 3
+# Asserts: Derived from task description
+
+
+# Phase Acceptance Criteria
+pnpm vitest run src/server/slack-messages.test.ts
+pnpm build
+
+echo "PASS: T017 — Implement test strategy for Phase 3"
