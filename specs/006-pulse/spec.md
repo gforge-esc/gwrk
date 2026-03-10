@@ -8,8 +8,8 @@ last_modified: "2026-03-06T12:00:00Z"
 
 **Feature Branch**: `006-pulse`
 **Created**: 2026-02-27
-**Revised**: 2026-03-06
-**Status**: Draft
+**Revised**: 2026-03-10
+**Status**: Settled
 **Input**: Pulse productivity dashboard — git log scanner, PulseSnapshot model, historical scan of any repo, multi-repo aggregation, weekly LOC buckets with published/draft separation
 
 ---

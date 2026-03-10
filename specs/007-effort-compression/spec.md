@@ -8,8 +8,8 @@ last_modified: "2026-03-06T10:00:00Z"
 
 **Feature Branch**: `007-effort-compression`
 **Created**: 2026-02-27
-**Revised**: 2026-03-06
-**Status**: Draft
+**Revised**: 2026-03-10
+**Status**: Settled
 **Input**: SP-driven effort estimation engine and delivery speed compression measurement — story extraction, role bracketing, timestamp collection, active coding detection, Point/Total compression ratios, dormancy tracking, per-feature and cross-feature reports, leading indicators, and SQLite persistence.
 
 ---
