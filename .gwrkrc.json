@@ -8,7 +8,9 @@
   },
   "server": {
     "port": 18790,
-    "host": "localhost"
+    "host": "localhost",
+    "heartbeatIntervalMs": 1000,
+    "networkCheckIntervalMs": 5000
   },
   "parallelism": {
     "local": {
