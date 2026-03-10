@@ -571,7 +571,7 @@ else
   echo -e "${RED}║${RESET}  Feature:    ${FEATURE}"
   echo -e "${RED}║${RESET}  Phase:      ${PHASE}"
   echo -e "${RED}║${RESET}  Stage:      ${STAGE}"
-  echo -e "${RED}║${RESET}  Iteration:  ${ITERATION}/${MAX_ITERATIONS}"
+  echo -e "${RED}║${RESET}  Iteration:  $((ITERATION - 1))/${MAX_ITERATIONS}"
   echo -e "${RED}║${RESET}  Duration:   ${BOLD}${TOTAL_MINS}m ${TOTAL_SECS}s${RESET}"
   echo -e "${RED}║${RESET}  State:      ${DIM}${STATE_FILE##*/}${RESET}"
   echo -e "${RED}║${RESET}  Log:        ${DIM}${WUD_LOG##*/}${RESET}"
