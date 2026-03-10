@@ -121,7 +121,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 ## 4. Functional Requirements
 
 - **FR-001**: System MUST provide `gwrk ship <feature> [phase]` that delegates to `scripts/dev/work-until-done.sh`. When phase is omitted, all phases from `tasks.json` are shipped sequentially, stopping on first failure. (Implements: US-001, US-003)
-- **FR-002**: System MUST create a `feat/<feature>` branch from `develop` via `scripts/dev/wud-branch.sh`, or checkout and rebase if it exists. (Implements: US-001)
+- **FR-002**: System MUST create a `feat/<feature>` branch from **current** `develop` HEAD via `scripts/dev/wud-branch.sh`. If the branch already exists, the system MUST `git merge develop` (or rebase) **before any work begins** to ensure the branch is not stale. Checking out a stale branch and working against an old `develop` is a critical defect — all definition artifacts, ADRs, and specs diverge silently. (Implements: US-001)
 - **FR-003**: System MUST execute pre-flight gate check per task. Gate already passing → skip with warning. Gate failing → proceed to implementation. (Implements: US-001, US-002)
 - **FR-004**: System MUST orchestrate the full state machine: `BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE`. (Implements: US-001)
 - **FR-005**: System MUST dispatch code review (`review-code` workflow) and UAT review (`review-uat` workflow) after implementation. NO-GO → loop back to IMPLEMENT. (Implements: US-001)
@@ -144,7 +144,8 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 #### FR-002 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Git merge conflict | `Conflict detected during develop merge` | 1 |
+| Branch exists but is stale (behind develop) | `Branch feat/<feature> is N commits behind develop — syncing` | 0 (auto-sync) |
+| Sync produces merge conflict | `Conflict during develop sync — resolve manually` | 1 |
 | Branch creation failed | `Failed to create feature branch` | 1 |
 
 #### FR-003 Error States
