@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { gitLog, detectDefaultBranch, gitLineCount, gitDraftLineCount } from "../utils/git.js";
-import { PulseSnapshotSchema, PulseReportSchema } from "./types.js";
+import { detectDefaultBranch, gitDraftLineCount, gitLineCount, gitLog, } from "../utils/git.js";
+import { PulseReportSchema, PulseSnapshotSchema } from "./types.js";
 /**
  * Parses raw output from `git log --numstat --format=%H|%aI`
  */
@@ -79,8 +79,8 @@ export function bucketByWeek(commits, defaultBranch) {
     const result = Array.from(buckets.values());
     result.sort((a, b) => a.weekStart.localeCompare(b.weekStart));
     // Compute totalMain and totalDrafts cumulatively (rough approximation for buckets based on added/deleted)
-    // For precise LOC at point in time, git checkout + count per week is required, 
-    // but FR-004 asks to bucket LOC changes. The acceptance criteria implies 
+    // For precise LOC at point in time, git checkout + count per week is required,
+    // but FR-004 asks to bucket LOC changes. The acceptance criteria implies
     // totalMain is cumulativeLOC. Let's compute running totals.
     let runningTotal = 0;
     for (const bucket of result) {
@@ -128,9 +128,10 @@ export function scanSpecProgress(projectRoot) {
     if (!fs.existsSync(specsDir)) {
         return { totalSpecs, totalPlans };
     }
-    const features = fs.readdirSync(specsDir, { withFileTypes: true })
-        .filter(d => d.isDirectory())
-        .map(d => d.name);
+    const features = fs
+        .readdirSync(specsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
     for (const feature of features) {
         if (fs.existsSync(path.join(specsDir, feature, "spec.md"))) {
             totalSpecs++;

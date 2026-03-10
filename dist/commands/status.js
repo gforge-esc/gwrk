@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { loadConfig } from "../utils/config.js";
 import { readPid } from "../server/pid.js";
+import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 export const statusCommand = new Command("status")
@@ -25,7 +25,7 @@ export const statusCommand = new Command("status")
         if (!response.ok) {
             throw new Error(`Server returned ${response.status}`);
         }
-        const status = await response.json();
+        const status = (await response.json());
         if (options.json) {
             console.log(JSON.stringify(status, null, 2));
             return;

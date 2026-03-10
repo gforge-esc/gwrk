@@ -1,10 +1,10 @@
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 import { Command } from "commander";
-import { gatherDeliveryActuals, computeCompression, generateSummary } from "../engine/compression.js";
-import { extractStories } from "../engine/spec-parser.js";
-import { resolveRoleMultipliers } from "../engine/roles.js";
+import { computeCompression, gatherDeliveryActuals, generateSummary, } from "../engine/compression.js";
 import { computeEffort } from "../engine/effort.js";
+import { resolveRoleMultipliers } from "../engine/roles.js";
+import { extractStories } from "../engine/spec-parser.js";
 import { loadConfig } from "../utils/config.js";
 function getEffortReport(featureDir, featureId, projectRoot) {
     const config = loadConfig(projectRoot);
@@ -27,9 +27,10 @@ export const compressionCommand = new Command("compression")
             if (!fs.existsSync(specsDir)) {
                 throw new Error("specs directory not found");
             }
-            const directories = fs.readdirSync(specsDir, { withFileTypes: true })
-                .filter(dirent => dirent.isDirectory() && dirent.name.match(/^\d{3}-/))
-                .map(dirent => dirent.name);
+            const directories = fs
+                .readdirSync(specsDir, { withFileTypes: true })
+                .filter((dirent) => dirent.isDirectory() && dirent.name.match(/^\d{3}-/))
+                .map((dirent) => dirent.name);
             const reports = [];
             for (const feat of directories) {
                 try {
@@ -39,7 +40,10 @@ export const compressionCommand = new Command("compression")
                     const actuals = gatherDeliveryActuals(featDir);
                     const forecast = {
                         totalSP: effort.totalSP,
-                        roles: effort.roles.map(r => ({ role: r.role, sp: r.spAssigned })),
+                        roles: effort.roles.map((r) => ({
+                            role: r.role,
+                            sp: r.spAssigned,
+                        })),
                         estimatedHours: effort.totalWithOverhead,
                         estimatedDays: effort.totalDays,
                     };
@@ -75,8 +79,12 @@ export const compressionCommand = new Command("compression")
                 for (const feat of summary.features) {
                     const name = feat.featureId.padEnd(23);
                     const sp = feat.forecast.totalSP.toString().padStart(2);
-                    const pc = feat.compression.pointCompression.toFixed(1).padStart(10);
-                    const tc = feat.compression.totalCompression.toFixed(1).padStart(10);
+                    const pc = feat.compression.pointCompression
+                        .toFixed(1)
+                        .padStart(10);
+                    const tc = feat.compression.totalCompression
+                        .toFixed(1)
+                        .padStart(10);
                     console.log(`  ${name} | ${sp} | ${pc} | ${tc}`);
                 }
             }
@@ -90,7 +98,7 @@ export const compressionCommand = new Command("compression")
             const actuals = gatherDeliveryActuals(featureDir);
             const forecast = {
                 totalSP: effort.totalSP,
-                roles: effort.roles.map(r => ({ role: r.role, sp: r.spAssigned })),
+                roles: effort.roles.map((r) => ({ role: r.role, sp: r.spAssigned })),
                 estimatedHours: effort.totalWithOverhead,
                 estimatedDays: effort.totalDays,
             };

@@ -1,8 +1,8 @@
-import type { DispatchRecord } from "./types.js";
-import type { GwrkConfig, AgentBackend } from "../utils/config.js";
+import type { AgentBackend, GwrkConfig } from "../utils/config.js";
+import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import type { SandboxManager } from "./sandbox.js";
-import type { GitManager } from "./git-manager.js";
+import type { DispatchRecord } from "./types.js";
 export interface DispatchRequest {
     featureId: string;
     phaseId: string;

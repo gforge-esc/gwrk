@@ -3,6 +3,6 @@ set -euo pipefail
 # Gate: T022 — Implement Dockerfile.sandbox
 # Asserts: Derived from task description
 
-test -f Node.js
+test -f Dockerfile.sandbox
 
 echo "PASS: T022 — Implement Dockerfile.sandbox"

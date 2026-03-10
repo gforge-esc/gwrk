@@ -1,6 +1,6 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as crypto from "node:crypto";
 import { compileContext } from "./context.js";
 import { persistDispatch } from "./persistence.js";
 export class DispatchQueue {
@@ -79,7 +79,7 @@ export class DispatchQueue {
             // In real life we would run something like:
             // docker exec <id> gwrk ship implement <featureId> --phase <phaseId>
             // Just a sleep to simulate work
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
             record.status = "completed";
             attempt.completedAt = new Date().toISOString();
             attempt.exitCode = 0;
@@ -100,7 +100,7 @@ export class DispatchQueue {
                 await this.sandbox.destroySandbox(record.containerId);
                 record.containerId = undefined;
             }
-            this.active = this.active.filter(r => r.id !== record.id);
+            this.active = this.active.filter((r) => r.id !== record.id);
             if (record.status === "retrying") {
                 this.queue.push(record);
             }
@@ -125,9 +125,9 @@ export class DispatchQueue {
         return this.active.length;
     }
     getCompletedCount() {
-        return this.history.filter(r => r.status === "completed").length;
+        return this.history.filter((r) => r.status === "completed").length;
     }
     getFailedCount() {
-        return this.history.filter(r => r.status === "failed").length;
+        return this.history.filter((r) => r.status === "failed").length;
     }
 }

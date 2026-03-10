@@ -1,5 +1,5 @@
-import * as os from "node:os";
 import * as fs from "node:fs";
+import * as os from "node:os";
 export class SystemMonitor {
     config;
     lastCpus;
@@ -40,7 +40,8 @@ export class SystemMonitor {
         let diskFreeGb = 0;
         try {
             const stats = fs.statfsSync(".");
-            diskFreeGb = Number((BigInt(stats.bavail) * BigInt(stats.bsize) / BigInt(1024 * 1024 * 1024)));
+            diskFreeGb = Number((BigInt(stats.bavail) * BigInt(stats.bsize)) /
+                BigInt(1024 * 1024 * 1024));
         }
         catch (e) {
             // Fallback or ignore
@@ -48,7 +49,7 @@ export class SystemMonitor {
         this.currentResources = {
             cpuPercent: Number(cpuPercent.toFixed(1)),
             memPercent: Number(memPercent.toFixed(1)),
-            diskFreeGb: Number(diskFreeGb.toFixed(1))
+            diskFreeGb: Number(diskFreeGb.toFixed(1)),
         };
         return this.currentResources;
     }

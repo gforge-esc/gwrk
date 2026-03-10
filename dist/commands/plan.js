@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { finishRun, startRun } from "../db/runs.js";
 import { dispatchAgent } from "../utils/agent.js";
 import { loadConfig } from "../utils/config.js";
-import { startRun, finishRun } from "../db/runs.js";
-import { banner, success, fail, blocked } from "../utils/format.js";
+import { banner, blocked, fail, success } from "../utils/format.js";
 export const planCommand = new Command("plan")
     .description("Create an implementation plan for a feature")
     .argument("<feature>", "The feature directory under specs/")

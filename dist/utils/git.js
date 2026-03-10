@@ -17,7 +17,11 @@ export function detectDefaultBranch(repoPath) {
             encoding: "utf-8",
             stdio: ["ignore", "pipe", "pipe"],
         });
-        const branches = stdout.toString().split("\n").map((b) => b.replace(/^\*\s*/, "").trim()).filter(Boolean);
+        const branches = stdout
+            .toString()
+            .split("\n")
+            .map((b) => b.replace(/^\*\s*/, "").trim())
+            .filter(Boolean);
         if (branches.includes("main"))
             return "main";
         if (branches.includes("master"))
@@ -41,7 +45,11 @@ export function gitBranches(repoPath) {
         cwd: repoPath,
         encoding: "utf-8",
     });
-    return stdout.toString().split("\n").map(b => b.replace(/^\*\s*/, "").trim()).filter(Boolean);
+    return stdout
+        .toString()
+        .split("\n")
+        .map((b) => b.replace(/^\*\s*/, "").trim())
+        .filter(Boolean);
 }
 /**
  * Counts total lines of code at a specific ref using ls-files and wc.
@@ -54,7 +62,10 @@ export function gitLineCount(repoPath, ref) {
         // A simpler approximation for active repo is `git ls-files | xargs wc -l`
         // For FR-003, we need LOC at a specific ref.
         // git ls-tree -r $ref --name-only | xargs git show | wc -l
-        const stdout = execFileSync("bash", ["-c", `git ls-tree -r ${ref} --name-only | grep -v 'png\\|jpg\\|jpeg\\|gif\\|webp\\|mp4\\|mov' | xargs -I {} git show ${ref}:"{}" 2>/dev/null | wc -l`], { cwd: repoPath, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+        const stdout = execFileSync("bash", [
+            "-c",
+            `git ls-tree -r ${ref} --name-only | grep -v 'png\\|jpg\\|jpeg\\|gif\\|webp\\|mp4\\|mov' | xargs -I {} git show ${ref}:"{}" 2>/dev/null | wc -l`,
+        ], { cwd: repoPath, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
         return Number.parseInt(stdout.toString().trim(), 10) || 0;
     }
     catch (_e) {
@@ -72,7 +83,11 @@ export function gitDraftLineCount(repoPath, defaultBranch) {
             encoding: "utf-8",
             stdio: ["ignore", "pipe", "pipe"],
         });
-        const branches = stdout.toString().split("\n").map((b) => b.trim()).filter(b => b && b !== defaultBranch);
+        const branches = stdout
+            .toString()
+            .split("\n")
+            .map((b) => b.trim())
+            .filter((b) => b && b !== defaultBranch);
         let totalDraftLines = 0;
         for (const branch of branches) {
             try {

@@ -1,7 +1,7 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import { spawn } from "node:child_process";
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
@@ -85,7 +85,9 @@ export async function dispatchAgent(opts) {
     fs.mkdirSync(runsDir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const workflow = path.basename(opts.workflowPath, ".md");
-    const rawFeature = opts.featureDir ? path.basename(opts.featureDir) : opts.prompt ?? "unknown";
+    const rawFeature = opts.featureDir
+        ? path.basename(opts.featureDir)
+        : (opts.prompt ?? "unknown");
     const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
     const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
@@ -141,12 +143,18 @@ export async function dispatchAgent(opts) {
         };
         // Process stdout line by line
         if (child.stdout) {
-            const rl = readline.createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY });
+            const rl = readline.createInterface({
+                input: child.stdout,
+                crlfDelay: Number.POSITIVE_INFINITY,
+            });
             rl.on("line", processLine);
         }
         // Process stderr line by line (same formatting)
         if (child.stderr) {
-            const rlErr = readline.createInterface({ input: child.stderr, crlfDelay: Number.POSITIVE_INFINITY });
+            const rlErr = readline.createInterface({
+                input: child.stderr,
+                crlfDelay: Number.POSITIVE_INFINITY,
+            });
             rlErr.on("line", processLine);
         }
         child.on("close", (code) => {

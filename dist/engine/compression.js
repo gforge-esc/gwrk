@@ -1,6 +1,6 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 /** ... existing exports ... */
 export function computeCompression(forecast, actuals) {
     // Point Compression = Estimated Coding Hours / Actual Coding Time (hours)
@@ -42,25 +42,34 @@ export function generateSummary(reports) {
     for (const r of reports) {
         summary.totals.totalSP += r.forecast.totalSP;
         summary.totals.totalEstimatedHours += r.forecast.estimatedHours;
-        summary.totals.totalActualCodingHours += (r.actuals.activeCodingMinutes / 60);
+        summary.totals.totalActualCodingHours += r.actuals.activeCodingMinutes / 60;
         totalPointCompression += r.compression.pointCompression;
         totalTotalCompression += r.compression.totalCompression;
         if (r.compression.pointCompression > summary.best.pointCompression) {
-            summary.best = { featureId: r.featureId, pointCompression: r.compression.pointCompression };
+            summary.best = {
+                featureId: r.featureId,
+                pointCompression: r.compression.pointCompression,
+            };
         }
         if (r.compression.pointCompression < summary.worst.pointCompression) {
-            summary.worst = { featureId: r.featureId, pointCompression: r.compression.pointCompression };
+            summary.worst = {
+                featureId: r.featureId,
+                pointCompression: r.compression.pointCompression,
+            };
         }
     }
     summary.totals.avgPointCompression = totalPointCompression / reports.length;
     summary.totals.avgTotalCompression = totalTotalCompression / reports.length;
-    const sorted = [...reports].sort((a, b) => new Date(a.actuals.firstImplCommit).getTime() - new Date(b.actuals.firstImplCommit).getTime());
+    const sorted = [...reports].sort((a, b) => new Date(a.actuals.firstImplCommit).getTime() -
+        new Date(b.actuals.firstImplCommit).getTime());
     if (sorted.length > 1) {
         const mid = Math.floor(sorted.length / 2);
         const firstHalf = sorted.slice(0, mid);
         const secondHalf = sorted.slice(mid);
-        const firstHalfAvg = firstHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) / firstHalf.length;
-        const secondHalfAvg = secondHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) / secondHalf.length;
+        const firstHalfAvg = firstHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) /
+            firstHalf.length;
+        const secondHalfAvg = secondHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) /
+            secondHalf.length;
         if (secondHalfAvg > firstHalfAvg * 1.05) {
             summary.trend = "improving";
         }
@@ -94,17 +103,24 @@ export function gatherDeliveryActuals(featureDir, sessionGapMinutes = 30) {
         gitLogOut = execFileSync("git", ["log", "--reverse", "--format=%aI", "--", featureDir], {
             cwd: parentDir,
             encoding: "utf-8",
-        }).toString().trim();
+        })
+            .toString()
+            .trim();
     }
     catch (err) {
         // maybe no commits yet
     }
-    const lines = gitLogOut.split("\n").map(l => l.trim()).filter(Boolean);
+    const lines = gitLogOut
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
     if (lines.length === 0) {
         throw new Error(`No implementation commits found for feature '${path.basename(featureDir)}'`);
     }
     // Parse commit timestamps and sort chronologically
-    const timestamps = lines.map(l => new Date(l).getTime()).sort((a, b) => a - b);
+    const timestamps = lines
+        .map((l) => new Date(l).getTime())
+        .sort((a, b) => a - b);
     const firstImplCommit = new Date(timestamps[0]).toISOString();
     const lastImplCommit = new Date(timestamps[timestamps.length - 1]).toISOString();
     // Clustering
@@ -154,7 +170,9 @@ export function gatherDeliveryActuals(featureDir, sessionGapMinutes = 30) {
         const ghOut = execFileSync("gh", ["pr", "view", "--json", "mergedAt", "--jq", ".mergedAt"], {
             cwd: parentDir,
             encoding: "utf-8",
-        }).toString().trim();
+        })
+            .toString()
+            .trim();
         if (ghOut && ghOut !== "null") {
             prMergedAtStr = ghOut;
         }

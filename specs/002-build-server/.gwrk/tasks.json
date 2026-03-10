@@ -137,42 +137,42 @@
           "id": "T015",
           "title": "Implement src/server/git-manager.ts",
           "description": "NEW: `createPhaseBranch(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh"
         },
         {
           "id": "T016",
           "title": "Implement src/server/context.ts",
           "description": "NEW: `compileContext(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh"
         },
         {
           "id": "T017",
           "title": "Implement src/server/git-manager.test.ts",
           "description": "NEW: Branch creation, merge-back, conflict detection tests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh"
         },
         {
           "id": "T018",
           "title": "Implement src/server/context.test.ts",
           "description": "NEW: Context compilation tests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh"
         },
         {
           "id": "T019",
           "title": "Implement src/server/types.ts",
           "description": "NEW: Shared types — `DispatchRecord`, `DispatchAttempt`, `DispatchStatus`, `SystemStatus`, `SandboxInfo`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh"
         },
         {
           "id": "T020",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh"
         }
       ],

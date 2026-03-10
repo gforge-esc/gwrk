@@ -24,7 +24,9 @@ export const runsCommand = new Command("runs")
     for (const r of runs) {
         const dur = r.duration_s ? `${r.duration_s}s` : "—";
         const exit = r.exit_code !== undefined && r.exit_code !== null
-            ? r.exit_code === 0 ? "✅ 0" : `❌ ${r.exit_code}`
+            ? r.exit_code === 0
+                ? "✅ 0"
+                : `❌ ${r.exit_code}`
             : "⏳";
         const phase = r.phase_id ?? "—";
         const agent = r.agent_backend ?? "—";

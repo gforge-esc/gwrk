@@ -1,8 +1,8 @@
 import { Command } from "commander";
+import { finishRun, startRun } from "../db/runs.js";
 import { dispatchAgent } from "../utils/agent.js";
 import { loadConfig } from "../utils/config.js";
-import { startRun, finishRun } from "../db/runs.js";
-import { banner, success, fail } from "../utils/format.js";
+import { banner, fail, success } from "../utils/format.js";
 export const specifyCommand = new Command("spec")
     .description("Create or refine a feature specification")
     .argument("<prompt>", "The feature description or prompt")

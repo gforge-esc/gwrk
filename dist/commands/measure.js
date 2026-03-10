@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { effortCommand } from "./effort.js";
 import { compressionCommand } from "./compression.js";
+import { effortCommand } from "./effort.js";
 import { registerPulseSubcommands } from "./pulse.js";
 /**
  * gwrk measure — The Pulse/Compression Pillar (Value)

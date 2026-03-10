@@ -1,8 +1,8 @@
 import { Command } from "commander";
-import { runsCommand } from "./runs.js";
-import { statsCommand } from "./stats.js";
 import { recordRun } from "../db/runs.js";
 import { success } from "../utils/format.js";
+import { runsCommand } from "./runs.js";
+import { statsCommand } from "./stats.js";
 export const recordCommand = new Command("record")
     .description("Record a run in the execution ledger")
     .requiredOption("-f, --feature <id>", "Feature ID")

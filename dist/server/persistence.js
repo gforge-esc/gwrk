@@ -14,7 +14,8 @@ export function loadDispatches() {
         return [];
     }
     const content = fs.readFileSync(DISPATCHES_FILE, "utf8");
-    return content.split("\n")
-        .filter(line => line.trim() !== "")
-        .map(line => JSON.parse(line));
+    return content
+        .split("\n")
+        .filter((line) => line.trim() !== "")
+        .map((line) => JSON.parse(line));
 }
