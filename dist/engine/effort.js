@@ -42,10 +42,12 @@ export function computeEffort(stories, roleMultipliers, overheadFactor = 1.25) {
     const rolesBreakdownArray = [];
     for (const roleCode of Object.keys(roleMap)) {
         const rb = roleMap[roleCode];
-        rb.withOverhead = Number((rb.rawHours * overheadFactor).toFixed(2));
-        rb.days = Number((rb.withOverhead / 8).toFixed(2));
-        if (rb.spAssigned > 0) {
-            rolesBreakdownArray.push(rb);
+        if (rb) {
+            rb.withOverhead = Number((rb.rawHours * overheadFactor).toFixed(2));
+            rb.days = Number((rb.withOverhead / 8).toFixed(2));
+            if (rb.spAssigned > 0) {
+                rolesBreakdownArray.push(rb);
+            }
         }
     }
     // Sort breakdown array by SP assigned (desc), then alphabetic

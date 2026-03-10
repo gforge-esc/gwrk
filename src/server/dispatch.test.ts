@@ -30,7 +30,12 @@ describe("DispatchQueue", () => {
   const mockConfig: GwrkConfig = {
     project: { name: "test" },
     agents: { define: "gemini", implement: "codex-cloud" },
-    server: { port: 18790, host: "localhost" },
+    server: {
+      port: 18790,
+      host: "localhost",
+      heartbeatIntervalMs: 1000,
+      networkCheckIntervalMs: 1000,
+    },
     parallelism: {
       local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
       cloud: { maxConcurrent: 10 },
@@ -154,6 +159,7 @@ describe("DispatchQueue", () => {
 
     const status = queue.getQueue();
     expect(status.throttled).toBe(true);
+    expect(status.paused).toBe(false);
     expect(status.queued.length).toBe(1);
   });
 

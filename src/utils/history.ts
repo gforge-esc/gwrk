@@ -7,8 +7,8 @@ export const HistoryEntrySchema = z.object({
   timestamp: z.string().datetime(),
   featureId: z.string().min(1),
   taskId: z.string().regex(/^T\d{3}$/),
-  fromStatus: z.enum(["open", "in_progress", "completed"]),
-  toStatus: z.enum(["open", "in_progress", "completed"]),
+  fromStatus: z.enum(["open", "in_progress", "completed", "cancelled"]),
+  toStatus: z.enum(["open", "in_progress", "completed", "cancelled"]),
   agentId: z.string().optional(),
 });
 

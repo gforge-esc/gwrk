@@ -17,7 +17,10 @@ export declare class DispatchQueue {
     private queue;
     private active;
     private history;
+    private paused;
     constructor(config: GwrkConfig, monitor: SystemMonitor, sandbox: SandboxManager, git: GitManager, projectRoot: string);
+    pause(): void;
+    resume(): void;
     enqueue(request: DispatchRequest): DispatchRecord;
     processNext(): Promise<void>;
     private runDispatch;
@@ -26,6 +29,7 @@ export declare class DispatchQueue {
         active: DispatchRecord[];
         queued: DispatchRecord[];
         throttled: boolean;
+        paused: boolean;
     };
     getDispatch(featureId: string, phaseId: string): DispatchRecord | null;
     getQueueDepth(): number;

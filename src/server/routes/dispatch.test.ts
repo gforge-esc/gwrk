@@ -12,7 +12,12 @@ vi.mock("dockerode");
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "codex-cloud" },
-  server: { port: 18793, host: "localhost" },
+  server: {
+    port: 18793,
+    host: "localhost",
+    heartbeatIntervalMs: 1000,
+    networkCheckIntervalMs: 1000,
+  },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
     cloud: { maxConcurrent: 10 },

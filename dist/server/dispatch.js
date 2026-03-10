@@ -1,8 +1,8 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { finishRun, startRun } from "../db/runs.js";
 import { compileContext } from "./context.js";
-import { startRun, finishRun } from "../db/runs.js";
 import { persistDispatch } from "./persistence.js";
 export class DispatchQueue {
     config;
@@ -13,12 +13,20 @@ export class DispatchQueue {
     queue = [];
     active = [];
     history = [];
+    paused = false;
     constructor(config, monitor, sandbox, git, projectRoot) {
         this.config = config;
         this.monitor = monitor;
         this.sandbox = sandbox;
         this.git = git;
         this.projectRoot = projectRoot;
+    }
+    pause() {
+        this.paused = true;
+    }
+    resume() {
+        this.paused = false;
+        this.processNext();
     }
     enqueue(request) {
         const record = {
@@ -39,6 +47,9 @@ export class DispatchQueue {
     async processNext() {
         if (this.queue.length === 0)
             return;
+        if (this.paused) {
+            return;
+        }
         if (this.monitor.isThrottled()) {
             // Potentially log or wait
             return;
@@ -171,6 +182,7 @@ export class DispatchQueue {
             active: this.active,
             queued: this.queue,
             throttled: this.monitor.isThrottled(),
+            paused: this.paused,
         };
     }
     getDispatch(featureId, phaseId) {

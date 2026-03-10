@@ -10,8 +10,9 @@ const DEFAULT_ROLES = [
  */
 export function resolveRoleMultipliers(config) {
     // We need to merge config.effort.roles with DEFAULT_ROLES
-    // Since config.effort is not strictly typed yet, we use type assertion
-    const overrides = config.effort?.roles || {};
+    // Since config.effort is not strictly typed yet, we use a more constrained type assertion
+    const effort = config.effort;
+    const overrides = effort?.roles || {};
     return DEFAULT_ROLES.map((defaultRole) => {
         const override = overrides[defaultRole.role];
         if (override && typeof override.hoursPerSP === "number") {

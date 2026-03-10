@@ -20,6 +20,7 @@ export class DispatchQueue {
   private queue: DispatchRecord[] = [];
   private active: DispatchRecord[] = [];
   private history: DispatchRecord[] = [];
+  private paused = false;
 
   constructor(
     private config: GwrkConfig,
@@ -28,6 +29,15 @@ export class DispatchQueue {
     private git: GitManager,
     private projectRoot: string,
   ) {}
+
+  pause() {
+    this.paused = true;
+  }
+
+  resume() {
+    this.paused = false;
+    this.processNext();
+  }
 
   enqueue(request: DispatchRequest): DispatchRecord {
     const record: DispatchRecord = {
@@ -49,6 +59,10 @@ export class DispatchQueue {
 
   async processNext() {
     if (this.queue.length === 0) return;
+
+    if (this.paused) {
+      return;
+    }
 
     if (this.monitor.isThrottled()) {
       // Potentially log or wait
@@ -209,6 +223,7 @@ export class DispatchQueue {
       active: this.active,
       queued: this.queue,
       throttled: this.monitor.isThrottled(),
+      paused: this.paused,
     };
   }
 

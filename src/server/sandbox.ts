@@ -68,12 +68,13 @@ export class SandboxManager {
   }
 
   async listSandboxes() {
-    const containers = await this.docker.listContainers({
-      all: true,
-      filters: {
-        label: ["gwrk.feature"],
-      },
-    });
+    const containers =
+      (await this.docker.listContainers({
+        all: true,
+        filters: {
+          label: ["gwrk.feature"],
+        },
+      })) || [];
     return containers.map((c) => ({
       containerId: c.Id,
       featureId: c.Labels["gwrk.feature"],
@@ -84,6 +85,35 @@ export class SandboxManager {
     }));
   }
 
+  async pauseAll(): Promise<void> {
+    const sandboxes = await this.listSandboxes();
+    for (const sandbox of sandboxes) {
+      if (sandbox.status === "running") {
+        const container = this.docker.getContainer(sandbox.containerId);
+        try {
+          await container.pause();
+        } catch (e) {
+          console.error(`Failed to pause container ${sandbox.containerId}:`, e);
+        }
+      }
+    }
+  }
+
+  async unpauseAll(): Promise<void> {
+    const sandboxes = await this.listSandboxes();
+    for (const sandbox of sandboxes) {
+      // In Dockerode, a paused container has status 'paused' but SandboxInfo might map it to something else
+      // Let's check raw state if needed or just try to unpause everything that's not destroyed
+      const container = this.docker.getContainer(sandbox.containerId);
+      try {
+        // We can check the state from listContainers directly if we want to be surgical
+        await container.unpause();
+      } catch (e) {
+        // Might not be paused
+      }
+    }
+  }
+
   private mapStateToStatus(
     state: string,
   ): "creating" | "running" | "stopping" | "destroyed" {
@@ -91,6 +121,7 @@ export class SandboxManager {
       case "created":
         return "creating";
       case "running":
+      case "paused":
         return "running";
       case "exited":
       case "stopped":

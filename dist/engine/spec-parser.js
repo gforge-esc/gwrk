@@ -27,13 +27,13 @@ export function extractStories(featureDir) {
         const roles = [];
         let priority;
         const bracketMatch = rawTitle.match(bracketsRegex);
-        if (bracketMatch) {
+        if (bracketMatch?.[1]) {
             const tagsStr = bracketMatch[1];
             // Remove the brackets from the title
             rawTitle = rawTitle.replace(bracketMatch[0], "").trim();
             // Extract SP
             const spMatch = tagsStr.match(/(\d+(?:\.\d+)?)\s*SP/i);
-            if (spMatch) {
+            if (spMatch?.[1]) {
                 sp = Number.parseFloat(spMatch[1]);
             }
             // Extract Priority (P0, P1, P2)

@@ -16,8 +16,10 @@ export declare class SandboxManager {
         featureId: string;
         phaseId: string;
         backend: string;
-        status: "running" | "creating" | "stopping" | "destroyed";
+        status: "running" | "stopping" | "creating" | "destroyed";
         startedAt: string;
     }[]>;
+    pauseAll(): Promise<void>;
+    unpauseAll(): Promise<void>;
     private mapStateToStatus;
 }

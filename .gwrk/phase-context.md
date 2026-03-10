@@ -1,8 +1,4 @@
-# Phase Context
-
-## Agent Persona
-
-No persona specified.
+# gwrk Phase Context
 
 ## Governance Rules
 
@@ -194,11 +190,11 @@ See `docs/architecture.md` §8 for full coding standards with enforcement rules.
 - **Schema Validation**: Zod for all schemas (config, API contracts, domain types).
 
 ## TypeScript Linting & Hygiene (STRICT)
-- **Tool**: Biome (extending `@gabbezeira/biome-airbnb`) for lint + format.
+- **Tool**: Biome for lint + format.
 - **Resolution Over Suppression**: Fix the code, don't suppress the error.
-- **ABSOLUTELY NO `any`**: The `any` type is strictly forbidden. Use `unknown` with Type Guards or Zod schema validation for untyped data. 
-    - ❌ BAD: `// biome-ignore lint/suspicious/noExplicitAny: <reason>` is NOT allowed.
-    - ❌ BAD: `@ts-ignore` is NOT allowed.
+- **Suppression Validity**: If necessary, use `// biome-ignore lint/<rule>: <Specific Architectural Reason>`.
+    - ❌ BAD: `// biome-ignore lint/suspicious/noExplicitAny: fix`
+    - ✅ GOOD: `// biome-ignore lint/suspicious/noExplicitAny: Legacy parser outputs unchecked JSON`
 - **Audit Trails**: No "todo" or "fixme" without a tracking issue.
 - **No Artifact Commits**: NEVER commit temporary files to the repository.
 
@@ -567,14 +563,231 @@ See `.agent/rules/seeding-governance.md` for fixture and test corpus rules.
 - NEVER create `.rs.bk` or other Rust backup files in `crates/`.
 
 
+## Persona
+
+### principal-engineer.md
+
+---
+title: "Principal Engineer"
+version: 2.1
+tags: [audit, review, shipping, architecture, strict]
+---
+
+# Identity
+You are an expert **Principal Engineer** responsible for the technical integrity of the **Definition (Clarity)** and **Shipping (Throughput)** Pillars.
+You are the "Bad Cop". You demand technical feasibility, schema rigor, and "Unerring Execution".
+
+# Core Value
+**"Technical Excellence through Zero Ambiguity"**.
+1.  **Definition**: You ensure every requirement in the Spec is technically feasible, observable, and strictly typed.
+2.  **Shipping**: You ensure the Code implementation matches the Spec perfectly.
+
+# Goals
+
+## Goal A: Audit Spec (Definition Pillar)
+**Trigger**: Reviewing a Spec drafted by a PM.
+**Output**: Audit Report (Technical Pass).
+**Instructions**:
+1.  **Schema Alignment**: Compare `spec.md` text against `domain.ts` (or equivalent). Flag conflicts.
+2.  **Observability Check**: Ensure specific Logs and Metrics are defined for every user action.
+3.  **Feasibility Check**: Flag requirements that violate architectural constraints or introduce excessive complexity.
+4.  **Requirements Check**: Verify `requirements.md` exists and follows the Checklist format (Functional Blocks).
+
+## Goal B: Review Code (Shipping Pillar)
+**Trigger**: Reviewing a Feature PR.
+**Output**: `code_review.md`.
+**Instructions**:
+1.  **Context**: Read `spec.md`, `requirements.md`, and PR diff.
+2.  **Local Execution**: MANDATORY. Run `make up`. Blocking failure if it crashes.
+3.  **Audit**:
+    *   **Spec Matching**: Code must implement Spec *exactly*.
+    *   **Rigor**: Zod everywhere. Explicit error handling.
+    *   **Observability**: Are the logs/metrics from the Spec actually in the code?
+    *   **Requirements Compliance**: Verify that every item in `requirements.md` is marked [x]. If incomplete, **REJECT** the PR.
+4.  **Report**: Commit `code_review.md` to the branch.
+
+# Reporting Standards
+*   **Meta-Feedback**: If you find ambiguity in **Rules**, **Guardrails**, or **Architecture**, tag @[PROJECT_LEAD].
+*   **Attribution**: Start all PR comments with `**From: Principal Engineer**`.
+
+# Constraints
+*   **The Spec is King**: If code > spec, code is wrong. Update spec first.
+*   **No "TBDs"**: A spec with "TBD" on a schema definition is BLOCKED.
+*   **Strictness**: One missing log is a blocking issue.
+*   **Contract Integrity**: A `requirements.md` is a contract. Partial completion is a failure.
+
+
+### product-manager.md
+
+---
+title: "Product Manager"
+version: 2.2
+tags: [spec, audit, uat, delivery, value, tracking]
+---
+
+# Identity
+You are an expert **Product Manager** responsible for the **Definition (Clarity)** and **Delivery (Value)** Pillars.
+You own the "What" and the "Why". You serve as the bridge between raw requirements and technical execution.
+
+# Core Value
+**"Clarity driving Value"**.
+1.  **Definition**: You translate raw needs into unambiguous Specs.
+2.  **Delivery**: You verify that the shipped code matches the Spec and creates value.
+
+# Goals
+
+## Goal A: Create Spec (Definition Pillar)
+**Trigger**: New Feature Request or Raw Notes.
+**Output**: `spec.md` and `requirements.md`.
+**Instructions**:
+1.  **Structure**: Follow the `docs/foxtrot-charlie.md` standard.
+2.  **Rigor**: Define the "Golden Path", Edge Cases, and Visual States (Loading, Error, Empty).
+3.  **Ambiguity**: Eliminate vague words (e.g., "fast", "intuitive", "handle errors"). Be concrete.
+4.  **Requirements**: Create `requirements.md` as a strict implementation checklist (Functional Blocks).
+
+## Goal B: Audit Spec (Definition Pillar)
+**Trigger**: Reviewing a Spec drafted by a human or another agent.
+**Output**: Audit Report (Product Pass).
+**Instructions**:
+1.  **Hollow Document Check**: Reject specs that are "TBD" or empty.
+2.  **Clarity Check**: Flag any instruction that is open to interpretation.
+    -   **Self-Contradiction Detection**: Reject specs with mid-paragraph corrections (e.g., "Actually...", "Correction:", "For now, let's assume..."). These indicate unresolved design decisions that will confuse implementation.
+    -   **Entity Clarity**: If the spec defines multiple related entities, verify:
+        -   Each entity has a clear, distinct purpose.
+        -   Integration points specify which exact entity is used (not vague references).
+        -   Inline comments don't contradict entity relationships (e.g., saying `id` points to EntityA when it should point to EntityB).
+3.  **Requirement Check**: Ensure `requirements.md` exists and is comprehensive.
+    -   If requirements mention database tables, verify corresponding tasks for schema definition and migration.
+4.  **Value Check**: Does this spec actually solve the user problem?
+5.  **Integration Contract Rigor**: If the spec defines APIs consumed by other features:
+    -   Verify the contract uses exact schema names from `domain.ts`.
+    -   Check that sequence diagrams (if present) match the API contracts.
+    -   Flag any ambiguity about which entity/table an endpoint queries.
+
+## Goal C: Review UAT (Delivery Pillar)
+**Trigger**: Feature PR is "Ready for UAT".
+**Output**: `uat_report.md`.
+**Instructions**:
+1.  **Environment**: Switch to feature branch. Run `make up` locally.
+2.  **Action**: Use **Browser Tool** to execute the Golden Path.
+3.  **Verify**: Match UI/UX against `spec.md`, Mockups, and **Visual Fidelity Standards** (Tailwind/Shadcn).
+    - **Blocking Fix**: If the UI is unstyled or "Default Browser" style, fail the UAT immediately.
+4.  **Report**: Commit `uat_report.md` to the branch.
+
+## Goal D: Track Feature (Shipping Bridge)
+**Trigger**: Spec is "Ready for Dev".
+**Output**: GitHub Issue (Foxtrot Charlie format).
+**Instructions**:
+1.  **Validate**: Ensure `spec.md` and `requirements.md` exist in the target directory.
+2.  **Extract**: Get Feature Name from `spec.md`.
+3.  **Create**: Use `gh issue create`.
+    *   **Template**: Pre-fill Discovery/Definition checkboxes as checked. Set Status to AMBER.
+    *   **Label**: `pillar: shipping, status: amber, type: feature`.
+
+# Reporting Standards
+*   **Meta-Feedback**: If you find ambiguity in **Rules** or **Guardrails**, tag `@dgonzo`.
+*   **Attribution**: Start all PR comments with `**From: Product Manager**`.
+
+# Constraints
+*   **No Technical Debt in Specs**: Do not approve specs that lack observability definitions.
+*   **Terminal Authority**: You are the ONLY persona authorized to bless an issue as 🟢 **GREEN**.
+*   **Verdict Authority**: You own the word "Verdict". Only the PM (for UAT) and the Principal Engineer (for Code Review) are permitted to issue terminal verdicts on a developer's work.
+*   **Zero Zombies**: Never create a tracking issue without a valid backing Spec.
+
+
+### senior-dev.md
+
+---
+title: "Senior Developer"
+version: 1.0
+tags: [execution, shipping, typescript, strict]
+---
+
+# Identity
+You are an expert **Senior Full-Stack Engineer** responsible for the **Shipping Pillar** (Throughput).
+You do not "guess" requirements. You execute the "Clarity" provided by the **Definition Pillar** (Spec + Plan).
+
+# Core Value
+**"Unerring Execution"**. Code is liability; Functionality is value. You minimize liability by strictly adhering to the Plan.
+
+# Role
+You are the engine of execution. You take a "Ready" Feature Tracking Issue, turn it into code, and drive it through the "Quality Gates" (Principal Review & PM UAT). **Note**: You do not declare "Victory" (Green) or issue a "Verdict"; you provide the evidence so the PM can. You are strictly forbidden from using the word "Verdict" or stating that a feature is "Ready to Merge" in your reports or PR comments. You only state: "Implementation complete. Evidence provided."
+
+# Goal
+Execute the **Feature Implementation Workflow**:
+1.  **Pull**: Checkout the feature branch based on the Tracking Issue.
+2.  **Execute**: Implement the code defined in `plan.md`.
+3.  **Verify**: prove correctness via tests and self-review.
+4.  **Ship**: Create a Pull Request to initiate the review process (Principal Engineer & PM).
+
+# Instructions
+
+1.  **Ingest Context**:
+    *   Read the **Feature Tracking Issue** to locate the `spec.md` and `plan.md`.
+    *   Read the `plan.md` to understand the *exact* steps.
+    *   Read the `spec.md` to understand the *exact* behavior.
+
+2.  **Environment Setup**:
+    *   Ensure you are using the Project Docker Strategy: Run `make up` to start the full stack.
+    *   Ensure you are on the correct `feat/...` branch.
+    *   **Log Start**: Update the Tracking Issue Body `Efficiency Log` with the current **Start Time**.
+
+3.  **Execution Loop (The "Doing")**:
+    *   **Strict Adherence**: Follow the `plan.md` checklist item by item.
+    *   **RAGB Reporting**: If you hit a blocker, report "Red" immediately. If on track, stay "Amber". **Constraint**: You are never permitted to set an issue to "Green". This is a terminal state reserved for PMs.
+    *   **Code Quality**: Run `pnpm format` and `pnpm lint` (Biome) frequently.
+    *   **Observability**: Ensure every feature includes the Logs and Metrics defined in the Spec. **Do not ship "blind" code.**
+    *   **Efficiency Tracking**: You MUST track your Start Time, End Time, and count your Tool Calls.
+    *   **Commit Frequency**: Commit often. Do not let execution drift in a dirty working tree.
+
+4.  **Quality Gates (The Exit)**:
+    *   **Self-Correction**: Before PR, run the "Principal Engineer" prompt mentally. Ensure you have corrected all obvious issues.
+    *   **Docker Parity Check**: You must verify that your code runs in the production-like Docker container (`make up`), not just your local shell.
+    *   **Log End**: Update the Tracking Issue Body with the **End Time** and **Total Tool Calls**.
+    *   **PR Creation**: Use `gh pr create` as the primary action to request review. **CRITICAL**: Do not pass the body inline. Write the body to a temp file and use `gh pr create --body-file ...` to avoid quoting errors. Needs to link Tracking Issue and Verification Evidence. Do not wait for "pre-approval" to create the PR.
+
+5.  **Rework & Feedback Loop**:
+    *   **Context**: Once the PR is open, the Principal Engineer or PM will provide feedback.
+    *   **Time Tracking**: For EVERY iteration of rework, you MUST log your effort in the PR comments:
+        - Comment "START: Addressing feedback [ISO 8601]" when you begin.
+        - **Communicate**: When addressing feedback, your "STOP" comment must be a **Rich Status Update**. Do not just say "Done". You must summarize *what* changed, *why*, and provide verification evidence (curl output, screenshots, etc.) directly in the PR comment. This comment is the "Artifact of Clarity" for the reviewer.
+        - Comment "STOP: Feedback addressed [ISO 8601]" *after* pushing your code.
+    *   **Goal**: Repeat until the PR is "Blessed" (Approved) and Merged.
+
+# Constraints
+*   **No Improvisation**: If the Plan is wrong, *update the Plan* (via proper channels), don't just "fix it in code".
+*   **Report Integrity**: You are NEVER permitted to edit or create `code_review.md` or `uat_report.md`. These files are the terminal authority of the Principal Engineer and Product Manager, respectively. Your role is to provide evidence (e.g., in a `walkthrough.md`) for their review, never to write the review yourself.
+*   **Prohibited Language**: You must never use the word "Verdict" or the phrase "Ready to Merge" or "Ready for Merge" in any document you create (including `walkthrough.md`). These are executive conclusions you are not authorized to make. Replace such language with "Verification Evidence" and "Handing over for UAT".
+*   **Testing**: "Done" means Tested. No "I'll add tests later".
+*   **Time Tracking**: Log your start/stop times in the Tracking Issue comments if required.
+
+# Output Format
+*   **Commits**: Conventional Commits (`feat: ...`, `fix: ...`).
+*   **Status Updates**: Concise RAGB updates in the Tracking Issue.
+*   **Efficiency Log**: STRICTLY REQUIRED. You must finish your run by updating the issue body with:
+    ```markdown
+    ## Efficiency Log
+    - **Start Time**: [ISO 8601]
+    - **End Time**: [ISO 8601]
+    - **Total Tool Calls**: [Count]
+    ```
+
+
 ## Feature Specification
+
+---
+type: specification
+feature: 002-build-server
+last_modified: "2026-03-08T18:40:00Z"
+---
 
 # Feature Specification: 002 Build Server
 
 **Feature Branch**: `002-build-server`
 **Created**: 2026-02-27
-**Status**: Draft
-**Input**: Local persistent Fastify daemon that serves as the control plane — dispatch queue, Docker sandbox manager, Git branch lifecycle, system resource monitoring, and `gwrk server start/stop/status` commands.
+**Revised**: 2026-03-08
+**Status**: Active
+**Input**: Local persistent Fastify daemon that serves as the control plane — dispatch queue, Docker sandbox manager, Git branch lifecycle, system resource monitoring, and SQLite execution ledger (ADR-002) integration.
 
 ---
 
@@ -720,6 +933,57 @@ As the build server, I want to monitor CPU, memory, and disk usage and pause que
 2. **Given** `parallelism.local.minDiskGb` is set to 10 and free disk is below 10 GB, **When** a clone is requested, **Then**:
    - `curl -s http://localhost:18790/api/dispatch -X POST -d '{}' 2>&1 | grep -q 'Insufficient disk space'` exits 0
 
+### US-011 - Survive macOS Sleep/Wake (Priority: P0)
+As the build server daemon, I want to detect macOS sleep and wake events so that dispatches pause during sleep, sandboxes freeze, and the queue resumes only after all downstream systems (Docker, network) are verified healthy on wake.
+
+**Implements**: FR-015, FR-016, FR-019
+
+**Independent Test**: Simulate a sleep/wake cycle (heartbeat drift injection) and verify dispatch queue pauses and resumes.
+
+**Acceptance Scenarios**:
+1. **Given** the daemon is running with active dispatches, **When** the system sleeps (heartbeat drift > `3 × interval`), **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `sleeping`
+   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `true`
+   - All active sandbox containers are in `paused` state (`docker inspect --format '{{.State.Paused}}' <id>` outputs `true`)
+2. **Given** the daemon has detected sleep, **When** the system wakes and network is available, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `ready`
+   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `false`
+   - Previously paused sandbox containers are in `running` state
+3. **Given** the system wakes but network is unavailable, **When** the wake protocol runs, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `degraded`
+   - Dispatch queue remains paused
+
+### US-012 - Network Connectivity Awareness (Priority: P0)
+As the build server daemon, I want to monitor network interface state so that dispatches pause when the machine goes offline of the network and resume when connectivity is restored.
+
+**Implements**: FR-017, FR-018
+
+**Independent Test**: Simulate network loss (mock interface watcher) and verify dispatch queue pauses.
+
+**Acceptance Scenarios**:
+1. **Given** the daemon is running and network is available, **When** network connectivity is lost, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.network.status'` outputs `offline`
+   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `true`
+2. **Given** network is offline, **When** connectivity is restored, **Then**:
+   - `curl -s http://localhost:18790/api/status --json | jq -r '.network.status'` outputs `online`
+   - Dispatch queue resumes after health re-check
+
+### US-013 - Rich Health Check (Priority: P1)
+As a Principal Engineer, I want the `/health` endpoint to report component-level readiness (server, Docker, network) so that `gwrk status` shows the real operational state, not just "daemon is listening."
+
+**Implements**: FR-020, FR-021
+
+**Independent Test**: Query `/health` and verify it includes component-level status fields.
+
+**Acceptance Scenarios**:
+1. **Given** the daemon is running with Docker available and network online, **When** `/health` is queried, **Then**:
+   - `curl -s http://localhost:18790/health | jq -e '.components.server'` outputs `ok`
+   - `curl -s http://localhost:18790/health | jq -e '.components.docker'` outputs `ok`
+   - `curl -s http://localhost:18790/health | jq -e '.components.network'` outputs `ok`
+2. **Given** Docker daemon is unreachable, **When** `/health` is queried, **Then**:
+   - `curl -s http://localhost:18790/health | jq -r '.components.docker'` outputs `unavailable`
+   - `curl -s -o /dev/null -w '%{http_code}' http://localhost:18790/health` outputs `200` (degraded, not dead)
+
 ---
 
 ## 3. Roles, Scopes & Permissions
@@ -733,137 +997,56 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-001**: System MUST provide a `gwrk server start` command that starts a Fastify daemon on `localhost:18790`, writes a PID file to `.gwrk/server.pid`, and responds to `/health` with HTTP 200. (Implements: US-001)
 - **FR-002**: The Fastify daemon MUST bind to `localhost:18790` (port configurable via `server.port` in `.gwrkrc.json`) and expose REST endpoints for dispatch, status, and queue management. (Implements: US-001)
 - **FR-003**: System MUST provide a `gwrk server stop` command that sends SIGTERM to the daemon process (via PID file), waits for graceful shutdown (active sandboxes terminated), removes the PID file, and confirms the port is released. (Implements: US-002)
-- **FR-004**: System MUST provide a `gwrk status` command that queries the daemon's `/api/status` endpoint and returns server state, active agents, sandbox count, dispatch queue depth, and system resources (CPU%, MEM%, disk free GB). When no daemon is running, it MUST return `{"server":{"status":"stopped"}}`. (Implements: US-003)
+- **FR-004**: System MUST provide a `gwrk status` command that queries the daemon's `/api/status` endpoint and returns server state, active agents, sandbox count, dispatch queue depth, and system resources. (Implements: US-003)
 - **FR-005**: The daemon MUST expose `POST /api/dispatch` accepting `{featureId, phaseId, backend}` to create a sandbox, mount the phase branch, inject context, and start the agent's WUD loop. (Implements: US-004)
 - **FR-006**: The daemon MUST manage Docker container lifecycle for each dispatched phase: create container from `gwrk-sandbox:bookworm-slim`, mount phase branch at `/workspace`, label with `gwrk.feature` and `gwrk.phase`, destroy on completion or failure. (Implements: US-004)
 - **FR-007**: The dispatch engine MUST compile agent context into `/workspace/.gwrk/phase-context.md` containing: governance rules (`.agent/rules/*.md`), persona definition, feature spec, plan, current tasks, and phase-specific gate scripts. (Implements: US-009)
 - **FR-008**: The daemon MUST implement a dispatch queue that respects `parallelism.local.maxClones` and `parallelism.cloud.maxConcurrent` from `.gwrkrc.json`. Dispatches exceeding limits MUST be queued and processed FIFO as slots become available. (Implements: US-005)
-- **FR-009**: The dispatch engine MUST retry failed dispatches up to 3 times on the same backend, then escalate to the next backend in `agents.fallbackOrder`. All retry attempts MUST be recorded with timestamps, backend, exit code, and stderr. (Implements: US-005)
-- **FR-010**: The daemon MUST manage Git branch lifecycle: create `phase/<feature>-<phase>` branches from `feature/<feature>-wip`, and support merge-back to the feature branch with conflict detection. On conflict, the merge MUST fail and the dispatch MUST be flagged for human intervention. (Implements: US-006)
-- **FR-011**: The daemon MUST write its process ID to `.gwrk/server.pid` on startup and remove the file on clean shutdown. `gwrk server start` MUST check for an existing PID file and verify the process is alive before declaring a conflict. (Implements: US-007)
-- **FR-012**: The project MUST include a `Dockerfile.sandbox` that builds `gwrk-sandbox:bookworm-slim` with Node.js (LTS), Git, `gh` CLI, and the configured agent CLIs (gemini, claude, codex) pre-installed. (Implements: US-008)
-- **FR-013**: The dispatch engine MUST compile agent context by reading `.agent/rules/*.md`, the persona file for the dispatch target, `specs/<feature>/spec.md`, `specs/<feature>/plan.md`, and `specs/<feature>/.gwrk/tasks.json`, concatenating them into a single Markdown document at `/workspace/.gwrk/phase-context.md`. (Implements: US-009)
-- **FR-014**: The daemon MUST monitor system resources (CPU, memory, disk) at a configurable interval (default 10 seconds) and throttle queued dispatches when `parallelism.local.maxCpu`, `parallelism.local.maxMem`, or `parallelism.local.minDiskGb` thresholds are exceeded. (Implements: US-010)
+- **FR-009**: The dispatch engine MUST retry failed dispatches up to 3 times, then escalate to the next backend in `agents.fallbackOrder`. Every attempt MUST be recorded in the SQLite execution ledger (`runs` table) with timestamps, backend, exit code, and log path. (Implements: US-005, ADR-002)
+- **FR-010**: The daemon MUST manage Git branch lifecycle: create `phase/<feature>-<phase>` branches from `feature/<feature>-wip`, and support merge-back to the feature branch with conflict detection. (Implements: US-006)
+- **FR-011**: The daemon MUST write its process ID to `.gwrk/server.pid` on startup and remove the file on clean shutdown. `gwrk server start` MUST check for an existing PID file and verify the process is alive. (Implements: US-007)
+- **FR-012**: The project MUST include a `Dockerfile.sandbox` that builds `gwrk-sandbox:bookworm-slim` with Node.js, Git, `gh` CLI, and configured agent CLIs. (Implements: US-008)
+- **FR-013**: The dispatch engine MUST compile agent context by reading `.agent/rules/*.md`, the persona file, `specs/<feature>/spec.md`, `specs/<feature>/plan.md`, and `specs/<feature>/.gwrk/tasks.json`. (Implements: US-009)
+- **FR-014**: The daemon MUST monitor system resources (CPU, memory, disk) and throttle queued dispatches when limits from `.gwrkrc.json` are exceeded. (Implements: US-010)
+- **FR-015**: The daemon MUST detect macOS sleep/wake via wall-clock heartbeat drift. If elapsed time between heartbeat ticks exceeds `3 × heartbeatInterval`, the daemon MUST emit a `server:sleep` event, pause the dispatch queue, and call `docker pause` on all active gwrk sandbox containers. (Implements: US-011)
+- **FR-016**: On wake detection, the daemon MUST execute a Graceful Reconnect Protocol: (1) re-sample system resources, (2) verify Docker daemon reachability, (3) verify network connectivity, (4) emit `server:ready` only when all checks pass. The dispatch queue MUST NOT resume and sandboxes MUST NOT unpause until `server:ready` is emitted. (Implements: US-011)
+- **FR-017**: The daemon MUST monitor network interface state (via `os.networkInterfaces()` polling or platform-appropriate watcher) and emit `network:down` / `network:up` events. (Implements: US-012)
+- **FR-018**: When `network:down` is emitted, the dispatch queue MUST pause. When `network:up` is emitted, the Graceful Reconnect Protocol (FR-016) MUST execute before the queue resumes. (Implements: US-012)
+- **FR-019**: On `server:sleep`, the daemon MUST call `docker pause` on all containers labeled `gwrk.feature=*`. On `server:ready`, the daemon MUST call `docker unpause` on those containers and reset their internal timeout tracking. (Implements: US-011)
+- **FR-020**: The `/health` endpoint MUST return a JSON object with component-level readiness: `{ status: "ok" | "degraded", components: { server, docker, network } }`. Each component MUST report `ok`, `unavailable`, or `degraded`. (Implements: US-013)
+- **FR-021**: The daemon MUST expose a `server.lifecycle` field on the `/api/status` endpoint reporting one of: `starting`, `ready`, `sleeping`, `degraded`, `stopping`. (Implements: US-011, US-013)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
 | Port already in use | `Port 18790 already in use` | 1 |
-| Server already running (stale PID) | `Server already running (pid: <PID>)` | 1 |
+| Server already running | `Server already running (pid: <PID>)` | 1 |
 | Docker not available | `Docker daemon not reachable` | 1 |
-
-#### FR-003 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| No server running | `No server running` | 1 |
-| PID file exists but process dead | Clean start allowed (stale PID removed) | 0 |
-
-#### FR-005 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Invalid backend | `Unknown agent backend: <backend>` | 400 |
-| Feature not found | `Feature <featureId> not found in specs/` | 404 |
-| Docker not available | `Docker daemon not reachable` | 503 |
-| Resource limits exceeded | `Dispatch queued: resource limits exceeded` | 202 |
-
-#### FR-010 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Feature branch not found | `Branch feature/<feature>-wip not found` | 1 |
-| Merge conflict | `Merge conflict in phase/<feature>-<phase>: <files>` | 1 |
-| Dirty working tree | `Working tree has uncommitted changes` | 1 |
 
 ---
 
 ## 5. Data Model Requirements
 
-### DM-001: Dispatch Record
+### DM-001: SQLite Execution Ledger (`~/.gwrk/gwrk.db`)
 
-Per-dispatch state recorded in the daemon's in-memory store and persisted to `.gwrk/dispatches.jsonl`:
+The build server is the primary writer for dispatch-related telemetry.
+
+- **Table: `runs`**: Records every dispatch attempt.
+  - `feature_id`, `phase_id`, `agent_backend`, `started_at`, `finished_at`, `exit_code`, `log_file`.
+- **Table: `history`**: Records state transitions (e.g., `queued` → `running` → `completed`).
+
+### DM-002: Dispatch Record (In-Memory)
 
 ```typescript
 interface DispatchRecord {
   id: string;                    // UUID
-  featureId: string;             // e.g. "001-cli-core"
-  phaseId: string;               // e.g. "phase-01"
-  backend: AgentBackend;         // "gemini" | "claude" | "codex" | "codex-cloud"
-  status: DispatchStatus;        // "queued" | "running" | "completed" | "failed" | "retrying"
-  containerId?: string;          // Docker container ID
-  branchName: string;            // e.g. "phase/001-cli-core-phase-01"
-  attempts: DispatchAttempt[];
-  createdAt: string;             // ISO 8601
-  completedAt?: string;          // ISO 8601
-}
-
-interface DispatchAttempt {
-  attemptNumber: number;
-  backend: AgentBackend;
-  startedAt: string;             // ISO 8601
-  completedAt?: string;          // ISO 8601
-  exitCode?: number;
-  stderr?: string;
-}
-
-type DispatchStatus = "queued" | "running" | "completed" | "failed" | "retrying";
-```
-
-### DM-002: Server Config Extension (`.gwrkrc.json`)
-
-Extends the GwrkConfig defined in 001-cli-core DM-003:
-
-```typescript
-interface GwrkServerConfig {
-  server: {
-    port: number;                // Default: MUST be explicit, no default()
-    host: string;                // Default: MUST be explicit, no default()
-  };
-  parallelism: {
-    local: {
-      maxClones: number;         // Max concurrent local repo clones
-      maxCpu: number;            // CPU % threshold
-      maxMem: number;            // Memory % threshold
-      minDiskGb: number;         // Minimum free disk in GB
-    };
-    cloud: {
-      maxConcurrent: number;     // Max concurrent cloud dispatches
-    };
-  };
-}
-```
-
-### DM-003: System Status
-
-```typescript
-interface SystemStatus {
-  server: {
-    status: "running" | "stopped";
-    pid?: number;
-    uptime?: number;             // Seconds since start
-    port?: number;
-  };
-  system: {
-    cpuPercent: number;
-    memPercent: number;
-    diskFreeGb: number;
-  };
-  dispatch: {
-    queueDepth: number;
-    activeCount: number;
-    completedCount: number;
-    failedCount: number;
-  };
-  sandboxes: SandboxInfo[];
-}
-
-interface SandboxInfo {
-  containerId: string;
   featureId: string;
   phaseId: string;
   backend: AgentBackend;
-  status: "creating" | "running" | "stopping" | "destroyed";
-  startedAt: string;
-  cpuPercent?: number;
-  memMb?: number;
+  status: "queued" | "running" | "completed" | "failed" | "retrying";
+  containerId?: string;
+  branchName: string;
+  attempts: DispatchAttempt[];
 }
 ```
 
@@ -871,48 +1054,54 @@ interface SandboxInfo {
 
 ## 6. Technical Constraints
 
-- **TC-001**: Determinism — Dispatch IDs are UUIDs (crypto.randomUUID). Dispatch ordering is FIFO.
-- **TC-002**: Air-Gapped — The daemon itself makes no external network calls. Agent backends inside sandboxes MAY access the network (for `gh` CLI, npm install, etc.) but the daemon does not.
+- **TC-001**: Determinism — SHA256 input/output stability for all engine functions. Dispatch IDs are UUIDs. Dispatch ordering is FIFO.
+- **TC-002**: Air-Gapped — The daemon itself makes no external network calls.
 - **TC-003**: Fail-Fast Config — Zod validation with no `.default()` calls. Missing `server.port` → `process.exit(1)`.
-- **TC-004**: Localhost Only — The daemon MUST bind to `127.0.0.1` or `localhost`. No `0.0.0.0` binding. Remote access is handled by the Tunnel layer (Phase 11).
-- **TC-005**: PID File Discipline — PID file at `.gwrk/server.pid`. Start checks for stale PIDs. Stop removes PID file after graceful shutdown.
-- **TC-006**: Docker Label Convention — All gwrk sandboxes MUST be labeled with `gwrk.feature=<featureId>` and `gwrk.phase=<phaseId>` for lifecycle management.
-- **TC-007**: Graceful Shutdown — On SIGTERM/SIGINT, the daemon MUST: stop accepting new dispatches, wait for running sandboxes to complete (with 30s timeout), destroy remaining containers, remove PID file, and exit.
-- **TC-008**: No In-Process Agent Execution — Agents are ALWAYS invoked via Docker sandbox (`docker exec`) or `child_process.execFile`. Never import agent CLIs as libraries.
+- **TC-004**: Localhost Only — The daemon MUST bind to `127.0.0.1` or `localhost`.
+- **TC-005**: PID File Discipline — PID file at `.gwrk/server.pid`.
+- **TC-006**: Docker Label Convention — labeled with `gwrk.feature=<featureId>` and `gwrk.phase=<phaseId>`.
+- **TC-007**: Graceful Shutdown — On SIGTERM/SIGINT, stop accepting new dispatches, wait for sandboxes (30s timeout), destroy containers, remove PID.
+- **TC-008**: No In-Process Agent Execution — Agents are ALWAYS invoked via Docker sandbox or `child_process`.
+- **TC-009**: Sleep Detection Cross-Platform — Sleep detection MUST use wall-clock heartbeat drift (pure JS). No native addons. IOKit/`caffeinate` integration is explicitly out of scope for initial implementation.
+- **TC-010**: Network Detection — Network state MUST use `os.networkInterfaces()` polling (configurable interval via `server.networkCheckIntervalMs` in `.gwrkrc.json`). No platform-specific watchers.
 
 ---
 
 ## 7. Testing Requirements
 
-- **TR-001**: `src/commands/server.test.ts` — Verify `server start` creates PID file, binds to port, responds to `/health`. Verify `server stop` removes PID, releases port. Vitest. (FR-001, FR-003, FR-011)
-- **TR-002**: `src/server/index.test.ts` — Verify Fastify bootstrap: `/health` returns 200, `/api/status` returns server info with system resources, `/api/dispatch` accepts POST. Vitest. (FR-002, FR-004)
-- **TR-003**: `src/server/dispatch.test.ts` — Verify dispatch queue: FIFO ordering, `maxClones` throttling, retry logic (3× same backend then escalate), attempt recording. Mock Docker/Git operations. Vitest. (FR-008, FR-009)
-- **TR-004**: `src/server/sandbox.test.ts` — Verify Docker container lifecycle: create with correct labels, mount phase branch at `/workspace`, destroy on completion. Mock `dockerode`. Vitest. (FR-006)
-- **TR-005**: `src/server/git-manager.test.ts` — Verify branch creation from feature branch, merge-back with conflict detection, refuse on dirty working tree. Mock `child_process`. Vitest. (FR-010)
-- **TR-006**: `src/server/context.test.ts` — Verify context compilation: reads rules, persona, spec, plan, tasks. Produces single Markdown file. Vitest. (FR-007, FR-013)
-- **TR-007**: `src/server/monitor.test.ts` — Verify system resource monitoring: CPU, memory, disk. Verify throttle behavior when limits exceeded. Mock `os` module. Vitest. (FR-014)
-- **TR-008**: Integration test — Start daemon in subprocess, POST dispatch, verify container created (requires Docker). Vitest integration suite. (FR-001, FR-005, FR-006)
+- **TR-001**: `src/commands/server.test.ts` — `server start/stop` logic. Vitest. (FR-001, FR-003, FR-011)
+- **TR-002**: `src/server/index.test.ts` — Fastify bootstrap and endpoints. Vitest. (FR-002, FR-004)
+- **TR-003**: `src/server/dispatch.test.ts` — Queue, throttle, retry, and SQLite recording. Vitest. (FR-008, FR-009)
+- **TR-004**: `src/server/sandbox.test.ts` — Docker container lifecycle. Vitest. (FR-006)
+- **TR-005**: `src/server/git-manager.test.ts` — Branch management and merge-back. Vitest. (FR-010)
+- **TR-006**: `src/server/context.test.ts` — Context compilation logic. Vitest. (FR-007, FR-013)
+- **TR-007**: `src/server/monitor.test.ts` — Resource monitoring and throttling. Vitest. (FR-014)
+- **TR-008**: Integration test — subprocess daemon + POST dispatch + Docker. Vitest. (FR-001, FR-005)
 - **TR-009**: `Dockerfile.sandbox` — Build sandbox image, verify `node`, `git`, `gh` are available. Shell test. (FR-012)
+- **TR-010**: `src/server/lifecycle.test.ts` — Heartbeat drift sleep detection, wake protocol, event emission. Vitest. (FR-015, FR-016, FR-021)
+- **TR-011**: `src/server/network.test.ts` — Network state detection, `isOnline()`, event emission. Vitest. (FR-017, FR-018)
+- **TR-012**: `src/server/routes/health.test.ts` — Component-level health response shape, degraded states. Vitest. (FR-020)
+
 
 ---
 
 ## 8. Success Criteria
 
-- **SC-001**: `gwrk server start` launches a Fastify daemon that responds to `/health` within 2 seconds.
-- **SC-002**: `gwrk server stop` gracefully shuts down the daemon, destroying all active sandboxes within 30 seconds.
-- **SC-003**: A dispatch request creates a Docker sandbox with the correct branch mounted and agent context compiled.
-- **SC-004**: The dispatch queue respects `parallelism.local.maxClones` — excess dispatches are queued, not rejected.
-- **SC-005**: Failed dispatches are retried 3× then escalated to the next backend in `fallbackOrder`.
+- **SC-001**: `gwrk server start` launches a daemon that responds to `/health` within 2 seconds.
+- **SC-002**: `gwrk server stop` gracefully shuts down within 30 seconds.
+- **SC-003**: Dispatch request creates a Docker sandbox with correct branch and context.
+- **SC-004**: Every dispatch attempt is recorded in the SQLite `runs` table.
+- **SC-005**: Dispatch queue pauses within 1 heartbeat interval of sleep detection and resumes only after wake health checks pass.
+- **SC-006**: `/health` endpoint reports component-level status for server, Docker, and network.
 
 ---
 
 ## 9. Verification Requirements
 
-- **VR-001**: E2E lifecycle test: `gwrk server start` → `POST /api/dispatch` → verify Docker container running → verify phase branch created → verify context file in sandbox → container exits → verify dispatch record in `.gwrk/dispatches.jsonl` → `gwrk server stop` → verify port released.
-- **VR-002**: Negative test: `gwrk server start` when port is already in use → verify error message and exit code 1.
-- **VR-003**: Negative test: `gwrk server stop` when no server is running → verify error message and exit code 1.
-- **VR-004**: Queue throttle test: Submit `maxClones + 1` dispatches → verify Nth+1 dispatch is queued → when one sandbox completes, verify queued dispatch starts.
-- **VR-005**: Retry escalation test: Mock agent to fail 3× → verify dispatch attempt count is 4 → verify 4th attempt uses different backend from `.gwrkrc.json` `fallbackOrder`.
+- **VR-001**: E2E lifecycle test: start → dispatch → sandbox → check SQLite → stop.
+- **VR-002**: Queue throttle test: verify Nth+1 dispatch is queued.
+- **VR-003**: Retry escalation test: verify 3× fail → fallback backend.
+- **VR-004**: Sleep/wake lifecycle test: inject heartbeat drift, verify queue pauses, sandbox freezes, wake protocol runs, queue resumes.
 
 ---
 
@@ -920,12 +1109,12 @@ interface SandboxInfo {
 
 | US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
 |--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001, FR-002 | FR-001 | US-001 | TR-001, TR-002 |
+| US-001 | FR-001, FR-002 | FR-001 | US-001 | TR-001 |
 | US-001 | FR-001, FR-002 | FR-002 | US-001 | TR-002 |
 | US-002 | FR-003 | FR-003 | US-002 | TR-001 |
 | US-003 | FR-004 | FR-004 | US-003 | TR-002 |
 | US-004 | FR-005, FR-006, FR-007 | FR-005 | US-004 | TR-002, TR-008 |
-| US-004 | FR-005, FR-006, FR-007 | FR-006 | US-004 | TR-004, TR-008 |
+| US-004 | FR-005, FR-006, FR-007 | FR-006 | US-004 | TR-004 |
 | US-004 | FR-005, FR-006, FR-007 | FR-007 | US-009 | TR-006 |
 | US-005 | FR-008, FR-009 | FR-008 | US-005 | TR-003 |
 | US-005 | FR-008, FR-009 | FR-009 | US-005 | TR-003 |
@@ -934,9 +1123,22 @@ interface SandboxInfo {
 | US-008 | FR-012 | FR-012 | US-008 | TR-009 |
 | US-009 | FR-013 | FR-013 | US-009 | TR-006 |
 | US-010 | FR-014 | FR-014 | US-010 | TR-007 |
+| US-011 | FR-015, FR-016, FR-019 | FR-015 | US-011 | TR-010 |
+| US-011 | FR-015, FR-016, FR-019 | FR-016 | US-011 | TR-010 |
+| US-011 | FR-015, FR-016, FR-019 | FR-019 | US-011 | TR-010 |
+| US-012 | FR-017, FR-018 | FR-017 | US-012 | TR-011 |
+| US-012 | FR-017, FR-018 | FR-018 | US-012 | TR-011 |
+| US-013 | FR-020, FR-021 | FR-020 | US-013 | TR-012 |
+| US-013 | FR-020, FR-021 | FR-021 | US-011, US-013 | TR-010 |
 
 
 ## Implementation Plan
+
+---
+type: implementation_plan
+feature: 002-build-server
+last_modified: "2026-03-08T18:40:00Z"
+---
 
 # Implementation Plan: 002 Build Server
 
@@ -944,13 +1146,14 @@ interface SandboxInfo {
 
 ## Summary
 
-Build the gwrk Build Server — a persistent Fastify daemon on `localhost:18790` that serves as the control plane for multi-agent dispatch. The plan is structured in 5 phases:
+Build the gwrk Build Server — a persistent Fastify daemon on `localhost:18790` that serves as the control plane for multi-agent dispatch. The plan is structured in 6 phases:
 
 1. **Daemon Bootstrap** — Fastify server, health endpoint, PID management, `gwrk server start/stop` commands.
 2. **System Monitor & Status** — Resource monitoring (CPU/MEM/disk), `gwrk status` command, throttle logic.
 3. **Git Manager & Context Compiler** — Branch lifecycle, context compilation from rules/spec/plan/tasks.
 4. **Docker Sandbox Manager** — Container lifecycle, `Dockerfile.sandbox`, workspace mounting, label conventions.
 5. **Dispatch Queue & Orchestrator** — Queue engine, `POST /api/dispatch`, retry + escalation, dispatches.jsonl persistence.
+6. **Resilience & Connectivity** — macOS sleep/wake detection, network state monitoring, dispatch pause/resume, sandbox freeze/thaw, component-level health endpoint.
 
 **Dependency**: Phase 1 of this plan (CLI commands) depends on 001-cli-core's Commander infrastructure, config loader (`loadConfig`), and agent dispatch contract (`dispatchAgent`).
 
@@ -1139,9 +1342,18 @@ Wire up the dispatch queue engine, `POST /api/dispatch` endpoint, retry + escala
 **Dependencies:** Phase 2 (monitor for throttle), Phase 3 (git-manager, context), Phase 4 (sandbox)
 
 **Contract Mapping:**
-- `contracts/dispatch.md` → `DispatchQueue.enqueue(request)` → `src/server/dispatch.ts`
-- `contracts/dispatch.md` → `DispatchQueue.processNext()` → `src/server/dispatch.ts`
-- `contracts/dispatch.md` → `persistDispatch(record)` → `src/server/persistence.ts`
+- `contracts/dispatch.md` → `DispatchQueue.enqueue(request)` → `src/server/dispatch.ts` ✅ implemented
+- `contracts/dispatch.md` → `DispatchQueue.processNext()` → `src/server/dispatch.ts` ✅ implemented
+- `contracts/dispatch.md` → `DispatchQueue.handleCompletion(dispatchId, exitCode, stderr)` → `src/server/dispatch.ts` ❌ **NOT IMPLEMENTED** — must call `finishRun()`, handle retry ×3, escalate backend
+- `contracts/dispatch.md` → `DispatchQueue.getQueue()` → `src/server/dispatch.ts` ❌ **NOT IMPLEMENTED** — rename existing `getStatus()` to `getQueue()`, add `throttled: boolean` field
+- `contracts/dispatch.md` → `DispatchQueue.getDispatch(featureId, phaseId)` → `src/server/dispatch.ts` ❌ **NOT IMPLEMENTED** — search active + queued + history
+- `contracts/dispatch.md` → `persistDispatch(record)` → `src/server/persistence.ts` ✅ implemented
+
+**Remediation Notes (Issue #4):**
+- T027: Add `handleCompletion()`, rename `getStatus()` → `getQueue()`, add `getDispatch()`. Add `runId?: number` to `DispatchAttempt` in `src/server/types.ts`. The existing `setTimeout` stub in `runDispatch` is acceptable — mark with `// TODO: Phase 06 — real agent execution`.
+- T030: Add 5 test cases for new methods (handleCompletion success/retry/escalation, getQueue, getDispatch). Existing 3 tests must continue passing.
+- T032: No code changes expected — just verify `pnpm build` passes after T027 changes.
+- T034: Fix integration.test.ts assertion if dispatch POST returns 200 instead of 201. Run all 3 test suites + `pnpm build`.
 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
@@ -1152,13 +1364,14 @@ Wire up the dispatch queue engine, `POST /api/dispatch` endpoint, retry + escala
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-003 | Unit | `src/server/dispatch.test.ts` | FIFO ordering, maxClones throttle, 3× retry + escalation |
+| TR-003 | Unit | `src/server/dispatch.test.ts` | FIFO ordering, maxClones throttle, 3× retry + escalation, handleCompletion, getQueue, getDispatch |
 | TR-008 | Integration | `src/server/integration.test.ts` | Daemon subprocess, POST dispatch, container created |
 
 #### Done When
 - `pnpm vitest run src/server/dispatch.test.ts` exits 0
 - `pnpm vitest run src/server/routes/dispatch.test.ts` exits 0
 - `pnpm vitest run src/server/integration.test.ts` exits 0
+- `pnpm build` exits 0
 - `test -f src/server/dispatch.ts && test -f src/server/routes/dispatch.ts && test -f src/server/persistence.ts` exits 0
 
 ---
@@ -1191,7 +1404,52 @@ _No mockups exist for this feature._
 |---|---|---|---|
 | US-010 (partial) | Resource throttle: disk-free check on clone | Requires sandbox clone detection (Phase 5 parallel dispatch, spec 005) | 005-parallel-dispatch |
 
-All other spec items are fully covered in Phases 1–5.
+All other spec items are fully covered in Phases 1–6.
+
+---
+
+### Phase 6: Resilience & Connectivity
+
+Add macOS sleep/wake detection, network state monitoring, dispatch queue pause/resume on connectivity loss, sandbox freeze/thaw, and enhanced component-level health endpoint.
+
+**Files (8):**
+- `src/server/lifecycle.ts` (NEW: Heartbeat-drift sleep/wake detector. Emits `server:sleep`, `server:wake` events. Drives Graceful Reconnect Protocol.)
+- `src/server/network.ts` (NEW: Network interface watcher via `os.networkInterfaces()` polling. `isOnline()`. Emits `network:down`, `network:up` events.)
+- `src/server/routes/health.ts` (NEW: Enhanced `/health` endpoint returning component-level readiness JSON for server, Docker, network.)
+- `src/server/index.ts` (MODIFY: Wire lifecycle + network events → dispatch queue `pause()`/`resume()`, sandbox `pauseAll()`/`unpauseAll()`. Expose `server.lifecycle` on `/api/status`.)
+- `src/server/sandbox.ts` (MODIFY: Add `pauseAll()` and `unpauseAll()` methods using `docker pause`/`docker unpause`.)
+- `src/server/dispatch.ts` (MODIFY: Add `pause()` and `resume()` methods alongside existing `isThrottled()`.)
+- `src/utils/config.ts` (MODIFY: Extend schema with `server.heartbeatIntervalMs`, `server.networkCheckIntervalMs`.)
+- `src/server/types.ts` (MODIFY: Add `ServerLifecycle` type, `HealthResponse` type, `NetworkStatus` type.)
+
+**Requirements Addressed:** FR-015, FR-016, FR-017, FR-018, FR-019, FR-020, FR-021, US-011, US-012, US-013, TC-009, TC-010
+
+**Dependencies:** Phase 2 (monitor), Phase 4 (sandbox — needs `pauseAll`), Phase 5 (dispatch — needs `pause`)
+
+**Contract Mapping:**
+- `contracts/lifecycle.md` → `LifecycleMonitor.start()`, `LifecycleMonitor.onSleep()`, `LifecycleMonitor.onWake()` → `src/server/lifecycle.ts`
+- `contracts/network.md` → `NetworkMonitor.start()`, `NetworkMonitor.isOnline()` → `src/server/network.ts`
+- `contracts/health.md` → `getComponentHealth()` → `src/server/routes/health.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| `workspace.md` | Config validation — `heartbeatIntervalMs`, `networkCheckIntervalMs` required, no defaults |
+| `workspace.md` | No native addons (TC-009) |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-010 | Unit | `src/server/lifecycle.test.ts` | Heartbeat drift → `server:sleep` event; reconnect protocol → `server:ready` only when all checks pass |
+| TR-011 | Unit | `src/server/network.test.ts` | Interface removal → `network:down`; interface restoration → `network:up`; `isOnline()` reflects state |
+| TR-012 | Unit | `src/server/routes/health.test.ts` | Component-level JSON shape; degraded states; Docker unavailable → `components.docker: unavailable` |
+
+#### Done When
+- `pnpm vitest run src/server/lifecycle.test.ts` exits 0
+- `pnpm vitest run src/server/network.test.ts` exits 0
+- `pnpm vitest run src/server/routes/health.test.ts` exits 0
+- `test -f src/server/lifecycle.ts && test -f src/server/network.ts && test -f src/server/routes/health.ts` exits 0
 
 ---
 
@@ -1209,6 +1467,9 @@ All other spec items are fully covered in Phases 1–5.
 | US-008 | Phase 4 | Planned |
 | US-009 | Phase 3 | Planned |
 | US-010 | Phase 2 | Planned (disk-free clone deferred) |
+| US-011 | Phase 6 | Planned |
+| US-012 | Phase 6 | Planned |
+| US-013 | Phase 6 | Planned |
 | FR-001 | Phase 1 | Planned |
 | FR-002 | Phase 1 | Planned |
 | FR-003 | Phase 1 | Planned |
@@ -1223,6 +1484,13 @@ All other spec items are fully covered in Phases 1–5.
 | FR-012 | Phase 4 | Planned |
 | FR-013 | Phase 3 | Planned |
 | FR-014 | Phase 2 | Planned |
+| FR-015 | Phase 6 | Planned |
+| FR-016 | Phase 6 | Planned |
+| FR-017 | Phase 6 | Planned |
+| FR-018 | Phase 6 | Planned |
+| FR-019 | Phase 6 | Planned |
+| FR-020 | Phase 6 | Planned |
+| FR-021 | Phase 6 | Planned |
 | DM-001 | Phase 3 (types), Phase 5 (persist) | Planned |
 | DM-002 | Phase 1, 2 (config) | Planned |
 | DM-003 | Phase 2 (status) | Planned |
@@ -1234,6 +1502,8 @@ All other spec items are fully covered in Phases 1–5.
 | TC-006 | Phase 4 | Planned |
 | TC-007 | Phase 1 | Planned |
 | TC-008 | Phase 4 | Planned |
+| TC-009 | Phase 6 | Planned |
+| TC-010 | Phase 6 | Planned |
 | TR-001 | Phase 1 | Planned |
 | TR-002 | Phase 1, 2 | Planned |
 | TR-003 | Phase 5 | Planned |
@@ -1243,880 +1513,407 @@ All other spec items are fully covered in Phases 1–5.
 | TR-007 | Phase 2 | Planned |
 | TR-008 | Phase 5 | Planned |
 | TR-009 | Phase 4 | Planned |
+| TR-010 | Phase 6 | Planned |
+| TR-011 | Phase 6 | Planned |
+| TR-012 | Phase 6 | Planned |
 | SC-001 | Phase 1 | Planned |
 | SC-002 | Phase 1 | Planned |
 | SC-003 | Phase 5 | Planned |
 | SC-004 | Phase 5 | Planned |
-| SC-005 | Phase 5 | Planned |
+| SC-005 | Phase 6 | Planned |
+| SC-006 | Phase 6 | Planned |
 | VR-001 | Phase 5 | Planned |
 | VR-002 | Phase 1 | Planned |
 | VR-003 | Phase 1 | Planned |
-| VR-004 | Phase 5 | Planned |
+| VR-004 | Phase 6 | Planned |
 | VR-005 | Phase 5 | Planned |
 
 
-## Current Tasks
-
-### Phase 1: Daemon Bootstrap
+## Tasks
 
 ```json
-[
-  {
-    "id": "T001",
-    "title": "Extend GwrkConfigSchema with server config",
-    "description": "In src/utils/config.ts, add server.port (number, 1024-65535) and server.host (string) fields to GwrkConfigSchema. No .default() calls. Export the extended type.",
-    "status": "completed"
+{
+  "featureId": "002-build-server",
+  "createdAt": "2026-03-09T14:20:58.776Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "1176c83845b9b4a2d20166b66d4c44cb36a20b856363b469b2a73e6279d9cf48",
+      "modifiedAt": "2026-03-08T18:43:07.406Z"
+    }
   },
-  {
-    "id": "T002",
-    "title": "Add fastify dependency",
-    "description": "Add 'fastify' to dependencies in package.json. Run pnpm install.",
-    "status": "completed"
-  },
-  {
-    "id": "T003",
-    "title": "Create PID file manager",
-    "description": "Create src/server/pid.ts with writePid(pidPath), readPid(pidPath), removePid(pidPath). writePid writes process.pid. readPid returns number|null, validates process is alive via kill(pid,0). removePid deletes the file (no-op if missing).",
-    "status": "completed"
-  },
-  {
-    "id": "T004",
-    "title": "Create Fastify server bootstrap",
-    "description": "Create src/server/index.ts with startServer(config: GwrkConfig) that: creates Fastify instance, registers GET /health (returns 200), writes PID file via writePid(), binds to config.server.host:config.server.port. Export stopServer(instance) that: waits 30s for active work, calls removePid(), closes Fastify. Register SIGTERM/SIGINT handlers.",
-    "status": "completed"
-  },
-  {
-    "id": "T005",
-    "title": "Create server CLI commands",
-    "description": "Create src/commands/server.ts with Commander subcommands: 'gwrk server start' (calls startServer, checks existing PID, checks Docker availability) and 'gwrk server stop' (reads PID, sends SIGTERM, waits for exit, verifies port released).",
-    "status": "completed"
-  },
-  {
-    "id": "T006",
-    "title": "Register server command in CLI",
-    "description": "In src/cli.ts, import serverCommand from ./commands/server.js and add program.addCommand(serverCommand). Exclude 'server start' from preAction config validation if server.* fields are missing (server start implicitly validates).",
-    "status": "completed"
-  },
-  {
-    "id": "T007",
-    "title": "Unit tests for Phase 1",
-    "description": "Create src/commands/server.test.ts: verify start creates PID, binds port, /health returns 200; verify stop removes PID, releases port; verify start when already running shows error. Create src/server/index.test.ts: verify Fastify bootstrap and /health endpoint. Create src/server/pid.test.ts: verify write/read/remove PID lifecycle.",
-    "status": "completed"
-  }
-]
-```
-
-## Gate Scripts
-
-### T001-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T001 — Extend GwrkConfigSchema with server config
-# Contract: src/utils/config.ts must contain server.port and server.host in GwrkConfigSchema
-set -euo pipefail
-
-FILE="src/utils/config.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Verify server config fields exist in the schema
-# Assertion #2
-grep -q 'server:' "$FILE" || { echo "FAIL: 'server:' block missing from GwrkConfigSchema"; exit 1; }
-# Assertion #3
-grep -q 'port:' "$FILE" || { echo "FAIL: 'port:' field missing from server config"; exit 1; }
-# Assertion #4
-grep -q 'host:' "$FILE" || { echo "FAIL: 'host:' field missing from server config"; exit 1; }
-
-# Verify no .default() calls on server fields
-# Assertion #5
-! grep -E 'server.*\.default\(' "$FILE" || { echo "FAIL: .default() found on server config fields"; exit 1; }
-
-echo "PASS: T001"
-
-```
-
-### T002-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T002 — Add fastify dependency
-set -euo pipefail
-
-# Assertion #1
-grep -q '"fastify"' package.json || { echo "FAIL: fastify not in package.json dependencies"; exit 1; }
-# Assertion #2
-test -d node_modules/fastify || { echo "FAIL: fastify not installed in node_modules"; exit 1; }
-
-echo "PASS: T002"
-
-```
-
-### T003-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T003 — Create PID file manager
-# Contract: src/server/pid.ts must export writePid, readPid, removePid
-set -euo pipefail
-
-FILE="src/server/pid.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'export.*function writePid' "$FILE" || grep -q 'export function writePid' "$FILE" || { echo "FAIL: writePid not exported"; exit 1; }
-# Assertion #3
-grep -q 'export.*function readPid' "$FILE" || grep -q 'export function readPid' "$FILE" || { echo "FAIL: readPid not exported"; exit 1; }
-# Assertion #4
-grep -q 'export.*function removePid' "$FILE" || grep -q 'export function removePid' "$FILE" || { echo "FAIL: removePid not exported"; exit 1; }
-
-# Verify readPid returns number | null
-# Assertion #5
-grep -q 'number | null\|number|null' "$FILE" || { echo "FAIL: readPid must return number | null"; exit 1; }
-
-echo "PASS: T003"
-
-```
-
-### T004-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T004 — Create Fastify server bootstrap
-# Contract: src/server/index.ts must export startServer and stopServer
-set -euo pipefail
-
-FILE="src/server/index.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Verify startServer export
-# Assertion #2
-grep -q 'export.*function startServer\|export async function startServer' "$FILE" || { echo "FAIL: startServer not exported"; exit 1; }
-
-# Verify stopServer export
-# Assertion #3
-grep -q 'export.*function stopServer\|export async function stopServer' "$FILE" || { echo "FAIL: stopServer not exported"; exit 1; }
-
-# Verify Fastify import
-# Assertion #4
-grep -q 'fastify\|Fastify' "$FILE" || { echo "FAIL: Fastify not imported"; exit 1; }
-
-# Verify /health route
-# Assertion #5
-grep -q '/health' "$FILE" || { echo "FAIL: /health route not defined"; exit 1; }
-
-# Verify PID file integration
-# Assertion #6
-grep -q 'writePid\|readPid\|removePid' "$FILE" || { echo "FAIL: PID file functions not referenced"; exit 1; }
-
-# Verify SIGTERM/SIGINT handler
-# Assertion #7
-grep -q 'SIGTERM\|SIGINT' "$FILE" || { echo "FAIL: Signal handlers not registered"; exit 1; }
-
-echo "PASS: T004"
-
-```
-
-### T005-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T005 — Create server CLI commands
-# Contract: src/commands/server.ts must export serverCommand with start and stop subcommands
-set -euo pipefail
-
-FILE="src/commands/server.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Verify exports
-# Assertion #2
-grep -q 'export.*serverCommand\|export const serverCommand\|export function' "$FILE" || { echo "FAIL: serverCommand not exported"; exit 1; }
-
-# Verify start and stop subcommands
-# Assertion #3
-grep -q "'start'\|\"start\"" "$FILE" || { echo "FAIL: 'start' subcommand not defined"; exit 1; }
-# Assertion #4
-grep -q "'stop'\|\"stop\"" "$FILE" || { echo "FAIL: 'stop' subcommand not defined"; exit 1; }
-
-# Verify startServer import
-# Assertion #5
-grep -q 'startServer' "$FILE" || { echo "FAIL: startServer not imported"; exit 1; }
-
-echo "PASS: T005"
-
-```
-
-### T006-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T006 — Register server command in CLI
-set -euo pipefail
-
-FILE="src/cli.ts"
-# Assertion #1
-grep -q 'serverCommand\|server' "$FILE" || { echo "FAIL: serverCommand not imported in cli.ts"; exit 1; }
-# Assertion #2
-grep -q 'addCommand.*server\|addCommand(serverCommand' "$FILE" || { echo "FAIL: serverCommand not registered via addCommand"; exit 1; }
-
-echo "PASS: T006"
-
-```
-
-### T007-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T007 — Unit tests for Phase 1
-set -euo pipefail
-
-# Test files must exist
-# Assertion #1
-test -f src/commands/server.test.ts || { echo "FAIL: src/commands/server.test.ts not found"; exit 1; }
-# Assertion #2
-test -f src/server/index.test.ts || { echo "FAIL: src/server/index.test.ts not found"; exit 1; }
-
-# Tests must contain meaningful assertions
-# Assertion #3
-grep -q 'describe\|test\|it(' src/commands/server.test.ts || { echo "FAIL: server.test.ts has no test cases"; exit 1; }
-# Assertion #4
-grep -q 'describe\|test\|it(' src/server/index.test.ts || { echo "FAIL: index.test.ts has no test cases"; exit 1; }
-
-# Tests must pass
-# Assertion #5
-pnpm vitest run src/commands/server.test.ts src/server/index.test.ts --reporter=verbose || { echo "FAIL: Phase 1 tests failed"; exit 1; }
-
-echo "PASS: T007"
-
-```
-
-### T008-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T008 — Extend GwrkConfigSchema with parallelism config
-set -euo pipefail
-
-FILE="src/utils/config.ts"
-
-# Assertion #1
-grep -q 'parallelism' "$FILE" || { echo "FAIL: 'parallelism' block missing from schema"; exit 1; }
-# Assertion #2
-grep -q 'maxClones' "$FILE" || { echo "FAIL: 'maxClones' missing from parallelism config"; exit 1; }
-# Assertion #3
-grep -q 'maxCpu' "$FILE" || { echo "FAIL: 'maxCpu' missing from parallelism config"; exit 1; }
-# Assertion #4
-grep -q 'maxMem' "$FILE" || { echo "FAIL: 'maxMem' missing from parallelism config"; exit 1; }
-# Assertion #5
-grep -q 'minDiskGb' "$FILE" || { echo "FAIL: 'minDiskGb' missing from parallelism config"; exit 1; }
-# Assertion #6
-grep -q 'maxConcurrent' "$FILE" || { echo "FAIL: 'maxConcurrent' missing from cloud config"; exit 1; }
-
-# Verify no .default() calls on parallelism fields
-# Assertion #7
-! grep -E 'parallelism.*\.default\(|maxClones.*\.default\(|maxCpu.*\.default\(' "$FILE" || { echo "FAIL: .default() found on parallelism fields"; exit 1; }
-
-echo "PASS: T008"
-
-```
-
-### T009-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T009 — Create SystemMonitor class
-# Contract: src/server/monitor.ts must export SystemMonitor with sample, isThrottled, startPolling, stopPolling, getStatus
-set -euo pipefail
-
-FILE="src/server/monitor.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'class SystemMonitor\|export class SystemMonitor' "$FILE" || { echo "FAIL: SystemMonitor class not found"; exit 1; }
-# Assertion #3
-grep -q 'sample\(\)' "$FILE" || { echo "FAIL: sample() method not found"; exit 1; }
-# Assertion #4
-grep -q 'isThrottled\(\)' "$FILE" || { echo "FAIL: isThrottled() method not found"; exit 1; }
-# Assertion #5
-grep -q 'startPolling' "$FILE" || { echo "FAIL: startPolling() method not found"; exit 1; }
-# Assertion #6
-grep -q 'stopPolling' "$FILE" || { echo "FAIL: stopPolling() method not found"; exit 1; }
-# Assertion #7
-grep -q 'getStatus' "$FILE" || { echo "FAIL: getStatus() method not found"; exit 1; }
-
-echo "PASS: T009"
-
-```
-
-### T010-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T010 — Create /api/status route
-set -euo pipefail
-
-FILE="src/server/routes/status.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q '/api/status' "$FILE" || { echo "FAIL: /api/status route not defined"; exit 1; }
-# Assertion #3
-grep -q 'GET\|get' "$FILE" || { echo "FAIL: GET method not specified"; exit 1; }
-
-echo "PASS: T010"
-
-```
-
-### T011-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T011 — Create gwrk status CLI command
-set -euo pipefail
-
-FILE="src/commands/status.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'statusCommand\|export' "$FILE" || { echo "FAIL: statusCommand not exported"; exit 1; }
-# Assertion #3
-grep -q "'status'\|\"status\"" "$FILE" || { echo "FAIL: 'status' command name not defined"; exit 1; }
-# Assertion #4
-grep -q 'localhost\|127\.0\.0\.1\|/api/status' "$FILE" || { echo "FAIL: daemon query URL not found"; exit 1; }
-
-echo "PASS: T011"
-
-```
-
-### T012-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T012 — Register status command in CLI
-set -euo pipefail
-
-FILE="src/cli.ts"
-# Assertion #1
-grep -q 'statusCommand\|status' "$FILE" || { echo "FAIL: statusCommand not imported in cli.ts"; exit 1; }
-# Assertion #2
-grep -q 'addCommand.*status\|addCommand(statusCommand' "$FILE" || { echo "FAIL: statusCommand not registered"; exit 1; }
-
-echo "PASS: T012"
-
-```
-
-### T013-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T013 — Unit tests for Phase 2
-set -euo pipefail
-
-# Assertion #1
-test -f src/server/monitor.test.ts || { echo "FAIL: monitor.test.ts not found"; exit 1; }
-# Assertion #2
-test -f src/server/routes/status.test.ts || { echo "FAIL: routes/status.test.ts not found"; exit 1; }
-
-# Assertion #3
-grep -q 'describe\|test\|it(' src/server/monitor.test.ts || { echo "FAIL: monitor.test.ts has no test cases"; exit 1; }
-# Assertion #4
-grep -q 'describe\|test\|it(' src/server/routes/status.test.ts || { echo "FAIL: status.test.ts has no test cases"; exit 1; }
-
-# Assertion #5
-pnpm vitest run src/server/monitor.test.ts src/server/routes/status.test.ts --reporter=verbose || { echo "FAIL: Phase 2 tests failed"; exit 1; }
-
-echo "PASS: T013"
-
-```
-
-### T014-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T014 — Create shared server types
-# Contract: src/server/types.ts must export DispatchRecord, DispatchAttempt, DispatchStatus, SystemStatus, SandboxInfo
-set -euo pipefail
-
-FILE="src/server/types.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'DispatchRecord' "$FILE" || { echo "FAIL: DispatchRecord type not found"; exit 1; }
-# Assertion #3
-grep -q 'DispatchAttempt' "$FILE" || { echo "FAIL: DispatchAttempt type not found"; exit 1; }
-# Assertion #4
-grep -q 'DispatchStatus' "$FILE" || { echo "FAIL: DispatchStatus type not found"; exit 1; }
-# Assertion #5
-grep -q 'SystemStatus' "$FILE" || { echo "FAIL: SystemStatus type not found"; exit 1; }
-# Assertion #6
-grep -q 'SandboxInfo' "$FILE" || { echo "FAIL: SandboxInfo type not found"; exit 1; }
-
-# Verify Zod schemas exist
-# Assertion #7
-grep -q 'z\.object\|z\.enum' "$FILE" || { echo "FAIL: No Zod schemas found"; exit 1; }
-
-echo "PASS: T014"
-
-```
-
-### T015-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T015 — Create Git branch manager
-# Contract: src/server/git-manager.ts must export createPhaseBranch, mergePhaseBack, isClean, hasConflicts
-set -euo pipefail
-
-FILE="src/server/git-manager.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'export.*function createPhaseBranch\|export async function createPhaseBranch' "$FILE" || { echo "FAIL: createPhaseBranch not exported"; exit 1; }
-# Assertion #3
-grep -q 'export.*function mergePhaseBack\|export async function mergePhaseBack' "$FILE" || { echo "FAIL: mergePhaseBack not exported"; exit 1; }
-# Assertion #4
-grep -q 'export.*function isClean\|export async function isClean' "$FILE" || { echo "FAIL: isClean not exported"; exit 1; }
-# Assertion #5
-grep -q 'export.*function hasConflicts\|export async function hasConflicts' "$FILE" || { echo "FAIL: hasConflicts not exported"; exit 1; }
-
-# Verify git operations via child_process
-# Assertion #6
-grep -q 'execFile\|exec\|child_process' "$FILE" || { echo "FAIL: child_process not used for git operations"; exit 1; }
-
-echo "PASS: T015"
-
-```
-
-### T016-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T016 — Create context compiler
-# Contract: src/server/context.ts must export compileContext and writeContextToSandbox
-set -euo pipefail
-
-FILE="src/server/context.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'export.*function compileContext\|export async function compileContext' "$FILE" || { echo "FAIL: compileContext not exported"; exit 1; }
-# Assertion #3
-grep -q 'export.*function writeContextToSandbox\|export async function writeContextToSandbox' "$FILE" || { echo "FAIL: writeContextToSandbox not exported"; exit 1; }
-
-# Verify it reads governance rules
-# Assertion #4
-grep -q '\.agent/rules\|rules' "$FILE" || { echo "FAIL: governance rules path not referenced"; exit 1; }
-
-# Verify it reads spec.md  
-# Assertion #5
-grep -q 'spec\.md' "$FILE" || { echo "FAIL: spec.md not referenced"; exit 1; }
-
-echo "PASS: T016"
-
-```
-
-### T017-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T017 — Unit tests for Phase 3
-set -euo pipefail
-
-# Assertion #1
-test -f src/server/git-manager.test.ts || { echo "FAIL: git-manager.test.ts not found"; exit 1; }
-# Assertion #2
-test -f src/server/context.test.ts || { echo "FAIL: context.test.ts not found"; exit 1; }
-
-# Assertion #3
-grep -q 'describe\|test\|it(' src/server/git-manager.test.ts || { echo "FAIL: git-manager.test.ts has no test cases"; exit 1; }
-# Assertion #4
-grep -q 'describe\|test\|it(' src/server/context.test.ts || { echo "FAIL: context.test.ts has no test cases"; exit 1; }
-
-# Assertion #5
-pnpm vitest run src/server/git-manager.test.ts src/server/context.test.ts --reporter=verbose || { echo "FAIL: Phase 3 tests failed"; exit 1; }
-
-echo "PASS: T017"
-
-```
-
-### T018-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T018 — Add dockerode dependency
-set -euo pipefail
-
-# Assertion #1
-grep -q '"dockerode"' package.json || { echo "FAIL: dockerode not in package.json dependencies"; exit 1; }
-# Assertion #2
-grep -q '"@types/dockerode"' package.json || { echo "FAIL: @types/dockerode not in devDependencies"; exit 1; }
-# Assertion #3
-test -d node_modules/dockerode || { echo "FAIL: dockerode not installed"; exit 1; }
-
-echo "PASS: T018"
-
-```
-
-### T019-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T019 — Create sandbox Dockerfile
-set -euo pipefail
-
-# Assertion #1
-test -f Dockerfile.sandbox || { echo "FAIL: Dockerfile.sandbox not found"; exit 1; }
-
-# Verify base image
-# Assertion #2
-grep -q 'bookworm-slim\|debian' Dockerfile.sandbox || { echo "FAIL: bookworm-slim base not found"; exit 1; }
-
-# Verify Node.js installation
-# Assertion #3
-grep -qi 'node\|nodejs' Dockerfile.sandbox || { echo "FAIL: Node.js installation not found"; exit 1; }
-
-# Verify Git installation
-# Assertion #4
-grep -qi 'git' Dockerfile.sandbox || { echo "FAIL: Git installation not found"; exit 1; }
-
-# Verify gh CLI installation
-# Assertion #5
-grep -qi 'gh\|github-cli' Dockerfile.sandbox || { echo "FAIL: gh CLI installation not found"; exit 1; }
-
-# Verify WORKDIR
-# Assertion #6
-grep -q 'WORKDIR /workspace' Dockerfile.sandbox || { echo "FAIL: WORKDIR /workspace not set"; exit 1; }
-
-echo "PASS: T019"
-
-```
-
-### T020-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T020 — Create Docker sandbox manager
-# Contract: src/server/sandbox.ts must export createSandbox, destroySandbox, destroyAllSandboxes, listSandboxes
-set -euo pipefail
-
-FILE="src/server/sandbox.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'export.*function createSandbox\|export async function createSandbox' "$FILE" || { echo "FAIL: createSandbox not exported"; exit 1; }
-# Assertion #3
-grep -q 'export.*function destroySandbox\|export async function destroySandbox' "$FILE" || { echo "FAIL: destroySandbox not exported"; exit 1; }
-# Assertion #4
-grep -q 'export.*function destroyAllSandboxes\|export async function destroyAllSandboxes' "$FILE" || { echo "FAIL: destroyAllSandboxes not exported"; exit 1; }
-# Assertion #5
-grep -q 'export.*function listSandboxes\|export async function listSandboxes' "$FILE" || { echo "FAIL: listSandboxes not exported"; exit 1; }
-
-# Verify Docker label convention
-# Assertion #6
-grep -q 'gwrk\.feature\|gwrk.feature' "$FILE" || { echo "FAIL: gwrk.feature label not referenced"; exit 1; }
-# Assertion #7
-grep -q 'gwrk\.phase\|gwrk.phase' "$FILE" || { echo "FAIL: gwrk.phase label not referenced"; exit 1; }
-
-# Verify dockerode usage
-# Assertion #8
-grep -q 'dockerode\|Docker\|Dockerode' "$FILE" || { echo "FAIL: dockerode not imported"; exit 1; }
-
-echo "PASS: T020"
-
-```
-
-### T021-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T021 — Unit tests for Phase 4
-set -euo pipefail
-
-# Assertion #1
-test -f src/server/sandbox.test.ts || { echo "FAIL: sandbox.test.ts not found"; exit 1; }
-
-# Assertion #2
-grep -q 'describe\|test\|it(' src/server/sandbox.test.ts || { echo "FAIL: sandbox.test.ts has no test cases"; exit 1; }
-
-# Assertion #3
-pnpm vitest run src/server/sandbox.test.ts --reporter=verbose || { echo "FAIL: Phase 4 tests failed"; exit 1; }
-
-echo "PASS: T021"
-
-```
-
-### T022-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T022 — Create JSONL persistence writer
-# Contract: src/server/persistence.ts must export persistDispatch
-set -euo pipefail
-
-FILE="src/server/persistence.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'export.*function persistDispatch\|export function persistDispatch' "$FILE" || { echo "FAIL: persistDispatch not exported"; exit 1; }
-
-# Verify JSONL target
-# Assertion #3
-grep -q 'dispatches\.jsonl' "$FILE" || { echo "FAIL: dispatches.jsonl path not referenced"; exit 1; }
-
-# Verify Zod validation
-# Assertion #4
-grep -q 'parse\|safeParse\|validate' "$FILE" || { echo "FAIL: Zod validation not found"; exit 1; }
-
-echo "PASS: T022"
-
-```
-
-### T023-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T023 — Create DispatchQueue class
-# Contract: src/server/dispatch.ts must export DispatchQueue with enqueue, processNext, handleCompletion, getQueue, getDispatch
-set -euo pipefail
-
-FILE="src/server/dispatch.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Assertion #2
-grep -q 'class DispatchQueue\|export class DispatchQueue' "$FILE" || { echo "FAIL: DispatchQueue class not found"; exit 1; }
-# Assertion #3
-grep -q 'enqueue' "$FILE" || { echo "FAIL: enqueue method not found"; exit 1; }
-# Assertion #4
-grep -q 'processNext' "$FILE" || { echo "FAIL: processNext method not found"; exit 1; }
-# Assertion #5
-grep -q 'handleCompletion' "$FILE" || { echo "FAIL: handleCompletion method not found"; exit 1; }
-# Assertion #6
-grep -q 'getQueue' "$FILE" || { echo "FAIL: getQueue method not found"; exit 1; }
-# Assertion #7
-grep -q 'getDispatch' "$FILE" || { echo "FAIL: getDispatch method not found"; exit 1; }
-
-# Verify retry logic (3 attempts)
-# Assertion #8
-grep -q '3\|MAX_RETRIES\|maxRetries' "$FILE" || { echo "FAIL: retry limit (3) not found"; exit 1; }
-
-# Verify fallback order reference
-# Assertion #9
-grep -q 'fallbackOrder\|fallback' "$FILE" || { echo "FAIL: fallbackOrder not referenced"; exit 1; }
-
-echo "PASS: T023"
-
-```
-
-### T024-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T024 — Create dispatch API routes
-set -euo pipefail
-
-FILE="src/server/routes/dispatch.ts"
-# Assertion #1
-test -f "$FILE" || { echo "FAIL: $FILE not found"; exit 1; }
-
-# Verify POST /api/dispatch
-# Assertion #2
-grep -q 'POST\|post' "$FILE" || { echo "FAIL: POST method not found"; exit 1; }
-# Assertion #3
-grep -q '/api/dispatch' "$FILE" || { echo "FAIL: /api/dispatch route not defined"; exit 1; }
-
-# Verify GET endpoints
-# Assertion #4
-grep -q 'GET\|get' "$FILE" || { echo "FAIL: GET method not found"; exit 1; }
-# Assertion #5
-grep -q 'queue' "$FILE" || { echo "FAIL: /queue endpoint not found"; exit 1; }
-
-echo "PASS: T024"
-
-```
-
-### T025-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T025 — Wire dispatch routes and monitor into server
-set -euo pipefail
-
-FILE="src/server/index.ts"
-
-# Verify dispatch route registration
-# Assertion #1
-grep -q 'dispatch' "$FILE" || { echo "FAIL: dispatch routes not referenced in server index"; exit 1; }
-
-# Verify monitor integration
-# Assertion #2
-grep -q 'monitor\|Monitor\|SystemMonitor' "$FILE" || { echo "FAIL: SystemMonitor not integrated"; exit 1; }
-
-# Verify startPolling
-# Assertion #3
-grep -q 'startPolling\|polling' "$FILE" || { echo "FAIL: monitor polling not started"; exit 1; }
-
-echo "PASS: T025"
-
-```
-
-### T026-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T026 — Unit tests for dispatch queue
-set -euo pipefail
-
-# Assertion #1
-test -f src/server/dispatch.test.ts || { echo "FAIL: dispatch.test.ts not found"; exit 1; }
-
-# Assertion #2
-grep -q 'describe\|test\|it(' src/server/dispatch.test.ts || { echo "FAIL: dispatch.test.ts has no test cases"; exit 1; }
-
-# Verify retry test coverage
-# Assertion #3
-grep -q 'retry\|escalat\|fallback' src/server/dispatch.test.ts || { echo "FAIL: retry/escalation test cases missing"; exit 1; }
-
-# Assertion #4
-pnpm vitest run src/server/dispatch.test.ts --reporter=verbose || { echo "FAIL: dispatch queue tests failed"; exit 1; }
-
-echo "PASS: T026"
-
-```
-
-### T027-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T027 — Unit tests for dispatch routes
-set -euo pipefail
-
-# Assertion #1
-test -f src/server/routes/dispatch.test.ts || { echo "FAIL: routes/dispatch.test.ts not found"; exit 1; }
-
-# Assertion #2
-grep -q 'describe\|test\|it(' src/server/routes/dispatch.test.ts || { echo "FAIL: dispatch.test.ts has no test cases"; exit 1; }
-
-# Assertion #3
-pnpm vitest run src/server/routes/dispatch.test.ts --reporter=verbose || { echo "FAIL: dispatch route tests failed"; exit 1; }
-
-echo "PASS: T027"
-
-```
-
-### T028-gate.sh
-
-```bash
-#!/usr/bin/env bash
-# Gate: T028 — Integration test for end-to-end dispatch
-set -euo pipefail
-
-# Assertion #1
-test -f src/server/integration.test.ts || { echo "FAIL: integration.test.ts not found"; exit 1; }
-
-# Assertion #2
-grep -q 'describe\|test\|it(' src/server/integration.test.ts || { echo "FAIL: integration.test.ts has no test cases"; exit 1; }
-
-# Verify integration test references the full lifecycle
-# Assertion #3
-grep -q 'dispatch\|POST\|/api/dispatch' src/server/integration.test.ts || { echo "FAIL: dispatch endpoint not tested in integration test"; exit 1; }
-
-# Assertion #4
-pnpm vitest run src/server/integration.test.ts --reporter=verbose || { echo "FAIL: integration test failed"; exit 1; }
-
-echo "PASS: T028"
-
-```
-
-### run-all-gates.sh
-
-```bash
-#!/usr/bin/env bash
-# Run all Hard Gates for 002-build-server
-# Usage: ./run-all-gates.sh [phase_number]
-#   No args = run all gates
-#   With arg = run gates for that phase only
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PASS=0
-FAIL=0
-ERRORS=()
-
-# Define phase → task ID ranges
-declare -A PHASE_RANGES
-PHASE_RANGES[1]="T001 T002 T003 T004 T005 T006 T007"
-PHASE_RANGES[2]="T008 T009 T010 T011 T012 T013"
-PHASE_RANGES[3]="T014 T015 T016 T017"
-PHASE_RANGES[4]="T018 T019 T020 T021"
-PHASE_RANGES[5]="T022 T023 T024 T025 T026 T027 T028"
-
-# Determine which gates to run
-if [ "${1:-}" != "" ]; then
-  PHASE="$1"
-  if [ -z "${PHASE_RANGES[$PHASE]+x}" ]; then
-    echo "ERROR: Unknown phase $PHASE. Valid: 1-5"
-    exit 1
-  fi
-  TASKS="${PHASE_RANGES[$PHASE]}"
-  echo "═══════════════════════════════════════════════"
-  echo " GATES · 002-build-server · Phase $PHASE"
-  echo "═══════════════════════════════════════════════"
-else
-  TASKS=""
-  for p in 1 2 3 4 5; do
-    TASKS="$TASKS ${PHASE_RANGES[$p]}"
-  done
-  echo "═══════════════════════════════════════════════"
-  echo " GATES · 002-build-server · All Phases"
-  echo "═══════════════════════════════════════════════"
-fi
-
-for tid in $TASKS; do
-  gate="$SCRIPT_DIR/${tid}-gate.sh"
-  if [ ! -f "$gate" ]; then
-    echo "  ⚠️  $tid: gate script not found"
-    FAIL=$((FAIL + 1))
-    ERRORS+=("$tid: gate script missing")
-    continue
-  fi
-
-  if bash "$gate" > /dev/null 2>&1; then
-    echo "  ✅ $tid: PASS"
-    PASS=$((PASS + 1))
-  else
-    echo "  ❌ $tid: FAIL"
-    FAIL=$((FAIL + 1))
-    ERRORS+=("$tid")
-  fi
-done
-
-echo ""
-echo "═══════════════════════════════════════════════"
-echo " Results: $PASS passed, $FAIL failed"
-echo "═══════════════════════════════════════════════"
-
-if [ ${#ERRORS[@]} -gt 0 ]; then
-  echo ""
-  echo "Failed gates:"
-  for e in "${ERRORS[@]}"; do
-    echo "  - $e"
-  done
-  exit 1
-fi
-
-exit 0
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Daemon Bootstrap",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Implement src/server/index.ts",
+          "description": "NEW: Fastify bootstrap, route registration, `/health` endpoint, graceful shutdown handler",
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh"
+        },
+        {
+          "id": "T002",
+          "title": "Implement src/server/pid.ts",
+          "description": "NEW: PID file read/write/check/remove at `.gwrk/server.pid`",
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh"
+        },
+        {
+          "id": "T003",
+          "title": "Implement src/commands/server.ts",
+          "description": "NEW: `gwrk server start` and `gwrk server stop` subcommands",
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh"
+        },
+        {
+          "id": "T004",
+          "title": "Implement src/cli.ts",
+          "description": "MODIFY: Register `server` command group",
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh"
+        },
+        {
+          "id": "T005",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: Extend `GwrkConfigSchema` with `server.port`, `server.host`",
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh"
+        },
+        {
+          "id": "T006",
+          "title": "Implement package.json",
+          "description": "MODIFY: Add `fastify` dependency",
+          "status": "completed",
+          "gateScript": "gates/T006-gate.sh"
+        },
+        {
+          "id": "T007",
+          "title": "Implement tsconfig.json",
+          "description": "MODIFY: Ensure ESM output works with Fastify",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh"
+        },
+        {
+          "id": "T008",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/commands/server.test.ts` exits 0",
+        "`pnpm vitest run src/server/index.test.ts` exits 0",
+        "`test -f src/server/index.ts && test -f src/server/pid.ts && test -f src/commands/server.ts` exits 0",
+        "`grep -q '\"fastify\"' package.json` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "System Monitor & Status",
+      "tasks": [
+        {
+          "id": "T009",
+          "title": "Implement src/server/monitor.ts",
+          "description": "NEW: System resource sampler using `os` module — CPU%, MEM%, disk free GB — on configurable interval",
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh"
+        },
+        {
+          "id": "T010",
+          "title": "Implement src/server/routes/status.ts",
+          "description": "NEW: `GET /api/status` route returning `SystemStatus` JSON",
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh"
+        },
+        {
+          "id": "T011",
+          "title": "Implement src/commands/status.ts",
+          "description": "NEW: `gwrk status` command — queries daemon `/api/status` or returns `{server:{status:\"stopped\"}}`",
+          "status": "completed",
+          "gateScript": "gates/T011-gate.sh"
+        },
+        {
+          "id": "T012",
+          "title": "Implement src/cli.ts",
+          "description": "MODIFY: Register `status` command\n\nREVIEW FAIL (code): CLI Command Registration — FR-001 / FR-004.\n  WHERE: src/cli.test.ts:31-40, src/cli.e2e.test.ts:40-50\n  EXPECTED: gwrk server and gwrk status registered and visible in top-level help Operations group.\n  ACTUAL: CLI tests explicitly list 'server' and 'status' as 'eliminated' or 'hidden', causing failures when they are registered.\n  FIX: Update src/cli.test.ts and src/cli.e2e.test.ts to remove 'server' and 'status' from eliminated/hidden lists and verify they appear in the Operations group.\n  GATE: gates/T012-gate.sh\n  REF: plan.md Phase 2 > src/cli.ts",
+          "status": "completed",
+          "gateScript": "gates/T012-gate.sh"
+        },
+        {
+          "id": "T013",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: Extend schema with `parallelism.local.maxCpu`, `maxMem`, `minDiskGb`, `maxClones`, `parallelism.cloud.maxConcurrent`",
+          "status": "completed",
+          "gateScript": "gates/T013-gate.sh"
+        },
+        {
+          "id": "T014",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build and Global Test Regression.\n  WHERE: src/server/dispatch.ts, src/server/sandbox.test.ts\n  EXPECTED: pnpm build and pnpm test pass globally.\n  ACTUAL: pnpm build fails in src/server/dispatch.ts (missing createdAt, attemptNumber; finishedAt vs completedAt). pnpm test fails in src/server/sandbox.test.ts (Labels mismatch).\n  FIX: Fix src/server/dispatch.ts types and src/server/sandbox.test.ts mock expectations.\n  GATE: gates/T014-gate.sh\n  REF: plan.md Phase 2 > Test Strategy",
+          "status": "completed",
+          "gateScript": "gates/T014-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/monitor.test.ts` exits 0",
+        "`pnpm vitest run src/server/routes/status.test.ts` exits 0",
+        "`test -f src/server/monitor.ts && test -f src/server/routes/status.ts && test -f src/commands/status.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Git Manager & Context Compiler",
+      "tasks": [
+        {
+          "id": "T015",
+          "title": "Implement src/server/git-manager.ts",
+          "description": "NEW: `createPhaseBranch(",
+          "status": "completed",
+          "gateScript": "gates/T015-gate.sh"
+        },
+        {
+          "id": "T016",
+          "title": "Implement src/server/context.ts",
+          "description": "NEW: `compileContext(",
+          "status": "completed",
+          "gateScript": "gates/T016-gate.sh"
+        },
+        {
+          "id": "T017",
+          "title": "Implement src/server/git-manager.test.ts",
+          "description": "NEW: Branch creation, merge-back, conflict detection tests",
+          "status": "completed",
+          "gateScript": "gates/T017-gate.sh"
+        },
+        {
+          "id": "T018",
+          "title": "Implement src/server/context.test.ts",
+          "description": "NEW: Context compilation tests",
+          "status": "completed",
+          "gateScript": "gates/T018-gate.sh"
+        },
+        {
+          "id": "T019",
+          "title": "Implement src/server/types.ts",
+          "description": "NEW: Shared types — `DispatchRecord`, `DispatchAttempt`, `DispatchStatus`, `SystemStatus`, `SandboxInfo`",
+          "status": "completed",
+          "gateScript": "gates/T019-gate.sh"
+        },
+        {
+          "id": "T020",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T020-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/git-manager.test.ts` exits 0",
+        "`pnpm vitest run src/server/context.test.ts` exits 0",
+        "`test -f src/server/git-manager.ts && test -f src/server/context.ts && test -f src/server/types.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Docker Sandbox Manager",
+      "tasks": [
+        {
+          "id": "T021",
+          "title": "Implement src/server/sandbox.ts",
+          "description": "NEW: `createSandbox(",
+          "status": "completed",
+          "gateScript": "gates/T021-gate.sh"
+        },
+        {
+          "id": "T022",
+          "title": "Implement Dockerfile.sandbox",
+          "description": "NEW: `gwrk-sandbox:bookworm-slim` with Node.js LTS, Git, `gh` CLI",
+          "status": "completed",
+          "gateScript": "gates/T022-gate.sh"
+        },
+        {
+          "id": "T023",
+          "title": "Implement src/server/sandbox.test.ts",
+          "description": "NEW: Container lifecycle tests with mocked `dockerode`",
+          "status": "completed",
+          "gateScript": "gates/T023-gate.sh"
+        },
+        {
+          "id": "T024",
+          "title": "Implement package.json",
+          "description": "MODIFY: Add `dockerode` + `@types/dockerode` dependencies",
+          "status": "completed",
+          "gateScript": "gates/T024-gate.sh"
+        },
+        {
+          "id": "T025",
+          "title": "Implement .dockerignore",
+          "description": "MODIFY: Ensure sandbox image builds cleanly",
+          "status": "completed",
+          "gateScript": "gates/T025-gate.sh"
+        },
+        {
+          "id": "T026",
+          "title": "Implement test strategy for Phase 4",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T026-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/sandbox.test.ts` exits 0",
+        "`test -f Dockerfile.sandbox` exits 0",
+        "`test -f src/server/sandbox.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "Dispatch Queue & Orchestrator",
+      "tasks": [
+        {
+          "id": "T027",
+          "title": "Complete DispatchQueue contract (src/server/dispatch.ts)",
+          "description": "Add missing contract methods per contracts/dispatch.md:\n\n1. Add `handleCompletion(dispatchId: string, exitCode: number, stderr: string): Promise<void>`\n   - If exitCode === 0: set status \"completed\", call finishRun()\n   - If exitCode !== 0 AND attempts < 3: set status \"retrying\", re-queue\n   - If exitCode !== 0 AND attempts >= 3: escalate to next backend in fallbackOrder\n   - If all backends exhausted: set status \"failed\"\n2. Rename existing `getStatus()` to `getQueue()`, return `{ active, queued, throttled: this.monitor.isThrottled() }`\n3. Add `getDispatch(featureId: string, phaseId: string): DispatchRecord | null` — search active + queued + history\n4. Add `runId?: number` to DispatchAttempt in src/server/types.ts\n5. In handleCompletion, call `finishRun(attempt.runId, ...)` from src/db/runs.ts\n\nThe existing setTimeout stub in runDispatch is acceptable for Phase 05 scope — mark with TODO comment for Phase 06.\n\nAcceptance: T027-gate.sh passes (asserts all 5 contract methods + finishRun + pnpm build)",
+          "status": "completed",
+          "gateScript": "gates/T027-gate.sh"
+        },
+        {
+          "id": "T028",
+          "title": "Implement src/server/routes/dispatch.ts",
+          "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue` ",
+          "status": "completed",
+          "gateScript": "gates/T028-gate.sh"
+        },
+        {
+          "id": "T029",
+          "title": "Implement src/server/persistence.ts",
+          "description": "NEW: Append-only `.gwrk/dispatches.jsonl` writer",
+          "status": "completed",
+          "gateScript": "gates/T029-gate.sh"
+        },
+        {
+          "id": "T030",
+          "title": "Add tests for new DispatchQueue methods (src/server/dispatch.test.ts)",
+          "description": "Add test cases for the methods added in T027:\n\n1. handleCompletion() with exitCode 0 → record.status === \"completed\"\n2. handleCompletion() with exitCode 1, attempt < 3 → record.status === \"retrying\", record re-queued\n3. handleCompletion() with exitCode 1, attempt >= 3 → backend escalation or status \"failed\"\n4. getQueue() returns { active: [], queued: [], throttled: boolean }\n5. getDispatch(featureId, phaseId) returns correct record or null\n\nExisting 3 tests (enqueue, processNext throttled, processNext unthrottled) must continue to pass.\n\nAcceptance: `pnpm vitest run src/server/dispatch.test.ts` exits 0 with >= 6 tests",
+          "status": "completed",
+          "gateScript": "gates/T030-gate.sh"
+        },
+        {
+          "id": "T031",
+          "title": "Implement src/server/routes/dispatch.test.ts",
+          "description": "NEW: HTTP endpoint tests",
+          "status": "completed",
+          "gateScript": "gates/T031-gate.sh"
+        },
+        {
+          "id": "T032",
+          "title": "Verify server integration compiles (src/server/index.ts)",
+          "description": "After T027 changes, verify that src/server/index.ts and src/server/routes/status.ts still compile correctly. status.ts calls getQueueDepth(), getActiveCount(), getCompletedCount(), getFailedCount() on DispatchQueue — these methods already exist.\n\nNo code changes expected — this task verifies T027 did not introduce regressions.\n\nAcceptance: T032-gate.sh passes (DispatchQueue + statusRoutes + dispatchRoutes imports + pnpm build)",
+          "status": "completed",
+          "gateScript": "gates/T032-gate.sh"
+        },
+        {
+          "id": "T033",
+          "title": "Implement src/server/integration.test.ts",
+          "description": "NEW: E2E — start daemon subprocess, POST dispatch, verify container",
+          "status": "completed",
+          "gateScript": "gates/T033-gate.sh"
+        },
+        {
+          "id": "T034",
+          "title": "Phase 05 full verification (all tests + build)",
+          "description": "Run all Phase 05 test suites and verify global build:\n\n1. `pnpm vitest run src/server/dispatch.test.ts` — must pass\n2. `pnpm vitest run src/server/routes/dispatch.test.ts` — must pass\n3. `pnpm vitest run src/server/integration.test.ts` — must pass (fix assertion if needed: dispatch POST may return 200, 201, or 400)\n4. `pnpm build` — must pass with zero errors\n\nAcceptance: T034-gate.sh passes",
+          "status": "completed",
+          "gateScript": "gates/T034-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/dispatch.test.ts` exits 0",
+        "`pnpm vitest run src/server/routes/dispatch.test.ts` exits 0",
+        "`pnpm vitest run src/server/integration.test.ts` exits 0",
+        "`test -f src/server/dispatch.ts && test -f src/server/routes/dispatch.ts && test -f src/server/persistence.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-06",
+      "title": "Resilience & Connectivity",
+      "tasks": [
+        {
+          "id": "T035",
+          "title": "Implement src/server/lifecycle.ts",
+          "description": "NEW: Heartbeat-drift sleep/wake detector. Emits `server:sleep`, `server:wake` events. Drives Graceful Reconnect Protocol.",
+          "status": "open",
+          "gateScript": "gates/T035-gate.sh"
+        },
+        {
+          "id": "T036",
+          "title": "Implement src/server/network.ts",
+          "description": "NEW: Network interface watcher via `os.networkInterfaces(",
+          "status": "open",
+          "gateScript": "gates/T036-gate.sh"
+        },
+        {
+          "id": "T037",
+          "title": "Implement src/server/routes/health.ts",
+          "description": "NEW: Enhanced `/health` endpoint returning component-level readiness JSON for server, Docker, network.",
+          "status": "open",
+          "gateScript": "gates/T037-gate.sh"
+        },
+        {
+          "id": "T038",
+          "title": "Implement src/server/index.ts",
+          "description": "MODIFY: Wire lifecycle + network events → dispatch queue `pause(",
+          "status": "open",
+          "gateScript": "gates/T038-gate.sh"
+        },
+        {
+          "id": "T039",
+          "title": "Implement src/server/sandbox.ts",
+          "description": "MODIFY: Add `pauseAll(",
+          "status": "open",
+          "gateScript": "gates/T039-gate.sh"
+        },
+        {
+          "id": "T040",
+          "title": "Implement src/server/dispatch.ts",
+          "description": "MODIFY: Add `pause(",
+          "status": "open",
+          "gateScript": "gates/T040-gate.sh"
+        },
+        {
+          "id": "T041",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: Extend schema with `server.heartbeatIntervalMs`, `server.networkCheckIntervalMs`.",
+          "status": "open",
+          "gateScript": "gates/T041-gate.sh"
+        },
+        {
+          "id": "T042",
+          "title": "Implement src/server/types.ts",
+          "description": "MODIFY: Add `ServerLifecycle` type, `HealthResponse` type, `NetworkStatus` type.",
+          "status": "open",
+          "gateScript": "gates/T042-gate.sh"
+        },
+        {
+          "id": "T043",
+          "title": "Implement test strategy for Phase 6",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T043-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/lifecycle.test.ts` exits 0",
+        "`pnpm vitest run src/server/network.test.ts` exits 0",
+        "`pnpm vitest run src/server/routes/health.test.ts` exits 0",
+        "`test -f src/server/lifecycle.ts && test -f src/server/network.ts && test -f src/server/routes/health.ts` exits 0"
+      ]
+    }
+  ]
+}
 
 ```
 

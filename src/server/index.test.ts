@@ -12,6 +12,9 @@ vi.mock("./pid.js", () => ({
 
 const mockSandbox = {
   checkDocker: vi.fn().mockResolvedValue(true),
+  pauseAll: vi.fn().mockResolvedValue(undefined),
+  unpauseAll: vi.fn().mockResolvedValue(undefined),
+  listSandboxes: vi.fn().mockResolvedValue([]),
 };
 
 vi.mock("./sandbox.js", () => {
@@ -23,7 +26,12 @@ vi.mock("./sandbox.js", () => {
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "codex-cloud" },
-  server: { port: 18895, host: "localhost" },
+  server: {
+    port: 18895,
+    host: "localhost",
+    heartbeatIntervalMs: 1000,
+    networkCheckIntervalMs: 1000,
+  },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
     cloud: { maxConcurrent: 10 },
@@ -53,7 +61,9 @@ describe("server bootstrap", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: "ok" });
+    const json = response.json();
+    expect(json.status).toBe("ok");
+    expect(json.components.server.status).toBe("ok");
 
     await server.close();
   });

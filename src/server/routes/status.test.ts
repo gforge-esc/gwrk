@@ -6,7 +6,12 @@ import { removePid } from "../pid.js";
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "gemini" },
-  server: { port: 18892, host: "localhost" },
+  server: {
+    port: 18892,
+    host: "localhost",
+    heartbeatIntervalMs: 1000,
+    networkCheckIntervalMs: 1000,
+  },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
     cloud: { maxConcurrent: 10 },
@@ -27,13 +32,16 @@ describe("status routes", () => {
     const body = response.json();
 
     expect(body.server.status).toBe("running");
+    expect(body.server.lifecycle).toBe("ready");
     expect(body.server.pid).toBe(process.pid);
     expect(body.server.port).toBe(18892);
     expect(body.system.cpuPercent).toBeDefined();
     expect(body.system.memPercent).toBeDefined();
     expect(body.system.diskFreeGb).toBeDefined();
+    expect(body.network.status).toBeDefined();
     expect(body.dispatch.queueDepth).toBe(0);
     expect(body.dispatch.activeCount).toBe(0);
+    expect(body.dispatch.paused).toBe(false);
     expect(body.sandboxes).toBeInstanceOf(Array);
 
     await server.close();

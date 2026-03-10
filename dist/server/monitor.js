@@ -26,7 +26,9 @@ export class SystemMonitor {
                 const idle = cpu.times.idle - lastCpu.times.idle;
                 let total = 0;
                 for (const type in cpu.times) {
-                    total += cpu.times[type] - lastCpu.times[type];
+                    total +=
+                        cpu.times[type] -
+                            lastCpu.times[type];
                 }
                 totalIdle += idle;
                 totalTick += total;
