@@ -8,11 +8,12 @@ export type DispatchStatus =
   | "retrying";
 
 export interface DispatchAttempt {
+  attemptNumber: number;
   backend: AgentBackend;
   startedAt: string;
-  finishedAt?: string;
+  completedAt?: string;
   exitCode?: number;
-  logFile?: string;
+  error?: string;
 }
 
 export interface DispatchRecord {
@@ -24,6 +25,8 @@ export interface DispatchRecord {
   containerId?: string;
   branchName: string;
   attempts: DispatchAttempt[];
+  createdAt: string;
+  completedAt?: string;
 }
 
 export interface SystemStatus {

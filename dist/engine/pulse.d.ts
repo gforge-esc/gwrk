@@ -1,5 +1,5 @@
-import type { PulseSnapshot, WeeklyBucket, PulseReport, SpecProgress } from "./types.js";
 import type { GwrkConfig } from "../utils/config.js";
+import type { PulseReport, PulseSnapshot, SpecProgress, WeeklyBucket } from "./types.js";
 interface ParsedCommit {
     hash: string;
     timestamp: string;

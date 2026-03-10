@@ -1,11 +1,12 @@
 import type { AgentBackend } from "../utils/config.js";
 export type DispatchStatus = "queued" | "running" | "completed" | "failed" | "retrying";
 export interface DispatchAttempt {
+    attemptNumber: number;
     backend: AgentBackend;
     startedAt: string;
-    finishedAt?: string;
+    completedAt?: string;
     exitCode?: number;
-    logFile?: string;
+    error?: string;
 }
 export interface DispatchRecord {
     id: string;
@@ -16,6 +17,8 @@ export interface DispatchRecord {
     containerId?: string;
     branchName: string;
     attempts: DispatchAttempt[];
+    createdAt: string;
+    completedAt?: string;
 }
 export interface SystemStatus {
     cpuPercent: number;

@@ -1,11 +1,11 @@
-import { Command } from "commander";
 import path from "node:path";
-import { startRun, finishRun, recordHistory } from "../db/runs.js";
-import { run } from "../utils/exec.js";
+import { Command } from "commander";
+import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { banner, success, fail, dryRun as dryRunFmt, color } from "../utils/format.js";
-import { writeManifest, generateRunId } from "../utils/manifest.js";
-import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
+import { run } from "../utils/exec.js";
+import { banner, color, dryRun as dryRunFmt, fail, success, } from "../utils/format.js";
+import { getCurrentBranch, getCurrentCommit, getDiffStats, } from "../utils/git.js";
+import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { loadTaskState } from "../utils/state.js";
 const { GREEN, DIM, RESET } = color;
 /**
@@ -51,7 +51,10 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
     }
     catch (err) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
-        exitCode = err instanceof Error && "code" in err ? err.code : 1;
+        exitCode =
+            err instanceof Error && "code" in err
+                ? err.code
+                : 1;
         finishRun(runId, { exit_code: exitCode, duration_s: durationS });
         fail("ship", exitCode, durationS, runId);
     }
@@ -121,8 +124,8 @@ export const shipCommand = new Command("ship")
     else {
         const specDir = path.join(cwd, "specs", feature);
         const taskState = loadTaskState(specDir);
-        phases = taskState.phases.map(p => p.id.replace("phase-", ""));
-        console.log(`${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map(p => `P${p}`).join(", ")})${RESET}`);
+        phases = taskState.phases.map((p) => p.id.replace("phase-", ""));
+        console.log(`${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`);
     }
     if (opts.dryRun) {
         const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");

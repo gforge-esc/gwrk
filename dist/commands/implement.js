@@ -1,12 +1,12 @@
-import { Command } from "commander";
-import path from "node:path";
 import fs from "node:fs";
-import { startRun, finishRun } from "../db/runs.js";
-import { run, runGate } from "../utils/exec.js";
+import path from "node:path";
+import { Command } from "commander";
+import { finishRun, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { loadTaskState, markTaskComplete, saveTaskState } from "../utils/state.js";
+import { run, runGate } from "../utils/exec.js";
+import { banner, color, dryRun, fail, success } from "../utils/format.js";
 import { appendHistory } from "../utils/history.js";
-import { banner, success, fail, dryRun, color } from "../utils/format.js";
+import { loadTaskState, markTaskComplete, saveTaskState, } from "../utils/state.js";
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 export const implementAction = async (feature, phase, opts) => {
     const cwd = process.cwd();
@@ -16,7 +16,7 @@ export const implementAction = async (feature, phase, opts) => {
     const backend = opts.agent || config.agents.implement;
     const phaseId = `phase-${phase.padStart(2, "0")}`;
     const tasks = loadTaskState(specDir);
-    const phaseData = tasks.phases.find(p => p.id === phaseId);
+    const phaseData = tasks.phases.find((p) => p.id === phaseId);
     if (!phaseData) {
         console.error(`${RED}✗${RESET} Phase ${phaseId} not found in tasks.json`);
         process.exit(1);
@@ -35,7 +35,7 @@ export const implementAction = async (feature, phase, opts) => {
         "Run ID": `${runId}`,
     });
     const startTime = Date.now();
-    let exitCode = 0;
+    const exitCode = 0;
     try {
         for (const task of phaseData.tasks) {
             if (task.status === "completed")
@@ -48,7 +48,9 @@ export const implementAction = async (feature, phase, opts) => {
                 if (result.exitCode === 0) {
                     console.log(`${YELLOW}⚠${RESET} ${task.id} pre-flight PASS — gate already satisfied, skipping`);
                     const currentState = loadTaskState(specDir);
-                    const currentTask = currentState.phases.flatMap(p => p.tasks).find(t => t.id === task.id);
+                    const currentTask = currentState.phases
+                        .flatMap((p) => p.tasks)
+                        .find((t) => t.id === task.id);
                     if (currentTask && currentTask.status !== "completed") {
                         const newState = markTaskComplete(currentState, task.id);
                         saveTaskState(specDir, newState);
@@ -80,7 +82,9 @@ export const implementAction = async (feature, phase, opts) => {
                 if (postResult.exitCode === 0) {
                     console.log(`${GREEN}✓${RESET} ${task.id} gate passed. Marking completed.`);
                     const currentState = loadTaskState(specDir);
-                    const currentTask = currentState.phases.flatMap(p => p.tasks).find(t => t.id === task.id);
+                    const currentTask = currentState.phases
+                        .flatMap((p) => p.tasks)
+                        .find((t) => t.id === task.id);
                     if (currentTask && currentTask.status !== "completed") {
                         const newState = markTaskComplete(currentState, task.id);
                         saveTaskState(specDir, newState);
@@ -110,7 +114,9 @@ export const implementAction = async (feature, phase, opts) => {
     catch (err) {
         console.error(err);
         const durationS = Math.round((Date.now() - startTime) / 1000);
-        const exitCode = err instanceof Error && "code" in err ? err.code : 1;
+        const exitCode = err instanceof Error && "code" in err
+            ? err.code
+            : 1;
         finishRun(runId, { exit_code: exitCode, duration_s: durationS });
         fail("implement", exitCode, durationS, runId);
         process.exit(exitCode);

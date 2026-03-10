@@ -1,14 +1,14 @@
-import { Command } from "commander";
 import path from "node:path";
-import { startRun, finishRun, recordHistory } from "../db/runs.js";
-import { run } from "../utils/exec.js";
+import { Command } from "commander";
+import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { banner, success, fail, dryRun as dryRunFmt } from "../utils/format.js";
-import { writeManifest, generateRunId } from "../utils/manifest.js";
-import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
+import { run } from "../utils/exec.js";
+import { banner, dryRun as dryRunFmt, fail, success } from "../utils/format.js";
+import { getCurrentBranch, getCurrentCommit, getDiffStats, } from "../utils/git.js";
+import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { planCommand } from "./plan.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
-import { planCommand } from "./plan.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 /**
  * gwrk define — The Definition Pillar (Clarity)
@@ -74,9 +74,10 @@ export const defineCommand = new Command("define")
     }
     catch (error) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
-        exitCode = error instanceof Error && "exitCode" in error
-            ? error.exitCode
-            : 1;
+        exitCode =
+            error instanceof Error && "exitCode" in error
+                ? error.exitCode
+                : 1;
         finishRun(runId, { exit_code: exitCode, duration_s: durationS });
         fail("define", exitCode, durationS, runId);
     }

@@ -93,4 +93,19 @@ describe("dispatch routes", () => {
 
     await server.close();
   });
+
+  it("should return 404 if dispatch record not found", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/dispatch/nonexistent/phase",
+    });
+
+    expect(response.statusCode).toBe(404);
+    const json = response.json();
+    expect(json.error).toBe("Dispatch record not found");
+
+    await server.close();
+  });
 });

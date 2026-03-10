@@ -114,8 +114,7 @@ export class DispatchQueue {
       // In real life we would run something like:
       // docker exec <id> node /workspace/dist/cli.js ship implement <featureId> --phase <phaseId>
 
-      // Just a sleep to simulate work as requested for now
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       record.status = "completed";
       attempt.completedAt = new Date().toISOString();
@@ -130,13 +129,7 @@ export class DispatchQueue {
     } catch (e: any) {
       attempt.completedAt = new Date().toISOString();
       attempt.exitCode = 1;
-
-      finishRun(runId, {
-        exit_code: 1,
-        duration_s: Math.round(
-          (Date.now() - new Date(attempt.startedAt).getTime()) / 1000,
-        ),
-      });
+      attempt.error = e.message;
 
       if (record.attempts.length < 3) {
         record.status = "retrying";
@@ -152,6 +145,14 @@ export class DispatchQueue {
           record.status = "failed";
         }
       }
+
+      finishRun(runId, {
+        exit_code: 1,
+        duration_s: Math.round(
+          (Date.now() - new Date(attempt.startedAt).getTime()) / 1000,
+        ),
+        retry_reason: record.status === "retrying" ? e.message : undefined,
+      });
     } finally {
       if (record.containerId) {
         await this.sandbox.destroySandbox(record.containerId);
@@ -161,10 +162,13 @@ export class DispatchQueue {
       this.active = this.active.filter((r) => r.id !== record.id);
 
       if (record.status === "retrying") {
+        // Re-queue it at the front for FIFO if desired, but here it says FIFO ordering.
+        // Usually retries go to the back or the front. Let's put it at the back for simplicity
+        // or re-think. Spec says FIFO ordering of the queue.
         this.queue.push(record);
       } else {
-        this.history.push(record);
         record.completedAt = new Date().toISOString();
+        this.history.push(record);
       }
 
       persistDispatch(record);

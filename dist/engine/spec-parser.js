@@ -21,8 +21,8 @@ export function extractStories(featureDir) {
         const match = line.match(storyRegex);
         if (!match)
             continue;
-        const storyId = match[1].toUpperCase();
-        let rawTitle = match[2].trim();
+        const storyId = match[1]?.toUpperCase();
+        let rawTitle = match[2]?.trim();
         let sp = 0;
         const roles = [];
         let priority;

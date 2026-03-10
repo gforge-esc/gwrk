@@ -14,6 +14,7 @@ export const GwrkConfigSchema = z.object({
   agents: z.object({
     define: AgentBackendSchema,
     implement: AgentBackendSchema,
+    fallbackOrder: z.array(AgentBackendSchema).optional(),
   }),
   server: z.object({
     port: z.number().int().min(1024).max(65535),

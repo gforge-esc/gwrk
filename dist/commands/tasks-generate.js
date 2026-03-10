@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { banner, blocked, fail, success } from "../utils/format.js";
 import { generateGates } from "../utils/gate-gen.js";
 import { parsePlan } from "../utils/parser.js";
-import { contentHash, loadTaskState, saveTaskState, } from "../utils/state.js";
-import { banner, success, fail, blocked } from "../utils/format.js";
+import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 /**
  * gwrk define tasks <feature> — Decompose plan → tasks.json + gates
  *
@@ -51,7 +51,9 @@ export const tasksGenerateCommand = new Command("tasks")
         }
         // If --force, wipe existing gates
         if (opts.force && fs.existsSync(gatesDir)) {
-            const existing = fs.readdirSync(gatesDir).filter(f => f.match(/^T\d+-gate\.sh$/));
+            const existing = fs
+                .readdirSync(gatesDir)
+                .filter((f) => f.match(/^T\d+-gate\.sh$/));
             if (existing.length > 0) {
                 console.log(`  Removing ${existing.length} old gate scripts...`);
             }
@@ -73,7 +75,9 @@ export const tasksGenerateCommand = new Command("tasks")
                     const existingTask = existingState.phases
                         .flatMap((ep) => ep.tasks)
                         .find((et) => et.title === t.title);
-                    if (existingTask && (existingTask.status === "completed" || existingTask.status === "in_progress")) {
+                    if (existingTask &&
+                        (existingTask.status === "completed" ||
+                            existingTask.status === "in_progress")) {
                         status = existingTask.status;
                         completedAt = existingTask.completedAt;
                     }
@@ -137,7 +141,11 @@ export const tasksGenerateCommand = new Command("tasks")
         const cancelledTasks = totalTasks - activeTasks;
         const completedTasks = taskState.phases.reduce((n, p) => n + p.tasks.filter((t) => t.status === "completed").length, 0);
         console.log("");
-        const summary = [`${taskState.phases.length} phases`, `${activeTasks} tasks`, `${activeTasks} gates`];
+        const summary = [
+            `${taskState.phases.length} phases`,
+            `${activeTasks} tasks`,
+            `${activeTasks} gates`,
+        ];
         if (completedTasks > 0)
             summary.push(`${completedTasks} preserved`);
         if (cancelledTasks > 0)

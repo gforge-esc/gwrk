@@ -5,7 +5,11 @@ export class GitManager {
         this.projectRoot = projectRoot;
     }
     exec(cmd) {
-        return execSync(cmd, { cwd: this.projectRoot, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+        return execSync(cmd, {
+            cwd: this.projectRoot,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        }).trim();
     }
     createPhaseBranch(featureId, phaseId) {
         const featureBranch = `feature/${featureId}-wip`;

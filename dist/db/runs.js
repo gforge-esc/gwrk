@@ -27,7 +27,8 @@ export function finishRun(runId, update, db) {
          exit_code = @exit_code,
          duration_s = @duration_s,
          gate_result = @gate_result,
-         review_verdict = @review_verdict
+         review_verdict = @review_verdict,
+         retry_reason = @retry_reason
        WHERE id = @id`)
         .run({
         id: runId,
@@ -35,6 +36,7 @@ export function finishRun(runId, update, db) {
         duration_s: update.duration_s ?? null,
         gate_result: update.gate_result ?? null,
         review_verdict: update.review_verdict ?? null,
+        retry_reason: update.retry_reason ?? null,
     });
 }
 /**
@@ -84,7 +86,7 @@ export function recordRun(run, db) {
 export function listRuns(featureId, db) {
     const conn = db ?? getDb();
     return conn
-        .prepare(`SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC`)
+        .prepare("SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC")
         .all(featureId);
 }
 /**

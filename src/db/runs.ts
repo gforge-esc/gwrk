@@ -57,7 +57,7 @@ export function finishRun(
   runId: number,
   update: Pick<
     RunRecord,
-    "exit_code" | "duration_s" | "gate_result" | "review_verdict"
+    "exit_code" | "duration_s" | "gate_result" | "review_verdict" | "retry_reason"
   >,
   db?: Database.Database,
 ): void {
@@ -69,7 +69,8 @@ export function finishRun(
          exit_code = @exit_code,
          duration_s = @duration_s,
          gate_result = @gate_result,
-         review_verdict = @review_verdict
+         review_verdict = @review_verdict,
+         retry_reason = @retry_reason
        WHERE id = @id`,
     )
     .run({
@@ -78,6 +79,7 @@ export function finishRun(
       duration_s: update.duration_s ?? null,
       gate_result: update.gate_result ?? null,
       review_verdict: update.review_verdict ?? null,
+      retry_reason: update.retry_reason ?? null,
     });
 }
 

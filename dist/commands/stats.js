@@ -10,13 +10,13 @@ export const statsCommand = new Command("stats")
             console.log(JSON.stringify(stats, null, 2));
             return;
         }
-        console.log(`\n=== EXECUTION STATISTICS ===\n`);
+        console.log("\n=== EXECUTION STATISTICS ===\n");
         if (stats.length === 0) {
             console.log("No completed runs found in the database yet.");
             return;
         }
-        console.log(`  Command    | Workflow        | Agent     | Runs | Succ% | Avg Dur`);
-        console.log(`  -----------|-----------------|-----------|------|-------|--------`);
+        console.log("  Command    | Workflow        | Agent     | Runs | Succ% | Avg Dur");
+        console.log("  -----------|-----------------|-----------|------|-------|--------");
         for (const row of stats) {
             const cmd = row.command.padEnd(10);
             const wf = (row.workflow || "-").padEnd(15);

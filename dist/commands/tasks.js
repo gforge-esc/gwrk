@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { runGate } from "../utils/exec.js";
+import { color, fail, success } from "../utils/format.js";
 import { appendHistory } from "../utils/history.js";
-import { color, success, fail } from "../utils/format.js";
-import { contentHash, listTasks, loadTaskState, markTaskComplete, nextTask, saveTaskState, } from "../utils/state.js";
 import { loadManifests } from "../utils/manifest.js";
+import { contentHash, listTasks, loadTaskState, markTaskComplete, nextTask, saveTaskState, } from "../utils/state.js";
 export const tasksCommand = new Command("tasks").description("Query and manage task state");
 // generate is now under `gwrk define tasks` — see tasks-generate.ts
 tasksCommand
@@ -80,14 +80,14 @@ tasksCommand
     const manifests = loadManifests(featureDir);
     const state = loadTaskState(featureDir);
     const allTasks = listTasks(state);
-    const completedTasks = allTasks.filter(t => t.status === "completed");
+    const completedTasks = allTasks.filter((t) => t.status === "completed");
     console.log(`Verifying ${feature}...`);
     console.log(`  Found ${manifests.length} manifests`);
     console.log(`  Found ${completedTasks.length} completed tasks`);
     // Verify manifest coverage (simplified for now: each completed task should have a manifest)
     // Actually, Phase 9 says "validates schema + manifest coverage"
     // ADR-003: "gwrk tasks verify <feature> ensures every completed task has a matching manifest."
-    let valid = true;
+    const valid = true;
     for (const task of completedTasks) {
         // This is a bit tricky because manifests don't have taskId yet in schema
         // But they have "phase" and "command".

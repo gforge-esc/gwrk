@@ -1,4 +1,4 @@
-import type { CompressionReport, CompressionRatios, CompressionSummary, DeliveryActuals, EffortForecast } from "./types.js";
+import type { CompressionRatios, CompressionReport, CompressionSummary, DeliveryActuals, EffortForecast } from "./types.js";
 /** ... existing exports ... */
 export declare function computeCompression(forecast: EffortForecast, actuals: DeliveryActuals): CompressionRatios;
 export declare function generateSummary(reports: CompressionReport[]): CompressionSummary;

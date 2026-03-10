@@ -6,7 +6,10 @@ export function compileContext(projectRoot, featureId, phaseId) {
     context += "## Governance Rules\n\n";
     const rulesDir = path.join(projectRoot, ".agent/rules");
     if (fs.existsSync(rulesDir)) {
-        const rules = fs.readdirSync(rulesDir).filter(f => f.endsWith(".md")).sort();
+        const rules = fs
+            .readdirSync(rulesDir)
+            .filter((f) => f.endsWith(".md"))
+            .sort();
         for (const rule of rules) {
             context += `### ${rule}\n\n`;
             context += fs.readFileSync(path.join(rulesDir, rule), "utf-8");
@@ -17,7 +20,10 @@ export function compileContext(projectRoot, featureId, phaseId) {
     context += "## Persona\n\n";
     const personasDir = path.join(projectRoot, ".agent/prompts/personas");
     if (fs.existsSync(personasDir)) {
-        const personas = fs.readdirSync(personasDir).filter(f => f.endsWith(".md")).sort();
+        const personas = fs
+            .readdirSync(personasDir)
+            .filter((f) => f.endsWith(".md"))
+            .sort();
         for (const persona of personas) {
             context += `### ${persona}\n\n`;
             context += fs.readFileSync(path.join(personasDir, persona), "utf-8");

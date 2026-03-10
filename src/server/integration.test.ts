@@ -1,135 +1,126 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { startServer } from "./index.js";
+import type { GwrkConfig } from "../utils/config.js";
+import { removePid } from "./pid.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import Docker from "dockerode";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GwrkConfig } from "../utils/config.js";
-import { startServer } from "./index.js";
-import { removePid } from "./pid.js";
+import { listRuns } from "../db/runs.js";
+import { getDb } from "../db/index.js";
 
-// Mock the DB to avoid real SQLite in integration test for now
-vi.mock("../db/runs.js", () => ({
-  startRun: vi.fn().mockReturnValue(1),
-  finishRun: vi.fn(),
-  getDb: vi.fn(),
-}));
+// Mock sandbox to avoid real Docker calls in integration test for now,
+// or use real docker if we want true integration.
+// Given the constraints and environment, mocking sandbox is safer for CI/CD.
+vi.mock("./sandbox.js", () => {
+  return {
+    SandboxManager: vi.fn().mockImplementation(() => ({
+      checkDocker: vi.fn().mockResolvedValue(true),
+      createSandbox: vi.fn().mockResolvedValue("test-container-id"),
+      destroySandbox: vi.fn().mockResolvedValue(undefined),
+    })),
+  };
+});
 
-const mockConfig: GwrkConfig = {
-  project: { name: "test-integration" },
-  agents: {
-    define: "gemini",
-    implement: "codex-cloud",
-    fallbackOrder: ["claude"],
-  },
-  server: { port: 18795, host: "localhost" },
-  parallelism: {
-    local: { maxCpu: 100, maxMem: 100, minDiskGb: 0, maxClones: 2 },
-    cloud: { maxConcurrent: 10 },
-  },
-};
+// Mock git manager to avoid real git operations
+vi.mock("./git-manager.js", () => {
+  return {
+    GitManager: vi.fn().mockImplementation(() => ({
+      createPhaseBranch: vi.fn().mockReturnValue(undefined),
+    })),
+  };
+});
+
+// Mock monitor to avoid throttling
+vi.mock("./monitor.js", () => {
+  return {
+    SystemMonitor: vi.fn().mockImplementation(() => ({
+      isThrottled: vi.fn().mockReturnValue(false),
+      startPolling: vi.fn(),
+      stopPolling: vi.fn(),
+      sample: vi.fn().mockReturnValue({ cpuPercent: 0, memPercent: 0, diskFreeGb: 100 }),
+    })),
+  };
+});
 
 describe("Server Integration", () => {
   let tempDir: string;
   let oldCwd: string;
-  let docker: Docker;
+  let server: any;
+  const port = 18795;
 
-  beforeEach(async () => {
-    removePid();
-    docker = new Docker();
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-integration-test-"));
+  const mockConfig: GwrkConfig = {
+    project: { name: "integration-test" },
+    agents: { 
+      define: "gemini", 
+      implement: "codex-cloud",
+      fallbackOrder: ["codex-cloud", "claude"]
+    },
+    server: { port, host: "localhost" },
+    parallelism: {
+      local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+      cloud: { maxConcurrent: 10 },
+    },
+  };
+
+  beforeAll(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-int-test-"));
     oldCwd = process.cwd();
     process.chdir(tempDir);
 
-    // Create necessary dirs for context compilation
+    // Setup minimal project structure
     fs.mkdirSync(".agent/rules", { recursive: true });
-    fs.mkdirSync("specs/feat-int/.gwrk", { recursive: true });
-    fs.writeFileSync("specs/feat-int/spec.md", "spec");
-    fs.writeFileSync("specs/feat-int/plan.md", "plan");
-    fs.writeFileSync("specs/feat-int/.gwrk/tasks.json", '{"phases":[]}');
+    fs.mkdirSync("specs/feat-1/.gwrk", { recursive: true });
+    fs.writeFileSync("specs/feat-1/spec.md", "spec");
+    fs.writeFileSync("specs/feat-1/plan.md", "plan");
+    fs.writeFileSync("specs/feat-1/.gwrk/tasks.json", '{"tasks":[]}');
 
-    // Initialize git repo
-    const { execSync } = await import("node:child_process");
-    execSync("git init", { cwd: tempDir, stdio: "ignore" });
-    execSync('git config user.email "test@example.com"', { cwd: tempDir });
-    execSync('git config user.name "Test User"', { cwd: tempDir });
-    execSync("git checkout -b feature/feat-int-wip", {
-      cwd: tempDir,
-      stdio: "ignore",
-    });
-    fs.writeFileSync("README.md", "test");
-    execSync("git add .", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "init"', { cwd: tempDir, stdio: "ignore" });
+    // Initialize DB in temp dir
+    process.env.GWRK_DB_PATH = path.join(tempDir, "gwrk.db");
+
+    server = await startServer(mockConfig, { handleSignals: false });
   });
 
-  afterEach(() => {
+  afterAll(async () => {
+    if (server) await server.close();
     process.chdir(oldCwd);
     fs.rmSync(tempDir, { recursive: true, force: true });
     removePid();
   });
 
-  it("should handle full dispatch lifecycle", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+  it("should handle a full dispatch lifecycle", async () => {
+    // 1. POST dispatch
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      payload: {
+        featureId: "feat-1",
+        phaseId: "phase-1",
+      },
+    });
 
-    try {
-      // 1. Dispatch
-      const dispatchResponse = await server.inject({
-        method: "POST",
-        url: "/api/dispatch",
-        payload: {
-          featureId: "feat-int",
-          phaseId: "phase-1",
-        },
-      });
+    expect(response.statusCode).toBe(200);
+    const record = response.json();
+    expect(record.featureId).toBe("feat-1");
+    expect(["queued", "running", "completed"]).toContain(record.status);
 
-      expect(dispatchResponse.statusCode).toBe(200);
-      const record = dispatchResponse.json();
-      expect(["queued", "running"]).toContain(record.status);
+    // 2. Wait for it to be processed (it runs in background)
+    // We mocked sandbox, git and monitor, so it should be fast.
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // 2. Wait for it to start and have a containerId
-      let activeRecord: any;
-      for (let i = 0; i < 50; i++) {
-        const statusResponse = await server.inject({
-          method: "GET",
-          url: "/api/dispatch/queue",
-        });
-        const status = statusResponse.json();
-        if (status.active.length > 0 && status.active[0].containerId) {
-          activeRecord = status.active[0];
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
+    // 3. Check status
+    const statusResponse = await server.inject({
+      method: "GET",
+      url: `/api/dispatch/feat-1/phase-1`,
+    });
+    expect(statusResponse.statusCode).toBe(200);
+    const updatedRecord = statusResponse.json();
+    expect(updatedRecord.status).toBe("completed");
 
-      if (!activeRecord) {
-        throw new Error("Timed out waiting for active record with containerId");
-      }
-
-      // 3. Verify Docker container exists and is running
-      const container = docker.getContainer(activeRecord.containerId);
-      const info = await container.inspect();
-      expect(info.State.Running).toBe(true);
-      expect(info.Config.Labels["gwrk.feature"]).toBe("feat-int");
-
-      // 4. Wait for completion (simulated 2s)
-      for (let i = 0; i < 50; i++) {
-        const res = await server.inject({
-          method: "GET",
-          url: "/api/dispatch/feat-int/phase-1",
-        });
-        if (res.json().status === "completed") break;
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-
-      // 5. Verify container destroyed
-      for (let i = 0; i < 50; i++) {
-        const containersAfter = await docker.listContainers({
-          filters: { label: ["gwrk.feature=feat-int"] },
-        });
-        if (containersAfter.length === 0) break;
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    } finally {
-      await server.close();
-    }
-  }, 40000);
+    // 4. Check SQLite ledger
+    const runs = listRuns("feat-1");
+    expect(runs.length).toBeGreaterThan(0);
+    expect(runs[0].feature_id).toBe("feat-1");
+    expect(runs[0].phase_id).toBe("phase-1");
+    expect(runs[0].exit_code).toBe(0);
+  }, 10000);
 });

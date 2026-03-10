@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-10T14:33:57.267Z_define_p00",
+  "feature": "help",
+  "phase": "p00",
+  "command": "define",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-10T14:33:57.267Z",
+  "finishedAt": "2026-03-10T14:33:57.500Z",
+  "durationS": 0,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 51,
+  "linesAdded": 832,
+  "linesDeleted": 371,
+  "gitCommit": "00f018149f96e708ab9b20bcce1d9a75543f4bb6",
+  "gitBranch": "develop"
+}

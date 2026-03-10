@@ -1,6 +1,6 @@
-import path from "node:path";
 import fs from "node:fs";
-import { scanRepository, generatePulseReport } from "../engine/pulse.js";
+import path from "node:path";
+import { generatePulseReport, scanRepository } from "../engine/pulse.js";
 import { loadConfig } from "../utils/config.js";
 export function renderPulseTable(report) {
     let out = "\n=== GWRK PULSE SNAPSHOT ===\n";
@@ -18,7 +18,8 @@ export function renderSnapshotTable(snap) {
     if (snap.weeklyBuckets.length > 0) {
         out += "Week Start | Total LOC | Added | Deleted\n";
         out += "-----------|-----------|-------|--------\n";
-        for (const bucket of snap.weeklyBuckets.slice(-4)) { // Show last 4 weeks
+        for (const bucket of snap.weeklyBuckets.slice(-4)) {
+            // Show last 4 weeks
             const dateStr = bucket.weekStart.split("T")[0];
             out += `${dateStr.padEnd(10)} | ${bucket.totalMain.toString().padEnd(9)} | +${bucket.added.toString().padEnd(4)} | -${bucket.deleted}\n`;
         }
