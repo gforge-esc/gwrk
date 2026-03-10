@@ -1,12 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T006 — Implement test strategy for Phase 1
+# Gate: T006 — Implement scripts/dev/work-until-done.sh
 # Asserts: Derived from task description
 
+test -f scripts/dev/work-until-done.sh
 
-# Phase Acceptance Criteria
-npx vitest run src/commands/implement.test.ts
-npx tsc --noEmit
-grep -r 'loadTaskState\|nextTask\|runGate\|markTaskComplete' src/commands/implement.ts | wc -l
-
-echo "PASS: T006 — Implement test strategy for Phase 1"
+echo "PASS: T006 — Implement scripts/dev/work-until-done.sh"

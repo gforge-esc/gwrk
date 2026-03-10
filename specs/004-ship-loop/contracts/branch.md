@@ -1,48 +1,39 @@
 ---
 type: contract
 feature: 004-ship-loop
-last_modified: "2026-03-05T11:12:20Z"
+last_modified: "2026-03-09T22:00:00Z"
 ---
 
 # Contract: Branch Management
 
 **Feature**: 004-ship-loop
-**Scope**: Git branch creation, checkout, and develop merge for feature work
+**Scope**: Git branch creation, checkout, and push for feature isolation
 
 ---
 
-## `ensureBranch(featureName: string): Promise<string>`
+## `wud-branch.sh <feature> [push]`
 
-**Source**: `src/utils/branch.ts`
-**Consumed by**: `src/commands/implement.ts`
+**Source**: `scripts/dev/wud-branch.sh`
+**Consumed by**: `scripts/dev/work-until-done.sh` (BRANCH_SETUP stage)
 
-Creates `feat/<featureName>` from `develop` if it doesn't exist. If it exists locally, checks it out and merges latest `develop`. If it exists only on remote, tracks it. Returns the branch name.
+Ensures the correct `feat/<feature>` branch exists and is checked out. Creates from `develop` if it doesn't exist. Optionally pushes to origin.
 
-```typescript
-function ensureBranch(featureName: string): Promise<string>
-```
+### Arguments
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `feature` | `string` | ✅ | Feature name, e.g. `004-ship-loop` |
+| `push` | `string` | ❌ | If `"push"`, pushes branch to origin after checkout |
 
-| Parameter | Type | Description |
-|---|---|---|
-| `featureName` | `string` | Feature identifier, e.g. `004-ship-loop` |
+### Behavior
+| Current Branch State | Action |
+|---|---|
+| Already on `feat/<feature>` | No-op |
+| Branch exists locally | `git checkout feat/<feature>` |
+| Branch exists on remote | `git checkout -b feat/<feature> origin/feat/<feature>` |
+| Branch doesn't exist | `git checkout -b feat/<feature> develop` |
 
-**Returns**: Branch name (e.g. `feat/004-ship-loop`)
-
-**Behavior**:
-1. If current branch is already `feat/<featureName>`: no-op, return branch name.
-2. If local branch exists: `git checkout feat/<featureName>` → `git merge develop --no-edit`.
-3. If remote branch exists: `git checkout -b feat/<featureName> origin/feat/<featureName>` → merge develop.
-4. If neither: `git checkout develop` → `git pull` → `git checkout -b feat/<featureName>`.
-
----
-
-## `pushBranch(featureName: string): Promise<void>`
-
-**Source**: `src/utils/branch.ts`
-**Consumed by**: `src/commands/wud.ts`
-
-Pushes `feat/<featureName>` to origin with `--force-with-lease`. Retries once on failure with pull --rebase.
-
-```typescript
-function pushBranch(featureName: string): Promise<void>
-```
+### Exit Codes
+| Code | Meaning |
+|---|---|
+| `0` | On correct branch |
+| `1` | Error (git failure) |

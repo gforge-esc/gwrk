@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T003 — Implement src/utils/wud-state.ts
+# Gate: T003 — Implement scripts/dev/wud-verdict.sh
 # Asserts: Derived from task description
 
-test -f src/utils/wud-state.ts
+test -f scripts/dev/wud-verdict.sh
+test -f tasks.json
 
-echo "PASS: T003 — Implement src/utils/wud-state.ts"
+echo "PASS: T003 — Implement scripts/dev/wud-verdict.sh"

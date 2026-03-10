@@ -12,7 +12,7 @@
 graph TD
     P0[Phase 0: Extraction] --> P1[Phase 1: CLI Core]
     P1 --> P2[Phase 2: Build Server]
-    P1 --> P4[Phase 4: WUD Loop]
+    P1 --> P4[Phase 4: Ship Loop]
     P2 --> P3[Phase 3: Slack]
     P2 --> P5[Phase 5: Parallel Dispatch]
     P4 --> P5
@@ -37,7 +37,7 @@ P0 → P1 → P2 → P3 → P11
          → P7
 ```
 
-**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure, multi-CLI provisioning, and the SQLite execution ledger (ADR-002). P2 (Build Server) and P4 (WUD Loop) are the next-order dependencies. P3 is now Slack (Socket Mode + Bolt SDK), replacing Telegram. P11 (App Home Tab) is Slack-native, depending only on P3.
+**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure, multi-CLI provisioning, and the SQLite execution ledger (ADR-002). P2 (Build Server) and P4 (Ship Loop) are the next-order dependencies. P3 is now Slack (Socket Mode + Bolt SDK), replacing Telegram. P11 (App Home Tab) is Slack-native, depending only on P3.
 
 ---
 
@@ -177,7 +177,7 @@ Autonomous implement → review → PR → CI loop. (Renamed from WUD to align w
 
 | Spec | Content | Gate |
 |---|---|---|
-| `004-ship-loop` | `gwrk ship`, `gwrk implement`, review gates, PR creation, run recording | Agent completes a phase and opens a PR |
+| `004-ship-loop` | `gwrk ship`, review gates, PR creation, execution manifests, run recording | Agent completes a phase and opens a PR |
 
 **Dependencies:** Phase 1
 **Agent:** Codex Cloud (autonomous execution)
@@ -185,8 +185,8 @@ Autonomous implement → review → PR → CI loop. (Renamed from WUD to align w
 #### What ships:
 
 ```bash
-gwrk implement <feature> <phase>   # Execute a single phase
-gwrk ship <feature>                # Autonomous lifecycle (was: gwrk wud)
+gwrk ship <feature> [phase]        # Full autonomous lifecycle (phase optional — ships all if omitted)
+gwrk ship <feature> <phase>        # Ship a single phase
 ```
 
 #### SQLite integration:

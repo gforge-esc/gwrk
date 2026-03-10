@@ -1,12 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T011 — Implement test strategy for Phase 2
+# Gate: T011 — Implement src/cli.e2e.test.ts
 # Asserts: Derived from task description
 
+test -f src/cli.e2e.test.ts
 
-# Phase Acceptance Criteria
-npx vitest run src/commands/wud.test.ts
-npx tsc --noEmit
-grep -c 'BRANCH_SETUP\|IMPLEMENTING\|CODE_REVIEW\|UAT_REVIEW\|PR_CI\|DONE' src/commands/wud.ts
-
-echo "PASS: T011 — Implement test strategy for Phase 2"
+echo "PASS: T011 — Implement src/cli.e2e.test.ts"

@@ -1,46 +1,36 @@
 ---
 type: contract
 feature: 004-ship-loop
-last_modified: "2026-03-05T11:12:20Z"
+last_modified: "2026-03-09T22:00:00Z"
 ---
 
 # Contract: Verdict Checker
 
 **Feature**: 004-ship-loop
-**Scope**: Phase completion verdict via tasks.json
+**Scope**: GO/NO-GO determination from tasks.json for a given phase
 
 ---
 
-## `checkPhaseVerdict(featureDir: string, phaseNumber: number): VerdictResult`
+## `wud-verdict.sh <spec_dir> <phase_number>`
 
-**Source**: `src/utils/verdict.ts`
-**Consumed by**: `src/commands/wud.ts`
+**Source**: `scripts/dev/wud-verdict.sh`
+**Consumed by**: `scripts/dev/work-until-done.sh` (after CODE_REVIEW and UAT_REVIEW stages)
 
-Queries tasks.json for the given phase and returns GO/NO-GO based on task completion status.
+Reads `tasks.json` and counts open vs completed tasks for the given phase. Returns GO if all tasks are completed, NO-GO otherwise.
 
-```typescript
-interface VerdictResult {
-  verdict: "GO" | "NO-GO";
-  totalTasks: number;
-  completedTasks: number;
-  openTasks: OpenTask[];
-}
+### Arguments
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `spec_dir` | `string` | ✅ | Path to spec directory, e.g. `specs/004-ship-loop` |
+| `phase_number` | `number` | ✅ | Phase number, e.g. `1` |
 
-interface OpenTask {
-  id: string;
-  title: string;
-  status: "open" | "in_progress";
-}
+### Exit Codes
+| Code | Meaning | stdout |
+|---|---|---|
+| `0` | GO — all tasks completed | `GO — N/N tasks complete (phase-NN)` |
+| `1` | NO-GO — open tasks remain | `NO-GO — M/N tasks still open (phase-NN)` + task list |
+| `2` | Error (missing file, jq unavailable) | Error message |
 
-function checkPhaseVerdict(featureDir: string, phaseNumber: number): VerdictResult
-```
-
-**Returns**: `GO` if all tasks in the phase are `completed`, `NO-GO` otherwise.
-
-**Behavior**:
-- Loads tasks.json via `loadTaskState()` from 001-cli-core.
-- Filters to the specified phase (`phase-NN`).
-- If all tasks have status `completed` → `GO`.
-- If any task has status `open` or `in_progress` → `NO-GO` with the list of remaining tasks.
-
-**Throws**: If phase not found in tasks.json → error with message.
+### Dependencies
+- `jq` must be installed
+- `<spec_dir>/.gwrk/tasks.json` must exist

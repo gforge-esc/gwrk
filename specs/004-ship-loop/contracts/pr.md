@@ -1,55 +1,54 @@
 ---
 type: contract
 feature: 004-ship-loop
-last_modified: "2026-03-05T11:12:20Z"
+last_modified: "2026-03-09T22:00:00Z"
 ---
 
-# Contract: PR + CI Gate
+# Contract: PR & CI Gate
 
 **Feature**: 004-ship-loop
 **Scope**: GitHub PR creation and CI check waiting
 
 ---
 
-## `createPR(opts: CreatePROptions): Promise<number>`
+## PR Creation (work-until-done.sh PR_CI stage)
 
-**Source**: `src/utils/pr.ts`
-**Consumed by**: `src/commands/wud.ts`
+**Source**: `scripts/dev/work-until-done.sh` (inline `gh pr create`)
+**Consumed by**: PR_CI stage of state machine
 
-Creates a GitHub PR via `gh pr create` targeting `develop`. If a PR already exists for the branch, returns the existing PR number.
+Creates a PR targeting `develop` from the current `feat/<feature>` branch.
 
-```typescript
-interface CreatePROptions {
-  featureName: string;       // e.g. "004-ship-loop"
-  phaseNumber: number;
-  featureDir: string;        // For reading tasks.json to build PR body
-}
-
-function createPR(opts: CreatePROptions): Promise<number>
+```bash
+gh pr create --base develop --head "feat/${FEATURE}" \
+  --title "feat: ${FEATURE} phase ${PHASE}" \
+  --body "$(generate_pr_body)"
 ```
-
-| Parameter | Type | Description |
-|---|---|---|
-| `featureName` | `string` | Feature identifier |
-| `phaseNumber` | `number` | Phase number for PR title |
-| `featureDir` | `string` | Spec dir for task list in PR body |
-
-**Returns**: PR number.
-**Throws**: If `gh` CLI not found → exit 1. If PR creation fails → exit 1.
 
 ---
 
-## `waitForCI(prNumber: number, timeoutMinutes: number): Promise<boolean>`
+## `wud-ci-wait.sh <pr_number> [timeout_minutes]`
 
-**Source**: `src/utils/pr.ts`
-**Consumed by**: `src/commands/wud.ts`
+**Source**: `scripts/dev/wud-ci-wait.sh`
+**Consumed by**: `scripts/dev/work-until-done.sh` (PR_CI stage, after PR creation)
 
-Waits for all CI checks to pass on a PR via `gh pr checks --watch`. Returns true if all pass, false on failure or timeout.
+Waits for all PR checks to pass using `gh pr checks --watch`.
 
-```typescript
-function waitForCI(prNumber: number, timeoutMinutes: number): Promise<boolean>
-```
+### Arguments
+| Argument | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `pr_number` | `number` | ✅ | — | GitHub PR number |
+| `timeout_minutes` | `number` | ❌ | `30` | Max wait time |
 
-**Returns**: `true` = all checks passed, `false` = failure or timeout.
+### Exit Codes
+| Code | Meaning |
+|---|---|
+| `0` | All checks passed |
+| `1` | One or more checks failed |
+| `2` | Timeout or error |
 
-**Special case**: If no CI checks are reported and no `.github/workflows/` directory exists, returns `true` (early scaffolding pass-through).
+### Edge Cases
+- No `.github/workflows/` directory → treated as PASS (early scaffolding)
+- `gh` CLI not found → exit 2 with error message
+
+### Dependencies
+- `gh` CLI must be installed and authenticated

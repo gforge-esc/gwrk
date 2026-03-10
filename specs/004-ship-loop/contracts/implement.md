@@ -1,72 +1,44 @@
 ---
 type: contract
 feature: 004-ship-loop
-last_modified: "2026-03-05T11:12:20Z"
+last_modified: "2026-03-09T22:00:00Z"
 ---
 
-# Contract: Implement Command
+# Contract: Implement Action
 
 **Feature**: 004-ship-loop
-**Scope**: Single-phase task execution with gate enforcement
+**Scope**: Single-phase task execution with pre-flight/post-flight gate enforcement
 
 ---
 
-## `executePhase(opts: ExecutePhaseOptions): Promise<ExecutePhaseResult>`
+## `implementAction(feature, phase, opts): Promise<void>`
 
 **Source**: `src/commands/implement.ts`
-**Consumed by**: `src/commands/wud.ts`, CLI
+**Consumed by**: `scripts/dev/work-until-done.sh` (IMPLEMENT stage, via `agent-run.sh implement`)
 
-Executes all tasks in a single phase sequentially: pre-flight gate → agent dispatch → post-flight gate → commit.
-
-```typescript
-interface ExecutePhaseOptions {
-  featureDir: string;       // e.g. "specs/004-ship-loop"
-  phaseNumber: number;      // e.g. 1
-  config: GwrkConfig;       // From loadConfig()
-  dryRun?: boolean;         // Print plan without executing
-}
-
-interface ExecutePhaseResult {
-  tasksCompleted: number;
-  tasksSkipped: number;     // Pre-flight already passing
-  totalTasks: number;
-  branch: string;           // e.g. "feat/004-ship-loop"
-}
-
-function executePhase(opts: ExecutePhaseOptions): Promise<ExecutePhaseResult>
-```
-
-**Returns**: Summary of phase execution
-**Throws**: On missing tasks.json, missing phase, missing gate script → `process.exit(1)`
-
----
-
-## `runPreFlight(gateScript: string): PreFlightResult`
-
-**Source**: `src/commands/implement.ts`
-**Consumed by**: Internal to executePhase
-
-Runs the gate script expecting it to FAIL (exit != 0). If it PASSES (exit 0), the task is skipped.
+Executes all tasks in a single phase sequentially: load tasks → pre-flight gate → agent dispatch → post-flight gate → mark complete.
 
 ```typescript
-interface PreFlightResult {
-  shouldImplement: boolean;  // true if gate FAILS (expected)
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
-
-function runPreFlight(gateScript: string): PreFlightResult
+async function implementAction(
+  feature: string,
+  phase: string,
+  opts: { dryRun?: boolean; agent?: string }
+): Promise<void>
 ```
 
----
+### Behavior Per Task
+1. Load task from `tasks.json`
+2. Run pre-flight gate (`gates/T0xx-gate.sh`)
+   - Exit 0 → skip task (already satisfied)
+   - Exit != 0 → proceed to implementation
+3. Dispatch agent via `agent-run.sh implement <feature> <phase> <taskId>`
+4. Run post-flight gate
+   - Exit 0 → mark task complete in `tasks.json`
+   - Exit != 0 → throw error
 
-## Error States
-
+### Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| tasks.json not found | `tasks.json not found for feature` | 1 |
-| Phase not found | `Phase phase-NN not found in tasks.json` | 1 |
-| Gate script missing | `Gate script gates/T0xx-gate.sh not found` | 1 |
-| Agent dispatch fails | `Agent failed with exit code N` | 1 |
-| Post-flight gate fails | `Post-flight gate failed for T0xx` | 1 |
+| tasks.json not found | `Task state file not found` | 1 |
+| Phase not found | `Phase phase-NN not found` | 1 |
+| Post-flight gate fails | `gate failed after implementation` | 1 |

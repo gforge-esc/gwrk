@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T008 — Implement src/utils/pr.ts
+# Gate: T008 — Implement .agent/workflows/review-code.md
 # Asserts: Derived from task description
 
-test -f src/utils/pr.ts
+# No specific assertions found in task description
+true
 
-echo "PASS: T008 — Implement src/utils/pr.ts"
+echo "PASS: T008 — Implement .agent/workflows/review-code.md"
