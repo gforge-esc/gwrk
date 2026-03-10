@@ -164,7 +164,35 @@ export const shipCommand = new Command("ship")
       } else {
         const specDir = path.join(cwd, "specs", feature);
         const taskState = loadTaskState(specDir);
-        phases = taskState.phases.map((p) => p.id.replace("phase-", ""));
+        const allPhases = taskState.phases.map((p) =>
+          p.id.replace("phase-", ""),
+        );
+
+        // FR-014: Skip phases where all tasks are already completed
+        phases = allPhases.filter((phaseNum) => {
+          const phaseData = taskState.phases.find(
+            (p) => p.id === `phase-${phaseNum.padStart(2, "0")}`,
+          );
+          if (!phaseData) return true;
+          const allComplete = phaseData.tasks.every(
+            (t) => t.status === "completed",
+          );
+          if (allComplete) {
+            console.log(
+              `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
+            );
+            return false;
+          }
+          return true;
+        });
+
+        if (phases.length === 0) {
+          console.log(
+            `${GREEN}✓${RESET} All phases complete for ${feature} — nothing to ship`,
+          );
+          return;
+        }
+
         console.log(
           `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
         );

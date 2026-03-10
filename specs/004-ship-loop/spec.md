@@ -2,7 +2,7 @@
 
 **Feature Branch**: `004-ship-loop`
 **Created**: 2026-02-27
-**Revised**: 2026-03-09
+**Revised**: 2026-03-10
 **Status**: Settled
 **Input**: Autonomous shipping lifecycle — `gwrk ship <feature> [phase]` orchestrates the complete phase lifecycle: branch creation, agent dispatch, code review, UAT review, PR creation, CI gate, retry with circuit breaking, crash recovery, and execution manifest recording (ADR-003). Delegates to `scripts/dev/work-until-done.sh` as the state machine orchestrator. Phase is optional — omitting it ships all phases sequentially.
 
@@ -110,6 +110,31 @@ As a Principal Engineer, I want the agent backend resolved from `.gwrkrc.json` w
 2. **Given** `--agent claude` override, **When** running `gwrk ship 004-ship-loop 1 --dry-run --agent claude`, **Then**:
    - `gwrk ship 004-ship-loop 1 --dry-run --agent claude 2>&1 | grep -q 'claude'` exits 0
 
+### US-009 - Phase-Skip for Completed Phases (Priority: P0)
+As a Principal Engineer, I want `gwrk ship <feature>` to skip phases where all tasks are already `completed`, so rework is never needlessly re-attempted.
+
+**Implements**: FR-014
+
+**Independent Test**: Set all tasks in phase-01 to `completed`; run ship without phase arg; verify phase-01 is skipped with log message.
+
+**Acceptance Scenarios**:
+1. **Given** a feature with 3 phases where phase-01 has all tasks `completed`, **When** running `gwrk ship <feature>`, **Then**:
+   - `gwrk ship <feature> 2>&1 | grep -q 'Phase 01.*all tasks complete.*skipping'` exits 0
+   - Phase 01 is never dispatched to WUD (no `.runs/*_wud_*_p01.log` created during this run)
+
+### US-010 - Circuit-Breaker Files GitHub Issue (Priority: P1)
+As a Principal Engineer, I want the circuit breaker to file a GitHub issue with structured failure context when max iterations are exhausted, so I have a clear record of what went wrong.
+
+**Implements**: FR-015
+
+**Independent Test**: Force circuit-break via `--max-iterations 1`; verify a GitHub issue is created with failure timeline.
+
+**Acceptance Scenarios**:
+1. **Given** a circuit-break triggered by max iterations, **When** WUD exits with `CIRCUIT_BREAK`, **Then**:
+   - A GitHub issue is created with title containing `Circuit break: <feature> Phase <N>`
+   - Issue body contains: open tasks, review log tail, contract reference
+   - `.runs/<feature>_p<phase>.state` contains `tracking_issue` URL
+
 ---
 
 ## 3. Roles, Scopes & Permissions
@@ -133,6 +158,8 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-011**: System MUST record every agent dispatch in the SQLite execution ledger (`~/.gwrk/gwrk.db`). (Implements: US-001)
 - **FR-012**: System MUST write an execution manifest to `specs/<feature>/.gwrk/runs/` per ADR-003 for every ship run. (Implements: US-007)
 - **FR-013**: When phase argument is omitted, system MUST read all phases from `tasks.json` and ship each sequentially, exiting on first non-zero exit code. (Implements: US-003)
+- **FR-014**: When phase argument is omitted and shipping all phases, system MUST check each phase's task states before dispatch. If ALL tasks in a phase have `status: "completed"`, that phase MUST be skipped with a log message `⏭  Phase NN: all tasks complete — skipping`. This check happens in `src/commands/ship.ts` before calling WUD. (Implements: US-009)
+- **FR-015**: On circuit-break (`CIRCUIT_BREAK` state), `work-until-done.sh` MUST invoke `scripts/dev/wud-file-issue.sh` to file a GitHub issue via `gh issue create`. The issue MUST contain: (a) failure timeline with per-iteration outcomes, (b) remaining open tasks from `tasks.json`, (c) tail of the last review log, (d) relevant contract references, (e) remediation steps. The issue URL MUST be written to `tracking_issue` in the state file. (Implements: US-010)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -164,6 +191,18 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 | Condition | stderr contains | Exit code |
 |---|---|---|
 | Circuit breaker | `Circuit breaker` | 1 |
+
+#### FR-014 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| tasks.json missing or unparseable | Falls through to FR-001 error | 1 |
+| Phase has mix of open/completed | Proceeds normally (not skipped) | 0 |
+
+#### FR-015 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| `gh` CLI not available | `Warning: could not file issue — gh not available` | 0 (non-fatal) |
+| Issue creation fails | `Warning: could not file issue` | 0 (non-fatal, circuit-break still exits 1) |
 
 #### FR-008 Error States
 | Condition | stderr contains | Exit code |
@@ -227,6 +266,7 @@ Every ship dispatch recorded per [ADR-002](file:///Users/gonzo/Code/gwrk/docs/de
 - **TR-005**: `src/commands/ship.test.ts` — Verify ship CLI: single-phase dispatch, all-phases iteration, --max-iterations, --ci-timeout, dry-run, failure exit. Vitest. (FR-001, FR-011, FR-013)
 - **TR-006**: `src/cli.e2e.test.ts` — Verify `gwrk ship --help` shows options, no stale subcommands. Vitest + CLI. (FR-001)
 - **TR-007**: `src/scripts-e2e.test.ts` — E2E: work-until-done.sh invocation completes and handles agent failure. Vitest + Shell. (FR-004, FR-007)
+- **TR-008**: `src/commands/ship.test.ts` — Verify phase-skip: mock tasks.json with all-completed phase → verify phase not dispatched. Vitest. (FR-014)
 
 ---
 
@@ -265,3 +305,5 @@ Every ship dispatch recorded per [ADR-002](file:///Users/gonzo/Code/gwrk/docs/de
 | | | FR-011 | US-001 | TR-005 |
 | | | FR-012 | US-007 | TR-005 |
 | | | FR-013 | US-003 | TR-005 |
+| US-009 | FR-014 | FR-014 | US-009 | TR-008 |
+| US-010 | FR-015 | FR-015 | US-010 | TR-007 |
