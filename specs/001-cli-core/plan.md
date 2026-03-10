@@ -215,6 +215,30 @@ Implement the two-tier state architecture ([ADR-003](file:///Users/gonzo/Code/gw
 
 ---
 
+### Phase 10: Workstation Setup — `gwrk setup`
+
+Interactive workstation provisioning for unattended agent execution. Detects TCC permissions, configures SSH key for GitHub, verifies gh CLI auth, writes setup state. See [macos-workstation-setup.md](file:///Users/gonzo/Code/gwrk/docs/references/macos-workstation-setup.md).
+
+**Files (3):**
+- `src/commands/setup.ts` (NEW) — Interactive 4-step wizard: TCC guidance, SSH key gen, gh auth check, verification
+- `src/commands/ship.ts` (MODIFY) — Add pre-flight check: read `~/.gwrk/setup.json`, reject if incomplete
+- `src/utils/setup-state.ts` (NEW) — Read/write `~/.gwrk/setup.json` schema (Zod validated)
+
+**Requirements Addressed:** FR-022, US-021, SC-009
+
+**Tests:**
+- `src/commands/setup.test.ts` (NEW) — TR-021: SSH key gen mock, `~/.ssh/config` update, `setup.json` write, idempotency, ship pre-flight rejection
+
+#### Done When
+- `gwrk setup` runs 4-step wizard, defaults to dedicated SSH key (Option B)
+- SSH key generated, added to GitHub, `~/.ssh/config` updated
+- `~/.gwrk/setup.json` written with completion state
+- `gwrk ship` pre-flight rejects if `setup.json` missing or incomplete
+- Running `gwrk setup` again skips already-passing checks (idempotent)
+- All tests pass
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -258,6 +282,8 @@ Implement the two-tier state architecture ([ADR-003](file:///Users/gonzo/Code/gw
 | FR-019 | 9 | ☐ Open |
 | FR-020 | 9 | ☐ Open |
 | FR-021 | 9 | ☐ Open |
+| US-021 | 10 | ☐ Open |
+| FR-022 | 10 | ☐ Open |
 
 ## Deferred Items
 

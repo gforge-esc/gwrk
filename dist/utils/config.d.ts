@@ -18,12 +18,15 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     agents: z.ZodObject<{
         define: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
         implement: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
+        fallbackOrder: z.ZodOptional<z.ZodArray<z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>, "many">>;
     }, "strip", z.ZodTypeAny, {
         define: "gemini" | "claude" | "codex" | "codex-cloud";
         implement: "gemini" | "claude" | "codex" | "codex-cloud";
+        fallbackOrder?: ("gemini" | "claude" | "codex" | "codex-cloud")[] | undefined;
     }, {
         define: "gemini" | "claude" | "codex" | "codex-cloud";
         implement: "gemini" | "claude" | "codex" | "codex-cloud";
+        fallbackOrder?: ("gemini" | "claude" | "codex" | "codex-cloud")[] | undefined;
     }>;
     server: z.ZodObject<{
         port: z.ZodNumber;
@@ -102,6 +105,7 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     agents: {
         define: "gemini" | "claude" | "codex" | "codex-cloud";
         implement: "gemini" | "claude" | "codex" | "codex-cloud";
+        fallbackOrder?: ("gemini" | "claude" | "codex" | "codex-cloud")[] | undefined;
     };
     server: {
         port: number;
@@ -132,6 +136,7 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     agents: {
         define: "gemini" | "claude" | "codex" | "codex-cloud";
         implement: "gemini" | "claude" | "codex" | "codex-cloud";
+        fallbackOrder?: ("gemini" | "claude" | "codex" | "codex-cloud")[] | undefined;
     };
     server: {
         port: number;

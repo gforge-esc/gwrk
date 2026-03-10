@@ -237,6 +237,19 @@ As a PE, I want `gwrk tasks verify <feature>` to validate task state integrity a
 3. Reports orphaned tasks (manifest exists but task is not `completed`) or regressed tasks (was `completed`, now `open`).
 4. Exit 0 if clean, exit 1 with report if issues found.
 
+### US-021 - Workstation Setup (P1)
+As a PE, I want `gwrk setup` to interactively configure my macOS workstation for unattended agent execution: TCC permissions, SSH key for GitHub, and gh CLI auth.
+
+**Implements**: FR-022
+
+**Acceptance**:
+1. `gwrk setup` runs an interactive 4-step wizard (TCC, SSH, gh, verification).
+2. SSH step defaults to Option B (dedicated `~/.ssh/gwrk-agent` key, no passphrase). Option A (1Password) and Skip are available.
+3. On Option B: generates key, adds to GitHub via `gh ssh-key add`, updates `~/.ssh/config` above any 1Password wildcard.
+4. Writes `~/.gwrk/setup.json` with completion state.
+5. `gwrk ship` pre-flight checks `~/.gwrk/setup.json` — missing or incomplete → `Run gwrk setup first`, exit 1.
+6. Running `gwrk setup` again detects existing setup and only re-runs failing checks (idempotent).
+
 ---
 
 ## 3. Functional Requirements
@@ -261,6 +274,7 @@ As a PE, I want `gwrk tasks verify <feature>` to validate task state integrity a
 - **FR-019**: Execution manifest writer. Every `ship`/`define` run → `.gwrk/runs/*.json`. (US-019)
 - **FR-020**: `gwrk tasks verify <feature>` — post-merge schema + orphan + regression check. (US-020)
 - **FR-021**: `history.jsonl` deprecation. Reads still supported; writes redirected to `gwrk.db history` + manifest. Removal deferred until `gwrk harvest` is operational.
+- **FR-022**: `gwrk setup` — Interactive workstation provisioning. Detects TCC, SSH, gh auth. Generates dedicated SSH key by default. Writes `~/.gwrk/setup.json`. Ship pre-flight checks setup state. (US-021)
 
 ### Error States
 
@@ -274,6 +288,9 @@ As a PE, I want `gwrk tasks verify <feature>` to validate task state integrity a
 | FR-006 | Already completed | `Task <taskId> already completed` | 1 |
 | FR-008 | Config missing | `Configuration file .gwrkrc.json not found` | 1 |
 | FR-008 | Config invalid | `Configuration error: <zod message>` | 1 |
+| FR-022 | gh CLI not authenticated | `gh auth status failed — run gwrk setup` | 1 |
+| FR-022 | SSH key generation fails | `Failed to generate SSH key` | 1 |
+| FR-022 | Setup incomplete (pre-flight) | `Run gwrk setup first` | 1 |
 
 ---
 
@@ -389,6 +406,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **TR-017**: `src/commands/pulse.test.ts` — git log scanning (FR-017)
 - **TR-018**: `src/cli.test.ts` — command registration hierarchy (FR-018)
 - **TR-019**: `src/cli.e2e.test.ts` — compiled binary E2E: `--help` output, stub rejection (FR-018, FR-003)
+- **TR-021**: `src/commands/setup.test.ts` — SSH key gen mock, config write, idempotency, pre-flight check (FR-022)
 
 ---
 
@@ -402,6 +420,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **SC-006**: `pnpm run build` compiles clean with zero TypeScript errors.
 - **SC-007**: Every `ship`/`define` run produces a manifest in `.gwrk/runs/` that survives git push.
 - **SC-008**: `gwrk tasks verify <feature>` detects and reports post-merge state corruption.
+- **SC-009**: `gwrk setup` completes all 4 steps, `gwrk ship` pre-flight passes without prompts.
 
 ---
 
@@ -439,3 +458,4 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 | US-018 | FR-018 | TR-018, TR-019 |
 | US-019 | FR-019 | TR-020 |
 | US-020 | FR-020 | TR-021 |
+| US-021 | FR-022 | TR-021 |

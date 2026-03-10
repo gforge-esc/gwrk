@@ -1,10 +1,10 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-03-09T14:20:01.554Z",
+  "createdAt": "2026-03-10T14:09:31.337Z",
   "generatedFrom": {
     "plan": {
-      "hash": "2190b71f8c30a2be635eb9a3a048502a4a5580c3f7af82a246179b8ebd28e553",
-      "modifiedAt": "2026-03-08T20:26:04.761Z"
+      "hash": "0040dde5f16273185e2a56d5304a1f49e7092809f8175b31234cf92d7a0f01a8",
+      "modifiedAt": "2026-03-10T14:07:54.060Z"
     }
   },
   "phases": [
@@ -333,39 +333,70 @@
           "id": "T037",
           "title": "Implement src/utils/manifest.ts",
           "description": "NEW",
-          "status": "completed",
-          "gateScript": "gates/T037-gate.sh",
-          "completedAt": "2026-03-09T14:23:30.216Z"
+          "status": "open",
+          "gateScript": "gates/T037-gate.sh"
         },
         {
           "id": "T038",
           "title": "Implement src/commands/tasks.ts",
           "description": "MODIFY",
-          "status": "completed",
-          "gateScript": "gates/T038-gate.sh",
-          "completedAt": "2026-03-09T14:23:46.997Z"
+          "status": "open",
+          "gateScript": "gates/T038-gate.sh"
         },
         {
           "id": "T039",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY",
-          "status": "completed",
-          "gateScript": "gates/T039-gate.sh",
-          "completedAt": "2026-03-09T14:23:47.211Z"
+          "status": "open",
+          "gateScript": "gates/T039-gate.sh"
         },
         {
           "id": "T040",
           "title": "Implement src/commands/define.ts",
           "description": "MODIFY",
-          "status": "completed",
-          "gateScript": "gates/T040-gate.sh",
-          "completedAt": "2026-03-09T14:40:00.000Z"
+          "status": "open",
+          "gateScript": "gates/T040-gate.sh"
         }
       ],
       "doneWhen": [
         "Every `ship`/`define` run writes a manifest to `.gwrk/runs/`",
         "`gwrk tasks verify <feature>` validates schema + manifest coverage",
         "`history.jsonl` writes are replaced with manifest + `gwrk.db history`",
+        "All tests pass"
+      ]
+    },
+    {
+      "id": "phase-10",
+      "title": "Workstation Setup — `gwrk setup`",
+      "tasks": [
+        {
+          "id": "T041",
+          "title": "Implement src/commands/setup.ts",
+          "description": "NEW",
+          "status": "open",
+          "gateScript": "gates/T041-gate.sh"
+        },
+        {
+          "id": "T042",
+          "title": "Implement src/commands/ship.ts",
+          "description": "MODIFY",
+          "status": "open",
+          "gateScript": "gates/T042-gate.sh"
+        },
+        {
+          "id": "T043",
+          "title": "Implement src/utils/setup-state.ts",
+          "description": "NEW",
+          "status": "open",
+          "gateScript": "gates/T043-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`gwrk setup` runs 4-step wizard, defaults to dedicated SSH key (Option B)",
+        "SSH key generated, added to GitHub, `~/.ssh/config` updated",
+        "`~/.gwrk/setup.json` written with completion state",
+        "`gwrk ship` pre-flight rejects if `setup.json` missing or incomplete",
+        "Running `gwrk setup` again skips already-passing checks (idempotent)",
         "All tests pass"
       ]
     }
