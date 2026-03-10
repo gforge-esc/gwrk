@@ -15,42 +15,42 @@
         {
           "id": "T001",
           "title": "Implement package.json",
-          "description": "Modify: Add `@slack/bolt` dependency",
+          "description": "Modify: Add `@slack/bolt` dependency\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 01 for requirements.",
           "status": "open",
           "gateScript": "gates/T001-gate.sh"
         },
         {
           "id": "T002",
           "title": "Implement src/commands/setup-slack.ts",
-          "description": "New: `gwrk setup slack [--verify]` command",
+          "description": "New: `gwrk setup slack [--verify]` command\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 01 for requirements.",
           "status": "open",
           "gateScript": "gates/T002-gate.sh"
         },
         {
           "id": "T003",
           "title": "Implement src/utils/slack-client.ts",
-          "description": "New: Slack client wrapper, token loader from `~/.gwrk/.env`",
+          "description": "New: Slack client wrapper, token loader from `~/.gwrk/.env`\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 01 for requirements.",
           "status": "open",
           "gateScript": "gates/T003-gate.sh"
         },
         {
           "id": "T004",
           "title": "Implement src/cli.ts",
-          "description": "Modify: Register `setup slack` subcommand",
+          "description": "Modify: Register `setup slack` subcommand\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 01 for requirements.",
           "status": "open",
           "gateScript": "gates/T004-gate.sh"
         },
         {
           "id": "T005",
           "title": "Implement src/utils/config.ts",
-          "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation",
+          "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 01 for requirements.",
           "status": "open",
           "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
           "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 01 for requirements.",
           "status": "open",
           "gateScript": "gates/T006-gate.sh"
         }
