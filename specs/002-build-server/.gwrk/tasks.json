@@ -242,56 +242,56 @@
         {
           "id": "T027",
           "title": "Implement src/server/dispatch.ts",
-          "description": "NEW: `DispatchQueue` class — FIFO queue, `enqueue(",
+          "description": "NEW: `DispatchQueue` class — FIFO queue, `enqueue(\n\nREVIEW FAIL (code): TYPE ERRORS & INCOMPLETE IMPLEMENTATION — FR-005, FR-008, FR-009.\n  WHERE: src/server/dispatch.ts:41, 72, 108, 121, 131, 145, 167\n  EXPECTED: Valid TypeScript types matching src/server/types.ts and src/utils/config.ts. Real WUD loop execution via docker exec.\n  ACTUAL: 7 TSC errors; runDispatch is a setTimeout stub.\n  FIX: 1. Update src/server/types.ts with missing DispatchRecord/Attempt fields. 2. Update src/utils/config.ts with fallbackOrder. 3. Implement real docker exec in runDispatch.\n  GATE: gates/T027-gate.sh passed only because it's a weak grep check.\n  REF: plan.md Phase 05 > Dispatch Queue & Orchestrator",
           "status": "open",
           "gateScript": "gates/T027-gate.sh"
         },
         {
           "id": "T028",
           "title": "Implement src/server/routes/dispatch.ts",
-          "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue`",
+          "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue`\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
           "status": "open",
           "gateScript": "gates/T028-gate.sh"
         },
         {
           "id": "T029",
           "title": "Implement src/server/persistence.ts",
-          "description": "NEW: Append-only `.gwrk/dispatches.jsonl` writer",
+          "description": "NEW: Append-only `.gwrk/dispatches.jsonl` writer\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
           "status": "open",
           "gateScript": "gates/T029-gate.sh"
         },
         {
           "id": "T030",
           "title": "Implement src/server/dispatch.test.ts",
-          "description": "NEW: Queue FIFO, throttle, retry × 3, escalation tests",
+          "description": "NEW: Queue FIFO, throttle, retry × 3, escalation tests\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
           "status": "open",
           "gateScript": "gates/T030-gate.sh"
         },
         {
           "id": "T031",
           "title": "Implement src/server/routes/dispatch.test.ts",
-          "description": "NEW: HTTP endpoint tests",
+          "description": "NEW: HTTP endpoint tests\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
           "status": "open",
           "gateScript": "gates/T031-gate.sh"
         },
         {
           "id": "T032",
           "title": "Implement src/server/index.ts",
-          "description": "MODIFY: Register dispatch routes, wire Monitor → Queue throttle",
+          "description": "MODIFY: Register dispatch routes, wire Monitor → Queue throttle\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
           "status": "open",
           "gateScript": "gates/T032-gate.sh"
         },
         {
           "id": "T033",
           "title": "Implement src/server/integration.test.ts",
-          "description": "NEW: E2E — start daemon subprocess, POST dispatch, verify container",
+          "description": "NEW: E2E — start daemon subprocess, POST dispatch, verify container\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
           "status": "open",
           "gateScript": "gates/T033-gate.sh"
         },
         {
           "id": "T034",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase 05 for requirements.",
           "status": "open",
           "gateScript": "gates/T034-gate.sh"
         }
