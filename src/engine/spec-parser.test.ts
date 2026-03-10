@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extractStories } from "./spec-parser.js";
 import type { StoryEstimate } from "./types.js";
 
@@ -16,12 +16,16 @@ describe("FR-001: extractStories — story extraction from spec.md", () => {
   beforeEach(() => {
     vi.mocked(fs.existsSync).mockImplementation((pathStr) => {
       // Mock true for any successful dummy requests
-      if (typeof pathStr === "string" && pathStr.includes("specs/001-cli-core")) return true;
+      if (typeof pathStr === "string" && pathStr.includes("specs/001-cli-core"))
+        return true;
       return false;
     });
 
     vi.mocked(fs.readFileSync).mockImplementation((pathStr) => {
-      if (typeof pathStr === "string" && pathStr.includes("specs/001-cli-core")) {
+      if (
+        typeof pathStr === "string" &&
+        pathStr.includes("specs/001-cli-core")
+      ) {
         return `
 ### US-001 - Dummy Story [P1, 10 SP, TS, PE, RE]
 ### US-002 - P0 Story (Priority: P0, 5 SP, PE)
@@ -97,7 +101,8 @@ describe("FR-004: extractStories — error handling", () => {
   beforeEach(() => {
     // Only throw tests will run here
     vi.mocked(fs.existsSync).mockImplementation((pathStr) => {
-      if (typeof pathStr === "string" && pathStr.includes("nonexistent")) return false;
+      if (typeof pathStr === "string" && pathStr.includes("nonexistent"))
+        return false;
       return true;
     });
     vi.mocked(fs.readFileSync).mockReturnValue("No stories here");
@@ -110,17 +115,17 @@ describe("FR-004: extractStories — error handling", () => {
   // US-002 Acceptance Scenario 1
   it("US-002: throws with 'spec.md not found' for missing spec file", () => {
     expect(() => extractStories("specs/nonexistent")).toThrow(
-      /spec\.md not found/
+      /spec\.md not found/,
     );
   });
 
   // US-002 Acceptance Scenario 2
   it("US-002: throws with 'No user stories found' for spec with no US markers", () => {
     // Would need a directory with a spec.md but no US-### markers.
-    // For now we'll mock that case or just pass a known bad directory if one exists, 
+    // For now we'll mock that case or just pass a known bad directory if one exists,
     // but right now passing "/dev" as a directory without a spec.md throws early.
     expect(() => extractStories("/dev")).toThrow(
-      /No user stories found|spec\.md not found/
+      /No user stories found|spec\.md not found/,
     );
   });
 });

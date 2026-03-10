@@ -1,8 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCommand, dispatchAgent } from "./agent.js";
 
-import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 
 const mockWrite = vi.fn();
 const mockEnd = vi.fn();
@@ -40,7 +40,12 @@ describe("buildCommand — agent backend routing", () => {
 
     expect(result.command).toBe("gemini");
     // Should produce: gemini -p "/specify test feature" --approval-mode yolo
-    expect(result.args).toEqual(["-p", "/specify test feature", "--approval-mode", "yolo"]);
+    expect(result.args).toEqual([
+      "-p",
+      "/specify test feature",
+      "--approval-mode",
+      "yolo",
+    ]);
     expect(result.stdin).toBeUndefined();
   });
 
@@ -55,7 +60,12 @@ describe("buildCommand — agent backend routing", () => {
     );
 
     expect(result.command).toBe("gemini");
-    expect(result.args).toEqual(["-p", "/plan specs/001-cli-core", "--approval-mode", "yolo"]);
+    expect(result.args).toEqual([
+      "-p",
+      "/plan specs/001-cli-core",
+      "--approval-mode",
+      "yolo",
+    ]);
   });
 
   it("uses plan approval mode for analyze (read-only)", () => {
@@ -68,7 +78,12 @@ describe("buildCommand — agent backend routing", () => {
       "mock workflow content",
     );
 
-    expect(result.args).toEqual(["-p", "/analyze specs/001-cli-core", "--approval-mode", "plan"]);
+    expect(result.args).toEqual([
+      "-p",
+      "/analyze specs/001-cli-core",
+      "--approval-mode",
+      "plan",
+    ]);
   });
 
   it("builds correct command for claude with -p flag", () => {
@@ -146,13 +161,13 @@ describe("dispatchAgent — process execution and stream handling", () => {
     const stdoutStream = new PassThrough();
     const stderrStream = new PassThrough();
     const stdinStream = new PassThrough();
-    
+
     // Fake ChildProcess
     const child = new EventEmitter() as any;
     child.stdout = stdoutStream;
     child.stderr = stderrStream;
     child.stdin = stdinStream;
-    
+
     mockSpawn.mockReturnValue(child);
 
     const promise = dispatchAgent(runOpts);
@@ -160,7 +175,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
     // Write some logs through the simulated agent output
     stdoutStream.write("Doing work...\n");
     stderrStream.write("Debug info...\n");
-    
+
     // Simulate natural process exit
     child.emit("close", 0);
 
@@ -169,8 +184,12 @@ describe("dispatchAgent — process execution and stream handling", () => {
     expect(result.logPath).toContain("test-feature.log");
 
     // Verify it created a write stream to the log
-    expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining("Doing work...\n"));
-    expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining("Debug info...\n"));
+    expect(mockWrite).toHaveBeenCalledWith(
+      expect.stringContaining("Doing work...\n"),
+    );
+    expect(mockWrite).toHaveBeenCalledWith(
+      expect.stringContaining("Debug info...\n"),
+    );
     expect(mockEnd).toHaveBeenCalled();
   });
 
@@ -198,7 +217,9 @@ describe("dispatchAgent — process execution and stream handling", () => {
 
     const result = await promise;
     expect(result.exitCode).toBe(1);
-    expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining("[ERROR] Agent process failed to start"));
+    expect(mockWrite).toHaveBeenCalledWith(
+      expect.stringContaining("[ERROR] Agent process failed to start"),
+    );
   });
 
   it("should squelch 429 error JSON block traces correctly", async () => {
@@ -213,7 +234,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
     stdoutStream.write("Attempt 1 failed with status 429\n");
     // Next line is part of an un-rendered JSON block
     stdoutStream.write("{\n");
-    stdoutStream.write("  \"error\": \"quota exceeded\"\n");
+    stdoutStream.write('  "error": "quota exceeded"\n');
     stdoutStream.write("}\n");
     // This line comes after squelch breaks
     stdoutStream.write("Attempt 2 succeeded\n");
@@ -222,10 +243,13 @@ describe("dispatchAgent — process execution and stream handling", () => {
     await promise;
 
     // Checks that the 429 marker was written to the log, but NOT the JSON squelch trace
-    expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining("rate limited, retrying"));
-    const calls = mockWrite.mock.calls.map(c => c[0]);
-    expect(calls.some(c => c.includes("quota exceeded"))).toBe(false);
-    expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining("Attempt 2 succeeded"));
+    expect(mockWrite).toHaveBeenCalledWith(
+      expect.stringContaining("rate limited, retrying"),
+    );
+    const calls = mockWrite.mock.calls.map((c) => c[0]);
+    expect(calls.some((c) => c.includes("quota exceeded"))).toBe(false);
+    expect(mockWrite).toHaveBeenCalledWith(
+      expect.stringContaining("Attempt 2 succeeded"),
+    );
   });
 });
-

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SandboxManager } from "./sandbox.js";
 import Docker from "dockerode";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SandboxManager } from "./sandbox.js";
 
 vi.mock("dockerode");
 
@@ -41,16 +41,18 @@ describe("SandboxManager", () => {
     });
 
     expect(containerId).toBe("test-id");
-    expect(mockDocker.createContainer).toHaveBeenCalledWith(expect.objectContaining({
-      Image: "gwrk-sandbox:bookworm-slim",
-      Labels: {
-        "gwrk.feature": "001-cli-core",
-        "gwrk.phase": "phase-01",
-      },
-      HostConfig: {
-        Binds: ["/test/root:/workspace"],
-      },
-    }));
+    expect(mockDocker.createContainer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Image: "gwrk-sandbox:bookworm-slim",
+        Labels: {
+          "gwrk.feature": "001-cli-core",
+          "gwrk.phase": "phase-01",
+        },
+        HostConfig: {
+          Binds: ["/test/root:/workspace"],
+        },
+      }),
+    );
     expect(mockContainer.start).toHaveBeenCalled();
   });
 

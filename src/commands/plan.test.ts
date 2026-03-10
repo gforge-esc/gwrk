@@ -79,7 +79,10 @@ describe("planCommand", () => {
   it("should fail if spec.md is marked as a Stub", async () => {
     const featureDir = path.join(tempDir, "specs/feature-x");
     fs.mkdirSync(featureDir, { recursive: true });
-    fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec\n> **Status:** Stub\n");
+    fs.writeFileSync(
+      path.join(featureDir, "spec.md"),
+      "# Spec\n> **Status:** Stub\n",
+    );
 
     await expect(() =>
       planCommand.parseAsync(["feature-x"], { from: "user" }),

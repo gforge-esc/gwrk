@@ -11,7 +11,7 @@ export async function startServer(config, options = { handleSignals: true }) {
     const server = fastify({
         logger: true,
     });
-    const monitor = new SystemMonitor();
+    const monitor = new SystemMonitor(config);
     const sandbox = new SandboxManager();
     const git = new GitManager(projectRoot);
     const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);

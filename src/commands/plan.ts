@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { finishRun, startRun } from "../db/runs.js";
 import { dispatchAgent } from "../utils/agent.js";
 import { loadConfig } from "../utils/config.js";
-import { startRun, finishRun } from "../db/runs.js";
-import { banner, success, fail, blocked } from "../utils/format.js";
+import { banner, blocked, fail, success } from "../utils/format.js";
 
 export const planCommand = new Command("plan")
   .description("Create an implementation plan for a feature")
@@ -23,7 +23,9 @@ export const planCommand = new Command("plan")
 
     const specContent = fs.readFileSync(specPath, "utf-8");
     if (/^>?\s*\*\*Status:\*\*\s*Stub/im.test(specContent)) {
-      blocked(`Spec ${feature} is marked as a Stub. Run 'gwrk define spec ${feature}' first.`);
+      blocked(
+        `Spec ${feature} is marked as a Stub. Run 'gwrk define spec ${feature}' first.`,
+      );
       process.exit(1);
     }
 

@@ -1,8 +1,8 @@
+import type { AgentBackend, GwrkConfig } from "../utils/config.js";
+import type { GitManager } from "./git-manager.js";
+import type { SystemMonitor } from "./monitor.js";
+import type { SandboxManager } from "./sandbox.js";
 import type { DispatchRecord } from "./types.js";
-import type { GwrkConfig, AgentBackend } from "../utils/config.js";
-import { SystemMonitor } from "./monitor.js";
-import { SandboxManager } from "./sandbox.js";
-import { GitManager } from "./git-manager.js";
 export interface DispatchRequest {
     featureId: string;
     phaseId: string;
@@ -28,4 +28,6 @@ export declare class DispatchQueue {
     };
     getQueueDepth(): number;
     getActiveCount(): number;
+    getCompletedCount(): number;
+    getFailedCount(): number;
 }

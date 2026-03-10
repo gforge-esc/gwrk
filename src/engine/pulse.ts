@@ -1,9 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
-import { gitLog, gitBranches, detectDefaultBranch, gitLineCount, gitDraftLineCount } from "../utils/git.js";
-import type { PulseSnapshot, WeeklyBucket, PulseReport, SpecProgress } from "./types.js";
-import { PulseSnapshotSchema, PulseReportSchema } from "./types.js";
 import type { GwrkConfig } from "../utils/config.js";
+import {
+  detectDefaultBranch,
+  gitBranches,
+  gitDraftLineCount,
+  gitLineCount,
+  gitLog,
+} from "../utils/git.js";
+import type {
+  PulseReport,
+  PulseSnapshot,
+  SpecProgress,
+  WeeklyBucket,
+} from "./types.js";
+import { PulseReportSchema, PulseSnapshotSchema } from "./types.js";
 
 interface ParsedCommit {
   hash: string;
@@ -35,19 +46,20 @@ export function parseGitLog(raw: string): ParsedCommit[] {
       if (!line) continue;
 
       const [addedStr, deletedStr, filePath] = line.split(/\t+/);
-      
+
       // Handle rename format e.g. "path/{old => new}"
       let finalPath = filePath;
       if (finalPath?.includes("=>")) {
         const match = finalPath.match(/\{(.*) => (.*)\}/);
         if (match) {
-           finalPath = finalPath.replace(match[0], match[2]);
+          finalPath = finalPath.replace(match[0], match[2]);
         }
       }
 
       // Handle binary files which output "-" for added/deleted
       const added = addedStr === "-" ? 0 : Number.parseInt(addedStr, 10) || 0;
-      const deleted = deletedStr === "-" ? 0 : Number.parseInt(deletedStr, 10) || 0;
+      const deleted =
+        deletedStr === "-" ? 0 : Number.parseInt(deletedStr, 10) || 0;
 
       if (finalPath) {
         parsed.files.push({ added, deleted, path: finalPath });
@@ -63,14 +75,17 @@ export function parseGitLog(raw: string): ParsedCommit[] {
 /**
  * Groups commits into ISO-week buckets. Output is sorted oldest first.
  */
-export function bucketByWeek(commits: ParsedCommit[], defaultBranch: string): WeeklyBucket[] {
+export function bucketByWeek(
+  commits: ParsedCommit[],
+  defaultBranch: string,
+): WeeklyBucket[] {
   if (commits.length === 0) return [];
 
   const buckets = new Map<string, WeeklyBucket>();
 
   // Optional: Since git history can be non-linear or commits unordered, sort them chronologically first
   const sortedCommits = [...commits].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
   );
 
   for (const commit of sortedCommits) {
@@ -93,7 +108,7 @@ export function bucketByWeek(commits: ParsedCommit[], defaultBranch: string): We
     }
 
     const bucket = buckets.get(weekStartIso) as WeeklyBucket;
-    
+
     for (const file of commit.files) {
       bucket.added += file.added;
       bucket.deleted += file.deleted;
@@ -104,8 +119,8 @@ export function bucketByWeek(commits: ParsedCommit[], defaultBranch: string): We
   result.sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
   // Compute totalMain and totalDrafts cumulatively (rough approximation for buckets based on added/deleted)
-  // For precise LOC at point in time, git checkout + count per week is required, 
-  // but FR-004 asks to bucket LOC changes. The acceptance criteria implies 
+  // For precise LOC at point in time, git checkout + count per week is required,
+  // but FR-004 asks to bucket LOC changes. The acceptance criteria implies
   // totalMain is cumulativeLOC. Let's compute running totals.
   let runningTotal = 0;
   for (const bucket of result) {
@@ -134,9 +149,9 @@ export function scanRepository(repoPath: string): PulseSnapshot {
   const buckets = bucketByWeek(commits, defaultBranch);
 
   const mainLoc = gitLineCount(repoPath, defaultBranch);
-  
+
   // Find lines added in any branch besides defaultBranch that haven't been merged
-  const draftLoc = gitDraftLineCount(repoPath, defaultBranch); 
+  const draftLoc = gitDraftLineCount(repoPath, defaultBranch);
 
   const snapshot: PulseSnapshot = {
     repoPath: repoPath,
@@ -163,9 +178,10 @@ export function scanSpecProgress(projectRoot: string): SpecProgress {
     return { totalSpecs, totalPlans };
   }
 
-  const features = fs.readdirSync(specsDir, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
+  const features = fs
+    .readdirSync(specsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
 
   for (const feature of features) {
     if (fs.existsSync(path.join(specsDir, feature, "spec.md"))) {
@@ -184,9 +200,11 @@ export function scanSpecProgress(projectRoot: string): SpecProgress {
  */
 export function generatePulseReport(config: GwrkConfig): PulseReport {
   const repos = config.pulse?.repos;
-  
+
   if (!repos || repos.length === 0) {
-    throw new Error("No repositories tracked. Add repos to .gwrkrc.json pulse.repos");
+    throw new Error(
+      "No repositories tracked. Add repos to .gwrkrc.json pulse.repos",
+    );
   }
 
   const repositories: PulseSnapshot[] = [];

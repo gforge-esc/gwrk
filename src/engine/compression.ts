@@ -1,21 +1,32 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import type { CompressionReport, CompressionRatios, CompressionSummary, DeliveryActuals, EffortForecast } from "./types.js";
+import type {
+  CompressionRatios,
+  CompressionReport,
+  CompressionSummary,
+  DeliveryActuals,
+  EffortForecast,
+} from "./types.js";
 
 /** ... existing exports ... */
-export function computeCompression(forecast: EffortForecast, actuals: DeliveryActuals): CompressionRatios {
+export function computeCompression(
+  forecast: EffortForecast,
+  actuals: DeliveryActuals,
+): CompressionRatios {
   // Point Compression = Estimated Coding Hours / Actual Coding Time (hours)
   const actualHours = actuals.activeCodingMinutes / 60;
-  const pointCompression = actualHours > 0 
-    ? forecast.estimatedHours / actualHours 
-    : Infinity;
+  const pointCompression =
+    actualHours > 0
+      ? forecast.estimatedHours / actualHours
+      : Number.POSITIVE_INFINITY;
 
   // Total Compression = Estimated Elapsed Days / Actual Elapsed Days
   const actualDays = actuals.deliveryWindowHours / 24;
-  const totalCompression = actualDays > 0 
-    ? forecast.estimatedDays / actualDays 
-    : Infinity;
+  const totalCompression =
+    actualDays > 0
+      ? forecast.estimatedDays / actualDays
+      : Number.POSITIVE_INFINITY;
 
   return {
     pointCompression,
@@ -24,7 +35,9 @@ export function computeCompression(forecast: EffortForecast, actuals: DeliveryAc
   };
 }
 
-export function generateSummary(reports: CompressionReport[]): CompressionSummary {
+export function generateSummary(
+  reports: CompressionReport[],
+): CompressionSummary {
   const summary: CompressionSummary = {
     projectName: "Unknown", // Can be overridden
     generatedAt: new Date().toISOString(),
@@ -37,7 +50,7 @@ export function generateSummary(reports: CompressionReport[]): CompressionSummar
       avgTotalCompression: 0,
     },
     best: { featureId: "", pointCompression: 0 },
-    worst: { featureId: "", pointCompression: Infinity },
+    worst: { featureId: "", pointCompression: Number.POSITIVE_INFINITY },
     trend: "stable",
   };
 
@@ -49,24 +62,32 @@ export function generateSummary(reports: CompressionReport[]): CompressionSummar
   for (const r of reports) {
     summary.totals.totalSP += r.forecast.totalSP;
     summary.totals.totalEstimatedHours += r.forecast.estimatedHours;
-    summary.totals.totalActualCodingHours += (r.actuals.activeCodingMinutes / 60);
+    summary.totals.totalActualCodingHours += r.actuals.activeCodingMinutes / 60;
 
     totalPointCompression += r.compression.pointCompression;
     totalTotalCompression += r.compression.totalCompression;
 
     if (r.compression.pointCompression > summary.best.pointCompression) {
-      summary.best = { featureId: r.featureId, pointCompression: r.compression.pointCompression };
+      summary.best = {
+        featureId: r.featureId,
+        pointCompression: r.compression.pointCompression,
+      };
     }
     if (r.compression.pointCompression < summary.worst.pointCompression) {
-      summary.worst = { featureId: r.featureId, pointCompression: r.compression.pointCompression };
+      summary.worst = {
+        featureId: r.featureId,
+        pointCompression: r.compression.pointCompression,
+      };
     }
   }
 
   summary.totals.avgPointCompression = totalPointCompression / reports.length;
   summary.totals.avgTotalCompression = totalTotalCompression / reports.length;
 
-  const sorted = [...reports].sort((a, b) => 
-    new Date(a.actuals.firstImplCommit).getTime() - new Date(b.actuals.firstImplCommit).getTime()
+  const sorted = [...reports].sort(
+    (a, b) =>
+      new Date(a.actuals.firstImplCommit).getTime() -
+      new Date(b.actuals.firstImplCommit).getTime(),
   );
 
   if (sorted.length > 1) {
@@ -74,8 +95,12 @@ export function generateSummary(reports: CompressionReport[]): CompressionSummar
     const firstHalf = sorted.slice(0, mid);
     const secondHalf = sorted.slice(mid);
 
-    const firstHalfAvg = firstHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) / firstHalf.length;
-    const secondHalfAvg = secondHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) / secondHalf.length;
+    const firstHalfAvg =
+      firstHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) /
+      firstHalf.length;
+    const secondHalfAvg =
+      secondHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) /
+      secondHalf.length;
 
     if (secondHalfAvg > firstHalfAvg * 1.05) {
       summary.trend = "improving";
@@ -90,7 +115,10 @@ export function generateSummary(reports: CompressionReport[]): CompressionSummar
 /**
  * Gathers delivery actuals securely from the filesystem and git.
  */
-export function gatherDeliveryActuals(featureDir: string, sessionGapMinutes = 30): DeliveryActuals {
+export function gatherDeliveryActuals(
+  featureDir: string,
+  sessionGapMinutes = 30,
+): DeliveryActuals {
   const specPath = path.join(featureDir, "spec.md");
   if (!fs.existsSync(featureDir)) {
     throw new Error(`Feature directory not found: ${featureDir}`);
@@ -100,7 +128,8 @@ export function gatherDeliveryActuals(featureDir: string, sessionGapMinutes = 30
   if (fs.existsSync(specPath)) {
     const stats = fs.statSync(specPath);
     // Use birthtime if available, otherwise fallback to mtime
-    const birthTime = stats.birthtime.getTime() > 0 ? stats.birthtime : stats.mtime;
+    const birthTime =
+      stats.birthtime.getTime() > 0 ? stats.birthtime : stats.mtime;
     specCreatedAtStr = birthTime.toISOString();
   }
 
@@ -110,24 +139,39 @@ export function gatherDeliveryActuals(featureDir: string, sessionGapMinutes = 30
     const parentDir = path.dirname(featureDir);
     // Use git log on the exact feature directory
     // %aI = author date strict ISO 8601
-    gitLogOut = execFileSync("git", ["log", "--reverse", "--format=%aI", "--", featureDir], {
-      cwd: parentDir,
-      encoding: "utf-8",
-    }).toString().trim();
+    gitLogOut = execFileSync(
+      "git",
+      ["log", "--reverse", "--format=%aI", "--", featureDir],
+      {
+        cwd: parentDir,
+        encoding: "utf-8",
+      },
+    )
+      .toString()
+      .trim();
   } catch (err) {
     // maybe no commits yet
   }
 
-  const lines = gitLogOut.split("\n").map(l => l.trim()).filter(Boolean);
+  const lines = gitLogOut
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length === 0) {
-    throw new Error(`No implementation commits found for feature '${path.basename(featureDir)}'`);
+    throw new Error(
+      `No implementation commits found for feature '${path.basename(featureDir)}'`,
+    );
   }
 
   // Parse commit timestamps and sort chronologically
-  const timestamps = lines.map(l => new Date(l).getTime()).sort((a, b) => a - b);
-  
+  const timestamps = lines
+    .map((l) => new Date(l).getTime())
+    .sort((a, b) => a - b);
+
   const firstImplCommit = new Date(timestamps[0]!).toISOString();
-  const lastImplCommit = new Date(timestamps[timestamps.length - 1]!).toISOString();
+  const lastImplCommit = new Date(
+    timestamps[timestamps.length - 1]!,
+  ).toISOString();
 
   // Clustering
   let sessionCount = 0;
@@ -149,7 +193,8 @@ export function gatherDeliveryActuals(featureDir: string, sessionGapMinutes = 30
 
       if (diff > gapMs) {
         // Gap exceeded. Close current session.
-        const sessionDuration = (currentSessionEnd - currentSessionStart) / (1000 * 60);
+        const sessionDuration =
+          (currentSessionEnd - currentSessionStart) / (1000 * 60);
         // Minimum session duration of 5 minutes for single-isolated commits ending a session immediately
         activeCodingMinutes += Math.max(sessionDuration, 5);
 
@@ -164,13 +209,14 @@ export function gatherDeliveryActuals(featureDir: string, sessionGapMinutes = 30
     }
 
     // Close final session
-    const finalSessionDuration = (currentSessionEnd - currentSessionStart) / (1000 * 60);
+    const finalSessionDuration =
+      (currentSessionEnd - currentSessionStart) / (1000 * 60);
     activeCodingMinutes += Math.max(finalSessionDuration, 5);
   }
 
   const specCreatedTime = new Date(specCreatedAtStr).getTime();
   const firstImplTime = timestamps[0]!;
-  
+
   let dormancyDays = (firstImplTime - specCreatedTime) / (1000 * 60 * 60 * 24);
   if (dormancyDays < 0) dormancyDays = 0;
 
@@ -178,10 +224,16 @@ export function gatherDeliveryActuals(featureDir: string, sessionGapMinutes = 30
   let prMergedAtStr = lastImplCommit;
   try {
     const parentDir = path.dirname(featureDir);
-    const ghOut = execFileSync("gh", ["pr", "view", "--json", "mergedAt", "--jq", ".mergedAt"], {
-      cwd: parentDir,
-      encoding: "utf-8",
-    }).toString().trim();
+    const ghOut = execFileSync(
+      "gh",
+      ["pr", "view", "--json", "mergedAt", "--jq", ".mergedAt"],
+      {
+        cwd: parentDir,
+        encoding: "utf-8",
+      },
+    )
+      .toString()
+      .trim();
     if (ghOut && ghOut !== "null") {
       prMergedAtStr = ghOut;
     }
@@ -191,7 +243,8 @@ export function gatherDeliveryActuals(featureDir: string, sessionGapMinutes = 30
 
   const firstCommitDate = new Date(firstImplCommit);
   const finishDate = new Date(prMergedAtStr);
-  let deliveryWindowHours = (finishDate.getTime() - firstCommitDate.getTime()) / (1000 * 60 * 60);
+  let deliveryWindowHours =
+    (finishDate.getTime() - firstCommitDate.getTime()) / (1000 * 60 * 60);
   if (deliveryWindowHours < 0.1) deliveryWindowHours = 0.1;
 
   return {

@@ -1,6 +1,6 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { Command } from "commander";
 import { registerProject } from "../db/runs.js";
 import { execCommand } from "../utils/exec.js";
@@ -72,7 +72,10 @@ export const initCommand = new Command("init")
     }
 
     // SQLite Project Registration
-    const projectId = crypto.createHash("md5").update(projectRoot).digest("hex");
+    const projectId = crypto
+      .createHash("md5")
+      .update(projectRoot)
+      .digest("hex");
     registerProject({
       id: projectId,
       name: projectName,
@@ -86,26 +89,30 @@ export const initCommand = new Command("init")
       const ghCheck = await execCommand("which", ["gh"]);
       if (ghCheck.exitCode === 0) {
         // Check if remote already exists
-        const remoteRes = await execCommand("git", ["remote", "get-url", "origin"], undefined, { cwd: projectRoot });
+        const remoteRes = await execCommand(
+          "git",
+          ["remote", "get-url", "origin"],
+          undefined,
+          { cwd: projectRoot },
+        );
         if (remoteRes.exitCode !== 0) {
-          console.log(`Creating private GitHub repository ${options.github}...`);
+          console.log(
+            `Creating private GitHub repository ${options.github}...`,
+          );
           const ghRes = await execCommand(
             "gh",
-            [
-              "repo",
-              "create",
-              options.github,
-              "--private",
-              "--source",
-              ".",
-            ],
+            ["repo", "create", options.github, "--private", "--source", "."],
             undefined,
             { cwd: projectRoot },
           );
           if (ghRes.exitCode === 0) {
-            console.log(`Successfully created and linked GitHub repository: ${options.github}`);
+            console.log(
+              `Successfully created and linked GitHub repository: ${options.github}`,
+            );
           } else {
-            console.warn(`Warning: Failed to create GitHub repository: ${ghRes.stderr.trim()}`);
+            console.warn(
+              `Warning: Failed to create GitHub repository: ${ghRes.stderr.trim()}`,
+            );
           }
         }
       }

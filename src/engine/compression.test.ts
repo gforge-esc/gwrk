@@ -1,7 +1,11 @@
-import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { describe, it, expect, vi } from "vitest";
-import { computeCompression, generateSummary, gatherDeliveryActuals } from "./compression.js";
+import fs from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import {
+  computeCompression,
+  gatherDeliveryActuals,
+  generateSummary,
+} from "./compression.js";
 import type {
   CompressionRatios,
   CompressionReport,
@@ -24,8 +28,11 @@ vi.mock("node:child_process");
 describe("FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit clustering", () => {
   it("TR-005 & TR-006: extracts timestamps and clusters commits (15 mins active across 2 sessions)", () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.statSync).mockReturnValue({ birthtime: new Date("2026-01-01T00:00:00Z"), mtime: new Date("2026-01-01T00:00:00Z") } as any);
-    
+    vi.mocked(fs.statSync).mockReturnValue({
+      birthtime: new Date("2026-01-01T00:00:00Z"),
+      mtime: new Date("2026-01-01T00:00:00Z"),
+    } as any);
+
     vi.mocked(execFileSync).mockImplementation(((cmd: string) => {
       if (cmd === "git") {
         return "2026-01-02T10:00:00Z\n2026-01-02T10:05:00Z\n2026-01-02T10:10:00Z\n2026-01-02T12:00:00Z\n2026-01-02T12:05:00Z\n";
@@ -34,23 +41,28 @@ describe("FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit cluster
     }) as any);
 
     const actuals = gatherDeliveryActuals("/mock/feat-a", 30);
-    
+
     expect(actuals.sessionCount).toBe(2);
     // Session 1: 10:00 -> 10:10 (10 mins)
     // Session 2: 12:00 -> 12:05 (5 mins)
     // Total: 15 mins
     expect(actuals.activeCodingMinutes).toBe(15);
     expect(actuals.dormancyDays).toBe(1); // 2026-01-01 to 2026-01-02
-    
+
     vi.resetAllMocks();
   });
 
   it("TR-010: throws when feature has no implementation commits", () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.statSync).mockReturnValue({ birthtime: new Date(), mtime: new Date() } as any);
+    vi.mocked(fs.statSync).mockReturnValue({
+      birthtime: new Date(),
+      mtime: new Date(),
+    } as any);
     vi.mocked(execFileSync).mockReturnValue("" as any); // empty git log
 
-    expect(() => gatherDeliveryActuals("/mock/empty-feat")).toThrow(/No implementation commits found/);
+    expect(() => gatherDeliveryActuals("/mock/empty-feat")).toThrow(
+      /No implementation commits found/,
+    );
 
     vi.resetAllMocks();
   });
@@ -58,7 +70,9 @@ describe("FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit cluster
   it("TR-010: throws feature directory not found", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
-    expect(() => gatherDeliveryActuals("/mock/not-real")).toThrow(/Feature directory not found/);
+    expect(() => gatherDeliveryActuals("/mock/not-real")).toThrow(
+      /Feature directory not found/,
+    );
 
     vi.resetAllMocks();
   });
@@ -69,7 +83,11 @@ describe("FR-007: computeCompression — Point Compression", () => {
   it("TR-007: computes 287.5h estimated / 0.75h actual = 383× point compression", () => {
     const forecast: EffortForecast = {
       totalSP: 39,
-      roles: [{ role: "RE", sp: 24 }, { role: "TS", sp: 10 }, { role: "PE", sp: 5 }],
+      roles: [
+        { role: "RE", sp: 24 },
+        { role: "TS", sp: 10 },
+        { role: "PE", sp: 5 },
+      ],
       estimatedHours: 287.5,
       estimatedDays: 36,
     };
@@ -109,7 +127,7 @@ describe("FR-007: computeCompression — Point Compression", () => {
     };
 
     const ratios = computeCompression(forecast, actuals);
-    expect(ratios.pointCompression).toBe(Infinity);
+    expect(ratios.pointCompression).toBe(Number.POSITIVE_INFINITY);
   });
 });
 
@@ -173,7 +191,12 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
       {
         featureId: "feat-a",
         generatedAt: "2026-01-01T00:00:00Z",
-        forecast: { totalSP: 10, roles: [], estimatedHours: 50, estimatedDays: 6.25 },
+        forecast: {
+          totalSP: 10,
+          roles: [],
+          estimatedHours: 50,
+          estimatedDays: 6.25,
+        },
         actuals: {
           specCreatedAt: "2025-12-01T00:00:00Z",
           firstImplCommit: "2026-01-01T10:00:00Z",
@@ -183,12 +206,21 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
           sessionCount: 1,
           deliveryWindowHours: 1,
         },
-        compression: { pointCompression: 50, totalCompression: 150, dormancyDays: 31 },
+        compression: {
+          pointCompression: 50,
+          totalCompression: 150,
+          dormancyDays: 31,
+        },
       },
       {
         featureId: "feat-b",
         generatedAt: "2026-02-01T00:00:00Z",
-        forecast: { totalSP: 20, roles: [], estimatedHours: 100, estimatedDays: 12.5 },
+        forecast: {
+          totalSP: 20,
+          roles: [],
+          estimatedHours: 100,
+          estimatedDays: 12.5,
+        },
         actuals: {
           specCreatedAt: "2026-01-01T00:00:00Z",
           firstImplCommit: "2026-02-01T10:00:00Z",
@@ -198,12 +230,21 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
           sessionCount: 2,
           deliveryWindowHours: 2,
         },
-        compression: { pointCompression: 50, totalCompression: 150, dormancyDays: 31 },
+        compression: {
+          pointCompression: 50,
+          totalCompression: 150,
+          dormancyDays: 31,
+        },
       },
       {
         featureId: "feat-c",
         generatedAt: "2026-03-01T00:00:00Z",
-        forecast: { totalSP: 5, roles: [], estimatedHours: 25, estimatedDays: 3.125 },
+        forecast: {
+          totalSP: 5,
+          roles: [],
+          estimatedHours: 25,
+          estimatedDays: 3.125,
+        },
         actuals: {
           specCreatedAt: "2026-02-01T00:00:00Z",
           firstImplCommit: "2026-03-01T10:00:00Z",
@@ -213,7 +254,11 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
           sessionCount: 1,
           deliveryWindowHours: 0.5,
         },
-        compression: { pointCompression: 50, totalCompression: 150, dormancyDays: 28 },
+        compression: {
+          pointCompression: 50,
+          totalCompression: 150,
+          dormancyDays: 28,
+        },
       },
     ];
 
@@ -232,7 +277,12 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
       {
         featureId: "solo",
         generatedAt: "2026-01-01T00:00:00Z",
-        forecast: { totalSP: 5, roles: [], estimatedHours: 25, estimatedDays: 3.125 },
+        forecast: {
+          totalSP: 5,
+          roles: [],
+          estimatedHours: 25,
+          estimatedDays: 3.125,
+        },
         actuals: {
           specCreatedAt: "2025-12-01T00:00:00Z",
           firstImplCommit: "2026-01-01T10:00:00Z",
@@ -242,7 +292,11 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
           sessionCount: 1,
           deliveryWindowHours: 0.5,
         },
-        compression: { pointCompression: 50, totalCompression: 150, dormancyDays: 31 },
+        compression: {
+          pointCompression: 50,
+          totalCompression: 150,
+          dormancyDays: 31,
+        },
       },
     ];
 

@@ -1,15 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { banner, blocked, fail, success } from "../utils/format.js";
 import { generateGates } from "../utils/gate-gen.js";
 import { parsePlan } from "../utils/parser.js";
-import {
-  contentHash,
-  loadTaskState,
-  saveTaskState,
-} from "../utils/state.js";
+import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 import type { Task, TaskState } from "../utils/state.js";
-import { banner, success, fail, blocked } from "../utils/format.js";
 
 /**
  * gwrk define tasks <feature> — Decompose plan → tasks.json + gates
@@ -37,8 +33,8 @@ export const tasksGenerateCommand = new Command("tasks")
     if (fs.existsSync(tasksPath) && !opts.force && !opts.reconcile) {
       blocked(
         `tasks.json already exists for ${feature}.\n` +
-        `  Regenerate:  gwrk define tasks ${feature} --force\n` +
-        `  Reconcile:   gwrk define tasks ${feature} --reconcile`,
+          `  Regenerate:  gwrk define tasks ${feature} --force\n` +
+          `  Reconcile:   gwrk define tasks ${feature} --reconcile`,
       );
       process.exit(1);
     }
@@ -55,7 +51,9 @@ export const tasksGenerateCommand = new Command("tasks")
       if (opts.reconcile && fs.existsSync(tasksPath)) {
         try {
           existingState = loadTaskState(featureDir);
-          console.log(`  Loaded existing tasks (${existingState.phases.reduce((n, p) => n + p.tasks.length, 0)} tasks)`);
+          console.log(
+            `  Loaded existing tasks (${existingState.phases.reduce((n, p) => n + p.tasks.length, 0)} tasks)`,
+          );
         } catch {
           // If we can't load, fall through to fresh generation
         }
@@ -63,7 +61,9 @@ export const tasksGenerateCommand = new Command("tasks")
 
       // If --force, wipe existing gates
       if (opts.force && fs.existsSync(gatesDir)) {
-        const existing = fs.readdirSync(gatesDir).filter(f => f.match(/^T\d+-gate\.sh$/));
+        const existing = fs
+          .readdirSync(gatesDir)
+          .filter((f) => f.match(/^T\d+-gate\.sh$/));
         if (existing.length > 0) {
           console.log(`  Removing ${existing.length} old gate scripts...`);
         }
@@ -89,7 +89,11 @@ export const tasksGenerateCommand = new Command("tasks")
               .flatMap((ep) => ep.tasks)
               .find((et) => et.title === t.title);
 
-            if (existingTask && (existingTask.status === "completed" || existingTask.status === "in_progress")) {
+            if (
+              existingTask &&
+              (existingTask.status === "completed" ||
+                existingTask.status === "in_progress")
+            ) {
               status = existingTask.status;
               completedAt = existingTask.completedAt;
             }
@@ -115,7 +119,9 @@ export const tasksGenerateCommand = new Command("tasks")
 
       // In reconcile mode, find tasks that were in the old state but not in the new plan
       if (opts.reconcile && existingState) {
-        const newTitles = new Set(newPhases.flatMap((p) => p.tasks.map((t) => t.title)));
+        const newTitles = new Set(
+          newPhases.flatMap((p) => p.tasks.map((t) => t.title)),
+        );
         const removedTasks: Task[] = [];
 
         for (const phase of existingState.phases) {
@@ -156,7 +162,10 @@ export const tasksGenerateCommand = new Command("tasks")
       console.log("  Generating gate scripts...");
       generateGates(featureDir, taskState.phases);
 
-      const totalTasks = taskState.phases.reduce((n, p) => n + p.tasks.length, 0);
+      const totalTasks = taskState.phases.reduce(
+        (n, p) => n + p.tasks.length,
+        0,
+      );
       const activeTasks = taskState.phases.reduce(
         (n, p) => n + p.tasks.filter((t) => t.status !== "cancelled").length,
         0,
@@ -168,7 +177,11 @@ export const tasksGenerateCommand = new Command("tasks")
       );
 
       console.log("");
-      const summary = [`${taskState.phases.length} phases`, `${activeTasks} tasks`, `${activeTasks} gates`];
+      const summary = [
+        `${taskState.phases.length} phases`,
+        `${activeTasks} tasks`,
+        `${activeTasks} gates`,
+      ];
       if (completedTasks > 0) summary.push(`${completedTasks} preserved`);
       if (cancelledTasks > 0) summary.push(`${cancelledTasks} cancelled`);
       console.log(`  ✓ ${summary.join(", ")}`);

@@ -30,9 +30,11 @@ export const GwrkConfigSchema = z.object({
       maxConcurrent: z.number().int().min(1),
     }),
   }),
-  pulse: z.object({
-    repos: z.array(z.string().min(1)),
-  }).optional(),
+  pulse: z
+    .object({
+      repos: z.array(z.string().min(1)),
+    })
+    .optional(),
 });
 
 export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;

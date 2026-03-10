@@ -1,8 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { SystemMonitor } from "../monitor.js";
-import { DispatchQueue } from "../dispatch.js";
+import type { DispatchQueue } from "../dispatch.js";
+import type { SystemMonitor } from "../monitor.js";
 
-export async function statusRoutes(fastify: FastifyInstance, monitor: SystemMonitor, queue: DispatchQueue) {
+export async function statusRoutes(
+  fastify: FastifyInstance,
+  monitor: SystemMonitor,
+  queue: DispatchQueue,
+) {
   fastify.get("/api/status", async () => {
     const stats = monitor.sample();
     return {

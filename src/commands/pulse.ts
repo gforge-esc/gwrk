@@ -1,9 +1,9 @@
-import type { Command } from "commander";
-import path from "node:path";
 import fs from "node:fs";
-import { scanRepository, generatePulseReport } from "../engine/pulse.js";
-import { loadConfig } from "../utils/config.js";
+import path from "node:path";
+import type { Command } from "commander";
+import { generatePulseReport, scanRepository } from "../engine/pulse.js";
 import type { PulseReport, PulseSnapshot } from "../engine/types.js";
+import { loadConfig } from "../utils/config.js";
 
 export function renderPulseTable(report: PulseReport): string {
   let out = "\n=== GWRK PULSE SNAPSHOT ===\n";
@@ -20,11 +20,12 @@ export function renderSnapshotTable(snap: PulseSnapshot): string {
   let out = `Repository: ${snap.repoName} (${snap.repoPath})\n`;
   out += `Branch: ${snap.defaultBranch}\n`;
   out += `LOC: ${snap.mainLoc} (Main) / ${snap.draftLoc} (Draft)\n\n`;
-  
+
   if (snap.weeklyBuckets.length > 0) {
     out += "Week Start | Total LOC | Added | Deleted\n";
     out += "-----------|-----------|-------|--------\n";
-    for (const bucket of snap.weeklyBuckets.slice(-4)) { // Show last 4 weeks
+    for (const bucket of snap.weeklyBuckets.slice(-4)) {
+      // Show last 4 weeks
       const dateStr = bucket.weekStart.split("T")[0];
       out += `${dateStr.padEnd(10)} | ${bucket.totalMain.toString().padEnd(9)} | +${bucket.added.toString().padEnd(4)} | -${bucket.deleted}\n`;
     }
@@ -66,12 +67,12 @@ export function registerPulseSubcommands(program: Command) {
     .action((repoPath, options) => {
       try {
         const absolutePath = path.resolve(process.cwd(), repoPath);
-        
+
         if (!fs.existsSync(absolutePath)) {
           console.error(`Path not found: ${absolutePath}`);
           process.exit(1);
         }
-        
+
         if (!fs.existsSync(path.join(absolutePath, ".git"))) {
           console.error(`Not a git repository: ${absolutePath}`);
           process.exit(1);
@@ -82,7 +83,7 @@ export function registerPulseSubcommands(program: Command) {
         if (options.json) {
           console.log(JSON.stringify(snapshot, null, 2));
         } else {
-          console.log(renderSnapshotTable(snapshot)); 
+          console.log(renderSnapshotTable(snapshot));
         }
       } catch (err: any) {
         console.error(err.message);

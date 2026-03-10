@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { DispatchQueue, DispatchRequest } from "../dispatch.js";
+import type { DispatchQueue, DispatchRequest } from "../dispatch.js";
 
-export async function dispatchRoutes(fastify: FastifyInstance, queue: DispatchQueue) {
+export async function dispatchRoutes(
+  fastify: FastifyInstance,
+  queue: DispatchQueue,
+) {
   fastify.post("/api/dispatch", async (request) => {
     const body = request.body as DispatchRequest;
     if (!body.featureId || !body.phaseId) {
@@ -16,10 +19,13 @@ export async function dispatchRoutes(fastify: FastifyInstance, queue: DispatchQu
   });
 
   fastify.get("/api/dispatch/:feature/:phase", async (request) => {
-    const { feature, phase } = request.params as { feature: string; phase: string };
+    const { feature, phase } = request.params as {
+      feature: string;
+      phase: string;
+    };
     const status = queue.getStatus();
     const record = [...status.active, ...status.queued, ...status.history].find(
-      r => r.featureId === feature && r.phaseId === phase
+      (r) => r.featureId === feature && r.phaseId === phase,
     );
     if (!record) {
       return { error: "Not found" };

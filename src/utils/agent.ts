@@ -1,7 +1,7 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import { spawn } from "node:child_process";
 import type { AgentBackend } from "./config.js";
 
 // ANSI — must match format.ts
@@ -18,7 +18,10 @@ export interface DispatchOptions {
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
-export function buildCommand(opts: DispatchOptions, _workflowContent: string): {
+export function buildCommand(
+  opts: DispatchOptions,
+  _workflowContent: string,
+): {
   command: string;
   args: string[];
   stdin?: string;
@@ -41,7 +44,8 @@ export function buildCommand(opts: DispatchOptions, _workflowContent: string): {
       args.push("-p", slashCmd);
 
       // Approval mode: analyze is read-only (plan mode), everything else is yolo
-      const mode = opts.approvalMode ?? (workflowName === "analyze" ? "plan" : "yolo");
+      const mode =
+        opts.approvalMode ?? (workflowName === "analyze" ? "plan" : "yolo");
       args.push("--approval-mode", mode);
       break;
     }
@@ -59,7 +63,13 @@ export function buildCommand(opts: DispatchOptions, _workflowContent: string): {
       break;
     case "codex-cloud":
       command = "codex";
-      args.push("run", "--cloud", "--non-interactive", "--full-auto", opts.workflowPath);
+      args.push(
+        "run",
+        "--cloud",
+        "--non-interactive",
+        "--full-auto",
+        opts.workflowPath,
+      );
       if (opts.featureDir) args.push(opts.featureDir);
       if (opts.prompt) args.push(opts.prompt);
       break;
@@ -72,7 +82,11 @@ export function buildCommand(opts: DispatchOptions, _workflowContent: string): {
  * Prefixes each output line with "HH:MM:SS +MM:SS" (wall clock + elapsed).
  * Also writes raw (un-timestamped) line to the log file.
  */
-function stampLine(line: string, startEpoch: number, logStream?: fs.WriteStream): void {
+function stampLine(
+  line: string,
+  startEpoch: number,
+  logStream?: fs.WriteStream,
+): void {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0");
   const mm = String(now.getMinutes()).padStart(2, "0");
@@ -104,22 +118,24 @@ export async function dispatchAgent(
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const workflow = path.basename(opts.workflowPath, ".md");
-  const rawFeature = opts.featureDir ? path.basename(opts.featureDir) : opts.prompt ?? "unknown";
+  const rawFeature = opts.featureDir
+    ? path.basename(opts.featureDir)
+    : (opts.prompt ?? "unknown");
   const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
   const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
   // Write structured header to log
   const branch = process.env.GIT_BRANCH ?? "unknown";
-  logStream.write(`# gwrk Agent Run Log\n`);
-  logStream.write(`# ────────────────────────────────────────\n`);
+  logStream.write("# gwrk Agent Run Log\n");
+  logStream.write("# ────────────────────────────────────────\n");
   logStream.write(`# Timestamp : ${new Date().toISOString()}\n`);
   logStream.write(`# Workflow  : ${workflow}\n`);
   logStream.write(`# Feature   : ${feature}\n`);
   logStream.write(`# Backend   : ${opts.backend}\n`);
   logStream.write(`# Branch    : ${branch}\n`);
   logStream.write(`# Command   : ${command} ${args.join(" ")}\n`);
-  logStream.write(`# ────────────────────────────────────────\n\n`);
+  logStream.write("# ────────────────────────────────────────\n\n");
 
   return new Promise((resolve) => {
     const startEpoch = Date.now();
@@ -146,7 +162,9 @@ export async function dispatchAgent(
         const now = new Date();
         const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
         const stamp = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} +${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
-        process.stdout.write(`${DIM}${stamp}${RESET}  ${YELLOW}⏳ 429 — Rate limited (attempt ${attempt}), retrying…${RESET}\n`);
+        process.stdout.write(
+          `${DIM}${stamp}${RESET}  ${YELLOW}⏳ 429 — Rate limited (attempt ${attempt}), retrying…${RESET}\n`,
+        );
         logStream.write(`[429] Attempt ${attempt} — rate limited, retrying\n`);
         squelch = true;
         braceDepth = 0;
@@ -169,13 +187,19 @@ export async function dispatchAgent(
 
     // Process stdout line by line
     if (child.stdout) {
-      const rl = readline.createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY });
+      const rl = readline.createInterface({
+        input: child.stdout,
+        crlfDelay: Number.POSITIVE_INFINITY,
+      });
       rl.on("line", processLine);
     }
 
     // Process stderr line by line (same formatting)
     if (child.stderr) {
-      const rlErr = readline.createInterface({ input: child.stderr, crlfDelay: Number.POSITIVE_INFINITY });
+      const rlErr = readline.createInterface({
+        input: child.stderr,
+        crlfDelay: Number.POSITIVE_INFINITY,
+      });
       rlErr.on("line", processLine);
     }
 
@@ -191,7 +215,7 @@ export async function dispatchAgent(
     });
 
     child.on("error", () => {
-      logStream.write(`\n# [ERROR] Agent process failed to start\n`);
+      logStream.write("\n# [ERROR] Agent process failed to start\n");
       logStream.end();
       resolve({ exitCode: 1, logPath });
     });

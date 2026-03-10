@@ -1,19 +1,25 @@
 import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import path from "node:path";
-import { describe, it, expect } from "vitest";
+import { promisify } from "node:util";
+import { describe, expect, it } from "vitest";
 
 const execAsync = promisify(exec);
 
 const CLI_PATH = path.resolve(process.cwd(), "dist/cli.js");
 
-async function runCli(args: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+async function runCli(
+  args: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   try {
     const { stdout, stderr } = await execAsync(`node ${CLI_PATH} ${args}`);
     return { stdout, stderr, exitCode: 0 };
   } catch (err: unknown) {
     const e = err as { stdout?: string; stderr?: string; code?: number };
-    return { stdout: e.stdout || "", stderr: e.stderr || "", exitCode: e.code || 1 };
+    return {
+      stdout: e.stdout || "",
+      stderr: e.stderr || "",
+      exitCode: e.code || 1,
+    };
   }
 }
 
@@ -21,7 +27,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
   it("shows exactly the settled hierarchy on --help (US-018)", async () => {
     const { stdout, exitCode } = await runCli("--help");
     expect(exitCode).toBe(0);
-    
+
     // Branding and Headers
     expect(stdout).toMatch(/🦩 gwrk/);
     expect(stdout).toMatch(/Foxtrot Charlie/);
@@ -39,12 +45,26 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
 
     // Eliminated / Hidden — must NOT appear as top-level in help
     const hidden = [
-      "run", "metrics", "implement", "specify", "plan", "analyze", 
-      "effort", "pulse", "compression", "server", "status", "new", "record"
+      "run",
+      "metrics",
+      "implement",
+      "specify",
+      "plan",
+      "analyze",
+      "effort",
+      "pulse",
+      "compression",
+      "server",
+      "status",
+      "new",
+      "record",
     ];
     for (const cmd of hidden) {
       const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
-      expect(stdout, `Command ${cmd} should not be in top-level help`).not.toMatch(regex);
+      expect(
+        stdout,
+        `Command ${cmd} should not be in top-level help`,
+      ).not.toMatch(regex);
     }
   });
 
@@ -54,7 +74,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).toMatch(/^\s+spec\b/m);
     expect(stdout).toMatch(/^\s+plan\b/m);
     expect(stdout).toMatch(/^\s+tasks\b/m);
-    
+
     // No other subcommands
     const hidden = ["analyze", "specify", "generate", "implement", "ship"];
     for (const cmd of hidden) {
@@ -99,7 +119,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^\s+runs\b/m);
     expect(stdout).toMatch(/^\s+stats\b/m);
-    
+
     // record should be hidden
     expect(stdout).not.toMatch(/^\s+record\b/m);
   });

@@ -1,4 +1,9 @@
-import type { EffortReport, RoleBreakdown, RoleConfig, StoryEstimate } from "./types.js";
+import type {
+  EffortReport,
+  RoleBreakdown,
+  RoleConfig,
+  StoryEstimate,
+} from "./types.js";
 
 /**
  * Computes effort for a set of parsed stories given role multipliers and overhead.
@@ -6,7 +11,7 @@ import type { EffortReport, RoleBreakdown, RoleConfig, StoryEstimate } from "./t
 export function computeEffort(
   stories: StoryEstimate[],
   roleMultipliers: RoleConfig[],
-  overheadFactor: number = 1.25
+  overheadFactor = 1.25,
 ): EffortReport {
   let totalSP = 0;
   let totalRawHours = 0;
@@ -30,7 +35,7 @@ export function computeEffort(
   // Calculate per-story and aggregate per-role
   for (const story of stories) {
     totalSP += story.sp;
-    
+
     let storyRawHours = 0;
     let storyRolesProcessed = 0;
 
@@ -40,7 +45,7 @@ export function computeEffort(
         const hours = story.sp * rBreakdown.hoursPerSP;
         rBreakdown.spAssigned += story.sp;
         rBreakdown.rawHours += hours;
-        
+
         storyRawHours += hours;
         storyRolesProcessed++;
       }

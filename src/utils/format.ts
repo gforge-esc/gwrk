@@ -51,25 +51,52 @@ function humanDuration(s: number): string {
 }
 
 /** Print success completion — matches agent-run.sh box format */
-export function success(command: string, durationS: number, runId?: number, logFile?: string): void {
+export function success(
+  command: string,
+  durationS: number,
+  runId?: number,
+  logFile?: string,
+): void {
   console.log("");
   console.log(`${CYAN}┌─────────────────────────────────────────────┐${RESET}`);
-  console.log(`${CYAN}│${RESET}  ${GREEN}✓ ${BOLD}${command}${RESET} ${GREEN}complete${RESET}`);
-  console.log(`${CYAN}│${RESET}  Duration: ${BOLD}${humanDuration(durationS)}${RESET}`);
-  if (runId !== undefined) console.log(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
-  if (logFile) console.log(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
+  console.log(
+    `${CYAN}│${RESET}  ${GREEN}✓ ${BOLD}${command}${RESET} ${GREEN}complete${RESET}`,
+  );
+  console.log(
+    `${CYAN}│${RESET}  Duration: ${BOLD}${humanDuration(durationS)}${RESET}`,
+  );
+  if (runId !== undefined)
+    console.log(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
+  if (logFile)
+    console.log(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
   console.log(`${CYAN}└─────────────────────────────────────────────┘${RESET}`);
 }
 
 /** Print failure — matches agent-run.sh box format */
-export function fail(command: string, exitCode: number, durationS: number, runId?: number, logFile?: string): void {
+export function fail(
+  command: string,
+  exitCode: number,
+  durationS: number,
+  runId?: number,
+  logFile?: string,
+): void {
   console.error("");
-  console.error(`${CYAN}┌─────────────────────────────────────────────┐${RESET}`);
-  console.error(`${CYAN}│${RESET}  ${RED}✗ ${BOLD}${command}${RESET} ${RED}failed (exit ${exitCode})${RESET}`);
-  console.error(`${CYAN}│${RESET}  Duration: ${BOLD}${humanDuration(durationS)}${RESET}`);
-  if (runId !== undefined) console.error(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
-  if (logFile) console.error(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
-  console.error(`${CYAN}└─────────────────────────────────────────────┘${RESET}`);
+  console.error(
+    `${CYAN}┌─────────────────────────────────────────────┐${RESET}`,
+  );
+  console.error(
+    `${CYAN}│${RESET}  ${RED}✗ ${BOLD}${command}${RESET} ${RED}failed (exit ${exitCode})${RESET}`,
+  );
+  console.error(
+    `${CYAN}│${RESET}  Duration: ${BOLD}${humanDuration(durationS)}${RESET}`,
+  );
+  if (runId !== undefined)
+    console.error(`${CYAN}│${RESET}  Run:      ${DIM}#${runId}${RESET}`);
+  if (logFile)
+    console.error(`${CYAN}│${RESET}  Log:      ${DIM}${logFile}${RESET}`);
+  console.error(
+    `${CYAN}└─────────────────────────────────────────────┘${RESET}`,
+  );
 }
 
 /** Print a blocked/validation error */
@@ -89,7 +116,9 @@ export function warn(message: string): void {
 
 /** Print a dry-run notice */
 export function dryRun(command: string): void {
-  console.log(`${MAGENTA}[DRY RUN]${RESET} Would execute: ${DIM}${command}${RESET}`);
+  console.log(
+    `${MAGENTA}[DRY RUN]${RESET} Would execute: ${DIM}${command}${RESET}`,
+  );
 }
 
 /** Elapsed time heartbeat — prints every 30s so user knows the command is alive */

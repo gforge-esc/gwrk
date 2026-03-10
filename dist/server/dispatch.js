@@ -1,6 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { finishRun, startRun } from "../db/runs.js";
 import { compileContext } from "./context.js";
 import { persistDispatch } from "./persistence.js";
 export class DispatchQueue {
@@ -28,6 +29,7 @@ export class DispatchQueue {
             status: "queued",
             branchName: `phase/${request.featureId}-${request.phaseId}`,
             attempts: [],
+            createdAt: new Date().toISOString(),
         };
         this.queue.push(record);
         persistDispatch(record);
@@ -37,8 +39,7 @@ export class DispatchQueue {
     async processNext() {
         if (this.queue.length === 0)
             return;
-        if (this.monitor.isThrottled(this.config)) {
-            // Potentially log or wait
+        if (this.monitor.isThrottled()) {
             return;
         }
         if (this.active.length >= this.config.parallelism.local.maxClones) {
@@ -53,10 +54,18 @@ export class DispatchQueue {
     }
     async runDispatch(record) {
         const attempt = {
+            attemptNumber: record.attempts.length + 1,
             backend: record.backend,
             startedAt: new Date().toISOString(),
         };
         record.attempts.push(attempt);
+        const runId = startRun({
+            feature_id: record.featureId,
+            phase_id: record.phaseId,
+            command: "ship",
+            agent_backend: record.backend,
+            workflow: "implement",
+        });
         try {
             // 1. Prepare Git
             this.git.createPhaseBranch(record.featureId, record.phaseId);
@@ -69,27 +78,45 @@ export class DispatchQueue {
             const containerId = await this.sandbox.createSandbox({
                 featureId: record.featureId,
                 phaseId: record.phaseId,
+                backend: record.backend,
                 projectRoot: this.projectRoot,
             });
             record.containerId = containerId;
-            // 4. Simulate Agent Execution (for now)
+            // 4. Simulate Agent Execution (using actual ship command placeholder)
             // In real life we would run something like:
-            // docker exec <id> gwrk ship implement <featureId> --phase <phaseId>
-            // Just a sleep to simulate work
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // docker exec <id> node /workspace/dist/cli.js ship implement <featureId> --phase <phaseId>
+            // Just a sleep to simulate work as requested for now
+            await new Promise((resolve) => setTimeout(resolve, 2000));
             record.status = "completed";
-            attempt.finishedAt = new Date().toISOString();
+            attempt.completedAt = new Date().toISOString();
             attempt.exitCode = 0;
+            finishRun(runId, {
+                exit_code: 0,
+                duration_s: Math.round((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
+            });
         }
         catch (e) {
-            attempt.finishedAt = new Date().toISOString();
+            attempt.completedAt = new Date().toISOString();
             attempt.exitCode = 1;
+            finishRun(runId, {
+                exit_code: 1,
+                duration_s: Math.round((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
+            });
             if (record.attempts.length < 3) {
                 record.status = "retrying";
             }
             else {
-                record.status = "failed";
-                // Escalation could happen here by changing backend and re-queuing
+                // Fallback logic
+                const fallbackOrder = this.config.agents.fallbackOrder || [];
+                const currentIndex = fallbackOrder.indexOf(record.backend);
+                if (currentIndex !== -1 && currentIndex < fallbackOrder.length - 1) {
+                    record.backend = fallbackOrder[currentIndex + 1];
+                    record.status = "retrying";
+                    record.attempts = [];
+                }
+                else {
+                    record.status = "failed";
+                }
             }
         }
         finally {
@@ -97,12 +124,13 @@ export class DispatchQueue {
                 await this.sandbox.destroySandbox(record.containerId);
                 record.containerId = undefined;
             }
-            this.active = this.active.filter(r => r.id !== record.id);
+            this.active = this.active.filter((r) => r.id !== record.id);
             if (record.status === "retrying") {
                 this.queue.push(record);
             }
             else {
                 this.history.push(record);
+                record.completedAt = new Date().toISOString();
             }
             persistDispatch(record);
             this.processNext();
@@ -120,5 +148,11 @@ export class DispatchQueue {
     }
     getActiveCount() {
         return this.active.length;
+    }
+    getCompletedCount() {
+        return this.history.filter((r) => r.status === "completed").length;
+    }
+    getFailedCount() {
+        return this.history.filter((r) => r.status === "failed").length;
     }
 }

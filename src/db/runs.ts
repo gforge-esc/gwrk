@@ -28,7 +28,10 @@ export interface RunRecord {
  * Start a new run record. Returns the run ID.
  */
 export function startRun(
-  run: Pick<RunRecord, "feature_id" | "phase_id" | "command" | "agent_backend" | "workflow">,
+  run: Pick<
+    RunRecord,
+    "feature_id" | "phase_id" | "command" | "agent_backend" | "workflow"
+  >,
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
@@ -52,7 +55,10 @@ export function startRun(
  */
 export function finishRun(
   runId: number,
-  update: Pick<RunRecord, "exit_code" | "duration_s" | "gate_result" | "review_verdict">,
+  update: Pick<
+    RunRecord,
+    "exit_code" | "duration_s" | "gate_result" | "review_verdict"
+  >,
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
@@ -125,12 +131,13 @@ export function recordRun(
 /**
  * List all runs for a feature, most recent first.
  */
-export function listRuns(featureId: string, db?: Database.Database): RunRecord[] {
+export function listRuns(
+  featureId: string,
+  db?: Database.Database,
+): RunRecord[] {
   const conn = db ?? getDb();
   return conn
-    .prepare(
-      `SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC`,
-    )
+    .prepare("SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC")
     .all(featureId) as RunRecord[];
 }
 
@@ -138,7 +145,13 @@ export function listRuns(featureId: string, db?: Database.Database): RunRecord[]
  * Register a project in the global DB. Upserts by path.
  */
 export function registerProject(
-  project: { id: string; name: string; path: string; github_repo?: string; slack_channel?: string },
+  project: {
+    id: string;
+    name: string;
+    path: string;
+    github_repo?: string;
+    slack_channel?: string;
+  },
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
@@ -182,7 +195,7 @@ export function getStats(db?: Database.Database): RunStats[] {
        FROM runs
        WHERE exit_code IS NOT NULL
        GROUP BY command, agent_backend, workflow
-       ORDER BY total_runs DESC`
+       ORDER BY total_runs DESC`,
     )
     .all() as RunStats[];
 }

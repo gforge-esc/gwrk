@@ -24,8 +24,13 @@ export class SandboxManager {
   }
 
   async createSandbox(opts: SandboxOptions): Promise<string> {
-    const { featureId, phaseId, projectRoot, image = "gwrk-sandbox:bookworm-slim" } = opts;
-    
+    const {
+      featureId,
+      phaseId,
+      projectRoot,
+      image = "gwrk-sandbox:bookworm-slim",
+    } = opts;
+
     const container = await this.docker.createContainer({
       Image: image,
       Labels: {
@@ -33,9 +38,7 @@ export class SandboxManager {
         "gwrk.phase": phaseId,
       },
       HostConfig: {
-        Binds: [
-          `${projectRoot}:/workspace`
-        ],
+        Binds: [`${projectRoot}:/workspace`],
       },
       Tty: true,
       // We might want to keep it running for the agent to execute commands
@@ -67,7 +70,7 @@ export class SandboxManager {
         label: ["gwrk.feature"],
       },
     });
-    return containers.map(c => ({
+    return containers.map((c) => ({
       containerId: c.Id,
       featureId: c.Labels["gwrk.feature"],
       phaseId: c.Labels["gwrk.phase"],

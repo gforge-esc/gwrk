@@ -44,11 +44,7 @@ describe("Execution Manifest Utility", () => {
   };
 
   it("should generate a runId with shorthand phase", () => {
-    const runId = generateRunId(
-      "2026-03-08T14:02:33Z",
-      "ship",
-      "phase-01"
-    );
+    const runId = generateRunId("2026-03-08T14:02:33Z", "ship", "phase-01");
     expect(runId).toBe("2026-03-08T14:02:33Z_ship_p01");
   });
 
@@ -81,7 +77,7 @@ describe("Execution Manifest Utility", () => {
   it("should throw on invalid manifest", () => {
     const invalidManifest = { ...mockManifest, exitCode: "zero" } as any;
     expect(() => writeManifest(tempDir, invalidManifest)).toThrow(
-      "Invalid execution manifest"
+      "Invalid execution manifest",
     );
   });
 
