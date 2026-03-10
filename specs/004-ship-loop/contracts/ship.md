@@ -34,21 +34,35 @@ Orchestrates the full ship lifecycle. Delegates to `work-until-done.sh` for the 
 
 ---
 
-## `shipPhase(feature, phase, backend, opts, cwd): Promise<number>`
+## `ShipExecutor.shipPhase(request): Promise<ShipResult>`
 
 **Source**: `src/commands/ship.ts`
-**Consumed by**: Internal to `shipCommand` action
+**Consumed by**: Internal to `shipCommand` action AND by Phase 005 `Parallel Dispatch`
 
-Ships a single phase through the full lifecycle. Returns exit code (0 = success).
+Ships a single phase through the full lifecycle. Returns a structured result for composability.
 
 ```typescript
-async function shipPhase(
-  feature: string,
-  phase: string,
-  backend: string,
-  opts: Record<string, string | boolean | undefined>,
-  cwd: string,
-): Promise<number>
+interface ShipExecutor {
+  shipPhase(request: ShipRequest): Promise<ShipResult>;
+}
+
+interface ShipRequest {
+  feature: string;
+  phase: string;
+  backend: string;     // Passed from command line, config, or 008 Agent Router
+  workDir: string;     // Passed from caller (essential for 005 Sandbox Manager)
+  maxIterations: number;
+  ciTimeout: number;
+  dryRun: boolean;
+}
+
+interface ShipResult {
+  exitCode: number;
+  runId: string;       // UUID for manifest + SQLite
+  durationS: number;
+  backend: string;
+  retryReason?: string;
+}
 ```
 
 ---

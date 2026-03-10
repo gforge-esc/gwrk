@@ -18,6 +18,8 @@ last_modified: "2026-03-09T22:00:00Z"
 
 Ensures the correct `feat/<feature>` branch exists and is checked out. Creates from `develop` if it doesn't exist. Optionally pushes to origin.
 
+> **Isolation Context**: This script operates purely on the current working directory (`$PWD`). When called by `ShipExecutor`, the `cwd` is set to the sandbox `workDir`, ensuring the host repository is never mutated.
+
 ### Arguments
 | Argument | Type | Required | Description |
 |---|---|---|---|

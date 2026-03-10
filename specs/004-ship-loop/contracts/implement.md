@@ -22,7 +22,11 @@ Executes all tasks in a single phase sequentially: load tasks → pre-flight gat
 async function implementAction(
   feature: string,
   phase: string,
-  opts: { dryRun?: boolean; agent?: string }
+  opts: {
+    dryRun: boolean;
+    backend: string;
+    workDir: string;
+  }
 ): Promise<void>
 ```
 
