@@ -3,6 +3,7 @@ import Docker from "dockerode";
 export interface SandboxOptions {
   featureId: string;
   phaseId: string;
+  backend: string;
   projectRoot: string;
   image?: string;
 }
@@ -24,13 +25,15 @@ export class SandboxManager {
   }
 
   async createSandbox(opts: SandboxOptions): Promise<string> {
-    const { featureId, phaseId, projectRoot, image = "gwrk-sandbox:bookworm-slim" } = opts;
+    const { featureId, phaseId, backend, projectRoot, image = "gwrk-sandbox:bookworm-slim" } = opts;
     
     const container = await this.docker.createContainer({
       Image: image,
       Labels: {
         "gwrk.feature": featureId,
         "gwrk.phase": phaseId,
+        "gwrk.backend": backend,
+        "gwrk.startedAt": new Date().toISOString(),
       },
       HostConfig: {
         Binds: [
@@ -71,7 +74,23 @@ export class SandboxManager {
       containerId: c.Id,
       featureId: c.Labels["gwrk.feature"],
       phaseId: c.Labels["gwrk.phase"],
-      status: c.State,
+      backend: c.Labels["gwrk.backend"],
+      status: this.mapStateToStatus(c.State),
+      startedAt: c.Labels["gwrk.startedAt"],
     }));
+  }
+
+  private mapStateToStatus(state: string): "creating" | "running" | "stopping" | "destroyed" {
+    switch (state) {
+      case "created":
+        return "creating";
+      case "running":
+        return "running";
+      case "exited":
+      case "stopped":
+        return "destroyed";
+      default:
+        return "stopping";
+    }
   }
 }

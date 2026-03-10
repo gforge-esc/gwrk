@@ -6,6 +6,7 @@ import { defineCommand } from "./commands/define.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
 import { serverCommand } from "./commands/server.js";
+import { statusCommand } from "./commands/status.js";
 import { shipCommand } from "./commands/ship.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { loadConfig } from "./utils/config.js";
@@ -36,7 +37,7 @@ program
       if (cmds.length > 0) {
         // Foxtrot Charlie pillars
         const pillars = ["define", "ship", "measure"];
-        const ops = ["init", "tasks", "db", "server"];
+        const ops = ["init", "tasks", "db", "server", "status"];
 
         out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
         for (const name of pillars) {
@@ -88,6 +89,7 @@ program.addCommand(measureCommand); // Measure: pulse, effort, compression
 program.addCommand(tasksCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
+program.addCommand(statusCommand);
 
 program.hook("preAction", (thisCommand, actionCommand) => {
   if (actionCommand.name() !== "init") {

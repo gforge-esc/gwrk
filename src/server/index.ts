@@ -17,7 +17,8 @@ export async function startServer(
     logger: true,
   });
 
-  const monitor = new SystemMonitor();
+  const monitor = new SystemMonitor(config);
+  monitor.startPolling();
   const sandbox = new SandboxManager();
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
@@ -26,11 +27,12 @@ export async function startServer(
     return { status: "ok" };
   });
 
-  await statusRoutes(server, monitor, queue);
+  await statusRoutes(server, monitor, queue, sandbox);
   await dispatchRoutes(server, queue);
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
+    monitor.stopPolling();
     await server.close();
     removePid();
     server.log.info("Server shut down.");

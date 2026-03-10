@@ -19,11 +19,11 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         define: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
         implement: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
     }, "strip", z.ZodTypeAny, {
-        define: "gemini" | "codex-cloud" | "claude" | "codex";
-        implement: "gemini" | "codex-cloud" | "claude" | "codex";
+        define: "gemini" | "claude" | "codex" | "codex-cloud";
+        implement: "gemini" | "claude" | "codex" | "codex-cloud";
     }, {
-        define: "gemini" | "codex-cloud" | "claude" | "codex";
-        implement: "gemini" | "codex-cloud" | "claude" | "codex";
+        define: "gemini" | "claude" | "codex" | "codex-cloud";
+        implement: "gemini" | "claude" | "codex" | "codex-cloud";
     }>;
     server: z.ZodObject<{
         port: z.ZodNumber;
@@ -94,8 +94,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slackChannel?: string | undefined;
     };
     agents: {
-        define: "gemini" | "codex-cloud" | "claude" | "codex";
-        implement: "gemini" | "codex-cloud" | "claude" | "codex";
+        define: "gemini" | "claude" | "codex" | "codex-cloud";
+        implement: "gemini" | "claude" | "codex" | "codex-cloud";
     };
     server: {
         port: number;
@@ -122,8 +122,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slackChannel?: string | undefined;
     };
     agents: {
-        define: "gemini" | "codex-cloud" | "claude" | "codex";
-        implement: "gemini" | "codex-cloud" | "claude" | "codex";
+        define: "gemini" | "claude" | "codex" | "codex-cloud";
+        implement: "gemini" | "claude" | "codex" | "codex-cloud";
     };
     server: {
         port: number;

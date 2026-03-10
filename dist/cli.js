@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
-import { initCommand } from "./commands/init.js";
-import { defineCommand } from "./commands/define.js";
-import { shipCommand } from "./commands/ship.js";
-import { measureCommand } from "./commands/measure.js";
-import { tasksCommand } from "./commands/tasks.js";
 import { dbCommand } from "./commands/db.js";
+import { defineCommand } from "./commands/define.js";
+import { initCommand } from "./commands/init.js";
+import { measureCommand } from "./commands/measure.js";
 import { serverCommand } from "./commands/server.js";
+import { statusCommand } from "./commands/status.js";
+import { shipCommand } from "./commands/ship.js";
+import { tasksCommand } from "./commands/tasks.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
@@ -31,10 +32,10 @@ program
         if (cmds.length > 0) {
             // Foxtrot Charlie pillars
             const pillars = ["define", "ship", "measure"];
-            const ops = ["init", "tasks", "db", "server"];
+            const ops = ["init", "tasks", "db", "server", "status"];
             out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
             for (const name of pillars) {
-                const sub = cmds.find(c => c.name() === name);
+                const sub = cmds.find((c) => c.name() === name);
                 if (sub) {
                     out += `    ${GREEN}${sub.name().padEnd(12)}${RESET} ${DIM}${sub.description()}${RESET}\n`;
                 }
@@ -42,7 +43,7 @@ program
             out += "\n";
             out += `  ${CYAN}Operations${RESET}\n`;
             for (const name of ops) {
-                const sub = cmds.find(c => c.name() === name);
+                const sub = cmds.find((c) => c.name() === name);
                 if (sub) {
                     out += `    ${sub.name().padEnd(12)} ${DIM}${sub.description()}${RESET}\n`;
                 }
@@ -75,6 +76,7 @@ program.addCommand(measureCommand); // Measure: pulse, effort, compression
 program.addCommand(tasksCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
+program.addCommand(statusCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
     if (actionCommand.name() !== "init") {
         // This will process.exit(1) if config is missing or invalid

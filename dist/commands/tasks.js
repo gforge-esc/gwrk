@@ -87,7 +87,7 @@ tasksCommand
     // Verify manifest coverage (simplified for now: each completed task should have a manifest)
     // Actually, Phase 9 says "validates schema + manifest coverage"
     // ADR-003: "gwrk tasks verify <feature> ensures every completed task has a matching manifest."
-    let valid = true;
+    const valid = true;
     for (const task of completedTasks) {
         // This is a bit tricky because manifests don't have taskId yet in schema
         // But they have "phase" and "command".

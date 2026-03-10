@@ -27,9 +27,11 @@ export const GwrkConfigSchema = z.object({
             maxConcurrent: z.number().int().min(1),
         }),
     }),
-    pulse: z.object({
+    pulse: z
+        .object({
         repos: z.array(z.string().min(1)),
-    }).optional(),
+    })
+        .optional(),
 });
 export function loadConfig(projectRoot) {
     const configPath = path.join(projectRoot, ".gwrkrc.json");

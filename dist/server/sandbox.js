@@ -14,12 +14,14 @@ export class SandboxManager {
         }
     }
     async createSandbox(opts) {
-        const { featureId, phaseId, projectRoot, image = "gwrk-sandbox:bookworm-slim" } = opts;
+        const { featureId, phaseId, backend, projectRoot, image = "gwrk-sandbox:bookworm-slim" } = opts;
         const container = await this.docker.createContainer({
             Image: image,
             Labels: {
                 "gwrk.feature": featureId,
                 "gwrk.phase": phaseId,
+                "gwrk.backend": backend,
+                "gwrk.startedAt": new Date().toISOString(),
             },
             HostConfig: {
                 Binds: [
@@ -59,7 +61,22 @@ export class SandboxManager {
             containerId: c.Id,
             featureId: c.Labels["gwrk.feature"],
             phaseId: c.Labels["gwrk.phase"],
-            status: c.State,
+            backend: c.Labels["gwrk.backend"],
+            status: this.mapStateToStatus(c.State),
+            startedAt: c.Labels["gwrk.startedAt"],
         }));
+    }
+    mapStateToStatus(state) {
+        switch (state) {
+            case "created":
+                return "creating";
+            case "running":
+                return "running";
+            case "exited":
+            case "stopped":
+                return "destroyed";
+            default:
+                return "stopping";
+        }
     }
 }

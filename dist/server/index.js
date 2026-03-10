@@ -1,27 +1,29 @@
 import fastify from "fastify";
-import { removePid, writePid } from "./pid.js";
+import { DispatchQueue } from "./dispatch.js";
+import { GitManager } from "./git-manager.js";
 import { SystemMonitor } from "./monitor.js";
+import { removePid, writePid } from "./pid.js";
+import { dispatchRoutes } from "./routes/dispatch.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
-import { GitManager } from "./git-manager.js";
-import { DispatchQueue } from "./dispatch.js";
-import { dispatchRoutes } from "./routes/dispatch.js";
 export async function startServer(config, options = { handleSignals: true }) {
     const projectRoot = process.cwd();
     const server = fastify({
         logger: true,
     });
-    const monitor = new SystemMonitor();
+    const monitor = new SystemMonitor(config);
+    monitor.startPolling();
     const sandbox = new SandboxManager();
     const git = new GitManager(projectRoot);
     const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
     server.get("/health", async () => {
         return { status: "ok" };
     });
-    await statusRoutes(server, monitor, queue);
+    await statusRoutes(server, monitor, queue, sandbox);
     await dispatchRoutes(server, queue);
     const shutdown = async () => {
         server.log.info("Shutting down server...");
+        monitor.stopPolling();
         await server.close();
         removePid();
         server.log.info("Server shut down.");

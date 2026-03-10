@@ -35,7 +35,7 @@ export const implementAction = async (feature, phase, opts) => {
         "Run ID": `${runId}`,
     });
     const startTime = Date.now();
-    let exitCode = 0;
+    const exitCode = 0;
     try {
         for (const task of phaseData.tasks) {
             if (task.status === "completed")

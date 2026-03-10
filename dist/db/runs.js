@@ -84,7 +84,7 @@ export function recordRun(run, db) {
 export function listRuns(featureId, db) {
     const conn = db ?? getDb();
     return conn
-        .prepare(`SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC`)
+        .prepare("SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC")
         .all(featureId);
 }
 /**

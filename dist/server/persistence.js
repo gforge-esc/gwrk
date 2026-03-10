@@ -6,7 +6,7 @@ export function persistDispatch(record) {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
-    const line = JSON.stringify(record) + "\n";
+    const line = `${JSON.stringify(record)}\n`;
     fs.appendFileSync(DISPATCHES_FILE, line, "utf8");
 }
 export function loadDispatches() {

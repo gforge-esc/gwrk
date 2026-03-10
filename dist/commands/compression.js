@@ -61,7 +61,7 @@ export const compressionCommand = new Command("compression")
                 console.log(JSON.stringify(summary, null, 2));
             }
             else {
-                console.log(`\n=== COMPRESSION SUMMARY ===\n`);
+                console.log("\n=== COMPRESSION SUMMARY ===\n");
                 console.log(`Total SP Delivered: ${summary.totals.totalSP}`);
                 console.log(`Avg Point Compression: ${summary.totals.avgPointCompression.toFixed(2)}x`);
                 console.log(`Avg Total Compression: ${summary.totals.avgTotalCompression.toFixed(2)}x`);
@@ -70,8 +70,8 @@ export const compressionCommand = new Command("compression")
                     console.log(`Best: ${summary.best.featureId} (${summary.best.pointCompression.toFixed(2)}x)`);
                     console.log(`Worst: ${summary.worst.featureId} (${summary.worst.pointCompression.toFixed(2)}x)\n`);
                 }
-                console.log(`  Feature                 | SP | Point Comp | Total Comp`);
-                console.log(`  ------------------------|----|------------|-----------`);
+                console.log("  Feature                 | SP | Point Comp | Total Comp");
+                console.log("  ------------------------|----|------------|-----------");
                 for (const feat of summary.features) {
                     const name = feat.featureId.padEnd(23);
                     const sp = feat.forecast.totalSP.toString().padStart(2);

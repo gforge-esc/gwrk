@@ -1,12 +1,11 @@
-import { Command } from "commander";
-import { startServer } from "../server/index.js";
-import { readPid, isPidRunning, removePid } from "../server/pid.js";
-import { loadConfig } from "../utils/config.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-export const serverCommand = new Command("server")
-    .description("Manage the gwrk build server daemon");
+import { Command } from "commander";
+import { startServer } from "../server/index.js";
+import { isPidRunning, readPid, removePid } from "../server/pid.js";
+import { loadConfig } from "../utils/config.js";
+export const serverCommand = new Command("server").description("Manage the gwrk build server daemon");
 serverCommand
     .command("start")
     .description("Start the gwrk build server daemon")
@@ -30,22 +29,17 @@ serverCommand
         const logFile = path.join(logDir, "server.log");
         const out = fs.openSync(logFile, "a");
         const err = fs.openSync(logFile, "a");
-        const child = spawn(process.argv[0], [
-            ...process.execArgv,
-            process.argv[1],
-            "server",
-            "_run"
-        ], {
+        const child = spawn(process.argv[0], [...process.execArgv, process.argv[1], "server", "_run"], {
             detached: true,
             stdio: ["ignore", out, err],
             cwd: projectRoot,
-            env: { ...process.env, GWRK_PROJECT_ROOT: projectRoot }
+            env: { ...process.env, GWRK_PROJECT_ROOT: projectRoot },
         });
         child.unref();
         // Wait for PID file to appear
         let attempts = 0;
         while (attempts < 10) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
             const pid = readPid();
             if (pid && isPidRunning(pid)) {
                 console.log(`gwrk server started (pid: ${pid})`);
@@ -85,7 +79,7 @@ serverCommand
     }
     let attempts = 0;
     while (attempts < 20) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         if (!isPidRunning(pid)) {
             console.log("Server stopped.");
             return;

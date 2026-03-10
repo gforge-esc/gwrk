@@ -1,10 +1,25 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SystemMonitor } from "./monitor.js";
-import os from "node:os";
+import type { GwrkConfig } from "../utils/config.js";
 
 describe("SystemMonitor", () => {
+  const mockConfig: GwrkConfig = {
+    project: { name: "test" },
+    agents: { define: "gemini", implement: "gemini" },
+    server: { host: "localhost", port: 18790 },
+    parallelism: {
+      local: {
+        maxCpu: 80,
+        maxMem: 70,
+        minDiskGb: 10,
+        maxClones: 3
+      },
+      cloud: { maxConcurrent: 10 }
+    }
+  };
+
   it("should sample system resources", () => {
-    const monitor = new SystemMonitor();
+    const monitor = new SystemMonitor(mockConfig);
     const stats = monitor.sample();
     
     expect(stats.cpuPercent).toBeGreaterThanOrEqual(0);
@@ -14,25 +29,71 @@ describe("SystemMonitor", () => {
     expect(stats.diskFreeGb).toBeGreaterThanOrEqual(0);
   });
 
-  it("should throttle when limits are exceeded", () => {
-    const monitor = new SystemMonitor();
-    const config = {
-      parallelism: {
-        local: {
-          maxCpu: 1, // Very low to trigger throttle
-          maxMem: 80,
-          minDiskGb: 10
-        }
-      }
-    };
+  it("should throttle when CPU limits are exceeded", () => {
+    const monitor = new SystemMonitor(mockConfig);
     
-    // We might need to mock sample to ensure it triggers
     vi.spyOn(monitor, "sample").mockReturnValue({
       cpuPercent: 90,
       memPercent: 50,
       diskFreeGb: 100
     });
     
-    expect(monitor.isThrottled(config)).toBe(true);
+    expect(monitor.isThrottled()).toBe(true);
+  });
+
+  it("should throttle when Memory limits are exceeded", () => {
+    const monitor = new SystemMonitor(mockConfig);
+    
+    vi.spyOn(monitor, "sample").mockReturnValue({
+      cpuPercent: 50,
+      memPercent: 80,
+      diskFreeGb: 100
+    });
+    
+    expect(monitor.isThrottled()).toBe(true);
+  });
+
+  it("should throttle when Disk limits are exceeded", () => {
+    const monitor = new SystemMonitor(mockConfig);
+    
+    vi.spyOn(monitor, "sample").mockReturnValue({
+      cpuPercent: 50,
+      memPercent: 50,
+      diskFreeGb: 5
+    });
+    
+    expect(monitor.isThrottled()).toBe(true);
+  });
+
+  it("should not throttle when within limits", () => {
+    const monitor = new SystemMonitor(mockConfig);
+    
+    vi.spyOn(monitor, "sample").mockReturnValue({
+      cpuPercent: 50,
+      memPercent: 50,
+      diskFreeGb: 100
+    });
+    
+    expect(monitor.isThrottled()).toBe(false);
+  });
+
+  it("should support polling", async () => {
+    vi.useFakeTimers();
+    const monitor = new SystemMonitor(mockConfig);
+    const sampleSpy = vi.spyOn(monitor, "sample");
+    
+    monitor.startPolling(5000);
+    
+    vi.advanceTimersByTime(5000);
+    expect(sampleSpy).toHaveBeenCalledTimes(1);
+    
+    vi.advanceTimersByTime(5000);
+    expect(sampleSpy).toHaveBeenCalledTimes(2);
+    
+    monitor.stopPolling();
+    vi.advanceTimersByTime(5000);
+    expect(sampleSpy).toHaveBeenCalledTimes(2);
+    
+    vi.useRealTimers();
   });
 });

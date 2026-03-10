@@ -1,11 +1,12 @@
 import type { AgentBackend } from "../utils/config.js";
 export type DispatchStatus = "queued" | "running" | "completed" | "failed" | "retrying";
 export interface DispatchAttempt {
+    attemptNumber: number;
     backend: AgentBackend;
     startedAt: string;
-    finishedAt?: string;
+    completedAt?: string;
     exitCode?: number;
-    logFile?: string;
+    stderr?: string;
 }
 export interface DispatchRecord {
     id: string;
@@ -16,8 +17,10 @@ export interface DispatchRecord {
     containerId?: string;
     branchName: string;
     attempts: DispatchAttempt[];
+    createdAt: string;
+    completedAt?: string;
 }
-export interface SystemStatus {
+export interface SystemResources {
     cpuPercent: number;
     memPercent: number;
     diskFreeGb: number;
@@ -26,5 +29,25 @@ export interface SandboxInfo {
     containerId: string;
     featureId: string;
     phaseId: string;
-    status: string;
+    backend: AgentBackend;
+    status: "creating" | "running" | "stopping" | "destroyed";
+    startedAt: string;
+    cpuPercent?: number;
+    memMb?: number;
+}
+export interface SystemStatus {
+    server: {
+        status: "running" | "stopped";
+        pid?: number;
+        uptime?: number;
+        port?: number;
+    };
+    system: SystemResources;
+    dispatch: {
+        queueDepth: number;
+        activeCount: number;
+        completedCount: number;
+        failedCount: number;
+    };
+    sandboxes: SandboxInfo[];
 }

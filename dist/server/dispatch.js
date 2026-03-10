@@ -37,7 +37,7 @@ export class DispatchQueue {
     async processNext() {
         if (this.queue.length === 0)
             return;
-        if (this.monitor.isThrottled(this.config)) {
+        if (this.monitor.isThrottled()) {
             // Potentially log or wait
             return;
         }
@@ -69,6 +69,7 @@ export class DispatchQueue {
             const containerId = await this.sandbox.createSandbox({
                 featureId: record.featureId,
                 phaseId: record.phaseId,
+                backend: record.backend,
                 projectRoot: this.projectRoot,
             });
             record.containerId = containerId;
@@ -120,5 +121,11 @@ export class DispatchQueue {
     }
     getActiveCount() {
         return this.active.length;
+    }
+    getCompletedCount() {
+        return this.history.filter(r => r.status === "completed").length;
+    }
+    getFailedCount() {
+        return this.history.filter(r => r.status === "failed").length;
     }
 }

@@ -1,6 +1,7 @@
 export interface SandboxOptions {
     featureId: string;
     phaseId: string;
+    backend: string;
     projectRoot: string;
     image?: string;
 }
@@ -14,6 +15,9 @@ export declare class SandboxManager {
         containerId: string;
         featureId: string;
         phaseId: string;
-        status: string;
+        backend: string;
+        status: "running" | "creating" | "stopping" | "destroyed";
+        startedAt: string;
     }[]>;
+    private mapStateToStatus;
 }
