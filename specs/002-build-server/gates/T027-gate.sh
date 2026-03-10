@@ -17,6 +17,6 @@ grep -q 'getDispatch(' src/server/dispatch.ts
 grep -q 'finishRun' src/server/dispatch.ts
 
 # #4 Global build passes (catches type errors)
-pnpm build --quiet
+pnpm build
 
 echo "PASS: T027 — DispatchQueue implements full contract"

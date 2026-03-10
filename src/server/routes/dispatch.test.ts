@@ -93,4 +93,30 @@ describe("dispatch routes", () => {
 
     await server.close();
   });
+
+  it("should return a specific dispatch via GET /api/dispatch/:feature/:phase", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+
+    // First enqueue it
+    await server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      payload: {
+        featureId: "feat-1",
+        phaseId: "phase-1",
+      },
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/dispatch/feat-1/phase-1",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const json = response.json();
+    expect(json.featureId).toBe("feat-1");
+    expect(json.phaseId).toBe("phase-1");
+
+    await server.close();
+  });
 });

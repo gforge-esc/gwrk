@@ -12,6 +12,6 @@ grep -q 'statusRoutes' src/server/index.ts
 grep -q 'dispatchRoutes' src/server/index.ts
 
 # #3 Global build passes (catches broken imports and missing methods)
-pnpm build --quiet
+pnpm build
 
 echo "PASS: T032 — Server integration compiles"

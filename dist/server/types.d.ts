@@ -7,6 +7,7 @@ export interface DispatchAttempt {
     completedAt?: string;
     exitCode?: number;
     stderr?: string;
+    runId?: number;
 }
 export interface DispatchRecord {
     id: string;

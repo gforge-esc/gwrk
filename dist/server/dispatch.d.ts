@@ -21,11 +21,13 @@ export declare class DispatchQueue {
     enqueue(request: DispatchRequest): DispatchRecord;
     processNext(): Promise<void>;
     private runDispatch;
-    getStatus(): {
+    handleCompletion(dispatchId: string, exitCode: number, stderr: string): Promise<void>;
+    getQueue(): {
         active: DispatchRecord[];
         queued: DispatchRecord[];
-        history: DispatchRecord[];
+        throttled: boolean;
     };
+    getDispatch(featureId: string, phaseId: string): DispatchRecord | null;
     getQueueDepth(): number;
     getActiveCount(): number;
     getCompletedCount(): number;

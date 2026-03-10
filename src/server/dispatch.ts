@@ -5,6 +5,7 @@ import type { AgentBackend, GwrkConfig } from "../utils/config.js";
 import { compileContext } from "./context.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
+import { startRun, finishRun } from "../db/runs.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchAttempt, DispatchRecord, SystemStatus } from "./types.js";
@@ -73,6 +74,15 @@ export class DispatchQueue {
       backend: record.backend,
       startedAt: new Date().toISOString(),
     };
+
+    attempt.runId = startRun({
+      feature_id: record.featureId,
+      phase_id: record.phaseId,
+      command: `gwrk ship implement ${record.featureId} --phase ${record.phaseId}`,
+      agent_backend: record.backend,
+      workflow: "implement",
+    });
+
     record.attempts.push(attempt);
 
     try {
@@ -103,50 +113,115 @@ export class DispatchQueue {
       record.containerId = containerId;
 
       // 4. Simulate Agent Execution (for now)
-      // In real life we would run something like:
-      // docker exec <id> gwrk ship implement <featureId> --phase <phaseId>
-
-      // Just a sleep to simulate work
+      // TODO: Phase 06 — real agent execution
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      record.status = "completed";
-      attempt.completedAt = new Date().toISOString();
-      attempt.exitCode = 0;
+      await this.handleCompletion(record.id, 0, "");
     } catch (e: any) {
-      attempt.completedAt = new Date().toISOString();
-      attempt.exitCode = 1;
-
-      if (record.attempts.length < 3) {
-        record.status = "retrying";
-      } else {
-        record.status = "failed";
-        // Escalation could happen here by changing backend and re-queuing
-      }
-    } finally {
-      if (record.containerId) {
-        await this.sandbox.destroySandbox(record.containerId);
-        record.containerId = undefined;
-      }
-
-      this.active = this.active.filter((r) => r.id !== record.id);
-
-      if (record.status === "retrying") {
-        this.queue.push(record);
-      } else {
-        this.history.push(record);
-      }
-
-      persistDispatch(record);
-      this.processNext();
+      await this.handleCompletion(record.id, 1, e.message || String(e));
     }
   }
 
-  getStatus() {
+  async handleCompletion(
+    dispatchId: string,
+    exitCode: number,
+    stderr: string,
+  ): Promise<void> {
+    const record = this.active.find((r) => r.id === dispatchId);
+    if (!record) return;
+
+    const attempt = record.attempts[record.attempts.length - 1];
+    attempt.completedAt = new Date().toISOString();
+    attempt.exitCode = exitCode;
+    attempt.stderr = stderr;
+
+    if (attempt.runId) {
+      const duration = Math.floor(
+        (new Date(attempt.completedAt).getTime() -
+          new Date(attempt.startedAt).getTime()) /
+          1000,
+      );
+      finishRun(attempt.runId, {
+        exit_code: exitCode,
+        duration_s: duration,
+      });
+    }
+
+    if (exitCode === 0) {
+      record.status = "completed";
+      record.completedAt = attempt.completedAt;
+
+      // Merge back
+      try {
+        this.git.mergePhaseBack(record.featureId, record.phaseId);
+      } catch (e) {
+        console.error("Merge back failed:", e);
+        // We still mark as completed, but merge failure is logged
+      }
+    } else {
+      if (record.attempts.length < 3) {
+        record.status = "retrying";
+      } else {
+        // Escalate to next backend in fallbackOrder
+        const fallbackOrder: AgentBackend[] = [
+          "gemini",
+          "claude",
+          "codex",
+          "codex-cloud",
+        ];
+        const currentIndex = fallbackOrder.indexOf(record.backend);
+        if (currentIndex !== -1 && currentIndex < fallbackOrder.length - 1) {
+          record.backend = fallbackOrder[currentIndex + 1];
+          record.status = "retrying";
+        } else {
+          record.status = "failed";
+        }
+      }
+    }
+
+    // Move from active to history/queue
+    this.active = this.active.filter((r) => r.id !== record.id);
+
+    if (record.status === "retrying") {
+      this.queue.push(record);
+    } else {
+      this.history.push(record);
+    }
+
+    if (record.containerId) {
+      try {
+        await this.sandbox.destroySandbox(record.containerId);
+      } catch (e) {
+        console.error("Failed to destroy sandbox:", e);
+      }
+      record.containerId = undefined;
+    }
+
+    persistDispatch(record);
+    this.processNext();
+  }
+
+  getQueue() {
     return {
       active: this.active,
       queued: this.queue,
-      history: this.history,
+      throttled: this.monitor.isThrottled(),
     };
+  }
+
+  getDispatch(featureId: string, phaseId: string): DispatchRecord | null {
+    return (
+      this.active.find(
+        (r) => r.featureId === featureId && r.phaseId === phaseId,
+      ) ||
+      this.queue.find(
+        (r) => r.featureId === featureId && r.phaseId === phaseId,
+      ) ||
+      this.history.find(
+        (r) => r.featureId === featureId && r.phaseId === phaseId,
+      ) ||
+      null
+    );
   }
 
   getQueueDepth(): number {

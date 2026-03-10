@@ -14,6 +14,6 @@ pnpm vitest run src/server/routes/dispatch.test.ts
 pnpm vitest run src/server/integration.test.ts
 
 # #3 Global build passes
-pnpm build --quiet
+pnpm build
 
 echo "PASS: T034 — Phase 05 test strategy verified"
