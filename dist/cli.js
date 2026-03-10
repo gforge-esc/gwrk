@@ -6,6 +6,7 @@ import { defineCommand } from "./commands/define.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
 import { serverCommand } from "./commands/server.js";
+import { setupSlackCommand } from "./commands/setup-slack.js";
 import { shipCommand } from "./commands/ship.js";
 import { statusCommand } from "./commands/status.js";
 import { tasksCommand } from "./commands/tasks.js";
@@ -13,6 +14,9 @@ import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 export const program = new Command();
+const setupCommand = new Command("setup")
+    .description("Configure gwrk integrations")
+    .addCommand(setupSlackCommand);
 program
     .name("gwrk")
     .version(pkg.version)
@@ -32,7 +36,7 @@ program
         if (cmds.length > 0) {
             // Foxtrot Charlie pillars
             const pillars = ["define", "ship", "measure"];
-            const ops = ["init", "tasks", "db", "server", "status"];
+            const ops = ["init", "tasks", "db", "server", "status", "setup"];
             out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
             for (const name of pillars) {
                 const sub = cmds.find((c) => c.name() === name);
@@ -77,8 +81,9 @@ program.addCommand(tasksCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
+program.addCommand(setupCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
-    if (actionCommand.name() !== "init") {
+    if (actionCommand.name() !== "init" && actionCommand.name() !== "setup") {
         // This will process.exit(1) if config is missing or invalid
         loadConfig(process.cwd());
     }

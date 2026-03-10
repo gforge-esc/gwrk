@@ -1,3 +1,5 @@
+import Fastify from "fastify";
+import type { FastifyInstance } from "fastify";
 /**
  * E2E tests for the gwrk build server (002-build-server).
  *
@@ -8,18 +10,16 @@
  * do NOT require Docker to be running for the core API tests.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import Fastify from "fastify";
 import { DispatchQueue } from "../server/dispatch.js";
-import { SystemMonitor } from "../server/monitor.js";
-import { SandboxManager } from "../server/sandbox.js";
 import { GitManager } from "../server/git-manager.js";
 import { LifecycleMonitor } from "../server/lifecycle.js";
+import { SystemMonitor } from "../server/monitor.js";
 import { NetworkMonitor } from "../server/network.js";
 import { dispatchRoutes } from "../server/routes/dispatch.js";
-import { statusRoutes } from "../server/routes/status.js";
 import { healthRoutes } from "../server/routes/health.js";
+import { statusRoutes } from "../server/routes/status.js";
+import { SandboxManager } from "../server/sandbox.js";
 import { loadConfig } from "../utils/config.js";
-import type { FastifyInstance } from "fastify";
 
 describe("Build Server E2E", () => {
   let server: FastifyInstance;

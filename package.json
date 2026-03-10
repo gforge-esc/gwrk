@@ -15,6 +15,7 @@
     "format": "biome format --write"
   },
   "dependencies": {
+    "@slack/bolt": "^4.6.0",
     "better-sqlite3": "^12.6.2",
     "commander": "^13.1.0",
     "dockerode": "^4.0.9",

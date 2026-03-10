@@ -5,11 +5,19 @@ import { z } from "zod";
 const AgentBackendSchema = z.enum(["gemini", "claude", "codex", "codex-cloud"]);
 export type AgentBackend = z.infer<typeof AgentBackendSchema>;
 
+export const SlackConfigSchema = z.object({
+  botToken: z.string().startsWith("xoxb-"),
+  appToken: z.string().startsWith("xapp-"),
+});
+
+export type SlackConfig = z.infer<typeof SlackConfigSchema>;
+
 export const GwrkConfigSchema = z.object({
   project: z.object({
     name: z.string().min(1),
     githubRepo: z.string().optional(),
     slackChannel: z.string().optional(),
+    slackChannelId: z.string().optional(),
   }),
   agents: z.object({
     define: AgentBackendSchema,

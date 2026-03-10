@@ -1,19 +1,33 @@
 import { z } from "zod";
 declare const AgentBackendSchema: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
 export type AgentBackend = z.infer<typeof AgentBackendSchema>;
+export declare const SlackConfigSchema: z.ZodObject<{
+    botToken: z.ZodString;
+    appToken: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    botToken: string;
+    appToken: string;
+}, {
+    botToken: string;
+    appToken: string;
+}>;
+export type SlackConfig = z.infer<typeof SlackConfigSchema>;
 export declare const GwrkConfigSchema: z.ZodObject<{
     project: z.ZodObject<{
         name: z.ZodString;
         githubRepo: z.ZodOptional<z.ZodString>;
         slackChannel: z.ZodOptional<z.ZodString>;
+        slackChannelId: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         name: string;
         githubRepo?: string | undefined;
         slackChannel?: string | undefined;
+        slackChannelId?: string | undefined;
     }, {
         name: string;
         githubRepo?: string | undefined;
         slackChannel?: string | undefined;
+        slackChannelId?: string | undefined;
     }>;
     agents: z.ZodObject<{
         define: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
@@ -101,6 +115,7 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         name: string;
         githubRepo?: string | undefined;
         slackChannel?: string | undefined;
+        slackChannelId?: string | undefined;
     };
     agents: {
         define: "gemini" | "claude" | "codex" | "codex-cloud";
@@ -132,6 +147,7 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         name: string;
         githubRepo?: string | undefined;
         slackChannel?: string | undefined;
+        slackChannelId?: string | undefined;
     };
     agents: {
         define: "gemini" | "claude" | "codex" | "codex-cloud";

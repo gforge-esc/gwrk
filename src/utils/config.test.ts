@@ -25,7 +25,12 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
-      server: { port: 18790, host: "localhost" },
+      server: { 
+        port: 18790, 
+        host: "localhost",
+        heartbeatIntervalMs: 1000,
+        networkCheckIntervalMs: 1000
+      },
       parallelism: {
         local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
         cloud: { maxConcurrent: 10 },
@@ -77,7 +82,12 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
-      server: { port: 18790, host: "localhost" },
+      server: { 
+        port: 18790, 
+        host: "localhost",
+        heartbeatIntervalMs: 1000,
+        networkCheckIntervalMs: 1000
+      },
       parallelism: {
         local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
         cloud: { maxConcurrent: 10 },
@@ -100,7 +110,12 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
-      server: { port: 18790, host: "localhost" },
+      server: { 
+        port: 18790, 
+        host: "localhost",
+        heartbeatIntervalMs: 1000,
+        networkCheckIntervalMs: 1000
+      },
       parallelism: {
         local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
         cloud: { maxConcurrent: 10 },
@@ -120,7 +135,12 @@ describe("loadConfig", () => {
     const config = {
       project: { name: "test-project" },
       agents: { define: "gemini", implement: "codex-cloud" },
-      server: { port: 18790, host: "localhost" },
+      server: { 
+        port: 18790, 
+        host: "localhost",
+        heartbeatIntervalMs: 1000,
+        networkCheckIntervalMs: 1000
+      },
       parallelism: {
         local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
         cloud: { maxConcurrent: 10 },
@@ -134,5 +154,55 @@ describe("loadConfig", () => {
 
     const result = loadConfig(tempDir);
     expect(result.pulse?.repos).toEqual([]);
+  });
+
+  it("should load config with slack project fields", () => {
+    const config = {
+      project: { 
+        name: "test-project",
+        slackChannel: "#gwrk-test",
+        slackChannelId: "C123456"
+      },
+      agents: { define: "gemini", implement: "codex-cloud" },
+      server: { 
+        port: 18790, 
+        host: "localhost",
+        heartbeatIntervalMs: 1000,
+        networkCheckIntervalMs: 1000
+      },
+      parallelism: {
+        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+        cloud: { maxConcurrent: 10 },
+      },
+    };
+    fs.writeFileSync(
+      path.join(tempDir, ".gwrkrc.json"),
+      JSON.stringify(config),
+    );
+
+    const result = loadConfig(tempDir);
+    expect(result.project.slackChannel).toBe("#gwrk-test");
+    expect(result.project.slackChannelId).toBe("C123456");
+  });
+});
+
+import { SlackConfigSchema } from "./config.js";
+
+describe("SlackConfigSchema", () => {
+  it("should validate valid slack tokens", () => {
+    const valid = {
+      botToken: "xoxb-12345",
+      appToken: "xapp-12345",
+    };
+    expect(SlackConfigSchema.parse(valid)).toEqual(valid);
+  });
+
+  it("should fail on invalid slack tokens", () => {
+    const invalid = {
+      botToken: "not-a-bot-token",
+      appToken: "not-an-app-token",
+    };
+    const result = SlackConfigSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
   });
 });
