@@ -105,7 +105,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 ## 4. Functional Requirements
 
 - **FR-001**: System MUST provide a `BackendSelector` that accepts a `TaskContext` (feature, phase, language, taskSP) and returns a `BackendSelection` (backend, model, reason, quotaPercent, fallback). The primary selection criterion is **quota remaining**, with historical success rate as tiebreaker. (Implements: US-001)
-- **FR-002**: System MUST implement a `QuotaProber` per backend type. Probing strategies, in order of preference: (a) cached reading from last probe within TTL (default 5 min), (b) headless interactive session scraping (tmux-based, inspired by ccquota pattern), (c) optimistic assumption (100%). The probe MUST return `{ percent: number, resetsIn: string, probeStatus: "fresh" | "cached" | "timeout-assumed-available" }`. (Implements: US-001, US-003)
+- **FR-002**: System MUST implement a `QuotaProber` per backend type. Probing strategies, in order of preference: (a) cached reading from last probe within TTL (default 5 min), (b) headless interactive session scraping (tmux-based, inspired by ccquota pattern), (c) shared-pool lookup (e.g. `codex-cloud` reads the `codex` local probe — they share the same 5h window), (d) optimistic assumption (100%). The probe MUST return `{ percent: number, resetsIn: string, probeStatus: "fresh" | "cached" | "shared-pool" | "timeout-assumed-available" }`. (Implements: US-001, US-003)
 - **FR-003**: System MUST check backend availability before selection. A backend is available if: (a) configured in registry, (b) quota > 0% (or probe assumed available), (c) not in cooldown from a recent failure. (Implements: US-001)
 - **FR-004**: System MUST implement a fallback chain. If the selected backend has 0% quota, fails, or times out, the router MUST select the next backend from `agents.fallbackOrder`. Max 3 fallback attempts. (Implements: US-002)
 - **FR-005**: System MUST load the agent registry from `.gwrkrc.json` under `agents.registry`. The schema MUST be Zod-validated with fail-fast on invalid config. Registry schema per backend: `{ name, type: "local-cli" | "cloud", command, quotaProbe: { command, parseFormat }, maxConcurrent, models, fallback? }`. (Implements: US-004)
@@ -185,7 +185,8 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
         "type": "cloud",
         "command": "@codex",
         "quotaProbe": {
-          "method": "optimistic",
+          "method": "shared-pool",
+          "sharedWith": "codex",
           "cacheTTLMinutes": 0
         },
         "maxConcurrent": 3,

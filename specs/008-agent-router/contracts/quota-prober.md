@@ -18,7 +18,7 @@ last_modified: "2026-03-10T22:30:00Z"
 | `codex` | interactive-scrape | `codex` | `/status` | `5h limit:\s+\[.*\]\s+(\d+)% left` | Percentage is "remaining" |
 | `gemini` | interactive-scrape | `gemini` | `/stats session` | `Usage remaining\s+(\d+\.?\d*)%` | Per-model; use lowest |
 | `claude` | interactive-scrape | `claude` | `/usage` | `(\d+)% used` | Inverted: remaining = 100 - used |
-| `codex-cloud` | optimistic | — | — | — | Always returns 100% |
+| `codex-cloud` | shared-pool | — | — | — | Shares 5h quota with `codex` local. Uses `codex` probe reading |
 
 ## Shell Helper: `scripts/dev/quota-probe.sh`
 

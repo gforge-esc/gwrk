@@ -79,11 +79,12 @@ interface AgentBackendConfig {
 }
 
 interface QuotaProbeConfig {
-  method: "interactive-scrape" | "optimistic";
+  method: "interactive-scrape" | "shared-pool" | "optimistic";
   command?: string;           // CLI to launch (e.g. "gemini")
   sendKeys?: string;          // Interactive command (e.g. "/stats session")
   parseRegex?: string;        // Regex to extract percentage
   invertPercent?: boolean;    // true for "N% used" → (100-N)% remaining
+  sharedWith?: string;        // Backend key whose probe to reuse (e.g. "codex")
   cacheTTLMinutes: number;
 }
 ```
@@ -100,7 +101,7 @@ interface QuotaReading {
   percent: number;            // 0-100, remaining
   resetsIn: string;           // e.g. "16h 5m"
   probedAt: string;           // ISO timestamp
-  status: "fresh" | "cached" | "timeout-assumed-available";
+  status: "fresh" | "cached" | "shared-pool" | "timeout-assumed-available";
 }
 ```
 
