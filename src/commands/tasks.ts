@@ -74,7 +74,11 @@ tasksCommand
         timestamp: new Date().toISOString(),
         featureId: feature,
         taskId: taskId,
-        fromStatus: task.status as any,
+        fromStatus: task.status as
+          | "open"
+          | "in_progress"
+          | "completed"
+          | "cancelled",
         toStatus: "completed",
       });
 

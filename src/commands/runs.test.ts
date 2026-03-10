@@ -25,11 +25,11 @@ describe("runsCommand — CLI and JSON output", () => {
         feature_id: "001-cli-core",
         command: "ship",
         agent_backend: "claude",
-        exit_code: null,
-        duration_s: null,
+        exit_code: null as unknown as number,
+        duration_s: null as unknown as number,
         started_at: "2026-03-05T12:05:00Z",
       },
-    ] as any);
+    ] as import("../db/runs.js").RunRecord[]);
   });
 
   afterEach(() => {

@@ -47,6 +47,8 @@ export class DispatchQueue {
             return;
         }
         const record = this.queue.shift();
+        if (!record)
+            return;
         this.active.push(record);
         record.status = "running";
         persistDispatch(record);
@@ -89,7 +91,8 @@ export class DispatchQueue {
             await this.handleCompletion(record.id, 0, "");
         }
         catch (e) {
-            await this.handleCompletion(record.id, 1, e.message || String(e));
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            await this.handleCompletion(record.id, 1, errorMessage);
         }
     }
     async handleCompletion(dispatchId, exitCode, stderr) {

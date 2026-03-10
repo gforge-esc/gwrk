@@ -23,9 +23,9 @@ vi.mock("../db/runs.js", () => ({
 
 describe("DispatchQueue", () => {
   let queue: DispatchQueue;
-  let mockMonitor: any;
-  let mockSandbox: any;
-  let mockGit: any;
+  let mockMonitor: vi.Mocked<SystemMonitor>;
+  let mockSandbox: vi.Mocked<SandboxManager>;
+  let mockGit: vi.Mocked<GitManager>;
   let tempDir: string;
   const mockConfig: GwrkConfig = {
     project: { name: "test" },
@@ -40,9 +40,9 @@ describe("DispatchQueue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-dispatch-test-"));
-    mockMonitor = new SystemMonitor() as any;
-    mockSandbox = new SandboxManager() as any;
-    mockGit = new GitManager(tempDir) as any;
+    mockMonitor = new SystemMonitor() as vi.Mocked<SystemMonitor>;
+    mockSandbox = new SandboxManager() as vi.Mocked<SandboxManager>;
+    mockGit = new GitManager(tempDir) as vi.Mocked<GitManager>;
     queue = new DispatchQueue(
       mockConfig,
       mockMonitor,
@@ -133,7 +133,7 @@ describe("DispatchQueue", () => {
     // Attempt 1
     await new Promise((resolve) => setTimeout(resolve, 60));
     await queue.handleCompletion(record.id, 1, "error");
-    
+
     // Attempt 2
     await new Promise((resolve) => setTimeout(resolve, 60));
     await queue.handleCompletion(record.id, 1, "error");
@@ -142,7 +142,7 @@ describe("DispatchQueue", () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     // Final failure should not be throttled to see 'failed' status immediately
     await queue.handleCompletion(record.id, 1, "error");
-    
+
     expect(record.status).toBe("failed");
     expect(queue.getCompletedCount()).toBe(0);
     expect(queue.getFailedCount()).toBe(1);

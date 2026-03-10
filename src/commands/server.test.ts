@@ -41,7 +41,9 @@ describe("serverCommand", () => {
       },
     });
 
-    vi.spyOn(server, "startServer").mockResolvedValue({} as any);
+    vi.spyOn(server, "startServer").mockResolvedValue(
+      {} as unknown as Awaited<ReturnType<typeof server.startServer>>,
+    );
   });
 
   afterEach(() => {
@@ -74,7 +76,7 @@ describe("serverCommand", () => {
       vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(true);
       const spawnSpy = vi.mocked(spawn).mockReturnValue({
         unref: vi.fn(),
-      } as any);
+      } as unknown as import("node:child_process").ChildProcess);
 
       await serverCommand.parseAsync(["start"], { from: "user" });
 
@@ -95,9 +97,7 @@ describe("serverCommand", () => {
       vi.spyOn(pidUtils, "isPidRunning")
         .mockReturnValueOnce(true)
         .mockReturnValue(false);
-      const killSpy = vi
-        .spyOn(process, "kill")
-        .mockImplementation(() => true as any);
+      const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
 
       await serverCommand.parseAsync(["stop"], { from: "user" });
 

@@ -35,12 +35,17 @@ describe("Server E2E Integration", () => {
     fs.mkdirSync("specs/feat-1/.gwrk", { recursive: true });
     fs.writeFileSync("specs/feat-1/spec.md", "# Spec 1");
     fs.writeFileSync("specs/feat-1/plan.md", "# Plan 1");
-    fs.writeFileSync("specs/feat-1/.gwrk/tasks.json", JSON.stringify({
-      featureId: "feat-1",
-      phases: [{ id: "phase-1", tasks: [] }]
-    }));
+    fs.writeFileSync(
+      "specs/feat-1/.gwrk/tasks.json",
+      JSON.stringify({
+        featureId: "feat-1",
+        phases: [{ id: "phase-1", tasks: [] }],
+      }),
+    );
 
-    await execAsync("git init && git checkout -b feature/feat-1-wip", { cwd: tempDir });
+    await execAsync("git init && git checkout -b feature/feat-1-wip", {
+      cwd: tempDir,
+    });
     fs.writeFileSync("README.md", "initial");
     await execAsync("git add . && git commit -m 'initial'", { cwd: tempDir });
   });
@@ -60,8 +65,8 @@ describe("Server E2E Integration", () => {
       url: "/api/dispatch",
       payload: {
         featureId: "feat-1",
-        phaseId: "phase-1"
-      }
+        phaseId: "phase-1",
+      },
     });
 
     expect(postResponse.statusCode).toBe(200);
@@ -72,7 +77,7 @@ describe("Server E2E Integration", () => {
     // 2. GET /api/dispatch/queue
     const queueResponse = await server.inject({
       method: "GET",
-      url: "/api/dispatch/queue"
+      url: "/api/dispatch/queue",
     });
     expect(queueResponse.statusCode).toBe(200);
     const queue = queueResponse.json();
@@ -81,7 +86,7 @@ describe("Server E2E Integration", () => {
     // 3. GET /api/dispatch/feat-1/phase-1
     const getResponse = await server.inject({
       method: "GET",
-      url: "/api/dispatch/feat-1/phase-1"
+      url: "/api/dispatch/feat-1/phase-1",
     });
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.json().id).toBe(record.id);

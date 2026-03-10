@@ -1,11 +1,11 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { finishRun, startRun } from "../db/runs.js";
 import type { AgentBackend, GwrkConfig } from "../utils/config.js";
 import { compileContext } from "./context.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
-import { startRun, finishRun } from "../db/runs.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchAttempt, DispatchRecord, SystemStatus } from "./types.js";
@@ -59,7 +59,9 @@ export class DispatchQueue {
       return;
     }
 
-    const record = this.queue.shift()!;
+    const record = this.queue.shift();
+    if (!record) return;
+
     this.active.push(record);
     record.status = "running";
     persistDispatch(record);
@@ -117,8 +119,9 @@ export class DispatchQueue {
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       await this.handleCompletion(record.id, 0, "");
-    } catch (e: any) {
-      await this.handleCompletion(record.id, 1, e.message || String(e));
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      await this.handleCompletion(record.id, 1, errorMessage);
     }
   }
 

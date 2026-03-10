@@ -37,15 +37,15 @@ export function extractStories(featureDir: string): StoryEstimate[] {
     let priority: string | undefined;
 
     const bracketMatch = rawTitle.match(bracketsRegex);
-    if (bracketMatch) {
-      const tagsStr = bracketMatch[1]!;
+    if (bracketMatch?.[1]) {
+      const tagsStr = bracketMatch[1];
       // Remove the brackets from the title
       rawTitle = rawTitle.replace(bracketMatch[0], "").trim();
 
       // Extract SP
       const spMatch = tagsStr.match(/(\d+(?:\.\d+)?)\s*SP/i);
-      if (spMatch) {
-        sp = Number.parseFloat(spMatch[1]!);
+      if (spMatch?.[1]) {
+        sp = Number.parseFloat(spMatch[1]);
       }
 
       // Extract Priority (P0, P1, P2)

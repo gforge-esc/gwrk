@@ -62,11 +62,13 @@ export function computeEffort(
   // Finalize role breakdowns
   const rolesBreakdownArray: RoleBreakdown[] = [];
   for (const roleCode of Object.keys(roleMap)) {
-    const rb = roleMap[roleCode]!;
-    rb.withOverhead = Number((rb.rawHours * overheadFactor).toFixed(2));
-    rb.days = Number((rb.withOverhead / 8).toFixed(2));
-    if (rb.spAssigned > 0) {
-      rolesBreakdownArray.push(rb);
+    const rb = roleMap[roleCode];
+    if (rb) {
+      rb.withOverhead = Number((rb.rawHours * overheadFactor).toFixed(2));
+      rb.days = Number((rb.withOverhead / 8).toFixed(2));
+      if (rb.spAssigned > 0) {
+        rolesBreakdownArray.push(rb);
+      }
     }
   }
 

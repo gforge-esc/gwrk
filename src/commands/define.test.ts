@@ -61,7 +61,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
           maxConcurrent: 10,
         },
       },
-    } as any);
+    } as import("../utils/config.js").GwrkConfig);
 
     vi.mocked(startRun).mockReturnValue(42);
     vi.mocked(run).mockResolvedValue(true as never);
@@ -117,7 +117,9 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     });
 
     expect(run).toHaveBeenCalled();
-    const [scriptPath, args, opts] = vi.mocked(run).mock.calls[0]!;
+    const firstCall = vi.mocked(run).mock.calls[0];
+    if (!firstCall) throw new Error("run was not called");
+    const [scriptPath, args, opts] = firstCall;
     expect(scriptPath).toContain("scripts/dev/define-until-solid.sh");
     expect(args).toEqual(["004-ship-loop"]);
     expect(opts?.cwd).toBe("/Users/gonzo/Code/gwrk");
@@ -133,8 +135,10 @@ describe("defineCommand — Define Until Solid wrapper", () => {
   });
 
   it("records failure when script execution throws", async () => {
-    const mockError = new Error("Command failed");
-    (mockError as any).exitCode = 2;
+    const mockError = new Error("Command failed") as Error & {
+      exitCode: number;
+    };
+    mockError.exitCode = 2;
     vi.mocked(run).mockRejectedValue(mockError);
 
     let _err: Error | undefined;

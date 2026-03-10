@@ -18,7 +18,9 @@ export async function statusRoutes(
     const sandboxes = await sandbox.listSandboxes();
 
     // We assume server is running since this route is handling requests
-    const port = (fastify.server.address() as any)?.port;
+    const address = fastify.server.address();
+    const port =
+      address && typeof address === "object" ? address.port : undefined;
 
     return {
       server: {
