@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-08 (v5)
+> **Status:** Authoritative · **Date:** 2026-03-10 (v6)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract)
 
@@ -13,7 +13,7 @@ graph TD
     P0[Phase 0: Extraction] --> P1[Phase 1: CLI Core]
     P1 --> P2[Phase 2: Build Server]
     P1 --> P4[Phase 4: Ship Loop]
-    P2 --> P3[Phase 3: Slack]
+    P2 --> P3[Phase 3: Slack + App Home Tab]
     P2 --> P5[Phase 5: Parallel Dispatch]
     P4 --> P5
     P1 --> P6[Phase 6: Pulse]
@@ -22,7 +22,6 @@ graph TD
     P3 --> P9[Phase 9: Agent-DUT]
     P6 --> P10[Phase 10: GForge Integration]
     P7 --> P10
-    P3 --> P11[Phase 11: App Home Tab]
     P1 --> P12[Phase 12: Knowledge Work]
 ```
 
@@ -31,13 +30,13 @@ graph TD
 ## Critical Path
 
 ```
-P0 → P1 → P2 → P3 → P11
+P0 → P1 → P2 → P3 (+ App Home Tab)
               → P4 → P5 → P8
          → P6
          → P7
 ```
 
-**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure, multi-CLI provisioning, and the SQLite execution ledger (ADR-002). P2 (Build Server) and P4 (Ship Loop) are the next-order dependencies. P3 is now Slack (Socket Mode + Bolt SDK), replacing Telegram. P11 (App Home Tab) is Slack-native, depending only on P3.
+**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure, multi-CLI provisioning, and the SQLite execution ledger (ADR-002). P2 (Build Server) and P4 (Ship Loop) are the next-order dependencies. P3 is Slack (Socket Mode + Bolt SDK) + App Home Tab (folded from former P11, replacing Telegram). P9 (Agent-DUT) depends on a fully functioning P3.
 
 ---
 
@@ -148,7 +147,7 @@ Slack integration for the comms layer via Socket Mode + Bolt SDK. Channel-per-pr
 
 | Spec | Content | Gate |
 |---|---|---|
-| `003-slack` | Socket Mode app, Bolt SDK, slash commands, interactive messages, threads, channel provisioning | Send status update and approve a review verdict from Slack |
+| `003-slack` | Socket Mode app, Bolt SDK, slash commands, interactive messages, threads, channel provisioning, **App Home Tab dashboard** | Send status update and approve a review verdict from Slack; App Home Tab renders live dashboard |
 
 **Dependencies:** Phase 2
 **Agent:** Gemini CLI
@@ -320,34 +319,9 @@ Unified Pulse + Compression dashboard across repos.
 
 ---
 
-### Phase 11 — App Home Tab
+### Phase 11 — RETIRED
 
-Slack App Home Tab as the real-time ops dashboard. Replaces the Glass Dashboard SPA.
-
-| Spec | Content | Gate |
-|---|---|---|
-| `011-app-home-tab` | Block Kit views: Ops, Projects, Pulse, Compression, Events, Quick Actions. Auto-refresh. Tunnel for remote access. | Open gwrk in Slack → see live agent activity, project progress, compression |
-
-**Dependencies:** Phase 3 (Slack)
-**Agent:** Gemini CLI
-
-#### What ships:
-
-```bash
-gwrk tunnel start                  # Start Cloudflare Tunnel
-gwrk tunnel start --provider tailscale
-gwrk tunnel status
-gwrk tunnel stop
-```
-
-#### Why App Home Tab, not SPA:
-- No separate web server to run
-- No tunnel needed just for dashboard (tunnel is for remote Slack access)
-- Already authenticated via Slack
-- Already mobile
-- One less thing to build
-
-> **Tunnel resilience note:** The tunnel process manager (`gwrk tunnel start/stop`) ships in Phase 11 but depends on Phase 2's sleep/wake event bus (`server:wake` + `network:up` → tunnel auto-restart). This is a consumer relationship, not a new dependency edge — Phase 11 already depends on Phase 2 transitively via Phase 3.
+> **Folded into Phase 3 (003-slack).** The App Home Tab is a Bolt event handler + Block Kit renderer that shares the same Bolt instance, OAuth scopes, and config as the rest of 003-slack. Keeping it separate added overhead for minimal isolation benefit. See US-008/FR-008 in `specs/003-slack/spec.md`.
 
 ---
 
@@ -393,8 +367,8 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 |---|---|---|---|
 | **Wave 1** | P1 | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning, gwrk new/init |
 | **Wave 2** | P2, P4, P6, P7, P12 | Yes (independent after P1) | Core engines: server, execution, productivity, compression, discovery |
-| **Wave 3** | P3, P5 | Partially (P3 needs P2, P5 needs P2+P4) | Multipliers: Slack, parallelism |
-| **Wave 4** | P8, P9, P11 | Yes (P8 needs P5; P9 needs P3; P11 needs P3) | Intelligence + Comms: smart routing, DUT ideation, App Home Tab |
+| **Wave 3** | P3, P5 | Partially (P3 needs P2, P5 needs P2+P4) | Multipliers: Slack + App Home Tab, parallelism |
+| **Wave 4** | P8, P9 | Yes (P8 needs P5; P9 needs P3) | Intelligence + Comms: smart routing, DUT ideation |
 | **Wave 5** | P10 | No (needs P6+P7) | Integration: unified dashboard |
 
 ---
@@ -406,7 +380,7 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 | P0 (Extraction) | 3 | PE | Done |
 | P1 (CLI Core) | 25 | TS | 125h |
 | P2 (Build Server) | 18 | TS | 90h |
-| P3 (Slack) | 13 | TS | 65h |
+| P3 (Slack + App Home Tab) | 13 | TS | 65h |
 | P4 (Ship Loop) | 8 | TS | 40h |
 | P5 (Parallel Dispatch) | 10 | TS | 50h |
 | P6 (Pulse) | 5 | TS | 25h |
@@ -414,9 +388,9 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 | P8 (Agent Router) | 10 | TS | 50h |
 | P9 (Agent-DUT) | 8 | TS | 40h |
 | P10 (Integration) | 5 | TS | 25h |
-| P11 (App Home Tab) | 5 | TS | 25h |
+| P11 (RETIRED) | — | — | Folded into P3 |
 | P12 (Knowledge Work) | 8 | TS | 40h |
-| **Total** | **126 SP** | | **615h** |
+| **Total** | **121 SP** | | **590h** |
 
 **Changes from v1:** P1 increased (13→21 SP: gwrk new, gwrk init, multi-CLI, SQLite). P3 increased (8→13 SP: Slack is richer than Telegram). P7 increased (5→8 SP: leading indicators). P11 decreased (8→5 SP: App Home Tab is simpler than SPA).
 
@@ -436,6 +410,7 @@ None for P0→P1→P2 critical path. Remaining questions:
 
 ## Changelog
 
+- **2026-03-10 (v6):** P11 (App Home Tab) retired as separate phase — folded into P3 (003-slack). App Home Tab is US-008/FR-008 within 003-slack. DUT scope (US-006/FR-006/TR-008/DM-004) extracted from 003-slack → deferred to 009-agent-dut. P9 depends on fully functioning P3. Wave 4 reduced to P8+P9. SP: 126→121 (-5 SP from retired P11). Hours: 615h→590h.
 - **2026-03-08 (v5):** Execution State Contract (ADR-003). Two-tier architecture: git-native execution manifests (Tier 1, operational) + build-server-side SQLite harvest (Tier 2, analytical). `.gitignore` for `.runs/`, `.gitattributes` for `.gwrk/` merge safety. P1 gains Phase 9 (manifest writer, `tasks verify`, `history.jsonl` deprecation path). P2 gains `gwrk harvest`. P1 SP: 21→25. `history.jsonl`(DM-002) deprecated. Total: 122→126 SP.
 - **2026-03-08 (v4):** Three additions. (1) Phase 4 renamed WUD→Ship to align with FC Pillar 3. (2) Agent Registry: P5 gets capacity gate (per-backend rate limiting), P8 gets registry schema + context size estimator + mini-model fallback. Backend constraints documented in `docs/references/agent-backends.md`. P5 SP: 8→10, P8 SP: 8→10. (3) New Phase 12 (Knowledge Work): first-class Foxtrot Charlie Discovery pillar support — fieldnote capture, discovery compilation, kw-specify/plan/build-plan. Wave 2 eligible. +8 SP. Total: 110→122 SP.
 - **2026-03-08 (v3):** Added resilience requirements to Phase 2 (Build Server). New user scenarios: US-011 (macOS sleep/wake), US-012 (network connectivity), US-013 (rich health). Seven new FRs (FR-015–FR-021). New Phase 6 in 002-build-server plan (Resilience & Connectivity). Phase 11 tunnel dependency on Phase 2 event bus clarified. P2 SP: 13→18 (+5 SP for resilience phase). Total: 105→110 SP.

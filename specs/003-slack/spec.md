@@ -85,22 +85,9 @@ As a Principal Engineer, I want to approve or reject reviews by tapping interact
 2. **Given** a review message, **When** the user reacts with ✅, **Then**:
    - The reaction triggers the same merge flow as the `Merge` button
 
-### US-006 - Threaded DUT Conversations (Priority: P1)
-As a Principal Engineer, I want `/dream <description>` to start a threaded conversation with Agent-DUT in the project channel, where DUT asks clarifying questions and produces a `spec.md` — so that I can turn ideas into features from my phone.
+> **Deferred to 009-agent-dut**: US-006 (Threaded DUT Conversations), FR-006, TR-008, DM-004 moved to [009-agent-dut](file:///Users/gonzo/Code/gwrk/specs/009-agent-dut/spec.md). DUT depends on a fully functioning 003-slack.
 
-**Implements**: FR-006
-
-**Independent Test**: Type `/dream "I want historical git analysis"` and verify DUT starts a thread.
-
-**Acceptance Scenarios**:
-1. **Given** Slack is configured for project `gwrk`, **When** the user types `/dream "I want historical git analysis with weekly LOC trends"`, **Then**:
-   - A new thread is created in the project channel
-   - DUT posts at least one clarifying question within the thread
-2. **Given** a DUT thread with sufficient clarification, **When** the user taps `[Ship It 🚀]`, **Then**:
-   - DUT writes `specs/<feature>/spec.md` and commits it
-   - A confirmation message with a link to the spec file is posted
-
-### US-007 - Presence-Aware Notifications (Priority: P1)
+### US-006 - Presence-Aware Notifications (Priority: P1)
 As a Principal Engineer, I want gwrk to throttle notifications based on my Slack presence — verbose when Active, batched summaries when Away — so I don't wake up to 47 phase updates at 2am.
 
 **Implements**: FR-007
@@ -168,7 +155,7 @@ The Slack app requires these OAuth scopes:
 - **FR-003**: System MUST post Block Kit-formatted status messages to the project channel for: phase start, phase completion, phase failure, CI results, review readiness, Pulse daily summary, and Done Done! celebration (🏆). (Implements: US-003)
 - **FR-004**: System MUST register and handle these slash commands: `/gwrk status [feature]`, `/gwrk dispatch <feature>`, `/gwrk approve <feature> <phase>`, `/gwrk reject <feature> <phase> <reason>`, `/gwrk pause <feature>`, `/gwrk pulse [repo]`, `/gwrk effort <feature>`, `/gwrk logs <feature> <phase>`. (Implements: US-004)
 - **FR-005**: System MUST render interactive buttons on review messages (`Merge`, `Request Changes`, `View Full Review`) and handle button taps as pipeline actions. System MUST also support ✅ reaction-to-approve as an alternative to the Merge button. (Implements: US-005)
-- **FR-006**: System MUST provide `/dream <description>` that starts a threaded DUT conversation in the project channel. DUT MUST ask clarifying questions, shape a feature outline, and produce a `spec.md` when the user taps `[Ship It 🚀]`. Supports `/dream status`, `/dream ship <thread>`, `/dream discard <thread>`, `/dream resume`. (Implements: US-006)
+- **FR-006**: DEFERRED to 009-agent-dut. See deferral note in §2.
 - **FR-007**: System MUST observe Slack user presence and throttle notifications: Active → immediate individual messages, Away → batch and deliver a single summary when presence changes to Active. (Implements: US-007)
 - **FR-008**: System MUST render a Block Kit App Home Tab with sections: Active Agents, Dispatch Queue, System Resources (CPU/mem/disk), Feature Progress (per-project phase status + RAGB), and Pulse summary. MUST update on `app_home_opened` event. (Implements: US-008)
 - **FR-009**: System MUST provide `gwrk setup slack --verify` that tests Socket Mode connection, token validity, and sends a test message to `#gwrk`. (Implements: US-009)
@@ -216,13 +203,7 @@ The Slack app requires these OAuth scopes:
 | PR already merged | `PR already merged` | 0 (Slack responds ephemerally) |
 
 #### FR-006 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| `/dream` with empty description | `Usage: /dream <description>` | 0 (Slack responds ephemerally) |
-| DUT thread creation fails | `Failed to create DUT thread: <error>` | 0 (Slack responds ephemerally) |
-| `/dream ship` on non-DUT thread | `Thread <ts> is not a DUT conversation` | 0 (Slack responds ephemerally) |
-| `/dream resume` with no active thread | `No active DUT thread found` | 0 (Slack responds ephemerally) |
-| Spec generation fails | `Failed to generate spec: <error>` | 0 (Slack responds ephemerally) |
+DEFERRED to 009-agent-dut.
 
 #### FR-007 Error States
 | Condition | stderr contains | Exit code |
@@ -277,20 +258,7 @@ interface SlackEvent {
 ```
 
 ### DM-004: DUT Thread State (SQLite)
-
-```typescript
-interface DutThread {
-  threadTs: string;           // Slack thread timestamp (primary key)
-  channelId: string;
-  projectId: string;
-  status: 'active' | 'shipped' | 'discarded';
-  sparks: string[];           // Raw user messages
-  outline: string | null;     // Structured feature outline (JSON)
-  specPath: string | null;    // Path to generated spec.md
-  createdAt: string;          // ISO 8601
-  updatedAt: string;          // ISO 8601
-}
-```
+DEFERRED to 009-agent-dut.
 
 ---
 
@@ -315,7 +283,7 @@ interface DutThread {
 - **TR-005**: `src/server/slack-messages.test.ts` — Unit test Block Kit message builders: verify JSON structure for phase start, phase complete, phase fail, review ready, Pulse summary, Done Done! Vitest. (FR-003)
 - **TR-006**: `src/server/slack-presence.test.ts` — Unit test presence watcher: mock user presence changes, verify immediate vs batched delivery, verify batch summary format. Vitest. (FR-007)
 - **TR-007**: `src/server/slack-home.test.ts` — Unit test App Home Tab builder: mock daemon state, verify Block Kit sections for active agents, queue, resources, feature progress. Vitest. (FR-008)
-- **TR-008**: `src/server/slack-dut.test.ts` — Mock DUT thread lifecycle: thread creation, clarification loop, Ship It action, spec generation, thread state in SQLite. Vitest. (FR-006)
+- **TR-008**: DEFERRED to 009-agent-dut. (FR-006)
 - **TR-009**: `src/server/slack-channel.test.ts` — Mock channel creation: verify `conversations.create` called with project name, re-use on duplicate, config update. Vitest. (FR-002)
 - **TR-010**: Integration test — Start a mock Bolt app, send a simulated slash command, verify response. Vitest. (FR-004, FR-001)
 
@@ -327,7 +295,7 @@ interface DutThread {
 - **SC-002**: Status updates appear in project channel with Block Kit formatting within 5 seconds of a pipeline event.
 - **SC-003**: All 8 slash commands return responses via Slack within 3 seconds.
 - **SC-004**: Tapping `[✅ Merge]` or reacting with ✅ merges the PR and posts confirmation.
-- **SC-005**: `/dream` starts a threaded DUT conversation that produces a committable `spec.md`.
+- **SC-005**: DEFERRED to 009-agent-dut.
 - **SC-006**: Away → Active presence transition delivers a single batched summary of all queued events.
 - **SC-007**: App Home Tab renders a live dashboard with active agents, queue, resources, and feature progress.
 
@@ -353,7 +321,7 @@ interface DutThread {
 | US-003 | FR-003 | FR-003 | US-003 | TR-005 |
 | US-004 | FR-004 | FR-004 | US-004 | TR-003, TR-010 |
 | US-005 | FR-005 | FR-005 | US-005 | TR-004 |
-| US-006 | FR-006 | FR-006 | US-006 | TR-008 |
+| US-006 | FR-006 | FR-006 | DEFERRED → 009 | DEFERRED → 009 |
 | US-007 | FR-007 | FR-007 | US-007 | TR-006 |
 | US-008 | FR-008 | FR-008 | US-008 | TR-007 |
 | US-009 | FR-001, FR-009 | FR-009 | US-009 | TR-001 |
