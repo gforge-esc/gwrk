@@ -74,7 +74,7 @@ describe("dispatch routes", () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(201);
     const json = response.json();
     expect(json.featureId).toBe("feat-1");
     expect(json.phaseId).toBe("phase-1");

@@ -124,7 +124,7 @@ describe("Build Server E2E", () => {
         },
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(201);
       const body = response.json();
       expect(body.id).toBeDefined();
       expect(body.featureId).toBe("e2e-test");
@@ -185,7 +185,7 @@ describe("Build Server E2E", () => {
         },
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(201);
       const body = response.json();
       expect(body.phaseId).toBe("phase-02");
       expect(body.backend).toBe("claude");
@@ -199,7 +199,8 @@ describe("Build Server E2E", () => {
       });
 
       const body = statusResponse.json();
-      // At least 2 in the queue (may have leftovers from earlier tests)
+      // Note: status 500 or other is possible if /api/status itself has issues
+      // but the queue depth via dispatch route is the key test
       expect(body.dispatch.queueDepth).toBeGreaterThanOrEqual(2);
     });
   });
