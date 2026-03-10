@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-10T16:57:26.480Z_ship_p06",
+  "feature": "002-build-server",
+  "phase": "phase-06",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-10T16:57:26.480Z",
+  "finishedAt": "2026-03-10T17:20:48.893Z",
+  "durationS": 1402,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 95,
+  "linesDeleted": 1,
+  "gitCommit": "08762cd198baaeaf74d32b457e199cf4446aaa42",
+  "gitBranch": "feat/002-build-server"
+}
