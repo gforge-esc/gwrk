@@ -2,6 +2,8 @@ import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
+import { MessageBuilder } from "../server/slack-messages.js";
+import { notifySlack } from "../server/slack-notify.js";
 import { run } from "../utils/exec.js";
 import { banner, color, dryRun as dryRunFmt, fail, success, } from "../utils/format.js";
 import { getCurrentBranch, getCurrentCommit, getDiffStats, } from "../utils/git.js";
@@ -23,6 +25,17 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
         agent_backend: backend,
         workflow: "work-until-done",
     });
+    const record = {
+        id: `ship-${runId}`,
+        featureId: feature,
+        phaseId: phaseId,
+        backend: backend,
+        status: "running",
+        branchName: getCurrentBranch(cwd),
+        attempts: [{ attemptNumber: 1, backend: backend, startedAt }],
+        createdAt: startedAt,
+    };
+    await notifySlack(MessageBuilder.phaseStart(record));
     banner("ship", {
         Feature: feature,
         Phase: phase,
@@ -48,6 +61,8 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
         finishRun(runId, { exit_code: 0, duration_s: durationS });
         success("ship", durationS, runId);
+        record.status = "completed";
+        await notifySlack(MessageBuilder.phaseComplete(record));
     }
     catch (err) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
@@ -57,6 +72,8 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
                 : 1;
         finishRun(runId, { exit_code: exitCode, duration_s: durationS });
         fail("ship", exitCode, durationS, runId);
+        record.status = "failed";
+        await notifySlack(MessageBuilder.phaseFail(record, err instanceof Error ? err.message : String(err)));
     }
     // Write Execution Manifest (ADR-003)
     try {

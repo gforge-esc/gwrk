@@ -30,11 +30,10 @@ export const initCommand = new Command("init")
     }
 
     const projectName = path.basename(projectRoot);
-    const config = {
+    const config: any = {
       project: {
         name: projectName,
         githubRepo: options.github,
-        slackChannel: options.slack,
       },
       agents: {
         define: "gemini",
@@ -43,6 +42,8 @@ export const initCommand = new Command("init")
       server: {
         port: 18790,
         host: "localhost",
+        heartbeatIntervalMs: 5000,
+        networkCheckIntervalMs: 30000,
       },
       parallelism: {
         local: {
@@ -56,6 +57,29 @@ export const initCommand = new Command("init")
         },
       },
     };
+
+    // Slack Channel Provisioning
+    if (options.slack) {
+      const { ensureSlackChannel } = await import("../server/slack-channel.js");
+      const { loadSlackConfig } = await import("../utils/slack-client.js");
+      
+      const hasTokens = loadSlackConfig();
+      if (hasTokens) {
+        try {
+          console.log(`Creating Slack channel ${options.slack}...`);
+          const channelId = await ensureSlackChannel(options.slack);
+          config.project.slack = {
+            channelId,
+            channelName: options.slack,
+          };
+          console.log(`Successfully provisioned Slack channel: ${options.slack} (${channelId})`);
+        } catch (error) {
+          console.warn(`Warning: Failed to provision Slack channel: ${(error as Error).message}`);
+        }
+      } else {
+        console.warn("Warning: Slack not configured (no tokens found). Run gwrk setup slack first to enable Slack features.");
+      }
+    }
 
     fs.writeFileSync(
       path.join(projectRoot, ".gwrkrc.json"),

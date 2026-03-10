@@ -10,8 +10,12 @@ export const GwrkConfigSchema = z.object({
     project: z.object({
         name: z.string().min(1),
         githubRepo: z.string().optional(),
-        slackChannel: z.string().optional(),
-        slackChannelId: z.string().optional(),
+        slack: z
+            .object({
+            channelId: z.string(),
+            channelName: z.string(),
+        })
+            .optional(),
     }),
     agents: z.object({
         define: AgentBackendSchema,

@@ -2,6 +2,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { finishRun, startRun } from "../db/runs.js";
+import { MessageBuilder } from "./slack-messages.js";
+import { notifySlack } from "./slack-notify.js";
 import { compileContext } from "./context.js";
 import { persistDispatch } from "./persistence.js";
 export class DispatchQueue {
@@ -80,6 +82,10 @@ export class DispatchQueue {
             workflow: "implement",
         });
         record.attempts.push(attempt);
+        // Phase Start Notification
+        if (record.attempts.length === 1) {
+            await notifySlack(MessageBuilder.phaseStart(record));
+        }
         try {
             // 1. Prepare Git
             this.git.createPhaseBranch(record.featureId, record.phaseId);
@@ -126,6 +132,7 @@ export class DispatchQueue {
         if (exitCode === 0) {
             record.status = "completed";
             record.completedAt = attempt.completedAt;
+            await notifySlack(MessageBuilder.phaseComplete(record));
             // Merge back
             try {
                 this.git.mergePhaseBack(record.featureId, record.phaseId);
@@ -154,6 +161,7 @@ export class DispatchQueue {
                 }
                 else {
                     record.status = "failed";
+                    await notifySlack(MessageBuilder.phaseFail(record, stderr));
                 }
             }
         }

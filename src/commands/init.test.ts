@@ -4,7 +4,18 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as runs from "../db/runs.js";
 import * as exec from "../utils/exec.js";
+import * as slackClient from "../utils/slack-client.js";
+import * as slackChannel from "../server/slack-channel.js";
 import { initCommand } from "./init.js";
+
+vi.mock("../utils/slack-client.js", () => ({
+  loadSlackConfig: vi.fn(),
+  getEnvPath: vi.fn(),
+}));
+
+vi.mock("../server/slack-channel.js", () => ({
+  ensureSlackChannel: vi.fn(),
+}));
 
 describe("initCommand", () => {
   let tempDir: string;
@@ -22,6 +33,7 @@ describe("initCommand", () => {
       stdout: "",
       stderr: "",
     });
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -30,6 +42,12 @@ describe("initCommand", () => {
   });
 
   it("should create scaffold directories, .gwrkrc.json, and register project", async () => {
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+    });
+    vi.mocked(slackChannel.ensureSlackChannel).mockResolvedValue("C_TEST");
+
     await initCommand.parseAsync(
       ["--github", "owner/repo", "--slack", "#channel"],
       { from: "user" },
@@ -46,7 +64,8 @@ describe("initCommand", () => {
     );
     expect(config.project.name).toBe(path.basename(tempDir));
     expect(config.project.githubRepo).toBe("owner/repo");
-    expect(config.project.slackChannel).toBe("#channel");
+    expect(config.project.slack.channelName).toBe("#channel");
+    expect(config.project.slack.channelId).toBe("C_TEST");
     expect(config.agents.define).toBe("gemini");
 
     expect(runs.registerProject).toHaveBeenCalledWith(

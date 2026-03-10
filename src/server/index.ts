@@ -10,6 +10,7 @@ import { dispatchRoutes } from "./routes/dispatch.js";
 import { healthRoutes } from "./routes/health.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
+import { startSlackApp, stopSlackApp } from "./slack.js";
 
 export async function startServer(
   config: GwrkConfig,
@@ -93,6 +94,7 @@ export async function startServer(
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
+    await stopSlackApp();
     lifecycle.stop();
     network.stop();
     monitor.stopPolling();
@@ -116,6 +118,10 @@ export async function startServer(
     });
     console.log(`gwrk server listening on ${address}`);
     writePid(process.pid);
+    
+    // Start Slack if configured
+    await startSlackApp();
+    
     return server;
   } catch (err) {
     server.log.error(err);

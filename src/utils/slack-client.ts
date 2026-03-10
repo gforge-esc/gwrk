@@ -40,8 +40,18 @@ export function loadSlackConfig(): SlackConfig | null {
     }
   }
 
+  // If no tokens are provided at all, Slack is not configured
+  if (!envVars.botToken && !envVars.appToken) {
+    return null;
+  }
+
   const result = SlackConfigSchema.safeParse(envVars);
-  return result.success ? result.data : null;
+  if (!result.success) {
+    console.error(`Slack configuration error: ${result.error.message}`);
+    process.exit(1);
+  }
+
+  return result.data;
 }
 
 export async function verifySlackConfig(config: SlackConfig): Promise<{

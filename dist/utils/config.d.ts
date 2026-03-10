@@ -16,18 +16,30 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     project: z.ZodObject<{
         name: z.ZodString;
         githubRepo: z.ZodOptional<z.ZodString>;
-        slackChannel: z.ZodOptional<z.ZodString>;
-        slackChannelId: z.ZodOptional<z.ZodString>;
+        slack: z.ZodOptional<z.ZodObject<{
+            channelId: z.ZodString;
+            channelName: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            channelId: string;
+            channelName: string;
+        }, {
+            channelId: string;
+            channelName: string;
+        }>>;
     }, "strip", z.ZodTypeAny, {
         name: string;
         githubRepo?: string | undefined;
-        slackChannel?: string | undefined;
-        slackChannelId?: string | undefined;
+        slack?: {
+            channelId: string;
+            channelName: string;
+        } | undefined;
     }, {
         name: string;
         githubRepo?: string | undefined;
-        slackChannel?: string | undefined;
-        slackChannelId?: string | undefined;
+        slack?: {
+            channelId: string;
+            channelName: string;
+        } | undefined;
     }>;
     agents: z.ZodObject<{
         define: z.ZodEnum<["gemini", "claude", "codex", "codex-cloud"]>;
@@ -114,8 +126,10 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     project: {
         name: string;
         githubRepo?: string | undefined;
-        slackChannel?: string | undefined;
-        slackChannelId?: string | undefined;
+        slack?: {
+            channelId: string;
+            channelName: string;
+        } | undefined;
     };
     agents: {
         define: "gemini" | "claude" | "codex" | "codex-cloud";
@@ -146,8 +160,10 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     project: {
         name: string;
         githubRepo?: string | undefined;
-        slackChannel?: string | undefined;
-        slackChannelId?: string | undefined;
+        slack?: {
+            channelId: string;
+            channelName: string;
+        } | undefined;
     };
     agents: {
         define: "gemini" | "claude" | "codex" | "codex-cloud";

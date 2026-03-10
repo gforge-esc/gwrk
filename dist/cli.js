@@ -83,7 +83,9 @@ program.addCommand(serverCommand);
 program.addCommand(statusCommand);
 program.addCommand(setupCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
-    if (actionCommand.name() !== "init" && actionCommand.name() !== "setup") {
+    if (actionCommand.name() !== "init" &&
+        actionCommand.name() !== "setup" &&
+        actionCommand.name() !== "slack") {
         // This will process.exit(1) if config is missing or invalid
         loadConfig(process.cwd());
     }

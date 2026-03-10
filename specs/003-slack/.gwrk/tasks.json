@@ -37,20 +37,20 @@
           "id": "T004",
           "title": "Implement src/cli.ts",
           "description": "Modify: Register `setup slack` subcommand\n\nREVIEW FAIL (code): Command requires project config — US-001.\n  WHERE: src/cli.ts:114-119\n  EXPECTED: `gwrk setup slack` should work without a local .gwrkrc.json (global setup).\n  ACTUAL: `loadConfig(process.cwd())` is called for `slack` command, causing exit 1 if no .gwrkrc.json.\n  FIX: Update preAction hook to exclude 'slack' command: `actionCommand.name() !== 'slack'`.\n  REF: spec.md US-001, FR-001",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh"
         },
         {
           "id": "T005",
           "title": "Implement src/utils/config.ts",
-          "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation",
-          "status": "completed",
+          "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation\n\nREVIEW FAIL (code): Regression in loadConfig — DM-001.\n  WHERE: src/utils/config.ts:33-47\n  EXPECTED: Configuration change should not break existing system tests.\n  ACTUAL: New REQUIRED fields (server.heartbeatIntervalMs, server.networkCheckIntervalMs, parallelism) broke 7+ test suites.\n  FIX: Update all test mocks to include required fields or provide default values in loadConfig().\n  REF: plan.md Phase 1 > DM-001",
+          "status": "open",
           "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
           "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Global.\n  WHERE: src/server/dispatch.ts and src/server/slack-messages.ts\n  EXPECTED: Project builds with zero errors.\n  ACTUAL: 15 errors in 2 files.\n  FIX: Fix imports and exports in Phase 3 files (T013, T016).\n  GATE: gates/T006-gate.sh assertion #3\n  REF: plan.md Phase 1 > Done When",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Global.\n  WHERE: src/server/dispatch.ts and src/server/slack-messages.ts\n  EXPECTED: Project builds with zero errors.\n  ACTUAL: 15 errors in 2 files.\n  FIX: Fix imports and exports in Phase 3 files (T013, T016).\n  GATE: gates/T006-gate.sh assertion #3\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Test and Lint failures — TR-001, TR-002.\n  WHERE: src/commands/init.ts, src/commands/ship.ts, src/server/slack-channel.ts, src/server/slack-notify.ts, src/utils/config.test.ts, src/scripts-e2e.test.ts\n  EXPECTED: Zero lint errors in critical paths, all tests pass (unit + e2e).\n  ACTUAL: 21 lint errors (noExplicitAny), config schema mismatch in tests, e2e reference error (cleanupState).\n  FIX: Fix lint errors, update config.test.ts to match new schema, fix e2e test references.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 1 > Test Strategy",
           "status": "open",
           "gateScript": "gates/T006-gate.sh"
         }
