@@ -1,12 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../../utils/config.js";
 import { startServer } from "../index.js";
 import { removePid } from "../pid.js";
 
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
-  agents: { define: "gemini", implement: "codex-cloud" },
-  server: { port: 18892, host: "localhost" },
+  agents: { define: "gemini", implement: "gemini" },
+  server: {
+    port: 18892,
+    host: "localhost",
+    heartbeatIntervalMs: 1000,
+    networkCheckIntervalMs: 1000,
+  },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
     cloud: { maxConcurrent: 10 },
@@ -14,28 +19,32 @@ const mockConfig: GwrkConfig = {
 };
 
 describe("status routes", () => {
-  beforeEach(() => {
+  it("should respond to /api/status with SystemStatus JSON", async () => {
     removePid();
-  });
-
-  afterEach(() => {
-    removePid();
-  });
-
-  it("should return system status on /api/status", async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
+
     const response = await server.inject({
       method: "GET",
       url: "/api/status",
     });
 
     expect(response.statusCode).toBe(200);
-    const json = response.json();
-    expect(json.server.status).toBe("running");
-    expect(json.system.cpuPercent).toBeDefined();
-    expect(json.system.memPercent).toBeDefined();
-    expect(json.system.diskFreeGb).toBeDefined();
+    const body = response.json();
+
+    expect(body.server.status).toBe("running");
+    expect(body.server.lifecycle).toBe("ready");
+    expect(body.server.pid).toBe(process.pid);
+    expect(body.server.port).toBe(18892);
+    expect(body.system.cpuPercent).toBeDefined();
+    expect(body.system.memPercent).toBeDefined();
+    expect(body.system.diskFreeGb).toBeDefined();
+    expect(body.network.status).toBeDefined();
+    expect(body.dispatch.queueDepth).toBe(0);
+    expect(body.dispatch.activeCount).toBe(0);
+    expect(body.dispatch.paused).toBe(false);
+    expect(body.sandboxes).toBeInstanceOf(Array);
 
     await server.close();
+    removePid();
   });
 });

@@ -1,5 +1,5 @@
 import type { GwrkConfig } from "../utils/config.js";
-import type { SystemStatus as SystemResources } from "./types.js";
+import type { SystemResources } from "./types.js";
 export declare class SystemMonitor {
     private config;
     private lastCpus;

@@ -121,8 +121,13 @@ export function gatherDeliveryActuals(featureDir, sessionGapMinutes = 30) {
     const timestamps = lines
         .map((l) => new Date(l).getTime())
         .sort((a, b) => a - b);
-    const firstImplCommit = new Date(timestamps[0]).toISOString();
-    const lastImplCommit = new Date(timestamps[timestamps.length - 1]).toISOString();
+    if (timestamps.length === 0) {
+        throw new Error(`No valid timestamps found for feature '${path.basename(featureDir)}'`);
+    }
+    const firstTimestamp = timestamps[0];
+    const lastTimestamp = timestamps[timestamps.length - 1];
+    const firstImplCommit = new Date(firstTimestamp).toISOString();
+    const lastImplCommit = new Date(lastTimestamp).toISOString();
     // Clustering
     let sessionCount = 0;
     let activeCodingMinutes = 0;
@@ -133,8 +138,8 @@ export function gatherDeliveryActuals(featureDir, sessionGapMinutes = 30) {
         activeCodingMinutes = 5;
     }
     else {
-        let currentSessionStart = timestamps[0];
-        let currentSessionEnd = timestamps[0];
+        let currentSessionStart = firstTimestamp;
+        let currentSessionEnd = firstTimestamp;
         sessionCount = 1;
         for (let i = 1; i < timestamps.length; i++) {
             const ts = timestamps[i];
@@ -159,7 +164,7 @@ export function gatherDeliveryActuals(featureDir, sessionGapMinutes = 30) {
         activeCodingMinutes += Math.max(finalSessionDuration, 5);
     }
     const specCreatedTime = new Date(specCreatedAtStr).getTime();
-    const firstImplTime = timestamps[0];
+    const firstImplTime = firstTimestamp;
     let dormancyDays = (firstImplTime - specCreatedTime) / (1000 * 60 * 60 * 24);
     if (dormancyDays < 0)
         dormancyDays = 0;

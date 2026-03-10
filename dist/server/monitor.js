@@ -26,7 +26,9 @@ export class SystemMonitor {
                 const idle = cpu.times.idle - lastCpu.times.idle;
                 let total = 0;
                 for (const type in cpu.times) {
-                    total += cpu.times[type] - lastCpu.times[type];
+                    total +=
+                        cpu.times[type] -
+                            lastCpu.times[type];
                 }
                 totalIdle += idle;
                 totalTick += total;
@@ -57,9 +59,6 @@ export class SystemMonitor {
      * Returns true if any resource exceeds configured limits.
      */
     isThrottled() {
-        if (!this.config) {
-            return false;
-        }
         // If we're polling, use cached resources. Otherwise, sample now.
         const stats = this.interval ? this.currentResources : this.sample();
         return (stats.cpuPercent > this.config.parallelism.local.maxCpu ||

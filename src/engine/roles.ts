@@ -14,8 +14,13 @@ const DEFAULT_ROLES: RoleConfig[] = [
  */
 export function resolveRoleMultipliers(config: GwrkConfig): RoleConfig[] {
   // We need to merge config.effort.roles with DEFAULT_ROLES
-  // Since config.effort is not strictly typed yet, we use type assertion
-  const overrides = (config as any).effort?.roles || {};
+  // Since config.effort is not strictly typed yet, we use a more constrained type assertion
+  const effort = (
+    config as unknown as {
+      effort?: { roles?: Record<string, Partial<RoleConfig>> };
+    }
+  ).effort;
+  const overrides = effort?.roles || {};
 
   return DEFAULT_ROLES.map((defaultRole) => {
     const override = overrides[defaultRole.role];

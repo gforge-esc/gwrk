@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import type { GwrkConfig } from "../utils/config.js";
-import type { SystemStatus as SystemResources } from "./types.js";
+import type { SystemResources } from "./types.js";
 
 export class SystemMonitor {
   private lastCpus: os.CpuInfo[] | undefined;
@@ -32,7 +32,9 @@ export class SystemMonitor {
         const idle = cpu.times.idle - lastCpu.times.idle;
         let total = 0;
         for (const type in cpu.times) {
-          total += (cpu.times as any)[type] - (lastCpu.times as any)[type];
+          total +=
+            (cpu.times as Record<string, number>)[type] -
+            (lastCpu.times as Record<string, number>)[type];
         }
 
         totalIdle += idle;
@@ -72,9 +74,6 @@ export class SystemMonitor {
    * Returns true if any resource exceeds configured limits.
    */
   isThrottled(): boolean {
-    if (!this.config) {
-      return false;
-    }
     // If we're polling, use cached resources. Otherwise, sample now.
     const stats = this.interval ? this.currentResources : this.sample();
 

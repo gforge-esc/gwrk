@@ -31,12 +31,18 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     server: z.ZodObject<{
         port: z.ZodNumber;
         host: z.ZodString;
+        heartbeatIntervalMs: z.ZodNumber;
+        networkCheckIntervalMs: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
         port: number;
         host: string;
+        heartbeatIntervalMs: number;
+        networkCheckIntervalMs: number;
     }, {
         port: number;
         host: string;
+        heartbeatIntervalMs: number;
+        networkCheckIntervalMs: number;
     }>;
     parallelism: z.ZodObject<{
         local: z.ZodObject<{
@@ -104,6 +110,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     server: {
         port: number;
         host: string;
+        heartbeatIntervalMs: number;
+        networkCheckIntervalMs: number;
     };
     parallelism: {
         local: {
@@ -133,6 +141,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     server: {
         port: number;
         host: string;
+        heartbeatIntervalMs: number;
+        networkCheckIntervalMs: number;
     };
     parallelism: {
         local: {

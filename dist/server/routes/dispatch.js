@@ -8,15 +8,13 @@ export async function dispatchRoutes(fastify, queue) {
         return record;
     });
     fastify.get("/api/dispatch/queue", async () => {
-        return queue.getStatus();
+        return queue.getQueue();
     });
-    fastify.get("/api/dispatch/:feature/:phase", async (request, reply) => {
+    fastify.get("/api/dispatch/:feature/:phase", async (request) => {
         const { feature, phase } = request.params;
-        const status = queue.getStatus();
-        const record = [...status.active, ...status.queued, ...status.history].find((r) => r.featureId === feature && r.phaseId === phase);
+        const record = queue.getDispatch(feature, phase);
         if (!record) {
-            reply.code(404).send({ error: "Dispatch record not found" });
-            return;
+            return { error: "Not found" };
         }
         return record;
     });

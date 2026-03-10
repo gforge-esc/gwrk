@@ -44,16 +44,6 @@ describe("work-until-done.sh execution flow", () => {
       MAX_ITERATIONS: "1",
       RUNS_DIR: path.join(ROOT, ".test-runs-e2e"),
     };
-  });
-
-  const cleanupState = () => {
-    fs.rmSync(path.join(ROOT, ".test-runs-e2e"), {
-      recursive: true,
-      force: true,
-    });
-  };
-
-  beforeAll(() => {
     cleanupState();
   });
 
@@ -72,9 +62,10 @@ describe("work-until-done.sh execution flow", () => {
         encoding: "utf-8",
       });
       expect(result).toContain("DONE in");
-    } catch (err: any) {
-      if (err.stdout) console.log(err.stdout);
-      if (err.stderr) console.error(err.stderr);
+    } catch (err) {
+      const e = err as { stdout?: string; stderr?: string };
+      if (e.stdout) console.log(e.stdout);
+      if (e.stderr) console.error(e.stderr);
       throw err;
     }
   });
@@ -92,10 +83,11 @@ describe("work-until-done.sh execution flow", () => {
         },
       );
       expect.fail("Should have thrown");
-    } catch (err: any) {
-      const output = `${err.stdout || ""}\n${err.stderr || ""}`;
+    } catch (err) {
+      const e = err as { stdout?: string; stderr?: string; status?: number };
+      const output = `${e.stdout || ""}\n${e.stderr || ""}`;
       expect(output).toContain("✗ WORK UNTIL DONE — FAILED");
-      expect(err.status).toBe(1);
+      expect(e.status).toBe(1);
     }
   });
 

@@ -17,15 +17,21 @@ export declare class DispatchQueue {
     private queue;
     private active;
     private history;
+    private paused;
     constructor(config: GwrkConfig, monitor: SystemMonitor, sandbox: SandboxManager, git: GitManager, projectRoot: string);
+    pause(): void;
+    resume(): void;
     enqueue(request: DispatchRequest): DispatchRecord;
     processNext(): Promise<void>;
     private runDispatch;
-    getStatus(): {
+    handleCompletion(dispatchId: string, exitCode: number, stderr: string): Promise<void>;
+    getQueue(): {
         active: DispatchRecord[];
         queued: DispatchRecord[];
-        history: DispatchRecord[];
+        throttled: boolean;
+        paused: boolean;
     };
+    getDispatch(featureId: string, phaseId: string): DispatchRecord | null;
     getQueueDepth(): number;
     getActiveCount(): number;
     getCompletedCount(): number;

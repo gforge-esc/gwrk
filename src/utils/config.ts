@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { z } from "zod";
 
 const AgentBackendSchema = z.enum(["gemini", "claude", "codex", "codex-cloud"]);
@@ -19,6 +19,8 @@ export const GwrkConfigSchema = z.object({
   server: z.object({
     port: z.number().int().min(1024).max(65535),
     host: z.string().min(1),
+    heartbeatIntervalMs: z.number().int().min(100),
+    networkCheckIntervalMs: z.number().int().min(100),
   }),
   parallelism: z.object({
     local: z.object({

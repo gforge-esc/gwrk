@@ -206,9 +206,18 @@ Wire up the dispatch queue engine, `POST /api/dispatch` endpoint, retry + escala
 **Dependencies:** Phase 2 (monitor for throttle), Phase 3 (git-manager, context), Phase 4 (sandbox)
 
 **Contract Mapping:**
-- `contracts/dispatch.md` → `DispatchQueue.enqueue(request)` → `src/server/dispatch.ts`
-- `contracts/dispatch.md` → `DispatchQueue.processNext()` → `src/server/dispatch.ts`
-- `contracts/dispatch.md` → `persistDispatch(record)` → `src/server/persistence.ts`
+- `contracts/dispatch.md` → `DispatchQueue.enqueue(request)` → `src/server/dispatch.ts` ✅ implemented
+- `contracts/dispatch.md` → `DispatchQueue.processNext()` → `src/server/dispatch.ts` ✅ implemented
+- `contracts/dispatch.md` → `DispatchQueue.handleCompletion(dispatchId, exitCode, stderr)` → `src/server/dispatch.ts` ❌ **NOT IMPLEMENTED** — must call `finishRun()`, handle retry ×3, escalate backend
+- `contracts/dispatch.md` → `DispatchQueue.getQueue()` → `src/server/dispatch.ts` ❌ **NOT IMPLEMENTED** — rename existing `getStatus()` to `getQueue()`, add `throttled: boolean` field
+- `contracts/dispatch.md` → `DispatchQueue.getDispatch(featureId, phaseId)` → `src/server/dispatch.ts` ❌ **NOT IMPLEMENTED** — search active + queued + history
+- `contracts/dispatch.md` → `persistDispatch(record)` → `src/server/persistence.ts` ✅ implemented
+
+**Remediation Notes (Issue #4):**
+- T027: Add `handleCompletion()`, rename `getStatus()` → `getQueue()`, add `getDispatch()`. Add `runId?: number` to `DispatchAttempt` in `src/server/types.ts`. The existing `setTimeout` stub in `runDispatch` is acceptable — mark with `// TODO: Phase 06 — real agent execution`.
+- T030: Add 5 test cases for new methods (handleCompletion success/retry/escalation, getQueue, getDispatch). Existing 3 tests must continue passing.
+- T032: No code changes expected — just verify `pnpm build` passes after T027 changes.
+- T034: Fix integration.test.ts assertion if dispatch POST returns 200 instead of 201. Run all 3 test suites + `pnpm build`.
 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
@@ -219,13 +228,14 @@ Wire up the dispatch queue engine, `POST /api/dispatch` endpoint, retry + escala
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-003 | Unit | `src/server/dispatch.test.ts` | FIFO ordering, maxClones throttle, 3× retry + escalation |
+| TR-003 | Unit | `src/server/dispatch.test.ts` | FIFO ordering, maxClones throttle, 3× retry + escalation, handleCompletion, getQueue, getDispatch |
 | TR-008 | Integration | `src/server/integration.test.ts` | Daemon subprocess, POST dispatch, container created |
 
 #### Done When
 - `pnpm vitest run src/server/dispatch.test.ts` exits 0
 - `pnpm vitest run src/server/routes/dispatch.test.ts` exits 0
 - `pnpm vitest run src/server/integration.test.ts` exits 0
+- `pnpm build` exits 0
 - `test -f src/server/dispatch.ts && test -f src/server/routes/dispatch.ts && test -f src/server/persistence.ts` exits 0
 
 ---

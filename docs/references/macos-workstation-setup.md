@@ -126,59 +126,11 @@ gh api user --jq .login && echo "GH: OK"
 
 ## gwrk setup Integration
 
-This configuration MUST be part of a `gwrk setup` interactive command (Phase 1 deliverable):
+This configuration should be part of `gwrk init` or a new `gwrk setup` interactive command:
 
-### Interactive Flow
+1. **Detect** what's missing (TCC, SSH, gh auth)
+2. **Guide** the user through manual steps (open System Settings links, etc.)
+3. **Verify** each requirement passes
+4. **Record** setup state so `gwrk ship` can pre-flight check before dispatching
 
-```
-$ gwrk setup
-
-[1/4] macOS Permissions
-  Full Disk Access is required for unattended agent execution.
-  → Opening System Settings... (add your terminal app)
-  ? Have you added your terminal app to Full Disk Access? [Y/n]
-  ? Have you added your terminal app to Developer Tools? [Y/n]
-
-[2/4] SSH Key for Agent Operations
-  gwrk needs SSH access to GitHub without interactive prompts.
-  
-  [B] Generate a dedicated gwrk-agent key (RECOMMENDED — fully unattended)
-  [A] Use 1Password SSH agent (requires one approval per app launch)
-  [S] Skip (I'll configure manually)
-  
-  ? Choose SSH strategy [B/a/s]: B
-  
-  Generating ~/.ssh/gwrk-agent (ed25519, no passphrase)...
-  Adding to GitHub via gh ssh-key add...
-  Updating ~/.ssh/config (above 1Password wildcard)...
-  ✓ SSH configured — git@github.com: authenticated as <user>
-
-[3/4] GitHub CLI
-  ? gh auth status: ✓ Logged in as <user>
-
-[4/4] Verification
-  ✓ TCC: OK (no filesystem dialog)
-  ✓ SSH: OK (no passphrase prompt)
-  ✓ GH:  OK (gh authenticated)
-  
-  Setup complete. gwrk ship will run unattended.
-```
-
-### Setup state
-
-`gwrk setup` writes result to `~/.gwrk/setup.json`:
-```json
-{
-  "version": 1,
-  "completedAt": "2026-03-10T08:00:00Z",
-  "tcc": { "fullDiskAccess": true, "developerTools": true },
-  "ssh": { "strategy": "dedicated-key", "keyPath": "~/.ssh/gwrk-agent" },
-  "gh": { "authenticated": true, "user": "gonzo" }
-}
-```
-
-`gwrk ship` pre-flight checks `setup.json` before dispatching. Missing or incomplete → `Run gwrk setup first`.
-
-### Build Plan Gap
-
-Currently the build plan only has setup for Telegram (Phase 3). This workstation setup should be in **Phase 1 (CLI Core)** since `gwrk ship` depends on it. Needs a spec.
+Currently the build plan only has setup for Telegram (Phase 3). This workstation setup should be in **Phase 1 (CLI Core)** since `gwrk ship` depends on it.

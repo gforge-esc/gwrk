@@ -12,7 +12,12 @@ vi.mock("dockerode");
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "codex-cloud" },
-  server: { port: 18793, host: "localhost" },
+  server: {
+    port: 18793,
+    host: "localhost",
+    heartbeatIntervalMs: 1000,
+    networkCheckIntervalMs: 1000,
+  },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
     cloud: { maxConcurrent: 10 },
@@ -94,17 +99,28 @@ describe("dispatch routes", () => {
     await server.close();
   });
 
-  it("should return 404 if dispatch record not found", async () => {
+  it("should return a specific dispatch via GET /api/dispatch/:feature/:phase", async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
+
+    // First enqueue it
+    await server.inject({
+      method: "POST",
+      url: "/api/dispatch",
+      payload: {
+        featureId: "feat-1",
+        phaseId: "phase-1",
+      },
+    });
 
     const response = await server.inject({
       method: "GET",
-      url: "/api/dispatch/nonexistent/phase",
+      url: "/api/dispatch/feat-1/phase-1",
     });
 
-    expect(response.statusCode).toBe(404);
+    expect(response.statusCode).toBe(200);
     const json = response.json();
-    expect(json.error).toBe("Dispatch record not found");
+    expect(json.featureId).toBe("feat-1");
+    expect(json.phaseId).toBe("phase-1");
 
     await server.close();
   });

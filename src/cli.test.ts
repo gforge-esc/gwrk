@@ -12,6 +12,12 @@ vi.mock("./commands/measure.js", () => ({
 }));
 vi.mock("./commands/tasks.js", () => ({ tasksCommand: new Command("tasks") }));
 vi.mock("./commands/db.js", () => ({ dbCommand: new Command("db") }));
+vi.mock("./commands/server.js", () => ({
+  serverCommand: new Command("server"),
+}));
+vi.mock("./commands/status.js", () => ({
+  statusCommand: new Command("status"),
+}));
 vi.mock("./utils/config.js", () => ({ loadConfig: vi.fn() }));
 
 describe("FR-001 / FR-004: CLI Command Registration", () => {
@@ -35,6 +41,8 @@ describe("FR-001 / FR-004: CLI Command Registration", () => {
     // Operational queries
     expect(commandNames).toContain("tasks");
     expect(commandNames).toContain("db");
+    expect(commandNames).toContain("server");
+    expect(commandNames).toContain("status");
 
     // Eliminated groups — must NOT exist as top-level
     const eliminated = [
@@ -45,8 +53,6 @@ describe("FR-001 / FR-004: CLI Command Registration", () => {
       "specify",
       "plan",
       "analyze",
-      "server",
-      "status",
       "new",
     ];
     for (const cmd of eliminated) {

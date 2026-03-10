@@ -243,13 +243,13 @@
           "id": "T027",
           "title": "Complete DispatchQueue contract (src/server/dispatch.ts)",
           "description": "Add missing contract methods per contracts/dispatch.md:\n\n1. Add `handleCompletion(dispatchId: string, exitCode: number, stderr: string): Promise<void>`\n   - If exitCode === 0: set status \"completed\", call finishRun()\n   - If exitCode !== 0 AND attempts < 3: set status \"retrying\", re-queue\n   - If exitCode !== 0 AND attempts >= 3: escalate to next backend in fallbackOrder\n   - If all backends exhausted: set status \"failed\"\n2. Rename existing `getStatus()` to `getQueue()`, return `{ active, queued, throttled: this.monitor.isThrottled() }`\n3. Add `getDispatch(featureId: string, phaseId: string): DispatchRecord | null` — search active + queued + history\n4. Add `runId?: number` to DispatchAttempt in src/server/types.ts\n5. In handleCompletion, call `finishRun(attempt.runId, ...)` from src/db/runs.ts\n\nThe existing setTimeout stub in runDispatch is acceptable for Phase 05 scope — mark with TODO comment for Phase 06.\n\nAcceptance: T027-gate.sh passes (asserts all 5 contract methods + finishRun + pnpm build)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T027-gate.sh"
         },
         {
           "id": "T028",
           "title": "Implement src/server/routes/dispatch.ts",
-          "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue`",
+          "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue` ",
           "status": "completed",
           "gateScript": "gates/T028-gate.sh"
         },
@@ -264,7 +264,7 @@
           "id": "T030",
           "title": "Add tests for new DispatchQueue methods (src/server/dispatch.test.ts)",
           "description": "Add test cases for the methods added in T027:\n\n1. handleCompletion() with exitCode 0 → record.status === \"completed\"\n2. handleCompletion() with exitCode 1, attempt < 3 → record.status === \"retrying\", record re-queued\n3. handleCompletion() with exitCode 1, attempt >= 3 → backend escalation or status \"failed\"\n4. getQueue() returns { active: [], queued: [], throttled: boolean }\n5. getDispatch(featureId, phaseId) returns correct record or null\n\nExisting 3 tests (enqueue, processNext throttled, processNext unthrottled) must continue to pass.\n\nAcceptance: `pnpm vitest run src/server/dispatch.test.ts` exits 0 with >= 6 tests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T030-gate.sh"
         },
         {
@@ -278,7 +278,7 @@
           "id": "T032",
           "title": "Verify server integration compiles (src/server/index.ts)",
           "description": "After T027 changes, verify that src/server/index.ts and src/server/routes/status.ts still compile correctly. status.ts calls getQueueDepth(), getActiveCount(), getCompletedCount(), getFailedCount() on DispatchQueue — these methods already exist.\n\nNo code changes expected — this task verifies T027 did not introduce regressions.\n\nAcceptance: T032-gate.sh passes (DispatchQueue + statusRoutes + dispatchRoutes imports + pnpm build)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh"
         },
         {
@@ -292,7 +292,7 @@
           "id": "T034",
           "title": "Phase 05 full verification (all tests + build)",
           "description": "Run all Phase 05 test suites and verify global build:\n\n1. `pnpm vitest run src/server/dispatch.test.ts` — must pass\n2. `pnpm vitest run src/server/routes/dispatch.test.ts` — must pass\n3. `pnpm vitest run src/server/integration.test.ts` — must pass (fix assertion if needed: dispatch POST may return 200, 201, or 400)\n4. `pnpm build` — must pass with zero errors\n\nAcceptance: T034-gate.sh passes",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T034-gate.sh"
         }
       ],
@@ -311,63 +311,63 @@
           "id": "T035",
           "title": "Implement src/server/lifecycle.ts",
           "description": "NEW: Heartbeat-drift sleep/wake detector. Emits `server:sleep`, `server:wake` events. Drives Graceful Reconnect Protocol.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T035-gate.sh"
         },
         {
           "id": "T036",
           "title": "Implement src/server/network.ts",
           "description": "NEW: Network interface watcher via `os.networkInterfaces(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T036-gate.sh"
         },
         {
           "id": "T037",
           "title": "Implement src/server/routes/health.ts",
           "description": "NEW: Enhanced `/health` endpoint returning component-level readiness JSON for server, Docker, network.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T037-gate.sh"
         },
         {
           "id": "T038",
           "title": "Implement src/server/index.ts",
           "description": "MODIFY: Wire lifecycle + network events → dispatch queue `pause(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T038-gate.sh"
         },
         {
           "id": "T039",
           "title": "Implement src/server/sandbox.ts",
           "description": "MODIFY: Add `pauseAll(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T039-gate.sh"
         },
         {
           "id": "T040",
           "title": "Implement src/server/dispatch.ts",
           "description": "MODIFY: Add `pause(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T040-gate.sh"
         },
         {
           "id": "T041",
           "title": "Implement src/utils/config.ts",
           "description": "MODIFY: Extend schema with `server.heartbeatIntervalMs`, `server.networkCheckIntervalMs`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T041-gate.sh"
         },
         {
           "id": "T042",
           "title": "Implement src/server/types.ts",
           "description": "MODIFY: Add `ServerLifecycle` type, `HealthResponse` type, `NetworkStatus` type.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T042-gate.sh"
         },
         {
           "id": "T043",
           "title": "Implement test strategy for Phase 6",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T043-gate.sh"
         }
       ],

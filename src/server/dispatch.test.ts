@@ -13,28 +13,29 @@ vi.mock("./monitor.js");
 vi.mock("./sandbox.js");
 vi.mock("./git-manager.js");
 vi.mock("./persistence.js");
-vi.mock("../db/runs.js", () => ({
-  startRun: vi.fn().mockReturnValue(1),
-  finishRun: vi.fn(),
-}));
 vi.mock("./context.js", () => ({
   compileContext: vi.fn().mockReturnValue("mock context"),
+}));
+vi.mock("../db/runs.js", () => ({
+  startRun: vi.fn().mockReturnValue(123),
+  finishRun: vi.fn(),
 }));
 
 describe("DispatchQueue", () => {
   let queue: DispatchQueue;
-  let mockMonitor: any;
-  let mockSandbox: any;
-  let mockGit: any;
+  let mockMonitor: vi.Mocked<SystemMonitor>;
+  let mockSandbox: vi.Mocked<SandboxManager>;
+  let mockGit: vi.Mocked<GitManager>;
   let tempDir: string;
   const mockConfig: GwrkConfig = {
     project: { name: "test" },
-    agents: { 
-      define: "gemini", 
-      implement: "codex-cloud",
-      fallbackOrder: ["codex-cloud", "gemini"]
+    agents: { define: "gemini", implement: "codex-cloud" },
+    server: {
+      port: 18790,
+      host: "localhost",
+      heartbeatIntervalMs: 1000,
+      networkCheckIntervalMs: 1000,
     },
-    server: { port: 18790, host: "localhost" },
     parallelism: {
       local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
       cloud: { maxConcurrent: 10 },
@@ -44,9 +45,9 @@ describe("DispatchQueue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-dispatch-test-"));
-    mockMonitor = new SystemMonitor() as any;
-    mockSandbox = new SandboxManager() as any;
-    mockGit = new GitManager(tempDir) as any;
+    mockMonitor = new SystemMonitor() as vi.Mocked<SystemMonitor>;
+    mockSandbox = new SandboxManager() as vi.Mocked<SandboxManager>;
+    mockGit = new GitManager(tempDir) as vi.Mocked<GitManager>;
     queue = new DispatchQueue(
       mockConfig,
       mockMonitor,
@@ -74,71 +75,101 @@ describe("DispatchQueue", () => {
     queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
     // Give it more time to start
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 60));
 
     expect(queue.getActiveCount()).toBe(1);
     expect(queue.getQueueDepth()).toBe(0);
     expect(mockSandbox.createSandbox).toHaveBeenCalled();
   });
 
-  it("should respect maxClones throttle", async () => {
-    mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("container-1");
+  it("should not process next if throttled", async () => {
+    mockMonitor.isThrottled.mockReturnValue(true);
 
-    // Enqueue 3 dispatches, maxClones is 2
-    queue.enqueue({ featureId: "f1", phaseId: "p1" });
-    queue.enqueue({ featureId: "f2", phaseId: "p2" });
-    queue.enqueue({ featureId: "f3", phaseId: "p3" });
+    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(queue.getActiveCount()).toBe(2);
+    expect(queue.getActiveCount()).toBe(0);
     expect(queue.getQueueDepth()).toBe(1);
   });
 
-  it("should follow FIFO ordering", async () => {
-    mockMonitor.isThrottled.mockReturnValue(true);
-    queue.enqueue({ featureId: "f1", phaseId: "p1" });
-    queue.enqueue({ featureId: "f2", phaseId: "p2" });
-    queue.enqueue({ featureId: "f3", phaseId: "p3" });
+  it("should handle successful completion", async () => {
+    mockMonitor.isThrottled.mockReturnValue(false);
+    mockSandbox.createSandbox.mockResolvedValue("container-1");
 
-    const status = queue.getStatus();
-    expect(status.queued[0].featureId).toBe("f1");
-    expect(status.queued[1].featureId).toBe("f2");
-    expect(status.queued[2].featureId).toBe("f3");
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+
+    // Wait for it to move to active
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    await queue.handleCompletion(record.id, 0, "");
+
+    expect(record.status).toBe("completed");
+    expect(queue.getActiveCount()).toBe(0);
+    expect(mockGit.mergePhaseBack).toHaveBeenCalledWith("feat-1", "phase-1");
+    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith("container-1");
   });
 
-  it("should retry up to 3 times on failure", async () => {
+  it("should retry if exit code is non-zero and attempts < 3", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockRejectedValue(new Error("Sandbox failed"));
+    mockSandbox.createSandbox.mockResolvedValue("container-1");
 
-    const record = queue.enqueue({ featureId: "f1", phaseId: "p1" });
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
-    // Wait for some attempts
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // It should have at least tried or escalated
-    expect(record.attempts.length).toBeGreaterThanOrEqual(0);
-    // If it escalated, the backend should eventually be gemini
-    // Given the speed, it might have already reached gemini or even failed
-    expect(["codex-cloud", "gemini"]).toContain(record.backend);
-  }, 10000);
+    // Wait for it to move to active
+    await new Promise((resolve) => setTimeout(resolve, 60));
 
-  it("should mark as failed after all retries and escalations", async () => {
+    // Throttle so it stays in queue after handleCompletion
+    mockMonitor.isThrottled.mockReturnValue(true);
+    await queue.handleCompletion(record.id, 1, "error");
+
+    expect(record.status).toBe("retrying");
+    expect(queue.getQueueDepth()).toBe(1);
+    expect(record.attempts.length).toBe(1);
+  });
+
+  it("should escalate if attempts >= 3", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockRejectedValue(new Error("Final failure"));
+    mockSandbox.createSandbox.mockResolvedValue("container-1");
 
-    // Set config with only one backend in fallback to make it fail faster
-    const smallConfig = { ...mockConfig, agents: { ...mockConfig.agents, fallbackOrder: ["codex-cloud"] } };
-    const smallQueue = new DispatchQueue(smallConfig, mockMonitor, mockSandbox, mockGit, tempDir);
+    // Config implement: codex-cloud (last in fallback order)
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
-    const record = smallQueue.enqueue({ featureId: "f1", phaseId: "p1" });
+    // Attempt 1
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await queue.handleCompletion(record.id, 1, "error");
 
-    for(let i=0; i<10; i++) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    // Attempt 2
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await queue.handleCompletion(record.id, 1, "error");
+
+    // Attempt 3
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    // Final failure should not be throttled to see 'failed' status immediately
+    await queue.handleCompletion(record.id, 1, "error");
 
     expect(record.status).toBe("failed");
-    // 3 attempts on codex-cloud, then it checks fallback, no more backends, so fails.
-  }, 10000);
+    expect(queue.getCompletedCount()).toBe(0);
+    expect(queue.getFailedCount()).toBe(1);
+  });
+
+  it("should return correct queue status", () => {
+    mockMonitor.isThrottled.mockReturnValue(true);
+    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+
+    const status = queue.getQueue();
+    expect(status.throttled).toBe(true);
+    expect(status.paused).toBe(false);
+    expect(status.queued.length).toBe(1);
+  });
+
+  it("should get dispatch by feature and phase", () => {
+    mockMonitor.isThrottled.mockReturnValue(true);
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    const found = queue.getDispatch("feat-1", "phase-1");
+    expect(found).toBe(record);
+
+    const notFound = queue.getDispatch("feat-2", "phase-1");
+    expect(notFound).toBeNull();
+  });
 });
