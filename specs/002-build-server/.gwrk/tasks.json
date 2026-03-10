@@ -242,7 +242,7 @@
         {
           "id": "T027",
           "title": "Implement src/server/dispatch.ts",
-          "description": "NEW: `DispatchQueue` class — FIFO queue, `enqueue(",
+          "description": "NEW: `DispatchQueue` class — FIFO queue, `enqueue(\n\nREVIEW FAIL (code): DispatchQueue incomplete — FR-009, US-003.\n  WHERE: src/server/dispatch.ts:1-263\n  EXPECTED: Implement missing methods required by status.ts: getQueueDepth(), getActiveCount(), getCompletedCount(), getFailedCount(). Implement finishRun(runId, ...) call in handleCompletion() as required by FR-009.\n  ACTUAL: Methods are missing. handleCompletion() contains placeholder: \"// Record in DB // We'd need to know the runId. Let's assume we stored it or find it. // For simplicity in this phase, we'll just focus on the queue logic.\"\n  FIX: Add missing methods. Store runId in DispatchRecord or DispatchAttempt to call finishRun() in handleCompletion().\n  GATE: gates/T027-gate.sh\n  REF: plan.md Phase 5 > src/server/dispatch.ts",
           "status": "open",
           "gateScript": "gates/T027-gate.sh"
         },
@@ -250,20 +250,20 @@
           "id": "T028",
           "title": "Implement src/server/routes/dispatch.ts",
           "description": "NEW: `POST /api/dispatch`, `GET /api/dispatch/:feature/:phase`, `GET /api/dispatch/queue`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T028-gate.sh"
         },
         {
           "id": "T029",
           "title": "Implement src/server/persistence.ts",
           "description": "NEW: Append-only `.gwrk/dispatches.jsonl` writer",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh"
         },
         {
           "id": "T030",
           "title": "Implement src/server/dispatch.test.ts",
-          "description": "NEW: Queue FIFO, throttle, retry × 3, escalation tests",
+          "description": "NEW: Queue FIFO, throttle, retry × 3, escalation tests\n\nREVIEW FAIL (code): Test coverage missing for status methods.\n  WHERE: src/server/dispatch.test.ts\n  EXPECTED: Unit tests for getQueueDepth(), getActiveCount(), getCompletedCount(), getFailedCount() on DispatchQueue.\n  ACTUAL: These methods are not tested (they don't exist yet).\n  FIX: Add tests for these methods once they are implemented.\n  GATE: gates/T030-gate.sh\n  REF: plan.md Phase 5 > Test Strategy",
           "status": "open",
           "gateScript": "gates/T030-gate.sh"
         },
@@ -271,13 +271,13 @@
           "id": "T031",
           "title": "Implement src/server/routes/dispatch.test.ts",
           "description": "NEW: HTTP endpoint tests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T031-gate.sh"
         },
         {
           "id": "T032",
           "title": "Implement src/server/index.ts",
-          "description": "MODIFY: Register dispatch routes, wire Monitor → Queue throttle",
+          "description": "MODIFY: Register dispatch routes, wire Monitor → Queue throttle\n\nREVIEW FAIL (code): Regression in status.ts.\n  WHERE: src/server/routes/status.ts:36-39\n  EXPECTED: gwrk build passes globally.\n  ACTUAL: Build fails in status.ts because it calls missing methods on DispatchQueue.\n  FIX: Fix DispatchQueue in T027 and verify build passes.\n  GATE: gates/T032-gate.sh\n  REF: plan.md Phase 5 > src/server/index.ts (MODIFY)",
           "status": "open",
           "gateScript": "gates/T032-gate.sh"
         },
@@ -285,13 +285,13 @@
           "id": "T033",
           "title": "Implement src/server/integration.test.ts",
           "description": "NEW: E2E — start daemon subprocess, POST dispatch, verify container",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh"
         },
         {
           "id": "T034",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Test strategy failed to catch build regression.\n  WHERE: gates/T034-gate.sh\n  EXPECTED: T034 gate (or Phase 5 verification) should check global build and test health.\n  ACTUAL: Only specific tests were run, and the global build failure was missed.\n  FIX: Ensure global build passes as part of phase verification.\n  GATE: gates/T034-gate.sh\n  REF: plan.md Phase 5 > Test Strategy",
           "status": "open",
           "gateScript": "gates/T034-gate.sh"
         }
