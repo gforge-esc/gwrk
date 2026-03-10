@@ -64,6 +64,18 @@ As the orchestration engine, if a sandbox merge fails due to a git conflict, I w
 1. **Given** a git merge conflict from a sandbox, **When** merge fails, **Then**:
    - `grep -q "Conflict detected.*dispatching resolution" .runs/*_dispatch.log` exits 0
 
+### US-006 - Cross-Backend Dispatch Compatibility (Priority: P0)
+As the orchestrator, I want to dispatch tasks seamlessly to any registered backend (local CLIs like `gemini`, `claude`, `codex` OR remote cloud backends via `@codex` PR tagging) without changing the core dispatch loop, proving that the system is backend-agnostic before 008 introduces intelligent routing.
+
+**Implements**: FR-008
+
+**Independent Test**: Mock a local CLI backend and a cloud backend. Verify the orchestrator invokes a local shell command for the CLI backend and a PR tagging command for the cloud backend, while respecting concurrency gates for both.
+
+**Acceptance Scenarios**:
+1. **Given** a phase with tasks routed to local `gemini` and remote `codex-cloud`, **When** dispatch runs, **Then**:
+   - `grep -q "Executing local CLI.*gemini" .runs/*_dispatch.log` exits 0
+   - `grep -q "Pushing branch and tagging.*@codex" .runs/*_dispatch.log` exits 0
+
 ---
 
 ## 3. Roles, Scopes & Permissions
@@ -81,6 +93,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-005**: System MUST enforce a per-backend `maxConcurrent` capacity gate. Tasks exceeding the gate MUST wait in a queue. (Implements: US-004)
 - **FR-006**: System MUST catch HTTP 429 logic globally or instruct the single-task loop to apply exponential backoff + jitter, returning the sandbox to a suspended state if needed. (Implements: US-004)
 - **FR-007**: System MUST detect merge conflicts (`git merge` failure). On conflict, it MUST pause the merge, check out the conflict state in the sandbox, and dispatch a targeted "resolve conflict" prompt to the agent, followed by a retry. (Implements: US-005)
+- **FR-008**: System MUST support diverse dispatch strategies. Local CLI agents MUST execute via sub-processes in sandboxes; Cloud agents (e.g. Codex Cloud) MUST execute by pushing sandbox commits to remote and creating/tagging draft PRs, awaiting remote completion. (Implements: US-006)
 
 #### FR-007 Error States
 | Condition | stderr contains | Exit code |
@@ -128,6 +141,7 @@ The orchestrator MUST maintain an in-memory/disk-persisted state of the queue.
 - **TR-002**: `src/server/sandbox-manager.test.ts` — Verify git worktree/clone creation creates an isolated directory that does not leak state to host. Vitest+Shell. (FR-002)
 - **TR-003**: `src/server/merge-queue.test.ts` — Verify file-lock serialization. Attempt 3 concurrent merges, assert they are ordered sequentially and host branch remains clean. Vitest. (FR-004)
 - **TR-004**: `src/server/dispatch-orchestrator.test.ts` — Verify conflict resolution flow. Mock a merge failure, assert a new resolution task is queued for the sandbox. Vitest. (FR-007)
+- **TR-005**: `src/server/backends/invocation-strategy.test.ts` — Verify cross-backend compatibility. Mock a local CLI config and a Cloud config. Assert `invoke()` executes shell commands for local and git push/PR logic for Cloud, maintaining the same Promise interface. Vitest. (FR-008)
 
 ---
 
@@ -157,3 +171,4 @@ The orchestrator MUST maintain an in-memory/disk-persisted state of the queue.
 | US-005 | FR-007 | FR-005 | US-004 | TR-001 |
 | | | FR-006 | US-004 | TR-001 |
 | | | FR-007 | US-005 | TR-004 |
+| US-006 | FR-008 | FR-008 | US-006 | TR-005 |
