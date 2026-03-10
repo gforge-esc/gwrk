@@ -9,7 +9,7 @@ last_modified: "2026-03-10T08:20:00Z"
 **Feature Branch**: `003-slack`
 **Created**: 2026-03-05
 **Revised**: 2026-03-10
-**Status**: Draft
+**Status**: Settled
 **Input**: Slack integration via Socket Mode + Bolt SDK — channel-per-project model, slash commands, interactive review messages, threaded DUT conversations, App Home Tab dashboard, presence-aware notifications, automated provisioning
 
 ---
@@ -198,6 +198,44 @@ The Slack app requires these OAuth scopes:
 | Invalid bot token | `Bot Token: FAIL` | 1 |
 | Invalid app token | `App Token: FAIL` | 1 |
 | Test message failed | `Test Message: FAIL` | 1 |
+
+#### FR-003 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Slack not configured | `Slack not configured. Run gwrk setup slack first` | 1 |
+| Channel not found for project | `No Slack channel configured for project <name>` | 1 |
+| Message post fails (API error) | `Failed to post status update: <api-error>` | 1 |
+| Build server not reachable (status query) | `Build server not reachable — status update skipped` | 0 (non-fatal, logged) |
+
+#### FR-005 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Button action with invalid payload | `Invalid action payload` | 0 (Slack responds ephemerally) |
+| `gh pr merge` fails | `Failed to merge PR: <error>` | 0 (Slack responds ephemerally with error) |
+| Reaction on non-review message | (ignored silently) | 0 |
+| PR already merged | `PR already merged` | 0 (Slack responds ephemerally) |
+
+#### FR-006 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| `/dream` with empty description | `Usage: /dream <description>` | 0 (Slack responds ephemerally) |
+| DUT thread creation fails | `Failed to create DUT thread: <error>` | 0 (Slack responds ephemerally) |
+| `/dream ship` on non-DUT thread | `Thread <ts> is not a DUT conversation` | 0 (Slack responds ephemerally) |
+| `/dream resume` with no active thread | `No active DUT thread found` | 0 (Slack responds ephemerally) |
+| Spec generation fails | `Failed to generate spec: <error>` | 0 (Slack responds ephemerally) |
+
+#### FR-007 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Presence API unavailable | `Warning: presence detection unavailable — falling back to immediate delivery` | 0 (non-fatal) |
+| Batch queue overflow (>100 events) | `Warning: notification batch truncated to 100 events` | 0 (non-fatal) |
+
+#### FR-008 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Build server not reachable | App Home Tab renders with `Server: Offline` status section | 0 |
+| No projects configured | App Home Tab renders with `No projects configured` message | 0 |
+| `views.publish` API fails | `Warning: failed to update App Home Tab: <api-error>` | 0 (non-fatal, logged) |
 
 ---
 
