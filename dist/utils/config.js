@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { z } from "zod";
 const AgentBackendSchema = z.enum(["gemini", "claude", "codex", "codex-cloud"]);
 export const GwrkConfigSchema = z.object({

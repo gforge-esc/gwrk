@@ -1,6 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as crypto from "node:crypto";
 import { compileContext } from "./context.js";
 import { persistDispatch } from "./persistence.js";
 export class DispatchQueue {
@@ -28,6 +28,7 @@ export class DispatchQueue {
             status: "queued",
             branchName: `phase/${request.featureId}-${request.phaseId}`,
             attempts: [],
+            createdAt: new Date().toISOString(),
         };
         this.queue.push(record);
         persistDispatch(record);
@@ -53,6 +54,7 @@ export class DispatchQueue {
     }
     async runDispatch(record) {
         const attempt = {
+            attemptNumber: record.attempts.length + 1,
             backend: record.backend,
             startedAt: new Date().toISOString(),
         };
@@ -79,11 +81,11 @@ export class DispatchQueue {
             // Just a sleep to simulate work
             await new Promise(resolve => setTimeout(resolve, 2000));
             record.status = "completed";
-            attempt.finishedAt = new Date().toISOString();
+            attempt.completedAt = new Date().toISOString();
             attempt.exitCode = 0;
         }
         catch (e) {
-            attempt.finishedAt = new Date().toISOString();
+            attempt.completedAt = new Date().toISOString();
             attempt.exitCode = 1;
             if (record.attempts.length < 3) {
                 record.status = "retrying";

@@ -38,7 +38,9 @@ export function run(
       if (code === 0) {
         resolve();
       } else {
-        const err = new Error(`Process exited with code ${code}`) as Error & { exitCode: number };
+        const err = new Error(`Process exited with code ${code}`) as Error & {
+          exitCode: number;
+        };
         err.exitCode = code ?? 1;
         reject(err);
       }
@@ -84,7 +86,8 @@ export function execCommand(
           }
 
           resolve({
-            exitCode: typeof err.code === "number" ? err.code : (err.status ?? 1),
+            exitCode:
+              typeof err.code === "number" ? err.code : (err.status ?? 1),
             stdout: stdout.toString(),
             stderr: stderr.toString(),
           });

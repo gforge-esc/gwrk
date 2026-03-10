@@ -1,10 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { defineCommand } from "./define.js";
-import { startRun, finishRun, recordHistory } from "../db/runs.js";
-import { run } from "../utils/exec.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { writeManifest, generateRunId } from "../utils/manifest.js";
-import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
+import { run } from "../utils/exec.js";
+import {
+  getCurrentBranch,
+  getCurrentCommit,
+  getDiffStats,
+} from "../utils/git.js";
+import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { defineCommand } from "./define.js";
 
 vi.mock("../db/runs.js", () => ({
   startRun: vi.fn(),
@@ -20,7 +24,9 @@ vi.mock("../utils/manifest.js", () => ({
 vi.mock("../utils/git.js", () => ({
   getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
   getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
-  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 }),
+  getDiffStats: vi
+    .fn()
+    .mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 }),
 }));
 
 describe("defineCommand — Define Until Solid wrapper", () => {
@@ -29,7 +35,9 @@ describe("defineCommand — Define Until Solid wrapper", () => {
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(`${err}\n`); });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => {
+      process.stderr.write(`${err}\n`);
+    });
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
@@ -57,7 +65,11 @@ describe("defineCommand — Define Until Solid wrapper", () => {
 
     vi.mocked(startRun).mockReturnValue(42);
     vi.mocked(run).mockResolvedValue(true as never);
-    vi.mocked(getDiffStats).mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 });
+    vi.mocked(getDiffStats).mockReturnValue({
+      filesChanged: 1,
+      linesAdded: 1,
+      linesDeleted: 1,
+    });
     vi.mocked(getCurrentCommit).mockReturnValue("mock-commit");
     vi.mocked(getCurrentBranch).mockReturnValue("mock-branch");
   });
@@ -78,19 +90,24 @@ describe("defineCommand — Define Until Solid wrapper", () => {
   });
 
   it("handles --dry-run without executing scripts", async () => {
-    await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop", "--dry-run"]);
-    
+    await defineCommand.parseAsync([
+      "node",
+      "cli.js",
+      "004-ship-loop",
+      "--dry-run",
+    ]);
+
     expect(startRun).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
-    
-    const output = consoleLogSpy.mock.calls.map(c => c[0]).join("\n");
+
+    const output = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("[DRY RUN]");
     expect(output).toContain("define-until-solid.sh 004-ship-loop");
   });
 
   it("executes define scripts and records success", async () => {
     await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);
-    
+
     expect(loadConfig).toHaveBeenCalled();
     expect(startRun).toHaveBeenCalledWith({
       feature_id: "004-ship-loop",
@@ -105,9 +122,12 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     expect(args).toEqual(["004-ship-loop"]);
     expect(opts?.cwd).toBe("/Users/gonzo/Code/gwrk");
 
-    expect(finishRun).toHaveBeenCalledWith(42, expect.objectContaining({ exit_code: 0 }));
-    
-    const output = consoleLogSpy.mock.calls.map(c => c[0]).join("\n");
+    expect(finishRun).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ exit_code: 0 }),
+    );
+
+    const output = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("define");
     expect(output).toContain("complete");
   });
@@ -123,11 +143,14 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     } catch (e) {
       _err = e as Error;
     }
-    
+
     expect(_err).toBeDefined();
     expect(_err?.message).toBe("process.exit(2)");
 
-    expect(finishRun).toHaveBeenCalledWith(42, expect.objectContaining({ exit_code: 2 }));
+    expect(finishRun).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ exit_code: 2 }),
+    );
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });

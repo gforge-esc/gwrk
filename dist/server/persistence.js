@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 const DISPATCHES_FILE = ".gwrk/dispatches.jsonl";
 export function persistDispatch(record) {
     const dir = path.dirname(DISPATCHES_FILE);

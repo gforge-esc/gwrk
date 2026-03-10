@@ -1,8 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SandboxManager } from "./sandbox.js";
 import Docker from "dockerode";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SandboxManager } from "./sandbox.js";
 
-vi.mock("dockerode");
+vi.mock("dockerode", () => {
+  return {
+    default: vi.fn().mockImplementation(() => ({
+      ping: vi.fn(),
+      createContainer: vi.fn(),
+      getContainer: vi.fn(),
+      listContainers: vi.fn(),
+    })),
+  };
+});
 
 describe("SandboxManager", () => {
   let sandboxManager: SandboxManager;
@@ -11,7 +20,8 @@ describe("SandboxManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sandboxManager = new SandboxManager();
-    mockDocker = (Docker as any).mock.instances[0];
+    // @ts-ignore
+    mockDocker = Docker.mock.results[0].value;
   });
 
   it("should check if docker is available", async () => {
@@ -37,20 +47,25 @@ describe("SandboxManager", () => {
     const containerId = await sandboxManager.createSandbox({
       featureId: "001-cli-core",
       phaseId: "phase-01",
+      backend: "gemini",
       projectRoot: "/test/root",
     });
 
     expect(containerId).toBe("test-id");
-    expect(mockDocker.createContainer).toHaveBeenCalledWith(expect.objectContaining({
-      Image: "gwrk-sandbox:bookworm-slim",
-      Labels: {
-        "gwrk.feature": "001-cli-core",
-        "gwrk.phase": "phase-01",
-      },
-      HostConfig: {
-        Binds: ["/test/root:/workspace"],
-      },
-    }));
+    expect(mockDocker.createContainer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Image: "gwrk-sandbox:bookworm-slim",
+        Labels: expect.objectContaining({
+          "gwrk.feature": "001-cli-core",
+          "gwrk.phase": "phase-01",
+          "gwrk.backend": "gemini",
+          "gwrk.startedAt": expect.any(String),
+        }),
+        HostConfig: {
+          Binds: ["/test/root:/workspace"],
+        },
+      }),
+    );
     expect(mockContainer.start).toHaveBeenCalled();
   });
 

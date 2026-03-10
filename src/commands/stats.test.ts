@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { statsCommand } from "./stats.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getStats } from "../db/runs.js";
 import type { RunStats } from "../db/runs.js";
+import { statsCommand } from "./stats.js";
 
 vi.mock("../db/runs.js");
 
@@ -11,7 +11,9 @@ describe("FR: statsCommand — CLI and JSON output", () => {
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(`${err}\n`); });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => {
+      process.stderr.write(`${err}\n`);
+    });
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
@@ -32,7 +34,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
         total_runs: 5,
         success_runs: 5,
         avg_duration_s: 45.0,
-      }
+      },
     ]);
   });
 
@@ -73,7 +75,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
 
     expect(getStats).toHaveBeenCalledTimes(1);
 
-    const fullOutput = consoleLogSpy.mock.calls.map(c => c[0]).join("\n");
+    const fullOutput = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(fullOutput).toContain("=== EXECUTION STATISTICS ===");
     expect(fullOutput).toContain("ship");
     expect(fullOutput).toContain("80%");
@@ -84,7 +86,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
 
   it("handles empty database gracefully", async () => {
     vi.mocked(getStats).mockReturnValue([]);
-    
+
     let _err: Error | undefined;
     try {
       await statsCommand.parseAsync(["node", "cli.js"]);
@@ -93,7 +95,7 @@ describe("FR: statsCommand — CLI and JSON output", () => {
     }
     expect(_err).toBeUndefined();
 
-    const fullOutput = consoleLogSpy.mock.calls.map(c => c[0]).join("\n");
+    const fullOutput = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(fullOutput).toContain("No completed runs found");
   });
 });

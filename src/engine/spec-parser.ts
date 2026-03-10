@@ -9,7 +9,9 @@ import type { StoryEstimate } from "./types.js";
 export function extractStories(featureDir: string): StoryEstimate[] {
   const specPath = path.join(featureDir, "spec.md");
   if (!fs.existsSync(specPath)) {
-    throw new Error(`spec.md not found for feature '${path.basename(featureDir)}'`);
+    throw new Error(
+      `spec.md not found for feature '${path.basename(featureDir)}'`,
+    );
   }
 
   const content = fs.readFileSync(specPath, "utf-8");
@@ -19,7 +21,7 @@ export function extractStories(featureDir: string): StoryEstimate[] {
   // Match headers: ### US-001 - Title text [optional tags]
   // Or without the dash: ### US-001 Title
   const storyRegex = /^#{2,4}\s+(US-\d+[a-z]?)(?:\s+(?:-|—)\s+|\s+)(.*?)$/i;
-  
+
   // Extract tracking brackets like [5 SP, TS, PE] or (Priority: P0, 5 SP)
   const bracketsRegex = /[\[\(](.*?)[\]\)]$/;
 
@@ -83,7 +85,9 @@ export function extractStories(featureDir: string): StoryEstimate[] {
   }
 
   if (stories.length === 0) {
-    throw new Error(`No user stories found in spec.md for '${path.basename(featureDir)}'`);
+    throw new Error(
+      `No user stories found in spec.md for '${path.basename(featureDir)}'`,
+    );
   }
 
   return stories;

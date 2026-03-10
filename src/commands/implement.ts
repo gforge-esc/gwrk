@@ -1,16 +1,24 @@
-import { Command } from "commander";
-import path from "node:path";
 import fs from "node:fs";
-import { startRun, finishRun } from "../db/runs.js";
-import { run, runGate } from "../utils/exec.js";
+import path from "node:path";
+import { Command } from "commander";
+import { finishRun, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { loadTaskState, markTaskComplete, saveTaskState } from "../utils/state.js";
+import { run, runGate } from "../utils/exec.js";
+import { banner, color, dryRun, fail, success } from "../utils/format.js";
 import { appendHistory } from "../utils/history.js";
-import { banner, success, fail, dryRun, color } from "../utils/format.js";
+import {
+  loadTaskState,
+  markTaskComplete,
+  saveTaskState,
+} from "../utils/state.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 
-export const implementAction = async (feature: string, phase: string, opts: { dryRun?: boolean, agent?: string }) => {
+export const implementAction = async (
+  feature: string,
+  phase: string,
+  opts: { dryRun?: boolean; agent?: string },
+) => {
   const cwd = process.cwd();
   const specDir = path.join(cwd, "specs", feature);
   const scriptPath = path.join(cwd, "scripts/dev/agent-run.sh");
@@ -20,7 +28,7 @@ export const implementAction = async (feature: string, phase: string, opts: { dr
 
   const phaseId = `phase-${phase.padStart(2, "0")}`;
   const tasks = loadTaskState(specDir);
-  const phaseData = tasks.phases.find(p => p.id === phaseId);
+  const phaseData = tasks.phases.find((p) => p.id === phaseId);
 
   if (!phaseData) {
     console.error(`${RED}✗${RESET} Phase ${phaseId} not found in tasks.json`);
@@ -55,9 +63,13 @@ export const implementAction = async (feature: string, phase: string, opts: { dr
       if (fs.existsSync(gatePath)) {
         const result = runGate(gatePath);
         if (result.exitCode === 0) {
-          console.log(`${YELLOW}⚠${RESET} ${task.id} pre-flight PASS — gate already satisfied, skipping`);
+          console.log(
+            `${YELLOW}⚠${RESET} ${task.id} pre-flight PASS — gate already satisfied, skipping`,
+          );
           const currentState = loadTaskState(specDir);
-          const currentTask = currentState.phases.flatMap(p => p.tasks).find(t => t.id === task.id);
+          const currentTask = currentState.phases
+            .flatMap((p) => p.tasks)
+            .find((t) => t.id === task.id);
           if (currentTask && currentTask.status !== "completed") {
             const newState = markTaskComplete(currentState, task.id);
             saveTaskState(specDir, newState);
@@ -90,9 +102,13 @@ export const implementAction = async (feature: string, phase: string, opts: { dr
         console.log(`\n${DIM}Verifying gate for ${task.id}...${RESET}`);
         const postResult = runGate(gatePath);
         if (postResult.exitCode === 0) {
-          console.log(`${GREEN}✓${RESET} ${task.id} gate passed. Marking completed.`);
+          console.log(
+            `${GREEN}✓${RESET} ${task.id} gate passed. Marking completed.`,
+          );
           const currentState = loadTaskState(specDir);
-          const currentTask = currentState.phases.flatMap(p => p.tasks).find(t => t.id === task.id);
+          const currentTask = currentState.phases
+            .flatMap((p) => p.tasks)
+            .find((t) => t.id === task.id);
           if (currentTask && currentTask.status !== "completed") {
             const newState = markTaskComplete(currentState, task.id);
             saveTaskState(specDir, newState);
@@ -105,7 +121,9 @@ export const implementAction = async (feature: string, phase: string, opts: { dr
             });
           }
         } else {
-          console.log(`${YELLOW}⚠${RESET} ${task.id} gate failed after implementation.`);
+          console.log(
+            `${YELLOW}⚠${RESET} ${task.id} gate failed after implementation.`,
+          );
           if (postResult.stdout) process.stdout.write(postResult.stdout);
           if (postResult.stderr) process.stderr.write(postResult.stderr);
           throw new Error(`Gate failed for ${task.id}`);
@@ -119,7 +137,10 @@ export const implementAction = async (feature: string, phase: string, opts: { dr
   } catch (err: unknown) {
     console.error(err);
     const durationS = Math.round((Date.now() - startTime) / 1000);
-    const exitCode = err instanceof Error && "code" in err ? (err as { code: number }).code : 1;
+    const exitCode =
+      err instanceof Error && "code" in err
+        ? (err as { code: number }).code
+        : 1;
     finishRun(runId, { exit_code: exitCode, duration_s: durationS });
     fail("implement", exitCode, durationS, runId);
     process.exit(exitCode);
@@ -131,5 +152,8 @@ export const implementCommand = new Command("implement")
   .argument("<feature>", "Feature ID")
   .argument("<phase>", "Phase number")
   .option("--dry-run", "Dry run mode")
-  .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
+  .option(
+    "--agent <agent>",
+    "Override the default agent (e.g., gemini, claude, codex)",
+  )
   .action(implementAction);

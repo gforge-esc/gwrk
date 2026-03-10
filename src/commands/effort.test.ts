@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { effortCommand } from "./effort.js";
 
@@ -15,13 +15,15 @@ vi.mock("../engine/effort.js", () => ({
   computeEffort: vi.fn(),
 }));
 vi.mock("../engine/report-writer.js", () => ({
-  writeEffortReport: vi.fn().mockImplementation(() => "/fake/path/effort-report.md"),
+  writeEffortReport: vi
+    .fn()
+    .mockImplementation(() => "/fake/path/effort-report.md"),
 }));
 
-import { extractStories } from "../engine/spec-parser.js";
-import { resolveRoleMultipliers } from "../engine/roles.js";
 import { computeEffort } from "../engine/effort.js";
 import { writeEffortReport } from "../engine/report-writer.js";
+import { resolveRoleMultipliers } from "../engine/roles.js";
+import { extractStories } from "../engine/spec-parser.js";
 
 describe("FR-011: effortCommand — CLI and JSON output", () => {
   let tempDir: string;
@@ -32,7 +34,9 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-effort-"));
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => { process.stderr.write(`${err}\n`); });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((err) => {
+      process.stderr.write(`${err}\n`);
+    });
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
@@ -57,12 +61,21 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
             maxConcurrent: 10,
           },
         },
-      })
+      }),
     );
 
     // Setup default mock returns
     vi.mocked(resolveRoleMultipliers).mockReturnValue([]);
-    vi.mocked(extractStories).mockReturnValue([{ storyId: "US-001", title: "T", sp: 5, roles: [], rawHours: 0, withOverhead: 0 }]);
+    vi.mocked(extractStories).mockReturnValue([
+      {
+        storyId: "US-001",
+        title: "T",
+        sp: 5,
+        roles: [],
+        rawHours: 0,
+        withOverhead: 0,
+      },
+    ]);
     vi.mocked(computeEffort).mockReturnValue({
       featureId: "001-cli-core",
       generatedAt: "2026-01-01T00:00:00Z",
@@ -89,7 +102,7 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
     expect(computeEffort).toHaveBeenCalled();
     expect(consoleLogSpy).toHaveBeenCalled();
     const output = consoleLogSpy.mock.calls[0]?.[0] as string;
-    
+
     // Output must be valid JSON
     const parsed = JSON.parse(output);
     expect(parsed.totalSP).toBe(5);

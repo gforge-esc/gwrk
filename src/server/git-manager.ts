@@ -4,13 +4,17 @@ export class GitManager {
   constructor(private projectRoot: string) {}
 
   private exec(cmd: string): string {
-    return execSync(cmd, { cwd: this.projectRoot, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    return execSync(cmd, {
+      cwd: this.projectRoot,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
   }
 
   createPhaseBranch(featureId: string, phaseId: string): string {
     const featureBranch = `feature/${featureId}-wip`;
     const phaseBranch = `phase/${featureId}-${phaseId}`;
-    
+
     try {
       this.exec(`git rev-parse --verify ${phaseBranch}`);
       return phaseBranch;
@@ -44,7 +48,9 @@ export class GitManager {
       } catch {
         // ignore
       }
-      throw new Error(`Merge conflict detected while merging ${phaseBranch} into ${featureBranch}`);
+      throw new Error(
+        `Merge conflict detected while merging ${phaseBranch} into ${featureBranch}`,
+      );
     } finally {
       this.exec(`git checkout ${currentBranch}`);
     }

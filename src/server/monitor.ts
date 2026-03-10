@@ -1,5 +1,5 @@
-import os from "node:os";
-import fs from "node:fs";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import type { GwrkConfig } from "../utils/config.js";
 import type { SystemResources } from "./types.js";
 
@@ -26,7 +26,7 @@ export class SystemMonitor {
       for (let i = 0; i < currentCpus.length; i++) {
         const cpu = currentCpus[i];
         const lastCpu = this.lastCpus[i];
-        
+
         if (!lastCpu) continue;
 
         const idle = cpu.times.idle - lastCpu.times.idle;
@@ -34,14 +34,14 @@ export class SystemMonitor {
         for (const type in cpu.times) {
           total += (cpu.times as any)[type] - (lastCpu.times as any)[type];
         }
-        
+
         totalIdle += idle;
         totalTick += total;
       }
     }
 
     const cpuPercent = totalTick > 0 ? (1 - totalIdle / totalTick) * 100 : 0;
-    
+
     this.lastCpus = currentCpus;
 
     const memFree = os.freemem();
@@ -51,7 +51,10 @@ export class SystemMonitor {
     let diskFreeGb = 0;
     try {
       const stats = fs.statfsSync(".");
-      diskFreeGb = Number((BigInt(stats.bavail) * BigInt(stats.bsize) / BigInt(1024 * 1024 * 1024)));
+      diskFreeGb = Number(
+        (BigInt(stats.bavail) * BigInt(stats.bsize)) /
+          BigInt(1024 * 1024 * 1024),
+      );
     } catch (e) {
       // Fallback or ignore
     }
@@ -59,7 +62,7 @@ export class SystemMonitor {
     this.currentResources = {
       cpuPercent: Number(cpuPercent.toFixed(1)),
       memPercent: Number(memPercent.toFixed(1)),
-      diskFreeGb: Number(diskFreeGb.toFixed(1))
+      diskFreeGb: Number(diskFreeGb.toFixed(1)),
     };
 
     return this.currentResources;
@@ -71,7 +74,7 @@ export class SystemMonitor {
   isThrottled(): boolean {
     // If we're polling, use cached resources. Otherwise, sample now.
     const stats = this.interval ? this.currentResources : this.sample();
-    
+
     return (
       stats.cpuPercent > this.config.parallelism.local.maxCpu ||
       stats.memPercent > this.config.parallelism.local.maxMem ||
@@ -82,9 +85,9 @@ export class SystemMonitor {
   /**
    * Starts periodic sampling at the specified interval.
    */
-  startPolling(intervalMs: number = 10000): void {
+  startPolling(intervalMs = 10000): void {
     if (this.interval) this.stopPolling();
-    
+
     this.interval = setInterval(() => {
       this.sample();
     }, intervalMs);

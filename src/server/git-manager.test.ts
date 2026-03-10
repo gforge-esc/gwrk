@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { GitManager } from "./git-manager.js";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { GitManager } from "./git-manager.js";
 
 describe("GitManager", () => {
   let tempDir: string;
@@ -15,9 +15,12 @@ describe("GitManager", () => {
     // Need a commit to have a branch
     fs.writeFileSync(path.join(tempDir, "README.md"), "# Test Repo");
     execSync("git add README.md", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Initial commit"', { cwd: tempDir, stdio: "ignore" });
+    execSync('git commit -m "Initial commit"', {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
     // Rename main/master to something consistent if needed, but we'll create our feature branch
-    
+
     gitManager = new GitManager(tempDir);
   });
 
@@ -31,12 +34,18 @@ describe("GitManager", () => {
     const featureBranch = `feature/${featureId}-wip`;
     const phaseBranch = `phase/${featureId}-${phaseId}`;
 
-    execSync(`git checkout -b ${featureBranch}`, { cwd: tempDir, stdio: "ignore" });
-    
+    execSync(`git checkout -b ${featureBranch}`, {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
     const createdBranch = gitManager.createPhaseBranch(featureId, phaseId);
     expect(createdBranch).toBe(phaseBranch);
-    
-    const branches = execSync("git branch", { cwd: tempDir, encoding: "utf-8" });
+
+    const branches = execSync("git branch", {
+      cwd: tempDir,
+      encoding: "utf-8",
+    });
     expect(branches).toContain(phaseBranch);
   });
 
@@ -47,28 +56,42 @@ describe("GitManager", () => {
     const phaseBranch = `phase/${featureId}-${phaseId}`;
 
     // Setup feature branch with a file
-    execSync(`git checkout -b ${featureBranch}`, { cwd: tempDir, stdio: "ignore" });
+    execSync(`git checkout -b ${featureBranch}`, {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
     fs.writeFileSync(path.join(tempDir, "conflict.txt"), "feature content");
     execSync("git add conflict.txt", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Feature commit"', { cwd: tempDir, stdio: "ignore" });
+    execSync('git commit -m "Feature commit"', {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
 
     // Create phase branch
     gitManager.createPhaseBranch(featureId, phaseId);
-    
+
     // Modify file in feature branch
     fs.writeFileSync(path.join(tempDir, "conflict.txt"), "feature modified");
     execSync("git add conflict.txt", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Feature modified"', { cwd: tempDir, stdio: "ignore" });
+    execSync('git commit -m "Feature modified"', {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
 
     // Modify same file in phase branch
     execSync(`git checkout ${phaseBranch}`, { cwd: tempDir, stdio: "ignore" });
     fs.writeFileSync(path.join(tempDir, "conflict.txt"), "phase modified");
     execSync("git add conflict.txt", { cwd: tempDir, stdio: "ignore" });
-    execSync('git commit -m "Phase modified"', { cwd: tempDir, stdio: "ignore" });
+    execSync('git commit -m "Phase modified"', {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
 
     // Try to merge back - should fail with conflict
-    expect(() => gitManager.mergePhaseBack(featureId, phaseId)).toThrow(/Merge conflict detected/);
-    
+    expect(() => gitManager.mergePhaseBack(featureId, phaseId)).toThrow(
+      /Merge conflict detected/,
+    );
+
     // Check we are back on the original branch or at least not in a merging state
     const status = execSync("git status", { cwd: tempDir, encoding: "utf-8" });
     expect(status).not.toContain("merge");

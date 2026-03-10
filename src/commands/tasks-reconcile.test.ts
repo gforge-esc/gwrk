@@ -22,7 +22,13 @@ describe("gwrk define tasks --reconcile", () => {
   }
 
   function readTasks(): Record<string, unknown> {
-    const tasksPath = path.join(tempDir, "specs", "test-feature", ".gwrk", "tasks.json");
+    const tasksPath = path.join(
+      tempDir,
+      "specs",
+      "test-feature",
+      ".gwrk",
+      "tasks.json",
+    );
     return JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
   }
 
@@ -84,20 +90,35 @@ describe("gwrk define tasks --reconcile", () => {
 
       // Generate initial tasks
       writePlan(PLAN_V1);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], {
+        from: "user",
+      });
 
       // Mark first task as completed by editing tasks.json directly
-      const tasks = readTasks() as { phases: Array<{ tasks: Array<{ status: string; completedAt?: string }> }> };
+      const tasks = readTasks() as {
+        phases: Array<{
+          tasks: Array<{ status: string; completedAt?: string }>;
+        }>;
+      };
       tasks.phases[0].tasks[0].status = "completed";
       tasks.phases[0].tasks[0].completedAt = new Date().toISOString();
-      const tasksPath = path.join("specs", "test-feature", ".gwrk", "tasks.json");
+      const tasksPath = path.join(
+        "specs",
+        "test-feature",
+        ".gwrk",
+        "tasks.json",
+      );
       fs.writeFileSync(tasksPath, JSON.stringify(tasks, null, 2));
 
       // Update plan and reconcile
       writePlan(PLAN_V2);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], {
+        from: "user",
+      });
 
-      const reconciled = readTasks() as { phases: Array<{ tasks: Array<{ title: string; status: string }> }> };
+      const reconciled = readTasks() as {
+        phases: Array<{ tasks: Array<{ title: string; status: string }> }>;
+      };
       const configTask = reconciled.phases[0].tasks.find(
         (t: { title: string }) => t.title === "Implement src/config.ts",
       );
@@ -116,12 +137,18 @@ describe("gwrk define tasks --reconcile", () => {
       vi.spyOn(console, "log").mockImplementation(() => {});
 
       writePlan(PLAN_V1);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], {
+        from: "user",
+      });
 
       writePlan(PLAN_V2);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], {
+        from: "user",
+      });
 
-      const reconciled = readTasks() as { phases: Array<{ tasks: Array<{ title: string; status: string }> }> };
+      const reconciled = readTasks() as {
+        phases: Array<{ tasks: Array<{ title: string; status: string }> }>;
+      };
       const loggerTask = reconciled.phases[0].tasks.find(
         (t: { title: string }) => t.title === "Implement src/logger.ts",
       );
@@ -140,22 +167,36 @@ describe("gwrk define tasks --reconcile", () => {
       vi.spyOn(console, "log").mockImplementation(() => {});
 
       writePlan(PLAN_V2);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], {
+        from: "user",
+      });
 
       writePlan(PLAN_V3_REMOVED);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], {
+        from: "user",
+      });
 
-      const reconciled = readTasks() as { phases: Array<{ tasks: Array<{ title: string; status: string }> }> };
-      const allTasks = reconciled.phases.flatMap((p: { tasks: Array<{ title: string; status: string }> }) => p.tasks);
+      const reconciled = readTasks() as {
+        phases: Array<{ tasks: Array<{ title: string; status: string }> }>;
+      };
+      const allTasks = reconciled.phases.flatMap(
+        (p: { tasks: Array<{ title: string; status: string }> }) => p.tasks,
+      );
 
       // config.ts and utils.ts were removed — should be cancelled
-      const configTask = allTasks.find((t: { title: string }) => t.title === "Implement src/config.ts");
-      const utilsTask = allTasks.find((t: { title: string }) => t.title === "Implement src/utils.ts");
+      const configTask = allTasks.find(
+        (t: { title: string }) => t.title === "Implement src/config.ts",
+      );
+      const utilsTask = allTasks.find(
+        (t: { title: string }) => t.title === "Implement src/utils.ts",
+      );
       expect(configTask?.status).toBe("cancelled");
       expect(utilsTask?.status).toBe("cancelled");
 
       // logger.ts remains open
-      const loggerTask = allTasks.find((t: { title: string }) => t.title === "Implement src/logger.ts");
+      const loggerTask = allTasks.find(
+        (t: { title: string }) => t.title === "Implement src/logger.ts",
+      );
       expect(loggerTask?.status).toBe("open");
     } finally {
       process.chdir(originalCwd);
@@ -170,14 +211,22 @@ describe("gwrk define tasks --reconcile", () => {
       vi.spyOn(console, "log").mockImplementation(() => {});
 
       writePlan(PLAN_V1);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], {
+        from: "user",
+      });
 
-      const beforeHash = (readTasks() as { generatedFrom?: { plan: { hash: string } } }).generatedFrom?.plan.hash;
+      const beforeHash = (
+        readTasks() as { generatedFrom?: { plan: { hash: string } } }
+      ).generatedFrom?.plan.hash;
 
       writePlan(PLAN_V2);
-      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], { from: "user" });
+      await tasksGenerateCommand.parseAsync(["test-feature", "--reconcile"], {
+        from: "user",
+      });
 
-      const afterHash = (readTasks() as { generatedFrom?: { plan: { hash: string } } }).generatedFrom?.plan.hash;
+      const afterHash = (
+        readTasks() as { generatedFrom?: { plan: { hash: string } } }
+      ).generatedFrom?.plan.hash;
       expect(afterHash).not.toBe(beforeHash);
     } finally {
       process.chdir(originalCwd);

@@ -3,7 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
-const TaskStatusSchema = z.enum(["open", "in_progress", "completed", "cancelled"]);
+const TaskStatusSchema = z.enum([
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
 
 export const TaskSchema = z.object({
   id: z.string().regex(/^T\d{3}$/),
@@ -29,9 +34,11 @@ const SourceProvenanceSchema = z.object({
 export const TaskStateSchema = z.object({
   featureId: z.string().min(1),
   createdAt: z.string().datetime(),
-  generatedFrom: z.object({
-    plan: SourceProvenanceSchema,
-  }).optional(),
+  generatedFrom: z
+    .object({
+      plan: SourceProvenanceSchema,
+    })
+    .optional(),
   phases: z.array(PhaseSchema).min(1),
 });
 

@@ -1,11 +1,21 @@
-import { Command } from "commander";
 import path from "node:path";
-import { startRun, finishRun, recordHistory } from "../db/runs.js";
-import { run } from "../utils/exec.js";
+import { Command } from "commander";
+import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { banner, success, fail, dryRun as dryRunFmt, color } from "../utils/format.js";
-import { writeManifest, generateRunId } from "../utils/manifest.js";
-import { getCurrentCommit, getCurrentBranch, getDiffStats } from "../utils/git.js";
+import { run } from "../utils/exec.js";
+import {
+  banner,
+  color,
+  dryRun as dryRunFmt,
+  fail,
+  success,
+} from "../utils/format.js";
+import {
+  getCurrentBranch,
+  getCurrentCommit,
+  getDiffStats,
+} from "../utils/git.js";
+import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { loadTaskState } from "../utils/state.js";
 
 const { GREEN, DIM, RESET } = color;
@@ -63,7 +73,10 @@ async function shipPhase(
     success("ship", durationS, runId);
   } catch (err: unknown) {
     const durationS = Math.round((Date.now() - startTime) / 1000);
-    exitCode = err instanceof Error && "code" in err ? (err as { code: number }).code : 1;
+    exitCode =
+      err instanceof Error && "code" in err
+        ? (err as { code: number }).code
+        : 1;
     finishRun(runId, { exit_code: exitCode, duration_s: durationS });
     fail("ship", exitCode, durationS, runId);
   }
@@ -74,7 +87,10 @@ async function shipPhase(
     const durationS = Math.round((Date.now() - startTime) / 1000);
     const gitCommit = getCurrentCommit(cwd);
     const gitBranch = getCurrentBranch(cwd);
-    const { filesChanged, linesAdded, linesDeleted } = getDiffStats(cwd, `${gitCommit}~1`);
+    const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+      cwd,
+      `${gitCommit}~1`,
+    );
 
     const manifestId = generateRunId(startedAt, "ship", phaseId);
     const featureDir = path.join(cwd, "specs", feature);
@@ -106,7 +122,9 @@ async function shipPhase(
       metadata: JSON.stringify({ command: "ship", manifestId }),
     });
   } catch (manifestError) {
-    console.warn(`Warning: Could not write execution manifest: ${manifestError}`);
+    console.warn(
+      `Warning: Could not write execution manifest: ${manifestError}`,
+    );
   }
 
   return exitCode;
@@ -125,36 +143,47 @@ export const shipCommand = new Command("ship")
   .option("--dry-run", "Dry run mode")
   .option("--max-iterations <n>", "Max implement→review cycles", "3")
   .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
-  .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
-  .action(async (feature: string, phase: string | undefined, opts: Record<string, string | boolean | undefined>) => {
-    const cwd = process.cwd();
-    const config = loadConfig(cwd);
-    const backend = (opts.agent as string) || config.agents.implement;
+  .option(
+    "--agent <agent>",
+    "Override the default agent (e.g., gemini, claude, codex)",
+  )
+  .action(
+    async (
+      feature: string,
+      phase: string | undefined,
+      opts: Record<string, string | boolean | undefined>,
+    ) => {
+      const cwd = process.cwd();
+      const config = loadConfig(cwd);
+      const backend = (opts.agent as string) || config.agents.implement;
 
-    // Determine which phases to ship
-    let phases: string[];
-    if (phase) {
-      phases = [phase];
-    } else {
-      const specDir = path.join(cwd, "specs", feature);
-      const taskState = loadTaskState(specDir);
-      phases = taskState.phases.map(p => p.id.replace("phase-", ""));
-      console.log(`${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map(p => `P${p}`).join(", ")})${RESET}`);
-    }
+      // Determine which phases to ship
+      let phases: string[];
+      if (phase) {
+        phases = [phase];
+      } else {
+        const specDir = path.join(cwd, "specs", feature);
+        const taskState = loadTaskState(specDir);
+        phases = taskState.phases.map((p) => p.id.replace("phase-", ""));
+        console.log(
+          `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
+        );
+      }
 
-    if (opts.dryRun) {
-      const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
+      if (opts.dryRun) {
+        const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
+        for (const p of phases) {
+          dryRunFmt(`${scriptPath} ${feature} ${p}`);
+        }
+        return;
+      }
+
+      // Ship each phase sequentially — stop on first failure
       for (const p of phases) {
-        dryRunFmt(`${scriptPath} ${feature} ${p}`);
+        const exitCode = await shipPhase(feature, p, backend, opts, cwd);
+        if (exitCode !== 0) {
+          process.exit(exitCode);
+        }
       }
-      return;
-    }
-
-    // Ship each phase sequentially — stop on first failure
-    for (const p of phases) {
-      const exitCode = await shipPhase(feature, p, backend, opts, cwd);
-      if (exitCode !== 0) {
-        process.exit(exitCode);
-      }
-    }
-  });
+    },
+  );

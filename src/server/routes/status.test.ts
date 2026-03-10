@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { startServer } from "../index.js";
+import { describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../../utils/config.js";
+import { startServer } from "../index.js";
 import { removePid } from "../pid.js";
 
 const mockConfig: GwrkConfig = {
@@ -9,23 +9,23 @@ const mockConfig: GwrkConfig = {
   server: { port: 18892, host: "localhost" },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
-    cloud: { maxConcurrent: 10 }
-  }
+    cloud: { maxConcurrent: 10 },
+  },
 };
 
 describe("status routes", () => {
   it("should respond to /api/status with SystemStatus JSON", async () => {
     removePid();
     const server = await startServer(mockConfig, { handleSignals: false });
-    
+
     const response = await server.inject({
       method: "GET",
-      url: "/api/status"
+      url: "/api/status",
     });
-    
+
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    
+
     expect(body.server.status).toBe("running");
     expect(body.server.pid).toBe(process.pid);
     expect(body.server.port).toBe(18892);
@@ -35,7 +35,7 @@ describe("status routes", () => {
     expect(body.dispatch.queueDepth).toBe(0);
     expect(body.dispatch.activeCount).toBe(0);
     expect(body.sandboxes).toBeInstanceOf(Array);
-    
+
     await server.close();
     removePid();
   });

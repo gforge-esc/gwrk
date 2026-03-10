@@ -1,13 +1,13 @@
-import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
-import type { DispatchRecord, DispatchAttempt, SystemStatus } from "./types.js";
-import type { GwrkConfig, AgentBackend } from "../utils/config.js";
-import type { SystemMonitor } from "./monitor.js";
-import type { SandboxManager } from "./sandbox.js";
-import type { GitManager } from "./git-manager.js";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { AgentBackend, GwrkConfig } from "../utils/config.js";
 import { compileContext } from "./context.js";
+import type { GitManager } from "./git-manager.js";
+import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
+import type { SandboxManager } from "./sandbox.js";
+import type { DispatchAttempt, DispatchRecord, SystemStatus } from "./types.js";
 
 export interface DispatchRequest {
   featureId: string;
@@ -25,7 +25,7 @@ export class DispatchQueue {
     private monitor: SystemMonitor,
     private sandbox: SandboxManager,
     private git: GitManager,
-    private projectRoot: string
+    private projectRoot: string,
   ) {}
 
   enqueue(request: DispatchRequest): DispatchRecord {
@@ -37,8 +37,9 @@ export class DispatchQueue {
       status: "queued",
       branchName: `phase/${request.featureId}-${request.phaseId}`,
       attempts: [],
+      createdAt: new Date().toISOString(),
     };
-    
+
     this.queue.push(record);
     persistDispatch(record);
     this.processNext();
@@ -47,12 +48,12 @@ export class DispatchQueue {
 
   async processNext() {
     if (this.queue.length === 0) return;
-    
+
     if (this.monitor.isThrottled()) {
       // Potentially log or wait
       return;
     }
-    
+
     if (this.active.length >= this.config.parallelism.local.maxClones) {
       return;
     }
@@ -68,6 +69,7 @@ export class DispatchQueue {
 
   private async runDispatch(record: DispatchRecord) {
     const attempt: DispatchAttempt = {
+      attemptNumber: record.attempts.length + 1,
       backend: record.backend,
       startedAt: new Date().toISOString(),
     };
@@ -78,8 +80,16 @@ export class DispatchQueue {
       this.git.createPhaseBranch(record.featureId, record.phaseId);
 
       // 2. Prepare Context
-      const context = compileContext(this.projectRoot, record.featureId, record.phaseId);
-      const contextPath = path.join(this.projectRoot, ".gwrk", "phase-context.md");
+      const context = compileContext(
+        this.projectRoot,
+        record.featureId,
+        record.phaseId,
+      );
+      const contextPath = path.join(
+        this.projectRoot,
+        ".gwrk",
+        "phase-context.md",
+      );
       fs.mkdirSync(path.dirname(contextPath), { recursive: true });
       fs.writeFileSync(contextPath, context);
 
@@ -95,18 +105,17 @@ export class DispatchQueue {
       // 4. Simulate Agent Execution (for now)
       // In real life we would run something like:
       // docker exec <id> gwrk ship implement <featureId> --phase <phaseId>
-      
+
       // Just a sleep to simulate work
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       record.status = "completed";
-      attempt.finishedAt = new Date().toISOString();
+      attempt.completedAt = new Date().toISOString();
       attempt.exitCode = 0;
-      
     } catch (e: any) {
-      attempt.finishedAt = new Date().toISOString();
+      attempt.completedAt = new Date().toISOString();
       attempt.exitCode = 1;
-      
+
       if (record.attempts.length < 3) {
         record.status = "retrying";
       } else {
@@ -118,15 +127,15 @@ export class DispatchQueue {
         await this.sandbox.destroySandbox(record.containerId);
         record.containerId = undefined;
       }
-      
-      this.active = this.active.filter(r => r.id !== record.id);
-      
+
+      this.active = this.active.filter((r) => r.id !== record.id);
+
       if (record.status === "retrying") {
         this.queue.push(record);
       } else {
         this.history.push(record);
       }
-      
+
       persistDispatch(record);
       this.processNext();
     }
@@ -149,10 +158,10 @@ export class DispatchQueue {
   }
 
   getCompletedCount(): number {
-    return this.history.filter(r => r.status === "completed").length;
+    return this.history.filter((r) => r.status === "completed").length;
   }
 
   getFailedCount(): number {
-    return this.history.filter(r => r.status === "failed").length;
+    return this.history.filter((r) => r.status === "failed").length;
   }
 }

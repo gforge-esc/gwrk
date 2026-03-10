@@ -1,6 +1,11 @@
 import type { AgentBackend } from "../utils/config.js";
 
-export type DispatchStatus = "queued" | "running" | "completed" | "failed" | "retrying";
+export type DispatchStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "retrying";
 
 export interface DispatchAttempt {
   attemptNumber: number;

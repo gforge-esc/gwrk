@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { implementAction } from "./implement.js";
-import { run, runGate } from "../utils/exec.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../utils/config.js";
+import { run, runGate } from "../utils/exec.js";
 import { loadTaskState } from "../utils/state.js";
+import { implementAction } from "./implement.js";
 
 vi.mock("../utils/exec.js", () => ({
   run: vi.fn().mockResolvedValue(undefined),
@@ -50,7 +50,7 @@ vi.mock("node:fs", () => ({
 describe("implementAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Default mock: fail pre-flight (exit 1), pass post-flight (exit 0)
     const gateCalls: Record<string, number> = {};
     vi.mocked(runGate).mockImplementation((p: string) => {
@@ -64,8 +64,18 @@ describe("implementAction", () => {
 
     expect(loadTaskState).toHaveBeenCalled();
     expect(run).toHaveBeenCalledTimes(2);
-    expect(run).toHaveBeenNthCalledWith(1, expect.stringContaining("agent-run.sh"), ["implement", "004-ship-loop", "1", "T001"], expect.any(Object));
-    expect(run).toHaveBeenNthCalledWith(2, expect.stringContaining("agent-run.sh"), ["implement", "004-ship-loop", "1", "T002"], expect.any(Object));
+    expect(run).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("agent-run.sh"),
+      ["implement", "004-ship-loop", "1", "T001"],
+      expect.any(Object),
+    );
+    expect(run).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("agent-run.sh"),
+      ["implement", "004-ship-loop", "1", "T002"],
+      expect.any(Object),
+    );
   });
 
   it("skips tasks that already pass pre-flight gate", async () => {
@@ -80,7 +90,11 @@ describe("implementAction", () => {
     await implementAction("004-ship-loop", "1", {});
 
     expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith(expect.stringContaining("agent-run.sh"), ["implement", "004-ship-loop", "1", "T002"], expect.any(Object));
+    expect(run).toHaveBeenCalledWith(
+      expect.stringContaining("agent-run.sh"),
+      ["implement", "004-ship-loop", "1", "T002"],
+      expect.any(Object),
+    );
   });
 
   it("respects dry-run flag", async () => {

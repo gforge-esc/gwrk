@@ -39,7 +39,9 @@ export function appendHistory(entry: HistoryEntry): void {
       task_id: entry.taskId,
       from_status: entry.fromStatus,
       to_status: entry.toStatus,
-      metadata: entry.agentId ? JSON.stringify({ agentId: entry.agentId }) : undefined,
+      metadata: entry.agentId
+        ? JSON.stringify({ agentId: entry.agentId })
+        : undefined,
     });
   } catch (error) {
     console.warn(`Warning: Could not record history in DB: ${error}`);

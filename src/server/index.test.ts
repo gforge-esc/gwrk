@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { startServer } from "./index.js";
-import { removePid, readPid } from "./pid.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../utils/config.js";
+import { startServer } from "./index.js";
+import { readPid, removePid } from "./pid.js";
 
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
@@ -9,8 +9,8 @@ const mockConfig: GwrkConfig = {
   server: { port: 18891, host: "localhost" },
   parallelism: {
     local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
-    cloud: { maxConcurrent: 10 }
-  }
+    cloud: { maxConcurrent: 10 },
+  },
 };
 
 describe("server bootstrap", () => {
@@ -25,10 +25,10 @@ describe("server bootstrap", () => {
   it("should start the server and write PID", async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
     expect(server).toBeDefined();
-    
+
     const pid = readPid();
     expect(pid).toBe(process.pid);
-    
+
     await server.close();
   });
 
@@ -36,12 +36,12 @@ describe("server bootstrap", () => {
     const server = await startServer(mockConfig, { handleSignals: false });
     const response = await server.inject({
       method: "GET",
-      url: "/health"
+      url: "/health",
     });
-    
+
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ status: "ok" });
-    
+
     await server.close();
   });
 });

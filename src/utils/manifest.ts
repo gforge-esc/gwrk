@@ -28,7 +28,10 @@ export type ExecutionManifest = z.infer<typeof ExecutionManifestSchema>;
 /**
  * Writes an execution manifest to specs/<feature>/.gwrk/runs/
  */
-export function writeManifest(featureDir: string, manifest: ExecutionManifest): string {
+export function writeManifest(
+  featureDir: string,
+  manifest: ExecutionManifest,
+): string {
   const runsDir = path.join(featureDir, ".gwrk", "runs");
   if (!fs.existsSync(runsDir)) {
     fs.mkdirSync(runsDir, { recursive: true });
@@ -71,7 +74,9 @@ export function loadManifests(featureDir: string): ExecutionManifest[] {
       if (result.success) {
         manifests.push(result.data);
       } else {
-        console.warn(`Skipping invalid manifest ${filePath}: ${result.error.message}`);
+        console.warn(
+          `Skipping invalid manifest ${filePath}: ${result.error.message}`,
+        );
       }
     } catch (error) {
       console.warn(`Error reading manifest ${filePath}: ${error}`);
@@ -87,7 +92,7 @@ export function loadManifests(featureDir: string): ExecutionManifest[] {
 export function generateRunId(
   startedAt: string,
   command: string,
-  phase: string
+  phase: string,
 ): string {
   // Shorthand phase: phase-01 -> p01
   const phaseShorthand = phase.replace("phase-", "p");

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 function findShellScripts(dir: string, fileList: string[] = []): string[] {
   const files = fs.readdirSync(dir);
@@ -23,7 +23,10 @@ describe("Shell Scripts Syntax Check", () => {
   it.each(scripts)("%s should have valid bash syntax", (scriptPath: string) => {
     try {
       // `bash -n` performs a syntax check without executing the script
-      execFileSync("bash", ["-n", scriptPath], { stdio: "pipe", encoding: "utf-8" });
+      execFileSync("bash", ["-n", scriptPath], {
+        stdio: "pipe",
+        encoding: "utf-8",
+      });
     } catch (err: unknown) {
       if (err instanceof Error && "stderr" in err) {
         throw new Error(`Syntax error in ${scriptPath}:\n${err.stderr}`);

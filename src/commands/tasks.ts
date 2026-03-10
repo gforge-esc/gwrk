@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { recordHistory } from "../db/runs.js";
 import { runGate } from "../utils/exec.js";
+import { color, fail, success } from "../utils/format.js";
 import { appendHistory } from "../utils/history.js";
-import { color, success, fail } from "../utils/format.js";
+import { loadManifests } from "../utils/manifest.js";
 import {
   contentHash,
   listTasks,
@@ -13,8 +15,6 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import type { TaskState } from "../utils/state.js";
-import { recordHistory } from "../db/runs.js";
-import { loadManifests } from "../utils/manifest.js";
 
 export const tasksCommand = new Command("tasks").description(
   "Query and manage task state",
@@ -92,7 +92,7 @@ tasksCommand
   .action((feature: string) => {
     const projectRoot = process.cwd();
     const featureDir = path.join(projectRoot, "specs", feature);
-    
+
     if (!fs.existsSync(featureDir)) {
       console.error(`Feature directory not found: ${featureDir}`);
       process.exit(1);
@@ -101,7 +101,7 @@ tasksCommand
     const manifests = loadManifests(featureDir);
     const state = loadTaskState(featureDir);
     const allTasks = listTasks(state);
-    const completedTasks = allTasks.filter(t => t.status === "completed");
+    const completedTasks = allTasks.filter((t) => t.status === "completed");
 
     console.log(`Verifying ${feature}...`);
     console.log(`  Found ${manifests.length} manifests`);
@@ -110,7 +110,7 @@ tasksCommand
     // Verify manifest coverage (simplified for now: each completed task should have a manifest)
     // Actually, Phase 9 says "validates schema + manifest coverage"
     // ADR-003: "gwrk tasks verify <feature> ensures every completed task has a matching manifest."
-    
+
     const valid = true;
     for (const task of completedTasks) {
       // This is a bit tricky because manifests don't have taskId yet in schema
@@ -128,15 +128,23 @@ tasksCommand
   });
 
 /** Check if tasks.json was generated from the current plan.md */
-function checkDrift(featureDir: string, state: TaskState, feature: string): void {
+function checkDrift(
+  featureDir: string,
+  state: TaskState,
+  feature: string,
+): void {
   const planPath = path.join(featureDir, "plan.md");
   if (!state.generatedFrom?.plan || !fs.existsSync(planPath)) return;
 
   const currentHash = contentHash(planPath);
   if (currentHash !== state.generatedFrom.plan.hash) {
     const { YELLOW, DIM, RESET, BOLD } = color;
-    console.log(`${YELLOW}⚠ plan.md has changed since tasks were generated${RESET}`);
-    console.log(`${DIM}  Run: ${BOLD}gwrk define tasks ${feature} --force${RESET}`);
+    console.log(
+      `${YELLOW}⚠ plan.md has changed since tasks were generated${RESET}`,
+    );
+    console.log(
+      `${DIM}  Run: ${BOLD}gwrk define tasks ${feature} --force${RESET}`,
+    );
     console.log("");
   }
 }
@@ -160,13 +168,15 @@ tasksCommand
     } else {
       console.log(`Tasks for ${feature}:`);
       const { CYAN, BOLD, RESET, GREEN, RED, DIM } = color;
-      
+
       for (const phase of state.phases) {
         if (phase.tasks.length === 0) continue;
-        
+
         const phaseNum = Number.parseInt(phase.id.replace("phase-", ""), 10);
-        console.log(`\n  ${CYAN}${BOLD}Phase ${phaseNum}: ${phase.title}${RESET}`);
-        
+        console.log(
+          `\n  ${CYAN}${BOLD}Phase ${phaseNum}: ${phase.title}${RESET}`,
+        );
+
         for (const t of phase.tasks) {
           let statusChar = " ";
           const bracketColor = DIM;
@@ -182,7 +192,9 @@ tasksCommand
             statusChar = `${CYAN}▸${RESET}`;
           }
 
-          console.log(`  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`);
+          console.log(
+            `  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`,
+          );
         }
       }
     }

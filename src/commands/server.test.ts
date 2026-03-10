@@ -1,15 +1,18 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { serverCommand } from "./server.js";
 import * as server from "../server/index.js";
 import * as pidUtils from "../server/pid.js";
 import * as configUtils from "../utils/config.js";
-import { spawn } from "node:child_process";
+import { serverCommand } from "./server.js";
 
 vi.mock("node:child_process", async () => {
-  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  const actual =
+    await vi.importActual<typeof import("node:child_process")>(
+      "node:child_process",
+    );
   return {
     ...actual,
     spawn: vi.fn(),
@@ -34,8 +37,8 @@ describe("serverCommand", () => {
       server: { port: 18790, host: "localhost" },
       parallelism: {
         local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
-        cloud: { maxConcurrent: 10 }
-      }
+        cloud: { maxConcurrent: 10 },
+      },
     });
 
     vi.spyOn(server, "startServer").mockResolvedValue({} as any);
@@ -57,16 +60,20 @@ describe("serverCommand", () => {
       vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(true);
 
       await expect(
-        serverCommand.parseAsync(["start"], { from: "user" })
+        serverCommand.parseAsync(["start"], { from: "user" }),
       ).rejects.toThrow("process.exit(1)");
-      expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Server already running"));
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("Server already running"),
+      );
     });
 
     it("should daemonize if -f is NOT provided", async () => {
-      vi.spyOn(pidUtils, "readPid").mockReturnValueOnce(undefined).mockReturnValue(12345);
+      vi.spyOn(pidUtils, "readPid")
+        .mockReturnValueOnce(undefined)
+        .mockReturnValue(12345);
       vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(true);
       const spawnSpy = vi.mocked(spawn).mockReturnValue({
-        unref: vi.fn()
+        unref: vi.fn(),
       } as any);
 
       await serverCommand.parseAsync(["start"], { from: "user" });
@@ -74,9 +81,11 @@ describe("serverCommand", () => {
       expect(spawnSpy).toHaveBeenCalledWith(
         process.execPath,
         expect.arrayContaining(["server", "_run"]),
-        expect.objectContaining({ detached: true })
+        expect.objectContaining({ detached: true }),
       );
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("gwrk server started"));
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("gwrk server started"),
+      );
     });
   });
 
@@ -86,19 +95,23 @@ describe("serverCommand", () => {
       vi.spyOn(pidUtils, "isPidRunning")
         .mockReturnValueOnce(true)
         .mockReturnValue(false);
-      const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true as any);
+      const killSpy = vi
+        .spyOn(process, "kill")
+        .mockImplementation(() => true as any);
 
       await serverCommand.parseAsync(["stop"], { from: "user" });
 
       expect(killSpy).toHaveBeenCalledWith(12345, "SIGTERM");
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Server stopped"));
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("Server stopped"),
+      );
     });
 
     it("should fail if no server is running", async () => {
       vi.spyOn(pidUtils, "readPid").mockReturnValue(undefined);
 
       await expect(
-        serverCommand.parseAsync(["stop"], { from: "user" })
+        serverCommand.parseAsync(["stop"], { from: "user" }),
       ).rejects.toThrow("process.exit(1)");
       expect(console.error).toHaveBeenCalledWith("No server running");
     });
