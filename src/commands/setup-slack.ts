@@ -89,12 +89,12 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
   console.error(`  ${MAGENTA}${BOLD}gwrk${RESET} ${DIM}setup slack${RESET}`);
   console.error(`  ${DIM}Connect gwrk to your Slack workspace${RESET}`);
   console.error("");
-  console.error(`  This will create a Slack app named ${BOLD}gwrk${RESET} (${MAGENTA}hot pink${RESET}) with:`);
-  console.error(`    • Socket Mode for real-time events`);
+  console.error(`  This will create a Slack app named ${MAGENTA}${BOLD}gwrk${RESET} with:`);
+  console.error("    • Socket Mode for real-time events");
   console.error(`    • ${BOLD}/gwrk${RESET} slash command with subcommands`);
-  console.error(`    • App Home dashboard tab`);
-  console.error(`    • Interactive buttons (approve/reject)`);
-  console.error(`    • Event subscriptions (mentions, home tab)`);
+  console.error("    • App Home dashboard tab");
+  console.error("    • Interactive buttons (approve/reject)");
+  console.error("    • Event subscriptions (mentions, home tab)");
   console.error("");
 
   // ── Step 1: Create App from Manifest ────────────
