@@ -42,6 +42,36 @@ if [[ "$PHASE_EXISTS" -eq 0 ]]; then
   exit 2
 fi
 
+# ──────────────────────────────────────────────────
+# PRIMARY VERDICT: Run gates if they exist
+# Gates are truth, tasks.json status is bookkeeping.
+# ──────────────────────────────────────────────────
+GATES_SCRIPT="$SPEC_DIR/gates/run-all-gates.sh"
+if [[ -f "$GATES_SCRIPT" ]]; then
+  echo "[wud-verdict] Running gates for ${PHASE_ID}..."
+  GATE_OUTPUT=$(bash "$GATES_SCRIPT" 2>&1) || true
+  GATE_EXIT=${PIPESTATUS[0]:-$?}
+
+  if [[ "$GATE_EXIT" -eq 0 ]]; then
+    echo "[wud-verdict] GO — All gates pass (${PHASE_ID})"
+    # Auto-complete tasks in tasks.json — gates are truth
+    jq --arg pid "$PHASE_ID" \
+      '(.phases[] | select(.id == $pid) | .tasks[].status) = "completed"' \
+      "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+    echo "[wud-verdict] Auto-completed tasks in tasks.json"
+    exit 0
+  else
+    echo "[wud-verdict] NO-GO — Gate failures (${PHASE_ID})"
+    echo "$GATE_OUTPUT" | grep -iE "FAIL|ERROR" || true
+    exit 1
+  fi
+fi
+
+# ──────────────────────────────────────────────────
+# FALLBACK: tasks.json only (when no gates exist)
+# ──────────────────────────────────────────────────
+echo "[wud-verdict] No gates found, falling back to tasks.json status..."
+
 # Count open/in_progress vs total tasks for this phase
 OPEN_COUNT=$(jq --arg pid "$PHASE_ID" \
   '[.phases[] | select(.id == $pid) | .tasks[] | select(.status == "open" or .status == "in_progress")] | length' \

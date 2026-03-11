@@ -47,23 +47,38 @@ make up
 
 ```bash
 TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
+PHASE_ID="phase-{phase_number}"
 ```
 
 Read:
 - `{feature_dir}/spec.md` — requirements, acceptance criteria
 - `{feature_dir}/plan.md` — Phase {N} section for file-level acceptance criteria
 
-### 2. Get Closed Tasks
+### 2. Verification Gates — PRIMARY VERDICT
+
+> [!IMPORTANT]
+> **Gates are truth, tasks.json status is bookkeeping.** If all gates pass, the task is done
+> regardless of what `tasks.json` says. Run gates FIRST, then reconcile status.
 
 ```bash
-TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
-
-# Get all tasks in the phase
-CLOSED=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status == "completed")]' "$TASKS_FILE")
-NOT_CLOSED=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status != "completed")]' "$TASKS_FILE")
+GATE_PASS=true
+if [ -f {feature_dir}/gates/run-all-gates.sh ]; then
+  GATE_OUTPUT=$(bash {feature_dir}/gates/run-all-gates.sh 2>&1)
+  GATE_EXIT=$?
+  if [ $GATE_EXIT -ne 0 ]; then
+    GATE_PASS=false
+    # Map failed gates to tasks via gateScript field
+  fi
+fi
 ```
 
-If tasks are not yet completed, they were never implemented — flag as NOT IMPLEMENTED.
+- **All gates pass (exit 0)**: Auto-complete all tasks in this phase:
+  ```bash
+  jq --arg pid "$PHASE_ID" \
+    '(.phases[] | select(.id == $pid) | .tasks[].status) = "completed"' \
+    "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+  ```
+- **Any gate fails**: Map failed gate → task via `gateScript` field, re-open only those tasks.
 
 ### 3. Infrastructure Check
 
@@ -84,20 +99,22 @@ pnpm lint 2>&1
 - AUTO-FIX: If errors are auto-fixable, apply them:
   ```bash
   pnpm exec biome lint --write .
-  git add -A && git commit -m "review: auto-fix lint errors"
+  git add {feature_dir}/.gwrk/tasks.json && git commit -m "review: auto-fix lint errors"
   ```
 - REMAINING: Document non-auto-fixable errors as findings.
 
-### 5. Verification Gates (if gates exist)
+### 5. Reconcile Task State
 
+If gates passed in Step 2, tasks are already completed. Skip to Step 6.
+
+If gates failed or no gates exist, check tasks.json:
 ```bash
-if [ -f {feature_dir}/gates/run-all-gates.sh ]; then
-  bash {feature_dir}/gates/run-all-gates.sh 2>&1
-fi
+CLOSED=$(jq --arg pid "$PHASE_ID" '[.phases[] | select(.id == $pid) | .tasks[] | select(.status == "completed")]' "$TASKS_FILE")
+NOT_CLOSED=$(jq --arg pid "$PHASE_ID" '[.phases[] | select(.id == $pid) | .tasks[] | select(.status != "completed")]' "$TASKS_FILE")
 ```
 
-- PASS: All gates exit 0. Record gate score.
-- FAIL: Document which gates fail. Map failed gates to tasks in tasks.json for re-opening.
+For tasks still open AND whose gates failed: re-open with structured remediation notes.
+For tasks still open BUT whose gates passed: auto-complete them — the gate is truth.
 
 ### 6. Task Review Loop
 
@@ -181,7 +198,9 @@ gh pr comment {pr_number} --body-file /tmp/review-{phase_number}.md
 ### 10. Commit Review State
 
 ```bash
-git add -A && git commit -m "review: code review Phase {phase_number} - {GO|NO-GO}"
+# Phase-scoped commit — NEVER use git add -A
+git add {feature_dir}/.gwrk/tasks.json
+git diff --cached --quiet || git commit -m "review: code review Phase {phase_number} - {GO|NO-GO}"
 ```
 
 <verdict_criteria>
@@ -243,6 +262,8 @@ REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
 - ❌ Reference `tasks.md` or `phases/*.md` (tasks.json is the source of truth)
 - ❌ Skip the PR comment (it's the audit trail)
 - ❌ Write vague notes ("needs fix" — always include the specific remediation)
+- ❌ Using tasks.json status as primary verdict when gates exist (gates are truth)
+- ❌ Running `git add -A` (scope commits to phase files and tasks.json only)
 
 ## Next Step
 
