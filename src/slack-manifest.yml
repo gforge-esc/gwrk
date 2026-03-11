@@ -3,7 +3,7 @@ _metadata:
   minor_version: 1
 display_information:
   name: gwrk
-  description: "🦩 You better gwrk."
+  description: "🦩 You better gwrk!"
   long_description: "gwrk is a CLI and local build server that orchestrates fleets of AI coding agents through governed, parallelized pipelines — and lets you control the whole thing from Slack. It takes your architectural vision, decomposes it into executable phases, dispatches agents to build them in parallel, drives results through review gates and CI, and reports back here. You ship features while walking the dog. gwrk is not another AI code generator. It's the general contractor for your software factory."
   background_color: "#FF1493"
 features:

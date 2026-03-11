@@ -1,6 +1,7 @@
 import fastify from "fastify";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
+import { ensureDocker } from "./docker.js";
 import { GitManager } from "./git-manager.js";
 import { LifecycleMonitor } from "./lifecycle.js";
 import { SystemMonitor } from "./monitor.js";
@@ -21,16 +22,12 @@ export async function startServer(
     logger: true,
   });
 
+  // Ensure Docker is available — auto-start if needed
+  await ensureDocker();
+
   const monitor = new SystemMonitor(config);
   monitor.startPolling();
   const sandbox = new SandboxManager();
-
-  // Check Docker availability on start
-  if (!(await sandbox.checkDocker())) {
-    server.log.error("Docker daemon not reachable");
-    console.error("Docker daemon not reachable");
-    process.exit(1);
-  }
 
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
