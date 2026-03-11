@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
+    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",

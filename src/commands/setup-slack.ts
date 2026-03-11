@@ -35,46 +35,6 @@ function openBrowser(url: string): void {
   }
 }
 
-// ── Manifest ──────────────────────────────────────────
-const MANIFEST_YAML = `_metadata:
-  major_version: 2
-  minor_version: 1
-display_information:
-  name: gwrk
-  description: "Principal Engineer's Operating System — pipeline, pulse, and dispatch."
-  background_color: "#FF1493"
-features:
-  app_home:
-    home_tab_enabled: true
-    messages_tab_enabled: false
-    messages_tab_read_only_enabled: false
-  bot_user:
-    display_name: gwrk
-    always_online: true
-  slash_commands:
-    - command: /gwrk
-      description: "Show gwrk status or run a subcommand"
-      usage_hint: "[status|dispatch|approve|reject|pause|pulse|effort|logs] [args]"
-      should_escape: false
-oauth_config:
-  scopes:
-    bot:
-      - chat:write
-      - channels:read
-      - commands
-      - app_mentions:read
-      - users:read
-      - reactions:read
-settings:
-  socket_mode_enabled: true
-  org_deploy_enabled: false
-  interactivity:
-    is_enabled: true
-  event_subscriptions:
-    bot_events:
-      - app_home_opened
-      - app_mention`;
-
 // ── Interactive setup flow ────────────────────────────
 async function interactiveSetup(): Promise<SlackSetupResult> {
   const rl = readline.createInterface({
@@ -108,16 +68,23 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     console.error(`  ${YELLOW}→${RESET} Opening Slack API...`);
     openBrowser("https://api.slack.com/apps?new_app=1");
     console.error("");
+    const manifestPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "..",
+      "slack-manifest.yml",
+    );
+
     console.error(`  In the dialog that appears, choose ${BOLD}"From a manifest"${RESET}.`);
     console.error(`  Select your workspace and click ${BOLD}Next${RESET}.`);
+    console.error(`  Switch to the ${BOLD}YAML${RESET} tab, then paste the gwrk manifest.`);
     console.error("");
-    console.error(`  Paste this manifest ${DIM}(replacing anything in the box)${RESET}:`);
+    console.error(`  ${BOLD}Option A${RESET} — Copy to clipboard and paste:`);
     console.error("");
-    console.error(`  ${DIM}┌──────────────────── manifest.yml ────────────────────┐${RESET}`);
-    for (const line of MANIFEST_YAML.split("\n")) {
-      console.error(`  ${DIM}│${RESET}  ${line}`);
-    }
-    console.error(`  ${DIM}└──────────────────────────────────────────────────────┘${RESET}`);
+    console.error(`    ${CYAN}cat ${manifestPath} | pbcopy${RESET}`);
+    console.error("");
+    console.error(`  ${BOLD}Option B${RESET} — Open the file yourself:`);
+    console.error("");
+    console.error(`    ${DIM}${manifestPath}${RESET}`);
     console.error("");
     console.error(`  Click ${BOLD}Next${RESET}, review the summary, then click ${BOLD}Create${RESET}.`);
     console.error("");
