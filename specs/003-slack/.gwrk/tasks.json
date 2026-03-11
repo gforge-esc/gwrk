@@ -252,8 +252,8 @@
         {
           "id": "T027",
           "title": "Implement src/server/slack-home.ts",
-          "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler. Fixed build error by importing DispatchRecord.",
-          "status": "completed",
+          "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler. Fixed build error by importing DispatchRecord.\n\nREVIEW FAIL (uat): US-008 — Expected: Verifiable App Home in Slack. Actual: Cannot verify in live Slack due to missing infra. Fix: Restore docker-compose.yml and Makefile up targets.",
+          "status": "open",
           "gateScript": "gates/T027-gate.sh"
         },
         {
@@ -273,8 +273,8 @@
         {
           "id": "T030",
           "title": "Implement test strategy for Phase 6",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (uat): US-008 — Expected: verify-dev-stack.sh PASS. Actual: FAIL (BLOCKING). Fix: Restore Makefile up target and docker-compose.yml.",
+          "status": "open",
           "gateScript": "gates/T030-gate.sh"
         }
       ],

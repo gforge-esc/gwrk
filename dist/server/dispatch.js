@@ -84,7 +84,13 @@ export class DispatchQueue {
         record.attempts.push(attempt);
         // Phase Start Notification
         if (record.attempts.length === 1) {
-            await notifySlack(MessageBuilder.phaseStart(record));
+            await notifySlack(MessageBuilder.phaseStart(record), {
+                type: "phase_start",
+                feature: record.featureId,
+                phase: record.phaseId,
+                payload: record,
+                timestamp: new Date().toISOString(),
+            });
         }
         try {
             // 1. Prepare Git
@@ -132,7 +138,13 @@ export class DispatchQueue {
         if (exitCode === 0) {
             record.status = "completed";
             record.completedAt = attempt.completedAt;
-            await notifySlack(MessageBuilder.phaseComplete(record));
+            await notifySlack(MessageBuilder.phaseComplete(record), {
+                type: "phase_complete",
+                feature: record.featureId,
+                phase: record.phaseId,
+                payload: record,
+                timestamp: new Date().toISOString(),
+            });
             // Merge back
             try {
                 this.git.mergePhaseBack(record.featureId, record.phaseId);
@@ -161,7 +173,13 @@ export class DispatchQueue {
                 }
                 else {
                     record.status = "failed";
-                    await notifySlack(MessageBuilder.phaseFail(record, stderr));
+                    await notifySlack(MessageBuilder.phaseFail(record, stderr), {
+                        type: "phase_fail",
+                        feature: record.featureId,
+                        phase: record.phaseId,
+                        payload: { ...record, stderr },
+                        timestamp: new Date().toISOString(),
+                    });
                 }
             }
         }

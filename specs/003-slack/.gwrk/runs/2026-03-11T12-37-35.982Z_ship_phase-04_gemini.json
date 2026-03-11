@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-11T12:37:35.982Z_ship_p04",
+  "feature": "003-slack",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-11T12:37:35.982Z",
+  "finishedAt": "2026-03-11T12:54:43.247Z",
+  "durationS": 1027,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 18,
+  "linesAdded": 212,
+  "linesDeleted": 102,
+  "gitCommit": "675ddd4f4b31bd4bfeb1eecc541f105c21b69006",
+  "gitBranch": "feat/003-slack"
+}

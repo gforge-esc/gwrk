@@ -54,46 +54,59 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         implement: "gemini" | "claude" | "codex" | "codex-cloud";
         fallbackOrder?: ("gemini" | "claude" | "codex" | "codex-cloud")[] | undefined;
     }>;
-    server: z.ZodObject<{
+    server: z.ZodDefault<z.ZodObject<{
         port: z.ZodNumber;
         host: z.ZodString;
-        heartbeatIntervalMs: z.ZodNumber;
-        networkCheckIntervalMs: z.ZodNumber;
+        heartbeatIntervalMs: z.ZodDefault<z.ZodNumber>;
+        networkCheckIntervalMs: z.ZodDefault<z.ZodNumber>;
+        slack: z.ZodOptional<z.ZodObject<{
+            presencePollIntervalMs: z.ZodDefault<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            presencePollIntervalMs: number;
+        }, {
+            presencePollIntervalMs?: number | undefined;
+        }>>;
     }, "strip", z.ZodTypeAny, {
         port: number;
         host: string;
         heartbeatIntervalMs: number;
         networkCheckIntervalMs: number;
+        slack?: {
+            presencePollIntervalMs: number;
+        } | undefined;
     }, {
         port: number;
         host: string;
-        heartbeatIntervalMs: number;
-        networkCheckIntervalMs: number;
-    }>;
-    parallelism: z.ZodObject<{
-        local: z.ZodObject<{
-            maxCpu: z.ZodNumber;
-            maxMem: z.ZodNumber;
-            minDiskGb: z.ZodNumber;
-            maxClones: z.ZodNumber;
+        slack?: {
+            presencePollIntervalMs?: number | undefined;
+        } | undefined;
+        heartbeatIntervalMs?: number | undefined;
+        networkCheckIntervalMs?: number | undefined;
+    }>>;
+    parallelism: z.ZodDefault<z.ZodObject<{
+        local: z.ZodDefault<z.ZodObject<{
+            maxCpu: z.ZodDefault<z.ZodNumber>;
+            maxMem: z.ZodDefault<z.ZodNumber>;
+            minDiskGb: z.ZodDefault<z.ZodNumber>;
+            maxClones: z.ZodDefault<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
             maxCpu: number;
             maxMem: number;
             minDiskGb: number;
             maxClones: number;
         }, {
-            maxCpu: number;
-            maxMem: number;
-            minDiskGb: number;
-            maxClones: number;
-        }>;
-        cloud: z.ZodObject<{
-            maxConcurrent: z.ZodNumber;
+            maxCpu?: number | undefined;
+            maxMem?: number | undefined;
+            minDiskGb?: number | undefined;
+            maxClones?: number | undefined;
+        }>>;
+        cloud: z.ZodDefault<z.ZodObject<{
+            maxConcurrent: z.ZodDefault<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
             maxConcurrent: number;
         }, {
-            maxConcurrent: number;
-        }>;
+            maxConcurrent?: number | undefined;
+        }>>;
     }, "strip", z.ZodTypeAny, {
         local: {
             maxCpu: number;
@@ -105,16 +118,16 @@ export declare const GwrkConfigSchema: z.ZodObject<{
             maxConcurrent: number;
         };
     }, {
-        local: {
-            maxCpu: number;
-            maxMem: number;
-            minDiskGb: number;
-            maxClones: number;
-        };
-        cloud: {
-            maxConcurrent: number;
-        };
-    }>;
+        local?: {
+            maxCpu?: number | undefined;
+            maxMem?: number | undefined;
+            minDiskGb?: number | undefined;
+            maxClones?: number | undefined;
+        } | undefined;
+        cloud?: {
+            maxConcurrent?: number | undefined;
+        } | undefined;
+    }>>;
     pulse: z.ZodOptional<z.ZodObject<{
         repos: z.ZodArray<z.ZodString, "many">;
     }, "strip", z.ZodTypeAny, {
@@ -141,6 +154,9 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         host: string;
         heartbeatIntervalMs: number;
         networkCheckIntervalMs: number;
+        slack?: {
+            presencePollIntervalMs: number;
+        } | undefined;
     };
     parallelism: {
         local: {
@@ -170,23 +186,26 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         implement: "gemini" | "claude" | "codex" | "codex-cloud";
         fallbackOrder?: ("gemini" | "claude" | "codex" | "codex-cloud")[] | undefined;
     };
-    server: {
+    server?: {
         port: number;
         host: string;
-        heartbeatIntervalMs: number;
-        networkCheckIntervalMs: number;
-    };
-    parallelism: {
-        local: {
-            maxCpu: number;
-            maxMem: number;
-            minDiskGb: number;
-            maxClones: number;
-        };
-        cloud: {
-            maxConcurrent: number;
-        };
-    };
+        slack?: {
+            presencePollIntervalMs?: number | undefined;
+        } | undefined;
+        heartbeatIntervalMs?: number | undefined;
+        networkCheckIntervalMs?: number | undefined;
+    } | undefined;
+    parallelism?: {
+        local?: {
+            maxCpu?: number | undefined;
+            maxMem?: number | undefined;
+            minDiskGb?: number | undefined;
+            maxClones?: number | undefined;
+        } | undefined;
+        cloud?: {
+            maxConcurrent?: number | undefined;
+        } | undefined;
+    } | undefined;
     pulse?: {
         repos: string[];
     } | undefined;
