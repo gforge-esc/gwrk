@@ -1,6 +1,6 @@
 import type { KnownBlock } from "@slack/types";
+import type { PulseReport, PulseSnapshot } from "../engine/types.js";
 import type { DispatchRecord } from "./types.js";
-import type { PulseSnapshot, PulseReport } from "../engine/types.js";
 
 export interface SlackMessage {
   channel?: string;
@@ -45,11 +45,6 @@ export const MessageBuilder = {
 
   phaseComplete(dispatch: DispatchRecord): SlackMessage {
     const text = `✅ Phase ${dispatch.phaseId} completed for ${dispatch.featureId}`;
-    const value = JSON.stringify({
-      featureId: dispatch.featureId,
-      phaseId: dispatch.phaseId,
-    });
-
     return {
       text,
       blocks: [
@@ -67,6 +62,34 @@ export const MessageBuilder = {
             { type: "mrkdwn", text: `*Agent:* \`${dispatch.backend}\`` },
             { type: "mrkdwn", text: `*Status:* ${dispatch.status}` },
           ],
+        },
+      ],
+    };
+  },
+
+  reviewReady(dispatch: DispatchRecord): SlackMessage {
+    const text = `🔍 Review ready for ${dispatch.featureId} (${dispatch.phaseId})`;
+    const value = JSON.stringify({
+      featureId: dispatch.featureId,
+      phaseId: dispatch.phaseId,
+    });
+
+    return {
+      text,
+      blocks: [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `🔍 Review Ready: ${dispatch.featureId}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Phase *${dispatch.phaseId}* is ready for your review. All tests passed.`,
+          },
         },
         {
           type: "actions",
@@ -218,6 +241,7 @@ export const MessageBuilder = {
           text: {
             type: "plain_text",
             text: `🏆 Done Done!`,
+            emoji: true,
           },
         },
         {

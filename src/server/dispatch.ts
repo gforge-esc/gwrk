@@ -2,10 +2,10 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { finishRun, startRun } from "../db/runs.js";
+import type { AgentBackend, GwrkConfig } from "../utils/config.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
 import type { SlackEvent } from "./slack-presence.js";
-import type { AgentBackend, GwrkConfig } from "../utils/config.js";
 
 import { compileContext } from "./context.js";
 import type { GitManager } from "./git-manager.js";
@@ -219,7 +219,10 @@ export class DispatchQueue {
             type: "phase_fail",
             feature: record.featureId,
             phase: record.phaseId,
-            payload: { ...record, stderr } as unknown as Record<string, unknown>,
+            payload: { ...record, stderr } as unknown as Record<
+              string,
+              unknown
+            >,
             timestamp: new Date().toISOString(),
           });
         }

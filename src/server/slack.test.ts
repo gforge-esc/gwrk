@@ -12,6 +12,9 @@ vi.mock("@slack/bolt", () => {
   const mockApp = {
     start: vi.fn().mockResolvedValue({}),
     stop: vi.fn().mockResolvedValue({}),
+    command: vi.fn(),
+    event: vi.fn(),
+    action: vi.fn(),
     client: {
       auth: {
         test: vi.fn().mockResolvedValue({ team: "test-team" }),
@@ -28,6 +31,21 @@ vi.mock("../utils/slack-client", () => {
     loadSlackConfig: vi.fn(),
   };
 });
+
+vi.mock("./slack-actions", () => ({
+  registerSlackActions: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("./slack-home", () => ({
+  registerSlackHomeHandler: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("./slack-presence", () => ({
+  presenceManager: {
+    init: vi.fn().mockResolvedValue({}),
+    stop: vi.fn(),
+  },
+}));
 
 describe("Slack Server Integration", () => {
   beforeEach(() => {
@@ -68,7 +86,26 @@ describe("Slack Server Integration", () => {
       appToken: "xapp-test",
     });
 
-    await startSlackApp();
+    const mockDeps = {
+      queue: { command: vi.fn() },
+      monitor: { startPolling: vi.fn(), stopPolling: vi.fn() },
+      sandbox: { checkDocker: vi.fn() },
+      lifecycle: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        getStatus: vi.fn(() => "ready"),
+      },
+      network: {
+        start: vi.fn(),
+        stop: vi.fn(),
+        getStatus: vi.fn(() => "online"),
+      },
+      git: { projectRoot: "/tmp" },
+      projectRoot: "/tmp",
+      config: { server: { host: "localhost", port: 3000 } },
+    };
+
+    await startSlackApp(mockDeps as any);
     expect(console.log).toHaveBeenCalledWith("⚡️ Slack Bolt app is running!");
 
     await stopSlackApp();

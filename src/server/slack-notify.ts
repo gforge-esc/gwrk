@@ -1,13 +1,16 @@
-import { getSlackApp } from "./slack.js";
 import type { SlackMessage } from "./slack-messages.js";
-import { presenceManager, type SlackEvent } from "./slack-presence.js";
+import { type SlackEvent, presenceManager } from "./slack-presence.js";
+import { getSlackApp } from "./slack.js";
 
 /**
  * Dispatches a Slack notification.
  * If an event is provided, it may be throttled/batched based on user presence.
  * If no event is provided, it is sent immediately.
  */
-export async function notifySlack(message: SlackMessage, event?: SlackEvent): Promise<void> {
+export async function notifySlack(
+  message: SlackMessage,
+  event?: SlackEvent,
+): Promise<void> {
   const app = getSlackApp();
   if (!app) {
     console.warn("Slack not configured — skipping notification");
@@ -26,12 +29,12 @@ export async function notifySlack(message: SlackMessage, event?: SlackEvent): Pr
 /**
  * Internal helper to send a message immediately.
  */
-async function sendSlackMessage(message: SlackMessage): Promise<void> {
+export async function sendSlackMessage(message: SlackMessage): Promise<void> {
   const app = getSlackApp();
   if (!app) return;
 
   const { loadConfig } = await import("../utils/config.js");
-  
+
   // Resolve channel
   let channelId = message.channel;
   if (!channelId) {

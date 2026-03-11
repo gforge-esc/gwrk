@@ -62,7 +62,7 @@ export const initCommand = new Command("init")
     if (options.slack) {
       const { ensureSlackChannel } = await import("../server/slack-channel.js");
       const { loadSlackConfig } = await import("../utils/slack-client.js");
-      
+
       const hasTokens = loadSlackConfig();
       if (hasTokens) {
         try {
@@ -72,12 +72,18 @@ export const initCommand = new Command("init")
             channelId,
             channelName: options.slack,
           };
-          console.log(`Successfully provisioned Slack channel: ${options.slack} (${channelId})`);
+          console.log(
+            `Successfully provisioned Slack channel: ${options.slack} (${channelId})`,
+          );
         } catch (error) {
-          console.warn(`Warning: Failed to provision Slack channel: ${(error as Error).message}`);
+          console.warn(
+            `Warning: Failed to provision Slack channel: ${(error as Error).message}`,
+          );
         }
       } else {
-        console.warn("Warning: Slack not configured (no tokens found). Run gwrk setup slack first to enable Slack features.");
+        console.warn(
+          "Warning: Slack not configured (no tokens found). Run gwrk setup slack first to enable Slack features.",
+        );
       }
     }
 

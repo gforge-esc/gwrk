@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { MessageBuilder } from "./slack-messages.js";
 
 describe("MessageBuilder", () => {
@@ -20,10 +20,17 @@ describe("MessageBuilder", () => {
     expect((msg.blocks[0] as any).text.text).toContain("003-slack");
   });
 
-  it("should build phaseComplete message with buttons", () => {
+  it("should build phaseComplete message without buttons", () => {
     const msg = MessageBuilder.phaseComplete(mockDispatch);
     expect(msg.text).toContain("Phase phase-01 completed");
-    const actions = msg.blocks.find(b => b.type === "actions") as any;
+    const actions = msg.blocks.find((b) => b.type === "actions");
+    expect(actions).toBeUndefined();
+  });
+
+  it("should build reviewReady message with buttons", () => {
+    const msg = MessageBuilder.reviewReady(mockDispatch);
+    expect(msg.text).toContain("Review ready for 003-slack");
+    const actions = msg.blocks.find((b) => b.type === "actions") as any;
     expect(actions.elements).toHaveLength(3);
     expect(actions.elements[0].action_id).toBe("merge_pr");
   });
@@ -35,8 +42,22 @@ describe("MessageBuilder", () => {
   });
 
   it("should build ciResult message", () => {
-    const msg = MessageBuilder.ciResult(mockDispatch, { passed: true, summary: "All tests passed" });
+    const msg = MessageBuilder.ciResult(mockDispatch, {
+      passed: true,
+      summary: "All tests passed",
+    });
     expect(msg.text).toContain("CI Results");
     expect(JSON.stringify(msg.blocks)).toContain("All tests passed");
+  });
+
+  it("should build batchedSummary message", () => {
+    const events = [
+      { type: "phase_complete", feature: "feat-1" },
+      { type: "phase_fail", feature: "feat-2" },
+    ];
+    const msg = MessageBuilder.batchedSummary(events);
+    expect(msg.text).toContain("Batched Notification Summary");
+    expect(JSON.stringify(msg.blocks)).toContain("feat-1");
+    expect(JSON.stringify(msg.blocks)).toContain("feat-2");
   });
 });

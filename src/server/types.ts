@@ -27,6 +27,7 @@ export interface HealthResponse {
     server: ComponentHealth;
     docker: ComponentHealth;
     network: ComponentHealth;
+    slack: ComponentHealth;
   };
 }
 

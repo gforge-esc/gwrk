@@ -7,7 +7,9 @@ export async function ensureSlackChannel(channelName: string): Promise<string> {
   }
 
   // Remove leading # if present for the API call (though it usually wants it without)
-  const cleanName = channelName.startsWith("#") ? channelName.slice(1) : channelName;
+  const cleanName = channelName.startsWith("#")
+    ? channelName.slice(1)
+    : channelName;
 
   try {
     // 1. Try to find the channel if it already exists
@@ -46,6 +48,8 @@ export async function ensureSlackChannel(channelName: string): Promise<string> {
       const existing = list.channels?.find((c) => c.name === cleanName);
       if (existing?.id) return existing.id;
     }
-    throw new Error(`Failed to create Slack channel: ${apiError.message || apiError.data?.error || "unknown error"}`);
+    throw new Error(
+      `Failed to create Slack channel: ${apiError.message || apiError.data?.error || "unknown error"}`,
+    );
   }
 }

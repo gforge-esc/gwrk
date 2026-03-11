@@ -1,7 +1,7 @@
 import type { App } from "@slack/bolt";
-import { type SlackMessage, MessageBuilder } from "./slack-messages.js";
-import { getSlackApp } from "./slack.js";
 import { loadConfig } from "../utils/config.js";
+import { MessageBuilder, type SlackMessage } from "./slack-messages.js";
+import { getSlackApp } from "./slack.js";
 
 export interface SlackEvent {
   type:
@@ -46,12 +46,18 @@ class PresenceManager {
     try {
       // Find the PE user ID. For now, we take the first non-bot admin, or just the first non-bot user.
       const users = await app.client.users.list({});
-      const human = users.members?.find((m) => !m.is_bot && m.id !== "USLACKBOT");
+      const human = users.members?.find(
+        (m) => !m.is_bot && m.id !== "USLACKBOT",
+      );
       if (human?.id) {
         this.userId = human.id;
-        console.log(`Presence polling started for user: ${human.name} (${this.userId})`);
+        console.log(
+          `Presence polling started for user: ${human.name} (${this.userId})`,
+        );
       } else {
-        console.warn("Could not find a human user for presence detection. Falling back to immediate delivery.");
+        console.warn(
+          "Could not find a human user for presence detection. Falling back to immediate delivery.",
+        );
         return;
       }
 
@@ -78,11 +84,11 @@ class PresenceManager {
       const result = await app.client.users.getPresence({ user: this.userId });
       if (result.ok) {
         const newPresence = result.presence === "active" ? "active" : "away";
-        
+
         if (newPresence === "active" && this.currentPresence === "away") {
           await this.flushQueue();
         }
-        
+
         this.currentPresence = newPresence;
       }
     } catch (error) {
@@ -90,11 +96,16 @@ class PresenceManager {
     }
   }
 
-  public async handleNotification(event: SlackEvent, message: SlackMessage): Promise<void> {
+  public async handleNotification(
+    event: SlackEvent,
+    message: SlackMessage,
+  ): Promise<void> {
     if (this.currentPresence === "active") {
       await this.sendImmediately(message);
     } else {
-      console.log(`User away. Queuing event: ${event.type} for ${event.feature}`);
+      console.log(
+        `User away. Queuing event: ${event.type} for ${event.feature}`,
+      );
       this.queuedEvents.push(event);
     }
   }
@@ -109,15 +120,19 @@ class PresenceManager {
     if (this.queuedEvents.length === 0) return;
 
     console.log(`User returned. Flushing ${this.queuedEvents.length} events.`);
-    
-    const batchedEvents = this.queuedEvents.map(e => ({
+
+    // Group by feature/project if needed, but for now simple list
+    const batchedEvents = this.queuedEvents.map((e) => ({
       type: e.type,
-      feature: e.feature
+      feature: e.feature,
     }));
 
     const summaryMessage = MessageBuilder.batchedSummary(batchedEvents);
-    await this.sendImmediately(summaryMessage);
     
+    // Use sendSlackMessage directly to avoid circular dependency and bypass presence check
+    const { sendSlackMessage } = await import("./slack-notify.js");
+    await sendSlackMessage(summaryMessage);
+
     this.queuedEvents = [];
   }
 

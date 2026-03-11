@@ -2,6 +2,10 @@ import fastify from "fastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { healthRoutes } from "./health.js";
 
+vi.mock("../slack.js", () => ({
+  isSlackConnected: vi.fn().mockResolvedValue(true),
+}));
+
 describe("healthRoutes", () => {
   let server: any;
   let lifecycle: any;

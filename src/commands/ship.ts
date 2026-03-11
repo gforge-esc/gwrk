@@ -1,11 +1,11 @@
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
-import { loadConfig } from "../utils/config.js";
 import { MessageBuilder } from "../server/slack-messages.js";
 import { notifySlack } from "../server/slack-notify.js";
 import type { SlackEvent } from "../server/slack-presence.js";
 import type { DispatchRecord } from "../server/types.js";
+import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -96,8 +96,18 @@ async function shipPhase(
     success("ship", durationS, runId);
 
     record.status = "completed";
+    // Notify about completion
     await notifySlack(MessageBuilder.phaseComplete(record), {
       type: "phase_complete",
+      feature: record.featureId,
+      phase: record.phaseId,
+      payload: record as unknown as Record<string, unknown>,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Also notify about review readiness
+    await notifySlack(MessageBuilder.reviewReady(record), {
+      type: "review_ready",
       feature: record.featureId,
       phase: record.phaseId,
       payload: record as unknown as Record<string, unknown>,
@@ -122,7 +132,10 @@ async function shipPhase(
         type: "phase_fail",
         feature: record.featureId,
         phase: record.phaseId,
-        payload: { ...record, error: err instanceof Error ? err.message : String(err) } as unknown as Record<string, unknown>,
+        payload: {
+          ...record,
+          error: err instanceof Error ? err.message : String(err),
+        } as unknown as Record<string, unknown>,
         timestamp: new Date().toISOString(),
       },
     );

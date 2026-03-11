@@ -160,20 +160,12 @@ describe("loadConfig", () => {
     const config = {
       project: { 
         name: "test-project",
-        slackChannel: "#gwrk-test",
-        slackChannelId: "C123456"
+        slack: {
+          channelName: "#gwrk-test",
+          channelId: "C123456"
+        }
       },
       agents: { define: "gemini", implement: "codex-cloud" },
-      server: { 
-        port: 18790, 
-        host: "localhost",
-        heartbeatIntervalMs: 1000,
-        networkCheckIntervalMs: 1000
-      },
-      parallelism: {
-        local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
-        cloud: { maxConcurrent: 10 },
-      },
     };
     fs.writeFileSync(
       path.join(tempDir, ".gwrkrc.json"),
@@ -181,8 +173,8 @@ describe("loadConfig", () => {
     );
 
     const result = loadConfig(tempDir);
-    expect(result.project.slackChannel).toBe("#gwrk-test");
-    expect(result.project.slackChannelId).toBe("C123456");
+    expect(result.project.slack?.channelName).toBe("#gwrk-test");
+    expect(result.project.slack?.channelId).toBe("C123456");
   });
 });
 

@@ -118,10 +118,19 @@ export async function startServer(
     });
     console.log(`gwrk server listening on ${address}`);
     writePid(process.pid);
-    
+
     // Start Slack if configured
-    await startSlackApp();
-    
+    await startSlackApp({
+      queue,
+      monitor,
+      sandbox,
+      lifecycle,
+      network,
+      git,
+      projectRoot,
+      config,
+    });
+
     return server;
   } catch (err) {
     server.log.error(err);
