@@ -3,8 +3,8 @@ _metadata:
   minor_version: 1
 display_information:
   name: gwrk
-  description: "Principal Engineer's Operating System — shipping pipeline, pulse, and dispatch."
-  long_description: "gwrk is the Principal Engineer's Operating System. It orchestrates autonomous shipping pipelines, tracks build pulse and effort compression, and dispatches work across agents. Slash commands let you control everything from Slack: check status, dispatch features, approve or reject phases, monitor pulse metrics, and tail logs — all without leaving your workspace."
+  description: "🦩 You better gwrk."
+  long_description: "gwrk is a CLI and local build server that orchestrates fleets of AI coding agents through governed, parallelized pipelines — and lets you control the whole thing from Slack. It takes your architectural vision, decomposes it into executable phases, dispatches agents to build them in parallel, drives results through review gates and CI, and reports back here. You ship features while walking the dog. gwrk is not another AI code generator. It's the general contractor for your software factory."
   background_color: "#FF1493"
 features:
   app_home:
