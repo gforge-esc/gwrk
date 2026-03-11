@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { finishRun, startRun } from "../db/runs.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
+import type { SlackEvent } from "./slack-presence.js";
 import type { AgentBackend, GwrkConfig } from "../utils/config.js";
 
 import { compileContext } from "./context.js";
@@ -11,10 +12,7 @@ import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
-import type {
-  DispatchAttempt,
-  DispatchRecord,
-} from "./types.js";
+import type { DispatchAttempt, DispatchRecord } from "./types.js";
 
 export interface DispatchRequest {
   featureId: string;
@@ -109,7 +107,13 @@ export class DispatchQueue {
 
     // Phase Start Notification
     if (record.attempts.length === 1) {
-      await notifySlack(MessageBuilder.phaseStart(record));
+      await notifySlack(MessageBuilder.phaseStart(record), {
+        type: "phase_start",
+        feature: record.featureId,
+        phase: record.phaseId,
+        payload: record as unknown as Record<string, unknown>,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     try {
@@ -179,7 +183,13 @@ export class DispatchQueue {
       record.status = "completed";
       record.completedAt = attempt.completedAt;
 
-      await notifySlack(MessageBuilder.phaseComplete(record));
+      await notifySlack(MessageBuilder.phaseComplete(record), {
+        type: "phase_complete",
+        feature: record.featureId,
+        phase: record.phaseId,
+        payload: record as unknown as Record<string, unknown>,
+        timestamp: new Date().toISOString(),
+      });
 
       // Merge back
       try {
@@ -205,7 +215,13 @@ export class DispatchQueue {
           record.status = "retrying";
         } else {
           record.status = "failed";
-          await notifySlack(MessageBuilder.phaseFail(record, stderr));
+          await notifySlack(MessageBuilder.phaseFail(record, stderr), {
+            type: "phase_fail",
+            feature: record.featureId,
+            phase: record.phaseId,
+            payload: { ...record, stderr } as unknown as Record<string, unknown>,
+            timestamp: new Date().toISOString(),
+          });
         }
       }
     }

@@ -4,6 +4,7 @@ import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { MessageBuilder } from "../server/slack-messages.js";
 import { notifySlack } from "../server/slack-notify.js";
+import type { SlackEvent } from "../server/slack-presence.js";
 import type { DispatchRecord } from "../server/types.js";
 import { run } from "../utils/exec.js";
 import {
@@ -57,7 +58,13 @@ async function shipPhase(
     createdAt: startedAt,
   };
 
-  await notifySlack(MessageBuilder.phaseStart(record));
+  await notifySlack(MessageBuilder.phaseStart(record), {
+    type: "phase_start",
+    feature: record.featureId,
+    phase: record.phaseId,
+    payload: record as unknown as Record<string, unknown>,
+    timestamp: new Date().toISOString(),
+  });
 
   banner("ship", {
     Feature: feature,
@@ -87,9 +94,15 @@ async function shipPhase(
     const durationS = Math.round((Date.now() - startTime) / 1000);
     finishRun(runId, { exit_code: 0, duration_s: durationS });
     success("ship", durationS, runId);
-    
+
     record.status = "completed";
-    await notifySlack(MessageBuilder.phaseComplete(record));
+    await notifySlack(MessageBuilder.phaseComplete(record), {
+      type: "phase_complete",
+      feature: record.featureId,
+      phase: record.phaseId,
+      payload: record as unknown as Record<string, unknown>,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err: unknown) {
     const durationS = Math.round((Date.now() - startTime) / 1000);
     exitCode =
@@ -100,7 +113,19 @@ async function shipPhase(
     fail("ship", exitCode, durationS, runId);
 
     record.status = "failed";
-    await notifySlack(MessageBuilder.phaseFail(record, err instanceof Error ? err.message : String(err)));
+    await notifySlack(
+      MessageBuilder.phaseFail(
+        record,
+        err instanceof Error ? err.message : String(err),
+      ),
+      {
+        type: "phase_fail",
+        feature: record.featureId,
+        phase: record.phaseId,
+        payload: { ...record, error: err instanceof Error ? err.message : String(err) } as unknown as Record<string, unknown>,
+        timestamp: new Date().toISOString(),
+      },
+    );
   }
 
   // Write Execution Manifest (ADR-003)

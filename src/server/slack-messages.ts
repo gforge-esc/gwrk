@@ -33,7 +33,10 @@ export const MessageBuilder = {
         {
           type: "context",
           elements: [
-            { type: "mrkdwn", text: `Created at ${new Date(dispatch.createdAt).toLocaleString()}` },
+            {
+              type: "mrkdwn",
+              text: `Created at ${new Date(dispatch.createdAt).toLocaleString()}`,
+            },
           ],
         },
       ],
@@ -146,7 +149,10 @@ export const MessageBuilder = {
     };
   },
 
-  ciResult(dispatch: DispatchRecord, ci: { passed: boolean; summary: string }): SlackMessage {
+  ciResult(
+    dispatch: DispatchRecord,
+    ci: { passed: boolean; summary: string },
+  ): SlackMessage {
     const statusIcon = ci.passed ? "✅" : "❌";
     const text = `${statusIcon} CI Results for ${dispatch.featureId}`;
     return {
@@ -192,7 +198,10 @@ export const MessageBuilder = {
     blocks.push({
       type: "context",
       elements: [
-        { type: "mrkdwn", text: `Generated at ${new Date(report.generatedAt).toLocaleString()}` },
+        {
+          type: "mrkdwn",
+          text: `Generated at ${new Date(report.generatedAt).toLocaleString()}`,
+        },
       ],
     });
 
@@ -224,7 +233,7 @@ export const MessageBuilder = {
 
   batchedSummary(events: { type: string; feature: string }[]): SlackMessage {
     const text = "🔔 Batched Notification Summary";
-    const eventList = events.map(e => `• ${e.type}: ${e.feature}`).join("\n");
+    const eventList = events.map((e) => `• ${e.type}: ${e.feature}`).join("\n");
     return {
       text,
       blocks: [
@@ -241,5 +250,5 @@ export const MessageBuilder = {
         },
       ],
     };
-  }
+  },
 };

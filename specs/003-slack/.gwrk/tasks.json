@@ -43,15 +43,15 @@
         {
           "id": "T005",
           "title": "Implement src/utils/config.ts",
-          "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation\n\nREVIEW FAIL (code): Regression in loadConfig — DM-001.\n  WHERE: src/utils/config.ts:33-47\n  EXPECTED: Configuration change should not break existing system tests.\n  ACTUAL: New REQUIRED fields (server.heartbeatIntervalMs, server.networkCheckIntervalMs, parallelism) broke 7+ test suites.\n  FIX: Update all test mocks to include required fields or provide default values in loadConfig().\n  REF: plan.md Phase 1 > DM-001",
-          "status": "completed",
+          "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation\n\nREVIEW FAIL (code): Regression in loadConfig — DM-001.\n  WHERE: src/utils/config.ts:33-47\n  EXPECTED: Configuration change should not break existing system tests.\n  ACTUAL: New REQUIRED fields (server.heartbeatIntervalMs, server.networkCheckIntervalMs, parallelism) broke 7+ test suites.\n  FIX: Update all test mocks to include required fields or provide default values in loadConfig().\n  REF: plan.md Phase 1 > DM-001\n\nREVIEW FAIL (code): Regression STILL EXISTS — DM-001.\n  WHERE: src/utils/config.ts\n  EXPECTED: Existing system tests pass.\n  ACTUAL: 7+ test suites fail due to missing REQUIRED config fields (heartbeatIntervalMs, etc.).\n  FIX: Provide default values in loadConfig() or update ALL test mocks.\n  REF: plan.md Phase 1 > DM-001",
+          "status": "open",
           "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
           "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Global.\n  WHERE: src/server/dispatch.ts and src/server/slack-messages.ts\n  EXPECTED: Project builds with zero errors.\n  ACTUAL: 15 errors in 2 files.\n  FIX: Fix imports and exports in Phase 3 files (T013, T016).\n  GATE: gates/T006-gate.sh assertion #3\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Test and Lint failures — TR-001, TR-002.\n  WHERE: src/commands/init.ts, src/commands/ship.ts, src/server/slack-channel.ts, src/server/slack-notify.ts, src/utils/config.test.ts, src/scripts-e2e.test.ts\n  EXPECTED: Zero lint errors in critical paths, all tests pass (unit + e2e).\n  ACTUAL: 21 lint errors (noExplicitAny), config schema mismatch in tests, e2e reference error (cleanupState).\n  FIX: Fix lint errors, update config.test.ts to match new schema, fix e2e test references.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 1 > Test Strategy",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Global.\n  WHERE: src/server/dispatch.ts and src/server/slack-messages.ts\n  EXPECTED: Project builds with zero errors.\n  ACTUAL: 15 errors in 2 files.\n  FIX: Fix imports and exports in Phase 3 files (T013, T016).\n  GATE: gates/T006-gate.sh assertion #3\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Test and Lint failures — TR-001, TR-002.\n  WHERE: src/commands/init.ts, src/commands/ship.ts, src/server/slack-channel.ts, src/server/slack-notify.ts, src/utils/config.test.ts, src/scripts-e2e.test.ts\n  EXPECTED: Zero lint errors in critical paths, all tests pass (unit + e2e).\n  ACTUAL: 21 lint errors (noExplicitAny), config schema mismatch in tests, e2e reference error (cleanupState).\n  FIX: Fix lint errors, update config.test.ts to match new schema, fix e2e test references.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 1 > Test Strategy\n\nREVIEW FAIL (code): Regression — TR-001.\n  WHERE: src/server/slack.test.ts\n  EXPECTED: All tests in Phase 1 pass.\n  ACTUAL: TypeError: resetSlackApp is not a function in src/server/slack.test.ts.\n  FIX: Restore resetSlackApp export in src/server/slack.ts.\n  REF: plan.md Phase 1 > Test Strategy",
+          "status": "open",
           "gateScript": "gates/T006-gate.sh"
         }
       ],
@@ -104,8 +104,8 @@
         {
           "id": "T012",
           "title": "Implement test strategy for Phase 2",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Regression — TR-009.\n  WHERE: src/server/slack.test.ts\n  EXPECTED: All tests in Phase 2 pass.\n  ACTUAL: TypeError: resetSlackApp is not a function.\n  FIX: Restore resetSlackApp export in src/server/slack.ts.\n  REF: plan.md Phase 2 > Test Strategy",
+          "status": "open",
           "gateScript": "gates/T012-gate.sh"
         }
       ],
@@ -167,15 +167,15 @@
         {
           "id": "T018",
           "title": "Implement src/server/slack-commands.ts",
-          "description": "New: 8 slash command handlers",
-          "status": "open",
+          "description": "New: 8 slash command handlers\n\nREVIEW FAIL (uat): US-004 — Expected: Slash commands should trigger pipeline actions (dispatch, merge, etc.). Actual: Commands are partially mocked with logic commented out. See spec.md > US-004. Fix: Uncomment and implement the logic to call queue.enqueue, git.mergePhaseBack, etc.",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh"
         },
         {
           "id": "T019",
           "title": "Implement src/server/slack-actions.ts",
-          "description": "New: Interactive button handler, ✅ reaction-to-approve",
-          "status": "open",
+          "description": "New: Interactive button handler, ✅ reaction-to-approve\n\nREVIEW FAIL (uat): US-005 — Expected: Interactive buttons (Merge, Retry) and reaction ✅ should trigger pipeline actions. Actual: Button handlers are mocked/commented out, and reaction ✅ only logs a message. See spec.md > US-005. Fix: Implement the logic to call git.mergePhaseBack and queue.retry in action handlers.",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh"
         },
         {
@@ -196,7 +196,7 @@
           "id": "T022",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh"
         }
       ],
@@ -214,15 +214,15 @@
         {
           "id": "T023",
           "title": "Implement src/server/slack-presence.ts",
-          "description": "New: Presence poller, notification queue, batch delivery",
+          "description": "New: Presence poller, notification queue, batch delivery\n\nREVIEW FAIL (code): Type Safety — DM-001.\n  WHERE: src/server/slack-presence.ts:89\n  EXPECTED: Use strict error handling instead of any.\n  ACTUAL: console.warn(`Presence API unavailable: ${(error as any).message}`);\n  FIX: Use `err instanceof Error ? err.message : String(err)` or similar.\n  REF: plan.md Phase 5 > Governance",
           "status": "open",
           "gateScript": "gates/T023-gate.sh"
         },
         {
           "id": "T024",
           "title": "Implement src/server/slack-notify.ts",
-          "description": "Modify: Route through presence gate before posting",
-          "status": "completed",
+          "description": "Modify: Route through presence gate before posting\n\nREVIEW FAIL (code): Type Safety — DM-001.\n  WHERE: src/server/slack-notify.ts:59\n  EXPECTED: Use strict error handling instead of any.\n  ACTUAL: `Failed to post Slack notification: ${(error as any).message}`\n  FIX: Use `err instanceof Error ? err.message : String(err)` or similar.\n  REF: plan.md Phase 5 > Governance",
+          "status": "open",
           "gateScript": "gates/T024-gate.sh"
         },
         {
@@ -236,7 +236,7 @@
           "id": "T026",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh"
         }
       ],
