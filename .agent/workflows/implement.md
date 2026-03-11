@@ -53,6 +53,12 @@ make up
 > [!CAUTION]
 > Do NOT run bare `pnpm dev`. Do NOT override ports. If the connectivity gate fails, STOP and report.
 
+> [!CAUTION]
+> **Shared Schema Protection**: When modifying shared Zod schemas (e.g., `GwrkConfigSchema`
+> in `config.ts`), new fields MUST be `.optional()` OR all existing test mocks MUST be updated
+> in the same commit. Adding required fields without updating all consumers = guaranteed
+> global test regression across 7+ suites. This is a circuit-breaker-level bug.
+
 ### 1. Preflight
 
 ```bash
