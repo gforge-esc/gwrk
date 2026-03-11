@@ -150,8 +150,8 @@
         {
           "id": "T017",
           "title": "Implement test strategy for Phase 3",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure.\n  WHERE: Global\n  EXPECTED: pnpm build passes.\n  ACTUAL: pnpm build fails due to T013 and T016.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure.\n  WHERE: Global\n  EXPECTED: pnpm build passes.\n  ACTUAL: pnpm build fails due to T013 and T016.\n\nREVIEW FAIL (code): Regression — Build failure.\n  WHERE: Global\n  EXPECTED: pnpm build passes.\n  ACTUAL: pnpm build fails due to errors in src/server/slack-home.ts.",
+          "status": "open",
           "gateScript": "gates/T017-gate.sh"
         }
       ],
@@ -195,8 +195,8 @@
         {
           "id": "T022",
           "title": "Implement test strategy for Phase 4",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Regression — Build failure.\n  WHERE: Global\n  EXPECTED: pnpm build passes.\n  ACTUAL: pnpm build fails due to errors in src/server/slack-home.ts.",
+          "status": "open",
           "gateScript": "gates/T022-gate.sh"
         }
       ],
@@ -215,14 +215,14 @@
           "id": "T023",
           "title": "Implement src/server/slack-presence.ts",
           "description": "New: Presence poller, notification queue, batch delivery\n\nREVIEW FAIL (code): Type Safety — DM-001.\n  WHERE: src/server/slack-presence.ts:89\n  EXPECTED: Use strict error handling instead of any.\n  ACTUAL: console.warn(`Presence API unavailable: ${(error as any).message}`);\n  FIX: Use `err instanceof Error ? err.message : String(err)` or similar.\n  REF: plan.md Phase 5 > Governance\n\nREVIEW FAIL (uat): Presence Throttling — Expected: Fully functional presence-aware delivery. Actual: BLOCKING: Missing Slack tokens (~/.gwrk/.env) and Docker environment. Also confirmed code review failures (any usage) in T023/T024. Fix: Restore infrastructure and fix type safety.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh"
         },
         {
           "id": "T024",
           "title": "Implement src/server/slack-notify.ts",
           "description": "Modify: Route through presence gate before posting\n\nREVIEW FAIL (code): Type Safety — DM-001.\n  WHERE: src/server/slack-notify.ts:59\n  EXPECTED: Use strict error handling instead of any.\n  ACTUAL: `Failed to post Slack notification: ${(error as any).message}`\n  FIX: Use `err instanceof Error ? err.message : String(err)` or similar.\n  REF: plan.md Phase 5 > Governance\n\nREVIEW FAIL (uat): Presence Throttling — Expected: Fully functional presence-aware delivery. Actual: BLOCKING: Missing Slack tokens (~/.gwrk/.env) and Docker environment. Also confirmed code review failures (any usage) in T023/T024. Fix: Restore infrastructure and fix type safety.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh"
         },
         {
@@ -235,8 +235,8 @@
         {
           "id": "T026",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Regression — Build failure.\n  WHERE: Global\n  EXPECTED: pnpm build passes.\n  ACTUAL: pnpm build fails due to errors in src/server/slack-home.ts.",
+          "status": "open",
           "gateScript": "gates/T026-gate.sh"
         }
       ],
@@ -252,7 +252,7 @@
         {
           "id": "T027",
           "title": "Implement src/server/slack-home.ts",
-          "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler",
+          "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler\n\nREVIEW FAIL (code): Build failure — Global.\n  WHERE: src/server/slack-home.ts:191-205\n  EXPECTED: DispatchRecord type is imported and used correctly.\n  ACTUAL: Cannot find name 'DispatchRecord'.\n  FIX: Add import { DispatchRecord } from \"./types.js\";\n  GATE: gates/T027-gate.sh (passed erroneously - needs better assertion)\n  REF: plan.md Phase 6 > Done When",
           "status": "open",
           "gateScript": "gates/T027-gate.sh"
         },
@@ -273,7 +273,7 @@
         {
           "id": "T030",
           "title": "Implement test strategy for Phase 6",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Global.\n  WHERE: Global\n  EXPECTED: Project builds with zero errors.\n  ACTUAL: pnpm build fails with 3 errors in src/server/slack-home.ts.\n  FIX: Resolve build errors in Phase 6 files.\n  GATE: gates/T030-gate.sh assertion #2\n  REF: plan.md Phase 6 > Done When",
           "status": "open",
           "gateScript": "gates/T030-gate.sh"
         }
