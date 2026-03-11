@@ -61,6 +61,36 @@ The Build Server feature is currently in a `greenfield` state. While the specifi
 4.  **PID Management**: The PID manager should ensure `.gwrk/` exists, which is a common point of failure.
 5.  **Integration Testing**: Phase 5 requires a running Docker daemon. Verification gates for Phase 4/5 should check for Docker availability.
 
+---
+
+## GAP-002-A: Container Lifecycle Management (2026-03-11)
+
+> **Discovered during**: 003-slack integration testing
+> **Severity**: Architectural debt — resource leak
+> **Evidence**: 13 zombie Docker containers (`gwrk.feature=feat-1`, `gwrk.feature=feat-int`) found running/created from integration tests spanning 32+ hours, consuming resources with no expiry or cleanup mechanism.
+
+### Root Cause
+
+`SandboxManager` has `createSandbox()` and `destroySandbox()` but nothing enforces lifecycle:
+
+| Gap | Detail |
+|---|---|
+| **No container TTL** | `gwrk.startedAt` label is written but never read. No reaper checks age. |
+| **No test cleanup** | Integration tests call `createSandbox()` with no `afterEach`/`afterAll` teardown. Every test run leaks containers. |
+| **No shutdown cleanup** | `startServer.shutdown()` stops Slack, monitors, and Fastify but never calls `sandbox.destroyAll()` or equivalent. |
+| **No manual cleanup command** | No `gwrk server clean` or `gwrk doctor` to audit and reclaim leaked resources. |
+| **No max container limit** | `createSandbox()` never checks how many gwrk containers already exist. Unbounded growth. |
+
+### Required Changes
+
+1. **`SandboxManager.reapStale(maxAgeMs)`** — Destroy containers older than TTL based on `gwrk.startedAt` label.
+2. **`SandboxManager.destroyAll()`** — Remove all gwrk-labeled containers. Called on server shutdown.
+3. **Reaper interval in server** — `setInterval(() => sandbox.reapStale(TTL), 60_000)` inside `startServer()`.
+4. **Shutdown hook** — Add `await sandbox.destroyAll()` to `startServer.shutdown()`.
+5. **Test cleanup** — `afterAll(() => sandbox.destroyAll())` in all integration test suites that create containers.
+6. **`gwrk server clean` command** — Repeatable CLI command wrapping `destroyAll()` with count reporting.
+7. **Max concurrency guard** — `createSandbox()` checks active count against `config.server.parallelism.maxConcurrentSandboxes` before spawning.
+
 ## Conclusion
 
 The project is ready for task decomposition. The existing `tasks.json` structure is a good baseline but will be refined to ensure "Halving Rule" compliance and "Zero Interpretation" task descriptions.
