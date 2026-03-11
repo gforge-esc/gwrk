@@ -44,14 +44,14 @@
           "id": "T005",
           "title": "Implement src/utils/config.ts",
           "description": "Modify: Add Zod schema for Slack tokens, fail-fast validation\n\nREVIEW FAIL (code): Regression in loadConfig — DM-001.\n  WHERE: src/utils/config.ts:33-47\n  EXPECTED: Configuration change should not break existing system tests.\n  ACTUAL: New REQUIRED fields (server.heartbeatIntervalMs, server.networkCheckIntervalMs, parallelism) broke 7+ test suites.\n  FIX: Update all test mocks to include required fields or provide default values in loadConfig().\n  REF: plan.md Phase 1 > DM-001",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Global.\n  WHERE: src/server/dispatch.ts and src/server/slack-messages.ts\n  EXPECTED: Project builds with zero errors.\n  ACTUAL: 15 errors in 2 files.\n  FIX: Fix imports and exports in Phase 3 files (T013, T016).\n  GATE: gates/T006-gate.sh assertion #3\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Test and Lint failures — TR-001, TR-002.\n  WHERE: src/commands/init.ts, src/commands/ship.ts, src/server/slack-channel.ts, src/server/slack-notify.ts, src/utils/config.test.ts, src/scripts-e2e.test.ts\n  EXPECTED: Zero lint errors in critical paths, all tests pass (unit + e2e).\n  ACTUAL: 21 lint errors (noExplicitAny), config schema mismatch in tests, e2e reference error (cleanupState).\n  FIX: Fix lint errors, update config.test.ts to match new schema, fix e2e test references.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 1 > Test Strategy",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh"
         }
       ],
@@ -123,7 +123,7 @@
           "id": "T013",
           "title": "Implement src/server/slack-messages.ts",
           "description": "New: Block Kit message builders for 7 event types\n\nREVIEW FAIL (code): Import error.\n  WHERE: src/server/slack-messages.ts:1\n  EXPECTED: import type { AnyBlock, MessageAttachment } from \"@slack/bolt\" should work.\n  ACTUAL: Module '\"@slack/bolt\"' has no exported member 'AnyBlock' or 'MessageAttachment'.\n  FIX: Use proper block types from `@slack/types` or `KnownBlock` from `@slack/bolt`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh"
         },
         {
@@ -144,14 +144,14 @@
           "id": "T016",
           "title": "Implement src/server/dispatch.ts",
           "description": "Modify: Emit events consumed by slack-notify\n\nREVIEW FAIL (code): Missing imports.\n  WHERE: src/server/dispatch.ts\n  EXPECTED: DispatchRecord and other types are imported.\n  ACTUAL: Cannot find name 'DispatchRecord', 'SystemMonitor', 'SandboxManager', 'persistDispatch', 'DispatchAttempt'.\n  FIX: Import missing types from `./types.js`, `./persistence.js`, etc.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh"
         },
         {
           "id": "T017",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure.\n  WHERE: Global\n  EXPECTED: pnpm build passes.\n  ACTUAL: pnpm build fails due to T013 and T016.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh"
         }
       ],
@@ -182,14 +182,14 @@
           "id": "T020",
           "title": "Implement src/server/slack.ts",
           "description": "Modify: Register command/action handlers with Bolt",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh"
         },
         {
           "id": "T021",
           "title": "Implement src/server/routes/health.ts",
           "description": "Modify: Add Slack connection status to health endpoint",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh"
         },
         {
@@ -222,14 +222,14 @@
           "id": "T024",
           "title": "Implement src/server/slack-notify.ts",
           "description": "Modify: Route through presence gate before posting",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh"
         },
         {
           "id": "T025",
           "title": "Implement src/server/slack-messages.ts",
           "description": "Modify: Add `batchedSummary(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh"
         },
         {
@@ -260,14 +260,14 @@
           "id": "T028",
           "title": "Implement src/server/slack.ts",
           "description": "Modify: Register `app_home_opened` event handler",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T028-gate.sh"
         },
         {
           "id": "T029",
           "title": "Implement src/server/routes/status.ts",
           "description": "Modify: Export status data for Home Tab consumption",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh"
         },
         {

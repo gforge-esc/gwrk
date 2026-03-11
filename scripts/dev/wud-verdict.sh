@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# wud-verdict.sh — Deterministic GO/NO-GO verdict via tasks.json
+# wud-verdict.sh — Deterministic GO/NO-GO verdict via gate execution
 #
-# Flat-file tasks.json (ADR-001) is the SOLE source of truth for task completion.
-# Replaces beads (bd) with jq on specs/<feature>/.gwrk/tasks.json.
+# ARCHITECTURE: tasks.json.gateScript is the foreign key.
+# This script iterates tasks in the phase, runs each task's gate,
+# and writes the result directly back to tasks.json.
+#
+# NO LLM REQUIRED. The mapping is structural.
 #
 # Usage: ./scripts/dev/wud-verdict.sh <spec_dir> <phase_number>
 #
 # Exit codes:
-#   0 - GO (all tasks in phase are completed)
-#   1 - NO-GO (open/in_progress tasks remain)
+#   0 - GO (all tasks in phase pass their gates)
+#   1 - NO-GO (one or more gates failed)
 #   2 - Error (missing tasks.json, jq unavailable, etc.)
 
 set -euo pipefail
@@ -43,54 +46,70 @@ if [[ "$PHASE_EXISTS" -eq 0 ]]; then
 fi
 
 # ──────────────────────────────────────────────────
-# PRIMARY VERDICT: Run gates if they exist
-# Gates are truth, tasks.json status is bookkeeping.
+# Per-task gate execution → tasks.json reconciliation
+# The gateScript field IS the foreign key. No LLM needed.
 # ──────────────────────────────────────────────────
-GATES_SCRIPT="$SPEC_DIR/gates/run-all-gates.sh"
-if [[ -f "$GATES_SCRIPT" ]]; then
-  echo "[wud-verdict] Running gates for ${PHASE_ID}..."
-  GATE_OUTPUT=$(bash "$GATES_SCRIPT" 2>&1) || true
-  GATE_EXIT=${PIPESTATUS[0]:-$?}
 
-  if [[ "$GATE_EXIT" -eq 0 ]]; then
-    echo "[wud-verdict] GO — All gates pass (${PHASE_ID})"
-    # Auto-complete tasks in tasks.json — gates are truth
-    jq --arg pid "$PHASE_ID" \
-      '(.phases[] | select(.id == $pid) | .tasks[].status) = "completed"' \
-      "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
-    echo "[wud-verdict] Auto-completed tasks in tasks.json"
-    exit 0
+TOTAL=0
+PASSED=0
+FAILED=0
+FAILED_TASKS=""
+
+echo "[wud-verdict] Running per-task gates for ${PHASE_ID}..."
+echo "────────────────────────────────────────"
+
+# Extract task IDs and their gate scripts for this phase
+TASK_DATA=$(jq -r --arg pid "$PHASE_ID" \
+  '.phases[] | select(.id == $pid) | .tasks[] | "\(.id)|\(.gateScript // "")"' \
+  "$TASKS_FILE")
+
+while IFS='|' read -r TASK_ID GATE_SCRIPT; do
+  [[ -z "$TASK_ID" ]] && continue
+  TOTAL=$((TOTAL + 1))
+
+  # Resolve gate script path relative to spec dir
+  if [[ -n "$GATE_SCRIPT" ]] && [[ -f "$SPEC_DIR/$GATE_SCRIPT" ]]; then
+    # Run the gate
+    if bash "$SPEC_DIR/$GATE_SCRIPT" > /dev/null 2>&1; then
+      echo "  ✅ ${TASK_ID}: PASS"
+      PASSED=$((PASSED + 1))
+      # Write status = completed back to tasks.json
+      jq --arg pid "$PHASE_ID" --arg tid "$TASK_ID" \
+        '(.phases[] | select(.id == $pid) | .tasks[] | select(.id == $tid)).status = "completed"' \
+        "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+    else
+      echo "  ❌ ${TASK_ID}: FAIL"
+      FAILED=$((FAILED + 1))
+      FAILED_TASKS="${FAILED_TASKS}  ⦿ ${TASK_ID}\n"
+      # Write status = open back to tasks.json
+      jq --arg pid "$PHASE_ID" --arg tid "$TASK_ID" \
+        '(.phases[] | select(.id == $pid) | .tasks[] | select(.id == $tid)).status = "open"' \
+        "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+    fi
   else
-    echo "[wud-verdict] NO-GO — Gate failures (${PHASE_ID})"
-    echo "$GATE_OUTPUT" | grep -iE "FAIL|ERROR" || true
-    exit 1
+    # No gate script — cannot verify, leave status unchanged
+    echo "  ⚠️  ${TASK_ID}: NO GATE (${GATE_SCRIPT:-none})"
+    # Count as pass if already completed, fail if open
+    CURRENT_STATUS=$(jq -r --arg pid "$PHASE_ID" --arg tid "$TASK_ID" \
+      '.phases[] | select(.id == $pid) | .tasks[] | select(.id == $tid) | .status' \
+      "$TASKS_FILE")
+    if [[ "$CURRENT_STATUS" == "completed" ]]; then
+      PASSED=$((PASSED + 1))
+    else
+      FAILED=$((FAILED + 1))
+      FAILED_TASKS="${FAILED_TASKS}  ⦿ ${TASK_ID} (no gate)\n"
+    fi
   fi
-fi
+done <<< "$TASK_DATA"
 
-# ──────────────────────────────────────────────────
-# FALLBACK: tasks.json only (when no gates exist)
-# ──────────────────────────────────────────────────
-echo "[wud-verdict] No gates found, falling back to tasks.json status..."
+echo "────────────────────────────────────────"
 
-# Count open/in_progress vs total tasks for this phase
-OPEN_COUNT=$(jq --arg pid "$PHASE_ID" \
-  '[.phases[] | select(.id == $pid) | .tasks[] | select(.status == "open" or .status == "in_progress")] | length' \
-  "$TASKS_FILE")
-
-TOTAL_COUNT=$(jq --arg pid "$PHASE_ID" \
-  '[.phases[] | select(.id == $pid) | .tasks[]] | length' \
-  "$TASKS_FILE")
-
-DONE_COUNT=$(( TOTAL_COUNT - OPEN_COUNT ))
-
-if [[ "$OPEN_COUNT" -eq 0 ]]; then
-  echo "[wud-verdict] GO — ${DONE_COUNT}/${TOTAL_COUNT} tasks complete (${PHASE_ID})"
+# Verdict
+if [[ "$FAILED" -eq 0 ]]; then
+  echo "[wud-verdict] GO — ${PASSED}/${TOTAL} tasks pass (${PHASE_ID})"
   exit 0
 else
-  echo "[wud-verdict] NO-GO — ${OPEN_COUNT}/${TOTAL_COUNT} tasks still open (${PHASE_ID})"
-  # Print the open task titles for context
-  jq -r --arg pid "$PHASE_ID" \
-    '.phases[] | select(.id == $pid) | .tasks[] | select(.status == "open" or .status == "in_progress") | "  ⦿ \(.id): \(.title)"' \
-    "$TASKS_FILE"
+  echo "[wud-verdict] NO-GO — ${FAILED}/${TOTAL} tasks failed (${PHASE_ID})"
+  echo -e "$FAILED_TASKS"
   exit 1
 fi
