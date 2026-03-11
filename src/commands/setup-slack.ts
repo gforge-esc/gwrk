@@ -51,9 +51,51 @@ export async function setupSlack(opts: {
       }
     }
 
-    console.error(
-      "Slack credentials not found. Provide SLACK_BOT_TOKEN and SLACK_APP_TOKEN",
-    );
+    const envPath = getEnvPath();
+    console.error(`
+  ┌──────────────────────────────────────────────────────────┐
+  │  Slack credentials not found                             │
+  └──────────────────────────────────────────────────────────┘
+
+  gwrk needs two tokens from your Slack workspace:
+
+    SLACK_BOT_TOKEN   (starts with xoxb-)
+    SLACK_APP_TOKEN   (starts with xapp-)
+
+  ── How to get them ──────────────────────────────────────
+
+  1. Create a Slack App at:
+     https://api.slack.com/apps → "Create New App" → "From scratch"
+
+  2. Enable Socket Mode:
+     App Settings → Socket Mode → Enable
+     → Generate an App-Level Token with scope "connections:write"
+     → This is your SLACK_APP_TOKEN (xapp-...)
+
+  3. Add Bot Scopes:
+     OAuth & Permissions → Bot Token Scopes → Add:
+       chat:write, channels:read, commands,
+       app_mentions:read, users:read
+
+  4. Install to Workspace:
+     OAuth & Permissions → Install to Workspace
+     → Copy the Bot User OAuth Token
+     → This is your SLACK_BOT_TOKEN (xoxb-...)
+
+  ── Where to put them ────────────────────────────────────
+
+  Option A (recommended): Write to ${envPath}
+
+    echo 'SLACK_BOT_TOKEN=xoxb-your-token' >> ${envPath}
+    echo 'SLACK_APP_TOKEN=xapp-your-token' >> ${envPath}
+
+  Option B: Pass inline:
+
+    SLACK_BOT_TOKEN=xoxb-... SLACK_APP_TOKEN=xapp-... gwrk setup slack
+
+  Then re-run: gwrk setup slack
+  Verify:      gwrk setup slack --verify
+`);
     process.exit(1);
   }
 
