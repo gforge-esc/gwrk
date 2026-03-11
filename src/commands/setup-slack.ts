@@ -90,6 +90,19 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     console.error("");
     await ask(rl, "  Press Enter when your app is created... ");
     console.error(`  ${GREEN}✓${RESET} App created`);
+    console.error("");
+    console.error(`  ${DIM}Optional: Set the app icon while you're here.${RESET}`);
+    console.error(`  ${DIM}Basic Information → Display Information → App icon${RESET}`);
+
+    const logoPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "..",
+      "..",
+      "docs",
+      "branding",
+      "gwrk-draft-logo-square.jpeg",
+    );
+    console.error(`  ${DIM}Upload: ${logoPath}${RESET}`);
   }
 
   // ── Step 2: Generate App Token ──────────────────
