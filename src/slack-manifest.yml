@@ -4,6 +4,7 @@ _metadata:
 display_information:
   name: gwrk
   description: "Principal Engineer's Operating System — shipping pipeline, pulse, and dispatch."
+  long_description: "gwrk is the Principal Engineer's Operating System. It orchestrates autonomous shipping pipelines, tracks build pulse and effort compression, and dispatches work across agents. Slash commands let you control everything from Slack: check status, dispatch features, approve or reject phases, monitor pulse metrics, and tail logs — all without leaving your workspace."
   background_color: "#FF1493"
 features:
   app_home:
