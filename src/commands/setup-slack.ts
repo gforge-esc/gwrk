@@ -38,7 +38,7 @@ function openBrowser(url: string): void {
 async function interactiveSetup(): Promise<SlackSetupResult> {
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stderr, // prompts go to stderr, not stdout
+    output: process.stderr,
     terminal: true,
   });
 
@@ -49,60 +49,89 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
   console.error(`  ${DIM}Connect gwrk to your Slack workspace${RESET}`);
   console.error("");
 
-  // Step 1: Check if user has a Slack app
-  console.error(`  ${CYAN}Step 1${RESET}  Create a Slack App`);
-  console.error(`  ${DIM}You need a Slack app with Socket Mode enabled.${RESET}`);
+  // ── Step 1: Create a Slack App ───────────────────
+  console.error(`  ${CYAN}Step 1 of 5${RESET}  Create a Slack App`);
   console.error("");
 
-  const hasApp = await ask(rl, `  ${BOLD}Do you already have a Slack app? ${DIM}(y/N)${RESET} `);
+  const hasApp = await ask(rl, `  Do you already have a Slack app? ${DIM}(y/N)${RESET} `);
 
   if (!hasApp || hasApp.toLowerCase() !== "y") {
     console.error("");
-    console.error(`  ${YELLOW}→${RESET} Opening ${BOLD}https://api.slack.com/apps${RESET} ...`);
+    console.error(`  ${YELLOW}→${RESET} Opening ${BOLD}https://api.slack.com/apps${RESET}`);
     openBrowser("https://api.slack.com/apps");
     console.error("");
-    console.error(`  ${DIM}Create a new app "From scratch", then:${RESET}`);
-    console.error(`    1. ${BOLD}Socket Mode${RESET} → Enable → Generate App Token ${DIM}(scope: connections:write)${RESET}`);
-    console.error(`    2. ${BOLD}OAuth & Permissions${RESET} → Add Bot Scopes:`);
-    console.error(`       ${DIM}chat:write, channels:read, commands, app_mentions:read, users:read${RESET}`);
-    console.error(`    3. ${BOLD}Install to Workspace${RESET} → Copy Bot User OAuth Token`);
+    console.error(`  Click ${BOLD}"Create New App"${RESET} → ${BOLD}"From scratch"${RESET}`);
+    console.error(`  Name it anything (e.g. "gwrk") and pick your workspace.`);
     console.error("");
-    await ask(rl, `  ${BOLD}Press Enter when ready...${RESET}`);
+    await ask(rl, "  Press Enter when your app is created... ");
   }
 
-  // Step 2: Collect Bot Token
+  // ── Step 2: Socket Mode → Collect App Token ──────
   console.error("");
-  console.error(`  ${CYAN}Step 2${RESET}  Bot Token ${DIM}(starts with xoxb-)${RESET}`);
-  console.error(`  ${DIM}Found at: OAuth & Permissions → Bot User OAuth Token${RESET}`);
+  console.error(`  ${CYAN}Step 2 of 5${RESET}  Enable Socket Mode`);
   console.error("");
-
-  let botToken = "";
-  while (!botToken.startsWith("xoxb-")) {
-    botToken = await ask(rl, `  ${BOLD}SLACK_BOT_TOKEN:${RESET} `);
-    if (!botToken.startsWith("xoxb-")) {
-      console.error(`  ${RED}✗${RESET} Token must start with ${BOLD}xoxb-${RESET}. Try again.`);
-    }
-  }
-
-  // Step 3: Collect App Token
+  console.error(`  In your app's settings sidebar, click ${BOLD}Socket Mode${RESET}.`);
+  console.error(`  Toggle ${BOLD}"Enable Socket Mode"${RESET} to ON.`);
   console.error("");
-  console.error(`  ${CYAN}Step 3${RESET}  App Token ${DIM}(starts with xapp-)${RESET}`);
-  console.error(`  ${DIM}Found at: Basic Information → App-Level Tokens${RESET}`);
+  console.error(`  A dialog will appear: ${BOLD}"Generate an app-level token"${RESET}`);
+  console.error(`  • Token Name: ${DIM}anything (e.g. "gwrk-socket")${RESET}`);
+  console.error(`  • Scope ${BOLD}connections:write${RESET} should already be listed.`);
+  console.error(`  • Click ${BOLD}Generate${RESET}.`);
+  console.error("");
+  console.error(`  ${BOLD}Copy the token that appears.${RESET} It starts with ${BOLD}xapp-${RESET}`);
   console.error("");
 
   let appToken = "";
   while (!appToken.startsWith("xapp-")) {
-    appToken = await ask(rl, `  ${BOLD}SLACK_APP_TOKEN:${RESET} `);
+    appToken = await ask(rl, `  ${BOLD}Paste your App Token here:${RESET} `);
     if (!appToken.startsWith("xapp-")) {
-      console.error(`  ${RED}✗${RESET} Token must start with ${BOLD}xapp-${RESET}. Try again.`);
+      console.error(`  ${RED}✗${RESET} That doesn't look right — should start with ${BOLD}xapp-${RESET}`);
+      console.error(`  ${DIM}Find it at: Settings → Socket Mode → App-Level Tokens${RESET}`);
     }
   }
+  console.error(`  ${GREEN}✓${RESET} App Token saved`);
+
+  // ── Step 3: Add Bot Scopes ───────────────────────
+  console.error("");
+  console.error(`  ${CYAN}Step 3 of 5${RESET}  Add Bot Permissions`);
+  console.error("");
+  console.error(`  In the sidebar, click ${BOLD}OAuth & Permissions${RESET}.`);
+  console.error(`  Scroll to ${BOLD}"Scopes" → "Bot Token Scopes"${RESET} and add:`);
+  console.error("");
+  console.error(`    ${BOLD}chat:write${RESET}          Send messages`);
+  console.error(`    ${BOLD}channels:read${RESET}       List channels`);
+  console.error(`    ${BOLD}commands${RESET}            Slash commands`);
+  console.error(`    ${BOLD}app_mentions:read${RESET}   Respond to @mentions`);
+  console.error(`    ${BOLD}users:read${RESET}          Read user presence`);
+  console.error("");
+  await ask(rl, "  Press Enter when scopes are added... ");
+
+  // ── Step 4: Install to Workspace → Collect Bot Token
+  console.error("");
+  console.error(`  ${CYAN}Step 4 of 5${RESET}  Install to Workspace`);
+  console.error("");
+  console.error(`  Scroll to the top of ${BOLD}OAuth & Permissions${RESET}.`);
+  console.error(`  Click ${BOLD}"Install to Workspace"${RESET} → ${BOLD}"Allow"${RESET}.`);
+  console.error("");
+  console.error(`  ${BOLD}Copy the "Bot User OAuth Token"${RESET} that appears.`);
+  console.error(`  It starts with ${BOLD}xoxb-${RESET}`);
+  console.error("");
+
+  let botToken = "";
+  while (!botToken.startsWith("xoxb-")) {
+    botToken = await ask(rl, `  ${BOLD}Paste your Bot Token here:${RESET} `);
+    if (!botToken.startsWith("xoxb-")) {
+      console.error(`  ${RED}✗${RESET} That doesn't look right — should start with ${BOLD}xoxb-${RESET}`);
+      console.error(`  ${DIM}Find it at: OAuth & Permissions → Bot User OAuth Token${RESET}`);
+    }
+  }
+  console.error(`  ${GREEN}✓${RESET} Bot Token saved`);
 
   rl.close();
 
-  // Step 4: Verify
+  // ── Step 5: Verify ───────────────────────────────
   console.error("");
-  console.error(`  ${CYAN}Step 4${RESET}  Verifying connection...`);
+  console.error(`  ${CYAN}Step 5 of 5${RESET}  Verifying connection...`);
 
   try {
     const result = await verifySlackConfig({ botToken, appToken });
