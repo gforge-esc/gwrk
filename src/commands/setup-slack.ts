@@ -100,14 +100,15 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
   console.error(`  Scroll down to ${BOLD}"App-Level Tokens"${RESET} and click`);
   console.error(`  ${BOLD}"Generate Token and Scopes"${RESET}.`);
   console.error("");
-  console.error(`  In the dialog:`);
-  console.error(`    • Token Name: ${BOLD}gwrk-token${RESET}`);
-  console.error(`    • The ${BOLD}connections:write${RESET} scope is already added.`);
-  console.error(`      ${DIM}(This is the only scope needed — ignore the others.)${RESET}`);
-  console.error(`    • Click ${BOLD}Generate${RESET}.`);
+  console.error("  A dialog will open:");
+  console.error(`    1. Token Name: type ${BOLD}gwrk-token${RESET}`);
+  console.error(`    2. Click the ${BOLD}"Add Scope"${RESET} dropdown`);
+  console.error(`    3. Select ${BOLD}connections:write${RESET} ${DIM}(first in list)${RESET}`);
+  console.error(`       ${DIM}That's the only scope gwrk needs. Skip the others.${RESET}`);
+  console.error(`    4. Click ${BOLD}Generate${RESET}`);
   console.error("");
   console.error(`  ${BOLD}Copy the token that appears.${RESET} It starts with ${BOLD}xapp-${RESET}`);
-  console.error(`  ${DIM}(You can always find it later under App-Level Tokens.)${RESET}`);
+  console.error(`  ${DIM}You can always find it later under App-Level Tokens.${RESET}`);
   console.error("");
 
   let appToken = "";
