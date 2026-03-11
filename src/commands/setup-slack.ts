@@ -18,6 +18,7 @@ const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
 const CYAN = "\x1b[36m";
+const MAGENTA = "\x1b[35m";
 const RESET = "\x1b[0m";
 
 function ask(rl: readline.Interface, question: string): Promise<string> {
@@ -34,6 +35,46 @@ function openBrowser(url: string): void {
   }
 }
 
+// ── Manifest ──────────────────────────────────────────
+const MANIFEST_YAML = `_metadata:
+  major_version: 2
+  minor_version: 1
+display_information:
+  name: gwrk
+  description: "Principal Engineer's Operating System — pipeline, pulse, and dispatch."
+  background_color: "#FF1493"
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: false
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: gwrk
+    always_online: true
+  slash_commands:
+    - command: /gwrk
+      description: "Show gwrk status or run a subcommand"
+      usage_hint: "[status|dispatch|approve|reject|pause|pulse|effort|logs] [args]"
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - channels:read
+      - commands
+      - app_mentions:read
+      - users:read
+      - reactions:read
+settings:
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  interactivity:
+    is_enabled: true
+  event_subscriptions:
+    bot_events:
+      - app_home_opened
+      - app_mention`;
+
 // ── Interactive setup flow ────────────────────────────
 async function interactiveSetup(): Promise<SlackSetupResult> {
   const rl = readline.createInterface({
@@ -45,72 +86,78 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
   const envPath = getEnvPath();
 
   console.error("");
-  console.error(`  ${BOLD}gwrk setup slack${RESET}`);
+  console.error(`  ${MAGENTA}${BOLD}gwrk${RESET} ${DIM}setup slack${RESET}`);
   console.error(`  ${DIM}Connect gwrk to your Slack workspace${RESET}`);
   console.error("");
-
-  // ── Step 1: Create a Slack App ───────────────────
-  console.error(`  ${CYAN}Step 1 of 5${RESET}  Create a Slack App`);
+  console.error(`  This will create a Slack app named ${BOLD}gwrk${RESET} (${MAGENTA}hot pink${RESET}) with:`);
+  console.error(`    • Socket Mode for real-time events`);
+  console.error(`    • ${BOLD}/gwrk${RESET} slash command with subcommands`);
+  console.error(`    • App Home dashboard tab`);
+  console.error(`    • Interactive buttons (approve/reject)`);
+  console.error(`    • Event subscriptions (mentions, home tab)`);
   console.error("");
 
-  const hasApp = await ask(rl, `  Do you already have a Slack app? ${DIM}(y/N)${RESET} `);
+  // ── Step 1: Create App from Manifest ────────────
+  console.error(`  ${CYAN}Step 1 of 3${RESET}  Create the Slack App`);
+  console.error("");
+
+  const hasApp = await ask(rl, `  Do you already have a gwrk Slack app? ${DIM}(y/N)${RESET} `);
 
   if (!hasApp || hasApp.toLowerCase() !== "y") {
     console.error("");
-    console.error(`  ${YELLOW}→${RESET} Opening ${BOLD}https://api.slack.com/apps${RESET}`);
-    openBrowser("https://api.slack.com/apps");
+    console.error(`  ${YELLOW}→${RESET} Opening Slack API...`);
+    openBrowser("https://api.slack.com/apps?new_app=1");
     console.error("");
-    console.error(`  Click ${BOLD}"Create New App"${RESET} → ${BOLD}"From scratch"${RESET}`);
-    console.error(`  Name it anything (e.g. "gwrk") and pick your workspace.`);
+    console.error(`  In the dialog that appears, choose ${BOLD}"From a manifest"${RESET}.`);
+    console.error(`  Select your workspace and click ${BOLD}Next${RESET}.`);
+    console.error("");
+    console.error(`  Paste this manifest ${DIM}(replacing anything in the box)${RESET}:`);
+    console.error("");
+    console.error(`  ${DIM}┌──────────────────── manifest.yml ────────────────────┐${RESET}`);
+    for (const line of MANIFEST_YAML.split("\n")) {
+      console.error(`  ${DIM}│${RESET}  ${line}`);
+    }
+    console.error(`  ${DIM}└──────────────────────────────────────────────────────┘${RESET}`);
+    console.error("");
+    console.error(`  Click ${BOLD}Next${RESET}, review the summary, then click ${BOLD}Create${RESET}.`);
     console.error("");
     await ask(rl, "  Press Enter when your app is created... ");
+    console.error(`  ${GREEN}✓${RESET} App created`);
   }
 
-  // ── Step 2: Socket Mode → Collect App Token ──────
+  // ── Step 2: Generate App Token ──────────────────
   console.error("");
-  console.error(`  ${CYAN}Step 2 of 5${RESET}  Enable Socket Mode`);
+  console.error(`  ${CYAN}Step 2 of 3${RESET}  Generate App-Level Token`);
   console.error("");
-  console.error(`  In your app's settings sidebar, click ${BOLD}Socket Mode${RESET}.`);
-  console.error(`  Toggle ${BOLD}"Enable Socket Mode"${RESET} to ON.`);
+  console.error(`  You should now be on the ${BOLD}Basic Information${RESET} page.`);
+  console.error(`  Scroll down to ${BOLD}"App-Level Tokens"${RESET} and click`);
+  console.error(`  ${BOLD}"Generate Token and Scopes"${RESET}.`);
   console.error("");
-  console.error(`  A dialog will appear: ${BOLD}"Generate an app-level token"${RESET}`);
-  console.error(`  • Token Name: ${DIM}anything (e.g. "gwrk-socket")${RESET}`);
-  console.error(`  • Scope ${BOLD}connections:write${RESET} should already be listed.`);
-  console.error(`  • Click ${BOLD}Generate${RESET}.`);
+  console.error(`  In the dialog:`);
+  console.error(`    • Token Name: ${BOLD}gwrk-token${RESET}`);
+  console.error(`    • The ${BOLD}connections:write${RESET} scope is already added.`);
+  console.error(`      ${DIM}(This is the only scope needed — ignore the others.)${RESET}`);
+  console.error(`    • Click ${BOLD}Generate${RESET}.`);
   console.error("");
   console.error(`  ${BOLD}Copy the token that appears.${RESET} It starts with ${BOLD}xapp-${RESET}`);
+  console.error(`  ${DIM}(You can always find it later under App-Level Tokens.)${RESET}`);
   console.error("");
 
   let appToken = "";
   while (!appToken.startsWith("xapp-")) {
     appToken = await ask(rl, `  ${BOLD}Paste your App Token here:${RESET} `);
     if (!appToken.startsWith("xapp-")) {
-      console.error(`  ${RED}✗${RESET} That doesn't look right — should start with ${BOLD}xapp-${RESET}`);
-      console.error(`  ${DIM}Find it at: Settings → Socket Mode → App-Level Tokens${RESET}`);
+      console.error(`  ${RED}✗${RESET} That doesn't look right — it should start with ${BOLD}xapp-${RESET}`);
+      console.error(`  ${DIM}Look under Basic Information → App-Level Tokens${RESET}`);
     }
   }
   console.error(`  ${GREEN}✓${RESET} App Token saved`);
 
-  // ── Step 3: Add Bot Scopes ───────────────────────
+  // ── Step 3: Install & Get Bot Token ─────────────
   console.error("");
-  console.error(`  ${CYAN}Step 3 of 5${RESET}  Add Bot Permissions`);
+  console.error(`  ${CYAN}Step 3 of 3${RESET}  Install to Workspace`);
   console.error("");
-  console.error(`  In the sidebar, click ${BOLD}OAuth & Permissions${RESET}.`);
-  console.error(`  Scroll to ${BOLD}"Scopes" → "Bot Token Scopes"${RESET} and add:`);
-  console.error("");
-  console.error(`    ${BOLD}chat:write${RESET}          Send messages`);
-  console.error(`    ${BOLD}channels:read${RESET}       List channels`);
-  console.error(`    ${BOLD}commands${RESET}            Slash commands`);
-  console.error(`    ${BOLD}app_mentions:read${RESET}   Respond to @mentions`);
-  console.error(`    ${BOLD}users:read${RESET}          Read user presence`);
-  console.error("");
-  await ask(rl, "  Press Enter when scopes are added... ");
-
-  // ── Step 4: Install to Workspace → Collect Bot Token
-  console.error("");
-  console.error(`  ${CYAN}Step 4 of 5${RESET}  Install to Workspace`);
-  console.error("");
-  console.error(`  Scroll to the top of ${BOLD}OAuth & Permissions${RESET}.`);
+  console.error(`  In the sidebar, click ${BOLD}Install App${RESET} (under Settings).`);
   console.error(`  Click ${BOLD}"Install to Workspace"${RESET} → ${BOLD}"Allow"${RESET}.`);
   console.error("");
   console.error(`  ${BOLD}Copy the "Bot User OAuth Token"${RESET} that appears.`);
@@ -121,22 +168,21 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
   while (!botToken.startsWith("xoxb-")) {
     botToken = await ask(rl, `  ${BOLD}Paste your Bot Token here:${RESET} `);
     if (!botToken.startsWith("xoxb-")) {
-      console.error(`  ${RED}✗${RESET} That doesn't look right — should start with ${BOLD}xoxb-${RESET}`);
-      console.error(`  ${DIM}Find it at: OAuth & Permissions → Bot User OAuth Token${RESET}`);
+      console.error(`  ${RED}✗${RESET} That doesn't look right — it should start with ${BOLD}xoxb-${RESET}`);
+      console.error(`  ${DIM}Look under Install App → Bot User OAuth Token${RESET}`);
     }
   }
   console.error(`  ${GREEN}✓${RESET} Bot Token saved`);
 
   rl.close();
 
-  // ── Step 5: Verify ───────────────────────────────
+  // ── Verify & Save ──────────────────────────────
   console.error("");
-  console.error(`  ${CYAN}Step 5 of 5${RESET}  Verifying connection...`);
+  console.error(`  ${DIM}Verifying connection...${RESET}`);
 
   try {
     const result = await verifySlackConfig({ botToken, appToken });
 
-    // Step 5: Write tokens
     const envDir = path.dirname(envPath);
     if (!fs.existsSync(envDir)) {
       fs.mkdirSync(envDir, { recursive: true });
@@ -161,11 +207,15 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     });
 
     console.error("");
-    console.error(`  ${GREEN}✓${RESET} Connected to workspace: ${BOLD}${result.workspace}${RESET}`);
-    console.error(`  ${GREEN}✓${RESET} Tokens saved to ${DIM}${envPath}${RESET}`);
-    console.error(`  ${GREEN}✓${RESET} Socket Mode: OK`);
-    console.error("");
-    console.error(`  ${DIM}Re-verify anytime: ${BOLD}gwrk setup slack --verify${RESET}`);
+    console.error(`  ${GREEN}┌──────────────────────────────────────────────┐${RESET}`);
+    console.error(`  ${GREEN}│${RESET}  ${GREEN}✓${RESET} ${BOLD}gwrk is connected to Slack${RESET}                ${GREEN}│${RESET}`);
+    console.error(`  ${GREEN}│${RESET}                                              ${GREEN}│${RESET}`);
+    console.error(`  ${GREEN}│${RESET}  Workspace:  ${BOLD}${result.workspace}${RESET}`);
+    console.error(`  ${GREEN}│${RESET}  Tokens:     ${DIM}${envPath}${RESET}`);
+    console.error(`  ${GREEN}│${RESET}  Socket:     ${GREEN}OK${RESET}`);
+    console.error(`  ${GREEN}│${RESET}                                              ${GREEN}│${RESET}`);
+    console.error(`  ${GREEN}│${RESET}  ${DIM}Re-verify: gwrk setup slack --verify${RESET}       ${GREEN}│${RESET}`);
+    console.error(`  ${GREEN}└──────────────────────────────────────────────┘${RESET}`);
     console.error("");
 
     return {
