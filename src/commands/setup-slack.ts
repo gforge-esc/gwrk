@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -26,7 +27,6 @@ function ask(rl: readline.Interface, question: string): Promise<string> {
 }
 
 function openBrowser(url: string): void {
-  const { execSync } = require("node:child_process");
   try {
     execSync(`open "${url}"`, { stdio: "ignore" });
   } catch {
