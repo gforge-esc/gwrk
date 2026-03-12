@@ -1,3 +1,4 @@
+import { loadConfig } from "../utils/config.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
@@ -10,11 +11,20 @@ import { getSlackApp } from "./slack.js";
 export async function notifySlack(
   message: SlackMessage,
   event?: SlackEvent,
+  options: { master?: boolean } = {},
 ): Promise<void> {
   const app = getSlackApp();
   if (!app) {
     console.warn("Slack not configured — skipping notification");
     return;
+  }
+
+  if (options.master) {
+    const config = loadConfig(process.cwd());
+    const masterChannelId = config.project.slack?.masterChannelId;
+    if (masterChannelId) {
+      message.channel = masterChannelId;
+    }
   }
 
   if (event) {
@@ -32,8 +42,6 @@ export async function notifySlack(
 export async function sendSlackMessage(message: SlackMessage): Promise<void> {
   const app = getSlackApp();
   if (!app) return;
-
-  const { loadConfig } = await import("../utils/config.js");
 
   // Resolve channel
   let channelId = message.channel;

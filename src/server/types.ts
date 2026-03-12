@@ -92,3 +92,22 @@ export interface SystemStatus {
   };
   sandboxes: SandboxInfo[];
 }
+
+export interface NotifyPayload {
+  type:
+    | "phase_start"
+    | "phase_complete"
+    | "phase_fail"
+    | "ci_result"
+    | "review_ready"
+    | "done_done";
+  feature: string;
+  phase?: string;
+  prUrl?: string;
+  prNumber?: number;
+  gateResults?: string;
+  error?: string;
+  branch?: string;
+  backend?: string;
+  masterOnly?: boolean;
+}

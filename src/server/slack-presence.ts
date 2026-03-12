@@ -13,6 +13,7 @@ export interface SlackEvent {
     | "done_done";
   feature: string;
   phase?: string;
+  master?: boolean;
   payload: Record<string, unknown>;
   timestamp: string;
 }

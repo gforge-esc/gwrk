@@ -9,6 +9,7 @@ import { NetworkMonitor } from "./network.js";
 import { removePid, writePid } from "./pid.js";
 import { dispatchRoutes } from "./routes/dispatch.js";
 import { healthRoutes } from "./routes/health.js";
+import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
 import { startSlackApp, stopSlackApp } from "./slack.js";
@@ -88,6 +89,7 @@ export async function startServer(
   await healthRoutes(server, lifecycle, network, sandbox);
   await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
   await dispatchRoutes(server, queue);
+  await notifyRoutes(server);
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");

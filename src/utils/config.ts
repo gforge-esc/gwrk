@@ -20,8 +20,11 @@ export const GwrkConfigSchema = z.object({
       .object({
         channelId: z.string(),
         channelName: z.string(),
+        masterChannelId: z.string().optional(),
+        masterChannelName: z.string().optional(),
       })
       .optional(),
+
   }),
   agents: z.object({
     define: AgentBackendSchema,

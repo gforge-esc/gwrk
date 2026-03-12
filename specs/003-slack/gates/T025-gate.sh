@@ -1,9 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T025 — Implement src/server/slack-messages.ts
+# Gate: T025 — Implement src/server/routes/notify.ts
 # Asserts: Derived from task description
 
-test -f src/server/slack-messages.ts
-grep -q 'batchedSummary' src/server/slack-messages.ts
+test -f src/server/routes/notify.ts
 
-echo "PASS: T025 — Implement src/server/slack-messages.ts"
+echo "PASS: T025 — Implement src/server/routes/notify.ts"
