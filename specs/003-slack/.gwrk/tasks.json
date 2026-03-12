@@ -50,8 +50,8 @@
         {
           "id": "T006",
           "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Test Verification — Regression in setup-slack.test.ts.\n  WHERE: src/commands/setup-slack.test.ts\n  EXPECTED: Tests pass with console.error implementation.\n  ACTUAL: console.log expectations fail.\n  FIX: Update tests to expect console.error or revert implementation to console.log.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 1 > Test Strategy",
+          "status": "open",
           "gateScript": "gates/T006-gate.sh"
         }
       ],
@@ -252,8 +252,8 @@
         {
           "id": "T027",
           "title": "Implement src/server/slack-home.ts",
-          "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler. Fixed build error by importing DispatchRecord.\n\nREVIEW FAIL (uat): US-008 — Expected: Verifiable App Home in Slack. Actual: Cannot verify in live Slack due to missing infra. Fix: Restore docker-compose.yml and Makefile up targets.",
-          "status": "open",
+          "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler. Fixed build error by importing DispatchRecord. Restored docker-compose.yml and Makefile up targets for UAT.",
+          "status": "completed",
           "gateScript": "gates/T027-gate.sh"
         },
         {
@@ -273,7 +273,7 @@
         {
           "id": "T030",
           "title": "Implement test strategy for Phase 6",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (uat): US-008 — Expected: verify-dev-stack.sh PASS. Actual: FAIL (BLOCKING). Fix: Restore Makefile up target and docker-compose.yml.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy. Restored Makefile up target and docker-compose.yml for verify-dev-stack.sh PASS.\n\nREVIEW FAIL (code): Test Verification — Regression in Phase 1 and bootstrap tests.\n  WHERE: src/commands/setup-slack.test.ts, src/server/index.test.ts\n  EXPECTED: pnpm test passes 100%\n  ACTUAL: 13 failed tests, T006-gate.sh fails.\n  FIX: Resolve regressions in Phase 1 setup-slack.test.ts and index.test.ts. Fix lint errors in Phase 2/3/4 files.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 6 > Test Strategy",
           "status": "open",
           "gateScript": "gates/T030-gate.sh"
         }
