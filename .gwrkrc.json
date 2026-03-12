@@ -1,6 +1,12 @@
 {
   "project": {
-    "name": "gwrk"
+    "name": "gwrk",
+    "slack": {
+      "channelId": "C0ALGDPC725",
+      "channelName": "gwrk-ops",
+      "opsChannelId": "C0ALGDPC725",
+      "opsChannelName": "gwrk-ops"
+    }
   },
   "agents": {
     "define": "gemini",

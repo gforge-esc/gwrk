@@ -234,7 +234,7 @@ As a Principal Engineer, I want a `gwrk-ops` master channel for cross-project su
 **Independent Test**: Configure `gwrk-ops` as master channel and `code-red` as project channel; verify ship events route to `#code-red` and daily Pulse summary routes to `#gwrk-ops`.
 
 **Acceptance Scenarios**:
-1. **Given** `gwrkrc.json` has `slack.masterChannelId` and `slack.channelId`, **When** a phase event fires, **Then**:
+1. **Given** `gwrkrc.json` has `slack.opsChannelId` and `slack.channelId`, **When** a phase event fires, **Then**:
    - Phase event posts to project channel (`#code-red`)
    - Master channel (`#gwrk-ops`) does NOT receive individual phase events
 2. **Given** Pulse summary generated, **When** daily summary fires, **Then**:
@@ -276,7 +276,7 @@ The Slack app requires these OAuth scopes:
 - **FR-010**: System MUST provide a `POST /api/notify` HTTP endpoint on the build server that accepts a lifecycle event payload and posts the corresponding Block Kit message to the project Slack channel. The ship loop scripts MUST call this endpoint at: phase start, phase complete (with PR URL), phase fail (with error), CI result, review ready. Failure to reach the endpoint MUST be non-fatal (logged, ship continues). (Implements: US-010)
 - **FR-011**: System MUST implement PR lookup for approval actions: query SQLite `runs` table for the most recent open PR number for a given `featureId + phaseId`, then call `gh pr merge --merge --delete-branch <N>`. Approve button and `/gwrk approve` slash command MUST use this lookup. (Implements: US-011)
 - **FR-012**: System MUST handle `/gwrk ship <feature> <phase>` by spawning `gwrk ship` as a background subprocess, acknowledging immediately to Slack, and posting phaseStart + subsequent lifecycle events to the channel. (Implements: US-012)
-- **FR-013**: System MUST support a two-tier channel topology: `masterChannelId` in `.gwrkrc.json` for cross-project events (Pulse summary, Done Done!), and `channelId` for per-project events (phase lifecycle, review messages). Both configurable via `gwrk init`. (Implements: US-013)
+- **FR-013**: System MUST support a two-tier channel topology: `opsChannelId` in `.gwrkrc.json` for cross-project events (Pulse summary, Done Done!), and `channelId` for per-project events (phase lifecycle, review messages). Configured via `gwrk init --slack-ops <channel>`. (Implements: US-013)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -355,7 +355,7 @@ The Slack app requires these OAuth scopes:
 #### FR-013 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| `masterChannelId` not configured | Route all events to `channelId` (graceful fallback) | 0 |
+| `opsChannelId` not configured | Route all events to `channelId` (graceful fallback) | 0 |
 
 ---
 
@@ -376,8 +376,8 @@ SLACK_APP_TOKEN=xapp-...     # App-Level Token (Socket Mode WebSocket only)
 interface SlackProjectConfig {
   channelId: string;          // Per-project Slack channel ID
   channelName: string;        // e.g. "code-red"
-  masterChannelId?: string;   // Cross-project hub (e.g. gwrk-ops)
-  masterChannelName?: string; // e.g. "gwrk-ops"
+  opsChannelId?: string;   // Cross-project ops hub (e.g. gwrk-ops)
+  opsChannelName?: string; // e.g. "gwrk-ops"
 }
 ```
 

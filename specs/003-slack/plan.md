@@ -276,19 +276,19 @@ Fix the broken approval flow and add `/gwrk ship` from Slack. Two closely relate
 Implement the two-tier channel model (`gwrk-ops` master + per-project channels) and fix `/gwrk status` to read from SQLite rather than in-memory queue.
 
 **Files (5):**
-- `src/utils/config.ts` (Modify: add `masterChannelId`, `masterChannelName` to `SlackProjectConfig` Zod schema)
-- `src/server/slack-notify.ts` (Modify: route events — per-project events to `channelId`, cross-project events to `masterChannelId`)
-- `src/commands/init.ts` (Modify: `gwrk init --slack-master <channel>` for master channel provisioning)
+- `src/utils/config.ts` (Modify: add `opsChannelId`, `opsChannelName` to `SlackProjectConfig` Zod schema)
+- `src/server/slack-notify.ts` (Modify: route events — per-project events to `channelId`, cross-project events to `opsChannelId`)
+- `src/commands/init.ts` (Modify: `gwrk init --slack-ops <channel>` for ops channel provisioning)
 - `src/server/slack-commands.ts` (Modify: `/gwrk status` queries SQLite `tasks` + `runs` tables, NOT in-memory queue)
-- `src/server/routes/notify.ts` (Modify: accept `masterOnly: boolean` flag to route to master channel)
+- `src/server/routes/notify.ts` (Modify: accept `opsOnly: boolean` flag to route to ops channel)
 
 **Requirements Addressed:** FR-013, FR-004, US-013, US-004, SC-009, DM-002
 
 **Dependencies:** Phase 7 (notify routing must exist first)
 
 **Contract Mapping:**
-- `notifySlack(msg, event, {master: true})` → routes to `masterChannelId` if set, falls back to `channelId`
-- Cross-project events: `done_done`, `pulse_summary` → ALWAYS go to master
+- `notifySlack(msg, event, {ops: true})` → routes to `opsChannelId` if set, falls back to `channelId`
+- Cross-project events: `done_done`, `pulse_summary` → ALWAYS go to ops channel
 - Per-project events: `phase_start`, `phase_complete`, `phase_fail`, `ci_result`, `review_ready` → go to project channel
 
 #### Governance & Skills Contract
@@ -301,10 +301,10 @@ Implement the two-tier channel model (`gwrk-ops` master + per-project channels) 
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
 | TR-005 (update) | Unit | `src/server/slack-messages.test.ts` | Verify `doneDone` and `pulseSummary` tagged as master-routed |
-| TR-011 (update) | Unit | `src/server/routes/notify.test.ts` | `masterOnly: true` routes to masterChannelId |
+| TR-011 (update) | Unit | `src/server/routes/notify.test.ts` | `opsOnly: true` routes to opsChannelId |
 
 #### Done When
-- `cat .gwrkrc.json | jq -e '.project.slack.masterChannelId'` exits 0 after `gwrk init --slack-master gwrk-ops`
+- `cat .gwrkrc.json | jq -e '.project.slack.opsChannelId'` exits 0 after `gwrk init --slack-ops gwrk-ops`
 - Phase lifecycle event posts to `#code-red`, NOT `#gwrk-ops`
 - Done Done! posts to `#gwrk-ops`, NOT `#code-red`
 - `/gwrk status` response reads from SQLite (verify with DB containing completed tasks but empty in-memory queue)
@@ -341,8 +341,8 @@ ALTER TABLE runs ADD COLUMN pr_url TEXT;
 interface SlackProjectConfig {
   channelId: string;
   channelName: string;
-  masterChannelId?: string;   // NEW — Phase 9
-  masterChannelName?: string; // NEW — Phase 9
+  opsChannelId?: string;   // NEW — Phase 9
+  opsChannelName?: string; // NEW — Phase 9
 }
 ```
 
