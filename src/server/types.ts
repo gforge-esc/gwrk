@@ -52,6 +52,8 @@ export interface DispatchRecord {
   attempts: DispatchAttempt[];
   createdAt: string;
   completedAt?: string;
+  prUrl?: string;
+  prNumber?: number;
 }
 
 export interface SystemResources {

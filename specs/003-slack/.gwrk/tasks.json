@@ -146,7 +146,7 @@
           "id": "T010",
           "title": "Implement src/commands/ship.ts",
           "description": "Modify: hook notify calls into ship lifecycle — for TypeScript callers\n\nREVIEW FAIL (code): Type Safety — US-010.\n  WHERE: src/commands/ship.ts:54,57\n  EXPECTED: backend should use AgentBackend type.\n  ACTUAL: backend: backend as any\n  FIX: Replace 'any' with AgentBackend type from src/server/types.ts.\n  GATE: gates/T010-gate.sh\n  REF: plan.md Phase 7 > Type Dependency Graph",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh"
         },
         {

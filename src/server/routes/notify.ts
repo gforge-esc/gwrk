@@ -26,6 +26,8 @@ export async function notifyRoutes(server: FastifyInstance) {
       branchName: payload.branch || "main",
       attempts: [],
       createdAt: new Date().toISOString(),
+      prUrl: payload.prUrl,
+      prNumber: payload.prNumber,
     };
 
     let message;

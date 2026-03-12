@@ -74,49 +74,59 @@ export const MessageBuilder = {
       phaseId: dispatch.phaseId,
     });
 
-    return {
-      text,
-      blocks: [
+    const blocks: KnownBlock[] = [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `🔍 Review Ready: ${dispatch.featureId}`,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `Phase *${dispatch.phaseId}* is ready for your review. All tests passed.`,
+        },
+      },
+    ];
+
+    if (dispatch.prUrl) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Pull Request:* <${dispatch.prUrl}|#${dispatch.prNumber || "PR"}>`,
+        },
+      });
+    }
+
+    blocks.push({
+      type: "actions",
+      elements: [
         {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: `🔍 Review Ready: ${dispatch.featureId}`,
-          },
+          type: "button",
+          text: { type: "plain_text", text: "✅ Merge" },
+          style: "primary",
+          action_id: "merge_pr",
+          value,
         },
         {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `Phase *${dispatch.phaseId}* is ready for your review. All tests passed.`,
-          },
+          type: "button",
+          text: { type: "plain_text", text: "🔄 Request Changes" },
+          action_id: "request_changes",
+          value,
         },
         {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: "✅ Merge" },
-              style: "primary",
-              action_id: "merge_pr",
-              value,
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "🔄 Request Changes" },
-              action_id: "request_changes",
-              value,
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "🔍 View Review" },
-              action_id: "view_review",
-              value,
-            },
-          ],
+          type: "button",
+          text: { type: "plain_text", text: "🔍 View Review" },
+          action_id: "view_review",
+          value,
         },
       ],
-    };
+    });
+
+    return { text, blocks };
   },
 
   phaseFail(dispatch: DispatchRecord, error?: string): SlackMessage {
@@ -178,25 +188,35 @@ export const MessageBuilder = {
   ): SlackMessage {
     const statusIcon = ci.passed ? "✅" : "❌";
     const text = `${statusIcon} CI Results for ${dispatch.featureId}`;
-    return {
-      text,
-      blocks: [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: `${statusIcon} CI Results: ${dispatch.featureId}`,
-          },
+
+    const blocks: KnownBlock[] = [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `${statusIcon} CI Results: ${dispatch.featureId}`,
         },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: ci.summary,
-          },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ci.summary,
         },
-      ],
-    };
+      },
+    ];
+
+    if (dispatch.prUrl) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Pull Request:* <${dispatch.prUrl}|#${dispatch.prNumber || "PR"}>`,
+        },
+      });
+    }
+
+    return { text, blocks };
   },
 
   pulseSummary(report: PulseReport): SlackMessage {
