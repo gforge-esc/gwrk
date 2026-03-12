@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -71,10 +72,16 @@ export const tasksGenerateCommand = new Command("tasks")
                 let status = "open";
                 let completedAt;
                 if (opts.reconcile && existingState) {
-                    // Match by title across all existing phases
-                    const existingTask = existingState.phases
-                        .flatMap((ep) => ep.tasks)
-                        .find((et) => et.title === t.title);
+                    const allExisting = existingState.phases.flatMap((ep) => ep.tasks);
+                    // Pass 1: exact title match
+                    let existingTask = allExisting.find((et) => et.title === t.title);
+                    // Pass 2: file path match — extract path from "Implement src/foo.ts"
+                    if (!existingTask) {
+                        const newPath = t.title.match(/(?:src|tests|docs|scripts)\/\S+|\S+\.(?:ts|json|md|sh|yml)/);
+                        if (newPath) {
+                            existingTask = allExisting.find((et) => et.title.includes(newPath[0]));
+                        }
+                    }
                     if (existingTask &&
                         (existingTask.status === "completed" ||
                             existingTask.status === "in_progress")) {
@@ -136,6 +143,40 @@ export const tasksGenerateCommand = new Command("tasks")
         saveTaskState(featureDir, taskState);
         console.log("  Generating gate scripts...");
         generateGates(featureDir, taskState.phases);
+        // In reconcile mode, audit gates against reality
+        if (opts.reconcile) {
+            console.log("  Auditing gates against reality...");
+            let audited = 0;
+            let passed = 0;
+            for (const phase of taskState.phases) {
+                for (const task of phase.tasks) {
+                    if (task.status !== "open")
+                        continue;
+                    const gatePath = path.join(featureDir, task.gateScript);
+                    if (!fs.existsSync(gatePath))
+                        continue;
+                    audited++;
+                    try {
+                        execSync(`bash "${gatePath}"`, {
+                            cwd: projectRoot,
+                            stdio: "ignore",
+                            timeout: 10_000,
+                        });
+                        task.status = "completed";
+                        task.completedAt = new Date().toISOString();
+                        passed++;
+                    }
+                    catch {
+                        // Gate failed — task stays open
+                    }
+                }
+            }
+            if (audited > 0) {
+                console.log(`  ${passed}/${audited} gates passed — tasks marked completed`);
+                // Re-save with updated statuses
+                saveTaskState(featureDir, taskState);
+            }
+        }
         const totalTasks = taskState.phases.reduce((n, p) => n + p.tasks.length, 0);
         const activeTasks = taskState.phases.reduce((n, p) => n + p.tasks.filter((t) => t.status !== "cancelled").length, 0);
         const cancelledTasks = totalTasks - activeTasks;

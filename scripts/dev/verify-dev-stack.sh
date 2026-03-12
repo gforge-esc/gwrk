@@ -32,10 +32,10 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-COMPOSE_PROJECT="codered"
+COMPOSE_PROJECT="gwrk"
 
 # Check key services
-for SERVICE in api web; do
+for SERVICE in api; do
   RUNNING=$(docker compose --project-name ${COMPOSE_PROJECT}-dev ps --format json 2>/dev/null \
     | grep -c "\"$SERVICE\"" || true)
   if [ "$RUNNING" -eq 0 ]; then
@@ -49,13 +49,11 @@ done
 # --------------------------------------------------------------------------
 # 3. Check Web API Reachability
 # --------------------------------------------------------------------------
-API_URL="http://localhost:3000/api" # Adjust if CodeRed uses Traefik/differing ports
+API_URL="http://localhost:18790/health" 
 
 echo "[verify-dev-stack] Checking API at $API_URL ..."
 if curl -sf --max-time 5 "$API_URL" >/dev/null 2>&1; then
   echo "[verify-dev-stack] ✅ API reachable"
-elif curl -sf --max-time 5 "${API_URL}/health" >/dev/null 2>&1; then
-  echo "[verify-dev-stack] ✅ API reachable (via /health)"
 else
   # Warning only, as it might take a moment to boot
   echo "[verify-dev-stack] ⚠️ API not immediately reachable at $API_URL"

@@ -253,27 +253,27 @@
           "id": "T027",
           "title": "Implement src/server/slack-home.ts",
           "description": "New: App Home Tab Block Kit builder, `app_home_opened` handler. Fixed build error by importing DispatchRecord. Restored docker-compose.yml and Makefile up targets for UAT.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T027-gate.sh"
         },
         {
           "id": "T028",
           "title": "Implement src/server/slack.ts",
           "description": "Modify: Register `app_home_opened` event handler",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T028-gate.sh"
         },
         {
           "id": "T029",
           "title": "Implement src/server/routes/status.ts",
           "description": "Modify: Export status data for Home Tab consumption",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T029-gate.sh"
         },
         {
           "id": "T030",
           "title": "Implement test strategy for Phase 6",
-          "description": "Implement all unit and integration tests defined in the phase test strategy. Restored Makefile up target and docker-compose.yml for verify-dev-stack.sh PASS.\n\nREVIEW FAIL (code): Test Verification — Regression in Phase 1 and bootstrap tests.\n  WHERE: src/commands/setup-slack.test.ts, src/server/index.test.ts\n  EXPECTED: pnpm test passes 100%\n  ACTUAL: 13 failed tests, T006-gate.sh fails.\n  FIX: Resolve regressions in Phase 1 setup-slack.test.ts and index.test.ts. Fix lint errors in Phase 2/3/4 files.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 6 > Test Strategy",
+          "description": "Implement all unit and integration tests defined in the phase test strategy. Restored Makefile up target and docker-compose.yml for verify-dev-stack.sh PASS.\n\nREVIEW FAIL (code): Test Verification — Regression in Phase 1 and bootstrap tests.\n  WHERE: src/commands/setup-slack.test.ts, src/server/index.test.ts\n  EXPECTED: pnpm test passes 100%\n  ACTUAL: 13 failed tests, T006-gate.sh fails.\n  FIX: Resolve regressions in Phase 1 setup-slack.test.ts and index.test.ts. Fix lint errors in Phase 2/3/4 files.\n  GATE: gates/T006-gate.sh\n  REF: plan.md Phase 6 > Test Strategy\n\nREVIEW FAIL (uat): Test Verification — Expected all tests to pass as claimed in the task completion. Actual: 5 failures in Phase 1 and bootstrap tests (src/commands/setup-slack.test.ts and src/server/index.test.ts). Fixed regressions are still present. Environment is also BLOCKING: Docker image is missing 'docker-ce-cli', causing ensureDocker() to fail and container to restart loop. Fix: 1. Update tests to expect console.error + ANSI colors. 2. Mock readline in setup-slack.test.ts to avoid timeout. 3. Correctly mock SandboxManager/ensureDocker in index.test.ts. 4. Install docker-ce-cli in Dockerfile. 5. Fix verify-dev-stack.sh to check service state, not just existence.",
           "status": "open",
           "gateScript": "gates/T030-gate.sh"
         }

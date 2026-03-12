@@ -41,20 +41,28 @@ export function generateGates(featureDir, phases) {
             for (const f of uniqueFiles) {
                 assertions += `test -f ${f}\n`;
             }
-            // Look for function names: funcName()
+            // Look for identifiers to grep for in the target file:
+            // 1. funcName() patterns
+            // 2. backtick-wrapped identifiers: `reapStale`, `destroyAll`
+            // 3. Zod schemas: XSchema
             const funcMatches = task.description.match(/([a-zA-Z0-9_]{3,})\(/g) || [];
-            const uniqueFuncs = [...new Set(funcMatches.map((f) => f.slice(0, -1)))];
-            for (const name of uniqueFuncs) {
-                if (uniqueFiles.length > 0) {
-                    assertions += `grep -q '${name}' ${uniqueFiles[0]}\n`;
-                }
-            }
-            // Look for Zod schemas: XSchema
+            const backtickMatches = task.description.match(/`([a-zA-Z][a-zA-Z0-9_]{2,})`/g) || [];
             const schemaMatches = task.description.match(/([a-zA-Z0-9_]+Schema)/g) || [];
-            const uniqueSchemas = [...new Set(schemaMatches)];
-            for (const s of uniqueSchemas) {
-                if (uniqueFiles.length > 0) {
-                    assertions += `grep -q '${s}' ${uniqueFiles[0]}\n`;
+            const identifiers = new Set([
+                ...funcMatches.map((f) => f.slice(0, -1)),
+                ...backtickMatches
+                    .map((b) => b.slice(1, -1))
+                    // Filter out file paths and known non-identifiers
+                    .filter((b) => !b.includes("/") && !b.includes(".")),
+                ...schemaMatches,
+            ]);
+            // Only grep source files, not configs
+            const sourceFiles = uniqueFiles.filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
+            const grepTarget = sourceFiles[0] || uniqueFiles[0];
+            if (grepTarget && identifiers.size > 0) {
+                assertions += "# Required identifiers\n";
+                for (const name of identifiers) {
+                    assertions += `grep -q '${name}' ${grepTarget}\n`;
                 }
             }
             // If this is the last task of the phase, add phase-level Done When criteria
