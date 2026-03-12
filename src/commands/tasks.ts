@@ -188,10 +188,10 @@ tasksCommand
 
           if (t.status === "completed") {
             statusChar = `${GREEN}✓${RESET}`;
-            textColor = DIM; // Dim completed tasks to reduce noise
+            textColor = DIM;
           } else if (t.status === "cancelled") {
             statusChar = `${RED}✗${RESET}`;
-            textColor = DIM; // Dim cancelled tasks
+            textColor = DIM;
           } else if (t.status === "in_progress") {
             statusChar = `${CYAN}▸${RESET}`;
           }
@@ -199,6 +199,14 @@ tasksCommand
           console.log(
             `  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`,
           );
+
+          // Show description for open/in-progress tasks
+          if (
+            (t.status === "open" || t.status === "in_progress") &&
+            t.description
+          ) {
+            console.log(`       ${DIM}${t.description}${RESET}`);
+          }
         }
       }
     }
