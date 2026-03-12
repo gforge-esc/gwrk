@@ -134,8 +134,8 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
 
   it("fails gracefully with correct error when spec is a Stub during analysis", async () => {
     // analyze is now internal to define, but define plan still checks stubs
-    const { stderr, exitCode } = await runCli("define plan 003-slack");
+    const { stderr, exitCode } = await runCli("define plan 999-stub");
     expect(exitCode).not.toBe(0);
-    expect(stderr).toMatch(/BLOCKED.*Spec 003-slack is marked as a Stub/);
+    expect(stderr).toMatch(/BLOCKED.*Spec 999-stub is marked as a Stub/);
   }, 15_000);
 });

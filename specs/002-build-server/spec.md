@@ -238,6 +238,11 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-019**: On `server:sleep`, the daemon MUST call `docker pause` on all containers labeled `gwrk.feature=*`. On `server:ready`, the daemon MUST call `docker unpause` on those containers and reset their internal timeout tracking. (Implements: US-011)
 - **FR-020**: The `/health` endpoint MUST return a JSON object with component-level readiness: `{ status: "ok" | "degraded", components: { server, docker, network } }`. Each component MUST report `ok`, `unavailable`, or `degraded`. (Implements: US-013)
 - **FR-021**: The daemon MUST expose a `server.lifecycle` field on the `/api/status` endpoint reporting one of: `starting`, `ready`, `sleeping`, `degraded`, `stopping`. (Implements: US-011, US-013)
+- **FR-022**: The daemon MUST run a container reaper on a 60-second interval that destroys any gwrk-labeled container whose `gwrk.startedAt` label age exceeds a configurable TTL (default: 2 hours). (Implements: GAP-002-A)
+- **FR-023**: On shutdown (`SIGTERM`/`SIGINT`), the daemon MUST destroy all gwrk-labeled Docker containers before releasing the PID file. (Implements: GAP-002-A, FR-003)
+- **FR-024**: System MUST provide a `gwrk server clean` command that removes all gwrk-labeled Docker containers and reports the count destroyed. This command MUST NOT require a running daemon. (Implements: GAP-002-A)
+- **FR-025**: `SandboxManager.createSandbox()` MUST check the count of active gwrk-labeled containers against `config.server.parallelism.maxConcurrentSandboxes` and reject with an error if the limit is reached. (Implements: GAP-002-A, FR-008)
+- **FR-026**: All integration test suites that call `createSandbox()` MUST call `destroyAll()` in `afterAll` to prevent container leaks across test runs. (Implements: GAP-002-A)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |

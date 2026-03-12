@@ -27,6 +27,7 @@ export interface HealthResponse {
     server: ComponentHealth;
     docker: ComponentHealth;
     network: ComponentHealth;
+    slack: ComponentHealth;
   };
 }
 
@@ -51,6 +52,8 @@ export interface DispatchRecord {
   attempts: DispatchAttempt[];
   createdAt: string;
   completedAt?: string;
+  prUrl?: string;
+  prNumber?: number;
 }
 
 export interface SystemResources {
@@ -90,4 +93,23 @@ export interface SystemStatus {
     paused: boolean;
   };
   sandboxes: SandboxInfo[];
+}
+
+export interface NotifyPayload {
+  type:
+    | "phase_start"
+    | "phase_complete"
+    | "phase_fail"
+    | "ci_result"
+    | "review_ready"
+    | "done_done";
+  feature: string;
+  phase?: string;
+  prUrl?: string;
+  prNumber?: number;
+  gateResults?: string;
+  error?: string;
+  branch?: string;
+  backend?: string;
+  masterOnly?: boolean;
 }

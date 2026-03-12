@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
+    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
@@ -15,6 +15,7 @@
     "format": "biome format --write"
   },
   "dependencies": {
+    "@slack/bolt": "^4.6.0",
     "better-sqlite3": "^12.6.2",
     "commander": "^13.1.0",
     "dockerode": "^4.0.9",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@slack/types": "^2.20.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/dockerode": "^4.0.1",
     "@types/node": "^22.13.5",

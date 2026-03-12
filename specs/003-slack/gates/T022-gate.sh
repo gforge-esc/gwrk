@@ -1,13 +1,11 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T022 — Implement test strategy for Phase 4
+# Gate: T022 — Implement src/server/slack-notify.ts
 # Asserts: Derived from task description
 
+test -f src/server/slack-notify.ts
+# Required identifiers
+grep -q 'channelId' src/server/slack-notify.ts
+grep -q 'opsChannelId' src/server/slack-notify.ts
 
-# Phase Acceptance Criteria
-pnpm vitest run src/server/slack-commands.test.ts
-pnpm vitest run src/server/slack-actions.test.ts
-pnpm vitest run src/server/slack-integration.test.ts
-pnpm build
-
-echo "PASS: T022 — Implement test strategy for Phase 4"
+echo "PASS: T022 — Implement src/server/slack-notify.ts"

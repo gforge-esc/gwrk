@@ -10,6 +10,17 @@ vi.mock("./pid.js", () => ({
   isPidRunning: vi.fn(),
 }));
 
+vi.mock("./slack.js", () => ({
+  isSlackConnected: vi.fn().mockResolvedValue(true),
+  getSlackApp: vi
+    .fn()
+    .mockReturnValue({
+      client: { auth: { test: vi.fn().mockResolvedValue({ ok: true }) } },
+    }),
+  startSlackApp: vi.fn().mockResolvedValue(undefined),
+  stopSlackApp: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockSandbox = {
   checkDocker: vi.fn().mockResolvedValue(true),
   pauseAll: vi.fn().mockResolvedValue(undefined),

@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T012 — Implement src/cli.ts
+# Gate: T012 — Implement test strategy for Phase 2
 # Asserts: Derived from task description
 
-test -f src/cli.ts
 
-echo "PASS: T012 — Implement src/cli.ts"
+# Phase Acceptance Criteria
+gwrk server start && gwrk status --json | jq -e '.system.cpuPercent'
+
+echo "PASS: T012 — Implement test strategy for Phase 2"

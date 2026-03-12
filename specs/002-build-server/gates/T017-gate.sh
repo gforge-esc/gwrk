@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T017 — Implement src/server/git-manager.test.ts
+# Gate: T017 — Implement Dockerfile.sandbox
 # Asserts: Derived from task description
 
-test -f src/server/git-manager.test.ts
+# No specific assertions found in task description
+true
 
-echo "PASS: T017 — Implement src/server/git-manager.test.ts"
+echo "PASS: T017 — Implement Dockerfile.sandbox"

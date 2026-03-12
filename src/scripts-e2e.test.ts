@@ -14,6 +14,12 @@ const mockWrapper = (scriptName: string, content: string) => {
   return file;
 };
 
+const cleanupState = () => {
+  const RUNS_DIR = path.join(ROOT, ".test-runs-e2e");
+  if (fs.existsSync(RUNS_DIR)) fs.rmSync(RUNS_DIR, { recursive: true, force: true });
+  if (fs.existsSync(SPEC_DIR)) fs.rmSync(SPEC_DIR, { recursive: true, force: true });
+};
+
 describe("work-until-done.sh execution flow", () => {
   let branchMock = "";
   let verdictMock = "";
@@ -21,6 +27,7 @@ describe("work-until-done.sh execution flow", () => {
   let env: Record<string, string>;
 
   beforeAll(() => {
+    cleanupState();
     fs.mkdirSync(MOCKS_DIR, { recursive: true });
     fs.mkdirSync(SPEC_DIR, { recursive: true });
 
@@ -44,13 +51,6 @@ describe("work-until-done.sh execution flow", () => {
       MAX_ITERATIONS: "1",
       RUNS_DIR: path.join(ROOT, ".test-runs-e2e"),
     };
-    cleanupState();
-  });
-
-  afterAll(() => {
-    fs.rmSync(MOCKS_DIR, { recursive: true, force: true });
-    fs.rmSync(SPEC_DIR, { recursive: true, force: true });
-    cleanupState();
   });
 
   it("should complete a full execution loop without unbound variables", () => {

@@ -1,8 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T001 — Implement src/server/index.ts
+# Gate: T001 — Implement package.json
 # Asserts: Derived from task description
 
-test -f src/server/index.ts
+test -f package.json
+# Required identifiers
+grep -q 'fastify' package.json
+grep -q 'dockerode' package.json
+grep -q 'uuid' package.json
 
-echo "PASS: T001 — Implement src/server/index.ts"
+echo "PASS: T001 — Implement package.json"

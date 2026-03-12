@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T007 — Implement tsconfig.json
+# Gate: T007 — Implement src/server/types.ts
 # Asserts: Derived from task description
 
-test -f tsconfig.json
+test -f src/server/types.ts
 
-echo "PASS: T007 — Implement tsconfig.json"
+echo "PASS: T007 — Implement src/server/types.ts"

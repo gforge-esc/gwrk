@@ -2,6 +2,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { finishRun, startRun } from "../db/runs.js";
+import { MessageBuilder } from "./slack-messages.js";
+import { notifySlack } from "./slack-notify.js";
 import { compileContext } from "./context.js";
 import { persistDispatch } from "./persistence.js";
 export class DispatchQueue {
@@ -80,6 +82,16 @@ export class DispatchQueue {
             workflow: "implement",
         });
         record.attempts.push(attempt);
+        // Phase Start Notification
+        if (record.attempts.length === 1) {
+            await notifySlack(MessageBuilder.phaseStart(record), {
+                type: "phase_start",
+                feature: record.featureId,
+                phase: record.phaseId,
+                payload: record,
+                timestamp: new Date().toISOString(),
+            });
+        }
         try {
             // 1. Prepare Git
             this.git.createPhaseBranch(record.featureId, record.phaseId);
@@ -126,6 +138,13 @@ export class DispatchQueue {
         if (exitCode === 0) {
             record.status = "completed";
             record.completedAt = attempt.completedAt;
+            await notifySlack(MessageBuilder.phaseComplete(record), {
+                type: "phase_complete",
+                feature: record.featureId,
+                phase: record.phaseId,
+                payload: record,
+                timestamp: new Date().toISOString(),
+            });
             // Merge back
             try {
                 this.git.mergePhaseBack(record.featureId, record.phaseId);
@@ -154,6 +173,13 @@ export class DispatchQueue {
                 }
                 else {
                     record.status = "failed";
+                    await notifySlack(MessageBuilder.phaseFail(record, stderr), {
+                        type: "phase_fail",
+                        feature: record.featureId,
+                        phase: record.phaseId,
+                        payload: { ...record, stderr },
+                        timestamp: new Date().toISOString(),
+                    });
                 }
             }
         }

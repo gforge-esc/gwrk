@@ -5,9 +5,6 @@ set -euo pipefail
 
 
 # Phase Acceptance Criteria
-pnpm vitest run src/commands/server.test.ts
-pnpm vitest run src/server/index.test.ts
-test -f src/server/index.ts && test -f src/server/pid.ts && test -f src/commands/server.ts
-grep -q '"fastify"' package.json
+gwrk server start && test -f .gwrk/server.pid && gwrk server stop && test ! -f .gwrk/server.pid
 
 echo "PASS: T008 — Implement test strategy for Phase 1"

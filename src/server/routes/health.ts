@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { LifecycleMonitor } from "../lifecycle.js";
 import type { NetworkMonitor } from "../network.js";
 import type { SandboxManager } from "../sandbox.js";
+import { isSlackConnected } from "../slack.js";
 import type { HealthResponse } from "../types.js";
 
 export async function healthRoutes(
@@ -13,6 +14,7 @@ export async function healthRoutes(
   server.get("/health", async (): Promise<HealthResponse> => {
     const dockerOk = await sandbox.checkDocker();
     const networkOk = network.isOnline();
+    const slackOk = await isSlackConnected();
     const lifecycleStatus = lifecycle.getStatus();
 
     const components = {
@@ -25,12 +27,16 @@ export async function healthRoutes(
       network: {
         status: networkOk ? "ok" : "unavailable",
       } as const,
+      slack: {
+        status: slackOk ? "ok" : "unavailable",
+      } as const,
     };
 
     const overallStatus =
       components.server.status === "ok" &&
       components.docker.status === "ok" &&
-      components.network.status === "ok"
+      components.network.status === "ok" &&
+      components.slack.status === "ok"
         ? "ok"
         : "degraded";
 

@@ -157,7 +157,8 @@ tasksCommand
   .command("list <feature>")
   .description("List all tasks for a feature")
   .option("--json", "Output in JSON format")
-  .action((feature: string, options: { json?: boolean }) => {
+  .option("--compact", "Hide descriptions on open tasks")
+  .action((feature: string, options: { json?: boolean; compact?: boolean }) => {
     const projectRoot = process.cwd();
     const featureDir = path.join(projectRoot, "specs", feature);
     const state = loadTaskState(featureDir);
@@ -188,10 +189,10 @@ tasksCommand
 
           if (t.status === "completed") {
             statusChar = `${GREEN}✓${RESET}`;
-            textColor = DIM; // Dim completed tasks to reduce noise
+            textColor = DIM;
           } else if (t.status === "cancelled") {
             statusChar = `${RED}✗${RESET}`;
-            textColor = DIM; // Dim cancelled tasks
+            textColor = DIM;
           } else if (t.status === "in_progress") {
             statusChar = `${CYAN}▸${RESET}`;
           }
@@ -199,6 +200,15 @@ tasksCommand
           console.log(
             `  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`,
           );
+
+          // Show description for open/in-progress tasks
+          if (
+            !options.compact &&
+            (t.status === "open" || t.status === "in_progress") &&
+            t.description
+          ) {
+            console.log(`       ${DIM}${t.description}${RESET}`);
+          }
         }
       }
     }

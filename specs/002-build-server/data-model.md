@@ -1,55 +1,35 @@
 ---
 type: data_model
 feature: 002-build-server
-last_modified: "2026-03-05T11:12:20Z"
+last_modified: "2026-03-11T14:30:00Z"
 ---
 
 # Data Model: 002 Build Server
 
 **Feature**: 002-build-server
-**Date**: 2026-02-27
+**Date**: 2026-03-11
 
 ---
 
-## DM-001: Dispatch Record (`dispatches.jsonl`)
+## DM-001: SQLite Execution Ledger (`~/.gwrk/gwrk.db`)
 
-Append-only JSONL, one entry per dispatch lifecycle event. Persisted at `.gwrk/dispatches.jsonl`.
+The build server is the primary writer for dispatch-related telemetry. It uses the `runs` and `history` tables defined in `001-cli-core`.
 
-```typescript
-import { z } from 'zod';
+**Table: `runs`** (Key fields used by server):
+- `feature_id`: string
+- `phase_id`: string
+- `command`: "dispatch"
+- `agent_backend`: string
+- `started_at`: ISO8601
+- `finished_at`: ISO8601 (optional)
+- `exit_code`: integer (optional)
+- `log_file`: string (path to sandbox logs)
 
-const AgentBackendSchema = z.enum(['gemini', 'claude', 'codex', 'codex-cloud']);
-
-const DispatchAttemptSchema = z.object({
-  attemptNumber: z.number().int().positive(),
-  backend: AgentBackendSchema,
-  startedAt: z.string().datetime(),
-  completedAt: z.string().datetime().optional(),
-  exitCode: z.number().int().optional(),
-  stderr: z.string().optional(),
-});
-
-const DispatchStatusSchema = z.enum([
-  'queued', 'running', 'completed', 'failed', 'retrying'
-]);
-
-const DispatchRecordSchema = z.object({
-  id: z.string().uuid(),
-  featureId: z.string(),
-  phaseId: z.string(),
-  backend: AgentBackendSchema,
-  status: DispatchStatusSchema,
-  containerId: z.string().optional(),
-  branchName: z.string(),
-  attempts: z.array(DispatchAttemptSchema),
-  createdAt: z.string().datetime(),
-  completedAt: z.string().datetime().optional(),
-});
-
-type DispatchRecord = z.infer<typeof DispatchRecordSchema>;
-type DispatchAttempt = z.infer<typeof DispatchAttemptSchema>;
-type DispatchStatus = z.infer<typeof DispatchStatusSchema>;
-```
+**Table: `history`** (Key fields used by server):
+- `feature_id`: string
+- `from_status`: string (e.g., "queued")
+- `to_status`: string (e.g., "running")
+- `run_id`: foreign key to `runs.id`
 
 ---
 
@@ -58,14 +38,19 @@ type DispatchStatus = z.infer<typeof DispatchStatusSchema>;
 Extends the `GwrkConfigSchema` from 001-cli-core. All fields MUST be explicit — no `.default()`.
 
 ```typescript
+import { z } from 'zod';
+
 const GwrkServerConfigSchema = z.object({
   server: z.object({
     port: z.number().int().min(1024).max(65535),
     host: z.string(),
+    networkCheckIntervalMs: z.number().int().positive(),
+    heartbeatIntervalMs: z.number().int().positive(),
   }),
   parallelism: z.object({
     local: z.object({
       maxClones: z.number().int().positive(),
+      maxConcurrentSandboxes: z.number().int().positive(),
       maxCpu: z.number().min(1).max(100),
       maxMem: z.number().min(1).max(100),
       minDiskGb: z.number().positive(),
@@ -77,52 +62,31 @@ const GwrkServerConfigSchema = z.object({
 });
 ```
 
-**Example `.gwrkrc.json` addition:**
-
-```json
-{
-  "server": {
-    "port": 18790,
-    "host": "127.0.0.1"
-  },
-  "parallelism": {
-    "local": {
-      "maxClones": 3,
-      "maxCpu": 80,
-      "maxMem": 70,
-      "minDiskGb": 10
-    },
-    "cloud": {
-      "maxConcurrent": 10
-    }
-  }
-}
-```
-
 ---
 
-## DM-003: System Status
+## DM-003: System Status & Sandbox Info
 
-Runtime-only data model (not persisted). Returned by `GET /api/status`.
+Runtime-only data models (not persisted). Returned by `GET /api/status` and `/health`.
 
 ```typescript
 const SandboxInfoSchema = z.object({
   containerId: z.string(),
   featureId: z.string(),
   phaseId: z.string(),
-  backend: AgentBackendSchema,
-  status: z.enum(['creating', 'running', 'stopping', 'destroyed']),
+  backend: z.string(),
+  status: z.enum(['creating', 'running', 'paused', 'stopping', 'destroyed']),
   startedAt: z.string().datetime(),
-  cpuPercent: z.number().optional(),
-  memMb: z.number().optional(),
 });
 
 const SystemStatusSchema = z.object({
   server: z.object({
     status: z.enum(['running', 'stopped']),
+    lifecycle: z.enum(['starting', 'ready', 'sleeping', 'degraded', 'stopping']),
     pid: z.number().int().optional(),
     uptime: z.number().optional(),
-    port: z.number().int().optional(),
+  }),
+  network: z.object({
+    status: z.enum(['online', 'offline']),
   }),
   system: z.object({
     cpuPercent: z.number(),
@@ -132,8 +96,8 @@ const SystemStatusSchema = z.object({
   dispatch: z.object({
     queueDepth: z.number().int(),
     activeCount: z.number().int(),
-    completedCount: z.number().int(),
-    failedCount: z.number().int(),
+    throttled: z.boolean(),
+    paused: z.boolean(),
   }),
   sandboxes: z.array(SandboxInfoSchema),
 });

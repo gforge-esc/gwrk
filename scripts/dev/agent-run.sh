@@ -270,10 +270,31 @@ strip_ansi() {
 }
 
 # ──────────────────────────────────────────────────────────────────
+# Notifications
+# ──────────────────────────────────────────────────────────────────
+gwrk_notify() {
+  local type="$1"
+  local extra="${2:-"{}"}"
+  # Only notify if WORKFLOW is one that impacts the pipeline
+  if [[ "$WORKFLOW" == "implement" ]] || [[ "$WORKFLOW" == "review-code" ]] || [[ "$WORKFLOW" == "review-uat" ]]; then
+    # Format phase as phase-NN
+    local phase_id=""
+    if [[ -n "$PHASE" ]]; then
+      phase_id=$(printf "phase-%02d" "$PHASE")
+    fi
+    "$SCRIPT_DIR/gwrk-notify.sh" "$type" "$FEATURE" "$phase_id" "$extra" || true
+  fi
+}
+
+# ──────────────────────────────────────────────────────────────────
 # Execute with tee to log + truncated terminal display
 # ──────────────────────────────────────────────────────────────────
 START_TIME=$(date +%s)
 echo "# [START] $(date +%Y-%m-%dT%H:%M:%S%z)" >> "$LOG_FILE"
+
+if [[ "$WORKFLOW" == "implement" ]]; then
+  gwrk_notify "phase_start"
+fi
 
 echo -e "${GREEN}▶${RESET} Starting ${AGENT_NAME} agent...  ${DIM}(log: ${LOG_FILE##*/})${RESET}"
 echo ""
@@ -329,6 +350,14 @@ cd "$REPO_ROOT"
   }
 
 EXIT_CODE=${PIPESTATUS[0]}
+
+if [[ "$WORKFLOW" == "implement" ]]; then
+  if [[ "$EXIT_CODE" -eq 0 ]]; then
+    gwrk_notify "phase_complete"
+  else
+    gwrk_notify "phase_fail" "{\"error\": \"Agent exited with code $EXIT_CODE\"}"
+  fi
+fi
 
 # ──────────────────────────────────────────────────────────────────
 # Cleanup & summary

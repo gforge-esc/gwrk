@@ -86,3 +86,16 @@ async function listSandboxes(): Promise<SandboxInfo[]>
 ```
 
 Implementation: `docker ps --filter label=gwrk.feature --format json` via `dockerode`.
+
+---
+
+## `reapStale(maxAgeMs: number): Promise<number>`
+
+**Source**: `src/server/sandbox.ts`
+**Consumed by**: `src/server/index.ts` (interval reaper)
+
+Lists all containers with `gwrk.*` labels and destroys those where `gwrk.startedAt` is older than `maxAgeMs`. Returns the count of destroyed containers.
+
+```typescript
+async function reapStale(maxAgeMs: number): Promise<number>
+```

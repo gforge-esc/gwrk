@@ -1,6 +1,7 @@
 import fastify from "fastify";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
+import { ensureDocker } from "./docker.js";
 import { GitManager } from "./git-manager.js";
 import { LifecycleMonitor } from "./lifecycle.js";
 import { SystemMonitor } from "./monitor.js";
@@ -8,8 +9,10 @@ import { NetworkMonitor } from "./network.js";
 import { removePid, writePid } from "./pid.js";
 import { dispatchRoutes } from "./routes/dispatch.js";
 import { healthRoutes } from "./routes/health.js";
+import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
+import { startSlackApp, stopSlackApp } from "./slack.js";
 
 export async function startServer(
   config: GwrkConfig,
@@ -20,16 +23,12 @@ export async function startServer(
     logger: true,
   });
 
+  // Ensure Docker is available — auto-start if needed
+  await ensureDocker();
+
   const monitor = new SystemMonitor(config);
   monitor.startPolling();
   const sandbox = new SandboxManager();
-
-  // Check Docker availability on start
-  if (!(await sandbox.checkDocker())) {
-    server.log.error("Docker daemon not reachable");
-    console.error("Docker daemon not reachable");
-    process.exit(1);
-  }
 
   const git = new GitManager(projectRoot);
   const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
@@ -90,9 +89,11 @@ export async function startServer(
   await healthRoutes(server, lifecycle, network, sandbox);
   await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
   await dispatchRoutes(server, queue);
+  await notifyRoutes(server);
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
+    await stopSlackApp();
     lifecycle.stop();
     network.stop();
     monitor.stopPolling();
@@ -116,6 +117,19 @@ export async function startServer(
     });
     console.log(`gwrk server listening on ${address}`);
     writePid(process.pid);
+
+    // Start Slack if configured
+    await startSlackApp({
+      queue,
+      monitor,
+      sandbox,
+      lifecycle,
+      network,
+      git,
+      projectRoot,
+      config,
+    });
+
     return server;
   } catch (err) {
     server.log.error(err);
