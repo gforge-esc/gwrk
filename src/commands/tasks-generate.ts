@@ -75,44 +75,50 @@ export const tasksGenerateCommand = new Command("tasks")
 
       // Build new tasks from plan
       let taskCounter = 1;
+
+      // Track which existing tasks have been consumed by a new task (first-match-wins)
+      const consumedExistingIds = new Set<string>();
+
       const newPhases = parsedPlan.phases.map((p) => {
         const phaseTasks: Task[] = p.tasks.map((t) => {
           const taskId = `T${taskCounter.toString().padStart(3, "0")}`;
           taskCounter++;
 
-          // In reconcile mode, preserve status from matching existing task
           let status: Task["status"] = "open";
           let completedAt: string | undefined;
 
           if (opts.reconcile && existingState) {
-            const allExisting = existingState.phases.flatMap(
-              (ep) => ep.tasks,
-            );
+            const allExisting = existingState.phases.flatMap((ep) => ep.tasks);
 
-            // Pass 1: exact title match
+            // Pass 1: exact title match (only unconsumed tasks)
             let existingTask = allExisting.find(
-              (et) => et.title === t.title,
+              (et) => !consumedExistingIds.has(et.id) && et.title === t.title,
             );
 
-            // Pass 2: file path match — extract path from "Implement src/foo.ts"
+            // Pass 2: file path match (only unconsumed tasks)
             if (!existingTask) {
               const newPath = t.title.match(
                 /(?:src|tests|docs|scripts)\/\S+|\S+\.(?:ts|json|md|sh|yml)/,
               );
               if (newPath) {
-                existingTask = allExisting.find((et) =>
-                  et.title.includes(newPath[0]),
+                existingTask = allExisting.find(
+                  (et) =>
+                    !consumedExistingIds.has(et.id) &&
+                    et.title.includes(newPath[0]),
                 );
               }
             }
 
-            if (
-              existingTask &&
-              (existingTask.status === "completed" ||
-                existingTask.status === "in_progress")
-            ) {
-              status = existingTask.status;
-              completedAt = existingTask.completedAt;
+            if (existingTask) {
+              // Mark as consumed so it can't match another new task
+              consumedExistingIds.add(existingTask.id);
+              if (
+                existingTask.status === "completed" ||
+                existingTask.status === "in_progress"
+              ) {
+                status = existingTask.status;
+                completedAt = existingTask.completedAt;
+              }
             }
           }
 
@@ -134,36 +140,43 @@ export const tasksGenerateCommand = new Command("tasks")
         };
       });
 
-      // In reconcile mode, find tasks that were in the old state but not in the new plan
+      // In reconcile mode, append cancelled tasks back into their ORIGINAL phase
+      // (not the last phase). This keeps the task list clean when adding scope.
       if (opts.reconcile && existingState) {
-        const newTitles = new Set(
-          newPhases.flatMap((p) => p.tasks.map((t) => t.title)),
-        );
-        const removedTasks: Task[] = [];
+        // Build a map of new phase IDs for lookup
+        const newPhaseMap = new Map(newPhases.map((p) => [p.id, p]));
 
-        for (const phase of existingState.phases) {
-          for (const task of phase.tasks) {
-            if (!newTitles.has(task.title) && task.status !== "cancelled") {
-              const cancelledId = `T${taskCounter.toString().padStart(3, "0")}`;
-              taskCounter++;
-              removedTasks.push({
-                id: cancelledId,
-                title: task.title,
-                description: task.description,
-                status: "cancelled",
-                gateScript: task.gateScript,
-                completedAt: task.completedAt,
-              });
+        for (const oldPhase of existingState.phases) {
+          for (const task of oldPhase.tasks) {
+            if (consumedExistingIds.has(task.id)) continue; // Already matched
+            if (task.status === "cancelled") continue; // Already cancelled before
+
+            // This task is no longer in the plan — cancel it in its original phase
+            const cancelledId = `T${taskCounter.toString().padStart(3, "0")}`;
+            taskCounter++;
+            const cancelledTask: Task = {
+              id: cancelledId,
+              title: task.title,
+              description: task.description,
+              status: "cancelled",
+              gateScript: task.gateScript,
+              completedAt: task.completedAt,
+            };
+
+            // Try to put it back in the same phase if that phase still exists
+            const targetPhase = newPhaseMap.get(oldPhase.id);
+            if (targetPhase) {
+              targetPhase.tasks.push(cancelledTask);
+            } else {
+              // Phase itself was removed — append to last phase as before
+              const lastPhase = newPhases[newPhases.length - 1];
+              lastPhase.tasks.push(cancelledTask);
             }
           }
         }
-
-        // Append cancelled tasks to the last phase
-        if (removedTasks.length > 0) {
-          const lastPhase = newPhases[newPhases.length - 1];
-          lastPhase.tasks.push(...removedTasks);
-        }
       }
+
+
 
       const taskState: TaskState = {
         featureId: feature,
