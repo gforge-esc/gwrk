@@ -54,11 +54,13 @@ As a PE, I want `gwrk define tasks <feature>` to call the LLM with spec + plan +
 **Acceptance Scenarios**:
 1. **Given** a task for `src/server/routes/notify.ts`, **When** `gwrk define tasks` generates its gate, **Then**:
    - `cat specs/003-slack/gates/T007-gate.sh | grep -qE "vitest|curl|biome"` exits 0
-   - Gate does NOT contain only `test -f src/server/routes/notify.ts`
+   - Gate does NOT contain `test -f` as its only assertion
 2. **Given** a task for `src/server/routes/notify.test.ts`, **When** `gwrk define tasks` generates its gate, **Then**:
    - `cat specs/003-slack/gates/T012-gate.sh | grep -q "pnpm vitest run"` exits 0
-3. **Given** an existing gate marked `# AUTHORED`, **When** `gwrk define tasks --reconcile` runs, **Then**:
-   - `cat gates/Txxx-gate.sh | grep -q "# AUTHORED"` exits 0 (gate preserved unchanged)
+3. **Given** no LLM-authored gate can be generated, **When** `gwrk define tasks` runs, **Then**:
+   - Gate contains `echo 'GATE_STUB: authored gate required' && exit 1`
+   - `gwrk tasks done` on that task exits 1 with stub message
+   - `cat gates/Txxx-gate.sh | grep -q "AUTHORED"` exits 0 (AUTHORED marker preserved on existing gates)
 
 ### US-003 — Red-First Authoring (P0)
 As a PE, I want `gwrk define tests <feature> <phase>` to write red vitest test files before any implementation, so that the implementing agent's job is precisely defined.
@@ -140,9 +142,10 @@ As a PE, I want a gate checklist enforced before any `gwrk ship` runs on feature
 **Independent Test**: Confirm `gwrk ship 004-ship-loop phase-01` exits 1 (blocked) if no vitest tests exist.
 
 **Acceptance Scenarios**:
-1. **Given** 004-ship-loop with no test files, **When** `gwrk ship 004-ship-loop phase-01` runs, **Then**:
-   - Command exits 1 with `[BLOCKED] No test files found for phase-01`
+1. **Given** any feature+phase with no `.test.ts` files matching its deliverables, **When** `gwrk ship <feature> <phase>` runs, **Then**:
+   - Command exits 1 with `[BLOCKED] No test files found for <phase>`
    - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q "BLOCKED"` exits 0
+   - This pre-flight check is **active now** — no phasing or toggle
 2. **Given** red tests are committed for a phase, **When** `gwrk ship` runs, **Then**:
    - Ship proceeds, implementing agent turns tests green
    - Post-ship gate (`pnpm vitest run`) exits 0
@@ -174,7 +177,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 - **FR-001**: Every `gates/T*-gate.sh` MUST contain a functional assertion — `pnpm vitest run <file>`, `pnpm biome check <file>`, `pnpm tsc --noEmit`, `curl ... | jq -e`, or `bash -n <file>`. A gate containing only `test -f` MUST be treated as a build failure. (Implements: US-001)
 
-- **FR-002**: `gwrk define tasks <feature>` MUST call the LLM (agent) with spec.md + plan.md + contracts/ context to author each gate script. The gate authoring strategy MUST follow priority: (1) `# AUTHORED` — preserved unchanged, (2) Done When shell commands from plan, (3) typed fallback by file extension (test.ts → vitest, .ts → biome+compile, .sql → migration check, .sh → bash -n), (4) `pnpm build` as absolute fallback. NEVER bare `test -f` as sole assertion. (Implements: US-002)
+- **FR-002**: `gwrk define tasks <feature>` MUST call the LLM (agent) with spec.md + plan.md + contracts/ context to author each gate script. There is NO manual gate authoring phase and NO template fallback masquerading as an authored gate. If the LLM cannot produce a functional assertion for a task, the gate MUST emit `echo 'GATE_STUB: authored gate required' && exit 1` — which causes `gwrk tasks done` to fail visibly. The `# AUTHORED` marker on an existing gate preserves it through reconcile. NEVER bare `test -f` as sole assertion. (Implements: US-002)
 
 - **FR-003**: `gwrk define tests <feature> <phase>` (workflow invocation) MUST write red vitest test files for every FR/US/TR in the phase before any implementation runs. Tests MUST fail pre-implementation (RED). Every `describe` block MUST reference a `FR-###` ID. Tests MUST use Fastify `inject()` for API routes and Vitest mocks for side-effects. (Implements: US-003)
 
@@ -186,7 +189,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 - **FR-007**: All 22 currently-failing 003-slack vitest tests MUST pass. Phase 7–9 gate scripts MUST invoke `pnpm vitest run` not `test -f`. (Implements: US-007)
 
-- **FR-008**: `gwrk ship <feature> <phase>` MUST exit 1 with `[BLOCKED] No test files found for <phase>` if no `.test.ts` files exist for the phase's deliverable files. This pre-flight check is added to `src/commands/ship.ts`. (Implements: US-008)
+- **FR-008**: `gwrk ship <feature> <phase>` MUST exit 1 with `[BLOCKED] No test files found for <phase>` if no `.test.ts` files exist for the phase's deliverable files. This pre-flight check is **active immediately** — not a flag, not a config option, not a later phase. Added to `src/commands/ship.ts`. (Implements: US-008)
 
 - **FR-009**: `gwrk test <feature> [--phase <N>]` MUST run `pnpm vitest run` scoped to test files matching the feature's deliverable paths, report pass/fail counts, and exit 0 only if all tests pass. (Implements: US-009)
 
