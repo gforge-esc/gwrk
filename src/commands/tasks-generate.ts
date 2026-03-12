@@ -85,10 +85,26 @@ export const tasksGenerateCommand = new Command("tasks")
           let completedAt: string | undefined;
 
           if (opts.reconcile && existingState) {
-            // Match by title across all existing phases
-            const existingTask = existingState.phases
-              .flatMap((ep) => ep.tasks)
-              .find((et) => et.title === t.title);
+            const allExisting = existingState.phases.flatMap(
+              (ep) => ep.tasks,
+            );
+
+            // Pass 1: exact title match
+            let existingTask = allExisting.find(
+              (et) => et.title === t.title,
+            );
+
+            // Pass 2: file path match — extract path from "Implement src/foo.ts"
+            if (!existingTask) {
+              const newPath = t.title.match(
+                /(?:src|tests|docs|scripts)\/\S+|\S+\.(?:ts|json|md|sh|yml)/,
+              );
+              if (newPath) {
+                existingTask = allExisting.find((et) =>
+                  et.title.includes(newPath[0]),
+                );
+              }
+            }
 
             if (
               existingTask &&
