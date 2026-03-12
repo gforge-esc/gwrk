@@ -12,9 +12,48 @@ export const initCommand = new Command("init")
   .action(async (options) => {
     const projectRoot = process.cwd();
     const agentDir = path.join(projectRoot, ".agent");
+    const rcPath = path.join(projectRoot, ".gwrkrc.json");
 
+    // Already initialized — handle additive flags, then exit
     if (fs.existsSync(agentDir)) {
-      console.log("gwrk already initialized");
+      let didWork = false;
+
+      if (options.slack) {
+        const { ensureSlackChannel } = await import(
+          "../server/slack-channel.js"
+        );
+        const { loadSlackConfig } = await import("../utils/slack-client.js");
+
+        const hasTokens = loadSlackConfig();
+        if (!hasTokens) {
+          console.error(
+            "Slack not configured. Run gwrk setup slack first.",
+          );
+          process.exit(1);
+        }
+
+        console.log(`Provisioning Slack channel ${options.slack}...`);
+        const channelId = await ensureSlackChannel(options.slack);
+
+        // Update .gwrkrc.json with Slack config
+        const existing = fs.existsSync(rcPath)
+          ? JSON.parse(fs.readFileSync(rcPath, "utf-8"))
+          : {};
+        existing.project = existing.project || {};
+        existing.project.slack = {
+          channelId,
+          channelName: options.slack,
+        };
+        fs.writeFileSync(rcPath, JSON.stringify(existing, null, 2));
+        console.log(
+          `Provisioned Slack channel: ${options.slack} (${channelId})`,
+        );
+        didWork = true;
+      }
+
+      if (!didWork) {
+        console.log("gwrk already initialized");
+      }
       process.exit(0);
     }
 

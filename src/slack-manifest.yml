@@ -24,6 +24,8 @@ oauth_config:
     bot:
       - chat:write
       - channels:read
+      - channels:manage
+      - channels:join
       - commands
       - app_mentions:read
       - users:read
