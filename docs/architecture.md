@@ -164,7 +164,7 @@ gwrk/
 | **CLI framework** | Commander.js | Lightweight, zero-opinion, npm-standard |
 | **Build Server** | Fastify | Lightweight daemon, localhost:18790 |
 | **Comms** | `@slack/bolt` (Socket Mode) | Channel-per-project, threads, App Home Tab |
-| **Sandbox** | Docker | Per-phase container isolation |
+| **Sandbox** | Docker | Per-feature-phase container isolation |
 | **Git Operations** | `gh` CLI + `git` | GitHub-native |
 | **Agent: Codex** | `codex exec --full-auto` | Cloud microVMs, true parallelism |
 | **Agent: Claude** | `claude -p --output-format json` | Deepest context window, local |
@@ -362,9 +362,9 @@ All config validated by Zod with **no `.default()` calls** — missing var → `
 
 ---
 
-## 11. Implementation Phases
+## 11. Implementation Features
 
-See [specs/000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md) for the authoritative build sequence.
+See [specs/000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md) for the authoritative feature build sequence.
 
 ---
 

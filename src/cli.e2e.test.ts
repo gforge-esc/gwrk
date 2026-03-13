@@ -132,10 +132,9 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).toMatch(/^\s+done\b/m);
   });
 
-  it("fails gracefully with correct error when spec is a Stub during analysis", async () => {
-    // analyze is now internal to define, but define plan still checks stubs
+  it("fails gracefully with correct error when spec is missing", async () => {
     const { stderr, exitCode } = await runCli("define plan 999-stub");
     expect(exitCode).not.toBe(0);
-    expect(stderr).toMatch(/BLOCKED.*Spec 999-stub is marked as a Stub/);
+    expect(stderr).toMatch(/BLOCKED.*spec\.md not found/);
   }, 15_000);
 });

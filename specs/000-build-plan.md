@@ -1,8 +1,21 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-10 (v6)
+> **Status:** Authoritative · **Date:** 2026-03-13 (v7)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
-> **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract)
+> **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (agent-native output protocol)
+
+---
+
+## Terminology
+
+| Term | Meaning | Example |
+|---|---|---|
+| **Feature** | A spec subdirectory under `specs/`. Has its own spec.md, plan.md, contracts/, gates/, etc. | `specs/001-cli-core/` = Feature 001 |
+| **Phase** | An implementation stage *within* a feature's `plan.md`. A feature has 1+ phases. | Phase 1 of Feature 013 = "Foundation (7 SP)" |
+| **Wave** | A scheduling group of features that can execute concurrently. | Wave 2 = {F013, F006, F007, F012} |
+
+> [!IMPORTANT]
+> **Feature ≠ Phase.** A Feature is a deliverable unit with its own spec directory. A Phase is a stage of implementation within a single feature. Features have phases. The build plan orders *features*. Workflows execute *phases within features*.
 
 ---
 
@@ -10,19 +23,23 @@
 
 ```mermaid
 graph TD
-    P0[Phase 0: Extraction] --> P1[Phase 1: CLI Core]
-    P1 --> P2[Phase 2: Build Server]
-    P1 --> P4[Phase 4: Ship Loop]
-    P2 --> P3[Phase 3: Slack + App Home Tab]
-    P2 --> P5[Phase 5: Parallel Dispatch]
-    P4 --> P5
-    P1 --> P6[Phase 6: Pulse]
-    P1 --> P7[Phase 7: Effort + Compression]
-    P5 --> P8[Phase 8: Multi-Agent Router]
-    P3 --> P9[Phase 9: Agent-DUT]
-    P6 --> P10[Phase 10: GForge Integration]
-    P7 --> P10
-    P1 --> P12[Phase 12: Knowledge Work]
+    F000["F000: Extraction ✅"] --> F001["F001: CLI Core ✅"]
+    F001 --> F013["F013: Agent-Native Interface"]
+    F001 --> F002["F002: Build Server ✅"]
+    F001 --> F006["F006: Pulse"]
+    F001 --> F007["F007: Effort + Compression"]
+    F001 --> F012["F012: Knowledge Work"]
+    F002 --> F003["F003: Slack ✅"]
+    F002 --> F005["F005: Parallel Dispatch"]
+    F013 --> TDD["TDD Hardening: 001-003"]
+    F013 --> F004["F004: Ship Loop"]
+    F013 --> F008["F008: Multi-Agent Router"]
+    TDD --> F004
+    F004 --> F005
+    F005 --> F008
+    F003 --> F009["F009: Agent-DUT"]
+    F006 --> F010["F010: GForge Integration"]
+    F007 --> F010
 ```
 
 ---
@@ -30,34 +47,50 @@ graph TD
 ## Critical Path
 
 ```
-P0 → P1 → P2 → P3 (+ App Home Tab)
-              → P4 → P5 → P8
-         → P6
-         → P7
+F000 ✅ → F001 ✅ → F013 (Agent-Native) → TDD Hardening (001-003) → F004 → F005 → F008
+                                         → F002 ✅ → F003 ✅
+               → F006
+               → F007
 ```
 
-**P1 (CLI Core) is the keystone.** Everything depends on the CLI command infrastructure, multi-CLI provisioning, and the SQLite execution ledger (ADR-002). P2 (Build Server) and P4 (Ship Loop) are the next-order dependencies. P3 is Slack (Socket Mode + Bolt SDK) + App Home Tab (folded from former P11, replacing Telegram). P9 (Agent-DUT) depends on a fully functioning P3.
+**F013 (Agent-Native Interface) is the immediate critical path.** It depends only on F001 (✅ complete) and gates both TDD Hardening and F004 (Ship Loop). F013 provides `gwrk project discover`, `gwrk gate-check`, `--format json`, and `[exit:N | Xs]` operational signals — infrastructure that makes the subsequent hardening work structured and auditable. TDD Hardening gates F004: no new feature shipping until the shipped foundation (001-003) meets the TDD standard established by 000-tdd-infrastructure.
 
 ---
 
-## Phases
+## Features
 
-### Phase 0 — Extraction ✅
+### Feature 000 — Extraction ✅
 
 Extract the code-red agent workflow system into the gwrk repository.
 
-| Feature | Content | Gate |
-|---|---|---|
-| `.agents/` | Workflows, rules, personas, templates | Files exist |
-| `.specify/` | Templates, scripts, memory | Files exist |
-| `scripts/dev/` | Shell orchestrators | `make agent-specify` runs |
-| `Makefile` | Agent invocation targets | Targets fire |
+| Content | Gate |
+|---|---|
+| `.agents/`, `.specify/`, `scripts/dev/`, `Makefile` | Files exist, agent invocation targets fire |
 
 **Status:** Complete. Committed on `develop`.
 
 ---
 
-### Phase 1 — CLI Core
+### Feature 000-TDD — TDD Infrastructure ✅
+
+Establish a rigorous, programmatically-enforced TDD standard. Replace file-existence gate stubs with authored executable assertions. Wire `gwrk define tasks` to produce LLM-authored gates from contracts. Retroactively audit 001 and 002. Fix 22 failing tests in 003-slack.
+
+| Content | Gate |
+|---|---|
+| Gate standard (FR-001), AUTHORED/GATE_STUB preservation (FR-002), `gwrk test` command (FR-009), `gwrk ship` pre-flight block (FR-008), gap analyses for 001+002 (FR-005/006), 003-slack test remediation (FR-007) | `pnpm vitest run` = 0 failed; no gate is purely `test -f` |
+
+**Status:** Complete. Merged via PR #7. UAT GO (`75a0a51`). Code review GO (`3ca5954`).
+
+**Deliverables produced:**
+- Hard gate enforcement (`GATE_STUB` blocks `tasks done`, `# AUTHORED` preserves gates through reconcile)
+- `gwrk test <feature>` command
+- `gwrk ship` pre-flight block (FR-008: exits 1 if no `.test.ts` files for phase)
+- Gap analyses: `specs/001-cli-core/gap-analysis.md`, `specs/002-build-server/gap-analysis.md`
+- 22 failing 003-slack tests fixed → full suite 60 files, 303 tests, 0 failed
+
+---
+
+### Feature 001 — CLI Core ✅
 
 Bootstrap the gwrk TypeScript CLI with foundational commands, multi-CLI provisioning, and the SQLite execution ledger (ADR-002).
 
@@ -65,65 +98,55 @@ Bootstrap the gwrk TypeScript CLI with foundational commands, multi-CLI provisio
 |---|---|---|
 | `001-cli-core` | CLI entry, Commander routing, `gwrk new`, `gwrk init`, multi-CLI provisioning, `specify`, `plan`, `plan-to-tasks`, `tasks`, SQLite init | `gwrk new <project>` scaffolds everything; `gwrk tasks done` enforces gates |
 
-**Dependencies:** Phase 0
+**Dependencies:** Feature 000
 **Agent:** Gemini CLI (definition + multi-file generation)
+
+**Status:** Complete. Code shipped on `develop`.
+
+> [!WARNING]
+> **Gap analysis (000-tdd FR-005) identified issues:** Most gates are `test -f` stubs. `gate-gen.ts` is heuristic-based, not contract-derived. `dispatchAgent()` return type has contract mismatch. Remediation deferred to TDD Hardening.
 
 #### What ships:
 
 ```bash
-gwrk new <project-name>        # Full provisioning: dir, git, GitHub, Slack channel,
-                                # CLI detection, scaffold, SQLite registration, server start
-gwrk init                      # Add gwrk to existing project: scaffold + CLI provisioning
-                                # + Slack channel + SQLite registration
+gwrk new <project-name>        # Full provisioning
+gwrk init                      # Add gwrk to existing project
 gwrk specify <feature>         # Wrapper: invokes gemini with /specify workflow
 gwrk plan <feature>            # Wrapper: invokes gemini with /plan workflow
-gwrk tasks <feature>           # List tasks from SQLite (exported to .gwrk/tasks.json)
+gwrk tasks <feature>           # List tasks from SQLite
 gwrk tasks done <feature> <id> # Gate-enforced state transition
 ```
 
-#### `gwrk new` vs `gwrk init`:
-- **`gwrk new <name>`** — From scratch. Requires explicit project name (or description → extracted name). Creates directory, `git init`, `gh repo create`, Slack channel, full scaffold, CLI provisioning, SQLite registration. Does everything it can, then reports what it couldn't with next steps.
-- **`gwrk init`** — "I'm working here, add gwrk." Detects existing project context. Scaffolds `.agents/`, `.specify/`, `specs/`. Provisions detected CLIs (`GEMINI.md`, `CLAUDE.md`, `AGENTS.md`). Creates Slack channel. Registers in SQLite.
-
-#### Multi-CLI provisioning:
-- Detects `gemini`, `claude`, `codex` via `which`/`command -v`
-- Provisions CLI-specific context files referencing shared `.agents/` directory
-- Generates CLI-specific settings from `.gwrkrc.json` defaults
-
 #### Key files:
 - `src/cli.ts` — Commander entry point
-- `src/commands/new.ts` — Full project provisioning
-- `src/commands/init.ts` — Add gwrk to existing project
-- `src/commands/specify.ts`, `plan.ts`, `tasks.ts`
-- `src/utils/exec.ts` — Shell command runner
-- `src/utils/config.ts` — `.gwrkrc.json` loader (Zod, fail-fast)
-- `src/db/index.ts` — SQLite connection + schema init
-- `src/db/migrations/` — Versioned schema files
-- `src/utils/state.ts` — Task read/write via SQLite
-- `src/utils/history.ts` — History inserts via SQLite
-- `src/utils/parser.ts` — Extract phases/tasks from `plan.md`
-- `src/utils/gate-gen.ts` — Generate `gates/T0xx-gate.sh` from contracts
+- `src/commands/new.ts`, `init.ts`, `specify.ts`, `plan.ts`, `tasks.ts`
+- `src/utils/exec.ts`, `config.ts`, `state.ts`, `history.ts`, `parser.ts`, `gate-gen.ts`
+- `src/db/index.ts`, `src/db/migrations/`
 
 #### Tech decisions:
 - **Commander.js** for CLI routing (not Ink — see architecture.md §4)
 - **better-sqlite3** for execution ledger (ADR-002)
 - **Zod** for all schema validation
-- **Vitest** for testing
-- **Biome** for lint + format
+- **Vitest** for testing, **Biome** for lint + format
 - **ES2022** target, ESM modules
 
 ---
 
-### Phase 2 — Build Server
+### Feature 002 — Build Server ✅
 
 Local persistent daemon that serves as the control plane. Includes macOS sleep/wake resilience, network connectivity awareness, and component-level health reporting.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `002-build-server` | Fastify daemon, dispatch queue, Docker sandbox manager, sleep/wake lifecycle, network monitor, rich health endpoint, **`gwrk harvest` manifest ETL** | `gwrk server start` creates sandboxes; dispatch queue pauses on sleep/offline; harvest upserts manifests into SQLite |
+| `002-build-server` | Fastify daemon, dispatch queue, Docker sandbox manager, sleep/wake lifecycle, network monitor, rich health endpoint, `gwrk harvest` manifest ETL | `gwrk server start` creates sandboxes; dispatch queue pauses on sleep/offline |
 
-**Dependencies:** Phase 1
+**Dependencies:** Feature 001
 **Agent:** Claude Code (long-context server architecture)
+
+**Status:** Complete. Code shipped on `develop`.
+
+> [!WARNING]
+> **Gap analysis (000-tdd FR-006) identified issues:** FR-012 (Dockerfile ⚠️), FR-016/018/019 (weak assertions), FR-024 (`server clean` ❌ missing). Remediation deferred to TDD Hardening.
 
 #### What ships:
 
@@ -135,22 +158,25 @@ gwrk status                    # Active agents, clones, system resources
 
 #### Key files:
 - `src/server/index.ts` — Fastify bootstrap
-- `src/server/dispatch.ts` — Phase dispatch queue + retry logic (writes to `runs` table)
-- `src/server/sandbox.ts` — Docker container lifecycle
-- `src/server/git-manager.ts` — Branch creation, merge, conflict resolution
+- `src/server/dispatch.ts`, `sandbox.ts`, `git-manager.ts`
 
 ---
 
-### Phase 3 — Slack
+### Feature 003 — Slack ✅
 
 Slack integration for the comms layer via Socket Mode + Bolt SDK. Channel-per-project model.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `003-slack` | Socket Mode app, Bolt SDK, slash commands, interactive messages, threads, channel provisioning, **App Home Tab dashboard** | Send status update and approve a review verdict from Slack; App Home Tab renders live dashboard |
+| `003-slack` | Socket Mode app, Bolt SDK, slash commands, interactive messages, threads, channel provisioning, App Home Tab dashboard | Send status update and approve a review verdict from Slack |
 
-**Dependencies:** Phase 2
+**Dependencies:** Feature 002
 **Agent:** Gemini CLI
+
+**Status:** Complete. Code shipped on `develop`. 000-tdd fixed 20 failing tests.
+
+> [!WARNING]
+> **Gap analysis is a greenfield inventory (2026-03-10), NOT a test-coverage audit.** Needs rewrite as proper FR-by-FR ✅/⚠️/❌ classification. Deferred to TDD Hardening.
 
 #### What ships:
 
@@ -158,53 +184,111 @@ Slack integration for the comms layer via Socket Mode + Bolt SDK. Channel-per-pr
 gwrk setup slack               # Fully automated: create app, install, write tokens, test
 # Slack commands: /gwrk status, /gwrk dispatch, /gwrk approve, /gwrk pulse
 # Interactive: review verdict buttons, threaded DUT conversations
-# Reactions: ✅ react-to-approve for lightweight confirmation
-# Presence: notification throttling (active=verbose, away=batched)
 ```
 
 #### Key files:
-- `src/server/slack.ts` — Bolt SDK Socket Mode integration
-- `src/server/slack-commands.ts` — Slash command handlers
-- `src/server/slack-actions.ts` — Interactive message action handlers
-- `src/commands/setup-slack.ts` — Automated Slack app provisioning
+- `src/server/slack.ts`, `slack-commands.ts`, `slack-actions.ts`
+- `src/commands/setup-slack.ts`
 
 ---
 
-### Phase 4 — Ship Loop
+### Feature 013 — Agent-Native Interface 🟡
+
+Make gwrk a dual-mode CLI that operates identically for humans and LLM agents, with structured output, operational signals, project discovery, and a presentation layer that protects agents from context corruption.
+
+| Spec | Content | Gate |
+|---|---|---|
+| `013-agent-native-interface` | Operational signal (`[exit:N \| Xs]`), `--format json`, `--agent` mode (Layer 2), `gwrk project discover/specs/gates`, `gwrk gate-check`, error-as-navigation, exit code standardization, help text enrichment | `gwrk status 2>/dev/null` produces clean stdout; `gwrk project discover --format json \| jq .` succeeds |
+
+**Dependencies:** Feature 001 ✅
+**Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/013-agent-native-interface/spec.md) ✅
+**Plan:** [plan.md](file:///Users/gonzo/Code/gwrk/specs/013-agent-native-interface/plan.md) ✅
+**Decision:** [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md)
+
+#### What ships:
+
+```bash
+gwrk project discover          # Full project state (git, specs, tasks, gates, config)
+gwrk project specs             # Spec inventory with status
+gwrk project gates             # Aggregate gate results
+gwrk gate-check <task_id>      # Structured gate verification result
+gwrk <any> --format json       # Machine-readable structured output
+gwrk <any> --agent             # Layer 2: ANSI-stripped, bounded, guarded output
+# [exit:N | Xs] on stderr for every command invocation
+```
+
+#### Implementation phases (within this feature):
+1. **Phase 1 — Foundation (7 SP):** `withSignal()` wrapper, `--format json`, `gwrk gate-check`, exit code audit
+2. **Phase 2 — Discovery (10 SP):** `gwrk project discover`, `gwrk project specs/gates`, help text rewrite, error-as-navigation
+3. **Phase 3 — Agent Mode (11 SP):** `--agent` / Layer 2, stdin acceptance for `define plan`, classification inference, phase schema enrichment
+
+#### Key files (new):
+- `src/utils/signal.ts`, `output.ts`, `agent-layer.ts`
+- `src/commands/gate-check.ts`, `project.ts`
+- `src/engine/discover.ts`, `classify.ts`
+
+---
+
+### TDD Hardening — 001, 002, 003 🔒
+
+Rewrite shipped features 001–003 to the TDD standard established by 000-tdd-infrastructure. Regenerate all legacy garbage gates (`test -f` stubs) to functional assertions. Audit actual implementation state. Remediate gaps.
+
+| Scope | Content | Gate |
+|---|---|---|
+| 001-cli-core | Rewrite spec to TDD standard. Fix `dispatchAgent()` contract mismatch. Regenerate all 44 gates. | `gwrk test 001-cli-core` = 0 failed |
+| 002-build-server | Rewrite spec to TDD standard. Add lifecycle integration tests. Implement `server clean` (FR-024). Regenerate 26 gates. | `gwrk test 002-build-server` = 0 failed |
+| 003-slack | Rewrite gap-analysis as test-coverage audit. Verify contracts against shipped code. Remediate ❌ items. | `gwrk test 003-slack` = 0 failed |
+
+**Dependencies:** Feature 013 (structured tooling for audit: `gwrk project discover`, `gwrk gate-check`)
+**Estimated effort:** ~15 SP (5 + 7 + 3)
+
+#### Gate contamination baseline (pre-hardening):
+
+| Feature | Total Gates | `test -f` Only | Contamination |
+|---|---|---|---|
+| 001-cli-core | 44 | ~40 | ~91% |
+| 002-build-server | 26 | 18 | 69% |
+| 003-slack | 31 | 3 | 10% ✅ (fixed by 000-tdd) |
+
+---
+
+### Feature 004 — Ship Loop
 
 Autonomous implement → review → PR → CI loop. (Renamed from WUD to align with Foxtrot Charlie Pillar 3: Shipping.)
 
 | Spec | Content | Gate |
 |---|---|---|
-| `004-ship-loop` | `gwrk ship`, review gates, PR creation, execution manifests, run recording | Agent completes a phase and opens a PR |
+| `004-ship-loop` | `gwrk ship`, review gates, PR creation, execution manifests, run recording. WUD-as-CLI-consumer: agent operates through `gwrk tasks next`, `gwrk gate-check`, `gwrk tasks done` (F013 contracts). | Agent completes a feature phase and opens a PR |
 
-**Dependencies:** Phase 1
+**Dependencies:** Feature 013, TDD Hardening
 **Agent:** Codex Cloud (autonomous execution)
 
 #### What ships:
 
 ```bash
-gwrk ship <feature> [phase]        # Full autonomous lifecycle (phase optional — ships all if omitted)
+gwrk ship <feature> [phase]        # Full autonomous lifecycle
 gwrk ship <feature> <phase>        # Ship a single phase
 ```
 
+#### F013 integration (WUD-as-CLI-consumer):
+- WUD calls `gwrk tasks next --json`, `gwrk gate-check <task_id> --json`, `gwrk tasks done`
+- All output parsed via `--format json`; operational signals via `[exit:N | Xs]`
+
 #### SQLite integration:
 - Every Ship dispatch writes a `runs` record (backend, model, attempt, timestamps)
-- Gate results recorded in `runs.gate_result`
-- Review verdicts in `runs.review_verdict`
-- Retry reasons in `runs.retry_reason`
+- Gate results, review verdicts, retry reasons recorded
 
 ---
 
-### Phase 5 — Parallel Dispatch
+### Feature 005 — Parallel Dispatch
 
 Multi-phase concurrent execution with conflict resolution.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `005-parallel-dispatch` | Concurrent sandboxes, merge ordering, managed repo clones, **per-backend capacity gate** | Three agents work simultaneously without exceeding backend rate limits |
+| `005-parallel-dispatch` | Concurrent sandboxes, merge ordering, managed repo clones, per-backend capacity gate | Three agents work simultaneously without exceeding backend rate limits |
 
-**Dependencies:** Phase 2, Phase 4
+**Dependencies:** Feature 002, Feature 004
 **Agent:** Claude Code
 
 #### What ships:
@@ -215,13 +299,13 @@ gwrk config set parallelism.local.clones 3
 ```
 
 #### Agent capacity gate:
-- Before `processNext()` assigns a backend, checks: (a) is backend at `maxConcurrent`? (b) hit `rateLimit` in sliding window? → skip to next in `fallbackOrder`
-- On 429/rate-limit error: record in `runs`, exponential backoff with jitter on that backend
-- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md) for per-backend constraints
+- Before `processNext()` assigns a backend: check `maxConcurrent` and `rateLimit` sliding window
+- On 429/rate-limit: record in `runs`, exponential backoff with jitter
+- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md)
 
 ---
 
-### Phase 6 — Pulse
+### Feature 006 — Pulse
 
 Productivity dashboard with historical git analysis.
 
@@ -229,10 +313,8 @@ Productivity dashboard with historical git analysis.
 |---|---|---|
 | `006-pulse` | Git log scanner, PulseSnapshot, historical scan | `gwrk pulse scan` produces data |
 
-**Dependencies:** Phase 1
+**Dependencies:** Feature 001
 **Agent:** Gemini CLI
-
-#### What ships:
 
 ```bash
 gwrk pulse                     # Current snapshot across repos
@@ -241,21 +323,19 @@ gwrk pulse scan [path]         # Scan any existing git repo
 
 ---
 
-### Phase 7 — Effort + Compression
+### Feature 007 — Effort + Compression
 
 SP-driven estimation and delivery speed measurement with leading compression indicators.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `007-effort-compression` | Story extraction, role bracketing, timestamp collection, compression ratios, leading indicators: convergence (first-pass rate, avg attempts), density (lines/SP, files/SP, tool calls/SP), spec quality (contract count, gate count) | `gwrk compression` produces a report with Point + Total ratios and leading indicators |
+| `007-effort-compression` | Story extraction, role bracketing, compression ratios, leading indicators | `gwrk compression` produces a report |
 
-**Dependencies:** Phase 1, SQLite (ADR-002)
+**Dependencies:** Feature 001, SQLite (ADR-002)
 **Agent:** Gemini CLI
 
-#### What ships:
-
 ```bash
-gwrk effort <feature>          # Generate effort estimate from spec stories
+gwrk effort <feature>          # Generate effort estimate
 gwrk compression <feature>     # Compression ratios + leading indicators
 gwrk compression --all         # Summary across all features with trends
 ```
@@ -265,49 +345,44 @@ Feature SP = Σ Phase SP = Σ Task SP. No orphan points. gwrk validates on `plan
 
 ---
 
-### Phase 8 — Multi-Agent Router
+### Feature 008 — Multi-Agent Router
 
-Agent backend selection, Done Done! protocol, retry + escalation, learning from execution history. **Agent registry with per-backend rate/token limits.**
+Agent backend selection, Done Done! protocol, retry + escalation, learning from execution history. Agent registry with per-backend rate/token limits.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `008-agent-router` | Router logic, per-backend invocation, fallback chain, tandem dispatch, **SQLite-backed learning**, **agent registry schema**, **context size estimator** | Dispatch to Codex, retry on Claude, mini-model fallback, feature ships |
+| `008-agent-router` | Router logic, per-backend invocation, fallback chain, tandem dispatch, SQLite-backed learning, agent registry schema, context size estimator | Dispatch to Codex, retry on Claude, mini-model fallback |
 
-**Dependencies:** Phase 5, SQLite (ADR-002)
+**Dependencies:** Feature 005, SQLite (ADR-002)
 **Agent:** Claude Code
 
-#### Agent registry:
-- `.gwrkrc.json` → `agents.registry` map. Each backend declares: `contextWindow`, `maxConcurrent`, `rateLimit`, `models[]`, `invocation` command template
-- Context Size Estimator: rough token count for `phase-context.md` vs backend's `contextWindow`. Too large → skip backend
-- Mini-model fallback: if primary at capacity, try mini variant (e.g., `gpt-5.1-codex-mini`) before escalating
-- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md) for documented constraints
+#### F013 integration:
+- Router reads `[exit:N | Xs]` duration data from execution ledger for cost models
+- Task routing considers classification (greenfield/change/refactor) from F013
+- `gwrk project discover --json` provides context for routing decisions
 
-#### Learning engine:
-- Queries global SQLite `runs` + `task_types` tables
-- Selects backend based on historical success rate × task SP × language
-- Adapts over time as more execution data accumulates
+#### Agent registry:
+- `.gwrkrc.json` → `agents.registry` map
+- Context Size Estimator: token count vs backend `contextWindow`
+- Mini-model fallback before escalation
+- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md)
 
 ---
 
-### Phase 9 — Agent-DUT
+### Feature 009 — Agent-DUT
 
 Slack-native conversational ideation → spec generation, aligned to Foxtrot Charlie.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `009-agent-dut` | DUT conversational loop in Slack threads, FC-aligned protocol (SPARK→PROBE→DISAMBIGUATE→SHAPE→PRESS→GROUND→REVIEW→COMMIT), analyze-as-core-perspective | `/dream` in Slack produces a `spec.md` from threaded conversation |
+| `009-agent-dut` | DUT conversational loop in Slack threads, FC-aligned protocol (SPARK→PROBE→DISAMBIGUATE→SHAPE→PRESS→GROUND→REVIEW→COMMIT) | `/dream` in Slack produces a `spec.md` from threaded conversation |
 
-**Dependencies:** Phase 3
+**Dependencies:** Feature 003
 **Agent:** Gemini CLI
-
-#### Foxtrot Charlie alignment:
-- **Discovery (Truth):** SPARK → PROBE → DISAMBIGUATE (analyze lens active)
-- **Definition (Clarity):** SHAPE → PRESS → GROUND → REVIEW → COMMIT
-- Analyze perspective runs continuously, not as a separate step
 
 ---
 
-### Phase 10 — GForge Integration
+### Feature 010 — GForge Integration
 
 Unified Pulse + Compression dashboard across repos.
 
@@ -315,28 +390,26 @@ Unified Pulse + Compression dashboard across repos.
 |---|---|---|
 | `010-gforge-integration` | Pulse replaces PulseStore, unified dashboard | Single pane across repos |
 
-**Dependencies:** Phase 6, Phase 7
+**Dependencies:** Feature 006, Feature 007
 
 ---
 
-### Phase 11 — RETIRED
+### Feature 011 — RETIRED
 
-> **Folded into Phase 3 (003-slack).** The App Home Tab is a Bolt event handler + Block Kit renderer that shares the same Bolt instance, OAuth scopes, and config as the rest of 003-slack. Keeping it separate added overhead for minimal isolation benefit. See US-008/FR-008 in `specs/003-slack/spec.md`.
+> **Folded into Feature 003 (003-slack).** The App Home Tab is a Bolt event handler + Block Kit renderer that shares the same Bolt instance, OAuth scopes, and config as the rest of 003-slack.
 
 ---
 
-### Phase 12 — Knowledge Work
+### Feature 012 — Knowledge Work
 
-First-class support for Foxtrot Charlie's Discovery pillar. Fieldnote capture, discovery compilation, and knowledge work workflows (kw-specify, kw-plan, kw-build-plan) as gwrk commands.
+First-class support for Foxtrot Charlie's Discovery pillar. Fieldnote capture, discovery compilation, and knowledge work workflows as gwrk commands.
 
 | Spec | Content | Gate |
 |---|---|---|
 | `012-knowledge-work` | `gwrk discover`, `gwrk kw`, fieldnotes, discovery digest, kw-specify/plan/build-plan, datetime orientation, SQLite `fieldnotes` table | `gwrk discover fieldnote` captures from stdin; `gwrk kw specify` produces `kw-spec.md` |
 
-**Dependencies:** Phase 1
+**Dependencies:** Feature 001
 **Agent:** Gemini CLI
-
-#### What ships:
 
 ```bash
 gwrk discover fieldnote            # Capture fieldnote from stdin/file/URL
@@ -351,68 +424,68 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 - Every fieldnote carries: `createdAt`, `sourceDate`, `source`, `project`, `tags`, `supersedes`
 - Files stored as `docs/discovery/fieldnotes/YYYY-MM-DD-{slug}.md` with YAML frontmatter
 - SQLite `fieldnotes` table enables recency queries, burst detection, staleness warnings
-- `--since <date>` and `--stale <days>` filters on `discover list`
-
-#### Discovery directory convention:
-- `docs/discovery/fieldnotes/` — timestamped fieldnotes
-- `docs/discovery/references/` — primary/secondary reference materials
-- `docs/deliverables/` — knowledge work deliverable directories
-- Provisioned by `gwrk init`
 
 ---
 
 ## Wave Strategy
 
-| Wave | Phases | Parallelizable? | Theme |
+| Wave | Features | Parallelizable? | Theme |
 |---|---|---|---|
-| **Wave 1** | P1 | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning, gwrk new/init |
-| **Wave 2** | P2, P4, P6, P7, P12 | Yes (independent after P1) | Core engines: server, execution, productivity, compression, discovery |
-| **Wave 3** | P3, P5 | Partially (P3 needs P2, P5 needs P2+P4) | Multipliers: Slack + App Home Tab, parallelism |
-| **Wave 4** | P8, P9 | Yes (P8 needs P5; P9 needs P3) | Intelligence + Comms: smart routing, DUT ideation |
-| **Wave 5** | P10 | No (needs P6+P7) | Integration: unified dashboard |
+| **Wave 1** | F001 ✅ | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning |
+| **Wave 2** | F013, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
+| **Wave 3** | TDD Hardening (001-003) | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
+| **Wave 4** | F004, F005 | Partially (F004 needs F013+Hardening, F005 needs F002+F004) | Execution: ship loop + parallel dispatch |
+| **Wave 5** | F008, F009 | Yes (F008 needs F005; F009 needs F003) | Intelligence + Comms: smart routing, DUT |
+| **Wave 6** | F010 | No (needs F006+F007) | Integration: unified dashboard |
 
 ---
 
 ## Estimated Effort
 
-| Phase | SP | Primary Role | Est. Hours |
-|---|---|---|---|
-| P0 (Extraction) | 3 | PE | Done |
-| P1 (CLI Core) | 25 | TS | 125h |
-| P2 (Build Server) | 18 | TS | 90h |
-| P3 (Slack + App Home Tab) | 13 | TS | 65h |
-| P4 (Ship Loop) | 8 | TS | 40h |
-| P5 (Parallel Dispatch) | 10 | TS | 50h |
-| P6 (Pulse) | 5 | TS | 25h |
-| P7 (Effort + Compression) | 8 | TS | 40h |
-| P8 (Agent Router) | 10 | TS | 50h |
-| P9 (Agent-DUT) | 8 | TS | 40h |
-| P10 (Integration) | 5 | TS | 25h |
-| P11 (RETIRED) | — | — | Folded into P3 |
-| P12 (Knowledge Work) | 8 | TS | 40h |
-| **Total** | **121 SP** | | **590h** |
+| Role | Meaning |
+|---|---|
+| **PM** | Definitional: specs, architecture, protocol design, gap analysis, workflow design |
+| **PE** | Construction: implementation, tests, gates, audit, remediation |
 
-**Changes from v1:** P1 increased (13→21 SP: gwrk new, gwrk init, multi-CLI, SQLite). P3 increased (8→13 SP: Slack is richer than Telegram). P7 increased (5→8 SP: leading indicators). P11 decreased (8→5 SP: App Home Tab is simpler than SPA).
+| Feature | SP | Role | Est. Hours |
+|---|---|---|---|
+| F000 (Extraction) ✅ | 3 | PE | Done |
+| F000-TDD (TDD Infrastructure) ✅ | — | PE | Done |
+| F001 (CLI Core) ✅ | 25 | PE | Done |
+| F002 (Build Server) ✅ | 18 | PE | Done |
+| F003 (Slack) ✅ | 13 | PE | Done |
+| **F013 (Agent-Native Interface)** | **28** | **PM+PE** | **140h** |
+| **TDD Hardening (001-003)** | **~15** | **PE** | **~75h** |
+| F004 (Ship Loop) | 5 | PM+PE | 25h |
+| F005 (Parallel Dispatch) | 10 | PE | 50h |
+| F006 (Pulse) | 5 | PE | 25h |
+| F007 (Effort + Compression) | 8 | PM+PE | 40h |
+| F008 (Agent Router) | 7 | PM+PE | 35h |
+| F009 (Agent-DUT) | 8 | PM+PE | 40h |
+| F010 (Integration) | 5 | PE | 25h |
+| F011 (RETIRED) | — | — | Folded into F003 |
+| F012 (Knowledge Work) | 8 | PM+PE | 40h |
+| **Total** | **~158 SP** | | **~495h remaining** |
 
 ---
 
-## Open Questions Blocking Architecture
-
-None for P0→P1→P2 critical path. Remaining questions:
+## Open Questions
 
 | # | Question | Affects | Status |
 |---|---|---|---|
-| 1 | SP → Phase → Task additivity enforcement: warn or hard fail? | P7 | 🟡 Open |
-| 2 | Cloudflare Tunnel automation: can we provision without pre-config? | P11 | 🟡 Open (spike needed) |
-| 3 | Slack presence throttling: granularity beyond active/away? | P3 | 🟡 Open |
+| 1 | SP → Phase → Task additivity enforcement: warn or hard fail? | F007 | 🟡 Open |
+| 2 | Cloudflare Tunnel automation | F011 (RETIRED) | ⚫ Moot |
+| 3 | Slack presence throttling: granularity beyond active/away? | F003 | 🟡 Open |
+| 4 | TDD Hardening scope: extend beyond 001-003 to 004-008? | Hardening | 🟡 Open (004-008 have 64-92% `test -f` contamination but haven't shipped code) |
 
 ---
 
 ## Changelog
 
-- **2026-03-10 (v6):** P11 (App Home Tab) retired as separate phase — folded into P3 (003-slack). App Home Tab is US-008/FR-008 within 003-slack. DUT scope (US-006/FR-006/TR-008/DM-004) extracted from 003-slack → deferred to 009-agent-dut. P9 depends on fully functioning P3. Wave 4 reduced to P8+P9. SP: 126→121 (-5 SP from retired P11). Hours: 615h→590h.
-- **2026-03-08 (v5):** Execution State Contract (ADR-003). Two-tier architecture: git-native execution manifests (Tier 1, operational) + build-server-side SQLite harvest (Tier 2, analytical). `.gitignore` for `.runs/`, `.gitattributes` for `.gwrk/` merge safety. P1 gains Phase 9 (manifest writer, `tasks verify`, `history.jsonl` deprecation path). P2 gains `gwrk harvest`. P1 SP: 21→25. `history.jsonl`(DM-002) deprecated. Total: 122→126 SP.
-- **2026-03-08 (v4):** Three additions. (1) Phase 4 renamed WUD→Ship to align with FC Pillar 3. (2) Agent Registry: P5 gets capacity gate (per-backend rate limiting), P8 gets registry schema + context size estimator + mini-model fallback. Backend constraints documented in `docs/references/agent-backends.md`. P5 SP: 8→10, P8 SP: 8→10. (3) New Phase 12 (Knowledge Work): first-class Foxtrot Charlie Discovery pillar support — fieldnote capture, discovery compilation, kw-specify/plan/build-plan. Wave 2 eligible. +8 SP. Total: 110→122 SP.
-- **2026-03-08 (v3):** Added resilience requirements to Phase 2 (Build Server). New user scenarios: US-011 (macOS sleep/wake), US-012 (network connectivity), US-013 (rich health). Seven new FRs (FR-015–FR-021). New Phase 6 in 002-build-server plan (Resilience & Connectivity). Phase 11 tunnel dependency on Phase 2 event bus clarified. P2 SP: 13→18 (+5 SP for resilience phase). Total: 105→110 SP.
-- **2026-03-05 (v2):** Major update per strategic vision v2. Phase 3: Telegram → Slack (Socket Mode + Bolt SDK). Phase 11: Glass Dashboard → App Home Tab. P1 expanded (gwrk new/init, multi-CLI provisioning, SQLite). SQLite execution ledger (ADR-002) replaces flat JSON. P7 adds leading compression indicators. P9 DUT moves to Slack, aligns to Foxtrot Charlie. Telegram cut from MVP. Updated SP estimates. Total: 92→105 SP.
-- 2026-02-27: Added Spec 011 (Glass Dashboard). Wave 4. Dependencies: [P2, P3]. Impact: +8 SP.
+- **2026-03-13 (v7):** Terminology fix: "Phase N" → "Feature NNN" throughout the build plan. Features are spec subdirectories; Phases are implementation stages within features. F013 (Agent-Native Interface, 28 SP) added as critical path prerequisite for F004 and F008 (ADR-004). F004 SP: 8→5, F008 SP: 10→7 (F013 provides discovery, signals, structured output). TDD Hardening (~15 SP) added for 001-003: rewrite specs to TDD standard, regenerate gates, remediate gaps. F013 gates hardening. Hardening gates F004. F000/F000-TDD/F001/F002/F003 marked ✅. Wave strategy restructured to 6 waves. OQ-002 marked moot, OQ-004 added. Total: 121→~158 SP.
+- **2026-03-10 (v6):** F011 (App Home Tab) retired — folded into F003 (003-slack). DUT scope extracted from 003-slack → deferred to F009. SP: 126→121.
+- **2026-03-08 (v5):** Execution State Contract (ADR-003). Two-tier architecture: git-native manifests + SQLite harvest. F001 SP: 21→25. Total: 122→126 SP.
+- **2026-03-08 (v4):** F004 renamed WUD→Ship. Agent Registry: F005 gets capacity gate, F008 gets registry + context estimator. F012 (Knowledge Work) added. Total: 110→122 SP.
+- **2026-03-08 (v3):** Resilience requirements added to F002. F002 SP: 13→18. Total: 105→110 SP.
+- **2026-03-05 (v2):** Telegram → Slack. F001 expanded (gwrk new/init, multi-CLI, SQLite). ADR-002. Total: 92→105 SP.
+- 2026-02-27: Added F011 (Glass Dashboard). +8 SP.

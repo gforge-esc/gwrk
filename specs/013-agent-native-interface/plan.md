@@ -346,11 +346,11 @@ pnpm test                                  # all existing tests pass
 
 ## Build Plan Integration
 
-Phase 13 inserts into `000-build-plan.md` v7:
+Feature 013 inserts into `000-build-plan.md` v7:
 
 ```
-P1 ✅ → P13 (Agent-Native) → P4 (Ship Loop)
-                             → P8 (Agent Router)
+F001 ✅ → F013 (Agent-Native) → F004 (Ship Loop)
+                             → F008 (Agent Router)
 ```
 
-Net impact: P4 drops from 8→5 SP, P8 drops from 10→7 SP. Net: +22 SP but architecturally superior.
+Net impact: F004 drops from 8→5 SP, F008 drops from 10→7 SP. Net: +22 SP but architecturally superior.
