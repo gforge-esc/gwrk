@@ -1,10 +1,10 @@
 # 013 Agent-Native Interface — Implementation Plan
 
-> **Feature:** Phase 13 — Agent-Native Interface
+> **Feature:** 013 — Agent-Native Interface
 > **Date:** 2026-03-13 · **Status:** Draft
-> **Spec:** [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md)
+> **Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/013-agent-native-interface/spec.md), [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md)
 > **Decision:** [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md)
-> **Dependencies:** Phase 1 (CLI Core) — ✅ Complete
+> **Dependencies:** Feature 001 (CLI Core) — ✅ Complete
 
 ---
 
@@ -78,12 +78,33 @@ export function createOutput(format: 'human' | 'json'): CommandOutput;
 - `human` mode: `write()` → `process.stdout.write(String(data))`, `info()` → `process.stderr.write()`
 - `json` mode: `write()` → `JSON.stringify(data)` to stdout, `info()` → stderr
 
-#### [MODIFY] `src/commands/tasks.ts`, `status.ts`, `measure.ts`
+#### [MODIFY] `src/commands/tasks.ts`, `status.ts`, `measure.ts`, `db.ts`, `runs.ts`
 
 Retrofit to use `CommandOutput`:
 - `tasks list`: human = table, json = `{ tasks: [...] }`
 - `tasks next`: human = formatted task, json = `{ task: {...} }`
 - `status`: human = formatted summary, json = `{ project, specs, agents }`
+
+#### Queryable Command Table
+
+| Command | Queryable | JSON Schema |
+|---|---|---|
+| `gwrk tasks list` | ✅ | `{ tasks: Task[] }` |
+| `gwrk tasks next` | ✅ | `{ task: Task \| null }` |
+| `gwrk tasks ready` | ✅ | `{ tasks: Task[] }` |
+| `gwrk status` | ✅ | `{ project, specs, agents }` |
+| `gwrk project discover` | ✅ | `ProjectDiscovery` (DM-001) |
+| `gwrk project specs` | ✅ | `SpecSummary[]` |
+| `gwrk project gates` | ✅ | `GateCheckResult[]` |
+| `gwrk gate-check` | ✅ | `GateCheckResult` (DM-002) |
+| `gwrk db runs` | ✅ | `{ runs: Run[] }` |
+| `gwrk measure effort` | ✅ | `EffortReport` |
+| `gwrk measure compression` | ✅ | `CompressionReport` |
+| `gwrk define spec` | ❌ | Agent dispatch — no structured output |
+| `gwrk define plan` | ❌ | Agent dispatch — no structured output |
+| `gwrk ship` | ❌ | Long-running agent loop |
+| `gwrk server start/stop` | ❌ | Lifecycle — status reported via signal |
+| `gwrk init` | ❌ | Provisioning — status reported via signal |
 
 **Gate:** `gwrk tasks list --format json | jq .` produces valid JSON.
 
@@ -148,15 +169,18 @@ Discovery engine that assembles project state from multiple sources:
 | Build health | `pnpm build` | Dry-run or cached exit code |
 | Config | `.gwrkrc.json` | Zod parse via existing `loadConfig()` |
 
-Output schema:
+Output schema (matches spec DM-001):
 
 ```typescript
 interface ProjectDiscovery {
   project: { name: string; root: string; git: GitState };
   specs: SpecSummary[];
   gates: { total: number; passing: number; failing: number };
-  build: { test_command: string; lint_command: string };
-  config: Partial<GwrkConfig>;
+  config: {
+    hasSlack: boolean;
+    hasServer: boolean;
+    agents: string[];        // Detected agent CLIs (gemini, claude, codex)
+  };
 }
 ```
 
@@ -232,24 +256,28 @@ program.option('--agent', 'Enable agent mode: ANSI-stripped output with Layer 2 
 
 `--agent` activates Layer 2 (ANSI strip, binary guard, overflow) but does NOT change output format. `--format json` remains independent — agents discover it via `--help` when they need structured parsing.
 
-**Gate:** `printf '\x00binary\x00' | gwrk echo --agent` returns `[binary content, N bytes]`.
+**Gate:** `GWRK_AGENT=1 gwrk status | cat -v | grep -c '\^\['` returns 0 (no ANSI escapes).
 
 ### 3.2 stdin Acceptance for `define plan` (2 SP)
 
 #### [MODIFY] `src/commands/define.ts`
 
-When stdin is not a TTY, read it as discovery JSON and pass to the plan generator:
+When stdin is not a TTY, read it as discovery JSON. Since `define plan` dispatches to an LLM agent via shell (`execSync` with prompt), the discovery context is written to a temp file and passed as a `--context` flag (not piped through stdin to the agent):
 
 ```typescript
 if (!process.stdin.isTTY) {
   const discovery = await readStdin();
-  // Pass discovery as context to agent dispatch
+  const contextPath = `/tmp/gwrk-discovery-${Date.now()}.json`;
+  fs.writeFileSync(contextPath, discovery);
+  // Pass to agent dispatch: agent reads contextPath as project state
 }
 ```
 
-Pipeline: `gwrk project discover --json | gwrk define plan --spec specs/004/spec.md --json`
+The agent receives `contextPath` in its prompt template as structured project context, eliminating the need for the agent to run `gwrk project discover` itself.
 
-**Gate:** Pipeline produces valid plan JSON.
+Pipeline: `gwrk project discover --format json | gwrk define plan --spec specs/004/spec.md --format json`
+
+**Gate:** Pipeline connects: discover JSON arrives at define plan, agent receives context file.
 
 ### 3.3 Classification Inference (2 SP)
 
