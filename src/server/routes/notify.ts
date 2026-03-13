@@ -79,7 +79,7 @@ export async function notifyRoutes(server: FastifyInstance) {
             feature: payload.feature,
             phase: payload.phase,
             opsOnly: isOps,
-            payload: payload,
+            payload: payload as unknown as Record<string, unknown>,
             timestamp: new Date().toISOString(),
           },
           { opsOnly: isOps },

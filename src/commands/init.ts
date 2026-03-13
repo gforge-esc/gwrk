@@ -128,13 +128,17 @@ export const initCommand = new Command("init")
 
       const hasTokens = loadSlackConfig();
       if (hasTokens) {
-        config.project.slack = config.project.slack || {};
+        const slack = config.project.slack ?? {
+          channelId: "",
+          channelName: "",
+        };
+        config.project.slack = slack;
         try {
           if (options.slack) {
             console.log(`Creating Slack channel ${options.slack}...`);
             const channelId = await ensureSlackChannel(options.slack);
-            config.project.slack.channelId = channelId;
-            config.project.slack.channelName = options.slack;
+            slack.channelId = channelId;
+            slack.channelName = options.slack;
             console.log(
               `Successfully provisioned Slack channel: ${options.slack} (${channelId})`,
             );
@@ -142,8 +146,8 @@ export const initCommand = new Command("init")
           if (options.slackOps) {
             console.log(`Creating Slack ops channel ${options.slackOps}...`);
             const opsChannelId = await ensureSlackChannel(options.slackOps);
-            config.project.slack.opsChannelId = opsChannelId;
-            config.project.slack.opsChannelName = options.slackOps;
+            slack.opsChannelId = opsChannelId;
+            slack.opsChannelName = options.slackOps;
             console.log(
               `Successfully provisioned Slack ops channel: ${options.slackOps} (${opsChannelId})`,
             );
