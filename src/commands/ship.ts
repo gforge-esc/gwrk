@@ -43,6 +43,32 @@ async function shipPhase(
   const phaseId = `phase-${normalizedPhase.padStart(2, "0")}`;
   const featureDir = path.join(cwd, "specs", feature);
 
+  // CRITICAL: Validate feature exists before ANY side effects.
+  // Without this, writeManifest() creates bogus dirs via mkdir -p
+  // which can lead to accidental deletion of other spec dirs when
+  // agents commit with broad git staging. (ref: 001-cli-core clobber)
+  const specFile = path.join(featureDir, "spec.md");
+  if (!fs.existsSync(specFile)) {
+    const specsDir = path.join(cwd, "specs");
+    const available = fs.existsSync(specsDir)
+      ? fs
+          .readdirSync(specsDir)
+          .filter((d) => {
+            const fp = path.join(specsDir, d);
+            return (
+              fs.statSync(fp).isDirectory() &&
+              fs.existsSync(path.join(fp, "spec.md"))
+            );
+          })
+          .map((d) => `    ${d}`)
+          .join("\n")
+      : "    (none)";
+    console.error(
+      `\n  Feature spec not found: specs/${feature}/spec.md\n  Available features:\n${available}\n`,
+    );
+    return 1;
+  }
+
   // FR-008: Pre-flight check for test files
   let taskState: TaskState | undefined;
   try {
@@ -272,6 +298,30 @@ export const shipCommand = new Command("ship")
       const config = loadConfig(cwd);
       const backend = ((opts.agent as string) ||
         config.agents.implement) as AgentBackend;
+
+      // Validate feature exists before any work
+      const featureSpecDir = path.join(cwd, "specs", feature);
+      if (
+        !fs.existsSync(featureSpecDir) ||
+        !fs.existsSync(path.join(featureSpecDir, "spec.md"))
+      ) {
+        console.error(`Feature not found: specs/${feature}`);
+        console.error("Available features:");
+        const specsDir = path.join(cwd, "specs");
+        if (fs.existsSync(specsDir)) {
+          for (const d of fs.readdirSync(specsDir)) {
+            const fp = path.join(specsDir, d);
+            if (
+              fs.statSync(fp).isDirectory() &&
+              fs.existsSync(path.join(fp, "spec.md"))
+            ) {
+              console.log(`  ${d}`);
+            }
+          }
+        }
+        process.exit(1);
+      }
+
 
       // Determine which phases to ship
       let phases: string[];

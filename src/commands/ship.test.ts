@@ -260,4 +260,35 @@ describe("shipCommand", () => {
 
     existsSpy.mockRestore();
   });
+
+  it("should exit 1 without side effects when feature spec.md does not exist", async () => {
+    // Mock fs.existsSync: spec.md returns false, everything else returns true
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
+      if (typeof p === "string" && p.endsWith("spec.md")) return false;
+      return true;
+    });
+
+    // Mock readdirSync and statSync for the available-features listing
+    const readdirSpy = vi
+      .spyOn(fs, "readdirSync")
+      .mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
+
+    await expect(
+      program.parseAsync([
+        "node",
+        "test",
+        "ship",
+        "nonexistent-feature",
+        "1",
+      ]),
+    ).rejects.toThrow('process.exit unexpectedly called with "1"');
+
+    // No shell script should have been invoked
+    expect(execModule.run).not.toHaveBeenCalled();
+    // No DB recording either
+    expect(runsModule.startRun).not.toHaveBeenCalled();
+
+    existsSpy.mockRestore();
+    readdirSpy.mockRestore();
+  });
 });
