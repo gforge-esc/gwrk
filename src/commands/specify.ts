@@ -31,7 +31,7 @@ export const specifyCommand = new Command("spec")
 
     const result = await dispatchAgent({
       backend,
-      workflowPath: ".agent/workflows/specify.md",
+      workflowPath: ".agents/workflows/specify.md",
       prompt,
     });
 

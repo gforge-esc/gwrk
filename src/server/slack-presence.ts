@@ -1,5 +1,5 @@
 import type { App } from "@slack/bolt";
-import { loadConfig } from "../utils/config.js";
+import type { GwrkConfig } from "../utils/config.js";
 import { MessageBuilder, type SlackMessage } from "./slack-messages.js";
 import { getSlackApp } from "./slack.js";
 
@@ -13,7 +13,7 @@ export interface SlackEvent {
     | "done_done";
   feature: string;
   phase?: string;
-  master?: boolean;
+  opsOnly?: boolean;
   payload: Record<string, unknown>;
   timestamp: string;
 }
@@ -40,7 +40,7 @@ class PresenceManager {
     return PresenceManager.instance;
   }
 
-  public async init(projectRoot: string): Promise<void> {
+  public async init(config: GwrkConfig): Promise<void> {
     const app = getSlackApp();
     if (!app) return;
 
@@ -62,8 +62,7 @@ class PresenceManager {
         return;
       }
 
-      const config = loadConfig(projectRoot);
-      const interval = config.server.slack?.presencePollIntervalMs || 60000;
+      const interval = config?.server?.slack?.presencePollIntervalMs || 60000;
 
       // Initial check
       await this.checkPresence(app);
@@ -93,7 +92,9 @@ class PresenceManager {
         this.currentPresence = newPresence;
       }
     } catch (error) {
-      console.warn(`Presence API unavailable: ${(error as any).message}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.warn(`Presence API unavailable: ${errorMessage}`);
     }
   }
 
@@ -129,7 +130,7 @@ class PresenceManager {
     }));
 
     const summaryMessage = MessageBuilder.batchedSummary(batchedEvents);
-    
+
     // Use sendSlackMessage directly to avoid circular dependency and bypass presence check
     const { sendSlackMessage } = await import("./slack-notify.js");
     await sendSlackMessage(summaryMessage);

@@ -50,13 +50,13 @@ The objective is to farm out feature development into parallelizable phases. Thi
 ### 2.1 Agent-ZFG (Zero F*cks Given) - The Local Orchestrator
 
 * **Environment**: Runs strictly on the local machine via `bash`, `make`, `gh` (GitHub CLI), and the `gemini` CLI.
-* **Personas**: Uses `.agent/prompts/personas/principal-engineer.md` and `product-manager.md`.
+* **Personas**: Uses `.agents/prompts/personas/principal-engineer.md` and `product-manager.md`.
 * **Role**: The mastermind. It does not write standard feature code. It plans, delegates, manages Git branches, monitors GitHub, and forcefully resolves merge conflicts to drive the feature to completion.
 
 ### 2.2 Agent-WUD (Work Until Done) - The Cloud Worker
 
 * **Environment**: Runs in the Codex Web Cloud Sandbox.
-* **Personas**: Uses `.agent/prompts/personas/senior-dev.md`.
+* **Personas**: Uses `.agents/prompts/personas/senior-dev.md`.
 * **Role**: The ephemeral worker. It boots up, reads its specific phase instructions, writes code, runs local tests via `scripts/dev/work-until-done.sh`, loops until tests pass, opens a Pull Request, and terminates.
 
 ### 2.3 Git Branching Model
@@ -75,7 +75,7 @@ To support parallel cloud execution without blocking, ZFG enforces a strict hier
 
 1. **Trigger**: User runs `make agent-zfg FEATURE=<feature_name>`.
 2. **Scaffolding**: ZFG creates `feature/<feature_name>-wip` from `develop` and pushes it to `origin`.
-3. **Planning**: ZFG analyzes `specs/<feature>/spec.md` using `.agent/workflows/plan-to-tasks.md`.
+3. **Planning**: ZFG analyzes `specs/<feature>/spec.md` using `.agents/workflows/plan-to-tasks.md`.
 4. **Output**: ZFG generates atomic phase scripts (e.g., `specs/<feature>/beads/01-phase-1-tasks.sh`) and records the phase IDs in `.phase-ids.json`.
 
 ### Step 2: Delegation & Dispatch (Local -> Cloud)
@@ -89,8 +89,8 @@ For each phase listed in `.phase-ids.json` designated for a cloud agent:
 ### Step 3: Work-Until-Done Loop (Cloud / WUD)
 
 1. **Boot**: Codex Lab initializes the environment (running manual setup commands like `pnpm install`).
-2. **Implementation**: WUD executes `.agent/workflows/implement.md` based on its injected payload.
-3. **Verification**: WUD runs `scripts/dev/work-until-done.sh` headlessly. If tests fail, it uses `.agent/workflows/analyze.md` to diagnose and fix. It loops until the exit code is `0`.
+2. **Implementation**: WUD executes `.agents/workflows/implement.md` based on its injected payload.
+3. **Verification**: WUD runs `scripts/dev/work-until-done.sh` headlessly. If tests fail, it uses `.agents/workflows/analyze.md` to diagnose and fix. It loops until the exit code is `0`.
 4. **Delivery**: Once passing, WUD commits the code, pushes to `origin`, and uses the pre-authenticated `gh` CLI to open a PR against `feature/<feature_name>-wip`. WUD then terminates.
 
 ### Step 4: Monitoring & Conflict Resolution (Local / ZFG)
@@ -98,7 +98,7 @@ For each phase listed in `.phase-ids.json` designated for a cloud agent:
 ZFG runs a local polling loop (e.g., `gh pr list --base feature/<feature_name>-wip`):
 
 1. **Detect**: ZFG detects an open PR targeting the WIP branch.
-2. **Review**: ZFG evaluates the code using `.agent/workflows/review-code.md` via the local `gemini` CLI.
+2. **Review**: ZFG evaluates the code using `.agents/workflows/review-code.md` via the local `gemini` CLI.
 3. **Conflict Resolution (The "ZFG" mechanism)**: If GitHub reports merge conflicts:
 * ZFG checks out the `phase` branch locally.
 * ZFG runs `git merge origin/feature/<feature_name>-wip` to intentionally generate Git conflict markers in the files.
@@ -111,7 +111,7 @@ ZFG runs a local polling loop (e.g., `gh pr list --base feature/<feature_name>-w
 ### Step 5: Finalization (Local / ZFG)
 
 1. Once all phases in `.phase-ids.json` are merged into the WIP branch, ZFG checks out the WIP branch locally.
-2. ZFG runs `.agent/workflows/review-uat.md` and `specs/<feature>/gates/run-all-gates.sh` to ensure holistic feature integrity.
+2. ZFG runs `.agents/workflows/review-uat.md` and `specs/<feature>/gates/run-all-gates.sh` to ensure holistic feature integrity.
 3. ZFG opens the final PR from `feature/<feature_name>-wip` to `develop`.
 
 ---
@@ -138,7 +138,7 @@ To implement this specification, the following files must be created or updated 
 * **Purpose**: The cloud execution loop for Agent-WUD.
 * **Requirements**:
 * Ensure strict non-interactive execution (e.g., `CI=true`).
-* Tie directly into `.agent/workflows/implement.md` and `.agent/workflows/analyze.md`.
+* Tie directly into `.agents/workflows/implement.md` and `.agents/workflows/analyze.md`.
 * Add a final step that automatically executes `git push` and `gh pr create --base feature/<feature>-wip --body-file .specify/templates/review-code-comment-template.md` on success.
 
 
@@ -154,7 +154,7 @@ To implement this specification, the following files must be created or updated 
 ### 4.4. Update `.specify/scripts/bash/update-agent-context.sh`
 
 * **Requirements**:
-* Ensure the script concatenates the target Persona, `.agent/rules/*.md`, `.agent/templates/monorepo-context.md`, and the specific Phase `.sh`/`.md` task into a single string/file. This compiled file is what is passed to `--prompt-file` in the Codex CLI so the cloud agent boots with full context.
+* Ensure the script concatenates the target Persona, `.agents/rules/*.md`, `.agents/templates/monorepo-context.md`, and the specific Phase `.sh`/`.md` task into a single string/file. This compiled file is what is passed to `--prompt-file` in the Codex CLI so the cloud agent boots with full context.
 
 
 

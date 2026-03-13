@@ -3,6 +3,15 @@ import type { GwrkConfig } from "../../utils/config.js";
 import { startServer } from "../index.js";
 import { removePid } from "../pid.js";
 
+// Mock dependencies
+vi.mock("../docker.js", () => ({
+  ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true }),
+}));
+vi.mock("../slack.js", () => ({
+  startSlackApp: vi.fn().mockResolvedValue(undefined),
+  stopSlackApp: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "gemini" },

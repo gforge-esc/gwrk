@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../utils/config.js";
+import * as dockerUtils from "./docker.js";
 import { startServer } from "./index.js";
 import * as pidUtils from "./pid.js";
+
+vi.mock("./docker.js", () => ({
+  ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true }),
+}));
 
 vi.mock("./pid.js", () => ({
   writePid: vi.fn(),
@@ -12,11 +17,9 @@ vi.mock("./pid.js", () => ({
 
 vi.mock("./slack.js", () => ({
   isSlackConnected: vi.fn().mockResolvedValue(true),
-  getSlackApp: vi
-    .fn()
-    .mockReturnValue({
-      client: { auth: { test: vi.fn().mockResolvedValue({ ok: true }) } },
-    }),
+  getSlackApp: vi.fn().mockReturnValue({
+    client: { auth: { test: vi.fn().mockResolvedValue({ ok: true }) } },
+  }),
   startSlackApp: vi.fn().mockResolvedValue(undefined),
   stopSlackApp: vi.fn().mockResolvedValue(undefined),
 }));
@@ -38,7 +41,7 @@ const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "codex-cloud" },
   server: {
-    port: 18895,
+    port: 0,
     host: "localhost",
     heartbeatIntervalMs: 1000,
     networkCheckIntervalMs: 1000,
@@ -80,7 +83,9 @@ describe("server bootstrap", () => {
   });
 
   it("should fail to start if Docker is not available", async () => {
-    mockSandbox.checkDocker.mockResolvedValueOnce(false);
+    vi.mocked(dockerUtils.ensureDocker).mockImplementationOnce(() => {
+      throw new Error("process.exit(1)");
+    });
 
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);

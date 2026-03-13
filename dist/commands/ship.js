@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
@@ -5,7 +6,7 @@ import { MessageBuilder } from "../server/slack-messages.js";
 import { notifySlack } from "../server/slack-notify.js";
 import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
-import { banner, color, dryRun as dryRunFmt, fail, success, } from "../utils/format.js";
+import { banner, blocked, color, dryRun as dryRunFmt, fail, success, } from "../utils/format.js";
 import { getCurrentBranch, getCurrentCommit, getDiffStats, } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { loadTaskState } from "../utils/state.js";
@@ -16,7 +17,45 @@ const { GREEN, DIM, RESET } = color;
  */
 async function shipPhase(feature, phase, backend, opts, cwd) {
     const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
-    const phaseId = `phase-${phase.padStart(2, "0")}`;
+    // Normalize: accept "02", "2", or "phase-02" — scripts expect bare number
+    const normalizedPhase = phase.replace(/^phase-/, "");
+    const phaseId = `phase-${normalizedPhase.padStart(2, "0")}`;
+    const featureDir = path.join(cwd, "specs", feature);
+    // FR-008: Pre-flight check for test files
+    let taskState;
+    try {
+        taskState = loadTaskState(featureDir);
+    }
+    catch (err) {
+        // If we can't load state, proceed (might be a new feature)
+    }
+    if (taskState) {
+        const phaseData = taskState.phases.find((p) => p.id === phaseId);
+        if (phaseData) {
+            const files = [];
+            for (const task of phaseData.tasks) {
+                const text = `${task.title} ${task.description ?? ""}`;
+                const matches = text.matchAll(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/g);
+                for (const match of matches) {
+                    files.push(match[0].replace(/[,;.]$/, ""));
+                }
+            }
+            const testFilesMentioned = files.filter((f) => f.includes(".test.ts") || f.includes(".test.js"));
+            const sourceFiles = files.filter((f) => (f.endsWith(".ts") || f.endsWith(".js")) &&
+                !f.includes(".test.") &&
+                !f.includes(".d.ts"));
+            // Check filesystem for matching test files if not explicitly in tasks
+            const matchingTestsOnDisk = sourceFiles
+                .map((f) => f.replace(/\.(ts|js)$/, ".test.$1"))
+                .filter((f) => fs.existsSync(path.join(cwd, f)));
+            if (testFilesMentioned.length === 0 &&
+                matchingTestsOnDisk.length === 0 &&
+                sourceFiles.length > 0) {
+                blocked(`[BLOCKED] No test files found for ${phaseId}`);
+                process.exit(1);
+            }
+        }
+    }
     const startedAt = new Date().toISOString();
     const runId = startRun({
         feature_id: feature,
@@ -53,7 +92,7 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
     const startTime = Date.now();
     let exitCode = 0;
     try {
-        await run(scriptPath, [feature, phase], {
+        await run(scriptPath, [feature, normalizedPhase], {
             cwd,
             env: {
                 ...process.env,
@@ -162,7 +201,8 @@ export const shipCommand = new Command("ship")
     .action(async (feature, phase, opts) => {
     const cwd = process.cwd();
     const config = loadConfig(cwd);
-    const backend = opts.agent || config.agents.implement;
+    const backend = (opts.agent ||
+        config.agents.implement);
     // Determine which phases to ship
     let phases;
     if (phase) {

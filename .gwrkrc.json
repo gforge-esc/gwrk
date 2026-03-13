@@ -2,21 +2,19 @@
   "project": {
     "name": "gwrk",
     "slack": {
-      "channelId": "C0ALGDPC725",
-      "channelName": "gwrk-ops",
-      "opsChannelId": "C0ALGDPC725",
-      "opsChannelName": "gwrk-ops"
+      "channelId": "C0ALG446CQ2",
+      "channelName": "test-uat-channel"
     }
   },
   "agents": {
     "define": "gemini",
-    "implement": "gemini"
+    "implement": "codex-cloud"
   },
   "server": {
     "port": 18790,
     "host": "localhost",
-    "heartbeatIntervalMs": 1000,
-    "networkCheckIntervalMs": 5000
+    "heartbeatIntervalMs": 5000,
+    "networkCheckIntervalMs": 30000
   },
   "parallelism": {
     "local": {

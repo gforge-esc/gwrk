@@ -53,8 +53,8 @@ describe("initCommand", () => {
       { from: "user" },
     );
 
-    expect(fs.existsSync(path.join(tempDir, ".agent/workflows"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, ".agent/rules"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, ".agents/workflows"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, ".agents/rules"))).toBe(true);
     expect(fs.existsSync(path.join(tempDir, ".specify/templates"))).toBe(true);
     expect(fs.existsSync(path.join(tempDir, "specs"))).toBe(true);
     expect(fs.existsSync(path.join(tempDir, ".gwrkrc.json"))).toBe(true);

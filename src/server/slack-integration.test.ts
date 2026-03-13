@@ -1,8 +1,12 @@
 import { App } from "@slack/bolt";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GwrkConfig } from "../utils/config.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
+import type { LifecycleMonitor } from "./lifecycle.js";
 import type { SystemMonitor } from "./monitor.js";
+import type { NetworkMonitor } from "./network.js";
+import type { SandboxManager } from "./sandbox.js";
 import { startSlackApp } from "./slack.js";
 
 // Mock @slack/bolt
@@ -34,28 +38,32 @@ vi.mock("./slack-presence.js", () => ({
 }));
 
 describe("slack-integration", () => {
-  let mockQueue: any;
-  let mockMonitor: any;
-  let mockGit: any;
+  let mockQueue: Mocked<DispatchQueue>;
+  let mockMonitor: Mocked<SystemMonitor>;
+  let mockGit: Mocked<GitManager>;
 
   beforeEach(() => {
-    mockQueue = {} as any;
-    mockMonitor = {} as any;
-    mockGit = {} as any;
+    mockQueue = {} as unknown as Mocked<DispatchQueue>;
+    mockMonitor = {} as unknown as Mocked<SystemMonitor>;
+    mockGit = {} as unknown as Mocked<GitManager>;
   });
 
   it("starts the Slack app and registers handlers", async () => {
     await startSlackApp({
-      queue: mockQueue as unknown as DispatchQueue,
-      monitor: mockMonitor as unknown as SystemMonitor,
-      sandbox: {} as any,
-      lifecycle: { getStatus: () => "ready" } as any,
-      network: { getStatus: () => "online" } as any,
-      git: mockGit as unknown as GitManager,
+      queue: mockQueue,
+      monitor: mockMonitor,
+      sandbox: {} as unknown as Mocked<SandboxManager>,
+      lifecycle: {
+        getStatus: () => "ready",
+      } as unknown as Mocked<LifecycleMonitor>,
+      network: {
+        getStatus: () => "online",
+      } as unknown as Mocked<NetworkMonitor>,
+      git: mockGit,
       projectRoot: "/tmp",
       config: {
         server: { port: 18790, host: "localhost" },
-      } as any,
+      } as unknown as GwrkConfig,
     });
 
     const mockAppInstance = vi.mocked(App).mock.results[0].value;

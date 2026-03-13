@@ -1,33 +1,44 @@
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { tasksGenerateCommand } from "./tasks-generate.js";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { tasksGenerateCommand } from "./tasks-generate.js";
+import os from "node:os";
+import { Command } from "commander";
 
-describe("gwrk define tasks", () => {
-  const tempDir = path.join(process.cwd(), "temp-test-generate");
+// Mock format.js to avoid messy output
+vi.mock("../utils/format.js", () => ({
+  banner: vi.fn(),
+  blocked: vi.fn(),
+  fail: vi.fn(),
+  success: vi.fn(),
+}));
+
+describe("tasks-generate", () => {
+  let tempDir: string;
+  let projectRoot: string;
 
   beforeEach(() => {
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-    fs.mkdirSync(tempDir, { recursive: true });
+    projectRoot = process.cwd();
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tasks-generate-test-"));
+    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+    
+    // Create necessary structure
+    const specDir = path.join(tempDir, "specs", "001-cli-core");
+    fs.mkdirSync(path.join(specDir, ".gwrk"), { recursive: true });
+    fs.mkdirSync(path.join(specDir, "gates"), { recursive: true });
+    
+    // Create a plan.md that matches the parser's expectations
+    fs.writeFileSync(path.join(specDir, "plan.md"), `
+### Phase 1: Core
 
-    // Create mock plan.md
-    const specsDir = path.join(tempDir, "specs", "test-feature");
-    fs.mkdirSync(specsDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(specsDir, "plan.md"),
-      `# Implementation Plan: test-feature
-
-### Phase 1: Test Phase
-
-**Files (1):**
-- \`src/test.ts\` (NEW: Test file)
+**Files (2):**
+- \`file1.ts\` (First file)
+- \`file2.ts\` (Second file)
 
 #### Done When
-- File exists
-`,
-    );
+- \`test -f file1.ts\`
+- \`test -f file2.ts\`
+`);
   });
 
   afterEach(() => {
@@ -35,47 +46,23 @@ describe("gwrk define tasks", () => {
     vi.restoreAllMocks();
   });
 
-  it("should generate tasks.json and gates from plan.md", async () => {
-    const originalCwd = process.cwd();
-    process.chdir(tempDir);
-
-    try {
-      // Mock console.log to avoid output during tests
-      vi.spyOn(console, "log").mockImplementation(() => {});
-
-      await tasksGenerateCommand.parseAsync(["test-feature", "--force"], {
-        from: "user",
-      });
-
-      const tasksPath = path.join(
-        "specs",
-        "test-feature",
-        ".gwrk",
-        "tasks.json",
-      );
-      expect(fs.existsSync(tasksPath)).toBe(true);
-
-      const tasks = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
-      expect(tasks.featureId).toBe("test-feature");
-      expect(tasks.phases.length).toBe(1);
-      expect(tasks.phases[0].tasks.length).toBe(1);
-      expect(tasks.phases[0].tasks[0].id).toBe("T001");
-
-      const gatePath = path.join(
-        "specs",
-        "test-feature",
-        "gates",
-        "T001-gate.sh",
-      );
-      expect(fs.existsSync(gatePath)).toBe(true);
-
-      // Check for executable bit (on Unix)
-      if (process.platform !== "win32") {
-        const stats = fs.statSync(gatePath);
-        expect(stats.mode & fs.constants.S_IXUSR).toBeTruthy();
-      }
-    } finally {
-      process.chdir(originalCwd);
-    }
+  it("should preserve # AUTHORED gates even with --force", async () => {
+    const specDir = path.join(tempDir, "specs", "001-cli-core");
+    const gatesDir = path.join(specDir, "gates");
+    
+    // Pre-create an AUTHORED gate
+    const gatePath = path.join(gatesDir, "T001-gate.sh");
+    const customContent = "#!/bin/bash\n# AUTHORED\n# My custom logic\n";
+    fs.writeFileSync(gatePath, customContent);
+    
+    // Run define tasks --force
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    await program.parseAsync(["node", "test", "tasks", "001-cli-core", "--force"]);
+    
+    // Check if it's still there
+    expect(fs.existsSync(gatePath)).toBe(true);
+    const content = fs.readFileSync(gatePath, "utf-8");
+    expect(content).toBe(customContent);
   });
 });

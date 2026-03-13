@@ -3,12 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { registerProject } from "../db/runs.js";
+import type { GwrkConfig } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 
 export const initCommand = new Command("init")
   .description("Initialize gwrk in the current directory")
   .option("--github <repo>", "GitHub repository (owner/name)")
   .option("--slack <channel>", "Slack channel")
+  .option("--slack-ops <channel>", "Slack ops channel")
   .action(async (options) => {
     const projectRoot = process.cwd();
     const agentDir = path.join(projectRoot, ".agent");
@@ -18,7 +20,7 @@ export const initCommand = new Command("init")
     if (fs.existsSync(agentDir)) {
       let didWork = false;
 
-      if (options.slack) {
+      if (options.slack || options.slackOps) {
         const { ensureSlackChannel } = await import(
           "../server/slack-channel.js"
         );
@@ -26,28 +28,52 @@ export const initCommand = new Command("init")
 
         const hasTokens = loadSlackConfig();
         if (!hasTokens) {
-          console.error(
-            "Slack not configured. Run gwrk setup slack first.",
-          );
+          console.error("Slack not configured. Run gwrk setup slack first.");
           process.exit(1);
         }
-
-        console.log(`Provisioning Slack channel ${options.slack}...`);
-        const channelId = await ensureSlackChannel(options.slack);
 
         // Update .gwrkrc.json with Slack config
         const existing = fs.existsSync(rcPath)
           ? JSON.parse(fs.readFileSync(rcPath, "utf-8"))
           : {};
         existing.project = existing.project || {};
-        existing.project.slack = {
-          channelId,
-          channelName: options.slack,
-        };
+        existing.project.slack = existing.project.slack || {};
+
+        if (options.slack) {
+          try {
+            console.log(`Provisioning Slack channel ${options.slack}...`);
+            const channelId = await ensureSlackChannel(options.slack);
+            existing.project.slack.channelId = channelId;
+            existing.project.slack.channelName = options.slack;
+            console.log(
+              `Provisioned Slack channel: ${options.slack} (${channelId})`,
+            );
+          } catch (error) {
+            console.warn(
+              `Warning: Failed to provision Slack channel: ${(error as Error).message}`,
+            );
+          }
+        }
+
+        if (options.slackOps) {
+          try {
+            console.log(
+              `Provisioning Slack ops channel ${options.slackOps}...`,
+            );
+            const opsChannelId = await ensureSlackChannel(options.slackOps);
+            existing.project.slack.opsChannelId = opsChannelId;
+            existing.project.slack.opsChannelName = options.slackOps;
+            console.log(
+              `Provisioned Slack ops channel: ${options.slackOps} (${opsChannelId})`,
+            );
+          } catch (error) {
+            console.warn(
+              `Warning: Failed to provision Slack ops channel: ${(error as Error).message}`,
+            );
+          }
+        }
+
         fs.writeFileSync(rcPath, JSON.stringify(existing, null, 2));
-        console.log(
-          `Provisioned Slack channel: ${options.slack} (${channelId})`,
-        );
         didWork = true;
       }
 
@@ -58,8 +84,8 @@ export const initCommand = new Command("init")
     }
 
     const dirs = [
-      ".agent/workflows",
-      ".agent/rules",
+      ".agents/workflows",
+      ".agents/rules",
       ".specify/templates",
       "specs",
     ];
@@ -69,7 +95,7 @@ export const initCommand = new Command("init")
     }
 
     const projectName = path.basename(projectRoot);
-    const config: any = {
+    const config: GwrkConfig = {
       project: {
         name: projectName,
         githubRepo: options.github,
@@ -98,22 +124,36 @@ export const initCommand = new Command("init")
     };
 
     // Slack Channel Provisioning
-    if (options.slack) {
+    if (options.slack || options.slackOps) {
       const { ensureSlackChannel } = await import("../server/slack-channel.js");
       const { loadSlackConfig } = await import("../utils/slack-client.js");
 
       const hasTokens = loadSlackConfig();
       if (hasTokens) {
+        const slack = config.project.slack ?? {
+          channelId: "",
+          channelName: "",
+        };
+        config.project.slack = slack;
         try {
-          console.log(`Creating Slack channel ${options.slack}...`);
-          const channelId = await ensureSlackChannel(options.slack);
-          config.project.slack = {
-            channelId,
-            channelName: options.slack,
-          };
-          console.log(
-            `Successfully provisioned Slack channel: ${options.slack} (${channelId})`,
-          );
+          if (options.slack) {
+            console.log(`Creating Slack channel ${options.slack}...`);
+            const channelId = await ensureSlackChannel(options.slack);
+            slack.channelId = channelId;
+            slack.channelName = options.slack;
+            console.log(
+              `Successfully provisioned Slack channel: ${options.slack} (${channelId})`,
+            );
+          }
+          if (options.slackOps) {
+            console.log(`Creating Slack ops channel ${options.slackOps}...`);
+            const opsChannelId = await ensureSlackChannel(options.slackOps);
+            slack.opsChannelId = opsChannelId;
+            slack.opsChannelName = options.slackOps;
+            console.log(
+              `Successfully provisioned Slack ops channel: ${options.slackOps} (${opsChannelId})`,
+            );
+          }
         } catch (error) {
           console.warn(
             `Warning: Failed to provision Slack channel: ${(error as Error).message}`,
@@ -135,7 +175,7 @@ export const initCommand = new Command("init")
     const workflows = ["specify.md", "plan.md"];
     for (const wf of workflows) {
       fs.writeFileSync(
-        path.join(projectRoot, ".agent/workflows", wf),
+        path.join(projectRoot, ".agents/workflows", wf),
         `# Workflow: ${wf}\n\nPlaceholder content for ${wf}.`,
       );
     }
@@ -199,7 +239,7 @@ export const initCommand = new Command("init")
       if (res.exitCode === 0) {
         fs.writeFileSync(
           path.join(projectRoot, cli.file),
-          `# ${cli.name.toUpperCase()} Project Context\n\nThis project is managed by gwrk.\nRules: .agent/rules/\nWorkflows: .agent/workflows/\n`,
+          `# ${cli.name.toUpperCase()} Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n`,
         );
         console.log(`Detected ${cli.name}, provisioned ${cli.file}`);
       }

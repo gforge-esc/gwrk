@@ -37,7 +37,7 @@ Bootstrap the Fastify server, implement PID file management to ensure single-ins
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | Config and environment management |
+| .agents/rules/workspace.md | Config and environment management |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -71,7 +71,7 @@ Implement the `SystemMonitor` for resource sampling (CPU, Mem, Disk) and the `st
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | System resource sampling |
+| .agents/rules/workspace.md | System resource sampling |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -104,7 +104,7 @@ Implement Git branch lifecycle management for phases and the context compiler th
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | Git operations and branch management |
+| .agents/rules/workspace.md | Git operations and branch management |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -139,7 +139,7 @@ Implement the `SandboxManager` to handle Docker container creation, destruction,
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | Docker operations and image management |
+| .agents/rules/workspace.md | Docker operations and image management |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -172,7 +172,7 @@ Implement the FIFO dispatch queue with retry/escalation logic and expose the `/a
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | API design and persistence |
+| .agents/rules/workspace.md | API design and persistence |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -205,7 +205,7 @@ Implement macOS sleep/wake detection, network connectivity monitoring, and the r
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | Lifecycle and event management |
+| .agents/rules/workspace.md | Lifecycle and event management |
 | compile-gate | Always |
 
 #### Test Strategy

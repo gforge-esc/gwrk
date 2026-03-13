@@ -32,7 +32,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "gemini",
-        workflowPath: ".agent/workflows/specify.md",
+        workflowPath: ".agents/workflows/specify.md",
         prompt: "test feature",
       },
       "mock workflow content",
@@ -53,7 +53,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "gemini",
-        workflowPath: ".agent/workflows/plan.md",
+        workflowPath: ".agents/workflows/plan.md",
         featureDir: "specs/001-cli-core",
       },
       "mock workflow content",
@@ -72,7 +72,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "gemini",
-        workflowPath: ".agent/workflows/analyze.md",
+        workflowPath: ".agents/workflows/analyze.md",
         featureDir: "specs/001-cli-core",
       },
       "mock workflow content",
@@ -90,7 +90,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "claude",
-        workflowPath: ".agent/workflows/plan.md",
+        workflowPath: ".agents/workflows/plan.md",
         featureDir: "specs/test-feature",
       },
       "mock workflow content",
@@ -106,7 +106,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "codex",
-        workflowPath: ".agent/workflows/analyze.md",
+        workflowPath: ".agents/workflows/analyze.md",
         featureDir: "specs/test-feature",
       },
       "mock workflow content",
@@ -116,7 +116,7 @@ describe("buildCommand — agent backend routing", () => {
     expect(result.args).toEqual([
       "exec",
       "--full-auto",
-      ".agent/workflows/analyze.md",
+      ".agents/workflows/analyze.md",
       "specs/test-feature",
     ]);
   });
@@ -125,7 +125,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "codex-cloud",
-        workflowPath: ".agent/workflows/effort.md",
+        workflowPath: ".agents/workflows/effort.md",
         featureDir: "specs/test-feature",
       },
       "mock workflow content",
@@ -137,7 +137,7 @@ describe("buildCommand — agent backend routing", () => {
       "--cloud",
       "--non-interactive",
       "--full-auto",
-      ".agent/workflows/effort.md",
+      ".agents/workflows/effort.md",
       "specs/test-feature",
     ]);
   });
@@ -153,7 +153,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
 
   const runOpts = {
     backend: "gemini" as const,
-    workflowPath: ".agent/workflows/plan.md",
+    workflowPath: ".agents/workflows/plan.md",
     featureDir: "specs/test-feature",
   };
 

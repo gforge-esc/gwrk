@@ -83,7 +83,9 @@ export async function ensureDocker(): Promise<DockerStatus> {
     console.error("  Install Docker Desktop:");
     console.error(`    ${BOLD}brew install --cask docker${RESET}`);
     console.error("  or download from:");
-    console.error(`    ${DIM}https://www.docker.com/products/docker-desktop/${RESET}`);
+    console.error(
+      `    ${DIM}https://www.docker.com/products/docker-desktop/${RESET}`,
+    );
     console.error("");
     process.exit(1);
   }
@@ -94,7 +96,9 @@ export async function ensureDocker(): Promise<DockerStatus> {
   }
 
   // Step 3: Try to start Docker Desktop
-  console.error(`  ${YELLOW}⏳${RESET} Docker daemon not running. Starting Docker Desktop...`);
+  console.error(
+    `  ${YELLOW}⏳${RESET} Docker daemon not running. Starting Docker Desktop...`,
+  );
 
   if (!startDockerDesktop()) {
     console.error(`  ${RED}✗${RESET} Could not launch Docker Desktop.`);
@@ -109,10 +113,14 @@ export async function ensureDocker(): Promise<DockerStatus> {
   const ready = await waitForDocker(30_000, 2_000);
 
   if (!ready) {
-    console.error(`  ${RED}✗${RESET} Docker Desktop started but daemon is not responding.`);
+    console.error(
+      `  ${RED}✗${RESET} Docker Desktop started but daemon is not responding.`,
+    );
     console.error("");
     console.error("  Try restarting Docker Desktop:");
-    console.error(`    ${BOLD}osascript -e 'quit app "Docker"' && open -a Docker${RESET}`);
+    console.error(
+      `    ${BOLD}osascript -e 'quit app "Docker"' && open -a Docker${RESET}`,
+    );
     console.error("");
     process.exit(1);
   }

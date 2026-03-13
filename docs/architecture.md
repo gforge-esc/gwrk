@@ -78,7 +78,7 @@
 
 ```bash
 gwrk/
-├── .agent/                        # Governance: rules, workflows, personas, scripts
+├── .agents/                        # Governance: rules, workflows, personas, scripts
 │   ├── prompts/personas/          # PE, Senior Dev, PM persona definitions
 │   ├── rules/                     # workspace.md, coding-style.md, etc.
 │   ├── scripts/                   # Helper scripts
@@ -87,9 +87,9 @@ gwrk/
 ├── .specify/                      # Templates, scripts, memory
 │   ├── scripts/bash/              # create-new-feature.sh, common.sh, etc.
 │   └── templates/                 # spec-template.md, plan-template.md, etc.
-├── GEMINI.md                      # Project context for Gemini CLI (refs .agent/)
-├── CLAUDE.md                      # Project context for Claude Code (refs .agent/)
-├── AGENTS.md                      # Project rules for Codex (refs .agent/)
+├── GEMINI.md                      # Project context for Gemini CLI (refs .agents/)
+├── CLAUDE.md                      # Project context for Claude Code (refs .agents/)
+├── AGENTS.md                      # Project rules for Codex (refs .agents/)
 ├── .gemini/settings.json          # Gemini CLI model routing + tool config
 ├── .claude/settings.json          # Claude Code model preferences + permissions
 ├── docs/                          # Architecture, PRD, ADRs
@@ -379,7 +379,7 @@ See [specs/000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan
 | `CLAUDE.md` | — | ✅ Required | — | Project context for Claude Code |
 | `.claude/settings.json` | — | ✅ Required | — | Model prefs, permissions |
 | `AGENTS.md` | — | — | ✅ Required | Project rules for Codex |
-| `.agent/rules/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** governance |
-| `.agent/workflows/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** workflows |
+| `.agents/rules/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** governance |
+| `.agents/workflows/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** workflows |
 
-All context files reference the shared `.agent/` directory — governance rules are written once, consumed by all backends.
+All context files reference the shared `.agents/` directory — governance rules are written once, consumed by all backends.

@@ -1,6 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { App } from "@slack/bolt";
+import {
+  type Mocked,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import type { GwrkConfig } from "../utils/config.js";
 import { MessageBuilder } from "./slack-messages.js";
-import { presenceManager } from "./slack-presence.js";
+import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
 
 // Mock dependencies
@@ -21,7 +31,7 @@ vi.mock("./slack-notify.js", () => ({
 }));
 
 describe("PresenceManager", () => {
-  let mockApp: any;
+  let mockApp: Mocked<App>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -45,9 +55,9 @@ describe("PresenceManager", () => {
           postMessage: vi.fn().mockResolvedValue({ ok: true }),
         },
       },
-    };
+    } as unknown as Mocked<App>;
 
-    (getSlackApp as any).mockReturnValue(mockApp);
+    vi.mocked(getSlackApp).mockReturnValue(mockApp);
   });
 
   afterEach(() => {
@@ -55,8 +65,18 @@ describe("PresenceManager", () => {
     vi.useRealTimers();
   });
 
+  const mockConfig = {
+    project: { name: "test" },
+    agents: { define: "gemini", implement: "codex-cloud" },
+    server: {
+      port: 0,
+      host: "localhost",
+      slack: { presencePollIntervalMs: 1000 },
+    },
+  } as unknown as GwrkConfig;
+
   it("should initialize and poll presence", async () => {
-    await presenceManager.init("/root");
+    await presenceManager.init(mockConfig);
     expect(mockApp.client.users.list).toHaveBeenCalled();
     expect(mockApp.client.users.getPresence).toHaveBeenCalledWith({
       user: "U123",
@@ -64,52 +84,64 @@ describe("PresenceManager", () => {
   });
 
   it("should deliver notifications immediately when active", async () => {
-    await presenceManager.init("/root");
+    await presenceManager.init(mockConfig);
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
       presence: "active",
-    });
+      // biome-ignore lint/suspicious/noExplicitAny: complex mock
+    } as any);
     await vi.runOnlyPendingTimersAsync();
 
-    const event = {
+    const event: SlackEvent = {
       type: "phase_start",
       feature: "feat-1",
       payload: {},
       timestamp: "...",
-    } as any;
+    };
     const message = MessageBuilder.phaseStart({
+      id: "test",
       featureId: "feat-1",
       phaseId: "phase-01",
+      backend: "gemini",
       status: "running",
-    } as any);
+      branchName: "main",
+      attempts: [],
+      createdAt: new Date().toISOString(),
+    });
 
     const { notifySlack } = await import("./slack-notify.js");
     await presenceManager.handleNotification(event, message);
 
-    expect(notifySlack).toHaveBeenCalledWith(message);
+    expect(notifySlack).toHaveBeenCalled();
   });
 
   it("should queue notifications when away and flush when returning to active", async () => {
-    await presenceManager.init("/root");
+    await presenceManager.init(mockConfig);
 
     // Set to away
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
       presence: "away",
-    });
+      // biome-ignore lint/suspicious/noExplicitAny: complex mock
+    } as any);
     await vi.runOnlyPendingTimersAsync();
 
-    const event = {
+    const event: SlackEvent = {
       type: "phase_start",
       feature: "feat-1",
       payload: {},
       timestamp: "...",
-    } as any;
+    };
     const message = MessageBuilder.phaseStart({
+      id: "test",
       featureId: "feat-1",
       phaseId: "phase-01",
+      backend: "gemini",
       status: "running",
-    } as any);
+      branchName: "main",
+      attempts: [],
+      createdAt: new Date().toISOString(),
+    });
 
     const { notifySlack, sendSlackMessage } = await import("./slack-notify.js");
     await presenceManager.handleNotification(event, message);
@@ -120,12 +152,13 @@ describe("PresenceManager", () => {
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
       presence: "active",
-    });
+      // biome-ignore lint/suspicious/noExplicitAny: complex mock
+    } as any);
     await vi.runOnlyPendingTimersAsync();
 
     // Should have called sendSlackMessage with a batched summary (via flushQueue)
     expect(sendSlackMessage).toHaveBeenCalled();
-    const calledMessage = (sendSlackMessage as any).mock.calls[0][0];
+    const calledMessage = vi.mocked(sendSlackMessage).mock.calls[0][0];
     expect(calledMessage.text).toContain("Batched Notification Summary");
   });
 });

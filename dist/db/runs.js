@@ -127,7 +127,9 @@ export function getStats(db) {
  */
 export function listProjects(db) {
     const conn = db ?? getDb();
-    return conn.prepare("SELECT * FROM projects ORDER BY created_at DESC").all();
+    return conn
+        .prepare("SELECT * FROM projects ORDER BY created_at DESC")
+        .all();
 }
 /**
  * Record a task status change in the history table.

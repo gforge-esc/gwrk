@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
@@ -26,10 +28,10 @@ export type SlashCommandHandler = (
 
 const handlers: Record<string, SlashCommandHandler> = {
   status: async (args, context) => {
+    const { listRuns } = await import("../db/runs.js");
     const featureId = args[0];
     const resources = context.monitor.getResources();
     const queueInfo = context.queue.getQueue();
-    const activeDispatches = queueInfo.active;
 
     const blocks: KnownBlock[] = [
       {
@@ -42,14 +44,8 @@ const handlers: Record<string, SlashCommandHandler> = {
     ];
 
     if (featureId) {
-      const allDispatches = [
-        ...queueInfo.active,
-        ...queueInfo.queued,
-        ...context.queue.getQueue().active, // getQueue already returns active/queued
-      ];
-      // Note: context.queue.getDispatch is a better way if implemented
-      const featureDispatch = context.queue.getDispatch(featureId, ""); // phaseId empty matches any
-
+      // Check in-memory queue first (live dispatches)
+      const featureDispatch = context.queue.getDispatch(featureId, "");
       if (featureDispatch) {
         blocks.push({
           type: "section",
@@ -58,16 +54,65 @@ const handlers: Record<string, SlashCommandHandler> = {
             text: `*Feature ${featureId}:* ${featureDispatch.status} (${featureDispatch.phaseId})`,
           },
         });
-      } else {
-        blocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*Feature ${featureId}:* Not active or queued.`,
-          },
-        });
+      }
+
+      // Always query SQLite for run history
+      try {
+        const runs = listRuns(featureId);
+        if (runs.length > 0) {
+          const recent = runs.slice(0, 5);
+          let text = `*Recent runs for ${featureId}:*`;
+          for (const r of recent) {
+            const status = r.exit_code === 0 ? "✅" : r.exit_code === null ? "🔄" : "❌";
+            const phase = r.phase_id || "—";
+            const agent = r.agent_backend || "—";
+            const dur = r.duration_s != null ? `${r.duration_s}s` : "running";
+            const gate = r.gate_result ? ` [${r.gate_result}]` : "";
+            text += `\n${status} ${phase} · ${agent} · ${dur}${gate}`;
+          }
+          blocks.push({
+            type: "section",
+            text: { type: "mrkdwn", text },
+          });
+        } else if (!featureDispatch) {
+          blocks.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Feature ${featureId}:* No runs found.`,
+            },
+          });
+        }
+      } catch {
+        // DB not available — fall back to queue-only
+        if (!featureDispatch) {
+          blocks.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Feature ${featureId}:* Not active or queued.`,
+            },
+          });
+        }
+      }
+
+      // Also check for spec-local ship runs
+      const runsDir = path.join(context.projectRoot, "specs", featureId, ".gwrk", "runs");
+      if (fs.existsSync(runsDir)) {
+        const files = fs.readdirSync(runsDir).filter(f => f.endsWith(".json")).sort().reverse();
+        if (files.length > 0) {
+          blocks.push({
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Ship runs on disk:* ${files.length} (latest: \`${files[0]}\`)`,
+            },
+          });
+        }
       }
     } else {
+      // No feature ID — show active dispatches + overall stats
+      const activeDispatches = queueInfo.active;
       let text = `*Active Dispatches:* ${activeDispatches.length}`;
       for (const d of activeDispatches as DispatchRecord[]) {
         text += `\n• ${d.featureId} (${d.phaseId}): ${d.status}`;
@@ -76,6 +121,25 @@ const handlers: Record<string, SlashCommandHandler> = {
         type: "section",
         text: { type: "mrkdwn", text },
       });
+
+      // Add overall stats from DB
+      try {
+        const { getStats } = await import("../db/runs.js");
+        const stats = getStats();
+        if (stats.length > 0) {
+          let statsText = "*Run History (DB):*";
+          for (const s of stats.slice(0, 5)) {
+            const rate = s.total_runs > 0 ? Math.round((s.success_runs / s.total_runs) * 100) : 0;
+            statsText += `\n• ${s.workflow || s.command}: ${s.total_runs} runs (${rate}% pass)`;
+          }
+          blocks.push({
+            type: "section",
+            text: { type: "mrkdwn", text: statsText },
+          });
+        }
+      } catch {
+        // DB not available — skip
+      }
     }
 
     return {
@@ -117,7 +181,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -125,7 +191,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to dispatch: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],
@@ -165,7 +231,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -173,7 +241,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to approve: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],
@@ -262,7 +330,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -270,7 +340,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to generate pulse: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],
@@ -289,11 +359,15 @@ const handlers: Record<string, SlashCommandHandler> = {
     try {
       const config = loadConfig(context.projectRoot);
       const roleMultipliers = resolveRoleMultipliers(config);
-      const featureDir = path.join(context.projectRoot, "specs", featureId || "");
-      
+      const featureDir = path.join(
+        context.projectRoot,
+        "specs",
+        featureId || "",
+      );
+
       const stories = extractStories(featureDir);
       const report = computeEffort(stories, roleMultipliers, 1.25);
-      
+
       const text = `⚖️ *Effort Analysis* for *${featureId || "project"}*\n• Total Story Points: ${report.totalSP}\n• Total Raw Hours: ${report.totalRawHours}\n• Total with Overhead: ${report.totalWithOverhead}h\n• Estimated Days: ${report.totalDays.toFixed(1)}d`;
 
       return {
@@ -305,7 +379,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -313,7 +389,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to analyze effort: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],
@@ -323,7 +399,7 @@ const handlers: Record<string, SlashCommandHandler> = {
 
   logs: async (args, context) => {
     const [featureId, phaseId] = args;
-    if (!featureId || !phaseId) {
+    if (!featureId) {
       return {
         response_type: "ephemeral",
         blocks: [
@@ -331,26 +407,98 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: ":warning: Feature ID and Phase ID are required. Usage: `/gwrk logs <featureId> <phaseId>`",
+              text: ":warning: Feature ID is required. Usage: `/gwrk logs <featureId> [phaseId]`",
             },
           },
         ],
       };
     }
 
-    // In a real implementation, we'd fetch from a logs file or the DB
-    const logUrl = `${context.buildServerUrl}/api/logs/${featureId}/${phaseId}`;
+    // Read ship run JSON files from specs/<feature>/.gwrk/runs/
+    const runsDir = path.join(context.projectRoot, "specs", featureId, ".gwrk", "runs");
+    if (!fs.existsSync(runsDir)) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `📋 No ship run logs found for *${featureId}* in \`specs/${featureId}/.gwrk/runs/\``,
+            },
+          },
+        ],
+      };
+    }
+
+    let files = fs.readdirSync(runsDir).filter(f => f.endsWith(".json")).sort().reverse();
+
+    // Filter by phase if provided
+    if (phaseId) {
+      const phaseNorm = phaseId.startsWith("phase-") ? phaseId : `phase-${phaseId}`;
+      files = files.filter(f => f.includes(phaseNorm) || f.includes(`_${phaseId}_`));
+    }
+
+    if (files.length === 0) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `📋 No logs found for *${featureId}*${phaseId ? ` phase *${phaseId}*` : ""}`,
+            },
+          },
+        ],
+      };
+    }
+
+    // Read the most recent log
+    const latestFile = files[0];
+    const blocks: KnownBlock[] = [];
+
+    try {
+      const content = fs.readFileSync(path.join(runsDir, latestFile), "utf-8");
+      const run = JSON.parse(content);
+
+      const status = run.exit_code === 0 ? "✅ PASS" : run.exit_code ? "❌ FAIL" : "🔄 IN PROGRESS";
+      let text = `📋 *Latest log: ${latestFile}*\n`;
+      text += `*Status:* ${status}\n`;
+      if (run.feature_id) text += `*Feature:* ${run.feature_id}\n`;
+      if (run.phase_id) text += `*Phase:* ${run.phase_id}\n`;
+      if (run.agent_backend) text += `*Agent:* ${run.agent_backend}\n`;
+      if (run.duration_s != null) text += `*Duration:* ${run.duration_s}s\n`;
+      if (run.gate_result) text += `*Gate:* ${run.gate_result}\n`;
+      if (run.review_verdict) text += `*Review:* ${run.review_verdict}\n`;
+
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text },
+      });
+
+      if (files.length > 1) {
+        blocks.push({
+          type: "context",
+          elements: [{
+            type: "mrkdwn",
+            text: `${files.length} total runs. Showing latest.`,
+          }],
+        });
+      }
+    } catch {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `📋 *${latestFile}*\n_Could not parse log file._`,
+        },
+      });
+    }
+
     return {
       response_type: "ephemeral",
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `📋 Logs for *${featureId}* (*${phaseId}*) are available here: <${logUrl}|View Logs>`,
-          },
-        },
-      ],
+      blocks,
     };
   },
 };

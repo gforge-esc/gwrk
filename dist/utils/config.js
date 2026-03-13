@@ -14,8 +14,8 @@ export const GwrkConfigSchema = z.object({
             .object({
             channelId: z.string(),
             channelName: z.string(),
-            masterChannelId: z.string().optional(),
-            masterChannelName: z.string().optional(),
+            opsChannelId: z.string().optional(),
+            opsChannelName: z.string().optional(),
         })
             .optional(),
     }),
@@ -26,7 +26,7 @@ export const GwrkConfigSchema = z.object({
     }),
     server: z
         .object({
-        port: z.number().int().min(1024).max(65535),
+        port: z.number().int().min(0).max(65535),
         host: z.string().min(1),
         heartbeatIntervalMs: z.number().int().min(100).default(30000),
         networkCheckIntervalMs: z.number().int().min(100).default(60000),

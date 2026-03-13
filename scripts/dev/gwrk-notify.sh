@@ -9,7 +9,8 @@ set -euo pipefail
 TYPE="${1:-}"
 FEATURE="${2:-}"
 PHASE="${3:-}"
-EXTRA_JSON="${4:-{}}"
+EXTRA_JSON="${4:-}"
+if [[ -z "$EXTRA_JSON" ]]; then EXTRA_JSON='{}'; fi
 
 if [[ -z "$TYPE" ]] || [[ -z "$FEATURE" ]]; then
   echo "Usage: $0 <type> <feature> [phase] [extra_json]"

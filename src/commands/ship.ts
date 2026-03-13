@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
@@ -5,10 +6,11 @@ import { MessageBuilder } from "../server/slack-messages.js";
 import { notifySlack } from "../server/slack-notify.js";
 import type { SlackEvent } from "../server/slack-presence.js";
 import type { DispatchRecord } from "../server/types.js";
-import { loadConfig } from "../utils/config.js";
+import { type AgentBackend, loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
+  blocked,
   color,
   dryRun as dryRunFmt,
   fail,
@@ -20,7 +22,7 @@ import {
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
-import { loadTaskState } from "../utils/state.js";
+import { type TaskState, loadTaskState } from "../utils/state.js";
 
 const { GREEN, DIM, RESET } = color;
 
@@ -31,12 +33,91 @@ const { GREEN, DIM, RESET } = color;
 async function shipPhase(
   feature: string,
   phase: string,
-  backend: string,
+  backend: AgentBackend,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
 ): Promise<number> {
   const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
-  const phaseId = `phase-${phase.padStart(2, "0")}`;
+  // Normalize: accept "02", "2", or "phase-02" — scripts expect bare number
+  const normalizedPhase = phase.replace(/^phase-/, "");
+  const phaseId = `phase-${normalizedPhase.padStart(2, "0")}`;
+  const featureDir = path.join(cwd, "specs", feature);
+
+  // CRITICAL: Validate feature exists before ANY side effects.
+  // Without this, writeManifest() creates bogus dirs via mkdir -p
+  // which can lead to accidental deletion of other spec dirs when
+  // agents commit with broad git staging. (ref: 001-cli-core clobber)
+  const specFile = path.join(featureDir, "spec.md");
+  if (!fs.existsSync(specFile)) {
+    const specsDir = path.join(cwd, "specs");
+    const available = fs.existsSync(specsDir)
+      ? fs
+          .readdirSync(specsDir)
+          .filter((d) => {
+            const fp = path.join(specsDir, d);
+            return (
+              fs.statSync(fp).isDirectory() &&
+              fs.existsSync(path.join(fp, "spec.md"))
+            );
+          })
+          .map((d) => `    ${d}`)
+          .join("\n")
+      : "    (none)";
+    console.error(
+      `\n  Feature spec not found: specs/${feature}/spec.md\n  Available features:\n${available}\n`,
+    );
+    return 1;
+  }
+
+  // FR-008: Pre-flight check for test files
+  let taskState: TaskState | undefined;
+  try {
+    taskState = loadTaskState(featureDir);
+  } catch (err) {
+    // If we can't load state, proceed (might be a new feature)
+  }
+
+  if (taskState) {
+    const phaseData = taskState.phases.find((p) => p.id === phaseId);
+
+    if (phaseData) {
+      const files: string[] = [];
+      for (const task of phaseData.tasks) {
+        const text = `${task.title} ${task.description ?? ""}`;
+        const matches = text.matchAll(
+          /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
+        );
+        for (const match of matches) {
+          files.push(match[0].replace(/[,;.]$/, ""));
+        }
+      }
+
+      const testFilesMentioned = files.filter(
+        (f) => f.includes(".test.ts") || f.includes(".test.js"),
+      );
+      const sourceFiles = files.filter(
+        (f) =>
+          (f.endsWith(".ts") || f.endsWith(".js")) &&
+          !f.includes(".test.") &&
+          !f.includes(".d.ts"),
+      );
+
+      // Check filesystem for matching test files if not explicitly in tasks
+      const matchingTestsOnDisk = sourceFiles
+        .map((f) => f.replace(/\.(ts|js)$/, ".test.$1"))
+        .filter((f) => fs.existsSync(path.join(cwd, f)));
+
+      if (
+        testFilesMentioned.length === 0 &&
+        matchingTestsOnDisk.length === 0 &&
+        sourceFiles.length > 0
+      ) {
+        blocked(`[BLOCKED] No test files found for ${phaseId}`);
+        process.exit(1);
+      }
+    }
+  }
+
   const startedAt = new Date().toISOString();
 
   const runId = startRun({
@@ -51,10 +132,10 @@ async function shipPhase(
     id: `ship-${runId}`,
     featureId: feature,
     phaseId: phaseId,
-    backend: backend as any,
+    backend: backend,
     status: "running",
     branchName: getCurrentBranch(cwd),
-    attempts: [{ attemptNumber: 1, backend: backend as any, startedAt }],
+    attempts: [{ attemptNumber: 1, backend: backend, startedAt }],
     createdAt: startedAt,
   };
 
@@ -79,7 +160,7 @@ async function shipPhase(
   let exitCode = 0;
 
   try {
-    await run(scriptPath, [feature, phase], {
+    await run(scriptPath, [feature, normalizedPhase], {
       cwd,
       env: {
         ...process.env,
@@ -215,7 +296,32 @@ export const shipCommand = new Command("ship")
     ) => {
       const cwd = process.cwd();
       const config = loadConfig(cwd);
-      const backend = (opts.agent as string) || config.agents.implement;
+      const backend = ((opts.agent as string) ||
+        config.agents.implement) as AgentBackend;
+
+      // Validate feature exists before any work
+      const featureSpecDir = path.join(cwd, "specs", feature);
+      if (
+        !fs.existsSync(featureSpecDir) ||
+        !fs.existsSync(path.join(featureSpecDir, "spec.md"))
+      ) {
+        console.error(`Feature not found: specs/${feature}`);
+        console.error("Available features:");
+        const specsDir = path.join(cwd, "specs");
+        if (fs.existsSync(specsDir)) {
+          for (const d of fs.readdirSync(specsDir)) {
+            const fp = path.join(specsDir, d);
+            if (
+              fs.statSync(fp).isDirectory() &&
+              fs.existsSync(path.join(fp, "spec.md"))
+            ) {
+              console.log(`  ${d}`);
+            }
+          }
+        }
+        process.exit(1);
+      }
+
 
       // Determine which phases to ship
       let phases: string[];

@@ -1,96 +1,62 @@
 ---
 type: gap_analysis
 feature: 002-build-server
-last_modified: "2026-03-05T21:36:07Z"
+last_modified: "2026-03-12T23:45:00Z"
 ---
 
-# Gap Analysis: 002 Build Server
+# Gap Analysis: 002 Build Server (Test Coverage Audit)
 
-**Feature**: 002-build-server
-**Date**: 2026-03-05
-
-## Audit Summary
-
-The Build Server feature is currently in a `greenfield` state. While the specification (`spec.md`), implementation plan (`plan.md`), and method contracts (`contracts/*.md`) are well-defined, no implementation code exists in the `src/` directory. A draft `tasks.json` and some "weak" verification gates exist, but they need to be refined to match the strictness required by the workspace governance.
-
-## File-by-File Status
-
-| Phase | File | Status | Notes |
-|---|---|---|---|
-| 1 | `src/server/index.ts` | `greenfield` | Fastify bootstrap, route registration, and lifecycle management missing. |
-| 1 | `src/server/pid.ts` | `greenfield` | PID file management (read/write/check) missing. |
-| 1 | `src/commands/server.ts` | `greenfield` | `gwrk server start/stop` CLI commands missing. |
-| 1 | `src/cli.ts` | `missing` | Needs registration of the `server` command group. |
-| 1 | `src/utils/config.ts` | `missing` | `GwrkConfigSchema` needs extension for `server` and `parallelism`. |
-| 1 | `package.json` | `missing` | `fastify` dependency missing. |
-| 1 | `tsconfig.json` | `missing` | Needs verification for ESM compatibility with Fastify. |
-| 2 | `src/server/monitor.ts` | `greenfield` | `SystemMonitor` class for resource sampling missing. |
-| 2 | `src/server/routes/status.ts` | `greenfield` | `GET /api/status` route implementation missing. |
-| 2 | `src/commands/status.ts` | `greenfield` | `gwrk status` CLI command missing. |
-| 3 | `src/server/git-manager.ts` | `greenfield` | Git branch lifecycle (create/merge/conflict) missing. |
-| 3 | `src/server/context.ts` | `greenfield` | Agent context compiler and sandbox injector missing. |
-| 3 | `src/server/types.ts` | `greenfield` | Shared domain types (DispatchRecord, etc.) missing. |
-| 4 | `src/server/sandbox.ts` | `greenfield` | Docker container lifecycle manager via `dockerode` missing. |
-| 4 | `Dockerfile.sandbox` | `greenfield` | Sandbox image definition missing. |
-| 5 | `src/server/dispatch.ts` | `greenfield` | `DispatchQueue` engine with retry/escalation missing. |
-| 5 | `src/server/routes/dispatch.ts` | `greenfield` | Dispatch API routes (POST/GET) missing. |
-| 5 | `src/server/persistence.ts` | `greenfield` | Append-only `dispatches.jsonl` writer missing. |
-
-## Contract Verification
-
-| Contract | Method | Implemented? | Notes |
-|---|---|---|---|
-| `server.md` | `startServer(config)` | No | Source: `src/server/index.ts` |
-| `server.md` | `stopServer(instance)` | No | Source: `src/server/index.ts` |
-| `server.md` | `writePid(pidPath)` | No | Source: `src/server/pid.ts` |
-| `server.md` | `readPid(pidPath)` | No | Source: `src/server/pid.ts` |
-| `monitor.md` | `SystemMonitor.sample()` | No | Source: `src/server/monitor.ts` |
-| `monitor.md` | `SystemMonitor.isThrottled()` | No | Source: `src/server/monitor.ts` |
-| `git-manager.md` | `createPhaseBranch(f, p)` | No | Source: `src/server/git-manager.ts` |
-| `git-manager.md` | `mergePhaseBack(f, p)` | No | Source: `src/server/git-manager.ts` |
-| `context.md` | `compileContext(dir, id)` | No | Source: `src/server/context.ts` |
-| `sandbox.md` | `createSandbox(opts)` | No | Source: `src/server/sandbox.ts` |
-| `dispatch.md` | `Queue.enqueue(request)` | No | Source: `src/server/dispatch.ts` |
-| `dispatch.md` | `Queue.processNext()` | No | Source: `src/server/dispatch.ts` |
-
-## Findings & Recommendations
-
-1.  **Strict Gate Generation**: Existing gates in `gates/` are "weak" (only file/grep checks). They must be regenerated to assert exact type signatures and contract adherence (e.g., using `grep` for full function signatures).
-2.  **Dependencies**: `package.json` update must be the first task in Phase 1 to unblock server development.
-3.  **Config First**: Extending `src/utils/config.ts` is a high-priority task as multiple components depend on the new schema.
-4.  **PID Management**: The PID manager should ensure `.gwrk/` exists, which is a common point of failure.
-5.  **Integration Testing**: Phase 5 requires a running Docker daemon. Verification gates for Phase 4/5 should check for Docker availability.
+**Date**: 2026-03-12
+**Status**: ⚠️ Partial Coverage Gaps Identified
 
 ---
 
-## GAP-002-A: Container Lifecycle Management (2026-03-11)
+## Functional Requirements Coverage
 
-> **Discovered during**: 003-slack integration testing
-> **Severity**: Architectural debt — resource leak
-> **Evidence**: 13 zombie Docker containers (`gwrk.feature=feat-1`, `gwrk.feature=feat-int`) found running/created from integration tests spanning 32+ hours, consuming resources with no expiry or cleanup mechanism.
+| FR-### | Requirement | Status | Test File | Gap / Notes |
+|---|---|---|---|---|
+| FR-001 | `server start` | ✅ tested | `src/commands/server.test.ts` | Covers daemonization, PID file creation, and port binding. |
+| FR-002 | Daemon REST endpoints | ✅ tested | `src/server/index.test.ts` | Verified Fastify bootstrap and basic routing. |
+| FR-003 | `server stop` | ✅ tested | `src/commands/server.test.ts` | Covers SIGTERM handling and PID removal. |
+| FR-004 | `gwrk status` | ✅ tested | `src/server/routes/status.test.ts` | Comprehensive validation of the SystemStatus response. |
+| FR-005 | `POST /api/dispatch` | ✅ tested | `src/server/dispatch.test.ts` | Covers request enqueuing and initial status. |
+| FR-006 | Sandbox lifecycle | ✅ tested | `src/server/sandbox.test.ts` | Covers container create, start, stop, and destroy. |
+| FR-007 | Context compilation | ✅ tested | `src/server/context.test.ts` | Verified correct aggregation of rules, personas, specs, and plans. |
+| FR-008 | Dispatch queue | ✅ tested | `src/server/dispatch.test.ts` | Verified FIFO ordering and parallelism limits. |
+| FR-009 | Retry & Escalation | ✅ tested | `src/server/dispatch.test.ts` | Verified 3x retry logic and fallback backend assignment. |
+| FR-010 | Git branch lifecycle | ✅ tested | `src/server/git-manager.test.ts`| Verified branch creation from WIP and merge conflict detection. |
+| FR-011 | PID file discipline | ✅ tested | `src/server/index.test.ts` | Verified `writePid` and `removePid` during lifecycle. |
+| FR-012 | `Dockerfile.sandbox` | ⚠️ weak | — | **Major Gap**: No automated test (e.g., `src/server/sandbox.e2e.test.ts`) verifies that the built image contains `node`, `git`, and `gh`. |
+| FR-013 | Context file reads | ✅ tested | `src/server/context.test.ts` | Verified that all required spec/plan files are read from the filesystem. |
+| FR-014 | Resource monitoring | ✅ tested | `src/server/monitor.test.ts` | Covers CPU, Memory, and Disk throttling logic. |
+| FR-015 | Sleep/Wake detection | ✅ tested | `src/server/lifecycle.test.ts` | Verified wall-clock heartbeat drift detection. |
+| FR-016 | Wake reconnect | ⚠️ weak | `src/server/lifecycle.test.ts` | **Assertion missing**: Test only verifies the event emission. No test confirms that `SandboxManager.unpauseAll()` is actually triggered on wake. |
+| FR-017 | Network monitoring | ✅ tested | `src/server/network.test.ts` | Verified `isOnline()` polling and event emission. |
+| FR-018 | Network pause | ⚠️ weak | `src/server/network.test.ts` | **Assertion missing**: Test only verifies the event emission. No test confirms that `DispatchQueue.pause()` is called when network goes down. |
+| FR-019 | Sandbox pause | ⚠️ weak | — | **Major Gap**: No test (unit or integration) verifies that `docker pause` is actually called on gwrk containers during sleep. |
+| FR-020 | Health response | ✅ tested | `src/server/routes/health.test.ts`| Verified component-level status (Ok/Degraded). |
+| FR-021 | Lifecycle status | ✅ tested | `src/server/lifecycle.test.ts` | Covers all lifecycle states: starting, ready, sleeping, degraded. |
+| FR-024 | `server clean` | ❌ missing | — | **Major Gap**: Command and implementation are missing from the codebase. |
 
-### Root Cause
+---
 
-`SandboxManager` has `createSandbox()` and `destroySandbox()` but nothing enforces lifecycle:
+## Action Plan: Testing Gaps
 
-| Gap | Detail |
-|---|---|
-| **No container TTL** | `gwrk.startedAt` label is written but never read. No reaper checks age. |
-| **No test cleanup** | Integration tests call `createSandbox()` with no `afterEach`/`afterAll` teardown. Every test run leaks containers. |
-| **No shutdown cleanup** | `startServer.shutdown()` stops Slack, monitors, and Fastify but never calls `sandbox.destroyAll()` or equivalent. |
-| **No manual cleanup command** | No `gwrk server clean` or `gwrk doctor` to audit and reclaim leaked resources. |
-| **No max container limit** | `createSandbox()` never checks how many gwrk containers already exist. Unbounded growth. |
+### 1. Implement `src/server/lifecycle.integration.test.ts` (FR-016, FR-018, FR-019)
+- **Target**: Server-level event handlers.
+- **Assertions**:
+  - `server:sleep` → `DispatchQueue.pause()` + `SandboxManager.pauseAll()`.
+  - `server:wake` → `Graceful Reconnect Protocol` runs.
+  - `network:down` → `DispatchQueue.pause()`.
 
-### Required Changes
+### 2. Implement Sandbox E2E Verification (FR-012)
+- **Target**: `Dockerfile.sandbox`.
+- **Assertions**:
+  - Build `gwrk-sandbox:latest`.
+  - Run container and assert `node --version`, `git --version`, `gh --version`.
 
-1. **`SandboxManager.reapStale(maxAgeMs)`** — Destroy containers older than TTL based on `gwrk.startedAt` label.
-2. **`SandboxManager.destroyAll()`** — Remove all gwrk-labeled containers. Called on server shutdown.
-3. **Reaper interval in server** — `setInterval(() => sandbox.reapStale(TTL), 60_000)` inside `startServer()`.
-4. **Shutdown hook** — Add `await sandbox.destroyAll()` to `startServer.shutdown()`.
-5. **Test cleanup** — `afterAll(() => sandbox.destroyAll())` in all integration test suites that create containers.
-6. **`gwrk server clean` command** — Repeatable CLI command wrapping `destroyAll()` with count reporting.
-7. **Max concurrency guard** — `createSandbox()` checks active count against `config.server.parallelism.maxConcurrentSandboxes` before spawning.
-
-## Conclusion
-
-The project is ready for task decomposition. The existing `tasks.json` structure is a good baseline but will be refined to ensure "Halving Rule" compliance and "Zero Interpretation" task descriptions.
+### 3. Implement `gwrk server clean` (FR-024)
+- **Target**: Command implementation and test coverage.
+- **Assertions**:
+  - Destroy all containers labeled `gwrk.feature=*`.
+  - Count destroyed containers and report to CLI.

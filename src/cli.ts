@@ -10,6 +10,7 @@ import { setupSlackCommand } from "./commands/setup-slack.js";
 import { shipCommand } from "./commands/ship.js";
 import { statusCommand } from "./commands/status.js";
 import { tasksCommand } from "./commands/tasks.js";
+import { testCommand } from "./commands/test.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 
@@ -41,7 +42,7 @@ program
       const cmds = cmd.commands;
       if (cmds.length > 0) {
         // Foxtrot Charlie pillars
-        const pillars = ["define", "ship", "measure"];
+        const pillars = ["define", "ship", "test", "measure"];
         const ops = ["init", "tasks", "db", "server", "status", "setup"];
 
         out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
@@ -88,6 +89,7 @@ program.addCommand(initCommand);
 // The Foxtrot Charlie Pillars
 program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze
 program.addCommand(shipCommand); // Ship: autonomous implement → review → PR loop
+program.addCommand(testCommand); // Test: run vitest scoped to feature
 program.addCommand(measureCommand); // Measure: pulse, effort, compression
 
 // Operational queries

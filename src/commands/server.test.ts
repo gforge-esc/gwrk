@@ -34,7 +34,7 @@ describe("serverCommand", () => {
     vi.spyOn(configUtils, "loadConfig").mockReturnValue({
       project: { name: "test" },
       agents: { define: "gemini", implement: "codex-cloud" },
-      server: { port: 18790, host: "localhost" },
+      server: { port: 0, host: "localhost" },
       parallelism: {
         local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
         cloud: { maxConcurrent: 10 },

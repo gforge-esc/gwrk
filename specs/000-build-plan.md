@@ -48,7 +48,7 @@ Extract the code-red agent workflow system into the gwrk repository.
 
 | Feature | Content | Gate |
 |---|---|---|
-| `.agent/` | Workflows, rules, personas, templates | Files exist |
+| `.agents/` | Workflows, rules, personas, templates | Files exist |
 | `.specify/` | Templates, scripts, memory | Files exist |
 | `scripts/dev/` | Shell orchestrators | `make agent-specify` runs |
 | `Makefile` | Agent invocation targets | Targets fire |
@@ -83,11 +83,11 @@ gwrk tasks done <feature> <id> # Gate-enforced state transition
 
 #### `gwrk new` vs `gwrk init`:
 - **`gwrk new <name>`** — From scratch. Requires explicit project name (or description → extracted name). Creates directory, `git init`, `gh repo create`, Slack channel, full scaffold, CLI provisioning, SQLite registration. Does everything it can, then reports what it couldn't with next steps.
-- **`gwrk init`** — "I'm working here, add gwrk." Detects existing project context. Scaffolds `.agent/`, `.specify/`, `specs/`. Provisions detected CLIs (`GEMINI.md`, `CLAUDE.md`, `AGENTS.md`). Creates Slack channel. Registers in SQLite.
+- **`gwrk init`** — "I'm working here, add gwrk." Detects existing project context. Scaffolds `.agents/`, `.specify/`, `specs/`. Provisions detected CLIs (`GEMINI.md`, `CLAUDE.md`, `AGENTS.md`). Creates Slack channel. Registers in SQLite.
 
 #### Multi-CLI provisioning:
 - Detects `gemini`, `claude`, `codex` via `which`/`command -v`
-- Provisions CLI-specific context files referencing shared `.agent/` directory
+- Provisions CLI-specific context files referencing shared `.agents/` directory
 - Generates CLI-specific settings from `.gwrkrc.json` defaults
 
 #### Key files:

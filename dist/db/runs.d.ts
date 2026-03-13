@@ -37,16 +37,18 @@ export declare function recordRun(run: Omit<RunRecord, "id" | "started_at" | "fi
  * List all runs for a feature, most recent first.
  */
 export declare function listRuns(featureId: string, db?: Database.Database): RunRecord[];
-/**
- * Register a project in the global DB. Upserts by path.
- */
-export declare function registerProject(project: {
+export interface ProjectRecord {
     id: string;
     name: string;
     path: string;
-    github_repo?: string;
-    slack_channel?: string;
-}, db?: Database.Database): void;
+    github_repo?: string | null;
+    slack_channel?: string | null;
+    created_at?: string;
+}
+/**
+ * Register a project in the global DB. Upserts by path.
+ */
+export declare function registerProject(project: ProjectRecord, db?: Database.Database): void;
 export interface RunStats {
     command: string;
     agent_backend: string | null;
@@ -62,7 +64,7 @@ export declare function getStats(db?: Database.Database): RunStats[];
 /**
  * List all projects.
  */
-export declare function listProjects(db?: Database.Database): unknown[];
+export declare function listProjects(db?: Database.Database): ProjectRecord[];
 export interface HistoryRecord {
     id?: number;
     timestamp?: string;

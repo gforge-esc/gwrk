@@ -1,0 +1,128 @@
+{
+  "featureId": "000-tdd-infrastructure",
+  "createdAt": "2026-03-12T22:22:04.505Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "ebc9677304bb1ff74cd3bb4c1f2bcd60e8c4d321f00336613f4d0646cae6e975",
+      "modifiedAt": "2026-03-12T22:17:57.666Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Hard Gate Enforcement & CLI Infrastructure",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Implement src/utils/gate-gen.ts",
+          "description": "MODIFY: `generateGates(",
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh"
+        },
+        {
+          "id": "T002",
+          "title": "Implement src/commands/tasks-generate.ts",
+          "description": "MODIFY: Pass `# AUTHORED` marker check through reconcile — do not overwrite gates that contain it.",
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh"
+        },
+        {
+          "id": "T003",
+          "title": "Implement src/commands/ship.ts",
+          "description": "MODIFY: Add pre-flight check — scan phase deliverable files for matching `.test.ts`. If none found, exit 1 with `[BLOCKED] No test files found for <phase>`. Active immediately, no flag.\n\nREVIEW FAIL (code): Type Safety — FR-009.\n  WHERE: src/commands/ship.ts:45, 105, 108\n  EXPECTED: Strict typing using TaskState and AgentBackend.\n  ACTUAL: uses 'any' and implicit 'any'.\n  FIX: Replace 'any' with proper types from ../utils/state.js and ../utils/config.js.\n  GATE: gates/T003-gate.sh assertion #1\n  REF: plan.md Phase 1 > Governance & Skills Contract\nREVIEW FAIL (code): Type Safety — FR-009.\n  WHERE: src/commands/ship.ts:45, 105, 108\n  EXPECTED: Strict typing using TaskState and AgentBackend.\n  ACTUAL: uses 'any' and implicit 'any'.\n  FIX: Import TaskState from ../utils/state.js and AgentBackend from ../utils/config.js. Replace 'any' with proper types.\n  GATE: gates/T003-gate.sh assertion #1\n  REF: plan.md Phase 1 > Governance & Skills Contract",
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh"
+        },
+        {
+          "id": "T004",
+          "title": "Implement src/commands/test.ts",
+          "description": "NEW: `gwrk test <feature> [--phase <N>]` — runs `pnpm vitest run` scoped to feature test file paths from tasks.json, exits 0 only if all pass.",
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh"
+        },
+        {
+          "id": "T005",
+          "title": "Implement src/cli.ts",
+          "description": "MODIFY: Register `test` command.",
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh"
+        },
+        {
+          "id": "T006",
+          "title": "Implement src/commands/ship.test.ts",
+          "description": "MODIFY: Fix broken mock — `SlackConfigSchema` is not exported from the vi.mock of `../utils/config.js`. Fix mock, then add test for BLOCKED pre-flight.",
+          "status": "completed",
+          "gateScript": "gates/T006-gate.sh"
+        },
+        {
+          "id": "T007",
+          "title": "Implement src/commands/server.test.ts",
+          "description": "MODIFY: Fix EADDRINUSE — server tests must use a mock port or `vi.mock` the net binding. Real port 18794 is in use during test runs.",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh"
+        },
+        {
+          "id": "T008",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Done When.\n  WHERE: src/commands/setup-slack.ts:164, 211, 257\n  EXPECTED: fail(command: string, exitCode: number, durationS: number)\n  ACTUAL: fail(\"setup slack\", 1)\n  FIX: Provide the missing durationS argument.\n  GATE: gates/T008-gate.sh assertion #2\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Build failure — Done When.\n  WHERE: src/server/routes/notify.ts:71, 80\n  EXPECTED: Property 'opsOnly' to exist on NotifyPayload.\n  ACTUAL: Property 'opsOnly' does not exist on type 'NotifyPayload'.\n  FIX: Update NotifyPayload interface in src/server/types.ts to include opsOnly: boolean (replaces masterOnly).\n  GATE: gates/T008-gate.sh assertion #2\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Missing Test File — TR-006.\n  WHERE: src/commands/test-cmd.test.ts\n  EXPECTED: File exists and verifies 'gwrk test' command.\n  ACTUAL: File is missing.\n  FIX: Implement src/commands/test-cmd.test.ts as specified in TR-006.\n  GATE: gates/T008-gate.sh assertion #1\n  REF: plan.md Phase 1 > Test Strategy",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "completedAt": "2026-03-13T01:25:37.178Z"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/utils/gate-gen.test.ts src/commands/tasks-generate.test.ts src/commands/tasks-done.test.ts src/commands/ship.test.ts src/commands/test-cmd.test.ts src/commands/server.test.ts` exits 0",
+        "`pnpm build` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Retroactive Audit & Gap Analysis (001, 002)",
+      "tasks": [
+        {
+          "id": "T009",
+          "title": "Implement specs/001-cli-core/gap-analysis.md",
+          "description": "NEW: Classify each FR-### as ✅ tested | ⚠️ weak | ❌ untested. For every ❌ or ⚠️, describe exactly what assertion is missing and what test file should contain it.\n\nREVIEW FAIL (uat): Audit Incomplete — Expected: Classification for EVERY FR-### from 001-cli-core/spec.md. Actual: FR-009 and FR-021 are missing from gap-analysis.md. See spec.md > US-005. Fix: Add missing FR classifications to specs/001-cli-core/gap-analysis.md.",
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh"
+        },
+        {
+          "id": "T010",
+          "title": "Implement specs/002-build-server/gap-analysis.md",
+          "description": "NEW: Same classification. Focus on: server lifecycle start/stop, health endpoint, dispatch queue, Docker sandbox, git manager.\n\nREVIEW FAIL (uat): Audit Incomplete — Expected: Classification for EVERY FR-### from 002-build-server/spec.md. Actual: FR-022, FR-023, FR-025, and FR-026 are missing from gap-analysis.md. See spec.md > US-006. Fix: Add missing FR classifications to specs/002-build-server/gap-analysis.md.",
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh"
+        },
+        {
+          "id": "T011",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (uat): Incomplete Verification — Expected: Classification complete for both 001 and 002 audit files. Actual: Gaps identified in audit files mean the test strategy for this phase is not fully satisfied. Fix: Re-verify both audit files after missing FRs are added.",
+          "status": "completed",
+          "gateScript": "gates/T011-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`grep -cE \"✅|⚠️|❌\" specs/001-cli-core/gap-analysis.md | xargs test 0 -lt` exits 0",
+        "`grep -cE \"✅|⚠️|❌\" specs/002-build-server/gap-analysis.md | xargs test 0 -lt` exits 0"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "003-slack Remediation & Red-First Authoring",
+      "tasks": [
+        {
+          "id": "T012",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Test Timeout — TR-009.\n  WHERE: src/server/integration.test.ts:59\n  EXPECTED: Test completes within 5000ms.\n  ACTUAL: Test timed out.\n  FIX: Mock startSlackApp and ensureDocker in integration tests to avoid side-effect delays, or increase vitest timeout.\n  GATE: gates/T012-gate.sh assertion #1\n  REF: plan.md Phase 3 > Test Strategy\n\nREVIEW FAIL (code): Empty Test Suite — TR-009.\n  WHERE: src/db/runs.test.ts:1\n  EXPECTED: File contains a valid vitest suite.\n  ACTUAL: File is a stub with no tests.\n  FIX: Implement tests for run database operations or remove the stub.\n  GATE: gates/T012-gate.sh assertion #3\n  REF: plan.md Phase 3 > Test Strategy\n\nREVIEW FAIL (code): Lint Cleanliness — SC-001.\n  WHERE: src/commands/ship.ts, src/commands/setup-slack.ts, src/server/routes/notify.ts\n  EXPECTED: 0 lint errors (no 'any' types).\n  ACTUAL: 81 errors (noExplicitAny, noImplicitAnyLet).\n  FIX: Replace 'any' with proper types (TaskState, AgentBackend, GwrkConfig) and initialize variables.\n  GATE: pnpm lint\n  REF: plan.md Phase 1 > Governance & Skills Contract\n\nREVIEW FAIL (code): Test Timeout — TR-009.\n  WHERE: src/server/integration.test.ts:59\n  EXPECTED: Test completes within 5000ms.\n  ACTUAL: Test timed out in 5000ms.\n  FIX: Mock startSlackApp and ensureDocker in integration tests to avoid side-effect delays.\n  GATE: gates/T012-gate.sh assertion #3\n  REF: plan.md Phase 3 > Test Strategy\n\nREVIEW FAIL (code): Lint Cleanliness — SC-007.\n  WHERE: Multiple files (src/commands/ship.ts, src/server/routes/notify.ts, etc.)\n  EXPECTED: 0 lint errors (no 'any' types).\n  ACTUAL: 88 lint errors (mostly noExplicitAny).\n  FIX: Run 'pnpm exec biome lint --write .' and manually fix remaining 'any' types with proper interfaces.\n  GATE: pnpm lint\n  REF: plan.md Phase 1 > Governance & Skills Contract\n\nREVIEW FAIL (code): Build failure — compile-gate failed.\n  WHERE: src/commands/init.ts:131, src/commands/ship.ts:326, src/server/routes/notify.ts:82\n  EXPECTED: pnpm build exits 0.\n  ACTUAL: 7 TypeScript errors in 3 files.\n  FIX: Fix type mismatches in init.ts (slack config), ship.ts (backend enum), and notify.ts (NotifyPayload record).\n  GATE: pnpm build\n  REF: plan.md Phase 3 > Done When\n\nREVIEW FAIL (code): Lint Cleanliness — SC-007.\n  WHERE: Multiple files (src/db/runs.test.ts, src/server/slack-actions.ts, etc.)\n  EXPECTED: 0 lint errors (no 'any' types).\n  ACTUAL: 68 lint errors remain after auto-fix.\n  FIX: Replace 'any' with proper types/interfaces. Use DispatchRecord, TaskState, GwrkConfig, etc.\n  GATE: pnpm lint\n  REF: plan.md Phase 1 > Governance & Skills Contract\n\nREVIEW FAIL (code): Buggy Gate Script — T012.\n  WHERE: specs/000-tdd-infrastructure/gates/T012-gate.sh\n  EXPECTED: Gate script makes robust assertions.\n  ACTUAL: Assertion 'grep -q \" 0 failed\"' fails even when all tests pass because Vitest summary format changed.\n  FIX: Update T012-gate.sh to check for \"passed\" count or use 'vitest run' exit code directly.\n  GATE: gates/T012-gate.sh\n  REF: plan.md Phase 3 > Done When",
+          "status": "completed",
+          "gateScript": "gates/T012-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/ 2>&1 | grep -q \" 0 failed\"` exits 0",
+        "`cat specs/003-slack/gates/T007-gate.sh | grep -q \"pnpm vitest run\"` exits 0",
+        "`pnpm vitest run 2>&1 | tail -3 | grep -q \" 0 failed\"` exits 0 (full suite green)"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,13 @@
 import { App } from "@slack/bolt";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GwrkConfig } from "../utils/config";
 import * as slackClient from "../utils/slack-client";
+import type { DispatchQueue } from "./dispatch";
+import type { GitManager } from "./git-manager";
+import type { LifecycleMonitor } from "./lifecycle";
+import type { SystemMonitor } from "./monitor";
+import type { NetworkMonitor } from "./network";
+import type { SandboxManager } from "./sandbox";
 import {
   getSlackApp,
   resetSlackApp,
@@ -87,25 +94,30 @@ describe("Slack Server Integration", () => {
     });
 
     const mockDeps = {
-      queue: { command: vi.fn() },
-      monitor: { startPolling: vi.fn(), stopPolling: vi.fn() },
-      sandbox: { checkDocker: vi.fn() },
+      queue: { command: vi.fn() } as unknown as DispatchQueue,
+      monitor: {
+        startPolling: vi.fn(),
+        stopPolling: vi.fn(),
+      } as unknown as SystemMonitor,
+      sandbox: { checkDocker: vi.fn() } as unknown as SandboxManager,
       lifecycle: {
         start: vi.fn(),
         stop: vi.fn(),
         getStatus: vi.fn(() => "ready"),
-      },
+      } as unknown as LifecycleMonitor,
       network: {
         start: vi.fn(),
         stop: vi.fn(),
         getStatus: vi.fn(() => "online"),
-      },
-      git: { projectRoot: "/tmp" },
+      } as unknown as NetworkMonitor,
+      git: { projectRoot: "/tmp" } as unknown as GitManager,
       projectRoot: "/tmp",
-      config: { server: { host: "localhost", port: 3000 } },
+      config: {
+        server: { host: "localhost", port: 3000 },
+      } as unknown as GwrkConfig,
     };
 
-    await startSlackApp(mockDeps as any);
+    await startSlackApp(mockDeps);
     expect(console.log).toHaveBeenCalledWith("⚡️ Slack Bolt app is running!");
 
     await stopSlackApp();

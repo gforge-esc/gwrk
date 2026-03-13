@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as runsModule from "../db/runs.js";
@@ -12,13 +14,27 @@ vi.mock("../utils/exec.js", () => ({
   runGate: vi.fn(),
 }));
 
-vi.mock("../utils/config.js", () => ({
-  loadConfig: vi.fn().mockReturnValue({
-    agents: {
-      implement: "mock-agent",
-    },
-  }),
+vi.mock("../server/slack-notify.js", () => ({
+  notifySlack: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock("../utils/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/config.js")>();
+  return {
+    ...actual,
+    loadConfig: vi.fn().mockReturnValue({
+      project: {
+        name: "test",
+        slack: { channelId: "C123", channelName: "test" },
+      },
+      agents: {
+        implement: "mock-agent",
+        define: "mock-agent",
+      },
+      server: { port: 18790, host: "localhost" },
+    }),
+  };
+});
 
 vi.mock("../db/runs.js", () => ({
   startRun: vi.fn().mockReturnValue(999),
@@ -31,6 +47,7 @@ vi.mock("../utils/format.js", () => ({
   success: vi.fn(),
   banner: vi.fn(),
   dryRun: vi.fn(),
+  blocked: vi.fn(),
   color: {
     BOLD: "",
     DIM: "",
@@ -72,6 +89,10 @@ vi.mock("../utils/git.js", () => ({
     .fn()
     .mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 }),
 }));
+
+// Default fs.existsSync to true so ship's pre-flight checks pass.
+// Tests that need specific existsSync behavior override with their own spy.
+vi.spyOn(fs, "existsSync").mockReturnValue(true);
 
 describe("shipCommand", () => {
   let mockRun: ReturnType<typeof vi.fn>;
@@ -199,5 +220,79 @@ describe("shipCommand", () => {
     expect(execModule.run).not.toHaveBeenCalled();
     // Should print dry-run for each phase
     expect(uiModule.dryRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("should exit 1 with BLOCKED message if no test files found for phase", async () => {
+    // Modify loadTaskState mock to return a task with a source file but no tests
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          tasks: [
+            {
+              id: "T001",
+              title: "Implement src/commands/ship.ts",
+              status: "open",
+              gateScript: "gates/T001-gate.sh",
+            },
+          ],
+          doneWhen: [],
+        },
+      ],
+    });
+
+    // Ensure fs.existsSync returns false for the corresponding test file but true for others
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
+      if (typeof p === "string" && p.endsWith(".test.ts")) return false;
+      return true;
+    });
+
+    // Mock blocked() from uiModule
+    const blockedSpy = vi.mocked(uiModule.blocked);
+
+    // We expect process.exit(1)
+    await expect(
+      program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]),
+    ).rejects.toThrow('process.exit unexpectedly called with "1"');
+
+    expect(blockedSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[BLOCKED] No test files found for phase-01"),
+    );
+
+    existsSpy.mockRestore();
+  });
+
+  it("should exit 1 without side effects when feature spec.md does not exist", async () => {
+    // Mock fs.existsSync: spec.md returns false, everything else returns true
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
+      if (typeof p === "string" && p.endsWith("spec.md")) return false;
+      return true;
+    });
+
+    // Mock readdirSync and statSync for the available-features listing
+    const readdirSpy = vi
+      .spyOn(fs, "readdirSync")
+      .mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
+
+    await expect(
+      program.parseAsync([
+        "node",
+        "test",
+        "ship",
+        "nonexistent-feature",
+        "1",
+      ]),
+    ).rejects.toThrow('process.exit unexpectedly called with "1"');
+
+    // No shell script should have been invoked
+    expect(execModule.run).not.toHaveBeenCalled();
+    // No DB recording either
+    expect(runsModule.startRun).not.toHaveBeenCalled();
+
+    existsSpy.mockRestore();
+    readdirSpy.mockRestore();
   });
 });

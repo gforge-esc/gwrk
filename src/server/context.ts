@@ -10,7 +10,7 @@ export function compileContext(
 
   // 1. Governance Rules
   context += "## Governance Rules\n\n";
-  const rulesDir = path.join(projectRoot, ".agent/rules");
+  const rulesDir = path.join(projectRoot, ".agents/rules");
   if (fs.existsSync(rulesDir)) {
     const rules = fs
       .readdirSync(rulesDir)
@@ -25,7 +25,7 @@ export function compileContext(
 
   // 2. Persona
   context += "## Persona\n\n";
-  const personasDir = path.join(projectRoot, ".agent/prompts/personas");
+  const personasDir = path.join(projectRoot, ".agents/prompts/personas");
   if (fs.existsSync(personasDir)) {
     const personas = fs
       .readdirSync(personasDir)
