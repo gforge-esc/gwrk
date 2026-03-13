@@ -74,7 +74,7 @@ export async function startSlackApp(deps: {
     await registerSlackHomeHandler(slackApp, deps);
 
     // Initialize presence poller
-    await presenceManager.init(deps.projectRoot);
+    await presenceManager.init(deps.config);
 
     await slackApp.start();
     console.log("⚡️ Slack Bolt app is running!");

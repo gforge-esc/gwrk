@@ -30,7 +30,7 @@
           "id": "T003",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY: Add pre-flight check — scan phase deliverable files for matching `.test.ts`. If none found, exit 1 with `[BLOCKED] No test files found for <phase>`. Active immediately, no flag.\n\nREVIEW FAIL (code): Type Safety — FR-009.\n  WHERE: src/commands/ship.ts:45, 105, 108\n  EXPECTED: Strict typing using TaskState and AgentBackend.\n  ACTUAL: uses 'any' and implicit 'any'.\n  FIX: Replace 'any' with proper types from ../utils/state.js and ../utils/config.js.\n  GATE: gates/T003-gate.sh assertion #1\n  REF: plan.md Phase 1 > Governance & Skills Contract\nREVIEW FAIL (code): Type Safety — FR-009.\n  WHERE: src/commands/ship.ts:45, 105, 108\n  EXPECTED: Strict typing using TaskState and AgentBackend.\n  ACTUAL: uses 'any' and implicit 'any'.\n  FIX: Import TaskState from ../utils/state.js and AgentBackend from ../utils/config.js. Replace 'any' with proper types.\n  GATE: gates/T003-gate.sh assertion #1\n  REF: plan.md Phase 1 > Governance & Skills Contract",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh"
         },
         {
@@ -65,8 +65,9 @@
           "id": "T008",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Build failure — Done When.\n  WHERE: src/commands/setup-slack.ts:164, 211, 257\n  EXPECTED: fail(command: string, exitCode: number, durationS: number)\n  ACTUAL: fail(\"setup slack\", 1)\n  FIX: Provide the missing durationS argument.\n  GATE: gates/T008-gate.sh assertion #2\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Build failure — Done When.\n  WHERE: src/server/routes/notify.ts:71, 80\n  EXPECTED: Property 'opsOnly' to exist on NotifyPayload.\n  ACTUAL: Property 'opsOnly' does not exist on type 'NotifyPayload'.\n  FIX: Update NotifyPayload interface in src/server/types.ts to include opsOnly: boolean (replaces masterOnly).\n  GATE: gates/T008-gate.sh assertion #2\n  REF: plan.md Phase 1 > Done When\n\nREVIEW FAIL (code): Missing Test File — TR-006.\n  WHERE: src/commands/test-cmd.test.ts\n  EXPECTED: File exists and verifies 'gwrk test' command.\n  ACTUAL: File is missing.\n  FIX: Implement src/commands/test-cmd.test.ts as specified in TR-006.\n  GATE: gates/T008-gate.sh assertion #1\n  REF: plan.md Phase 1 > Test Strategy",
-          "status": "open",
-          "gateScript": "gates/T008-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "completedAt": "2026-03-13T01:25:37.178Z"
         }
       ],
       "doneWhen": [

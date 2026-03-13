@@ -26,9 +26,7 @@ export const initCommand = new Command("init")
 
         const hasTokens = loadSlackConfig();
         if (!hasTokens) {
-          console.error(
-            "Slack not configured. Run gwrk setup slack first.",
-          );
+          console.error("Slack not configured. Run gwrk setup slack first.");
           process.exit(1);
         }
 

@@ -22,7 +22,11 @@ export function readPid(): number | undefined {
 
 export function removePid(): void {
   if (fs.existsSync(PID_FILE)) {
-    fs.unlinkSync(PID_FILE);
+    try {
+      fs.unlinkSync(PID_FILE);
+    } catch {
+      // ignore
+    }
   }
 }
 

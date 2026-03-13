@@ -18,7 +18,12 @@ export function readPid() {
 }
 export function removePid() {
     if (fs.existsSync(PID_FILE)) {
-        fs.unlinkSync(PID_FILE);
+        try {
+            fs.unlinkSync(PID_FILE);
+        }
+        catch {
+            // ignore
+        }
     }
 }
 export function isPidRunning(pid) {

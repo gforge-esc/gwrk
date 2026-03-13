@@ -18,12 +18,9 @@ import type { Phase, Task } from "./state.js";
  *    - .sql     → test -f + grep for expected column names
  *    - .ts/.js  → identifier grep + compiled output check
  *    - .sh      → bash -n (syntax check)
- *    - other    → test -s (non-empty)
  *
- * 4. ABSOLUTE FALLBACK — pnpm build exits 0.
- *
- * NOTE: File-existence-only (test -f) gates are NEVER emitted as the sole
- * assertion. Every gate must make a functional claim.
+ * 4. GATE_STUB FALLBACK — if no functional assertion can be derived,
+ *    emit a stub that fails gwrk tasks done.
  */
 export function generateGates(featureDir: string, phases: Phase[]): void {
   const gatesDir = path.join(featureDir, "gates");
@@ -129,23 +126,27 @@ function buildAssertions(
         .map((m) => m[1])
         .filter((w) => w.includes("_"))
         .slice(0, 2);
-      for (const col of cols) {
-        lines.push(`grep -qi '${col}' ${resolvedFile}`);
+      if (cols.length > 0) {
+        for (const col of cols) {
+          lines.push(`grep -qi '${col}' ${resolvedFile}`);
+        }
+      } else {
+        // SQL with no identifiers found — weak. But better than nothing.
+        lines.push(`grep -qEi "CREATE|INSERT|UPDATE" ${resolvedFile}`);
       }
     } else if (ext === ".ts" || ext === ".js") {
       const ids = extractIdentifiers(task.description ?? "").slice(0, 4);
       if (ids.length > 0) {
         lines.push("# Required identifiers");
         for (const id of ids) lines.push(`grep -q '${id}' ${resolvedFile}`);
+        const compiled = `dist/${resolvedFile.replace(/^src\//, "").replace(/\.ts$/, ".js")}`;
+        lines.push(`test -f ${compiled}`);
+      } else {
+        // No identifiers? Fall through to STUB unless it's the last task AC.
       }
-      const compiled = `dist/${resolvedFile.replace(/^src\//, "").replace(/\.ts$/, ".js")}`;
-      lines.push(`test -f ${compiled}`);
     } else if (ext === ".sh") {
       lines.push(`test -f ${resolvedFile}`);
       lines.push(`bash -n ${resolvedFile}`);
-    } else {
-      lines.push(`test -f ${resolvedFile}`);
-      lines.push(`test -s ${resolvedFile}`);
     }
   }
 
@@ -160,10 +161,20 @@ function buildAssertions(
     }
   }
 
-  // Absolute fallback
-  if (lines.length === 0) {
-    lines.push("# Fallback: build must compile");
-    lines.push("pnpm build 2>&1 | tail -1");
+  // Functional Assertion check — ensure we have at least one functional line
+  const hasFunctional = lines.some((l) => {
+    const functionalCmds = /\b(pnpm|node|gwrk|curl|grep|cat|bash|jq|gh|vitest|tsc|biome)\b/;
+    const isBareTestF = /^\s*test -f \S+\s*$/.test(l);
+    return functionalCmds.test(l) && !isBareTestF;
+  });
+
+  if (!hasFunctional) {
+    return [
+      "# GATE_STUB: no functional assertion could be derived from plan.",
+      "# Replace this stub with a real assertion (pnpm vitest, curl, etc.)",
+      "# and add the '# AUTHORED' marker to the top of the file.",
+      "echo 'GATE_STUB: authored gate required' && exit 1",
+    ].join("\n");
   }
 
   return lines.join("\n");

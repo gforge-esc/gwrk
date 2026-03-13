@@ -76,10 +76,15 @@ describe("slack-actions", () => {
 
     await actionHandlers["merge_pr"]({ ack, body, client, logger: console });
     expect(ack).toHaveBeenCalled();
-    expect(mockContext.git.mergePhaseBack).toHaveBeenCalledWith("003-slack", "phase-01");
+    expect(mockContext.git.mergePhaseBack).toHaveBeenCalledWith(
+      "003-slack",
+      "phase-01",
+    );
     expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining("PR for *003-slack* phase *phase-01* merged"),
+        text: expect.stringContaining(
+          "PR for *003-slack* phase *phase-01* merged",
+        ),
       }),
     );
   });

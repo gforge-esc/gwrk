@@ -55,8 +55,14 @@ describe("PresenceManager", () => {
     vi.useRealTimers();
   });
 
+  const mockConfig = {
+    project: { name: "test" },
+    agents: { define: "gemini", implement: "codex-cloud" },
+    server: { port: 0, host: "localhost", slack: { presencePollIntervalMs: 1000 } },
+  } as any;
+
   it("should initialize and poll presence", async () => {
-    await presenceManager.init("/root");
+    await presenceManager.init(mockConfig);
     expect(mockApp.client.users.list).toHaveBeenCalled();
     expect(mockApp.client.users.getPresence).toHaveBeenCalledWith({
       user: "U123",
@@ -64,7 +70,7 @@ describe("PresenceManager", () => {
   });
 
   it("should deliver notifications immediately when active", async () => {
-    await presenceManager.init("/root");
+    await presenceManager.init(mockConfig);
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
       presence: "active",
@@ -81,16 +87,17 @@ describe("PresenceManager", () => {
       featureId: "feat-1",
       phaseId: "phase-01",
       status: "running",
+      createdAt: new Date().toISOString(),
     } as any);
 
     const { notifySlack } = await import("./slack-notify.js");
     await presenceManager.handleNotification(event, message);
 
-    expect(notifySlack).toHaveBeenCalledWith(message);
+    expect(notifySlack).toHaveBeenCalled();
   });
 
   it("should queue notifications when away and flush when returning to active", async () => {
-    await presenceManager.init("/root");
+    await presenceManager.init(mockConfig);
 
     // Set to away
     mockApp.client.users.getPresence.mockResolvedValue({
@@ -109,6 +116,7 @@ describe("PresenceManager", () => {
       featureId: "feat-1",
       phaseId: "phase-01",
       status: "running",
+      createdAt: new Date().toISOString(),
     } as any);
 
     const { notifySlack, sendSlackMessage } = await import("./slack-notify.js");

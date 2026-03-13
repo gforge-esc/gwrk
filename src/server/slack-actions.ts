@@ -43,7 +43,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     await ack();
     const payload = (body as any).actions[0].value;
     const { featureId, phaseId } = JSON.parse(payload);
-    
+
     // Construct link to PR or review page
     const reviewUrl = `${context.buildServerUrl}/review/${featureId}/${phaseId}`;
     await client.chat.postEphemeral({
@@ -105,7 +105,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
           if (actionValue) {
             const { featureId, phaseId } = JSON.parse(actionValue);
-            
+
             context.git.mergePhaseBack(featureId, phaseId);
             await client.chat.postMessage({
               channel: event.item.channel,

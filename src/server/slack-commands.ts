@@ -289,11 +289,15 @@ const handlers: Record<string, SlashCommandHandler> = {
     try {
       const config = loadConfig(context.projectRoot);
       const roleMultipliers = resolveRoleMultipliers(config);
-      const featureDir = path.join(context.projectRoot, "specs", featureId || "");
-      
+      const featureDir = path.join(
+        context.projectRoot,
+        "specs",
+        featureId || "",
+      );
+
       const stories = extractStories(featureDir);
       const report = computeEffort(stories, roleMultipliers, 1.25);
-      
+
       const text = `⚖️ *Effort Analysis* for *${featureId || "project"}*\n• Total Story Points: ${report.totalSP}\n• Total Raw Hours: ${report.totalRawHours}\n• Total with Overhead: ${report.totalWithOverhead}h\n• Estimated Days: ${report.totalDays.toFixed(1)}d`;
 
       return {

@@ -1,19 +1,28 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../../utils/config.js";
+import * as slackClient from "../../utils/slack-client.js";
 import { startServer } from "../index.js";
 import { removePid } from "../pid.js";
 
-// Mock dockerode to avoid real docker calls
+// Mock dependencies
 vi.mock("dockerode");
+vi.mock("../slack-notify.js");
+vi.mock("../../utils/slack-client.js", () => ({
+  loadSlackConfig: vi.fn().mockReturnValue(null),
+}));
+vi.mock("../docker.js", () => ({
+  ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true }),
+}));
 
 const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "codex-cloud" },
   server: {
-    port: 18793,
+    port: 0,
     host: "localhost",
     heartbeatIntervalMs: 1000,
     networkCheckIntervalMs: 1000,
@@ -44,16 +53,14 @@ describe("dispatch routes", () => {
     fs.writeFileSync("specs/feat-1/.gwrk/tasks.json", '{"tasks":[]}');
 
     // Initialize git repo in tempDir
-    import("node:child_process").then((cp) => {
-      cp.execSync("git init", { cwd: tempDir, stdio: "ignore" });
-      cp.execSync("git checkout -b feature/feat-1-wip", {
-        cwd: tempDir,
-        stdio: "ignore",
-      });
-      fs.writeFileSync("README.md", "test");
-      cp.execSync("git add .", { cwd: tempDir, stdio: "ignore" });
-      cp.execSync('git commit -m "init"', { cwd: tempDir, stdio: "ignore" });
+    execSync("git init", { cwd: tempDir, stdio: "ignore" });
+    execSync("git checkout -b feature/feat-1-wip", {
+      cwd: tempDir,
+      stdio: "ignore",
     });
+    fs.writeFileSync("README.md", "test");
+    execSync("git add .", { cwd: tempDir, stdio: "ignore" });
+    execSync('git commit -m "init"', { cwd: tempDir, stdio: "ignore" });
   });
 
   afterEach(() => {

@@ -21,7 +21,9 @@ describe("setupSlack", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(slackClient, "getEnvPath").mockReturnValue(mockEnvPath);
-    vi.spyOn(process, "exit").mockImplementation((() => {}) as any);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit called with ${code}`);
+    });
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -72,10 +74,11 @@ describe("setupSlack", () => {
     delete process.env.SLACK_BOT_TOKEN;
     delete process.env.SLACK_APP_TOKEN;
 
-    await setupSlack({});
+    await expect(setupSlack({})).rejects.toThrow("process.exit called with 1");
 
-    expect(process.exit).toHaveBeenCalledWith(1);
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Slack credentials not found"));
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Slack credentials not found"),
+    );
   });
 
   it("should verify existing config when --verify is used", async () => {

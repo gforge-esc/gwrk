@@ -11,7 +11,7 @@ import { getSlackApp } from "./slack.js";
 export async function notifySlack(
   message: SlackMessage,
   event?: SlackEvent,
-  options: { master?: boolean } = {},
+  options: { opsOnly?: boolean } = {},
 ): Promise<void> {
   const app = getSlackApp();
   if (!app) {
@@ -19,11 +19,11 @@ export async function notifySlack(
     return;
   }
 
-  if (options.master) {
+  if (options.opsOnly) {
     const config = loadConfig(process.cwd());
-    const masterChannelId = config.project.slack?.masterChannelId;
-    if (masterChannelId) {
-      message.channel = masterChannelId;
+    const opsChannelId = config.project.slack?.masterChannelId;
+    if (opsChannelId) {
+      message.channel = opsChannelId;
     }
   }
 

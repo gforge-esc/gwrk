@@ -15,11 +15,8 @@ import type { Phase } from "./state.js";
  *    - .sql     → test -f + grep for expected column names
  *    - .ts/.js  → identifier grep + compiled output check
  *    - .sh      → bash -n (syntax check)
- *    - other    → test -s (non-empty)
  *
- * 4. ABSOLUTE FALLBACK — pnpm build exits 0.
- *
- * NOTE: File-existence-only (test -f) gates are NEVER emitted as the sole
- * assertion. Every gate must make a functional claim.
+ * 4. GATE_STUB FALLBACK — if no functional assertion can be derived,
+ *    emit a stub that fails gwrk tasks done.
  */
 export declare function generateGates(featureDir: string, phases: Phase[]): void;

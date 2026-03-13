@@ -110,7 +110,7 @@ export class DispatchQueue {
             record.containerId = containerId;
             // 4. Simulate Agent Execution (for now)
             // TODO: Phase 06 — real agent execution
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             await this.handleCompletion(record.id, 0, "");
         }
         catch (e) {

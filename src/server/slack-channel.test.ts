@@ -36,6 +36,9 @@ describe("ensureSlackChannel", () => {
 
     const channelId = await ensureSlackChannel("#code-red");
     expect(channelId).toBe("C123");
+    expect(mockApp.client.conversations.list).toHaveBeenCalledWith(
+      expect.objectContaining({ types: expect.stringContaining("public_channel") }),
+    );
     expect(mockApp.client.conversations.create).not.toHaveBeenCalled();
   });
 

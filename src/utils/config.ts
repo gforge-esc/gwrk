@@ -24,7 +24,6 @@ export const GwrkConfigSchema = z.object({
         masterChannelName: z.string().optional(),
       })
       .optional(),
-
   }),
   agents: z.object({
     define: AgentBackendSchema,
@@ -33,7 +32,7 @@ export const GwrkConfigSchema = z.object({
   }),
   server: z
     .object({
-      port: z.number().int().min(1024).max(65535),
+      port: z.number().int().min(0).max(65535),
       host: z.string().min(1),
       heartbeatIntervalMs: z.number().int().min(100).default(30000),
       networkCheckIntervalMs: z.number().int().min(100).default(60000),

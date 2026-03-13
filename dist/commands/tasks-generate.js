@@ -50,16 +50,28 @@ export const tasksGenerateCommand = new Command("tasks")
                 // If we can't load, fall through to fresh generation
             }
         }
-        // If --force, wipe existing gates
+        // If --force, wipe existing gates (except AUTHORED ones)
         if (opts.force && fs.existsSync(gatesDir)) {
             const existing = fs
                 .readdirSync(gatesDir)
                 .filter((f) => f.match(/^T\d+-gate\.sh$/));
-            if (existing.length > 0) {
-                console.log(`  Removing ${existing.length} old gate scripts...`);
-            }
+            let removed = 0;
+            let preserved = 0;
             for (const f of existing) {
-                fs.unlinkSync(path.join(gatesDir, f));
+                const gatePath = path.join(gatesDir, f);
+                const content = fs.readFileSync(gatePath, "utf-8");
+                if (content.includes("# AUTHORED")) {
+                    preserved++;
+                    continue;
+                }
+                fs.unlinkSync(gatePath);
+                removed++;
+            }
+            if (removed > 0) {
+                console.log(`  Removing ${removed} old gate scripts...`);
+            }
+            if (preserved > 0) {
+                console.log(`  Preserving ${preserved} # AUTHORED gate scripts...`);
             }
         }
         // Build new tasks from plan

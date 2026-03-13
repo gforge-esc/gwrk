@@ -13,6 +13,7 @@ vi.mock("./monitor.js");
 vi.mock("./sandbox.js");
 vi.mock("./git-manager.js");
 vi.mock("./persistence.js");
+vi.mock("./slack-notify.js");
 vi.mock("./context.js", () => ({
   compileContext: vi.fn().mockReturnValue("mock context"),
 }));
@@ -74,10 +75,11 @@ describe("DispatchQueue", () => {
 
     queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
-    // Give it more time to start
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    // Wait for it to move to active
+    await vi.waitFor(() => {
+      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+    });
 
-    expect(queue.getActiveCount()).toBe(1);
     expect(queue.getQueueDepth()).toBe(0);
     expect(mockSandbox.createSandbox).toHaveBeenCalled();
   });
@@ -87,7 +89,8 @@ describe("DispatchQueue", () => {
 
     queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Wait a bit to ensure it doesn't process
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(queue.getActiveCount()).toBe(0);
     expect(queue.getQueueDepth()).toBe(1);
@@ -100,7 +103,9 @@ describe("DispatchQueue", () => {
     const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
     // Wait for it to move to active
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await vi.waitFor(() => {
+      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+    });
 
     await queue.handleCompletion(record.id, 0, "");
 
@@ -117,7 +122,9 @@ describe("DispatchQueue", () => {
     const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
     // Wait for it to move to active
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await vi.waitFor(() => {
+      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+    });
 
     // Throttle so it stays in queue after handleCompletion
     mockMonitor.isThrottled.mockReturnValue(true);
@@ -136,15 +143,21 @@ describe("DispatchQueue", () => {
     const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
 
     // Attempt 1
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await vi.waitFor(() => {
+      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+    });
     await queue.handleCompletion(record.id, 1, "error");
 
     // Attempt 2
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await vi.waitFor(() => {
+      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+    });
     await queue.handleCompletion(record.id, 1, "error");
 
     // Attempt 3
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await vi.waitFor(() => {
+      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+    });
     // Final failure should not be throttled to see 'failed' status immediately
     await queue.handleCompletion(record.id, 1, "error");
 

@@ -1,4 +1,4 @@
-import { loadSlackConfig } from "../utils/slack-client.js";
+import { getSlackApp } from "./slack.js";
 
 interface SlackChannel {
   id: string;
@@ -6,44 +6,18 @@ interface SlackChannel {
   is_member?: boolean;
 }
 
-async function slackApi(
-  method: string,
-  token: string,
-  body?: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const res = await fetch(`https://slack.com/api/${method}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json; charset=utf-8",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = (await res.json()) as Record<string, unknown>;
-  if (!data.ok) {
-    const error = (data.error as string) || "unknown_error";
-    throw Object.assign(new Error(`Slack API ${method}: ${error}`), {
-      data,
-    });
-  }
-  return data;
-}
-
-export async function ensureSlackChannel(
-  channelName: string,
-): Promise<string> {
-  const config = loadSlackConfig();
-  if (!config) {
+export async function ensureSlackChannel(channelName: string): Promise<string> {
+  const app = getSlackApp();
+  if (!app) {
     throw new Error("Slack not configured. Run gwrk setup slack first");
   }
 
-  const token = config.botToken;
   const cleanName = channelName.startsWith("#")
     ? channelName.slice(1)
     : channelName;
 
   // 1. Try to find the channel if it already exists
-  const listRes = await slackApi("conversations.list", token, {
+  const listRes = await app.client.conversations.list({
     types: "public_channel,private_channel",
     exclude_archived: true,
     limit: 200,
@@ -53,14 +27,14 @@ export async function ensureSlackChannel(
 
   if (existing?.id) {
     if (!existing.is_member) {
-      await slackApi("conversations.join", token, { channel: existing.id });
+      await app.client.conversations.join({ channel: existing.id });
     }
     return existing.id;
   }
 
   // 2. Create the channel
   try {
-    const createRes = await slackApi("conversations.create", token, {
+    const createRes = await app.client.conversations.create({
       name: cleanName,
     });
     const channel = createRes.channel as SlackChannel | undefined;
@@ -69,10 +43,10 @@ export async function ensureSlackChannel(
     }
     throw new Error("No channel ID returned");
   } catch (error) {
-    const apiError = error as Error & { data?: { error?: string } };
+    const apiError = error as any;
     if (apiError.data?.error === "name_taken") {
       // Race: re-fetch
-      const retryRes = await slackApi("conversations.list", token, {
+      const retryRes = await app.client.conversations.list({
         types: "public_channel,private_channel",
       });
       const retryChannels = (retryRes.channels as SlackChannel[]) || [];
