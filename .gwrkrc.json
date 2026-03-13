@@ -10,13 +10,13 @@
   },
   "agents": {
     "define": "gemini",
-    "implement": "gemini"
+    "implement": "codex-cloud"
   },
   "server": {
     "port": 18790,
     "host": "localhost",
-    "heartbeatIntervalMs": 1000,
-    "networkCheckIntervalMs": 5000
+    "heartbeatIntervalMs": 5000,
+    "networkCheckIntervalMs": 30000
   },
   "parallelism": {
     "local": {

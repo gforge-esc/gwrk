@@ -1,4 +1,4 @@
-import { getSlackApp } from "./slack.js";
+import { loadSlackConfig } from "../utils/slack-client.js";
 
 interface SlackChannel {
   id: string;
@@ -6,53 +6,79 @@ interface SlackChannel {
   is_member?: boolean;
 }
 
-export async function ensureSlackChannel(channelName: string): Promise<string> {
-  const app = getSlackApp();
-  if (!app) {
-    throw new Error("Slack not configured. Run gwrk setup slack first");
+/**
+ * Internal helper to call Slack API via raw fetch.
+ * Bolt's app.client sometimes misroutes tokens in Socket Mode,
+ * causing spurious 'missing_scope' errors on valid scopes.
+ */
+async function slackFetch(method: string, body: any = {}) {
+  const tokens = loadSlackConfig();
+  if (!tokens) {
+    throw new Error("Slack not configured. Run gwrk setup slack first.");
   }
 
+  const res = await fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: `Bearer ${tokens.botToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+export async function ensureSlackChannel(channelName: string): Promise<string> {
   const cleanName = channelName.startsWith("#")
     ? channelName.slice(1)
     : channelName;
 
   // 1. Try to find the channel if it already exists
-  const listRes = await app.client.conversations.list({
-    types: "public_channel,private_channel",
+  // We only list public_channels by default to avoid needing 'groups:read' scope
+  const listRes = await slackFetch("conversations.list", {
+    types: "public_channel",
     exclude_archived: true,
-    limit: 200,
+    limit: 1000,
   });
+
+  if (!listRes.ok) {
+    throw new Error(`Slack API error (list): ${listRes.error}`);
+  }
+
   const channels = (listRes.channels as SlackChannel[]) || [];
-  const existing = channels.find((c) => c.name === cleanName);
+  const existing = channels.find((c: SlackChannel) => c.name === cleanName);
 
   if (existing?.id) {
     if (!existing.is_member) {
-      await app.client.conversations.join({ channel: existing.id });
+      const joinRes = await slackFetch("conversations.join", { channel: existing.id });
+      if (!joinRes.ok) {
+        throw new Error(`Slack API error (join): ${joinRes.error}`);
+      }
     }
     return existing.id;
   }
 
   // 2. Create the channel
-  try {
-    const createRes = await app.client.conversations.create({
-      name: cleanName,
+  const createRes = await slackFetch("conversations.create", {
+    name: cleanName,
+  });
+
+  if (createRes.ok) {
+    return createRes.channel.id;
+  }
+
+  if (createRes.error === "name_taken") {
+    // Race condition: another process created it. Re-list.
+    const retryRes = await slackFetch("conversations.list", {
+      types: "public_channel",
     });
-    const channel = createRes.channel as SlackChannel | undefined;
-    if (channel?.id) {
-      return channel.id;
-    }
-    throw new Error("No channel ID returned");
-  } catch (error) {
-    const apiError = error as any;
-    if (apiError.data?.error === "name_taken") {
-      // Race: re-fetch
-      const retryRes = await app.client.conversations.list({
-        types: "public_channel,private_channel",
-      });
-      const retryChannels = (retryRes.channels as SlackChannel[]) || [];
-      const found = retryChannels.find((c) => c.name === cleanName);
+    if (retryRes.ok) {
+      const found = (retryRes.channels as SlackChannel[]).find(
+        (c) => c.name === cleanName,
+      );
       if (found?.id) return found.id;
     }
-    throw error;
   }
+
+  throw new Error(`Slack API error (create): ${createRes.error}`);
 }

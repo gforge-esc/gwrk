@@ -21,7 +21,7 @@ export async function notifySlack(
 
   if (options.opsOnly) {
     const config = loadConfig(process.cwd());
-    const opsChannelId = config.project.slack?.masterChannelId;
+    const opsChannelId = config.project.slack?.opsChannelId;
     if (opsChannelId) {
       message.channel = opsChannelId;
     }

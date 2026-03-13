@@ -1,25 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureSlackChannel } from "./slack-channel.js";
-import * as slackServer from "./slack.js";
+import * as slackClient from "../utils/slack-client.js";
 
-vi.mock("./slack.js", () => ({
-  getSlackApp: vi.fn(),
+vi.mock("../utils/slack-client.js", () => ({
+  loadSlackConfig: vi.fn(),
 }));
 
+// Global fetch mock
+const globalFetch = vi.fn();
+global.fetch = globalFetch;
+
 describe("ensureSlackChannel", () => {
-  const mockApp = {
-    client: {
-      conversations: {
-        list: vi.fn(),
-        create: vi.fn(),
-        join: vi.fn(),
-      },
-    },
+  const mockTokens = {
+    botToken: "xoxb-test",
+    appToken: "xapp-test",
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(slackServer.getSlackApp).mockReturnValue(mockApp as any);
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue(mockTokens);
+    globalFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
   });
 
   afterEach(() => {
@@ -27,58 +30,100 @@ describe("ensureSlackChannel", () => {
   });
 
   it("should return existing channel ID if it exists", async () => {
-    mockApp.client.conversations.list.mockResolvedValue({
-      channels: [
-        { name: "code-red", id: "C123", is_member: true },
-        { name: "other", id: "C456", is_member: true },
-      ],
+    globalFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        channels: [
+          { name: "code-red", id: "C123", is_member: true },
+          { name: "other", id: "C456", is_member: true },
+        ],
+      }),
     });
 
     const channelId = await ensureSlackChannel("#code-red");
     expect(channelId).toBe("C123");
-    expect(mockApp.client.conversations.list).toHaveBeenCalledWith(
-      expect.objectContaining({ types: expect.stringContaining("public_channel") }),
+    expect(globalFetch).toHaveBeenCalledWith(
+      expect.stringContaining("conversations.list"),
+      expect.objectContaining({
+        body: expect.stringContaining("public_channel"),
+      }),
     );
-    expect(mockApp.client.conversations.create).not.toHaveBeenCalled();
   });
 
   it("should join existing channel if not a member", async () => {
-    mockApp.client.conversations.list.mockResolvedValue({
-      channels: [{ name: "code-red", id: "C123", is_member: false }],
-    });
-    mockApp.client.conversations.join.mockResolvedValue({});
+    globalFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          channels: [{ name: "code-red", id: "C123", is_member: false }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
 
     const channelId = await ensureSlackChannel("code-red");
     expect(channelId).toBe("C123");
-    expect(mockApp.client.conversations.join).toHaveBeenCalledWith({
-      channel: "C123",
-    });
+    expect(globalFetch).toHaveBeenCalledWith(
+      expect.stringContaining("conversations.join"),
+      expect.objectContaining({
+        body: expect.stringContaining("C123"),
+      }),
+    );
   });
 
   it("should create a new channel if it doesn't exist", async () => {
-    mockApp.client.conversations.list.mockResolvedValue({ channels: [] });
-    mockApp.client.conversations.create.mockResolvedValue({
-      channel: { id: "C789" },
-    });
+    globalFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          channels: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          channel: { id: "C789" },
+        }),
+      });
 
     const channelId = await ensureSlackChannel("new-project");
     expect(channelId).toBe("C789");
-    expect(mockApp.client.conversations.create).toHaveBeenCalledWith({
-      name: "new-project",
-    });
+    expect(globalFetch).toHaveBeenCalledWith(
+      expect.stringContaining("conversations.create"),
+      expect.objectContaining({
+        body: expect.stringContaining("new-project"),
+      }),
+    );
   });
 
   it("should handle name_taken error by re-fetching", async () => {
-    mockApp.client.conversations.list.mockResolvedValue({ channels: [] });
-    mockApp.client.conversations.create.mockRejectedValue({
-      data: { error: "name_taken" },
-    });
-
-    // Second call to list after name_taken
-    mockApp.client.conversations.list
-      .mockResolvedValueOnce({ channels: [] })
+    globalFetch
       .mockResolvedValueOnce({
-        channels: [{ name: "already-taken", id: "C_TAKEN" }],
+        ok: true,
+        json: async () => ({
+          ok: true,
+          channels: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: false,
+          error: "name_taken",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          channels: [{ name: "already-taken", id: "C_TAKEN" }],
+        }),
       });
 
     const channelId = await ensureSlackChannel("already-taken");
@@ -86,7 +131,7 @@ describe("ensureSlackChannel", () => {
   });
 
   it("should throw error if slack is not configured", async () => {
-    vi.mocked(slackServer.getSlackApp).mockReturnValue(null);
+    vi.mocked(slackClient.loadSlackConfig).mockReturnValue(null);
     await expect(ensureSlackChannel("any")).rejects.toThrow(
       "Slack not configured",
     );
