@@ -90,6 +90,10 @@ vi.mock("../utils/git.js", () => ({
     .mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 }),
 }));
 
+// Default fs.existsSync to true so ship's pre-flight checks pass.
+// Tests that need specific existsSync behavior override with their own spy.
+vi.spyOn(fs, "existsSync").mockReturnValue(true);
+
 describe("shipCommand", () => {
   let mockRun: ReturnType<typeof vi.fn>;
   let program: Command;
