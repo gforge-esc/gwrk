@@ -10,6 +10,26 @@ vi.mock("../utils/slack-client.js", () => ({
 const globalFetch = vi.fn();
 global.fetch = globalFetch;
 
+/** Helper: mock a successful users.list + conversations.invite (auto-invite flow) */
+function mockAutoInvite() {
+  globalFetch
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        members: [
+          { id: "UBOT", is_bot: true, name: "gwrk" },
+          { id: "USLACK", is_bot: false, name: "slackbot" },
+          { id: "UOWNER", is_bot: false, name: "gonzo", deleted: false },
+        ],
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
+}
+
 describe("ensureSlackChannel", () => {
   const mockTokens = {
     botToken: "xoxb-test",
@@ -40,6 +60,7 @@ describe("ensureSlackChannel", () => {
         ],
       }),
     });
+    mockAutoInvite();
 
     const channelId = await ensureSlackChannel("#code-red");
     expect(channelId).toBe("C123");
@@ -64,6 +85,7 @@ describe("ensureSlackChannel", () => {
         ok: true,
         json: async () => ({ ok: true }),
       });
+    mockAutoInvite();
 
     const channelId = await ensureSlackChannel("code-red");
     expect(channelId).toBe("C123");
@@ -91,6 +113,7 @@ describe("ensureSlackChannel", () => {
           channel: { id: "C789" },
         }),
       });
+    mockAutoInvite();
 
     const channelId = await ensureSlackChannel("new-project");
     expect(channelId).toBe("C789");
@@ -125,6 +148,7 @@ describe("ensureSlackChannel", () => {
           channels: [{ name: "already-taken", id: "C_TAKEN" }],
         }),
       });
+    mockAutoInvite();
 
     const channelId = await ensureSlackChannel("already-taken");
     expect(channelId).toBe("C_TAKEN");
@@ -136,4 +160,54 @@ describe("ensureSlackChannel", () => {
       "Slack not configured",
     );
   });
+
+  it("should auto-invite workspace owner after channel create", async () => {
+    globalFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, channels: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, channel: { id: "CNEW" } }),
+      });
+    mockAutoInvite();
+
+    await ensureSlackChannel("auto-invite-test");
+
+    // Should have called conversations.invite with the owner's ID
+    expect(globalFetch).toHaveBeenCalledWith(
+      expect.stringContaining("conversations.invite"),
+      expect.objectContaining({
+        body: expect.stringContaining("UOWNER"),
+      }),
+    );
+  });
+
+  it("should skip invite gracefully when already in channel", async () => {
+    globalFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          channels: [{ name: "existing", id: "CEXIST", is_member: true }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          members: [{ id: "UOWNER", is_bot: false, name: "gonzo" }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: false, error: "already_in_channel" }),
+      });
+
+    const channelId = await ensureSlackChannel("existing");
+    expect(channelId).toBe("CEXIST");
+    // No error thrown — already_in_channel is non-fatal
+  });
 });
+

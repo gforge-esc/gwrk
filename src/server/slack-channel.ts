@@ -6,6 +6,13 @@ interface SlackChannel {
   is_member?: boolean;
 }
 
+interface SlackUser {
+  id: string;
+  is_bot?: boolean;
+  deleted?: boolean;
+  name?: string;
+}
+
 /**
  * Internal helper to call Slack API via raw fetch.
  * Bolt's app.client sometimes misroutes tokens in Socket Mode,
@@ -26,6 +33,38 @@ async function slackFetch(method: string, body: Record<string, unknown> = {}) {
     body: JSON.stringify(body),
   });
   return res.json();
+}
+
+/**
+ * Auto-invite the workspace owner (first non-bot human) into a channel.
+ * TC-004: single-user workspace — one PE, one workspace.
+ * Silently skips if already in channel or user not found.
+ */
+async function inviteOwnerToChannel(channelId: string): Promise<void> {
+  try {
+    const usersRes = await slackFetch("users.list", {});
+    if (!usersRes.ok) return;
+
+    const users = (usersRes.members as SlackUser[]) || [];
+    const owner = users.find(
+      (u) => !u.is_bot && !u.deleted && u.name !== "slackbot",
+    );
+    if (!owner) return;
+
+    const inviteRes = await slackFetch("conversations.invite", {
+      channel: channelId,
+      users: owner.id,
+    });
+
+    // already_in_channel is fine — idempotent
+    if (!inviteRes.ok && inviteRes.error !== "already_in_channel") {
+      console.error(
+        `Warning: could not invite user to channel: ${inviteRes.error}`,
+      );
+    }
+  } catch {
+    // Non-fatal — channel exists, user can join manually
+  }
 }
 
 export async function ensureSlackChannel(channelName: string): Promise<string> {
@@ -57,6 +96,7 @@ export async function ensureSlackChannel(channelName: string): Promise<string> {
         throw new Error(`Slack API error (join): ${joinRes.error}`);
       }
     }
+    await inviteOwnerToChannel(existing.id);
     return existing.id;
   }
 
@@ -66,6 +106,7 @@ export async function ensureSlackChannel(channelName: string): Promise<string> {
   });
 
   if (createRes.ok) {
+    await inviteOwnerToChannel(createRes.channel.id);
     return createRes.channel.id;
   }
 
@@ -78,7 +119,10 @@ export async function ensureSlackChannel(channelName: string): Promise<string> {
       const found = (retryRes.channels as SlackChannel[]).find(
         (c) => c.name === cleanName,
       );
-      if (found?.id) return found.id;
+      if (found?.id) {
+        await inviteOwnerToChannel(found.id);
+        return found.id;
+      }
     }
   }
 
