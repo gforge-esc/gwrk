@@ -32,7 +32,7 @@ Focus on improving the performance of the git scanner and ensuring the engine su
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/coding-style.md | Ensure idiomatic TypeScript and consistent error handling. |
+| .agents/rules/coding-style.md | Ensure idiomatic TypeScript and consistent error handling. |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -68,7 +68,7 @@ Update the CLI implementation to support all flags, handle multi-repo aggregatio
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | Follow terminal output standards and Unicode usage rules. |
+| .agents/rules/workspace.md | Follow terminal output standards and Unicode usage rules. |
 | compile-gate | Always |
 
 #### Test Strategy

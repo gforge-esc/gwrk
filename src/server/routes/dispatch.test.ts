@@ -46,7 +46,7 @@ describe("dispatch routes", () => {
     process.chdir(tempDir);
 
     // Create necessary dirs for context compilation
-    fs.mkdirSync(".agent/rules", { recursive: true });
+    fs.mkdirSync(".agents/rules", { recursive: true });
     fs.mkdirSync("specs/feat-1/.gwrk", { recursive: true });
     fs.writeFileSync("specs/feat-1/spec.md", "spec");
     fs.writeFileSync("specs/feat-1/plan.md", "plan");

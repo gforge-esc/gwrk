@@ -71,7 +71,7 @@ describe("planCommand", () => {
 
     expect(dispatchAgent).toHaveBeenCalledWith({
       backend: "gemini",
-      workflowPath: ".agent/workflows/plan.md",
+      workflowPath: ".agents/workflows/plan.md",
       featureDir: "specs/feature-x",
     });
   });

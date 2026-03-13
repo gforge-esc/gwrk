@@ -8,6 +8,7 @@ export const initCommand = new Command("init")
     .description("Initialize gwrk in the current directory")
     .option("--github <repo>", "GitHub repository (owner/name)")
     .option("--slack <channel>", "Slack channel")
+    .option("--slack-ops <channel>", "Slack ops channel")
     .action(async (options) => {
     const projectRoot = process.cwd();
     const agentDir = path.join(projectRoot, ".agent");
@@ -15,7 +16,7 @@ export const initCommand = new Command("init")
     // Already initialized — handle additive flags, then exit
     if (fs.existsSync(agentDir)) {
         let didWork = false;
-        if (options.slack) {
+        if (options.slack || options.slackOps) {
             const { ensureSlackChannel } = await import("../server/slack-channel.js");
             const { loadSlackConfig } = await import("../utils/slack-client.js");
             const hasTokens = loadSlackConfig();
@@ -23,19 +24,37 @@ export const initCommand = new Command("init")
                 console.error("Slack not configured. Run gwrk setup slack first.");
                 process.exit(1);
             }
-            console.log(`Provisioning Slack channel ${options.slack}...`);
-            const channelId = await ensureSlackChannel(options.slack);
             // Update .gwrkrc.json with Slack config
             const existing = fs.existsSync(rcPath)
                 ? JSON.parse(fs.readFileSync(rcPath, "utf-8"))
                 : {};
             existing.project = existing.project || {};
-            existing.project.slack = {
-                channelId,
-                channelName: options.slack,
-            };
+            existing.project.slack = existing.project.slack || {};
+            if (options.slack) {
+                try {
+                    console.log(`Provisioning Slack channel ${options.slack}...`);
+                    const channelId = await ensureSlackChannel(options.slack);
+                    existing.project.slack.channelId = channelId;
+                    existing.project.slack.channelName = options.slack;
+                    console.log(`Provisioned Slack channel: ${options.slack} (${channelId})`);
+                }
+                catch (error) {
+                    console.warn(`Warning: Failed to provision Slack channel: ${error.message}`);
+                }
+            }
+            if (options.slackOps) {
+                try {
+                    console.log(`Provisioning Slack ops channel ${options.slackOps}...`);
+                    const opsChannelId = await ensureSlackChannel(options.slackOps);
+                    existing.project.slack.opsChannelId = opsChannelId;
+                    existing.project.slack.opsChannelName = options.slackOps;
+                    console.log(`Provisioned Slack ops channel: ${options.slackOps} (${opsChannelId})`);
+                }
+                catch (error) {
+                    console.warn(`Warning: Failed to provision Slack ops channel: ${error.message}`);
+                }
+            }
             fs.writeFileSync(rcPath, JSON.stringify(existing, null, 2));
-            console.log(`Provisioned Slack channel: ${options.slack} (${channelId})`);
             didWork = true;
         }
         if (!didWork) {
@@ -81,19 +100,27 @@ export const initCommand = new Command("init")
         },
     };
     // Slack Channel Provisioning
-    if (options.slack) {
+    if (options.slack || options.slackOps) {
         const { ensureSlackChannel } = await import("../server/slack-channel.js");
         const { loadSlackConfig } = await import("../utils/slack-client.js");
         const hasTokens = loadSlackConfig();
         if (hasTokens) {
+            config.project.slack = config.project.slack || {};
             try {
-                console.log(`Creating Slack channel ${options.slack}...`);
-                const channelId = await ensureSlackChannel(options.slack);
-                config.project.slack = {
-                    channelId,
-                    channelName: options.slack,
-                };
-                console.log(`Successfully provisioned Slack channel: ${options.slack} (${channelId})`);
+                if (options.slack) {
+                    console.log(`Creating Slack channel ${options.slack}...`);
+                    const channelId = await ensureSlackChannel(options.slack);
+                    config.project.slack.channelId = channelId;
+                    config.project.slack.channelName = options.slack;
+                    console.log(`Successfully provisioned Slack channel: ${options.slack} (${channelId})`);
+                }
+                if (options.slackOps) {
+                    console.log(`Creating Slack ops channel ${options.slackOps}...`);
+                    const opsChannelId = await ensureSlackChannel(options.slackOps);
+                    config.project.slack.opsChannelId = opsChannelId;
+                    config.project.slack.opsChannelName = options.slackOps;
+                    console.log(`Successfully provisioned Slack ops channel: ${options.slackOps} (${opsChannelId})`);
+                }
             }
             catch (error) {
                 console.warn(`Warning: Failed to provision Slack channel: ${error.message}`);

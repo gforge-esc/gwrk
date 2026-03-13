@@ -6,7 +6,7 @@ import { MessageBuilder } from "../server/slack-messages.js";
 import { notifySlack } from "../server/slack-notify.js";
 import type { SlackEvent } from "../server/slack-presence.js";
 import type { DispatchRecord } from "../server/types.js";
-import { loadConfig } from "../utils/config.js";
+import { type AgentBackend, loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -22,7 +22,7 @@ import {
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
-import { loadTaskState } from "../utils/state.js";
+import { type TaskState, loadTaskState } from "../utils/state.js";
 
 const { GREEN, DIM, RESET } = color;
 
@@ -33,7 +33,7 @@ const { GREEN, DIM, RESET } = color;
 async function shipPhase(
   feature: string,
   phase: string,
-  backend: string,
+  backend: AgentBackend,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
 ): Promise<number> {
@@ -44,7 +44,7 @@ async function shipPhase(
   const featureDir = path.join(cwd, "specs", feature);
 
   // FR-008: Pre-flight check for test files
-  let taskState;
+  let taskState: TaskState | undefined;
   try {
     taskState = loadTaskState(featureDir);
   } catch (err) {
@@ -106,10 +106,10 @@ async function shipPhase(
     id: `ship-${runId}`,
     featureId: feature,
     phaseId: phaseId,
-    backend: backend as any,
+    backend: backend,
     status: "running",
     branchName: getCurrentBranch(cwd),
-    attempts: [{ attemptNumber: 1, backend: backend as any, startedAt }],
+    attempts: [{ attemptNumber: 1, backend: backend, startedAt }],
     createdAt: startedAt,
   };
 

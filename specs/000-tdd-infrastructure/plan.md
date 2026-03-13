@@ -33,7 +33,7 @@ Implement core functional gate logic, `# AUTHORED` preservation (or `GATE_STUB` 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/coding-style.md | Strict TypeScript, Zod everywhere |
+| .agents/rules/coding-style.md | Strict TypeScript, Zod everywhere |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -72,7 +72,7 @@ Read every FR-### from 001-cli-core/spec.md and 002-build-server/spec.md, check 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/workspace.md | Documentation standards |
+| .agents/rules/workspace.md | Documentation standards |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
@@ -115,7 +115,7 @@ Fix the remaining 20 failing tests across 003-slack test files (ship.test.ts and
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agent/rules/coding-style.md | Fastify `inject()` for API tests, `vi.mock` for Slack SDK |
+| .agents/rules/coding-style.md | Fastify `inject()` for API tests, `vi.mock` for Slack SDK |
 | compile-gate | Always |
 
 #### Test Strategy

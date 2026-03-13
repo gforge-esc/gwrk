@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { MessageBuilder } from "../slack-messages.js";
+import { MessageBuilder, type SlackMessage } from "../slack-messages.js";
 import { notifySlack } from "../slack-notify.js";
 import type { DispatchRecord, NotifyPayload } from "../types.js";
+import type { AgentBackend } from "../../utils/config.js";
 
 export async function notifyRoutes(server: FastifyInstance) {
   server.post<{ Body: NotifyPayload }>(
@@ -23,7 +24,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         id: "notify-event", // dummy
         featureId: payload.feature,
         phaseId: payload.phase || "unknown",
-        backend: (payload.backend as any) || "gemini",
+        backend: (payload.backend as AgentBackend) || "gemini",
         status: "running", // default
         branchName: payload.branch || "main",
         attempts: [],
@@ -32,7 +33,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         prNumber: payload.prNumber,
       };
 
-      let message;
+      let message: SlackMessage;
       switch (payload.type) {
         case "phase_start":
           message = MessageBuilder.phaseStart(dispatch);
@@ -78,7 +79,7 @@ export async function notifyRoutes(server: FastifyInstance) {
             feature: payload.feature,
             phase: payload.phase,
             opsOnly: isOps,
-            payload: payload as any,
+            payload: payload,
             timestamp: new Date().toISOString(),
           },
           { opsOnly: isOps },
@@ -89,7 +90,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         server.log.error(error);
         return reply.status(500).send({
           ok: false,
-          error: `Failed to dispatch notification: ${(error as any).message}`,
+          error: `Failed to dispatch notification: ${error instanceof Error ? error.message : String(error)}`,
         });
       }
     },

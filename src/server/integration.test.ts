@@ -3,12 +3,22 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../utils/config.js";
 import { startServer } from "./index.js";
 import { removePid } from "./pid.js";
 
 const execAsync = promisify(exec);
+
+vi.mock("./docker.js", () => ({
+  ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true, startedByUs: false }),
+}));
+
+vi.mock("./slack.js", () => ({
+  startSlackApp: vi.fn().mockResolvedValue(undefined),
+  stopSlackApp: vi.fn().mockResolvedValue(undefined),
+  getSlackApp: vi.fn().mockReturnValue(null),
+}));
 
 const mockConfig: GwrkConfig = {
   project: { name: "test-integration" },
@@ -31,7 +41,7 @@ describe("Server E2E Integration", () => {
     process.chdir(tempDir);
 
     // Initialize mock workspace
-    fs.mkdirSync(".agent/rules", { recursive: true });
+    fs.mkdirSync(".agents/rules", { recursive: true });
     fs.mkdirSync("specs/feat-1/.gwrk", { recursive: true });
     fs.writeFileSync("specs/feat-1/spec.md", "# Spec 1");
     fs.writeFileSync("specs/feat-1/plan.md", "# Plan 1");

@@ -33,7 +33,7 @@ async function compileContext(featureDir: string, phaseId: string): Promise<stri
 # Phase Context: <feature> / <phase>
 
 ## Governance Rules
-<contents of .agent/rules/*.md>
+<contents of .agents/rules/*.md>
 
 ## Feature Specification
 <contents of spec.md>
@@ -52,7 +52,7 @@ async function compileContext(featureDir: string, phaseId: string): Promise<stri
 | Condition | Throws |
 |---|---|
 | `spec.md` not found | `ContextError('spec.md not found in <featureDir>')` |
-| `.agent/rules/` missing | `ContextError('.agent/rules/ directory not found')` |
+| `.agents/rules/` missing | `ContextError('.agents/rules/ directory not found')` |
 
 ---
 

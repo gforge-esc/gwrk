@@ -4,6 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { registerProject } from "../db/runs.js";
 import { execCommand } from "../utils/exec.js";
+import type { GwrkConfig } from "../utils/config.js";
 
 export const initCommand = new Command("init")
   .description("Initialize gwrk in the current directory")
@@ -81,8 +82,8 @@ export const initCommand = new Command("init")
     }
 
     const dirs = [
-      ".agent/workflows",
-      ".agent/rules",
+      ".agents/workflows",
+      ".agents/rules",
       ".specify/templates",
       "specs",
     ];
@@ -92,7 +93,7 @@ export const initCommand = new Command("init")
     }
 
     const projectName = path.basename(projectRoot);
-    const config: any = {
+    const config: GwrkConfig = {
       project: {
         name: projectName,
         githubRepo: options.github,
@@ -168,7 +169,7 @@ export const initCommand = new Command("init")
     const workflows = ["specify.md", "plan.md"];
     for (const wf of workflows) {
       fs.writeFileSync(
-        path.join(projectRoot, ".agent/workflows", wf),
+        path.join(projectRoot, ".agents/workflows", wf),
         `# Workflow: ${wf}\n\nPlaceholder content for ${wf}.`,
       );
     }
@@ -232,7 +233,7 @@ export const initCommand = new Command("init")
       if (res.exitCode === 0) {
         fs.writeFileSync(
           path.join(projectRoot, cli.file),
-          `# ${cli.name.toUpperCase()} Project Context\n\nThis project is managed by gwrk.\nRules: .agent/rules/\nWorkflows: .agent/workflows/\n`,
+          `# ${cli.name.toUpperCase()} Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n`,
         );
         console.log(`Detected ${cli.name}, provisioned ${cli.file}`);
       }

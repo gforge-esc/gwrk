@@ -88,7 +88,7 @@ Codex reads `AGENTS.md` for project instructions. For gwrk projects:
 
 ## Project Structure
 - See `docs/architecture.md` for system architecture
-- See `.agent/rules/` for governance rules
+- See `.agents/rules/` for governance rules
 - See `specs/` for feature specifications
 
 ## Commands

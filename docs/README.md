@@ -45,7 +45,7 @@ Start here. Read in this order.
 | [reasoning-modes.md](reference/reasoning-modes.md) | Raw reasoning mode catalogue — 45 modes across 7 categories (source material) |
 | [reasoning-skills.md](reference/reasoning-skills.md) | **Compound reasoning skills** — 6 mode stacks purpose-built for gwrk definitional work |
 
-### `.agent/skills/` — Compound Reasoning Skills
+### `.agents/skills/` — Compound Reasoning Skills
 
 Six compound reasoning skills that stack modes from `reasoning-modes.md` into sequenced pass systems for gwrk's definitional workflows. See [reasoning-skills.md](reference/reasoning-skills.md) for full documentation.
 

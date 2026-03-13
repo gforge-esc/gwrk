@@ -19,18 +19,18 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack: z.ZodOptional<z.ZodObject<{
             channelId: z.ZodString;
             channelName: z.ZodString;
-            masterChannelId: z.ZodOptional<z.ZodString>;
-            masterChannelName: z.ZodOptional<z.ZodString>;
+            opsChannelId: z.ZodOptional<z.ZodString>;
+            opsChannelName: z.ZodOptional<z.ZodString>;
         }, "strip", z.ZodTypeAny, {
             channelId: string;
             channelName: string;
-            masterChannelId?: string | undefined;
-            masterChannelName?: string | undefined;
+            opsChannelId?: string | undefined;
+            opsChannelName?: string | undefined;
         }, {
             channelId: string;
             channelName: string;
-            masterChannelId?: string | undefined;
-            masterChannelName?: string | undefined;
+            opsChannelId?: string | undefined;
+            opsChannelName?: string | undefined;
         }>>;
     }, "strip", z.ZodTypeAny, {
         name: string;
@@ -38,8 +38,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack?: {
             channelId: string;
             channelName: string;
-            masterChannelId?: string | undefined;
-            masterChannelName?: string | undefined;
+            opsChannelId?: string | undefined;
+            opsChannelName?: string | undefined;
         } | undefined;
     }, {
         name: string;
@@ -47,8 +47,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack?: {
             channelId: string;
             channelName: string;
-            masterChannelId?: string | undefined;
-            masterChannelName?: string | undefined;
+            opsChannelId?: string | undefined;
+            opsChannelName?: string | undefined;
         } | undefined;
     }>;
     agents: z.ZodObject<{
@@ -152,8 +152,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack?: {
             channelId: string;
             channelName: string;
-            masterChannelId?: string | undefined;
-            masterChannelName?: string | undefined;
+            opsChannelId?: string | undefined;
+            opsChannelName?: string | undefined;
         } | undefined;
     };
     agents: {
@@ -191,8 +191,8 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack?: {
             channelId: string;
             channelName: string;
-            masterChannelId?: string | undefined;
-            masterChannelName?: string | undefined;
+            opsChannelId?: string | undefined;
+            opsChannelName?: string | undefined;
         } | undefined;
     };
     agents: {

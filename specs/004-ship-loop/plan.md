@@ -41,7 +41,7 @@ Harden existing shell scripts for production error paths, deterministic behavior
 | Rule / Skill | Applicability |
 |---|---|
 | `workspace.md` | Environment variables, fail-fast config |
-| `.agent/rules/operating-model.md` | RAGB status tracking |
+| `.agents/rules/operating-model.md` | RAGB status tracking |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -69,7 +69,7 @@ Wire code review and UAT review dispatch into the state machine with verdict che
 **Files (3):**
 - `scripts/dev/work-until-done.sh` (MODIFY: CODE_REVIEW and UAT_REVIEW stages dispatch via `agent-run.sh review-code` and `review-uat`, check verdict via `wud-verdict.sh`, loop on NO-GO)
 - `scripts/dev/agent-run.sh` (MODIFY: Add `review-code` and `review-uat` workflow support with proper agent backend resolution)
-- `.agent/workflows/review-code.md` (NEW: Review code workflow instructions for agent dispatch)
+- `.agents/workflows/review-code.md` (NEW: Review code workflow instructions for agent dispatch)
 
 **Requirements Addressed:** FR-005, FR-007, US-001, US-004, US-006, TC-001
 
@@ -83,7 +83,7 @@ Wire code review and UAT review dispatch into the state machine with verdict che
 | Rule / Skill | Applicability |
 |---|---|
 | `workspace.md` | Agent configuration, environment variables |
-| `.agent/rules/operating-model.md` | Review agent personas |
+| `.agents/rules/operating-model.md` | Review agent personas |
 | compile-gate | Always |
 
 #### Test Strategy
@@ -120,7 +120,7 @@ Full end-to-end validation of `gwrk ship` — single phase, all phases, help out
 | Rule / Skill | Applicability |
 |---|---|
 | `workspace.md` | Test expectations, CLI routing |
-| `.agent/rules/operating-model.md` | RAGB for verification |
+| `.agents/rules/operating-model.md` | RAGB for verification |
 | compile-gate | Always |
 
 #### Test Strategy

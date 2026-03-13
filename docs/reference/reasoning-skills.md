@@ -1,6 +1,6 @@
 # Compound Reasoning Skills
 
-> Derived from [reasoning-modes.md](reasoning-modes.md). Each skill stacks 3 modes into a sequenced pass system. Skills live in `.agent/skills/` and fire on Antigravity description match. Nine skills across two domains: **definitional** (building the right thing) and **communications** (making people care).
+> Derived from [reasoning-modes.md](reasoning-modes.md). Each skill stacks 3 modes into a sequenced pass system. Skills live in `.agents/skills/` and fire on Antigravity description match. Nine skills across two domains: **definitional** (building the right thing) and **communications** (making people care).
 
 ---
 

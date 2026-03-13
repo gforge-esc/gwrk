@@ -30,7 +30,7 @@ export function buildCommand(
   let command = "";
   let stdin: string | undefined;
 
-  // Extract slash command name from workflow path: .agent/workflows/plan.md → /plan
+  // Extract slash command name from workflow path: .agents/workflows/plan.md → /plan
   const workflowName = path.basename(opts.workflowPath, ".md");
 
   switch (opts.backend) {

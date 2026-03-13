@@ -105,7 +105,7 @@ Compression is gwrk's core metric. It compares the forecasted effort (from story
 Yes. `gwrk pulse scan` analyzes any existing git repository's commit history and generates a full Pulse snapshot with historical trends — weekly LOC buckets going back to the repository's creation. No gwrk-specific setup required for the scan.
 
 ### What does gwrk replace in my existing workflow?
-If you use GForge.ai's codebase comprehension pipeline today, gwrk replaces it entirely. gwrk also replaces the manual `/effort` workflow for estimation. The workflow definitions (`.agent/workflows/`) and governance rules (`.agent/rules/`) become gwrk-managed artifacts that are portable across projects.
+If you use GForge.ai's codebase comprehension pipeline today, gwrk replaces it entirely. gwrk also replaces the manual `/effort` workflow for estimation. The workflow definitions (`.agents/workflows/`) and governance rules (`.agents/rules/`) become gwrk-managed artifacts that are portable across projects.
 
 ### Does gwrk replace my AI agent?
 No. gwrk **uses all of them**. It dispatches to Gemini CLI, Codex CLI, and Claude Code — in tandem, routing tasks to the right backend based on the work. Codex for autonomous execution, Claude for long-context refactoring, Gemini for multi-file reasoning. If one agent fails a phase, gwrk retries with a different backend. Your agents are the workforce; gwrk is the general contractor.
@@ -114,7 +114,7 @@ No. gwrk **uses all of them**. It dispatches to Gemini CLI, Codex CLI, and Claud
 gwrk ships with an **Agent Router** that selects backends based on task characteristics: code review goes to Codex (`codex review`), large refactors to Claude Code (deep context window), multi-file generation to Gemini CLI (parallel tool use). You can also pin a backend per-feature or per-phase in `.gwrkrc.json`. Over time, the router learns from compression ratios which backends perform best for which task types.
 
 ### Is gwrk opinionated about project structure?
-Yes, productively so. gwrk expects a `specs/` directory for feature specifications, a `.agent/` directory for workflow definitions and governance rules, and a `.specify/` directory for templates and scripts. For existing repos without this structure, `gwrk init` scaffolds it.
+Yes, productively so. gwrk expects a `specs/` directory for feature specifications, a `.agents/` directory for workflow definitions and governance rules, and a `.specify/` directory for templates and scripts. For existing repos without this structure, `gwrk init` scaffolds it.
 
 ### What is Agent-DUT?
 Agent-DUT ("Dream Until Told") is gwrk's conversational ideation agent. It lives in Slack threads and turns your unstructured ideas into executable specs. You message it from your phone — text, sketches — and it asks clarifying questions, proposes system decomposition, identifies edge cases, and progressively refines your idea into a `spec.md`. When you say "ship it," DUT writes the spec, and the pipeline (ZFG → WUD) takes over. It's the bridge between "I had an idea on a walk" and "here's a PR."
@@ -313,7 +313,7 @@ gwrk replaces the **cumbersome codebase comprehension pipeline** used in GForge.
 - Pasting specs and plans into chat windows
 
 gwrk provides:
-- **Context compilation**: `.agent/` directory automatically bundled into agent context
+- **Context compilation**: `.agents/` directory automatically bundled into agent context
 - **Persistent governance**: Rules and personas carried across every session
 - **Spec-first pipeline**: Architecture decisions codified in `spec.md` and `plan.md`, not lost in chat
 - **Continuous memory**: Build server maintains state across agent sessions
@@ -455,7 +455,7 @@ Codex Cloud **requires manual per-project setup** via the Codex Web UI:
 4. Add environment variables (secrets, API keys)
 5. Create `AGENTS.md` with project rules
 
-**gwrk walks you through this**: `gwrk codex setup` checks for an existing Codex configuration and guides you through linking, environment setup, and `AGENTS.md` generation from your `.agent/rules/` directory.
+**gwrk walks you through this**: `gwrk codex setup` checks for an existing Codex configuration and guides you through linking, environment setup, and `AGENTS.md` generation from your `.agents/rules/` directory.
 
 See [`docs/reference/codex-lab.md`](file:///Users/gonzo/Code/gwrk/docs/reference/codex-lab.md) for the full Codex Cloud reference and orchestration blueprint.
 
@@ -765,7 +765,7 @@ DUT isn't starting from zero. It has access to:
 
 | Context Source | What DUT Uses It For |
 |---|---|
-| `.agent/rules/*.md` | Governance constraints (what's allowed, coding style, architecture patterns) |
+| `.agents/rules/*.md` | Governance constraints (what's allowed, coding style, architecture patterns) |
 | `specs/*/spec.md` | Existing feature specs (to avoid duplication and identify dependencies) |
 | `specs/000-build-plan.md` | Overall project roadmap (to place the new feature in context) |
 | Pulse snapshot | Current repo state (LOC, velocity, draft branches) |
@@ -879,7 +879,7 @@ DUT is the only agent that runs *inside* Slack threads rather than alongside it.
 | **US-09** | PE | Enforce spec-first governance across all projects using agents | No agent ships code without an approved specification | 5 |
 | **US-10** | PE | Review code produced by agents through a structured review workflow | Quality gates are explicit and auditable | 5 |
 | **US-11** | PE | See Point Compression and Total Compression ratios for every shipped feature | I know exactly how much faster agents + architecture made me | 5 |
-| **US-12** | Platform Eng | Install gwrk via `npm install -g gwrk` and scaffold the `.agent/` directory | Setup takes 5 minutes, not 5 hours | 3 |
+| **US-12** | Platform Eng | Install gwrk via `npm install -g gwrk` and scaffold the `.agents/` directory | Setup takes 5 minutes, not 5 hours | 3 |
 | **US-13** | Platform Eng | Run `gwrk server start` and have a local build server with Docker sandboxes | Cloud agents have a secure local execution target | 8 |
 | **US-14** | Builder | Run `gwrk define <feature>` for the definition-until-solid loop | All definition work is complete before implementation starts | 8 |
 | **US-15** | Builder | Request `/gwrk pulse` via Slack and get a summary including compression ratios | I track velocity and compression without context-switching | 3 |
@@ -894,7 +894,7 @@ DUT is the only agent that runs *inside* Slack threads rather than alongside it.
 
 ```bash
 # === Lifecycle Commands ===
-gwrk init                          # Scaffold .agent/, .specify/, specs/ in current project
+gwrk init                          # Scaffold .agents/, .specify/, specs/ in current project
 gwrk server start                  # Start the local build server (Gateway daemon)
 gwrk server stop                   # Stop the daemon
 
@@ -928,7 +928,7 @@ gwrk setup slack                   # Automated Slack app provisioning (Socket Mo
 # === Codex Cloud ===
 gwrk codex setup                   # Walk through Codex Cloud project setup
 gwrk codex status                  # Check Codex Cloud connection + environment
-gwrk codex agents-md               # Generate AGENTS.md from .agent/rules/
+gwrk codex agents-md               # Generate AGENTS.md from .agents/rules/
 
 # === Dashboard & Remote Access ===
 # Open gwrk App Home Tab in Slack for real-time dashboard
@@ -944,7 +944,7 @@ gwrk config set parallelism.local.maxMem 70   # Memory throttle (%, default 70)
 gwrk status                        # Active agents, clones, system resources
 ```
 
-## 10.2 Workflow Definitions (`.agent/workflows/`)
+## 10.2 Workflow Definitions (`.agents/workflows/`)
 
 | Workflow | Persona | Purpose |
 |---|---|---|
@@ -958,7 +958,7 @@ gwrk status                        # Active agents, clones, system resources
 | `analyze.md` | Principal Engineer | Cross-artifact consistency analysis |
 | `effort.md` | Principal Engineer | SP-driven effort estimation |
 
-## 10.3 Governance Rules (`.agent/rules/`)
+## 10.3 Governance Rules (`.agents/rules/`)
 
 | Rule | Purpose |
 |---|---|

@@ -70,7 +70,7 @@ Initial workspace setup. Installs tooling, syncs env files, prepares the develop
 
 ---
 
-## 3. Workflows — `.agent/workflows/`
+## 3. Workflows — `.agents/workflows/`
 
 The workflow definitions. These are markdown files that agents read and execute as slash commands (`/specify`, `/plan`, etc.). Each workflow defines: persona, scope constraints, algorithm steps, quality gates, and anti-patterns.
 
@@ -80,37 +80,37 @@ The workflow definitions. These are markdown files that agents read and execute 
 
 | File | Lines | Slash Cmd | Persona | Purpose |
 |---|---|---|---|---|
-| [specify.md](file:///Users/gonzo/Code/code-red/.agent/workflows/specify.md) | 151 | `/specify` | Product Manager | Create spec.md from feature description |
-| [plan.md](file:///Users/gonzo/Code/code-red/.agent/workflows/plan.md) | 189 | `/plan` | Senior Architect | Create plan.md from spec |
-| [plan-to-tasks.md](file:///Users/gonzo/Code/code-red/.agent/workflows/plan-to-tasks.md) | 325 | `/plan-to-tasks` | Senior Architect + Auditor | Generate beads import scripts from spec + plan + code audit |
-| [define-tests.md](file:///Users/gonzo/Code/code-red/.agent/workflows/define-tests.md) | 183 | `/define-tests` | QA Architect | Generate RED test files before implementation |
+| [specify.md](file:///Users/gonzo/Code/code-red/.agents/workflows/specify.md) | 151 | `/specify` | Product Manager | Create spec.md from feature description |
+| [plan.md](file:///Users/gonzo/Code/code-red/.agents/workflows/plan.md) | 189 | `/plan` | Senior Architect | Create plan.md from spec |
+| [plan-to-tasks.md](file:///Users/gonzo/Code/code-red/.agents/workflows/plan-to-tasks.md) | 325 | `/plan-to-tasks` | Senior Architect + Auditor | Generate beads import scripts from spec + plan + code audit |
+| [define-tests.md](file:///Users/gonzo/Code/code-red/.agents/workflows/define-tests.md) | 183 | `/define-tests` | QA Architect | Generate RED test files before implementation |
 
 ### Execution Pipeline (Implement → Review → Ship)
 
 | File | Lines | Slash Cmd | Persona | Purpose |
 |---|---|---|---|---|
-| [implement.md](file:///Users/gonzo/Code/code-red/.agent/workflows/implement.md) | 267 | `/implement` | Senior Developer | Execute all tasks in a phase via beads ready queue |
-| [review-code.md](file:///Users/gonzo/Code/code-red/.agent/workflows/review-code.md) | 254 | `/review-code` | Principal Engineer | Technical code review against spec/plan |
-| [review-uat.md](file:///Users/gonzo/Code/code-red/.agent/workflows/review-uat.md) | 196 | `/review-uat` | Product Manager | User acceptance testing against spec |
+| [implement.md](file:///Users/gonzo/Code/code-red/.agents/workflows/implement.md) | 267 | `/implement` | Senior Developer | Execute all tasks in a phase via beads ready queue |
+| [review-code.md](file:///Users/gonzo/Code/code-red/.agents/workflows/review-code.md) | 254 | `/review-code` | Principal Engineer | Technical code review against spec/plan |
+| [review-uat.md](file:///Users/gonzo/Code/code-red/.agents/workflows/review-uat.md) | 196 | `/review-uat` | Product Manager | User acceptance testing against spec |
 
 ### Quality & Governance
 
 | File | Lines | Slash Cmd | Persona | Purpose |
 |---|---|---|---|---|
-| [analyze.md](file:///Users/gonzo/Code/code-red/.agent/workflows/analyze.md) | 194 | `/analyze` | Principal Engineer | Read-only cross-artifact consistency analysis |
-| [checklist.md](file:///Users/gonzo/Code/code-red/.agent/workflows/checklist.md) | 115 | `/checklist` | Principal Engineer | Generate domain-specific quality checklists |
-| [build-plan.md](file:///Users/gonzo/Code/code-red/.agent/workflows/build-plan.md) | 167 | `/build-plan` | Senior Architect | Manage master build plan (add/modify/reorder/cluster-check) |
+| [analyze.md](file:///Users/gonzo/Code/code-red/.agents/workflows/analyze.md) | 194 | `/analyze` | Principal Engineer | Read-only cross-artifact consistency analysis |
+| [checklist.md](file:///Users/gonzo/Code/code-red/.agents/workflows/checklist.md) | 115 | `/checklist` | Principal Engineer | Generate domain-specific quality checklists |
+| [build-plan.md](file:///Users/gonzo/Code/code-red/.agents/workflows/build-plan.md) | 167 | `/build-plan` | Senior Architect | Manage master build plan (add/modify/reorder/cluster-check) |
 
 ### Supporting
 
 | File | Lines | Slash Cmd | Persona | Purpose |
 |---|---|---|---|---|
-| [effort.md](file:///Users/gonzo/Code/code-red/.agent/workflows/effort.md) | 173 | `/effort` | — | Story Point–driven effort estimation |
-| [constitution.md](file:///Users/gonzo/Code/code-red/.agent/workflows/constitution.md) | 119 | `/constitution` | — | Create/update project governance principles |
+| [effort.md](file:///Users/gonzo/Code/code-red/.agents/workflows/effort.md) | 173 | `/effort` | — | Story Point–driven effort estimation |
+| [constitution.md](file:///Users/gonzo/Code/code-red/.agents/workflows/constitution.md) | 119 | `/constitution` | — | Create/update project governance principles |
 
 ---
 
-## 4. Governance Rules — `.agent/rules/`
+## 4. Governance Rules — `.agents/rules/`
 
 Binding policy documents referenced by workflows at runtime. The `<scope_constraints>` in implement.md, plan.md, etc. instruct the agent to read these files for applicable governance.
 
@@ -118,17 +118,17 @@ Binding policy documents referenced by workflows at runtime. The `<scope_constra
 
 | File | Lines | Referenced By |
 |---|---|---|
-| [operating-model.md](file:///Users/gonzo/Code/code-red/.agent/rules/operating-model.md) | 43 | All workflows (Foxtrot Charlie principles, RAGB definitions) |
-| [workspace.md](file:///Users/gonzo/Code/code-red/.agent/rules/workspace.md) | 70 | plan.md (UI components, config hygiene), checklist.md |
-| [seeding-governance.md](file:///Users/gonzo/Code/code-red/.agent/rules/seeding-governance.md) | 58 | plan.md (fixture/seed changes), plan-to-tasks.md |
-| [coding-style.md](file:///Users/gonzo/Code/code-red/.agent/rules/coding-style.md) | 54 | implement.md (compile-gate skill) |
-| [api-architecture.md](file:///Users/gonzo/Code/code-red/.agent/rules/api-architecture.md) | 170 | plan.md (hexagonal registry, API design) |
-| [observability-governance.md](file:///Users/gonzo/Code/code-red/.agent/rules/observability-governance.md) | 62 | checklist.md (observability dimension) |
-| [route-reference.md](file:///Users/gonzo/Code/code-red/.agent/rules/route-reference.md) | 76 | review-code.md (route contract validation) |
+| [operating-model.md](file:///Users/gonzo/Code/code-red/.agents/rules/operating-model.md) | 43 | All workflows (Foxtrot Charlie principles, RAGB definitions) |
+| [workspace.md](file:///Users/gonzo/Code/code-red/.agents/rules/workspace.md) | 70 | plan.md (UI components, config hygiene), checklist.md |
+| [seeding-governance.md](file:///Users/gonzo/Code/code-red/.agents/rules/seeding-governance.md) | 58 | plan.md (fixture/seed changes), plan-to-tasks.md |
+| [coding-style.md](file:///Users/gonzo/Code/code-red/.agents/rules/coding-style.md) | 54 | implement.md (compile-gate skill) |
+| [api-architecture.md](file:///Users/gonzo/Code/code-red/.agents/rules/api-architecture.md) | 170 | plan.md (hexagonal registry, API design) |
+| [observability-governance.md](file:///Users/gonzo/Code/code-red/.agents/rules/observability-governance.md) | 62 | checklist.md (observability dimension) |
+| [route-reference.md](file:///Users/gonzo/Code/code-red/.agents/rules/route-reference.md) | 76 | review-code.md (route contract validation) |
 
 ---
 
-## 5. Agent Personas — `.agent/prompts/`
+## 5. Agent Personas — `.agents/prompts/`
 
 Role definitions that shape agent behavior when executing specific workflow personas.
 
@@ -136,14 +136,14 @@ Role definitions that shape agent behavior when executing specific workflow pers
 
 | File | Lines | Used By Persona |
 |---|---|---|
-| [README.md](file:///Users/gonzo/Code/code-red/.agent/prompts/README.md) | 36 | Index file for persona selection |
-| [senior-dev.md](file:///Users/gonzo/Code/code-red/.agent/prompts/personas/senior-dev.md) | 74 | `/implement` (Senior Developer) |
-| [product-manager.md](file:///Users/gonzo/Code/code-red/.agent/prompts/personas/product-manager.md) | 74 | `/specify`, `/review-uat` (Product Manager) |
-| [principal-engineer.md](file:///Users/gonzo/Code/code-red/.agent/prompts/personas/principal-engineer.md) | 48 | `/review-code`, `/analyze`, `/checklist` (Principal Engineer) |
+| [README.md](file:///Users/gonzo/Code/code-red/.agents/prompts/README.md) | 36 | Index file for persona selection |
+| [senior-dev.md](file:///Users/gonzo/Code/code-red/.agents/prompts/personas/senior-dev.md) | 74 | `/implement` (Senior Developer) |
+| [product-manager.md](file:///Users/gonzo/Code/code-red/.agents/prompts/personas/product-manager.md) | 74 | `/specify`, `/review-uat` (Product Manager) |
+| [principal-engineer.md](file:///Users/gonzo/Code/code-red/.agents/prompts/personas/principal-engineer.md) | 48 | `/review-code`, `/analyze`, `/checklist` (Principal Engineer) |
 
 ---
 
-## 6. Agent Templates — `.agent/templates/`
+## 6. Agent Templates — `.agents/templates/`
 
 Templates injected into agent context at workflow runtime. These provide the agent with monorepo structure, test patterns, and gate scripts.
 
@@ -151,9 +151,9 @@ Templates injected into agent context at workflow runtime. These provide the age
 
 | File | Lines | Used By |
 |---|---|---|
-| [monorepo-context.md](file:///Users/gonzo/Code/code-red/.agent/templates/monorepo-context.md) | 71 | plan.md Step 2 (required reading for file path generation) |
-| [e2e-patterns.md](file:///Users/gonzo/Code/code-red/.agent/templates/e2e-patterns.md) | 167 | define-tests.md (Playwright test patterns) |
-| [verification-gate.md](file:///Users/gonzo/Code/code-red/.agent/templates/verification-gate.md) | 90 | plan-to-tasks.md Step 7a (gate script format) |
+| [monorepo-context.md](file:///Users/gonzo/Code/code-red/.agents/templates/monorepo-context.md) | 71 | plan.md Step 2 (required reading for file path generation) |
+| [e2e-patterns.md](file:///Users/gonzo/Code/code-red/.agents/templates/e2e-patterns.md) | 167 | define-tests.md (Playwright test patterns) |
+| [verification-gate.md](file:///Users/gonzo/Code/code-red/.agents/templates/verification-gate.md) | 90 | plan-to-tasks.md Step 7a (gate script format) |
 
 ---
 
@@ -206,7 +206,7 @@ Persistent governance state that workflows reference for cross-cutting principle
 
 ---
 
-## 10. Parser Scripts — `.agent/scripts/parser/`
+## 10. Parser Scripts — `.agents/scripts/parser/`
 
 Domain-specific utility scripts for parser feature development.
 
@@ -214,8 +214,8 @@ Domain-specific utility scripts for parser feature development.
 
 | File | Purpose |
 |---|---|
-| [parser-scaffold.sh](file:///Users/gonzo/Code/code-red/.agent/scripts/parser/parser-scaffold.sh) | Scaffold parser-related feature structure |
-| [parser-validate.sh](file:///Users/gonzo/Code/code-red/.agent/scripts/parser/parser-validate.sh) | Validate parser output format |
+| [parser-scaffold.sh](file:///Users/gonzo/Code/code-red/.agents/scripts/parser/parser-scaffold.sh) | Scaffold parser-related feature structure |
+| [parser-validate.sh](file:///Users/gonzo/Code/code-red/.agents/scripts/parser/parser-validate.sh) | Validate parser output format |
 
 ---
 
@@ -235,7 +235,7 @@ These files are not part of the workflow system itself but are **mandatory readi
 ## 12. Legacy (Deprecated)
 
 #### `.gemini/commands/` — 9 TOML files
-Pre-Antigravity Gemini CLI slash command definitions. **Deprecated as of 2026-01-07** in favor of `.agent/workflows/`. Kept for reference only.
+Pre-Antigravity Gemini CLI slash command definitions. **Deprecated as of 2026-01-07** in favor of `.agents/workflows/`. Kept for reference only.
 
 | File | Original Command |
 |---|---|
@@ -257,11 +257,11 @@ Pre-Antigravity Gemini CLI slash command definitions. **Deprecated as of 2026-01
 
 | Category | Directory | Files | Lines |
 |---|---|---|---|
-| Workflows | `.agent/workflows/` | 12 | 2,333 |
-| Governance Rules | `.agent/rules/` | 7 | 533 |
-| Agent Personas | `.agent/prompts/` | 4 | 232 |
-| Agent Templates | `.agent/templates/` | 3 | 328 |
-| Parser Scripts | `.agent/scripts/parser/` | 2 | — |
+| Workflows | `.agents/workflows/` | 12 | 2,333 |
+| Governance Rules | `.agents/rules/` | 7 | 533 |
+| Agent Personas | `.agents/prompts/` | 4 | 232 |
+| Agent Templates | `.agents/templates/` | 3 | 328 |
+| Parser Scripts | `.agents/scripts/parser/` | 2 | — |
 | Specify Templates | `.specify/templates/` | 10 | 591 |
 | Specify Scripts | `.specify/scripts/bash/` | 5 | 1,492 |
 | Specify Memory | `.specify/memory/` | 1 | 50 |
@@ -310,7 +310,7 @@ graph TD
     subgraph "Supporting Assets"
         R[rules/]
         P[prompts/]
-        AT[.agent/templates/]
+        AT[.agents/templates/]
         ST[.specify/templates/]
         SS[.specify/scripts/]
         SM[.specify/memory/]
@@ -347,7 +347,7 @@ end
 
 When extracting this system into a standalone package:
 
-1. **Core bundle** (must ship): `.agent/workflows/`, `.agent/rules/`, `.agent/templates/`, `.agent/prompts/`, `.specify/templates/`, `.specify/scripts/bash/common.sh`
+1. **Core bundle** (must ship): `.agents/workflows/`, `.agents/rules/`, `.agents/templates/`, `.agents/prompts/`, `.specify/templates/`, `.specify/scripts/bash/common.sh`
 2. **Runtime bundle** (must ship): `scripts/dev/agent-run.sh`, `scripts/dev/work-until-done.sh`, `scripts/dev/define-until-solid.sh`, `scripts/dev/wud-*.sh`, `scripts/dev/review-reopen.sh`, `scripts/dev/verify-dev-stack.sh`
 3. **Project-specific** (stays in repo): `Makefile` targets, `.specify/memory/constitution.md`, upstream references
 4. **Deprecated** (do not ship): `.gemini/commands/`

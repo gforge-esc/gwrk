@@ -37,7 +37,6 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
       `  ${DIM}Provide SLACK_BOT_TOKEN and SLACK_APP_TOKEN in environment.${RESET}`,
     );
     process.exit(1);
-    return null as any;
   }
 
   const rl = readline.createInterface({

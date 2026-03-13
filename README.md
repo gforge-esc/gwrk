@@ -27,7 +27,7 @@ This repository is strictly organized to enforce separation of concerns between 
 ### Orchestration & Governance
 - **`scripts/dev/`**
   - The deterministic Bash orchestration scripts (`agent-run.sh`, `define-until-solid.sh`, `work-until-done.sh`) that the CLI wraps. *These shell scripts are the actual product orchestrators.*
-- **`.agent/`**
+- **`.agents/`**
   - Governance protocols, agent rules (e.g., `operating-model.md`), and Prompt/Workflow context passed directly to LLMs during execution.
 - **`.specify/`**
   - Layout templates used by the `/specify` workflow to scaffold blank or incoming specifications.

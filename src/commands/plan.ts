@@ -50,7 +50,7 @@ export const planCommand = new Command("plan")
 
     const result = await dispatchAgent({
       backend,
-      workflowPath: ".agent/workflows/plan.md",
+      workflowPath: ".agents/workflows/plan.md",
       featureDir: relativeFeatureDir,
     });
 

@@ -80,7 +80,7 @@ A project template = `skills/` + `rules/` + a gate definition per deliverable ty
 
 The four Foxtrot Charlie pillars are constant. The build profile — skills, gates, review persona — is the variable. gwrk ships all of them through the same loop.
 
-This is already partially the model: `.agent/rules/` + `.agent/workflows/` are the seed of a build profile. The missing piece: making the gate and review layer pluggable per project type.
+This is already partially the model: `.agents/rules/` + `.agents/workflows/` are the seed of a build profile. The missing piece: making the gate and review layer pluggable per project type.
 
 ---
 

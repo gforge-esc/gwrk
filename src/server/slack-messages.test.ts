@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { MessageBuilder } from "./slack-messages.js";
+import type { AgentBackend, DispatchStatus } from "./types.js";
+import type { HeaderBlock, SectionBlock, ActionsBlock } from "@slack/types";
 
 describe("MessageBuilder", () => {
   const mockDispatch = {
     featureId: "003-slack",
     phaseId: "phase-01",
-    backend: "gemini" as any,
-    status: "running" as any,
+    backend: "gemini" as AgentBackend,
+    status: "running" as DispatchStatus,
     branchName: "feat/003-slack",
     createdAt: new Date().toISOString(),
     attempts: [],
@@ -17,7 +19,7 @@ describe("MessageBuilder", () => {
     const msg = MessageBuilder.phaseStart(mockDispatch);
     expect(msg.text).toContain("Phase phase-01 started");
     expect(msg.blocks[0].type).toBe("header");
-    expect((msg.blocks[0] as any).text.text).toContain("003-slack");
+    expect((msg.blocks[0] as HeaderBlock).text.text).toContain("003-slack");
   });
 
   it("should build phaseComplete message without buttons", () => {
@@ -30,9 +32,12 @@ describe("MessageBuilder", () => {
   it("should build reviewReady message with buttons", () => {
     const msg = MessageBuilder.reviewReady(mockDispatch);
     expect(msg.text).toContain("Review ready for 003-slack");
-    const actions = msg.blocks.find((b) => b.type === "actions") as any;
+    const actions = msg.blocks.find((b) => b.type === "actions") as ActionsBlock;
     expect(actions.elements).toHaveLength(3);
-    expect(actions.elements[0].action_id).toBe("merge_pr");
+    const firstElement = actions.elements[0];
+    if (firstElement.type === "button") {
+      expect(firstElement.action_id).toBe("merge_pr");
+    }
   });
 
   it("should build phaseFail message with error", () => {

@@ -274,7 +274,7 @@ strip_ansi() {
 # ──────────────────────────────────────────────────────────────────
 gwrk_notify() {
   local type="$1"
-  local extra="${2:-"{}"}"
+  local extra="${2:-'{}'}"
   # Only notify if WORKFLOW is one that impacts the pipeline
   if [[ "$WORKFLOW" == "implement" ]] || [[ "$WORKFLOW" == "review-code" ]] || [[ "$WORKFLOW" == "review-uat" ]]; then
     # Format phase as phase-NN
