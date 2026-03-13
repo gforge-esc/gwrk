@@ -11,7 +11,7 @@ export function buildCommand(opts, _workflowContent) {
     const args = [];
     let command = "";
     let stdin;
-    // Extract slash command name from workflow path: .agent/workflows/plan.md → /plan
+    // Extract slash command name from workflow path: .agents/workflows/plan.md → /plan
     const workflowName = path.basename(opts.workflowPath, ".md");
     switch (opts.backend) {
         case "gemini": {

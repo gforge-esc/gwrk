@@ -63,8 +63,8 @@ export const initCommand = new Command("init")
         process.exit(0);
     }
     const dirs = [
-        ".agent/workflows",
-        ".agent/rules",
+        ".agents/workflows",
+        ".agents/rules",
         ".specify/templates",
         "specs",
     ];
@@ -105,20 +105,24 @@ export const initCommand = new Command("init")
         const { loadSlackConfig } = await import("../utils/slack-client.js");
         const hasTokens = loadSlackConfig();
         if (hasTokens) {
-            config.project.slack = config.project.slack || {};
+            const slack = config.project.slack ?? {
+                channelId: "",
+                channelName: "",
+            };
+            config.project.slack = slack;
             try {
                 if (options.slack) {
                     console.log(`Creating Slack channel ${options.slack}...`);
                     const channelId = await ensureSlackChannel(options.slack);
-                    config.project.slack.channelId = channelId;
-                    config.project.slack.channelName = options.slack;
+                    slack.channelId = channelId;
+                    slack.channelName = options.slack;
                     console.log(`Successfully provisioned Slack channel: ${options.slack} (${channelId})`);
                 }
                 if (options.slackOps) {
                     console.log(`Creating Slack ops channel ${options.slackOps}...`);
                     const opsChannelId = await ensureSlackChannel(options.slackOps);
-                    config.project.slack.opsChannelId = opsChannelId;
-                    config.project.slack.opsChannelName = options.slackOps;
+                    slack.opsChannelId = opsChannelId;
+                    slack.opsChannelName = options.slackOps;
                     console.log(`Successfully provisioned Slack ops channel: ${options.slackOps} (${opsChannelId})`);
                 }
             }
@@ -134,7 +138,7 @@ export const initCommand = new Command("init")
     // Placeholder for "copying template files"
     const workflows = ["specify.md", "plan.md"];
     for (const wf of workflows) {
-        fs.writeFileSync(path.join(projectRoot, ".agent/workflows", wf), `# Workflow: ${wf}\n\nPlaceholder content for ${wf}.`);
+        fs.writeFileSync(path.join(projectRoot, ".agents/workflows", wf), `# Workflow: ${wf}\n\nPlaceholder content for ${wf}.`);
     }
     // SQLite Project Registration
     const projectId = crypto
@@ -175,7 +179,7 @@ export const initCommand = new Command("init")
     for (const cli of clis) {
         const res = await execCommand("which", [cli.name]);
         if (res.exitCode === 0) {
-            fs.writeFileSync(path.join(projectRoot, cli.file), `# ${cli.name.toUpperCase()} Project Context\n\nThis project is managed by gwrk.\nRules: .agent/rules/\nWorkflows: .agent/workflows/\n`);
+            fs.writeFileSync(path.join(projectRoot, cli.file), `# ${cli.name.toUpperCase()} Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n`);
             console.log(`Detected ${cli.name}, provisioned ${cli.file}`);
         }
     }

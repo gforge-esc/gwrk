@@ -40,7 +40,7 @@ export const planCommand = new Command("plan")
     const startTime = Date.now();
     const result = await dispatchAgent({
         backend,
-        workflowPath: ".agent/workflows/plan.md",
+        workflowPath: ".agents/workflows/plan.md",
         featureDir: relativeFeatureDir,
     });
     const durationS = Math.round((Date.now() - startTime) / 1000);

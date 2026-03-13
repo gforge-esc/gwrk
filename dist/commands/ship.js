@@ -201,7 +201,7 @@ export const shipCommand = new Command("ship")
     .action(async (feature, phase, opts) => {
     const cwd = process.cwd();
     const config = loadConfig(cwd);
-    const backend = opts.agent || config.agents.implement;
+    const backend = (opts.agent || config.agents.implement);
     // Determine which phases to ship
     let phases;
     if (phase) {

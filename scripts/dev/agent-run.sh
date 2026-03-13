@@ -274,7 +274,8 @@ strip_ansi() {
 # ──────────────────────────────────────────────────────────────────
 gwrk_notify() {
   local type="$1"
-  local extra="${2:-'{}'}"
+  local extra="${2:-}"
+  if [[ -z "$extra" ]]; then extra='{}'; fi
   # Only notify if WORKFLOW is one that impacts the pipeline
   if [[ "$WORKFLOW" == "implement" ]] || [[ "$WORKFLOW" == "review-code" ]] || [[ "$WORKFLOW" == "review-uat" ]]; then
     # Format phase as phase-NN
@@ -301,8 +302,24 @@ echo ""
 
 cd "$REPO_ROOT"
 
+# Map agent slug to binary + extra flags
+AGENT_BIN="$AGENT_SLUG"
+AGENT_EXTRA_FLAGS=""
+case "$AGENT_SLUG" in
+  "codex")
+    # codex uses 'exec' subcommand for non-interactive mode
+    AGENT_BIN="codex"
+    AGENT_EXTRA_FLAGS="exec --full-auto"
+    ;;
+  "codex-cloud")
+    echo -e "${RED}✗${RESET} codex-cloud is not a local CLI — it is only available via GitHub @codex mention."
+    echo -e "  Use ${BOLD}--agent gemini${RESET} or change .gwrkrc.json agents.implement to 'gemini'."
+    exit 1
+    ;;
+esac
+
 # Run the dynamic agent, tee full output to log, truncate for terminal
-"$AGENT_SLUG" -p "${COMMAND}" --approval-mode "${MODE}" 2>&1 \
+$AGENT_BIN $AGENT_EXTRA_FLAGS -p "${COMMAND}" --approval-mode "${MODE}" 2>&1 \
   | tee -a "$LOG_FILE" \
   | {
     SQUELCH=0        # 0 = normal, 1 = inside 429 error block
