@@ -1,6 +1,8 @@
+> **⚠️ SUPERSEDED** — This document has been absorbed into [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) (§2.1, §2.5). Retained as historical thinking. The WUD-as-CLI-consumer pattern is now codified in the unified document and implemented via [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md).
+
 # Ship Loop Architecture: The Why-Nix Lens
 
-**Date**: 2026-03-12 | **Status**: Thinking — not a spec yet
+**Date**: 2026-03-12 | **Status**: Superseded by agent-native-cli.md
 
 ---
 

@@ -58,11 +58,11 @@ _No database entities required for this feature. See DM-000._
 
 ## 6. Technical Constraints
 
-- **TC-001**: Determinism — SHA256 input/output stability for all engine functions.
-- **TC-002**: Air-Gapped — No external network calls at runtime. All assets vendored/bundled.
-- **TC-003**: Fail-Fast Config — Zod validation with no `.default()` calls. Missing var → `process.exit(1)`.
+- **TC-001**: Air-Gapped — No external network calls at runtime. No CDN. No telemetry.
+- **TC-002**: Fail-Fast Config — Zod validation with no `.default()` calls. Missing var → `process.exit(1)`.
+- **TC-003**: TypeScript Only — No `.js` or `.jsx` in `src/`. ESM modules, ES2022 target.
 
-<!-- Add feature-specific TCs as needed -->
+<!-- Add feature-specific TCs as needed (e.g., DB access constraint, pipe safety) -->
 
 ---
 

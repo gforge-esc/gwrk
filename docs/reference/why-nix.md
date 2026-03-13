@@ -1,3 +1,5 @@
+> **⚠️ SUPERSEDED** — This document has been absorbed into [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) (§1, §2, §5). Retained as primary source reference. See also: [agent-clip source audit](file:///Users/gonzo/.gemini/antigravity/brain/2ea2b1c4-7283-4b3b-9606-59a26a20d52f/agent-clip-source-audit.md) for validation of claims vs. implementation.
+
 # I was backend lead at Manus. After building agents for 2 years, I stopped using function calling entirely. Here's what I use instead. : r/LocalLLaMA
 
 [
