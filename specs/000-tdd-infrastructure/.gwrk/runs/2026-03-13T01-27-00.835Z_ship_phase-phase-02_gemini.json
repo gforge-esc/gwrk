@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-13T01:27:00.835Z_ship_pphase-02",
+  "feature": "000-tdd-infrastructure",
+  "phase": "phase-phase-02",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-13T01:27:00.835Z",
+  "finishedAt": "2026-03-13T01:27:03.454Z",
+  "durationS": 2,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 125,
+  "linesAdded": 2125,
+  "linesDeleted": 3014,
+  "gitCommit": "a7d7d6244231fd30e663082d6b025e360b0ec596",
+  "gitBranch": "feat/000-tdd-infrastructure"
+}

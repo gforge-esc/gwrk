@@ -42,6 +42,21 @@ Start here. Read in this order.
 | [architecture-diagrams.md](reference/architecture-diagrams.md) | Mermaid visualizations — agent pipeline, system architecture, Done Done! protocol, git branching, App Home Tab |
 | [codex-lab.md](reference/codex-lab.md) | Codex Cloud integration reference — setup, invocation, orchestration blueprint |
 | [extraction-manifest.md](reference/extraction-manifest.md) | Exhaustive inventory of the 78-file CodeRed workflow system being extracted into gwrk |
+| [reasoning-modes.md](reference/reasoning-modes.md) | Raw reasoning mode catalogue — 45 modes across 7 categories (source material) |
+| [reasoning-skills.md](reference/reasoning-skills.md) | **Compound reasoning skills** — 6 mode stacks purpose-built for gwrk definitional work |
+
+### `.agent/skills/` — Compound Reasoning Skills
+
+Six compound reasoning skills that stack modes from `reasoning-modes.md` into sequenced pass systems for gwrk's definitional workflows. See [reasoning-skills.md](reference/reasoning-skills.md) for full documentation.
+
+| Skill | Modes | gwrk Activity |
+|---|---|---|
+| **specify-sharpen** | Reductive + Interviewer + Audit | `/specify` — harden specs to executable assertions |
+| **decision-forge** | Adversarial + Steel-man + Calibration | Architecture choices, naming, prioritization |
+| **truth-extract** | Forensic + Socratic + Uncertainty | `/discover` — separate signal from noise |
+| **architecture-stress-test** | Analytical + Pre-mortem + Comparative | `/plan` review — kill bad plans before they kill you |
+| **naming-forge** | Dialectical + Aesthetic + Combinatorial | Product naming, CLI taxonomy, category definition |
+| **governance-audit** | Audit + Comparative + Integrative | `/analyze` — cross-artifact consistency |
 
 ### `branding/` — Visual Assets
 | Asset | Description |

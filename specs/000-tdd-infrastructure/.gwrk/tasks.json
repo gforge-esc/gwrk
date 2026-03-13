@@ -82,21 +82,21 @@
         {
           "id": "T009",
           "title": "Implement specs/001-cli-core/gap-analysis.md",
-          "description": "NEW: Classify each FR-### as ✅ tested | ⚠️ weak | ❌ untested. For every ❌ or ⚠️, describe exactly what assertion is missing and what test file should contain it.",
+          "description": "NEW: Classify each FR-### as ✅ tested | ⚠️ weak | ❌ untested. For every ❌ or ⚠️, describe exactly what assertion is missing and what test file should contain it.\n\nREVIEW FAIL (uat): Audit Incomplete — Expected: Classification for EVERY FR-### from 001-cli-core/spec.md. Actual: FR-009 and FR-021 are missing from gap-analysis.md. See spec.md > US-005. Fix: Add missing FR classifications to specs/001-cli-core/gap-analysis.md.",
           "status": "open",
           "gateScript": "gates/T009-gate.sh"
         },
         {
           "id": "T010",
           "title": "Implement specs/002-build-server/gap-analysis.md",
-          "description": "NEW: Same classification. Focus on: server lifecycle start/stop, health endpoint, dispatch queue, Docker sandbox, git manager.",
+          "description": "NEW: Same classification. Focus on: server lifecycle start/stop, health endpoint, dispatch queue, Docker sandbox, git manager.\n\nREVIEW FAIL (uat): Audit Incomplete — Expected: Classification for EVERY FR-### from 002-build-server/spec.md. Actual: FR-022, FR-023, FR-025, and FR-026 are missing from gap-analysis.md. See spec.md > US-006. Fix: Add missing FR classifications to specs/002-build-server/gap-analysis.md.",
           "status": "open",
           "gateScript": "gates/T010-gate.sh"
         },
         {
           "id": "T011",
           "title": "Implement test strategy for Phase 2",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (uat): Incomplete Verification — Expected: Classification complete for both 001 and 002 audit files. Actual: Gaps identified in audit files mean the test strategy for this phase is not fully satisfied. Fix: Re-verify both audit files after missing FRs are added.",
           "status": "open",
           "gateScript": "gates/T011-gate.sh"
         }

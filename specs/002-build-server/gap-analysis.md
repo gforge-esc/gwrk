@@ -1,50 +1,62 @@
-# Gap Analysis: 002 Build Server
+---
+type: gap_analysis
+feature: 002-build-server
+last_modified: "2026-03-12T23:45:00Z"
+---
 
-## Overview
-This document audits the current implementation of the `002-build-server` feature against its [Feature Specification](./spec.md).
+# Gap Analysis: 002 Build Server (Test Coverage Audit)
 
-## 1. Requirement Status
+**Date**: 2026-03-12
+**Status**: ⚠️ Partial Coverage Gaps Identified
 
-| ID | Requirement | Status | Gap Notes |
-|---|---|---|---|
-| FR-001 | `server start` | **Implemented** | Starts daemon, writes PID, responds to health. |
-| FR-002 | Fastify Daemon | **Implemented** | REST endpoints for dispatch, status, queue. |
-| FR-003 | `server stop` | **Implemented** | SIGTERM, graceful shutdown, PID removal. |
-| FR-004 | `gwrk status` | **Implemented** | Reports server, system, network, and queue status. |
-| FR-005 | `POST /api/dispatch`| **Implemented** | Phase dispatch to sandbox. |
-| FR-006 | Docker Lifecycle | **Implemented** | Container creation, labeling, and destruction. |
-| FR-007 | Context Compilation| **Partial** | Context file created at `.gwrk/phase-context.md`, but content completeness needs audit. |
-| FR-008 | Dispatch Queue | **Implemented** | Respects concurrency limits. |
-| FR-009 | Retry & Escalation | **Implemented** | 3 attempts + fallback backend escalation. |
-| FR-010 | Git Branching | **Implemented** | Phase branch creation and merge-back. |
-| FR-011 | PID Management | **Implemented** | PID file in `.gwrk/server.pid`. |
-| FR-012 | Sandbox Dockerfile | **Implemented** | `Dockerfile.sandbox` exists. |
-| FR-014 | Resource Throttling | **Implemented** | Throttles queue based on CPU/Mem/Disk limits. |
-| FR-015 | Sleep Detection | **Implemented** | Heartbeat drift detection in `LifecycleMonitor`. |
-| FR-016 | Wake Protocol | **Implemented** | Graceful reconnect with health checks. |
-| FR-017 | Network Monitoring | **Implemented** | Polling-based connectivity detection. |
-| FR-018 | Network Pause/Resume| **Implemented** | Queue pauses on network loss. |
-| FR-019 | Docker Pause/Unpause| **Implemented** | Containers paused on sleep, unpaused on ready. |
-| FR-020 | Rich Health Check | **Partial** | `/health` returns status, but component-level detail completeness needs audit. |
-| FR-022 | Container Reaper | **Missing** | TTL-based container destruction not implemented. |
-| FR-024 | `server clean` | **Missing** | Command to destroy all gwrk containers not implemented. |
+---
 
-## 2. Identified Gaps
+## Functional Requirements Coverage
 
-### GAP-001: Missing `gwrk server clean` (Medium Priority)
-The spec requires a command to remove all gwrk-labeled containers without requiring a running daemon (FR-024).
-- **Required**: Implement `clean` subcommand in `src/commands/server.ts`.
+| FR-### | Requirement | Status | Test File | Gap / Notes |
+|---|---|---|---|---|
+| FR-001 | `server start` | ✅ tested | `src/commands/server.test.ts` | Covers daemonization, PID file creation, and port binding. |
+| FR-002 | Daemon REST endpoints | ✅ tested | `src/server/index.test.ts` | Verified Fastify bootstrap and basic routing. |
+| FR-003 | `server stop` | ✅ tested | `src/commands/server.test.ts` | Covers SIGTERM handling and PID removal. |
+| FR-004 | `gwrk status` | ✅ tested | `src/server/routes/status.test.ts` | Comprehensive validation of the SystemStatus response. |
+| FR-005 | `POST /api/dispatch` | ✅ tested | `src/server/dispatch.test.ts` | Covers request enqueuing and initial status. |
+| FR-006 | Sandbox lifecycle | ✅ tested | `src/server/sandbox.test.ts` | Covers container create, start, stop, and destroy. |
+| FR-007 | Context compilation | ✅ tested | `src/server/context.test.ts` | Verified correct aggregation of rules, personas, specs, and plans. |
+| FR-008 | Dispatch queue | ✅ tested | `src/server/dispatch.test.ts` | Verified FIFO ordering and parallelism limits. |
+| FR-009 | Retry & Escalation | ✅ tested | `src/server/dispatch.test.ts` | Verified 3x retry logic and fallback backend assignment. |
+| FR-010 | Git branch lifecycle | ✅ tested | `src/server/git-manager.test.ts`| Verified branch creation from WIP and merge conflict detection. |
+| FR-011 | PID file discipline | ✅ tested | `src/server/index.test.ts` | Verified `writePid` and `removePid` during lifecycle. |
+| FR-012 | `Dockerfile.sandbox` | ⚠️ weak | — | **Major Gap**: No automated test (e.g., `src/server/sandbox.e2e.test.ts`) verifies that the built image contains `node`, `git`, and `gh`. |
+| FR-013 | Context file reads | ✅ tested | `src/server/context.test.ts` | Verified that all required spec/plan files are read from the filesystem. |
+| FR-014 | Resource monitoring | ✅ tested | `src/server/monitor.test.ts` | Covers CPU, Memory, and Disk throttling logic. |
+| FR-015 | Sleep/Wake detection | ✅ tested | `src/server/lifecycle.test.ts` | Verified wall-clock heartbeat drift detection. |
+| FR-016 | Wake reconnect | ⚠️ weak | `src/server/lifecycle.test.ts` | **Assertion missing**: Test only verifies the event emission. No test confirms that `SandboxManager.unpauseAll()` is actually triggered on wake. |
+| FR-017 | Network monitoring | ✅ tested | `src/server/network.test.ts` | Verified `isOnline()` polling and event emission. |
+| FR-018 | Network pause | ⚠️ weak | `src/server/network.test.ts` | **Assertion missing**: Test only verifies the event emission. No test confirms that `DispatchQueue.pause()` is called when network goes down. |
+| FR-019 | Sandbox pause | ⚠️ weak | — | **Major Gap**: No test (unit or integration) verifies that `docker pause` is actually called on gwrk containers during sleep. |
+| FR-020 | Health response | ✅ tested | `src/server/routes/health.test.ts`| Verified component-level status (Ok/Degraded). |
+| FR-021 | Lifecycle status | ✅ tested | `src/server/lifecycle.test.ts` | Covers all lifecycle states: starting, ready, sleeping, degraded. |
+| FR-024 | `server clean` | ❌ missing | — | **Major Gap**: Command and implementation are missing from the codebase. |
 
-### GAP-002: Missing Container Reaper (Low Priority)
-FR-022 requires a 60-second interval reaper to destroy containers older than their TTL.
-- **Required**: Implement background reaper in `SandboxManager` or `startServer`.
+---
 
-### GAP-003: Rich Health Check Audit (Low Priority)
-FR-020/FR-021 require specific fields for component readiness and lifecycle status.
-- **Required**: Audit `src/server/routes/health.ts` and ensure it meets the schema: `{ status, components: { server, docker, network } }`.
+## Action Plan: Testing Gaps
 
-## 3. Remediations
+### 1. Implement `src/server/lifecycle.integration.test.ts` (FR-016, FR-018, FR-019)
+- **Target**: Server-level event handlers.
+- **Assertions**:
+  - `server:sleep` → `DispatchQueue.pause()` + `SandboxManager.pauseAll()`.
+  - `server:wake` → `Graceful Reconnect Protocol` runs.
+  - `network:down` → `DispatchQueue.pause()`.
 
-1. **Implement `gwrk server clean`**: Add command to `src/commands/server.ts` that uses Dockerode to filter and remove containers.
-2. **Implement Reaper**: Add a `startReaper` method to `SandboxManager` called during server bootstrap.
-3. **Enhance Health Check**: Update `healthRoutes` to return the full component status object.
+### 2. Implement Sandbox E2E Verification (FR-012)
+- **Target**: `Dockerfile.sandbox`.
+- **Assertions**:
+  - Build `gwrk-sandbox:latest`.
+  - Run container and assert `node --version`, `git --version`, `gh --version`.
+
+### 3. Implement `gwrk server clean` (FR-024)
+- **Target**: Command implementation and test coverage.
+- **Assertions**:
+  - Destroy all containers labeled `gwrk.feature=*`.
+  - Count destroyed containers and report to CLI.
