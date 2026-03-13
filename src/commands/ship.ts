@@ -38,7 +38,9 @@ async function shipPhase(
   cwd: string,
 ): Promise<number> {
   const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
-  const phaseId = `phase-${phase.padStart(2, "0")}`;
+  // Normalize: accept "02", "2", or "phase-02" — scripts expect bare number
+  const normalizedPhase = phase.replace(/^phase-/, "");
+  const phaseId = `phase-${normalizedPhase.padStart(2, "0")}`;
   const featureDir = path.join(cwd, "specs", feature);
 
   // FR-008: Pre-flight check for test files
@@ -132,7 +134,7 @@ async function shipPhase(
   let exitCode = 0;
 
   try {
-    await run(scriptPath, [feature, phase], {
+    await run(scriptPath, [feature, normalizedPhase], {
       cwd,
       env: {
         ...process.env,
