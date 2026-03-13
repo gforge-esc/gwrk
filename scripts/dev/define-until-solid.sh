@@ -49,7 +49,7 @@ RESET=$'\033[0m'
 # ──────────────────────────────────────────────────────────────────
 usage() {
   cat <<EOF
-${BOLD}define-until-solid.sh${RESET} — Autonomous definitional orchestrator (CodeRed)
+${BOLD}define-until-solid.sh${RESET} — Autonomous definitional orchestrator (gwrk)
 
 ${BOLD}Usage:${RESET}
   $0 <feature> [phase]
@@ -275,14 +275,14 @@ run_define_tests() {
   return 0
 }
 
-# Beads import has been removed along with the beads dependency.
+
 
 # ──────────────────────────────────────────────────────────────────
 # Pre-flight
 # ──────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────┐${RESET}"
-echo -e "${CYAN}│${RESET}  ${BOLD}CodeRed Define-Until-Solid${RESET}                     ${CYAN}│${RESET}"
+echo -e "${CYAN}│${RESET}  ${BOLD}gwrk Define-Until-Solid${RESET}                        ${CYAN}│${RESET}"
 echo -e "${CYAN}├─────────────────────────────────────────────────┤${RESET}"
 echo -e "${CYAN}│${RESET}  Feature:       ${BOLD}${FEATURE}${RESET}"
 [[ -n "$PHASE" ]] && echo -e "${CYAN}│${RESET}  Phase:         ${PHASE}"
@@ -295,7 +295,7 @@ echo ""
 
 # Write log header
 cat > "$DUS_LOG" <<HEADER
-# CodeRed Define-Until-Solid Log
+# gwrk Define-Until-Solid Log
 # ────────────────────────────────────────
 # Feature   : ${FEATURE}
 # Phase     : ${PHASE:-all}

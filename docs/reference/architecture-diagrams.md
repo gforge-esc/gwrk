@@ -550,7 +550,7 @@ The dashboard's Ops View naturally extends to a **global multi-project view** �
 ```mermaid
 flowchart TD
     subgraph PROJECTS["Tracked Projects"]
-        CR["code-red<br/>2 agents running<br/>CPU: 34%"]
+        CR["acme-app<br/>2 agents running<br/>CPU: 34%"]
         GF["gforge-ai<br/>1 agent running<br/>CPU: 18%"]
         GW["gwrk<br/>idle<br/>CPU: 0%"]
     end
@@ -558,7 +558,7 @@ flowchart TD
     subgraph GLOBAL["🌍 Global Resource View"]
         TOTAL["Total System<br/>━━━━━━━━━━━━━━━━━━━<br/>CPU: ████████░░ 62% (limit: 80%)<br/>MEM: █████░░░░░ 51% (limit: 70%)<br/>Agents: 3/9 max (3 per project × 3)<br/>Clones: 3/9 active<br/>Cloud VMs: 2 (Codex)"]
         
-        BREAKDOWN["Per-Project Breakdown<br/>━━━━━━━━━━━━━━━━━━━<br/>code-red:  ██████░░ 45% resources<br/>gforge-ai: ███░░░░░ 20% resources<br/>gwrk:      ░░░░░░░░ idle"]
+        BREAKDOWN["Per-Project Breakdown<br/>━━━━━━━━━━━━━━━━━━━<br/>acme-app:  ██████░░ 45% resources<br/>gforge-ai: ███░░░░░ 20% resources<br/>gwrk:      ░░░░░░░░ idle"]
     end
 
     CR --> GLOBAL

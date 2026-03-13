@@ -76,7 +76,7 @@ To support parallel cloud execution without blocking, ZFG enforces a strict hier
 1. **Trigger**: User runs `make agent-zfg FEATURE=<feature_name>`.
 2. **Scaffolding**: ZFG creates `feature/<feature_name>-wip` from `develop` and pushes it to `origin`.
 3. **Planning**: ZFG analyzes `specs/<feature>/spec.md` using `.agents/workflows/plan-to-tasks.md`.
-4. **Output**: ZFG generates atomic phase scripts (e.g., `specs/<feature>/beads/01-phase-1-tasks.sh`) and records the phase IDs in `.phase-ids.json`.
+4. **Output**: ZFG generates atomic phase scripts (e.g., `specs/<feature>/.gwrk/tasks.json`) and records the phase structure.
 
 ### Step 2: Delegation & Dispatch (Local -> Cloud)
 
@@ -124,7 +124,7 @@ To implement this specification, the following files must be created or updated 
 
 * **Purpose**: The master orchestrator script.
 * **Requirements**:
-* Parse `specs/<feature>/beads/.phase-ids.json`.
+* Parse `specs/<feature>/.gwrk/tasks.json`.
 * Handle Git branch creation (`wip` and `phase` branches) and push to origin.
 * Invoke `.specify/scripts/bash/update-agent-context.sh` to build payloads.
 * Dispatch cloud workers via `codex run --cloud`.

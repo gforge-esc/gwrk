@@ -1,3 +1,0 @@
-# Stub Spec
-
-**Status:** Stub

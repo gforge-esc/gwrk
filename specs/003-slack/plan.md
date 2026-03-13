@@ -305,8 +305,8 @@ Implement the two-tier channel model (`gwrk-ops` master + per-project channels) 
 
 #### Done When
 - `cat .gwrkrc.json | jq -e '.project.slack.opsChannelId'` exits 0 after `gwrk init --slack-ops gwrk-ops`
-- Phase lifecycle event posts to `#code-red`, NOT `#gwrk-ops`
-- Done Done! posts to `#gwrk-ops`, NOT `#code-red`
+- Phase lifecycle event posts to `#acme-app`, NOT `#gwrk-ops`
+- Done Done! posts to `#gwrk-ops`, NOT `#acme-app`
 - `/gwrk status` response reads from SQLite (verify with DB containing completed tasks but empty in-memory queue)
 - `pnpm build` exits 0
 

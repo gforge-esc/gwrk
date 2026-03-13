@@ -40,7 +40,7 @@ TERM_WIDTH="${COLUMNS:-$(tput cols 2>/dev/null || echo 100)}"
 # ──────────────────────────────────────────────────────────────────
 usage() {
   cat <<EOF
-${BOLD}agent-run.sh${RESET} — Governed Gemini CLI invocation (CodeRed)
+${BOLD}agent-run.sh${RESET} — Governed Gemini CLI invocation (gwrk)
 
 ${BOLD}Usage:${RESET}
   $0 <workflow> <feature> [phase]
@@ -189,7 +189,7 @@ COMMIT="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknow
 
 # Write structured header to log
 cat > "$LOG_FILE" << EOF
-# CodeRed Agent Run Log
+# gwrk Agent Run Log
 # ────────────────────────────────────────
 # Timestamp : ${RUN_TS}
 # Workflow  : ${WORKFLOW}
@@ -208,7 +208,7 @@ EOF
 # ──────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────┐${RESET}"
-echo -e "${CYAN}│${RESET}  ${BOLD}CodeRed Agent Runner${RESET}                       ${CYAN}│${RESET}"
+echo -e "${CYAN}│${RESET}  ${BOLD}gwrk Agent Runner${RESET}                          ${CYAN}│${RESET}"
 echo -e "${CYAN}├─────────────────────────────────────────────┤${RESET}"
 echo -e "${CYAN}│${RESET}  Workflow:  ${BOLD}${WORKFLOW}${RESET}"
 echo -e "${CYAN}│${RESET}  Feature:   ${FEATURE}"

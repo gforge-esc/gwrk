@@ -48,14 +48,14 @@ As a Principal Engineer, I want `gwrk init --slack <channel>` and `gwrk new` to 
 **Independent Test**: Run `gwrk init --slack my-project` in an existing project, verify channel exists in Slack and `channelId` is written to `.gwrkrc.json`.
 
 **Acceptance Scenarios**:
-1. **Given** Slack is configured and project name is `code-red`, **When** running `gwrk init --slack code-red`, **Then**:
+1. **Given** Slack is configured and project name is `acme-app`, **When** running `gwrk init --slack acme-app`, **Then**:
    - `cat .gwrkrc.json | jq -e '.project.slack.channelId'` exits 0
-   - `cat .gwrkrc.json | jq -r '.project.slack.channelName'` outputs `code-red`
-2. **Given** channel `code-red` already exists, **When** running `gwrk init --slack code-red`, **Then**:
+   - `cat .gwrkrc.json | jq -r '.project.slack.channelName'` outputs `acme-app`
+2. **Given** channel `acme-app` already exists, **When** running `gwrk init --slack acme-app`, **Then**:
    - Command completes without error (idempotent — joins existing channel)
    - Exit code is 0
-3. **Given** Slack not configured, **When** running `gwrk init --slack code-red`, **Then**:
-   - `gwrk init --slack code-red 2>&1 | grep -q 'Slack not configured'` exits 0
+3. **Given** Slack not configured, **When** running `gwrk init --slack acme-app`, **Then**:
+   - `gwrk init --slack acme-app 2>&1 | grep -q 'Slack not configured'` exits 0
    - Exit code is 1
 
 ---
@@ -227,15 +227,15 @@ As a Principal Engineer, I want to type `/gwrk ship <feature> <phase>` in Slack 
 ---
 
 ### US-013 - Multi-Channel Topology (Priority: P1) ⭐ **NEW**
-As a Principal Engineer, I want a `gwrk-ops` master channel for cross-project summaries and a per-project channel (e.g., `#code-red`) for per-project events, so that my Slack has a logical hierarchy matching my project portfolio.
+As a Principal Engineer, I want a `gwrk-ops` master channel for cross-project summaries and a per-project channel (e.g., `#acme-app`) for per-project events, so that my Slack has a logical hierarchy matching my project portfolio.
 
 **Implements**: FR-013
 
-**Independent Test**: Configure `gwrk-ops` as master channel and `code-red` as project channel; verify ship events route to `#code-red` and daily Pulse summary routes to `#gwrk-ops`.
+**Independent Test**: Configure `gwrk-ops` as master channel and `acme-app` as project channel; verify ship events route to `#acme-app` and daily Pulse summary routes to `#gwrk-ops`.
 
 **Acceptance Scenarios**:
 1. **Given** `gwrkrc.json` has `slack.opsChannelId` and `slack.channelId`, **When** a phase event fires, **Then**:
-   - Phase event posts to project channel (`#code-red`)
+   - Phase event posts to project channel (`#acme-app`)
    - Master channel (`#gwrk-ops`) does NOT receive individual phase events
 2. **Given** Pulse summary generated, **When** daily summary fires, **Then**:
    - `#gwrk-ops` receives cross-project Pulse summary
@@ -375,7 +375,7 @@ SLACK_APP_TOKEN=xapp-...     # App-Level Token (Socket Mode WebSocket only)
 ```typescript
 interface SlackProjectConfig {
   channelId: string;          // Per-project Slack channel ID
-  channelName: string;        // e.g. "code-red"
+  channelName: string;        // e.g. "acme-app"
   opsChannelId?: string;   // Cross-project ops hub (e.g. gwrk-ops)
   opsChannelName?: string; // e.g. "gwrk-ops"
 }
@@ -474,7 +474,7 @@ ALTER TABLE runs ADD COLUMN pr_url TEXT;
 ## 9. Verification Requirements
 
 - **VR-001**: E2E: run `gwrk setup slack --verify`, verify tokens written and all four checks pass.
-- **VR-002**: E2E: run `gwrk init --slack code-red`, verify `channelId` in `.gwrkrc.json` and channel visible in workspace.
+- **VR-002**: E2E: run `gwrk init --slack acme-app`, verify `channelId` in `.gwrkrc.json` and channel visible in workspace.
 - **VR-003**: Negative: run any Slack command without `gwrk setup slack` → exit 1 with `Slack not configured`.
 - **VR-004**: E2E: `gwrk ship` a phase → verify Block Kit phaseStart and reviewReady messages appear in Slack with real data (no hardcoded values).
 - **VR-005**: E2E: `/gwrk status` → verify Block Kit response shows real feature state from SQLite.

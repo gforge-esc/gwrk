@@ -4,7 +4,7 @@ description: Perform effort assessment using Story Points as the primary estimat
 
 # Workflow: Effort Assessment (/effort)
 
-This workflow produces a **Story Point–driven effort estimate** for CodeRed work. Story Points (SP) are the primary unit of scope. Hours and days are **derived** from SP via role-specific multipliers — never the other way around.
+This workflow produces a **Story Point–driven effort estimate** for gwrk work. Story Points (SP) are the primary unit of scope. Hours and days are **derived** from SP via role-specific multipliers — never the other way around.
 
 <scope_constraints>
 - Generate ONLY the effort assessment report. Do not modify specs, plans, or code.

@@ -52,7 +52,7 @@ RESET=$'\033[0m'
 # ──────────────────────────────────────────────────────────────────
 usage() {
   cat <<EOF
-${BOLD}work-until-done.sh${RESET} — Autonomous phase orchestrator (CodeRed)
+${BOLD}work-until-done.sh${RESET} — Autonomous phase orchestrator (gwrk)
 
 ${BOLD}Usage:${RESET}
   $0 <feature> <phase> [tracking_issue]
@@ -383,7 +383,7 @@ PR_BODY
 # ──────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}┌─────────────────────────────────────────────────┐${RESET}"
-echo -e "${CYAN}│${RESET}  ${BOLD}CodeRed Work-Until-Done${RESET}                        ${CYAN}│${RESET}"
+echo -e "${CYAN}│${RESET}  ${BOLD}gwrk Work-Until-Done${RESET}                           ${CYAN}│${RESET}"
 echo -e "${CYAN}├─────────────────────────────────────────────────┤${RESET}"
 echo -e "${CYAN}│${RESET}  Feature:       ${BOLD}${FEATURE}${RESET}"
 echo -e "${CYAN}│${RESET}  Phase:         ${PHASE}"
@@ -397,7 +397,7 @@ echo ""
 
 # Write log header
 cat > "$WUD_LOG" <<HEADER
-# CodeRed Work-Until-Done Log
+# gwrk Work-Until-Done Log
 # ────────────────────────────────────────
 # Feature   : ${FEATURE}
 # Phase     : ${PHASE}

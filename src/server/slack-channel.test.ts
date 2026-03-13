@@ -55,14 +55,14 @@ describe("ensureSlackChannel", () => {
       json: async () => ({
         ok: true,
         channels: [
-          { name: "code-red", id: "C123", is_member: true },
+          { name: "acme-app", id: "C123", is_member: true },
           { name: "other", id: "C456", is_member: true },
         ],
       }),
     });
     mockAutoInvite();
 
-    const channelId = await ensureSlackChannel("#code-red");
+    const channelId = await ensureSlackChannel("#acme-app");
     expect(channelId).toBe("C123");
     expect(globalFetch).toHaveBeenCalledWith(
       expect.stringContaining("conversations.list"),
@@ -78,7 +78,7 @@ describe("ensureSlackChannel", () => {
         ok: true,
         json: async () => ({
           ok: true,
-          channels: [{ name: "code-red", id: "C123", is_member: false }],
+          channels: [{ name: "acme-app", id: "C123", is_member: false }],
         }),
       })
       .mockResolvedValueOnce({
@@ -87,7 +87,7 @@ describe("ensureSlackChannel", () => {
       });
     mockAutoInvite();
 
-    const channelId = await ensureSlackChannel("code-red");
+    const channelId = await ensureSlackChannel("acme-app");
     expect(channelId).toBe("C123");
     expect(globalFetch).toHaveBeenCalledWith(
       expect.stringContaining("conversations.join"),

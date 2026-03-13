@@ -1,4 +1,4 @@
-# CodeRed Agent Workflow System — Comprehensive Manifest
+# gwrk Agent Workflow System — Comprehensive Manifest
 
 **Date**: 2026-02-26 | **Purpose**: Exhaustive inventory of every file comprising the agent workflow system, organized for future extraction into a standalone CLI.
 

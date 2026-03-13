@@ -141,3 +141,5 @@
 {"id":"ccc72ea7-b214-4b12-9972-cf082fa9dde0","featureId":"e2e-test","phaseId":"phase-01","backend":"gemini","status":"queued","branchName":"phase/e2e-test-phase-01","attempts":[],"createdAt":"2026-03-13T15:15:00.145Z"}
 {"id":"8aceaaa7-7788-4135-ada3-f63bb3417f2e","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-13T15:15:00.148Z"}
 {"id":"4c76d4bb-1c65-46ed-9089-2108110d92af","featureId":"000-tdd-infrastructure","phaseId":"phase-03","backend":"gemini","status":"queued","branchName":"phase/000-tdd-infrastructure-phase-03","attempts":[],"createdAt":"2026-03-13T15:19:02.319Z"}
+{"id":"d5f06a52-29ae-4cc6-97aa-baaa2070ecb2","featureId":"e2e-test","phaseId":"phase-01","backend":"gemini","status":"queued","branchName":"phase/e2e-test-phase-01","attempts":[],"createdAt":"2026-03-13T21:00:27.744Z"}
+{"id":"b6ab80b3-11f6-430b-856f-724296108f33","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-13T21:00:27.748Z"}
