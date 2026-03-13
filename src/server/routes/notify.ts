@@ -68,7 +68,7 @@ export async function notifyRoutes(server: FastifyInstance) {
       }
 
       // Route to ops if requested or for specific cross-project types
-      const isOps = payload.opsOnly || payload.masterOnly || payload.type === "done_done";
+      const isOps = payload.opsOnly || payload.type === "done_done";
 
       try {
         await notifySlack(

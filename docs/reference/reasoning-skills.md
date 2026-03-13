@@ -1,6 +1,6 @@
 # Compound Reasoning Skills
 
-> Derived from [reasoning-modes.md](reasoning-modes.md). Each skill stacks 3 modes into a sequenced pass system. Skills live in `.agent/skills/` and fire on Antigravity description match.
+> Derived from [reasoning-modes.md](reasoning-modes.md). Each skill stacks 3 modes into a sequenced pass system. Skills live in `.agent/skills/` and fire on Antigravity description match. Nine skills across two domains: **definitional** (building the right thing) and **communications** (making people care).
 
 ---
 
@@ -16,6 +16,9 @@ A single reasoning mode applied to every problem is the same mistake as using on
 | Plan fragility | Phase ordering and sizing untested before implementation | Analytical → Pre-mortem → Comparative |
 | Generic naming | Names chosen by committee instinct, not pressure | Dialectical → Aesthetic → Combinatorial |
 | Artifact drift | Spec says X, plan says Y, tasks say Z | Audit → Comparative → Integrative |
+| Marketing-speak | Technical audience disengages at first whiff of sell | Narrative → Subversive → Practitioner |
+| Feature-listing | Complex product described as a list, not a position | Reductive → Comparative → Aesthetic |
+| Audience projection | Assuming they care about what excites you | Modeling → Interviewer → Forensic |
 
 ---
 
@@ -114,6 +117,56 @@ A single reasoning mode applied to every problem is the same mistake as using on
 | 3 | **Integrative** | Synthesize into one coherent assessment: critical path to READY, minimum changes needed |
 
 **Output**: Governance Audit with traceability matrix, governance violations, critical path to READY, and READY/NOT READY verdict.
+
+---
+
+## Communications Skills
+
+### 7. signal-cut
+
+**Modes**: Narrative + Subversive + Practitioner
+**Fires on**: Blog posts, launch announcements, social threads, demo scripts, newsletter content
+**Domain**: Marketing / outward communications
+
+| Pass | Mode | Action |
+|---|---|---|
+| 1 | **Narrative** | Frame as story arc: what's broken → what changes → what's possible. Must be grounded in lived experience |
+| 2 | **Subversive** | Violate the expected approach for this content type. If it fits on any competitor's blog, it has failed |
+| 3 | **Practitioner** | Strip everything that doesn't survive the Monday morning test. Replace claims with demonstrations |
+
+**Output**: Content with a recognizable tension, a subversive structure, at least one concrete demonstration, and a call to action that isn't "sign up."
+
+---
+
+### 8. position-lock
+
+**Modes**: Reductive + Comparative + Aesthetic
+**Fires on**: Taglines, elevator pitches, positioning statements, landing page headlines, competitive comparisons
+**Domain**: Messaging / positioning
+
+| Pass | Mode | Action |
+|---|---|---|
+| 1 | **Reductive** | Strip to ground truth. What does this make possible that was previously impossible? One sentence |
+| 2 | **Comparative** | Evaluate against status quo, closest competitor, and the category itself. Own territory competitors can't claim |
+| 3 | **Aesthetic** | Optimize for ≤10 words, rhythm, memorability, and provocation |
+
+**Output**: Position statement, competitive territory map, scored headline candidates, and final recommendation.
+
+---
+
+### 9. audience-model
+
+**Modes**: Modeling + Interviewer + Forensic
+**Fires on**: User personas, content strategy, demo planning, copy writing, onboarding design
+**Domain**: Audience understanding
+
+| Pass | Mode | Action |
+|---|---|---|
+| 1 | **Modeling** | Simulate a specific person's response — name, stack, frustration, Friday. Predict read/click/try/share |
+| 2 | **Interviewer** | Surface what you don't know about them. ≤5 investigable questions |
+| 3 | **Forensic** | Work backward from behavior (tools they use, content they consume, last tool they adopted), not stated preference |
+
+**Output**: Audience Model with identity, behavioral evidence, response simulation, insight gaps, and voice calibration.
 
 ---
 

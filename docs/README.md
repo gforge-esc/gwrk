@@ -57,6 +57,9 @@ Six compound reasoning skills that stack modes from `reasoning-modes.md` into se
 | **architecture-stress-test** | Analytical + Pre-mortem + Comparative | `/plan` review — kill bad plans before they kill you |
 | **naming-forge** | Dialectical + Aesthetic + Combinatorial | Product naming, CLI taxonomy, category definition |
 | **governance-audit** | Audit + Comparative + Integrative | `/analyze` — cross-artifact consistency |
+| **signal-cut** | Narrative + Subversive + Practitioner | Marketing content that converts technical skeptics |
+| **position-lock** | Reductive + Comparative + Aesthetic | Taglines, pitches, positioning — complex→clear |
+| **audience-model** | Modeling + Interviewer + Forensic | User personas, content strategy, demo planning |
 
 ### `branding/` — Visual Assets
 | Asset | Description |

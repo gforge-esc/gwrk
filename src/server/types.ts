@@ -111,6 +111,5 @@ export interface NotifyPayload {
   error?: string;
   branch?: string;
   backend?: string;
-  masterOnly?: boolean;
   opsOnly?: boolean;
 }
