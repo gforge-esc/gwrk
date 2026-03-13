@@ -5,7 +5,10 @@ export async function registerSlackActions(app: App, context: CommandContext) {
   // Handle button actions
   app.action("merge_pr", async ({ ack, body, client, logger }) => {
     await ack();
-    const payload = (body as any).actions[0].value;
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
     const { featureId, phaseId } = JSON.parse(payload);
 
     try {
@@ -13,27 +16,32 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       context.git.mergePhaseBack(featureId, phaseId);
 
       await client.chat.postMessage({
-        channel: (body as any).channel.id,
-        text: `✅ PR for *${featureId}* phase *${phaseId}* merged by <@${(body as any).user.id}>`,
+        channel: actionBody.channel?.id || "",
+        text: `✅ PR for *${featureId}* phase *${phaseId}* merged by <@${actionBody.user.id}>`,
       });
-    } catch (error: any) {
-      logger.error(`Merge failed: ${error.message}`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger.error(`Merge failed: ${errorMessage}`);
       await client.chat.postEphemeral({
-        channel: (body as any).channel.id,
-        user: (body as any).user.id,
-        text: `:warning: Failed to merge PR: ${error.message}`,
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: Failed to merge PR: ${errorMessage}`,
       });
     }
   });
 
   app.action("request_changes", async ({ ack, body, client }) => {
     await ack();
-    const payload = (body as any).actions[0].value;
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
     const { featureId, phaseId } = JSON.parse(payload);
 
     await client.chat.postMessage({
-      channel: (body as any).channel.id,
-      text: `🔄 Changes requested for *${featureId}* phase *${phaseId}* by <@${(body as any).user.id}>. Agent notified.`,
+      channel: actionBody.channel?.id || "",
+      text: `🔄 Changes requested for *${featureId}* phase *${phaseId}* by <@${actionBody.user.id}>. Agent notified.`,
     });
 
     // In a real system, we'd trigger a re-dispatch or update task status
@@ -41,34 +49,42 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
   app.action("view_review", async ({ ack, body, client }) => {
     await ack();
-    const payload = (body as any).actions[0].value;
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
     const { featureId, phaseId } = JSON.parse(payload);
 
     // Construct link to PR or review page
     const reviewUrl = `${context.buildServerUrl}/review/${featureId}/${phaseId}`;
     await client.chat.postEphemeral({
-      channel: (body as any).channel.id,
-      user: (body as any).user.id,
+      channel: actionBody.channel?.id || "",
+      user: actionBody.user.id,
       text: `🔍 View full review here: <${reviewUrl}|${featureId} Review>`,
     });
   });
 
   app.action("retry_phase", async ({ ack, body, client }) => {
     await ack();
-    const payload = (body as any).actions[0].value;
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
     const { featureId, phaseId } = JSON.parse(payload);
 
     try {
       context.queue.enqueue({ featureId, phaseId });
       await client.chat.postMessage({
-        channel: (body as any).channel.id,
-        text: `🔄 Retrying *${featureId}* phase *${phaseId}* as requested by <@${(body as any).user.id}>`,
+        channel: actionBody.channel?.id || "",
+        text: `🔄 Retrying *${featureId}* phase *${phaseId}* as requested by <@${actionBody.user.id}>`,
       });
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       await client.chat.postEphemeral({
-        channel: (body as any).channel.id,
-        user: (body as any).user.id,
-        text: `:warning: Failed to retry phase: ${error.message}`,
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: Failed to retry phase: ${errorMessage}`,
       });
     }
   });
@@ -91,30 +107,40 @@ export async function registerSlackActions(app: App, context: CommandContext) {
         // Look for our structured markers in the text or blocks
         if (
           message?.text?.includes("Review Ready") ||
-          message?.blocks?.some(
-            (b: any) =>
-              b.text?.text?.includes("Review Ready") ||
-              b.header?.text?.includes("Review Ready"),
-          )
+          message?.blocks?.some((b) => {
+            // biome-ignore lint/suspicious/noExplicitAny: Slack block structure is complex
+            const block = b as any;
+            return (
+              block.text?.text?.includes("Review Ready") ||
+              block.header?.text?.includes("Review Ready")
+            );
+          })
         ) {
           // Find the feature/phase from the message blocks' action values
-          const actionBlock = message.blocks?.find(
-            (b: any) => b.type === "actions",
-          );
-          const actionValue = actionBlock?.elements?.[0]?.value;
+          const actionBlock = message.blocks?.find((b) => {
+            // biome-ignore lint/suspicious/noExplicitAny: Slack block structure is complex
+            return (b as any).type === "actions";
+          });
 
-          if (actionValue) {
-            const { featureId, phaseId } = JSON.parse(actionValue);
+          if (actionBlock) {
+            // biome-ignore lint/suspicious/noExplicitAny: Slack block structure is complex
+            const actionValue = (actionBlock as any).elements?.[0]?.value;
 
-            context.git.mergePhaseBack(featureId, phaseId);
-            await client.chat.postMessage({
-              channel: event.item.channel,
-              text: `✅ Reaction-approval detected! Merged *${featureId}* phase *${phaseId}*.`,
-            });
+            if (actionValue) {
+              const { featureId, phaseId } = JSON.parse(actionValue);
+
+              context.git.mergePhaseBack(featureId, phaseId);
+              await client.chat.postMessage({
+                channel: event.item.channel,
+                text: `✅ Reaction-approval detected! Merged *${featureId}* phase *${phaseId}*.`,
+              });
+            }
           }
         }
-      } catch (error: any) {
-        logger.error(`Reaction approval failed: ${error.message}`);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        logger.error(`Reaction approval failed: ${errorMessage}`);
       }
     }
   });

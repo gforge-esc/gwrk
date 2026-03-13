@@ -260,7 +260,7 @@ export const MessageBuilder = {
           type: "header",
           text: {
             type: "plain_text",
-            text: `🏆 Done Done!`,
+            text: "🏆 Done Done!",
             emoji: true,
           },
         },

@@ -17,7 +17,7 @@ describe("NetworkMonitor", () => {
       server: {
         networkCheckIntervalMs: 1000,
       },
-    } as any;
+    } as unknown as GwrkConfig;
     monitor = new NetworkMonitor(config);
   });
 
@@ -62,7 +62,13 @@ describe("NetworkMonitor", () => {
 
   it("should emit network:down when going offline", () => {
     vi.mocked(os.networkInterfaces).mockReturnValue({
-      en0: [{ address: "1.2.3.4", internal: false, family: "IPv4" } as any],
+      en0: [
+        {
+          address: "1.2.3.4",
+          internal: false,
+          family: "IPv4",
+        } as os.NetworkInterfaceInfo,
+      ],
     });
     monitor.start();
     expect(monitor.getStatus()).toBe("online");
@@ -71,7 +77,7 @@ describe("NetworkMonitor", () => {
     monitor.on("network:down", downSpy);
 
     vi.mocked(os.networkInterfaces).mockReturnValue({
-      lo0: [{ internal: true } as any],
+      lo0: [{ internal: true } as os.NetworkInterfaceInfo],
     });
     vi.advanceTimersByTime(1000);
 
@@ -81,7 +87,7 @@ describe("NetworkMonitor", () => {
 
   it("should emit network:up when going online", () => {
     vi.mocked(os.networkInterfaces).mockReturnValue({
-      lo0: [{ internal: true } as any],
+      lo0: [{ internal: true } as os.NetworkInterfaceInfo],
     });
     monitor.start();
     expect(monitor.getStatus()).toBe("offline");
@@ -90,7 +96,13 @@ describe("NetworkMonitor", () => {
     monitor.on("network:up", upSpy);
 
     vi.mocked(os.networkInterfaces).mockReturnValue({
-      en0: [{ address: "1.2.3.4", internal: false, family: "IPv4" } as any],
+      en0: [
+        {
+          address: "1.2.3.4",
+          internal: false,
+          family: "IPv4",
+        } as os.NetworkInterfaceInfo,
+      ],
     });
     vi.advanceTimersByTime(1000);
 

@@ -92,7 +92,9 @@ class PresenceManager {
         this.currentPresence = newPresence;
       }
     } catch (error) {
-      console.warn(`Presence API unavailable: ${(error as any).message}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.warn(`Presence API unavailable: ${errorMessage}`);
     }
   }
 

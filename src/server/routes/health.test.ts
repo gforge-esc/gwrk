@@ -1,5 +1,8 @@
-import fastify from "fastify";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fastify, { type FastifyInstance } from "fastify";
+import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
+import type { LifecycleMonitor } from "../lifecycle.js";
+import type { NetworkMonitor } from "../network.js";
+import type { SandboxManager } from "../sandbox.js";
 import { healthRoutes } from "./health.js";
 
 vi.mock("../slack.js", () => ({
@@ -7,22 +10,22 @@ vi.mock("../slack.js", () => ({
 }));
 
 describe("healthRoutes", () => {
-  let server: any;
-  let lifecycle: any;
-  let network: any;
-  let sandbox: any;
+  let server: FastifyInstance;
+  let lifecycle: Mocked<LifecycleMonitor>;
+  let network: Mocked<NetworkMonitor>;
+  let sandbox: Mocked<SandboxManager>;
 
   beforeEach(async () => {
     server = fastify();
     lifecycle = {
       getStatus: vi.fn().mockReturnValue("ready"),
-    };
+    } as unknown as Mocked<LifecycleMonitor>;
     network = {
       isOnline: vi.fn().mockReturnValue(true),
-    };
+    } as unknown as Mocked<NetworkMonitor>;
     sandbox = {
       checkDocker: vi.fn().mockResolvedValue(true),
-    };
+    } as unknown as Mocked<SandboxManager>;
     await healthRoutes(server, lifecycle, network, sandbox);
   });
 

@@ -66,8 +66,7 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
       blocks: message.blocks,
     });
   } catch (error) {
-    console.error(
-      `Failed to post Slack notification: ${(error as any).message}`,
-    );
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to post Slack notification: ${errorMessage}`);
   }
 }

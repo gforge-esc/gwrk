@@ -163,7 +163,8 @@ function buildAssertions(
 
   // Functional Assertion check — ensure we have at least one functional line
   const hasFunctional = lines.some((l) => {
-    const functionalCmds = /\b(pnpm|node|gwrk|curl|grep|cat|bash|jq|gh|vitest|tsc|biome)\b/;
+    const functionalCmds =
+      /\b(pnpm|node|gwrk|curl|grep|cat|bash|jq|gh|vitest|tsc|biome)\b/;
     const isBareTestF = /^\s*test -f \S+\s*$/.test(l);
     return functionalCmds.test(l) && !isBareTestF;
   });

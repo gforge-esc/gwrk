@@ -1,33 +1,46 @@
+import type {
+  App,
+  SlackActionMiddlewareArgs,
+  SlackEventMiddlewareArgs,
+} from "@slack/bolt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { DispatchQueue } from "./dispatch.js";
+import type { GitManager } from "./git-manager.js";
+import type { SystemMonitor } from "./monitor.js";
 import { registerSlackActions } from "./slack-actions.js";
 import type { CommandContext } from "./slack-commands.js";
 
+// biome-ignore lint/suspicious/noExplicitAny: complex mock args
+type SlackActionHandler = (args: any) => Promise<void>;
+// biome-ignore lint/suspicious/noExplicitAny: complex mock args
+type SlackEventHandler = (args: any) => Promise<void>;
+
 describe("slack-actions", () => {
-  let mockApp: any;
+  let mockApp: Partial<App>;
   let mockContext: CommandContext;
-  let actionHandlers: Record<string, Function> = {};
-  let eventHandlers: Record<string, Function> = {};
+  let actionHandlers: Record<string, SlackActionHandler> = {};
+  let eventHandlers: Record<string, SlackEventHandler> = {};
 
   beforeEach(() => {
     actionHandlers = {};
     eventHandlers = {};
     mockApp = {
-      action: vi.fn((id, handler) => {
-        actionHandlers[id] = handler;
+      action: vi.fn((id: string | RegExp, handler: SlackActionHandler) => {
+        actionHandlers[id.toString()] = handler;
       }),
-      event: vi.fn((type, handler) => {
-        eventHandlers[type] = handler;
+      event: vi.fn((type: string | RegExp, handler: SlackEventHandler) => {
+        eventHandlers[type.toString()] = handler;
       }),
     };
     mockContext = {
       queue: {
         enqueue: vi.fn(),
-      } as any,
-      monitor: {} as any,
+      } as unknown as DispatchQueue,
+      monitor: {} as unknown as SystemMonitor,
       git: {
         merge: vi.fn(),
         mergePhaseBack: vi.fn(),
-      } as any,
+      } as unknown as GitManager,
       projectRoot: "/tmp",
       buildServerUrl: "http://localhost:3000",
       userId: "U123",
@@ -36,7 +49,7 @@ describe("slack-actions", () => {
   });
 
   it("registers actions", async () => {
-    await registerSlackActions(mockApp, mockContext);
+    await registerSlackActions(mockApp as App, mockContext);
     expect(mockApp.action).toHaveBeenCalledWith(
       "merge_pr",
       expect.any(Function),
@@ -56,7 +69,7 @@ describe("slack-actions", () => {
   });
 
   it("handles merge_pr action", async () => {
-    await registerSlackActions(mockApp, mockContext);
+    await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const postMessage = vi.fn();
     const postEphemeral = vi.fn();
@@ -74,7 +87,13 @@ describe("slack-actions", () => {
     };
     const client = { chat: { postMessage, postEphemeral } };
 
-    await actionHandlers["merge_pr"]({ ack, body, client, logger: console });
+    await actionHandlers.merge_pr({
+      ack,
+      body,
+      client,
+      logger: console,
+      // biome-ignore lint/suspicious/noExplicitAny: complex mock
+    } as any);
     expect(ack).toHaveBeenCalled();
     expect(mockContext.git.mergePhaseBack).toHaveBeenCalledWith(
       "003-slack",
@@ -90,7 +109,7 @@ describe("slack-actions", () => {
   });
 
   it("registers reaction_added event", async () => {
-    await registerSlackActions(mockApp, mockContext);
+    await registerSlackActions(mockApp as App, mockContext);
     expect(mockApp.event).toHaveBeenCalledWith(
       "reaction_added",
       expect.any(Function),

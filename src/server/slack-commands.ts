@@ -117,7 +117,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -125,7 +127,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to dispatch: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],
@@ -165,7 +167,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -173,7 +177,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to approve: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],
@@ -262,7 +266,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -270,7 +276,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to generate pulse: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],
@@ -309,7 +315,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           },
         ],
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         response_type: "ephemeral",
         blocks: [
@@ -317,7 +325,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:warning: Failed to analyze effort: ${error.message}`,
+              text: `:warning: Error: ${errorMessage}`,
             },
           },
         ],

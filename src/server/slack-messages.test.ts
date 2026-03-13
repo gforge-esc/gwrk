@@ -1,7 +1,7 @@
+import type { ActionsBlock, HeaderBlock, SectionBlock } from "@slack/types";
 import { describe, expect, it } from "vitest";
 import { MessageBuilder } from "./slack-messages.js";
 import type { AgentBackend, DispatchStatus } from "./types.js";
-import type { HeaderBlock, SectionBlock, ActionsBlock } from "@slack/types";
 
 describe("MessageBuilder", () => {
   const mockDispatch = {
@@ -32,7 +32,9 @@ describe("MessageBuilder", () => {
   it("should build reviewReady message with buttons", () => {
     const msg = MessageBuilder.reviewReady(mockDispatch);
     expect(msg.text).toContain("Review ready for 003-slack");
-    const actions = msg.blocks.find((b) => b.type === "actions") as ActionsBlock;
+    const actions = msg.blocks.find(
+      (b) => b.type === "actions",
+    ) as ActionsBlock;
     expect(actions.elements).toHaveLength(3);
     const firstElement = actions.elements[0];
     if (firstElement.type === "button") {

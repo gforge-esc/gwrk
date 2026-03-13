@@ -141,17 +141,20 @@ export function listRuns(
     .all(featureId) as RunRecord[];
 }
 
+export interface ProjectRecord {
+  id: string;
+  name: string;
+  path: string;
+  github_repo?: string | null;
+  slack_channel?: string | null;
+  created_at?: string;
+}
+
 /**
  * Register a project in the global DB. Upserts by path.
  */
 export function registerProject(
-  project: {
-    id: string;
-    name: string;
-    path: string;
-    github_repo?: string;
-    slack_channel?: string;
-  },
+  project: ProjectRecord,
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
@@ -203,9 +206,11 @@ export function getStats(db?: Database.Database): RunStats[] {
 /**
  * List all projects.
  */
-export function listProjects(db?: Database.Database) {
+export function listProjects(db?: Database.Database): ProjectRecord[] {
   const conn = db ?? getDb();
-  return conn.prepare("SELECT * FROM projects ORDER BY created_at DESC").all();
+  return conn
+    .prepare("SELECT * FROM projects ORDER BY created_at DESC")
+    .all() as ProjectRecord[];
 }
 
 export interface HistoryRecord {

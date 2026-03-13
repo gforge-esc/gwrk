@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { registerProject } from "../db/runs.js";
-import { execCommand } from "../utils/exec.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { execCommand } from "../utils/exec.js";
 
 export const initCommand = new Command("init")
   .description("Initialize gwrk in the current directory")
@@ -57,7 +57,9 @@ export const initCommand = new Command("init")
 
         if (options.slackOps) {
           try {
-            console.log(`Provisioning Slack ops channel ${options.slackOps}...`);
+            console.log(
+              `Provisioning Slack ops channel ${options.slackOps}...`,
+            );
             const opsChannelId = await ensureSlackChannel(options.slackOps);
             existing.project.slack.opsChannelId = opsChannelId;
             existing.project.slack.opsChannelName = options.slackOps;

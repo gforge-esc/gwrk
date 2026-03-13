@@ -11,7 +11,7 @@ interface SlackChannel {
  * Bolt's app.client sometimes misroutes tokens in Socket Mode,
  * causing spurious 'missing_scope' errors on valid scopes.
  */
-async function slackFetch(method: string, body: any = {}) {
+async function slackFetch(method: string, body: Record<string, unknown> = {}) {
   const tokens = loadSlackConfig();
   if (!tokens) {
     throw new Error("Slack not configured. Run gwrk setup slack first.");
@@ -50,7 +50,9 @@ export async function ensureSlackChannel(channelName: string): Promise<string> {
 
   if (existing?.id) {
     if (!existing.is_member) {
-      const joinRes = await slackFetch("conversations.join", { channel: existing.id });
+      const joinRes = await slackFetch("conversations.join", {
+        channel: existing.id,
+      });
       if (!joinRes.ok) {
         throw new Error(`Slack API error (join): ${joinRes.error}`);
       }

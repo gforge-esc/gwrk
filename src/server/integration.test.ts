@@ -11,7 +11,9 @@ import { removePid } from "./pid.js";
 const execAsync = promisify(exec);
 
 vi.mock("./docker.js", () => ({
-  ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true, startedByUs: false }),
+  ensureDocker: vi
+    .fn()
+    .mockResolvedValue({ installed: true, running: true, startedByUs: false }),
 }));
 
 vi.mock("./slack.js", () => ({

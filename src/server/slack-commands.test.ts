@@ -1,13 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
 
 describe("slack-commands", () => {
-  let mockQueue: any;
-  let mockMonitor: any;
-  let mockGit: any;
+  let mockQueue: Mocked<DispatchQueue>;
+  let mockMonitor: Mocked<SystemMonitor>;
+  let mockGit: Mocked<GitManager>;
   let context: CommandContext;
 
   beforeEach(() => {
@@ -21,26 +21,26 @@ describe("slack-commands", () => {
       getDispatch: vi.fn(),
       enqueue: vi.fn(),
       pause: vi.fn(),
-    };
+    } as unknown as Mocked<DispatchQueue>;
     mockMonitor = {
       getResources: vi.fn().mockReturnValue({
         cpuPercent: 10,
         memPercent: 20,
         diskFreeGb: 100,
       }),
-    };
+    } as unknown as Mocked<SystemMonitor>;
     mockGit = {
       mergePhaseBack: vi.fn(),
-    };
+    } as unknown as Mocked<GitManager>;
 
     context = {
       userId: "U123",
       channelId: "C123",
       projectRoot: "/tmp",
       buildServerUrl: "http://localhost:3000",
-      queue: mockQueue as unknown as DispatchQueue,
-      monitor: mockMonitor as unknown as SystemMonitor,
-      git: mockGit as unknown as GitManager,
+      queue: mockQueue,
+      monitor: mockMonitor,
+      git: mockGit,
     };
   });
 

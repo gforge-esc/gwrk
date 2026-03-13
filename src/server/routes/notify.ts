@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
+import type { AgentBackend } from "../../utils/config.js";
 import { MessageBuilder, type SlackMessage } from "../slack-messages.js";
 import { notifySlack } from "../slack-notify.js";
 import type { DispatchRecord, NotifyPayload } from "../types.js";
-import type { AgentBackend } from "../../utils/config.js";
 
 export async function notifyRoutes(server: FastifyInstance) {
   server.post<{ Body: NotifyPayload }>(

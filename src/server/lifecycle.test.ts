@@ -12,7 +12,7 @@ describe("LifecycleMonitor", () => {
       server: {
         heartbeatIntervalMs: 1000,
       },
-    } as any;
+    } as unknown as GwrkConfig;
     monitor = new LifecycleMonitor(config);
   });
 

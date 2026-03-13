@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ensureSlackChannel } from "./slack-channel.js";
 import * as slackClient from "../utils/slack-client.js";
+import { ensureSlackChannel } from "./slack-channel.js";
 
 vi.mock("../utils/slack-client.js", () => ({
   loadSlackConfig: vi.fn(),
