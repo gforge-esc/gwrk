@@ -130,35 +130,35 @@
           "id": "T013",
           "title": "Create Layer 2 agent protections",
           "description": "Create src/utils/agent-layer.ts with processForAgent(output) composing: stripAnsi() (remove \\x1b[...m sequences from src/utils/format.ts), guardBinary() (detect null bytes or >30% non-printable → '[binary content, N bytes]'), truncateOverflow() (trigger: >8192 bytes → first 100 lines + '/tmp/gwrk-output-<hash>.txt' reference). Create src/utils/agent-layer.test.ts per TR-003.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh"
         },
         {
           "id": "T014",
           "title": "Wire --agent global flag",
           "description": "Add program.option('--agent', 'Enable agent mode: ANSI-stripped output with Layer 2 protections') to src/cli.ts. Also detect GWRK_AGENT=1 env var. When active, pipe all stdout through processForAgent() from agent-layer.ts. --agent does NOT change output format (TC-006). --agent and --format json compose independently.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T014-gate.sh"
         },
         {
           "id": "T015",
           "title": "Add stdin acceptance to define plan",
           "description": "Modify src/commands/define.ts: when process.stdin.isTTY is false, read stdin as JSON, write to /tmp/gwrk-discovery-<timestamp>.json, pass contextPath to agent dispatch prompt template. Enables pipeline: gwrk project discover --format json | gwrk define plan --spec <spec> --format json. Per plan Phase 3.2.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh"
         },
         {
           "id": "T016",
           "title": "Create task classification engine",
           "description": "Create src/engine/classify.ts implementing classifyTask(touchPoints). Classification: greenfield (file doesn't exist), change (file exists, task modifies behavior), refactor (file exists, changes structure not behavior), noop (no code change). Called during gwrk define tasks to enrich tasks.json with classification field. Per plan Phase 3.3.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh"
         },
         {
           "id": "T017",
           "title": "Enrich PhaseSchema with optional fields",
           "description": "Modify src/utils/state.ts: add optional fields to PhaseSchema: objective (z.string().optional()), scope ({in_scope, out_of_scope} z.object().optional()), classification_summary (z.record(z.number()).optional()), inputs ({spec_refs, project_signals} z.object().optional()). All .optional() — existing tasks.json files remain valid. Per plan Phase 3.4.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh"
         }
       ],

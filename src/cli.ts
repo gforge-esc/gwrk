@@ -13,6 +13,7 @@ import { shipCommand } from "./commands/ship.js";
 import { statusCommand } from "./commands/status.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { testCommand } from "./commands/test.js";
+import { processForAgent } from "./utils/agent-layer.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 
@@ -49,7 +50,15 @@ program
       if (cmds.length > 0) {
         // Foxtrot Charlie pillars
         const pillars = ["define", "ship", "test", "measure"];
-        const ops = ["init", "tasks", "db", "server", "status", "setup"];
+        const ops = [
+          "init",
+          "tasks",
+          "db",
+          "server",
+          "status",
+          "project",
+          "setup",
+        ];
 
         out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
         for (const name of pillars) {
@@ -121,6 +130,25 @@ applyExitOverride(program);
 
 program.hook("preAction", (thisCommand, actionCommand) => {
   const opts = thisCommand.opts();
+  const isAgent = opts.agent || process.env.GWRK_AGENT === "1";
+
+  if (isAgent) {
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (
+      chunk: string | Buffer,
+      encoding?: BufferEncoding | ((error: Error | null | undefined) => void),
+      callback?: (error: Error | null | undefined) => void,
+    ): boolean => {
+      const data = typeof chunk === "string" ? chunk : chunk.toString();
+      const processed = processForAgent(data);
+
+      if (typeof encoding === "function") {
+        return originalWrite(processed, encoding);
+      }
+      return originalWrite(processed, encoding, callback);
+    };
+  }
+
   if (opts.format && !["human", "json"].includes(opts.format)) {
     console.error(`Unknown format: ${opts.format}. Supported: human, json`);
     process.exit(2);
@@ -140,21 +168,25 @@ import { fileURLToPath } from "node:url";
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     program.parse();
-  } catch (err: any) {
-    if (err.code === "commander.helpDisplayed") {
+  } catch (err: unknown) {
+    const error = err as { code?: string; exitCode?: number };
+    if (error.code === "commander.helpDisplayed") {
       process.exit(0);
     }
-    if (err.code === "commander.unknownCommand") {
+    if (error.code === "commander.unknownCommand") {
+      console.error(
+        `Unknown command. Run 'gwrk --help' to see available commands.`,
+      );
       process.exit(127);
     }
     if (
-      err.code === "commander.missingArgument" ||
-      err.code === "commander.unknownOption" ||
-      err.code === "commander.missingMandatoryOptionValue"
+      error.code === "commander.missingArgument" ||
+      error.code === "commander.unknownOption" ||
+      error.code === "commander.missingMandatoryOptionValue"
     ) {
       process.exit(2);
     }
     // For other commander errors, use their exitCode or default to 1
-    process.exit(err.exitCode || 1);
+    process.exit(error.exitCode || 1);
   }
 }
