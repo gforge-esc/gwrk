@@ -8,7 +8,7 @@ set -euo pipefail
 gwrk gate-check --help 2>/dev/null | grep -qi 'exit code' || { echo "FAIL: gate-check --help missing exit codes"; exit 1; }
 
 # Assertion #2: gate-check --help includes command type
-gwrk gate-check --help 2>/dev/null | grep -qi 'type:\|verifier\|query\|mutator' || { echo "FAIL: gate-check --help missing command type"; exit 1; }
+gwrk gate-check --help 2>/dev/null | grep -qiE 'type:|verifier|query|mutator' || { echo "FAIL: gate-check --help missing command type"; exit 1; }
 
 # Assertion #3: tasks --help mentions --format json
 gwrk tasks --help 2>/dev/null | grep -q '\-\-format' || { echo "FAIL: tasks --help missing --format"; exit 1; }

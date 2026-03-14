@@ -5,7 +5,7 @@ set -euo pipefail
 # AUTHORED
 
 # Assertion #1: stdin.isTTY check in define.ts or plan.ts
-grep -q 'isTTY\|stdin' src/commands/define.ts || grep -q 'isTTY\|stdin' src/commands/plan.ts || { echo "FAIL: no stdin detection in define/plan"; exit 1; }
+grep -qE 'isTTY|stdin' src/commands/define.ts || grep -qE 'isTTY|stdin' src/commands/plan.ts || { echo "FAIL: no stdin detection in define/plan"; exit 1; }
 
 # Assertion #2: Writes context to /tmp
 grep -q '/tmp/gwrk-discovery' src/commands/define.ts || grep -q '/tmp/gwrk-discovery' src/commands/plan.ts || { echo "FAIL: no /tmp context file path"; exit 1; }

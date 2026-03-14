@@ -8,7 +8,7 @@ set -euo pipefail
 test -f src/engine/classify.ts
 
 # Assertion #2: classifyTask or classify function exported
-grep -q 'export.*classifyTask\|export.*classify' src/engine/classify.ts
+grep -qE 'export.*classifyTask|export.*classify' src/engine/classify.ts
 
 # Assertion #3: All four classification types present
 grep -q 'greenfield' src/engine/classify.ts
@@ -17,7 +17,7 @@ grep -q 'refactor' src/engine/classify.ts
 grep -q 'noop' src/engine/classify.ts
 
 # Assertion #4: File existence check logic (for greenfield detection)
-grep -q 'existsSync\|access' src/engine/classify.ts
+grep -qE 'existsSync|access' src/engine/classify.ts
 
 # Assertion #5: Classification stored in tasks.json when generated
 grep -q 'classification' src/commands/tasks-generate.ts || grep -q 'classification' src/utils/state.ts

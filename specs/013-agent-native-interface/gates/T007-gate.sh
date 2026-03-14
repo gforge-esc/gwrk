@@ -5,12 +5,14 @@ set -euo pipefail
 # AUTHORED
 
 # Assertion #1: Usage error returns exit 2 (not 1)
-gwrk tasks list 2>/dev/null; EXITCODE=$?
+EXITCODE=0
+gwrk tasks list 2>/dev/null || EXITCODE=$?
 # Missing feature arg should be exit 2 (usage error)
 [ "$EXITCODE" -eq 2 ] || { echo "FAIL: missing arg should exit 2, got $EXITCODE"; exit 1; }
 
 # Assertion #2: Unknown command returns non-1 (127 or Commander default)
-gwrk nonexistent-command-xyz 2>/dev/null; EXITCODE=$?
+EXITCODE=0
+gwrk nonexistent-command-xyz 2>/dev/null || EXITCODE=$?
 [ "$EXITCODE" -ne 0 ] || { echo "FAIL: unknown command should exit non-zero"; exit 1; }
 
 # Assertion #3: No bare process.exit(1) for usage errors in command files

@@ -8,13 +8,13 @@ set -euo pipefail
 test -f src/commands/project.ts
 
 # Assertion #2: project command exported
-grep -q 'projectCommand\|project' src/commands/project.ts
+grep -qE 'projectCommand|project' src/commands/project.ts
 
 # Assertion #3: discover subcommand defined
 grep -q 'discover' src/commands/project.ts
 
 # Assertion #4: Registered in cli.ts
-grep -q 'projectCommand\|project' src/cli.ts
+grep -qE 'projectCommand|project' src/cli.ts
 
 # Assertion #5: Test file exists and passes
 test -f src/commands/project.test.ts

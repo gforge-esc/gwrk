@@ -8,7 +8,7 @@ set -euo pipefail
 test -f src/utils/agent-layer.ts
 
 # Assertion #2: processForAgent exported
-grep -q 'export.*processForAgent\|export.*function processForAgent' src/utils/agent-layer.ts
+grep -qE 'export.*processForAgent|export.*function processForAgent' src/utils/agent-layer.ts
 
 # Assertion #3: stripAnsi function defined
 grep -q 'stripAnsi' src/utils/agent-layer.ts
