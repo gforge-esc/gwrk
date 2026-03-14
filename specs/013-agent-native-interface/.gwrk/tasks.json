@@ -22,50 +22,50 @@
         {
           "id": "T001",
           "title": "Create withSignal() HOF",
-          "description": "Create src/utils/signal.ts implementing the withSignal(name, fn) higher-order function per contracts/signal.md. Must: time execution via performance.now(), emit [exit:N | duration] on stderr, set process.exitCode (not process.exit()), catch all errors. Duration: <1s → Nms, ≥1s → N.Ns. Create src/utils/signal.test.ts with unit tests per TR-001.",
-          "status": "completed",
+          "description": "Create src/utils/signal.ts implementing the withSignal(name, fn) higher-order function per contracts/signal.md. Must: time execution via performance.now(), emit [exit:N | duration] on stderr, set process.exitCode (not process.exit()), catch all errors. Duration: <1s → Nms, ≥1s → N.Ns. Create src/utils/signal.test.ts with unit tests per TR-001.\nREVIEW FAIL (lint): noInferrableTypes — style.\n  WHERE: src/utils/signal.ts:9:18\n  EXPECTED: public exitCode = 1 (type inferred)\n  ACTUAL: public exitCode: number = 1\n  FIX: Remove : number from the parameter.\n  GATE: pnpm lint\n  REF: plan.md Phase 1.1",
+          "status": "open",
           "gateScript": "gates/T001-gate.sh"
         },
         {
           "id": "T002",
           "title": "Wrap all command actions with withSignal()",
-          "description": "Retrofit all 24 .action() callbacks across 19 command files to use withSignal(). Files: define.ts, specify.ts, plan.ts, implement.ts, tasks-generate.ts, ship.ts, test.ts, measure.ts, effort.ts, compression.ts, pulse.ts (2 actions), tasks.ts (4 actions: done/list/next/ready), runs.ts, stats.ts, db.ts, server.ts (3 actions), status.ts, init.ts, setup-slack.ts. Each action wrapped as: await withSignal('command-name', async () => { existing logic }). Remove direct process.exit() calls from action bodies — withSignal handles exit codes.",
-          "status": "completed",
+          "description": "Retrofit all 24 .action() callbacks across 19 command files to use withSignal(). Files: define.ts, specify.ts, plan.ts, implement.ts, tasks-generate.ts, ship.ts, test.ts, measure.ts, effort.ts, compression.ts, pulse.ts (2 actions), tasks.ts (4 actions: done/list/next/ready), runs.ts, stats.ts, db.ts, server.ts (3 actions), status.ts, init.ts, setup-slack.ts. Each action wrapped as: await withSignal('command-name', async () => { existing logic }). Remove direct process.exit() calls from action bodies — withSignal handles exit codes.\nREVIEW FAIL (code): Regression in existing tests — US-001.\n  WHERE: src/commands/*.test.ts (20+ tests)\n  EXPECTED: Tests pass when checking error conditions or exit codes.\n  ACTUAL: many tests resolve/fail because withSignal catches errors and sets process.exitCode, while tests expect rejection or process.exit(1).\n  FIX: Update tests to check process.exitCode instead of expecting rejection. If using withSignal, command actions no longer throw to Commander; they set exitCode and return.\n  GATE: pnpm test\n  REF: plan.md Phase 1.1",
+          "status": "open",
           "gateScript": "gates/T002-gate.sh"
         },
         {
           "id": "T003",
           "title": "Create CommandOutput abstraction",
-          "description": "Create src/utils/output.ts implementing the CommandOutput interface and createOutput(format) factory per contracts/output.md. Human mode: write() → stdout as text, info() → stderr. JSON mode: write() → JSON.stringify to stdout, info() → stderr. Create src/utils/output.test.ts with unit tests per TR-002.",
-          "status": "completed",
+          "description": "Create src/utils/output.ts implementing the CommandOutput interface and createOutput(format) factory per contracts/output.md. Human mode: write() → stdout as text, info() → stderr. JSON mode: write() → JSON.stringify to stdout, info() → stderr. Create src/utils/output.test.ts with unit tests per TR-002.\nREVIEW FAIL (code): Regression in JSON query tests — FR-002.\n  WHERE: src/commands/tasks-query.test.ts (87:70, 125:70)\n  EXPECTED: Tests capture output and verify JSON.\n  ACTUAL: TypeError: Cannot read properties of undefined (reading '0'). logSpy.mock.calls is empty because createOutput writes to stdout, not console.log.\n  FIX: Update tests to spy on process.stdout.write or provide a mock CommandOutput for testing.\n  GATE: pnpm test\n  REF: plan.md Phase 1.2",
+          "status": "open",
           "gateScript": "gates/T003-gate.sh"
         },
         {
           "id": "T004",
           "title": "Add --format global flag to CLI",
-          "description": "Modify src/cli.ts to add program.option('--format <type>', 'Output format: human | json', 'human'). Validate format value — exit 2 on invalid (e.g., --format xml → 'Unknown format: xml. Supported: human, json'). Make format option accessible to all commands via Commander's opts() chain.",
-          "status": "completed",
+          "description": "Modify src/cli.ts to add program.option('--format <type>', 'Output format: human | json', 'human'). Validate format value — exit 2 on invalid (e.g., --format xml → 'Unknown format: xml. Supported: human, json'). Make format option accessible to all commands via Commander's opts() chain.\nREVIEW FAIL (gate): Gate script T004-gate.sh failed — FR-002.\n  WHERE: specs/013-agent-native-interface/gates/T004-gate.sh\n  EXPECTED: Gate script passes (exits 0).\n  ACTUAL: Exits 2 because gwrk returns 2 and set -e is on.\n  FIX: Fix gate script to handle non-zero exit from gwrk (e.g., EXITCODE=0; gwrk ... || EXITCODE=$?).\n  GATE: gates/T004-gate.sh\n  REF: spec FR-002",
+          "status": "open",
           "gateScript": "gates/T004-gate.sh"
         },
         {
           "id": "T005",
           "title": "Retrofit queryable commands for --format json",
-          "description": "Retrofit tasks.ts (list, next, ready subcommands) and status.ts to use CommandOutput from output.ts. When --format json: tasks list → { tasks: [...] }, tasks next → { task: {...} | null }, status → { project, specs, agents }. Human mode unchanged. Per plan Phase 1.2 queryable command table.",
-          "status": "completed",
+          "description": "Retrofit tasks.ts (list, next, ready subcommands) and status.ts to use CommandOutput from output.ts. When --format json: tasks list → { tasks: [...] }, tasks next → { task: {...} | null }, status → { project, specs, agents }. Human mode unchanged. Per plan Phase 1.2 queryable command table.\nREVIEW FAIL (code): Regression in JSON query tests — FR-002.\n  WHERE: src/commands/tasks-query.test.ts\n  EXPECTED: JSON output captured and parsed.\n  ACTUAL: logSpy empty because tasksCommand list/next uses createOutput.\n  FIX: Update tests to spy on process.stdout.write or use a test-ready output abstraction.\n  GATE: pnpm test\n  REF: plan.md Phase 1.2",
+          "status": "open",
           "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",
           "title": "Create gwrk gate-check command",
-          "description": "Create src/commands/gate-check.ts per contracts/gate-check.md. Arguments: <task_id>, -f/--feature <dir>. Resolves gate script path: specs/<feature>/gates/<taskId>-gate.sh. Executes gate script, captures exit code + stdout + stderr. Returns GateCheckResult (DM-002). Supports --format json. Feature inference when -f omitted: glob specs/**/gates/<taskId>-gate.sh. Error-as-navigation on missing gate. Register in src/cli.ts. Create src/commands/gate-check.test.ts per TR-005.",
-          "status": "completed",
+          "description": "Create src/commands/gate-check.ts per contracts/gate-check.md. Arguments: <task_id>, -f/--feature <dir>. Resolves gate script path: specs/<feature>/gates/<taskId>-gate.sh. Executes gate script, captures exit code + stdout + stderr. Returns GateCheckResult (DM-002). Supports --format json. Feature inference when -f omitted: glob specs/**/gates/<taskId>-gate.sh. Error-as-navigation on missing gate. Register in src/cli.ts. Create src/commands/gate-check.test.ts per TR-005.\nREVIEW FAIL (gate): Gate script T006-gate.sh failed — FR-006.\n  WHERE: specs/013-agent-native-interface/gates/T006-gate.sh: Assertion #3\n  EXPECTED: grep -q 'gates/' matches code.\n  ACTUAL: Code uses \"gates\" in path.join, not \"gates/\".\n  FIX: Update gate script to match code pattern (grep -q '\"gates\"') or update code with slash (unsafe for path.join).\n  GATE: gates/T006-gate.sh\n  REF: spec FR-006",
+          "status": "open",
           "gateScript": "gates/T006-gate.sh"
         },
         {
           "id": "T007",
           "title": "Standardize exit codes across all commands",
-          "description": "Audit all 19 command files. Ensure: 0=success, 1=expected failure (gate failed, feature not found), 2=usage error (missing args, invalid flags), 127=unknown command. Currently all errors use process.exit(1). Replace usage errors with exit 2. Configure Commander's exitOverride or custom handler for unknown commands → exit 127. Update withSignal to propagate error types. Per spec FR-009.",
-          "status": "completed",
+          "description": "Audit all 19 command files. Ensure: 0=success, 1=expected failure (gate failed, feature not found), 2=usage error (missing args, invalid flags), 127=unknown command. Currently all errors use process.exit(1). Replace usage errors with exit 2. Configure Commander's exitOverride or custom handler for unknown commands → exit 127. Update withSignal to propagate error types. Per spec FR-009.\nREVIEW FAIL (code): Regression in tests and gate fail — FR-009.\n  WHERE: src/commands/*.test.ts (especially test-cmd.test.ts)\n  EXPECTED: Usage errors return 2, and tests pass.\n  ACTUAL: Tests expecting 1 for usage error now fail. Gate script T007-gate.sh also fails due to set -e.\n  FIX: Update tests to expect 2 for usage errors. Fix gate script T007-gate.sh to handle non-zero exit from gwrk.\n\nREVIEW FAIL (lint): noExplicitAny and noUselessElse — FR-009.\n  WHERE: src/cli.ts:141:17 and src/commands/tasks.ts:61:11\n  EXPECTED: Error caught with type (unknown/Error), no useless else in tasks.ts.\n  ACTUAL: catch (err: any) and useless else after throw.\n  FIX: Use unknown/Error type and remove else clause after throw.\n  GATE: pnpm lint\n  REF: spec FR-009, Step 4 & 6",
+          "status": "open",
           "gateScript": "gates/T007-gate.sh"
         }
       ]
