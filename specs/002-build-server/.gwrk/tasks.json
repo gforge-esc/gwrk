@@ -16,8 +16,9 @@
           "id": "T001",
           "title": "Implement package.json",
           "description": "MODIFY: Add `fastify`, `fastify-healthcheck`, `dockerode`, `uuid` dependencies",
-          "status": "open",
-          "gateScript": "gates/T001-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh",
+          "completedAt": "2026-03-14T18:20:38.000Z"
         },
         {
           "id": "T002",
@@ -39,8 +40,9 @@
           "id": "T004",
           "title": "Implement src/server/index.ts",
           "description": "NEW: Implementation of `startServer`, `stopServer` bootstrap",
-          "status": "open",
-          "gateScript": "gates/T004-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh",
+          "completedAt": "2026-03-14T18:20:38.000Z"
         },
         {
           "id": "T005",
@@ -136,15 +138,17 @@
           "id": "T014",
           "title": "Implement src/server/context.ts",
           "description": "NEW: Implementation of `compileContext`, `writeContextToSandbox`",
-          "status": "open",
-          "gateScript": "gates/T014-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T014-gate.sh",
+          "completedAt": "2026-03-14T18:20:38.000Z"
         },
         {
           "id": "T015",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T015-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T015-gate.sh",
+          "completedAt": "2026-03-14T18:20:38.000Z"
         }
       ],
       "doneWhen": [
@@ -159,8 +163,9 @@
           "id": "T016",
           "title": "Implement src/server/sandbox.ts",
           "description": "NEW: Implementation of `createSandbox`, `destroySandbox`, `destroyAllSandboxes`, `reapStale`",
-          "status": "open",
-          "gateScript": "gates/T016-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T016-gate.sh",
+          "completedAt": "2026-03-14T18:20:38.000Z"
         },
         {
           "id": "T017",
