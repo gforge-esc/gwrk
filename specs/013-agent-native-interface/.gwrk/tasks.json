@@ -44,7 +44,7 @@
           "id": "T004",
           "title": "Add --format global flag to CLI",
           "description": "Modify src/cli.ts to add program.option('--format <type>', 'Output format: human | json', 'human'). Validate format value — exit 2 on invalid (e.g., --format xml → 'Unknown format: xml. Supported: human, json'). Make format option accessible to all commands via Commander's opts() chain.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh"
         },
         {

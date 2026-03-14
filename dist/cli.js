@@ -22,6 +22,7 @@ program
     .name("gwrk")
     .version(pkg.version)
     .description("The Principal Engineer's Operating System")
+    .option("--format <type>", "Output format: human | json", "human")
     .configureHelp({
     formatHelp: (cmd, helper) => {
         const ver = cmd.version() ?? pkg.version;
@@ -85,6 +86,11 @@ program.addCommand(serverCommand);
 program.addCommand(statusCommand);
 program.addCommand(setupCommand);
 program.hook("preAction", (thisCommand, actionCommand) => {
+    const opts = thisCommand.opts();
+    if (opts.format && !["human", "json"].includes(opts.format)) {
+        console.error(`Unknown format: ${opts.format}. Supported: human, json`);
+        process.exit(2);
+    }
     if (actionCommand.name() !== "init" &&
         actionCommand.name() !== "setup" &&
         actionCommand.name() !== "slack") {
