@@ -19,6 +19,8 @@ const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 
 export const program = new Command();
 
+program.exitOverride();
+
 const setupCommand = new Command("setup")
   .description("Configure gwrk integrations")
   .addCommand(setupSlackCommand);
@@ -103,6 +105,18 @@ program.addCommand(serverCommand);
 program.addCommand(statusCommand);
 program.addCommand(setupCommand);
 
+/**
+ * Recursively apply exitOverride to a command and all its subcommands.
+ */
+function applyExitOverride(cmd: Command) {
+  cmd.exitOverride();
+  for (const sub of cmd.commands) {
+    applyExitOverride(sub);
+  }
+}
+
+applyExitOverride(program);
+
 program.hook("preAction", (thisCommand, actionCommand) => {
   const opts = thisCommand.opts();
   if (opts.format && !["human", "json"].includes(opts.format)) {
@@ -122,5 +136,23 @@ program.hook("preAction", (thisCommand, actionCommand) => {
 
 import { fileURLToPath } from "node:url";
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  program.parse();
+  try {
+    program.parse();
+  } catch (err: any) {
+    if (err.code === "commander.helpDisplayed") {
+      process.exit(0);
+    }
+    if (err.code === "commander.unknownCommand") {
+      process.exit(127);
+    }
+    if (
+      err.code === "commander.missingArgument" ||
+      err.code === "commander.unknownOption" ||
+      err.code === "commander.missingMandatoryOptionValue"
+    ) {
+      process.exit(2);
+    }
+    // For other commander errors, use their exitCode or default to 1
+    process.exit(err.exitCode || 1);
+  }
 }

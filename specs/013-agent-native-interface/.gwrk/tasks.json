@@ -65,7 +65,7 @@
           "id": "T007",
           "title": "Standardize exit codes across all commands",
           "description": "Audit all 19 command files. Ensure: 0=success, 1=expected failure (gate failed, feature not found), 2=usage error (missing args, invalid flags), 127=unknown command. Currently all errors use process.exit(1). Replace usage errors with exit 2. Configure Commander's exitOverride or custom handler for unknown commands → exit 127. Update withSignal to propagate error types. Per spec FR-009.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh"
         }
       ]

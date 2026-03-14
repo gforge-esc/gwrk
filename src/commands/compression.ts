@@ -130,7 +130,7 @@ export const compressionCommand = new Command("compression")
         }
       } else {
         if (!feature) {
-          throw new CommandError("Must specify a feature OR use --all", 1);
+          throw new CommandError("Must specify a feature OR use --all", 2);
         }
 
         const featureDir = path.join(projectRoot, "specs", feature);
