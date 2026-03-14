@@ -154,6 +154,7 @@ As a Principal Engineer, I want the circuit breaker to produce structured failur
 1. **Given** a circuit break triggered by max iterations, **Then**:
    - `.runs/<feature>_p<phase>.state` contains `"stage": "CIRCUIT_BREAK"` and `"failureContext"` object
    - `failureContext` contains: `openTasks`, `lastVerdict`, `iterationTimeline`, `digest`
+   - `ls specs/<feature>/.gwrk/runs/*_FAIL.log | wc -l` returns `>= 1` (truncated raw log committed to git)
 
 ---
 
@@ -197,8 +198,8 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-008**: Phase orchestrator MUST persist state machine progress to `.runs/<feature>_p<phase>.state` as JSON after every stage transition. On restart, resume from last persisted stage. (Implements: US-005)
 - **FR-010**: Phase orchestrator MUST create a timestamped log file in `.runs/` per run (machine-local, gitignored). (Implements: US-001)
 - **FR-016**: Phase orchestrator MUST run `scripts/dev/validate-staging.sh <feature>` after agent completes, before push. Validator rejects: out-of-scope files, orphan spec dirs, build plan modifications (Design Mandate Rule 3). Validation failure → re-run agent with corrective guidance. (Implements: US-010)
-- **FR-017**: Phase orchestrator logging has three tiers: (a) Raw log — full agent output to `.runs/*.log`, machine-local, gitignored per ADR-003 §5. (b) **Log digest** — the orchestrator emits structured stage events to a sidecar file (`.runs/<feature>_p<phase>.events`). On completion, events are concatenated into the `digest[]` array in the execution manifest. Digest is git-tracked, surviving merge and machine change. Events use format: `<STAGE>: <outcome summary>`. (c) SQLite — harvested post-merge by build server via `gwrk harvest` (ADR-003 §4). (Implements: US-001, US-007)
-- **FR-018**: On `CIRCUIT_BREAK`, phase orchestrator MUST write structured failure context to state file: `{ failureContext: { openTasks: [...], lastVerdict: "NO-GO", iterationTimeline: [...], digest: [...] } }`. Exit 1. (Implements: US-011)
+- **FR-017**: Phase orchestrator logging has three tiers: (a) Raw log — full agent output to `.runs/*.log`, machine-local, gitignored per ADR-003 §5. (b) **Log digest** — the orchestrator emits structured stage events to a sidecar file (`.runs/<feature>_p<phase>.events`). On completion, events are concatenated into the `digest[]` array in the execution manifest. Digest is git-tracked, surviving merge and machine change. Events use format: `<STAGE>: <outcome summary>`. (c) SQLite — harvested post-merge by build server via `gwrk harvest` (ADR-003 §4). **Exception**: On `CIRCUIT_BREAK`, the last 500 lines of raw log are committed to `specs/<feature>/.gwrk/runs/<timestamp>_FAIL.log` alongside the manifest. This ensures diagnostic evidence survives ephemeral VMs (Codex Cloud) and machine changes. (Implements: US-001, US-007, US-011)
+- **FR-018**: On `CIRCUIT_BREAK`, phase orchestrator MUST: (1) write structured failure context to state file: `{ failureContext: { openTasks: [...], lastVerdict: "NO-GO", iterationTimeline: [...], digest: [...] } }`, (2) commit truncated raw log (last 500 lines) to `specs/<feature>/.gwrk/runs/<timestamp>_FAIL.log` for post-mortem diagnosis. Exit 1. (Implements: US-011)
 
 #### FR-002 Error States
 | Condition | stderr contains | Exit code |
