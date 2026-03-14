@@ -4,12 +4,12 @@
 
 ## Summary
 
-The ship loop implements Pillar 3's autonomous execution kernel (Foxtrot Charlie: Shipping → Throughput). Core machinery (ship.ts, work-until-done.sh, support scripts) is ~80% functional. This plan addresses the remaining delta: structured log digest system with full log git-tracking, phase-skip logic, rip-cord bail on circuit break, and staging validator integration.
+The ship loop implements Pillar 3's autonomous execution kernel (Foxtrot Charlie: Shipping → Throughput). Core code exists (ship.ts, work-until-done.sh, support scripts) but applying the TDD mandate (**no test = not done**), only **4 of 18 FRs have behavioral test coverage**. The remaining 14 FRs need implementation, tests, or both.
 
-Three phases, 12 tasks, ≤5 file changes per phase:
-1. **Digest & Phase-Skip** — Structured event sidecar, digest assembly, log rehoming, phase-skip logic
+Three phases, 12 tasks:
+1. **Digest & Phase-Skip** — Structured event sidecar, digest assembly, log rehoming, phase-skip logic, pre-flight gate check
 2. **Resilience & Bail** — Rip-cord bail, staging validator integration, dirty-tree fail-fast
-3. **Verification & Artifacts** — Contracts, gap analysis, full suite
+3. **Verification & Artifacts** — Contracts, gap analysis, full suite + tests for all existing but untested FRs
 
 ---
 
@@ -105,9 +105,11 @@ Wire the rip-cord bail (FR-018), integrate staging validator (FR-016), and enfor
 
 ### Phase 3: Verification & Artifacts
 
-Update all contracts to reflect implementation reality. Rewrite gap-analysis. Run full verification.
+Write **dedicated behavioral tests** for all existing-but-untested FRs. Update all contracts. Rewrite gap-analysis. Run full verification.
 
-**Files (8):**
+**Files (10):**
+- `src/commands/ship.test.ts` (MODIFY: add tests for FR-004 state machine transitions, FR-005 review dispatch with GO/NO-GO, FR-006 PR creation, FR-008 crash recovery resume, FR-009 hierarchical agent config resolution, FR-012 manifest writes with correct fields)
+- `src/scripts-e2e.test.ts` (MODIFY: add tests for FR-002 branch creation + dirty-tree rejection, FR-004 stage transitions, FR-006 PR + CI wait, FR-010 log file creation)
 - `specs/004-ship-loop/contracts/ship.md` (MODIFY: add `isPhaseComplete()`, `assembleDigest()`, manifest schema with `digest[]`)
 - `specs/004-ship-loop/contracts/implement.md` (MODIFY: add `emit_event()`, staging validation call, log rehoming)
 - `specs/004-ship-loop/contracts/branch.md` (MODIFY: add dirty-tree fail-fast contract)
@@ -117,7 +119,7 @@ Update all contracts to reflect implementation reality. Rewrite gap-analysis. Ru
 - `specs/004-ship-loop/gap-analysis.md` (REWRITE: reflect current implementation vs new spec)
 - `specs/004-ship-loop/checklists/requirements.md` (REWRITE: against new 18 FRs)
 
-**Requirements Addressed:** All FRs verified, all TRs validated, all VRs exercised
+**Requirements Addressed:** FR-002 (test), FR-004 (test), FR-005 (test), FR-006 (test), FR-008 (test), FR-009 (test), FR-010 (test), FR-012 (test), all TRs validated, all VRs exercised
 
 **Dependencies:** Phase 1, Phase 2
 
@@ -133,8 +135,13 @@ Update all contracts to reflect implementation reality. Rewrite gap-analysis. Ru
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | E2E | `src/scripts-e2e.test.ts` | Full WUD lifecycle |
-| TR-005 | Unit | `src/commands/ship.test.ts` | All ship.ts tests pass |
+| TR-001 | E2E | `src/scripts-e2e.test.ts` | Full WUD lifecycle with stage transitions verified |
+| TR-002 | E2E | `src/scripts-e2e.test.ts` | Branch creation verified; dirty tree rejected |
+| TR-003 | E2E | `src/scripts-e2e.test.ts` | Verdict GO/NO-GO triggers correct next stage |
+| TR-004 | E2E | `src/scripts-e2e.test.ts` | CI wait + PR creation |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Config hierarchical resolution (--agent > .gwrkrc > crash) |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Crash recovery: resume from state file |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Manifest written with all required fields |
 | TR-006 | CLI | `src/cli.e2e.test.ts` | `gwrk ship --help` correct |
 | TR-012 | Integration | `pnpm test` | Full suite passes |
 
@@ -178,35 +185,35 @@ _No mockups exist for this feature._
 | Spec Item | Phase | Status |
 |---|---|---|
 | **User Scenarios** | | |
-| US-001 Ship Single Phase | — | ✅ Done (ship.ts + WUD exist) |
-| US-002 Hard Gate Pre-flight | Phase 1 | ⚠️ **No pre-flight in WUD** — CI gate exists but not task-level pre-flight skip |
-| US-003 Ship All Phases | Phase 1 | 🔲 Phase-skip cancelled handling needed |
-| US-004 Circuit Breaker | Phase 2 | 🔲 failureContext needed |
-| US-005 Crash Recovery | — | ✅ Done (save/load_state) |
-| US-006 PR Creation & CI | — | ✅ Done (WUD PR + CI wait) |
-| US-007 Manifest + Digest | Phase 1 | 🔲 Digest assembly + log rehoming |
-| US-008 Agent Config | — | ✅ Done (config resolution) |
-| US-009 Phase-Skip | Phase 1 | ⚠️ Exists but `cancelled` not handled |
-| US-010 Staging Validation | Phase 2 | 🔲 WUD integration |
-| US-011 Rip-Cord Bail | Phase 2 | 🔲 failureContext |
+| US-001 Ship Single Phase | Phase 3 | ⚠️ Code exists, partial test (dispatch only) — needs E2E lifecycle test |
+| US-002 Hard Gate Pre-flight | Phase 1 | 🔲 Not implemented, no test |
+| US-003 Ship All Phases | Phase 1 | ⚠️ Code exists, partial test — no `cancelled` handling, no skip assertion |
+| US-004 Circuit Breaker | Phase 2 | ⚠️ Code exists, partial test — no failureContext, no state file assertion |
+| US-005 Crash Recovery | Phase 3 | ⚠️ Code exists, **no test** |
+| US-006 PR Creation & CI | Phase 3 | ⚠️ Code exists, **no test** (mocked gh in E2E) |
+| US-007 Manifest + Digest | Phase 1 | 🔲 Manifest partial, digest not implemented, no test |
+| US-008 Agent Config | Phase 3 | ⚠️ Code exists, **no test** (mock config) |
+| US-009 Phase-Skip | Phase 1 | ⚠️ Code exists, **no test** |
+| US-010 Staging Validation | Phase 2 | 🔲 Not integrated, no test |
+| US-011 Rip-Cord Bail | Phase 2 | 🔲 Not implemented, no test |
 | **Functional Requirements** | | |
-| FR-001 ship command | — | ✅ Done |
-| FR-002 branch + dirty-tree | Phase 2 | ⚠️ **Branch works, dirty-tree check completely missing** |
-| FR-003 pre-flight gates | Phase 1 | ⚠️ **Not implemented** — WUD has CI gate but NO task-level pre-flight skip |
-| FR-004 state machine | — | ✅ Done |
-| FR-005 review dispatch | — | ✅ Done |
-| FR-006 PR + CI | — | ✅ Done |
-| FR-007 circuit breaker | — | ✅ Done (save_state + exit) |
-| FR-008 crash recovery | — | ✅ Done |
-| FR-009 agent config | — | ✅ Done |
-| FR-010 timestamped log | — | ⚠️ **Partial** — logs to `.runs/` not `.gwrk/runs/` (needs rehoming) |
-| FR-011 SQLite recording | — | ✅ Done |
-| FR-012 execution manifest | Phase 1 | ⚠️ **Partial** — manifest written but no `digest[]` field |
-| FR-013 all-phases sequential | — | ✅ Done |
-| FR-014 phase skip | Phase 1 | ⚠️ **Partial** — exists but `cancelled` status not handled |
-| FR-016 staging validator | Phase 2 | ⚠️ **Script exists but NOT called from WUD** |
-| FR-017 logging (3-tier) | Phase 1 | 🔲 emit_event + log rehoming to git-tracked |
-| FR-018 rip-cord bail | Phase 2 | ⚠️ **Circuit break saves state but no `failureContext` JSON** |
+| FR-001 ship command | — | ✅ **Done** — code + test (dispatch verified) |
+| FR-002 branch + dirty-tree | Phase 2 | 🔲 Branch code exists, dirty-tree missing, **no test** |
+| FR-003 pre-flight gates | Phase 1 | 🔲 Not implemented, **no test** |
+| FR-004 state machine | Phase 3 | ⚠️ Code exists, **no dedicated test** (implicit in E2E) |
+| FR-005 review dispatch | Phase 3 | ⚠️ Code exists, **no dedicated test** (mocked in E2E) |
+| FR-006 PR + CI | Phase 3 | ⚠️ Code exists, **no test** |
+| FR-007 circuit breaker | — | ✅ **Done** — code + test (agent failure → retry → circuit break) |
+| FR-008 crash recovery | Phase 3 | ⚠️ Code exists, **no test** for resume from state file |
+| FR-009 agent config | Phase 3 | ⚠️ Code exists, **no test** for hierarchical resolution |
+| FR-010 timestamped log | Phase 1 | ⚠️ Code exists in wrong location, **no test** |
+| FR-011 SQLite recording | — | ✅ **Done** — code + test (startRun/finishRun with args) |
+| FR-012 execution manifest | Phase 1 | ⚠️ Code exists, no `digest[]`, **no test** (writeManifest mocked) |
+| FR-013 all-phases sequential | — | ✅ **Done** — code + test (iterates + stops on failure) |
+| FR-014 phase skip | Phase 1 | ⚠️ Code exists, no `cancelled`, **no test** |
+| FR-016 staging validator | Phase 2 | ⚠️ Script exists, not called from WUD, **no test** |
+| FR-017 logging (3-tier) | Phase 1 | 🔲 Not implemented, **no test** |
+| FR-018 rip-cord bail | Phase 2 | 🔲 Not implemented, **no test** |
 | **Testing Requirements** | | |
 | TR-001 E2E WUD lifecycle | Phase 2, 3 | 🔲 |
 | TR-002 wud-branch validation | Phase 2 | 🔲 |
