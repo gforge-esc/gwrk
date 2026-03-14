@@ -51,7 +51,7 @@
           "id": "T005",
           "title": "Retrofit queryable commands for --format json",
           "description": "Retrofit tasks.ts (list, next, ready subcommands) and status.ts to use CommandOutput from output.ts. When --format json: tasks list → { tasks: [...] }, tasks next → { task: {...} | null }, status → { project, specs, agents }. Human mode unchanged. Per plan Phase 1.2 queryable command table.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh"
         },
         {

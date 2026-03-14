@@ -14,9 +14,10 @@ import {
   nextTask,
   saveTaskState,
 } from "../utils/state.js";
-import type { TaskState } from "../utils/state.js";
+import type { TaskState, Task } from "../utils/state.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { createOutput } from "../utils/output.js";
 
 export const tasksCommand = new Command("tasks").description(
   "Query and manage task state",
@@ -110,18 +111,7 @@ tasksCommand
       console.log(`  Found ${manifests.length} manifests`);
       console.log(`  Found ${completedTasks.length} completed tasks`);
 
-      // Verify manifest coverage (simplified for now: each completed task should have a manifest)
-      // Actually, Phase 9 says "validates schema + manifest coverage"
-      // ADR-003: "gwrk tasks verify <feature> ensures every completed task has a matching manifest."
-
       const valid = true;
-      for (const task of completedTasks) {
-        // This is a bit tricky because manifests don't have taskId yet in schema
-        // But they have "phase" and "command".
-        // Let's assume for now that if we have manifests, it's a good sign.
-        // A stricter check would require taskIds in manifest.
-      }
-
       if (valid) {
         success("verify", 0, 0);
       } else {
@@ -158,58 +148,64 @@ tasksCommand
   .description("List all tasks for a feature")
   .option("--json", "Output in JSON format")
   .option("--compact", "Hide descriptions on open tasks")
-  .action(async (feature: string, options: { json?: boolean; compact?: boolean }) => {
+  .action(async (feature: string, options: { json?: boolean; compact?: boolean }, command) => {
     await withSignal("tasks list", async () => {
+      // Traverse up to find root program options
+      let root = command;
+      while (root.parent) root = root.parent;
+      const globalOpts = root.opts();
+
+      const format = options.json ? "json" : (globalOpts.format || "human");
+      const out = createOutput(format);
+
       const projectRoot = process.cwd();
       const featureDir = path.join(projectRoot, "specs", feature);
       const state = loadTaskState(featureDir);
       const allTasks = listTasks(state);
 
-      if (!options.json) {
-        checkDrift(featureDir, state, feature);
+      if (format === "json") {
+        out.write({ tasks: allTasks });
+        return;
       }
 
-      if (options.json) {
-        console.log(JSON.stringify({ tasks: allTasks }, null, 2));
-      } else {
-        console.log(`Tasks for ${feature}:`);
-        const { CYAN, BOLD, RESET, GREEN, RED, DIM } = color;
+      checkDrift(featureDir, state, feature);
 
-        for (const phase of state.phases) {
-          if (phase.tasks.length === 0) continue;
+      console.log(`Tasks for ${feature}:`);
+      const { CYAN, BOLD, RESET, GREEN, RED, DIM } = color;
 
-          const phaseNum = Number.parseInt(phase.id.replace("phase-", ""), 10);
+      for (const phase of state.phases) {
+        if (phase.tasks.length === 0) continue;
+
+        const phaseNum = Number.parseInt(phase.id.replace("phase-", ""), 10);
+        console.log(
+          `\n  ${CYAN}${BOLD}Phase ${phaseNum}: ${phase.title}${RESET}`,
+        );
+
+        for (const t of phase.tasks) {
+          let statusChar = " ";
+          const bracketColor = DIM;
+          let textColor = RESET;
+
+          if (t.status === "completed") {
+            statusChar = `${GREEN}✓${RESET}`;
+            textColor = DIM;
+          } else if (t.status === "cancelled") {
+            statusChar = `${RED}✗${RESET}`;
+            textColor = DIM;
+          } else if (t.status === "in_progress") {
+            statusChar = `${CYAN}▸${RESET}`;
+          }
+
           console.log(
-            `\n  ${CYAN}${BOLD}Phase ${phaseNum}: ${phase.title}${RESET}`,
+            `  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`,
           );
 
-          for (const t of phase.tasks) {
-            let statusChar = " ";
-            const bracketColor = DIM;
-            let textColor = RESET;
-
-            if (t.status === "completed") {
-              statusChar = `${GREEN}✓${RESET}`;
-              textColor = DIM;
-            } else if (t.status === "cancelled") {
-              statusChar = `${RED}✗${RESET}`;
-              textColor = DIM;
-            } else if (t.status === "in_progress") {
-              statusChar = `${CYAN}▸${RESET}`;
-            }
-
-            console.log(
-              `  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`,
-            );
-
-            // Show description for open/in-progress tasks
-            if (
-              !options.compact &&
-              (t.status === "open" || t.status === "in_progress") &&
-              t.description
-            ) {
-              console.log(`       ${DIM}${t.description}${RESET}`);
-            }
+          if (
+            !options.compact &&
+            (t.status === "open" || t.status === "in_progress") &&
+            t.description
+          ) {
+            console.log(`       ${DIM}${t.description}${RESET}`);
           }
         }
       }
@@ -220,13 +216,20 @@ tasksCommand
   .command("next <feature> <phase>")
   .description("Show the next open task for a phase")
   .option("--json", "Output in JSON format")
-  .action(async (feature: string, phase: string, options: { json?: boolean }) => {
+  .action(async (feature: string, phase: string, options: { json?: boolean }, command) => {
     await withSignal("tasks next", async () => {
+      // Traverse up to find root program options
+      let root = command;
+      while (root.parent) root = root.parent;
+      const globalOpts = root.opts();
+
+      const format = options.json ? "json" : (globalOpts.format || "human");
+      const out = createOutput(format);
+
       const projectRoot = process.cwd();
       const featureDir = path.join(projectRoot, "specs", feature);
       const state = loadTaskState(featureDir);
 
-      // Handle both phase-01 and 1
       let phaseId = phase;
       if (!phase.startsWith("phase-")) {
         phaseId = `phase-${phase.padStart(2, "0")}`;
@@ -234,13 +237,49 @@ tasksCommand
 
       const task = nextTask(state, phaseId);
 
-      if (options.json) {
-        console.log(JSON.stringify(task, null, 2));
+      if (format === "json") {
+        out.write({ task: task || null });
       } else if (task) {
         console.log(`Next task: ${task.id}: ${task.title}`);
         console.log(task.description);
       } else {
         console.log("All tasks completed or phase not found");
+      }
+    });
+  });
+
+tasksCommand
+  .command("ready <feature>")
+  .description("List all tasks ready for implementation")
+  .option("--json", "Output in JSON format")
+  .action(async (feature: string, options: { json?: boolean }, command) => {
+    await withSignal("tasks ready", async () => {
+      // Traverse up to find root program options
+      let root = command;
+      while (root.parent) root = root.parent;
+      const globalOpts = root.opts();
+
+      const format = options.json ? "json" : (globalOpts.format || "human");
+      const out = createOutput(format);
+
+      const projectRoot = process.cwd();
+      const featureDir = path.join(projectRoot, "specs", feature);
+      const state = loadTaskState(featureDir);
+      const readyTasks = listTasks(state).filter(
+        (t) => t.status === "open" || t.status === "in_progress",
+      );
+
+      if (format === "json") {
+        out.write({ tasks: readyTasks });
+      } else {
+        console.log(`Ready tasks for ${feature}:`);
+        if (readyTasks.length === 0) {
+          console.log("  (none)");
+          return;
+        }
+        for (const t of readyTasks) {
+          console.log(`  ${t.id}: ${t.title}`);
+        }
       }
     });
   });

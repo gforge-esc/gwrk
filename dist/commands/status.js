@@ -1,24 +1,50 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Command } from "commander";
 import { readPid } from "../server/pid.js";
 import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
+import { createOutput } from "../utils/output.js";
+import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 export const statusCommand = new Command("status")
     .description("Show gwrk build server and system status")
     .option("--json", "Output status as JSON")
-    .action(async (options) => {
+    .action(async (options, command) => {
     await withSignal("status", async () => {
+        // Traverse up to find root program options
+        let root = command;
+        while (root.parent)
+            root = root.parent;
+        const globalOpts = root.opts();
+        const format = options.json ? "json" : (globalOpts.format || "human");
+        const out = createOutput(format);
         const projectRoot = process.cwd();
         const config = loadConfig(projectRoot);
+        if (format === "json") {
+            const branch = getCurrentBranch(projectRoot);
+            const isDirty = !isWorkingTreeClean(projectRoot);
+            const specsDir = path.join(projectRoot, "specs");
+            const specs = fs.existsSync(specsDir)
+                ? fs
+                    .readdirSync(specsDir)
+                    .filter((d) => fs.statSync(path.join(specsDir, d)).isDirectory())
+                : [];
+            out.write({
+                project: {
+                    name: config.project.name,
+                    root: projectRoot,
+                    git: { branch, clean: !isDirty },
+                },
+                specs: specs.length,
+                agents: config.agents,
+            });
+            return;
+        }
         const pid = readPid();
         if (!pid) {
-            if (options.json) {
-                console.log(JSON.stringify({ server: { status: "stopped" } }, null, 2));
-            }
-            else {
-                console.log(`\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}\n`);
-            }
+            console.log(`\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}\n`);
             return;
         }
         const url = `http://${config.server.host}:${config.server.port}/api/status`;
@@ -28,20 +54,11 @@ export const statusCommand = new Command("status")
                 throw new Error(`Server returned ${response.status}`);
             }
             const status = (await response.json());
-            if (options.json) {
-                console.log(JSON.stringify(status, null, 2));
-                return;
-            }
             printStatus(status);
         }
         catch (err) {
-            if (options.json) {
-                console.log(JSON.stringify({ server: { status: "stopped", pid } }, null, 2));
-            }
-            else {
-                console.log(`\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`);
-                console.log(`    ${DIM}Endpoint: ${url}${RESET}\n`);
-            }
+            console.log(`\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`);
+            console.log(`    ${DIM}Endpoint: ${url}${RESET}\n`);
         }
     });
 });
