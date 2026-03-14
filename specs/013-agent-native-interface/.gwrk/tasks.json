@@ -37,7 +37,7 @@
           "id": "T003",
           "title": "Create CommandOutput abstraction",
           "description": "Create src/utils/output.ts implementing the CommandOutput interface and createOutput(format) factory per contracts/output.md. Human mode: write() → stdout as text, info() → stderr. JSON mode: write() → JSON.stringify to stdout, info() → stderr. Create src/utils/output.test.ts with unit tests per TR-002.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh"
         },
         {
