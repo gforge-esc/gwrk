@@ -4,12 +4,12 @@
 
 ## Summary
 
-The ship loop implements Pillar 3's autonomous execution kernel. The core machinery (ship.ts, work-until-done.sh, support scripts) is **~80% functional** from prior work. This plan addresses the **remaining delta**: structured log digest system, phase-skip logic in ship.ts, rip-cord bail on circuit break, staging validator integration in the orchestrator, and spec-level artifact alignment.
+The ship loop implements Pillar 3's autonomous execution kernel (Foxtrot Charlie: Shipping → Throughput). Core machinery (ship.ts, work-until-done.sh, support scripts) is ~80% functional. This plan addresses the remaining delta: structured log digest system with full log git-tracking, phase-skip logic, rip-cord bail on circuit break, and staging validator integration.
 
-Three phases:
-1. **Digest & Phase-Skip** — Structured event sidecar, digest assembly in manifest, phase-skip logic (FR-014, FR-017)
-2. **Resilience & Bail** — Rip-cord bail on circuit break, staging validator integration in WUD, dirty-tree fail-fast (FR-002, FR-016, FR-018)
-3. **Verification & Artifacts** — Tests, gate validation, contracts, spec artifacts (TR-001→TR-008)
+Three phases, 12 tasks, ≤5 file changes per phase:
+1. **Digest & Phase-Skip** — Structured event sidecar, digest assembly, log rehoming, phase-skip logic
+2. **Resilience & Bail** — Rip-cord bail, staging validator integration, dirty-tree fail-fast
+3. **Verification & Artifacts** — Contracts, gap analysis, full suite
 
 ---
 
@@ -17,95 +17,132 @@ Three phases:
 
 ### Phase 1: Digest & Phase-Skip
 
-Implement the structured log digest system (FR-017) and phase-skip logic (FR-014). The digest system uses a sidecar `.events` file rather than parsing raw agent output.
+Implement the structured log digest system (FR-017) and phase-skip logic (FR-014). FR-017 now git-tracks ALL raw logs to `specs/<feature>/.gwrk/runs/` (ADR-003 §5 updated: measured 10KB avg, 115KB max). Digest serves as a quick index into full logs.
 
-**Files (4):**
-- `scripts/dev/work-until-done.sh` (MODIFY: add `emit_event()` function that writes structured stage events to `.runs/<feature>_p<phase>.events` sidecar file. Call after each stage transition.)
-- `src/commands/ship.ts` (MODIFY: add phase-skip logic — check `tasks.json` for phases where all tasks are `completed` or `cancelled`, skip with log message. Add digest assembly — read `.events` sidecar, write to `digest[]` in manifest.)
-- `src/utils/manifest.ts` (MODIFY: add `digest: string[]` to manifest schema and `assembleDigest()` function that reads sidecar events file.)
-- `src/commands/ship.test.ts` (MODIFY: add tests for phase-skip and digest assembly.)
+**Files (5):**
+- `scripts/dev/work-until-done.sh` (MODIFY: add `emit_event()` function writing structured stage events to `.runs/<feature>_p<phase>.events` sidecar. Add log copy to `specs/<feature>/.gwrk/runs/<timestamp>_<stage>.log` on completion.)
+- `src/utils/manifest.ts` (MODIFY: add `digest: string[]` to `RunManifest` Zod schema. Add `assembleDigest()` that reads sidecar `.events` file.)
+- `src/commands/ship.ts` (MODIFY: add `isPhaseComplete()` helper — checks if all tasks are `completed` or `cancelled`. Add phase-skip logic in all-phases path. Wire `assembleDigest()` into `writeManifest()` call.)
+- `src/commands/ship.test.ts` (MODIFY: add tests for phase-skip (completed, cancelled+completed, mixed) and digest assembly.)
+- `specs/004-ship-loop/.gwrk/runs/.gitkeep` (NEW: ensure runs dir exists for log commits.)
 
-**Requirements Addressed:** FR-014, FR-017, US-007, US-009, TC-007
+**Requirements Addressed:** FR-012, FR-014, FR-017, US-007, US-009, TC-007
 
-**Dependencies:** None (Phase 1 is independent)
+**Dependencies:** None
 
 **Contract Mapping:**
-- `contracts/ship.md` → `skipCompletedPhases()` → `src/commands/ship.ts`
+- `contracts/ship.md` → `isPhaseComplete()` → `src/commands/ship.ts`
+- `contracts/ship.md` → `assembleDigest()` → `src/utils/manifest.ts`
 - `contracts/implement.md` → `emit_event()` → `scripts/dev/work-until-done.sh`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| TC-002 Fail-Fast Config | Zod schema for `RunManifest` — no `.default()` on digest |
+| TC-003 TypeScript Only | manifest.ts changes are `.ts` |
+| TC-007 Shell Scripts ARE the Product | `emit_event()` stays in bash, not TS |
+| compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-005 | Unit | `ship.ts` | Phase with all completed tasks is skipped |
-| TR-005 | Unit | `ship.ts` | Phase with cancelled + completed tasks is skipped |
-| TR-005 | Unit | `ship.ts` | Phase with mixed open/completed is NOT skipped |
-| TR-007 | E2E | `scripts-e2e.test.ts` | Manifest contains non-empty `digest[]` |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Phase with all `completed` tasks is skipped |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Phase with `cancelled` + `completed` is skipped |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Phase with mixed open/completed is NOT skipped |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Manifest contains non-empty `digest[]` from `.events` sidecar |
+| TR-007 | E2E | `src/scripts-e2e.test.ts` | WUD run produces `.events` sidecar file |
 
 #### Done When
-- `pnpm vitest run src/commands/ship.test.ts` exits 0 with phase-skip tests
-- `jq -e '.digest | length > 0'` on a test manifest exits 0
+- `pnpm vitest run src/commands/ship.test.ts` exits 0 with phase-skip and digest tests
+- `grep -q 'emit_event' scripts/dev/work-until-done.sh` exits 0
+- `grep -qE 'cancelled|canceled' src/commands/ship.ts` exits 0
+- `jq -e '.digest' src/utils/manifest.ts 2>/dev/null || grep -q 'digest' src/utils/manifest.ts` exits 0
 
 ---
 
 ### Phase 2: Resilience & Bail
 
-Wire the rip-cord bail (FR-018), integrate staging validator into WUD (FR-016), and enforce dirty-tree fail-fast (FR-002).
+Wire the rip-cord bail (FR-018), integrate staging validator (FR-016), and enforce dirty-tree fail-fast (FR-002).
 
-**Files (3):**
-- `scripts/dev/work-until-done.sh` (MODIFY: add `emit_event "CIRCUIT_BREAK: ..."` on circuit break. Add `failureContext` JSON to state file on CIRCUIT_BREAK. Add `validate-staging.sh` call after IMPLEMENT stage, before push. Add dirty-tree check at startup with fail-fast.)
-- `scripts/dev/wud-branch.sh` (MODIFY: verify dirty-tree check emits correct error message per FR-002.)
-- `src/scripts-e2e.test.ts` (MODIFY: add test for circuit-breaker state file containing `failureContext`.)
+**Files (4):**
+- `scripts/dev/work-until-done.sh` (MODIFY: add `emit_event "CIRCUIT_BREAK: ..."` on circuit break. Write `failureContext` JSON to state file: `openTasks`, `lastVerdict`, `iterationTimeline`, `digest`. Call `validate-staging.sh` after IMPLEMENT, before push. Add dirty-tree guard at startup.)
+- `scripts/dev/wud-branch.sh` (MODIFY: add `git status --porcelain` check. Non-empty → emit `Dirty working tree — commit or stash before shipping` to stderr, exit 1.)
+- `scripts/dev/validate-staging.sh` (VERIFY: confirm existing validator handles all FR-016 rejection cases.)
+- `src/scripts-e2e.test.ts` (MODIFY: add test for circuit-break state file containing `failureContext`; add test for dirty-tree rejection.)
 
-**Requirements Addressed:** FR-002, FR-016, FR-018, US-004, US-010, US-011
+**Requirements Addressed:** FR-002, FR-016, FR-018, US-004, US-010, US-011, TC-006, TC-008
 
-**Dependencies:** Phase 1 (uses `emit_event()`)
+**Dependencies:** Phase 1 (`emit_event()`)
 
 **Contract Mapping:**
-- `contracts/branch.md` → dirty-tree → abort with message → `wud-branch.sh`
-- `contracts/implement.md` → staging validation → `validate-staging.sh`
+- `contracts/branch.md` → dirty-tree guard → `scripts/dev/wud-branch.sh`
+- `contracts/implement.md` → staging validation → `scripts/dev/validate-staging.sh`
+- `contracts/wud.md` → `CIRCUIT_BREAK` → `failureContext` → `scripts/dev/work-until-done.sh`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| TC-006 Crash Safety | State flushed before every stage transition |
+| TC-007 Shell Scripts ARE the Product | All changes in bash |
+| TC-008 Staging Scope | validate-staging.sh rejects out-of-scope |
+| compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | E2E | `scripts-e2e.test.ts` | Circuit break produces state file with `failureContext` |
-| TR-002 | Shell | `wud-branch.sh` | Dirty tree exits 1 with correct message |
-| TR-008 | Shell | `validate-staging.sh` | Out-of-scope files rejected |
+| TR-001 | E2E | `src/scripts-e2e.test.ts` | Circuit break produces state file with `failureContext` |
+| TR-002 | Shell | `scripts/dev/wud-branch.sh` | Dirty tree exits 1 with correct message |
+| TR-008 | Shell | `scripts/dev/validate-staging.sh` | Out-of-scope files → exit 1 |
+| TR-008 | Shell | `scripts/dev/validate-staging.sh` | Build plan staged → exit 1 |
 
 #### Done When
-- `jq -e '.failureContext.openTasks' .runs/test_p1.state` exits 0 (on test data)
-- `validate-staging.sh` rejects out-of-scope files → exit 1
-- `wud-branch.sh` on dirty tree → exit 1, stderr contains `Dirty working tree`
+- `grep -qE 'failureContext|failure_context' scripts/dev/work-until-done.sh` exits 0
+- `grep -q 'validate-staging' scripts/dev/work-until-done.sh` exits 0
+- `grep -qE 'porcelain|Dirty working tree' scripts/dev/wud-branch.sh` exits 0
+- `pnpm vitest run src/scripts-e2e.test.ts` exits 0
 
 ---
 
 ### Phase 3: Verification & Artifacts
 
-Run all gate scripts, verify full test suite, write contracts, update spec-level artifacts.
+Update all contracts to reflect implementation reality. Rewrite gap-analysis. Run full verification.
 
 **Files (8):**
-- `specs/004-ship-loop/contracts/ship.md` (MODIFY: update with phase-skip, digest assembly, manifest schema)
-- `specs/004-ship-loop/contracts/implement.md` (MODIFY: update with emit_event, staging validation)
-- `specs/004-ship-loop/contracts/branch.md` (MODIFY: document dirty-tree fail-fast)
-- `specs/004-ship-loop/contracts/verdict.md` (VERIFY: ensure GO/NO-GO format matches FR-005)
-- `specs/004-ship-loop/contracts/wud.md` (MODIFY: update state machine diagram with CIRCUIT_BREAK → failureContext)
-- `specs/004-ship-loop/contracts/pr.md` (VERIFY: PR creation and CI wait contract)
-- `specs/004-ship-loop/gap-analysis.md` (REWRITE: reflect current state)
-- `specs/004-ship-loop/checklists/requirements.md` (REWRITE: against new spec)
+- `specs/004-ship-loop/contracts/ship.md` (MODIFY: add `isPhaseComplete()`, `assembleDigest()`, manifest schema with `digest[]`)
+- `specs/004-ship-loop/contracts/implement.md` (MODIFY: add `emit_event()`, staging validation call, log rehoming)
+- `specs/004-ship-loop/contracts/branch.md` (MODIFY: add dirty-tree fail-fast contract)
+- `specs/004-ship-loop/contracts/wud.md` (MODIFY: add `CIRCUIT_BREAK` → `failureContext` state machine transition)
+- `specs/004-ship-loop/contracts/verdict.md` (VERIFY: GO/NO-GO format matches FR-005)
+- `specs/004-ship-loop/contracts/pr.md` (VERIFY: PR creation + CI wait contract)
+- `specs/004-ship-loop/gap-analysis.md` (REWRITE: reflect current implementation vs new spec)
+- `specs/004-ship-loop/checklists/requirements.md` (REWRITE: against new 18 FRs)
 
-**Requirements Addressed:** All FRs verified, TR-001→TR-008 validated
+**Requirements Addressed:** All FRs verified, all TRs validated, all VRs exercised
 
 **Dependencies:** Phase 1, Phase 2
+
+**Contract Mapping:**
+- All `contracts/*.md` files updated to match implementation
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| I-GW-S01 Spec-First | Contracts must match spec |
+| compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-001→TR-008 | All | All targets | Full test suite passes |
+| TR-001 | E2E | `src/scripts-e2e.test.ts` | Full WUD lifecycle |
+| TR-005 | Unit | `src/commands/ship.test.ts` | All ship.ts tests pass |
+| TR-006 | CLI | `src/cli.e2e.test.ts` | `gwrk ship --help` correct |
+| TR-012 | Integration | `pnpm test` | Full suite passes |
 
 #### Done When
-- `pnpm test` exits 0 (full suite)
+- `pnpm test` exits 0
 - `pnpm build` exits 0
-- All gate scripts in `specs/004-ship-loop/gates/` exit 0
-- All contracts reflect current implementation
+- `bash specs/004-ship-loop/gates/run-all-gates.sh` exits 0 (12/12 pass)
+- All contracts in `specs/004-ship-loop/contracts/` reference current implementation
 
 ---
 
@@ -115,7 +152,7 @@ Run all gate scripts, verify full test suite, write contracts, update spec-level
 |---|---|---|
 | `TaskState` | `src/utils/state.ts` | `ship.ts`, `tasks.ts` |
 | `AgentBackend` | `src/utils/config.ts` | `ship.ts`, `dispatch.ts`, `agent-run.sh` |
-| `RunManifest` | `src/utils/manifest.ts` | `ship.ts`, `gwrk harvest` (future) |
+| `RunManifest` | `src/utils/manifest.ts` | `ship.ts`, `gwrk harvest` (future, F002) |
 | `ShipRunState` | `.runs/*.state` (JSON) | `work-until-done.sh`, `ship.ts` |
 
 ---
@@ -130,9 +167,9 @@ _No mockups exist for this feature._
 
 | Spec Item | Title | Reason | Target |
 |---|---|---|---|
-| FR-006 (partial) | PR dedup (update vs create) | Edge case, low frequency | F004v2 |
-| `gwrk harvest` | SQLite manifest harvesting | Build server concern, not ship concern | F002 Phase 4 |
-| Review verdict pinning | Pin verdict format in contract | Low risk currently | F004v2 |
+| FR-006 (partial) | PR dedup (update existing vs create new) | Edge case, low frequency | F004v2 |
+| `gwrk harvest` | SQLite manifest harvesting from git-tracked runs/ | Build server concern (ADR-003 §4), not ship concern | F002 Phase 4 |
+| VR-001 (partial) | Full E2E: ship → manifest → SQLite → PR | Requires build server harvest loop | F002 + F004v2 |
 
 ---
 
@@ -140,20 +177,67 @@ _No mockups exist for this feature._
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| FR-001 (ship command) | — | ✅ Done (ship.ts exists, 389 lines) |
-| FR-002 (branch + dirty-tree) | Phase 2 | 🔲 dirty-tree fail-fast needed |
-| FR-003 (pre-flight gates) | — | ✅ Done (WUD has pre-flight) |
-| FR-004 (state machine) | — | ✅ Done (WUD 600 lines) |
-| FR-005 (review dispatch) | — | ✅ Done (WUD has review stages) |
-| FR-006 (PR + CI) | — | ✅ Done (WUD creates PR, CI wait) |
-| FR-007 (circuit breaker) | — | ✅ Done (WUD MAX_ITERATIONS) |
-| FR-008 (crash recovery) | — | ✅ Done (WUD save/load_state) |
-| FR-009 (agent config) | — | ✅ Done (ship.ts config resolution) |
-| FR-010 (timestamped log) | — | ✅ Done (WUD creates .runs/ log) |
-| FR-011 (SQLite recording) | — | ✅ Done (ship.ts startRun/finishRun) |
-| FR-012 (execution manifest) | — | ✅ Done (manifest.ts, 100 lines) |
-| FR-013 (all-phases sequential) | — | ✅ Done (ship.ts iterates phases) |
-| FR-014 (phase skip) | Phase 1 | 🔲 Need to add completed/cancelled check |
-| FR-016 (staging validator) | Phase 2 | 🔲 Need to integrate into WUD |
-| FR-017 (log digest) | Phase 1 | 🔲 Need emit_event + digest assembly |
-| FR-018 (rip-cord bail) | Phase 2 | 🔲 Need failureContext on circuit break |
+| **User Scenarios** | | |
+| US-001 Ship Single Phase | — | ✅ Done (ship.ts + WUD exist) |
+| US-002 Hard Gate Pre-flight | — | ✅ Done (WUD pre-flight exists) |
+| US-003 Ship All Phases | Phase 1 | 🔲 Phase-skip needed |
+| US-004 Circuit Breaker | Phase 2 | 🔲 failureContext needed |
+| US-005 Crash Recovery | — | ✅ Done (save/load_state) |
+| US-006 PR Creation & CI | — | ✅ Done (WUD PR + CI wait) |
+| US-007 Manifest + Digest | Phase 1 | 🔲 Digest assembly + log rehoming |
+| US-008 Agent Config | — | ✅ Done (config resolution) |
+| US-009 Phase-Skip | Phase 1 | 🔲 isPhaseComplete() |
+| US-010 Staging Validation | Phase 2 | 🔲 WUD integration |
+| US-011 Rip-Cord Bail | Phase 2 | 🔲 failureContext |
+| **Functional Requirements** | | |
+| FR-001 ship command | — | ✅ Done |
+| FR-002 branch + dirty-tree | Phase 2 | 🔲 Dirty-tree fail-fast |
+| FR-003 pre-flight gates | — | ✅ Done |
+| FR-004 state machine | — | ✅ Done |
+| FR-005 review dispatch | — | ✅ Done |
+| FR-006 PR + CI | — | ✅ Done |
+| FR-007 circuit breaker | — | ✅ Done |
+| FR-008 crash recovery | — | ✅ Done |
+| FR-009 agent config | — | ✅ Done |
+| FR-010 timestamped log | — | ✅ Done |
+| FR-011 SQLite recording | — | ✅ Done |
+| FR-012 execution manifest | Phase 1 | 🔲 Add digest[] |
+| FR-013 all-phases sequential | — | ✅ Done |
+| FR-014 phase skip | Phase 1 | 🔲 isPhaseComplete() |
+| FR-016 staging validator | Phase 2 | 🔲 WUD integration |
+| FR-017 logging (3-tier) | Phase 1 | 🔲 emit_event + log rehoming |
+| FR-018 rip-cord bail | Phase 2 | 🔲 failureContext |
+| **Testing Requirements** | | |
+| TR-001 E2E WUD lifecycle | Phase 2, 3 | 🔲 |
+| TR-002 wud-branch validation | Phase 2 | 🔲 |
+| TR-003 wud-verdict validation | Phase 3 | ✅ (verify) |
+| TR-004 wud-ci-wait validation | Phase 3 | ✅ (verify) |
+| TR-005 ship.test.ts | Phase 1 | 🔲 |
+| TR-006 CLI help | Phase 3 | ✅ (verify) |
+| TR-007 E2E manifest + digest | Phase 1, 3 | 🔲 |
+| TR-008 staging validator | Phase 2 | 🔲 |
+| **Technical Constraints** | | |
+| TC-001 Air-Gapped | All | ✅ Enforced |
+| TC-002 Fail-Fast Config | Phase 1 | ✅ (Zod, no defaults) |
+| TC-003 TypeScript Only | All | ✅ Enforced |
+| TC-004 Gate Integrity | All | ✅ Enforced |
+| TC-005 Branch Isolation | — | ✅ Done |
+| TC-006 Crash Safety | Phase 2 | 🔲 (failureContext flush) |
+| TC-007 Shell = Product | Phase 1, 2 | ✅ WUD stays bash |
+| TC-008 Staging Scope | Phase 2 | 🔲 |
+| **Success Criteria** | | |
+| SC-001 Full lifecycle | — | ✅ Done |
+| SC-002 All-phases + skip | Phase 1 | 🔲 |
+| SC-003 Audit-ready records | Phase 1 | 🔲 |
+| SC-004 Circuit breaker + recovery | Phase 2 | 🔲 |
+| SC-005 Help output | — | ✅ Done |
+| SC-006 Staging rejects | Phase 2 | 🔲 |
+| **Verification Reqts** | | |
+| VR-001 E2E ship→manifest→PR | Phase 3 | 🔲 (partial — harvest deferred) |
+| VR-002 Dry-run | — | ✅ Done |
+| VR-003 Help contract | — | ✅ Done |
+| VR-004 Staging validator | Phase 2 | 🔲 |
+| **Data Model** | | |
+| DM-001 Ship Run State | Phase 2 | 🔲 (failureContext) |
+| DM-002 Execution Manifest | Phase 1 | 🔲 (digest[]) |
+| DM-003 SQLite runs table | — | ✅ Done |
