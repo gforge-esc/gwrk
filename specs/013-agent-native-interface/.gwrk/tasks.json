@@ -129,8 +129,8 @@
         {
           "id": "T013",
           "title": "Create Layer 2 agent protections",
-          "description": "Create src/utils/agent-layer.ts with processForAgent(output) composing: stripAnsi() (remove \\x1b[...m sequences from src/utils/format.ts), guardBinary() (detect null bytes or >30% non-printable → '[binary content, N bytes]'), truncateOverflow() (trigger: >8192 bytes → first 100 lines + '/tmp/gwrk-output-<hash>.txt' reference). Create src/utils/agent-layer.test.ts per TR-003.",
-          "status": "completed",
+          "description": "Create src/utils/agent-layer.ts with processForAgent(output) composing: stripAnsi() (remove \\x1b[...m sequences from src/utils/format.ts), guardBinary() (detect null bytes or >30% non-printable → '[binary content, N bytes]'), truncateOverflow() (trigger: >8192 bytes → first 100 lines + '/tmp/gwrk-output-<hash>.txt' reference). Create src/utils/agent-layer.test.ts per TR-003.\n\nREVIEW FAIL (uat): US-003.3 — Expected: Large output (>8KB) is truncated and written to a file. Actual: Output is not truncated if written in chunks < 8KB (e.g., line-by-line). Fix: Use a stateful stream wrapper in the patched process.stdout.write to track total bytes written.",
+          "status": "open",
           "gateScript": "gates/T013-gate.sh"
         },
         {
@@ -143,8 +143,8 @@
         {
           "id": "T015",
           "title": "Add stdin acceptance to define plan",
-          "description": "Modify src/commands/define.ts: when process.stdin.isTTY is false, read stdin as JSON, write to /tmp/gwrk-discovery-<timestamp>.json, pass contextPath to agent dispatch prompt template. Enables pipeline: gwrk project discover --format json | gwrk define plan --spec <spec> --format json. Per plan Phase 3.2.",
-          "status": "completed",
+          "description": "Modify src/commands/define.ts: when process.stdin.isTTY is false, read stdin as JSON, write to /tmp/gwrk-discovery-<timestamp>.json, pass contextPath to agent dispatch prompt template. Enables pipeline: gwrk project discover --format json | gwrk define plan --spec <spec> --format json. Per plan Phase 3.2.\n\nREVIEW FAIL (uat): Phase 3.2 — Expected: define plan accepts discovery JSON and passes context to agent. Actual: Agent dispatch fails with 'Unknown argument: c' because gemini CLI does not support -c. Fix: Update src/utils/agent.ts to pass context via a supported flag or method for the gemini backend.",
+          "status": "open",
           "gateScript": "gates/T015-gate.sh"
         },
         {
@@ -157,8 +157,8 @@
         {
           "id": "T017",
           "title": "Enrich PhaseSchema with optional fields",
-          "description": "Modify src/utils/state.ts: add optional fields to PhaseSchema: objective (z.string().optional()), scope ({in_scope, out_of_scope} z.object().optional()), classification_summary (z.record(z.number()).optional()), inputs ({spec_refs, project_signals} z.object().optional()). All .optional() — existing tasks.json files remain valid. Per plan Phase 3.4.",
-          "status": "completed",
+          "description": "Modify src/utils/state.ts: add optional fields to PhaseSchema: objective (z.string().optional()), scope ({in_scope, out_of_scope} z.object().optional()), classification_summary (z.record(z.number()).optional()), inputs ({spec_refs, project_signals} z.object().optional()). All .optional() — existing tasks.json files remain valid. Per plan Phase 3.4.\n\nREVIEW FAIL (uat): Phase 3.4 — Expected: define tasks populates new optional phase fields (objective, scope, inputs). Actual: Fields are missing from generated tasks.json. Fix: Update src/utils/parser.ts and src/commands/tasks-generate.ts to extract and populate these fields from plan.md.",
+          "status": "open",
           "gateScript": "gates/T017-gate.sh"
         }
       ],

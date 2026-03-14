@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-14T06:07:12.672Z_ship_p03",
+  "feature": "013-agent-native-interface",
+  "phase": "phase-03",
+  "command": "ship",
+  "agent": "codex-cloud",
+  "model": "unknown",
+  "startedAt": "2026-03-14T06:07:12.672Z",
+  "finishedAt": "2026-03-14T06:07:14.852Z",
+  "durationS": 2,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 93,
+  "linesAdded": 408,
+  "linesDeleted": 2816,
+  "gitCommit": "8efe0bb79cf519ade5798a5708c4219ca2cd9a1f",
+  "gitBranch": "feat/013-agent-native-interface"
+}

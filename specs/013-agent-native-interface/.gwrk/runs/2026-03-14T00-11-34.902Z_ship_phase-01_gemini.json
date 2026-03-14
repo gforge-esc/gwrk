@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-14T00:11:34.902Z_ship_p01",
+  "feature": "013-agent-native-interface",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-14T00:11:34.902Z",
+  "finishedAt": "2026-03-14T00:55:40.555Z",
+  "durationS": 2645,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 10,
+  "linesDeleted": 11,
+  "gitCommit": "f69abf9949e9d7955b3841f0085225c1d8ade54b",
+  "gitBranch": "feat/013-agent-native-interface"
+}
