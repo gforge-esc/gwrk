@@ -82,7 +82,6 @@ done
 ALLOWED_PREFIXES=(
   "src/"
   "specs/${FEATURE}/"
-  "specs/000-build-plan.md"
   "docs/"
   "scripts/"
   "test/"
@@ -108,6 +107,14 @@ while IFS= read -r file; do
     VIOLATIONS+=("Out-of-scope file staged: $file")
   fi
 done < <(git diff --cached --name-only 2>/dev/null)
+
+# ──────────────────────────────────────────────────────────────────
+# Check 4: Build plan protection (Design Mandate Rule 3)
+# Agents propose, humans approve build plan updates.
+# ──────────────────────────────────────────────────────────────────
+if git diff --cached --name-only 2>/dev/null | grep -qxF "specs/000-build-plan.md"; then
+  VIOLATIONS+=("Build plan staged: specs/000-build-plan.md — agents must not modify the build plan (Rule 3)")
+fi
 
 # ──────────────────────────────────────────────────────────────────
 # Report

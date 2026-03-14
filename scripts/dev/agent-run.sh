@@ -241,6 +241,18 @@ if [[ "$WORKFLOW" == "implement" ]] || [[ "$WORKFLOW" == "review-code" ]] || [[ 
 fi
 
 echo -e "${CYAN}└─────────────────────────────────────────────┘${RESET}"
+
+# Config drift guard (Design Mandate Rule 6)
+if [[ -f "$REPO_ROOT/.gwrkrc.json" ]]; then
+  CONFIGURED_AGENT=$(jq -r ".agents.${WORKFLOW} // .agents.implement // empty" "$REPO_ROOT/.gwrkrc.json" 2>/dev/null)
+  ACTIVE_AGENT="${AGENT_BACKEND:-gemini}"
+  if [[ -n "$CONFIGURED_AGENT" ]] && [[ "$CONFIGURED_AGENT" != "$ACTIVE_AGENT" ]]; then
+    echo ""
+    echo -e "${YELLOW}⚠ Config drift: .gwrkrc.json says '${CONFIGURED_AGENT}' but running '${ACTIVE_AGENT}'${RESET}"
+    echo -e "${DIM}  Fix: update .gwrkrc.json or set AGENT_BACKEND=${CONFIGURED_AGENT}${RESET}"
+  fi
+fi
+
 echo ""
 
 # ──────────────────────────────────────────────────────────────────
