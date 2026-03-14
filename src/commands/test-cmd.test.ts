@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testCommand } from "./test.js";
@@ -13,10 +14,6 @@ const mockExecSync = vi.mocked(execSync);
 
 // Fixtures
 const FEATURE = "001-cli-core";
-const SPECS_DIR = path.join(process.cwd(), "specs");
-const FEATURE_DIR = path.join(SPECS_DIR, FEATURE);
-const GWRK_DIR = path.join(FEATURE_DIR, ".gwrk");
-const TASKS_JSON = path.join(GWRK_DIR, "tasks.json");
 
 const SAMPLE_TASKS = {
   featureId: FEATURE,
@@ -61,35 +58,51 @@ const SAMPLE_TASKS = {
 };
 
 describe("testCommand", () => {
+  let tempDir: string;
+  let featureDir: string;
+  let gwrkDir: string;
+  let tasksJson: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    fs.mkdirSync(GWRK_DIR, { recursive: true });
-    fs.writeFileSync(TASKS_JSON, JSON.stringify(SAMPLE_TASKS, null, 2));
-    // Create the test files referenced in task descriptions so gwrk test can find them
+
+    // Create isolated temp directory — NEVER operate on real project specs
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-test-cmd-"));
+    featureDir = path.join(tempDir, "specs", FEATURE);
+    gwrkDir = path.join(featureDir, ".gwrk");
+    tasksJson = path.join(gwrkDir, "tasks.json");
+
+    fs.mkdirSync(gwrkDir, { recursive: true });
+    fs.writeFileSync(tasksJson, JSON.stringify(SAMPLE_TASKS, null, 2));
+
+    // Create test file stubs inside the temp project so existsSync checks pass
     const testFiles = [
       "src/commands/init.test.ts",
       "src/db/db.test.ts",
       "src/db/runs.test.ts",
     ];
     for (const f of testFiles) {
-      const abs = path.join(process.cwd(), f);
-      if (!fs.existsSync(abs)) {
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        fs.writeFileSync(abs, "// stub");
-      }
+      const abs = path.join(tempDir, f);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, "// stub");
     }
+
+    // Redirect process.cwd() to temp directory so testCommand operates there
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
   });
 
   afterEach(() => {
-    fs.rmSync(FEATURE_DIR, { recursive: true, force: true });
+    cwdSpy.mockRestore();
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   describe("feature-level run (all phases)", () => {
-    it("scopes vitest to test files extracted from all task descriptions", () => {
+    it("scopes vitest to test files extracted from all task descriptions", async () => {
       // FR-009: gwrk test <feature> runs pnpm vitest run scoped to feature test paths
       mockExecSync.mockReturnValue(Buffer.from(""));
 
-      testCommand.parse([FEATURE], { from: "user" });
+      await testCommand.parseAsync([FEATURE], { from: "user" });
 
       expect(mockExecSync).toHaveBeenCalledWith(
         expect.stringContaining("pnpm vitest run"),
@@ -102,41 +115,35 @@ describe("testCommand", () => {
       expect(call).toContain("src/db/runs.test.ts");
     });
 
-    it("exits 0 when vitest passes", () => {
+    it("exits 0 when vitest passes", async () => {
       // FR-009: exits 0 only if all tests pass
       mockExecSync.mockReturnValue(Buffer.from("Tests passed"));
 
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
-        throw new Error("process.exit");
-      });
-
-      expect(() => testCommand.parse([FEATURE], { from: "user" })).not.toThrow();
-      expect(exitSpy).not.toHaveBeenCalled();
+      process.exitCode = 0;
+      await testCommand.parseAsync([FEATURE], { from: "user" });
+      expect(process.exitCode).toBe(0);
     });
 
-    it("exits 1 when vitest fails", () => {
+    it("exits 1 when vitest fails", async () => {
       // FR-009: exit code 1 on test failures
       const err = Object.assign(new Error("vitest failure"), { status: 1 });
       mockExecSync.mockImplementation(() => {
         throw err;
       });
 
-      const exitSpy = vi
-        .spyOn(process, "exit")
-        .mockImplementation(() => undefined as never);
+      process.exitCode = 0;
+      await testCommand.parseAsync([FEATURE], { from: "user" });
 
-      testCommand.parse([FEATURE], { from: "user" });
-
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
     });
   });
 
   describe("--phase scoping", () => {
-    it("restricts test files to the specified phase only", () => {
+    it("restricts test files to the specified phase only", async () => {
       // FR-009: --phase <N> scopes to that phase's tasks
       mockExecSync.mockReturnValue(Buffer.from(""));
 
-      testCommand.parse([FEATURE, "--phase", "01"], { from: "user" });
+      await testCommand.parseAsync([FEATURE, "--phase", "01"], { from: "user" });
 
       const call = mockExecSync.mock.calls[0][0] as string;
       expect(call).toContain("src/commands/init.test.ts");
@@ -145,19 +152,16 @@ describe("testCommand", () => {
   });
 
   describe("edge cases", () => {
-    it("exits 1 if feature directory does not exist", () => {
+    it("exits 1 if feature directory does not exist", async () => {
       // FR-009: error handled gracefully
-      const exitSpy = vi
-        .spyOn(process, "exit")
-        .mockImplementation(() => undefined as never);
+      process.exitCode = 0;
+      await testCommand.parseAsync(["999-nonexistent"], { from: "user" });
 
-      testCommand.parse(["999-nonexistent"], { from: "user" });
-
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       expect(mockExecSync).not.toHaveBeenCalled();
     });
 
-    it("prints 'No tests found' and exits 0 when phase has no test files", () => {
+    it("prints 'No tests found' and exits 0 when phase has no test files", async () => {
       // FR-009: no-test-file case — exits 0 with message, no vitest invocation
       mockExecSync.mockReturnValue(Buffer.from(""));
 
@@ -179,11 +183,11 @@ describe("testCommand", () => {
           },
         ],
       };
-      fs.writeFileSync(TASKS_JSON, JSON.stringify(noTestTasks, null, 2));
+      fs.writeFileSync(tasksJson, JSON.stringify(noTestTasks, null, 2));
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-      testCommand.parse([FEATURE], { from: "user" });
+      await testCommand.parseAsync([FEATURE], { from: "user" });
 
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("No tests found"),
