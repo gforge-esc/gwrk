@@ -86,8 +86,9 @@ describe("work-until-done.sh execution flow", () => {
     } catch (err) {
       const e = err as { stdout?: string; stderr?: string; status?: number };
       const output = `${e.stdout || ""}\n${e.stderr || ""}`;
-      expect(output).toContain("✗ WORK UNTIL DONE — FAILED");
-      expect(e.status).toBe(1);
+      // WUD now retries on agent failure; with MAX_ITERATIONS=1 it hits circuit breaker
+      expect(output).toContain("will retry");
+      expect(e.status).not.toBe(0);
     }
   });
 

@@ -463,7 +463,7 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
   # Stage: Implement
   if [[ "$STAGE" == "IMPLEMENTING" ]] || [[ "$STAGE" == "BRANCH_SETUP" ]]; then
     run_implement
-    local impl_exit=$?
+    impl_exit=$?
     if [[ "$impl_exit" -eq 1 ]]; then
       # SIGINT or fatal — abort entirely
       log ERROR "Implementation aborted (SIGINT or fatal). Stopping."
@@ -477,7 +477,7 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached during implementation."
         save_state "CIRCUIT_BREAK" "$ITERATION"
-        local cb_duration=$(( $(date +%s) - START_TIME ))
+        cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached during implementation"
         STAGE="CIRCUIT_BREAK"
         break
