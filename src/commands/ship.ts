@@ -24,6 +24,8 @@ import {
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { type TaskState, loadTaskState } from "../utils/state.js";
 
+import { CommandError, withSignal } from "../utils/signal.js";
+
 const { GREEN, DIM, RESET } = color;
 
 /**
@@ -113,7 +115,7 @@ async function shipPhase(
         sourceFiles.length > 0
       ) {
         blocked(`[BLOCKED] No test files found for ${phaseId}`);
-        process.exit(1);
+        throw new CommandError(`No test files found for ${phaseId}`, 1);
       }
     }
   }
@@ -279,6 +281,18 @@ async function shipPhase(
  */
 export const shipCommand = new Command("ship")
   .description("Ship: autonomous branch→implement→review→PR→CI loop")
+  .addHelpText(
+    "after",
+    `
+Type: mutator
+Mutates: git branches, task state, execution manifests
+Formats: human
+Exit codes:
+  0: All phases shipped successfully
+  1: Phase failed or feature not found
+  2: Usage error
+`,
+  )
   .argument("<feature>", "Feature ID")
   .argument("[phase]", "Phase number (omit to ship all phases)")
   .option("--dry-run", "Dry run mode")
@@ -294,90 +308,82 @@ export const shipCommand = new Command("ship")
       phase: string | undefined,
       opts: Record<string, string | boolean | undefined>,
     ) => {
-      const cwd = process.cwd();
-      const config = loadConfig(cwd);
-      const backend = ((opts.agent as string) ||
-        config.agents.implement) as AgentBackend;
+      await withSignal("ship", async () => {
+        const cwd = process.cwd();
+        const config = loadConfig(cwd);
+        const backend = ((opts.agent as string) ||
+          config.agents.implement) as AgentBackend;
 
-      // Validate feature exists before any work
-      const featureSpecDir = path.join(cwd, "specs", feature);
-      if (
-        !fs.existsSync(featureSpecDir) ||
-        !fs.existsSync(path.join(featureSpecDir, "spec.md"))
-      ) {
-        console.error(`Feature not found: specs/${feature}`);
-        console.error("Available features:");
-        const specsDir = path.join(cwd, "specs");
-        if (fs.existsSync(specsDir)) {
-          for (const d of fs.readdirSync(specsDir)) {
-            const fp = path.join(specsDir, d);
-            if (
-              fs.statSync(fp).isDirectory() &&
-              fs.existsSync(path.join(fp, "spec.md"))
-            ) {
-              console.log(`  ${d}`);
-            }
-          }
+        // Validate feature exists before any work
+        const featureSpecDir = path.join(cwd, "specs", feature);
+        if (
+          !fs.existsSync(featureSpecDir) ||
+          !fs.existsSync(path.join(featureSpecDir, "spec.md"))
+        ) {
+          console.error(`Feature not found: specs/${feature}`);
+          throw new CommandError(
+            `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
+            1,
+          );
         }
-        process.exit(1);
-      }
 
-
-      // Determine which phases to ship
-      let phases: string[];
-      if (phase) {
-        phases = [phase];
-      } else {
-        const specDir = path.join(cwd, "specs", feature);
-        const taskState = loadTaskState(specDir);
-        const allPhases = taskState.phases.map((p) =>
-          p.id.replace("phase-", ""),
-        );
-
-        // FR-014: Skip phases where all tasks are already completed
-        phases = allPhases.filter((phaseNum) => {
-          const phaseData = taskState.phases.find(
-            (p) => p.id === `phase-${phaseNum.padStart(2, "0")}`,
+        // Determine which phases to ship
+        let phases: string[];
+        if (phase) {
+          phases = [phase];
+        } else {
+          const specDir = path.join(cwd, "specs", feature);
+          const taskState = loadTaskState(specDir);
+          const allPhases = taskState.phases.map((p) =>
+            p.id.replace("phase-", ""),
           );
-          if (!phaseData) return true;
-          const allComplete = phaseData.tasks.every(
-            (t) => t.status === "completed",
-          );
-          if (allComplete) {
-            console.log(
-              `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
+
+          // FR-014: Skip phases where all tasks are already completed
+          phases = allPhases.filter((phaseNum) => {
+            const phaseData = taskState.phases.find(
+              (p) => p.id === `phase-${phaseNum.padStart(2, "0")}`,
             );
-            return false;
-          }
-          return true;
-        });
+            if (!phaseData) return true;
+            const allComplete = phaseData.tasks.every(
+              (t) => t.status === "completed",
+            );
+            if (allComplete) {
+              console.log(
+                `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
+              );
+              return false;
+            }
+            return true;
+          });
 
-        if (phases.length === 0) {
+          if (phases.length === 0) {
+            console.log(
+              `${GREEN}✓${RESET} All phases complete for ${feature} — nothing to ship`,
+            );
+            return;
+          }
+
           console.log(
-            `${GREEN}✓${RESET} All phases complete for ${feature} — nothing to ship`,
+            `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
           );
+        }
+
+        if (opts.dryRun) {
+          const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
+          for (const p of phases) {
+            dryRunFmt(`${scriptPath} ${feature} ${p}`);
+          }
           return;
         }
 
-        console.log(
-          `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
-        );
-      }
-
-      if (opts.dryRun) {
-        const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
+        // Ship each phase sequentially — stop on first failure
         for (const p of phases) {
-          dryRunFmt(`${scriptPath} ${feature} ${p}`);
+          const exitCode = await shipPhase(feature, p, backend, opts, cwd);
+          if (exitCode !== 0) {
+            process.exitCode = exitCode;
+            return;
+          }
         }
-        return;
-      }
-
-      // Ship each phase sequentially — stop on first failure
-      for (const p of phases) {
-        const exitCode = await shipPhase(feature, p, backend, opts, cwd);
-        if (exitCode !== 0) {
-          process.exit(exitCode);
-        }
-      }
+      });
     },
   );

@@ -214,15 +214,18 @@ run_implement() {
   APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" implement "$FEATURE" "$PHASE"
   local exit_code=$?
   set -e
-  if [[ "$exit_code" -ne 0 ]]; then
-    log ERROR "Implementation failed (exit $exit_code)"
-  fi
 
   local duration=$(( $(date +%s) - start_time ))
   record_run "implement" "$exit_code" "$duration" --workflow "implement"
 
-  if [[ "$exit_code" -ne 0 ]]; then
+  if [[ "$exit_code" -eq 130 ]]; then
+    # SIGINT — human cancelled, abort cleanly
+    log WARN "Implementation interrupted (SIGINT). Aborting."
     return 1
+  elif [[ "$exit_code" -ne 0 ]]; then
+    # Agent failed — return non-zero so WUD can decide to retry
+    log WARN "Implementation failed (exit $exit_code) — will retry"
+    return 2
   fi
 
   # Push after implementation
@@ -459,11 +462,28 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
 
   # Stage: Implement
   if [[ "$STAGE" == "IMPLEMENTING" ]] || [[ "$STAGE" == "BRANCH_SETUP" ]]; then
-    if ! run_implement; then
-      log ERROR "Implementation failed on iteration ${ITERATION}. Aborting."
+    run_implement
+    impl_exit=$?
+    if [[ "$impl_exit" -eq 1 ]]; then
+      # SIGINT or fatal — abort entirely
+      log ERROR "Implementation aborted (SIGINT or fatal). Stopping."
       save_state "FAILED" "$ITERATION"
       STAGE="FAILED"
       break
+    elif [[ "$impl_exit" -eq 2 ]]; then
+      # Agent failure — retry
+      log WARN "Agent failed. Retrying implementation (iteration $((ITERATION + 1)))..."
+      ITERATION=$(( ITERATION + 1 ))
+      if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
+        log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached during implementation."
+        save_state "CIRCUIT_BREAK" "$ITERATION"
+        cb_duration=$(( $(date +%s) - START_TIME ))
+        record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached during implementation"
+        STAGE="CIRCUIT_BREAK"
+        break
+      fi
+      STAGE="IMPLEMENTING"
+      continue
     fi
     STAGE="CODE_REVIEW"
   fi

@@ -64,6 +64,8 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
       }),
     );
 
+    fs.mkdirSync(path.join(tempDir, "specs", "001-cli-core"), { recursive: true });
+
     // Setup default mock returns
     vi.mocked(resolveRoleMultipliers).mockReturnValue([]);
     vi.mocked(extractStories).mockReturnValue([
@@ -88,17 +90,20 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
       totalDays: 3.1,
     });
     vi.mocked(writeEffortReport).mockReturnValue("/fake/path/effort-report.md");
+    process.exitCode = 0;
   });
 
   afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
     vi.restoreAllMocks();
+    process.exitCode = 0;
   });
 
   // TR-011: JSON output
   it("TR-011: --json flag outputs valid JSON with EffortReport schema", async () => {
     await effortCommand.parseAsync(["node", "test", "001-cli-core", "--json"]);
 
+    expect(process.exitCode).toBe(0);
     expect(computeEffort).toHaveBeenCalled();
     expect(consoleLogSpy).toHaveBeenCalled();
     const output = consoleLogSpy.mock.calls[0]?.[0] as string;
@@ -112,6 +117,7 @@ describe("FR-011: effortCommand — CLI and JSON output", () => {
   it("prints human readable success message when --json is omitted", async () => {
     await effortCommand.parseAsync(["node", "test", "001-cli-core"]);
 
+    expect(process.exitCode).toBe(0);
     expect(consoleLogSpy).toHaveBeenCalled();
     const output = consoleLogSpy.mock.calls[0]?.[0] as string;
     expect(output).toMatch(/Effort report generated at:/);

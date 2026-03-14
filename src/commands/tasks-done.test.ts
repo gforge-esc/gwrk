@@ -99,16 +99,15 @@ describe("gwrk tasks done", () => {
 
     try {
       vi.spyOn(console, "error").mockImplementation(() => {});
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
-        throw new Error("process.exit(1)");
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      process.exitCode = 0;
+
+      await tasksCommand.parseAsync(["done", "test-feature", "T002"], {
+        from: "user",
       });
 
-      await expect(
-        tasksCommand.parseAsync(["done", "test-feature", "T002"], {
-          from: "user",
-        }),
-      ).rejects.toThrow("process.exit(1)");
-
+      expect(process.exitCode).toBe(1);
+      
       const tasksPath = path.join(
         "specs",
         "test-feature",
@@ -128,9 +127,8 @@ describe("gwrk tasks done", () => {
 
     try {
       vi.spyOn(console, "error").mockImplementation(() => {});
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
-        throw new Error("process.exit(1)");
-      });
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      process.exitCode = 0;
 
       // Delete tasks.json and recreate with missing gate
       const tasksPath = path.join(
@@ -143,11 +141,11 @@ describe("gwrk tasks done", () => {
       tasks.phases[0].tasks[0].gateScript = "gates/MISSING-gate.sh";
       fs.writeFileSync(tasksPath, JSON.stringify(tasks));
 
-      await expect(
-        tasksCommand.parseAsync(["done", "test-feature", "T001"], {
-          from: "user",
-        }),
-      ).rejects.toThrow("process.exit(1)");
+      await tasksCommand.parseAsync(["done", "test-feature", "T001"], {
+        from: "user",
+      });
+
+      expect(process.exitCode).toBe(1);
     } finally {
       process.chdir(originalCwd);
     }

@@ -14,7 +14,7 @@ revision: 1
 **Decision**: [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md)
 **Reference**: [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md)
 
-> **Positioning:** This is a foundational infrastructure spec. Phase 4 (Ship Loop) and Phase 8 (Agent Router) depend on the contracts established here. Signal and discovery data makes those specs thinner because they stop re-inventing output parsing, project state assembly, and cost models.
+> **Positioning:** This is a foundational infrastructure spec. Feature 004 (Ship Loop) and Feature 008 (Agent Router) depend on the contracts established here. Signal and discovery data makes those features thinner because they stop re-inventing output parsing, project state assembly, and cost models.
 
 ---
 
@@ -232,7 +232,7 @@ No external service credentials required. All operations are local filesystem + 
 
 - **FR-001**: System MUST emit `[exit:<code> | <duration>]` on stderr for every command invocation. Format: `[exit:0 | 42ms]` for success, `[exit:1 | 3.2s] <command>: <message>` for failure. Duration measured via `performance.now()`. MUST NOT appear on stdout. (Implements: US-001)
 - **FR-002**: System MUST provide a `--format json` global flag. When set, commands that produce queryable output MUST emit structured JSON to stdout. `--format json` and `--agent` are independent flags that compose when used together. `--format json` is documented in `--help` and discoverable by agents the same way humans discover it. (Implements: US-002)
-- **FR-003**: System MUST provide a `--agent` flag (or `GWRK_AGENT=1` env) that activates Layer 2 protections: ANSI stripping, binary guard (replace output containing null bytes or >30% non-printable chars with `[binary content, <N> bytes]`), overflow truncation (>8KB → first 100 lines + file reference). `--agent` does NOT change the output format — it is protective only. (Implements: US-003)
+- **FR-003**: System MUST provide a `--agent` flag (or `GWRK_AGENT=1` env) that activates Layer 2 protections: ANSI stripping, binary guard (replace output containing null bytes or >30% non-printable chars with `[binary content, <N> bytes]`), overflow truncation. Overflow trigger: stdout exceeds 8192 bytes. Truncated output: first 100 lines of the original output + `... (truncated, <N> total lines. Full output: /tmp/gwrk-output-<hash>.txt)`. `--agent` does NOT change the output format — it is protective only. (Implements: US-003)
 
 ### Discovery
 

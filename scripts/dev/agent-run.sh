@@ -241,6 +241,18 @@ if [[ "$WORKFLOW" == "implement" ]] || [[ "$WORKFLOW" == "review-code" ]] || [[ 
 fi
 
 echo -e "${CYAN}└─────────────────────────────────────────────┘${RESET}"
+
+# Config drift guard (Design Mandate Rule 6)
+if [[ -f "$REPO_ROOT/.gwrkrc.json" ]]; then
+  CONFIGURED_AGENT=$(jq -r ".agents.${WORKFLOW} // .agents.implement // empty" "$REPO_ROOT/.gwrkrc.json" 2>/dev/null)
+  ACTIVE_AGENT="${AGENT_BACKEND:-gemini}"
+  if [[ -n "$CONFIGURED_AGENT" ]] && [[ "$CONFIGURED_AGENT" != "$ACTIVE_AGENT" ]]; then
+    echo ""
+    echo -e "${YELLOW}⚠ Config drift: .gwrkrc.json says '${CONFIGURED_AGENT}' but running '${ACTIVE_AGENT}'${RESET}"
+    echo -e "${DIM}  Fix: update .gwrkrc.json or set AGENT_BACKEND=${CONFIGURED_AGENT}${RESET}"
+  fi
+fi
+
 echo ""
 
 # ──────────────────────────────────────────────────────────────────
@@ -367,6 +379,21 @@ $AGENT_BIN $AGENT_EXTRA_FLAGS -p "${COMMAND}" --approval-mode "${MODE}" 2>&1 \
   }
 
 EXIT_CODE=${PIPESTATUS[0]}
+
+# ──────────────────────────────────────────────────────────────────
+# Post-agent: Staging scope validation (Design Mandate Rule 5)
+# ──────────────────────────────────────────────────────────────────
+if [[ "$WORKFLOW" == "implement" ]] && [[ "$EXIT_CODE" -eq 0 ]]; then
+  VALIDATE_STAGING="$SCRIPT_DIR/validate-staging.sh"
+  if [[ -x "$VALIDATE_STAGING" ]]; then
+    echo ""
+    echo -e "${DIM}Running staging scope validation...${RESET}"
+    if ! "$VALIDATE_STAGING" "$FEATURE" 2>&1 | tee -a "$LOG_FILE"; then
+      echo -e "${YELLOW}⚠ Staging validation failed — treating as implementation failure${RESET}"
+      EXIT_CODE=1
+    fi
+  fi
+fi
 
 if [[ "$WORKFLOW" == "implement" ]]; then
   if [[ "$EXIT_CODE" -eq 0 ]]; then

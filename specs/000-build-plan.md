@@ -24,14 +24,14 @@
 ```mermaid
 graph TD
     F000["F000: Extraction ✅"] --> F001["F001: CLI Core ✅"]
-    F001 --> F013["F013: Agent-Native Interface"]
+    F001 --> F013["F013: Agent-Native Interface ✅"]
     F001 --> F002["F002: Build Server ✅"]
     F001 --> F006["F006: Pulse"]
     F001 --> F007["F007: Effort + Compression"]
     F001 --> F012["F012: Knowledge Work"]
     F002 --> F003["F003: Slack ✅"]
     F002 --> F005["F005: Parallel Dispatch"]
-    F013 --> TDD["TDD Hardening: 001-003"]
+    F013 --> TDD["TDD Hardening: 001-003 ✅"]
     F013 --> F004["F004: Ship Loop"]
     F013 --> F008["F008: Multi-Agent Router"]
     TDD --> F004
@@ -47,13 +47,13 @@ graph TD
 ## Critical Path
 
 ```
-F000 ✅ → F001 ✅ → F013 (Agent-Native) → TDD Hardening (001-003) → F004 → F005 → F008
-                                         → F002 ✅ → F003 ✅
+F000 ✅ → F001 ✅ → F013 ✅ → TDD Hardening ✅ → F004 → F005 → F008
+                                               → F002 ✅ → F003 ✅
                → F006
                → F007
 ```
 
-**F013 (Agent-Native Interface) is the immediate critical path.** It depends only on F001 (✅ complete) and gates both TDD Hardening and F004 (Ship Loop). F013 provides `gwrk project discover`, `gwrk gate-check`, `--format json`, and `[exit:N | Xs]` operational signals — infrastructure that makes the subsequent hardening work structured and auditable. TDD Hardening gates F004: no new feature shipping until the shipped foundation (001-003) meets the TDD standard established by 000-tdd-infrastructure.
+**F004 (Ship Loop) is the immediate critical path.** F013 ✅, TDD Hardening ✅ (F001/F002/F003 gates all passing), and F004-core ✅ (staging validator, build plan protection, WUD retry logic) are complete. F004-full completes the ship loop with full review enforcement, then F005 (Parallel Dispatch) and F008 (Agent Router).
 
 ---
 
@@ -192,7 +192,7 @@ gwrk setup slack               # Fully automated: create app, install, write tok
 
 ---
 
-### Feature 013 — Agent-Native Interface 🟡
+### Feature 013 — Agent-Native Interface ✅
 
 Make gwrk a dual-mode CLI that operates identically for humans and LLM agents, with structured output, operational signals, project discovery, and a presentation layer that protects agents from context corruption.
 
@@ -489,3 +489,4 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 - **2026-03-08 (v3):** Resilience requirements added to F002. F002 SP: 13→18. Total: 105→110 SP.
 - **2026-03-05 (v2):** Telegram → Slack. F001 expanded (gwrk new/init, multi-CLI, SQLite). ADR-002. Total: 92→105 SP.
 - 2026-02-27: Added F011 (Glass Dashboard). +8 SP.
+

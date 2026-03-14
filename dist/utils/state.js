@@ -15,12 +15,30 @@ export const TaskSchema = z.object({
     status: TaskStatusSchema,
     gateScript: z.string(),
     completedAt: z.string().datetime().optional(),
+    classification: z
+        .enum(["greenfield", "change", "refactor", "noop"])
+        .optional(),
 });
 export const PhaseSchema = z.object({
     id: z.string().regex(/^phase-\d{2}$/),
     title: z.string().min(1),
     tasks: z.array(TaskSchema).min(1),
     doneWhen: z.array(z.string()).optional(),
+    // New optional fields (Phase 3.4)
+    objective: z.string().optional(),
+    scope: z
+        .object({
+        in_scope: z.array(z.string()),
+        out_of_scope: z.array(z.string()),
+    })
+        .optional(),
+    classification_summary: z.record(z.number()).optional(),
+    inputs: z
+        .object({
+        spec_refs: z.array(z.string()),
+        project_signals: z.array(z.string()),
+    })
+        .optional(),
 });
 const SourceProvenanceSchema = z.object({
     hash: z.string(),
@@ -39,8 +57,7 @@ export const TaskStateSchema = z.object({
 export function loadTaskState(featureDir) {
     const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
     if (!fs.existsSync(tasksPath)) {
-        console.error(`Task state file not found at ${tasksPath}`);
-        process.exit(1);
+        throw new Error(`Task state file not found at ${tasksPath}`);
     }
     let raw;
     try {

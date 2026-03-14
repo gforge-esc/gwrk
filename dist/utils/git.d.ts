@@ -29,6 +29,10 @@ export declare function getCurrentCommit(repoPath: string): string;
  */
 export declare function getCurrentBranch(repoPath: string): string;
 /**
+ * Checks if the working tree is clean.
+ */
+export declare function isWorkingTreeClean(repoPath: string): boolean;
+/**
  * Gets the diff stats between current state and a ref (defaults to HEAD~1).
  */
 export declare function getDiffStats(repoPath: string, ref?: string): {

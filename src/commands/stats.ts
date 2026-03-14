@@ -1,11 +1,13 @@
 import { Command } from "commander";
 import { getStats } from "../db/runs.js";
 
+import { CommandError, withSignal } from "../utils/signal.js";
+
 export const statsCommand = new Command("stats")
   .description("Show aggregate success rates and execution statistics")
   .option("--json", "Output structured JSON to stdout")
-  .action((options) => {
-    try {
+  .action(async (options) => {
+    await withSignal("stats", async () => {
       const stats = getStats();
 
       if (options.json) {
@@ -38,8 +40,5 @@ export const statsCommand = new Command("stats")
         );
       }
       console.log("\n");
-    } catch (err: unknown) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
+    });
   });

@@ -146,9 +146,10 @@ describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
     vi.mocked(gatherDeliveryActuals).mockImplementation(() => {
       throw new Error("No implementation commits found");
     });
+    process.exitCode = 0;
 
-    await expect(
-      compressionCommand.parseAsync(["node", "test", "001-mock"]),
-    ).rejects.toThrow(/process\.exit\(1\)/);
+    await compressionCommand.parseAsync(["node", "test", "001-mock"]);
+    
+    expect(process.exitCode).toBe(1);
   });
 });

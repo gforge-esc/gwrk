@@ -146,6 +146,22 @@ export function getCurrentBranch(repoPath) {
     }
 }
 /**
+ * Checks if the working tree is clean.
+ */
+export function isWorkingTreeClean(repoPath) {
+    try {
+        const stdout = execFileSync("git", ["status", "--porcelain"], {
+            cwd: repoPath,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        return stdout.trim() === "";
+    }
+    catch (_e) {
+        return false;
+    }
+}
+/**
  * Gets the diff stats between current state and a ref (defaults to HEAD~1).
  */
 export function getDiffStats(repoPath, ref = "HEAD~1") {

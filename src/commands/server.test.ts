@@ -60,13 +60,14 @@ describe("serverCommand", () => {
     it("should fail if server is already running", async () => {
       vi.spyOn(pidUtils, "readPid").mockReturnValue(12345);
       vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(true);
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-      await expect(
-        serverCommand.parseAsync(["start"], { from: "user" }),
-      ).rejects.toThrow("process.exit(1)");
-      expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining("Server already running"),
-      );
+      process.exitCode = 0;
+      await serverCommand.parseAsync(["start"], { from: "user" });
+      expect(process.exitCode).toBe(1);
+      
+      const stderr = stderrSpy.mock.calls.map(c => String(c[0])).join("");
+      expect(stderr).toContain("Server already running");
     });
 
     it("should daemonize if -f is NOT provided", async () => {
@@ -109,11 +110,14 @@ describe("serverCommand", () => {
 
     it("should fail if no server is running", async () => {
       vi.spyOn(pidUtils, "readPid").mockReturnValue(undefined);
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-      await expect(
-        serverCommand.parseAsync(["stop"], { from: "user" }),
-      ).rejects.toThrow("process.exit(1)");
-      expect(console.error).toHaveBeenCalledWith("No server running");
+      process.exitCode = 0;
+      await serverCommand.parseAsync(["stop"], { from: "user" });
+      
+      expect(process.exitCode).toBe(1);
+      const stderr = stderrSpy.mock.calls.map(c => String(c[0])).join("");
+      expect(stderr).toContain("No server running");
     });
   });
 });

@@ -79,13 +79,9 @@ describe("defineCommand — Define Until Solid wrapper", () => {
   });
 
   it("fails if feature is not provided", async () => {
-    let _err: Error | undefined;
-    try {
-      await defineCommand.parseAsync(["node", "cli.js"]);
-    } catch (e) {
-      _err = e as Error;
-    }
-    expect(_err).toBeDefined();
+    process.exitCode = 0;
+    await defineCommand.parseAsync(["node", "cli.js"]);
+    expect(process.exitCode).toBe(2);
     expect(startRun).not.toHaveBeenCalled();
   });
 
@@ -141,15 +137,10 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     mockError.exitCode = 2;
     vi.mocked(run).mockRejectedValue(mockError);
 
-    let _err: Error | undefined;
-    try {
-      await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);
-    } catch (e) {
-      _err = e as Error;
-    }
+    process.exitCode = 0;
+    await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);
 
-    expect(_err).toBeDefined();
-    expect(_err?.message).toBe("process.exit(2)");
+    expect(process.exitCode).toBe(2);
 
     expect(finishRun).toHaveBeenCalledWith(
       42,

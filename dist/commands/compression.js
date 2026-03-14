@@ -14,18 +14,19 @@ function getEffortReport(featureDir, featureId, projectRoot) {
     report.featureId = featureId;
     return report;
 }
+import { CommandError, withSignal } from "../utils/signal.js";
 export const compressionCommand = new Command("compression")
     .description("Calculate development compression ratios")
     .argument("[feature]", "The feature directory under specs/ to calculate. Omit if --all flag is used.")
     .option("--all", "Generate summary for all shipped features under specs/")
     .option("--json", "Output structured JSON to stdout")
-    .action((feature, options) => {
-    try {
+    .action(async (feature, options) => {
+    await withSignal("compression", async () => {
         const projectRoot = process.cwd();
         if (options.all) {
             const specsDir = path.join(projectRoot, "specs");
             if (!fs.existsSync(specsDir)) {
-                throw new Error("specs directory not found");
+                throw new CommandError("specs directory not found", 1);
             }
             const directories = fs
                 .readdirSync(specsDir, { withFileTypes: true })
@@ -91,9 +92,12 @@ export const compressionCommand = new Command("compression")
         }
         else {
             if (!feature) {
-                throw new Error("Must specify a feature OR use --all");
+                throw new CommandError("Must specify a feature OR use --all. Run 'gwrk project specs' to list features.", 2);
             }
             const featureDir = path.join(projectRoot, "specs", feature);
+            if (!fs.existsSync(featureDir)) {
+                throw new CommandError(`Feature directory not found: ${featureDir}. Run 'gwrk project specs' to list available features.`, 1);
+            }
             const effort = getEffortReport(featureDir, feature, projectRoot);
             const actuals = gatherDeliveryActuals(featureDir);
             const forecast = {
@@ -122,9 +126,5 @@ export const compressionCommand = new Command("compression")
                 console.log(`Elapsed Window:    ${actuals.deliveryWindowHours.toFixed(2)} hours`);
             }
         }
-    }
-    catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-    }
+    });
 });

@@ -98,10 +98,9 @@ describe("initCommand", () => {
     const agentDir = path.join(tempDir, ".agent");
     fs.mkdirSync(agentDir);
 
-    // Should throw our mocked error for process.exit(0)
-    await expect(() =>
-      initCommand.parseAsync([], { from: "user" }),
-    ).rejects.toThrow("process.exit(0)");
+    process.exitCode = 0;
+    await initCommand.parseAsync([], { from: "user" });
+    expect(process.exitCode).toBe(0);
     expect(console.log).toHaveBeenCalledWith("gwrk already initialized");
   });
 

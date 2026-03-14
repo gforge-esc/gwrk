@@ -1,0 +1,46 @@
+--- gwrk status clean stdout ---
+
+  [31m●[0m [1mgwrk server is stopped[0m
+    Run 'gwrk server start' to start the server.
+
+
+--- gwrk status signal on stderr ---
+[exit:0 | 1ms]
+
+--- gwrk tasks list --format json ---
+{
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Create withSignal() HOF",
+      "description": "Create src/utils/signal.ts implementing the withSignal(name, fn) higher-order function per contracts/signal.md. Must: time execution via performance.now(), emit [exit:N | duration] on stderr, set process.exitCode (not process.exit()), catch all errors. Duration: <1s → Nms, ≥1s → N.Ns. Create src/utils/signal.test.ts with unit tests per TR-001.\nREVIEW FAIL (lint): noInferrableTypes — style.\n  WHERE: src/utils/signal.ts:9:18\n  EXPECTED: public exitCode = 1 (type inferred)\n  ACTUAL: public exitCode: number = 1\n  FIX: Remove : number from the parameter.\n  GATE: pnpm lint\n  REF: plan.md Phase 1.1",
+      "status": "completed",
+      "gateScript": "gates/T001-gate.sh"
+    },
+    {
+      "id": "T002",
+      "title": "Wrap all command actions with withSignal()",
+      "description": "Retrofit all 24 .action() callbacks across 19 command files to use withSignal(). Files: define.ts, specify.ts, plan.ts, implement.ts, tasks-generate.ts, ship.ts, test.ts, measure.ts, effort.ts, compression.ts, pulse.ts (2 actions), tasks.ts (4 actions: done/list/next/ready), runs.ts, stats.ts, db.ts, server.ts (3 actions), status.ts, init.ts, setup-slack.ts. Each action wrapped as: await withSignal('command-name', async () => { existing logic }). Remove direct process.exit() calls from action bodies — withSignal handles exit codes.\nREVIEW FAIL (code): Regression in existing tests — US-001.\n  WHERE: src/commands/*.test.ts (20+ tests)\n  EXPECTED: Tests pass when checking error conditions or exit codes.\n  ACTUAL: many tests resolve/fail because withSignal catches errors and sets process.exitCode, while tests expect rejection or process.exit(1).\n  FIX: Update tests to check process.exitCode instead of expecting rejection. If using withSignal, command actions no longer throw to Commander; they set exitCode and return.\n  GATE: pnpm test\n  REF: plan.md Phase 1.1",
+      "status": "completed",
+      "gateScript": "gates/T002-gate.sh"
+    },
+    {
+      "id": "T003",
+      "title": "Create CommandOutput abstraction",
+      "description": "Create src/utils/output.ts implementing the CommandOutput interface and createOutput(format) factory per contracts/output.md. Human mode: write() → stdout as text, info() → stderr. JSON mode: write() → JSON.stringify to stdout, info() → stderr. Create src/utils/output.test.ts with unit tests per TR-002.\nREVIEW FAIL (code): Regression in JSON query tests — FR-002.\n  WHERE: src/commands/tasks-query.test.ts (87:70, 125:70)\n  EXPECTED: Tests capture output and verify JSON.\n  ACTUAL: TypeError: Cannot read properties of undefined (reading '0'). logSpy.mock.calls is empty because createOutput writes to stdout, not console.log.\n  FIX: Update tests to spy on process.stdout.write or provide a mock CommandOutput for testing.\n  GATE: pnpm test\n  REF: plan.md Phase 1.2",
+
+--- gwrk gate-check --format json ---
+{
+  "taskId": "T001",
+  "feature": "specs/000-tdd-infrastructure",
+  "gatePath": "specs/000-tdd-infrastructure/gates/T001-gate.sh",
+  "result": "PASS",
+  "exitCode": 0,
+  "stdout": "PASS: T001 — Implement src/utils/gate-gen.ts\n",
+  "stderr": "",
+  "durationMs": 4
+}
+
+--- gwrk nonexistent-command ---
+error: unknown command 'nonexistent-command'
+Exit code: 127

@@ -115,10 +115,10 @@ describe("testCommand", () => {
       throw error;
     });
 
-    await expect(
-      program.parseAsync(["node", "test", "test", "001-cli-core"])
-    ).rejects.toThrow("process.exit(1)");
-
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "test", "001-cli-core"]);
+    
+    expect(process.exitCode).toBe(1);
     expect(uiModule.fail).toHaveBeenCalledWith("test", 1, expect.any(Number));
   });
 });

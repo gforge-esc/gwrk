@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dispatchAgent } from "../utils/agent.js";
+import { readStdin } from "../utils/output.js";
 import { planCommand } from "./plan.js";
 
 vi.mock("../utils/agent.js", () => ({
@@ -10,6 +11,14 @@ vi.mock("../utils/agent.js", () => ({
     Promise.resolve({ exitCode: 0, stdout: "Success", stderr: "" }),
   ),
 }));
+
+vi.mock("../utils/output.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/output.js")>();
+  return {
+    ...actual,
+    readStdin: vi.fn(() => Promise.resolve("")),
+  };
+});
 
 describe("planCommand", () => {
   let tempDir: string;
@@ -54,9 +63,9 @@ describe("planCommand", () => {
   });
 
   it("should fail if spec.md does not exist", async () => {
-    await expect(() =>
-      planCommand.parseAsync(["feature-x"], { from: "user" }),
-    ).rejects.toThrow("process.exit(1)");
+    process.exitCode = 0;
+    await planCommand.parseAsync(["feature-x"], { from: "user" });
+    expect(process.exitCode).toBe(1);
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("spec.md not found"),
     );
@@ -67,8 +76,10 @@ describe("planCommand", () => {
     fs.mkdirSync(featureDir, { recursive: true });
     fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
 
+    process.exitCode = 0;
     await planCommand.parseAsync(["feature-x"], { from: "user" });
 
+    expect(process.exitCode).toBe(0);
     expect(dispatchAgent).toHaveBeenCalledWith({
       backend: "gemini",
       workflowPath: ".agents/workflows/plan.md",
@@ -84,9 +95,10 @@ describe("planCommand", () => {
       "# Spec\n> **Status:** Stub\n",
     );
 
-    await expect(() =>
-      planCommand.parseAsync(["feature-x"], { from: "user" }),
-    ).rejects.toThrow("process.exit(1)");
+    process.exitCode = 0;
+    await planCommand.parseAsync(["feature-x"], { from: "user" });
+    
+    expect(process.exitCode).toBe(1);
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("is marked as a Stub"),
     );

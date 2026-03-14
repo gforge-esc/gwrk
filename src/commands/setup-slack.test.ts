@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { setupSlack } from "./setup-slack";
 import * as slackClient from "../utils/slack-client";
+import { CommandError } from "../utils/signal.js";
 
 vi.mock("node:fs");
 vi.mock("../utils/slack-client", async () => {
@@ -74,7 +75,7 @@ describe("setupSlack", () => {
     delete process.env.SLACK_BOT_TOKEN;
     delete process.env.SLACK_APP_TOKEN;
 
-    await expect(setupSlack({})).rejects.toThrow("process.exit called with 1");
+    await expect(setupSlack({})).rejects.toThrow(CommandError);
 
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("Slack credentials not found"),

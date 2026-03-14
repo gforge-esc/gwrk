@@ -70,8 +70,9 @@ describe("specifyCommand", () => {
       stderr: "Error",
     });
 
-    await expect(() =>
-      specifyCommand.parseAsync(["new feature"], { from: "user" }),
-    ).rejects.toThrow("process.exit(1)");
+    process.exitCode = 0;
+    await specifyCommand.parseAsync(["new feature"], { from: "user" });
+    
+    expect(process.exitCode).toBe(1);
   });
 });
