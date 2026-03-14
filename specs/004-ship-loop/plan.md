@@ -17,16 +17,16 @@ Three phases, 12 tasks, ≤5 file changes per phase:
 
 ### Phase 1: Digest & Phase-Skip
 
-Implement the structured log digest system (FR-017) and phase-skip logic (FR-014). FR-017 now git-tracks ALL raw logs to `specs/<feature>/.gwrk/runs/` (ADR-003 §5 updated: measured 10KB avg, 115KB max). Digest serves as a quick index into full logs.
+Implement the structured log digest system (FR-017), phase-skip logic (FR-014), pre-flight gate check (FR-003), and log rehoming (FR-010). FR-017 git-tracks ALL raw logs to `specs/<feature>/.gwrk/runs/` (ADR-003 §5 updated: measured 10KB avg, 115KB max). Digest serves as a quick index into full logs.
 
 **Files (5):**
-- `scripts/dev/work-until-done.sh` (MODIFY: add `emit_event()` function writing structured stage events to `.runs/<feature>_p<phase>.events` sidecar. Add log copy to `specs/<feature>/.gwrk/runs/<timestamp>_<stage>.log` on completion.)
+- `scripts/dev/work-until-done.sh` (MODIFY: add `emit_event()` function writing structured stage events to `.runs/<feature>_p<phase>.events` sidecar. Add log copy to `specs/<feature>/.gwrk/runs/<timestamp>_<stage>.log` on stage completion. Add **pre-flight gate check**: run each task's gate script before dispatch — if gate already passes, skip task with `pre-flight PASS` log.)
 - `src/utils/manifest.ts` (MODIFY: add `digest: string[]` to `RunManifest` Zod schema. Add `assembleDigest()` that reads sidecar `.events` file.)
 - `src/commands/ship.ts` (MODIFY: add `isPhaseComplete()` helper — checks if all tasks are `completed` or `cancelled`. Add phase-skip logic in all-phases path. Wire `assembleDigest()` into `writeManifest()` call.)
 - `src/commands/ship.test.ts` (MODIFY: add tests for phase-skip (completed, cancelled+completed, mixed) and digest assembly.)
 - `specs/004-ship-loop/.gwrk/runs/.gitkeep` (NEW: ensure runs dir exists for log commits.)
 
-**Requirements Addressed:** FR-012, FR-014, FR-017, US-007, US-009, TC-007
+**Requirements Addressed:** FR-003, FR-010, FR-012, FR-014, FR-017, US-002, US-007, US-009, TC-007
 
 **Dependencies:** None
 
@@ -179,34 +179,34 @@ _No mockups exist for this feature._
 |---|---|---|
 | **User Scenarios** | | |
 | US-001 Ship Single Phase | — | ✅ Done (ship.ts + WUD exist) |
-| US-002 Hard Gate Pre-flight | — | ✅ Done (WUD pre-flight exists) |
-| US-003 Ship All Phases | Phase 1 | 🔲 Phase-skip needed |
+| US-002 Hard Gate Pre-flight | Phase 1 | ⚠️ **No pre-flight in WUD** — CI gate exists but not task-level pre-flight skip |
+| US-003 Ship All Phases | Phase 1 | 🔲 Phase-skip cancelled handling needed |
 | US-004 Circuit Breaker | Phase 2 | 🔲 failureContext needed |
 | US-005 Crash Recovery | — | ✅ Done (save/load_state) |
 | US-006 PR Creation & CI | — | ✅ Done (WUD PR + CI wait) |
 | US-007 Manifest + Digest | Phase 1 | 🔲 Digest assembly + log rehoming |
 | US-008 Agent Config | — | ✅ Done (config resolution) |
-| US-009 Phase-Skip | Phase 1 | 🔲 isPhaseComplete() |
+| US-009 Phase-Skip | Phase 1 | ⚠️ Exists but `cancelled` not handled |
 | US-010 Staging Validation | Phase 2 | 🔲 WUD integration |
 | US-011 Rip-Cord Bail | Phase 2 | 🔲 failureContext |
 | **Functional Requirements** | | |
 | FR-001 ship command | — | ✅ Done |
-| FR-002 branch + dirty-tree | Phase 2 | 🔲 Dirty-tree fail-fast |
-| FR-003 pre-flight gates | — | ✅ Done |
+| FR-002 branch + dirty-tree | Phase 2 | ⚠️ **Branch works, dirty-tree check completely missing** |
+| FR-003 pre-flight gates | Phase 1 | ⚠️ **Not implemented** — WUD has CI gate but NO task-level pre-flight skip |
 | FR-004 state machine | — | ✅ Done |
 | FR-005 review dispatch | — | ✅ Done |
 | FR-006 PR + CI | — | ✅ Done |
-| FR-007 circuit breaker | — | ✅ Done |
+| FR-007 circuit breaker | — | ✅ Done (save_state + exit) |
 | FR-008 crash recovery | — | ✅ Done |
 | FR-009 agent config | — | ✅ Done |
-| FR-010 timestamped log | — | ✅ Done |
+| FR-010 timestamped log | — | ⚠️ **Partial** — logs to `.runs/` not `.gwrk/runs/` (needs rehoming) |
 | FR-011 SQLite recording | — | ✅ Done |
-| FR-012 execution manifest | Phase 1 | 🔲 Add digest[] |
+| FR-012 execution manifest | Phase 1 | ⚠️ **Partial** — manifest written but no `digest[]` field |
 | FR-013 all-phases sequential | — | ✅ Done |
-| FR-014 phase skip | Phase 1 | 🔲 isPhaseComplete() |
-| FR-016 staging validator | Phase 2 | 🔲 WUD integration |
-| FR-017 logging (3-tier) | Phase 1 | 🔲 emit_event + log rehoming |
-| FR-018 rip-cord bail | Phase 2 | 🔲 failureContext |
+| FR-014 phase skip | Phase 1 | ⚠️ **Partial** — exists but `cancelled` status not handled |
+| FR-016 staging validator | Phase 2 | ⚠️ **Script exists but NOT called from WUD** |
+| FR-017 logging (3-tier) | Phase 1 | 🔲 emit_event + log rehoming to git-tracked |
+| FR-018 rip-cord bail | Phase 2 | ⚠️ **Circuit break saves state but no `failureContext` JSON** |
 | **Testing Requirements** | | |
 | TR-001 E2E WUD lifecycle | Phase 2, 3 | 🔲 |
 | TR-002 wud-branch validation | Phase 2 | 🔲 |
