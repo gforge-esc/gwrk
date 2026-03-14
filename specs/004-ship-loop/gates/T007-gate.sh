@@ -1,8 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# Gate: T007 — Implement scripts/dev/agent-run.sh
-# Asserts: Derived from task description
-
-test -f scripts/dev/agent-run.sh
-
-echo "PASS: T007 — Implement scripts/dev/agent-run.sh"
+cd "$(git rev-parse --show-toplevel)"
+grep -q 'validate-staging' scripts/dev/work-until-done.sh || { echo "FAIL: validate-staging not called from WUD"; exit 1; }
+echo "PASS: T007 — staging validator integrated in WUD"

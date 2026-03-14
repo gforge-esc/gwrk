@@ -1,9 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# Gate: T008 — Implement .agents/workflows/review-code.md
-# Asserts: Derived from task description
-
-# No specific assertions found in task description
-true
-
-echo "PASS: T008 — Implement .agents/workflows/review-code.md"
+cd "$(git rev-parse --show-toplevel)"
+grep -qE 'porcelain|dirty|Dirty working tree' scripts/dev/wud-branch.sh || { echo "FAIL: dirty-tree check not in wud-branch.sh"; exit 1; }
+echo "PASS: T008 — dirty-tree fail-fast"

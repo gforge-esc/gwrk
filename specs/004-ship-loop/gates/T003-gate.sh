@@ -1,9 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-# Gate: T003 — Implement scripts/dev/wud-verdict.sh
-# Asserts: Derived from task description
-
-test -f scripts/dev/wud-verdict.sh
-test -f tasks.json
-
-echo "PASS: T003 — Implement scripts/dev/wud-verdict.sh"
+cd "$(git rev-parse --show-toplevel)"
+grep -q 'digest' src/commands/ship.ts || { echo "FAIL: digest not referenced in ship.ts"; exit 1; }
+echo "PASS: T003 — digest wired into ship.ts"

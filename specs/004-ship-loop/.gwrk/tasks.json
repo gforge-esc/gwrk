@@ -1,141 +1,119 @@
 {
-  "featureId": "004-ship-loop",
-  "createdAt": "2026-03-10T23:14:41.959Z",
-  "generatedFrom": {
-    "plan": {
-      "hash": "c3ac2197831566e632b241f8ef4ee8fa26f8b4c3e6ad23fa7f02d895cbe7ffe3",
-      "modifiedAt": "2026-03-10T04:38:34.360Z"
-    }
-  },
+  "feature": "004-ship-loop",
+  "generatedAt": "2026-03-14T14:30:00Z",
   "phases": [
     {
       "id": "phase-01",
-      "title": "Shell Script Hardening",
+      "name": "Digest & Phase-Skip",
       "tasks": [
         {
           "id": "T001",
-          "title": "Implement scripts/dev/work-until-done.sh",
-          "description": "MODIFY: Validate required env vars upfront, ensure all stage transitions log to `.runs/`, improve error messages for each FR error state",
+          "title": "Add emit_event() to work-until-done.sh",
+          "description": "Add emit_event() function that writes structured stage events to .runs/<feature>_p<phase>.events sidecar file. Call after each stage transition (BRANCH_SETUP, IMPLEMENT, CODE_REVIEW, UAT_REVIEW, PR_CI, DONE).",
           "status": "open",
-          "gateScript": "gates/T001-gate.sh"
+          "fr": ["FR-017"],
+          "gate": "T001-gate.sh"
         },
         {
           "id": "T002",
-          "title": "Implement scripts/dev/wud-branch.sh",
-          "description": "MODIFY: Handle dirty working tree via stash/pop, improve merge conflict error reporting",
+          "title": "Add digest assembly to manifest.ts",
+          "description": "Add digest: string[] to manifest schema. Add assembleDigest() function that reads sidecar .events file and returns string array for manifest.",
           "status": "open",
-          "gateScript": "gates/T002-gate.sh"
+          "fr": ["FR-017"],
+          "gate": "T002-gate.sh"
         },
         {
           "id": "T003",
-          "title": "Implement scripts/dev/wud-verdict.sh",
-          "description": "MODIFY: Handle missing jq gracefully, validate tasks.json structure before parsing",
+          "title": "Wire digest into ship.ts manifest writing",
+          "description": "In shipPhase(), after WUD completes, call assembleDigest() and include result in writeManifest() call.",
           "status": "open",
-          "gateScript": "gates/T003-gate.sh"
+          "fr": ["FR-012", "FR-017"],
+          "gate": "T003-gate.sh"
         },
         {
           "id": "T004",
-          "title": "Implement scripts/dev/wud-ci-wait.sh",
-          "description": "MODIFY: Add retries for transient `gh` failures, improve timeout messaging",
+          "title": "Add phase-skip logic to ship.ts",
+          "description": "When phase arg is omitted and shipping all phases, check each phase in tasks.json. If all tasks are completed or cancelled, skip with log message. Add isPhaseComplete() helper.",
           "status": "open",
-          "gateScript": "gates/T004-gate.sh"
+          "fr": ["FR-014"],
+          "gate": "T004-gate.sh"
         },
         {
           "id": "T005",
-          "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "title": "Add phase-skip and digest tests",
+          "description": "Add unit tests in ship.test.ts for: phase skip on all completed, skip on cancelled+completed, no skip on mixed, digest assembly from events file.",
           "status": "open",
-          "gateScript": "gates/T005-gate.sh"
+          "fr": ["FR-014", "FR-017"],
+          "gate": "T005-gate.sh"
         }
-      ],
-      "doneWhen": [
-        "`bash -n scripts/dev/work-until-done.sh` exits 0 (no syntax errors)",
-        "`bash -n scripts/dev/wud-branch.sh` exits 0",
-        "`bash -n scripts/dev/wud-verdict.sh` exits 0",
-        "`bash -n scripts/dev/wud-ci-wait.sh` exits 0",
-        "`pnpm test -- --reporter=dot 2>&1 | grep -q 'Tests.*passed'` exits 0 (no regressions)",
-        "All FR error states from spec §4 produce correct stderr and exit codes"
       ]
     },
     {
       "id": "phase-02",
-      "title": "Review Agent Integration",
+      "name": "Resilience & Bail",
       "tasks": [
         {
           "id": "T006",
-          "title": "Implement scripts/dev/work-until-done.sh",
-          "description": "MODIFY: CODE_REVIEW and UAT_REVIEW stages dispatch via `agent-run.sh review-code` and `review-uat`, check verdict via `wud-verdict.sh`, loop on NO-GO",
+          "title": "Add failureContext to circuit-break exit",
+          "description": "In work-until-done.sh CIRCUIT_BREAK path, write failureContext JSON to state file: openTasks, lastVerdict, iterationTimeline, digest from .events sidecar.",
           "status": "open",
-          "gateScript": "gates/T006-gate.sh"
+          "fr": ["FR-018"],
+          "gate": "T006-gate.sh"
         },
         {
           "id": "T007",
-          "title": "Implement scripts/dev/agent-run.sh",
-          "description": "MODIFY: Add `review-code` and `review-uat` workflow support with proper agent backend resolution",
+          "title": "Integrate validate-staging.sh into WUD",
+          "description": "Call validate-staging.sh after IMPLEMENT stage completes, before commit/push. On failure, log violation and re-run agent with corrective prompt. On second failure, circuit-break.",
           "status": "open",
-          "gateScript": "gates/T007-gate.sh"
+          "fr": ["FR-016"],
+          "gate": "T007-gate.sh"
         },
         {
           "id": "T008",
-          "title": "Implement .agent/workflows/review-code.md",
-          "description": "NEW: Review code workflow instructions for agent dispatch",
+          "title": "Enforce dirty-tree fail-fast in wud-branch.sh",
+          "description": "At startup, check git status --porcelain. If non-empty, emit 'Dirty working tree — commit or stash before shipping' to stderr and exit 1.",
           "status": "open",
-          "gateScript": "gates/T008-gate.sh"
+          "fr": ["FR-002"],
+          "gate": "T008-gate.sh"
         },
         {
           "id": "T009",
-          "title": "Implement test strategy for Phase 2",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "title": "Add resilience tests",
+          "description": "Add E2E tests for: circuit-break state file with failureContext, staging validation rejection triggering corrective re-run, dirty-tree fail-fast.",
           "status": "open",
-          "gateScript": "gates/T009-gate.sh"
+          "fr": ["FR-002", "FR-016", "FR-018"],
+          "gate": "T009-gate.sh"
         }
-      ],
-      "doneWhen": [
-        "`grep -c 'review-code\\|review-uat' scripts/dev/work-until-done.sh` returns `>= 2`",
-        "`grep -c 'wud-verdict' scripts/dev/work-until-done.sh` returns `>= 1`",
-        "`pnpm test -- --reporter=dot 2>&1 | grep -q 'Tests.*passed'` exits 0"
       ]
     },
     {
       "id": "phase-03",
-      "title": "E2E Lifecycle Validation",
+      "name": "Verification & Artifacts",
       "tasks": [
         {
           "id": "T010",
-          "title": "Implement src/commands/ship.test.ts",
-          "description": "MODIFY: Add lifecycle-level tests with full mock, verify all-phases iteration, verify manifest writing",
+          "title": "Update contracts to reflect implementation",
+          "description": "Update contracts/ship.md (phase-skip, digest), contracts/implement.md (emit_event, staging), contracts/branch.md (dirty-tree), contracts/wud.md (CIRCUIT_BREAK failureContext).",
           "status": "open",
-          "gateScript": "gates/T010-gate.sh"
+          "fr": ["FR-002", "FR-014", "FR-016", "FR-017", "FR-018"],
+          "gate": "T010-gate.sh"
         },
         {
           "id": "T011",
-          "title": "Implement src/cli.e2e.test.ts",
-          "description": "MODIFY: Verify `gwrk ship --help` shows options, no stale subcommands like `done`",
+          "title": "Rewrite gap-analysis.md",
+          "description": "Update gap-analysis.md to reflect current implementation state against the new spec.",
           "status": "open",
-          "gateScript": "gates/T011-gate.sh"
+          "fr": [],
+          "gate": "T011-gate.sh"
         },
         {
           "id": "T012",
-          "title": "Implement src/scripts-e2e.test.ts",
-          "description": "MODIFY: Add full lifecycle E2E with mock agent backends",
+          "title": "Run full test suite and all gates",
+          "description": "Run pnpm test, pnpm build, and all gate scripts. Fix any failures.",
           "status": "open",
-          "gateScript": "gates/T012-gate.sh"
-        },
-        {
-          "id": "T013",
-          "title": "Implement test strategy for Phase 3",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T013-gate.sh"
+          "fr": [],
+          "gate": "T012-gate.sh"
         }
-      ],
-      "doneWhen": [
-        "`gwrk ship 004-ship-loop 1 --dry-run 2>&1 | grep -q 'DRY RUN'` exits 0",
-        "`gwrk ship 004-ship-loop --dry-run 2>&1 | grep -c 'DRY RUN'` returns number equal to phase count",
-        "`gwrk ship --help 2>&1 | grep -q '\\-\\-ci-timeout'` exits 0",
-        "`gwrk ship --help 2>&1 | grep -qv 'done'` exits 0 (no stale subcommand)",
-        "`npx tsc --noEmit` exits 0",
-        "`pnpm test -- --reporter=dot 2>&1 | grep -q 'Tests.*passed'` exits 0"
       ]
     }
   ]
