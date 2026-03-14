@@ -67,14 +67,13 @@ tasksCommand
             `CRITICAL: gates/${taskId}-gate.sh not found`,
             1,
           );
-        } else {
-          if (result.stdout) process.stdout.write(result.stdout);
-          if (result.stderr) process.stderr.write(result.stderr);
-          throw new CommandError(
-            `Gate failed for ${taskId}. State unchanged.`,
-            1,
-          );
         }
+        if (result.stdout) process.stdout.write(result.stdout);
+        if (result.stderr) process.stderr.write(result.stderr);
+        throw new CommandError(
+          `Gate failed for ${taskId}. State unchanged.`,
+          1,
+        );
       }
 
       try {
