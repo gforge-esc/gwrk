@@ -23,7 +23,7 @@
           "id": "T001",
           "title": "Create withSignal() HOF",
           "description": "Create src/utils/signal.ts implementing the withSignal(name, fn) higher-order function per contracts/signal.md. Must: time execution via performance.now(), emit [exit:N | duration] on stderr, set process.exitCode (not process.exit()), catch all errors. Duration: <1s → Nms, ≥1s → N.Ns. Create src/utils/signal.test.ts with unit tests per TR-001.\nREVIEW FAIL (lint): noInferrableTypes — style.\n  WHERE: src/utils/signal.ts:9:18\n  EXPECTED: public exitCode = 1 (type inferred)\n  ACTUAL: public exitCode: number = 1\n  FIX: Remove : number from the parameter.\n  GATE: pnpm lint\n  REF: plan.md Phase 1.1",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh"
         },
         {

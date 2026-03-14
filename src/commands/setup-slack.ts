@@ -34,7 +34,7 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
       `  ${RED}✗${RESET} Slack credentials not found and terminal is non-interactive.`,
     );
     console.error(
-      `  ${DIM}Provide SLACK_BOT_TOKEN and SLACK_APP_TOKEN in environment.${RESET}`,
+      `  ${DIM}Provide SLACK_BOT_TOKEN and SLACK_APP_TOKEN in environment. Run 'gwrk setup slack' to generate. ${RESET}`,
     );
     throw new CommandError("Slack configuration failed", 1);
   }

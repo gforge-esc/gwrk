@@ -6,6 +6,7 @@ import { defineCommand } from "./commands/define.js";
 import { gateCheckCommand } from "./commands/gate-check.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
+import { projectCommand } from "./commands/project.js";
 import { serverCommand } from "./commands/server.js";
 import { setupSlackCommand } from "./commands/setup-slack.js";
 import { shipCommand } from "./commands/ship.js";
@@ -91,6 +92,7 @@ program
 
 program.addCommand(initCommand);
 program.addCommand(gateCheckCommand);
+program.addCommand(projectCommand);
 
 // The Foxtrot Charlie Pillars
 program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze

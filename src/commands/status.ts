@@ -5,9 +5,9 @@ import { readPid } from "../server/pid.js";
 import type { SystemStatus } from "../server/types.js";
 import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
-import { CommandError, withSignal } from "../utils/signal.js";
-import { createOutput } from "../utils/output.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
+import { createOutput } from "../utils/output.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
@@ -21,7 +21,7 @@ export const statusCommand = new Command("status")
       while (root.parent) root = root.parent;
       const globalOpts = root.opts();
 
-      const format = options.json ? "json" : (globalOpts.format || "human");
+      const format = options.json ? "json" : globalOpts.format || "human";
       const out = createOutput(format);
 
       const projectRoot = process.cwd();
@@ -53,8 +53,9 @@ export const statusCommand = new Command("status")
 
       if (!pid) {
         console.log(
-          `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}\n`,
+          `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}`,
         );
+        console.log(`    Run 'gwrk server start' to start the server.\n`);
         return;
       }
 

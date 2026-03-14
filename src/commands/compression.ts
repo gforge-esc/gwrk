@@ -130,10 +130,19 @@ export const compressionCommand = new Command("compression")
         }
       } else {
         if (!feature) {
-          throw new CommandError("Must specify a feature OR use --all", 2);
+          throw new CommandError(
+            "Must specify a feature OR use --all. Run 'gwrk project specs' to list features.",
+            2,
+          );
         }
 
         const featureDir = path.join(projectRoot, "specs", feature);
+        if (!fs.existsSync(featureDir)) {
+          throw new CommandError(
+            `Feature directory not found: ${featureDir}. Run 'gwrk project specs' to list available features.`,
+            1,
+          );
+        }
         const effort = getEffortReport(featureDir, feature, projectRoot);
         const actuals = gatherDeliveryActuals(featureDir);
 

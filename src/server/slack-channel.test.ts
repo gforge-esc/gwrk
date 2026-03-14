@@ -210,4 +210,3 @@ describe("ensureSlackChannel", () => {
     // No error thrown — already_in_channel is non-fatal
   });
 });
-

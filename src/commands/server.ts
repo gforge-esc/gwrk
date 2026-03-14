@@ -23,7 +23,10 @@ serverCommand
 
       const existingPid = readPid();
       if (existingPid && isPidRunning(existingPid)) {
-        throw new CommandError(`Server already running (pid: ${existingPid})`, 1);
+        throw new CommandError(
+          `Server already running (pid: ${existingPid}). Run 'gwrk server stop' first.`,
+          1,
+        );
       }
 
       if (options.foreground) {

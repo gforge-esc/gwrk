@@ -63,7 +63,8 @@ const handlers: Record<string, SlashCommandHandler> = {
           const recent = runs.slice(0, 5);
           let text = `*Recent runs for ${featureId}:*`;
           for (const r of recent) {
-            const status = r.exit_code === 0 ? "✅" : r.exit_code === null ? "🔄" : "❌";
+            const status =
+              r.exit_code === 0 ? "✅" : r.exit_code === null ? "🔄" : "❌";
             const phase = r.phase_id || "—";
             const agent = r.agent_backend || "—";
             const dur = r.duration_s != null ? `${r.duration_s}s` : "running";
@@ -97,9 +98,19 @@ const handlers: Record<string, SlashCommandHandler> = {
       }
 
       // Also check for spec-local ship runs
-      const runsDir = path.join(context.projectRoot, "specs", featureId, ".gwrk", "runs");
+      const runsDir = path.join(
+        context.projectRoot,
+        "specs",
+        featureId,
+        ".gwrk",
+        "runs",
+      );
       if (fs.existsSync(runsDir)) {
-        const files = fs.readdirSync(runsDir).filter(f => f.endsWith(".json")).sort().reverse();
+        const files = fs
+          .readdirSync(runsDir)
+          .filter((f) => f.endsWith(".json"))
+          .sort()
+          .reverse();
         if (files.length > 0) {
           blocks.push({
             type: "section",
@@ -129,7 +140,10 @@ const handlers: Record<string, SlashCommandHandler> = {
         if (stats.length > 0) {
           let statsText = "*Run History (DB):*";
           for (const s of stats.slice(0, 5)) {
-            const rate = s.total_runs > 0 ? Math.round((s.success_runs / s.total_runs) * 100) : 0;
+            const rate =
+              s.total_runs > 0
+                ? Math.round((s.success_runs / s.total_runs) * 100)
+                : 0;
             statsText += `\n• ${s.workflow || s.command}: ${s.total_runs} runs (${rate}% pass)`;
           }
           blocks.push({
@@ -415,7 +429,13 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     // Read ship run JSON files from specs/<feature>/.gwrk/runs/
-    const runsDir = path.join(context.projectRoot, "specs", featureId, ".gwrk", "runs");
+    const runsDir = path.join(
+      context.projectRoot,
+      "specs",
+      featureId,
+      ".gwrk",
+      "runs",
+    );
     if (!fs.existsSync(runsDir)) {
       return {
         response_type: "ephemeral",
@@ -431,12 +451,20 @@ const handlers: Record<string, SlashCommandHandler> = {
       };
     }
 
-    let files = fs.readdirSync(runsDir).filter(f => f.endsWith(".json")).sort().reverse();
+    let files = fs
+      .readdirSync(runsDir)
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .reverse();
 
     // Filter by phase if provided
     if (phaseId) {
-      const phaseNorm = phaseId.startsWith("phase-") ? phaseId : `phase-${phaseId}`;
-      files = files.filter(f => f.includes(phaseNorm) || f.includes(`_${phaseId}_`));
+      const phaseNorm = phaseId.startsWith("phase-")
+        ? phaseId
+        : `phase-${phaseId}`;
+      files = files.filter(
+        (f) => f.includes(phaseNorm) || f.includes(`_${phaseId}_`),
+      );
     }
 
     if (files.length === 0) {
@@ -462,7 +490,12 @@ const handlers: Record<string, SlashCommandHandler> = {
       const content = fs.readFileSync(path.join(runsDir, latestFile), "utf-8");
       const run = JSON.parse(content);
 
-      const status = run.exit_code === 0 ? "✅ PASS" : run.exit_code ? "❌ FAIL" : "🔄 IN PROGRESS";
+      const status =
+        run.exit_code === 0
+          ? "✅ PASS"
+          : run.exit_code
+            ? "❌ FAIL"
+            : "🔄 IN PROGRESS";
       let text = `📋 *Latest log: ${latestFile}*\n`;
       text += `*Status:* ${status}\n`;
       if (run.feature_id) text += `*Feature:* ${run.feature_id}\n`;
@@ -480,10 +513,12 @@ const handlers: Record<string, SlashCommandHandler> = {
       if (files.length > 1) {
         blocks.push({
           type: "context",
-          elements: [{
-            type: "mrkdwn",
-            text: `${files.length} total runs. Showing latest.`,
-          }],
+          elements: [
+            {
+              type: "mrkdwn",
+              text: `${files.length} total runs. Showing latest.`,
+            },
+          ],
         });
       }
     } catch {

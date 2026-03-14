@@ -20,6 +20,13 @@ export const effortCommand = new Command("effort")
       const projectRoot = process.cwd();
       const featureDir = path.join(projectRoot, "specs", feature);
 
+      if (!fs.existsSync(featureDir)) {
+        throw new CommandError(
+          `Feature directory not found: ${featureDir}. Run 'gwrk project specs' to list available features.`,
+          1,
+        );
+      }
+
       const config = loadConfig(projectRoot);
       const roleMultipliers = resolveRoleMultipliers(config);
 

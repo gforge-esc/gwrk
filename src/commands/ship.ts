@@ -309,22 +309,11 @@ export const shipCommand = new Command("ship")
           !fs.existsSync(path.join(featureSpecDir, "spec.md"))
         ) {
           console.error(`Feature not found: specs/${feature}`);
-          console.error("Available features:");
-          const specsDir = path.join(cwd, "specs");
-          if (fs.existsSync(specsDir)) {
-            for (const d of fs.readdirSync(specsDir)) {
-              const fp = path.join(specsDir, d);
-              if (
-                fs.statSync(fp).isDirectory() &&
-                fs.existsSync(path.join(fp, "spec.md"))
-              ) {
-                console.log(`  ${d}`);
-              }
-            }
-          }
-          throw new CommandError(`Feature not found: specs/${feature}`, 1);
+          throw new CommandError(
+            `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
+            1,
+          );
         }
-
 
         // Determine which phases to ship
         let phases: string[];

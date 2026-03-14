@@ -42,6 +42,9 @@ export const defineCommand = new Command("define")
     ) => {
       await withSignal("define", async () => {
         if (!feature) {
+          console.error(
+            "Feature ID required. Run 'gwrk project specs' to list available features.",
+          );
           defineCommand.help();
           return;
         }

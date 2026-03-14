@@ -31,7 +31,10 @@ export const initCommand = new Command("init")
 
           const hasTokens = loadSlackConfig();
           if (!hasTokens) {
-            throw new CommandError("Slack not configured. Run gwrk setup slack first.", 1);
+            throw new CommandError(
+              "Slack not configured. Run gwrk setup slack first.",
+              1,
+            );
           }
 
           // Update .gwrkrc.json with Slack config
@@ -127,7 +130,9 @@ export const initCommand = new Command("init")
 
       // Slack Channel Provisioning
       if (options.slack || options.slackOps) {
-        const { ensureSlackChannel } = await import("../server/slack-channel.js");
+        const { ensureSlackChannel } = await import(
+          "../server/slack-channel.js"
+        );
         const { loadSlackConfig } = await import("../utils/slack-client.js");
 
         const hasTokens = loadSlackConfig();

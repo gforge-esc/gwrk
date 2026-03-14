@@ -14,10 +14,10 @@ import {
   nextTask,
   saveTaskState,
 } from "../utils/state.js";
-import type { TaskState, Task } from "../utils/state.js";
+import type { Task, TaskState } from "../utils/state.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { createOutput } from "../utils/output.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const tasksCommand = new Command("tasks").description(
   "Query and manage task state",
@@ -38,14 +38,20 @@ tasksCommand
         state = loadTaskState(featureDir);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new CommandError(`Error loading task state: ${message}`, 1);
+        throw new CommandError(
+          `Error loading task state: ${message}. Run 'gwrk define tasks ${feature}' to generate.`,
+          1,
+        );
       }
 
       const allTasks = listTasks(state);
       const task = allTasks.find((t) => t.id === taskId);
 
       if (!task) {
-        throw new CommandError(`Task ${taskId} not found in tasks.json`, 1);
+        throw new CommandError(
+          `Task ${taskId} not found in tasks.json. Run 'gwrk tasks list ${feature}' to list available tasks.`,
+          1,
+        );
       }
 
       if (task.status === "completed") {
@@ -57,11 +63,17 @@ tasksCommand
 
       if (result.exitCode !== 0) {
         if (result.exitCode === 127) {
-          throw new CommandError(`CRITICAL: gates/${taskId}-gate.sh not found`, 1);
+          throw new CommandError(
+            `CRITICAL: gates/${taskId}-gate.sh not found`,
+            1,
+          );
         } else {
           if (result.stdout) process.stdout.write(result.stdout);
           if (result.stderr) process.stderr.write(result.stderr);
-          throw new CommandError(`Gate failed for ${taskId}. State unchanged.`, 1);
+          throw new CommandError(
+            `Gate failed for ${taskId}. State unchanged.`,
+            1,
+          );
         }
       }
 
@@ -99,7 +111,10 @@ tasksCommand
       const featureDir = path.join(projectRoot, "specs", feature);
 
       if (!fs.existsSync(featureDir)) {
-        throw new CommandError(`Feature directory not found: ${featureDir}`, 1);
+        throw new CommandError(
+          `Feature directory not found: ${featureDir}. Run 'gwrk project specs' to list available features.`,
+          1,
+        );
       }
 
       const manifests = loadManifests(featureDir);
@@ -148,105 +163,118 @@ tasksCommand
   .description("List all tasks for a feature")
   .option("--json", "Output in JSON format")
   .option("--compact", "Hide descriptions on open tasks")
-  .action(async (feature: string, options: { json?: boolean; compact?: boolean }, command) => {
-    await withSignal("tasks list", async () => {
-      // Traverse up to find root program options
-      let root = command;
-      while (root.parent) root = root.parent;
-      const globalOpts = root.opts();
+  .action(
+    async (
+      feature: string,
+      options: { json?: boolean; compact?: boolean },
+      command,
+    ) => {
+      await withSignal("tasks list", async () => {
+        // Traverse up to find root program options
+        let root = command;
+        while (root.parent) root = root.parent;
+        const globalOpts = root.opts();
 
-      const format = options.json ? "json" : (globalOpts.format || "human");
-      const out = createOutput(format);
+        const format = options.json ? "json" : globalOpts.format || "human";
+        const out = createOutput(format);
 
-      const projectRoot = process.cwd();
-      const featureDir = path.join(projectRoot, "specs", feature);
-      const state = loadTaskState(featureDir);
-      const allTasks = listTasks(state);
+        const projectRoot = process.cwd();
+        const featureDir = path.join(projectRoot, "specs", feature);
+        const state = loadTaskState(featureDir);
+        const allTasks = listTasks(state);
 
-      if (format === "json") {
-        out.write({ tasks: allTasks });
-        return;
-      }
+        if (format === "json") {
+          out.write({ tasks: allTasks });
+          return;
+        }
 
-      checkDrift(featureDir, state, feature);
+        checkDrift(featureDir, state, feature);
 
-      console.log(`Tasks for ${feature}:`);
-      const { CYAN, BOLD, RESET, GREEN, RED, DIM } = color;
+        console.log(`Tasks for ${feature}:`);
+        const { CYAN, BOLD, RESET, GREEN, RED, DIM } = color;
 
-      for (const phase of state.phases) {
-        if (phase.tasks.length === 0) continue;
+        for (const phase of state.phases) {
+          if (phase.tasks.length === 0) continue;
 
-        const phaseNum = Number.parseInt(phase.id.replace("phase-", ""), 10);
-        console.log(
-          `\n  ${CYAN}${BOLD}Phase ${phaseNum}: ${phase.title}${RESET}`,
-        );
-
-        for (const t of phase.tasks) {
-          let statusChar = " ";
-          const bracketColor = DIM;
-          let textColor = RESET;
-
-          if (t.status === "completed") {
-            statusChar = `${GREEN}✓${RESET}`;
-            textColor = DIM;
-          } else if (t.status === "cancelled") {
-            statusChar = `${RED}✗${RESET}`;
-            textColor = DIM;
-          } else if (t.status === "in_progress") {
-            statusChar = `${CYAN}▸${RESET}`;
-          }
-
+          const phaseNum = Number.parseInt(phase.id.replace("phase-", ""), 10);
           console.log(
-            `  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`,
+            `\n  ${CYAN}${BOLD}Phase ${phaseNum}: ${phase.title}${RESET}`,
           );
 
-          if (
-            !options.compact &&
-            (t.status === "open" || t.status === "in_progress") &&
-            t.description
-          ) {
-            console.log(`       ${DIM}${t.description}${RESET}`);
+          for (const t of phase.tasks) {
+            let statusChar = " ";
+            const bracketColor = DIM;
+            let textColor = RESET;
+
+            if (t.status === "completed") {
+              statusChar = `${GREEN}✓${RESET}`;
+              textColor = DIM;
+            } else if (t.status === "cancelled") {
+              statusChar = `${RED}✗${RESET}`;
+              textColor = DIM;
+            } else if (t.status === "in_progress") {
+              statusChar = `${CYAN}▸${RESET}`;
+            }
+
+            console.log(
+              `  ${bracketColor}[${RESET}${statusChar}${bracketColor}]${RESET} ${textColor}${t.id}: ${t.title}${RESET}`,
+            );
+
+            if (
+              !options.compact &&
+              (t.status === "open" || t.status === "in_progress") &&
+              t.description
+            ) {
+              console.log(`       ${DIM}${t.description}${RESET}`);
+            }
           }
         }
-      }
-    });
-  });
+      });
+    },
+  );
 
 tasksCommand
   .command("next <feature> <phase>")
   .description("Show the next open task for a phase")
   .option("--json", "Output in JSON format")
-  .action(async (feature: string, phase: string, options: { json?: boolean }, command) => {
-    await withSignal("tasks next", async () => {
-      // Traverse up to find root program options
-      let root = command;
-      while (root.parent) root = root.parent;
-      const globalOpts = root.opts();
+  .action(
+    async (
+      feature: string,
+      phase: string,
+      options: { json?: boolean },
+      command,
+    ) => {
+      await withSignal("tasks next", async () => {
+        // Traverse up to find root program options
+        let root = command;
+        while (root.parent) root = root.parent;
+        const globalOpts = root.opts();
 
-      const format = options.json ? "json" : (globalOpts.format || "human");
-      const out = createOutput(format);
+        const format = options.json ? "json" : globalOpts.format || "human";
+        const out = createOutput(format);
 
-      const projectRoot = process.cwd();
-      const featureDir = path.join(projectRoot, "specs", feature);
-      const state = loadTaskState(featureDir);
+        const projectRoot = process.cwd();
+        const featureDir = path.join(projectRoot, "specs", feature);
+        const state = loadTaskState(featureDir);
 
-      let phaseId = phase;
-      if (!phase.startsWith("phase-")) {
-        phaseId = `phase-${phase.padStart(2, "0")}`;
-      }
+        let phaseId = phase;
+        if (!phase.startsWith("phase-")) {
+          phaseId = `phase-${phase.padStart(2, "0")}`;
+        }
 
-      const task = nextTask(state, phaseId);
+        const task = nextTask(state, phaseId);
 
-      if (format === "json") {
-        out.write({ task: task || null });
-      } else if (task) {
-        console.log(`Next task: ${task.id}: ${task.title}`);
-        console.log(task.description);
-      } else {
-        console.log("All tasks completed or phase not found");
-      }
-    });
-  });
+        if (format === "json") {
+          out.write({ task: task || null });
+        } else if (task) {
+          console.log(`Next task: ${task.id}: ${task.title}`);
+          console.log(task.description);
+        } else {
+          console.log("All tasks completed or phase not found");
+        }
+      });
+    },
+  );
 
 tasksCommand
   .command("ready <feature>")
@@ -259,7 +287,7 @@ tasksCommand
       while (root.parent) root = root.parent;
       const globalOpts = root.opts();
 
-      const format = options.json ? "json" : (globalOpts.format || "human");
+      const format = options.json ? "json" : globalOpts.format || "human";
       const out = createOutput(format);
 
       const projectRoot = process.cwd();

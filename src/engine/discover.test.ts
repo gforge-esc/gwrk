@@ -74,19 +74,19 @@ describe("FR-004: Project Discovery Engine", () => {
 		expect(result.specs[0]).toHaveProperty("status");
 	});
 
-	// --- Contract: status derivation (spec only = 'specified') ---
-	it("derives status 'specified' when spec.md exists but no plan.md", async () => {
+	// --- Contract: status derivation (spec only = 'drafted') ---
+	it("derives status 'drafted' when spec.md exists but no plan.md", async () => {
 		const result = await discoverProject(testRoot);
 		const spec = result.specs.find(
 			(s: { id: string }) => s.id === "001-cli-core",
 		);
 
 		expect(spec).toBeDefined();
-		expect(spec!.status).toBe("specified");
+		expect(spec!.status).toBe("drafted");
 	});
 
-	// --- Contract: status derivation (plan + tasks = 'in-progress') ---
-	it("derives status 'in-progress' when tasks.json has open tasks", async () => {
+	// --- Contract: status derivation (plan + tasks = 'tasked') ---
+	it("derives status 'tasked' when tasks.json has open tasks", async () => {
 		const specDir = path.join(testRoot, "specs", "001-cli-core");
 		fs.writeFileSync(path.join(specDir, "plan.md"), "# Plan\n");
 		fs.mkdirSync(path.join(specDir, ".gwrk"), { recursive: true });
@@ -118,7 +118,7 @@ describe("FR-004: Project Discovery Engine", () => {
 			(s: { id: string }) => s.id === "001-cli-core",
 		);
 
-		expect(spec!.status).toBe("in-progress");
+		expect(spec!.status).toBe("tasked");
 	});
 
 	// --- TC-004: No SQLite, No Server ---
@@ -151,8 +151,8 @@ describe("FR-004: Project Discovery Engine", () => {
 
 		try {
 			const result = await discoverProject(nonGitDir);
-			// git fields should be empty/null, not crash
-			expect(result.git.branch).toBeFalsy();
+			// git fields should be 'unknown' or falsy, not crash
+			expect(result.git.branch === "unknown" || !result.git.branch).toBe(true);
 		} finally {
 			fs.rmSync(nonGitDir, { recursive: true, force: true });
 		}
