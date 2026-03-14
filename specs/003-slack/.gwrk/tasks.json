@@ -138,9 +138,9 @@
           "id": "T009",
           "title": "Implement scripts/dev/agent-run.sh",
           "description": "Modify: add `gwrk_notify` calls at phase_start, phase_complete, phase_fail, ci_result, review_ready\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed.\n  WHERE: scripts/dev/agent-run.sh\n  EXPECTED: gwrk_notify calls at phase_start, phase_complete, phase_fail, ci_result, review_ready.\n  ACTUAL: No gwrk_notify calls found in the script.\n  FIX: Add gwrk_notify calls using curl to POST http://localhost:18790/api/notify.\n  GATE: gates/T009-gate.sh assertion #2\n  REF: plan.md Phase 7 > Ship Loop → Slack Notify Bridge",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "completedAt": "2026-03-12T15:23:47.714Z"
+          "completedAt": "2026-03-14T18:22:54.000Z"
         },
         {
           "id": "T010",
@@ -153,8 +153,9 @@
           "id": "T011",
           "title": "Implement src/db/migrations/003_pr_tracking.sql",
           "description": "New: `pr_number`, `pr_url` columns on `runs` table\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed.\n  WHERE: src/db/migrations/003_pr_tracking.sql\n  EXPECTED: File exists with pr_number and pr_url columns for runs table.\n  ACTUAL: File does not exist.\n  FIX: Create the migration file and ensure it is copied to dist/ during build.\n  GATE: gates/T011-gate.sh assertion #1\n  REF: plan.md Phase 7 > Migration: 003_pr_tracking.sql",
-          "status": "open",
-          "gateScript": "gates/T011-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T011-gate.sh",
+          "completedAt": "2026-03-14T18:22:54.000Z"
         },
         {
           "id": "T012",
@@ -168,9 +169,9 @@
           "id": "T013",
           "title": "Implement test strategy for Phase 7",
           "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Integration failure — SC-002.\n  WHERE: gates/T013-gate.sh\n  EXPECTED: curl to /api/notify returns ok: true.\n  ACTUAL: Returns 404 or server is crashing.\n  FIX: Fix Dockerfile to include docker CLI. Fix notify route registration.\n  GATE: gates/T013-gate.sh assertion #1\n  REF: plan.md Phase 7 > Done When",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh",
-          "completedAt": "2026-03-12T15:23:47.735Z"
+          "completedAt": "2026-03-14T18:22:54.000Z"
         }
       ],
       "doneWhen": [
@@ -233,8 +234,9 @@
           "id": "T020",
           "title": "Implement test strategy for Phase 8",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T020-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T020-gate.sh",
+          "completedAt": "2026-03-14T18:22:54.000Z"
         }
       ],
       "doneWhen": [
