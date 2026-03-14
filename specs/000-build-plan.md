@@ -24,7 +24,7 @@
 ```mermaid
 graph TD
     F000["F000: Extraction ✅"] --> F001["F001: CLI Core ✅"]
-    F001 --> F013["F013: Agent-Native Interface"]
+    F001 --> F013["F013: Agent-Native Interface 🟡"]
     F001 --> F002["F002: Build Server ✅"]
     F001 --> F006["F006: Pulse"]
     F001 --> F007["F007: Effort + Compression"]
@@ -47,7 +47,7 @@ graph TD
 ## Critical Path
 
 ```
-F000 ✅ → F001 ✅ → F013 ✅ (Agent-Native) → TDD Hardening (001-003) → F004 → F005 → F008
+F000 ✅ → F001 ✅ → F013 (Agent-Native) → TDD Hardening (001-003) → F004 → F005 → F008
                                          → F002 ✅ → F003 ✅
                → F006
                → F007
@@ -192,7 +192,7 @@ gwrk setup slack               # Fully automated: create app, install, write tok
 
 ---
 
-### Feature 013 — Agent-Native Interface ✅
+### Feature 013 — Agent-Native Interface 🟡
 
 Make gwrk a dual-mode CLI that operates identically for humans and LLM agents, with structured output, operational signals, project discovery, and a presentation layer that protects agents from context corruption.
 

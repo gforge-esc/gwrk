@@ -15,6 +15,7 @@ export interface DispatchOptions {
   featureDir?: string;
   prompt?: string;
   approvalMode?: "yolo" | "auto" | "plan";
+  contextPath?: string;
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
@@ -47,6 +48,11 @@ export function buildCommand(
       const mode =
         opts.approvalMode ?? (workflowName === "analyze" ? "plan" : "yolo");
       args.push("--approval-mode", mode);
+
+      if (opts.contextPath) {
+        // Pass context via env var — gemini CLI doesn't support -c
+        // The workflow template can read GWRK_CONTEXT
+      }
       break;
     }
     case "claude":
@@ -54,12 +60,14 @@ export function buildCommand(
       args.push("-p", _workflowContent, "--output-format", "json");
       if (opts.featureDir) args.push(opts.featureDir);
       if (opts.prompt) args.push(opts.prompt);
+      if (opts.contextPath) args.push("--context", opts.contextPath);
       break;
     case "codex":
       command = "codex";
       args.push("exec", "--full-auto", opts.workflowPath);
       if (opts.featureDir) args.push(opts.featureDir);
       if (opts.prompt) args.push(opts.prompt);
+      if (opts.contextPath) args.push("--context", opts.contextPath);
       break;
     case "codex-cloud":
       command = "codex";
@@ -72,6 +80,7 @@ export function buildCommand(
       );
       if (opts.featureDir) args.push(opts.featureDir);
       if (opts.prompt) args.push(opts.prompt);
+      if (opts.contextPath) args.push("--context", opts.contextPath);
       break;
   }
 
@@ -142,7 +151,12 @@ export async function dispatchAgent(
 
     const child = spawn(command, args, {
       cwd: projectRoot,
-      env: process.env,
+      env: {
+        ...process.env,
+        ...(opts.contextPath
+          ? { GWRK_CONTEXT: opts.contextPath }
+          : {}),
+      },
       stdio: ["pipe", "pipe", "pipe"],
     });
 

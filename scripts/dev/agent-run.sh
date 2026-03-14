@@ -368,6 +368,21 @@ $AGENT_BIN $AGENT_EXTRA_FLAGS -p "${COMMAND}" --approval-mode "${MODE}" 2>&1 \
 
 EXIT_CODE=${PIPESTATUS[0]}
 
+# ──────────────────────────────────────────────────────────────────
+# Post-agent: Staging scope validation (Design Mandate Rule 5)
+# ──────────────────────────────────────────────────────────────────
+if [[ "$WORKFLOW" == "implement" ]] && [[ "$EXIT_CODE" -eq 0 ]]; then
+  VALIDATE_STAGING="$SCRIPT_DIR/validate-staging.sh"
+  if [[ -x "$VALIDATE_STAGING" ]]; then
+    echo ""
+    echo -e "${DIM}Running staging scope validation...${RESET}"
+    if ! "$VALIDATE_STAGING" "$FEATURE" 2>&1 | tee -a "$LOG_FILE"; then
+      echo -e "${YELLOW}⚠ Staging validation failed — treating as implementation failure${RESET}"
+      EXIT_CODE=1
+    fi
+  fi
+fi
+
 if [[ "$WORKFLOW" == "implement" ]]; then
   if [[ "$EXIT_CODE" -eq 0 ]]; then
     gwrk_notify "phase_complete"

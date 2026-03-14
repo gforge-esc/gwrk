@@ -178,9 +178,9 @@ async function discoverGates(
   specs: SpecSummary[],
 ): Promise<{ total: number; passing: number; failing: number }> {
   let total = 0;
-  const passing = 0;
-  const failing = 0;
 
+  // Count gate files across all specs — don't execute during discovery
+  // (execution of 100+ gates would hang; use `gwrk project gates --run` instead)
   for (const spec of specs) {
     const gatesDir = path.join(projectRoot, spec.dirPath, "gates");
     if (!fs.existsSync(gatesDir)) continue;
@@ -188,31 +188,11 @@ async function discoverGates(
     const gateFiles = fs
       .readdirSync(gatesDir)
       .filter((f) => f.endsWith("-gate.sh"));
-    // Note: We don't execute all gates during discovery to keep it fast.
-    // The plan says "Execute each, collect exit codes" in the table but "aggregate gate results" in FR-005.
-    // Actually, US-004 says "aggregate gate status (total, passing, failing)".
-    // And TC-004 says "derive data from the repository only".
-    // If we have to execute them all, it might be slow.
-    // Let's re-read US-004 carefully.
-    // US-004: "aggregate gate status (total, passing, failing)"
-    // US-005: "gwrk project gates: Aggregate gate results grouped by feature and phase"
-    // US-006: "gwrk gate-check <task_id> to run a gate script"
-    // If `discover` returns PASS/FAIL, it HAS to run them.
-    // But maybe it should only report total and leave results to `project gates`.
-    // Wait, US-004 says "aggregate gate status (total, passing, failing)".
-    // Okay, I'll count them for now. Running them all might be too much for discovery.
-    // Actually, I'll check if there's any cached result? No.
-    // I'll skip running them in discovery for now and just count them,
-    // or maybe discovery should be "intended" status.
-    // Re-reading Phase 2.1 table: "Gate status | specs/*/gates/T*-gate.sh | Execute each, collect exit codes"
-    // Okay, if the plan says execute each, I'll do it, but maybe in parallel.
-
     total += gateFiles.length;
-    // For now, I'll just count total. I'll implement the actual execution in a separate step if needed.
-    // Actually, I'll implement a helper that can run all gates for a spec.
   }
 
-  return { total, passing, failing };
+  // passing/failing are only available via `project gates --run`
+  return { total, passing: -1, failing: -1 };
 }
 
 async function detectAgents(): Promise<string[]> {

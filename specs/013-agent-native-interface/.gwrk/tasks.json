@@ -78,9 +78,8 @@
           "id": "T008",
           "title": "Create project discovery engine",
           "description": "Create src/engine/discover.ts implementing discoverProject(root) per contracts/discover.md. Assembles ProjectDiscovery (DM-001) from repo-only sources: git state (git status, git branch, git log), spec inventory (glob specs/*/spec.md, derive status from plan.md/tasks.json existence), gate aggregation (execute gate scripts), config (.gwrkrc.json). MUST NOT read ~/.gwrk/gwrk.db or call localhost:18790 (TC-004). Create src/engine/discover.test.ts per TR-004 — mock filesystem, verify no sqlite/http calls.",
-          "status": "completed",
-          "gateScript": "gates/T008-gate.sh",
-          "completedAt": "2026-03-14T06:00:51.262Z"
+          "status": "open",
+          "gateScript": "gates/T008-gate.sh"
         },
         {
           "id": "T009",
@@ -94,9 +93,8 @@
           "id": "T010",
           "title": "Add project specs and gates subcommands",
           "description": "Add 'specs' and 'gates' subcommands to project command in src/commands/project.ts. specs: list all specs with id, name, status, phase count, open tasks. gates: run all gate scripts and report task id, result (PASS/FAIL), duration. Both support --format json. Per spec FR-005.",
-          "status": "completed",
-          "gateScript": "gates/T010-gate.sh",
-          "completedAt": "2026-03-14T06:00:53.377Z"
+          "status": "open",
+          "gateScript": "gates/T010-gate.sh"
         },
         {
           "id": "T011",
