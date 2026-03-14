@@ -8,15 +8,15 @@ export declare const HistoryEntrySchema: z.ZodObject<{
     agentId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     featureId: string;
-    timestamp: string;
     taskId: string;
+    timestamp: string;
     fromStatus: "open" | "in_progress" | "completed" | "cancelled";
     toStatus: "open" | "in_progress" | "completed" | "cancelled";
     agentId?: string | undefined;
 }, {
     featureId: string;
-    timestamp: string;
     taskId: string;
+    timestamp: string;
     fromStatus: "open" | "in_progress" | "completed" | "cancelled";
     toStatus: "open" | "in_progress" | "completed" | "cancelled";
     agentId?: string | undefined;

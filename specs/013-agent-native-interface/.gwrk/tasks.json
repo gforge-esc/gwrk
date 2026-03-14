@@ -58,7 +58,7 @@
           "id": "T006",
           "title": "Create gwrk gate-check command",
           "description": "Create src/commands/gate-check.ts per contracts/gate-check.md. Arguments: <task_id>, -f/--feature <dir>. Resolves gate script path: specs/<feature>/gates/<taskId>-gate.sh. Executes gate script, captures exit code + stdout + stderr. Returns GateCheckResult (DM-002). Supports --format json. Feature inference when -f omitted: glob specs/**/gates/<taskId>-gate.sh. Error-as-navigation on missing gate. Register in src/cli.ts. Create src/commands/gate-check.test.ts per TR-005.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh"
         },
         {

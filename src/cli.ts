@@ -3,6 +3,7 @@ import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { dbCommand } from "./commands/db.js";
 import { defineCommand } from "./commands/define.js";
+import { gateCheckCommand } from "./commands/gate-check.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
 import { serverCommand } from "./commands/server.js";
@@ -27,6 +28,7 @@ program
   .version(pkg.version)
   .description("The Principal Engineer's Operating System")
   .option("--format <type>", "Output format: human | json", "human")
+  .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
   .configureHelp({
     formatHelp: (cmd, helper) => {
       const ver = cmd.version() ?? pkg.version;
@@ -86,6 +88,7 @@ program
   });
 
 program.addCommand(initCommand);
+program.addCommand(gateCheckCommand);
 
 // The Foxtrot Charlie Pillars
 program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze
