@@ -16,6 +16,8 @@ import { planCommand } from "./plan.js";
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 
+import { CommandError, withSignal } from "../utils/signal.js";
+
 /**
  * gwrk define — The Definition Pillar (Clarity)
  *
@@ -38,117 +40,119 @@ export const defineCommand = new Command("define")
       feature: string | undefined,
       opts: { dryRun?: boolean; refs?: string },
     ) => {
-      if (!feature) {
-        defineCommand.help();
-        return;
-      }
+      await withSignal("define", async () => {
+        if (!feature) {
+          defineCommand.help();
+          return;
+        }
 
-      // Bare `gwrk define <feature>` = full definition loop
-      const cwd = process.cwd();
-      const scriptPath = path.join(cwd, "scripts/dev/define-until-solid.sh");
+        // Bare `gwrk define <feature>` = full definition loop
+        const cwd = process.cwd();
+        const scriptPath = path.join(cwd, "scripts/dev/define-until-solid.sh");
 
-      const config = loadConfig(cwd);
-      const backend = config.agents.define;
+        const config = loadConfig(cwd);
+        const backend = config.agents.define;
 
-      if (opts.dryRun) {
-        dryRunFmt(`${scriptPath} ${feature}`);
-        return;
-      }
+        if (opts.dryRun) {
+          dryRunFmt(`${scriptPath} ${feature}`);
+          return;
+        }
 
-      const startedAt = new Date().toISOString();
-      const runId = startRun({
-        feature_id: feature,
-        command: "define",
-        agent_backend: backend,
-        workflow: "define-until-solid",
-      });
-
-      banner("define", {
-        Feature: feature,
-        Agent: backend,
-        "Run ID": `${runId}`,
-        ...(opts.refs ? { Refs: opts.refs } : {}),
-      });
-
-      const startTime = Date.now();
-      let exitCode = 0;
-
-      try {
-        const envVars: Record<string, string> = {
-          ...(process.env as Record<string, string>),
-          APPROVAL_MODE: "yolo",
-        };
-        if (opts.refs) envVars.GWRK_REFS = opts.refs;
-
-        await run(scriptPath, [feature], {
-          cwd,
-          env: envVars,
-          stdio: "inherit",
-        });
-
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        finishRun(runId, { exit_code: 0, duration_s: durationS });
-        success("define", durationS, runId);
-      } catch (error) {
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        exitCode =
-          error instanceof Error && "exitCode" in error
-            ? (error as { exitCode: number }).exitCode
-            : 1;
-        finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-        fail("define", exitCode, durationS, runId);
-      }
-
-      // Write Execution Manifest (ADR-003)
-      try {
-        const finishedAt = new Date().toISOString();
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        const gitCommit = getCurrentCommit(cwd);
-        const gitBranch = getCurrentBranch(cwd);
-        const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
-          cwd,
-          `${gitCommit}~1`,
-        );
-
-        const manifestId = generateRunId(startedAt, "define", "p00");
-        const featureDir = path.join(cwd, "specs", feature);
-
-        writeManifest(featureDir, {
-          runId: manifestId,
-          feature,
-          phase: "p00",
-          command: "define",
-          agent: backend,
-          model: "unknown",
-          startedAt,
-          finishedAt,
-          durationS,
-          exitCode,
-          attempt: 1,
-          filesChanged,
-          linesAdded,
-          linesDeleted,
-          gitCommit,
-          gitBranch,
-        });
-
-        // Record in history table
-        recordHistory({
+        const startedAt = new Date().toISOString();
+        const runId = startRun({
           feature_id: feature,
-          run_id: runId,
-          from_status: "open", // Simplified
-          to_status: exitCode === 0 ? "completed" : "open",
-          metadata: JSON.stringify({ command: "define", manifestId }),
+          command: "define",
+          agent_backend: backend,
+          workflow: "define-until-solid",
         });
-      } catch (manifestError) {
-        console.warn(
-          `Warning: Could not write execution manifest: ${manifestError}`,
-        );
-      }
 
-      if (exitCode !== 0) {
-        process.exit(exitCode);
-      }
+        banner("define", {
+          Feature: feature,
+          Agent: backend,
+          "Run ID": `${runId}`,
+          ...(opts.refs ? { Refs: opts.refs } : {}),
+        });
+
+        const startTime = Date.now();
+        let exitCode = 0;
+
+        try {
+          const envVars: Record<string, string> = {
+            ...(process.env as Record<string, string>),
+            APPROVAL_MODE: "yolo",
+          };
+          if (opts.refs) envVars.GWRK_REFS = opts.refs;
+
+          await run(scriptPath, [feature], {
+            cwd,
+            env: envVars,
+            stdio: "inherit",
+          });
+
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          finishRun(runId, { exit_code: 0, duration_s: durationS });
+          success("define", durationS, runId);
+        } catch (error) {
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          exitCode =
+            error instanceof Error && "exitCode" in error
+              ? (error as { exitCode: number }).exitCode
+              : 1;
+          finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+          fail("define", exitCode, durationS, runId);
+        }
+
+        // Write Execution Manifest (ADR-003)
+        try {
+          const finishedAt = new Date().toISOString();
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          const gitCommit = getCurrentCommit(cwd);
+          const gitBranch = getCurrentBranch(cwd);
+          const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+            cwd,
+            `${gitCommit}~1`,
+          );
+
+          const manifestId = generateRunId(startedAt, "define", "p00");
+          const featureDir = path.join(cwd, "specs", feature);
+
+          writeManifest(featureDir, {
+            runId: manifestId,
+            feature,
+            phase: "p00",
+            command: "define",
+            agent: backend,
+            model: "unknown",
+            startedAt,
+            finishedAt,
+            durationS,
+            exitCode,
+            attempt: 1,
+            filesChanged,
+            linesAdded,
+            linesDeleted,
+            gitCommit,
+            gitBranch,
+          });
+
+          // Record in history table
+          recordHistory({
+            feature_id: feature,
+            run_id: runId,
+            from_status: "open", // Simplified
+            to_status: exitCode === 0 ? "completed" : "open",
+            metadata: JSON.stringify({ command: "define", manifestId }),
+          });
+        } catch (manifestError) {
+          console.warn(
+            `Warning: Could not write execution manifest: ${manifestError}`,
+          );
+        }
+
+        if (exitCode !== 0) {
+          process.exitCode = exitCode;
+        }
+      });
     },
   );
 

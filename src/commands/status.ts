@@ -4,55 +4,59 @@ import type { SystemStatus } from "../server/types.js";
 import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
 
+import { CommandError, withSignal } from "../utils/signal.js";
+
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
 export const statusCommand = new Command("status")
   .description("Show gwrk build server and system status")
   .option("--json", "Output status as JSON")
   .action(async (options) => {
-    const projectRoot = process.cwd();
-    const config = loadConfig(projectRoot);
-    const pid = readPid();
+    await withSignal("status", async () => {
+      const projectRoot = process.cwd();
+      const config = loadConfig(projectRoot);
+      const pid = readPid();
 
-    if (!pid) {
-      if (options.json) {
-        console.log(JSON.stringify({ server: { status: "stopped" } }, null, 2));
-      } else {
-        console.log(
-          `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}\n`,
-        );
-      }
-      return;
-    }
-
-    const url = `http://${config.server.host}:${config.server.port}/api/status`;
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      const status = (await response.json()) as SystemStatus;
-
-      if (options.json) {
-        console.log(JSON.stringify(status, null, 2));
+      if (!pid) {
+        if (options.json) {
+          console.log(JSON.stringify({ server: { status: "stopped" } }, null, 2));
+        } else {
+          console.log(
+            `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}\n`,
+          );
+        }
         return;
       }
 
-      printStatus(status);
-    } catch (err) {
-      if (options.json) {
-        console.log(
-          JSON.stringify({ server: { status: "stopped", pid } }, null, 2),
-        );
-      } else {
-        console.log(
-          `\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`,
-        );
-        console.log(`    ${DIM}Endpoint: ${url}${RESET}\n`);
+      const url = `http://${config.server.host}:${config.server.port}/api/status`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+
+        const status = (await response.json()) as SystemStatus;
+
+        if (options.json) {
+          console.log(JSON.stringify(status, null, 2));
+          return;
+        }
+
+        printStatus(status);
+      } catch (err) {
+        if (options.json) {
+          console.log(
+            JSON.stringify({ server: { status: "stopped", pid } }, null, 2),
+          );
+        } else {
+          console.log(
+            `\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`,
+          );
+          console.log(`    ${DIM}Endpoint: ${url}${RESET}\n`);
+        }
       }
-    }
+    });
   });
 
 function printStatus(status: SystemStatus) {

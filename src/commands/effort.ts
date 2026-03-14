@@ -6,6 +6,8 @@ import { resolveRoleMultipliers } from "../engine/roles.js";
 import { extractStories } from "../engine/spec-parser.js";
 import { loadConfig } from "../utils/config.js";
 
+import { CommandError, withSignal } from "../utils/signal.js";
+
 export const effortCommand = new Command("effort")
   .description("Calculate deterministic effort estimation from spec stories")
   .argument(
@@ -13,8 +15,8 @@ export const effortCommand = new Command("effort")
     "The feature directory under specs/ (e.g. 001-cli-core)",
   )
   .option("--json", "Output structured JSON report to stdout")
-  .action((feature, options) => {
-    try {
+  .action(async (feature, options) => {
+    await withSignal("effort", async () => {
       const projectRoot = process.cwd();
       const featureDir = path.join(projectRoot, "specs", feature);
 
@@ -35,8 +37,5 @@ export const effortCommand = new Command("effort")
           `Effort report generated at: ${path.relative(projectRoot, filePath)}`,
         );
       }
-    } catch (err: unknown) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
+    });
   });

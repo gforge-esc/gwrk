@@ -36,7 +36,7 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     console.error(
       `  ${DIM}Provide SLACK_BOT_TOKEN and SLACK_APP_TOKEN in environment.${RESET}`,
     );
-    process.exit(1);
+    throw new CommandError("Slack configuration failed", 1);
   }
 
   const rl = readline.createInterface({
@@ -164,7 +164,7 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     console.error(
       `  ${RED}✗${RESET} Verification failed: ${(error as Error).message}`,
     );
-    process.exit(1);
+    throw new CommandError("Slack configuration failed", 1);
   }
 }
 
@@ -211,7 +211,7 @@ export async function setupSlack(opts: {
       console.error(
         `  ${RED}✗${RESET} Socket Mode: FAIL - ${(error as Error).message}`,
       );
-      process.exit(1);
+      throw new CommandError("Slack configuration failed", 1);
     }
   }
 
@@ -257,7 +257,7 @@ export async function setupSlack(opts: {
       console.error(
         `  ${RED}✗${RESET} Env tokens invalid: ${(error as Error).message}`,
       );
-      process.exit(1);
+      throw new CommandError("Slack configuration failed", 1);
     }
   }
 
@@ -265,9 +265,13 @@ export async function setupSlack(opts: {
   return interactiveSetup();
 }
 
+import { CommandError, withSignal } from "../utils/signal.js";
+
 export const setupSlackCommand = new Command("slack")
   .description("Setup Slack integration")
   .option("--verify", "Verify existing Slack configuration")
   .action(async (options) => {
-    await setupSlack(options);
+    await withSignal("setup slack", async () => {
+      await setupSlack(options);
+    });
   });

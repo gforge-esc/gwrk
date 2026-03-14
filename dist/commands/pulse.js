@@ -29,6 +29,7 @@ export function renderSnapshotTable(snap) {
     }
     return out.trimEnd();
 }
+import { CommandError, withSignal } from "../utils/signal.js";
 export function registerPulseCommands(program) {
     registerPulseSubcommands(program);
 }
@@ -37,8 +38,8 @@ export function registerPulseSubcommands(program) {
         .command("pulse")
         .description("Pulse productivity dashboard")
         .option("--json", "Output full PulseReport as JSON")
-        .action((options) => {
-        try {
+        .action(async (options) => {
+        await withSignal("pulse", async () => {
             const config = loadConfig(process.cwd());
             const report = generatePulseReport(config);
             if (options.json) {
@@ -47,26 +48,20 @@ export function registerPulseSubcommands(program) {
             else {
                 console.log(renderPulseTable(report));
             }
-        }
-        catch (err) {
-            console.error(err instanceof Error ? err.message : String(err));
-            process.exit(1);
-        }
+        });
     });
     pulseCmd
         .command("scan <path>")
         .description("Run a historical scan of any git repository")
         .option("--json", "Output PulseSnapshot as JSON")
-        .action((repoPath, options) => {
-        try {
+        .action(async (repoPath, options) => {
+        await withSignal("pulse scan", async () => {
             const absolutePath = path.resolve(process.cwd(), repoPath);
             if (!fs.existsSync(absolutePath)) {
-                console.error(`Path not found: ${absolutePath}`);
-                process.exit(1);
+                throw new CommandError(`Path not found: ${absolutePath}`, 1);
             }
             if (!fs.existsSync(path.join(absolutePath, ".git"))) {
-                console.error(`Not a git repository: ${absolutePath}`);
-                process.exit(1);
+                throw new CommandError(`Not a git repository: ${absolutePath}`, 1);
             }
             const snapshot = scanRepository(absolutePath);
             if (options.json) {
@@ -75,10 +70,6 @@ export function registerPulseSubcommands(program) {
             else {
                 console.log(renderSnapshotTable(snapshot));
             }
-        }
-        catch (err) {
-            console.error(err instanceof Error ? err.message : String(err));
-            process.exit(1);
-        }
+        });
     });
 }

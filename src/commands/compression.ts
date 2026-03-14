@@ -25,6 +25,8 @@ function getEffortReport(
   return report;
 }
 
+import { CommandError, withSignal } from "../utils/signal.js";
+
 export const compressionCommand = new Command("compression")
   .description("Calculate development compression ratios")
   .argument(
@@ -33,14 +35,14 @@ export const compressionCommand = new Command("compression")
   )
   .option("--all", "Generate summary for all shipped features under specs/")
   .option("--json", "Output structured JSON to stdout")
-  .action((feature, options) => {
-    try {
+  .action(async (feature, options) => {
+    await withSignal("compression", async () => {
       const projectRoot = process.cwd();
 
       if (options.all) {
         const specsDir = path.join(projectRoot, "specs");
         if (!fs.existsSync(specsDir)) {
-          throw new Error("specs directory not found");
+          throw new CommandError("specs directory not found", 1);
         }
 
         const directories = fs
@@ -128,7 +130,7 @@ export const compressionCommand = new Command("compression")
         }
       } else {
         if (!feature) {
-          throw new Error("Must specify a feature OR use --all");
+          throw new CommandError("Must specify a feature OR use --all", 1);
         }
 
         const featureDir = path.join(projectRoot, "specs", feature);
@@ -171,8 +173,5 @@ export const compressionCommand = new Command("compression")
           );
         }
       }
-    } catch (err: unknown) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
+    });
   });

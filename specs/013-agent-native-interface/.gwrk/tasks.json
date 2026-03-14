@@ -30,7 +30,7 @@
           "id": "T002",
           "title": "Wrap all command actions with withSignal()",
           "description": "Retrofit all 24 .action() callbacks across 19 command files to use withSignal(). Files: define.ts, specify.ts, plan.ts, implement.ts, tasks-generate.ts, ship.ts, test.ts, measure.ts, effort.ts, compression.ts, pulse.ts (2 actions), tasks.ts (4 actions: done/list/next/ready), runs.ts, stats.ts, db.ts, server.ts (3 actions), status.ts, init.ts, setup-slack.ts. Each action wrapped as: await withSignal('command-name', async () => { existing logic }). Remove direct process.exit() calls from action bodies — withSignal handles exit codes.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh"
         },
         {

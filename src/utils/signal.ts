@@ -1,6 +1,19 @@
 import { performance } from "node:perf_hooks";
 
 /**
+ * Custom error class for gwrk commands that allows specifying an exit code.
+ */
+export class CommandError extends Error {
+	constructor(
+		message: string,
+		public exitCode: number = 1,
+	) {
+		super(message);
+		this.name = "CommandError";
+	}
+}
+
+/**
  * Higher-order function wrapping every Commander action to emit an operational signal.
  * Implements FR-001, TC-005, TC-007 per signal.md contract.
  *
@@ -15,15 +28,27 @@ export async function withSignal(
 	let exitCode = 0;
 	let errorMsg = "";
 
+	// Reset exitCode before running
+	process.exitCode = 0;
+
 	try {
 		await fn();
+		// If the function set process.exitCode, use it
+		if (process.exitCode !== undefined && process.exitCode !== 0) {
+			exitCode = process.exitCode;
+		}
 	} catch (err: unknown) {
-		exitCode = 1;
-		if (err instanceof Error) {
+		if (err instanceof CommandError) {
+			exitCode = err.exitCode;
+			errorMsg = err.message;
+		} else if (err instanceof Error) {
+			exitCode = 1;
 			errorMsg = err.message;
 		} else if (typeof err === "string") {
+			exitCode = 1;
 			errorMsg = err;
 		} else {
+			exitCode = 1;
 			errorMsg = "Unknown error";
 		}
 	} finally {
