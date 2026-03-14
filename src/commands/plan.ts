@@ -21,7 +21,7 @@ export const planCommand = new Command("plan")
 
       if (!fs.existsSync(specPath)) {
         blocked("spec.md not found");
-        throw new CommandError("spec.md not found", 1);
+        throw new CommandError("spec.md not found. Run 'gwrk define spec <feature>' to create. See 'gwrk project specs' for available features.", 1);
       }
 
       const specContent = fs.readFileSync(specPath, "utf-8");

@@ -50,8 +50,7 @@ export function loadTaskState(featureDir: string): TaskState {
   const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
 
   if (!fs.existsSync(tasksPath)) {
-    console.error(`Task state file not found at ${tasksPath}`);
-    process.exit(1);
+    throw new Error(`Task state file not found at ${tasksPath}`);
   }
 
   let raw: unknown;
