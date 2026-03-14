@@ -6,12 +6,14 @@ import { defineCommand } from "./commands/define.js";
 import { gateCheckCommand } from "./commands/gate-check.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
+import { projectCommand } from "./commands/project.js";
 import { serverCommand } from "./commands/server.js";
 import { setupSlackCommand } from "./commands/setup-slack.js";
 import { shipCommand } from "./commands/ship.js";
 import { statusCommand } from "./commands/status.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { testCommand } from "./commands/test.js";
+import { processForAgent } from "./utils/agent-layer.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
@@ -41,7 +43,15 @@ program
         if (cmds.length > 0) {
             // Foxtrot Charlie pillars
             const pillars = ["define", "ship", "test", "measure"];
-            const ops = ["init", "tasks", "db", "server", "status", "setup"];
+            const ops = [
+                "init",
+                "tasks",
+                "db",
+                "server",
+                "status",
+                "project",
+                "setup",
+            ];
             out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
             for (const name of pillars) {
                 const sub = cmds.find((c) => c.name() === name);
@@ -78,6 +88,7 @@ program
 });
 program.addCommand(initCommand);
 program.addCommand(gateCheckCommand);
+program.addCommand(projectCommand);
 // The Foxtrot Charlie Pillars
 program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze
 program.addCommand(shipCommand); // Ship: autonomous implement → review → PR loop
@@ -101,6 +112,18 @@ function applyExitOverride(cmd) {
 applyExitOverride(program);
 program.hook("preAction", (thisCommand, actionCommand) => {
     const opts = thisCommand.opts();
+    const isAgent = opts.agent || process.env.GWRK_AGENT === "1";
+    if (isAgent) {
+        const originalWrite = process.stdout.write.bind(process.stdout);
+        process.stdout.write = (chunk, encoding, callback) => {
+            const data = typeof chunk === "string" ? chunk : chunk.toString();
+            const processed = processForAgent(data);
+            if (typeof encoding === "function") {
+                return originalWrite(processed, encoding);
+            }
+            return originalWrite(processed, encoding, callback);
+        };
+    }
     if (opts.format && !["human", "json"].includes(opts.format)) {
         console.error(`Unknown format: ${opts.format}. Supported: human, json`);
         process.exit(2);
@@ -118,18 +141,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         program.parse();
     }
     catch (err) {
-        if (err.code === "commander.helpDisplayed") {
+        const error = err;
+        if (error.code === "commander.helpDisplayed") {
             process.exit(0);
         }
-        if (err.code === "commander.unknownCommand") {
+        if (error.code === "commander.unknownCommand") {
+            console.error(`Unknown command. Run 'gwrk --help' to see available commands.`);
             process.exit(127);
         }
-        if (err.code === "commander.missingArgument" ||
-            err.code === "commander.unknownOption" ||
-            err.code === "commander.missingMandatoryOptionValue") {
+        if (error.code === "commander.missingArgument" ||
+            error.code === "commander.unknownOption" ||
+            error.code === "commander.missingMandatoryOptionValue") {
             process.exit(2);
         }
         // For other commander errors, use their exitCode or default to 1
-        process.exit(err.exitCode || 1);
+        process.exit(error.exitCode || 1);
     }
 }

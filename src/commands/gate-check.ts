@@ -111,6 +111,17 @@ export const gateCheckCommand = new Command("gate-check")
   .description("Execute a specific task gate and return structured result")
   .argument("<task_id>", "Task ID (e.g., T001)")
   .option("-f, --feature <dir>", "Feature directory (e.g., 001-cli-core)")
+  .addHelpText(
+    "after",
+    `
+Type: verifier (read-only)
+Formats: human, json
+Exit codes:
+  0: PASS
+  1: FAIL or gate script not found
+  2: Usage error
+`,
+  )
   .action(async (taskId: string, options, command) => {
     await withSignal("gate-check", async () => {
       // Traverse up to find root program options

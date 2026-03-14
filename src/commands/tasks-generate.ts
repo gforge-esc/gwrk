@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { classifyTask, extractFilePaths } from "../engine/classify.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { generateGates } from "../utils/gate-gen.js";
 import { parsePlan } from "../utils/parser.js";
@@ -146,6 +147,22 @@ export const tasksGenerateCommand = new Command("tasks")
                 }
               }
 
+              // Classification: greenfield, change, refactor, noop
+              const files = extractFilePaths(`${t.title} ${t.description}`);
+              const refactorKeywords = [
+                "refactor",
+                "cleanup",
+                "reorganize",
+                "rename",
+                "move",
+                "restructure",
+              ];
+              const isRefactor = refactorKeywords.some(
+                (kw) =>
+                  t.title.toLowerCase().includes(kw) ||
+                  t.description.toLowerCase().includes(kw),
+              );
+
               return {
                 id: taskId,
                 title: t.title,
@@ -153,6 +170,11 @@ export const tasksGenerateCommand = new Command("tasks")
                 status,
                 gateScript: `gates/${taskId}-gate.sh`,
                 completedAt,
+                classification: classifyTask({
+                  files,
+                  rootDir: projectRoot,
+                  modifiesBehavior: !isRefactor,
+                }),
               };
             });
 

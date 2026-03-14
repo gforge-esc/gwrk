@@ -63,11 +63,15 @@ describe("gwrk tasks query", () => {
 
     try {
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
       await tasksCommand.parseAsync(["list", "test-feature"], { from: "user" });
 
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("T001"));
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("T002"));
+      const output = stdoutSpy.mock.calls.map(c => String(c[0])).join("") + 
+                     logSpy.mock.calls.map(c => String(c[0])).join("\n");
+      
+      expect(output).toContain("T001");
+      expect(output).toContain("T002");
     } finally {
       process.chdir(originalCwd);
     }
@@ -78,14 +82,14 @@ describe("gwrk tasks query", () => {
     process.chdir(tempDir);
 
     try {
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
       await tasksCommand.parseAsync(["list", "test-feature", "--json"], {
         from: "user",
       });
 
-      const lastCall = logSpy.mock.calls[logSpy.mock.calls.length - 1][0];
-      const parsed = JSON.parse(lastCall);
+      const output = stdoutSpy.mock.calls.map(c => String(c[0])).join("");
+      const parsed = JSON.parse(output);
       expect(parsed.tasks.length).toBe(2);
     } finally {
       process.chdir(originalCwd);
@@ -98,14 +102,16 @@ describe("gwrk tasks query", () => {
 
     try {
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
       await tasksCommand.parseAsync(["next", "test-feature", "1"], {
         from: "user",
       });
 
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Next task: T002"),
-      );
+      const output = stdoutSpy.mock.calls.map(c => String(c[0])).join("") + 
+                     logSpy.mock.calls.map(c => String(c[0])).join("\n");
+
+      expect(output).toContain("Next task: T002");
     } finally {
       process.chdir(originalCwd);
     }
@@ -116,15 +122,15 @@ describe("gwrk tasks query", () => {
     process.chdir(tempDir);
 
     try {
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
       await tasksCommand.parseAsync(["next", "test-feature", "1", "--json"], {
         from: "user",
       });
 
-      const lastCall = logSpy.mock.calls[logSpy.mock.calls.length - 1][0];
-      const parsed = JSON.parse(lastCall);
-      expect(parsed.id).toBe("T002");
+      const output = stdoutSpy.mock.calls.map(c => String(c[0])).join("");
+      const parsed = JSON.parse(output);
+      expect(parsed.task.id).toBe("T002");
     } finally {
       process.chdir(originalCwd);
     }

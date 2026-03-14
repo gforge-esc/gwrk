@@ -10,7 +10,7 @@ import { planCommand } from "./plan.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
-import { withSignal } from "../utils/signal.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 /**
  * gwrk define — The Definition Pillar (Clarity)
  *
@@ -31,8 +31,7 @@ export const defineCommand = new Command("define")
     .action(async (feature, opts) => {
     await withSignal("define", async () => {
         if (!feature) {
-            defineCommand.help();
-            return;
+            throw new CommandError("Feature ID required. Run 'gwrk project specs' to list available features.", 2);
         }
         // Bare `gwrk define <feature>` = full definition loop
         const cwd = process.cwd();

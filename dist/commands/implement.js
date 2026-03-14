@@ -73,7 +73,11 @@ export const implementAction = async (feature, phase, opts) => {
                 console.log(`${GREEN}▶${RESET} Implementing ${task.id}: ${task.title}`);
                 await run(scriptPath, ["implement", feature, phase, task.id], {
                     cwd,
-                    env: { ...process.env, APPROVAL_MODE: "yolo", AGENT_BACKEND: backend },
+                    env: {
+                        ...process.env,
+                        APPROVAL_MODE: "yolo",
+                        AGENT_BACKEND: backend,
+                    },
                     stdio: "inherit",
                 });
                 // Verify the gate after agent execution

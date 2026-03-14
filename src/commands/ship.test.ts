@@ -181,11 +181,11 @@ describe("shipCommand", () => {
     (errorWithCode as unknown as { code: number }).code = 127;
     mockRun.mockRejectedValueOnce(errorWithCode);
 
+    process.exitCode = 0;
     // Ship without phase — should fail on phase-01 and not attempt phase-02
-    await expect(
-      program.parseAsync(["node", "test", "ship", "001-cli-core"]),
-    ).rejects.toThrow('process.exit unexpectedly called with "127"');
+    await program.parseAsync(["node", "test", "ship", "001-cli-core"]);
 
+    expect(process.exitCode).toBe(127);
     expect(execModule.run).toHaveBeenCalledTimes(1);
     expect(runsModule.finishRun).toHaveBeenCalledWith(
       999,
@@ -253,11 +253,11 @@ describe("shipCommand", () => {
     // Mock blocked() from uiModule
     const blockedSpy = vi.mocked(uiModule.blocked);
 
+    process.exitCode = 0;
     // We expect process.exit(1)
-    await expect(
-      program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]),
-    ).rejects.toThrow('process.exit unexpectedly called with "1"');
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
 
+    expect(process.exitCode).toBe(1);
     expect(blockedSpy).toHaveBeenCalledWith(
       expect.stringContaining("[BLOCKED] No test files found for phase-01"),
     );
@@ -277,16 +277,16 @@ describe("shipCommand", () => {
       .spyOn(fs, "readdirSync")
       .mockReturnValue([] as unknown as ReturnType<typeof fs.readdirSync>);
 
-    await expect(
-      program.parseAsync([
-        "node",
-        "test",
-        "ship",
-        "nonexistent-feature",
-        "1",
-      ]),
-    ).rejects.toThrow('process.exit unexpectedly called with "1"');
+    process.exitCode = 0;
+    await program.parseAsync([
+      "node",
+      "test",
+      "ship",
+      "nonexistent-feature",
+      "1",
+    ]);
 
+    expect(process.exitCode).toBe(1);
     // No shell script should have been invoked
     expect(execModule.run).not.toHaveBeenCalled();
     // No DB recording either

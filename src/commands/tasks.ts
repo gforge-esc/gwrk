@@ -21,14 +21,17 @@ import { CommandError, withSignal } from "../utils/signal.js";
 
 export const tasksCommand = new Command("tasks")
   .description("Query and manage task state")
-  .addHelpText("after", `
+  .addHelpText(
+    "after",
+    `
 Type: query/mutator
 Formats: human, json (use --format json)
 Exit codes:
   0: Success
   1: Task not found or gate failed
   2: Usage error
-`);
+`,
+  );
 
 // generate is now under `gwrk define tasks` — see tasks-generate.ts
 

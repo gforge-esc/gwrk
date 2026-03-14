@@ -214,6 +214,15 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
  */
 export const shipCommand = new Command("ship")
     .description("Ship: autonomous branch→implement→review→PR→CI loop")
+    .addHelpText("after", `
+Type: mutator
+Mutates: git branches, task state, execution manifests
+Formats: human
+Exit codes:
+  0: All phases shipped successfully
+  1: Phase failed or feature not found
+  2: Usage error
+`)
     .argument("<feature>", "Feature ID")
     .argument("[phase]", "Phase number (omit to ship all phases)")
     .option("--dry-run", "Dry run mode")
@@ -231,18 +240,7 @@ export const shipCommand = new Command("ship")
         if (!fs.existsSync(featureSpecDir) ||
             !fs.existsSync(path.join(featureSpecDir, "spec.md"))) {
             console.error(`Feature not found: specs/${feature}`);
-            console.error("Available features:");
-            const specsDir = path.join(cwd, "specs");
-            if (fs.existsSync(specsDir)) {
-                for (const d of fs.readdirSync(specsDir)) {
-                    const fp = path.join(specsDir, d);
-                    if (fs.statSync(fp).isDirectory() &&
-                        fs.existsSync(path.join(fp, "spec.md"))) {
-                        console.log(`  ${d}`);
-                    }
-                }
-            }
-            throw new CommandError(`Feature not found: specs/${feature}`, 1);
+            throw new CommandError(`Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`, 1);
         }
         // Determine which phases to ship
         let phases;

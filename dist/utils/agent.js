@@ -27,6 +27,10 @@ export function buildCommand(opts, _workflowContent) {
             // Approval mode: analyze is read-only (plan mode), everything else is yolo
             const mode = opts.approvalMode ?? (workflowName === "analyze" ? "plan" : "yolo");
             args.push("--approval-mode", mode);
+            if (opts.contextPath) {
+                // Pass context via env var — gemini CLI doesn't support -c
+                // The workflow template can read GWRK_CONTEXT
+            }
             break;
         }
         case "claude":
@@ -36,6 +40,8 @@ export function buildCommand(opts, _workflowContent) {
                 args.push(opts.featureDir);
             if (opts.prompt)
                 args.push(opts.prompt);
+            if (opts.contextPath)
+                args.push("--context", opts.contextPath);
             break;
         case "codex":
             command = "codex";
@@ -44,6 +50,8 @@ export function buildCommand(opts, _workflowContent) {
                 args.push(opts.featureDir);
             if (opts.prompt)
                 args.push(opts.prompt);
+            if (opts.contextPath)
+                args.push("--context", opts.contextPath);
             break;
         case "codex-cloud":
             command = "codex";
@@ -52,6 +60,8 @@ export function buildCommand(opts, _workflowContent) {
                 args.push(opts.featureDir);
             if (opts.prompt)
                 args.push(opts.prompt);
+            if (opts.contextPath)
+                args.push("--context", opts.contextPath);
             break;
     }
     return { command, args, stdin };
@@ -106,7 +116,12 @@ export async function dispatchAgent(opts) {
         const startEpoch = Date.now();
         const child = spawn(command, args, {
             cwd: projectRoot,
-            env: process.env,
+            env: {
+                ...process.env,
+                ...(opts.contextPath
+                    ? { GWRK_CONTEXT: opts.contextPath }
+                    : {}),
+            },
             stdio: ["pipe", "pipe", "pipe"],
         });
         if (stdin && child.stdin) {

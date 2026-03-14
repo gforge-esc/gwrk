@@ -14,6 +14,17 @@ const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 export const statusCommand = new Command("status")
   .description("Show gwrk build server and system status")
   .option("--json", "Output status as JSON")
+  .addHelpText(
+    "after",
+    `
+Type: query (read-only)
+Formats: human, json
+Exit codes:
+  0: Success
+  1: Server not responding or config missing
+  2: Usage error
+`,
+  )
   .action(async (options, command) => {
     await withSignal("status", async () => {
       // Traverse up to find root program options

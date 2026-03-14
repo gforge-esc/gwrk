@@ -281,7 +281,9 @@ async function shipPhase(
  */
 export const shipCommand = new Command("ship")
   .description("Ship: autonomous branch→implement→review→PR→CI loop")
-  .addHelpText("after", `
+  .addHelpText(
+    "after",
+    `
 Type: mutator
 Mutates: git branches, task state, execution manifests
 Formats: human
@@ -289,7 +291,8 @@ Exit codes:
   0: All phases shipped successfully
   1: Phase failed or feature not found
   2: Usage error
-`)
+`,
+  )
   .argument("<feature>", "Feature ID")
   .argument("[phase]", "Phase number (omit to ship all phases)")
   .option("--dry-run", "Dry run mode")

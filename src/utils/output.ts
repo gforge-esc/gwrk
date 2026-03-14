@@ -46,3 +46,14 @@ export function createOutput(format: "human" | "json"): CommandOutput {
 
   throw new Error(`Unknown format: ${format}. Supported: human, json`);
 }
+
+/**
+ * Utility to read the entire stdin into a string.
+ */
+export async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks).toString();
+}

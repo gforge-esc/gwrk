@@ -4,13 +4,21 @@ import { Command } from "commander";
 import { readPid } from "../server/pid.js";
 import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
-import { withSignal } from "../utils/signal.js";
-import { createOutput } from "../utils/output.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
+import { createOutput } from "../utils/output.js";
+import { withSignal } from "../utils/signal.js";
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 export const statusCommand = new Command("status")
     .description("Show gwrk build server and system status")
     .option("--json", "Output status as JSON")
+    .addHelpText("after", `
+Type: query (read-only)
+Formats: human, json
+Exit codes:
+  0: Success
+  1: Server not responding or config missing
+  2: Usage error
+`)
     .action(async (options, command) => {
     await withSignal("status", async () => {
         // Traverse up to find root program options
@@ -18,7 +26,7 @@ export const statusCommand = new Command("status")
         while (root.parent)
             root = root.parent;
         const globalOpts = root.opts();
-        const format = options.json ? "json" : (globalOpts.format || "human");
+        const format = options.json ? "json" : globalOpts.format || "human";
         const out = createOutput(format);
         const projectRoot = process.cwd();
         const config = loadConfig(projectRoot);
@@ -44,7 +52,8 @@ export const statusCommand = new Command("status")
         }
         const pid = readPid();
         if (!pid) {
-            console.log(`\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}\n`);
+            console.log(`\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}`);
+            console.log(`    Run 'gwrk server start' to start the server.\n`);
             return;
         }
         const url = `http://${config.server.host}:${config.server.port}/api/status`;

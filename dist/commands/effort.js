@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { computeEffort } from "../engine/effort.js";
@@ -5,7 +6,7 @@ import { writeEffortReport } from "../engine/report-writer.js";
 import { resolveRoleMultipliers } from "../engine/roles.js";
 import { extractStories } from "../engine/spec-parser.js";
 import { loadConfig } from "../utils/config.js";
-import { withSignal } from "../utils/signal.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 export const effortCommand = new Command("effort")
     .description("Calculate deterministic effort estimation from spec stories")
     .argument("<feature>", "The feature directory under specs/ (e.g. 001-cli-core)")
@@ -14,6 +15,9 @@ export const effortCommand = new Command("effort")
     await withSignal("effort", async () => {
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
+        if (!fs.existsSync(featureDir)) {
+            throw new CommandError(`Feature directory not found: ${featureDir}. Run 'gwrk project specs' to list available features.`, 1);
+        }
         const config = loadConfig(projectRoot);
         const roleMultipliers = resolveRoleMultipliers(config);
         const stories = extractStories(featureDir);

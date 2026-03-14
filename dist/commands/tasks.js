@@ -6,9 +6,18 @@ import { color, fail, success } from "../utils/format.js";
 import { appendHistory } from "../utils/history.js";
 import { loadManifests } from "../utils/manifest.js";
 import { contentHash, listTasks, loadTaskState, markTaskComplete, nextTask, saveTaskState, } from "../utils/state.js";
-import { CommandError, withSignal } from "../utils/signal.js";
 import { createOutput } from "../utils/output.js";
-export const tasksCommand = new Command("tasks").description("Query and manage task state");
+import { CommandError, withSignal } from "../utils/signal.js";
+export const tasksCommand = new Command("tasks")
+    .description("Query and manage task state")
+    .addHelpText("after", `
+Type: query/mutator
+Formats: human, json (use --format json)
+Exit codes:
+  0: Success
+  1: Task not found or gate failed
+  2: Usage error
+`);
 // generate is now under `gwrk define tasks` — see tasks-generate.ts
 tasksCommand
     .command("done <feature> <taskId>")
@@ -23,12 +32,12 @@ tasksCommand
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            throw new CommandError(`Error loading task state: ${message}`, 1);
+            throw new CommandError(`Error loading task state: ${message}. Run 'gwrk define tasks ${feature}' to generate.`, 1);
         }
         const allTasks = listTasks(state);
         const task = allTasks.find((t) => t.id === taskId);
         if (!task) {
-            throw new CommandError(`Task ${taskId} not found in tasks.json`, 1);
+            throw new CommandError(`Task ${taskId} not found in tasks.json. Run 'gwrk tasks list ${feature}' to list available tasks.`, 1);
         }
         if (task.status === "completed") {
             throw new CommandError(`Task ${taskId} already completed`, 1);
@@ -39,13 +48,11 @@ tasksCommand
             if (result.exitCode === 127) {
                 throw new CommandError(`CRITICAL: gates/${taskId}-gate.sh not found`, 1);
             }
-            else {
-                if (result.stdout)
-                    process.stdout.write(result.stdout);
-                if (result.stderr)
-                    process.stderr.write(result.stderr);
-                throw new CommandError(`Gate failed for ${taskId}. State unchanged.`, 1);
-            }
+            if (result.stdout)
+                process.stdout.write(result.stdout);
+            if (result.stderr)
+                process.stderr.write(result.stderr);
+            throw new CommandError(`Gate failed for ${taskId}. State unchanged.`, 1);
         }
         try {
             const newState = markTaskComplete(state, taskId);
@@ -74,7 +81,7 @@ tasksCommand
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
         if (!fs.existsSync(featureDir)) {
-            throw new CommandError(`Feature directory not found: ${featureDir}`, 1);
+            throw new CommandError(`Feature directory not found: ${featureDir}. Run 'gwrk project specs' to list available features.`, 1);
         }
         const manifests = loadManifests(featureDir);
         const state = loadTaskState(featureDir);
@@ -118,11 +125,17 @@ tasksCommand
         while (root.parent)
             root = root.parent;
         const globalOpts = root.opts();
-        const format = options.json ? "json" : (globalOpts.format || "human");
+        const format = options.json ? "json" : globalOpts.format || "human";
         const out = createOutput(format);
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
-        const state = loadTaskState(featureDir);
+        let state;
+        try {
+            state = loadTaskState(featureDir);
+        }
+        catch {
+            throw new CommandError(`Task state not found for '${feature}'. Run 'gwrk define tasks ${feature}' to generate tasks. See 'gwrk project specs' to list features.`, 1);
+        }
         const allTasks = listTasks(state);
         if (format === "json") {
             out.write({ tasks: allTasks });
@@ -172,7 +185,7 @@ tasksCommand
         while (root.parent)
             root = root.parent;
         const globalOpts = root.opts();
-        const format = options.json ? "json" : (globalOpts.format || "human");
+        const format = options.json ? "json" : globalOpts.format || "human";
         const out = createOutput(format);
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
@@ -205,7 +218,7 @@ tasksCommand
         while (root.parent)
             root = root.parent;
         const globalOpts = root.opts();
-        const format = options.json ? "json" : (globalOpts.format || "human");
+        const format = options.json ? "json" : globalOpts.format || "human";
         const out = createOutput(format);
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);

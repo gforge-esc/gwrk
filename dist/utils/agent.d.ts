@@ -5,6 +5,7 @@ export interface DispatchOptions {
     featureDir?: string;
     prompt?: string;
     approvalMode?: "yolo" | "auto" | "plan";
+    contextPath?: string;
 }
 /** Build the command + args for a given backend. Exported for testability. */
 export declare function buildCommand(opts: DispatchOptions, _workflowContent: string): {
