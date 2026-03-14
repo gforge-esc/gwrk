@@ -38,6 +38,7 @@ for f in src/commands/define.ts src/commands/ship.ts src/commands/tasks.ts src/c
 done
 
 # Assertion #3: E2E — a command actually emits signal on stderr
-gwrk status 2>&1 >/dev/null | grep -q '\[exit:' || { echo "FAIL: gwrk status does not emit signal"; exit 1; }
+OUTPUT=$(gwrk status 2>&1 >/dev/null || true)
+echo "$OUTPUT" | grep -q '\[exit:' || { echo "FAIL: gwrk status does not emit signal"; exit 1; }
 
 echo "PASS: T002 — Wrap all command actions with withSignal()"

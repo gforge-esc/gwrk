@@ -20,9 +20,9 @@ grep -q 'inputs' src/utils/state.ts
 grep -q '\.optional()' src/utils/state.ts
 
 # Assertion #6: Existing tests still pass (non-breaking)
-pnpm vitest run src/utils/state.test.ts --reporter=verbose 2>/dev/null || pnpm vitest run --reporter=verbose
+pnpm vitest run src/utils/state.test.ts > /dev/null 2>&1 || pnpm vitest run > /dev/null 2>&1 || { echo "FAIL: tests failed"; exit 1; }
 
 # Phase 3 Acceptance Criteria
-pnpm test
+pnpm test > /dev/null 2>&1 || { echo "FAIL: full test suite failed"; exit 1; }
 
 echo "PASS: T017 — Enrich PhaseSchema with optional fields"

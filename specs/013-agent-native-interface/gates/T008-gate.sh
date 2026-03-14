@@ -33,6 +33,6 @@ fi
 
 # Assertion #7: Test file exists and passes
 test -f src/engine/discover.test.ts
-pnpm vitest run src/engine/discover.test.ts --reporter=verbose
+pnpm vitest run src/engine/discover.test.ts > /dev/null 2>&1 || { echo "FAIL: discover.test.ts tests failed"; exit 1; }
 
 echo "PASS: T008 — Create project discovery engine"

@@ -27,6 +27,6 @@ grep -q '/tmp/gwrk-output' src/utils/agent-layer.ts
 
 # Assertion #8: Test file exists and passes
 test -f src/utils/agent-layer.test.ts
-pnpm vitest run src/utils/agent-layer.test.ts --reporter=verbose
+pnpm vitest run src/utils/agent-layer.test.ts > /dev/null 2>&1 || { echo "FAIL: agent-layer.test.ts tests failed"; exit 1; }
 
 echo "PASS: T013 — Create Layer 2 agent protections"
