@@ -1,7 +1,7 @@
 # gwrk — Unified PR/FAQ & Product Requirements Document
 
-> **Version:** 2.4 · **Date:** 2026-04-01
-> **Status:** Product Definition — Pre-Implementation
+> **Version:** 2.5 · **Date:** 2026-03-14
+> **Status:** Product Definition — Active Shipping
 > **Author:** David "Gonzo" Gonzalez · **Org**: GForge ESC
 
 ---
@@ -14,7 +14,7 @@
 4. [The Origin Story: Extraction from Code-Red & GForge.ai](#4-the-origin-story)
 5. [Architecture Vision](#5-architecture-vision)
 6. [The Principal Engineer Thesis](#6-the-principal-engineer-thesis)
-7. [Telegram: The Mobile Control Plane](#7-telegram-the-mobile-control-plane)
+7. [Slack: The Mobile Control Plane](#7-slack-the-mobile-control-plane)
 8. [The Multi-Agent Dispatch Engine](#8-the-multi-agent-dispatch-engine)
 9. [Agent-DUT: Dream Until Told](#9-agent-dut-dream-until-told)
 10. [Jobs To Be Done](#10-jobs-to-be-done)
@@ -96,7 +96,7 @@ Pulse is NOT an observability/monitoring stack. It's a **productivity snapshot**
 The **App Home Tab** is gwrk's real-time dashboard, rendered natively in Slack via Block Kit. While Pulse answers "what have I built?", the App Home Tab answers **"what is the daemon doing right now?"** — active agents, dispatch queue, system resources, feature phase progress, and gate status. Slack slash commands handle actions; the App Home Tab handles *watching*.
 
 ### How do I see the dashboard from my phone?
-Open the gwrk app in Slack — the App Home Tab is your live dashboard. For remote access to the build server itself, gwrk ships with a tunnel layer: `gwrk tunnel start` spins up a Cloudflare Tunnel or Tailscale Funnel connection.
+Open the gwrk app in Slack — the App Home Tab is your live dashboard. Slack provides remote access natively via Socket Mode (outbound WebSocket, no public URL required). For ship loop notifications from cloud agents (e.g., Codex Cloud), gwrk uses Slack Incoming Webhooks — a single HTTPS POST that works from any environment.
 
 ### What is Compression?
 Compression is gwrk's core metric. It compares the forecasted effort (from story points and role multipliers) against actual delivery time. There are two dimensions: **Point Compression** (estimated coding hours ÷ actual coding time from git commit activity) measures how fast agents wrote the code. **Total Compression** (estimated elapsed time ÷ actual wall-clock time from first implementation commit to merge) measures how fast the feature shipped end-to-end. gwrk tracks timestamps carefully: spec creation time, first commit, last commit, and merge — so a feature that sat dormant for 6 months but was pounded out in 45 minutes correctly shows the burst, not the dormancy.
@@ -264,9 +264,9 @@ develop
         └── phase/<feature-name>-phase-03  (owned by WUD #3)
 ```
 
-### Pattern 4: App Home Tab + Tunnel (Remote Observability)
+### Pattern 4: App Home Tab + Webhook (Remote Observability)
 
-gwrk extends the OpenClaw model with a **Slack App Home Tab** — a real-time dashboard rendered natively in Slack via Block Kit. Combined with a tunnel layer (Cloudflare Tunnel / Tailscale Funnel), the build server is accessible remotely:
+gwrk extends the OpenClaw model with a **Slack App Home Tab** — a real-time dashboard rendered natively in Slack via Block Kit. Slack Socket Mode (outbound WebSocket) provides remote access without tunnels or public URLs. Ship loop notifications use **Slack Incoming Webhooks** — direct HTTPS POST from any environment:
 
 | Capability | Implementation |
 |---|---|
@@ -274,7 +274,7 @@ gwrk extends the OpenClaw model with a **Slack App Home Tab** — a real-time da
 | **Pulse View** | LOC trends, spec progress, repo snapshots |
 | **Compression View** | Point/Total ratios, feature timelines |
 | **Project View** | Phase progress, gate status, agent assignments |
-| **Remote Access** | `gwrk tunnel start` → Cloudflare Tunnel |
+| **Remote Notify** | Slack Incoming Webhook (works from Codex Cloud, local clones, anywhere) |
 | **Auth** | Slack-native (already authenticated) |
 | **Mobile-First** | Slack app on phone, Block Kit rendering |
 
@@ -414,7 +414,7 @@ Slack is the MVP channel. The architecture supports additional channels:
 | Channel | Priority | Status |
 |---|---|---|
 | **Slack** | MVP | `@slack/bolt` Socket Mode |
-| Telegram | P2 | grammY (future, for non-Slack users) |
+| ~~Telegram~~ | ~~P2~~ | ~~grammY~~ — removed, Slack is the only channel |
 | Discord | P3 | Discord.js bot |
 
 ---
@@ -930,12 +930,10 @@ gwrk codex setup                   # Walk through Codex Cloud project setup
 gwrk codex status                  # Check Codex Cloud connection + environment
 gwrk codex agents-md               # Generate AGENTS.md from .agents/rules/
 
-# === Dashboard & Remote Access ===
+# === Dashboard ===
 # Open gwrk App Home Tab in Slack for real-time dashboard
-gwrk tunnel start                  # Start tunnel (cloudflared/tailscale)
-gwrk tunnel start --provider cloudflared  # Explicit provider selection
-gwrk tunnel status                 # Show tunnel URL
-gwrk tunnel stop                   # Tear down tunnel
+# Remote access via Slack Socket Mode (outbound WebSocket, no public URL)
+# Ship loop notifications via Slack Incoming Webhook (works from any environment)
 
 # === Parallelism & System ===
 gwrk config set parallelism.local.clones 3    # Max simultaneous local repo clones
@@ -1016,7 +1014,7 @@ The build server is a local daemon modeled after OpenClaw's Gateway:
 3. **Context Injection**: Persona + rules + tasks compiled into context payload
 4. **Execution**: Agent runs the `work-until-done.sh` loop inside the sandbox
 5. **Delivery**: On success, agent opens a PR via `gh pr create`
-6. **Report**: Telegram notification sent with review summary and action buttons
+6. **Report**: Slack notification sent with review summary and action buttons (via Incoming Webhook from cloud, or build server `/api/notify` from local)
 7. **Termination**: Container destroyed after PR is opened
 
 ---
@@ -1113,14 +1111,9 @@ The dashboard is a Slack-native view rendered via Block Kit `views.publish` in t
 
 The App Home Tab updates every 30 seconds while open. No SSE, no WebSocket reconnect logic — just Block Kit re-publish.
 
-### Remote Access via Tunnel
+### Remote Notification
 
-Slack provides remote access natively — the App Home Tab is available from any device with Slack installed. For direct access to the build server API:
-
-| Tunnel | Command | URL |
-|---|---|---|
-| **Cloudflare Tunnel** | `cloudflared tunnel run gwrk` | `https://gwrk.yourdomain.com` |
-| **Tailscale Funnel** | `tailscale funnel 18790` | `https://macbook.tail1234.ts.net` |
+Slack provides remote access natively — the App Home Tab is available from any device with Slack installed. Ship loop notifications from cloud agents use **Slack Incoming Webhooks** (003 FR-014) — a single HTTPS POST that works from Codex Cloud, local clones, and any environment. No tunnels, no public URLs.
 
 The App Home Tab handles actions natively via Slack's authenticated context — no magic links, no JWTs, no separate auth flow.
 
@@ -1445,14 +1438,16 @@ The `gwrk tasks done` command **MUST** execute the corresponding gate script bef
 | **Quick Actions** | Buttons for dispatch, pulse, view logs |
 | **Auto-refresh** | Updated every 30s while App Home is open |
 
-## FR-14: Tunnel (P1)
+## ~~FR-14: Tunnel~~ RETIRED (2026-03-14)
 
-| Requirement | Detail |
+> **Replaced by Slack Incoming Webhook (003 FR-014).** Tunnel infrastructure was unnecessary — Slack Socket Mode (outbound WebSocket) provides remote dashboard access, and Incoming Webhooks provide remote notification from cloud agents. No inbound HTTP, no public URLs, no tunnel providers required.
+
+| ~~Requirement~~ | ~~Detail~~ |
 |---|---|
-| **Tunnel start/stop** | `gwrk tunnel start/stop` with provider abstraction (cloudflared, tailscale) |
-| **Provider config** | `tunnel.provider` in `.gwrkrc.json`, fail-fast if not configured |
-| **Default provider** | Cloudflare Tunnel (free, unlimited bandwidth, persistent URL) |
-| **Domain config** | User provisions custom domain (e.g., `project.gforge.ai`) |
+| ~~Tunnel start/stop~~ | Removed — Slack webhook replaces |
+| ~~Provider config~~ | Removed |
+| ~~Default provider~~ | Removed |
+| ~~Domain config~~ | Removed |
 
 ---
 
@@ -1472,7 +1467,7 @@ The `gwrk tasks done` command **MUST** execute the corresponding gate script bef
 | **Effort Engine** | Markdown parser + SP calculator | Deterministic from spec artifacts |
 | **Execution Ledger** | SQLite via `better-sqlite3` | Global `~/.gwrk/gwrk.db`, ADR-002 |
 | **Dashboard** | Slack App Home Tab (Block Kit) | Mobile-first, no separate SPA |
-| **Tunnel Layer** | Cloudflare Tunnel (default) / Tailscale Funnel | Remote access, persistent URLs |
+| ~~Tunnel Layer~~ | ~~Cloudflare Tunnel / Tailscale Funnel~~ | Removed — Slack webhook + Socket Mode replaces (2026-03-14) |
 | **Configuration** | Zod schemas | Fail-fast validation |
 
 ---
@@ -1484,7 +1479,7 @@ The `gwrk tasks done` command **MUST** execute the corresponding gate script bef
 | **Gemini CLI** | AI Agent | Multi-file reasoning, auto-routing | Orchestration, tandem dispatch, governance, completion protocol |
 | **Codex CLI** | AI Agent | Autonomous execution, built-in review | Fleet orchestration, spec pipeline, Slack, Pulse |
 | **Claude Code** | AI Agent | Deep context, long refactors | Multi-agent tandem, parallel dispatch, compression tracking |
-| **OpenClaw** | AI Gateway | Personal assistant, sandboxing, Telegram | Build/dev orchestration, spec pipeline, multi-backend |
+| **OpenClaw** | AI Gateway | Personal assistant, sandboxing, Slack | Build/dev orchestration, spec pipeline, multi-backend |
 | **Cursor** | AI IDE | Inline code assist | No spec-first pipeline, no headless dispatch, no Slack |
 | **GitHub Copilot Workspace** | AI Dev | Issue-to-PR | Cloud-only, single vendor, limited governance |
 | **Devin / SWE-Agent** | AI Dev | Autonomous coding | Opaque, single model, no governance, no multi-agent |
@@ -1588,8 +1583,8 @@ The only tool that combines:
 | 13 | Should Done, Done! verification be customizable per-project (e.g., skip lint, require E2E)? | David | Completion | 🟡 Open |
 | 14 | Which LLM backend should power DUT's conversational loop? Same router, or dedicated model for ideation? | David | DUT | 🟡 Open |
 | 15 | Should DUT support image input (whiteboard photos, UI sketches) or text/voice only for MVP? | David | DUT | 🟡 Open |
-| 16 | ~~Should DUT threads be stored in-repo or only in the Telegram thread?~~ **In-repo at `specs/<feature>/.gwrk/dreams/` AND in Slack thread.** | David | ✅ Resolved | 🟢 Closed |
-| 17 | ~~Which tunnel provider should be the default?~~ **Cloudflare Tunnel (free, persistent URL, unlimited bandwidth).** | David | ✅ Resolved | 🟢 Closed |
+| 16 | ~~Should DUT threads be stored in-repo or only in the Slack thread?~~ **In-repo at `specs/<feature>/.gwrk/dreams/` AND in Slack thread.** | David | ✅ Resolved | 🟢 Closed |
+| 17 | ~~Which tunnel provider should be the default?~~ **Moot — tunnel infrastructure removed. Slack webhook + Socket Mode replaces (2026-03-14).** | David | ✅ Resolved | 🟢 Closed |
 | 18 | ~~Should the Dashboard support write actions?~~ **App Home Tab includes Quick Action buttons; mutations go through Slack commands.** | David | ✅ Resolved | 🟢 Closed |
 
 ---
