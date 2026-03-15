@@ -173,21 +173,24 @@ _Covered by US-008. Combined for simplicity._
 
 ---
 
-### US-010 - Ship Loop → Slack Notify Bridge (Priority: P0) ⭐ **NEW**
-As a Principal Engineer, I want the `gwrk ship` loop to automatically post lifecycle events (phase start, complete, fail, CI result, review ready) to the project Slack channel via the build server, so that Slack actually receives pipeline events without me doing anything.
+### US-010 - Ship Loop → Slack Notify Bridge (Priority: P0) ⭐ **REVISED**
+As a Principal Engineer, I want the `gwrk ship` loop to post lifecycle events (phase start, complete, fail, CI result, review ready) to the project Slack channel **from any environment** — local machine, local agent clone, or Codex Cloud VM — so that Slack receives pipeline events regardless of where the agent is running.
 
-**Implements**: FR-010
+> **IMPORTANT (2026-03-14)**: Ship loop runs in Codex Cloud VMs with no `localhost` access. The original `POST /api/notify` on `localhost:18790` is unreachable from cloud agents. This revision adds **Slack Incoming Webhook** as the primary notification path — a single HTTPS POST to a Slack-provided URL that works from anywhere. The build server's `/api/notify` endpoint becomes the **enhanced** path (adds presence-awareness, batching) used when the build server is available.
 
-**Independent Test**: Run `gwrk ship <feature> <phase>` with server running and channel configured; verify Slack messages appear without any manual action.
+**Implements**: FR-010, FR-014
+
+**Independent Test**: Set `SLACK_WEBHOOK_URL` env var; run ship loop notify function; verify Slack message appears without build server running.
 
 **Acceptance Scenarios**:
-1. **Given** server running, channel in `.gwrkrc.json`, **When** `agent-run.sh` starts phase execution, **Then**:
-   - `curl -s http://localhost:18790/api/notify -d '{"type":"phase_start",...}'` exits 0
-   - Block Kit `phaseStart` message appears in Slack channel within 5 seconds
-2. **Given** phase completes, **When** `agent-run.sh` exits 0, **Then**:
-   - `POST /api/notify` with type `review_ready` triggers Block Kit message with PR URL and gate results
-3. **Given** server is not running, **When** ship loop attempts notify, **Then**:
-   - Notify call fails silently (non-fatal) — logged to ship log but ship continues
+1. **Given** `SLACK_WEBHOOK_URL` is set and server is NOT running, **When** ship loop calls notify at phase start, **Then**:
+   - Block Kit message appears in Slack channel within 5 seconds
+   - No errors logged about `ECONNREFUSED`
+2. **Given** `SLACK_WEBHOOK_URL` is set AND server IS running, **When** ship loop calls notify, **Then**:
+   - Notification routes through build server `/api/notify` (adds presence-awareness)
+   - Webhook is NOT called (server path preferred when available)
+3. **Given** neither webhook nor server available, **When** ship loop attempts notify, **Then**:
+   - Notify fails silently (non-fatal) — logged to ship log but ship continues
    - `grep -q 'notify skipped' .gwrk/logs/*.log` exits 0
 
 ---
@@ -273,7 +276,8 @@ The Slack app requires these OAuth scopes:
 - **FR-007**: System MUST observe Slack user presence and throttle notifications: active → immediate, away → batch and deliver summary on return to active. (Implements: US-006)
 - **FR-008**: System MUST render an App Home Tab dashboard with: Active Agents, Dispatch Queue, System Resources, Feature Progress (with RAGB per feature), Pulse summary. Refreshes on `app_home_opened`. (Implements: US-007)
 - **FR-009**: System MUST provide `gwrk setup slack --verify` that tests token validity, Socket Mode connection, and sends a test message reporting `Bot Token: OK/FAIL`, `App Token: OK/FAIL`, `Socket Mode: OK/FAIL`, `Test Message: OK/FAIL`. (Implements: US-008)
-- **FR-010**: System MUST provide a `POST /api/notify` HTTP endpoint on the build server that accepts a lifecycle event payload and posts the corresponding Block Kit message to the project Slack channel. The ship loop scripts MUST call this endpoint at: phase start, phase complete (with PR URL), phase fail (with error), CI result, review ready. Failure to reach the endpoint MUST be non-fatal (logged, ship continues). (Implements: US-010)
+- **FR-010**: System MUST provide a `POST /api/notify` HTTP endpoint on the build server that accepts a lifecycle event payload and posts the corresponding Block Kit message to the project Slack channel. When the build server is available, ship loop scripts SHOULD prefer this endpoint (adds presence-awareness and batching). Failure to reach the endpoint MUST be non-fatal (logged, ship continues). (Implements: US-010)
+- **FR-014**: ⭐ **NEW (2026-03-14)** System MUST support **Slack Incoming Webhook** as the primary notification path for ship loop events. The webhook URL is provisioned during `gwrk setup slack` and `gwrk init --slack <channel>`, stored in `~/.gwrk/.env` as `SLACK_WEBHOOK_URL` and in `.gwrkrc.json` as `slack.webhookUrl`. Ship loop scripts MUST use the webhook when `SLACK_WEBHOOK_URL` is set, falling back to `/api/notify` only when both are available. Webhook notification is a single `curl -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d '{"blocks":[...]}'`. This enables notification from Codex Cloud, local clones, and any environment where the build server is unreachable. `gwrk configure slack.webhookUrl <url>` MUST allow manual override for cloud provisioning. (Implements: US-010)
 - **FR-011**: System MUST implement PR lookup for approval actions: query SQLite `runs` table for the most recent open PR number for a given `featureId + phaseId`, then call `gh pr merge --merge --delete-branch <N>`. Approve button and `/gwrk approve` slash command MUST use this lookup. (Implements: US-011)
 - **FR-012**: System MUST handle `/gwrk ship <feature> <phase>` by spawning `gwrk ship` as a background subprocess, acknowledging immediately to Slack, and posting phaseStart + subsequent lifecycle events to the channel. (Implements: US-012)
 - **FR-013**: System MUST support a two-tier channel topology: `opsChannelId` in `.gwrkrc.json` for cross-project events (Pulse summary, Done Done!), and `channelId` for per-project events (phase lifecycle, review messages). Configured via `gwrk init --slack-ops <channel>`. (Implements: US-013)
@@ -339,6 +343,13 @@ The Slack app requires these OAuth scopes:
 | Server not running | `notify skipped: ECONNREFUSED` | 0 (non-fatal, ship continues) |
 | Unknown event type | `Unknown notify event type: <type>` | 1 |
 | Missing required fields in payload | `Notify payload invalid: <field> required` | 1 |
+
+#### FR-014 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| `SLACK_WEBHOOK_URL` not set AND server unreachable | `notify skipped: no webhook or server available` | 0 (non-fatal) |
+| Webhook POST fails (network error) | `webhook notify failed: <error>` | 0 (non-fatal, ship continues) |
+| Webhook returns non-200 | `webhook notify failed: HTTP <code>` | 0 (non-fatal) |
 
 #### FR-011 Error States
 | Condition | stderr contains | Exit code |
@@ -424,6 +435,28 @@ ALTER TABLE runs ADD COLUMN pr_url TEXT;
 
 ### DM-006: DUT Thread State — DEFERRED to 009-agent-dut.
 
+### DM-007: Slack Webhook Configuration ⭐ **NEW (2026-03-14)**
+
+> **IMPORTANT**: This is a recent addition driven by the 004-ship-loop hardening discovery that ship loop agents in Codex Cloud cannot reach `localhost:18790`. The webhook is the primary notification mechanism for environments without build server access.
+
+```bash
+# ~/.gwrk/.env (global — provisioned by `gwrk setup slack`)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
+```
+
+```typescript
+// .gwrkrc.json (per-project — provisioned by `gwrk init --slack <channel>`)
+interface SlackProjectConfig {
+  channelId: string;
+  channelName: string;
+  webhookUrl?: string;      // Per-channel webhook (overrides global)
+  opsChannelId?: string;
+  opsChannelName?: string;
+}
+```
+
+**Resolution order**: `SLACK_WEBHOOK_URL` env var → `.gwrkrc.json slack.webhookUrl` → build server `/api/notify` fallback.
+
 ---
 
 ## 6. Technical Constraints
@@ -435,8 +468,9 @@ ALTER TABLE runs ADD COLUMN pr_url TEXT;
 - **TC-005**: Bolt SDK — Use `@slack/bolt` for Socket Mode WebSocket. REST API calls use raw `fetch` with bot token directly (NOT `app.client` — see DM-001 note).
 - **TC-006**: Token Storage — Tokens in `~/.gwrk/.env`. Never committed. Fail if missing.
 - **TC-007**: TypeScript only — No `.js` in `src/`. ESM modules, ES2022 target.
-- **TC-008**: Non-Fatal Notify — `POST /api/notify` failures in ship scripts MUST NOT abort the ship loop. Log and continue.
+- **TC-008**: Non-Fatal Notify — Webhook and `/api/notify` failures in ship scripts MUST NOT abort the ship loop. Log and continue.
 - **TC-009**: PR Lookup Required — Interactive approve actions MUST resolve actual PR number from SQLite before calling `gh pr merge`. Hardcoded or assumed PR numbers are forbidden.
+- **TC-010**: ⭐ **NEW** Webhook-First — Ship loop notification MUST use `SLACK_WEBHOOK_URL` as primary path. Build server `/api/notify` is the enhanced path (presence-awareness, batching) used when both are available. Ship loop MUST NOT depend on build server for notification.
 
 ---
 

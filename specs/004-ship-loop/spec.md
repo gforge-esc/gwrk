@@ -6,7 +6,7 @@
 **Status**: Settled
 **Input**: The autonomous execution kernel for Pillar 3 (Shipping). `gwrk ship <feature> [phase]` orchestrates the Ship Loop — the 7-step cycle that ends when a PR is issued and Slack is notified: DISPATCH → PRE-FLIGHT → EXECUTE → POST-FLIGHT → VERIFY → PR → NOTIFY. Delegates to `scripts/dev/work-until-done.sh` as the phase orchestrator. Phase is optional — omitting it ships all phases sequentially, skipping completed ones.
 
-> **Ship Loop boundary (architecture.md §6.2)**: This spec covers steps 1-7. Post-merge lifecycle (merge detection, log rehoming, DB finalization, compression, done-done notification) is **Harvest** — see [011-harvest](file:///Users/gonzo/Code/gwrk/specs/011-harvest/spec.md) and architecture.md §6.3.
+> **Ship Loop boundary (architecture.md §6.2)**: This spec covers steps 1-7. Step 7 (NOTIFY) uses **Slack Incoming Webhook** (003 FR-014) — a direct HTTPS POST that works from Codex Cloud, local clones, and any environment without build server access. Post-merge lifecycle (merge detection, log rehoming, DB finalization, compression, done-done notification) is **Harvest** — see [011-harvest](file:///Users/gonzo/Code/gwrk/specs/011-harvest/spec.md) and architecture.md §6.3.
 
 > **Nomenclature**: "Ship loop" is the execution mechanism. "WUD" (Work Until Done) is the agent persona that operates the ship loop (architecture.md §2). The spec uses "ship loop" and "phase orchestrator" for the machinery, not "WUD."
 
