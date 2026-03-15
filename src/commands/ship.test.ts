@@ -231,10 +231,12 @@ describe("shipCommand", () => {
       phases: [
         {
           id: "phase-01",
+          title: "Phase 1",
           tasks: [
             {
               id: "T001",
               title: "Implement src/commands/ship.ts",
+              description: "test",
               status: "open",
               gateScript: "gates/T001-gate.sh",
             },
@@ -296,3 +298,125 @@ describe("shipCommand", () => {
     readdirSpy.mockRestore();
   });
 });
+
+describe("FR-014: Phase Skip", () => {
+  let mockRun: ReturnType<typeof vi.fn>;
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRun = vi.mocked(execModule.run);
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("US-009: should skip phase when all tasks have status 'completed'", async () => {
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          tasks: [{ id: "T001", title: "Task 1", description: "test", status: "completed", gateScript: "gates/T001-gate.sh" }],
+          doneWhen: [],
+        },
+      ],
+    });
+
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+
+    expect(execModule.run).not.toHaveBeenCalled();
+    expect(uiModule.success).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+  });
+
+  it("US-009: should skip phase when all tasks are either 'completed' or 'cancelled'", async () => {
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "test", status: "completed", gateScript: "gates/T001-gate.sh" },
+            { id: "T002", title: "Task 2", description: "test", status: "cancelled", gateScript: "gates/T002-gate.sh" }
+          ],
+          doneWhen: [],
+        },
+      ],
+    });
+
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+
+    expect(execModule.run).not.toHaveBeenCalled();
+    expect(uiModule.success).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+  });
+
+  it("US-009: should NOT skip phase if mixed open and completed tasks exist", async () => {
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "test", status: "completed", gateScript: "gates/T001-gate.sh" },
+            { id: "T002", title: "Task 2", description: "test", status: "open", gateScript: "gates/T002-gate.sh" }
+          ],
+          doneWhen: [],
+        },
+      ],
+    });
+
+    mockRun.mockResolvedValueOnce(undefined);
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+
+    expect(execModule.run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("FR-012, FR-017: Execution Manifest Digest", () => {
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("US-007: Manifest contains non-empty digest array sourced from .events sidecar", async () => {
+    vi.mocked(execModule.run).mockResolvedValueOnce(undefined);
+    
+    // Simulate assembleDigest existing and returning events
+    // We will test that writeManifest is called with the digest field.
+    // For now this will fail because shipCommand doesn't pass digest.
+    
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+    
+    // Expect the writeManifest call (which is the 3rd or 4th arg usually) 
+    // to contain a digest array. 
+    // actually writeManifest(feature, runId, phase, ...) or similar
+    // We just check the mock calls.
+    const writeManifestMock = (await import("../utils/manifest.js")).writeManifest as unknown as ReturnType<typeof vi.fn>;
+    
+    expect(writeManifestMock).toHaveBeenCalled();
+    const manifestPayload = writeManifestMock.mock.calls[0];
+    
+    // In our implementation plan, writeManifest() gets updated or we assemble it.
+    // We will do a loose deep string match or spy checking if digest is present
+    const payloadStr = JSON.stringify(manifestPayload);
+    expect(payloadStr).toContain("digest");
+  });
+});
+

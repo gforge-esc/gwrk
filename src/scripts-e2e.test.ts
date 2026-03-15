@@ -104,4 +104,17 @@ describe("work-until-done.sh execution flow", () => {
     expect(result).toContain("[DRY RUN]");
     expect(result).toContain("1. Branch setup");
   });
+
+  it("US-007: should emit structured events to .events sidecar during run (FR-017)", () => {
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env,
+      encoding: "utf-8",
+    });
+    const sidecarFile = path.join(ROOT, ".test-runs-e2e/999-ship-e2e_p1.events");
+    expect(fs.existsSync(sidecarFile)).toBe(true);
+    const content = fs.readFileSync(sidecarFile, "utf-8");
+    expect(content).toContain("BRANCH_SETUP:");
+    expect(content).toContain("IMPLEMENT:");
+  });
 });
