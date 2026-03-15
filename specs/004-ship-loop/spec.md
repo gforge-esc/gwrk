@@ -175,6 +175,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-012**: System MUST write an execution manifest to `specs/<feature>/.gwrk/runs/` per ADR-003 §3 for every ship run. Manifest includes `digest[]` array of structured log events per FR-017. (Implements: US-001, US-007)
 - **FR-013**: When phase argument is omitted, system MUST read all phases from `tasks.json` and ship each sequentially, exiting on first non-zero exit code. (Implements: US-003)
 - **FR-014**: When shipping all phases, system MUST check each phase's task states in `tasks.json` before dispatch. If ALL tasks in a phase have `status: "completed"` or `status: "cancelled"`, that phase MUST be skipped with log message `⏭  Phase NN: all tasks complete — skipping`. This check happens in `ship.ts` before calling the phase orchestrator. (Implements: US-009)
+- **FR-015**: System MUST wrap all terminal output in the Agent-Native `[exit:N | Xs]` format per ADR-004. Command type is `mutator`. The CLI interface MUST support `--format json` for downstream consumption. (Implements: US-001)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -374,7 +375,7 @@ Per ADR-002: `command: "ship"`, `workflow: "work-until-done"`, `exit_code`, `dur
 
 | US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
 |--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001,002,003,004,006,011,012,016,017 | FR-001 | US-001, US-003 | TR-005, TR-007 |
+| US-001 | FR-001,002,003,004,006,011,012,015,016,017 | FR-001 | US-001, US-003 | TR-005, TR-007 |
 | US-002 | FR-003 | FR-002 | US-001 | TR-002 |
 | US-003 | FR-001, FR-013, FR-014 | FR-003 | US-001, US-002 | TR-005, TR-007 |
 | US-004 | FR-007, FR-018 | FR-004 | US-001 | TR-001, TR-007 |
@@ -388,6 +389,7 @@ Per ADR-002: `command: "ship"`, `workflow: "work-until-done"`, `exit_code`, `dur
 | | | FR-012 | US-001, US-007 | TR-005, TR-007 |
 | | | FR-013 | US-003 | TR-005 |
 | | | FR-014 | US-009 | TR-005 |
+| | | FR-015 | US-001 | TR-005 |
 | | | FR-016 | US-010 | TR-008 |
 | | | FR-017 | US-001, US-007 | TR-007 |
 | | | FR-018 | US-004, US-011 | TR-001 |

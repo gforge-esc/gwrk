@@ -108,7 +108,7 @@ Wire the rip-cord bail (FR-018), integrate staging validator (FR-016), and enfor
 Write **dedicated behavioral tests** for all existing-but-untested FRs. Update all contracts. Rewrite gap-analysis. Run full verification.
 
 **Files (10):**
-- `src/commands/ship.test.ts` (MODIFY: add tests for FR-004 state machine transitions, FR-005 review dispatch with GO/NO-GO, FR-006 PR creation, FR-008 crash recovery resume, FR-009 hierarchical agent config resolution, FR-012 manifest writes with correct fields)
+- `src/commands/ship.test.ts` (MODIFY: add tests for FR-004 state machine transitions, FR-005 review dispatch with GO/NO-GO, FR-006 PR creation, FR-008 crash recovery resume, FR-009 hierarchical agent config resolution, FR-012 manifest writes with correct fields, FR-015 Agent-Native output wrapper and `--format json`)
 - `src/scripts-e2e.test.ts` (MODIFY: add tests for FR-002 branch creation + dirty-tree rejection, FR-004 stage transitions, FR-006 PR + CI wait, FR-010 log file creation)
 - `specs/004-ship-loop/contracts/ship.md` (MODIFY: add `isPhaseComplete()`, `assembleDigest()`, manifest schema with `digest[]`)
 - `specs/004-ship-loop/contracts/implement.md` (MODIFY: add `emit_event()`, staging validation call, log rehoming)
@@ -119,7 +119,7 @@ Write **dedicated behavioral tests** for all existing-but-untested FRs. Update a
 - `specs/004-ship-loop/gap-analysis.md` (REWRITE: reflect current implementation vs new spec)
 - `specs/004-ship-loop/checklists/requirements.md` (REWRITE: against new 18 FRs)
 
-**Requirements Addressed:** FR-002 (test), FR-004 (test), FR-005 (test), FR-006 (test), FR-008 (test), FR-009 (test), FR-010 (test), FR-012 (test), all TRs validated, all VRs exercised
+**Requirements Addressed:** FR-002 (test), FR-004 (test), FR-005 (test), FR-006 (test), FR-008 (test), FR-009 (test), FR-010 (test), FR-012 (test), FR-015, all TRs validated, all VRs exercised
 
 **Dependencies:** Phase 1, Phase 2
 
@@ -211,6 +211,7 @@ _No mockups exist for this feature._
 | FR-012 execution manifest | Phase 1 | ⚠️ Code exists, no `digest[]`, **no test** (writeManifest mocked) |
 | FR-013 all-phases sequential | — | ✅ **Done** — code + test (iterates + stops on failure) |
 | FR-014 phase skip | Phase 1 | ⚠️ Code exists, no `cancelled`, **no test** |
+| FR-015 agent-native output | Phase 3 | 🔲 Not implemented (`[exit:N | Xs]`), **no test** |
 | FR-016 staging validator | Phase 2 | ⚠️ Script exists, not called from WUD, **no test** |
 | FR-017 logging (3-tier) | Phase 1 | 🔲 Not implemented, **no test** |
 | FR-018 rip-cord bail | Phase 2 | 🔲 Not implemented, **no test** |
