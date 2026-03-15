@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-13 (v7)
+> **Status:** Authoritative · **Date:** 2026-03-14 (v8)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (agent-native output protocol)
 
@@ -23,21 +23,24 @@
 
 ```mermaid
 graph TD
-    F000["F000: Extraction ✅"] --> F001["F001: CLI Core ✅"]
+    F000["F000: Extraction ✅"] --> F001["F001: CLI Core ⚠️"]
     F001 --> F013["F013: Agent-Native Interface ✅"]
-    F001 --> F002["F002: Build Server ✅"]
+    F001 --> F002["F002: Build Server ⚠️"]
     F001 --> F006["F006: Pulse"]
     F001 --> F007["F007: Effort + Compression"]
     F001 --> F012["F012: Knowledge Work"]
-    F002 --> F003["F003: Slack ✅"]
+    F002 --> F003["F003: Slack ⚠️"]
     F002 --> F005["F005: Parallel Dispatch"]
-    F013 --> TDD["TDD Hardening: 001-003 ✅"]
+    F013 --> TDD["TDD Hardening: 001-003 ⚠️"]
     F013 --> F004["F004: Ship Loop"]
     F013 --> F008["F008: Multi-Agent Router"]
     TDD --> F004
     F004 --> F005
+    F004 --> F011["F011: Harvest"]
     F005 --> F008
     F003 --> F009["F009: Agent-DUT"]
+    F003 --> F011
+    F002 --> F011
     F006 --> F010["F010: GForge Integration"]
     F007 --> F010
 ```
@@ -53,7 +56,7 @@ F000 ✅ → F001 ✅ → F013 ✅ → TDD Hardening ✅ → F004 → F005 → F
                → F007
 ```
 
-**F004 (Ship Loop) is the immediate critical path.** F013 ✅, TDD Hardening ✅ (F001/F002/F003 gates all passing), and F004-core ✅ (staging validator, build plan protection, WUD retry logic) are complete. F004-full completes the ship loop with full review enforcement, then F005 (Parallel Dispatch) and F008 (Agent Router).
+**F004 (Ship Loop) is the immediate critical path.** F004 scope narrowed to Ship Loop (steps 1-7, architecture.md §6.2). Harvest (steps 8-12) moved to F011.
 
 ---
 
@@ -67,7 +70,7 @@ Extract the code-red agent workflow system into the gwrk repository.
 |---|---|
 | `.agents/`, `.specify/`, `scripts/dev/`, `Makefile` | Files exist, agent invocation targets fire |
 
-**Status:** Complete. Committed on `develop`.
+**Status:** Complete ✅. Committed on `develop`.
 
 ---
 
@@ -101,7 +104,7 @@ Bootstrap the gwrk TypeScript CLI with foundational commands, multi-CLI provisio
 **Dependencies:** Feature 000
 **Agent:** Gemini CLI (definition + multi-file generation)
 
-**Status:** Complete. Code shipped on `develop`.
+**Status:** ⚠️ Shipped. Code on `develop`. Gates pass but most are `test -f` stubs (91% contamination). Not TDD-hardened.
 
 > [!WARNING]
 > **Gap analysis (000-tdd FR-005) identified issues:** Most gates are `test -f` stubs. `gate-gen.ts` is heuristic-based, not contract-derived. `dispatchAgent()` return type has contract mismatch. Remediation deferred to TDD Hardening.
@@ -143,7 +146,7 @@ Local persistent daemon that serves as the control plane. Includes macOS sleep/w
 **Dependencies:** Feature 001
 **Agent:** Claude Code (long-context server architecture)
 
-**Status:** Complete. Code shipped on `develop`.
+**Status:** ⚠️ Shipped. Code on `develop`. Gates pass but 69% are `test -f` stubs. Not TDD-hardened.
 
 > [!WARNING]
 > **Gap analysis (000-tdd FR-006) identified issues:** FR-012 (Dockerfile ⚠️), FR-016/018/019 (weak assertions), FR-024 (`server clean` ❌ missing). Remediation deferred to TDD Hardening.
@@ -173,7 +176,10 @@ Slack integration for the comms layer via Socket Mode + Bolt SDK. Channel-per-pr
 **Dependencies:** Feature 002
 **Agent:** Gemini CLI
 
-**Status:** Complete. Code shipped on `develop`. 000-tdd fixed 20 failing tests.
+**Status:** ⚠️ Shipped. Code on `develop`. 000-tdd fixed 20 test failures. Gates pass but not TDD-hardened (10% stub contamination).
+
+> [!IMPORTANT]
+> **2026-03-14**: FR-014 (Slack Incoming Webhook) added — primary notification path for cloud agents. See spec.md for details.
 
 > [!WARNING]
 > **Gap analysis is a greenfield inventory (2026-03-10), NOT a test-coverage audit.** Needs rewrite as proper FR-by-FR ✅/⚠️/❌ classification. Deferred to TDD Hardening.
@@ -277,6 +283,10 @@ gwrk ship <feature> <phase>        # Ship a single phase
 #### SQLite integration:
 - Every Ship dispatch writes a `runs` record (backend, model, attempt, timestamps)
 - Gate results, review verdicts, retry reasons recorded
+
+> **Scope (2026-03-14):** Ship Loop = steps 1-7 (DISPATCH → NOTIFY). Harvest (post-merge lifecycle) moved to F011. See architecture.md §6.2-6.3.
+
+**Status:** 🔴 Actively being TDD-hardened.
 
 ---
 
@@ -394,9 +404,25 @@ Unified Pulse + Compression dashboard across repos.
 
 ---
 
-### Feature 011 — RETIRED
+### Feature 011 — Harvest (Done, Done!)
 
-> **Folded into Feature 003 (003-slack).** The App Home Tab is a Bolt event handler + Block Kit renderer that shares the same Bolt instance, OAuth scopes, and config as the rest of 003-slack.
+Post-merge lifecycle. Triggered by GitHub webhook when a Ship Loop PR is merged. Rehomes logs, finalizes DB records, calculates compression, posts "🏆 Done, Done!" to Slack.
+
+| Spec | Content | Gate |
+|---|---|---|
+| `011-harvest` | Merge webhook handler, log finalization, DB record completion, point+total compression, done-done Slack notification, branch cleanup | PR merge triggers harvest; compression recorded in SQLite; Slack 🏆 posted |
+
+**Dependencies:** Feature 002 (build server webhook handler), Feature 003 (Slack notification), Feature 004 (produces PRs and logs)
+**Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/011-harvest/spec.md)
+
+#### What ships:
+
+```bash
+gwrk harvest <feature>              # Manual trigger (usually automatic via webhook)
+gwrk compression <feature>          # View compression ratios
+```
+
+> **Scope (2026-03-14):** Separated from 004 Ship Loop. Ship Loop ends at PR issued + Slack notification (step 7). Harvest begins at PR merge (step 8). See architecture.md §6.3.
 
 ---
 
@@ -434,8 +460,8 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 | **Wave 1** | F001 ✅ | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning |
 | **Wave 2** | F013, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
 | **Wave 3** | TDD Hardening (001-003) | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
-| **Wave 4** | F004, F005 | Partially (F004 needs F013+Hardening, F005 needs F002+F004) | Execution: ship loop + parallel dispatch |
-| **Wave 5** | F008, F009 | Yes (F008 needs F005; F009 needs F003) | Intelligence + Comms: smart routing, DUT |
+| **Wave 4** | F004, F011 | Partially (F004 needs F013+Hardening, F011 needs F002+F003+F004) | Execution: ship loop + harvest |
+| **Wave 5** | F005, F008, F009 | Yes (F005 needs F004; F008 needs F005; F009 needs F003) | Intelligence + Comms: parallel dispatch, smart routing, DUT |
 | **Wave 6** | F010 | No (needs F006+F007) | Integration: unified dashboard |
 
 ---
@@ -463,9 +489,9 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 | F008 (Agent Router) | 7 | PM+PE | 35h |
 | F009 (Agent-DUT) | 8 | PM+PE | 40h |
 | F010 (Integration) | 5 | PE | 25h |
-| F011 (RETIRED) | — | — | Folded into F003 |
+| F011 (Harvest) | 5 | PM+PE | 25h |
 | F012 (Knowledge Work) | 8 | PM+PE | 40h |
-| **Total** | **~158 SP** | | **~495h remaining** |
+| **Total** | **~163 SP** | | **~520h remaining** |
 
 ---
 
@@ -474,7 +500,7 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 | # | Question | Affects | Status |
 |---|---|---|---|
 | 1 | SP → Phase → Task additivity enforcement: warn or hard fail? | F007 | 🟡 Open |
-| 2 | Cloudflare Tunnel automation | F011 (RETIRED) | ⚫ Moot |
+| 2 | ~~Cloudflare Tunnel automation~~ | ~~F011~~ | ⚫ Moot — Slack webhook replaces tunnel (2026-03-14) |
 | 3 | Slack presence throttling: granularity beyond active/away? | F003 | 🟡 Open |
 | 4 | TDD Hardening scope: extend beyond 001-003 to 004-008? | Hardening | 🟡 Open (004-008 have 64-92% `test -f` contamination but haven't shipped code) |
 
@@ -482,6 +508,7 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 
 ## Changelog
 
+- **2026-03-14 (v8):** 004 rescoped to Ship Loop (steps 1-7, architecture.md §6.2). Harvest (steps 8-12) moved to F011 (formerly RETIRED). F011 now 011-harvest with full spec. 003-slack FR-014 (Slack Incoming Webhook) added for cloud agent notification. Tunnel infrastructure removed (webhook + Socket Mode replaces). Status annotations corrected: ✅=done, ⚠️=shipped but not TDD-hardened, 🔴=actively hardening. Dependency graph updated with F011. Wave 4 updated. +5 SP for F011. Total: 158→~163 SP.
 - **2026-03-13 (v7):** Terminology fix: "Phase N" → "Feature NNN" throughout the build plan. Features are spec subdirectories; Phases are implementation stages within features. F013 (Agent-Native Interface, 28 SP) added as critical path prerequisite for F004 and F008 (ADR-004). F004 SP: 8→5, F008 SP: 10→7 (F013 provides discovery, signals, structured output). TDD Hardening (~15 SP) added for 001-003: rewrite specs to TDD standard, regenerate gates, remediate gaps. F013 gates hardening. Hardening gates F004. F000/F000-TDD/F001/F002/F003 marked ✅. Wave strategy restructured to 6 waves. OQ-002 marked moot, OQ-004 added. Total: 121→~158 SP.
 - **2026-03-10 (v6):** F011 (App Home Tab) retired — folded into F003 (003-slack). DUT scope extracted from 003-slack → deferred to F009. SP: 126→121.
 - **2026-03-08 (v5):** Execution State Contract (ADR-003). Two-tier architecture: git-native manifests + SQLite harvest. F001 SP: 21→25. Total: 122→126 SP.
