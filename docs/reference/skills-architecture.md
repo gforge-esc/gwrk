@@ -57,6 +57,7 @@ interface:
     2: usage error
 runtime:
   preferredAgent: gemini
+  preferredModel: gemini-2.5-pro
   maxInputTokens: 16000
 tags: [reasoning, creative, narrative]
 ```
@@ -131,7 +132,9 @@ outputContract:
 
 runtime:
   preferredAgent: gemini
+  preferredModel: gemini-2.5-pro
   fallbackAgent: claude
+  fallbackModel: claude-opus-4-6
   maxInputTokens: 16000
   expectedLatency: "10-30s"
 
@@ -171,7 +174,7 @@ gwrk skill signal-cut < brief.md
 │  2. Load manifest.yaml   │  ← Contract: composes, interface, context
 │  3. Load SKILL.md        │  ← Reasoning program
 │  4. Assemble prompt      │  ← SKILL.md + stdin + flags + context
-│  5. Invoke agent backend │  ← Via F008 router (1 LLM call)
+│  5. Invoke agent CLI     │  ← YOLO mode (e.g., claude --dangerously-skip-permissions --model <model> -p "<prompt>")
 │  6. Parse output         │  ← Validate format (not quality)
 │  7. Emit stdout          │  ← JSON or markdown
 │  8. Signal stderr        │  ← [exit:0 | 12.3s]
