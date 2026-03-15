@@ -292,8 +292,10 @@ The autonomous coding cycle. Ends when a PR is issued and Slack is notified.
 4. POST-FLIGHT  → gates/T0xx-gate.sh must PASS (verify GREEN)
 5. VERIFY       → Tests pass, lint clean, build succeeds
 6. PR           → gwrk opens PR, CI runs
-7. NOTIFY       → Slack: "PR ready for review" + summary
+7. NOTIFY       → Slack Incoming Webhook: "PR ready for review" + summary
 ```
+
+**Notification architecture** (step 7): Ship loop runs in Codex Cloud VMs with no `localhost` access. Uses **Slack Incoming Webhook** (003 FR-014) as primary notify path — a single HTTPS POST to a Slack-provided URL. Works from any environment. Build server `/api/notify` is the enhanced path (adds presence-awareness, batching) used when available. Config: `SLACK_WEBHOOK_URL` env var → `.gwrkrc.json slack.webhookUrl` → `/api/notify` fallback.
 
 Retry logic: If checks fail at step 5, retry same agent (3×), then escalate to next backend in `fallbackOrder`. If all backends exhausted, Slack escalation to human.
 
