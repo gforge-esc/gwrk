@@ -53,8 +53,8 @@
   │ Slack     │  │ Agent-ZFG │  │ Codex Cloud (true parallelism)     │
   │ channels  │  │ owns orch │  │ Codex Local (local CLI)            │
   │ App Home  │  └───────────┘  │ Claude Code (deep context, local)  │
-  │ via tunnel│                 │ Gemini CLI  (multi-file, local)    │
-  └──────────┘                 └────────────────────────────────────┘
+  └──────────┘                 │ Gemini CLI  (multi-file, local)    │
+                               └────────────────────────────────────┘
 ```
 
 ---
@@ -121,8 +121,7 @@ gwrk/
 │   │   ├── compression.ts         # Effort vs. actual ratios
 │   │   ├── effort.ts              # SP-driven estimation
 │   │   ├── server.ts              # Daemon start/stop
-│   │   ├── setup-slack.ts         # Automated Slack app provisioning
-│   │   └── tunnel.ts              # Tunnel start/stop/status
+│   │   └── setup-slack.ts         # Automated Slack app provisioning
 │   ├── db/                        # SQLite execution ledger (ADR-002)
 │   │   ├── index.ts               # Connection + schema init
 │   │   └── migrations/            # Versioned schema files
@@ -133,8 +132,7 @@ gwrk/
 │   │   ├── sandbox.ts             # Docker container lifecycle
 │   │   ├── slack.ts               # Bolt SDK Socket Mode integration
 │   │   ├── slack-commands.ts      # Slash command handlers
-│   │   ├── slack-actions.ts       # Interactive message handlers
-│   │   └── tunnel.ts              # Cloudflare Tunnel / Tailscale Funnel
+│   │   └── slack-actions.ts       # Interactive message handlers
 │   ├── engine/                    # Core computation engines
 │   │   ├── pulse.ts               # Git log scanner + snapshot gen
 │   │   ├── compression.ts         # Timestamp collection + ratio calc
@@ -175,7 +173,6 @@ gwrk/
 | **Testing** | Vitest | Unit + integration |
 | **Language** | TypeScript (ES2022) | `.ts` only, no `.js` in `src/` |
 | **Dashboard** | Slack App Home Tab (Block Kit) | Mobile-first, no separate SPA |
-| **Tunnel** | Cloudflare Tunnel (default) / Tailscale Funnel | Remote Slack dashboard access |
 
 ### Why Commander.js, Not Ink
 
@@ -196,7 +193,7 @@ A separate Vite SPA served by the daemon was the original plan. Replaced by Slac
 |---|---|---|
 | **Weight** | Zero — Slack renders Block Kit | Vite + React + SSE consumer |
 | **Auth** | Already authenticated via Slack | Needs JWT magic link |
-| **Mobile** | Already mobile via Slack app | Separate tunnel + browser |
+| **Mobile** | Already mobile via Slack app | Separate browser |
 | **Build cost** | Block Kit JSON (~200 LOC) | Full SPA (~2000 LOC) |
 | **Appropriate for** | Single-user ops view | Future: multi-user team dashboard |
 
@@ -356,8 +353,7 @@ develop
   "defaults": {
     "projectsDir": "~/Code",
     "github": { "org": "gforge-esc", "visibility": "private" },
-    "slack": { "createChannelOnNew": true },
-    "tunnel": { "provider": "cloudflare" }
+    "slack": { "createChannelOnNew": true }
   }
 }
 ```
