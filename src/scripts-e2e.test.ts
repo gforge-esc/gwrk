@@ -39,7 +39,15 @@ describe("work-until-done.sh execution flow", () => {
     agentMock = mockWrapper("agent-run.sh", "echo 'mock agent' && exit 0");
     mockWrapper("gh", "echo '1234'"); // mocked gh pr
     mockWrapper("gwrk", "exit 0"); // mocked gwrk db
-    mockWrapper("git", "echo 'mock git'"); // mocked git
+    mockWrapper("git", [
+      'if [[ "$1" == "status" && "$2" == "--porcelain" ]]; then exit 0; fi',
+      'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "feat/999-ship-e2e"; exit 0; fi',
+      'if [[ "$1" == "show-ref" ]]; then exit 0; fi',
+      'if [[ "$1" == "checkout" ]]; then exit 0; fi',
+      'if [[ "$1" == "push" ]]; then exit 0; fi',
+      'if [[ "$1" == "ls-remote" ]]; then exit 1; fi',
+      'echo "mock git"',
+    ].join("\n")); // mocked git
 
     env = {
       ...process.env,
@@ -47,6 +55,7 @@ describe("work-until-done.sh execution flow", () => {
       WUD_VERDICT_BIN: verdictMock,
       WUD_BRANCH_BIN: branchMock,
       WUD_CI_WAIT_BIN: mockWrapper("ship-ci-wait.sh", "exit 0"),
+      VALIDATE_STAGING_BIN: mockWrapper("validate-staging.sh", "echo 'mock staging ok' && exit 0"),
       PATH: `${MOCKS_DIR}:${process.env.PATH}`,
       MAX_ITERATIONS: "1",
       RUNS_DIR: path.join(ROOT, ".test-runs-e2e"),
@@ -175,14 +184,20 @@ describe("FR-018/T007: Circuit Breaker failureContext", () => {
       PATH: `${MOCKS_DIR}:${process.env.PATH}`,
       MAX_ITERATIONS: "1",
       RUNS_DIR: path.join(ROOT, ".test-runs-e2e"),
-      AGENT_RUNNER_BIN: mockWrapper("failing-agent.sh", "exit 1"),
+      // Exit 42 (non-zero, non-130) triggers retry path in WUD → circuit break
+      AGENT_RUNNER_BIN: mockWrapper("failing-agent.sh", "exit 42"),
       WUD_BRANCH_BIN: mockWrapper("ship-branch.sh", "echo 'mock branch'"),
       WUD_VERDICT_BIN: mockWrapper("ship-verdict.sh", "exit 0"),
       WUD_CI_WAIT_BIN: mockWrapper("ship-ci-wait.sh", "exit 0"),
+      VALIDATE_STAGING_BIN: mockWrapper("validate-staging.sh", "exit 0"),
     };
     mockWrapper("gh", "echo '1234'");
     mockWrapper("gwrk", "exit 0");
-    mockWrapper("git", "echo 'mock git'");
+    mockWrapper("git", [
+      'if [[ "$1" == "status" && "$2" == "--porcelain" ]]; then exit 0; fi',
+      'if [[ "$1" == "branch" ]]; then echo "feat/999-ship-e2e"; exit 0; fi',
+      'echo "mock git"',
+    ].join("\n"));
   });
 
   it("produces failureContext in the JSON state file on CIRCUIT_BREAK", () => {
