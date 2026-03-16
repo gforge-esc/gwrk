@@ -6,19 +6,19 @@ PASS=0; FAIL=0
 # Assertion #1: --format option registered in Commander
 if grep -q '\-\-format\|format.*json\|addOption.*format' src/commands/ship.ts; then
   echo "✓ Assertion #1: --format option exists"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #1: --format option NOT found in ship.ts"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 # Assertion #2: JSON output path exists
 if grep -q 'JSON.stringify' src/commands/ship.ts; then
   echo "✓ Assertion #2: JSON output path exists"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #2: JSON output path NOT found"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 echo "T009: $PASS passed, $FAIL failed"

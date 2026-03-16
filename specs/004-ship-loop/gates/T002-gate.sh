@@ -6,28 +6,28 @@ PASS=0; FAIL=0
 # Assertion #1: emit_event function defined
 if grep -q 'emit_event' scripts/dev/work-until-done.sh; then
   echo "✓ Assertion #1: emit_event function exists"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #1: emit_event function NOT found"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 # Assertion #2: emit_event called after BRANCH_SETUP
 if grep -q 'emit_event.*BRANCH_SETUP\|emit_event.*branch' scripts/dev/work-until-done.sh; then
   echo "✓ Assertion #2: emit_event called for BRANCH_SETUP"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #2: emit_event NOT called for BRANCH_SETUP"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 # Assertion #3: emit_event called after IMPLEMENT
 if grep -q 'emit_event.*IMPLEMENT\|emit_event.*implement' scripts/dev/work-until-done.sh; then
   echo "✓ Assertion #3: emit_event called for IMPLEMENT"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #3: emit_event NOT called for IMPLEMENT"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 echo "T002: $PASS passed, $FAIL failed"

@@ -6,19 +6,19 @@ PASS=0; FAIL=0
 # Assertion #1: exit signal format exists in ship.ts
 if grep -q 'exit:' src/commands/ship.ts; then
   echo "✓ Assertion #1: [exit:N | Xs] wrapper exists"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #1: exit signal wrapper NOT found in ship.ts"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 # Assertion #2: stderr emission (ADR-004 mandates stderr)
 if grep -q 'stderr\|process\.stderr' src/commands/ship.ts; then
   echo "✓ Assertion #2: stderr emission exists"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #2: stderr emission NOT found"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 echo "T008: $PASS passed, $FAIL failed"

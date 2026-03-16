@@ -274,6 +274,18 @@ async function shipPhase(
 }
 
 /**
+ * FR-014: Check if a phase should be skipped because all tasks are terminal.
+ * Terminal statuses: "completed" or "cancelled".
+ */
+function isPhaseComplete(
+  phaseData: TaskState["phases"][number],
+): boolean {
+  return phaseData.tasks.every(
+    (t) => t.status === "completed" || t.status === "cancelled",
+  );
+}
+
+/**
  * gwrk ship — The Shipping Pillar (Throughput)
  *
  * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
@@ -338,16 +350,13 @@ Exit codes:
             p.id.replace("phase-", ""),
           );
 
-          // FR-014: Skip phases where all tasks are already completed
+          // FR-014: Skip phases where all tasks are terminal (completed or cancelled)
           phases = allPhases.filter((phaseNum) => {
             const phaseData = taskState.phases.find(
               (p) => p.id === `phase-${phaseNum.padStart(2, "0")}`,
             );
             if (!phaseData) return true;
-            const allComplete = phaseData.tasks.every(
-              (t) => t.status === "completed",
-            );
-            if (allComplete) {
+            if (isPhaseComplete(phaseData)) {
               console.log(
                 `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
               );

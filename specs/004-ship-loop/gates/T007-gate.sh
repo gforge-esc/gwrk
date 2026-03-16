@@ -6,19 +6,19 @@ PASS=0; FAIL=0
 # Assertion #1: failureContext referenced in WUD
 if grep -q 'failureContext\|failure_context' scripts/dev/work-until-done.sh; then
   echo "✓ Assertion #1: failureContext exists in WUD"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #1: failureContext NOT found in WUD"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 # Assertion #2: openTasks or lastVerdict in failure context
 if grep -q 'openTasks\|open_tasks\|lastVerdict\|last_verdict' scripts/dev/work-until-done.sh; then
   echo "✓ Assertion #2: failure context has structured fields"
-  ((PASS++))
+  PASS=$((PASS+1))
 else
   echo "✗ Assertion #2: structured failure fields NOT found"
-  ((FAIL++))
+  FAIL=$((FAIL+1))
 fi
 
 echo "T007: $PASS passed, $FAIL failed"
