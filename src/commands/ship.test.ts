@@ -80,6 +80,7 @@ vi.mock("../utils/state.js", () => ({
 vi.mock("../utils/manifest.js", () => ({
   writeManifest: vi.fn(),
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
+  assembleDigest: vi.fn().mockReturnValue(["BRANCH_SETUP: created feat/004-ship-loop", "IMPLEMENT: agent completed"]),
 }));
 
 vi.mock("../utils/git.js", () => ({
@@ -329,10 +330,12 @@ describe("FR-014: Phase Skip", () => {
     });
 
     process.exitCode = 0;
-    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+    const consoleSpy = vi.spyOn(console, "log");
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop"]);
 
     expect(execModule.run).not.toHaveBeenCalled();
-    expect(uiModule.success).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+    consoleSpy.mockRestore();
   });
 
   it("US-009: should skip phase when all tasks are either 'completed' or 'cancelled'", async () => {
@@ -354,10 +357,12 @@ describe("FR-014: Phase Skip", () => {
     });
 
     process.exitCode = 0;
-    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+    const consoleSpy = vi.spyOn(console, "log");
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop"]);
 
     expect(execModule.run).not.toHaveBeenCalled();
-    expect(uiModule.success).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+    consoleSpy.mockRestore();
   });
 
   it("US-009: should NOT skip phase if mixed open and completed tasks exist", async () => {

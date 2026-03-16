@@ -8,7 +8,7 @@ import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import { banner, blocked, color, dryRun as dryRunFmt, fail, success, } from "../utils/format.js";
 import { getCurrentBranch, getCurrentCommit, getDiffStats, } from "../utils/git.js";
-import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { assembleDigest, generateRunId, writeManifest } from "../utils/manifest.js";
 import { loadTaskState } from "../utils/state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 const { GREEN, DIM, RESET } = color;
@@ -192,6 +192,7 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
             linesDeleted,
             gitCommit,
             gitBranch,
+            digest: assembleDigest(path.join(cwd, ".runs", `${feature}_p${normalizedPhase}.events`)),
         });
         recordHistory({
             feature_id: feature,
@@ -205,6 +206,13 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
         console.warn(`Warning: Could not write execution manifest: ${manifestError}`);
     }
     return exitCode;
+}
+/**
+ * FR-014: Check if a phase should be skipped because all tasks are terminal.
+ * Terminal statuses: "completed" or "cancelled".
+ */
+function isPhaseComplete(phaseData) {
+    return phaseData.tasks.every((t) => t.status === "completed" || t.status === "cancelled");
 }
 /**
  * gwrk ship — The Shipping Pillar (Throughput)
@@ -251,13 +259,12 @@ Exit codes:
             const specDir = path.join(cwd, "specs", feature);
             const taskState = loadTaskState(specDir);
             const allPhases = taskState.phases.map((p) => p.id.replace("phase-", ""));
-            // FR-014: Skip phases where all tasks are already completed
+            // FR-014: Skip phases where all tasks are terminal (completed or cancelled)
             phases = allPhases.filter((phaseNum) => {
                 const phaseData = taskState.phases.find((p) => p.id === `phase-${phaseNum.padStart(2, "0")}`);
                 if (!phaseData)
                     return true;
-                const allComplete = phaseData.tasks.every((t) => t.status === "completed");
-                if (allComplete) {
+                if (isPhaseComplete(phaseData)) {
                     console.log(`  ⏭  Phase ${phaseNum}: all tasks complete — skipping`);
                     return false;
                 }

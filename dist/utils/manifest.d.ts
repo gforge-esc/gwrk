@@ -18,6 +18,7 @@ export declare const ExecutionManifestSchema: z.ZodObject<{
     linesDeleted: z.ZodNumber;
     gitCommit: z.ZodString;
     gitBranch: z.ZodString;
+    digest: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     command: string;
     model: string;
@@ -35,6 +36,7 @@ export declare const ExecutionManifestSchema: z.ZodObject<{
     linesDeleted: number;
     gitCommit: string;
     gitBranch: string;
+    digest: string[];
     gateResult?: "PASS" | "FAIL" | undefined;
     reviewVerdict?: "GO" | "NO-GO" | undefined;
 }, {
@@ -56,6 +58,7 @@ export declare const ExecutionManifestSchema: z.ZodObject<{
     gitBranch: string;
     gateResult?: "PASS" | "FAIL" | undefined;
     reviewVerdict?: "GO" | "NO-GO" | undefined;
+    digest?: string[] | undefined;
 }>;
 export type ExecutionManifest = z.infer<typeof ExecutionManifestSchema>;
 /**
@@ -70,3 +73,8 @@ export declare function loadManifests(featureDir: string): ExecutionManifest[];
  * Generates a runId following the pattern: <ISO-timestamp>_<command>_<phase-shorthand>
  */
 export declare function generateRunId(startedAt: string, command: string, phase: string): string;
+/**
+ * FR-017: Reads the .events sidecar file and returns structured event lines.
+ * Returns an empty array if the sidecar file doesn't exist.
+ */
+export declare function assembleDigest(eventsFilePath: string): string[];
