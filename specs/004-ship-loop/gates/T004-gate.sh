@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
+# T004-gate.sh — Pre-flight gate runner in WUD (FR-003)
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-grep -qE 'skip|Skip|isPhaseComplete|all tasks complete' src/commands/ship.ts || { echo "FAIL: phase-skip logic not found"; exit 1; }
-grep -qE 'cancelled|canceled' src/commands/ship.ts || { echo "FAIL: cancelled status not handled"; exit 1; }
-echo "PASS: T004 — phase-skip with cancelled support"
+PASS=0; FAIL=0
+
+# Assertion #1: Pre-flight gate logic exists in WUD
+if grep -q 'pre-flight\|preflight\|gate.*PASS\|gateScript' scripts/dev/work-until-done.sh; then
+  echo "✓ Assertion #1: pre-flight gate logic exists"
+  ((PASS++))
+else
+  echo "✗ Assertion #1: pre-flight gate logic NOT found in WUD"
+  ((FAIL++))
+fi
+
+# Assertion #2: Gate skip message exists
+if grep -q 'pre-flight PASS\|gate already satisfied\|skipping' scripts/dev/work-until-done.sh; then
+  echo "✓ Assertion #2: gate skip message exists"
+  ((PASS++))
+else
+  echo "✗ Assertion #2: gate skip message NOT found"
+  ((FAIL++))
+fi
+
+echo "T004: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]

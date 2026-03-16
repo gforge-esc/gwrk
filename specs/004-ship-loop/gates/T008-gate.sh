@@ -1,5 +1,25 @@
 #!/usr/bin/env bash
+# T008-gate.sh — [exit:N | Xs] output wrapper (FR-015)
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-grep -qE 'porcelain|dirty|Dirty working tree' scripts/dev/wud-branch.sh || { echo "FAIL: dirty-tree check not in wud-branch.sh"; exit 1; }
-echo "PASS: T008 — dirty-tree fail-fast"
+PASS=0; FAIL=0
+
+# Assertion #1: exit signal format exists in ship.ts
+if grep -q 'exit:' src/commands/ship.ts; then
+  echo "✓ Assertion #1: [exit:N | Xs] wrapper exists"
+  ((PASS++))
+else
+  echo "✗ Assertion #1: exit signal wrapper NOT found in ship.ts"
+  ((FAIL++))
+fi
+
+# Assertion #2: stderr emission (ADR-004 mandates stderr)
+if grep -q 'stderr\|process\.stderr' src/commands/ship.ts; then
+  echo "✓ Assertion #2: stderr emission exists"
+  ((PASS++))
+else
+  echo "✗ Assertion #2: stderr emission NOT found"
+  ((FAIL++))
+fi
+
+echo "T008: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]
