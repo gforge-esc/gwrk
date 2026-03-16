@@ -147,14 +147,27 @@ function buildAssertions(
     } else if (ext === ".sh") {
       lines.push(`test -f ${resolvedFile}`);
       lines.push(`bash -n ${resolvedFile}`);
+    } else if (ext === ".md") {
+      // Markdown files (contracts, gap-analysis, checklists): verify existence
+      // and grep for key identifiers from the task description.
+      lines.push(`test -f ${resolvedFile}`);
+      const ids = extractIdentifiers(task.description ?? "").slice(0, 4);
+      if (ids.length > 0) {
+        lines.push("# Required content from task description");
+        for (const id of ids) lines.push(`grep -q '${id}' ${resolvedFile}`);
+      }
     }
   }
 
   // Priority 4: phase Done When on last task (exclude already added)
+  // IMPORTANT: exclude run-all-gates.sh to prevent recursive invocation —
+  // the runner must never appear inside an individual gate script.
   const isLast = phase.tasks.indexOf(task) === phase.tasks.length - 1;
   if (isLast && doneWhenCommands.length > 0) {
     const added = new Set(lines);
-    const extra = doneWhenCommands.filter((cmd) => !added.has(cmd));
+    const extra = doneWhenCommands.filter(
+      (cmd) => !added.has(cmd) && !cmd.includes("run-all-gates"),
+    );
     if (extra.length > 0) {
       lines.push("", "# Phase Acceptance Criteria (Done When)");
       lines.push(...extra);

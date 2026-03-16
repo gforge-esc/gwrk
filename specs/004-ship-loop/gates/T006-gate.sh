@@ -1,16 +1,14 @@
-#!/usr/bin/env bash
-# T006-gate.sh — validate-staging.sh called from WUD (FR-016)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# Gate: T006 — Implement test strategy for Phase 1
+# Generated: assertions derived from plan Done When + file type.
+# To override, add '# AUTHORED' anywhere and edit freely.
 
-# Assertion #1: validate-staging.sh is called from work-until-done.sh
-if grep -q 'validate-staging' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #1: validate-staging called from WUD"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: validate-staging NOT called from WUD"
-  FAIL=$((FAIL+1))
-fi
 
-echo "T006: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+# Phase Acceptance Criteria (Done When)
+pnpm vitest run src/commands/ship.test.ts
+grep -q 'emit_event' scripts/dev/work-until-done.sh
+grep -qE 'cancelled|canceled' src/commands/ship.ts
+jq -e '.digest' src/utils/manifest.ts 2>/dev/null || grep -q 'digest' src/utils/manifest.ts
+
+echo "PASS: T006 — Implement test strategy for Phase 1"

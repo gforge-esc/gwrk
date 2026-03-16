@@ -1,133 +1,223 @@
 {
   "featureId": "004-ship-loop",
-  "createdAt": "2026-03-15T18:35:00Z",
+  "createdAt": "2026-03-16T15:50:49.182Z",
   "generatedFrom": {
     "plan": {
-      "hash": "from-gap-analysis-d04b059",
-      "modifiedAt": "2026-03-15T18:35:00Z"
+      "hash": "4f0ae9c687a4e8921c36fac802acd525917fc1dd0291243ee417d452a781c881",
+      "modifiedAt": "2026-03-15T18:20:53.810Z"
     }
   },
   "phases": [
     {
       "id": "phase-01",
-      "title": "Phase 1: Dispatch + Pre-flight",
-      "objective": "Wire pre-flight gate runner, fix phase-skip logic, start digest pipeline",
+      "title": "Digest & Phase-Skip",
       "tasks": [
         {
           "id": "T001",
-          "title": "Extract isPhaseComplete() with cancelled support",
-          "description": "Extract inline phase-skip logic from ship.ts into a named function isPhaseComplete(phase): boolean. Must return true when ALL tasks have status 'completed' OR 'cancelled'. Currently only checks 'completed'. (FR-014, gap: missing)",
+          "title": "Implement scripts/dev/work-until-done.sh",
+          "description": "MODIFY: add `emit_event(",
           "status": "open",
           "gateScript": "gates/T001-gate.sh",
-          "classification": "change"
+          "classification": "greenfield"
         },
         {
           "id": "T002",
-          "title": "Add emit_event() to work-until-done.sh",
-          "description": "Create an emit_event() bash function in work-until-done.sh that appends structured lines to $RUNS_DIR/<feature>_p<phase>.events sidecar file. Format: '<STAGE>: <outcome summary>'. Call emit_event after each stage transition (BRANCH_SETUP, IMPLEMENT, CODE_REVIEW, UAT_REVIEW, PR_CI, DONE). (FR-017, gap: greenfield)",
+          "title": "Implement src/utils/manifest.ts",
+          "description": "MODIFY: add `digest: string[]` to `RunManifest` Zod schema. Add `assembleDigest(",
           "status": "open",
           "gateScript": "gates/T002-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T003",
-          "title": "Add assembleDigest() to ship.ts and wire to manifest",
-          "description": "Create assembleDigest(eventsFilePath): string[] in ship.ts (or manifest.ts). Reads the .events sidecar file line-by-line. Add 'digest' field to ExecutionManifestSchema as z.array(z.string()).default([]). Pass digest to writeManifest() call. (FR-012, FR-017, gap: greenfield + missing)",
+          "title": "Implement src/commands/ship.ts",
+          "description": "MODIFY: add `isPhaseComplete(",
           "status": "open",
           "gateScript": "gates/T003-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T004",
-          "title": "Add pre-flight gate runner to work-until-done.sh",
-          "description": "Before run_implement(), read tasks.json for the current phase, execute each task's gateScript. If gate exits 0 → log 'pre-flight PASS — gate already satisfied, skipping' and skip implementation. If any gate fails → proceed to implementation. (FR-003, gap: greenfield)",
+          "title": "Implement src/commands/ship.test.ts",
+          "description": "MODIFY: add tests for phase-skip (completed, cancelled+completed, mixed",
           "status": "open",
           "gateScript": "gates/T004-gate.sh",
           "classification": "greenfield"
-        }
-      ],
-      "doneWhen": [
-        "grep -q 'isPhaseComplete' src/commands/ship.ts",
-        "grep -q 'cancelled' src/commands/ship.ts",
-        "grep -q 'emit_event' scripts/dev/work-until-done.sh",
-        "grep -q 'assembleDigest' src/commands/ship.ts",
-        "grep -q 'digest' src/utils/manifest.ts",
-        "grep -q 'pre-flight PASS' scripts/dev/work-until-done.sh"
-      ]
-    },
-    {
-      "id": "phase-02",
-      "title": "Phase 2: Resilience & Bail",
-      "objective": "Wire dirty-tree guard, staging validation, and structured failure context",
-      "tasks": [
+        },
         {
           "id": "T005",
-          "title": "Add dirty-tree guard to wud-branch.sh",
-          "description": "At the top of wud-branch.sh (before any branch operations), run 'git status --porcelain'. If output is non-empty, emit 'Dirty working tree — commit or stash before shipping' to stderr and exit 1. (FR-002, gap: greenfield)",
+          "title": "Implement specs/004-ship-loop/.gwrk/runs/.gitkeep",
+          "description": "NEW: ensure runs dir exists for log commits.",
           "status": "open",
           "gateScript": "gates/T005-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T006",
-          "title": "Call validate-staging.sh from work-until-done.sh",
-          "description": "In run_implement(), after agent exits 0 and before '$WUD_BRANCH push', call 'scripts/dev/validate-staging.sh $FEATURE'. If validation fails (exit 1), log warning and re-run agent with corrective guidance (or fail the iteration). (FR-016, gap: missing)",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "open",
           "gateScript": "gates/T006-gate.sh",
-          "classification": "change"
-        },
-        {
-          "id": "T007",
-          "title": "Add failureContext to CIRCUIT_BREAK state",
-          "description": "When save_state('CIRCUIT_BREAK', ...) is called, include a failureContext JSON object with: openTasks (array of task IDs still open), lastVerdict ('NO-GO'), iterationTimeline (array of {iteration, stage, verdict, durationS}), digest (from .events sidecar). Requires tracking iteration history in a bash array during the main loop. (FR-018, gap: missing)",
-          "status": "open",
-          "gateScript": "gates/T007-gate.sh",
-          "classification": "change"
+          "classification": "noop"
         }
       ],
       "doneWhen": [
-        "grep -q 'porcelain' scripts/dev/wud-branch.sh",
-        "grep -q 'Dirty working tree' scripts/dev/wud-branch.sh",
-        "grep -q 'validate-staging' scripts/dev/work-until-done.sh",
-        "grep -q 'failureContext' scripts/dev/work-until-done.sh"
+        "`pnpm vitest run src/commands/ship.test.ts` exits 0 with phase-skip and digest tests",
+        "`grep -q 'emit_event' scripts/dev/work-until-done.sh` exits 0",
+        "`grep -qE 'cancelled|canceled' src/commands/ship.ts` exits 0",
+        "`jq -e '.digest' src/utils/manifest.ts 2>/dev/null || grep -q 'digest' src/utils/manifest.ts` exits 0"
       ]
     },
     {
-      "id": "phase-03",
-      "title": "Phase 3: Verification & Artifacts",
-      "objective": "Agent-Native output wrapper, config fail-fast fix, full test coverage",
+      "id": "phase-02",
+      "title": "Resilience & Bail",
       "tasks": [
         {
+          "id": "T007",
+          "title": "Implement scripts/dev/work-until-done.sh",
+          "description": "MODIFY: add `emit_event \"CIRCUIT_BREAK: ...\"` on circuit break. Write `failureContext` JSON to state file: `openTasks`, `lastVerdict`, `iterationTimeline`, `digest`. Call `validate-staging.sh` after IMPLEMENT, before push. Add dirty-tree guard at startup.",
+          "status": "open",
+          "gateScript": "gates/T007-gate.sh",
+          "classification": "greenfield"
+        },
+        {
           "id": "T008",
-          "title": "Add [exit:N | Xs] output wrapper to ship command",
-          "description": "Wrap the shipCommand action's final output in the ADR-004 Agent-Native format: '[exit:N | Xs]' on stderr. Command type is 'mutator'. This is the structured signal that agents parse. (FR-015, gap: greenfield)",
+          "title": "Implement scripts/dev/wud-branch.sh",
+          "description": "MODIFY: add `git status --porcelain` check. Non-empty → emit `Dirty working tree — commit or stash before shipping` to stderr, exit 1.",
           "status": "open",
           "gateScript": "gates/T008-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T009",
-          "title": "Add --format json to ship command",
-          "description": "Add '--format <format>' option to shipCommand (default: 'human'). When 'json', suppress banner/color output and emit a JSON object on stdout with: {feature, phase, exitCode, durationS, runId, manifestPath}. (FR-015, gap: greenfield)",
+          "title": "Implement scripts/dev/validate-staging.sh",
+          "description": "VERIFY: confirm existing validator handles all FR-016 rejection cases.",
           "status": "open",
           "gateScript": "gates/T009-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T010",
-          "title": "Fix FR-009 agent config fail-fast",
-          "description": "When .gwrkrc.json is missing agents.implement and no --agent override is provided, ship.ts currently falls through silently. It MUST crash with 'Missing required config: agents.implement' and exit 1. Ensure Zod validation covers this path. (FR-009, gap: wrong)",
+          "title": "Implement src/scripts-e2e.test.ts",
+          "description": "MODIFY: add test for circuit-break state file containing `failureContext`; add test for dirty-tree rejection.",
           "status": "open",
           "gateScript": "gates/T010-gate.sh",
-          "classification": "change"
+          "classification": "greenfield"
+        },
+        {
+          "id": "T011",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T011-gate.sh",
+          "classification": "noop"
         }
       ],
       "doneWhen": [
-        "grep -q 'exit:' src/commands/ship.ts",
-        "grep -q 'format' src/commands/ship.ts",
-        "grep -q 'Missing required config' src/commands/ship.ts",
-        "pnpm test",
-        "pnpm build"
+        "`grep -qE 'failureContext|failure_context' scripts/dev/work-until-done.sh` exits 0",
+        "`grep -q 'validate-staging' scripts/dev/work-until-done.sh` exits 0",
+        "`grep -qE 'porcelain|Dirty working tree' scripts/dev/wud-branch.sh` exits 0",
+        "`pnpm vitest run src/scripts-e2e.test.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Verification & Artifacts",
+      "tasks": [
+        {
+          "id": "T012",
+          "title": "Implement src/commands/ship.test.ts",
+          "description": "MODIFY: add tests for FR-004 state machine transitions, FR-005 review dispatch with GO/NO-GO, FR-006 PR creation, FR-008 crash recovery resume, FR-009 hierarchical agent config resolution, FR-012 manifest writes with correct fields, FR-015 Agent-Native output wrapper and `--format json`",
+          "status": "open",
+          "gateScript": "gates/T012-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T013",
+          "title": "Implement src/scripts-e2e.test.ts",
+          "description": "MODIFY: add tests for FR-002 branch creation + dirty-tree rejection, FR-004 stage transitions, FR-006 PR + CI wait, FR-010 log file creation",
+          "status": "open",
+          "gateScript": "gates/T013-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T014",
+          "title": "Implement specs/004-ship-loop/contracts/ship.md",
+          "description": "MODIFY: add `isPhaseComplete(",
+          "status": "open",
+          "gateScript": "gates/T014-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T015",
+          "title": "Implement specs/004-ship-loop/contracts/implement.md",
+          "description": "MODIFY: add `emit_event(",
+          "status": "open",
+          "gateScript": "gates/T015-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T016",
+          "title": "Implement specs/004-ship-loop/contracts/branch.md",
+          "description": "MODIFY: add dirty-tree fail-fast contract",
+          "status": "open",
+          "gateScript": "gates/T016-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T017",
+          "title": "Implement specs/004-ship-loop/contracts/wud.md",
+          "description": "MODIFY: add `CIRCUIT_BREAK` → `failureContext` state machine transition",
+          "status": "open",
+          "gateScript": "gates/T017-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T018",
+          "title": "Implement specs/004-ship-loop/contracts/verdict.md",
+          "description": "VERIFY: GO/NO-GO format matches FR-005",
+          "status": "open",
+          "gateScript": "gates/T018-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T019",
+          "title": "Implement specs/004-ship-loop/contracts/pr.md",
+          "description": "VERIFY: PR creation + CI wait contract",
+          "status": "open",
+          "gateScript": "gates/T019-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T020",
+          "title": "Implement specs/004-ship-loop/gap-analysis.md",
+          "description": "REWRITE: reflect current implementation vs new spec",
+          "status": "open",
+          "gateScript": "gates/T020-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T021",
+          "title": "Implement specs/004-ship-loop/checklists/requirements.md",
+          "description": "REWRITE: against new 18 FRs",
+          "status": "open",
+          "gateScript": "gates/T021-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T022",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T022-gate.sh",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm test` exits 0",
+        "`pnpm build` exits 0",
+        "`bash specs/004-ship-loop/gates/run-all-gates.sh` exits 0 (12/12 pass)",
+        "All contracts in `specs/004-ship-loop/contracts/` reference current implementation"
       ]
     }
   ]

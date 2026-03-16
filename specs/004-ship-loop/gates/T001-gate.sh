@@ -1,25 +1,10 @@
-#!/usr/bin/env bash
-# T001-gate.sh — isPhaseComplete() with cancelled support (FR-014)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# Gate: T001 — Implement scripts/dev/work-until-done.sh
+# Generated: assertions derived from plan Done When + file type.
+# To override, add '# AUTHORED' anywhere and edit freely.
 
-# Assertion #1: isPhaseComplete function exists in ship.ts
-if grep -q 'function isPhaseComplete\|const isPhaseComplete' src/commands/ship.ts; then
-  echo "✓ Assertion #1: isPhaseComplete function exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: isPhaseComplete function NOT found in ship.ts"
-  FAIL=$((FAIL+1))
-fi
+# Done When (from plan)
+grep -q 'emit_event' scripts/dev/work-until-done.sh
 
-# Assertion #2: Function checks for 'cancelled' status
-if grep -q 'cancelled' src/commands/ship.ts; then
-  echo "✓ Assertion #2: 'cancelled' status handled"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: 'cancelled' status NOT handled in ship.ts"
-  FAIL=$((FAIL+1))
-fi
-
-echo "T001: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+echo "PASS: T001 — Implement scripts/dev/work-until-done.sh"

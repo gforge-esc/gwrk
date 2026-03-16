@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T005 — Implement specs/004-ship-loop/.gwrk/runs/.gitkeep
+# Gate: T018 — Implement specs/004-ship-loop/contracts/verdict.md
 # Generated: assertions derived from plan Done When + file type.
 # To override, add '# AUTHORED' anywhere and edit freely.
 
@@ -9,4 +9,4 @@ set -euo pipefail
 # and add the '# AUTHORED' marker to the top of the file.
 echo 'GATE_STUB: authored gate required' && exit 1
 
-echo "PASS: T005 — Implement specs/004-ship-loop/.gwrk/runs/.gitkeep"
+echo "PASS: T018 — Implement specs/004-ship-loop/contracts/verdict.md"

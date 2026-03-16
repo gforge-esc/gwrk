@@ -1,25 +1,10 @@
-#!/usr/bin/env bash
-# T004-gate.sh — Pre-flight gate runner in WUD (FR-003)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# Gate: T004 — Implement src/commands/ship.test.ts
+# Generated: assertions derived from plan Done When + file type.
+# To override, add '# AUTHORED' anywhere and edit freely.
 
-# Assertion #1: Pre-flight gate logic exists in WUD
-if grep -q 'pre-flight\|preflight\|gate.*PASS\|gateScript' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #1: pre-flight gate logic exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: pre-flight gate logic NOT found in WUD"
-  FAIL=$((FAIL+1))
-fi
+# Done When (from plan)
+pnpm vitest run src/commands/ship.test.ts
 
-# Assertion #2: Gate skip message exists
-if grep -q 'pre-flight PASS\|gate already satisfied\|skipping' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #2: gate skip message exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: gate skip message NOT found"
-  FAIL=$((FAIL+1))
-fi
-
-echo "T004: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+echo "PASS: T004 — Implement src/commands/ship.test.ts"

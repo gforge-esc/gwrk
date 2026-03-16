@@ -1,25 +1,10 @@
-#!/usr/bin/env bash
-# T008-gate.sh — [exit:N | Xs] output wrapper (FR-015)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# Gate: T008 — Implement scripts/dev/wud-branch.sh
+# Generated: assertions derived from plan Done When + file type.
+# To override, add '# AUTHORED' anywhere and edit freely.
 
-# Assertion #1: exit signal format exists in ship.ts
-if grep -q 'exit:' src/commands/ship.ts; then
-  echo "✓ Assertion #1: [exit:N | Xs] wrapper exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: exit signal wrapper NOT found in ship.ts"
-  FAIL=$((FAIL+1))
-fi
+# Done When (from plan)
+grep -qE 'porcelain|Dirty working tree' scripts/dev/wud-branch.sh
 
-# Assertion #2: stderr emission (ADR-004 mandates stderr)
-if grep -q 'stderr\|process\.stderr' src/commands/ship.ts; then
-  echo "✓ Assertion #2: stderr emission exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: stderr emission NOT found"
-  FAIL=$((FAIL+1))
-fi
-
-echo "T008: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+echo "PASS: T008 — Implement scripts/dev/wud-branch.sh"
