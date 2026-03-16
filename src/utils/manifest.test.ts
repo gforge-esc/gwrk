@@ -41,6 +41,7 @@ describe("Execution Manifest Utility", () => {
     linesDeleted: 33,
     gitCommit: "abc1234",
     gitBranch: "feat/test-feature-wip",
+    digest: [],
   };
 
   it("should generate a runId with shorthand phase", () => {

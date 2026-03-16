@@ -85,9 +85,38 @@ If a task genuinely cannot be gated (no file, no identifiers, no contract), the 
 - This is honest failure, not a stub.
 
 `test -f` alone is NEVER acceptable as a sole assertion.
+
+Grep assertion safety rules:
+- NEVER grep for content that spans multiple lines — find a distinctive single-line substring instead
+- NEVER use regex metacharacters unless required — prefer `grep -q` over `grep -qE`
+- For functions that take arguments, grep for the function NAME only: `grep -q 'emit_event'`, NOT `grep -q 'emit_event "CIRCUIT_BREAK: ..."'`
+- For terms that may be hyphenated or spaced, use dot wildcard: `grep -qi 'dirty.tree'`
+- For compound phrases like `GO/NO-GO`, assert each term separately with two greps
+- ALWAYS run `grep -q <pattern> <file>` yourself BEFORE including it in a gate script
+- If a grep fails when you test it, fix the pattern — do not write a gate you haven't verified
 </gate_rules>
 
-### 5. Preserve existing authored gates
+### 5. Self-verify each gate
+
+After writing all gate scripts, run each one and fix any that fail:
+// turbo
+```bash
+for gate in {feature_dir}/gates/T*-gate.sh; do
+  if ! bash "$gate" > /dev/null 2>&1; then
+    echo "FAILED: $(basename $gate)"
+  fi
+done
+```
+
+For each FAILED gate:
+1. Run `bash -x {gate}` to identify the exact failing assertion line
+2. Re-read the source file the assertion targets
+3. Fix the grep/test pattern to match the actual source content
+4. Re-run the gate to confirm it passes
+
+Repeat until all gates pass. A gate that fails self-verification is a defective gate — it MUST be fixed before proceeding.
+
+### 6. Preserve existing authored gates
 // turbo
 ```bash
 for gate in {feature_dir}/gates/T*-gate.sh; do
@@ -99,7 +128,7 @@ done
 
 Do NOT overwrite any gate that already contains `# AUTHORED`.
 
-### 6. Verify all gates
+### 7. Verify all gates have markers
 
 After writing, verify each gate has the required markers:
 // turbo

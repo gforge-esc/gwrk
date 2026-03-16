@@ -1,10 +1,23 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T012 — Implement src/commands/ship.test.ts
-# Generated: assertions derived from plan Done When + file type.
-# To override, add '# AUTHORED' anywhere and edit freely.
+# AUTHORED
+# Gate: T012 — Implement Phase 3 tests in src/commands/ship.test.ts
 
-# Test file — run it
-pnpm vitest run src/commands/ship.test.ts --reporter=verbose
+FILE="src/commands/ship.test.ts"
 
-echo "PASS: T012 — Implement src/commands/ship.test.ts"
+# Assertion 1: File exists
+test -f "$FILE"
+
+# Assertion 2: Tests for agent config resolution exist
+grep -q "describe(\"FR-009/T010: Agent config fail-fast\"" "$FILE"
+
+# Assertion 3: Tests for Agent-Native output exist
+grep -q "describe(\"FR-015/T008: Agent-Native \[exit:N | Xs\] wrapper\"" "$FILE"
+
+# Assertion 4: Tests for --format json exist
+grep -q "describe(\"FR-015/T009: --format json support\"" "$FILE"
+
+# Assertion 5: Run the tests
+pnpm vitest run "$FILE" --reporter=verbose
+
+echo "PASS: T012 — src/commands/ship.test.ts Phase 3 features verified"

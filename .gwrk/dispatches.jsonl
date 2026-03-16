@@ -373,3 +373,7 @@
 {"id":"31170f6e-1de5-454a-b138-ba78764d5626","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-16T21:03:43.511Z"}
 {"id":"59a9977c-6fdb-4688-af5e-69ccf72f2e48","featureId":"e2e-test","phaseId":"phase-01","backend":"gemini","status":"queued","branchName":"phase/e2e-test-phase-01","attempts":[],"createdAt":"2026-03-16T21:35:44.291Z"}
 {"id":"69db7388-a2e6-4ac0-84a8-ffcc30caabca","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-16T21:35:44.333Z"}
+{"id":"fe7a05f9-d927-4e32-abbb-93e4d2fdafd9","featureId":"e2e-test","phaseId":"phase-01","backend":"gemini","status":"queued","branchName":"phase/e2e-test-phase-01","attempts":[],"createdAt":"2026-03-16T21:38:43.445Z"}
+{"id":"7b81dac2-bee5-4063-b217-41474b92966e","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-16T21:38:43.449Z"}
+{"id":"56cef8d7-10e1-4293-89dd-7813d9468956","featureId":"e2e-test","phaseId":"phase-01","backend":"gemini","status":"queued","branchName":"phase/e2e-test-phase-01","attempts":[],"createdAt":"2026-03-16T21:52:58.316Z"}
+{"id":"c8bb517c-d2f3-4558-9861-7a92788f0638","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-16T21:52:58.321Z"}

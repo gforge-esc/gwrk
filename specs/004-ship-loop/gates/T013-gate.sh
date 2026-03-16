@@ -1,10 +1,20 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T013 — Implement src/scripts-e2e.test.ts
-# Generated: assertions derived from plan Done When + file type.
-# To override, add '# AUTHORED' anywhere and edit freely.
+# AUTHORED
+# Gate: T013 — Implement Phase 3 tests in src/scripts-e2e.test.ts
 
-# Test file — run it
-pnpm vitest run src/scripts-e2e.test.ts --reporter=verbose
+FILE="src/scripts-e2e.test.ts"
 
-echo "PASS: T013 — Implement src/scripts-e2e.test.ts"
+# Assertion 1: File exists
+test -f "$FILE"
+
+# Assertion 2: Tests for full execution loop exist
+grep -q "should complete a full execution loop without unbound variables" "$FILE"
+
+# Assertion 3: Tests for pre-flight gates exist
+grep -q "FR-003/T004: should run pre-flight tasks.json gates before implementation" "$FILE"
+
+# Assertion 4: Run the tests
+pnpm vitest run "$FILE" --reporter=verbose
+
+echo "PASS: T013 — src/scripts-e2e.test.ts Phase 3 features verified"

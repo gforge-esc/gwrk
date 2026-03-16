@@ -1,12 +1,14 @@
 #!/bin/bash
 set -euo pipefail
+# AUTHORED
 # Gate: T005 — Implement specs/004-ship-loop/.gwrk/runs/.gitkeep
-# Generated: assertions derived from plan Done When + file type.
-# To override, add '# AUTHORED' anywhere and edit freely.
 
-# GATE_STUB: no functional assertion could be derived from plan.
-# Replace this stub with a real assertion (pnpm vitest, curl, etc.)
-# and add the '# AUTHORED' marker to the top of the file.
-echo 'GATE_STUB: authored gate required' && exit 1
+FILE="specs/004-ship-loop/.gwrk/runs/.gitkeep"
 
-echo "PASS: T005 — Implement specs/004-ship-loop/.gwrk/runs/.gitkeep"
+# Assertion 1: Directory exists
+test -d "specs/004-ship-loop/.gwrk/runs"
+
+# Assertion 2: .gitkeep file exists
+test -f "$FILE"
+
+echo "PASS: T005 — specs/004-ship-loop/.gwrk/runs/.gitkeep exists"

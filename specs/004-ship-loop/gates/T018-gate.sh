@@ -1,12 +1,14 @@
 #!/bin/bash
 set -euo pipefail
+# AUTHORED
 # Gate: T018 — Implement specs/004-ship-loop/contracts/verdict.md
-# Generated: assertions derived from plan Done When + file type.
-# To override, add '# AUTHORED' anywhere and edit freely.
 
-# GATE_STUB: no functional assertion could be derived from plan.
-# Replace this stub with a real assertion (pnpm vitest, curl, etc.)
-# and add the '# AUTHORED' marker to the top of the file.
-echo 'GATE_STUB: authored gate required' && exit 1
+FILE="specs/004-ship-loop/contracts/verdict.md"
 
-echo "PASS: T018 — Implement specs/004-ship-loop/contracts/verdict.md"
+# Assertion 1: File exists
+test -f "$FILE"
+
+# Assertion 2: GO/NO-GO format is documented
+grep -i -q "GO/NO-GO" "$FILE"
+
+echo "PASS: T018 — specs/004-ship-loop/contracts/verdict.md updated"

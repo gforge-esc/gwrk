@@ -18,7 +18,7 @@ export declare const ExecutionManifestSchema: z.ZodObject<{
     linesDeleted: z.ZodNumber;
     gitCommit: z.ZodString;
     gitBranch: z.ZodString;
-    digest: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    digest: z.ZodArray<z.ZodString, "many">;
 }, "strip", z.ZodTypeAny, {
     command: string;
     model: string;
@@ -56,9 +56,9 @@ export declare const ExecutionManifestSchema: z.ZodObject<{
     linesDeleted: number;
     gitCommit: string;
     gitBranch: string;
+    digest: string[];
     gateResult?: "PASS" | "FAIL" | undefined;
     reviewVerdict?: "GO" | "NO-GO" | undefined;
-    digest?: string[] | undefined;
 }>;
 export type ExecutionManifest = z.infer<typeof ExecutionManifestSchema>;
 /**
