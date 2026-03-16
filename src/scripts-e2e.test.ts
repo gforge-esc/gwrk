@@ -127,6 +127,20 @@ describe("work-until-done.sh execution flow", () => {
     expect(content).toContain("IMPLEMENT:");
   });
 
+  it("FR-010: should copy logs to spec directory runs/ on stage completion", () => {
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env,
+      encoding: "utf-8",
+    });
+    const specRunsDir = path.join(SPEC_DIR, ".gwrk", "runs");
+    expect(fs.existsSync(specRunsDir)).toBe(true);
+    const files = fs.readdirSync(specRunsDir).filter(f => f.endsWith(".log"));
+    // Should have at least logs for BRANCH_SETUP and IMPLEMENT
+    expect(files.length).toBeGreaterThanOrEqual(1);
+    expect(files.some(f => f.includes("_BRANCH_SETUP.log") || f.includes("_IMPLEMENT.log"))).toBe(true);
+  });
+
   it("FR-003/T004: should run pre-flight tasks.json gates before implementation", () => {
     // Create a mock gate script that always passes
     const gateDir = path.join(ROOT, "specs/999-ship-e2e/gates");
@@ -200,7 +214,18 @@ describe("FR-018/T007: Circuit Breaker failureContext", () => {
     ].join("\n"));
   });
 
-  it("produces failureContext in the JSON state file on CIRCUIT_BREAK", () => {
+  it("FR-018/T007: produces non-empty failureContext in the JSON state file on CIRCUIT_BREAK", () => {
+    // Create a mock tasks.json with open tasks
+    const gwrkDir = path.join(SPEC_DIR, ".gwrk");
+    fs.mkdirSync(gwrkDir, { recursive: true });
+    fs.writeFileSync(path.join(gwrkDir, "tasks.json"), JSON.stringify({
+      featureId: "999-ship-e2e",
+      phases: [{
+        id: "phase-01",
+        tasks: [{ id: "T001", status: "open" }, { id: "T002", status: "open" }],
+      }],
+    }));
+
     try {
       execFileSync(
         path.join(ROOT, "scripts/dev/work-until-done.sh"),
@@ -215,8 +240,10 @@ describe("FR-018/T007: Circuit Breaker failureContext", () => {
     const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
     expect(state.stage).toBe("CIRCUIT_BREAK");
     expect(state.failureContext).toBeDefined();
-    expect(state.failureContext.digest).toBeDefined();
-    expect(state.failureContext.lastVerdict).toBeDefined();
+    // Should NOT be empty as it should be populated from actual tasks
+    expect(state.failureContext.openTasks).toContain("T001");
+    expect(state.failureContext.openTasks).toContain("T002");
+    expect(state.failureContext.digest.length).toBeGreaterThan(0);
   });
 });
 

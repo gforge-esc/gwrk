@@ -150,4 +150,42 @@ describe("gwrk tasks done", () => {
       process.chdir(originalCwd);
     }
   });
+
+  it("should fail and block when gate contains only test -f (FR-001)", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      process.exitCode = 0;
+
+      // Create a gate that only contains test -f
+      const featureDir = path.join(tempDir, "specs", "test-feature");
+      const testFGate = path.join(featureDir, "gates", "T001-gate.sh");
+      
+      // Create the file so the gate itself WOULD pass (exit 0)
+      const targetFile = path.join(tempDir, "some-file.ts");
+      fs.writeFileSync(targetFile, "// exists");
+      
+      fs.writeFileSync(testFGate, `#!/bin/bash\ntest -f ${targetFile}`, { mode: 0o755 });
+
+      await tasksCommand.parseAsync(["done", "test-feature", "T001"], {
+        from: "user",
+      });
+
+      // FR-001: MUST be treated as a build failure (exit 1) because it only has test -f
+      expect(process.exitCode).toBe(1);
+
+      const tasksPath = path.join(
+        "specs",
+        "test-feature",
+        ".gwrk",
+        "tasks.json",
+      );
+      const tasks = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
+      expect(tasks.phases[0].tasks[0].status).toBe("open");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
 });

@@ -13,7 +13,7 @@ vi.mock("../utils/format.js", () => ({
   success: vi.fn(),
 }));
 
-describe("tasks-generate", () => {
+describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
   let tempDir: string;
   let projectRoot: string;
 
@@ -26,19 +26,26 @@ describe("tasks-generate", () => {
     const specDir = path.join(tempDir, "specs", "001-cli-core");
     fs.mkdirSync(path.join(specDir, ".gwrk"), { recursive: true });
     fs.mkdirSync(path.join(specDir, "gates"), { recursive: true });
+    fs.mkdirSync(path.join(specDir, "contracts"), { recursive: true });
     
-    // Create a plan.md that matches the parser's expectations
+    // Create a plan.md
     fs.writeFileSync(path.join(specDir, "plan.md"), `
+# Plan: 001-cli-core
+
 ### Phase 1: Core
 
-**Files (2):**
+**Files (1):**
 - \`file1.ts\` (First file)
-- \`file2.ts\` (Second file)
+
+#### Tasks
+- Task 1: Create file1.ts
 
 #### Done When
 - \`test -f file1.ts\`
-- \`test -f file2.ts\`
 `);
+    
+    // Create a contract to pass the guard
+    fs.writeFileSync(path.join(specDir, "contracts", "file1.md"), "# Contract: file1");
   });
 
   afterEach(() => {
@@ -46,7 +53,38 @@ describe("tasks-generate", () => {
     vi.restoreAllMocks();
   });
 
-  it("should preserve # AUTHORED gates even with --force", async () => {
+  it("FR-002, US-002: should fail if contracts are missing and --no-llm is not used", async () => {
+    const specDir = path.join(tempDir, "specs", "001-cli-core");
+    fs.rmSync(path.join(specDir, "contracts"), { recursive: true, force: true });
+    
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    process.exitCode = 0;
+    
+    try {
+      await program.parseAsync(["node", "test", "tasks", "001-cli-core", "--force"]);
+    } catch {
+      // Expected
+    }
+    
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("FR-002, US-002: should succeed if contracts are missing but --no-llm is used", async () => {
+    const specDir = path.join(tempDir, "specs", "001-cli-core");
+    fs.rmSync(path.join(specDir, "contracts"), { recursive: true, force: true });
+    
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    process.exitCode = 0;
+    
+    await program.parseAsync(["node", "test", "tasks", "001-cli-core", "--force", "--no-llm"]);
+    
+    expect(process.exitCode).toBe(0);
+    expect(fs.existsSync(path.join(specDir, ".gwrk", "tasks.json"))).toBe(true);
+  });
+
+  it("TR-010: should preserve # AUTHORED gates even with --force", async () => {
     const specDir = path.join(tempDir, "specs", "001-cli-core");
     const gatesDir = path.join(specDir, "gates");
     

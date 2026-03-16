@@ -223,7 +223,7 @@ describe("shipCommand", () => {
     expect(uiModule.dryRun).toHaveBeenCalledTimes(2);
   });
 
-  it("should exit 1 with BLOCKED message if no test files found for phase", async () => {
+  it("FR-008, US-008: should exit 1 with BLOCKED message if no test files found for phase", async () => {
     // Modify loadTaskState mock to return a task with a source file but no tests
     vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
       featureId: "004-ship-loop",

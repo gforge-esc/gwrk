@@ -133,6 +133,38 @@ Fix the remaining 20 failing tests across 003-slack test files (ship.test.ts and
 
 ---
 
+### Phase 4: Feature-Level RED Test Generation
+
+Wire `gwrk define tests` into the CLI to run feature-globally by default, driven by rigorous analysis and reasoning to validate planned tasks against the spec/plan. Modify `gwrk define tasks` to support optional phase targeting.
+
+**Files (4):**
+- `.agents/workflows/define-tests.md` (MODIFY: Change prompt to map to all phases of a feature, using analysis/reasoning to guide the generation to strictly tie off against tasks in the plan/spec)
+- `src/commands/tests-generate.ts` (NEW: `gwrk define tests <feature> [options]` command that receives an optional `--phase <N>` flag, defaulting to all phases)
+- `src/commands/tasks-generate.ts` (MODIFY: Add `--phase <N>` option to filter task/gate generation to a specific phase, defaulting to all phases)
+- `src/commands/define.ts` (MODIFY: Register `tests` subcommand explicitly)
+
+**Requirements Addressed**: FR-002, FR-003, US-002, US-003
+
+**Dependencies**: Phase 1
+
+**Contract Mapping**:
+- None
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| .agents/rules/coding-style.md | Commander.js strict routing |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| N/A | Verification | CLI integration | `gwrk define tests --help` must resolve correctly without throwing |
+
+#### Done When
+- `node dist/cli.js define tests --help` exits 0
+
+---
+
 ## Type Dependency Graph
 
 | Shared Type | Defined In | Consumed By |

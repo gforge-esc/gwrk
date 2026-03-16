@@ -46,7 +46,7 @@ As a PE, I want every gate script to make a functional assertion so that task co
    - `gwrk tasks done <feature> <taskId>` exits 1, state unchanged
 
 ### US-002 — LLM-Authored Gates (P0)
-As a PE, I want `gwrk define tasks <feature>` to call the LLM with spec + plan + contracts to produce authored gate scripts rather than template-generated stubs.
+As a PE, I want `gwrk define tasks <feature> [--phase N]` to call the LLM with spec + plan + contracts to produce authored gate scripts rather than template-generated stubs. If no phase is provided, it processes all phases sequentially.
 
 **Implements**: FR-002
 
@@ -66,14 +66,14 @@ As a PE, I want `gwrk define tasks <feature>` to call the LLM with spec + plan +
    - `cat gates/Txxx-gate.sh | grep -q "AUTHORED"` exits 0 (AUTHORED marker preserved on existing gates)
 
 ### US-003 — Red-First Authoring (P0)
-As a PE, I want `gwrk define tests <feature> <phase>` to write red vitest test files before any implementation, so that the implementing agent's job is precisely defined.
+As a PE, I want `gwrk define tests <feature> [--phase N]` to write red vitest test files before any implementation, so that the implementing agent's job is precisely defined. Tests must validate that planned tasks are done, using analysis and reasoning to tie everything strictly to the plan and spec. If no phase is provided, it processes all phases for the feature.
 
 **Implements**: FR-003
 
 **Independent Test**: Run `gwrk define tests 003-slack 7`; run `pnpm vitest run src/server/routes/notify.test.ts`; it should fail pre-implementation or pass if already shipped.
 
 **Acceptance Scenarios**:
-1. **Given** Phase 7 of 003-slack with no implementation, **When** `gwrk define tests 003-slack 7` runs, **Then**:
+1. **Given** Phase 7 of 003-slack with no implementation, **When** `gwrk define tests 003-slack --phase 7` runs, **Then**:
    - `test -f src/server/routes/notify.test.ts` exits 0
    - `pnpm vitest run src/server/routes/notify.test.ts 2>&1 | grep -qE "FAIL|failed"` exits 0 (tests are RED)
    - Every `describe` block contains a FR-### reference: `grep -q "FR-010" src/server/routes/notify.test.ts` exits 0
@@ -180,9 +180,9 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 - **FR-001**: Every `gates/T*-gate.sh` MUST contain a functional assertion — `pnpm vitest run <file>`, `pnpm biome check <file>`, `pnpm tsc --noEmit`, `curl ... | jq -e`, or `bash -n <file>`. A gate containing only `test -f` MUST be treated as a build failure. (Implements: US-001)
 
-- **FR-002**: `gwrk define tasks <feature>` MUST call the LLM (agent) via `dispatchAgent()` with a structured `GateBrief` + contracts/ context to author each gate script. Contracts are required — if `contracts/` is missing or empty, the command exits 1 with corrective guidance pointing to `gwrk define plan` (ADR-005 §2.1). There is NO `GATE_STUB` fallback — if the LLM cannot produce a functional assertion, the gate MUST explain why and exit 1 with a descriptive message. The `# AUTHORED` marker on an existing gate preserves it through reconcile. `--no-llm` flag skips gate authoring entirely (tasks.json only). NEVER bare `test -f` as sole assertion. (Implements: US-002, ADR-005)
+- **FR-002**: `gwrk define tasks <feature> [--phase <N>]` MUST call the LLM (agent) via `dispatchAgent()` with a structured `GateBrief` + contracts/ context to author each gate script. Contracts are required — if `contracts/` is missing or empty, the command exits 1 with corrective guidance pointing to `gwrk define plan`. There is NO `GATE_STUB` fallback — if the LLM cannot produce a functional assertion, the gate MUST explain why and exit 1 with a descriptive message. The `# AUTHORED` marker on an existing gate preserves it through reconcile. `--no-llm` flag skips gate authoring entirely (tasks.json only). NEVER bare `test -f` as sole assertion. Defaults to whole-feature generation if phase omitted. (Implements: US-002, ADR-005)
 
-- **FR-003**: `gwrk define tests <feature> <phase>` (workflow invocation) MUST write red vitest test files for every FR/US/TR in the phase before any implementation runs. Tests MUST fail pre-implementation (RED). Every `describe` block MUST reference a `FR-###` ID. Tests MUST use Fastify `inject()` for API routes and Vitest mocks for side-effects. (Implements: US-003)
+- **FR-003**: `gwrk define tests <feature> [--phase <N>]` (workflow invocation) MUST write red vitest test files for every FR/US/TR in the feature (or specified phase) before any implementation runs. Analysis and reasoning MUST guide all definitional work to validate that planned tasks tie off perfectly to the plan/spec. Tests MUST fail pre-implementation (RED). Every `describe` block MUST reference a `FR-###` ID. Tests MUST use Fastify `inject()` for API routes and Vitest mocks for side-effects. (Implements: US-003)
 
 - **FR-004**: Every phase with an API surface MUST have a `contracts/<route>.md` file defining: request schema (TypeScript interface), response schema (success + error), side-effects, and edge cases — authored before `gwrk define tests` runs. (Implements: US-004)
 

@@ -21,17 +21,23 @@ import { CommandError, withSignal } from "../utils/signal.js";
 export const tasksGenerateCommand = new Command("tasks")
     .description("Decompose plan into tasks.json + gate scripts")
     .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
+    .option("-p, --phase <phase>", "Specific phase string or number to generate tasks for (e.g. p01 or 1)")
     .option("--force", "Overwrite existing tasks.json and gate scripts")
     .option("--reconcile", "Merge updated plan, preserving completed task status")
     .option("--no-llm", "Skip LLM gate authoring (writes tasks.json only, no gates)")
     .action(async (feature, opts) => {
-    await withSignal("define tasks", async () => {
+    await withSignal(`define tasks ${feature}`, async () => {
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
         const planPath = path.join(featureDir, "plan.md");
         const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
         const gatesDir = path.join(featureDir, "gates");
-        banner("define tasks", { Feature: feature });
+        // Format phase uniformly to p0X if it's just a number
+        let paddedPhase = undefined;
+        if (opts.phase) {
+            paddedPhase = opts.phase.match(/^\d+$/) ? `p${opts.phase.padStart(2, '0')}` : opts.phase;
+        }
+        banner("define tasks", { Feature: feature, Phase: paddedPhase || "All" });
         const startTime = Date.now();
         // Guard: refuse to overwrite without --force or --reconcile
         if (fs.existsSync(tasksPath) && !opts.force && !opts.reconcile) {
@@ -228,7 +234,7 @@ export const tasksGenerateCommand = new Command("tasks")
                     backend,
                     workflowPath: ".agents/workflows/author-gates.md",
                     featureDir: relativeFeatureDir,
-                    contextPath: briefPath,
+                    contextPath: paddedPhase || briefPath, // If phase is given, pass it as context. The workflow will read brief anyway. Default behavior is unchanged block.
                 });
                 const agentDurationS = Math.round((Date.now() - agentStart) / 1000);
                 if (result.exitCode !== 0) {
