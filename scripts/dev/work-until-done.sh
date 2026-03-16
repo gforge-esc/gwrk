@@ -238,6 +238,20 @@ run_implement() {
     return 2
   fi
 
+  # FR-016: Run staging validation after successful implementation
+  log INFO "Running staging validation..."
+  local validate_staging="$SCRIPT_DIR/validate-staging.sh"
+  if [[ -f "$validate_staging" ]]; then
+    set +e
+    bash "$validate_staging" "$FEATURE"
+    local staging_exit=$?
+    set -e
+    if [[ "$staging_exit" -ne 0 ]]; then
+      log WARN "Staging validation failed (exit $staging_exit) — will retry"
+      return 2
+    fi
+  fi
+
   # Push after implementation
   log INFO "Pushing implementation commits..."
   "$WUD_BRANCH" "$FEATURE" push
@@ -521,7 +535,10 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached during implementation."
         emit_event "CIRCUIT_BREAK" "max ${MAX_ITERATIONS} iterations reached during implementation"
-        save_state "CIRCUIT_BREAK" "$ITERATION"
+        # FR-018: Build failureContext for diagnoseability
+        local fc_extra
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_implementation",\n    "openTasks": [],\n    "lastVerdict": "N/A",\n    "iterationTimeline": ["iteration %d: implement failed"],\n    "digest": []\n  }' "$ITERATION")
+        save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached during implementation"
         STAGE="CIRCUIT_BREAK"
@@ -546,7 +563,10 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after code review."
-        save_state "CIRCUIT_BREAK" "$ITERATION"
+        # FR-018: Build failureContext
+        local fc_extra
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_code_review",\n    "openTasks": [],\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: code review NO-GO"],\n    "digest": []\n  }' "$ITERATION")
+        save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after code review"
         STAGE="CIRCUIT_BREAK"
@@ -569,7 +589,10 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after UAT."
-        save_state "CIRCUIT_BREAK" "$ITERATION"
+        # FR-018: Build failureContext
+        local fc_extra
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_uat",\n    "openTasks": [],\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: UAT NO-GO"],\n    "digest": []\n  }' "$ITERATION")
+        save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after UAT review"
         STAGE="CIRCUIT_BREAK"
