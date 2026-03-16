@@ -474,6 +474,36 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
 
   # Stage: Implement
   if [[ "$STAGE" == "IMPLEMENTING" ]] || [[ "$STAGE" == "BRANCH_SETUP" ]]; then
+
+    # FR-003: Pre-flight gate check — skip implementation if all gates already pass
+    TASKS_FILE="$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json"
+    if [[ -f "$TASKS_FILE" ]]; then
+      PHASE_ID="phase-$(printf '%02d' "$PHASE")"
+      GATE_SCRIPTS=$(jq -r --arg p "$PHASE_ID" \
+        '.phases[] | select(.id == $p) | .tasks[] | select(.status == "open") | .gateScript // empty' \
+        "$TASKS_FILE" 2>/dev/null || true)
+
+      if [[ -n "$GATE_SCRIPTS" ]]; then
+        ALL_GATES_PASS=true
+        while IFS= read -r gate; do
+          [[ -z "$gate" ]] && continue
+          GATE_PATH="$REPO_ROOT/$SPEC_DIR/$gate"
+          if [[ -f "$GATE_PATH" ]] && bash "$GATE_PATH" > /dev/null 2>&1; then
+            log OK "pre-flight PASS — gate already satisfied: $(basename "$gate")"
+          else
+            ALL_GATES_PASS=false
+          fi
+        done <<< "$GATE_SCRIPTS"
+
+        if [[ "$ALL_GATES_PASS" == "true" ]]; then
+          log OK "pre-flight PASS — all gates already satisfied, skipping implementation"
+          emit_event "PRE_FLIGHT" "all gates pass, skip implementation"
+          STAGE="CODE_REVIEW"
+          continue
+        fi
+      fi
+    fi
+
     run_implement
     impl_exit=$?
     if [[ "$impl_exit" -eq 1 ]]; then
