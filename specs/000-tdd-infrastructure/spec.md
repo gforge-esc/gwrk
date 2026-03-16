@@ -1,16 +1,17 @@
 ---
 type: specification
 feature: 000-tdd-infrastructure
-last_modified: "2026-03-12T14:00:00Z"
-revision: 1
+last_modified: "2026-03-16T16:30:00Z"
+revision: 2
 ---
 
 # Feature Specification: 000 TDD Infrastructure
 
 **Feature Branch**: `000-tdd-infrastructure`
 **Created**: 2026-03-12
-**Status**: Draft
+**Status**: In Progress
 **Input**: Establish a rigorous, programmatically-enforced TDD standard across all gwrk features (001–008). Replace file-existence gate stubs with authored, executable assertions. Wire `gwrk define tasks` to produce tasks with LLM-authored gates from contracts. Retroactively audit 001 and 002.
+**ADR**: [ADR-005 TDD Gate Architecture](../../docs/decisions/ADR-005-tdd-gate-architecture.md)
 
 ---
 
@@ -57,9 +58,11 @@ As a PE, I want `gwrk define tasks <feature>` to call the LLM with spec + plan +
    - Gate does NOT contain `test -f` as its only assertion
 2. **Given** a task for `src/server/routes/notify.test.ts`, **When** `gwrk define tasks` generates its gate, **Then**:
    - `cat specs/003-slack/gates/T012-gate.sh | grep -q "pnpm vitest run"` exits 0
-3. **Given** no LLM-authored gate can be generated, **When** `gwrk define tasks` runs, **Then**:
-   - Gate contains `echo 'GATE_STUB: authored gate required' && exit 1`
-   - `gwrk tasks done` on that task exits 1 with stub message
+3. **Given** contracts are missing for a feature, **When** `gwrk define tasks` runs, **Then**:
+   - Command exits 1 with corrective message: "Run 'gwrk define plan <feature>'"
+   - No gates are written
+4. **Given** `--no-llm` flag, **When** `gwrk define tasks` runs, **Then**:
+   - tasks.json is written, no gates are generated
    - `cat gates/Txxx-gate.sh | grep -q "AUTHORED"` exits 0 (AUTHORED marker preserved on existing gates)
 
 ### US-003 — Red-First Authoring (P0)
@@ -177,7 +180,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 - **FR-001**: Every `gates/T*-gate.sh` MUST contain a functional assertion — `pnpm vitest run <file>`, `pnpm biome check <file>`, `pnpm tsc --noEmit`, `curl ... | jq -e`, or `bash -n <file>`. A gate containing only `test -f` MUST be treated as a build failure. (Implements: US-001)
 
-- **FR-002**: `gwrk define tasks <feature>` MUST call the LLM (agent) with spec.md + plan.md + contracts/ context to author each gate script. There is NO manual gate authoring phase and NO template fallback masquerading as an authored gate. If the LLM cannot produce a functional assertion for a task, the gate MUST emit `echo 'GATE_STUB: authored gate required' && exit 1` — which causes `gwrk tasks done` to fail visibly. The `# AUTHORED` marker on an existing gate preserves it through reconcile. NEVER bare `test -f` as sole assertion. (Implements: US-002)
+- **FR-002**: `gwrk define tasks <feature>` MUST call the LLM (agent) via `dispatchAgent()` with a structured `GateBrief` + contracts/ context to author each gate script. Contracts are required — if `contracts/` is missing or empty, the command exits 1 with corrective guidance pointing to `gwrk define plan` (ADR-005 §2.1). There is NO `GATE_STUB` fallback — if the LLM cannot produce a functional assertion, the gate MUST explain why and exit 1 with a descriptive message. The `# AUTHORED` marker on an existing gate preserves it through reconcile. `--no-llm` flag skips gate authoring entirely (tasks.json only). NEVER bare `test -f` as sole assertion. (Implements: US-002, ADR-005)
 
 - **FR-003**: `gwrk define tests <feature> <phase>` (workflow invocation) MUST write red vitest test files for every FR/US/TR in the phase before any implementation runs. Tests MUST fail pre-implementation (RED). Every `describe` block MUST reference a `FR-###` ID. Tests MUST use Fastify `inject()` for API routes and Vitest mocks for side-effects. (Implements: US-003)
 
@@ -196,8 +199,14 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Gate contains only `test -f` | `GATE_STUB: test -f only — replace with functional assertion` | 1 |
+| Gate contains only `test -f` | `FAIL: <taskId> — gate contains only test -f, not a functional assertion` | 1 |
 | Gate script missing | `CRITICAL: gates/<taskId>-gate.sh not found` | 1 |
+
+#### FR-002 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Contracts missing | `Contracts required for gate authoring. Run 'gwrk define plan <feature>' first.` | 1 |
+| Agent gate authoring fails | `Gate authoring failed (exit N). See <logPath>` | 1 |
 
 #### FR-008 Error States
 | Condition | stderr contains | Exit code |
@@ -270,8 +279,8 @@ interface NotifyPayload {
 
 ## 7. Testing Requirements
 
-- **TR-001**: `src/utils/gate-gen.test.ts` — Unit: `generateGates()` never emits `test -f` as sole assertion. Tests all typed fallback branches. (Vitest) (FR-001, FR-002)
-- **TR-002**: `src/commands/tasks-generate.test.ts` — Unit: `--reconcile` preserves AUTHORED gates. Gate count equals active task count. (Vitest) (FR-002)
+- **TR-001**: `src/utils/gate-gen.test.ts` — Unit: `generateGateBrief()` produces valid `GateBrief` JSON with correct file types, identifiers, contract refs, and doneWhen commands. (Vitest) (FR-001, FR-002, ADR-005)
+- **TR-002**: `src/commands/tasks-generate.test.ts` — Unit: `--reconcile` preserves AUTHORED gates. Contracts guard exits 1 when contracts missing. `--no-llm` skips gate authoring. (Vitest) (FR-002, ADR-005)
 - **TR-003**: `specs/001-cli-core/gap-analysis.md` — Document: FR classification complete. (FR-005) — not a Vitest test, but gated via `test -f` + `grep "✅\|⚠️\|❌" specs/001-cli-core/gap-analysis.md | wc -l`
 - **TR-004**: `src/commands/tasks-done.test.ts` — Unit: gate enforcement (fail → state unchanged, pass → state updated, missing gate → exit 1). (Vitest) (FR-001, US-001)
 - **TR-005**: `src/commands/ship.test.ts` — Unit: pre-flight test-file check exits 1 with BLOCKED message when no .test.ts found. (Vitest) (FR-008)

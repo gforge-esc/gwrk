@@ -1,12 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { generateGates } from "./gate-gen.js";
+import { generateGateBrief } from "./gate-gen.js";
+import type { GateBrief } from "./gate-gen.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
 describe("gate-gen", () => {
-  it("should generate GATE_STUB if only test -f can be derived", () => {
+  function makeTempFeature(
+    opts: {
+      contracts?: Record<string, string>;
+    } = {},
+  ): string {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-gen-test-"));
+    if (opts.contracts) {
+      const contractsDir = path.join(tempDir, "contracts");
+      fs.mkdirSync(contractsDir, { recursive: true });
+      for (const [name, content] of Object.entries(opts.contracts)) {
+        fs.writeFileSync(path.join(contractsDir, name), content);
+      }
+    }
+    return tempDir;
+  }
+
+  it("should produce valid GateBrief JSON", () => {
+    const tempDir = makeTempFeature();
     const phases = [
       {
         id: "phase-01",
@@ -14,52 +31,32 @@ describe("gate-gen", () => {
         tasks: [
           {
             id: "T001",
-            title: "Create some-file.txt",
+            title: "Create src/utils/signal.ts",
+            description: "Implement withSignal() wrapper",
             status: "open" as const,
             gateScript: "gates/T001-gate.sh",
           },
         ],
-        doneWhen: ["`test -f some-file.txt`"],
+        doneWhen: ["`pnpm build`"],
       },
     ];
 
-    generateGates(tempDir, phases);
+    const briefPath = generateGateBrief(tempDir, phases, "test-feature");
+    const brief: GateBrief = JSON.parse(fs.readFileSync(briefPath, "utf-8"));
 
-    const gatePath = path.join(tempDir, "gates/T001-gate.sh");
-    const content = fs.readFileSync(gatePath, "utf-8");
-    expect(content).toContain("GATE_STUB: authored gate required");
-    
+    expect(brief.feature).toBe("test-feature");
+    expect(brief.projectType).toBe("gwrk-typescript");
+    expect(brief.tasks).toHaveLength(1);
+    expect(brief.tasks[0].taskId).toBe("T001");
+    expect(brief.tasks[0].primaryFile).toBe("src/utils/signal.ts");
+    expect(brief.tasks[0].fileType).toBe("typescript");
+
     fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.unlinkSync(briefPath);
   });
 
-  it("should generate GATE_STUB for TS file if no identifiers can be extracted", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-gen-test-ts-"));
-    const phases = [
-      {
-        id: "phase-01",
-        title: "Phase 1",
-        tasks: [
-          {
-            id: "T001",
-            title: "Implement src/empty.ts",
-            status: "open" as const,
-            gateScript: "gates/T001-gate.sh",
-          },
-        ],
-      },
-    ];
-
-    generateGates(tempDir, phases);
-
-    const gatePath = path.join(tempDir, "gates/T001-gate.sh");
-    const content = fs.readFileSync(gatePath, "utf-8");
-    expect(content).toContain("GATE_STUB: authored gate required");
-    
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("should NOT generate GATE_STUB for .test.ts file", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-gen-test-testts-"));
+  it("should classify .test.ts files as test type", () => {
+    const tempDir = makeTempFeature();
     const phases = [
       {
         id: "phase-01",
@@ -75,18 +72,18 @@ describe("gate-gen", () => {
       },
     ];
 
-    generateGates(tempDir, phases);
+    const briefPath = generateGateBrief(tempDir, phases, "test-feature");
+    const brief: GateBrief = JSON.parse(fs.readFileSync(briefPath, "utf-8"));
 
-    const gatePath = path.join(tempDir, "gates/T001-gate.sh");
-    const content = fs.readFileSync(gatePath, "utf-8");
-    expect(content).not.toContain("GATE_STUB: authored gate required");
-    expect(content).toContain("pnpm vitest run src/app.test.ts");
-    
+    expect(brief.tasks[0].fileType).toBe("test");
+    expect(brief.tasks[0].primaryFile).toBe("src/app.test.ts");
+
     fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.unlinkSync(briefPath);
   });
 
-  it("should NOT generate GATE_STUB if test -f is combined with grep", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-gen-test-comb-"));
+  it("should extract identifiers from descriptions", () => {
+    const tempDir = makeTempFeature();
     const phases = [
       {
         id: "phase-01",
@@ -94,33 +91,34 @@ describe("gate-gen", () => {
         tasks: [
           {
             id: "T001",
-            title: "Task with combined assertion",
+            title: "Implement src/utils/signal.ts",
+            description:
+              "Add `withSignal` function and `CommandError` class. Must export `formatDuration` helper.",
             status: "open" as const,
             gateScript: "gates/T001-gate.sh",
           },
         ],
-        doneWhen: ["`test -f file.ts && grep -q 'Foo' file.ts`"],
       },
     ];
 
-    generateGates(tempDir, phases);
+    const briefPath = generateGateBrief(tempDir, phases, "test-feature");
+    const brief: GateBrief = JSON.parse(fs.readFileSync(briefPath, "utf-8"));
 
-    const gatePath = path.join(tempDir, "gates/T001-gate.sh");
-    const content = fs.readFileSync(gatePath, "utf-8");
-    expect(content).not.toContain("GATE_STUB: authored gate required");
-    expect(content).toContain("test -f file.ts && grep -q 'Foo' file.ts");
-    
+    expect(brief.tasks[0].identifiers).toContain("withSignal");
+    expect(brief.tasks[0].identifiers).toContain("CommandError");
+    expect(brief.tasks[0].identifiers).toContain("formatDuration");
+
     fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.unlinkSync(briefPath);
   });
 
-  it("should preserve # AUTHORED gates", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-gen-test-auth-"));
-    const gatesDir = path.join(tempDir, "gates");
-    fs.mkdirSync(gatesDir, { recursive: true });
-    
-    const gatePath = path.join(gatesDir, "T001-gate.sh");
-    fs.writeFileSync(gatePath, "# AUTHORED\n# My custom logic\nexit 0");
-
+  it("should match contract refs when contracts exist", () => {
+    const tempDir = makeTempFeature({
+      contracts: {
+        "signal.md": "# Contract: Signal\n\nwithSignal() wrapper.",
+        "output.md": "# Contract: Output\n\nCommandOutput interface.",
+      },
+    });
     const phases = [
       {
         id: "phase-01",
@@ -128,7 +126,8 @@ describe("gate-gen", () => {
         tasks: [
           {
             id: "T001",
-            title: "Task 1",
+            title: "Implement signal wrapper",
+            description: "Per signal contract, add withSignal()",
             status: "open" as const,
             gateScript: "gates/T001-gate.sh",
           },
@@ -136,11 +135,46 @@ describe("gate-gen", () => {
       },
     ];
 
-    generateGates(tempDir, phases);
+    const briefPath = generateGateBrief(tempDir, phases, "test-feature");
+    const brief: GateBrief = JSON.parse(fs.readFileSync(briefPath, "utf-8"));
 
-    const content = fs.readFileSync(gatePath, "utf-8");
-    expect(content).toContain("# My custom logic");
-    
+    expect(brief.tasks[0].contractRefs).toContain("contracts/signal.md");
+
     fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.unlinkSync(briefPath);
+  });
+
+  it("should include doneWhen commands relevant to the task file", () => {
+    const tempDir = makeTempFeature();
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T001",
+            title: "Implement src/utils/signal.ts",
+            status: "open" as const,
+            gateScript: "gates/T001-gate.sh",
+          },
+        ],
+        doneWhen: [
+          "`grep -q 'withSignal' src/utils/signal.ts`",
+          "`pnpm build`",
+        ],
+      },
+    ];
+
+    const briefPath = generateGateBrief(tempDir, phases, "test-feature");
+    const brief: GateBrief = JSON.parse(fs.readFileSync(briefPath, "utf-8"));
+
+    expect(brief.tasks[0].doneWhenCommands).toContain(
+      "grep -q 'withSignal' src/utils/signal.ts",
+    );
+    // pnpm build doesn't reference signal.ts by name so it shouldn't match
+    expect(brief.tasks[0].doneWhenCommands).not.toContain("pnpm build");
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.unlinkSync(briefPath);
   });
 });

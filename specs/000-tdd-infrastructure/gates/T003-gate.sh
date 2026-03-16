@@ -1,9 +1,8 @@
 #!/bin/bash
+# AUTHORED
 set -euo pipefail
 # Gate: T003 — Implement src/commands/ship.ts
-# Generated: assertions derived from plan Done When + file type.
-# To override, add '# AUTHORED' anywhere and edit freely.
-
-test -f dist/commands/ship.js
-
+test -f src/commands/ship.ts
+grep -q "\[BLOCKED\] No test files found for" src/commands/ship.ts
+pnpm vitest run src/commands/ship.test.ts --reporter=verbose
 echo "PASS: T003 — Implement src/commands/ship.ts"

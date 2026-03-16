@@ -1,6 +1,6 @@
 # Implementation Plan: 000 TDD Infrastructure
 
-**Branch**: `develop` | **Date**: 2026-03-12 | **Spec**: [spec.md](./spec.md)
+**Branch**: `develop` | **Date**: 2026-03-16 | **Spec**: [spec.md](./spec.md) | **ADR**: [ADR-005](../../docs/decisions/ADR-005-tdd-gate-architecture.md)
 
 ## Summary
 
@@ -12,23 +12,24 @@ Establish a rigorous, programmatically-enforced TDD standard across all gwrk fea
 
 ### Phase 1: Hard Gate Enforcement & CLI Infrastructure
 
-Implement core functional gate logic, `# AUTHORED` preservation (or `GATE_STUB` fallback), the `gwrk test` command, and the `gwrk ship` pre-flight block. Fix failing tests in `ship.test.ts` and `server.test.ts` that are entangled with pre-flight changes.
+Implement core functional gate logic, `# AUTHORED` preservation, the `gwrk test` command, and the `gwrk ship` pre-flight block. Wire `gwrk define tasks` to dispatch an LLM agent for gate authoring via `dispatchAgent()` with a structured `GateBrief` (ADR-005). Fix failing tests in `ship.test.ts` and `server.test.ts` that are entangled with pre-flight changes.
 
 **Files (7):**
-- `src/utils/gate-gen.ts` (MODIFY: `generateGates()` / `buildAssertions()` — never emit bare `test -f` as sole assertion. If no functional assertion can be derived, emit `echo 'GATE_STUB: authored gate required' && exit 1`. Preserve `# AUTHORED` markers through reconcile.)
-- `src/commands/tasks-generate.ts` (MODIFY: Pass `# AUTHORED` marker check through reconcile — do not overwrite gates that contain it.)
+- `src/utils/gate-gen.ts` (MODIFY: `generateGates()` → `generateGateBrief()` — produces structured `GateBrief` JSON for LLM gate authoring. No longer writes gate scripts directly. Exports `GateBrief`, `TaskBrief` interfaces and `generateRunner()`.)
+- `src/commands/tasks-generate.ts` (MODIFY: Add contracts guard (exit 1 if contracts/ missing), `dispatchAgent()` call to `author-gates` workflow, `--no-llm` flag, execution ledger integration via `startRun()`/`finishRun()`.)
 - `src/commands/ship.ts` (MODIFY: Add pre-flight check — scan phase deliverable files for matching `.test.ts`. If none found, exit 1 with `[BLOCKED] No test files found for <phase>`. Active immediately, no flag.)
 - `src/commands/test.ts` (NEW: `gwrk test <feature> [--phase <N>]` — runs `pnpm vitest run` scoped to feature test file paths from tasks.json, exits 0 only if all pass.)
 - `src/cli.ts` (MODIFY: Register `test` command.)
 - `src/commands/ship.test.ts` (MODIFY: Fix broken mock — `SlackConfigSchema` is not exported from the vi.mock of `../utils/config.js`. Fix mock, then add test for BLOCKED pre-flight.)
 - `src/commands/server.test.ts` (MODIFY: Fix EADDRINUSE — server tests must use a mock port or `vi.mock` the net binding. Real port 18794 is in use during test runs.)
 
-**Requirements Addressed**: FR-001, FR-002, FR-008, FR-009, US-001, US-002, US-008, US-009
+**Requirements Addressed**: FR-001, FR-002, FR-008, FR-009, US-001, US-002, US-008, US-009, ADR-005
 
 **Dependencies**: None (bootstrap)
 
 **Contract Mapping**:
-- No external contracts consumed. `gate-gen.ts` reads Done When sections from plan.md directly via `parser.ts`.
+- `specs/000-tdd-infrastructure/contracts/gate-gen.md` → `generateGateBrief()`, `GateBrief`, `TaskBrief`
+- `specs/000-tdd-infrastructure/contracts/tasks-generate.md` → contracts guard, `dispatchAgent()`, `--no-llm`
 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
@@ -39,8 +40,8 @@ Implement core functional gate logic, `# AUTHORED` preservation (or `GATE_STUB` 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | Unit | `src/utils/gate-gen.test.ts` | `generateGates()` never emits `test -f` as sole assertion |
-| TR-002 | Unit | `src/commands/tasks-generate.test.ts` | `--reconcile` preserves `# AUTHORED` gates; GATE_STUB emitted when no assertion derivable |
+| TR-001 | Unit | `src/utils/gate-gen.test.ts` | `generateGateBrief()` produces valid `GateBrief` JSON with file types, identifiers, contract refs |
+| TR-002 | Unit | `src/commands/tasks-generate.test.ts` | Contracts guard exits 1 when missing; `--no-llm` skips gates; `--reconcile` preserves `# AUTHORED` |
 | TR-004 | Unit | `src/commands/tasks-done.test.ts` | Gate failure prevents state transition; GATE_STUB gate exits 1 |
 | TR-005 | Unit | `src/commands/ship.test.ts` | `gwrk ship` BLOCKED if no `.test.ts` found for phase |
 | TR-006 | Unit | `src/commands/test-cmd.test.ts` | `gwrk test` scopes vitest to feature paths, exits 0/1 correctly |
@@ -143,10 +144,10 @@ Fix the remaining 20 failing tests across 003-slack test files (ship.test.ts and
 
 ## Deferred Items
 
-- **FR-002 LLM gate authoring**: `gwrk define tasks` calling the LLM to write gate scripts requires architectural work (agent invocation from CLI during `define tasks`). **Current deliverable**: `GATE_STUB` fallback enforces the standard programmatically. Gate authoring by agent remains a manual step via `gwrk ship` + `gwrk define tests`. Deferred to after Phase 1–3 are complete.
+- **FR-002 LLM gate authoring**: Implemented (ADR-005). `gwrk define tasks` now calls `generateGateBrief()` to produce a structured brief, then `dispatchAgent()` with the `author-gates` workflow to author gates. Contracts are required. `GATE_STUB` is abolished.
 
 > [!IMPORTANT]
-> The `GATE_STUB` fallback is not a template workaround — it is an active blocker. A task with a stub gate cannot be marked done. This enforces authoring without bootstrapping the LLM loop.
+> There is no fallback. If contracts are missing, `gwrk define tasks` exits 1 with corrective guidance. If the LLM cannot gate a task, the gate explains why and exits 1. The `--no-llm` flag explicitly skips gate authoring.
 
 ---
 
@@ -164,7 +165,7 @@ Fix the remaining 20 failing tests across 003-slack test files (ship.test.ts and
 | US-008 | 1 | Planned |
 | US-009 | 1 | Planned |
 | FR-001 | 1 | Planned |
-| FR-002 | 1 | Planned (GATE_STUB; LLM authoring deferred) |
+| FR-002 | 1 | Implemented (ADR-005) |
 | FR-003 | 3 | Planned |
 | FR-004 | 3 | Planned |
 | FR-005 | 2 | Planned |
