@@ -237,10 +237,17 @@ Exit codes:
     .option("--max-iterations <n>", "Max implement→review cycles", "3")
     .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
     .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
+    .option("--format <format>", "Output format: human (default) or json", "human")
     .action(async (feature, phase, opts) => {
     await withSignal("ship", async () => {
         const cwd = process.cwd();
         const config = loadConfig(cwd);
+        // FR-009/T010: Fail-fast if agents.implement is missing
+        if (!opts.agent && !config.agents?.implement) {
+            console.error("Missing required config: agents.implement");
+            process.exitCode = 1;
+            return;
+        }
         const backend = (opts.agent ||
             config.agents.implement);
         // Validate feature exists before any work
@@ -284,12 +291,31 @@ Exit codes:
             return;
         }
         // Ship each phase sequentially — stop on first failure
+        const shipStartTime = Date.now();
+        let finalExitCode = 0;
         for (const p of phases) {
             const exitCode = await shipPhase(feature, p, backend, opts, cwd);
             if (exitCode !== 0) {
-                process.exitCode = exitCode;
-                return;
+                finalExitCode = exitCode;
+                break;
             }
+        }
+        const totalDurationS = Math.round((Date.now() - shipStartTime) / 1000);
+        // FR-015/T008: Agent-Native exit wrapper on stderr
+        process.stderr.write(`[exit:${finalExitCode} | ${totalDurationS}s]\n`);
+        // FR-015/T009: JSON output mode
+        if (opts.format === "json") {
+            const output = {
+                feature,
+                phase: phase || "all",
+                exitCode: finalExitCode,
+                durationS: totalDurationS,
+                runId: `ship-${feature}`,
+            };
+            process.stdout.write(`${JSON.stringify(output)}\n`);
+        }
+        if (finalExitCode !== 0) {
+            process.exitCode = finalExitCode;
         }
     });
 });

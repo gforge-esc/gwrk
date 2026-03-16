@@ -419,10 +419,8 @@ describe("FR-012, FR-017/T003: Execution Manifest Digest", () => {
   });
 
   it("FR-012/T003: Manifest schema includes digest field (negative: missing digest fails validation)", async () => {
-    const { ExecutionManifestSchema } = await import("../utils/manifest.js");
-    // Construct a manifest WITHOUT digest — should still parse (default [])
-    // but if we explicitly check, the schema should accept digest
-    const schemaDef = ExecutionManifestSchema.shape;
+    const actual = await vi.importActual<typeof import("../utils/manifest.js")>("../utils/manifest.js");
+    const schemaDef = actual.ExecutionManifestSchema.shape;
     expect(schemaDef).toHaveProperty("digest");
   });
 });
