@@ -21,7 +21,7 @@ import {
   getCurrentCommit,
   getDiffStats,
 } from "../utils/git.js";
-import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { assembleDigest, generateRunId, writeManifest } from "../utils/manifest.js";
 import { type TaskState, loadTaskState } from "../utils/state.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
@@ -255,6 +255,9 @@ async function shipPhase(
       linesDeleted,
       gitCommit,
       gitBranch,
+      digest: assembleDigest(
+        path.join(cwd, ".runs", `${feature}_p${normalizedPhase}.events`),
+      ),
     });
 
     recordHistory({
