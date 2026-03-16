@@ -1,41 +1,47 @@
----
-type: contract
-feature: 004-ship-loop
-last_modified: "2026-03-09T22:00:00Z"
----
-
-# Contract: Branch Management
-
-**Feature**: 004-ship-loop
-**Scope**: Git branch creation, checkout, and push for feature isolation
-
----
-
-## `wud-branch.sh <feature> [push]`
+# Contract: wud-branch.sh — Branch Management
 
 **Source**: `scripts/dev/wud-branch.sh`
-**Consumed by**: `scripts/dev/work-until-done.sh` (BRANCH_SETUP stage)
+**FRs**: FR-002
 
-Ensures the correct `feat/<feature>` branch exists and is checked out. Creates from `develop` if it doesn't exist. Optionally pushes to origin.
+## Interface
 
-> **Isolation Context**: This script operates purely on the current working directory (`$PWD`). When called by `ShipExecutor`, the `cwd` is set to the sandbox `workDir`, ensuring the host repository is never mutated.
+```
+./scripts/dev/wud-branch.sh <feature> [push]
+```
 
-### Arguments
-| Argument | Type | Required | Description |
-|---|---|---|---|
-| `feature` | `string` | ✅ | Feature name, e.g. `004-ship-loop` |
-| `push` | `string` | ❌ | If `"push"`, pushes branch to origin after checkout |
-
-### Behavior
-| Current Branch State | Action |
-|---|---|
-| Already on `feat/<feature>` | No-op |
-| Branch exists locally | `git checkout feat/<feature>` |
-| Branch exists on remote | `git checkout -b feat/<feature> origin/feat/<feature>` |
-| Branch doesn't exist | `git checkout -b feat/<feature> develop` |
-
-### Exit Codes
+**Exit codes**:
 | Code | Meaning |
 |---|---|
-| `0` | On correct branch |
-| `1` | Error (git failure) |
+| 0 | On correct branch (created or already existed, or pushed) |
+| 1 | Error (dirty tree, branch creation failed, merge conflict) |
+
+## Behaviors
+
+### Branch Resolution (IMPLEMENTED)
+
+1. If already on `feat/<feature>` → log `✓ Already on` → exit 0
+2. If `refs/heads/feat/<feature>` exists locally → `git checkout feat/<feature>`
+3. If `origin/feat/<feature>` exists remotely → `git checkout -b feat/<feature> origin/feat/<feature>`
+4. Else → `git checkout -b feat/<feature> develop`
+
+### Push Action (IMPLEMENTED)
+
+When `$2 == "push"` → `git push origin feat/<feature> --force-with-lease` with retry.
+
+### Dirty-Tree Guard (FR-002) — **NOT IMPLEMENTED**
+
+Before any branch operation, the script MUST:
+
+1. Run `git status --porcelain`
+2. If output is non-empty → emit to stderr: `Dirty working tree — commit or stash before shipping`
+3. Exit 1
+
+**This check currently does not exist in `wud-branch.sh`.** The spec mandates it at FR-002.
+
+## Error States (from spec FR-002)
+
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Dirty working tree | `Dirty working tree — commit or stash before shipping` | 1 |
+| Branch creation failed | `Failed to create feature branch` | 1 |
+| Sync produces merge conflict | `Conflict during develop sync — resolve manually` | 1 |

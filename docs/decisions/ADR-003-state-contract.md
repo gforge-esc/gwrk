@@ -100,14 +100,20 @@ Build Server reads:
 
 ---
 
-## 5. What About Full Logs?
+## 5. Full Logs
+
+> **Updated 2026-03-14**: Original assumption of 50KB–5MB per log was incorrect. Measured across 165 actual agent runs: **1.6 MB total, 10 KB average, 115 KB max**. At these sizes, git-tracking all logs is viable and valuable.
 
 | Data | Location | Git? | Purpose |
 |---|---|---|---|
 | Structured facts | `.gwrk/runs/*.json` | ✅ | Analytics, routing, compression |
-| Full agent output | `.runs/*.log` | ❌ (`.gitignore`) | Local debugging only |
+| Full agent output | `.gwrk/runs/*.log` | ✅ | Diagnostics, learning from success and failure |
+| Digest (index) | `.digest[]` in manifest | ✅ | Quick triage without reading full log |
 
-Full logs are too large for git (50KB–5MB each). The structured manifest captures everything the analytical engine needs. Raw logs remain on the machine that ran the agent.
+All logs are committed to `specs/<feature>/.gwrk/runs/` alongside execution manifests. This ensures:
+- **Learning from all runs** — success patterns are as valuable as failure diagnostics
+- **Survival across machines** — Codex Cloud ephemeral VMs lose local files on termination
+- **Auditability** — full agent reasoning, review feedback, and gate output are preserved in git history
 
 ---
 

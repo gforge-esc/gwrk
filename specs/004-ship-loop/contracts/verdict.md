@@ -1,36 +1,26 @@
----
-type: contract
-feature: 004-ship-loop
-last_modified: "2026-03-09T22:00:00Z"
----
-
-# Contract: Verdict Checker
-
-**Feature**: 004-ship-loop
-**Scope**: GO/NO-GO determination from tasks.json for a given phase
-
----
-
-## `wud-verdict.sh <spec_dir> <phase_number>`
+# Contract: wud-verdict.sh — Tasks.json Verdict Checker
 
 **Source**: `scripts/dev/wud-verdict.sh`
-**Consumed by**: `scripts/dev/work-until-done.sh` (after CODE_REVIEW and UAT_REVIEW stages)
+**FRs**: FR-005
 
-Reads `tasks.json` and counts open vs completed tasks for the given phase. Returns GO if all tasks are completed, NO-GO otherwise.
+## Interface
 
-### Arguments
-| Argument | Type | Required | Description |
-|---|---|---|---|
-| `spec_dir` | `string` | ✅ | Path to spec directory, e.g. `specs/004-ship-loop` |
-| `phase_number` | `number` | ✅ | Phase number, e.g. `1` |
+```
+./scripts/dev/wud-verdict.sh <spec_dir> <phase>
+```
 
-### Exit Codes
-| Code | Meaning | stdout |
-|---|---|---|
-| `0` | GO — all tasks completed | `GO — N/N tasks complete (phase-NN)` |
-| `1` | NO-GO — open tasks remain | `NO-GO — M/N tasks still open (phase-NN)` + task list |
-| `2` | Error (missing file, jq unavailable) | Error message |
+**Exit codes**:
+| Code | Meaning |
+|---|---|
+| 0 | GO — all tasks in the phase have `status: "completed"` |
+| 1 | NO-GO — at least one task is not `completed` |
 
-### Dependencies
-- `jq` must be installed
-- `<spec_dir>/.gwrk/tasks.json` must exist
+## Behavior
+
+Reads `<spec_dir>/.gwrk/tasks.json`, finds the phase matching `phase-<NN>`, and checks each task's status. If all tasks are `completed` → GO (exit 0). Otherwise → NO-GO (exit 1).
+
+## Relationship to FR-014 (Phase Skip)
+
+`wud-verdict.sh` checks verdict DURING execution (after review). `isPhaseComplete()` in `ship.ts` checks BEFORE execution (to skip already-done phases). These are two different concerns:
+- **Verdict** (FR-005): "Did the reviews pass?" → used by WUD state machine
+- **Phase skip** (FR-014): "Are all tasks already done?" → used by `ship.ts` before dispatching WUD

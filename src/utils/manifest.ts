@@ -21,6 +21,7 @@ export const ExecutionManifestSchema = z.object({
   linesDeleted: z.number(),
   gitCommit: z.string(),
   gitBranch: z.string(),
+  digest: z.array(z.string()).default([]),
 });
 
 export type ExecutionManifest = z.infer<typeof ExecutionManifestSchema>;
@@ -97,4 +98,19 @@ export function generateRunId(
   // Shorthand phase: phase-01 -> p01
   const phaseShorthand = phase.replace("phase-", "p");
   return `${startedAt}_${command}_${phaseShorthand}`;
+}
+
+/**
+ * FR-017: Reads the .events sidecar file and returns structured event lines.
+ * Returns an empty array if the sidecar file doesn't exist.
+ */
+export function assembleDigest(eventsFilePath: string): string[] {
+  if (!fs.existsSync(eventsFilePath)) {
+    return [];
+  }
+  const content = fs.readFileSync(eventsFilePath, "utf-8").trim();
+  if (!content) {
+    return [];
+  }
+  return content.split("\n").filter((line) => line.length > 0);
 }

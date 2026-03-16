@@ -27,6 +27,13 @@ fi
 BRANCH="feat/${FEATURE}"
 CURRENT=$(git branch --show-current)
 
+# FR-002: Dirty-tree fail-fast — refuse to ship if working tree is dirty
+DIRTY=$(git status --porcelain 2>/dev/null)
+if [[ -n "$DIRTY" ]]; then
+  echo "Dirty working tree — commit or stash before shipping" >&2
+  exit 1
+fi
+
 if [[ "$CURRENT" == "$BRANCH" ]]; then
   echo "[wud-branch] ✓ Already on $BRANCH"
 else

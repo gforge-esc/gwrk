@@ -1,48 +1,43 @@
----
-type: contract
-feature: 004-ship-loop
-last_modified: "2026-03-09T22:00:00Z"
----
+# Contract: validate-staging.sh — Staging Scope Validator
 
-# Contract: Implement Action
+**Source**: `scripts/dev/validate-staging.sh`
+**FRs**: FR-016
 
-**Feature**: 004-ship-loop
-**Scope**: Single-phase task execution with pre-flight/post-flight gate enforcement
+## Interface
 
----
-
-## `implementAction(feature, phase, opts): Promise<void>`
-
-**Source**: `src/commands/implement.ts`
-**Consumed by**: `scripts/dev/work-until-done.sh` (IMPLEMENT stage, via `agent-run.sh implement`)
-
-Executes all tasks in a single phase sequentially: load tasks → pre-flight gate → agent dispatch → post-flight gate → mark complete.
-
-```typescript
-async function implementAction(
-  feature: string,
-  phase: string,
-  opts: {
-    dryRun: boolean;
-    backend: string;
-    workDir: string;
-  }
-): Promise<void>
+```
+./scripts/dev/validate-staging.sh <feature>
 ```
 
-### Behavior Per Task
-1. Load task from `tasks.json`
-2. Run pre-flight gate (`gates/T0xx-gate.sh`)
-   - Exit 0 → skip task (already satisfied)
-   - Exit != 0 → proceed to implementation
-3. Dispatch agent via `agent-run.sh implement <feature> <phase> <taskId>`
-4. Run post-flight gate
-   - Exit 0 → mark task complete in `tasks.json`
-   - Exit != 0 → throw error
+**Exit codes**:
+| Code | Meaning |
+|---|---|
+| 0 | Staging scope is clean |
+| 1 | Violations detected |
 
-### Error States
-| Condition | stderr contains | Exit code |
+## Checks (ALL IMPLEMENTED)
+
+### Check 1: Orphan Files
+Rejects staged `.tmp`, `.bak`, and `=` files in repo root.
+
+### Check 2: Orphan Spec Directories
+Rejects staged changes in `specs/NNN-*` dirs that lack a `spec.md`.
+
+### Check 3: Out-of-Scope Files
+Rejects staged files outside `ALLOWED_PREFIXES`:
+`src/`, `specs/<feature>/`, `docs/`, `scripts/`, `test/`, `.gwrk/`, `.gwrkrc.json`, `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `biome.json`, `dist/`
+
+### Check 4: Build Plan Protection (Design Mandate Rule 3)
+Rejects if `specs/000-build-plan.md` is staged.
+
+## Integration Gap
+
+**`validate-staging.sh` is robust and complete.** The gap is that `work-until-done.sh` never calls it (see `contracts/wud.md` FR-016 entry).
+
+## Error States (from spec FR-016)
+
+| Condition | stderr/stdout contains | Exit code |
 |---|---|---|
-| tasks.json not found | `Task state file not found` | 1 |
-| Phase not found | `Phase phase-NN not found` | 1 |
-| Post-flight gate fails | `gate failed after implementation` | 1 |
+| Out-of-scope files staged | `Staging validation FAILED` + `Out-of-scope file staged: <file>` | 1 |
+| Build plan staged | `agents must not modify the build plan (Rule 3)` | 1 |
+| Orphan spec dir | `Orphan spec dir staged (no spec.md): <dir>` | 1 |

@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
+# T010-gate.sh — FR-009 agent config fail-fast
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-for c in ship implement branch wud; do
-  test -f "specs/004-ship-loop/contracts/${c}.md" || { echo "FAIL: contract ${c}.md missing"; exit 1; }
-done
-grep -qE 'digest|phase.skip|phase-skip' specs/004-ship-loop/contracts/ship.md || { echo "FAIL: ship contract outdated"; exit 1; }
-grep -qE 'emit_event|staging|validate' specs/004-ship-loop/contracts/implement.md || { echo "FAIL: implement contract outdated"; exit 1; }
-grep -qE 'dirty|fail.fast|porcelain' specs/004-ship-loop/contracts/branch.md || { echo "FAIL: branch contract outdated"; exit 1; }
-echo "PASS: T010 — contracts reflect implementation"
+PASS=0; FAIL=0
+
+# Assertion #1: Missing config error message exists
+if grep -q 'Missing required config\|agents.implement' src/commands/ship.ts; then
+  echo "✓ Assertion #1: fail-fast error message exists"
+  PASS=$((PASS+1))
+else
+  echo "✗ Assertion #1: fail-fast error message NOT found in ship.ts"
+  FAIL=$((FAIL+1))
+fi
+
+# Assertion #2: process.exit(1) or throw on missing config
+if grep -q 'process.exit(1)\|throw.*config\|CommandError' src/commands/ship.ts; then
+  echo "✓ Assertion #2: crash behavior on missing config"
+  PASS=$((PASS+1))
+else
+  echo "✗ Assertion #2: crash behavior NOT found"
+  FAIL=$((FAIL+1))
+fi
+
+echo "T010: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]

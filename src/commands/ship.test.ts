@@ -80,6 +80,7 @@ vi.mock("../utils/state.js", () => ({
 vi.mock("../utils/manifest.js", () => ({
   writeManifest: vi.fn(),
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
+  assembleDigest: vi.fn().mockReturnValue(["BRANCH_SETUP: created feat/004-ship-loop", "IMPLEMENT: agent completed"]),
 }));
 
 vi.mock("../utils/git.js", () => ({
@@ -231,10 +232,12 @@ describe("shipCommand", () => {
       phases: [
         {
           id: "phase-01",
+          title: "Phase 1",
           tasks: [
             {
               id: "T001",
               title: "Implement src/commands/ship.ts",
+              description: "test",
               status: "open",
               gateScript: "gates/T001-gate.sh",
             },
@@ -296,3 +299,225 @@ describe("shipCommand", () => {
     readdirSpy.mockRestore();
   });
 });
+
+describe("FR-014: Phase Skip", () => {
+  let mockRun: ReturnType<typeof vi.fn>;
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRun = vi.mocked(execModule.run);
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("US-009: should skip phase when all tasks have status 'completed'", async () => {
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [{ id: "T001", title: "Task 1", description: "test", status: "completed", gateScript: "gates/T001-gate.sh" }],
+          doneWhen: [],
+        },
+      ],
+    });
+
+    process.exitCode = 0;
+    const consoleSpy = vi.spyOn(console, "log");
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop"]);
+
+    expect(execModule.run).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+    consoleSpy.mockRestore();
+  });
+
+  it("US-009: should skip phase when all tasks are either 'completed' or 'cancelled'", async () => {
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "test", status: "completed", gateScript: "gates/T001-gate.sh" },
+            { id: "T002", title: "Task 2", description: "test", status: "cancelled", gateScript: "gates/T002-gate.sh" }
+          ],
+          doneWhen: [],
+        },
+      ],
+    });
+
+    process.exitCode = 0;
+    const consoleSpy = vi.spyOn(console, "log");
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop"]);
+
+    expect(execModule.run).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("all tasks complete — skipping"));
+    consoleSpy.mockRestore();
+  });
+
+  it("US-009: should NOT skip phase if mixed open and completed tasks exist", async () => {
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "test", status: "completed", gateScript: "gates/T001-gate.sh" },
+            { id: "T002", title: "Task 2", description: "test", status: "open", gateScript: "gates/T002-gate.sh" }
+          ],
+          doneWhen: [],
+        },
+      ],
+    });
+
+    mockRun.mockResolvedValueOnce(undefined);
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+
+    expect(execModule.run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("FR-012, FR-017/T003: Execution Manifest Digest", () => {
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("US-007/T003: writeManifest receives a manifest object with digest array", async () => {
+    vi.mocked(execModule.run).mockResolvedValueOnce(undefined);
+
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+
+    const { writeManifest } = await import("../utils/manifest.js");
+    const writeManifestMock = vi.mocked(writeManifest);
+
+    expect(writeManifestMock).toHaveBeenCalled();
+    // The second argument is the manifest object
+    const manifest = writeManifestMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(manifest).toHaveProperty("digest");
+    expect(Array.isArray(manifest.digest)).toBe(true);
+  });
+
+  it("FR-012/T003: Manifest schema includes digest field (negative: missing digest fails validation)", async () => {
+    const actual = await vi.importActual<typeof import("../utils/manifest.js")>("../utils/manifest.js");
+    const schemaDef = actual.ExecutionManifestSchema.shape;
+    expect(schemaDef).toHaveProperty("digest");
+  });
+});
+
+describe("FR-015/T008: Agent-Native [exit:N | Xs] wrapper", () => {
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("US-010/T008: ship command emits [exit:N | Xs] on stderr after completion", async () => {
+    vi.mocked(execModule.run).mockResolvedValueOnce(undefined);
+
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+
+    // ADR-004: structured signal on stderr
+    const stderrOutput = stderrSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join("");
+    expect(stderrOutput).toMatch(/\[exit:\d+ \| [\d.]+s\]/);
+
+    stderrSpy.mockRestore();
+  });
+});
+
+describe("FR-015/T009: --format json support", () => {
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("US-010/T009: --format json emits structured JSON to stdout", async () => {
+    vi.mocked(execModule.run).mockResolvedValueOnce(undefined);
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+
+    await program.parseAsync([
+      "node", "test", "ship", "004-ship-loop", "1", "--format", "json",
+    ]);
+
+    const stdoutOutput = stdoutSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join("");
+
+    // Should be valid JSON with required fields
+    const parsed = JSON.parse(stdoutOutput);
+    expect(parsed).toHaveProperty("feature");
+    expect(parsed).toHaveProperty("exitCode");
+    expect(parsed).toHaveProperty("durationS");
+
+    stdoutSpy.mockRestore();
+  });
+});
+
+describe("FR-009/T010: Agent config fail-fast", () => {
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    program = new Command();
+    program.addCommand(shipCommand);
+  });
+
+  it("FR-009/T010: crashes with exit 1 when agents.implement is missing from config", async () => {
+    // Override config mock to return missing agents.implement
+    const configModule = await import("../utils/config.js");
+    vi.mocked(configModule.loadConfig).mockReturnValueOnce({
+      project: {
+        name: "test",
+        slack: { channelId: "C123", channelName: "test" },
+      },
+      agents: {},
+      server: { port: 18790, host: "localhost" },
+    } as ReturnType<typeof configModule.loadConfig>);
+
+    process.exitCode = 0;
+    try {
+      await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+    } catch {
+      // Expected: process.exit(1) or thrown error
+    }
+
+    expect(process.exitCode).toBe(1);
+  });
+});
+

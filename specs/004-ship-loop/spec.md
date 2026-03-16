@@ -4,11 +4,13 @@
 **Created**: 2026-02-27
 **Revised**: 2026-03-14
 **Status**: Settled
-**Input**: The autonomous execution kernel for Pillar 3 (Shipping). `gwrk ship <feature> [phase]` orchestrates the complete phase lifecycle — branch creation, agent dispatch, code review, UAT review, PR creation, CI gate, retry with circuit breaking, crash recovery, staging validation, and execution manifest recording. Delegates to `scripts/dev/work-until-done.sh` as the phase orchestrator (state machine). Phase is optional — omitting it ships all phases sequentially, skipping completed ones.
+**Input**: The autonomous execution kernel for Pillar 3 (Shipping). `gwrk ship <feature> [phase]` orchestrates the Ship Loop — the 7-step cycle that ends when a PR is issued and Slack is notified: DISPATCH → PRE-FLIGHT → EXECUTE → POST-FLIGHT → VERIFY → PR → NOTIFY. Delegates to `scripts/dev/work-until-done.sh` as the phase orchestrator. Phase is optional — omitting it ships all phases sequentially, skipping completed ones.
+
+> **Ship Loop boundary (architecture.md §6.2)**: This spec covers steps 1-7. Step 7 (NOTIFY) uses **Slack Incoming Webhook** (003 FR-014) — a direct HTTPS POST that works from Codex Cloud, local clones, and any environment without build server access. Post-merge lifecycle (merge detection, log rehoming, DB finalization, compression, done-done notification) is **Harvest** — see [011-harvest](file:///Users/gonzo/Code/gwrk/specs/011-harvest/spec.md) and architecture.md §6.3.
 
 > **Nomenclature**: "Ship loop" is the execution mechanism. "WUD" (Work Until Done) is the agent persona that operates the ship loop (architecture.md §2). The spec uses "ship loop" and "phase orchestrator" for the machinery, not "WUD."
 
-> **Architectural anchors**: [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (operational signals), [FOXTROT-CHARLIE](file:///Users/gonzo/Code/gwrk/docs/FOXTROT-CHARLIE.md) §Pillar 3, [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md) §5.1/§6.2, [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) §1.2
+> **Architectural anchors**: [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (operational signals), [FOXTROT-CHARLIE](file:///Users/gonzo/Code/gwrk/docs/FOXTROT-CHARLIE.md) §Pillar 3, [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md) §6.2 (Ship Loop), [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) §1.2
 
 ---
 
@@ -173,6 +175,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-012**: System MUST write an execution manifest to `specs/<feature>/.gwrk/runs/` per ADR-003 §3 for every ship run. Manifest includes `digest[]` array of structured log events per FR-017. (Implements: US-001, US-007)
 - **FR-013**: When phase argument is omitted, system MUST read all phases from `tasks.json` and ship each sequentially, exiting on first non-zero exit code. (Implements: US-003)
 - **FR-014**: When shipping all phases, system MUST check each phase's task states in `tasks.json` before dispatch. If ALL tasks in a phase have `status: "completed"` or `status: "cancelled"`, that phase MUST be skipped with log message `⏭  Phase NN: all tasks complete — skipping`. This check happens in `ship.ts` before calling the phase orchestrator. (Implements: US-009)
+- **FR-015**: System MUST wrap all terminal output in the Agent-Native `[exit:N | Xs]` format per ADR-004. Command type is `mutator`. The CLI interface MUST support `--format json` for downstream consumption. (Implements: US-001)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -197,8 +200,8 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-008**: Phase orchestrator MUST persist state machine progress to `.runs/<feature>_p<phase>.state` as JSON after every stage transition. On restart, resume from last persisted stage. (Implements: US-005)
 - **FR-010**: Phase orchestrator MUST create a timestamped log file in `.runs/` per run (machine-local, gitignored). (Implements: US-001)
 - **FR-016**: Phase orchestrator MUST run `scripts/dev/validate-staging.sh <feature>` after agent completes, before push. Validator rejects: out-of-scope files, orphan spec dirs, build plan modifications (Design Mandate Rule 3). Validation failure → re-run agent with corrective guidance. (Implements: US-010)
-- **FR-017**: Phase orchestrator logging has three tiers: (a) Raw log — full agent output to `.runs/*.log`, machine-local, gitignored per ADR-003 §5. (b) **Log digest** — the orchestrator emits structured stage events to a sidecar file (`.runs/<feature>_p<phase>.events`). On completion, events are concatenated into the `digest[]` array in the execution manifest. Digest is git-tracked, surviving merge and machine change. Events use format: `<STAGE>: <outcome summary>`. (c) SQLite — harvested post-merge by build server via `gwrk harvest` (ADR-003 §4). (Implements: US-001, US-007)
-- **FR-018**: On `CIRCUIT_BREAK`, phase orchestrator MUST write structured failure context to state file: `{ failureContext: { openTasks: [...], lastVerdict: "NO-GO", iterationTimeline: [...], digest: [...] } }`. Exit 1. (Implements: US-011)
+- **FR-017**: Phase orchestrator logging has three tiers, all git-tracked: (a) **Raw log** — full agent output committed to `specs/<feature>/.gwrk/runs/<timestamp>_<stage>.log`. Actual log sizes are 10-115KB (measured); the ADR-003 §5 assumption of 5MB was incorrect. Git-tracking all logs ensures learning from both success and failure patterns, and survival across ephemeral VMs (Codex Cloud). (b) **Log digest** — the orchestrator emits structured stage events to a sidecar file (`.runs/<feature>_p<phase>.events`, machine-local). On completion, events are concatenated into the `digest[]` array in the execution manifest. Events use format: `<STAGE>: <outcome summary>`. Digest serves as a quick index into the full logs. (c) **SQLite** — harvested post-merge by build server via `gwrk harvest` (ADR-003 §4). (Implements: US-001, US-007, US-011)
+- **FR-018**: On `CIRCUIT_BREAK`, phase orchestrator MUST write structured failure context to state file: `{ failureContext: { openTasks: [...], lastVerdict: "NO-GO", iterationTimeline: [...], digest: [...] } }`. Exit 1. Raw log is already git-tracked per FR-017; no special handling needed on failure. (Implements: US-011)
 
 #### FR-002 Error States
 | Condition | stderr contains | Exit code |
@@ -243,7 +246,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 ### Loop-Closing Contract
 
-> Ship loop produces git-tracked execution manifests (ADR-003 Tier 1). `gwrk harvest` (build server, F002) consumes them post-merge into SQLite (ADR-003 Tier 2). This spec defines the manifest schema. The build server spec defines the harvest. See ADR-003 §4.
+> **Ship Loop (004) → Harvest (011) handoff**: Ship loop ends at PR issued + Slack notification (step 7). It produces: (a) git-tracked execution manifests in `specs/<feature>/.gwrk/runs/` (ADR-003 Tier 1), (b) raw logs git-committed per FR-017, (c) SQLite run record started via `startRun()`. **Harvest (011)** is triggered by GitHub webhook on PR merge and consumes these outputs: rehomes logs, finalizes DB records via `finishRun()`, calculates compression, posts done-done to Slack. See architecture.md §6.3 and `specs/011-harvest/spec.md`.
 
 ---
 
@@ -372,7 +375,7 @@ Per ADR-002: `command: "ship"`, `workflow: "work-until-done"`, `exit_code`, `dur
 
 | US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
 |--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001,002,003,004,006,011,012,016,017 | FR-001 | US-001, US-003 | TR-005, TR-007 |
+| US-001 | FR-001,002,003,004,006,011,012,015,016,017 | FR-001 | US-001, US-003 | TR-005, TR-007 |
 | US-002 | FR-003 | FR-002 | US-001 | TR-002 |
 | US-003 | FR-001, FR-013, FR-014 | FR-003 | US-001, US-002 | TR-005, TR-007 |
 | US-004 | FR-007, FR-018 | FR-004 | US-001 | TR-001, TR-007 |
@@ -386,6 +389,7 @@ Per ADR-002: `command: "ship"`, `workflow: "work-until-done"`, `exit_code`, `dur
 | | | FR-012 | US-001, US-007 | TR-005, TR-007 |
 | | | FR-013 | US-003 | TR-005 |
 | | | FR-014 | US-009 | TR-005 |
+| | | FR-015 | US-001 | TR-005 |
 | | | FR-016 | US-010 | TR-008 |
 | | | FR-017 | US-001, US-007 | TR-007 |
 | | | FR-018 | US-004, US-011 | TR-001 |

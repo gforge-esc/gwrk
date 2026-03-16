@@ -53,8 +53,8 @@
   │ Slack     │  │ Agent-ZFG │  │ Codex Cloud (true parallelism)     │
   │ channels  │  │ owns orch │  │ Codex Local (local CLI)            │
   │ App Home  │  └───────────┘  │ Claude Code (deep context, local)  │
-  │ via tunnel│                 │ Gemini CLI  (multi-file, local)    │
-  └──────────┘                 └────────────────────────────────────┘
+  └──────────┘                 │ Gemini CLI  (multi-file, local)    │
+                               └────────────────────────────────────┘
 ```
 
 ---
@@ -121,8 +121,7 @@ gwrk/
 │   │   ├── compression.ts         # Effort vs. actual ratios
 │   │   ├── effort.ts              # SP-driven estimation
 │   │   ├── server.ts              # Daemon start/stop
-│   │   ├── setup-slack.ts         # Automated Slack app provisioning
-│   │   └── tunnel.ts              # Tunnel start/stop/status
+│   │   └── setup-slack.ts         # Automated Slack app provisioning
 │   ├── db/                        # SQLite execution ledger (ADR-002)
 │   │   ├── index.ts               # Connection + schema init
 │   │   └── migrations/            # Versioned schema files
@@ -133,8 +132,7 @@ gwrk/
 │   │   ├── sandbox.ts             # Docker container lifecycle
 │   │   ├── slack.ts               # Bolt SDK Socket Mode integration
 │   │   ├── slack-commands.ts      # Slash command handlers
-│   │   ├── slack-actions.ts       # Interactive message handlers
-│   │   └── tunnel.ts              # Cloudflare Tunnel / Tailscale Funnel
+│   │   └── slack-actions.ts       # Interactive message handlers
 │   ├── engine/                    # Core computation engines
 │   │   ├── pulse.ts               # Git log scanner + snapshot gen
 │   │   ├── compression.ts         # Timestamp collection + ratio calc
@@ -175,7 +173,6 @@ gwrk/
 | **Testing** | Vitest | Unit + integration |
 | **Language** | TypeScript (ES2022) | `.ts` only, no `.js` in `src/` |
 | **Dashboard** | Slack App Home Tab (Block Kit) | Mobile-first, no separate SPA |
-| **Tunnel** | Cloudflare Tunnel (default) / Tailscale Funnel | Remote Slack dashboard access |
 
 ### Why Commander.js, Not Ink
 
@@ -196,7 +193,7 @@ A separate Vite SPA served by the daemon was the original plan. Replaced by Slac
 |---|---|---|
 | **Weight** | Zero — Slack renders Block Kit | Vite + React + SSE consumer |
 | **Auth** | Already authenticated via Slack | Needs JWT magic link |
-| **Mobile** | Already mobile via Slack app | Separate tunnel + browser |
+| **Mobile** | Already mobile via Slack app | Separate browser |
 | **Build cost** | Block Kit JSON (~200 LOC) | Full SPA (~2000 LOC) |
 | **Appropriate for** | Single-user ops view | Future: multi-user team dashboard |
 
@@ -240,7 +237,20 @@ gates/T001-gate.sh → MUST PASS (verify GREEN)
 gwrk tasks done → updates SQLite + regenerates tasks.json
 ```
 
-Gates are generated FROM contracts, not from prose. They contain `grep`, `test -f`, `jq` assertions.
+Gates are generated FROM contracts, not from prose.
+
+#### Gate Quality Standard
+
+A gate is **hardened** when it invokes `pnpm vitest run <test-file>` to verify behavior — not just `test -f` to check file existence. Structural checks (`test -f`, `grep`) are scaffolding; behavioral checks (vitest) are the standard.
+
+| Gate Quality | Assertion Type | TDD Hardened? |
+|---|---|---|
+| **Stub** | `test -f`, `grep` only | ❌ |
+| **Structural** | `test -f` + `grep` + build check | ❌ |
+| **Behavioral** | `pnpm vitest run <file>` + build | ✅ |
+| **Authored** | `# AUTHORED` + behavioral + E2E | ✅✅ |
+
+Reference implementation: `specs/013-agent-native-interface/gates/` — all 17 AUTHORED, 7 invoke vitest.
 
 ### 5.4 Spec-First Invariants
 
@@ -268,18 +278,37 @@ Gates are generated FROM contracts, not from prose. They contain `grep`, `test -
 
 Router learns from SQLite `runs` table: historical success rate × task SP × language → backend selection.
 
-### 6.2 Done, Done! Protocol
+### 6.2 Ship Loop (Feature 004)
+
+The autonomous coding cycle. Ends when a PR is issued and Slack is notified.
 
 ```
-1. DISPATCH    → Agent receives phase context + governance rules
-2. PRE-FLIGHT  → gates/T0xx-gate.sh must FAIL (verify RED)
-3. EXECUTE     → Agent implements code + tests
-4. POST-FLIGHT → gates/T0xx-gate.sh must PASS (verify GREEN)
-5. VERIFY      → Tests pass, lint clean, build succeeds
-6. PR          → gwrk opens PR, CI runs
-7. RETRY?      → If checks fail: retry same agent (3×), then escalate to next backend
-8. DONE, DONE! → PR merged, Slack 🏆, compression recorded in SQLite
+1. DISPATCH     → Agent receives phase context + governance rules
+2. PRE-FLIGHT   → gates/T0xx-gate.sh must FAIL (verify RED)
+3. EXECUTE      → Agent implements code + tests
+4. POST-FLIGHT  → gates/T0xx-gate.sh must PASS (verify GREEN)
+5. VERIFY       → Tests pass, lint clean, build succeeds
+6. PR           → gwrk opens PR, CI runs
+7. NOTIFY       → Slack Incoming Webhook: "PR ready for review" + summary
 ```
+
+**Notification architecture** (step 7): Ship loop runs in Codex Cloud VMs with no `localhost` access. Uses **Slack Incoming Webhook** (003 FR-014) as primary notify path — a single HTTPS POST to a Slack-provided URL. Works from any environment. Build server `/api/notify` is the enhanced path (adds presence-awareness, batching) used when available. Config: `SLACK_WEBHOOK_URL` env var → `.gwrkrc.json slack.webhookUrl` → `/api/notify` fallback.
+
+Retry logic: If checks fail at step 5, retry same agent (3×), then escalate to next backend in `fallbackOrder`. If all backends exhausted, Slack escalation to human.
+
+### 6.3 Harvest (Feature 011)
+
+Post-merge lifecycle. Triggered by GitHub webhook when PR is merged. Separate concern from Ship Loop.
+
+```
+8.  PR MERGED      → Build server receives GitHub webhook
+9.  LOG RETRIEVAL  → Raw logs rehomed to specs/<feature>/.gwrk/runs/, git-committed
+10. DB UPDATE      → SQLite run record finalized (exit code, duration, agent, phase)
+11. COMPRESSION    → Point + Total compression calculated from Git timestamps vs effort
+12. DONE, DONE!    → Slack: "🏆 Feature shipped" + compression summary
+```
+
+Ship Loop (004) produces the PR and logs. Harvest (011) consumes them after merge.
 
 ---
 
@@ -324,8 +353,7 @@ develop
   "defaults": {
     "projectsDir": "~/Code",
     "github": { "org": "gforge-esc", "visibility": "private" },
-    "slack": { "createChannelOnNew": true },
-    "tunnel": { "provider": "cloudflare" }
+    "slack": { "createChannelOnNew": true }
   }
 }
 ```

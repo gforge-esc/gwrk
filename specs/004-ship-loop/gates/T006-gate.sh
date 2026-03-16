@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
+# T006-gate.sh — validate-staging.sh called from WUD (FR-016)
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-grep -qE 'failureContext|failure_context' scripts/dev/work-until-done.sh || { echo "FAIL: failureContext not in WUD"; exit 1; }
-grep -qE 'openTasks|open_tasks' scripts/dev/work-until-done.sh || { echo "FAIL: openTasks not in failureContext"; exit 1; }
-echo "PASS: T006 — failureContext on circuit break"
+PASS=0; FAIL=0
+
+# Assertion #1: validate-staging.sh is called from work-until-done.sh
+if grep -q 'validate-staging' scripts/dev/work-until-done.sh; then
+  echo "✓ Assertion #1: validate-staging called from WUD"
+  PASS=$((PASS+1))
+else
+  echo "✗ Assertion #1: validate-staging NOT called from WUD"
+  FAIL=$((FAIL+1))
+fi
+
+echo "T006: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]

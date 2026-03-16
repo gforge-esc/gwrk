@@ -98,6 +98,7 @@ fi
 # ──────────────────────────────────────────────────────────────────
 mkdir -p "$RUNS_DIR"
 STATE_FILE="$RUNS_DIR/${FEATURE}_p${PHASE}.state"
+EVENTS_FILE="$RUNS_DIR/${FEATURE}_p${PHASE}.events"
 WUD_LOG="$RUNS_DIR/$(date +%Y-%m-%d_%H%M%S)_wud_${FEATURE}_p${PHASE}.log"
 
 save_state() {
@@ -114,6 +115,15 @@ save_state() {
   "updated_at": "$(date +%Y-%m-%dT%H:%M:%S%z)"${extra}
 }
 STATEJSON
+}
+
+# FR-017: Emit structured events to sidecar file for digest assembly
+emit_event() {
+  local stage="$1"
+  local summary="$2"
+  local ts
+  ts="$(date +%Y-%m-%dT%H:%M:%S%z)"
+  echo "${stage}: ${summary} [${ts}]" >> "$EVENTS_FILE"
 }
 
 load_state() {
@@ -213,7 +223,6 @@ run_implement() {
   set +e
   APPROVAL_MODE="$APPROVAL_MODE" "$AGENT_RUNNER" implement "$FEATURE" "$PHASE"
   local exit_code=$?
-  set -e
 
   local duration=$(( $(date +%s) - start_time ))
   record_run "implement" "$exit_code" "$duration" --workflow "implement"
@@ -226,6 +235,20 @@ run_implement() {
     # Agent failed — return non-zero so WUD can decide to retry
     log WARN "Implementation failed (exit $exit_code) — will retry"
     return 2
+  fi
+
+  # FR-016: Run staging validation after successful implementation
+  log INFO "Running staging validation..."
+  local validate_staging="${VALIDATE_STAGING_BIN:-$SCRIPT_DIR/validate-staging.sh}"
+  if [[ -f "$validate_staging" ]]; then
+    set +e
+    bash "$validate_staging" "$FEATURE"
+    local staging_exit=$?
+    set -e
+    if [[ "$staging_exit" -ne 0 ]]; then
+      log WARN "Staging validation failed (exit $staging_exit) — will retry"
+      return 2
+    fi
   fi
 
   # Push after implementation
@@ -452,8 +475,10 @@ if [[ "$STAGE" == "BRANCH_SETUP" ]]; then
   record_run "branch-setup" "$branch_exit_code" "$branch_duration"
   
   if [[ "$branch_exit_code" -ne 0 ]]; then
+    emit_event "BRANCH_SETUP" "FAILED — branch setup exited ${branch_exit_code}"
     exit 1
   fi
+  emit_event "BRANCH_SETUP" "created/checked-out feat/${FEATURE} (${branch_duration}s)"
   STAGE="IMPLEMENTING"
 fi
 
@@ -462,21 +487,58 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
 
   # Stage: Implement
   if [[ "$STAGE" == "IMPLEMENTING" ]] || [[ "$STAGE" == "BRANCH_SETUP" ]]; then
+
+    # FR-003: Pre-flight gate check — skip implementation if all gates already pass
+    TASKS_FILE="$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json"
+    if [[ -f "$TASKS_FILE" ]]; then
+      PHASE_ID="phase-$(printf '%02d' "$PHASE")"
+      GATE_SCRIPTS=$(jq -r --arg p "$PHASE_ID" \
+        '.phases[] | select(.id == $p) | .tasks[] | select(.status == "open") | .gateScript // empty' \
+        "$TASKS_FILE" 2>/dev/null || true)
+
+      if [[ -n "$GATE_SCRIPTS" ]]; then
+        ALL_GATES_PASS=true
+        while IFS= read -r gate; do
+          [[ -z "$gate" ]] && continue
+          GATE_PATH="$REPO_ROOT/$SPEC_DIR/$gate"
+          if [[ -f "$GATE_PATH" ]] && bash "$GATE_PATH" > /dev/null 2>&1; then
+            log OK "pre-flight PASS — gate already satisfied: $(basename "$gate")"
+          else
+            ALL_GATES_PASS=false
+          fi
+        done <<< "$GATE_SCRIPTS"
+
+        if [[ "$ALL_GATES_PASS" == "true" ]]; then
+          log OK "pre-flight PASS — all gates already satisfied, skipping implementation"
+          emit_event "PRE_FLIGHT" "all gates pass, skip implementation"
+          STAGE="CODE_REVIEW"
+          continue
+        fi
+      fi
+    fi
+
+    set +e
     run_implement
     impl_exit=$?
+    set -e
     if [[ "$impl_exit" -eq 1 ]]; then
       # SIGINT or fatal — abort entirely
       log ERROR "Implementation aborted (SIGINT or fatal). Stopping."
+      emit_event "IMPLEMENT" "FAILED — aborted (exit ${impl_exit})"
       save_state "FAILED" "$ITERATION"
       STAGE="FAILED"
       break
     elif [[ "$impl_exit" -eq 2 ]]; then
       # Agent failure — retry
+      emit_event "IMPLEMENT" "FAILED — agent exited ${impl_exit}, will retry"
       log WARN "Agent failed. Retrying implementation (iteration $((ITERATION + 1)))..."
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached during implementation."
-        save_state "CIRCUIT_BREAK" "$ITERATION"
+        emit_event "CIRCUIT_BREAK" "max ${MAX_ITERATIONS} iterations reached during implementation"
+        # FR-018: Build failureContext for diagnoseability
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_implementation",\n    "openTasks": [],\n    "lastVerdict": "N/A",\n    "iterationTimeline": ["iteration %d: implement failed"],\n    "digest": []\n  }' "$ITERATION")
+        save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached during implementation"
         STAGE="CIRCUIT_BREAK"
@@ -485,20 +547,25 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       STAGE="IMPLEMENTING"
       continue
     fi
+    emit_event "IMPLEMENT" "agent completed successfully, pushed commits"
     STAGE="CODE_REVIEW"
   fi
 
   # Stage: Code Review
   if [[ "$STAGE" == "CODE_REVIEW" ]]; then
     if run_code_review; then
+      emit_event "CODE_REVIEW" "GO — all assertions satisfied"
       STAGE="UAT_REVIEW"
     else
       # NO-GO: loop back to implement
+      emit_event "CODE_REVIEW" "NO-GO — open tasks remain, will retry"
       log WARN "Code review NO-GO. Re-implementing (iteration $((ITERATION + 1)))..."
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after code review."
-        save_state "CIRCUIT_BREAK" "$ITERATION"
+        # FR-018: Build failureContext
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_code_review",\n    "openTasks": [],\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: code review NO-GO"],\n    "digest": []\n  }' "$ITERATION")
+        save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after code review"
         STAGE="CIRCUIT_BREAK"
@@ -512,14 +579,18 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
   # Stage: UAT Review
   if [[ "$STAGE" == "UAT_REVIEW" ]]; then
     if run_uat_review; then
+      emit_event "UAT_REVIEW" "GO — UAT assertions satisfied"
       STAGE="PR_CI"
     else
       # NO-GO: loop back to implement
+      emit_event "UAT_REVIEW" "NO-GO — open tasks remain, will retry"
       log WARN "UAT NO-GO. Re-implementing (iteration $((ITERATION + 1)))..."
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after UAT."
-        save_state "CIRCUIT_BREAK" "$ITERATION"
+        # FR-018: Build failureContext
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_uat",\n    "openTasks": [],\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: UAT NO-GO"],\n    "digest": []\n  }' "$ITERATION")
+        save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after UAT review"
         STAGE="CIRCUIT_BREAK"

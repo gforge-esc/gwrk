@@ -108,6 +108,7 @@ export const defineCommand = new Command("define")
                 linesDeleted,
                 gitCommit,
                 gitBranch,
+                digest: [],
             });
             // Record in history table
             recordHistory({

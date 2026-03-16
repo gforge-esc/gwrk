@@ -8,7 +8,7 @@ import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import { banner, blocked, color, dryRun as dryRunFmt, fail, success, } from "../utils/format.js";
 import { getCurrentBranch, getCurrentCommit, getDiffStats, } from "../utils/git.js";
-import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { assembleDigest, generateRunId, writeManifest } from "../utils/manifest.js";
 import { loadTaskState } from "../utils/state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 const { GREEN, DIM, RESET } = color;
@@ -192,6 +192,7 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
             linesDeleted,
             gitCommit,
             gitBranch,
+            digest: assembleDigest(path.join(cwd, ".runs", `${feature}_p${normalizedPhase}.events`)),
         });
         recordHistory({
             feature_id: feature,
@@ -205,6 +206,13 @@ async function shipPhase(feature, phase, backend, opts, cwd) {
         console.warn(`Warning: Could not write execution manifest: ${manifestError}`);
     }
     return exitCode;
+}
+/**
+ * FR-014: Check if a phase should be skipped because all tasks are terminal.
+ * Terminal statuses: "completed" or "cancelled".
+ */
+function isPhaseComplete(phaseData) {
+    return phaseData.tasks.every((t) => t.status === "completed" || t.status === "cancelled");
 }
 /**
  * gwrk ship — The Shipping Pillar (Throughput)
@@ -229,10 +237,17 @@ Exit codes:
     .option("--max-iterations <n>", "Max implement→review cycles", "3")
     .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
     .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
+    .option("--format <format>", "Output format: human (default) or json", "human")
     .action(async (feature, phase, opts) => {
     await withSignal("ship", async () => {
         const cwd = process.cwd();
         const config = loadConfig(cwd);
+        // FR-009/T010: Fail-fast if agents.implement is missing
+        if (!opts.agent && !config.agents?.implement) {
+            console.error("Missing required config: agents.implement");
+            process.exitCode = 1;
+            return;
+        }
         const backend = (opts.agent ||
             config.agents.implement);
         // Validate feature exists before any work
@@ -251,13 +266,12 @@ Exit codes:
             const specDir = path.join(cwd, "specs", feature);
             const taskState = loadTaskState(specDir);
             const allPhases = taskState.phases.map((p) => p.id.replace("phase-", ""));
-            // FR-014: Skip phases where all tasks are already completed
+            // FR-014: Skip phases where all tasks are terminal (completed or cancelled)
             phases = allPhases.filter((phaseNum) => {
                 const phaseData = taskState.phases.find((p) => p.id === `phase-${phaseNum.padStart(2, "0")}`);
                 if (!phaseData)
                     return true;
-                const allComplete = phaseData.tasks.every((t) => t.status === "completed");
-                if (allComplete) {
+                if (isPhaseComplete(phaseData)) {
                     console.log(`  ⏭  Phase ${phaseNum}: all tasks complete — skipping`);
                     return false;
                 }
@@ -277,12 +291,31 @@ Exit codes:
             return;
         }
         // Ship each phase sequentially — stop on first failure
+        const shipStartTime = Date.now();
+        let finalExitCode = 0;
         for (const p of phases) {
             const exitCode = await shipPhase(feature, p, backend, opts, cwd);
             if (exitCode !== 0) {
-                process.exitCode = exitCode;
-                return;
+                finalExitCode = exitCode;
+                break;
             }
+        }
+        const totalDurationS = Math.round((Date.now() - shipStartTime) / 1000);
+        // FR-015/T008: Agent-Native exit wrapper on stderr
+        process.stderr.write(`[exit:${finalExitCode} | ${totalDurationS}s]\n`);
+        // FR-015/T009: JSON output mode
+        if (opts.format === "json") {
+            const output = {
+                feature,
+                phase: phase || "all",
+                exitCode: finalExitCode,
+                durationS: totalDurationS,
+                runId: `ship-${feature}`,
+            };
+            process.stdout.write(`${JSON.stringify(output)}\n`);
+        }
+        if (finalExitCode !== 0) {
+            process.exitCode = finalExitCode;
         }
     });
 });

@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
+# T001-gate.sh — isPhaseComplete() with cancelled support (FR-014)
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-grep -q 'emit_event' scripts/dev/work-until-done.sh || { echo "FAIL: emit_event not found in WUD"; exit 1; }
-grep -q '\.events' scripts/dev/work-until-done.sh || { echo "FAIL: .events sidecar not referenced"; exit 1; }
-echo "PASS: T001 — emit_event with sidecar in WUD"
+PASS=0; FAIL=0
+
+# Assertion #1: isPhaseComplete function exists in ship.ts
+if grep -q 'function isPhaseComplete\|const isPhaseComplete' src/commands/ship.ts; then
+  echo "✓ Assertion #1: isPhaseComplete function exists"
+  PASS=$((PASS+1))
+else
+  echo "✗ Assertion #1: isPhaseComplete function NOT found in ship.ts"
+  FAIL=$((FAIL+1))
+fi
+
+# Assertion #2: Function checks for 'cancelled' status
+if grep -q 'cancelled' src/commands/ship.ts; then
+  echo "✓ Assertion #2: 'cancelled' status handled"
+  PASS=$((PASS+1))
+else
+  echo "✗ Assertion #2: 'cancelled' status NOT handled in ship.ts"
+  FAIL=$((FAIL+1))
+fi
+
+echo "T001: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]
