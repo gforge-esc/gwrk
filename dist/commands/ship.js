@@ -237,7 +237,7 @@ Exit codes:
     .option("--max-iterations <n>", "Max implement→review cycles", "3")
     .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
     .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
-    .option("--format <format>", "Output format: human (default) or json", "human")
+    .option("--format <format>", "Output format (e.g. json)")
     .action(async (feature, phase, opts) => {
     await withSignal("ship", async () => {
         const cwd = process.cwd();
