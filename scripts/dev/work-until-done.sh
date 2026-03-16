@@ -98,6 +98,7 @@ fi
 # ──────────────────────────────────────────────────────────────────
 mkdir -p "$RUNS_DIR"
 STATE_FILE="$RUNS_DIR/${FEATURE}_p${PHASE}.state"
+EVENTS_FILE="$RUNS_DIR/${FEATURE}_p${PHASE}.events"
 WUD_LOG="$RUNS_DIR/$(date +%Y-%m-%d_%H%M%S)_wud_${FEATURE}_p${PHASE}.log"
 
 save_state() {
@@ -114,6 +115,15 @@ save_state() {
   "updated_at": "$(date +%Y-%m-%dT%H:%M:%S%z)"${extra}
 }
 STATEJSON
+}
+
+# FR-017: Emit structured events to sidecar file for digest assembly
+emit_event() {
+  local stage="$1"
+  local summary="$2"
+  local ts
+  ts="$(date +%Y-%m-%dT%H:%M:%S%z)"
+  echo "${stage}: ${summary} [${ts}]" >> "$EVENTS_FILE"
 }
 
 load_state() {
@@ -452,8 +462,10 @@ if [[ "$STAGE" == "BRANCH_SETUP" ]]; then
   record_run "branch-setup" "$branch_exit_code" "$branch_duration"
   
   if [[ "$branch_exit_code" -ne 0 ]]; then
+    emit_event "BRANCH_SETUP" "FAILED — branch setup exited ${branch_exit_code}"
     exit 1
   fi
+  emit_event "BRANCH_SETUP" "created/checked-out feat/${FEATURE} (${branch_duration}s)"
   STAGE="IMPLEMENTING"
 fi
 
@@ -467,15 +479,18 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
     if [[ "$impl_exit" -eq 1 ]]; then
       # SIGINT or fatal — abort entirely
       log ERROR "Implementation aborted (SIGINT or fatal). Stopping."
+      emit_event "IMPLEMENT" "FAILED — aborted (exit ${impl_exit})"
       save_state "FAILED" "$ITERATION"
       STAGE="FAILED"
       break
     elif [[ "$impl_exit" -eq 2 ]]; then
       # Agent failure — retry
+      emit_event "IMPLEMENT" "FAILED — agent exited ${impl_exit}, will retry"
       log WARN "Agent failed. Retrying implementation (iteration $((ITERATION + 1)))..."
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached during implementation."
+        emit_event "CIRCUIT_BREAK" "max ${MAX_ITERATIONS} iterations reached during implementation"
         save_state "CIRCUIT_BREAK" "$ITERATION"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached during implementation"
@@ -485,15 +500,18 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       STAGE="IMPLEMENTING"
       continue
     fi
+    emit_event "IMPLEMENT" "agent completed successfully, pushed commits"
     STAGE="CODE_REVIEW"
   fi
 
   # Stage: Code Review
   if [[ "$STAGE" == "CODE_REVIEW" ]]; then
     if run_code_review; then
+      emit_event "CODE_REVIEW" "GO — all assertions satisfied"
       STAGE="UAT_REVIEW"
     else
       # NO-GO: loop back to implement
+      emit_event "CODE_REVIEW" "NO-GO — open tasks remain, will retry"
       log WARN "Code review NO-GO. Re-implementing (iteration $((ITERATION + 1)))..."
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
@@ -512,9 +530,11 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
   # Stage: UAT Review
   if [[ "$STAGE" == "UAT_REVIEW" ]]; then
     if run_uat_review; then
+      emit_event "UAT_REVIEW" "GO — UAT assertions satisfied"
       STAGE="PR_CI"
     else
       # NO-GO: loop back to implement
+      emit_event "UAT_REVIEW" "NO-GO — open tasks remain, will retry"
       log WARN "UAT NO-GO. Re-implementing (iteration $((ITERATION + 1)))..."
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
