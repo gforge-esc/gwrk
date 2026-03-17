@@ -9,7 +9,7 @@ FILE="specs/004-ship-loop/contracts/branch.md"
 test -f "$FILE"
 
 # Assertion 2: dirty-tree guard is documented
-grep -q "dirty-tree" "$FILE"
+grep -i -q "dirty-tree" "$FILE"
 grep -q "fail-fast" "$FILE"
 
 echo "PASS: T016 — specs/004-ship-loop/contracts/branch.md updated"

@@ -36,7 +36,11 @@ describe("work-until-done.sh execution flow", () => {
       "ship-verdict.sh",
       "echo 'mock verdict' && exit 0",
     );
-    agentMock = mockWrapper("agent-run.sh", "echo 'mock agent' && exit 0");
+    agentMock = mockWrapper("agent-run.sh", `
+      echo "$@" >> ${MOCKS_DIR}/agent-run.log
+      echo "mock agent"
+      exit 0
+    `);
     mockWrapper("gh", "echo '1234'"); // mocked gh pr
     mockWrapper("gwrk", "exit 0"); // mocked gwrk db
     mockWrapper("git", [
@@ -176,12 +180,70 @@ describe("work-until-done.sh execution flow", () => {
       });
       // WUD should log that it ran the pre-flight gate
       expect(result).toContain("pre-flight");
+      // FR-003: Verify that agent-run.sh was NOT called because gate passed
+      const agentLog = path.join(MOCKS_DIR, "agent-run.log");
+      if (fs.existsSync(agentLog)) {
+        const logContent = fs.readFileSync(agentLog, "utf-8");
+        expect(logContent).not.toContain("T001");
+      }
     } catch (err) {
       const e = err as { stdout?: string; stderr?: string };
       const output = `${e.stdout || ""}\n${e.stderr || ""}`;
       // Even if the run fails, pre-flight should have been attempted
       expect(output).toContain("pre-flight");
     }
+  });
+
+  it("FR-005: should loop back to IMPLEMENT if review returns NO-GO", () => {
+    // Mock verdict to return NO-GO first, then GO
+    const verdictFile = path.join(MOCKS_DIR, "verdict_state.txt");
+    fs.writeFileSync(verdictFile, "NO-GO");
+
+    const wudVerdictMock = mockWrapper("ship-verdict.sh", `
+      STATE=$(cat ${verdictFile})
+      if [ "$STATE" == "NO-GO" ]; then
+        echo "GO" > ${verdictFile}
+        echo "NO-GO: failing tests"
+        exit 1
+      else
+        echo "GO: all good"
+        exit 0
+      fi
+    `);
+
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env: { ...env, WUD_VERDICT_BIN: wudVerdictMock, MAX_ITERATIONS: "3" },
+      encoding: "utf-8",
+    });
+
+    expect(result).toContain("Retrying implementation (iteration 2)");
+    expect(result).toContain("DONE in");
+  });
+
+  it("FR-006: should create PR and wait for CI", () => {
+    const ghMock = mockWrapper("gh", `
+      if [[ "$1" == "pr" && "$2" == "create" ]]; then
+        echo "https://github.com/mock/pr/1234"
+        exit 0
+      fi
+      echo "mock gh"
+    `);
+
+    const ciWaitMock = mockWrapper("ship-ci-wait.sh", `
+      echo "Waiting for CI..."
+      exit 0
+    `);
+
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env: { ...env, GH_BIN: ghMock, WUD_CI_WAIT_BIN: ciWaitMock },
+      encoding: "utf-8",
+    });
+
+    expect(result).toContain("Creating PR...");
+    expect(result).toContain("Waiting for CI...");
+    expect(result).toContain("DONE in");
   });
 });
 

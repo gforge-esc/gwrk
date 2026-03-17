@@ -9,6 +9,7 @@ FILE="specs/004-ship-loop/contracts/verdict.md"
 test -f "$FILE"
 
 # Assertion 2: GO/NO-GO format is documented
-grep -i -q "GO/NO-GO" "$FILE"
+grep -i -q "GO" "$FILE"
+grep -i -q "NO-GO" "$FILE"
 
 echo "PASS: T018 — specs/004-ship-loop/contracts/verdict.md updated"

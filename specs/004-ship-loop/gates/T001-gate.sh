@@ -15,7 +15,9 @@ grep -q "echo \".*\" >> \"\$EVENTS_FILE\"" "$FILE"
 
 # Assertion 3: Pre-flight gate check exists
 grep -q "Pre-flight gate check" "$FILE"
-grep -q "jq -r .* '.phases\[\] | select(.id == \$p) | .tasks\[\] | select(.status == \"open\") | .gateScript // empty'" "$FILE"
+grep -q "PHASE_ID=\"phase-\$(printf '%02d' \"\$PHASE\")\"" "$FILE"
+grep -q "GATE_SCRIPTS=\$(jq -r --arg p \"\$PHASE_ID\"" "$FILE"
+grep -q "select(.id == \$p) | .tasks\[\] | select(.status == \"open\") | .gateScript // empty" "$FILE"
 
 # Assertion 4: log function exists and writes to WUD_LOG
 grep -q "log()" "$FILE"

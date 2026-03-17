@@ -298,6 +298,49 @@ describe("shipCommand", () => {
     existsSpy.mockRestore();
     readdirSpy.mockRestore();
   });
+
+  it("FR-009/T009: Agent config hierarchy: --agent override takes precedence", async () => {
+    mockRun.mockResolvedValueOnce(undefined);
+
+    await program.parseAsync([
+      "node",
+      "test",
+      "ship",
+      "004-ship-loop",
+      "1",
+      "--agent",
+      "claude",
+    ]);
+
+    expect(execModule.run).toHaveBeenCalledTimes(1);
+    const [, , options] = mockRun.mock.calls[0];
+    // Should pass the agent to WUD via env or arg
+    expect(options.env.AGENT_BACKEND).toBe("claude");
+  });
+
+  it("FR-008/T008: should resume from state file if it exists and is in-progress", async () => {
+    // Mock state file existence for recovery test
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
+      if (typeof p === "string" && p.includes(".runs/004-ship-loop_p1.state")) return true;
+      return true;
+    });
+
+    const readFileSyncSpy = vi.spyOn(fs, "readFileSync").mockImplementation((p) => {
+      if (typeof p === "string" && p.includes(".state")) {
+        return JSON.stringify({ stage: "CODE_REVIEW", iteration: 1 });
+      }
+      return "";
+    });
+
+    mockRun.mockResolvedValueOnce(undefined);
+
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+
+    expect(uiModule.success).toHaveBeenCalledWith(expect.stringContaining("Resuming 004-ship-loop phase 1 from CODE_REVIEW"));
+
+    existsSpy.mockRestore();
+    readFileSyncSpy.mockRestore();
+  });
 });
 
 describe("FR-014: Phase Skip", () => {

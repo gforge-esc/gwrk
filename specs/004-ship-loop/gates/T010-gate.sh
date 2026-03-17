@@ -10,7 +10,7 @@ test -f "$FILE"
 
 # Assertion 2: Tests for circuit-break failureContext exist
 grep -q "describe(\"FR-018/T007: Circuit Breaker failureContext\"" "$FILE"
-grep -q "produces failureContext in the JSON state file on CIRCUIT_BREAK" "$FILE"
+grep -q "produces non-empty failureContext in the JSON state file on CIRCUIT_BREAK" "$FILE"
 
 # Assertion 3: Tests for dirty-tree guard exist
 grep -q "describe(\"FR-002/T005: wud-branch.sh dirty-tree guard\"" "$FILE"

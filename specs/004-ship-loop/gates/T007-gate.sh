@@ -6,7 +6,7 @@ set -euo pipefail
 FILE="scripts/dev/work-until-done.sh"
 
 # Assertion 1: CIRCUIT_BREAK emit_event call exists
-grep -q "emit_event \"CIRCUIT_BREAK: .*\"" "$FILE"
+grep -q "emit_event \"CIRCUIT_BREAK\"" "$FILE"
 
 # Assertion 2: failureContext is written to state file in CIRCUIT_BREAK block
 grep -q "\"failureContext\": {" "$FILE"

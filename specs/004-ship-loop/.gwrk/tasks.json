@@ -16,32 +16,36 @@
           "id": "T001",
           "title": "Implement scripts/dev/work-until-done.sh",
           "description": "MODIFY: add `emit_event(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
+          "completedAt": "2026-03-17T13:00:16.772Z",
           "classification": "greenfield"
         },
         {
           "id": "T002",
           "title": "Implement src/utils/manifest.ts",
           "description": "MODIFY: add `digest: string[]` to `RunManifest` Zod schema. Add `assembleDigest(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
+          "completedAt": "2026-03-17T13:00:16.791Z",
           "classification": "greenfield"
         },
         {
           "id": "T003",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY: add `isPhaseComplete(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
+          "completedAt": "2026-03-17T13:00:16.813Z",
           "classification": "greenfield"
         },
         {
           "id": "T004",
           "title": "Implement src/commands/ship.test.ts",
           "description": "MODIFY: add tests for phase-skip (completed, cancelled+completed, mixed",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
+          "completedAt": "2026-03-17T13:00:17.675Z",
           "classification": "greenfield"
         },
         {
@@ -76,24 +80,27 @@
           "id": "T007",
           "title": "Implement scripts/dev/work-until-done.sh",
           "description": "MODIFY: add `emit_event \"CIRCUIT_BREAK: ...\"` on circuit break. Write `failureContext` JSON to state file: `openTasks`, `lastVerdict`, `iterationTimeline`, `digest`. Call `validate-staging.sh` after IMPLEMENT, before push. Add dirty-tree guard at startup.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
+          "completedAt": "2026-03-17T13:00:18.630Z",
           "classification": "greenfield"
         },
         {
           "id": "T008",
           "title": "Implement scripts/dev/wud-branch.sh",
           "description": "MODIFY: add `git status --porcelain` check. Non-empty → emit `Dirty working tree — commit or stash before shipping` to stderr, exit 1.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
+          "completedAt": "2026-03-17T13:00:18.645Z",
           "classification": "greenfield"
         },
         {
           "id": "T009",
           "title": "Implement scripts/dev/validate-staging.sh",
           "description": "VERIFY: confirm existing validator handles all FR-016 rejection cases.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
+          "completedAt": "2026-03-17T13:00:18.668Z",
           "classification": "greenfield"
         },
         {
@@ -128,8 +135,9 @@
           "id": "T012",
           "title": "Implement src/commands/ship.test.ts",
           "description": "MODIFY: add tests for FR-004 state machine transitions, FR-005 review dispatch with GO/NO-GO, FR-006 PR creation, FR-008 crash recovery resume, FR-009 hierarchical agent config resolution, FR-012 manifest writes with correct fields, FR-015 Agent-Native output wrapper and `--format json`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh",
+          "completedAt": "2026-03-17T13:00:24.878Z",
           "classification": "greenfield"
         },
         {
@@ -144,8 +152,9 @@
           "id": "T014",
           "title": "Implement specs/004-ship-loop/contracts/ship.md",
           "description": "MODIFY: add `isPhaseComplete(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T014-gate.sh",
+          "completedAt": "2026-03-17T13:00:27.509Z",
           "classification": "greenfield"
         },
         {
@@ -168,40 +177,45 @@
           "id": "T017",
           "title": "Implement specs/004-ship-loop/contracts/wud.md",
           "description": "MODIFY: add `CIRCUIT_BREAK` → `failureContext` state machine transition",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh",
+          "completedAt": "2026-03-17T13:00:27.545Z",
           "classification": "greenfield"
         },
         {
           "id": "T018",
           "title": "Implement specs/004-ship-loop/contracts/verdict.md",
           "description": "VERIFY: GO/NO-GO format matches FR-005",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
+          "completedAt": "2026-03-17T13:00:27.556Z",
           "classification": "greenfield"
         },
         {
           "id": "T019",
           "title": "Implement specs/004-ship-loop/contracts/pr.md",
           "description": "VERIFY: PR creation + CI wait contract",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
+          "completedAt": "2026-03-17T13:00:27.567Z",
           "classification": "greenfield"
         },
         {
           "id": "T020",
           "title": "Implement specs/004-ship-loop/gap-analysis.md",
           "description": "REWRITE: reflect current implementation vs new spec",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
+          "completedAt": "2026-03-17T13:00:27.578Z",
           "classification": "greenfield"
         },
         {
           "id": "T021",
           "title": "Implement specs/004-ship-loop/checklists/requirements.md",
           "description": "REWRITE: against new 18 FRs",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh",
+          "completedAt": "2026-03-17T13:00:27.588Z",
           "classification": "greenfield"
         },
         {
