@@ -257,9 +257,32 @@ async function dispatchTask(task: Task, feature: Feature): Promise<TaskResult> {
 - F013 `[exit:N | Xs]` signaling, now insulated from proprietary CLI exit code changes.
 - CLI-specific project-local config (`.claude/settings.json`, `.codex/` local env) when it provides deterministic enforcement value.
 
+## 7. Three-Layer Plugin Architecture
+
+This ADR covers **Layer 1**. Full surface contact analysis: [plugin-strategy-audit.md](../reference/plugin-strategy-audit.md).
+
+```
+Layer 1: Agent Backend Plugins     ← THIS ADR (ADR-006)
+         (Claude, Codex, Gemini adapters)
+         Consumers: F004 Ship Loop, F008 Agent Router, F005 Parallel Dispatch
+         Contract: AgentBackend interface, stdin delivery, exit normalization
+
+Layer 2: Skill Plugins             ← F014 spec (existing)
+         (Atomic reasoning modes, compound compositions)
+         Consumers: gwrk skill <name>, pipe composition
+         Contract: manifest.yaml, SKILL.md, F013 signals
+
+Layer 3: Extension Plugins         ← Not yet specified
+         (Domain Packs, Channel Adapters)
+         Consumers: F012 Knowledge Work (--domain), F017 Channel Abstraction
+         Contract: TBD — requires F012 spec + F003 ChannelPlugin refactor
+```
+
+**Scope boundary:** Layer 1 is the only layer that interacts with external CLI processes. Layers 2 and 3 are gwrk-internal plugin types.
+
 ---
 
-## 7. Decision Record
+## 8. Decision Record
 
 **Position**: Agent CLIs must be abstracted behind F014 `AgentBackend` plugins that present a clean service interface to gwrk core. Plugins own context shaping, stdin delivery, and exit code normalization. gwrk core never references CLI names or flags.
 
