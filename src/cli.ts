@@ -3,7 +3,7 @@ import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { dbCommand } from "./commands/db.js";
 import { defineCommand } from "./commands/define.js";
-import { gateCheckCommand } from "./commands/gate-check.js";
+import { gateCommand } from "./commands/gate.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
 import { projectCommand } from "./commands/project.js";
@@ -49,7 +49,7 @@ program
       const cmds = cmd.commands;
       if (cmds.length > 0) {
         // Foxtrot Charlie pillars
-        const pillars = ["define", "ship", "test", "measure"];
+        const pillars = ["define", "ship", "test", "gate", "measure"];
         const ops = [
           "init",
           "tasks",
@@ -100,13 +100,13 @@ program
   });
 
 program.addCommand(initCommand);
-program.addCommand(gateCheckCommand);
 program.addCommand(projectCommand);
 
 // The Foxtrot Charlie Pillars
 program.addCommand(defineCommand); // Define: spec → plan → tasks → analyze
 program.addCommand(shipCommand); // Ship: autonomous implement → review → PR loop
 program.addCommand(testCommand); // Test: run vitest scoped to feature
+program.addCommand(gateCommand); // Gate: execute gates and enforce truth
 program.addCommand(measureCommand); // Measure: pulse, effort, compression
 
 // Operational queries
