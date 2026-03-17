@@ -536,8 +536,12 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached during implementation."
         emit_event "CIRCUIT_BREAK" "max ${MAX_ITERATIONS} iterations reached during implementation"
-        # FR-018: Build failureContext for diagnoseability
-        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_implementation",\n    "openTasks": [],\n    "lastVerdict": "N/A",\n    "iterationTimeline": ["iteration %d: implement failed"],\n    "digest": []\n  }' "$ITERATION")
+        TASKS_FILE="$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json"
+        PHASE_ID="phase-$(printf '%02d' "$PHASE")"
+        open_tasks=$(jq -c --arg p "$PHASE_ID" '[.phases[] | select(.id == $p) | .tasks[] | select(.status == "open") | .id]' "$TASKS_FILE" 2>/dev/null || echo "[]")
+        digest_json=$(jq -Rs '[split("\n")[] | select(length > 0)]' "$EVENTS_FILE" 2>/dev/null || echo "[]")
+        
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_implementation",\n    "openTasks": %s,\n    "lastVerdict": "N/A",\n    "iterationTimeline": ["iteration %d: implement failed"],\n    "digest": %s\n  }' "$open_tasks" "$ITERATION" "$digest_json")
         save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached during implementation"
@@ -563,8 +567,12 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after code review."
+        TASKS_FILE="$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json"
+        PHASE_ID="phase-$(printf '%02d' "$PHASE")"
+        open_tasks=$(jq -c --arg p "$PHASE_ID" '[.phases[] | select(.id == $p) | .tasks[] | select(.status == "open") | .id]' "$TASKS_FILE" 2>/dev/null || echo "[]")
+        digest_json=$(jq -Rs '[split("\n")[] | select(length > 0)]' "$EVENTS_FILE" 2>/dev/null || echo "[]")
         # FR-018: Build failureContext
-        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_code_review",\n    "openTasks": [],\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: code review NO-GO"],\n    "digest": []\n  }' "$ITERATION")
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_code_review",\n    "openTasks": %s,\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: code review NO-GO"],\n    "digest": %s\n  }' "$open_tasks" "$ITERATION" "$digest_json")
         save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after code review"
@@ -588,8 +596,12 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after UAT."
+        TASKS_FILE="$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json"
+        PHASE_ID="phase-$(printf '%02d' "$PHASE")"
+        open_tasks=$(jq -c --arg p "$PHASE_ID" '[.phases[] | select(.id == $p) | .tasks[] | select(.status == "open") | .id]' "$TASKS_FILE" 2>/dev/null || echo "[]")
+        digest_json=$(jq -Rs '[split("\n")[] | select(length > 0)]' "$EVENTS_FILE" 2>/dev/null || echo "[]")
         # FR-018: Build failureContext
-        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_uat",\n    "openTasks": [],\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: UAT NO-GO"],\n    "digest": []\n  }' "$ITERATION")
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_uat",\n    "openTasks": %s,\n    "lastVerdict": "NO-GO",\n    "iterationTimeline": ["iteration %d: UAT NO-GO"],\n    "digest": %s\n  }' "$open_tasks" "$ITERATION" "$digest_json")
         save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after UAT review"
@@ -612,7 +624,12 @@ while [[ "$ITERATION" -le "$MAX_ITERATIONS" ]]; do
       ITERATION=$(( ITERATION + 1 ))
       if [[ "$ITERATION" -gt "$MAX_ITERATIONS" ]]; then
         log ERROR "Circuit breaker: max ${MAX_ITERATIONS} iterations reached after CI failure."
-        save_state "CIRCUIT_BREAK" "$ITERATION"
+        TASKS_FILE="$REPO_ROOT/$SPEC_DIR/.gwrk/tasks.json"
+        PHASE_ID="phase-$(printf '%02d' "$PHASE")"
+        open_tasks=$(jq -c --arg p "$PHASE_ID" '[.phases[] | select(.id == $p) | .tasks[] | select(.status == "open") | .id]' "$TASKS_FILE" 2>/dev/null || echo "[]")
+        digest_json=$(jq -Rs '[split("\n")[] | select(length > 0)]' "$EVENTS_FILE" 2>/dev/null || echo "[]")
+        fc_extra=$(printf ',\n  "failureContext": {\n    "reason": "max_iterations_ci",\n    "openTasks": %s,\n    "lastVerdict": "FAIL",\n    "iterationTimeline": ["iteration %d: CI failed"],\n    "digest": %s\n  }' "$open_tasks" "$ITERATION" "$digest_json")
+        save_state "CIRCUIT_BREAK" "$ITERATION" "$fc_extra"
         cb_duration=$(( $(date +%s) - START_TIME ))
         record_run "circuit-break" "1" "$cb_duration" --retry-reason "Max iterations reached after CI failure"
         STAGE="CIRCUIT_BREAK"
