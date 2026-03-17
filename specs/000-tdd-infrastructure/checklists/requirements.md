@@ -69,7 +69,28 @@
 - [ ] CHK-037: `gwrk test 003-slack` exits 1 with "failed" count when tests fail
 - [ ] CHK-038: `src/commands/test-cmd.test.ts` exists and passes
 
+## Gap Matrix Production (FR-010)
+
+- [ ] CHK-039: `gwrk define tests 000-tdd-infrastructure` produces `specs/000-tdd-infrastructure/gap-matrix.md`
+- [ ] CHK-040: Gap matrix contains `>= 12` rows (one per FR-###)
+- [ ] CHK-041: Gap matrix schema matches `contracts/gap-matrix.md` (columns: AC, Acceptance Criterion, Test Type, Test File, Test Exists, Gate)
+
+## Gap Matrix Auditability (FR-011)
+
+- [ ] CHK-042: Every `FR-###` from spec.md §4 appears in gap-matrix.md
+- [ ] CHK-043: Every `❌` row in gap matrix has an explanation or a corresponding RED test file
+- [ ] CHK-044: `tests-generate.test.ts` tests gap matrix output shape and FR coverage
+
+## Deterministic Vitest Gates (FR-012)
+
+- [ ] CHK-045: `generateVitestGates()` exists in `gate-gen.ts` and is exported
+- [ ] CHK-046: `gate-gen.test.ts` tests `generateVitestGates()` — vitest gates generated for ✅ rows, structural skipped, AUTHORED preserved
+- [ ] CHK-047: `tasks-generate.ts` reads `gap-matrix.md` and calls `generateVitestGates()` before LLM dispatch
+- [ ] CHK-048: `--no-llm` flag generates vitest gates from gap matrix but skips LLM dispatch
+- [ ] CHK-049: At least one gate in `specs/000-tdd-infrastructure/gates/` contains `pnpm vitest run` (deterministic gate)
+
 ## Notes
 - Check items off as completed: `[x]`
-- Items CHK-001 through CHK-038 must all pass before Done, Done!
+- Items CHK-001 through CHK-049 must all pass before Done, Done!
+- Items CHK-039+ added for ADR-005 §8 Amendment (2026-03-16)
 - Link any failures to relevant FR-### identifiers in the gap analysis

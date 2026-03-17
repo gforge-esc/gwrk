@@ -1,0 +1,19 @@
+{
+  "runId": "2026-03-16T23:17:00.181Z_define_all",
+  "feature": "004-ship-loop",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-16T23:17:00.181Z",
+  "finishedAt": "2026-03-16T23:18:56.586Z",
+  "durationS": 116,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 19,
+  "linesAdded": 489,
+  "linesDeleted": 40,
+  "gitCommit": "59e60236130776e8e6073795998d775db83b9a6f",
+  "gitBranch": "feat/004-ship-loop",
+  "digest": []
+}

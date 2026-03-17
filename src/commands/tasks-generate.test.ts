@@ -103,4 +103,39 @@ describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
     const content = fs.readFileSync(gatePath, "utf-8");
     expect(content).toBe(customContent);
   });
+
+  it("TR-012: should generate vitest gates from gap matrix with --no-llm", async () => {
+    const specDir = path.join(tempDir, "specs", "001-cli-core");
+    // Remove contracts (--no-llm doesn't need them for vitest gates)
+    fs.rmSync(path.join(specDir, "contracts"), { recursive: true, force: true });
+    
+    // Create a gap-matrix.md
+    fs.writeFileSync(
+      path.join(specDir, "gap-matrix.md"),
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | Gate assertion | unit | src/utils/gate-gen.test.ts | ✅ | T001 |
+`,
+    );
+    
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    process.exitCode = 0;
+    
+    await program.parseAsync(["node", "test", "tasks", "001-cli-core", "--force", "--no-llm"]);
+    
+    expect(process.exitCode).toBe(0);
+    
+    // tasks.json should exist
+    expect(fs.existsSync(path.join(specDir, ".gwrk", "tasks.json"))).toBe(true);
+    
+    // Vitest gate should have been generated
+    const gatePath = path.join(specDir, "gates", "T001-gate.sh");
+    expect(fs.existsSync(gatePath)).toBe(true);
+    
+    const gateContent = fs.readFileSync(gatePath, "utf-8");
+    expect(gateContent).toContain("pnpm vitest run");
+    expect(gateContent).toContain("FR-001");
+    expect(gateContent).toContain("# Generated from gap-matrix.md");
+  });
 });

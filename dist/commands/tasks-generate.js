@@ -7,7 +7,7 @@ import { classifyTask, extractFilePaths } from "../engine/classify.js";
 import { dispatchAgent } from "../utils/agent.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
-import { generateGateBrief, generateRunner } from "../utils/gate-gen.js";
+import { generateGateBrief, generateRunner, generateVitestGates } from "../utils/gate-gen.js";
 import { parsePlan } from "../utils/parser.js";
 import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
@@ -197,10 +197,26 @@ export const tasksGenerateCommand = new Command("tasks")
             };
             console.log("  Writing tasks.json...");
             saveTaskState(featureDir, taskState);
-            // ── Gate authoring (ADR-005) ────────────────────────────────────
-            const skipGates = opts.llm === false; // --no-llm
-            if (skipGates) {
-                console.log("  ⚠ --no-llm: skipping gate authoring (tasks.json only)");
+            // ── Gate authoring (ADR-005 §8) ────────────────────────────────
+            const skipLlm = opts.llm === false; // --no-llm
+            // Step 4: Gap matrix check — deterministic vitest gates (ADR-005 §8)
+            const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+            let vitestGatesGenerated = 0;
+            let vitestGatesSkipped = 0;
+            if (fs.existsSync(gapMatrixPath)) {
+                console.log("  Reading gap-matrix.md for deterministic vitest gates...");
+                const result = generateVitestGates(featureDir, gapMatrixPath, taskState.phases);
+                vitestGatesGenerated = result.generated;
+                vitestGatesSkipped = result.skipped;
+                console.log(`  Deterministic vitest gates: ${vitestGatesGenerated} generated, ${vitestGatesSkipped} skipped`);
+            }
+            if (skipLlm) {
+                if (vitestGatesGenerated > 0) {
+                    console.log("  ⚠ --no-llm: LLM dispatch skipped (vitest gates generated from gap matrix)");
+                }
+                else {
+                    console.log("  ⚠ --no-llm: skipping gate authoring (tasks.json only)");
+                }
             }
             else {
                 // Contracts guard — contracts are a define plan deliverable
@@ -214,38 +230,56 @@ export const tasksGenerateCommand = new Command("tasks")
                     console.log("    See 'gwrk define plan --help'.");
                     throw new CommandError(`Contracts required for gate authoring. Run 'gwrk define plan ${feature}' first.`, 1);
                 }
-                // Generate structured brief for the LLM agent
-                console.log("  Generating gate brief...");
-                const briefPath = generateGateBrief(featureDir, taskState.phases, feature);
-                console.log(`  Brief: ${briefPath}`);
-                // Dispatch agent for gate authoring (same pattern as plan.ts)
-                const config = loadConfig(projectRoot);
-                const backend = config.agents.define;
-                const relativeFeatureDir = path.join("specs", feature);
-                const runId = startRun({
-                    feature_id: feature,
-                    command: "define tasks:gates",
-                    agent_backend: backend,
-                    workflow: "author-gates",
-                });
-                console.log(`  Dispatching ${backend} for gate authoring...`);
-                const agentStart = Date.now();
-                const result = await dispatchAgent({
-                    backend,
-                    workflowPath: ".agents/workflows/author-gates.md",
-                    featureDir: relativeFeatureDir,
-                    contextPath: paddedPhase || briefPath, // If phase is given, pass it as context. The workflow will read brief anyway. Default behavior is unchanged block.
-                });
-                const agentDurationS = Math.round((Date.now() - agentStart) / 1000);
-                if (result.exitCode !== 0) {
-                    finishRun(runId, { exit_code: result.exitCode, duration_s: agentDurationS });
-                    console.log(`  ✗ Gate authoring failed (exit ${result.exitCode})`);
-                    console.log(`    Log: ${result.logPath}`);
-                    throw new CommandError(`Gate authoring failed (exit ${result.exitCode}). See ${result.logPath}`, 1);
+                // Determine if LLM dispatch is needed (tasks not covered by vitest gates)
+                const totalTasks = taskState.phases.reduce((n, p) => n + p.tasks.length, 0);
+                const uncoveredCount = totalTasks - vitestGatesGenerated;
+                if (vitestGatesGenerated > 0 && uncoveredCount <= 0) {
+                    console.log("  ✓ All tasks covered by deterministic vitest gates — LLM dispatch skipped");
                 }
-                finishRun(runId, { exit_code: 0, duration_s: agentDurationS });
-                console.log(`  ✓ Gates authored (${agentDurationS}s)`);
-                // Generate runner after agent writes gate scripts
+                else {
+                    // Generate structured brief for the LLM agent (for uncovered tasks)
+                    console.log("  Generating gate brief...");
+                    const briefPath = generateGateBrief(featureDir, taskState.phases, feature);
+                    console.log(`  Brief: ${briefPath}`);
+                    // Dispatch agent for gate authoring (same pattern as plan.ts)
+                    const config = loadConfig(projectRoot);
+                    const backend = config.agents.define;
+                    const relativeFeatureDir = path.join("specs", feature);
+                    const runId = startRun({
+                        feature_id: feature,
+                        command: "define tasks:gates",
+                        agent_backend: backend,
+                        workflow: "author-gates",
+                    });
+                    console.log(`  Dispatching ${backend} for gate authoring...`);
+                    if (vitestGatesGenerated > 0) {
+                        console.log(`    (${uncoveredCount} tasks not covered by gap matrix — LLM will author remaining gates)`);
+                    }
+                    const agentStart = Date.now();
+                    const result = await dispatchAgent({
+                        backend,
+                        workflowPath: ".agents/workflows/author-gates.md",
+                        featureDir: relativeFeatureDir,
+                        contextPath: paddedPhase || briefPath,
+                    });
+                    const agentDurationS = Math.round((Date.now() - agentStart) / 1000);
+                    if (result.exitCode !== 0) {
+                        finishRun(runId, { exit_code: result.exitCode, duration_s: agentDurationS });
+                        console.log(`  ✗ Gate authoring failed (exit ${result.exitCode})`);
+                        console.log(`    Log: ${result.logPath}`);
+                        throw new CommandError(`Gate authoring failed (exit ${result.exitCode}). See ${result.logPath}`, 1);
+                    }
+                    finishRun(runId, { exit_code: 0, duration_s: agentDurationS });
+                    console.log(`  ✓ Gates authored (${agentDurationS}s)`);
+                }
+                // Generate runner after all gates are written
+                const gatesDirPath = path.join(featureDir, "gates");
+                if (fs.existsSync(gatesDirPath)) {
+                    generateRunner(gatesDirPath);
+                }
+            }
+            // Generate runner for --no-llm path too (if vitest gates were generated)
+            if (skipLlm && vitestGatesGenerated > 0) {
                 const gatesDirPath = path.join(featureDir, "gates");
                 if (fs.existsSync(gatesDirPath)) {
                     generateRunner(gatesDirPath);

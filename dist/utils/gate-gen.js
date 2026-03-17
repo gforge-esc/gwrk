@@ -129,3 +129,127 @@ echo "────────────────────────�
 [ $FAILED -eq 0 ]
 `, { mode: 0o755 });
 }
+/**
+ * parseGapMatrix — read and parse a gap-matrix.md file.
+ *
+ * Parses the markdown table format defined in contracts/gap-matrix.md.
+ * Returns an array of GapMatrixRow objects.
+ */
+export function parseGapMatrix(gapMatrixPath) {
+    if (!fs.existsSync(gapMatrixPath)) {
+        return [];
+    }
+    const content = fs.readFileSync(gapMatrixPath, "utf-8");
+    const lines = content.split("\n");
+    // Find the table — look for the header row with "AC" column
+    const headerIdx = lines.findIndex((line) => line.includes("| AC") && line.includes("Test Type"));
+    if (headerIdx === -1)
+        return [];
+    // Skip header and separator rows
+    const dataLines = lines.slice(headerIdx + 2).filter((line) => {
+        const trimmed = line.trim();
+        return trimmed.startsWith("|") && !trimmed.startsWith("|--");
+    });
+    return dataLines
+        .map((line) => {
+        const cells = line
+            .split("|")
+            .map((c) => c.trim())
+            .filter((c) => c.length > 0);
+        if (cells.length < 6)
+            return null;
+        const [ac, criterion, testTypeRaw, testFileRaw, testExistsRaw, gateRaw] = cells;
+        const testType = testTypeRaw;
+        if (!["unit", "functional", "e2e", "structural"].includes(testType)) {
+            return null;
+        }
+        return {
+            ac: ac.trim(),
+            criterion: criterion.trim(),
+            testType,
+            testFile: testFileRaw.trim() === "—" || testFileRaw.trim() === "-"
+                ? null
+                : testFileRaw.trim(),
+            testExists: testExistsRaw.trim() === "✅",
+            gate: gateRaw.trim() === "—" || gateRaw.trim() === "-"
+                ? null
+                : gateRaw.trim(),
+        };
+    })
+        .filter((row) => row !== null);
+}
+// ─── Deterministic vitest gate generation (ADR-005 §8) ───────────────────────
+/**
+ * generateVitestGates — produce deterministic gate scripts from a gap matrix.
+ *
+ * For each gap matrix row where testExists is true and testType is
+ * unit/functional/e2e, generates a gate script that invokes
+ * `pnpm vitest run <file> --grep "<AC>"`.
+ *
+ * Respects # AUTHORED preservation — existing gates are never overwritten.
+ * Returns counts of generated and skipped gates.
+ */
+export function generateVitestGates(featureDir, gapMatrixPath, _phases) {
+    const rows = parseGapMatrix(gapMatrixPath);
+    const gatesDir = path.join(featureDir, "gates");
+    if (!fs.existsSync(gatesDir)) {
+        fs.mkdirSync(gatesDir, { recursive: true });
+    }
+    let generated = 0;
+    let skipped = 0;
+    // Group rows by gate ID to combine multiple AC assertions into one gate
+    const gateGroups = new Map();
+    for (const row of rows) {
+        if (!row.gate || !row.testExists || !row.testFile) {
+            skipped++;
+            continue;
+        }
+        if (row.testType === "structural") {
+            skipped++;
+            continue;
+        }
+        const existing = gateGroups.get(row.gate) ?? [];
+        existing.push(row);
+        gateGroups.set(row.gate, existing);
+    }
+    for (const [gateId, gateRows] of gateGroups) {
+        const gatePath = path.join(gatesDir, `${gateId}-gate.sh`);
+        // Preserve existing AUTHORED gates
+        if (fs.existsSync(gatePath)) {
+            const existing = fs.readFileSync(gatePath, "utf-8");
+            if (existing.includes("# AUTHORED")) {
+                skipped += gateRows.length;
+                continue;
+            }
+        }
+        // Build vitest invocations — one per unique test file
+        const fileGroups = new Map();
+        for (const row of gateRows) {
+            if (!row.testFile)
+                continue;
+            const existing = fileGroups.get(row.testFile) ?? [];
+            existing.push(row.ac);
+            fileGroups.set(row.testFile, existing);
+        }
+        const invocations = [...fileGroups.entries()]
+            .map(([file, acs]) => {
+            const grepPattern = acs.join("|");
+            return `pnpm vitest run ${file} --grep "${grepPattern}" --reporter=verbose`;
+        })
+            .join("\n");
+        const title = gateRows[0]?.criterion ?? `Gate ${gateId} — vitest verification`;
+        const gateContent = `#!/bin/bash
+set -euo pipefail
+# AUTHORED
+# Gate: ${gateId} — ${title}
+# Generated from gap-matrix.md (deterministic vitest gate)
+
+${invocations}
+
+echo "PASS: ${gateId} — vitest verification complete"
+`;
+        fs.writeFileSync(gatePath, gateContent, { mode: 0o755 });
+        generated += gateRows.length;
+    }
+    return { generated, skipped };
+}

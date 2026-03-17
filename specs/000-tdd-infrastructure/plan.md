@@ -1,230 +1,236 @@
+---
+type: implementation_plan
+feature: 000-tdd-infrastructure
+last_modified: "2026-03-17T01:10:00Z"
+revision: 3
+---
+
 # Implementation Plan: 000 TDD Infrastructure
 
-**Branch**: `develop` | **Date**: 2026-03-16 | **Spec**: [spec.md](./spec.md) | **ADR**: [ADR-005](../../docs/decisions/ADR-005-tdd-gate-architecture.md)
-
-## Summary
-
-Establish a rigorous, programmatically-enforced TDD standard across all gwrk features. Replace file-existence gate stubs with authored, executable assertions. Wire `gwrk define tasks` to produce tasks with LLM-authored gates from contracts. Retroactively audit 001 and 002. Fix all 22 currently-failing tests (8 test files: `notify.test.ts`, `slack-channel.test.ts`, `dispatch.test.ts`, `server.test.ts`, `setup-slack.test.ts`, `ship.test.ts`, `slack-messages.test.ts`, `slack-presence.test.ts`).
+**Spec**: [spec.md](spec.md) (revision 3)
+**ADR**: [ADR-005 TDD Gate Architecture](../../docs/decisions/ADR-005-tdd-gate-architecture.md) (§1–8)
+**Status**: In Progress
 
 ---
 
-## Phases and File Structure
+## Phase 0: Prior Work (Complete)
 
-### Phase 1: Hard Gate Enforcement & CLI Infrastructure
+Phase 0 represents work already shipped in revisions 1–2 of this feature. Preserved for traceability.
 
-Implement core functional gate logic, `# AUTHORED` preservation, the `gwrk test` command, and the `gwrk ship` pre-flight block. Wire `gwrk define tasks` to dispatch an LLM agent for gate authoring via `dispatchAgent()` with a structured `GateBrief` (ADR-005). Fix failing tests in `ship.test.ts` and `server.test.ts` that are entangled with pre-flight changes.
+### Delivered
+- `generateGateBrief()` in `gate-gen.ts` (was `generateGates()` → refactored per ADR-005)
+- `tasks-generate.ts` updated for LLM dispatch and contracts guard
+- `ship.ts` updated with pre-flight gate check
+- `test.ts` command added
+- `specs/000-tdd-infrastructure/contracts/` written (gate-gen.md, tasks-generate.md, ship-preflight.md)
+- `specs/000-tdd-infrastructure/checklists/` written
+- Phase 3 (003-slack remediation) attempted and UAT-reviewed
 
-**Files (7):**
-- `src/utils/gate-gen.ts` (MODIFY: `generateGates()` → `generateGateBrief()` — produces structured `GateBrief` JSON for LLM gate authoring. No longer writes gate scripts directly. Exports `GateBrief`, `TaskBrief` interfaces and `generateRunner()`.)
-- `src/commands/tasks-generate.ts` (MODIFY: Add contracts guard (exit 1 if contracts/ missing), `dispatchAgent()` call to `author-gates` workflow, `--no-llm` flag, execution ledger integration via `startRun()`/`finishRun()`.)
-- `src/commands/ship.ts` (MODIFY: Add pre-flight check — scan phase deliverable files for matching `.test.ts`. If none found, exit 1 with `[BLOCKED] No test files found for <phase>`. Active immediately, no flag.)
-- `src/commands/test.ts` (NEW: `gwrk test <feature> [--phase <N>]` — runs `pnpm vitest run` scoped to feature test file paths from tasks.json, exits 0 only if all pass.)
-- `src/cli.ts` (MODIFY: Register `test` command.)
-- `src/commands/ship.test.ts` (MODIFY: Fix broken mock — `SlackConfigSchema` is not exported from the vi.mock of `../utils/config.js`. Fix mock, then add test for BLOCKED pre-flight.)
-- `src/commands/server.test.ts` (MODIFY: Fix EADDRINUSE — server tests must use a mock port or `vi.mock` the net binding. Real port 18794 is in use during test runs.)
+---
 
-**Requirements Addressed**: FR-001, FR-002, FR-008, FR-009, US-001, US-002, US-008, US-009, ADR-005
+## Phase 1: ADR + Contracts (Document-Only)
 
-**Dependencies**: None (bootstrap)
+**Status**: ✅ Complete
 
-**Contract Mapping**:
-- `specs/000-tdd-infrastructure/contracts/gate-gen.md` → `generateGateBrief()`, `GateBrief`, `TaskBrief`
-- `specs/000-tdd-infrastructure/contracts/tasks-generate.md` → contracts guard, `dispatchAgent()`, `--no-llm`
+### Files
 
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/coding-style.md | Strict TypeScript, Zod everywhere |
-| compile-gate | Always |
+| Target | Action |
+|--------|--------|
+| `docs/decisions/ADR-005-tdd-gate-architecture.md` | Modify: add §8 Amendment |
+| `specs/000-tdd-infrastructure/contracts/gap-matrix.md` | Create: gap matrix schema |
+| `specs/000-tdd-infrastructure/contracts/gate-gen.md` | Modify: add `generateVitestGates()` |
+| `specs/000-tdd-infrastructure/contracts/tasks-generate.md` | Modify: add gap matrix consumption flow |
 
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-001 | Unit | `src/utils/gate-gen.test.ts` | `generateGateBrief()` produces valid `GateBrief` JSON with file types, identifiers, contract refs |
-| TR-002 | Unit | `src/commands/tasks-generate.test.ts` | Contracts guard exits 1 when missing; `--no-llm` skips gates; `--reconcile` preserves `# AUTHORED` |
-| TR-004 | Unit | `src/commands/tasks-done.test.ts` | Gate failure prevents state transition; GATE_STUB gate exits 1 |
-| TR-005 | Unit | `src/commands/ship.test.ts` | `gwrk ship` BLOCKED if no `.test.ts` found for phase |
-| TR-006 | Unit | `src/commands/test-cmd.test.ts` | `gwrk test` scopes vitest to feature paths, exits 0/1 correctly |
-| TR-010 | Unit | `src/utils/gate-gen.test.ts` | `# AUTHORED` marker prevents gate overwrite on reconcile |
+### Requirements Addressed
+- ADR-005 §8: Triad Model architecture, gate generation strategy, pipeline reorder
+- FR-010: Gap matrix schema defined in contracts
+- FR-012: `generateVitestGates()` contract specified
+- FR-002: Updated gate authoring flow with gap matrix path
 
-#### Done When
-- `pnpm vitest run src/utils/gate-gen.test.ts src/commands/tasks-generate.test.ts src/commands/tasks-done.test.ts src/commands/ship.test.ts src/commands/test-cmd.test.ts src/commands/server.test.ts` exits 0
+### Dependencies
+- None — this phase is pure documentation
+
+### Contract Mapping
+
+| Contract | Methods/Sections Defined |
+|----------|------------------------|
+| `gap-matrix.md` | Schema, column definitions, test type classification, invariants, consumers |
+| `gate-gen.md` | `generateVitestGates()` method, behavior table, generated gate format, invariants |
+| `tasks-generate.md` | Updated gate authoring flow, `--no-llm` flag behavior with gap matrix |
+
+### Test Strategy
+- No tests — document-only phase
+- Validated by manual review of ADR consistency and contract completeness
+
+### Done When
+- `test -f docs/decisions/ADR-005-tdd-gate-architecture.md && grep -q "§8" docs/decisions/ADR-005-tdd-gate-architecture.md` exits 0
+- `test -f specs/000-tdd-infrastructure/contracts/gap-matrix.md` exits 0
+- `grep -q "generateVitestGates" specs/000-tdd-infrastructure/contracts/gate-gen.md` exits 0
+- `grep -q "gap-matrix" specs/000-tdd-infrastructure/contracts/tasks-generate.md` exits 0
+
+---
+
+## Phase 2: Spec + Workflows (Document + Config)
+
+**Status**: In Progress
+
+### Files
+
+| Target | Action |
+|--------|--------|
+| `specs/000-tdd-infrastructure/spec.md` | Rewrite: new FRs 10-12, modified FRs 1-3, DM-004, TRs 10-12 |
+| `.agents/workflows/define-tests.md` | Modify: add Step 2b (gap matrix generation) |
+| `.agents/workflows/plan-to-tasks.md` | Modify: remove Step 4 (gap analysis), reference gap matrix |
+| `.agents/workflows/author-gates.md` | Modify: add gap matrix preamble, vitest gate path |
+| `specs/000-tdd-infrastructure/checklists/requirements.md` | Update: add FR-010/011/012 |
+
+### Requirements Addressed
+- FR-001 (modified): gate standard reframed — transitional vs target state
+- FR-002 (modified): gap matrix consumption + LLM fallback
+- FR-003 (modified): define tests now produces gap matrix + RED tests
+- FR-010 (new): define tests produces gap-matrix.md
+- FR-011 (new): gap matrix internally auditable
+- FR-012 (new): deterministic vitest gate generation
+
+### Dependencies
+- Phase 1 (contracts must exist before spec references them)
+
+### Contract Mapping
+
+| Contract | Spec Sections Defined |
+|----------|----------------------|
+| `gap-matrix.md` | FR-010, FR-011, DM-004, SC-009 |
+| `gate-gen.md` | FR-001, FR-012, TR-001, TR-010, TR-011 |
+| `tasks-generate.md` | FR-002, TR-002 |
+
+### Governance & Skills Contract
+
+| Rule | Location |
+|------|----------|
+| Spec-first: no implementation before approved spec | `.agents/rules/operating-model.md` |
+| RAGB governance for feature status | `.agents/rules/operating-model.md` |
+
+### Test Strategy
+- No code tests — document-only phase
+- Validated by cross-artifact consistency check (all FRs in spec have matching TRs and USs)
+
+### Done When
+- `grep -c "FR-012" specs/000-tdd-infrastructure/spec.md` returns `>= 1`
+- `grep -q "gap.matrix\|gap-matrix" .agents/workflows/define-tests.md` exits 0
+- `grep -q "gap.matrix\|gap-matrix" .agents/workflows/plan-to-tasks.md` exits 0
+- `grep -q "vitest\|gap.matrix" .agents/workflows/author-gates.md` exits 0
+
+---
+
+## Phase 3: Source Code (Implementation)
+
+**Status**: Not Started
+
+### Files
+
+| Target | Action |
+|--------|--------|
+| `src/utils/gate-gen.ts` | Modify: add `generateVitestGates()` function |
+| `src/commands/tasks-generate.ts` | Modify: read gap matrix, call `generateVitestGates()`, LLM fallback |
+| `src/utils/gate-gen.test.ts` | Modify: add tests for `generateVitestGates()` |
+| `src/commands/tasks-generate.test.ts` | Modify: add tests for gap matrix consumption |
+
+### Requirements Addressed
+- FR-002: Gap matrix consumption in `tasks-generate.ts`
+- FR-012: `generateVitestGates()` implementation in `gate-gen.ts`
+
+### Dependencies
+- Phase 1 (contracts define method signatures)
+- Phase 2 (spec defines requirements; workflows define agent patterns)
+
+### Contract Mapping
+
+| File | Contract | Methods |
+|------|----------|---------|
+| `gate-gen.ts` | `contracts/gate-gen.md` | `generateVitestGates()` |
+| `tasks-generate.ts` | `contracts/tasks-generate.md` | Gap matrix check, vitest gate path, LLM fallback |
+
+### Governance & Skills Contract
+
+| Rule | Location |
+|------|----------|
+| No magic values — config flows from .env | `workspace.md` |
+| Fail-fast — missing config crashes immediately | `workspace.md` |
+| TypeScript only in src/ — no .js files | `workspace.md` |
+
+### Type Dependency Graph
+
+```
+gap-matrix.md (file on disk)
+  └── parseGapMatrix() [new function in gate-gen.ts]
+       └── GapMatrixRow interface [new type in gate-gen.ts]
+            └── generateVitestGates() [new function in gate-gen.ts]
+                 └── tasks-generate.ts (calls generateVitestGates before LLM dispatch)
+```
+
+### Test Strategy (TR-001, TR-002, TR-010, TR-011)
+- `gate-gen.test.ts`: Test `generateVitestGates()` with mock gap matrix files — vitest gates generated for ✅ rows, structural rows skipped, AUTHORED gates preserved
+- `tasks-generate.test.ts`: Test gap matrix consumption — deterministic gates generated when matrix exists, LLM fallback when matrix absent, `--no-llm` flag generates vitest gates but skips LLM
+
+### Done When
+- `pnpm vitest run src/utils/gate-gen.test.ts --reporter=verbose` exits 0
+- `pnpm vitest run src/commands/tasks-generate.test.ts --reporter=verbose` exits 0
 - `pnpm build` exits 0
+- `pnpm lint` exits 0
+- `grep -q "generateVitestGates" src/utils/gate-gen.ts` exits 0
+- `grep -q "gap-matrix\|gapMatrix" src/commands/tasks-generate.ts` exits 0
 
 ---
 
-### Phase 2: Retroactive Audit & Gap Analysis (001, 002)
+## Phase 4: Verification + Dogfood (Audit)
 
-Read every FR-### from 001-cli-core/spec.md and 002-build-server/spec.md, check the corresponding test file coverage, and produce a gap-analysis.md for each. This phase is **document-only** — no source code changes.
+**Status**: Not Started
 
-> This phase can run in parallel with Phase 1. No dependency on Phase 1 code completing.
+### Files
 
-**Files (2):**
-- `specs/001-cli-core/gap-analysis.md` (NEW: Classify each FR-### as ✅ tested | ⚠️ weak | ❌ untested. For every ❌ or ⚠️, describe exactly what assertion is missing and what test file should contain it.)
-- `specs/002-build-server/gap-analysis.md` (NEW: Same classification. Focus on: server lifecycle start/stop, health endpoint, dispatch queue, Docker sandbox, git manager.)
+| Target | Action |
+|--------|--------|
+| `specs/000-tdd-infrastructure/gap-matrix.md` | Create: produce gap matrix for 000 itself |
+| `specs/000-tdd-infrastructure/checklists/requirements.md` | Update: verify all FRs covered |
 
-**Requirements Addressed**: FR-005, FR-006, US-005, US-006
+### Requirements Addressed
+- FR-010: Gap matrix produced for this feature (dogfooding)
+- FR-011: Gap matrix auditable — every FR-### has ≥1 row
+- SC-002: Full test suite green
+- SC-007: Biome clean
+- SC-009: Gap matrix exists for 000
 
-**Dependencies**: None (parallel with Phase 1)
+### Dependencies
+- Phase 3 (implementation must be complete before dogfooding)
 
-**Contract Mapping**:
-- None (document only)
+### Test Strategy
+- Full test suite: `pnpm test` exits 0
+- Full build: `pnpm build` exits 0
+- Lint: `pnpm lint` exits 0
+- Gate runner: `bash specs/000-tdd-infrastructure/gates/run-all-gates.sh` exits 0
 
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/workspace.md | Documentation standards |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-003 | Doc | `specs/001-cli-core/gap-analysis.md` | Content grep proves classification complete |
-
-#### Done When
-- `grep -cE "✅|⚠️|❌" specs/001-cli-core/gap-analysis.md | xargs test 0 -lt` exits 0
-- `grep -cE "✅|⚠️|❌" specs/002-build-server/gap-analysis.md | xargs test 0 -lt` exits 0
-
----
-
-### Phase 3: 003-slack Remediation & Red-First Authoring
-
-Fix the remaining 20 failing tests across 003-slack test files (ship.test.ts and server.test.ts fixed in Phase 1). Author `contracts/notify.md`. Replace T007's bare `test -f` gate with a `pnpm vitest run` invocation.
-
-**Root cause of failures (confirmed)**:
-- `notify.test.ts`: `process.exit(1)` on `fs.unlinkSync` (pid file missing in test env); `masterOnly` renamed to `opsOnly`; timeout on server start
-- `slack-channel.test.ts`, `dispatch.test.ts`: mock assertion mismatches
-- `setup-slack.test.ts`: log message assertion mismatches, timeout in missing-tokens path
-- `slack-messages.test.ts`, `slack-presence.test.ts`: interface/mock mismatches from ship run using renamed fields
-
-**Files (8+):**
-- `src/server/routes/notify.test.ts` (MODIFY: Fix pid file teardown — guard with `fs.existsSync` before `unlinkSync`. Fix `masterOnly` → `opsOnly`. Use Fastify `inject()`, never real HTTP. Set explicit timeout.)
-- `src/server/slack-channel.test.ts` (MODIFY: Fix mock assertion mismatches.)
-- `src/server/dispatch.test.ts` (MODIFY: Fix mock assertion mismatches.)
-- `src/server/setup-slack.test.ts` (MODIFY: Fix log message expectations; fix timeout in missing-tokens test via `vi.useFakeTimers()` or stub the slow path.)
-- `src/server/slack-messages.test.ts` (MODIFY: Realign with renamed fields — `opsOnly` not `masterOnly`.)
-- `src/server/slack-presence.test.ts` (MODIFY: Fix mock mismatches.)
-- `specs/003-slack/contracts/notify.md` (NEW: Full contract for `POST /api/notify` — `NotifyPayload` interface, success/error response shapes, side-effects, edge cases.)
-- `specs/003-slack/gates/T007-gate.sh` (MODIFY: Replace `test -f src/server/routes/notify.ts` with `pnpm vitest run src/server/routes/notify.test.ts --reporter=verbose`. Mark `# AUTHORED`.)
-
-**Requirements Addressed**: FR-003, FR-004, FR-007, US-003, US-004, US-007
-
-**Dependencies**: Phase 1 (gate-gen changes; `# AUTHORED` preservation must work before T007 gate is re-authored)
-
-**Contract Mapping**:
-- `specs/003-slack/contracts/notify.md` → `POST /api/notify` → `src/server/routes/notify.ts`
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/coding-style.md | Fastify `inject()` for API tests, `vi.mock` for Slack SDK |
-| compile-gate | Always |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-007 | Integration | `src/server/routes/notify.test.ts` | All payload types route correctly; `{ok: true}` on success |
-| TR-008 | Integration | `src/server/slack-actions.test.ts` | Slack actions, `opsOnly` routing |
-| TR-009 | E2E | `specs/003-slack/gates/run-all-gates.sh` | All 003-slack gates pass |
-
-#### Done When
-- `pnpm vitest run src/server/ 2>&1 | grep -q " 0 failed"` exits 0
-- `cat specs/003-slack/gates/T007-gate.sh | grep -q "pnpm vitest run"` exits 0
-- `pnpm vitest run 2>&1 | tail -3 | grep -q " 0 failed"` exits 0 (full suite green)
-
----
-
-### Phase 4: Feature-Level RED Test Generation
-
-Wire `gwrk define tests` into the CLI to run feature-globally by default, driven by rigorous analysis and reasoning to validate planned tasks against the spec/plan. Modify `gwrk define tasks` to support optional phase targeting.
-
-**Files (4):**
-- `.agents/workflows/define-tests.md` (MODIFY: Change prompt to map to all phases of a feature, using analysis/reasoning to guide the generation to strictly tie off against tasks in the plan/spec)
-- `src/commands/tests-generate.ts` (NEW: `gwrk define tests <feature> [options]` command that receives an optional `--phase <N>` flag, defaulting to all phases)
-- `src/commands/tasks-generate.ts` (MODIFY: Add `--phase <N>` option to filter task/gate generation to a specific phase, defaulting to all phases)
-- `src/commands/define.ts` (MODIFY: Register `tests` subcommand explicitly)
-
-**Requirements Addressed**: FR-002, FR-003, US-002, US-003
-
-**Dependencies**: Phase 1
-
-**Contract Mapping**:
-- None
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/coding-style.md | Commander.js strict routing |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| N/A | Verification | CLI integration | `gwrk define tests --help` must resolve correctly without throwing |
-
-#### Done When
-- `node dist/cli.js define tests --help` exits 0
-
----
-
-## Type Dependency Graph
-
-| Shared Type | Defined In | Consumed By |
-|---|---|---|
-| `TaskState` / `Task` / `Phase` | `src/utils/state.ts` | `gate-gen.ts`, `tasks-generate.ts`, `test.ts` |
-| `NotifyPayload` | `specs/003-slack/contracts/notify.md` → `src/server/types.ts` | `src/server/routes/notify.ts`, `src/server/slack-messages.ts` |
-
----
-
-## Deferred Items
-
-- **FR-002 LLM gate authoring**: Implemented (ADR-005). `gwrk define tasks` now calls `generateGateBrief()` to produce a structured brief, then `dispatchAgent()` with the `author-gates` workflow to author gates. Contracts are required. `GATE_STUB` is abolished.
-
-> [!IMPORTANT]
-> There is no fallback. If contracts are missing, `gwrk define tasks` exits 1 with corrective guidance. If the LLM cannot gate a task, the gate explains why and exits 1. The `--no-llm` flag explicitly skips gate authoring.
+### Done When
+- `pnpm test 2>&1 | tail -1 | grep -q "0 failed"` exits 0
+- `pnpm build` exits 0
+- `pnpm lint` exits 0
+- `test -f specs/000-tdd-infrastructure/gap-matrix.md` exits 0
+- `grep -c "FR-" specs/000-tdd-infrastructure/gap-matrix.md` returns `>= 12`
 
 ---
 
 ## Coverage Matrix
 
-| Spec Item | Phase | Status |
-|---|---|---|
-| US-001 | 1 | Planned |
-| US-002 | 1 | Planned |
-| US-003 | 3 | Planned |
-| US-004 | 3 | Planned |
-| US-005 | 2 | Planned |
-| US-006 | 2 | Planned |
-| US-007 | 3 | Planned |
-| US-008 | 1 | Planned |
-| US-009 | 1 | Planned |
-| FR-001 | 1 | Planned |
-| FR-002 | 1 | Implemented (ADR-005) |
-| FR-003 | 3 | Planned |
-| FR-004 | 3 | Planned |
-| FR-005 | 2 | Planned |
-| FR-006 | 2 | Planned |
-| FR-007 | 3 | Planned |
-| FR-008 | 1 | Planned |
-| FR-009 | 1 | Planned |
-| TR-001 | 1 | Planned |
-| TR-002 | 1 | Planned |
-| TR-003 | 2 | Planned |
-| TR-004 | 1 | Planned |
-| TR-005 | 1 | Planned |
-| TR-006 | 1 | Planned |
-| TR-007 | 3 | Planned |
-| TR-008 | 3 | Planned |
-| TR-009 | 3 | Planned |
-| TR-010 | 1 | Planned |
-| SC-001 | 1 | Planned |
-| SC-002 | 3 | Planned |
-| SC-003 | 2 | Planned |
-| SC-004 | 1 | Planned |
-| SC-005 | 3 | Planned |
-| SC-006 | 1 | Planned |
-| SC-007 | 1 | Planned |
-| SC-008 | 3 | Planned |
-| VR-001 | 3 | Planned |
-| VR-002 | 1 | Planned |
-| VR-003 | 1 | Planned |
-| VR-004 | 1 | Planned |
-| VR-005 | 1 | Planned |
+| FR | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
+|----|---------|---------|---------|---------|
+| FR-001 | | ✅ spec | | |
+| FR-002 | ✅ contracts | ✅ spec | ✅ impl | |
+| FR-003 | | ✅ spec + workflows | | |
+| FR-004 | | ✅ spec | | |
+| FR-005 | | ✅ spec | | ⬜ audit |
+| FR-006 | | ✅ spec | | ⬜ audit |
+| FR-007 | | ✅ spec | | |
+| FR-008 | | ✅ spec | | |
+| FR-009 | | ✅ spec | | |
+| FR-010 | ✅ contracts | ✅ spec + workflows | | ✅ dogfood |
+| FR-011 | ✅ contracts | ✅ spec | | ✅ dogfood |
+| FR-012 | ✅ contracts | ✅ spec | ✅ impl | ✅ verify |

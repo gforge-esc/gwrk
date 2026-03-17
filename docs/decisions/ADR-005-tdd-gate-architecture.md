@@ -193,3 +193,76 @@ gwrk ship <feature> [phase]       → work-until-done.sh              → implem
 **Key rationale**: The Hard Gate Architecture (ADR-001) only works if gates test behavior, not file existence. Heuristic generation can identify WHAT needs gating but cannot reason about HOW to test behavior — that requires reading contracts, source code, and specs simultaneously. The `dispatchAgent()` infrastructure is proven. The GateBrief interface is structured for plugin extensibility (F014). The cost is one LLM call per `define tasks` invocation, which is acceptable given that `define spec` and `define plan` already make LLM calls.
 
 **Reversibility**: Moderate. Reverting means restoring `generateGates()` and accepting heuristic gates. The brief generation code would remain useful. Cost: ~4 hours.
+
+---
+
+## 8. Amendment: Deterministic Vitest Gates (2026-03-16)
+
+> **Status:** Decided · **Date:** 2026-03-16
+> **Amends:** §2.3 (LLM Authors Gates), §2.4 (GATE_STUB Is Abolished)
+> **Author:** David Gonzalez
+
+### 8.1 Context
+
+§2.3 established LLM-authored gates as the primary gate strategy. In practice, the LLM gate authoring path produces two categories of gates:
+
+1. **Structural gates** (`grep -q`, `test -f`, `bash -n`) — verify strings exist in files but not that code works
+2. **Behavioral gates** (`pnpm vitest run`) — invoke actual tests that verify behavior
+
+The TDD mandate (000-tdd-infrastructure FR-003) requires RED tests authored before implementation. Once tests exist, a gate's job is trivially: run the test. The LLM is reasoning about HOW to write bash assertions when the answer is already in the test file.
+
+### 8.2 Decision: The Triad Model
+
+Three layers, each with a distinct job:
+
+**Gap Matrix** (`gap-matrix.md`) — structured coverage audit produced by `define tests`. Maps every acceptance criterion (FR/US/TR/SC) to a test type (unit/functional/e2e), the test file, and existence status. This is the macro audit — human-readable, PE-reviewable, and machine-parseable.
+
+**Test Inventory** (`.test.ts` files) — RED tests produced by `define tests`. Each test file contains `describe` blocks labeled by FR-### and `it` blocks mapping to acceptance scenarios. This is the micro enforcement.
+
+**Gates** (deterministic vitest invocations) — produced by `define tasks`. For every task backed by a test file in the gap matrix, the gate is: `pnpm vitest run <file> --grep "<FR-###>"`. No LLM reasoning needed. Gates are parameterized test runners, not assertion scripts.
+
+### 8.3 Gate Generation Strategy
+
+| Task has... | Gate strategy | Generator |
+|---|---|---|
+| Test file in gap matrix | Deterministic: `pnpm vitest run <file> --grep "<AC>"` | `generateVitestGates()` in `gate-gen.ts` |
+| No test file, has contracts | LLM-authored via `dispatchAgent()` (§2.3 fallback) | `author-gates` workflow |
+| No test file, no contracts | Honest failure: `echo "FAIL: cannot gate" && exit 1` | `generateVitestGates()` skip |
+
+The deterministic path is tried first. The LLM path is fallback. `# AUTHORED` preservation (§2.6) survives — PE or LLM-authored gates are never overwritten.
+
+### 8.4 Pipeline Reorder
+
+The recommended definition sequence becomes:
+
+```
+define spec    → spec.md                    (what we promise)
+define plan    → plan.md + contracts/       (how we structure + API shapes)
+define tests   → gap-matrix.md + *.test.ts  (coverage audit + RED tests)
+define tasks   → tasks.json + gates/        (task decomposition + vitest gates)
+```
+
+`define tests` now runs before `define tasks`. The gap matrix feeds task decomposition and enables deterministic gate generation. The code doesn't enforce ordering (both commands are independent), but this is the intended workflow.
+
+### 8.5 What This Changes
+
+| Before (§2.3) | After (§8) |
+|---|---|
+| All gates LLM-authored | Tests-backed gates deterministic; LLM fallback for rest |
+| `GateBrief` is the only gate input | Gap matrix is primary input; `GateBrief` is fallback context |
+| Gap analysis in `/plan-to-tasks` | Gap matrix in `/define-tests` |
+| Gates are bash assertion scripts | Gates are parameterized vitest invocations |
+| Gate authoring = LLM call per `define tasks` | Gate authoring = deterministic for covered tasks, LLM for edge cases |
+
+### 8.6 What Survives
+
+- §2.1: Contracts are required (unchanged)
+- §2.2: The Gate Brief → `GateBrief` interface (preserved as LLM fallback context)
+- §2.4: GATE_STUB is abolished (unchanged)
+- §2.5: Gates satisfy `GateCheckResult` (unchanged)
+- §2.6: `# AUTHORED` preservation (unchanged)
+- §3: Pipeline structure (updated sequence in §8.4)
+
+### 8.7 Reversibility
+
+Low cost. Reverting means removing `generateVitestGates()` and routing all gate generation through the LLM path. The gap matrix artifact would survive as documentation. Cost: ~2 hours.

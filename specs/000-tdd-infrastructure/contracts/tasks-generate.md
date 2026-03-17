@@ -12,16 +12,20 @@ gwrk define tasks <feature> [--force] [--reconcile] [--no-llm]
 
 ## Behavior
 
-### Gate Authoring Flow (default)
+### Gate Authoring Flow (default — ADR-005 §8)
 
 ```
 1. Parse plan.md → phases + tasks
 2. Write tasks.json (deterministic, TypeScript)
 3. Contracts guard → exit 1 if contracts/ missing
-4. generateGateBrief() → /tmp/gwrk-gate-brief-<ts>.json
-5. dispatchAgent() → author-gates workflow → gates/*.sh
+4. Gap matrix check → read gap-matrix.md if exists
+5a. generateVitestGates() → vitest gates for test-backed tasks (deterministic)
+5b. generateGateBrief() → /tmp/gwrk-gate-brief-<ts>.json (for uncovered tasks)
+5c. dispatchAgent() → author-gates workflow → gates/*.sh (LLM fallback)
 6. generateRunner() → gates/run-all-gates.sh
 ```
+
+If `gap-matrix.md` exists and all tasks are covered, step 5b/5c are skipped entirely.
 
 ### Contracts Guard (ADR-005 §2.1)
 
@@ -33,14 +37,15 @@ gwrk define tasks <feature> [--force] [--reconcile] [--no-llm]
 
 ### `--no-llm` Flag
 
-Skips steps 3–6. Writes `tasks.json` only. No gates generated. Explicit absence.
+Skips steps 5b–5c (LLM dispatch). Still runs step 5a (deterministic vitest gates from gap matrix). If no gap matrix exists, writes `tasks.json` only — no gates.
 
-| Flag | tasks.json | gates/ | Agent dispatch |
-|---|---|---|---|
-| (default) | ✅ Written | ✅ Authored by LLM | ✅ Yes |
-| `--no-llm` | ✅ Written | ❌ Skipped | ❌ No |
-| `--force` | ✅ Overwritten | ✅ Re-authored (preserves `# AUTHORED`) | ✅ Yes |
-| `--reconcile` | ✅ Merged | ✅ Authored + audited against reality | ✅ Yes |
+| Flag | tasks.json | Vitest gates (from matrix) | LLM gates | Agent dispatch |
+|---|---|---|---|---|
+| (default) | ✅ Written | ✅ If matrix exists | ✅ For uncovered tasks | ✅ Yes |
+| `--no-llm` | ✅ Written | ✅ If matrix exists | ❌ Skipped | ❌ No |
+| `--force` | ✅ Overwritten | ✅ Re-generated | ✅ Re-authored (preserves `# AUTHORED`) | ✅ Yes |
+| `--reconcile` | ✅ Merged | ✅ Audited | ✅ Authored + audited | ✅ Yes |
+
 
 ### Agent Dispatch (ADR-004 pattern from `plan.ts`)
 

@@ -25,3 +25,32 @@ export interface TaskBrief {
  */
 export declare function generateGateBrief(featureDir: string, phases: Phase[], feature: string): string;
 export declare function generateRunner(gatesDir: string): void;
+export interface GapMatrixRow {
+    ac: string;
+    criterion: string;
+    testType: "unit" | "functional" | "e2e" | "structural";
+    testFile: string | null;
+    testExists: boolean;
+    gate: string | null;
+}
+/**
+ * parseGapMatrix — read and parse a gap-matrix.md file.
+ *
+ * Parses the markdown table format defined in contracts/gap-matrix.md.
+ * Returns an array of GapMatrixRow objects.
+ */
+export declare function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[];
+/**
+ * generateVitestGates — produce deterministic gate scripts from a gap matrix.
+ *
+ * For each gap matrix row where testExists is true and testType is
+ * unit/functional/e2e, generates a gate script that invokes
+ * `pnpm vitest run <file> --grep "<AC>"`.
+ *
+ * Respects # AUTHORED preservation — existing gates are never overwritten.
+ * Returns counts of generated and skipped gates.
+ */
+export declare function generateVitestGates(featureDir: string, gapMatrixPath: string, _phases: Phase[]): {
+    generated: number;
+    skipped: number;
+};

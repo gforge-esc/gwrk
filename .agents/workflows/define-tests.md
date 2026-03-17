@@ -60,6 +60,32 @@ Read and understand the feature and phase deeply:
 | TR-003: E2E (UI flows) | Playwright | `e2e/*.spec.ts` |
 | TR-004: Docker verification | Shell | Covered by gates — skip here |
 | TR-005: Golden-hash fixtures | Vitest or cargo test | Co-located with unit tests |
+
+### 2b. Generate Gap Matrix (ADR-005 §8.2)
+
+Before writing any tests, produce `{feature_dir}/gap-matrix.md` — the structured coverage audit.
+
+For every `FR-###`, `US-###`, `TR-###`, and `SC-###` in the spec:
+
+1. Classify what test type validates it: `unit`, `functional`, `e2e`, or `structural`
+2. Identify which test file should contain the test (from plan.md file structure)
+3. Check if the test file exists on disk AND contains a matching `describe`/`it` block
+4. Record in the gap matrix table:
+
+```markdown
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | <description from spec> | unit | <test file path> | ✅ | T001 |
+| FR-002 | <description from spec> | functional | <test file path> | ❌ | T002 |
+```
+
+**Rules:**
+- Every `FR-###` from spec §4 MUST appear as at least one row
+- `Test Type` drives gate strategy per `contracts/gap-matrix.md`
+- `Test Exists: ❌` rows become the test writing plan for Steps 3-6
+- Write the gap matrix to `{feature_dir}/gap-matrix.md`
+- Schema details: `{feature_dir}/contracts/gap-matrix.md` (if exists)
+
 ### 3. Analysis & Reasoning
 
 Before writing any code, output an `<analysis>` block to trace the planned tasks back to the specification.

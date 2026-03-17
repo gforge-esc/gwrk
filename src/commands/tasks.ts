@@ -69,6 +69,33 @@ tasksCommand
       }
 
       const gateScript = path.join(featureDir, task.gateScript);
+
+      // FR-001: Reject gates that contain only `test -f` assertions
+      if (fs.existsSync(gateScript)) {
+        const gateContent = fs.readFileSync(gateScript, "utf-8");
+        const lines = gateContent
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(
+            (l) =>
+              l.length > 0 &&
+              !l.startsWith("#") &&
+              !l.startsWith("set ") &&
+              !l.startsWith("echo "),
+          );
+
+        const hasOnlyTestF =
+          lines.length > 0 &&
+          lines.every((l) => l.startsWith("test -f") || l.startsWith("[ -f"));
+
+        if (hasOnlyTestF) {
+          throw new CommandError(
+            `FAIL: ${taskId} — gate contains only test -f, not a functional assertion`,
+            1,
+          );
+        }
+      }
+
       const result = runGate(gateScript);
 
       if (result.exitCode !== 0) {
