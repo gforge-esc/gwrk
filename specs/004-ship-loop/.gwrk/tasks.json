@@ -268,33 +268,37 @@
           "id": "T025",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY: replace direct `agent-run.sh` invocation with `dispatchToAgent(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-18T14:44:00.000Z"
         },
         {
           "id": "T026",
           "title": "Implement specs/004-ship-loop/contracts/dispatch.md",
           "description": "NEW: `TaskDispatch → TaskResult` interface contract. Documents the dispatch facade signature, error types, and exit code mapping.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-18T14:44:00.000Z"
         },
         {
           "id": "T027",
           "title": "Implement scripts/dev/work-until-done.sh",
           "description": "MODIFY: replace direct CLI invocation with `gwrk dispatch` call where feasible. Existing `agent-run.sh` call site is the primary target.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T027-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-18T14:44:00.000Z"
         },
         {
           "id": "T028",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T028-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-03-18T14:44:00.000Z"
         }
       ],
       "doneWhen": [

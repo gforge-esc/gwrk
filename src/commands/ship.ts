@@ -7,6 +7,7 @@ import { notifySlack } from "../server/slack-notify.js";
 import type { SlackEvent } from "../server/slack-presence.js";
 import type { DispatchRecord } from "../server/types.js";
 import { type AgentBackend, loadConfig } from "../utils/config.js";
+import { dispatchToAgent, type TaskResult } from "../utils/agent.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -286,6 +287,24 @@ function isPhaseComplete(
   return phaseData.tasks.every(
     (t) => t.status === "completed" || t.status === "cancelled",
   );
+}
+
+/**
+ * FR-019: Direct agent dispatch via plugin facade (ADR-006).
+ * Used when WUD orchestrator is not needed (e.g., single-task dispatch, testing).
+ */
+export async function dispatchPhaseWork(
+  feature: string,
+  phase: string,
+  backend: AgentBackend,
+  workflow: string,
+): Promise<TaskResult> {
+  return dispatchToAgent({
+    agent: backend,
+    workflow,
+    featureDir: `specs/${feature}`,
+    prompt: `Phase ${phase}`,
+  });
 }
 
 /**

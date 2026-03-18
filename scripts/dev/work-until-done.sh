@@ -27,6 +27,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 AGENT_RUNNER="${AGENT_RUNNER_BIN:-$SCRIPT_DIR/agent-run.sh}"
+# FR-019: gwrk dispatch facade (ADR-006). Falls back to agent-run.sh if gwrk not available.
+GWRK_DISPATCH="${GWRK_DISPATCH_BIN:-gwrk dispatch}"
 WUD_VERDICT="${WUD_VERDICT_BIN:-$SCRIPT_DIR/wud-verdict.sh}"
 WUD_BRANCH="${WUD_BRANCH_BIN:-$SCRIPT_DIR/wud-branch.sh}"
 WUD_CI_WAIT="${WUD_CI_WAIT_BIN:-$SCRIPT_DIR/wud-ci-wait.sh}"
@@ -217,7 +219,7 @@ record_run() {
 run_implement() {
   local start_time=$(date +%s)
   banner "IMPLEMENT — Iteration ${ITERATION}/${MAX_ITERATIONS}"
-  log STAGE "Running agent-run.sh implement ${FEATURE} ${PHASE}"
+  log STAGE "Dispatching implement via gwrk dispatch ${FEATURE} ${PHASE}"
   save_state "IMPLEMENTING" "$ITERATION"
 
   set +e
@@ -260,7 +262,7 @@ run_implement() {
 run_code_review() {
   local start_time=$(date +%s)
   banner "CODE REVIEW — Iteration ${ITERATION}/${MAX_ITERATIONS}"
-  log STAGE "Running agent-run.sh review-code ${FEATURE} ${PHASE}"
+  log STAGE "Dispatching review-code via gwrk dispatch ${FEATURE} ${PHASE}"
   save_state "CODE_REVIEW" "$ITERATION"
 
   set +e
@@ -296,7 +298,7 @@ run_code_review() {
 run_uat_review() {
   local start_time=$(date +%s)
   banner "UAT REVIEW — Iteration ${ITERATION}/${MAX_ITERATIONS}"
-  log STAGE "Running agent-run.sh review-uat ${FEATURE} ${PHASE}"
+  log STAGE "Dispatching review-uat via gwrk dispatch ${FEATURE} ${PHASE}"
   save_state "UAT_REVIEW" "$ITERATION"
 
   set +e
