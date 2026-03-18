@@ -3,7 +3,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { Command } from "commander";
 import { runGate } from "../utils/exec.js";
-import { createOutput } from "../utils/output.js";
+import { resolveFormat } from "../utils/output.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { loadTaskState } from "../utils/state.js";
 import { banner, color, success, fail } from "../utils/format.js";
@@ -118,7 +118,7 @@ export const gateCommand = new Command("gate")
     "after",
     `
 Type: verifier (read-only)
-Formats: human, json
+Format: use gwrk --format json for structured output
 Exit codes:
   0: PASS (All checked gates passed)
   1: FAIL (One or more gates failed, or script not found)
@@ -134,11 +134,7 @@ Exit codes:
       await withSignal("gate", async () => {
         const startTime = Date.now();
         // Traverse up to find root program options
-        let root = command;
-        while (root.parent) root = root.parent;
-        const globalOpts = root.opts();
-        const format = globalOpts.format || "human";
-        const out = createOutput(format);
+        const out = resolveFormat(command);
 
         let targetFeature = feature;
 
@@ -162,7 +158,7 @@ Exit codes:
         if (options.task) {
           const result = await runGateCheck(options.task, normalizedFeature);
           
-          if (format === "json") {
+          if (out.isJson) {
             out.write(result);
           } else {
             if (result.result === "PASS") {
@@ -176,9 +172,9 @@ Exit codes:
 
           if (result.result === "FAIL") {
             process.exitCode = 1;
-            if (format === "human") fail("gate", 1, Math.round((Date.now() - startTime) / 1000));
+            if (!out.isJson) fail("gate", 1, Math.round((Date.now() - startTime) / 1000));
           } else {
-            if (format === "human") success("gate", Math.round((Date.now() - startTime) / 1000));
+            if (!out.isJson) success("gate", Math.round((Date.now() - startTime) / 1000));
           }
           return;
         }
@@ -191,7 +187,7 @@ Exit codes:
           throw new CommandError(`Feature directory not found: ${featureDir}`, 1);
         }
 
-        if (format === "human") {
+        if (!out.isJson) {
           banner("gate", { Feature: normalizedFeature, Phase: options.phase ?? "all" });
         }
 
@@ -212,16 +208,16 @@ Exit codes:
         }
 
         if (tasksToRun.length === 0) {
-          if (format === "json") {
+          if (out.isJson) {
             out.write([]);
           } else {
             console.log("  No tasks found for this feature/phase.");
-            success("gate", Math.round((Date.now() - startTime) / 1000));
+            if (!out.isJson) success("gate", Math.round((Date.now() - startTime) / 1000));
           }
           return;
         }
 
-        if (format === "human") {
+        if (!out.isJson) {
           console.log(`  Found ${tasksToRun.length} gates to check\n`);
         }
 
@@ -231,7 +227,7 @@ Exit codes:
         let failedCount = 0;
 
         for (const taskId of tasksToRun) {
-          if (format === "human") {
+          if (!out.isJson) {
             process.stdout.write(`  ▸ ${taskId}... `);
           }
           const result = await runGateCheck(taskId, normalizedFeature);
@@ -239,19 +235,19 @@ Exit codes:
 
           if (result.result === "PASS") {
             passedCount++;
-            if (format === "human") {
+            if (!out.isJson) {
               console.log("✅ PASS");
             }
           } else {
             failedCount++;
             anyFailed = true;
-            if (format === "human") {
+            if (!out.isJson) {
               console.log(`❌ FAIL (exit: ${result.exitCode})`);
             }
           }
         }
 
-        if (format === "json") {
+        if (out.isJson) {
           out.write(results);
         } else {
           console.log(`\n  ${passedCount} passed, ${failedCount} failed / ${results.length} total\n`);
@@ -260,7 +256,7 @@ Exit codes:
         const durationS = Math.round((Date.now() - startTime) / 1000);
         if (anyFailed) {
           process.exitCode = 1;
-          if (format === "human") {
+          if (!out.isJson) {
             fail("gate", 1, durationS);
             
             // Output details of failed gates at the end
@@ -272,7 +268,7 @@ Exit codes:
             }
           }
         } else {
-          if (format === "human") {
+          if (!out.isJson) {
             success("gate", durationS);
           }
         }

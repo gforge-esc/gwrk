@@ -320,7 +320,7 @@ export const shipCommand = new Command("ship")
     `
 Type: mutator
 Mutates: git branches, task state, execution manifests
-Formats: human
+Format: use gwrk --format json for structured output
 Exit codes:
   0: All phases shipped successfully
   1: Phase failed or feature not found
@@ -338,8 +338,7 @@ Exit codes:
   )
   .option(
     "--format <format>",
-    "Output format: human (default) or json",
-    "human",
+    "Output format (json)",
   )
   .action(
     async (

@@ -3,12 +3,11 @@
  * TR-002 | FR-002 | US-002
  * Contract: specs/013-agent-native-interface/contracts/output.md
  *
- * RED — output.ts does not exist yet.
- * The implementing agent's job is to make these green.
+ * Tests for CommandOutput — text (default) and JSON formats.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createOutput } from "./output.js"; // RED — module does not exist
-import type { CommandOutput } from "./output.js"; // RED — type does not exist
+import { createOutput } from "./output.js";
+import type { CommandOutput } from "./output.js";
 
 describe("FR-002: JSON Output (CommandOutput)", () => {
 	let stdoutSpy: ReturnType<typeof vi.spyOn>;
@@ -57,18 +56,17 @@ describe("FR-002: JSON Output (CommandOutput)", () => {
 			const stdout = stdoutSpy.mock.calls.map((c) => String(c[0])).join("");
 			expect(stdout).not.toContain("loading specs...");
 		});
+
+		it("json mode: isJson is true", () => {
+			const out = createOutput("json");
+			expect(out.isJson).toBe(true);
+		});
 	});
 
-	// --- US-002 Acceptance Scenario 2: --help mentions --format json ---
-	// (This is an E2E concern tested by gate T011, not unit testable here)
-
-	// --- US-002 Acceptance Scenario 3: --format json on non-queryable command ---
-	// (Handled at CLI level, not by CommandOutput — gate T004 tests this)
-
-	// --- Contract: human mode ---
-	describe("human mode", () => {
+	// --- Contract: text mode (default, no format flag) ---
+	describe("text mode (default)", () => {
 		it("write(string) emits text to stdout", () => {
-			const out = createOutput("human");
+			const out = createOutput();
 			out.write("Task T001: Create CLI");
 
 			const stdout = stdoutSpy.mock.calls.map((c) => String(c[0])).join("");
@@ -76,22 +74,32 @@ describe("FR-002: JSON Output (CommandOutput)", () => {
 		});
 
 		it("write(object) emits String(data) to stdout", () => {
-			const out = createOutput("human");
+			const out = createOutput();
 			const data = { name: "test" };
 			out.write(data);
 
 			const stdout = stdoutSpy.mock.calls.map((c) => String(c[0])).join("");
-			// In human mode, objects are stringified as text
+			// In text mode, objects are stringified as text
 			expect(stdout).toBeDefined();
 			expect(stdout.length).toBeGreaterThan(0);
 		});
 
-		it("info() goes to stderr in human mode", () => {
-			const out = createOutput("human");
+		it("info() goes to stderr in text mode", () => {
+			const out = createOutput();
 			out.info("debug info");
 
 			const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
 			expect(stderr).toContain("debug info");
+		});
+
+		it("text mode: isJson is false", () => {
+			const out = createOutput();
+			expect(out.isJson).toBe(false);
+		});
+
+		it("undefined format: isJson is false", () => {
+			const out = createOutput(undefined);
+			expect(out.isJson).toBe(false);
 		});
 	});
 
@@ -105,7 +113,7 @@ describe("FR-002: JSON Output (CommandOutput)", () => {
 	});
 
 	it("info() never writes to stdout", () => {
-		const out = createOutput("human");
+		const out = createOutput();
 		out.info("should be on stderr only");
 
 		const stdout = stdoutSpy.mock.calls.map((c) => String(c[0])).join("");
@@ -114,14 +122,15 @@ describe("FR-002: JSON Output (CommandOutput)", () => {
 
 	// --- Negative: invalid format ---
 	it("rejects invalid input: unknown format value", () => {
-		// FR-002 error state: invalid format should throw or be handled
-		expect(() => createOutput("xml" as "human" | "json")).toThrow();
+		// FR-002 error state: invalid format should throw
+		expect(() => createOutput("xml")).toThrow();
 	});
 
 	// --- Contract: CommandOutput interface shape ---
-	it("createOutput returns object with write and info methods", () => {
-		const out = createOutput("human");
+	it("createOutput returns object with write, info, and isJson", () => {
+		const out = createOutput();
 		expect(typeof out.write).toBe("function");
 		expect(typeof out.info).toBe("function");
+		expect(typeof out.isJson).toBe("boolean");
 	});
 });
