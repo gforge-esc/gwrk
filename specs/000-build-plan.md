@@ -291,9 +291,16 @@ gwrk ship <feature> <phase>        # Ship a single phase
 - Every Ship dispatch writes a `runs` record (backend, model, attempt, timestamps)
 - Gate results, review verdicts, retry reasons recorded
 
+#### Plugin Dispatch Boundary (FR-019–021, ADR-006):
+- **FR-019**: All dispatch through `dispatchToAgent(TaskDispatch): Promise<TaskResult>` — ship loop MUST NOT spawn CLI processes directly
+- **FR-020**: Exit code normalization — proprietary codes (e.g., Gemini `53`) mapped to gwrk standard (`0`/`1`/`2`/`127`) with `errorType` classification
+- **FR-021**: Context delivered via stdin pipe — inline `-p "<prompt>"` MUST NOT be used for context >4096 bytes
+- Contract: `specs/004-ship-loop/contracts/dispatch.md` (Phase 4)
+- See [architecture.md §6.1](file:///Users/gonzo/Code/gwrk/docs/architecture.md) (Dispatch Boundary)
+
 > **Scope (2026-03-14):** Ship Loop = steps 1-7 (DISPATCH → NOTIFY). Harvest (post-merge lifecycle) moved to F011. See architecture.md §6.2-6.3.
 
-**Status:** 🔴 Actively being TDD-hardened. Phase 4 (Plugin Dispatch Boundary) added: `dispatchToAgent()` facade with `TaskDispatch → TaskResult` contract (ADR-006). See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
+**Status:** 🔴 Actively being TDD-hardened. Phase 4 (Plugin Dispatch Boundary) added. See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
 
 ---
 
