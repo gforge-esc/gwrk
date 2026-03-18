@@ -222,6 +222,63 @@ describe("dispatchAgent — process execution and stream handling", () => {
     );
   });
 
+  // ─── Phase 4 RED tests ──────────────────────────────────────────
+
+  it("FR-019: should use dispatchToAgent signature with TaskDispatch and TaskResult", async () => {
+    // @ts-ignore: testing new signature (RED)
+    const { dispatchToAgent } = await import("./agent.js");
+    const task = {
+      prompt: "test",
+      agent: "gemini",
+      workDir: process.cwd(),
+      stdin: "mock stdin",
+      env: { TEST: "1" }
+    };
+    // If dispatchToAgent doesn't exist yet, this will fail
+    const promise = dispatchToAgent(task);
+    const result = await promise;
+    expect(result).toHaveProperty("exitCode");
+    expect(result).toHaveProperty("durationS");
+  });
+
+  it("FR-020: should normalize Gemini exit 53 to turn_limit", async () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    mockSpawn.mockReturnValue(child);
+
+    // @ts-ignore
+    const { dispatchToAgent } = await import("./agent.js");
+    const promise = dispatchToAgent({ agent: "gemini" });
+    child.emit("close", 53); // Gemini turn limit
+
+    const result = await promise;
+    expect(result.exitCode).toBe(1);
+    expect(result.errorType).toBe("turn_limit");
+  });
+
+  it("FR-021: should deliver context via stdin piping", async () => {
+    const stdinStream = new PassThrough();
+    const writeSpy = vi.spyOn(stdinStream, "write");
+    const child = new EventEmitter() as any;
+    child.stdin = stdinStream;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    mockSpawn.mockReturnValue(child);
+
+    // @ts-ignore
+    const { dispatchToAgent } = await import("./agent.js");
+    const promise = dispatchToAgent({ 
+      agent: "gemini", 
+      stdin: "LONG CONTEXT DATA" 
+    });
+    
+    child.emit("close", 0);
+    await promise;
+
+    expect(writeSpy).toHaveBeenCalledWith("LONG CONTEXT DATA");
+  });
+
   it("should squelch 429 error JSON block traces correctly", async () => {
     const stdoutStream = new PassThrough();
     const child = new EventEmitter() as any;

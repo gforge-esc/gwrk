@@ -3,8 +3,8 @@
   "createdAt": "2026-03-16T21:39:15.119Z",
   "generatedFrom": {
     "plan": {
-      "hash": "4f0ae9c687a4e8921c36fac802acd525917fc1dd0291243ee417d452a781c881",
-      "modifiedAt": "2026-03-15T18:20:53.810Z"
+      "hash": "d7f9c30022c566cba33880f7cea4e6d4019fdb9e5726da4378c4bb53724ed866",
+      "modifiedAt": "2026-03-18T01:57:41.836Z"
     }
   },
   "phases": [
@@ -52,16 +52,18 @@
           "id": "T005",
           "title": "Implement specs/004-ship-loop/.gwrk/runs/.gitkeep",
           "description": "NEW: ensure runs dir exists for log commits.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "classification": "greenfield"
+          "completedAt": "2026-03-18T02:51:02.205Z",
+          "classification": "change"
         },
         {
           "id": "T006",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
+          "completedAt": "2026-03-18T02:51:03.222Z",
           "classification": "noop"
         }
       ],
@@ -107,16 +109,18 @@
           "id": "T010",
           "title": "Implement src/scripts-e2e.test.ts",
           "description": "MODIFY: add test for circuit-break state file containing `failureContext`; add test for dirty-tree rejection.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
+          "completedAt": "2026-03-18T02:51:06.763Z",
           "classification": "greenfield"
         },
         {
           "id": "T011",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
+          "completedAt": "2026-03-18T02:51:10.621Z",
           "classification": "noop"
         }
       ],
@@ -144,8 +148,9 @@
           "id": "T013",
           "title": "Implement src/scripts-e2e.test.ts",
           "description": "MODIFY: add tests for FR-002 branch creation + dirty-tree rejection, FR-004 stage transitions, FR-006 PR + CI wait, FR-010 log file creation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh",
+          "completedAt": "2026-03-18T02:51:14.447Z",
           "classification": "greenfield"
         },
         {
@@ -161,16 +166,18 @@
           "id": "T015",
           "title": "Implement specs/004-ship-loop/contracts/implement.md",
           "description": "MODIFY: add `emit_event(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh",
+          "completedAt": "2026-03-18T02:51:14.463Z",
           "classification": "greenfield"
         },
         {
           "id": "T016",
           "title": "Implement specs/004-ship-loop/contracts/branch.md",
           "description": "MODIFY: add dirty-tree fail-fast contract",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh",
+          "completedAt": "2026-03-18T02:51:14.477Z",
           "classification": "greenfield"
         },
         {
@@ -222,8 +229,9 @@
           "id": "T022",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh",
+          "completedAt": "2026-03-18T02:51:19.359Z",
           "classification": "noop"
         }
       ],
@@ -232,6 +240,70 @@
         "`pnpm build` exits 0",
         "`bash specs/004-ship-loop/gates/run-all-gates.sh` exits 0 (12/12 pass)",
         "All contracts in `specs/004-ship-loop/contracts/` reference current implementation"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Plugin Dispatch Boundary",
+      "tasks": [
+        {
+          "id": "T023",
+          "title": "Implement src/utils/agent.ts",
+          "description": "MODIFY: extract `dispatchToAgent(",
+          "status": "completed",
+          "gateScript": "gates/T023-gate.sh",
+          "completedAt": "2026-03-18T02:51:19.372Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T024",
+          "title": "Implement src/utils/agent.test.ts",
+          "description": "NEW: unit tests for `dispatchToAgent(",
+          "status": "completed",
+          "gateScript": "gates/T024-gate.sh",
+          "completedAt": "2026-03-18T02:51:20.489Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T025",
+          "title": "Implement src/commands/ship.ts",
+          "description": "MODIFY: replace direct `agent-run.sh` invocation with `dispatchToAgent(",
+          "status": "open",
+          "gateScript": "gates/T025-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T026",
+          "title": "Implement specs/004-ship-loop/contracts/dispatch.md",
+          "description": "NEW: `TaskDispatch → TaskResult` interface contract. Documents the dispatch facade signature, error types, and exit code mapping.",
+          "status": "open",
+          "gateScript": "gates/T026-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T027",
+          "title": "Implement scripts/dev/work-until-done.sh",
+          "description": "MODIFY: replace direct CLI invocation with `gwrk dispatch` call where feasible. Existing `agent-run.sh` call site is the primary target.",
+          "status": "open",
+          "gateScript": "gates/T027-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T028",
+          "title": "Implement test strategy for Phase 4",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T028-gate.sh",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/utils/agent.test.ts` exits 0 with all TR-009 assertions",
+        "`grep -q 'dispatchToAgent' src/commands/ship.ts` exits 0",
+        "`grep -q 'TaskResult' src/utils/agent.ts` exits 0",
+        "`grep -q 'errorType' src/utils/agent.ts` exits 0",
+        "`test -f specs/004-ship-loop/contracts/dispatch.md` exits 0",
+        "`pnpm build` exits 0"
       ]
     }
   ]

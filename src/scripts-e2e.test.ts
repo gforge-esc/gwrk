@@ -247,6 +247,36 @@ describe("work-until-done.sh execution flow", () => {
     expect(result).toContain("Waiting for CI...");
     expect(result).toContain("DONE in");
   });
+
+  // ─── Crash Recovery RED test ──────────────────────────────────────
+
+  it("FR-008/US-005: should resume from last persisted stage in state file", () => {
+    const RUNS_DIR = path.join(ROOT, ".test-runs-e2e");
+    fs.mkdirSync(RUNS_DIR, { recursive: true });
+    const stateFile = path.join(RUNS_DIR, "999-ship-e2e_p1.state");
+
+    // Pre-seed state at CODE_REVIEW iteration 2
+    fs.writeFileSync(stateFile, JSON.stringify({
+      stage: "CODE_REVIEW",
+      iteration: 2,
+      feature: "999-ship-e2e",
+      phase: "1"
+    }));
+
+    // Mock WUD_VERDICT to pass immediately
+    const verdictMock = mockWrapper("ship-verdict.sh", "exit 0");
+
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env: { ...env, WUD_VERDICT_BIN: verdictMock },
+      encoding: "utf-8",
+    });
+
+    expect(result).toContain("Resuming from state: CODE_REVIEW, iteration 2");
+    // Should skip BRANCH_SETUP and IMPLEMENT
+    expect(result).not.toContain("1. Branch setup");
+    expect(result).not.toContain("IMPLEMENT — Iteration 1");
+  });
 });
 
 // ─── Phase 2 RED tests ────────────────────────────────────────────
