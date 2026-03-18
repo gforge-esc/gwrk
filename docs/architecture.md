@@ -265,16 +265,43 @@ gwrk/
 │       ├── history.ts             # History inserts via SQLite
 │       ├── parser.ts              # Markdown → structured data
 │       └── config.ts              # .gwrkrc.json loader (Zod, fail-fast)
-├── .gwrkrc.json                   # Per-project agent config
+├── .gwrkrc.json                   # Per-project agent config (Zod validated)
+├── .gwrk/                         # Local project state + plugin overrides
+│   ├── agent-context.md           # Single source of truth for agent governance (ADR-006 §2.2)
+│   ├── plugins.yaml               # Per-project plugin overrides (disable/override)
+│   ├── dispatches.jsonl            # Dispatch log (append-only, gitignored)
+│   └── tasks.json                 # (per-feature: specs/NNN/.gwrk/tasks.json)
 ├── package.json
 ├── tsconfig.json
 ├── biome.json
 └── Makefile                       # Universal orchestrator
 ```
 
-**Global state:**
-- `~/.gwrk/gwrk.db` — SQLite execution ledger (ADR-002)
-- `~/.gwrk/plugins/` — Installed plugins: skills, agents, domains (F014)
+**Global state (`~/.gwrk/`):**
+
+```
+~/.gwrk/
+├── gwrk.db                            # SQLite execution ledger (ADR-002)
+├── plugins/                           # Installed plugins (F014)
+│   ├── skills/                        # Global only — operator capabilities
+│   │   ├── narrative/                 # Atomic skill
+│   │   │   ├── manifest.yaml          # Contract: identity, interface, runtime
+│   │   │   └── SKILL.md               # Reasoning program: instructions, context
+│   │   ├── signal-cut/                # Compound skill (multi-pass)
+│   │   │   ├── manifest.yaml
+│   │   │   └── SKILL.md
+│   │   └── ...
+│   ├── agents/                        # AgentBackend adapters (F014 P3, ADR-006)
+│   │   ├── claude/manifest.yaml       # Claude Code adapter
+│   │   ├── codex/manifest.yaml        # Codex adapter (local + cloud)
+│   │   └── gemini/manifest.yaml       # Gemini CLI adapter
+│   └── domains/                       # Domain packs (F016 — future)
+│       ├── writing/manifest.yaml
+│       └── client-engagement/manifest.yaml
+└── config.yaml                        # Global plugin config (future)
+```
+
+**Resolution order:** Global `~/.gwrk/plugins/` → local `.gwrk/plugins.yaml` override → local disable. See §7.5.
 
 ---
 
