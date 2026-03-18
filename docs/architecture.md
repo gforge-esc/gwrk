@@ -1,10 +1,12 @@
 # gwrk: Architecture & Workflow Specification
 
-> **Status:** Authoritative · **Date:** 2026-03-17 (v4.0)
+> **Status:** Authoritative · **Date:** 2026-03-17 (v4.1)
 > **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md), [ADR-002-sqlite-execution-ledger.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003-state-contract.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md), [ADR-004-agent-native-output.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md), [ADR-005-tdd-gate-architecture.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006-plugin-agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md)
 
 ---
 
+> **Update 2026-03-17 (v4.1):** OpenClaw integration audit. Added §6.5 Event Bus & Scheduler (F015 — WebSocket hybrid architecture, Zod-typed event frames, cron scheduler), expanded §6.2 Ship Loop with active interrupt model (`dispatch:cancel`), added §7.6 Plugin Supply-Chain Guardrails, added dispatch idempotency guard to §11, updated §10 tech stack with `@fastify/websocket` and `@fastify/schedule`. Derived from [openclaw-deep-analysis.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md) and [openclaw-research-openai.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md).
+>
 > **Update 2026-03-17 (v4.0):** Aligned with all six ADRs and keystone features 000-TDD, 004 Ship Loop, 013 Agent-Native Interface, and 014 Plugin System. Key changes: added Agent-Native Output Protocol (§3), Plugin Architecture (§7), TDD Triad Model (§5.3–5.5), updated Project Structure (§4), Construction Pipeline (§5), Ship Loop dispatch boundary (§6.2), and Config Contract (§8). Previous v3.1 anchored only ADR-001, ADR-002, and ADR-006.
 
 ### Document Inventory
@@ -24,6 +26,8 @@
 | F014 Plugin System Spec | [specs/014-plugin-system/spec.md](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) | Three-layer plugin architecture, skills, manifests |
 | Plugin Strategy Audit | [docs/reference/plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md) | F008→F014 P4 absorption analysis |
 | Skills Architecture | [docs/reference/skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md) | Two-tier skill hierarchy |
+| OpenClaw Deep Analysis | [docs/reference/openclaw-deep-analysis.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md) | Plugin architecture, WebSocket hybrid, cron events, agent router, channel abstraction |
+| OpenClaw Research (OpenAI) | [docs/reference/openclaw-research-openai.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md) | Typed WS protocol, exec safety, supply-chain guardrails, adoption dynamics |
 
 ---
 
@@ -65,6 +69,13 @@
 │  │ Snapshot gen     │  │ /review-uat      │ │ Point & Total ratios │ │
 │  └──────────────────┘  └──────────────────┘ │ Leading indicators   │ │
 │                                              └──────────────────────┘ │
+│                                                                       │
+│  ┌── Event Bus (F015 — future) ────────────────────────────────────┐ │
+│  │ WebSocket /ws    │ Cron (@fastify/schedule)                     │ │
+│  │ dispatch:*       │ pulse (4h), compression (daily), heartbeat   │ │
+│  │ gate:*, agent:*  │ (5min), stale-dispatch (30min)               │ │
+│  │ dispatch:cancel  │ Event taxonomy: Zod-validated frames         │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
 │                                                                       │
 │  ┌──────────────────────────────────────────────────────────────────┐ │
 │  │ SQLite Execution Ledger (~/.gwrk/gwrk.db)                       │ │
@@ -435,7 +446,14 @@ The autonomous coding cycle. Ends when a PR is issued and Slack is notified.
 
 **Staging validation:** `validate-staging.sh` runs after agent completes, before push. Rejects out-of-scope files, orphan spec dirs, and build plan modifications.
 
-**Circuit breaker:** `MAX_ITERATIONS` env var (default 3). Exceeded → exit 1, `CIRCUIT_BREAK` state persisted with structured `failureContext` (open tasks, last verdict, iteration timeline, digest).
+**Interrupt model — two layers:**
+
+| Mechanism | Type | Granularity | Trigger |
+|---|---|---|---|
+| **Circuit breaker** (FR-007) | Passive | Per-phase | `MAX_ITERATIONS` exceeded (default 3). Exit 1. `CIRCUIT_BREAK` state persisted with structured `failureContext` (open tasks, last verdict, iteration timeline, digest). |
+| **`dispatch:cancel`** (F015 — future) | Active | Per-stage | Operator sends cancel via WebSocket (e.g., Slack "Cancel Ship" button → `/ws` → cancel flag). Orchestrator checks flag between stage transitions (same points where FR-008 persists state). Graceful stop at next stage boundary — no mid-agent-run interruption. |
+
+The passive circuit breaker exhausts all iterations before stopping (up to 3 × 30 min = 90 min). The active cancel enables operator-initiated abort at the next stage boundary (≤30 min). Both mechanisms complement each other: circuit breaker catches unattended runaway loops; active cancel lets the operator cut short runs they already know are failing. `dispatch:redirect` (backend swap mid-run) is deferred — requires F014 P4 routing intelligence.
 
 ### 6.3 Harvest (Feature 011)
 
@@ -450,6 +468,33 @@ Post-merge lifecycle. Triggered by GitHub webhook when PR is merged. Separate co
 ```
 
 Ship Loop (004) produces the PR and logs. Harvest (011) consumes them after merge.
+
+### 6.5 Event Bus & Scheduler (Feature 015 — Decided, Not Built)
+
+> **Source:** [openclaw-deep-analysis.md §2-3](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md), [openclaw-research-openai.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md). Registered in build plan v9 (2026-03-15), 8 SP, Wave 5.
+
+**Architecture decision: Hybrid HTTP + WebSocket.** HTTP for commands/queries (preserves `curl` CLI compatibility). WebSocket for events/streaming (real-time monitoring without polling). Primary rationale: for a single-user local service on macOS, WebSocket overhead is effectively zero — no load balancer, no proxy traversal, no TLS complexity (localhost), ~50KB memory for one persistent connection.
+
+**WebSocket endpoint:** `/ws` via `@fastify/websocket`.
+
+**Event taxonomy (Zod-validated frames):**
+
+| Event | Direction | Payload | Consumer |
+|---|---|---|---|
+| `dispatch:started` | server → client | featureId, phaseId, backend, timestamp | Slack, dashboard |
+| `dispatch:progress` | server → client | stage, iteration, summary | Slack App Home Tab |
+| `dispatch:cancel` | client → server | featureId, phaseId | Ship loop orchestrator |
+| `gate:result` | server → client | taskId, result (PASS/FAIL), durationMs | Slack, dashboard |
+| `review:verdict` | server → client | featureId, phaseId, verdict, reviewer | Slack |
+| `cron:pulse` | server → client | snapshotId, summary | Dashboard |
+| `heartbeat` | bidirectional | timestamp, uptimeS | Connection health |
+| `agent:status` | server → client | agentId, status (idle/running/error) | Dashboard |
+
+**Cron scheduler:** `@fastify/schedule` (toad-scheduler). Jobs: `pulse` (4h), `compression` (daily), `heartbeat` (5min), `stale-dispatch` check (30min).
+
+**Zod-typed event frames:** All events validated at emission and on receipt using Zod discriminated unions — consistent with gwrk's existing Zod-everywhere pattern. No cross-platform codegen (gwrk is TypeScript-only). If non-TS clients are needed later, `zod-to-json-schema` generates JSON Schema from Zod definitions.
+
+**Consumers:** Slack App Home Tab (internal WS subscriber), future web dashboard, agent heartbeats from Docker sandboxes, Ship Loop monitoring (replaces hundreds of polling connections with one persistent WS).
 
 ### 6.4 Agent Router (→ F014 Phase 4)
 
@@ -548,6 +593,21 @@ A single `.gwrk/agent-context.md` becomes the source of truth for durable govern
 
 Resolution order: Global → local override → local disable.
 
+### 7.6 Plugin Supply-Chain Guardrails
+
+> **Source:** [openclaw-research-openai.md §P1](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md), OpenClaw integration audit (2026-03-17).
+
+Layer 1 (AgentBackend) and future Layer 3 plugins include executable TypeScript. Supply-chain risks:
+
+| Guardrail | Mechanism | Scope |
+|---|---|---|
+| **`--ignore-scripts`** | Plugin install MUST use `npm install --ignore-scripts` (or pnpm equivalent) to prevent arbitrary code execution during install | All npm-based plugins |
+| **Path containment** | Plugin adapters MUST only read/write within their declared workspace (`projectRoot`). File operations outside the workspace are rejected. | Layer 1 AgentBackend |
+| **Manifest validation** | `manifest.yaml` MUST pass Zod schema validation before the plugin is loaded. Invalid manifest → plugin rejected with error-as-navigation. | All layers |
+| **Version pinning** | Installed plugins are pinned by version in `~/.gwrk/plugins/`. No floating versions, no auto-update. Operator explicitly runs `gwrk plugin update`. | All layers |
+
+Layer 2 (Skills) are lower risk — they're markdown + YAML that invoke agent CLIs in YOLO mode. The agent CLI's own safety interlocks provide the boundary. Skills never execute code directly.
+
 ---
 
 ## 8. Config Contract
@@ -621,6 +681,8 @@ develop
 |---|---|---|
 | **CLI framework** | Commander.js | Lightweight, zero-opinion, npm-standard |
 | **Build Server** | Fastify | Lightweight daemon, localhost:18790 |
+| **Event Bus** | `@fastify/websocket` | WebSocket `/ws` for event streaming (F015 — future). ~50KB, zero deps |
+| **Scheduler** | `@fastify/schedule` (toad-scheduler) | Cron: pulse 4h, compression daily, heartbeat 5min (F015 — future) |
 | **Comms** | `@slack/bolt` (Socket Mode) | Channel-per-project, threads, App Home Tab |
 | **Sandbox** | Docker | Per-feature-phase container isolation |
 | **Git Operations** | `gh` CLI + `git` | GitHub-native |
@@ -673,6 +735,7 @@ A separate Vite SPA served by the daemon was the original plan. Replaced by Slac
 | Conventional commits | CI check | `feat:`, `fix:`, `chore:` |
 | No magic values | Code review | All config from `.gwrkrc.json` or env |
 | Fail-fast | Architecture | Missing config → crash, never default |
+| Dispatch idempotency | `dispatch.ts` | `enqueue()` deduplicates by featureId+phaseId; returns existing record if queued/running |
 | `withSignal()` wrapping | ADR-004 | All command `.action()` callbacks |
 | Error-as-navigation | F013 | Every error includes `Run '<command>'` suggestion |
 
