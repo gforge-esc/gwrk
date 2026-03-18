@@ -1,6 +1,8 @@
 # gwrk Deep Analysis: Plugin Architecture, Events & Knowledge Work
 
-> **Builds on**: [OpenClaw Research Report](file:///Users/gonzo/.gemini/antigravity/brain/a5fa5ecd-e39b-44be-b0bf-1c91685b8ec0/openclaw_research_report.md)
+> ⚠️ **DEPRECATED (2026-03-18):** This document is source material only. The authoritative, reconciled OpenClaw reference is [openclaw-research-report.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md). All actionable items from this document have been dispositioned in that report's §7.
+>
+> **Builds on**: [OpenClaw Research Report](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md)
 > **Date**: 2026-03-14
 
 ---

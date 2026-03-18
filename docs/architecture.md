@@ -5,7 +5,7 @@
 
 ---
 
-> **Update 2026-03-17 (v4.1):** OpenClaw integration audit. Added §6.5 Event Bus & Scheduler (F015 — WebSocket hybrid architecture, Zod-typed event frames, cron scheduler), expanded §6.2 Ship Loop with active interrupt model (`dispatch:cancel`), added §7.6 Plugin Supply-Chain Guardrails, added dispatch idempotency guard to §11, updated §10 tech stack with `@fastify/websocket` and `@fastify/schedule`. Derived from [openclaw-deep-analysis.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md) and [openclaw-research-openai.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md).
+> **Update 2026-03-17 (v4.1):** OpenClaw integration audit. Added §6.5 Event Bus & Scheduler (F015 — WebSocket hybrid architecture, Zod-typed event frames, cron scheduler), expanded §6.2 Ship Loop with active interrupt model (`dispatch:cancel`), added §7.6 Plugin Supply-Chain Guardrails, added dispatch idempotency guard to §11, updated §10 tech stack with `@fastify/websocket` and `@fastify/schedule`. Derived from [openclaw-research-report.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md).
 >
 > **Update 2026-03-17 (v4.0):** Aligned with all six ADRs and keystone features 000-TDD, 004 Ship Loop, 013 Agent-Native Interface, and 014 Plugin System. Key changes: added Agent-Native Output Protocol (§3), Plugin Architecture (§7), TDD Triad Model (§5.3–5.5), updated Project Structure (§4), Construction Pipeline (§5), Ship Loop dispatch boundary (§6.2), and Config Contract (§8). Previous v3.1 anchored only ADR-001, ADR-002, and ADR-006.
 
@@ -26,8 +26,7 @@
 | F014 Plugin System Spec | [specs/014-plugin-system/spec.md](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) | Three-layer plugin architecture, skills, manifests |
 | Plugin Strategy Audit | [docs/reference/plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md) | F008→F014 P4 absorption analysis |
 | Skills Architecture | [docs/reference/skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md) | Two-tier skill hierarchy |
-| OpenClaw Deep Analysis | [docs/reference/openclaw-deep-analysis.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md) | Plugin architecture, WebSocket hybrid, cron events, agent router, channel abstraction |
-| OpenClaw Research (OpenAI) | [docs/reference/openclaw-research-openai.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md) | Typed WS protocol, exec safety, supply-chain guardrails, adoption dynamics |
+| OpenClaw Research Report | [docs/reference/openclaw-research-report.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md) | Plugin architecture, WebSocket hybrid, adoption dynamics, reconciled integration decisions |
 
 ---
 
@@ -471,7 +470,7 @@ Ship Loop (004) produces the PR and logs. Harvest (011) consumes them after merg
 
 ### 6.5 Event Bus & Scheduler (Feature 015 — Decided, Not Built)
 
-> **Source:** [openclaw-deep-analysis.md §2-3](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md), [openclaw-research-openai.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md). Registered in build plan v9 (2026-03-15), 8 SP, Wave 5.
+> **Source:** [openclaw-research-report.md §2/§6.2/§7](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md). Registered in build plan v9 (2026-03-15), 8 SP, Wave 5.
 
 **Architecture decision: Hybrid HTTP + WebSocket.** HTTP for commands/queries (preserves `curl` CLI compatibility). WebSocket for events/streaming (real-time monitoring without polling). Primary rationale: for a single-user local service on macOS, WebSocket overhead is effectively zero — no load balancer, no proxy traversal, no TLS complexity (localhost), ~50KB memory for one persistent connection.
 
@@ -595,7 +594,7 @@ Resolution order: Global → local override → local disable.
 
 ### 7.6 Plugin Supply-Chain Guardrails
 
-> **Source:** [openclaw-research-openai.md §P1](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md), OpenClaw integration audit (2026-03-17).
+> **Source:** [openclaw-research-report.md §2.6/§7](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md), OpenClaw integration audit (2026-03-17).
 
 Layer 1 (AgentBackend) and future Layer 3 plugins include executable TypeScript. Supply-chain risks:
 
