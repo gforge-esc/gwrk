@@ -136,9 +136,9 @@ Every command emits on **stderr** on completion:
 
 | Flag | stdout Format | Layer 2 | Activation |
 |---|---|---|---|
-| (default) | Human prose, ANSI colors | Off | Default |
+| (default) | Text output, ANSI colors | Off | Default |
 | `--format json` | Structured JSON | Off | Explicit flag |
-| `--agent` | Human prose, **ANSI-stripped** + protections | **On** | Flag or `GWRK_AGENT=1` |
+| `--agent` | Text output, **ANSI-stripped** + protections | **On** | Flag or `GWRK_AGENT=1` |
 | `--agent --format json` | Structured JSON + protections | On | Both flags |
 
 `--agent` and `--format json` are **independent**. Text is the LLM's native format; JSON is opt-in.
@@ -268,7 +268,7 @@ gwrk/
 │       ├── exec.ts                # Shell command execution
 │       ├── agent.ts               # dispatchToAgent() facade (→ F014 AgentBackend)
 │       ├── signal.ts              # withSignal() HOF (ADR-004)
-│       ├── output.ts              # CommandOutput: human/json formatting
+│       ├── output.ts              # CommandOutput: text/json formatting + resolveFormat()
 │       ├── agent-layer.ts         # Layer 2: stripAnsi, guardBinary, truncateOverflow
 │       ├── gate-gen.ts            # GateBrief generator + generateVitestGates() (ADR-005)
 │       ├── state.ts               # Task read/write via local JSON

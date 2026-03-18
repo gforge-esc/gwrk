@@ -59,7 +59,7 @@ Files affected: `define.ts`, `ship.ts`, `test.ts`, `measure.ts`, `tasks.ts`, `db
 Add global option:
 
 ```typescript
-program.option('--format <type>', 'Output format: human | json', 'human');
+program.option('--format <type>', 'Output format (json)');
 ```
 
 #### [NEW] `src/utils/output.ts`
@@ -72,18 +72,18 @@ export interface CommandOutput {
   info(msg: string): void;  // stderr
 }
 
-export function createOutput(format: 'human' | 'json'): CommandOutput;
+export function createOutput(format?: string): CommandOutput;
 ```
 
-- `human` mode: `write()` → `process.stdout.write(String(data))`, `info()` → `process.stderr.write()`
+- text mode (default): `write()` → `process.stdout.write(String(data))`, `info()` → `process.stderr.write()`
 - `json` mode: `write()` → `JSON.stringify(data)` to stdout, `info()` → stderr
 
 #### [MODIFY] `src/commands/tasks.ts`, `status.ts`, `measure.ts`, `db.ts`, `runs.ts`
 
 Retrofit to use `CommandOutput`:
-- `tasks list`: human = table, json = `{ tasks: [...] }`
-- `tasks next`: human = formatted task, json = `{ task: {...} }`
-- `status`: human = formatted summary, json = `{ project, specs, agents }`
+- `tasks list`: text = table, json = `{ tasks: [...] }`
+- `tasks next`: text = formatted task, json = `{ task: {...} }`
+- `status`: text = formatted summary, json = `{ project, specs, agents }`
 
 #### Queryable Command Table
 

@@ -6,7 +6,7 @@
 ## Factory
 
 ```typescript
-export function createOutput(format: 'human' | 'json'): CommandOutput;
+export function createOutput(format?: string): CommandOutput;
 ```
 
 ## Interface
@@ -20,7 +20,7 @@ export interface CommandOutput {
 
 ## Behavior by Format
 
-### `human` mode
+### text mode (default, no format flag)
 
 | Method | Target | Behavior |
 |---|---|---|
@@ -48,5 +48,5 @@ export interface CommandOutput {
 
 | Condition | Behavior |
 |---|---|
-| Invalid format value (`--format xml`) | Exit 2: `Unknown format: xml. Supported: human, json` |
+| Invalid format value (`--format xml`) | Exit 2: `Unknown format: xml. Supported: json` |
 | `--format json` on non-queryable command | No error — command runs normally |
