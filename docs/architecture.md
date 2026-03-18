@@ -1,7 +1,7 @@
 # gwrk: Architecture & Workflow Specification
 
-> **Status:** Authoritative · **Date:** 2026-03-08 (v3)
-> **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md), [ADR-002-sqlite-execution-ledger.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md)
+> **Status:** Authoritative · **Date:** 2026-03-17 (v3.1)
+> **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md), [ADR-002-sqlite-execution-ledger.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-006-plugin-agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md)
 
 ---
 
@@ -167,6 +167,7 @@ gwrk/
 | **Agent: Codex** | `codex exec --full-auto` | Cloud microVMs, true parallelism |
 | **Agent: Claude** | `claude -p --output-format json` | Deepest context window, local |
 | **Agent: Gemini** | `gemini -p --json` | Multi-file reasoning, local |
+| **Agent Dispatch** | `dispatchToAgent()` facade | F014 `AgentBackend` plugins (ADR-006). Today wraps `spawn(cli)`, tomorrow calls plugin adapter |
 | **Execution Ledger** | `better-sqlite3` | Global DB, embedded, no server (ADR-002) |
 | **Configuration** | Zod schemas | Fail-fast validation, no graceful defaults |
 | **Linting** | Biome | Lint + format |
@@ -277,6 +278,8 @@ Reference implementation: `specs/013-agent-native-interface/gates/` — all 17 A
 | **Definition work** | Gemini CLI | Best at structured document generation |
 
 Router learns from SQLite `runs` table: historical success rate × task SP × language → backend selection.
+
+> **Plugin migration (ADR-006):** The agent router will be absorbed into F014 Phase 4 (Routing Intelligence). Backend discovery moves to `pluginRegistry.getAgentBackends()`. Quota probing becomes per-adapter plugin responsibility. Core routing logic (selection, fallback, learning) survives as `src/engine/router.ts`. See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
 
 ### 6.2 Ship Loop (Feature 004)
 
@@ -409,5 +412,7 @@ See [specs/000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan
 | `AGENTS.md` | — | — | ✅ Required | Project rules for Codex |
 | `.agents/rules/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** governance |
 | `.agents/workflows/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** workflows |
+
+> **Plugin migration (ADR-006):** A single `.gwrk/agent-context.md` will become the source of truth for durable governance. CLI-specific context files (`GEMINI.md`, `CLAUDE.md`, `AGENTS.md`) will be generated from it via `gwrk plugin sync-context`. See [ADR-006 §2.5](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md).
 
 All context files reference the shared `.agents/` directory — governance rules are written once, consumed by all backends.
