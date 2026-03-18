@@ -1,25 +1,22 @@
-#!/usr/bin/env bash
-# T010-gate.sh — FR-009 agent config fail-fast
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# AUTHORED
+# Gate: T010 — Implement src/scripts-e2e.test.ts
 
-# Assertion #1: Missing config error message exists
-if grep -q 'Missing required config\|agents.implement' src/commands/ship.ts; then
-  echo "✓ Assertion #1: fail-fast error message exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: fail-fast error message NOT found in ship.ts"
-  FAIL=$((FAIL+1))
-fi
+FILE="src/scripts-e2e.test.ts"
 
-# Assertion #2: process.exit(1) or throw on missing config
-if grep -q 'process.exit(1)\|throw.*config\|CommandError' src/commands/ship.ts; then
-  echo "✓ Assertion #2: crash behavior on missing config"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: crash behavior NOT found"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 1: File exists
+test -f "$FILE"
 
-echo "T010: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+# Assertion 2: Tests for circuit-break failureContext exist
+grep -q "describe(\"FR-018/T007: Circuit Breaker failureContext\"" "$FILE"
+grep -q "produces non-empty failureContext in the JSON state file on CIRCUIT_BREAK" "$FILE"
+
+# Assertion 3: Tests for dirty-tree guard exist
+grep -q "describe(\"FR-002/T005: wud-branch.sh dirty-tree guard\"" "$FILE"
+grep -q "exits 1 if the working tree is dirty" "$FILE"
+
+# Assertion 4: Run the tests
+pnpm vitest run "$FILE" --reporter=verbose
+
+echo "PASS: T010 — src/scripts-e2e.test.ts Phase 2 features verified"

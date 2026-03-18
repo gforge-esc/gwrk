@@ -1,12 +1,12 @@
 /**
  * TR-005 | FR-006 | US-006
- * Contract: specs/013-agent-native-interface/contracts/gate-check.md
+ * Contract: specs/013-agent-native-interface/contracts/gate.md
  * Data Model: DM-002 (GateCheckResult)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { runGateCheck, inferFeatureFromTaskId } from "./gate-check.js";
+import { runGateCheck, inferFeatureFromTaskId } from "./gate.js";
 
 describe("FR-006: First-Class Gate Checking", () => {
 	const projectRoot = process.cwd();
@@ -99,11 +99,11 @@ describe("FR-006: First-Class Gate Checking", () => {
 		}
 	});
 
-	it("gate-check command is registered in cli.ts", () => {
+	it("gate command is registered in cli.ts", () => {
 		const cliSource = fs.readFileSync(
 			path.resolve("src/cli.ts"),
 			"utf-8",
 		);
-		expect(cliSource).toContain("gateCheckCommand");
+		expect(cliSource).toContain("gateCommand");
 	});
 });

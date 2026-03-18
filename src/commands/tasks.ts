@@ -16,7 +16,7 @@ import {
 } from "../utils/state.js";
 import type { Task, TaskState } from "../utils/state.js";
 
-import { createOutput } from "../utils/output.js";
+import { createOutput, resolveFormat } from "../utils/output.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const tasksCommand = new Command("tasks")
@@ -25,7 +25,7 @@ export const tasksCommand = new Command("tasks")
     "after",
     `
 Type: query/mutator
-Formats: human, json (use --format json)
+Format: use gwrk --format json for structured output
 Exit codes:
   0: Success
   1: Task not found or gate failed
@@ -69,6 +69,33 @@ tasksCommand
       }
 
       const gateScript = path.join(featureDir, task.gateScript);
+
+      // FR-001: Reject gates that contain only `test -f` assertions
+      if (fs.existsSync(gateScript)) {
+        const gateContent = fs.readFileSync(gateScript, "utf-8");
+        const lines = gateContent
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(
+            (l) =>
+              l.length > 0 &&
+              !l.startsWith("#") &&
+              !l.startsWith("set ") &&
+              !l.startsWith("echo "),
+          );
+
+        const hasOnlyTestF =
+          lines.length > 0 &&
+          lines.every((l) => l.startsWith("test -f") || l.startsWith("[ -f"));
+
+        if (hasOnlyTestF) {
+          throw new CommandError(
+            `FAIL: ${taskId} — gate contains only test -f, not a functional assertion`,
+            1,
+          );
+        }
+      }
+
       const result = runGate(gateScript);
 
       if (result.exitCode !== 0) {
@@ -179,13 +206,7 @@ tasksCommand
       command,
     ) => {
       await withSignal("tasks list", async () => {
-        // Traverse up to find root program options
-        let root = command;
-        while (root.parent) root = root.parent;
-        const globalOpts = root.opts();
-
-        const format = options.json ? "json" : globalOpts.format || "human";
-        const out = createOutput(format);
+        const out = options.json ? createOutput("json") : resolveFormat(command);
 
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
@@ -200,7 +221,7 @@ tasksCommand
         }
         const allTasks = listTasks(state);
 
-        if (format === "json") {
+        if (out.isJson) {
           out.write({ tasks: allTasks });
           return;
         }
@@ -262,13 +283,7 @@ tasksCommand
       command,
     ) => {
       await withSignal("tasks next", async () => {
-        // Traverse up to find root program options
-        let root = command;
-        while (root.parent) root = root.parent;
-        const globalOpts = root.opts();
-
-        const format = options.json ? "json" : globalOpts.format || "human";
-        const out = createOutput(format);
+        const out = options.json ? createOutput("json") : resolveFormat(command);
 
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
@@ -281,7 +296,7 @@ tasksCommand
 
         const task = nextTask(state, phaseId);
 
-        if (format === "json") {
+        if (out.isJson) {
           out.write({ task: task || null });
         } else if (task) {
           console.log(`Next task: ${task.id}: ${task.title}`);
@@ -299,13 +314,7 @@ tasksCommand
   .option("--json", "Output in JSON format")
   .action(async (feature: string, options: { json?: boolean }, command) => {
     await withSignal("tasks ready", async () => {
-      // Traverse up to find root program options
-      let root = command;
-      while (root.parent) root = root.parent;
-      const globalOpts = root.opts();
-
-      const format = options.json ? "json" : globalOpts.format || "human";
-      const out = createOutput(format);
+      const out = options.json ? createOutput("json") : resolveFormat(command);
 
       const projectRoot = process.cwd();
       const featureDir = path.join(projectRoot, "specs", feature);
@@ -314,7 +323,7 @@ tasksCommand
         (t) => t.status === "open" || t.status === "in_progress",
       );
 
-      if (format === "json") {
+      if (out.isJson) {
         out.write({ tasks: readyTasks });
       } else {
         console.log(`Ready tasks for ${feature}:`);

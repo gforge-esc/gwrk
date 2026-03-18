@@ -140,6 +140,11 @@ case "$WORKFLOW" in
     DEFAULT_MODE="yolo"
     LABEL="Generating JSON tasks and Hard Gates"
     ;;
+  author-gates)
+    COMMAND="/author-gates ${SPEC_DIR}"
+    DEFAULT_MODE="yolo"
+    LABEL="Authoring gate scripts from contracts"
+    ;;
   checklist)
     DOMAIN="${PHASE:-infrastructure}"  # reuse phase arg for domain
     COMMAND="/checklist ${SPEC_DIR} ${DOMAIN}"

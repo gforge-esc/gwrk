@@ -1,16 +1,13 @@
-#!/usr/bin/env bash
-# T006-gate.sh — validate-staging.sh called from WUD (FR-016)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# AUTHORED
+# Gate: T006 — Implement test strategy for Phase 1
 
-# Assertion #1: validate-staging.sh is called from work-until-done.sh
-if grep -q 'validate-staging' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #1: validate-staging called from WUD"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: validate-staging NOT called from WUD"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 1: Verify all other Phase 1 gates pass
+bash specs/004-ship-loop/gates/T001-gate.sh > /dev/null
+bash specs/004-ship-loop/gates/T002-gate.sh > /dev/null
+bash specs/004-ship-loop/gates/T003-gate.sh > /dev/null
+bash specs/004-ship-loop/gates/T004-gate.sh > /dev/null
+bash specs/004-ship-loop/gates/T005-gate.sh > /dev/null
 
-echo "T006: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+echo "PASS: T006 — Phase 1 test strategy verified (all gates pass)"

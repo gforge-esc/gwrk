@@ -1,25 +1,24 @@
-#!/usr/bin/env bash
-# T009-gate.sh — --format json support (FR-015)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# AUTHORED
+# Gate: T009 — Implement scripts/dev/validate-staging.sh
 
-# Assertion #1: --format option registered in Commander
-if grep -q '\-\-format\|format.*json\|addOption.*format' src/commands/ship.ts; then
-  echo "✓ Assertion #1: --format option exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: --format option NOT found in ship.ts"
-  FAIL=$((FAIL+1))
-fi
+FILE="scripts/dev/validate-staging.sh"
 
-# Assertion #2: JSON output path exists
-if grep -q 'JSON.stringify' src/commands/ship.ts; then
-  echo "✓ Assertion #2: JSON output path exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: JSON output path NOT found"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 1: File exists and is executable
+test -f "$FILE"
+test -x "$FILE"
 
-echo "T009: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+# Assertion 2: Rejects out-of-scope files
+grep -q "Out-of-scope file staged:" "$FILE"
+grep -q "ALLOWED_PREFIXES=(" "$FILE"
+
+# Assertion 3: Rejects build plan modifications
+grep -q "Build plan staged: specs/000-build-plan.md" "$FILE"
+grep -q "agents must not modify the build plan (Rule 3)" "$FILE"
+
+# Assertion 4: Orphan detection
+grep -q "Orphan staged:" "$FILE"
+grep -q "Orphan spec dir staged" "$FILE"
+
+echo "PASS: T009 — scripts/dev/validate-staging.sh verified"

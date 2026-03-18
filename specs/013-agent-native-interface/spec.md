@@ -262,7 +262,7 @@ No external service credentials required. All operations are local filesystem + 
 | Condition | stderr contains | Exit code |
 |---|---|---|
 | `--format json` on non-queryable command | No error — command runs normally | 0 |
-| Invalid format value (`--format xml`) | `Unknown format: xml. Supported: human, json` | 2 |
+| Invalid format value (`--format xml`) | `Unknown format: xml. Supported: json` | 2 |
 
 #### FR-003 Error States
 | Condition | stderr contains | Exit code |
@@ -349,7 +349,7 @@ interface GateCheckResult {
 interface CommandMeta {
   type: 'query' | 'generator' | 'verifier' | 'mutator';
   exitCodes: Record<number, string>;
-  formats: ('human' | 'json')[];
+  supportsJson: boolean;
   mutations?: string[];     // What this command writes to (e.g., ".gwrk/tasks.json")
 }
 ```
@@ -374,7 +374,7 @@ Stored as static objects co-located with command definitions. Not persisted to a
 ## 7. Testing Requirements
 
 - **TR-001**: `src/utils/signal.test.ts` — Unit test `withSignal()`: verify `[exit:0 | Nms]` on success, `[exit:1 | Ns] command: message` on error, duration formatting (<1s → ms, ≥1s → N.Ns), stderr-only output. Vitest. (FR-001)
-- **TR-002**: `src/utils/output.test.ts` — Unit test `CommandOutput`: verify human mode writes text to stdout, json mode writes JSON to stdout, info() always writes to stderr. Vitest. (FR-002)
+- **TR-002**: `src/utils/output.test.ts` — Unit test `CommandOutput`: verify text mode writes text to stdout, json mode writes JSON to stdout, info() always writes to stderr. Vitest. (FR-002)
 - **TR-003**: `src/utils/agent-layer.test.ts` — Unit test Layer 2: `stripAnsi()` removes escape codes, `guardBinary()` replaces binary content, `truncateOverflow()` truncates at limit and writes file reference. Vitest. (FR-003)
 - **TR-004**: `src/engine/discover.test.ts` — Unit test discovery engine: mock filesystem with specs/tasks/gates, verify `ProjectDiscovery` schema matches expected output. Verify NO sqlite or http calls made. Vitest. (FR-004, TC-004)
 - **TR-005**: `src/commands/gate-check.test.ts` — Unit test gate-check: mock gate script execution, verify PASS/FAIL result, JSON output, error-as-navigation on missing script. Vitest. (FR-006)

@@ -3,7 +3,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { discoverProject } from "../engine/discover.js";
 import { type CommandMeta, applyMeta } from "../utils/help.js";
-import { createOutput } from "../utils/output.js";
+import { resolveFormat } from "../utils/output.js";
 import { withSignal } from "../utils/signal.js";
 
 export const projectCommand = new Command("project").description(
@@ -12,7 +12,7 @@ export const projectCommand = new Command("project").description(
 
 applyMeta(projectCommand, {
   type: "query",
-  formats: ["human", "json"],
+  supportsJson: true,
   exitCodes: {
     0: "Success",
     1: "Not a gwrk project or git missing",
@@ -25,14 +25,11 @@ const discoverCmd = projectCommand
   .description("Return structured summary of project state")
   .action(async (options, command) => {
     await withSignal("project discover", async () => {
-      let rootCmd = command;
-      while (rootCmd.parent) rootCmd = rootCmd.parent;
-      const globalOpts = rootCmd.opts();
-      const out = createOutput(globalOpts.format || "human");
+      const out = resolveFormat(command);
 
       const discovery = await discoverProject(process.cwd());
 
-      if (globalOpts.format === "json") {
+      if (out.isJson) {
         out.write(discovery);
       } else {
         out.write(`Project: ${discovery.project.name}\n`);
@@ -57,7 +54,7 @@ const discoverCmd = projectCommand
 
 applyMeta(discoverCmd, {
   type: "query",
-  formats: ["human", "json"],
+  supportsJson: true,
   outputs: "ProjectDiscovery (DM-001)",
   exitCodes: {
     0: "Success",
@@ -70,14 +67,11 @@ const specsCmd = projectCommand
   .description("List all specifications with status")
   .action(async (options, command) => {
     await withSignal("project specs", async () => {
-      let rootCmd = command;
-      while (rootCmd.parent) rootCmd = rootCmd.parent;
-      const globalOpts = rootCmd.opts();
-      const out = createOutput(globalOpts.format || "human");
+      const out = resolveFormat(command);
 
       const discovery = await discoverProject(process.cwd());
 
-      if (globalOpts.format === "json") {
+      if (out.isJson) {
         out.write(discovery.specs);
       } else {
         out.write("ID   | Status   | Tasks | Name\n");
@@ -94,7 +88,7 @@ const specsCmd = projectCommand
 
 applyMeta(specsCmd, {
   type: "query",
-  formats: ["human", "json"],
+  supportsJson: true,
   outputs: "SpecSummary[]",
   exitCodes: {
     0: "Success",
@@ -108,11 +102,8 @@ const gatesCmd = projectCommand
   .description("List or run gate scripts grouped by feature")
   .action(async (options, command) => {
     await withSignal("project gates", async () => {
-      let rootCmd = command;
-      while (rootCmd.parent) rootCmd = rootCmd.parent;
-      const globalOpts = rootCmd.opts();
+      const out = resolveFormat(command);
       const localOpts = command.opts();
-      const out = createOutput(globalOpts.format || "human");
       const shouldRun = localOpts.run === true;
 
       const results: Array<{
@@ -162,7 +153,7 @@ const gatesCmd = projectCommand
         }
       }
 
-      if (globalOpts.format === "json") {
+      if (out.isJson) {
         out.write(results);
       } else if (shouldRun) {
         out.write("Task | Feature         | Result | Duration\n");
@@ -196,7 +187,7 @@ const gatesCmd = projectCommand
 
 applyMeta(gatesCmd, {
   type: "verifier",
-  formats: ["human", "json"],
+  supportsJson: true,
   outputs: "GateCheckResult[]",
   exitCodes: {
     0: "Success",

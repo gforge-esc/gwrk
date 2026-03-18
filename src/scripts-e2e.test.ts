@@ -36,7 +36,11 @@ describe("work-until-done.sh execution flow", () => {
       "ship-verdict.sh",
       "echo 'mock verdict' && exit 0",
     );
-    agentMock = mockWrapper("agent-run.sh", "echo 'mock agent' && exit 0");
+    agentMock = mockWrapper("agent-run.sh", `
+      echo "$@" >> ${MOCKS_DIR}/agent-run.log
+      echo "mock agent"
+      exit 0
+    `);
     mockWrapper("gh", "echo '1234'"); // mocked gh pr
     mockWrapper("gwrk", "exit 0"); // mocked gwrk db
     mockWrapper("git", [
@@ -127,6 +131,18 @@ describe("work-until-done.sh execution flow", () => {
     expect(content).toContain("IMPLEMENT:");
   });
 
+  it("creates timestamped log file tracking the execution", () => {
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env,
+      encoding: "utf-8",
+    });
+    const runsDir = path.join(ROOT, ".test-runs-e2e");
+    expect(fs.existsSync(runsDir)).toBe(true);
+    const files = fs.readdirSync(runsDir).filter(f => f.includes("_wud_999-ship-e2e_p1.log"));
+    expect(files.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("FR-003/T004: should run pre-flight tasks.json gates before implementation", () => {
     // Create a mock gate script that always passes
     const gateDir = path.join(ROOT, "specs/999-ship-e2e/gates");
@@ -162,11 +178,110 @@ describe("work-until-done.sh execution flow", () => {
       });
       // WUD should log that it ran the pre-flight gate
       expect(result).toContain("pre-flight");
+      // FR-003: Verify that agent-run.sh was NOT called because gate passed
+      const agentLog = path.join(MOCKS_DIR, "agent-run.log");
+      if (fs.existsSync(agentLog)) {
+        const logContent = fs.readFileSync(agentLog, "utf-8");
+        expect(logContent).not.toContain("T001");
+      }
     } catch (err) {
       const e = err as { stdout?: string; stderr?: string };
       const output = `${e.stdout || ""}\n${e.stderr || ""}`;
       // Even if the run fails, pre-flight should have been attempted
       expect(output).toContain("pre-flight");
+    }
+  });
+
+  it("FR-005: should loop back to IMPLEMENT if review returns NO-GO", () => {
+    // Mock verdict to return NO-GO first, then GO
+    const verdictFile = path.join(MOCKS_DIR, "verdict_state.txt");
+    fs.writeFileSync(verdictFile, "NO-GO");
+
+    const wudVerdictMock = mockWrapper("ship-verdict.sh", `
+      STATE=$(cat ${verdictFile})
+      if [ "$STATE" == "NO-GO" ]; then
+        echo "GO" > ${verdictFile}
+        echo "NO-GO: failing tests"
+        exit 1
+      else
+        echo "GO: all good"
+        exit 0
+      fi
+    `);
+
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env: { ...env, WUD_VERDICT_BIN: wudVerdictMock, MAX_ITERATIONS: "3" },
+      encoding: "utf-8",
+    });
+
+    expect(result).toContain("Re-implementing (iteration 2)");
+    expect(result).toContain("DONE in");
+  });
+
+  it("FR-006: should create PR and wait for CI", () => {
+    const ghMock = mockWrapper("gh", `
+      if [[ "$1" == "pr" && "$2" == "list" ]]; then
+        echo ""
+        exit 0
+      fi
+      if [[ "$1" == "pr" && "$2" == "create" ]]; then
+        echo "https://github.com/mock/pr/1234"
+        exit 0
+      fi
+      echo "mock gh"
+    `);
+
+    const ciWaitMock = mockWrapper("ship-ci-wait.sh", `
+      echo "Waiting for CI..."
+      exit 0
+    `);
+
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
+      env: { ...env, GH_BIN: ghMock, WUD_CI_WAIT_BIN: ciWaitMock },
+      encoding: "utf-8",
+    });
+
+    expect(result).toContain("Creating/updating PR...");
+    expect(result).toContain("Waiting for CI...");
+    expect(result).toContain("DONE in");
+  });
+
+  // ─── Crash Recovery RED test ──────────────────────────────────────
+
+  it("FR-008/US-005: should resume from last persisted stage in state file", () => {
+    const RUNS_DIR = path.join(ROOT, ".test-runs-e2e");
+    fs.mkdirSync(RUNS_DIR, { recursive: true });
+    const stateFile = path.join(RUNS_DIR, "999-ship-e2e_p1.state");
+
+    // Pre-seed state at CODE_REVIEW iteration 2
+    fs.writeFileSync(stateFile, JSON.stringify({
+      stage: "CODE_REVIEW",
+      iteration: 2,
+      feature: "999-ship-e2e",
+      phase: "1"
+    }));
+
+    // Mock WUD_VERDICT to pass immediately
+    const verdictMock = mockWrapper("ship-verdict.sh", "exit 0");
+
+    const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
+    try {
+      const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
+        env: { ...env, WUD_VERDICT_BIN: verdictMock, MAX_ITERATIONS: "3" },
+        encoding: "utf-8",
+      });
+
+      expect(result).toContain("Resuming from state: CODE_REVIEW, iteration 2");
+      // Should skip BRANCH_SETUP and IMPLEMENT
+      expect(result).not.toContain("1. Branch setup");
+      expect(result).not.toContain("IMPLEMENT — Iteration 1");
+    } catch (err) {
+      const e = err as { stdout?: string; stderr?: string };
+      if (e.stdout) console.log(e.stdout);
+      if (e.stderr) console.error(e.stderr);
+      throw err;
     }
   });
 });
@@ -200,7 +315,18 @@ describe("FR-018/T007: Circuit Breaker failureContext", () => {
     ].join("\n"));
   });
 
-  it("produces failureContext in the JSON state file on CIRCUIT_BREAK", () => {
+  it("FR-018/T007: produces non-empty failureContext in the JSON state file on CIRCUIT_BREAK", () => {
+    // Create a mock tasks.json with open tasks
+    const gwrkDir = path.join(SPEC_DIR, ".gwrk");
+    fs.mkdirSync(gwrkDir, { recursive: true });
+    fs.writeFileSync(path.join(gwrkDir, "tasks.json"), JSON.stringify({
+      featureId: "999-ship-e2e",
+      phases: [{
+        id: "phase-01",
+        tasks: [{ id: "T001", status: "open" }, { id: "T002", status: "open" }],
+      }],
+    }));
+
     try {
       execFileSync(
         path.join(ROOT, "scripts/dev/work-until-done.sh"),
@@ -214,9 +340,11 @@ describe("FR-018/T007: Circuit Breaker failureContext", () => {
     expect(fs.existsSync(stateFile)).toBe(true);
     const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
     expect(state.stage).toBe("CIRCUIT_BREAK");
-    expect(state.failureContext).toBeDefined();
-    expect(state.failureContext.digest).toBeDefined();
-    expect(state.failureContext.lastVerdict).toBeDefined();
+    expect(state.failureContext).toBeDefined(); console.log(JSON.stringify(state.failureContext, null, 2));
+    // Should NOT be empty as it should be populated from actual tasks
+    expect(state.failureContext.openTasks).toContain("T001");
+    expect(state.failureContext.openTasks).toContain("T002");
+    expect(state.failureContext.digest.length).toBeGreaterThan(0);
   });
 });
 

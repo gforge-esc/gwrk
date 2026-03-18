@@ -6,7 +6,7 @@ import type { SystemStatus } from "../server/types.js";
 import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
-import { createOutput } from "../utils/output.js";
+import { createOutput, resolveFormat } from "../utils/output.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
@@ -18,7 +18,7 @@ export const statusCommand = new Command("status")
     "after",
     `
 Type: query (read-only)
-Formats: human, json
+Format: use gwrk --format json for structured output
 Exit codes:
   0: Success
   1: Server not responding or config missing
@@ -27,18 +27,12 @@ Exit codes:
   )
   .action(async (options, command) => {
     await withSignal("status", async () => {
-      // Traverse up to find root program options
-      let root = command;
-      while (root.parent) root = root.parent;
-      const globalOpts = root.opts();
-
-      const format = options.json ? "json" : globalOpts.format || "human";
-      const out = createOutput(format);
+      const out = options.json ? createOutput("json") : resolveFormat(command);
 
       const projectRoot = process.cwd();
       const config = loadConfig(projectRoot);
 
-      if (format === "json") {
+      if (out.isJson) {
         const branch = getCurrentBranch(projectRoot);
         const isDirty = !isWorkingTreeClean(projectRoot);
         const specsDir = path.join(projectRoot, "specs");

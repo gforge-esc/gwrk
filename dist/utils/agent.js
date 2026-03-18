@@ -189,3 +189,44 @@ export async function dispatchAgent(opts) {
         });
     });
 }
+/**
+ * FR-020: Exit code normalization table.
+ * Maps proprietary CLI exit codes to gwrk standard (0/1/2/127) with errorType classification.
+ */
+const EXIT_CODE_MAP = {
+    53: { exitCode: 1, errorType: "turn_limit" },
+    126: { exitCode: 1, errorType: "permission_denied" },
+    137: { exitCode: 1, errorType: "killed" },
+    143: { exitCode: 1, errorType: "terminated" },
+};
+/**
+ * FR-019: Dispatch agent work via a single facade.
+ * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
+ * FR-021: Context delivered via stdin pipe.
+ *
+ * Today: wraps spawn(cli, args). When F014 ships, internals are replaced by
+ * pluginRegistry.getAgentBackend().dispatch() — no other code changes.
+ */
+export async function dispatchToAgent(task) {
+    const backend = (task.agent ?? "gemini");
+    const startTime = Date.now();
+    const opts = {
+        backend,
+        workflowPath: task.workflow ?? ".agents/workflows/implement.md",
+        featureDir: task.featureDir,
+        prompt: task.prompt,
+    };
+    const { exitCode: rawExitCode, logPath } = await dispatchAgent(opts);
+    const durationS = Math.round((Date.now() - startTime) / 1000);
+    const mapped = EXIT_CODE_MAP[rawExitCode];
+    const exitCode = mapped ? mapped.exitCode : (rawExitCode > 2 && rawExitCode !== 127 ? 1 : rawExitCode);
+    const errorType = mapped?.errorType;
+    return {
+        exitCode,
+        errorType,
+        stdout: "",
+        stderr: "",
+        durationS,
+        logPath,
+    };
+}

@@ -1,25 +1,23 @@
-#!/usr/bin/env bash
-# T004-gate.sh — Pre-flight gate runner in WUD (FR-003)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# AUTHORED
+# Gate: T004 — Implement src/commands/ship.test.ts
 
-# Assertion #1: Pre-flight gate logic exists in WUD
-if grep -q 'pre-flight\|preflight\|gate.*PASS\|gateScript' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #1: pre-flight gate logic exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: pre-flight gate logic NOT found in WUD"
-  FAIL=$((FAIL+1))
-fi
+FILE="src/commands/ship.test.ts"
 
-# Assertion #2: Gate skip message exists
-if grep -q 'pre-flight PASS\|gate already satisfied\|skipping' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #2: gate skip message exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: gate skip message NOT found"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 1: File exists
+test -f "$FILE"
 
-echo "T004: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+# Assertion 2: Tests for phase-skip exist
+grep -q "describe(\"FR-014: Phase Skip\"" "$FILE"
+grep -q "US-009: should skip phase when all tasks have status 'completed'" "$FILE"
+grep -q "US-009: should skip phase when all tasks are either 'completed' or 'cancelled'" "$FILE"
+
+# Assertion 3: Tests for digest assembly exist
+grep -q "describe(\"FR-012, FR-017/T003: Execution Manifest Digest\"" "$FILE"
+grep -q "US-007/T003: writeManifest receives a manifest object with digest array" "$FILE"
+
+# Assertion 4: Run the tests
+pnpm vitest run "$FILE" --reporter=verbose
+
+echo "PASS: T004 — src/commands/ship.test.ts implementation verified"

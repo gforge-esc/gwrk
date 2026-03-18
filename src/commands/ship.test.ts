@@ -223,7 +223,7 @@ describe("shipCommand", () => {
     expect(uiModule.dryRun).toHaveBeenCalledTimes(2);
   });
 
-  it("should exit 1 with BLOCKED message if no test files found for phase", async () => {
+  it("FR-008, US-008: should exit 1 with BLOCKED message if no test files found for phase", async () => {
     // Modify loadTaskState mock to return a task with a source file but no tests
     vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
       featureId: "004-ship-loop",
@@ -298,6 +298,27 @@ describe("shipCommand", () => {
     existsSpy.mockRestore();
     readdirSpy.mockRestore();
   });
+
+  it("FR-009/T009: Agent config hierarchy: --agent override takes precedence", async () => {
+    mockRun.mockResolvedValueOnce(undefined);
+
+    await program.parseAsync([
+      "node",
+      "test",
+      "ship",
+      "004-ship-loop",
+      "1",
+      "--agent",
+      "claude",
+    ]);
+
+    expect(execModule.run).toHaveBeenCalledTimes(1);
+    const [, , options] = mockRun.mock.calls[0];
+    // Should pass the agent to WUD via env or arg
+    expect(options.env.AGENT_BACKEND).toBe("claude");
+  });
+
+
 });
 
 describe("FR-014: Phase Skip", () => {

@@ -1,25 +1,26 @@
-#!/usr/bin/env bash
-# T001-gate.sh — isPhaseComplete() with cancelled support (FR-014)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# AUTHORED
+# Gate: T001 — Implement scripts/dev/work-until-done.sh
 
-# Assertion #1: isPhaseComplete function exists in ship.ts
-if grep -q 'function isPhaseComplete\|const isPhaseComplete' src/commands/ship.ts; then
-  echo "✓ Assertion #1: isPhaseComplete function exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: isPhaseComplete function NOT found in ship.ts"
-  FAIL=$((FAIL+1))
-fi
+FILE="scripts/dev/work-until-done.sh"
 
-# Assertion #2: Function checks for 'cancelled' status
-if grep -q 'cancelled' src/commands/ship.ts; then
-  echo "✓ Assertion #2: 'cancelled' status handled"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: 'cancelled' status NOT handled in ship.ts"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 1: File exists and is executable
+test -f "$FILE"
+test -x "$FILE"
 
-echo "T001: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+# Assertion 2: emit_event function exists and writes to EVENTS_FILE
+grep -q "emit_event()" "$FILE"
+grep -q "echo \".*\" >> \"\$EVENTS_FILE\"" "$FILE"
+
+# Assertion 3: Pre-flight gate check exists
+grep -q "Pre-flight gate check" "$FILE"
+grep -q "PHASE_ID=\"phase-\$(printf '%02d' \"\$PHASE\")\"" "$FILE"
+grep -q "GATE_SCRIPTS=\$(jq -r --arg p \"\$PHASE_ID\"" "$FILE"
+grep -q "select(.id == \$p) | .tasks\[\] | select(.status == \"open\") | .gateScript // empty" "$FILE"
+
+# Assertion 4: log function exists and writes to WUD_LOG
+grep -q "log()" "$FILE"
+grep -q "tee -a \"\$WUD_LOG\"" "$FILE"
+
+echo "PASS: T001 — scripts/dev/work-until-done.sh implementation verified"

@@ -37,7 +37,7 @@ const mockConfig: GwrkConfig = {
   },
 };
 
-describe("notify routes", () => {
+describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
   beforeEach(() => {
     removePid();
     vi.clearAllMocks();
@@ -47,7 +47,7 @@ describe("notify routes", () => {
     removePid();
   });
 
-  it("should post a notification via POST /api/notify", async () => {
+  it("US-003, US-007: should post a notification via POST /api/notify", async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
     try {
       const spy = vi.spyOn(slackNotify, "notifySlack");
@@ -78,7 +78,7 @@ describe("notify routes", () => {
     }
   });
 
-  it("should return 400 for missing required fields", async () => {
+  it("FR-003, US-003: should return 400 for missing required fields", async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
     try {
       const response = await server.inject({
@@ -97,7 +97,7 @@ describe("notify routes", () => {
     }
   });
 
-  it("should handle opsOnly flag", async () => {
+  it("FR-004, US-004: should handle opsOnly flag", async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
     try {
       const spy = vi.spyOn(slackNotify, "notifySlack");

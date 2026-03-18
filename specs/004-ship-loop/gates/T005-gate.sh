@@ -1,34 +1,14 @@
-#!/usr/bin/env bash
-# T005-gate.sh — Dirty-tree guard in wud-branch.sh (FR-002)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# AUTHORED
+# Gate: T005 — Implement specs/004-ship-loop/.gwrk/runs/.gitkeep
 
-# Assertion #1: git status --porcelain check exists
-if grep -q 'porcelain' scripts/dev/wud-branch.sh; then
-  echo "✓ Assertion #1: porcelain check exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: porcelain check NOT found in wud-branch.sh"
-  FAIL=$((FAIL+1))
-fi
+FILE="specs/004-ship-loop/.gwrk/runs/.gitkeep"
 
-# Assertion #2: Dirty tree error message exists
-if grep -q 'Dirty working tree' scripts/dev/wud-branch.sh; then
-  echo "✓ Assertion #2: dirty tree message exists"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: dirty tree message NOT found"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 1: Directory exists
+test -d "specs/004-ship-loop/.gwrk/runs"
 
-# Assertion #3: Exits non-zero on dirty tree
-if grep -q 'exit 1' scripts/dev/wud-branch.sh; then
-  echo "✓ Assertion #3: exit 1 on dirty tree"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #3: exit 1 NOT found"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 2: .gitkeep file exists
+test -f "$FILE"
 
-echo "T005: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+echo "PASS: T005 — specs/004-ship-loop/.gwrk/runs/.gitkeep exists"

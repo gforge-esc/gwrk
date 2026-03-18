@@ -15,6 +15,7 @@ import { planCommand } from "./plan.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
+import { testsGenerateCommand } from "./tests-generate.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -26,9 +27,10 @@ import { CommandError, withSignal } from "../utils/signal.js";
  *   gwrk define spec <feature>                Create/refine spec
  *   gwrk define plan <feature>                Create implementation plan
  *   gwrk define tasks <feature>               Decompose plan → tasks + gates
+ *   gwrk define tests <feature> <phase>       Generate RED tests for a phase
  *
  * Internal definition stages (NOT exposed as subcommands):
- *   analyze, checklist, tests — run inside the definition loop automatically
+ *   analyze, checklist — run inside the definition loop automatically
  */
 export const defineCommand = new Command("define")
   .description("Define: spec → plan → tasks → analyze")
@@ -163,3 +165,4 @@ export const defineCommand = new Command("define")
 defineCommand.addCommand(specifyCommand); // gwrk define spec
 defineCommand.addCommand(planCommand); // gwrk define plan
 defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
+defineCommand.addCommand(testsGenerateCommand); // gwrk define tests

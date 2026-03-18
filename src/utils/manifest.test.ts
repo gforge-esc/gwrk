@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type ExecutionManifest,
+  assembleDigest,
   generateRunId,
   loadManifests,
   writeManifest,
@@ -41,6 +42,7 @@ describe("Execution Manifest Utility", () => {
     linesDeleted: 33,
     gitCommit: "abc1234",
     gitBranch: "feat/test-feature-wip",
+    digest: [],
   };
 
   it("should generate a runId with shorthand phase", () => {
@@ -84,5 +86,29 @@ describe("Execution Manifest Utility", () => {
   it("should handle missing runs directory in loadManifests", () => {
     const manifests = loadManifests(tempDir);
     expect(manifests).toEqual([]);
+  });
+
+  describe("assembleDigest", () => {
+    it("should assemble digest from events sidecar file", () => {
+      const eventsFile = path.join(tempDir, "test.events");
+      fs.writeFileSync(eventsFile, "BRANCH_SETUP: ok [2026-03-08T14:02:33Z]\nIMPLEMENT: ok [2026-03-08T14:05:00Z]\n");
+      const digest = assembleDigest(eventsFile);
+      expect(digest).toEqual([
+        "BRANCH_SETUP: ok [2026-03-08T14:02:33Z]",
+        "IMPLEMENT: ok [2026-03-08T14:05:00Z]",
+      ]);
+    });
+
+    it("should return empty array for missing sidecar file", () => {
+      const digest = assembleDigest(path.join(tempDir, "missing.events"));
+      expect(digest).toEqual([]);
+    });
+
+    it("should return empty array for empty sidecar file", () => {
+      const eventsFile = path.join(tempDir, "empty.events");
+      fs.writeFileSync(eventsFile, "");
+      const digest = assembleDigest(eventsFile);
+      expect(digest).toEqual([]);
+    });
   });
 });

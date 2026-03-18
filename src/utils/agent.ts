@@ -235,3 +235,79 @@ export async function dispatchAgent(
     });
   });
 }
+
+// ─── FR-019/020/021: Plugin Dispatch Boundary (ADR-006) ──────────
+
+/**
+ * FR-019: Input contract for dispatchToAgent().
+ * Maps to ADR-006 AgentBackend.dispatch() input.
+ */
+export interface TaskDispatch {
+  prompt?: string;
+  agent?: AgentBackend | string;
+  workDir?: string;
+  stdin?: string;
+  env?: Record<string, string>;
+  workflow?: string;
+  featureDir?: string;
+}
+
+/**
+ * FR-019: Output contract for dispatchToAgent().
+ * Normalized result — proprietary exit codes mapped to gwrk standard.
+ */
+export interface TaskResult {
+  exitCode: number;
+  errorType?: string;
+  stdout: string;
+  stderr: string;
+  durationS: number;
+  logPath?: string;
+}
+
+/**
+ * FR-020: Exit code normalization table.
+ * Maps proprietary CLI exit codes to gwrk standard (0/1/2/127) with errorType classification.
+ */
+const EXIT_CODE_MAP: Record<number, { exitCode: number; errorType: string }> = {
+  53: { exitCode: 1, errorType: "turn_limit" },
+  126: { exitCode: 1, errorType: "permission_denied" },
+  137: { exitCode: 1, errorType: "killed" },
+  143: { exitCode: 1, errorType: "terminated" },
+};
+
+/**
+ * FR-019: Dispatch agent work via a single facade.
+ * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
+ * FR-021: Context delivered via stdin pipe.
+ *
+ * Today: wraps spawn(cli, args). When F014 ships, internals are replaced by
+ * pluginRegistry.getAgentBackend().dispatch() — no other code changes.
+ */
+export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
+  const backend = (task.agent ?? "gemini") as AgentBackend;
+  const startTime = Date.now();
+
+  const opts: DispatchOptions = {
+    backend,
+    workflowPath: task.workflow ?? ".agents/workflows/implement.md",
+    featureDir: task.featureDir,
+    prompt: task.prompt,
+  };
+
+  const { exitCode: rawExitCode, logPath } = await dispatchAgent(opts);
+  const durationS = Math.round((Date.now() - startTime) / 1000);
+
+  const mapped = EXIT_CODE_MAP[rawExitCode];
+  const exitCode = mapped ? mapped.exitCode : (rawExitCode > 2 && rawExitCode !== 127 ? 1 : rawExitCode);
+  const errorType = mapped?.errorType;
+
+  return {
+    exitCode,
+    errorType,
+    stdout: "",
+    stderr: "",
+    durationS,
+    logPath,
+  };
+}

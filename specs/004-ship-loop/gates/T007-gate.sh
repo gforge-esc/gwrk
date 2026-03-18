@@ -1,25 +1,23 @@
-#!/usr/bin/env bash
-# T007-gate.sh — failureContext on CIRCUIT_BREAK (FR-018)
+#!/bin/bash
 set -euo pipefail
-PASS=0; FAIL=0
+# AUTHORED
+# Gate: T007 — Implement scripts/dev/work-until-done.sh
 
-# Assertion #1: failureContext referenced in WUD
-if grep -q 'failureContext\|failure_context' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #1: failureContext exists in WUD"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #1: failureContext NOT found in WUD"
-  FAIL=$((FAIL+1))
-fi
+FILE="scripts/dev/work-until-done.sh"
 
-# Assertion #2: openTasks or lastVerdict in failure context
-if grep -q 'openTasks\|open_tasks\|lastVerdict\|last_verdict' scripts/dev/work-until-done.sh; then
-  echo "✓ Assertion #2: failure context has structured fields"
-  PASS=$((PASS+1))
-else
-  echo "✗ Assertion #2: structured failure fields NOT found"
-  FAIL=$((FAIL+1))
-fi
+# Assertion 1: CIRCUIT_BREAK emit_event call exists
+grep -q "emit_event \"CIRCUIT_BREAK\"" "$FILE"
 
-echo "T007: $PASS passed, $FAIL failed"
-[[ $FAIL -eq 0 ]]
+# Assertion 2: failureContext is written to state file in CIRCUIT_BREAK block
+grep -q "\"failureContext\": {" "$FILE"
+grep -q "save_state \"CIRCUIT_BREAK\"" "$FILE"
+
+# Assertion 3: Staging validation call exists after IMPLEMENT
+grep -q "Running staging validation..." "$FILE"
+grep -q "bash \"\$validate_staging\" \"\$FEATURE\"" "$FILE"
+
+# Assertion 4: Dirty-tree guard via wud-branch.sh call in BRANCH_SETUP
+grep -q "Ensuring feat/.* branch..." "$FILE"
+grep -q "\"\$WUD_BRANCH\" \"\$FEATURE\"" "$FILE"
+
+echo "PASS: T007 — scripts/dev/work-until-done.sh Phase 2 features verified"

@@ -21,7 +21,7 @@ export const ExecutionManifestSchema = z.object({
   linesDeleted: z.number(),
   gitCommit: z.string(),
   gitBranch: z.string(),
-  digest: z.array(z.string()).default([]),
+  digest: z.array(z.string()),
 });
 
 export type ExecutionManifest = z.infer<typeof ExecutionManifestSchema>;

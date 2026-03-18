@@ -1,9 +1,11 @@
 #!/bin/bash
+# AUTHORED
 set -euo pipefail
 # Gate: T002 — Implement src/commands/tasks-generate.ts
-# Generated: assertions derived from plan Done When + file type.
-# To override, add '# AUTHORED' anywhere and edit freely.
-
-test -f dist/commands/tasks-generate.js
-
+test -f src/commands/tasks-generate.ts
+grep -q "contracts/" src/commands/tasks-generate.ts
+grep -q "Contracts required for gate authoring" src/commands/tasks-generate.ts
+grep -q "dispatchAgent" src/commands/tasks-generate.ts
+grep -q "no-llm" src/commands/tasks-generate.ts
+pnpm vitest run src/commands/tasks-generate.test.ts --reporter=verbose
 echo "PASS: T002 — Implement src/commands/tasks-generate.ts"

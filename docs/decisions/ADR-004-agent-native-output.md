@@ -129,7 +129,7 @@ function formatDuration(ms: number): string {
 
 ```typescript
 program
-  .option('--format <type>', 'Output format: human | json', 'human')
+  .option('--format <type>', 'Output format (json)')
   .option('--agent', 'Enable agent mode: ANSI-stripped output with Layer 2 protections');
 ```
 

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feat/004-ship-loop`
 **Created**: 2026-02-27
-**Revised**: 2026-03-14
+**Revised**: 2026-03-17
 **Status**: Settled
 **Input**: The autonomous execution kernel for Pillar 3 (Shipping). `gwrk ship <feature> [phase]` orchestrates the Ship Loop — the 7-step cycle that ends when a PR is issued and Slack is notified: DISPATCH → PRE-FLIGHT → EXECUTE → POST-FLIGHT → VERIFY → PR → NOTIFY. Delegates to `scripts/dev/work-until-done.sh` as the phase orchestrator. Phase is optional — omitting it ships all phases sequentially, skipping completed ones.
 
@@ -10,7 +10,7 @@
 
 > **Nomenclature**: "Ship loop" is the execution mechanism. "WUD" (Work Until Done) is the agent persona that operates the ship loop (architecture.md §2). The spec uses "ship loop" and "phase orchestrator" for the machinery, not "WUD."
 
-> **Architectural anchors**: [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (operational signals), [FOXTROT-CHARLIE](file:///Users/gonzo/Code/gwrk/docs/FOXTROT-CHARLIE.md) §Pillar 3, [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md) §6.2 (Ship Loop), [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) §1.2
+> **Architectural anchors**: [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (operational signals), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends), [FOXTROT-CHARLIE](file:///Users/gonzo/Code/gwrk/docs/FOXTROT-CHARLIE.md) §Pillar 3, [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md) §6.2 (Ship Loop), [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) §1.2
 
 ---
 
@@ -247,6 +247,25 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 ### Loop-Closing Contract
 
 > **Ship Loop (004) → Harvest (011) handoff**: Ship loop ends at PR issued + Slack notification (step 7). It produces: (a) git-tracked execution manifests in `specs/<feature>/.gwrk/runs/` (ADR-003 Tier 1), (b) raw logs git-committed per FR-017, (c) SQLite run record started via `startRun()`. **Harvest (011)** is triggered by GitHub webhook on PR merge and consumes these outputs: rehomes logs, finalizes DB records via `finishRun()`, calculates compression, posts done-done to Slack. See architecture.md §6.3 and `specs/011-harvest/spec.md`.
+
+### Layer 1: Plugin Dispatch Boundary (ADR-006)
+
+> **Purpose:** These FRs establish the dispatch facade that makes F004 plugin-ready. Today the facade wraps `spawn(cli, args)`. When F014 ships, the facade internals are replaced by `pluginRegistry.getAgentBackend().dispatch()` — no other F004 code changes. See [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) and [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
+
+- **FR-019**: System MUST dispatch agent work through a single function signature: `dispatchToAgent(task: TaskDispatch): Promise<TaskResult>`. The ship loop (`ship.ts`) and phase orchestrator (`work-until-done.sh` via gwrk CLI) MUST call this function — they MUST NOT spawn CLI processes directly. `TaskDispatch` contains: `{ prompt: string, agent: string, workDir: string, stdin: string, env: Record<string, string> }`. `TaskResult` contains: `{ exitCode: number, errorType?: "turn_limit" | "permission" | "timeout" | "unknown", stdout: string, stderr: string, durationS: number }`. (Implements: US-001, US-008)
+- **FR-020**: `dispatchToAgent()` MUST normalize exit codes to the gwrk standard: `0` (success), `1` (failure), `2` (usage error), `127` (command not found). Proprietary CLI exit codes (e.g., Gemini's `53` for turn limit) MUST be mapped to `exitCode: 1` with `errorType: "turn_limit"`. The ship loop MUST consume `TaskResult.exitCode` and `TaskResult.errorType`, never raw process exit codes. (Implements: US-001)
+- **FR-021**: Context delivery to the agent CLI MUST use stdin piping as the primary delivery mechanism: `echo "$stdin" | $cli_command`. Inline `-p "<prompt>"` arguments MUST NOT be used for context longer than 4096 bytes. This avoids `ARG_MAX` shell limitations and ensures reliable delivery. (Implements: US-001)
+
+#### FR-019 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Agent CLI not found | `Agent CLI not found: <name>` | 127 |
+| Dispatch timeout | `Agent dispatch timed out after Ns` | 1 |
+
+#### FR-020 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Turn limit hit | `Agent hit turn limit — consider increasing model.maxSessionTurns` | 1 |
 
 ---
 

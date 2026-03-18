@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#!/usr/bin/env bash
+if [[ "$1" == "status" && "$2" == "--porcelain" ]]; then
+  echo " M some-file"
+  exit 0
+fi
+if [[ "$1" == "rev-parse" ]]; then
+  echo "/tmp/fake-repo"
+  exit 0
+fi
+echo "mock git"
+exit 0

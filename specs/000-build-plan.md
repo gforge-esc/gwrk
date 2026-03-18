@@ -1,8 +1,8 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-15 (v9)
+> **Status:** Authoritative · **Date:** 2026-03-17 (v10)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
-> **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (agent-native output protocol)
+> **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (agent-native output protocol), [ADR-005](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md) (TDD gate architecture), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends)
 
 ---
 
@@ -29,23 +29,21 @@ graph TD
     F001 --> F006["F006: Pulse"]
     F001 --> F007["F007: Effort + Compression"]
     F001 --> F012["F012: Knowledge Work"]
-    F001 --> F014["F014: Plugin System"]
+    F001 --> F014["F014: Plugin System (incl. Routing Intelligence)"]
     F002 --> F003["F003: Slack ⚠️"]
     F002 --> F005["F005: Parallel Dispatch"]
     F002 --> F015["F015: Event Bus"]
     F013 --> TDD["TDD Hardening: 001-003 ⚠️"]
     F013 --> F004["F004: Ship Loop"]
-    F013 --> F008["F008: Multi-Agent Router"]
     TDD --> F004
     F004 --> F005
     F004 --> F011["F011: Harvest"]
-    F005 --> F008
+    F005 --> F014
     F003 --> F009["F009: Agent-DUT"]
     F003 --> F011
     F002 --> F011
     F006 --> F010["F010: GForge Integration"]
     F007 --> F010
-    F014 --> F008
     F014 --> F012
     F014 --> F016["F016: Domain Packs"]
     F014 --> F017["F017: Channel Abstraction"]
@@ -59,8 +57,8 @@ graph TD
 ## Critical Path
 
 ```
-F000 ✅ → F001 ✅ → F013 ✅ → TDD Hardening ✅ → F004 → F005 → F008
-                                               → F002 ✅ → F003 ✅
+F000 ✅ → F001 ✅ → F013 ✅ → TDD Hardening ✅ → F004 → F005 → F014 P4 (Routing)
+                                                → F002 ✅ → F003 ✅
                → F006
                → F007
 ```
@@ -293,9 +291,16 @@ gwrk ship <feature> <phase>        # Ship a single phase
 - Every Ship dispatch writes a `runs` record (backend, model, attempt, timestamps)
 - Gate results, review verdicts, retry reasons recorded
 
+#### Plugin Dispatch Boundary (FR-019–021, ADR-006):
+- **FR-019**: All dispatch through `dispatchToAgent(TaskDispatch): Promise<TaskResult>` — ship loop MUST NOT spawn CLI processes directly
+- **FR-020**: Exit code normalization — proprietary codes (e.g., Gemini `53`) mapped to gwrk standard (`0`/`1`/`2`/`127`) with `errorType` classification
+- **FR-021**: Context delivered via stdin pipe — inline `-p "<prompt>"` MUST NOT be used for context >4096 bytes
+- Contract: `specs/004-ship-loop/contracts/dispatch.md` (Phase 4)
+- See [architecture.md §6.1](file:///Users/gonzo/Code/gwrk/docs/architecture.md) (Dispatch Boundary)
+
 > **Scope (2026-03-14):** Ship Loop = steps 1-7 (DISPATCH → NOTIFY). Harvest (post-merge lifecycle) moved to F011. See architecture.md §6.2-6.3.
 
-**Status:** 🔴 Actively being TDD-hardened.
+**Status:** 🔴 Actively being TDD-hardened. Phase 4 (Plugin Dispatch Boundary) added. See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
 
 ---
 
@@ -364,28 +369,12 @@ Feature SP = Σ Phase SP = Σ Task SP. No orphan points. gwrk validates on `plan
 
 ---
 
-### Feature 008 — Multi-Agent Router
+### ~~Feature 008 — Multi-Agent Router~~ ⚫ RETIRED
 
-Agent backend selection, Done Done! protocol, retry + escalation, learning from execution history. Agent registry with per-backend rate/token limits.
-
-| Spec | Content | Gate |
-|---|---|---|
-| `008-agent-router` | Router logic, per-backend invocation, fallback chain, tandem dispatch, SQLite-backed learning, agent registry schema, context size estimator, **`AgentBackend` plugin interface** | Dispatch to Codex, retry on Claude, mini-model fallback |
-
-**Dependencies:** Feature 005, **Feature 014** (plugin system for adapter plugins)
-**Agent:** Claude Code
-**SP:** 7 → 12 (amended: +5 SP for plugin adapter interface)
-
-#### F013 integration:
-- Router reads `[exit:N | Xs]` duration data from execution ledger for cost models
-- Task routing considers classification (greenfield/change/refactor) from F013
-- `gwrk project discover --json` provides context for routing decisions
-
-#### Agent registry:
-- `.gwrkrc.json` → `agents.registry` map
-- Context Size Estimator: token count vs backend `contextWindow`
-- Mini-model fallback before escalation
-- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md)
+> **2026-03-17:** Folded into **F014 Phase 4: Routing Intelligence.** F008's agent registry (`.gwrkrc.json → agents.registry`) conflicted with F014's plugin registry. Quota probing is CLI-specific knowledge that belongs in AgentBackend adapter plugins (ADR-006). Routing intelligence (quota-weighted selection, fallback chains, historical learning) survives as F014 Phase 4. Full analysis: [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
+>
+> **Original spec preserved at:** `specs/008-agent-router/` (archived, not deleted).
+> **SP absorbed by F014:** 12 SP → F014 Phase 4.
 
 ---
 
@@ -464,16 +453,20 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 
 ---
 
-### Feature 014 — Plugin System
+### Feature 014 — Plugin System (Three-Layer Architecture)
 
-Manifest-driven plugin architecture with two-tier skill hierarchy (atomic reasoning modes + compound compositions). Skills are CLI commands with full F013 contract: stdin/stdout, `--format json`, `[exit:N | Xs]`, pipe-composable. Anti-MCP: Unix-native, not server-coupled.
+Manifest-driven plugin architecture with three layers: **Agent Backend adapters** (Layer 1, ADR-006), **Skills** (Layer 2, two-tier hierarchy), and **Extensions** (Layer 3, domain packs + channel adapters). All plugins are CLI commands with full F013 contract: stdin/stdout, `--format json`, `[exit:N | Xs]`, pipe-composable. Anti-MCP: Unix-native, not server-coupled.
+
+> **2026-03-17 (v10):** Absorbed F008 (Agent Router) as Phase 4: Routing Intelligence. See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
 
 | Spec | Content | Gate |
 |---|---|---|
-| `014-plugin-system` | Manifest schema (YAML), global `~/.gwrk/plugins/` directory, local `.gwrk/plugins.yaml` override, plugin loader, skill runtime (`gwrk skill <name>`), `gwrk plugin install\|remove\|list`, migration from `.agents/skills/`, atomic skill generation from `reasoning-modes.md` taxonomy | `gwrk skill narrative < brief.md` produces output; `gwrk plugin list` shows installed |
+| `014-plugin-system` | Manifest schema (YAML), plugin loader, skill runtime, `AgentBackend` adapter interface (ADR-006), routing intelligence (ex-F008), `gwrk plugin install\|remove\|list`, migration from `.agents/skills/`, config ownership + conflict detection | `gwrk skill narrative < brief.md` produces output; `gwrk plugin list` shows installed; `dispatchToAgent()` routes through plugin adapter |
 
 **Dependencies:** Feature 001 ✅
-**Spec:** Pending (empty spec dir, architecture in [plugin-architecture-plan.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-architecture-plan.md) and [skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md))
+**Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) (Draft — needs Layer 1 + Phase 4 additions)
+**Decisions:** [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends)
+**SP:** 8 → 20 (absorbed F008's 12 SP)
 
 #### What ships:
 
@@ -484,13 +477,27 @@ gwrk plugin install <name>         # Install plugin
 gwrk plugin remove <name>          # Remove plugin
 gwrk plugin list                   # List installed plugins
 gwrk plugin disable <name>         # Disable without removing
+gwrk plugin check                  # Validate CLI config for conflicts
+gwrk plugin sync-context           # Regenerate CLI memory files from .gwrk/agent-context.md
 ```
 
+#### Three-layer architecture:
+- **Layer 1: Agent Backends** — `AgentBackend` plugin interface (ADR-006). Claude, Codex, Gemini adapters. Stdin delivery, exit normalization, config ownership.
+- **Layer 2: Skills** — Two-tier hierarchy (atomic + compound). `manifest.yaml` + `SKILL.md`. Global only.
+- **Layer 3: Extensions** — Domain Packs (F016), Channel Adapters (F017). Not yet designed.
+
+#### Implementation phases:
+1. **Phase 1 — Plugin Loader + Registry:** Manifest schema (Zod), `~/.gwrk/plugins/` scanner, `.gwrk/plugins.yaml` overrides
+2. **Phase 2 — Skill Runtime:** `gwrk skill <name>`, atomic + compound execution, pipe composition, F013 signals
+3. **Phase 3 — Agent Backend Adapters:** `AgentBackend` interface (ADR-006), Claude/Codex/Gemini adapters, stdin delivery, config conflict detection
+4. **Phase 4 — Routing Intelligence (ex-F008):** Quota probing (per-adapter), `selectBackend()`, fallback chains, SQLite `routing_decisions` table, historical learning
+
 #### Key design decisions:
-- **Two-tier hierarchy**: Atomic (single reasoning mode) + Compound (compose atomics)
+- **Three layers**: Agent Backends (ADR-006) + Skills (two-tier) + Extensions (future)
 - **manifest.yaml** = contract (identity, interface, runtime); **SKILL.md** = reasoning program
 - **Global only** for skills (`~/.gwrk/plugins/skills/`) — capabilities of the operator, not project
 - **Anti-MCP**: CLI-native, pipe-composable, no server required
+- **Config ownership**: Plugins declare which CLI config keys they manage; conflicts detected pre-dispatch (ADR-006 §2.5)
 
 ---
 
@@ -537,8 +544,8 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | **Wave 1** | F001 ✅ | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning |
 | **Wave 2** | F013, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
 | **Wave 3** | TDD Hardening (001-003) | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
-| **Wave 4** | F004, F011, F014 | Partially (F004 needs F013+Hardening, F014 needs F001) | Execution + plugin foundation |
-| **Wave 5** | F005, F008, F009, F015 | Yes (F005 needs F004; F008 needs F005+F014; F009 needs F003; F015 needs F002) | Intelligence + Comms + event bus |
+| **Wave 4** | F004, F011, F014 P1-3 | Partially (F004 needs F013+Hardening, F014 needs F001) | Execution + plugin foundation |
+| **Wave 5** | F005, F014 P4, F009, F015 | Yes (F005 needs F004; F014 P4 needs P1-3; F009 needs F003; F015 needs F002) | Dispatch + routing + comms + event bus |
 | **Wave 6** | F010, F012 | Partially (F010 needs F006+F007; F012 amended needs F014) | Integration + knowledge work |
 | **Wave 7** | F016, F017 | Yes (F016 needs F012+F014; F017 needs F014+F015+F003) | Domain packs + channel abstraction |
 
@@ -564,12 +571,12 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | F005 (Parallel Dispatch) | 10 | PE | 50h |
 | F006 (Pulse) | 5 | PE | 25h |
 | F007 (Effort + Compression) | 8 | PM+PE | 40h |
-| F008 (Agent Router) | 12 | PM+PE | 60h |
+| ~~F008 (Agent Router)~~ | ~~12~~ | ~~PM+PE~~ | ⚫ Folded into F014 P4 |
 | F009 (Agent-DUT) | 8 | PM+PE | 40h |
 | F010 (Integration) | 5 | PE | 25h |
 | F011 (Harvest) | 5 | PM+PE | 25h |
 | F012 (Knowledge Work) | 13 | PM+PE | 65h |
-| **F014 (Plugin System)** | **8** | **PM+PE** | **40h** |
+| **F014 (Plugin System)** | **20** | **PM+PE** | **100h** |
 | **F015 (Event Bus)** | **8** | **PE** | **40h** |
 | **F016 (Domain Packs)** | **13** | **PM+PE** | **65h** |
 | **F017 (Channel Abstraction)** | **8** | **PM+PE** | **40h** |
@@ -585,11 +592,13 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | 2 | ~~Cloudflare Tunnel automation~~ | ~~F011~~ | ⚫ Moot — Slack webhook replaces tunnel (2026-03-14) |
 | 3 | Slack presence throttling: granularity beyond active/away? | F003 | 🟡 Open |
 | 4 | TDD Hardening scope: extend beyond 001-003 to 004-008? | Hardening | 🟡 Open (004-008 have 64-92% `test -f` contamination but haven't shipped code) |
+| 5 | ~~Should F008 fold into F014?~~ | ~~F008, F014~~ | ⚫ Decided: Yes — F008 folded into F014 Phase 4 (2026-03-17). See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md). |
 
 ---
 
 ## Changelog
 
+- **2026-03-17 (v10):** F008 (Agent Router, 12 SP) folded into F014 Phase 4: Routing Intelligence. F014 three-layer architecture established (Agent Backends, Skills, Extensions). F014 SP: 8→20 (absorbed F008). ADR-005 (TDD gates) and ADR-006 (plugin agent backends) added to decision registry. Dependency graph simplified (F008 node removed, F005→F014 replaces F005→F008). Wave 5 updated: F014 P4 replaces F008. OQ-5 resolved. F004 status updated with Phase 4 (Plugin Dispatch Boundary). Plugin strategy audit published: [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md). Total SP unchanged (~210).
 - **2026-03-15 (v9):** Plugin architecture registered. F014 Plugin System (8 SP), F015 Event Bus (8 SP), F016 Domain Packs (13 SP), F017 Channel Abstraction (8 SP) added. F008 amended 7->12 SP (+5 for AgentBackend plugin interface). F012 amended 8->13 SP (+5 for --domain flag). Dependency graph updated with 7 new edges. Wave strategy expanded to 7 waves. Total: 163->~210 SP. Derived from OpenClaw research.
 - **2026-03-14 (v8):** 004 rescoped to Ship Loop (steps 1-7). Harvest (steps 8-12) moved to F011. 003-slack FR-014 (Slack Incoming Webhook) added. Tunnel infrastructure removed (webhook + Socket Mode replaces). Status annotations corrected. Dependency graph updated with F011. Total: 158->~163 SP.
 - **2026-03-13 (v7):** Terminology fix: "Phase N" → "Feature NNN" throughout the build plan. Features are spec subdirectories; Phases are implementation stages within features. F013 (Agent-Native Interface, 28 SP) added as critical path prerequisite for F004 and F008 (ADR-004). F004 SP: 8→5, F008 SP: 10→7 (F013 provides discovery, signals, structured output). TDD Hardening (~15 SP) added for 001-003: rewrite specs to TDD standard, regenerate gates, remediate gaps. F013 gates hardening. Hardening gates F004. F000/F000-TDD/F001/F002/F003 marked ✅. Wave strategy restructured to 6 waves. OQ-002 marked moot, OQ-004 added. Total: 121→~158 SP.

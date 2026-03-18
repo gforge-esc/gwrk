@@ -7,6 +7,7 @@ import { notifySlack } from "../server/slack-notify.js";
 import type { SlackEvent } from "../server/slack-presence.js";
 import type { DispatchRecord } from "../server/types.js";
 import { type AgentBackend, loadConfig } from "../utils/config.js";
+import { dispatchToAgent, type TaskResult } from "../utils/agent.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -289,6 +290,24 @@ function isPhaseComplete(
 }
 
 /**
+ * FR-019: Direct agent dispatch via plugin facade (ADR-006).
+ * Used when WUD orchestrator is not needed (e.g., single-task dispatch, testing).
+ */
+export async function dispatchPhaseWork(
+  feature: string,
+  phase: string,
+  backend: AgentBackend,
+  workflow: string,
+): Promise<TaskResult> {
+  return dispatchToAgent({
+    agent: backend,
+    workflow,
+    featureDir: `specs/${feature}`,
+    prompt: `Phase ${phase}`,
+  });
+}
+
+/**
  * gwrk ship — The Shipping Pillar (Throughput)
  *
  * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
@@ -301,7 +320,7 @@ export const shipCommand = new Command("ship")
     `
 Type: mutator
 Mutates: git branches, task state, execution manifests
-Formats: human
+Format: use gwrk --format json for structured output
 Exit codes:
   0: All phases shipped successfully
   1: Phase failed or feature not found
@@ -319,8 +338,7 @@ Exit codes:
   )
   .option(
     "--format <format>",
-    "Output format: human (default) or json",
-    "human",
+    "Output format (json)",
   )
   .action(
     async (

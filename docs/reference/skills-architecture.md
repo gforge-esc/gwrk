@@ -2,7 +2,7 @@
 
 > **Date**: 2026-03-15
 > **Status**: Decided — ready for F014 spec
-> **Derived from**: [OpenClaw Research](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md), [Manifest Stress Test](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md), reasoning-modes taxonomy
+> **Derived from**: [OpenClaw Research Report](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md), reasoning-modes taxonomy
 
 ---
 

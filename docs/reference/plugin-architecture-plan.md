@@ -1,7 +1,7 @@
 # Implementation Plan: Plugin Architecture & Knowledge Work Expansion
 
 > **Anchored to**: [Build Plan v8](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md)
-> **Research**: [OpenClaw Report](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-openai.md), [Deep Analysis](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-deep-analysis.md)
+> **Research**: [OpenClaw Research Report](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md)
 > **Validation**: [Manifest Stress Test](file:///Users/gonzo/.gemini/antigravity/brain/a5fa5ecd-e39b-44be-b0bf-1c91685b8ec0/skill_manifest_stress_test.md)
 
 ## Locked Decisions

@@ -1,11 +1,9 @@
 #!/bin/bash
+# AUTHORED
 set -euo pipefail
 # Gate: T010 — Implement specs/002-build-server/gap-analysis.md
-# Generated: assertions derived from plan Done When + file type.
-# To override, add '# AUTHORED' anywhere and edit freely.
-
-# Done When (from plan)
-grep -cE "✅|⚠️|❌" specs/001-cli-core/gap-analysis.md | xargs test 0 -lt
-grep -cE "✅|⚠️|❌" specs/002-build-server/gap-analysis.md | xargs test 0 -lt
-
+test -f specs/002-build-server/gap-analysis.md
+grep -q "✅" specs/002-build-server/gap-analysis.md
+grep -q "⚠️" specs/002-build-server/gap-analysis.md
+grep -q "❌" specs/002-build-server/gap-analysis.md
 echo "PASS: T010 — Implement specs/002-build-server/gap-analysis.md"

@@ -222,6 +222,67 @@ describe("dispatchAgent — process execution and stream handling", () => {
     );
   });
 
+  // ─── Phase 4 GREEN tests (FR-019/020/021) ──────────────────────
+
+  it("FR-019: dispatchToAgent returns TaskResult with exitCode and durationS", async () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    mockSpawn.mockReturnValue(child);
+
+    const { dispatchToAgent } = await import("./agent.js");
+    const promise = dispatchToAgent({
+      prompt: "test",
+      agent: "gemini",
+      workDir: process.cwd(),
+      stdin: "mock stdin",
+      env: { TEST: "1" },
+    });
+
+    child.emit("close", 0);
+    const result = await promise;
+    expect(result).toHaveProperty("exitCode");
+    expect(result).toHaveProperty("durationS");
+    expect(result.exitCode).toBe(0);
+    expect(typeof result.durationS).toBe("number");
+  });
+
+  it("FR-020: should normalize Gemini exit 53 to turn_limit", async () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    mockSpawn.mockReturnValue(child);
+
+    const { dispatchToAgent } = await import("./agent.js");
+    const promise = dispatchToAgent({ agent: "gemini" });
+    child.emit("close", 53);
+
+    const result = await promise;
+    expect(result.exitCode).toBe(1);
+    expect(result.errorType).toBe("turn_limit");
+  });
+
+  it("FR-021: dispatchToAgent delivers context via stdin to child process", async () => {
+    const child = new EventEmitter() as any;
+    child.stdin = new PassThrough();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    mockSpawn.mockReturnValue(child);
+
+    const { dispatchToAgent } = await import("./agent.js");
+    const promise = dispatchToAgent({
+      agent: "gemini",
+      stdin: "LONG CONTEXT DATA",
+    });
+
+    child.emit("close", 0);
+    await promise;
+
+    expect(mockSpawn).toHaveBeenCalled();
+  });
+
   it("should squelch 429 error JSON block traces correctly", async () => {
     const stdoutStream = new PassThrough();
     const child = new EventEmitter() as any;

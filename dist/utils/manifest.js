@@ -20,7 +20,7 @@ export const ExecutionManifestSchema = z.object({
     linesDeleted: z.number(),
     gitCommit: z.string(),
     gitBranch: z.string(),
-    digest: z.array(z.string()).default([]),
+    digest: z.array(z.string()),
 });
 /**
  * Writes an execution manifest to specs/<feature>/.gwrk/runs/

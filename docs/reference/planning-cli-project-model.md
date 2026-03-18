@@ -502,7 +502,7 @@ Below are conceptual JSON schemas. They are meant to support **reasoning and int
         "primary_payload": { "type": "string", "description": "What stdout represents in success cases." },
         "formats": {
           "type": "array",
-          "items": { "type": "string", "enum": ["human", "json"] }
+          "items": { "type": "string", "enum": ["json"] }
         }
       },
       "additionalProperties": false

@@ -7,7 +7,7 @@ import type { Command } from "commander";
 export interface CommandMeta {
   type: "query" | "generator" | "verifier" | "mutator";
   exitCodes: Record<number, string>;
-  formats: ("human" | "json")[];
+  supportsJson: boolean;
   mutations?: string[];
   outputs?: string;
 }
@@ -27,12 +27,15 @@ export function applyMeta(cmd: Command, meta: CommandMeta): void {
 
   const outputsStr = meta.outputs ? `Outputs: ${meta.outputs}\n` : "";
 
+  const formatStr = meta.supportsJson
+    ? "Format: use gwrk --format json for structured output\n"
+    : "";
+
   cmd.addHelpText(
     "after",
     `
 Type: ${meta.type}
-Formats: ${meta.formats.join(", ")}
-${mutationsStr}${outputsStr}Exit codes:
+${formatStr}${mutationsStr}${outputsStr}Exit codes:
 ${exitCodesStr}
 `,
   );

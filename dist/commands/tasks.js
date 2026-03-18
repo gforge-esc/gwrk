@@ -6,13 +6,13 @@ import { color, fail, success } from "../utils/format.js";
 import { appendHistory } from "../utils/history.js";
 import { loadManifests } from "../utils/manifest.js";
 import { contentHash, listTasks, loadTaskState, markTaskComplete, nextTask, saveTaskState, } from "../utils/state.js";
-import { createOutput } from "../utils/output.js";
+import { createOutput, resolveFormat } from "../utils/output.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 export const tasksCommand = new Command("tasks")
     .description("Query and manage task state")
     .addHelpText("after", `
 Type: query/mutator
-Formats: human, json (use --format json)
+Format: use gwrk --format json for structured output
 Exit codes:
   0: Success
   1: Task not found or gate failed
@@ -43,6 +43,22 @@ tasksCommand
             throw new CommandError(`Task ${taskId} already completed`, 1);
         }
         const gateScript = path.join(featureDir, task.gateScript);
+        // FR-001: Reject gates that contain only `test -f` assertions
+        if (fs.existsSync(gateScript)) {
+            const gateContent = fs.readFileSync(gateScript, "utf-8");
+            const lines = gateContent
+                .split("\n")
+                .map((l) => l.trim())
+                .filter((l) => l.length > 0 &&
+                !l.startsWith("#") &&
+                !l.startsWith("set ") &&
+                !l.startsWith("echo "));
+            const hasOnlyTestF = lines.length > 0 &&
+                lines.every((l) => l.startsWith("test -f") || l.startsWith("[ -f"));
+            if (hasOnlyTestF) {
+                throw new CommandError(`FAIL: ${taskId} — gate contains only test -f, not a functional assertion`, 1);
+            }
+        }
         const result = runGate(gateScript);
         if (result.exitCode !== 0) {
             if (result.exitCode === 127) {
@@ -120,13 +136,7 @@ tasksCommand
     .option("--compact", "Hide descriptions on open tasks")
     .action(async (feature, options, command) => {
     await withSignal("tasks list", async () => {
-        // Traverse up to find root program options
-        let root = command;
-        while (root.parent)
-            root = root.parent;
-        const globalOpts = root.opts();
-        const format = options.json ? "json" : globalOpts.format || "human";
-        const out = createOutput(format);
+        const out = options.json ? createOutput("json") : resolveFormat(command);
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
         let state;
@@ -137,7 +147,7 @@ tasksCommand
             throw new CommandError(`Task state not found for '${feature}'. Run 'gwrk define tasks ${feature}' to generate tasks. See 'gwrk project specs' to list features.`, 1);
         }
         const allTasks = listTasks(state);
-        if (format === "json") {
+        if (out.isJson) {
             out.write({ tasks: allTasks });
             return;
         }
@@ -180,13 +190,7 @@ tasksCommand
     .option("--json", "Output in JSON format")
     .action(async (feature, phase, options, command) => {
     await withSignal("tasks next", async () => {
-        // Traverse up to find root program options
-        let root = command;
-        while (root.parent)
-            root = root.parent;
-        const globalOpts = root.opts();
-        const format = options.json ? "json" : globalOpts.format || "human";
-        const out = createOutput(format);
+        const out = options.json ? createOutput("json") : resolveFormat(command);
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
         const state = loadTaskState(featureDir);
@@ -195,7 +199,7 @@ tasksCommand
             phaseId = `phase-${phase.padStart(2, "0")}`;
         }
         const task = nextTask(state, phaseId);
-        if (format === "json") {
+        if (out.isJson) {
             out.write({ task: task || null });
         }
         else if (task) {
@@ -213,18 +217,12 @@ tasksCommand
     .option("--json", "Output in JSON format")
     .action(async (feature, options, command) => {
     await withSignal("tasks ready", async () => {
-        // Traverse up to find root program options
-        let root = command;
-        while (root.parent)
-            root = root.parent;
-        const globalOpts = root.opts();
-        const format = options.json ? "json" : globalOpts.format || "human";
-        const out = createOutput(format);
+        const out = options.json ? createOutput("json") : resolveFormat(command);
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
         const state = loadTaskState(featureDir);
         const readyTasks = listTasks(state).filter((t) => t.status === "open" || t.status === "in_progress");
-        if (format === "json") {
+        if (out.isJson) {
             out.write({ tasks: readyTasks });
         }
         else {

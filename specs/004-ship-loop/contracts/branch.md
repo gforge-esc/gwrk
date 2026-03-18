@@ -28,7 +28,7 @@
 
 When `$2 == "push"` → `git push origin feat/<feature> --force-with-lease` with retry.
 
-### Dirty-Tree Guard (FR-002) — **NOT IMPLEMENTED**
+### Dirty-Tree Guard (FR-002) — fail-fast (IMPLEMENTED)
 
 Before any branch operation, the script MUST:
 

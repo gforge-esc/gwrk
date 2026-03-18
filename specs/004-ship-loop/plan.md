@@ -4,12 +4,13 @@
 
 ## Summary
 
-The ship loop implements Pillar 3's autonomous execution kernel (Foxtrot Charlie: Shipping → Throughput). Core code exists (ship.ts, work-until-done.sh, support scripts) but applying the TDD mandate (**no test = not done**), only **4 of 18 FRs have behavioral test coverage**. The remaining 14 FRs need implementation, tests, or both.
+The ship loop implements Pillar 3's autonomous execution kernel (Foxtrot Charlie: Shipping → Throughput). Core code exists (ship.ts, work-until-done.sh, support scripts) but applying the TDD mandate (**no test = not done**), only **4 of 18 FRs have behavioral test coverage**. The remaining 14 FRs need implementation, tests, or both. Three new FRs (019-021) establish the plugin dispatch boundary per ADR-006.
 
-Three phases, 12 tasks:
+Four phases, 14 tasks:
 1. **Digest & Phase-Skip** — Structured event sidecar, digest assembly, log rehoming, phase-skip logic, pre-flight gate check
 2. **Resilience & Bail** — Rip-cord bail, staging validator integration, dirty-tree fail-fast
 3. **Verification & Artifacts** — Contracts, gap analysis, full suite + tests for all existing but untested FRs
+4. **Plugin Dispatch Boundary** — Extract `dispatchToAgent()` facade, `TaskDispatch`/`TaskResult` types, stdin delivery, exit normalization
 
 ---
 
@@ -153,11 +154,61 @@ Write **dedicated behavioral tests** for all existing-but-untested FRs. Update a
 
 ---
 
+### Phase 4: Plugin Dispatch Boundary
+
+Extract the dispatch facade per ADR-006. Today it wraps `spawn(cli, args)`. When F014 ships, the internals are replaced by `pluginRegistry.getAgentBackend().dispatch()` — no other F004 code changes.
+
+**Files (5):**
+- `src/utils/agent.ts` (MODIFY: extract `dispatchToAgent()` function with `TaskDispatch → TaskResult` signature. Move existing CLI spawn logic into this facade. Add exit code normalization: map raw process codes to gwrk standard. Add stdin delivery via `child.stdin.write()` instead of inline `-p`.)
+- `src/utils/agent.test.ts` (NEW: unit tests for `dispatchToAgent()` — mock child process spawn, verify exit code normalization, verify stdin delivery, verify `TaskResult` shape.)
+- `src/commands/ship.ts` (MODIFY: replace direct `agent-run.sh` invocation with `dispatchToAgent()`. Consume `TaskResult.exitCode` and `TaskResult.errorType` instead of raw exit codes.)
+- `specs/004-ship-loop/contracts/dispatch.md` (NEW: `TaskDispatch → TaskResult` interface contract. Documents the dispatch facade signature, error types, and exit code mapping.)
+- `scripts/dev/work-until-done.sh` (MODIFY: replace direct CLI invocation with `gwrk dispatch` call where feasible. Existing `agent-run.sh` call site is the primary target.)
+
+**Requirements Addressed:** FR-019, FR-020, FR-021, US-001, US-008
+
+**Dependencies:** Phase 3 (contracts finalized)
+
+**Contract Mapping:**
+- `contracts/dispatch.md` → `dispatchToAgent()` → `src/utils/agent.ts`
+- `contracts/dispatch.md` → `TaskDispatch` type → `src/utils/agent.ts`
+- `contracts/dispatch.md` → `TaskResult` type → `src/utils/agent.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-006 | Agent backends abstracted behind facade |
+| TC-002 Fail-Fast Config | No graceful defaults in dispatch config |
+| TC-003 TypeScript Only | All new code is `.ts` |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-009 | Unit | `src/utils/agent.test.ts` | `dispatchToAgent()` returns `TaskResult` with normalized exit code |
+| TR-009 | Unit | `src/utils/agent.test.ts` | Gemini exit 53 → `exitCode: 1, errorType: "turn_limit"` |
+| TR-009 | Unit | `src/utils/agent.test.ts` | Unknown exit code → `exitCode: 1, errorType: "unknown"` |
+| TR-009 | Unit | `src/utils/agent.test.ts` | CLI not found → `exitCode: 127` |
+| TR-009 | Unit | `src/utils/agent.test.ts` | Context delivered via stdin, not inline args |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Ship loop consumes `TaskResult`, not raw exit codes |
+
+#### Done When
+- `pnpm vitest run src/utils/agent.test.ts` exits 0 with all TR-009 assertions
+- `grep -q 'dispatchToAgent' src/commands/ship.ts` exits 0
+- `grep -q 'TaskResult' src/utils/agent.ts` exits 0
+- `grep -q 'errorType' src/utils/agent.ts` exits 0
+- `test -f specs/004-ship-loop/contracts/dispatch.md` exits 0
+- `pnpm build` exits 0
+
+---
+
 ## Type Dependency Graph
 
 | Shared Type | Defined In | Consumed By |
 |---|---|---|
 | `TaskState` | `src/utils/state.ts` | `ship.ts`, `tasks.ts` |
+| `TaskDispatch` | `src/utils/agent.ts` | `ship.ts`, `dispatch.ts` |
+| `TaskResult` | `src/utils/agent.ts` | `ship.ts`, `dispatch.ts`, F014 `AgentBackend` (future) |
 | `AgentBackend` | `src/utils/config.ts` | `ship.ts`, `dispatch.ts`, `agent-run.sh` |
 | `RunManifest` | `src/utils/manifest.ts` | `ship.ts`, `gwrk harvest` (future, F002) |
 | `ShipRunState` | `.runs/*.state` (JSON) | `work-until-done.sh`, `ship.ts` |
@@ -192,7 +243,7 @@ _No mockups exist for this feature._
 | US-005 Crash Recovery | Phase 3 | ⚠️ Code exists, **no test** |
 | US-006 PR Creation & CI | Phase 3 | ⚠️ Code exists, **no test** (mocked gh in E2E) |
 | US-007 Manifest + Digest | Phase 1 | 🔲 Manifest partial, digest not implemented, no test |
-| US-008 Agent Config | Phase 3 | ⚠️ Code exists, **no test** (mock config) |
+| US-008 Agent Config | Phase 3, 4 | ⚠️ Code exists, **no test** (mock config). Phase 4 adds dispatch facade. |
 | US-009 Phase-Skip | Phase 1 | ⚠️ Code exists, **no test** |
 | US-010 Staging Validation | Phase 2 | 🔲 Not integrated, no test |
 | US-011 Rip-Cord Bail | Phase 2 | 🔲 Not implemented, no test |
@@ -215,15 +266,19 @@ _No mockups exist for this feature._
 | FR-016 staging validator | Phase 2 | ⚠️ Script exists, not called from WUD, **no test** |
 | FR-017 logging (3-tier) | Phase 1 | 🔲 Not implemented, **no test** |
 | FR-018 rip-cord bail | Phase 2 | 🔲 Not implemented, **no test** |
+| FR-019 dispatch facade | Phase 4 | 🔲 Not implemented, **no test** |
+| FR-020 exit normalization | Phase 4 | 🔲 Not implemented, **no test** |
+| FR-021 stdin delivery | Phase 4 | 🔲 Not implemented, **no test** |
 | **Testing Requirements** | | |
 | TR-001 E2E WUD lifecycle | Phase 2, 3 | 🔲 |
 | TR-002 wud-branch validation | Phase 2 | 🔲 |
 | TR-003 wud-verdict validation | Phase 3 | ✅ (verify) |
 | TR-004 wud-ci-wait validation | Phase 3 | ✅ (verify) |
-| TR-005 ship.test.ts | Phase 1 | 🔲 |
+| TR-005 ship.test.ts | Phase 1, 4 | 🔲 |
 | TR-006 CLI help | Phase 3 | ✅ (verify) |
 | TR-007 E2E manifest + digest | Phase 1, 3 | 🔲 |
 | TR-008 staging validator | Phase 2 | 🔲 |
+| TR-009 dispatch facade tests | Phase 4 | 🔲 |
 | **Technical Constraints** | | |
 | TC-001 Air-Gapped | All | ✅ Enforced |
 | TC-002 Fail-Fast Config | Phase 1 | ✅ (Zod, no defaults) |

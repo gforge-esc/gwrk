@@ -30,6 +30,9 @@ Rejects staged files outside `ALLOWED_PREFIXES`:
 ### Check 4: Build Plan Protection (Design Mandate Rule 3)
 Rejects if `specs/000-build-plan.md` is staged.
 
+### Check 5: Event Emission (`emit_event`)
+The agent runner script is expected to call `emit_event(stage, summary)` to populate the sidecar `.events` file.
+
 ## Integration Gap
 
 **`validate-staging.sh` is robust and complete.** The gap is that `work-until-done.sh` never calls it (see `contracts/wud.md` FR-016 entry).

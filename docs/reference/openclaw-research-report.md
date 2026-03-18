@@ -1,7 +1,9 @@
 # OpenClaw Research Report: Architecture, Adoption & Lessons for gwrk
 
-> **Date**: 2026-03-14
-> **Purpose**: Distill OpenClaw's architecture, adoption dynamics, and design choices for relevance to gwrk.
+> **Status**: Authoritative — single OpenClaw reference document
+> **Created**: 2026-03-14 · **Reconciled**: 2026-03-18
+> **Supersedes**: `openclaw-research-openai.md` (deleted), `openclaw-deep-analysis.md` (deprecated — source material only)
+> **Purpose**: Distill OpenClaw's architecture, adoption dynamics, and design choices for relevance to gwrk. Contains reconciled integration decisions.
 
 ---
 
@@ -47,20 +49,42 @@ An open-source autonomous AI agent created by Peter Steinberger (Austrian develo
 4. LLM Invocation → call the model
 5. Tool Execution → shell, browser, files → persist state
 
-### 2.2 Key Design Choices
+### 2.2 Typed WebSocket Protocol
+
+OpenClaw defines a typed WebSocket protocol:
+- **TypeBox schemas** → generate JSON Schema → generate Swift models
+- **Mandatory handshake** (`connect` must be first frame)
+- **Frame shapes**: `{type:"req", id, method, params}` / `{type:"res", id, ok, payload|error}` / `{type:"event", event, payload}`
+- **Schema validation at Gateway boundary**: inbound frames validated against JSON Schema
+- **Protocol check CI**: `protocol:gen` scripts + `git diff --exit-code` to enforce generated artifacts stay in sync
+
+### 2.3 Steer-While-Streaming
+
+OpenClaw's agent runtime treats tool call boundaries as commit points. During a streaming agent run, if a new user message arrives, the runtime queues it and injects it "after tool boundaries, skipping remaining tool calls from the current assistant message." This is called **queue mode `steer`** — the operator can redirect a running agent without killing the session.
+
+### 2.4 Exec Approvals
+
+Input-side safety interlock for command execution:
+- **Policy file**: `~/.openclaw/exec-approvals.json` with modes: `deny`, `allowlist`, `full`
+- **"Ask on miss"**: Unknown command → prompt operator for approval
+- **Binding semantics**: Approval bound to a concrete file operand. If operand changes between approval and execution, approval invalidated (prevents TOCTOU drift)
+
+### 2.5 Key Design Choices
 
 | Choice | OpenClaw | gwrk |
 |--------|---------|------|
 | **Primary interface** | Messaging apps (WhatsApp, Telegram, Discord) | CLI + Slack |
-| **Gateway protocol** | WebSocket (`:18789`) | HTTP/Fastify (`:18790`) |
-| **Model integration** | Model-agnostic via pi-mono abstraction | Model-specific backends (Codex, Claude, Gemini CLI) |
+| **Gateway protocol** | WebSocket (`:18789`) | HTTP/Fastify (`:18790`) + WebSocket `/ws` (F015) |
+| **Model integration** | Model-agnostic via pi-mono abstraction | CLI-specific AgentBackend adapters (ADR-006) |
 | **Execution** | Single Node.js process (Gateway + Runtime) | Separate CLI + daemon + Docker sandboxes |
 | **Session model** | Persistent cross-platform sessions | Per-feature branch-scoped state |
 | **Memory** | Hybrid memory system (session + long-term) | SQLite ledger + git-native task state |
-| **Skills** | `SKILL.md` files + ClawHub marketplace | `.agents/workflows/` + `.agents/skills/` |
+| **Skills** | `SKILL.md` files + ClawHub marketplace | `.agents/skills/` — two-tier: atomic + compound |
 | **Security boundary** | Gateway as trust boundary, pairing system | Sandbox isolation (Docker), spec-first governance |
+| **Protocol typing** | TypeBox → JSON Schema → Swift codegen | Zod discriminated unions (TS-only, no codegen) |
+| **Safety interlocks** | Input-side exec approvals (allowlist) | Output-side gates + staging validation (4-layer) |
 
-### 2.3 Plugin Architecture (Four Types)
+### 2.6 Plugin Architecture (Four Types)
 
 1. **Channel Plugins**: Add messaging platforms (Teams, Mattermost, etc.)
 2. **Memory Plugins**: Alternative storage (vector stores, knowledge graphs)
@@ -69,7 +93,9 @@ An open-source autonomous AI agent created by Peter Steinberger (Austrian develo
 
 Plugins are TypeScript modules loaded at runtime. Can register: Gateway RPC methods, HTTP routes, agent tools, CLI commands, background services. Plugins can introduce their own skills.
 
-### 2.4 MCP Integration
+**Supply-chain practices**: `--ignore-scripts` on install, path containment, plugin sandboxing.
+
+### 2.7 MCP Integration
 
 OpenClaw runs as an MCP server, allowing external tools (Claude.ai, Cursor, etc.) to integrate. Also consumes MCP servers from external services (Composio, etc.) for tool chaining.
 
@@ -119,63 +145,7 @@ Chinese government response:
 
 ---
 
-## 4. What gwrk Should Consider
-
-### 4.1 Adopt: Skills as `SKILL.md` ✅ Already Done
-
-OpenClaw's `SKILL.md` pattern is identical to gwrk's existing `.agents/skills/SKILL.md` structure. gwrk already has this right. The only difference: OpenClaw has a marketplace (ClawHub). gwrk doesn't need one — it's a single-user system.
-
-### 4.2 Adopt: Gateway Event Model (Selective)
-
-OpenClaw's six event types (`agent`, `chat`, `presence`, `health`, `heartbeat`, `cron`) are worth studying. gwrk's Fastify server currently handles dispatch and Slack — but lacks:
-- **Heartbeat**: gwrk has `workstation-resilience` heartbeat concepts but no structured event emission
-- **Cron**: Scheduled probes (e.g., "run `gwrk pulse` every 4 hours") aren't formalized
-- **Presence**: Knowing which agents are active/idle
-
-**Recommendation**: Don't adopt the WebSocket gateway pattern (HTTP is simpler for gwrk's use case), but formalize an event taxonomy for the build server.
-
-### 4.3 Adapt: Model Abstraction Layer
-
-OpenClaw uses `pi-mono` to abstract 25+ providers behind a unified interface. gwrk's current approach is model-specific CLIs (`codex exec`, `claude -p`, `gemini -p`). This is fine for now, but:
-
-- As models evolve, CLI interfaces change (flag names, output formats)
-- gwrk's router (F008) will need a stable interface to switch between backends
-
-**Recommendation**: Don't adopt pi-mono (wrong abstraction for CLI-invoked agents), but ensure `router.ts` has a clean `AgentBackend` interface that isolates CLI invocation details from routing logic. This is already in the architecture, just needs enforcement.
-
-### 4.4 Adapt: The "Messaging-First" Insight
-
-OpenClaw's killer adoption driver was messaging integration — not because messaging is technically superior, but because it made AI accessible through the interface people already live in.
-
-gwrk already has Slack integration, but it's currently operational (slash commands, status). The deeper insight: **the interface the human already lives in should be the primary control surface**. For a PE, that's the terminal + Slack. gwrk has this right.
-
-**For future consideration**: OpenClaw's China success via WeChat suggests that if gwrk ever expands beyond single-user, the entry point should be a channel people already use daily, not a new dashboard.
-
-### 4.5 Avoid: Single-Process Architecture
-
-OpenClaw runs Gateway + Runtime in a single Node.js process. This is acknowledged as a security gap they want to fix. gwrk's separation (CLI → daemon → Docker sandbox) is architecturally superior for an agent orchestrator that runs untrusted code.
-
-**gwrk's architecture is already better here.** Don't regress.
-
-### 4.6 Avoid: Consumer AI Assistant Framing
-
-OpenClaw succeeded in China as a "personal AI assistant" for everyone. gwrk is not that — it's a Principal Engineer's operating system. The consumer framing would dilute the product thesis.
-
-OpenClaw's breadth (email, calendar, social media, coding) comes at the cost of depth in any one domain. gwrk's depth in spec-first, gate-driven, agent-orchestrated development workflows is its moat.
-
-### 4.7 Study: The Plugin Economic Model
-
-OpenClaw's plugin architecture (four types: channel/memory/tool/provider) is elegant. gwrk doesn't need plugins today, but the pattern is worth understanding if gwrk ever supports:
-- Multiple project types (not just TypeScript)
-- Alternative storage backends
-- Custom agent providers beyond the current four
-- Third-party workflow extensions
-
-The extension points already exist conceptually in gwrk (`.agents/workflows/`, `.agents/skills/`, `.gwrkrc.json` agent config). They just aren't formalized as a plugin system.
-
----
-
-## 5. Comparative Architecture Summary
+## 4. Comparative Architecture Summary
 
 | Dimension | OpenClaw | gwrk | Verdict |
 |-----------|---------|------|---------|
@@ -183,7 +153,7 @@ The extension points already exist conceptually in gwrk (`.agents/workflows/`, `
 | **Execution model** | Persistent runtime, always-on | Dispatch-and-exit CLI + daemon | gwrk is leaner |
 | **State management** | In-memory + file-based sessions | Git-native (tasks.json) + SQLite | gwrk is more rigorous |
 | **Security model** | Trust boundary at Gateway | Sandbox isolation + spec-first governance | gwrk is stronger |
-| **Agent integration** | Model-agnostic abstraction layer | CLI-specific backends | OpenClaw is more flexible |
+| **Agent integration** | Model-agnostic abstraction layer | CLI-specific AgentBackend adapters | OpenClaw is more flexible |
 | **Interface** | Messaging-first (WhatsApp, etc.) | Terminal + Slack | Both correct for audience |
 | **Skills/Extensions** | `SKILL.md` + ClawHub marketplace | `.agents/skills/` | Same pattern, different scale |
 | **Governance** | None — agent runs freely | Foxtrot Charlie, gates, reviews | gwrk is categorically different |
@@ -192,7 +162,7 @@ The extension points already exist conceptually in gwrk (`.agents/workflows/`, `
 
 ---
 
-## 6. The Deeper Lesson
+## 5. The Deeper Lesson
 
 OpenClaw's explosive adoption proves one thing: **infrastructure for AI agents is the right bet**. Not the models, not the UIs — the execution environment, the session management, the tool orchestration.
 
@@ -200,8 +170,108 @@ gwrk and OpenClaw are building the same *category* of thing (agent runtime / ope
 - OpenClaw: consumer-first, breadth-first, messaging-native, no governance
 - gwrk: PE-first, depth-first, CLI-native, governance-heavy
 
-The risk for OpenClaw is that breadth without governance produces unreliable outcomes (the Chinese security fiasco proves this). The risk for gwrk is that depth without velocity produces a tool that's correct but never finished (the F013 experience suggests this is real).
+The risk for OpenClaw is that breadth without governance produces unreliable outcomes (the Chinese security fiasco proves this). The risk for gwrk is that depth without velocity produces a tool that's correct but never finished.
 
-**The synthesis**: gwrk's Foxtrot Charlie governance prevents the "move fast and break everything" failure. But the piping experiments (23/23 pass) prove the foundation is solid enough to increase velocity. The answer isn't less governance — it's faster loops through the governance.
+**The synthesis**: gwrk's Foxtrot Charlie governance prevents the "move fast and break everything" failure. The answer isn't less governance — it's faster loops through the governance.
 
-That's what the strategic assessment should deliver: not removing gates, but making the path through them faster.
+---
+
+## 6. gwrk Recommendations (Original)
+
+### 6.1 Adopt: Skills as `SKILL.md` ✅ Done
+
+gwrk's `.agents/skills/SKILL.md` structure is identical to OpenClaw's pattern. No marketplace needed — single-user system.
+
+### 6.2 Adopt: Gateway Event Model (Selective)
+
+OpenClaw's six event types are worth studying. gwrk needs heartbeat, cron, and presence.
+
+### 6.3 Adapt: Model Abstraction Layer
+
+Don't adopt pi-mono (wrong abstraction for CLI-invoked agents). Ensure `AgentBackend` interface isolates CLI invocation details from routing logic.
+
+### 6.4 Adapt: "Messaging-First" Insight
+
+The interface the human already lives in should be the primary control surface. For a PE, that's the terminal + Slack. gwrk has this right.
+
+### 6.5 Avoid: Single-Process Architecture
+
+gwrk's separation (CLI → daemon → Docker sandbox) is architecturally superior. Don't regress.
+
+### 6.6 Avoid: Consumer AI Assistant Framing
+
+gwrk is a PE's operating system, not a personal assistant. Depth > breadth.
+
+---
+
+## 7. Integration Reconciliation (2026-03-18)
+
+> **Skills applied**: truth-extract (forensic → socratic → uncertainty), governance-audit (audit → comparative → integrative)
+
+Every actionable item from both source documents has been dispositioned. Items that were adopted have landed in [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), ADRs, or specs. Items that were rejected have rationale. Future items have triggers.
+
+### ✅ INCLUDED — Landed in architecture, ADR, spec, or code
+
+| # | Item | Source | Where It Landed |
+|---|---|---|---|
+| 1 | 3-layer plugin model (Agents / Skills / Extensions) | Deep Analysis §1 | [architecture.md §7.1](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md), [F014 spec](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) |
+| 2 | Skill plugins (manifest.yaml + SKILL.md, two-tier) | Deep Analysis §1.1 | [skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md), F014 P2 |
+| 3 | AgentBackend interface (dispatch + parseResult + stdin) | Deep Analysis §1.3 | [ADR-006 §2.1](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md), F004 FR-019/020/021 |
+| 4 | Plugin loader + discovery (global → local override) | Deep Analysis §1.4 | [architecture.md §7.5](file:///Users/gonzo/Code/gwrk/docs/architecture.md), F014 P1 |
+| 5 | WebSocket hybrid architecture (HTTP + WS) | Deep Analysis §2 | [architecture.md §6.5](file:///Users/gonzo/Code/gwrk/docs/architecture.md) |
+| 6 | Event taxonomy (8 event types, Zod-validated) | Deep Analysis §2-3 | [architecture.md §6.5](file:///Users/gonzo/Code/gwrk/docs/architecture.md) |
+| 7 | `@fastify/websocket` selected | Deep Analysis §2 | [architecture.md §10](file:///Users/gonzo/Code/gwrk/docs/architecture.md) tech stack |
+| 8 | Cron scheduler (`@fastify/schedule`) | Deep Analysis §3 | [architecture.md §6.5](file:///Users/gonzo/Code/gwrk/docs/architecture.md), §10 |
+| 9 | Router fold (F008 → F014 P4) | Deep Analysis §4 | [architecture.md §6.4](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md) |
+| 10 | Quota probing → adapter responsibility | Deep Analysis §4 | ADR-006 |
+| 11 | Historical learning from SQLite `runs` | Deep Analysis §4 | [architecture.md §6.4](file:///Users/gonzo/Code/gwrk/docs/architecture.md) |
+| 12 | Slack as primary ops surface | Deep Analysis §5 | F003 (shipped) |
+| 13 | FC loop is domain-neutral | Deep Analysis §6 | Build plan F012 |
+| 14 | Workspace bootstrap contract | Research Report §P0 | [ADR-006 §2.2](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md), [architecture.md §7.3](file:///Users/gonzo/Code/gwrk/docs/architecture.md) |
+| 15 | Supply-chain guardrails (--ignore-scripts, containment) | Research Report §P1 | [architecture.md §7.6](file:///Users/gonzo/Code/gwrk/docs/architecture.md) |
+| 16 | Governance via operating model | Research Report §P1 | Already addressed via Foxtrot Charlie |
+| 17 | Dispatch idempotency guard | Research Report §P0 | [dispatch.ts](file:///Users/gonzo/Code/gwrk/src/server/dispatch.ts) — commit `871a02b`, [architecture.md §11](file:///Users/gonzo/Code/gwrk/docs/architecture.md) |
+| 18 | `agents.registry` → plugin registry | Deep Analysis §4 | [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md) |
+
+### 🔀 TRANSFORMED — Adopted in modified form
+
+| # | Original Recommendation | gwrk Form | Decision |
+|---|---|---|---|
+| 1 | TypeBox + JSON Schema codegen (§2.2 above) | Zod discriminated unions for WS event frames | gwrk is TS-only. No Swift/Python clients. Same safety, zero new deps. |
+| 2 | Exec safety interlocks (§2.4 above) | Gates + staging validation (4-layer safety stack) | Output-verification, not input-permission. Docker sandbox → CLI guardrails → FR-016 staging validation → gates. |
+| 3 | HTTP idempotency keys | `enqueue()` dedup guard by featureId+phaseId | Simpler than HTTP idempotency headers. Sufficient for single-user dispatch. |
+| 4 | Steer-while-streaming (§2.3 above) | `dispatch:cancel` at stage boundaries via F015 WebSocket | Not full redirect. Cancel-at-stage-boundary only. `dispatch:redirect` deferred → needs F014 P4 routing. |
+| 5 | 9-item build sequence | 7-wave strategy in build plan v9 | SP estimates preserved. Sequence reordered for dependency graph. |
+
+### 🔮 FUTURE — Scheduled with trigger
+
+| # | Item | Feature | Wave | Trigger |
+|---|---|---|---|---|
+| 1 | Channel abstraction (`ChannelPlugin`) | F017 | 7 | F015 + F003 refactor ship |
+| 2 | Domain plugins (writing, client engagement) | F016 | 7 | F012 spec written |
+| 3 | Knowledge work spec (`gwrk kw --domain`) | F012 | 6 | After F014 P1-3 |
+| 4 | Slack live updates via WS | F015 consumer | 5 | F015 ships |
+| 5 | Teams support | F017 | 7 | F017 ships |
+| 6 | `dispatch:redirect` (backend swap mid-run) | F015 | — | F014 P4 routing intelligence |
+
+### ❌ KILLED — Assessed and rejected
+
+| # | Item | Rationale |
+|---|---|---|
+| 1 | Workflow pluginification | Workflows are process templates (`.agents/workflows/`), not runtime plugins. Manifest/versioning adds ceremony without value. |
+| 2 | SSE as WebSocket alternative | WS is bidirectional (needed for `dispatch:cancel`). SSE is server-push only. |
+| 3 | Exec approvals / ask-on-miss | Conflicts with autonomous execution (Pillar 3). Ship loop can't pause for human approval. gwrk safety: Docker sandbox → CLI guardrails → staging validation → gates = 4 layers. |
+| 4 | Device pairing + capability advertisement | Single-user local-first. Agents are dispatched, not paired. Docker sandboxes replace node model. |
+| 5 | ClawHub-style showcase / gallery | gwrk isn't a public product. No user base to showcase to. |
+| 6 | Release channels (stable/beta/dev) + ATLAS threat model | Premature for local single-user tool. Revisit when gwrk has external users. |
+| 7 | Cross-platform protocol typing (TypeBox → Swift) | gwrk is TypeScript-only. Zod-for-WS is sufficient. If non-TS clients needed, `zod-to-json-schema` exists. |
+
+### Disposition Summary
+
+| Status | Count |
+|---|---|
+| ✅ INCLUDED | 18 |
+| 🔀 TRANSFORMED | 5 |
+| 🔮 FUTURE | 6 |
+| ❌ KILLED | 7 |
+| **Total** | **36 — zero orphans** |

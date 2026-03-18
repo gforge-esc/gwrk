@@ -1,0 +1,21 @@
+{
+  "runId": "2026-03-16T15:51:17.388Z_ship_p01",
+  "feature": "004-ship-loop",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "codex-cloud",
+  "model": "unknown",
+  "startedAt": "2026-03-16T15:51:17.388Z",
+  "finishedAt": "2026-03-16T15:51:17.809Z",
+  "durationS": 0,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 16,
+  "linesAdded": 287,
+  "linesDeleted": 406,
+  "gitCommit": "afcfe8158cdaaccdd990865748a8ddc524e2e8b0",
+  "gitBranch": "feat/004-ship-loop",
+  "digest": [
+    "BRANCH_SETUP: FAILED — branch setup exited 1 [2026-03-16T09:51:17-0600]"
+  ]
+}

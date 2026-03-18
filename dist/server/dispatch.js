@@ -31,6 +31,12 @@ export class DispatchQueue {
         this.processNext();
     }
     enqueue(request) {
+        // Idempotency guard: prevent double-dispatch for same feature+phase
+        const existing = this.getDispatch(request.featureId, request.phaseId);
+        if (existing &&
+            (existing.status === "queued" || existing.status === "running")) {
+            return existing;
+        }
         const record = {
             id: crypto.randomUUID(),
             featureId: request.featureId,

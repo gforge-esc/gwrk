@@ -1,22 +1,56 @@
 import type { Phase } from "./state.js";
+export interface GateBrief {
+    feature: string;
+    projectType: "gwrk-typescript";
+    tasks: TaskBrief[];
+}
+export interface TaskBrief {
+    taskId: string;
+    title: string;
+    description: string;
+    primaryFile: string | null;
+    fileType: "typescript" | "test" | "shell" | "markdown" | "json" | "config" | "unknown";
+    identifiers: string[];
+    doneWhenCommands: string[];
+    contractRefs: string[];
+}
 /**
- * generateGates — write gate shell scripts for each task.
+ * generateGateBrief — produce a structured JSON brief for LLM gate authoring.
  *
- * Gate authoring strategy (priority order):
+ * This replaces the old generateGates() (ADR-005). The brief describes what
+ * each task touches (files, types, identifiers) so the LLM agent can write
+ * functional assertions. The brief is context for the LLM, not production gates.
  *
- * 1. AUTHORED — if a pre-written gate exists at gates/TASK_ID-gate.sh already,
- *    leave it untouched. Authored gates (by an LLM or human) always win.
- *
- * 2. DONE WHEN — extract backtick-wrapped shell commands from the phase's
- *    "Done When" section and use the ones relevant to this task's file.
- *
- * 3. TYPED FALLBACK — by file extension:
- *    - .test.ts → pnpm vitest run <file>
- *    - .sql     → test -f + grep for expected column names
- *    - .ts/.js  → identifier grep + compiled output check
- *    - .sh      → bash -n (syntax check)
- *
- * 4. GATE_STUB FALLBACK — if no functional assertion can be derived,
- *    emit a stub that fails gwrk tasks done.
+ * Returns the path to the written brief JSON file.
  */
-export declare function generateGates(featureDir: string, phases: Phase[]): void;
+export declare function generateGateBrief(featureDir: string, phases: Phase[], feature: string): string;
+export declare function generateRunner(gatesDir: string): void;
+export interface GapMatrixRow {
+    ac: string;
+    criterion: string;
+    testType: "unit" | "functional" | "e2e" | "structural";
+    testFile: string | null;
+    testExists: boolean;
+    gate: string | null;
+}
+/**
+ * parseGapMatrix — read and parse a gap-matrix.md file.
+ *
+ * Parses the markdown table format defined in contracts/gap-matrix.md.
+ * Returns an array of GapMatrixRow objects.
+ */
+export declare function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[];
+/**
+ * generateVitestGates — produce deterministic gate scripts from a gap matrix.
+ *
+ * For each gap matrix row where testExists is true and testType is
+ * unit/functional/e2e, generates a gate script that invokes
+ * `pnpm vitest run <file> --grep "<AC>"`.
+ *
+ * Respects # AUTHORED preservation — existing gates are never overwritten.
+ * Returns counts of generated and skipped gates.
+ */
+export declare function generateVitestGates(featureDir: string, gapMatrixPath: string, _phases: Phase[]): {
+    generated: number;
+    skipped: number;
+};

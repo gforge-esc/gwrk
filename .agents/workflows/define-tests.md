@@ -17,17 +17,17 @@ description: Generate red test files from spec, plan, and contracts before imple
 
 ## Purpose
 
-Creates test files (unit, integration, E2E) derived from spec requirements (TR-###, FR-###, US-###),
-plan contracts, and verification gates. Tests are committed RED before implementation begins.
-The implementing agent's job is to make them green — not to judge whether the tests are adequate.
+Creates test files (unit, integration, E2E) derived from a deep analysis of spec requirements (TR-###, FR-###, US-###),
+plan contracts, and verification gates. Tests MUST validate that planned tasks are *done* according to the plan/spec. 
+The agent must use analysis and reasoning to guide all definitional work so that tests explicitly tie off to the plan/spec. 
+Tests are committed RED before implementation begins. The implementing agent's job is to make them green.
 
-> **Core principle**: The agent writing tests has no motivation to make them easy.
-> The agent writing code has no authority to change them.
+> **Core principle**: The agent writing tests has no motivation to make them easy. The tests are a physical manifestation of the specification. The executing agent has no authority to change them.
 
 ## Inputs
 
 - `feature_dir`: Path to spec directory (e.g., `specs/001-pipeline-setup`)
-- `phase_number`: Phase to generate tests for (e.g., `2`)
+- `contextPath` (Optional): specific phase to generate tests for (e.g., `p02`). If omitted, process all phases in the feature.
 
 ## Prerequisites
 
@@ -60,11 +60,43 @@ Read and understand the feature and phase deeply:
 | TR-003: E2E (UI flows) | Playwright | `e2e/*.spec.ts` |
 | TR-004: Docker verification | Shell | Covered by gates — skip here |
 | TR-005: Golden-hash fixtures | Vitest or cargo test | Co-located with unit tests |
-</test_type_mapping>
 
-### 3. Generate Unit Tests
+### 2b. Generate Gap Matrix (ADR-005 §8.2)
 
-For each FR-### assigned to this phase in `plan.md`:
+Before writing any tests, produce `{feature_dir}/gap-matrix.md` — the structured coverage audit.
+
+For every `FR-###`, `US-###`, `TR-###`, and `SC-###` in the spec:
+
+1. Classify what test type validates it: `unit`, `functional`, `e2e`, or `structural`
+2. Identify which test file should contain the test (from plan.md file structure)
+3. Check if the test file exists on disk AND contains a matching `describe`/`it` block
+4. Record in the gap matrix table:
+
+```markdown
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | <description from spec> | unit | <test file path> | ✅ | T001 |
+| FR-002 | <description from spec> | functional | <test file path> | ❌ | T002 |
+```
+
+**Rules:**
+- Every `FR-###` from spec §4 MUST appear as at least one row
+- `Test Type` drives gate strategy per `contracts/gap-matrix.md`
+- `Test Exists: ❌` rows become the test writing plan for Steps 3-6
+- Write the gap matrix to `{feature_dir}/gap-matrix.md`
+- Schema details: `{feature_dir}/contracts/gap-matrix.md` (if exists)
+
+### 3. Analysis & Reasoning
+
+Before writing any code, output an `<analysis>` block to trace the planned tasks back to the specification.
+1. List the `TXXX` tasks from the plan (for the targeted phase, or all phases).
+2. Map each task to the `FR-###` and `US-###` it implements.
+3. Define explicitly *how* the tests will validate that the task is "done" according to the plan/spec.
+This reasoning must guide the structure of the tests. Do not guess; ground everything in the spec.
+
+### 4. Generate Unit Tests
+
+For each FR-### analyzed in Step 3:
 
 a. **Identify the target file** from the plan's file structure
 b. **Read the contract** (if exists) for method signatures, input/output schemas
@@ -158,8 +190,9 @@ Next: /implement {feature_dir} {phase_number}
 <quality_gate>
 Before reporting, verify:
 
-- Every FR-### in this phase has ≥1 test case
-- Every US-### acceptance scenario in this phase has ≥1 test assertion
+- `<analysis>` block was emitted demonstrating the tie-off from tasks to the plan/spec.
+- Every FR-### analyzed has ≥1 test case
+- Every US-### acceptance scenario analyzed has ≥1 test assertion
 - Every contract method has ≥1 integration test (if API phase)
 - Negative/error paths tested (not just happy path)
 - Tests reference actual module paths from plan.md (not placeholder imports)
