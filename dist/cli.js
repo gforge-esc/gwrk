@@ -26,7 +26,7 @@ program
     .name("gwrk")
     .version(pkg.version)
     .description("The Principal Engineer's Operating System")
-    .option("--format <type>", "Output format: human | json", "human")
+    .option("--format <type>", "Output format (json)")
     .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
     .configureHelp({
     formatHelp: (cmd, helper) => {
@@ -124,8 +124,8 @@ program.hook("preAction", (thisCommand, actionCommand) => {
             return originalWrite(processed, encoding, callback);
         };
     }
-    if (opts.format && !["human", "json"].includes(opts.format)) {
-        console.error(`Unknown format: ${opts.format}. Supported: human, json`);
+    if (opts.format && opts.format !== "json") {
+        console.error(`Unknown format: ${opts.format}. Supported: json`);
         process.exit(2);
     }
     if (actionCommand.name() !== "init" &&

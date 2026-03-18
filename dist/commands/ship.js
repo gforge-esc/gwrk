@@ -5,6 +5,7 @@ import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { MessageBuilder } from "../server/slack-messages.js";
 import { notifySlack } from "../server/slack-notify.js";
 import { loadConfig } from "../utils/config.js";
+import { dispatchToAgent } from "../utils/agent.js";
 import { run } from "../utils/exec.js";
 import { banner, blocked, color, dryRun as dryRunFmt, fail, success, } from "../utils/format.js";
 import { getCurrentBranch, getCurrentCommit, getDiffStats, } from "../utils/git.js";
@@ -215,6 +216,18 @@ function isPhaseComplete(phaseData) {
     return phaseData.tasks.every((t) => t.status === "completed" || t.status === "cancelled");
 }
 /**
+ * FR-019: Direct agent dispatch via plugin facade (ADR-006).
+ * Used when WUD orchestrator is not needed (e.g., single-task dispatch, testing).
+ */
+export async function dispatchPhaseWork(feature, phase, backend, workflow) {
+    return dispatchToAgent({
+        agent: backend,
+        workflow,
+        featureDir: `specs/${feature}`,
+        prompt: `Phase ${phase}`,
+    });
+}
+/**
  * gwrk ship — The Shipping Pillar (Throughput)
  *
  * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
@@ -225,7 +238,7 @@ export const shipCommand = new Command("ship")
     .addHelpText("after", `
 Type: mutator
 Mutates: git branches, task state, execution manifests
-Formats: human
+Format: use gwrk --format json for structured output
 Exit codes:
   0: All phases shipped successfully
   1: Phase failed or feature not found
@@ -237,7 +250,7 @@ Exit codes:
     .option("--max-iterations <n>", "Max implement→review cycles", "3")
     .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
     .option("--agent <agent>", "Override the default agent (e.g., gemini, claude, codex)")
-    .option("--format <format>", "Output format: human (default) or json", "human")
+    .option("--format <format>", "Output format (json)")
     .action(async (feature, phase, opts) => {
     await withSignal("ship", async () => {
         const cwd = process.cwd();
