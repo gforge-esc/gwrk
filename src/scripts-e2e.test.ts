@@ -267,15 +267,22 @@ describe("work-until-done.sh execution flow", () => {
     const verdictMock = mockWrapper("ship-verdict.sh", "exit 0");
 
     const wudScript = path.join(ROOT, "scripts/dev/work-until-done.sh");
-    const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
-      env: { ...env, WUD_VERDICT_BIN: verdictMock },
-      encoding: "utf-8",
-    });
+    try {
+      const result = execFileSync(wudScript, ["999-ship-e2e", "1"], {
+        env: { ...env, WUD_VERDICT_BIN: verdictMock, MAX_ITERATIONS: "3" },
+        encoding: "utf-8",
+      });
 
-    expect(result).toContain("Resuming from state: CODE_REVIEW, iteration 2");
-    // Should skip BRANCH_SETUP and IMPLEMENT
-    expect(result).not.toContain("1. Branch setup");
-    expect(result).not.toContain("IMPLEMENT — Iteration 1");
+      expect(result).toContain("Resuming from state: CODE_REVIEW, iteration 2");
+      // Should skip BRANCH_SETUP and IMPLEMENT
+      expect(result).not.toContain("1. Branch setup");
+      expect(result).not.toContain("IMPLEMENT — Iteration 1");
+    } catch (err) {
+      const e = err as { stdout?: string; stderr?: string };
+      if (e.stdout) console.log(e.stdout);
+      if (e.stderr) console.error(e.stderr);
+      throw err;
+    }
   });
 });
 
