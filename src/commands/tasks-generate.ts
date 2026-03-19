@@ -44,8 +44,11 @@ export const tasksGenerateCommand = new Command("tasks")
         }
 
         // Guard: ADR-005 §8.4 — define tests must run before define tasks
+        // Check for evidence that define tests ran: gap-matrix.md or .gwrk/runs/ (execution manifest)
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
-        if (!fs.existsSync(gapMatrixPath)) {
+        const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
+        const testsRan = fs.existsSync(gapMatrixPath) || fs.existsSync(runsManifestDir);
+        if (!testsRan) {
           blocked(
             `RED tests must exist before generating tasks (ADR-005 §8.4).\n  Run: gwrk define tests ${feature}`,
           );

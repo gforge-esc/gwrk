@@ -38,8 +38,11 @@ export const tasksGenerateCommand = new Command("tasks")
             paddedPhase = opts.phase.match(/^\d+$/) ? `p${opts.phase.padStart(2, '0')}` : opts.phase;
         }
         // Guard: ADR-005 §8.4 — define tests must run before define tasks
+        // Check for evidence that define tests ran: gap-matrix.md or .gwrk/runs/ (execution manifest)
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
-        if (!fs.existsSync(gapMatrixPath)) {
+        const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
+        const testsRan = fs.existsSync(gapMatrixPath) || fs.existsSync(runsManifestDir);
+        if (!testsRan) {
             blocked(`RED tests must exist before generating tasks (ADR-005 §8.4).\n  Run: gwrk define tests ${feature}`);
             throw new CommandError(`Run 'gwrk define tests ${feature}' first. See ADR-005 §8.4.`, 1);
         }

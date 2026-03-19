@@ -107,6 +107,17 @@ export const testsGenerateCommand = new Command("tests")
         return;
       }
 
+      // Output contract: gap-matrix.md must exist after successful run
+      const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+      if (!fs.existsSync(gapMatrixPath)) {
+        finishRun(runId, { exit_code: 2, duration_s: durationS });
+        fail("define tests", 2, durationS, runId, result.logPath);
+        throw new CommandError(
+          `Agent exited 0 but did not produce gap-matrix.md. Output contract violated. See ${result.logPath}`,
+          2,
+        );
+      }
+
       finishRun(runId, { exit_code: 0, duration_s: durationS });
       success("define tests", durationS, runId, result.logPath);
     });
