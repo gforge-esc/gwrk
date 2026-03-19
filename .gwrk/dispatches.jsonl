@@ -405,3 +405,5 @@
 {"id":"4c0aa6d8-6181-4041-af6a-5137988b474e","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-18T14:55:43.061Z"}
 {"id":"a9d750a3-c755-492c-bb97-78235dd03fc9","featureId":"e2e-test","phaseId":"phase-01","backend":"gemini","status":"queued","branchName":"phase/e2e-test-phase-01","attempts":[],"createdAt":"2026-03-18T15:16:27.252Z"}
 {"id":"c8461fdf-44a3-41de-aa31-504575ccd310","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-18T15:16:27.257Z"}
+{"id":"a75897b9-761b-4f47-a901-98edf7ffc057","featureId":"e2e-test","phaseId":"phase-01","backend":"gemini","status":"queued","branchName":"phase/e2e-test-phase-01","attempts":[],"createdAt":"2026-03-18T15:30:07.937Z"}
+{"id":"98772916-9653-4f3d-99ad-18b8feb7991d","featureId":"e2e-test","phaseId":"phase-02","backend":"claude","status":"queued","branchName":"phase/e2e-test-phase-02","attempts":[],"createdAt":"2026-03-18T15:30:07.963Z"}

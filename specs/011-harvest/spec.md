@@ -2,10 +2,11 @@
 
 **Feature Branch**: `feat/011-harvest`
 **Created**: 2026-03-14
+**Updated**: 2026-03-19 (R001/R002 cross-references)
 **Status**: Specified
 **Input**: Post-merge lifecycle for shipped work. Harvest is triggered by GitHub webhook when a Ship Loop PR is merged. It rehomes logs, finalizes DB records, calculates compression ratios, and posts the "🏆 Done, Done!" notification to Slack.
 
-> **Architectural anchors**: [architecture.md §6.3](file:///Users/gonzo/Code/gwrk/docs/architecture.md) (Harvest), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [004-ship-loop Loop-Closing Contract](file:///Users/gonzo/Code/gwrk/specs/004-ship-loop/spec.md) (handoff), [PRD §16](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md) (Compression)
+> **Architectural anchors**: [architecture.md §6.3](file:///Users/gonzo/Code/gwrk/docs/architecture.md) (Harvest), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [004-ship-loop Loop-Closing Contract](file:///Users/gonzo/Code/gwrk/specs/004-ship-loop/spec.md) (handoff), [PRD §16](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md) (Compression), [parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md) (R001 — Harvest boundary), [agent-backend-plugin-design.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md) (R002 — TaskResult)
 
 > **Boundary**: Ship Loop (004) ends at PR issued + Slack notification (steps 1-7). Harvest (011) begins at PR merge (step 8). See architecture.md §6.2-6.3.
 
@@ -90,7 +91,9 @@ As the build server, I want phase branches cleaned up after successful merge.
 
 ### Build Server Webhook Handler
 
-- **FR-H01**: Build server MUST register a GitHub webhook endpoint for `pull_request` events. On `action: "closed"` with `merged: true`, extract feature name from branch naming convention (`feat/<feature>`) and invoke harvest pipeline. Webhook secret validated via `GITHUB_WEBHOOK_SECRET` env var (fail-fast if missing). (Implements: US-H01)
+- **FR-H01**: Build server MUST register a GitHub webhook endpoint for `pull_request` events. On `action: "closed"` with `merged: true`, extract feature name from branch naming convention (`feat/<feature>`) and invoke harvest pipeline. **Branch target discrimination (Fracture 2 — wave-4-spec-audit):** Harvest MUST only trigger on phase rollup PRs — PRs whose base branch is the trunk (`main` or `develop`). Sandbox task PRs targeting `feat/*` branches MUST be ignored by the harvest pipeline. Webhook secret validated via `GITHUB_WEBHOOK_SECRET` env var (fail-fast if missing). **F015 integration (future):** When F015 ships, harvest completion SHOULD emit a `harvest:done` event on the WebSocket event bus. (Implements: US-H01)
+
+- **FR-H09**: *(New — Fracture 2 remediation)* Harvest MUST support phase completion tracking. When parallel dispatch (F005) produces N sub-task PRs for a single phase, harvest MUST verify all N sub-task PRs are merged into the feature branch before finalizing the phase record, calculating compression, and posting "🏆 Done, Done!". Individual sub-task PR merges into `feat/*` are tracked but do NOT trigger the full harvest pipeline. (Implements: US-H01, US-H04)
 
 ### Log Finalization
 
@@ -98,7 +101,7 @@ As the build server, I want phase branches cleaned up after successful merge.
 
 ### DB Finalization
 
-- **FR-H03**: Harvest MUST call `finishRun()` on the SQLite execution ledger with: merge timestamp (from webhook payload), final status `'merged'`, PR number, and merge commit SHA. If no matching `startRun()` record exists, log warning and create a backfill record. (Implements: US-H03)
+- **FR-H03**: Harvest MUST call `finishRun()` on the SQLite execution ledger with: merge timestamp (from webhook payload), final status `'merged'`, PR number, and merge commit SHA. The `TaskResult` from the Ship Loop's `dispatchToAgent()` call (exit code, duration, errorType) SHOULD be available via the run's `startRun()` record. If no matching `startRun()` record exists, log warning and create a backfill record. (Implements: US-H03)
 
 ### Compression Engine
 
@@ -110,7 +113,7 @@ As the build server, I want phase branches cleaned up after successful merge.
 
 ### Slack Done-Done
 
-- **FR-H07**: Harvest MUST post a "🏆 Done, Done!" message to the project's Slack channel via 003-slack integration. Message includes: feature name, phase, point compression, total compression, active coding time, delivery window, dormancy (if any). (Implements: US-H05)
+- **FR-H07**: Harvest MUST post a "🏆 Done, Done!" message to the project's Slack channel via 003-slack integration. Message includes: feature name, phase, point compression, total compression, active coding time, delivery window, dormancy (if any). **F015 integration (future):** When F015 ships, the notification SHOULD also emit a `dispatch:completed` event on the WebSocket event bus for dashboard consumers. (Implements: US-H05)
 
 ### Branch Cleanup
 

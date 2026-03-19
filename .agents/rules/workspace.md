@@ -8,6 +8,7 @@ trigger: always_on
 See `docs/architecture.md` for the authoritative gwrk architecture specification.
 **Stack**: TypeScript CLI (Commander.js) + Fastify daemon (localhost:18790) + SQLite (better-sqlite3) + Multi-Agent Dispatch.
 
+## ALWAYS consult governance and framing documentation over current state to inform decision. 
 ## NEVER EVER
 - NEVER use magic values. All needed values flow `.env` → config → applications.
 - NEVER use "graceful defaults" in code (e.g., `process.env.PORT || 3000`). If a config is missing, the app MUST crash immediately (Fail Fast).

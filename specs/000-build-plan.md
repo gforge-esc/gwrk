@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-17 (v10)
+> **Status:** Authoritative · **Date:** 2026-03-18 (v11)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (agent-native output protocol), [ADR-005](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md) (TDD gate architecture), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends)
 
@@ -33,8 +33,8 @@ graph TD
     F002 --> F003["F003: Slack ⚠️"]
     F002 --> F005["F005: Parallel Dispatch"]
     F002 --> F015["F015: Event Bus"]
-    F013 --> TDD["TDD Hardening: 001-003 ⚠️"]
-    F013 --> F004["F004: Ship Loop"]
+    F013 --> TDD["TDD Hardening: 001-003 ✅"]
+    F013 --> F004["F004: Ship Loop ✅"]
     TDD --> F004
     F004 --> F005
     F004 --> F011["F011: Harvest"]
@@ -57,13 +57,14 @@ graph TD
 ## Critical Path
 
 ```
-F000 ✅ → F001 ✅ → F013 ✅ → TDD Hardening ✅ → F004 → F005 → F014 P4 (Routing)
-                                                → F002 ✅ → F003 ✅
+F000 ✅ → F001 ✅ → F013 ✅ → TDD Hardening ✅ → F004 ✅ → F005 → F014 P4 (Routing)
+                                                         → F011
+                                                  → F002 ✅ → F003 ✅
                → F006
                → F007
 ```
 
-**F004 (Ship Loop) is the immediate critical path.** F004 scope narrowed to Ship Loop (steps 1-7, architecture.md §6.2). Harvest (steps 8-12) moved to F011.
+**F005 (Parallel Dispatch) is the immediate critical path.** F004 completed and merged (PR #12). Next: F005 (needs F002+F004), F011 Harvest (needs F002+F003+F004), F014 P1-3 (needs F001).
 
 ---
 
@@ -242,7 +243,7 @@ gwrk <any> --agent             # Layer 2: ANSI-stripped, bounded, guarded output
 
 ---
 
-### TDD Hardening — 001, 002, 003 🔒
+### TDD Hardening — 001, 002, 003 ✅
 
 Rewrite shipped features 001–003 to the TDD standard established by 000-tdd-infrastructure. Regenerate all legacy garbage gates (`test -f` stubs) to functional assertions. Audit actual implementation state. Remediate gaps.
 
@@ -252,8 +253,10 @@ Rewrite shipped features 001–003 to the TDD standard established by 000-tdd-in
 | 002-build-server | Rewrite spec to TDD standard. Add lifecycle integration tests. Implement `server clean` (FR-024). Regenerate 26 gates. | `gwrk test 002-build-server` = 0 failed |
 | 003-slack | Rewrite gap-analysis as test-coverage audit. Verify contracts against shipped code. Remediate ❌ items. | `gwrk test 003-slack` = 0 failed |
 
-**Dependencies:** Feature 013 (structured tooling for audit: `gwrk project discover`, `gwrk gate-check`)
+**Dependencies:** Feature 013 ✅
 **Estimated effort:** ~15 SP (5 + 7 + 3)
+
+**Status:** Complete ✅. Hardened through 004 Ship Loop development. Gate contamination cleared.
 
 #### Gate contamination baseline (pre-hardening):
 
@@ -265,7 +268,7 @@ Rewrite shipped features 001–003 to the TDD standard established by 000-tdd-in
 
 ---
 
-### Feature 004 — Ship Loop
+### Feature 004 — Ship Loop ✅
 
 Autonomous implement → review → PR → CI loop. (Renamed from WUD to align with Foxtrot Charlie Pillar 3: Shipping.)
 
@@ -273,7 +276,7 @@ Autonomous implement → review → PR → CI loop. (Renamed from WUD to align w
 |---|---|---|
 | `004-ship-loop` | `gwrk ship`, review gates, PR creation, execution manifests, run recording. WUD-as-CLI-consumer: agent operates through `gwrk tasks next`, `gwrk gate-check`, `gwrk tasks done` (F013 contracts). | Agent completes a feature phase and opens a PR |
 
-**Dependencies:** Feature 013, TDD Hardening
+**Dependencies:** Feature 013 ✅, TDD Hardening ✅
 **Agent:** Codex Cloud (autonomous execution)
 
 #### What ships:
@@ -281,6 +284,7 @@ Autonomous implement → review → PR → CI loop. (Renamed from WUD to align w
 ```bash
 gwrk ship <feature> [phase]        # Full autonomous lifecycle
 gwrk ship <feature> <phase>        # Ship a single phase
+gwrk gate <feature> [-p <phase>]   # Run gate scripts for a feature/phase
 ```
 
 #### F013 integration (WUD-as-CLI-consumer):
@@ -300,7 +304,16 @@ gwrk ship <feature> <phase>        # Ship a single phase
 
 > **Scope (2026-03-14):** Ship Loop = steps 1-7 (DISPATCH → NOTIFY). Harvest (post-merge lifecycle) moved to F011. See architecture.md §6.2-6.3.
 
-**Status:** 🔴 Actively being TDD-hardened. Phase 4 (Plugin Dispatch Boundary) added. See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
+**Status:** Complete ✅. Merged via PR #12. 28/28 gates PASS. 68 test files, 404 tests, 0 failures. `gwrk gate` command promoted as Foxtrot Charlie pillar. `resolveFormat()` DRY refactor shipped. Also includes: dispatch idempotency guard, plugin dispatch boundary (Phase 4), execution manifests, `dispatchToAgent()` abstraction.
+
+**Deliverables produced:**
+- `gwrk ship <feature> [phase]` — full autonomous Ship Loop lifecycle (4 phases)
+- `gwrk gate <feature> [-p <phase>]` — promoted gate-check to CLI pillar command
+- `dispatchToAgent()` dispatch boundary (ADR-006 contract)
+- `resolveFormat()` DRY format resolution (killed "human" format)
+- Dispatch idempotency guard (prevents double-dispatch)
+- Execution manifests + dispatch log
+- 7 e2e tests via `scripts-e2e.test.ts`, 2 unit test suites
 
 ---
 
@@ -542,9 +555,9 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | Wave | Features | Parallelizable? | Theme |
 |---|---|---|---|
 | **Wave 1** | F001 ✅ | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning |
-| **Wave 2** | F013, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
-| **Wave 3** | TDD Hardening (001-003) | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
-| **Wave 4** | F004, F011, F014 P1-3 | Partially (F004 needs F013+Hardening, F014 needs F001) | Execution + plugin foundation |
+| **Wave 2** | F013 ✅, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
+| **Wave 3** | TDD Hardening (001-003) ✅ | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
+| **Wave 4** | F004 ✅, F011, F014 P1-3 | Partially (F004 needs F013+Hardening, F014 needs F001) | Execution + plugin foundation |
 | **Wave 5** | F005, F014 P4, F009, F015 | Yes (F005 needs F004; F014 P4 needs P1-3; F009 needs F003; F015 needs F002) | Dispatch + routing + comms + event bus |
 | **Wave 6** | F010, F012 | Partially (F010 needs F006+F007; F012 amended needs F014) | Integration + knowledge work |
 | **Wave 7** | F016, F017 | Yes (F016 needs F012+F014; F017 needs F014+F015+F003) | Domain packs + channel abstraction |
@@ -565,9 +578,9 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | F001 (CLI Core) ✅ | 25 | PE | Done |
 | F002 (Build Server) ✅ | 18 | PE | Done |
 | F003 (Slack) ✅ | 13 | PE | Done |
-| **F013 (Agent-Native Interface)** | **28** | **PM+PE** | **140h** |
-| **TDD Hardening (001-003)** | **~15** | **PE** | **~75h** |
-| F004 (Ship Loop) | 5 | PM+PE | 25h |
+| F013 (Agent-Native Interface) ✅ | 28 | PM+PE | Done |
+| TDD Hardening (001-003) ✅ | ~15 | PE | Done |
+| F004 (Ship Loop) ✅ | 5 | PM+PE | Done |
 | F005 (Parallel Dispatch) | 10 | PE | 50h |
 | F006 (Pulse) | 5 | PE | 25h |
 | F007 (Effort + Compression) | 8 | PM+PE | 40h |
@@ -580,7 +593,7 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | **F015 (Event Bus)** | **8** | **PE** | **40h** |
 | **F016 (Domain Packs)** | **13** | **PM+PE** | **65h** |
 | **F017 (Channel Abstraction)** | **8** | **PM+PE** | **40h** |
-| **Total** | **~210 SP** | | **~755h remaining** |
+| **Total** | **~210 SP** | | **~515h remaining** |
 
 ---
 
@@ -598,6 +611,7 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 
 ## Changelog
 
+- **2026-03-18 (v11):** F004 (Ship Loop) completed and merged via PR #12. 28/28 gates PASS, 404 tests green. TDD Hardening marked ✅ (cleared through F004 dev). F013 confirmed ✅. `gwrk gate` promoted as FC pillar command. `resolveFormat()` DRY refactor shipped (killed "human" format). Critical path advanced: **F005 Parallel Dispatch is next.** Effort remaining: ~755h → ~515h. Wave 4 half-complete (F004 ✅; F011 and F014 P1-3 remain). Dependency graph, wave strategy, and effort table updated.
 - **2026-03-17 (v10):** F008 (Agent Router, 12 SP) folded into F014 Phase 4: Routing Intelligence. F014 three-layer architecture established (Agent Backends, Skills, Extensions). F014 SP: 8→20 (absorbed F008). ADR-005 (TDD gates) and ADR-006 (plugin agent backends) added to decision registry. Dependency graph simplified (F008 node removed, F005→F014 replaces F005→F008). Wave 5 updated: F014 P4 replaces F008. OQ-5 resolved. F004 status updated with Phase 4 (Plugin Dispatch Boundary). Plugin strategy audit published: [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md). Total SP unchanged (~210).
 - **2026-03-15 (v9):** Plugin architecture registered. F014 Plugin System (8 SP), F015 Event Bus (8 SP), F016 Domain Packs (13 SP), F017 Channel Abstraction (8 SP) added. F008 amended 7->12 SP (+5 for AgentBackend plugin interface). F012 amended 8->13 SP (+5 for --domain flag). Dependency graph updated with 7 new edges. Wave strategy expanded to 7 waves. Total: 163->~210 SP. Derived from OpenClaw research.
 - **2026-03-14 (v8):** 004 rescoped to Ship Loop (steps 1-7). Harvest (steps 8-12) moved to F011. 003-slack FR-014 (Slack Incoming Webhook) added. Tunnel infrastructure removed (webhook + Socket Mode replaces). Status annotations corrected. Dependency graph updated with F011. Total: 158->~163 SP.

@@ -70,18 +70,18 @@ export function buildCommand(
       if (opts.contextPath) args.push("--context", opts.contextPath);
       break;
     case "codex-cloud":
-      command = "codex";
-      args.push(
-        "run",
-        "--cloud",
-        "--non-interactive",
-        "--full-auto",
-        opts.workflowPath,
+      // Codex Cloud dispatches via GitHub issue creation, NOT a CLI command.
+      // `codex run --cloud` does not exist. See:
+      //   - docs/reference/codex-cloud-research-report.md
+      //   - docs/research/R001-parallel-dispatch/draft.md §Q2
+      //   - docs/research/R002-agent-backend-plugin/draft.md §Q2
+      // Will be replaced by CloudAgentBackend adapter in F014 P3.
+      throw new Error(
+        "codex-cloud dispatch is not yet implemented. " +
+          "Codex Cloud dispatches via GitHub integration, not CLI. " +
+          "See docs/reference/codex-cloud-research-report.md",
       );
-      if (opts.featureDir) args.push(opts.featureDir);
-      if (opts.prompt) args.push(opts.prompt);
-      if (opts.contextPath) args.push("--context", opts.contextPath);
-      break;
+
   }
 
   return { command, args, stdin };

@@ -1,8 +1,8 @@
 ---
 type: specification
 feature: 014-plugin-system
-last_modified: "2026-03-15T07:27:00Z"
-revision: 1
+last_modified: "2026-03-19T14:45:00Z"
+revision: 2
 ---
 
 # Feature Specification: 014 Plugin System
@@ -262,6 +262,36 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-011**: System MUST provide `gwrk plugin migrate` that copies `.agents/skills/` and `.agents/workflows/` to `~/.gwrk/plugins/` with auto-generated `manifest.yaml` from SKILL.md frontmatter. Supports `--dry-run`. Does NOT delete originals. (Implements: US-009)
 - **FR-012**: System MUST provide `gwrk plugin seed` that parses `docs/reference/reasoning-modes.md` and generates atomic skill plugins for each mode. Each generated skill has `manifest.yaml` (with prompt from taxonomy) and a minimal `SKILL.md`. Supports `--dry-run`. (Implements: US-010)
 
+### Agent Backend Adapters (Layer 1 — R002)
+
+- **FR-L1-001**: Agent manifest (`manifest.yaml`) MUST declare: `type: agent`, `name`, `version`, `description`, `dispatchMode` (`local-cli` | `github-integration`), `contextFileName`, `invocation` block (command, headless, yolo, model, structuredOutput, costCap, workingDir), `capabilities`, `models`, `exitCodeMap`, and `managedConfig`. Validated by `AgentManifestSchema` (Zod). (Implements: US-L1-001)
+- **FR-L1-002**: `AgentBackend.dispatch(task)` MUST return `{ command, args, stdin, env, streamable }`. gwrk core pipes stdin to the CLI process. The adapter decides HOW to invoke — gwrk core only knows WHAT to dispatch. (Implements: US-L1-001)
+- **FR-L1-003**: `AgentBackend.parseResult(stdout, stderr, rawExitCode)` MUST normalize proprietary CLI exit codes to `TaskResult { exitCode: 0|1|2|127, errorType?, stdout, stderr, durationS }`. Mapping defined in manifest `exitCodeMap`. (Implements: US-L1-001)
+- **FR-L1-004**: `AgentBackend.syncGovernance(projectRoot, governance)` MUST generate the CLI-specific context file (e.g., `GEMINI.md`) from `.gwrk/agent-context.md` using `<!-- gwrk:begin -->` / `<!-- gwrk:end -->` boundary markers. Content outside markers MUST be preserved. (Implements: US-L1-002)
+- **FR-L1-005**: Agent manifests MUST declare `managedConfig` — an array of `{ path, keys }` describing which config files and keys the adapter owns. System MUST detect conflicts when two adapters claim the same key. Detection at install time and dispatch time. (Implements: US-L1-001)
+- **FR-L1-006**: System MUST provide `gwrk plugin sync-context` that regenerates all CLI-specific context files from `.gwrk/agent-context.md` for all active agent backends. (Implements: US-L1-002)
+- **FR-L1-007**: F014 Phase 1 MUST only support `dispatchMode: local-cli`. The `github-integration` mode (Codex Cloud) is a separate feature and MUST NOT block Phase 1. (Implements: US-L1-001)
+- **FR-L1-008**: `gwrk init` MUST detect installed CLIs (`which gemini`, `which claude`, `which codex`), activate corresponding built-in adapters, generate `.gwrk/agent-context.md`, and call `syncGovernance()` for each detected backend. (Implements: US-L1-002)
+- **FR-L1-009**: System MUST provide `gwrk plugin create agent <name>` that generates a scaffold plugin directory with `manifest.yaml` template and optional `adapter.ts` (when `--dispatch-mode github-integration`). Supports `--git` for init. Future: `gwrk plugin create skill <name>`. (Implements: US-L1-003)
+- **FR-L1-010**: System MUST ship built-in adapters (claude, codex, gemini) in `src/plugins/builtins/agents/`. Adapter TypeScript compiles with `pnpm build`. Manifest YAML read at runtime via `import.meta.dirname`. Built-ins MUST be available without `gwrk plugin install`. (Implements: US-L1-001)
+- **FR-L1-011**: `gwrk plugin install <url>` MUST support git URLs with optional `#<ref>` for version pinning. On install: clone repo, validate manifest, copy to `~/.gwrk/plugins/agents/<name>/`, write `.gwrk-source.json` with `{ url, ref, commitSha, installedAt }`. (Implements: US-L1-003)
+- **FR-L1-012**: User-installed plugins at `~/.gwrk/plugins/agents/<name>/` MUST take precedence over built-in adapters with the same name. Resolution: built-in → user-installed (Map.set overwrites). (Implements: US-L1-001)
+- **FR-L1-013**: System MUST provide `gwrk plugin update <name>` that re-clones from the stored source URL in `.gwrk-source.json`. Supports `--all` to update all git-sourced plugins. (Implements: US-L1-003)
+
+#### FR-L1-001 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Invalid agent manifest | `Invalid agent manifest: <Zod error>. See 'gwrk plugin --help'.` | 1 |
+| Unknown dispatchMode | `Unknown dispatchMode '<mode>'. Supported: local-cli, github-integration.` | 1 |
+| CLI not found | `Agent backend '<name>' requires '<command>' CLI. Install it first.` | 127 |
+| Config conflict | `Config conflict: '<key>' in '<path>' claimed by both '<a>' and '<b>'.` | 1 |
+
+#### FR-L1-009 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Plugin name exists | `Plugin '<name>' already exists. Use a different name or --force.` | 1 |
+| Invalid name | `Plugin name must be kebab-case (a-z, 0-9, hyphens only).` | 1 |
+
 ### Manifest Schema
 
 - **FR-013**: Manifest schema (validated by Zod) MUST support two tiers:
@@ -392,6 +422,51 @@ interface PluginsOverride {
 
 No database entities. Plugin metadata is filesystem-only (manifest.yaml files). No SQLite interaction.
 
+### DM-006: Plugin Base Schema (Unified — R002)
+
+```typescript
+// Base fields shared across ALL plugin types
+const PluginBaseSchema = z.object({
+  type: z.enum(['agent', 'skill', 'extension', 'channel']),
+  name: z.string().min(1).regex(/^[a-z0-9-]+$/),    // kebab-case required
+  version: z.string().regex(/^\d+\.\d+\.\d+$/),
+  description: z.string().min(1),
+});
+
+// Agent-specific (extends base)
+const AgentManifestSchema = PluginBaseSchema.extend({
+  type: z.literal('agent'),
+  dispatchMode: z.enum(['local-cli', 'github-integration']),
+  contextFileName: z.string(),
+  invocation: InvocationSchema.optional(),     // local-cli only
+  capabilities: CapabilitiesSchema,
+  models: z.record(z.string()),
+  exitCodeMap: z.record(ExitCodeEntrySchema),
+  managedConfig: z.array(ManagedConfigSchema).default([]),
+});
+
+// Discriminated union — validated by plugin loader
+const AnyManifestSchema = z.discriminatedUnion('type', [
+  AgentManifestSchema,
+  SkillManifestSchema,         // DM-001 / DM-002
+  // Future: ExtensionManifestSchema, ChannelManifestSchema
+]);
+```
+
+`gwrk plugin install` validates ANY plugin type from `AnyManifestSchema`, then routes to the correct type-specific directory (`agents/`, `skills/`, etc.).
+
+### DM-007: Git Source Tracking
+
+```typescript
+// ~/.gwrk/plugins/agents/<name>/.gwrk-source.json
+interface PluginSource {
+  url: string;           // git clone URL
+  ref: string;           // branch or tag (default: 'main')
+  commitSha: string;     // pinned commit at install time
+  installedAt: string;   // ISO 8601
+}
+```
+
 ---
 
 ## 6. Technical Constraints
@@ -405,6 +480,7 @@ No database entities. Plugin metadata is filesystem-only (manifest.yaml files). 
 - **TC-007**: Single LLM Call — Compound skill passes are assembled into one prompt, not executed as separate LLM calls. `expectedLatency` in manifest reflects one call.
 - **TC-008**: F013 Contract — All `gwrk skill` invocations inherit: `--format json`, `[exit:N | Xs]` on stderr, `--agent` mode, pipe safety (signals on stderr only).
 - **TC-009**: Resolution Order — Global → local override → local disable. `gwrk plugin list --project` shows resolved state.
+- **TC-010**: Strict Isolation Rule *(Fracture 3 — wave-4-spec-audit)* — `AgentBackend.dispatch()` MUST NOT mutate global filesystem state (`~/.gemini/`, `~/.config/`, `~/.claude/`, etc.) during execution. All config mutations MUST be confined to the provided `projectRoot` (the sandbox worktree path). This prevents race conditions when parallel sandboxes (F005) run concurrently against the same global user directories. Plugins that violate this constraint MUST be rejected at manifest validation time if `managedConfig` references paths outside `projectRoot`.
 
 ---
 

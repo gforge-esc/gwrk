@@ -1,10 +1,12 @@
 # gwrk: Architecture & Workflow Specification
 
-> **Status:** Authoritative · **Date:** 2026-03-17 (v4.1)
+> **Status:** Authoritative · **Date:** 2026-03-19 (v5.0)
 > **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md), [ADR-002-sqlite-execution-ledger.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003-state-contract.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md), [ADR-004-agent-native-output.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md), [ADR-005-tdd-gate-architecture.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006-plugin-agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md)
 
 ---
 
+> **Update 2026-03-19 (v5.0):** R001 + R002 research integration. §1 overview diagram: Docker Sandbox Manager → Worktree Sandbox Manager (R001). §4 project structure: added `.runs/sandboxes/`, `src/plugins/builtins/agents/`. §6.1 added §6.1.1 Parallel Dispatch (F005 worktree tiers). §6.2 sandbox refs updated to worktrees. §7.2 expanded with `dispatchMode`, built-in compilation model, `BUILTIN_AGENTS` registry. §7.3 added boundary markers, bootstrap mechanism. §7.5 added built-in → user-override resolution, `.gwrk-source.json`. §8 updated parallelism config (R001 resource gating). §10 Docker → Git worktrees. §14 added `.gwrk/agent-context.md`, `gwrk plugin create agent`. Derived from [parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md), [agent-backend-plugin-design.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md).
+>
 > **Update 2026-03-17 (v4.1):** OpenClaw integration audit. Added §6.5 Event Bus & Scheduler (F015 — WebSocket hybrid architecture, Zod-typed event frames, cron scheduler), expanded §6.2 Ship Loop with active interrupt model (`dispatch:cancel`), added §7.6 Plugin Supply-Chain Guardrails, added dispatch idempotency guard to §11, updated §10 tech stack with `@fastify/websocket` and `@fastify/schedule`. Derived from [openclaw-research-report.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md).
 >
 > **Update 2026-03-17 (v4.0):** Aligned with all six ADRs and keystone features 000-TDD, 004 Ship Loop, 013 Agent-Native Interface, and 014 Plugin System. Key changes: added Agent-Native Output Protocol (§3), Plugin Architecture (§7), TDD Triad Model (§5.3–5.5), updated Project Structure (§4), Construction Pipeline (§5), Ship Loop dispatch boundary (§6.2), and Config Contract (§8). Previous v3.1 anchored only ADR-001, ADR-002, and ADR-006.
@@ -27,6 +29,8 @@
 | Plugin Strategy Audit | [docs/reference/plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md) | F008→F014 P4 absorption analysis |
 | Skills Architecture | [docs/reference/skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md) | Two-tier skill hierarchy |
 | OpenClaw Research Report | [docs/reference/openclaw-research-report.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md) | Plugin architecture, WebSocket hybrid, adoption dynamics, reconciled integration decisions |
+| Parallel Dispatch Architecture (R001) | [docs/reference/parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md) | Worktree sandboxes, merge strategy, resource gating, Codex Cloud scoping |
+| Agent Backend Plugin Design (R002) | [docs/reference/agent-backend-plugin-design.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md) | Agent manifest schema, adapter lifecycle, plugin packaging, built-in compilation model |
 
 ---
 
@@ -56,9 +60,10 @@
 │         │                │         └──────────────┬───────────────┘  │
 │         │                │                         │                  │
 │  ┌──────▼─────────────────▼─────────────────────────▼──────────────┐  │
-│  │              Docker Sandbox Manager                              │  │
+│  │              Parallel Dispatch Orchestrator (F005)               │  │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐                      │  │
-│  │  │ Ship #1  │  │ Ship #2  │  │ Ship #3  │                      │  │
+│  │  │ Sandbox  │  │ Sandbox  │  │ Sandbox  │  (git worktrees)     │  │
+│  │  │ (wktree) │  │ (wktree) │  │ (wktree) │  each → PR           │  │
 │  │  └──────────┘  └──────────┘  └──────────┘                      │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 │                                                                       │
@@ -249,7 +254,7 @@ gwrk/
 │   │   ├── index.ts               # Server bootstrap
 │   │   ├── dispatch.ts            # Agent dispatch queue
 │   │   ├── git-manager.ts         # Branch, merge, conflict resolution
-│   │   ├── sandbox.ts             # Docker container lifecycle
+│   │   ├── sandbox.ts             # Worktree sandbox lifecycle (F005, was Docker)
 │   │   ├── slack.ts               # Bolt SDK Socket Mode integration
 │   │   ├── slack-commands.ts      # Slash command handlers
 │   │   └── slack-actions.ts       # Interactive message handlers
@@ -263,7 +268,13 @@ gwrk/
 │   │   ├── manifest.ts            # Manifest Zod schema (YAML)
 │   │   ├── loader.ts              # Plugin scanner + resolver
 │   │   ├── skill-runtime.ts       # Atomic + compound skill execution
-│   │   └── migrate.ts             # .agents/skills/ → ~/.gwrk/plugins/ migration
+│   │   ├── migrate.ts             # .agents/skills/ → ~/.gwrk/plugins/ migration
+│   │   └── builtins/              # Built-in adapters (compiled with gwrk)
+│   │       └── agents/            # Agent backend built-ins (R002)
+│   │           ├── index.ts       # Static BUILTIN_AGENTS registry
+│   │           ├── claude/        # manifest.yaml + adapter.ts
+│   │           ├── codex/         # manifest.yaml + adapter.ts
+│   │           └── gemini/        # manifest.yaml + adapter.ts
 │   └── utils/                     # Shared utilities
 │       ├── exec.ts                # Shell command execution
 │       ├── agent.ts               # dispatchToAgent() facade (→ F014 AgentBackend)
@@ -281,6 +292,11 @@ gwrk/
 │   ├── plugins.yaml               # Per-project plugin overrides (disable/override)
 │   ├── dispatches.jsonl            # Dispatch log (append-only, gitignored)
 │   └── tasks.json                 # (per-feature: specs/NNN/.gwrk/tasks.json)
+├── .runs/                         # Machine-local, gitignored (F005)
+│   ├── sandboxes/                 # Ephemeral sandbox worktrees
+│   │   └── <feature>-<task>-<uuid>/  # git worktree (auto-cleaned on server start)
+│   ├── <feature>_p<phase>.state   # Ship loop crash recovery state
+│   └── <timestamp>_wud_*.log      # Ship loop logs
 ├── package.json
 ├── tsconfig.json
 ├── biome.json
@@ -301,10 +317,10 @@ gwrk/
 │   │   │   ├── manifest.yaml
 │   │   │   └── SKILL.md
 │   │   └── ...
-│   ├── agents/                        # AgentBackend adapters (F014 P3, ADR-006)
-│   │   ├── claude/manifest.yaml       # Claude Code adapter
-│   │   ├── codex/manifest.yaml        # Codex adapter (local + cloud)
-│   │   └── gemini/manifest.yaml       # Gemini CLI adapter
+│   ├── agents/                        # User-installed AgentBackend adapters (override built-ins)
+│   │   ├── claude/manifest.yaml       # User override (takes precedence over built-in)
+│   │   ├── codex/manifest.yaml        # User override
+│   │   └── gemini/manifest.yaml       # User override
 │   └── domains/                       # Domain packs (F016 — future)
 │       ├── writing/manifest.yaml
 │       └── client-engagement/manifest.yaml
@@ -425,6 +441,18 @@ dispatchToAgent(task: TaskDispatch): Promise<TaskResult>
 
 > **Plugin migration (ADR-006):** The `dispatchToAgent()` facade today wraps `spawn(cli, args)`. When F014 ships, the internals are replaced by `pluginRegistry.getAgentBackend().dispatch()` — no other code changes. See §7.1.
 
+#### 6.1.1 Parallel Dispatch (F005)
+
+When a phase contains multiple independent tasks, the orchestrator dispatches them concurrently into isolated sandboxes:
+
+| Tier | Backend | Sandbox | Dispatch Mode |
+|------|---------|---------|---------------|
+| 1 | Gemini (local) | Git worktree | sync (spawn + await) |
+| 2 | All local CLIs | Git worktree | sync (spawn + await) |
+| 3 | Codex Cloud | Codex-managed container | async (GitHub @codex) |
+
+Merge serialization feeds Ship Loop (004). Harvest (011) is independent — triggered only when the Ship Loop's PR is merged. See [parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md).
+
 ### 6.2 Ship Loop (Feature 004)
 
 The autonomous coding cycle. Ends when a PR is issued and Slack is notified.
@@ -541,6 +569,7 @@ All plugins are CLI-native, pipe-composable, and inherit the F013 contract (`--f
 ```typescript
 interface AgentBackend {
   name: string;
+  dispatchMode: 'local-cli' | 'github-integration';  // R002: discriminator
   contextFileName: string;
   syncGovernance(projectRoot: string, governance: GovernanceContext): void;
   dispatch(task: TaskDispatch): {
@@ -554,6 +583,19 @@ interface AgentBackend {
 
 **Key principle:** `dispatch()` returns a stdin string. gwrk core pipes it to the CLI process. The plugin decides HOW to invoke — gwrk core only knows WHAT to dispatch.
 
+**Built-in compilation model (R002):** Adapter TypeScript (`adapter.ts`) compiles with `pnpm build` as part of `src/plugins/builtins/agents/`. Manifest YAML ships as package data, read at runtime via `import.meta.dirname`. The static registry:
+
+```typescript
+// src/plugins/builtins/agents/index.ts
+export const BUILTIN_AGENTS = {
+  claude: ClaudeAdapter,
+  codex: CodexAdapter,
+  gemini: GeminiAdapter,
+} as const;
+```
+
+User-installed adapters in `~/.gwrk/plugins/agents/<name>/` override built-ins (Map `.set()` overwrites). See [agent-backend-plugin-design.md §Q6](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md).
+
 ### 7.3 Durable Governance (ADR-006 §2.2)
 
 ```
@@ -563,6 +605,10 @@ GEMINI.md, CLAUDE.md, AGENTS.md        ← Generated per-CLI context files
 ```
 
 A single `.gwrk/agent-context.md` becomes the source of truth for durable governance. CLI-specific context files are generated from it via `gwrk plugin sync-context`. This prevents governance drift across CLIs.
+
+**Boundary markers (R002):** Generated context files use `<!-- gwrk:begin -->` / `<!-- gwrk:end -->` markers to delineate gwrk-managed content. User additions outside markers are preserved on regeneration.
+
+**Bootstrap via `gwrk init` (R002):** When `gwrk init` detects installed CLIs (`which gemini`, `which claude`, `which codex`), it activates corresponding built-in adapters, generates `.gwrk/agent-context.md`, and calls `syncGovernance()` for each.
 
 ### 7.4 Skill Hierarchy
 
@@ -579,18 +625,29 @@ A single `.gwrk/agent-context.md` becomes the source of truth for durable govern
 ### 7.5 Plugin Discovery
 
 ```
+src/plugins/builtins/agents/           # Built-in adapters (compiled with gwrk)
+├── claude/manifest.yaml + adapter.ts
+├── codex/manifest.yaml + adapter.ts
+└── gemini/manifest.yaml + adapter.ts
+
 ~/.gwrk/plugins/                       # Global plugin root
 ├── skills/                            # Atomic + compound skills
 │   ├── narrative/manifest.yaml
 │   ├── signal-cut/manifest.yaml
 │   └── ...
-├── agents/                            # AgentBackend adapters (F014 P3)
+├── agents/                            # User-installed overrides (F014 P3)
+│   └── <name>/
+│       ├── manifest.yaml
+│       ├── adapter.ts               # Optional (local-cli dispatch doesn't need one)
+│       └── .gwrk-source.json        # Git install tracking (url, ref, commitSha)
 └── domains/                           # Domain packs (F016)
 
 .gwrk/plugins.yaml                     # Per-project overrides (disable/override)
 ```
 
-Resolution order: Global → local override → local disable.
+**Resolution order:** Built-in (`src/plugins/builtins/`) → user-installed (`~/.gwrk/plugins/`) → local override (`.gwrk/plugins.yaml`). User-installed adapters override built-ins with the same name. Local disable overrides everything.
+
+**Plugin authoring:** `gwrk plugin create agent <name>` scaffolds a new agent backend plugin directory. `gwrk plugin install <path|url>` installs from local directory or git URL with optional `#<ref>` version pinning. See [agent-backend-plugin-design.md §Q6](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md).
 
 ### 7.6 Plugin Supply-Chain Guardrails
 
@@ -624,8 +681,8 @@ Layer 2 (Skills) are lower risk — they're markdown + YAML that invoke agent CL
     },
     "fallbackOrder": ["codex-cloud", "codex-local", "claude", "gemini"],
     "parallelism": {
-      "local": { "maxClones": 3, "maxCpu": 80, "maxMem": 70 },
-      "cloud": { "maxConcurrent": 10 }
+      "local": { "maxClones": 2, "maxCpu": 80, "maxMem": 80, "minDiskGb": 10 },
+      "cloud": { "maxConcurrent": 3 }
     }
   }
 }
@@ -683,7 +740,8 @@ develop
 | **Event Bus** | `@fastify/websocket` | WebSocket `/ws` for event streaming (F015 — future). ~50KB, zero deps |
 | **Scheduler** | `@fastify/schedule` (toad-scheduler) | Cron: pulse 4h, compression daily, heartbeat 5min (F015 — future) |
 | **Comms** | `@slack/bolt` (Socket Mode) | Channel-per-project, threads, App Home Tab |
-| **Sandbox** | Docker | Per-feature-phase container isolation |
+| **Sandbox (local)** | Git worktrees | Per-task worktree isolation (~1s startup, zero deps). R001. |
+| **Sandbox (cloud)** | Codex Cloud | @codex GitHub integration (Tier 3, separate feature). R001. |
 | **Git Operations** | `gh` CLI + `git` | GitHub-native |
 | **Agent Dispatch** | `dispatchToAgent()` facade | F014 `AgentBackend` plugins (ADR-006). Today wraps `spawn(cli)`, tomorrow calls plugin adapter |
 | **Agent: Codex** | `codex exec --full-auto` | Cloud microVMs, true parallelism |
@@ -773,9 +831,11 @@ See [specs/000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan
 | `.agents/rules/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** governance |
 | `.agents/workflows/` | Ref'd by GEMINI.md | Ref'd by CLAUDE.md | Ref'd by AGENTS.md | **Shared** workflows |
 
-> **Plugin migration (ADR-006 §2.2):** A single `.gwrk/agent-context.md` will become the source of truth for durable governance. CLI-specific context files (`GEMINI.md`, `CLAUDE.md`, `AGENTS.md`) will be generated from it via `gwrk plugin sync-context`. Plugin agents declare which CLI config keys they manage; conflicts are detected pre-dispatch (ADR-006 §2.5). See §7.3.
+> **Plugin migration (ADR-006 §2.2):** A single `.gwrk/agent-context.md` is the source of truth for durable governance. CLI-specific context files (`GEMINI.md`, `CLAUDE.md`, `AGENTS.md`) are generated from it via `gwrk plugin sync-context`. Content between `<!-- gwrk:begin -->` / `<!-- gwrk:end -->` markers is managed; user additions outside markers are preserved. Plugin agents declare which CLI config keys they manage; conflicts are detected pre-dispatch (ADR-006 §2.5). See §7.3.
 
 All context files reference the shared `.agents/` directory — governance rules are written once, consumed by all backends.
+
+**Plugin scaffolding (R002):** `gwrk plugin create agent <name>` generates a skeleton plugin directory with `manifest.yaml` template and optional `adapter.ts`. See §7.5.
 
 ### Config Ownership (ADR-006 §2.5)
 

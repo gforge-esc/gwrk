@@ -463,20 +463,18 @@ interface ParallelismConfig {
 
 ### 6. F005 Spec Alignment Notes
 
-### 6. F005 Spec Alignment Notes
-
 | Section | Current State | Required Change |
 |---------|--------------|-----------------|
-| **FR-002** | References Docker clones and `--reference` | Replace with git worktree model for Tier 1/2 MVP. |
-| **FR-004** | References "file-based lock" for merge | **DELETE**. Merge serialization is handled by GitHub PR mechanisms; F005 does not own merge locking. |
-| **FR-007** | Conflict resolution flow | **DELETE**. F005 does not own conflict resolution; PR conflicts are handled downstream by F004 Ship Loop. |
-| **FR-008** | Mandates "cloud agents via PR tagging" | **DELETE / DEFER**. F005 MVP (Tier 1/2) strictly uses `local-cli`. Tier 3 (Codex Cloud) is a separate feature. |
-| **US-003** | Auto-merge requirement | **DELETE**. F005 creates PRs but does not merge them. |
-| **US-006** | References F008 routing | Replace F008 with F014 P4 (routing intelligence). |
-| **FR-005** | References "per-backend `maxConcurrent`" | Simplify to global config-driven `maxClones` + system resource gate. |
-| **TC-004** | "No Host Mutation" | Strengthen: host worktree NEVER modified. All agent work localized to sandbox worktrees. |
-| **General** | No phased rollout | Add explicit Tier 1/2/3 phasing. |
-| **General** | No Ship/Harvest boundary | Clarify F005 operates exclusively in the dispatch phase. |
+| **FR-002** | References Docker clones and `--reference` | Replace with git worktree model for Tier 1/2 |
+| **FR-004** | References "file-based lock" | Replace with `AsyncMutex` + dedicated merge-worktree |
+| **FR-008** | References "cloud agents via PR tagging" (vague) | Replace with specific `@codex` GitHub integration model |
+| **US-006** | References F008 routing | Replace F008 with F014 P4 (routing intelligence) |
+| **FR-005** | References "per-backend `maxConcurrent`" | Simplify to config-driven `maxClones` + resource gate |
+| **FR-007** | Conflict resolution flow | Update with merge-worktree + re-dispatch pattern |
+| **TC-004** | "No Host Mutation" | Strengthen: host worktree NEVER modified. All work in sandbox worktrees. |
+| **General** | No phased rollout | Add Tier 1/2/3 phasing |
+| **General** | No Ship/Harvest boundary | Clarify F005 operates in dispatch phase only |
+| **General** | References retired F008 | Remove all F008 references |
 
 ### 7. Architecture.md Amendments
 
@@ -535,27 +533,6 @@ triggered only when the Ship Loop's PR is merged.
 +| **Sandbox (local)** | Git worktrees | Per-task worktree isolation (~1s startup, zero deps) |
 +| **Sandbox (cloud)** | Codex Cloud | @codex GitHub integration (Tier 3) |
 ```
-
----
-
-## 8. Spec Ambiguity Resolutions (F005 vs F011/F014)
-
-A comprehensive cross-specification governance audit identified three critical architectural fractures. The following design resolutions establish tracing and enforce strict boundaries to remedy them before implementation:
-
-### Fracture 1: The Merge Ownership Collision
-*   **Conflict:** F005 references owning GitHub PR merging, serialized locking, and conflict resolution (US-003, FR-004, FR-007), which collides with F004 Ship Loop ownership.
-*   **Resolution:** F005 scope MUST be strictly redacted. F005 is exclusively responsible for **PR Creation** (Sandbox → Feature Branch). It does not lock, it does not merge, and it does not resolve conflicts.
-*   **Spec Remedy:** Aggressively SCRUB F005 of US-003, FR-004, and FR-007. The orchestrator's job ends the millisecond the PR is opened.
-
-### Fracture 2: The Harvest Trigger Mismatch
-*   **Conflict:** F005 parallelization creates an N:1 cardinality mismatch. N sandboxes = N PRs (Sandbox → Feature Branch). F011 (Harvest) triggers its "Done, Done!" breakdown upon a PR merge webhook, which would falsely trigger on the first Sandbox PR merge.
-*   **Resolution:** Harvest trigger conditions MUST differentiate between "Task PRs" and "Phase Rollup PRs".
-*   **Spec Remedy:** F011 MUST update FR-H01 to enforce strict branch targeting. Harvest is ONLY permitted to trigger when `pull_request.closed` and `merged: true` AND the base branch is the trunk (`main` or `develop`). Sandbox PRs targeting `feat/*` will be completely ignored by Harvest.
-
-### Fracture 3: The Cloud Dispatch Ordering Paradox
-*   **Conflict:** F005 FR-008 mandates Cloud Agents (`github-integration` mode) in the base feature, while F014 actively forbids this outside Phase 1, prioritizing `local-cli` exclusively.
-*   **Resolution:** Dependency inversion. F005 Phase 1 MUST inherit F014's Phase 1 constraints.
-*   **Spec Remedy:** F005 FR-008 MUST be deferred to a later tier. F005 Phase 1 MVP is strictly bounded to Tier 1 and Tier 2 (Git worktrees + Local CLI) dispatch models. F014's dictate overrides F005's assumed timeline.
 
 ---
 

@@ -40,7 +40,7 @@ Start here. Read in this order.
 | Document | Contents |
 |---|---|
 | [architecture-diagrams.md](reference/architecture-diagrams.md) | Mermaid visualizations — agent pipeline, system architecture, Done Done! protocol, git branching, App Home Tab |
-| [codex-lab.md](reference/codex-lab.md) | Codex Cloud integration reference — setup, invocation, orchestration blueprint |
+| [codex-cloud-research-report.md](reference/codex-cloud-research-report.md) | Codex Cloud platform reference — environments, container lifecycle, GitHub/Slack integration, gwrk Tier 3 architecture |
 | [extraction-manifest.md](reference/extraction-manifest.md) | Exhaustive inventory of the 78-file CodeRed workflow system being extracted into gwrk |
 | [reasoning-modes.md](reference/reasoning-modes.md) | Raw reasoning mode catalogue — 45 modes across 7 categories (source material) |
 | [reasoning-skills.md](reference/reasoning-skills.md) | **Compound reasoning skills** — 6 mode stacks purpose-built for gwrk definitional work |

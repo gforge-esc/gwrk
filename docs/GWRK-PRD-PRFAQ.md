@@ -457,7 +457,7 @@ Codex Cloud **requires manual per-project setup** via the Codex Web UI:
 
 **gwrk walks you through this**: `gwrk codex setup` checks for an existing Codex configuration and guides you through linking, environment setup, and `AGENTS.md` generation from your `.agents/rules/` directory.
 
-See [`docs/reference/codex-lab.md`](file:///Users/gonzo/Code/gwrk/docs/reference/codex-lab.md) for the full Codex Cloud reference and orchestration blueprint.
+See [`docs/reference/codex-cloud-research-report.md`](file:///Users/gonzo/Code/gwrk/docs/reference/codex-cloud-research-report.md) for the full Codex Cloud platform reference.
 
 ### Local Agents: The Parallelism Problem
 
