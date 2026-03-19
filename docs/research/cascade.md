@@ -16,18 +16,18 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
                           ▼
               architecture.md v5.0 (amendments from R001 + R002)
                           │
-          ┌───────────────┼───────────────┐
+          ┌───────────────┼───────────────┼───────────────┐
+          ▼               ▼               ▼               ▼
+     F004 spec       F005 spec       F014 spec       F011 spec
+     (rework)        (rewrite)       (L1/L2.5 exp)   (polish)
+          │               │               │               │
           ▼               ▼               ▼
-     F005 spec       F014 spec       F011 spec
-     (rewrite)       (L1 expand)     (polish)
+     define plan     define plan     define plan     define plan
+     define tasks    define tasks    define tasks    define tasks
+     define tests    define tests    define tests    define tests
           │               │               │
           ▼               ▼               ▼
-     define plan     define plan     define plan
-     define tasks    define tasks    define tasks
-     define tests    define tests    define tests
-          │               │               │
-          ▼               ▼               ▼
-     gwrk ship       gwrk ship       gwrk ship
+     gwrk ship       gwrk ship       gwrk ship       gwrk ship
 ```
 
 ---
@@ -81,6 +81,8 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
 2. **F011 Harvest Trigger:** Harvest MUST trigger on a Phase Rollup PR, ignoring individual Sandbox `feat/*` PRs.
 3. **F005 Cloud Paradox:** Cloud Agents (`github-integration`) explicitly deferred entirely out of F005 MVP Phase 1.
 4. **F014 Config Isolation:** Agent plugins MUST strictly confine config mutation within the sandbox `projectRoot`.
+5. **Workflow Execution Paradigm (F014/F004):** Workflows are structurally distinct from Skills. The LLM must NEVER directly mutate the filesystem. Workflows produce structured JSON Intents executed natively by `WorkflowRuntime`.
+6. **Orchestrator Eradication (F004/Core):** Bash state machines (`scripts/dev/define-until-solid.sh` and `work-until-done.sh`) must be removed to break IDE sandbox dependency and replaced by a native TypeScript `DispatchOrchestrator`.
 
 ---
 
@@ -90,8 +92,9 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
 
 | Spec | Action | Draws From | Scope |
 |---|---|---|---|
+| **F004** | Rework | R002 Remediation Plan, plugin-strategy-audit | **CRITICAL UPDATE**: Refactor `work-until-done.sh` and `define-*` shell scripts into native TypeScript `DispatchOrchestrator`. Prepare architecture to consume `WorkflowRuntime` JSON intent execution. |
 | **F005** | Rewrite | R001, ADR-006, F004 contracts, Ambiguity Remediation | Replace F008 refs, add `TaskDispatch/TaskResult`, new sandbox model, align DM-001 with F004 manifests **+ Delete FR-004/007/US-003 (merge locks) + Defer Cloud Agents to Tier 3.** |
-| **F014** | Expand | R002, ADR-006, skills-architecture.md, Ambiguity Remediation | Add L1 FRs (FR-L1-001–013: agent manifest schema, dispatch, parseResult, syncGovernance, config check, sync-context, `gwrk plugin create agent`, built-in adapters, git install + update). Fix FR-006 hardcoded CLIs. Add `PluginBaseSchema` discriminated union. Add compilation model (§7.2 amendment). **+ Add Strict Isolation Rule (sandbox `projectRoot` confinement).** |
+| **F014** | Expand | R002, ADR-006, skills-architecture.md, Ambiguity Remediation | Add L1 FRs (Agent manifest, governance sync). **+ Add Layer 2.5 FRs (WorkflowRuntime, JSON Schema Output Contracts). + Add Strict Isolation Rule.** |
 | **F011** | Polish | Architecture.md v5.0, Ambiguity Remediation | Add optional F015 event hooks. Reference `dispatchToAgent()` results in FR-H03. **+ Update FR-H01 trigger logic to ignore Sandbox PRs and require Phase completion.** |
 
 **Method:** Use `gwrk define spec` or manual rewrite. Each spec goes through PM review before define pipeline.

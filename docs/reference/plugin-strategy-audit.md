@@ -25,15 +25,15 @@
 
 **Contact:** F004's `work-until-done.sh` and `agent.ts` currently hardcode CLI dispatch (`claude -p`, `gemini -p`, `codex exec`). This is the **primary consumer** of the `AgentBackend` plugin.
 
-**Current state:** Strongest implementation alongside 000/013. Has contracts, gates, plans, reviews, TDD infrastructure. Ship loop is the execution kernel.
+**Current state:** Strongest implementation alongside 000/013, BUT it relies on `scripts/dev/work-until-done.sh` to loop.
 
 **What F014 changes:**
 - `agent.ts` dispatch call → `pluginRegistry.getAgentBackend().dispatch()`
 - `agent-run.sh` regex exit code parsing → `backend.parseResult()` normalization
-- Hardcoded `--yolo` / `--full-auto` / `--dangerously-skip-permissions` → `backend.dispatch()` encapsulates
-- Prompt assembly stays in gwrk core (spec + contracts + gates); delivery moves to plugin
+- Shell orchestrator `work-until-done.sh` must be refactored into a native TypeScript router (`DispatchOrchestrator`).
+- Prompt assembly stays in gwrk core; delivery moves to plugin.
 
-**Remediation scope:** Moderate. F004 is well-structured — the dispatch boundary is clean. Rework is surgical: swap the spawn call site, not the orchestration logic.
+**Remediation scope:** HEAVY. Swapping the spawn site is easy, but migrating the `work-until-done.sh` bash execution state machine into native code is mandatory. Without doing this, gwrk remains bound to IDE-like text output constraints.
 
 **Tie to 013:** F004 already consumes F013 contracts (`--format json`, `[exit:N | Xs]`, `gwrk gate-check`). Plugin adapters inherit these contracts. No conflict.
 
@@ -65,10 +65,10 @@
 
 **What F014 changes:**
 - `src/utils/agent.ts` → deprecated or refactored to thin wrapper around plugin dispatch
-- `gwrk new` provisioning → must invoke `plugin.syncGovernance()` to generate `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` from `.gwrk/agent-context.md`
-- `gwrk init` → must detect existing CLI config files and run conflict detection (ADR-006 §2.5)
+- `gwrk new` / `gwrk init` → provisioning routines trigger plugin hooks.
+- **Critical Addition**: `gwrk define` commands (plan, specify) must shed reliance on `scripts/dev/define-until-solid.sh`. The LLM interactions must be decoupled from the File System via `WorkflowRuntime` catching JSON output intents.
 
-**Remediation scope:** Light-moderate. `agent.ts` is already a clean utility — replacing its internals with plugin dispatch is straightforward. The provisioning commands (`new`, `init`) need a plugin hook but the structure exists.
+**Remediation scope:** Heavy. The orchestration loops inside `gwrk define` and `gwrk ship` are currently shell-bound. They must be ported to native typescript logic using `WorkflowRuntime`.
 
 ---
 

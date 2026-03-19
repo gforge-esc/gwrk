@@ -141,10 +141,12 @@ runtime:
 tags: [content, marketing, writing, developer-tools]
 ```
 
-### Boundary Rule
+### Boundary Rule (Skills vs Workflows)
 
-> **manifest.yaml** = *what is this, what does it need, what does it produce*
+> **Skill manifest.yaml** = *what is this, what does it need, what does it produce (stdout text)*
 > **SKILL.md** = *how does this think* (detailed pass instructions, prompt injections, playbook tables, examples)
+> **Workflow manifest.yaml** = *what structured JSON intent does this produce for gwrk core to mutate the filesystem*
+> **WORKFLOW.md** = *how to compile the context and format the JSON payload (absolutely side-effect free)*
 
 ---
 

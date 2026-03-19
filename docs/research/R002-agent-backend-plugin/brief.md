@@ -79,6 +79,30 @@ How does the current `dispatchToAgent()` → `spawn()` pattern migrate to `plugi
 - Is there a compatibility shim during migration? (Old function wraps new plugin call?)
 - Does F005 need to care about this migration, or does it only see `dispatchToAgent()` regardless?
 
+### Q6: Workflow Execution Runtime (Layer 2.5)
+
+If F014 moves `.agents/workflows/` to `~/.gwrk/plugins/workflows/`, how are they executed?
+
+**Must answer:**
+- What is `WorkflowRuntime` and how does it differ from `SkillRuntime`?
+- How is a workflow invoked internally by commands like `gwrk define plan`?
+
+### Q7: Filesystem Decoupling & LLM Isolation
+
+How do we break the reliance on prompt-engineered instructions telling the LLM to write to the host filesystem directly?
+
+**Must answer:**
+- What is the structural payload a Workflow plugin must return (JSON Intents)?
+- Which subsystem executes the filesystem mutation (e.g., `fs.writeFileSync(...)`)?
+
+### Q8: Orchestration Subsystem Migration
+
+How do we migrate existing bash dispatch loops (`scripts/dev/*`) to native orchestrators?
+
+**Must answer:**
+- What happens to `define-until-solid.sh` and `work-until-done.sh`?
+- How do the CLI commands handle state-machine logic natively?
+
 ---
 
 ## Input Documents
@@ -124,8 +148,10 @@ The research document MUST produce:
 6. **Exit code normalization table** — complete mapping per backend (from cli-backend-research) → `TaskResult` fields
 7. **Migration path** — current `agent.ts` → plugin-based dispatch, annotated with cut points
 8. **`dispatchMode` discriminator design** — how local-cli and github-integration backends coexist under the `AgentBackend` interface. Interface evolution path (Phase 1: local-cli only for F014, Phase 2: `CloudAgentBackend` when Codex Cloud ships as separate feature).
-9. **F014 spec alignment notes** — explicit list of L1 FRs that must be added, L2 FRs that must be updated
-10. **Architecture.md amendments** — specific text for §7, §8, §14 updates
+9. **`WorkflowRuntime` Schema** — distinct from `SkillRuntime`. How Workflows define JSON-schema output contracts for File I/O.
+10. **Filesystem Decoupling Plan** — how to migrate `define` commands and shell scripts off IDE-sandbox reliance into native TypeScript orchestrators catching JSON intents.
+11. **F014 spec alignment notes** — explicit list of Layer 1 & 2.5 FRs that must be added, L2 FRs that must be updated.
+12. **Architecture.md amendments** — specific text for §7, §8, §14 updates.
 
 ---
 

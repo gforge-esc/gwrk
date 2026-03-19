@@ -4,11 +4,11 @@
 **Created**: 2026-02-27
 **Revised**: 2026-03-17
 **Status**: Settled
-**Input**: The autonomous execution kernel for Pillar 3 (Shipping). `gwrk ship <feature> [phase]` orchestrates the Ship Loop — the 7-step cycle that ends when a PR is issued and Slack is notified: DISPATCH → PRE-FLIGHT → EXECUTE → POST-FLIGHT → VERIFY → PR → NOTIFY. Delegates to `scripts/dev/work-until-done.sh` as the phase orchestrator. Phase is optional — omitting it ships all phases sequentially, skipping completed ones.
+**Input**: The autonomous execution kernel for Pillar 3 (Shipping). `gwrk ship <feature> [phase]` orchestrates the Ship Loop — the 7-step cycle that ends when a PR is issued and Slack is notified: DISPATCH → PRE-FLIGHT → EXECUTE → POST-FLIGHT → VERIFY → PR → NOTIFY. Delegates to a native TypeScript `DispatchOrchestrator` acting upon structured Intents produced by the `WorkflowRuntime`. Phase is optional — omitting it ships all phases sequentially, skipping completed ones.
 
 > **Ship Loop boundary (architecture.md §6.2)**: This spec covers steps 1-7. Step 7 (NOTIFY) uses **Slack Incoming Webhook** (003 FR-014) — a direct HTTPS POST that works from Codex Cloud, local clones, and any environment without build server access. Post-merge lifecycle (merge detection, log rehoming, DB finalization, compression, done-done notification) is **Harvest** — see [011-harvest](file:///Users/gonzo/Code/gwrk/specs/011-harvest/spec.md) and architecture.md §6.3.
 
-> **Nomenclature**: "Ship loop" is the execution mechanism. "WUD" (Work Until Done) is the agent persona that operates the ship loop (architecture.md §2). The spec uses "ship loop" and "phase orchestrator" for the machinery, not "WUD."
+> **Nomenclature**: "Ship loop" is the execution mechanism. "WUD" (Work Until Done) is the agent persona that operates the ship loop (architecture.md §2). The spec uses "ship loop" and "DispatchOrchestrator" for the machinery, discarding legacy ".sh" names.
 
 > **Architectural anchors**: [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (operational signals), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends), [FOXTROT-CHARLIE](file:///Users/gonzo/Code/gwrk/docs/FOXTROT-CHARLIE.md) §Pillar 3, [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md) §6.2 (Ship Loop), [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) §1.2
 
@@ -169,7 +169,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 ### Layer 1: TypeScript CLI (`ship.ts`)
 
-- **FR-001**: System MUST provide `gwrk ship <feature> [phase]` that delegates to `scripts/dev/work-until-done.sh`. When phase is omitted, all phases from `tasks.json` are shipped sequentially, stopping on first failure. `shipPhase()` accepts `workDir` and `backend` overrides for composability with 005-parallel-dispatch. (Implements: US-001, US-003)
+- **FR-001**: System MUST provide `gwrk ship <feature> [phase]` that delegates to `DispatchOrchestrator`. When phase is omitted, all phases from `tasks.json` are shipped sequentially, stopping on first failure. `shipPhase()` accepts `workDir` and `backend` overrides for composability with 005-parallel-dispatch. (Implements: US-001, US-003)
 - **FR-009**: System MUST resolve agent backend hierarchically: (1) explicit `--agent` CLI override, (2) programmatic `backend` parameter from calling code, (3) fallback to `.gwrkrc.json agents.implement`. No graceful default — missing config → `process.exit(1)`. (Implements: US-008)
 - **FR-011**: System MUST record every agent dispatch in the SQLite execution ledger (`~/.gwrk/gwrk.db` `runs` table) via `startRun()`/`finishRun()`. (Implements: US-001)
 - **FR-012**: System MUST write an execution manifest to `specs/<feature>/.gwrk/runs/` per ADR-003 §3 for every ship run. Manifest includes `digest[]` array of structured log events per FR-017. (Implements: US-001, US-007)
@@ -182,26 +182,26 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 |---|---|---|
 | tasks.json not found | `Task state file not found` | 1 |
 | Phase not found | `Phase phase-NN not found` | 1 |
-| work-until-done.sh missing | `ENOENT` | 1 |
+| Orchestrator crash | `DispatchOrchestrator failed` | 1 |
 
 #### FR-009 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
 | Agent not configured | `Missing required config: agents.implement` | 1 |
 
-### Layer 1: Phase Orchestrator (`work-until-done.sh`)
+### Layer 1: DispatchOrchestrator (TypeScript)
 
-- **FR-002**: Phase orchestrator MUST create a `feat/<feature>` branch from current `develop` HEAD via `wud-branch.sh`. Dirty working tree → fail fast with `Dirty working tree — commit or stash before shipping`. (Implements: US-001)
-- **FR-003**: Phase orchestrator MUST execute pre-flight gate check per task. Gate already passing → skip with `pre-flight PASS — gate already satisfied, skipping`. Gate failing → proceed to implementation. (Implements: US-001, US-002)
-- **FR-004**: Phase orchestrator MUST implement the state machine: `BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE`. Each transition persists state to disk. (Implements: US-001)
-- **FR-005**: Phase orchestrator MUST dispatch code review (`review-code` workflow) and UAT review (`review-uat` workflow) after implementation. NO-GO → increment iteration, loop back to IMPLEMENT. (Implements: US-001)
-- **FR-006**: Phase orchestrator MUST create a GitHub PR via `gh pr create --base develop` after reviews pass, then wait for CI via `wud-ci-wait.sh`. (Implements: US-001, US-006)
-- **FR-007**: Phase orchestrator MUST enforce circuit breaker via `MAX_ITERATIONS` env var (default 3). Exceeded → exit 1, `CIRCUIT_BREAK` state persisted. (Implements: US-004)
-- **FR-008**: Phase orchestrator MUST persist state machine progress to `.runs/<feature>_p<phase>.state` as JSON after every stage transition. On restart, resume from last persisted stage. (Implements: US-005)
-- **FR-010**: Phase orchestrator MUST create a timestamped log file in `.runs/` per run (machine-local, gitignored). (Implements: US-001)
-- **FR-016**: Phase orchestrator MUST run `scripts/dev/validate-staging.sh <feature>` after agent completes, before push. Validator rejects: out-of-scope files, orphan spec dirs, build plan modifications (Design Mandate Rule 3). Validation failure → re-run agent with corrective guidance. (Implements: US-010)
-- **FR-017**: Phase orchestrator logging has three tiers, all git-tracked: (a) **Raw log** — full agent output committed to `specs/<feature>/.gwrk/runs/<timestamp>_<stage>.log`. Actual log sizes are 10-115KB (measured); the ADR-003 §5 assumption of 5MB was incorrect. Git-tracking all logs ensures learning from both success and failure patterns, and survival across ephemeral VMs (Codex Cloud). (b) **Log digest** — the orchestrator emits structured stage events to a sidecar file (`.runs/<feature>_p<phase>.events`, machine-local). On completion, events are concatenated into the `digest[]` array in the execution manifest. Events use format: `<STAGE>: <outcome summary>`. Digest serves as a quick index into the full logs. (c) **SQLite** — harvested post-merge by build server via `gwrk harvest` (ADR-003 §4). (Implements: US-001, US-007, US-011)
-- **FR-018**: On `CIRCUIT_BREAK`, phase orchestrator MUST write structured failure context to state file: `{ failureContext: { openTasks: [...], lastVerdict: "NO-GO", iterationTimeline: [...], digest: [...] } }`. Exit 1. Raw log is already git-tracked per FR-017; no special handling needed on failure. (Implements: US-011)
+- **FR-002**: `DispatchOrchestrator` MUST create a `feat/<feature>` branch from current `develop` HEAD natively via simple-git or spawned git (replacing `wud-branch.sh`). Dirty working tree → fail fast. (Implements: US-001)
+- **FR-003**: `DispatchOrchestrator` MUST execute pre-flight gate check per task. Gate already passing → skip with `pre-flight PASS — gate already satisfied`. Gate failing → proceed to implementation. (Implements: US-001, US-002)
+- **FR-004**: `DispatchOrchestrator` MUST implement the state machine: `BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE`. Each transition persists state to disk. (Implements: US-001)
+- **FR-005**: `DispatchOrchestrator` MUST dispatch code review (`review-code` workflow) and UAT review (`review-uat` workflow) via `WorkflowRuntime`. NO-GO → increment iteration, loop back to IMPLEMENT. (Implements: US-001)
+- **FR-006**: `DispatchOrchestrator` MUST create a GitHub PR via native GitHub REST/GraphQL or `gh pr create` after reviews pass, then poll for CI completion (replacing `wud-ci-wait.sh`). (Implements: US-001, US-006)
+- **FR-007**: `DispatchOrchestrator` MUST enforce circuit breaker via `MAX_ITERATIONS` env var (default 3). Exceeded → exit 1, `CIRCUIT_BREAK` state persisted. (Implements: US-004)
+- **FR-008**: `DispatchOrchestrator` MUST persist state machine progress to `.runs/<feature>_p<phase>.state` as JSON after every stage transition. On restart, resume from last persisted stage. (Implements: US-005)
+- **FR-010**: `DispatchOrchestrator` MUST create a timestamped log file in `.runs/` per run (machine-local, gitignored). (Implements: US-001)
+- **FR-016**: `DispatchOrchestrator` MUST run staging validation natively after agent completes, before push. Validator rejects: out-of-scope files, orphan spec dirs, build plan modifications (Design Mandate Rule 3). Validation failure → re-run agent with corrective guidance. (Implements: US-010)
+- **FR-017**: `DispatchOrchestrator` logging has three tiers, all git-tracked: (a) **Raw log** — full agent output committed to `specs/<feature>/.gwrk/runs/<timestamp>_<stage>.log`. (b) **Log digest** — structured stage events in sidecar concatenated into `digest[]` array in the execution manifest. (c) **SQLite** — harvested post-merge by `gwrk harvest`. (Implements: US-001, US-007, US-011)
+- **FR-018**: On `CIRCUIT_BREAK`, `DispatchOrchestrator` MUST write structured failure context to state file: `{ failureContext: { openTasks: [...], lastVerdict: "NO-GO", iterationTimeline: [...], digest: [...] } }`. Exit 1. (Implements: US-011)
 
 #### FR-002 Error States
 | Condition | stderr contains | Exit code |
@@ -252,7 +252,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 > **Purpose:** These FRs establish the dispatch facade that makes F004 plugin-ready. Today the facade wraps `spawn(cli, args)`. When F014 ships, the facade internals are replaced by `pluginRegistry.getAgentBackend().dispatch()` — no other F004 code changes. See [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) and [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
 
-- **FR-019**: System MUST dispatch agent work through a single function signature: `dispatchToAgent(task: TaskDispatch): Promise<TaskResult>`. The ship loop (`ship.ts`) and phase orchestrator (`work-until-done.sh` via gwrk CLI) MUST call this function — they MUST NOT spawn CLI processes directly. `TaskDispatch` contains: `{ prompt: string, agent: string, workDir: string, stdin: string, env: Record<string, string> }`. `TaskResult` contains: `{ exitCode: number, errorType?: "turn_limit" | "permission" | "timeout" | "unknown", stdout: string, stderr: string, durationS: number }`. (Implements: US-001, US-008)
+- **FR-019**: System MUST dispatch agent work through a single function signature: `dispatchToAgent(task: TaskDispatch): Promise<TaskResult>`. The `DispatchOrchestrator` MUST call this function natively — it MUST NOT spawn CLI processes directly. `TaskDispatch` contains: `{ prompt: string, agent: string, workDir: string, stdin: string, env: Record<string, string> }`. `TaskResult` contains: `{ exitCode: number, errorType?: "turn_limit" | "permission" | "timeout" | "unknown", stdout: string, stderr: string, durationS: number }`. (Implements: US-001, US-008)
 - **FR-020**: `dispatchToAgent()` MUST normalize exit codes to the gwrk standard: `0` (success), `1` (failure), `2` (usage error), `127` (command not found). Proprietary CLI exit codes (e.g., Gemini's `53` for turn limit) MUST be mapped to `exitCode: 1` with `errorType: "turn_limit"`. The ship loop MUST consume `TaskResult.exitCode` and `TaskResult.errorType`, never raw process exit codes. (Implements: US-001)
 - **FR-021**: Context delivery to the agent CLI MUST use stdin piping as the primary delivery mechanism: `echo "$stdin" | $cli_command`. Inline `-p "<prompt>"` arguments MUST NOT be used for context longer than 4096 bytes. This avoids `ARG_MAX` shell limitations and ensures reliable delivery. (Implements: US-001)
 
@@ -359,14 +359,14 @@ Per ADR-002: `command: "ship"`, `workflow: "work-until-done"`, `exit_code`, `dur
 
 ## 7. Testing Requirements
 
-- **TR-001**: `src/scripts-e2e.test.ts` — Verify work-until-done.sh completes without unbound variables, handles non-zero agent exit, respects `MAX_ITERATIONS`. Vitest + Shell E2E. (FR-004, FR-007)
-- **TR-002**: `scripts/dev/wud-branch.sh` validation — Verify branch creation from develop, checkout existing, dirty-tree rejection. Shell. (FR-002)
-- **TR-003**: `scripts/dev/wud-verdict.sh` validation — Verify GO when all tasks completed, NO-GO when open tasks remain. Shell. (FR-005)
-- **TR-004**: `scripts/dev/wud-ci-wait.sh` validation — Verify CI wait completes, timeout returns exit 2, no-checks edge case passes. Shell. (FR-006)
+- **TR-001**: `src/engine/orchestrator.test.ts` — Verify `DispatchOrchestrator` completes state machine logically without unbound shell variables, handles non-zero agent exit, respects `MAX_ITERATIONS`. Vitest. (FR-004, FR-007)
+- **TR-002**: `src/engine/branch.test.ts` validation — Verify branch creation from develop, checkout existing, dirty-tree rejection natively. Vitest. (FR-002)
+- **TR-003**: `src/engine/verdict.test.ts` validation — Verify GO when all tasks completed, NO-GO when open tasks remain. Vitest. (FR-005)
+- **TR-004**: `src/engine/ci-wait.test.ts` validation — Verify CI wait completes, timeout returns exit 2, no-checks edge case passes. Vitest. (FR-006)
 - **TR-005**: `src/commands/ship.test.ts` — Verify ship CLI: single-phase dispatch, all-phases iteration, `--max-iterations`, `--ci-timeout`, `--dry-run`, failure exit, phase-skip. Vitest. (FR-001, FR-011, FR-013, FR-014)
 - **TR-006**: `src/cli.e2e.test.ts` — Verify `gwrk ship --help` shows `--dry-run`, `--max-iterations`, `--ci-timeout`, `--agent`, and no stale subcommands. Vitest + CLI. (FR-001)
-- **TR-007**: `src/scripts-e2e.test.ts` — E2E: full lifecycle invocation with structured manifest output, retry on failure. Vitest + Shell. (FR-004, FR-007, FR-012, FR-017)
-- **TR-008**: `scripts/dev/validate-staging.sh` validation — Verify rejection of out-of-scope files, build plan protection, orphan detection. Shell. (FR-016)
+- **TR-007**: `src/engine/orchestrator.e2e.test.ts` — E2E: full lifecycle invocation with structured manifest output, retry on failure. Vitest. (FR-004, FR-007, FR-012, FR-017)
+- **TR-008**: `src/engine/staging.test.ts` validation — Verify rejection of out-of-scope files, build plan protection, orphan detection. Vitest. (FR-016)
 
 ---
 

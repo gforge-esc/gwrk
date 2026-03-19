@@ -277,7 +277,17 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-L1-011**: `gwrk plugin install <url>` MUST support git URLs with optional `#<ref>` for version pinning. On install: clone repo, validate manifest, copy to `~/.gwrk/plugins/agents/<name>/`, write `.gwrk-source.json` with `{ url, ref, commitSha, installedAt }`. (Implements: US-L1-003)
 - **FR-L1-012**: User-installed plugins at `~/.gwrk/plugins/agents/<name>/` MUST take precedence over built-in adapters with the same name. Resolution: built-in → user-installed (Map.set overwrites). (Implements: US-L1-001)
 - **FR-L1-013**: System MUST provide `gwrk plugin update <name>` that re-clones from the stored source URL in `.gwrk-source.json`. Supports `--all` to update all git-sourced plugins. (Implements: US-L1-003)
+### Workflow Runtime (Layer 2.5 — Execution Orbits)
 
+- **FR-L25-001**: Workflows MUST be structurally distinct from Skills. A Workflow manifest (`type: workflow`) MUST declare an `outputSchema` defining the strict JSON structure the agent must return.
+- **FR-L25-002**: The `WorkflowRuntime` MUST strictly decouple LLM reasoning from filesystem mutation. The runtime MUST parse the JSON Intent (e.g., `{ action: "WRITE_FILE", filePath: "...", content: "..." }`) and execute the local mutation natively in gwrk core. The Agent MUST NEVER mutate the filesystem directly via prompt engineering alone.
+- **FR-L25-003**: `gwrk define` commands (plan, tasks, tests) MUST route their prompts through `WorkflowRuntime`, catching the structured JSON intent, explicitly eliminating reliance on raw bash IDE sandbox capabilities.
+
+#### FR-L25-001 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Invalid JSON Intent | `Workflow output failed schema constraint: Expected JSON object.` | 1 |
+| Attempted direct FS edit | `Workflow execution violation: Use WRITE_FILE JSON intent only.` | 1 |
 #### FR-L1-001 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
@@ -294,9 +304,10 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 
 ### Manifest Schema
 
-- **FR-013**: Manifest schema (validated by Zod) MUST support two tiers:
-  - **Atomic**: `type`, `name`, `tier: atomic`, `version`, `description`, `category`, `prompt`, `interface`, `runtime`, `tags`
-  - **Compound**: All atomic fields PLUS `composes`, `passes`, `context`, `outputContract`
+- **FR-013**: Manifest schema (validated by Zod) MUST support three plugin geometries:
+  - **Skill (Atomic)**: `type: 'skill'`, `name`, `tier: atomic`, `version`, `prompt`, `interface`
+  - **Skill (Compound)**: `type: 'skill'`, `tier: compound`, `composes`
+  - **Workflow**: `type: 'workflow'`, `name`, `outputSchema`
   - All user-facing config (manifest.yaml, plugins.yaml) MUST be YAML.
 
 #### FR-001 Error States
@@ -427,7 +438,7 @@ No database entities. Plugin metadata is filesystem-only (manifest.yaml files). 
 ```typescript
 // Base fields shared across ALL plugin types
 const PluginBaseSchema = z.object({
-  type: z.enum(['agent', 'skill', 'extension', 'channel']),
+  type: z.enum(['agent', 'skill', 'workflow', 'extension', 'channel']),
   name: z.string().min(1).regex(/^[a-z0-9-]+$/),    // kebab-case required
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
   description: z.string().min(1),
@@ -445,10 +456,17 @@ const AgentManifestSchema = PluginBaseSchema.extend({
   managedConfig: z.array(ManagedConfigSchema).default([]),
 });
 
+// Workflow-specific (extends base)
+const WorkflowManifestSchema = PluginBaseSchema.extend({
+  type: z.literal('workflow'),
+  outputSchema: z.record(z.any()), // JSON Schema
+});
+
 // Discriminated union — validated by plugin loader
 const AnyManifestSchema = z.discriminatedUnion('type', [
   AgentManifestSchema,
   SkillManifestSchema,         // DM-001 / DM-002
+  WorkflowManifestSchema,
   // Future: ExtensionManifestSchema, ChannelManifestSchema
 ]);
 ```
