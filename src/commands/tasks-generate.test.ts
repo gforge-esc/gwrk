@@ -46,6 +46,9 @@ describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
     
     // Create a contract to pass the guard
     fs.writeFileSync(path.join(specDir, "contracts", "file1.md"), "# Contract: file1");
+    
+    // Create gap-matrix.md to pass ADR-005 §8.4 guard (define tests must run before define tasks)
+    fs.writeFileSync(path.join(specDir, "gap-matrix.md"), "| AC | Test File |\n|----|-----------|\n");
   });
 
   afterEach(() => {
