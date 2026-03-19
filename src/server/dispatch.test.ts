@@ -166,6 +166,31 @@ describe("DispatchQueue", () => {
     expect(queue.getFailedCount()).toBe(1);
   });
 
+  it("should process multiple tasks within a phase concurrently", async () => {
+    mockMonitor.isThrottled.mockReturnValue(false);
+    mockSandbox.createSandbox.mockResolvedValue("workdir-1");
+
+    // In 005, a phase dispatch request should be able to contain tasks
+    queue.enqueue({ 
+      featureId: "feat-1", 
+      phaseId: "phase-1",
+      tasks: [
+        { id: "T1", prompt: "Task 1" },
+        { id: "T2", prompt: "Task 2" }
+      ]
+    });
+
+    // Wait for both tasks to move to active sandboxes
+    await vi.waitFor(() => {
+      // In 005, we check for active sandboxes, not just active phases
+      if (queue.getDispatch("feat-1", "phase-1")?.activeSandboxes?.length !== 2) {
+        throw new Error("Tasks not active yet");
+      }
+    });
+
+    expect(mockSandbox.createSandbox).toHaveBeenCalledTimes(2);
+  });
+
   it("should return correct queue status", () => {
     mockMonitor.isThrottled.mockReturnValue(true);
     queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });

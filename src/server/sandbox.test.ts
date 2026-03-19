@@ -1,125 +1,81 @@
-import Docker from "dockerode";
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import { SandboxManager } from "./sandbox.js";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
 
-vi.mock("dockerode", () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      ping: vi.fn(),
-      createContainer: vi.fn(),
-      getContainer: vi.fn(),
-      listContainers: vi.fn(),
-    })),
-  };
-});
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn(),
+}));
 
-describe("SandboxManager", () => {
+vi.mock("node:fs", () => ({
+  default: {
+    existsSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    rmSync: vi.fn(),
+    readdirSync: vi.fn(),
+  },
+}));
+
+describe("SandboxManager (Git Worktree)", () => {
   let sandboxManager: SandboxManager;
-  let mockDocker: {
-    ping: Mock;
-    createContainer: Mock;
-    getContainer: Mock;
-    listContainers: Mock;
-  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     sandboxManager = new SandboxManager();
-    // @ts-ignore
-    mockDocker = Docker.mock.results[0].value;
   });
 
-  it("should check if docker is available", async () => {
-    mockDocker.ping.mockResolvedValueOnce("OK");
-    const result = await sandboxManager.checkDocker();
-    expect(result).toBe(true);
-    expect(mockDocker.ping).toHaveBeenCalled();
-  });
+  it("FR-002: should create a git worktree sandbox", async () => {
+    (fs.existsSync as Mock).mockReturnValue(false);
 
-  it("should return false if docker is not available", async () => {
-    mockDocker.ping.mockRejectedValueOnce(new Error("Connection refused"));
-    const result = await sandboxManager.checkDocker();
-    expect(result).toBe(false);
-  });
-
-  it("should create and start a sandbox", async () => {
-    const mockContainer = {
-      id: "test-id",
-      start: vi.fn().mockResolvedValueOnce({}),
-    };
-    mockDocker.createContainer.mockResolvedValueOnce(mockContainer);
-
-    const containerId = await sandboxManager.createSandbox({
-      featureId: "001-cli-core",
+    const workDir = await sandboxManager.createSandbox({
+      featureId: "005-parallel-dispatch",
       phaseId: "phase-01",
       backend: "gemini",
       projectRoot: "/test/root",
     });
 
-    expect(containerId).toBe("test-id");
-    expect(mockDocker.createContainer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        Image: "gwrk-sandbox:bookworm-slim",
-        Labels: expect.objectContaining({
-          "gwrk.feature": "001-cli-core",
-          "gwrk.phase": "phase-01",
-          "gwrk.backend": "gemini",
-          "gwrk.startedAt": expect.any(String),
-        }),
-        HostConfig: {
-          Binds: ["/test/root:/workspace"],
-        },
-      }),
+    // Should create the sandbox directory in .runs/sandboxes/
+    expect(workDir).toContain(".runs/sandboxes/005-parallel-dispatch-phase-01-");
+    
+    // Should have called git worktree add
+    expect(execSync).toHaveBeenCalledWith(
+      expect.stringContaining("git worktree add"),
+      expect.any(Object)
     );
-    expect(mockContainer.start).toHaveBeenCalled();
   });
 
-  it("should destroy a sandbox", async () => {
-    const mockContainer = {
-      stop: vi.fn().mockResolvedValueOnce({}),
-      remove: vi.fn().mockResolvedValueOnce({}),
-    };
-    mockDocker.getContainer.mockReturnValue(mockContainer);
+  it("FR-002: should destroy a sandbox and remove the worktree", async () => {
+    const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-phase-01-uuid";
+    
+    await sandboxManager.destroySandbox(workDir);
 
-    await sandboxManager.destroySandbox("test-id");
-
-    expect(mockDocker.getContainer).toHaveBeenCalledWith("test-id");
-    expect(mockContainer.stop).toHaveBeenCalled();
-    expect(mockContainer.remove).toHaveBeenCalled();
+    // Should have called git worktree remove
+    expect(execSync).toHaveBeenCalledWith(
+      `git worktree remove --force ${workDir}`,
+      expect.any(Object)
+    );
   });
 
-  it("should list sandboxes", async () => {
-    const mockContainers = [
-      {
-        Id: "id-1",
-        State: "running",
-        Labels: {
-          "gwrk.feature": "f1",
-          "gwrk.phase": "p1",
-          "gwrk.backend": "b1",
-          "gwrk.startedAt": "2026-03-09T00:00:00Z",
-        },
-      },
-    ];
-    mockDocker.listContainers.mockResolvedValueOnce(mockContainers);
+  it("TC-005: should prune all gwrk worktrees", async () => {
+    await sandboxManager.pruneSandboxes();
+
+    expect(execSync).toHaveBeenCalledWith(
+      "git worktree prune",
+      expect.any(Object)
+    );
+  });
+
+  it("US-002: should list all active sandboxes from worktree list", async () => {
+    const mockWorktreeList = 
+      "/test/root                          (detached HEAD)\n" +
+      "/test/root/.runs/sandboxes/f1-p1-uuid  (branch-f1-p1-uuid)\n";
+    
+    (execSync as Mock).mockReturnValue(Buffer.from(mockWorktreeList));
 
     const sandboxes = await sandboxManager.listSandboxes();
 
     expect(sandboxes).toHaveLength(1);
-    expect(sandboxes[0]).toEqual({
-      containerId: "id-1",
-      featureId: "f1",
-      phaseId: "p1",
-      backend: "b1",
-      status: "running",
-      startedAt: "2026-03-09T00:00:00Z",
-    });
-    expect(mockDocker.listContainers).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filters: {
-          label: ["gwrk.feature"],
-        },
-      }),
-    );
+    expect(sandboxes[0].featureId).toBe("f1");
+    expect(sandboxes[0].status).toBe("running");
   });
 });
