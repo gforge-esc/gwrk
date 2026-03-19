@@ -112,4 +112,42 @@ describe("runs db", () => {
 
     expect(historyId).toBeGreaterThan(0);
   });
+
+  describe("FR-H03: DB Record Finalization", () => {
+    it("US-H03: finishRun updates status, PR, and merge commit", () => {
+      const db = getDb();
+      const runId = startRun(
+        {
+          feature_id: "harvest-feat",
+          phase_id: "p1",
+          command: "ship",
+          agent_backend: "gemini",
+        },
+        db,
+      );
+
+      finishRun(
+        runId,
+        {
+          exit_code: 0,
+          duration_s: 120,
+          // @ts-ignore - status doesn't exist yet on type
+          status: "merged",
+          pr_number: 42,
+          merge_commit_sha: "abc1234567890",
+        },
+        db,
+      );
+
+      const runs = listRuns("harvest-feat", db);
+      const run = runs.find((r) => r.id === runId);
+      expect(run).toBeDefined();
+      // @ts-ignore - status doesn't exist yet on type
+      expect(run?.status).toBe("merged");
+      // @ts-ignore - pr_number doesn't exist yet on type
+      expect(run?.pr_number).toBe(42);
+      // @ts-ignore - merge_commit_sha doesn't exist yet on type
+      expect(run?.merge_commit_sha).toBe("abc1234567890");
+    });
+  });
 });
