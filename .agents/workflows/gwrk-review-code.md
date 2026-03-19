@@ -2,7 +2,7 @@
 description: Technical code review of implementation against spec.
 ---
 
-# /review-code
+# /gwrk-review-code
 
 **Persona**: Principal Engineer
 **Pillar**: Shipping (Quality Gate)

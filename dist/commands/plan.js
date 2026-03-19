@@ -62,7 +62,7 @@ export const planCommand = new Command("plan")
         const startTime = Date.now();
         const result = await dispatchAgent({
             backend,
-            workflowPath: ".agents/workflows/plan.md",
+            workflowPath: ".agents/workflows/gwrk-plan.md",
             featureDir: relativeFeatureDir,
             contextPath,
         });

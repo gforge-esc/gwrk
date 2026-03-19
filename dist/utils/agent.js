@@ -11,7 +11,7 @@ export function buildCommand(opts, _workflowContent) {
     const args = [];
     let command = "";
     let stdin;
-    // Extract slash command name from workflow path: .agents/workflows/plan.md → /plan
+    // Extract slash command name from workflow path: .agents/workflows/gwrk-plan.md → /plan
     const workflowName = path.basename(opts.workflowPath, ".md");
     switch (opts.backend) {
         case "gemini": {
@@ -25,7 +25,7 @@ export function buildCommand(opts, _workflowContent) {
                 slashCmd += ` ${opts.prompt}`;
             args.push("-p", slashCmd);
             // Approval mode: analyze is read-only (plan mode), everything else is yolo
-            const mode = opts.approvalMode ?? (workflowName === "analyze" ? "plan" : "yolo");
+            const mode = opts.approvalMode ?? (workflowName.endsWith("analyze") ? "plan" : "yolo");
             args.push("--approval-mode", mode);
             if (opts.contextPath) {
                 // Pass context via env var — gemini CLI doesn't support -c
@@ -212,7 +212,7 @@ export async function dispatchToAgent(task) {
     const startTime = Date.now();
     const opts = {
         backend,
-        workflowPath: task.workflow ?? ".agents/workflows/implement.md",
+        workflowPath: task.workflow ?? ".agents/workflows/gwrk-implement.md",
         featureDir: task.featureDir,
         prompt: task.prompt,
     };

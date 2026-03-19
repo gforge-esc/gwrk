@@ -82,7 +82,7 @@ describe("planCommand", () => {
     expect(process.exitCode).toBe(0);
     expect(dispatchAgent).toHaveBeenCalledWith({
       backend: "gemini",
-      workflowPath: ".agents/workflows/plan.md",
+      workflowPath: ".agents/workflows/gwrk-plan.md",
       featureDir: "specs/feature-x",
     });
   });

@@ -32,12 +32,11 @@ describe("testsGenerateCommand", () => {
     vi.clearAllMocks();
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tests-gen-test-"));
     featureDir = path.join(tempDir, "specs", "test-feature");
-    fs.mkdirSync(path.join(featureDir, ".gwrk"), { recursive: true });
+    fs.mkdirSync(featureDir, { recursive: true });
     
-    // Create required files
+    // Create required files (spec + plan only — tasks.json is NOT required)
     fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
     fs.writeFileSync(path.join(featureDir, "plan.md"), "# Plan");
-    fs.writeFileSync(path.join(featureDir, ".gwrk", "tasks.json"), JSON.stringify({ phases: [] }));
 
     program = new Command();
     program.addCommand(testsGenerateCommand);
@@ -56,7 +55,7 @@ describe("testsGenerateCommand", () => {
     await program.parseAsync(["node", "test", "tests", "test-feature"]);
 
     expect(agentModule.dispatchAgent).toHaveBeenCalledWith(expect.objectContaining({
-      workflowPath: ".agents/workflows/define-tests.md",
+      workflowPath: ".agents/workflows/gwrk-define-tests.md",
       featureDir: "specs/test-feature",
     }));
   });

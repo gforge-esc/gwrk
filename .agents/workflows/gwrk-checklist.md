@@ -2,7 +2,7 @@
 description: Generate domain-specific quality checklists that gate implementation.
 ---
 
-# /checklist
+# /gwrk-checklist
 
 **Persona**: Principal Engineer
 **Pillar**: Definition (Quality Gate)

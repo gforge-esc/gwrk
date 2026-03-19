@@ -2,7 +2,7 @@
 description: Cross-artifact consistency analysis (read-only).
 ---
 
-# /analyze
+# /gwrk-analyze
 
 **Persona**: Principal Engineer
 **Pillar**: Definition (Quality Gate)

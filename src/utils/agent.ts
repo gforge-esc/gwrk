@@ -31,7 +31,7 @@ export function buildCommand(
   let command = "";
   let stdin: string | undefined;
 
-  // Extract slash command name from workflow path: .agents/workflows/plan.md → /plan
+  // Extract slash command name from workflow path: .agents/workflows/gwrk-plan.md → /plan
   const workflowName = path.basename(opts.workflowPath, ".md");
 
   switch (opts.backend) {
@@ -46,7 +46,7 @@ export function buildCommand(
 
       // Approval mode: analyze is read-only (plan mode), everything else is yolo
       const mode =
-        opts.approvalMode ?? (workflowName === "analyze" ? "plan" : "yolo");
+        opts.approvalMode ?? (workflowName.endsWith("analyze") ? "plan" : "yolo");
       args.push("--approval-mode", mode);
 
       if (opts.contextPath) {
@@ -290,7 +290,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const opts: DispatchOptions = {
     backend,
-    workflowPath: task.workflow ?? ".agents/workflows/implement.md",
+    workflowPath: task.workflow ?? ".agents/workflows/gwrk-implement.md",
     featureDir: task.featureDir,
     prompt: task.prompt,
   };

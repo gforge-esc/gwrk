@@ -108,8 +108,8 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
 For each of F005, F011, F014:
 ```bash
 gwrk define plan <feature>       # plan.md + contracts/
-gwrk define tasks <feature>      # tasks.json + gates/
 gwrk define tests <feature>      # gap-matrix.md + *.test.ts (RED)
+gwrk define tasks <feature>      # tasks.json + gates/ (vitest gates reference test files)
 ```
 
 **Review gate:** PM reviews plan.md for each. Contracts reviewed against spec FRs.

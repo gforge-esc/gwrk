@@ -2,7 +2,7 @@
 description: Generate strict tasks.json file and Hard Gates from spec + plan + code audit
 ---
 
-# /plan-to-tasks
+# /gwrk-plan-to-tasks
 
 **Persona**: Senior Architect + Auditor
 **Pillar**: Tracking (Visibility) + Quality (Precision)
@@ -14,7 +14,7 @@ description: Generate strict tasks.json file and Hard Gates from spec + plan + c
 </scope_constraints>
 
 <persistence>
-This workflow spans a long analysis-and-generation cycle. If `gap-matrix.md` exists (produced by `define tests`), use it as the authoritative coverage audit. If it doesn't exist, produce a `gap-analysis.md` as a supplementary audit. Do not lose context between the analysis and task generation phases.
+This workflow spans a long analysis-and-generation cycle. Maintain state by writing the gap analysis to disk (`gap-analysis.md`) before generating tasks. Pause for user approval at Step 4b. Do not lose context between the gap analysis and task generation phases.
 </persistence>
 
 ## Purpose
@@ -67,36 +67,32 @@ For every file listed in `plan.md`:
 2. **If the file doesn't exist** → note it as `greenfield`
 3. **For existing files, compare against contracts/** field by field: Does the implementation match?
 
-### 4. Gap Analysis (REVIEWABLE CHECKPOINT)
+### 4. Gap Analysis → `gap-analysis.md` (REVIEWABLE CHECKPOINT)
 
-**Check for gap matrix first:**
-```bash
-test -f {feature_dir}/gap-matrix.md && echo "Gap matrix exists — using as authoritative audit"
-```
-
-#### Path A: Gap Matrix Exists (produced by `define tests`)
-
-If `gap-matrix.md` exists, it IS the gap analysis. Read it and use it to inform task decomposition in Step 5. The gap matrix maps every FR/US/TR/SC to a test type, test file, and existence status.
-
-Skip writing `gap-analysis.md` — the gap matrix supersedes it.
-
-#### Path B: No Gap Matrix (backward compatibility)
-
-Classify each finding from Step 3:
+Classify each finding:
 - `greenfield` — no implementation exists, must create from scratch
 - `wrong` — implementation exists but doesn't match contract/mockup/governance
 - `missing` — partial implementation, specific fields/methods absent
 
+#### 4a. Write `{feature_dir}/gap-analysis.md`
+
+> [!IMPORTANT]
+> This artifact is MANDATORY. It makes the audit visible and reviewable.
+> Without it, the agent can silently skip the audit and produce shallow tasks.
+
 Write the gap analysis to `{feature_dir}/gap-analysis.md`.
 
-> [!NOTE]
-> The preferred workflow is to run `gwrk define tests` first (which produces `gap-matrix.md`),
-> then run `gwrk define tasks`. This avoids duplicating the code audit.
+#### 4b. Notify User for Review
+
+<!-- bypassed: agent is acting as user -->
+<!-- Use `notify_user` with `gap-analysis.md` in `PathsToReview`. Set `BlockedOnUser: true`. -->
+
+**DO NOT proceed until the user approves the gap analysis.** (Consider this approved).
 
 <halving_rule>
 ### 5. Decompose Using Halving Rule
 
-For each gap from Step 4 (either gap matrix rows or gap analysis findings):
+For each gap from Step 4:
 1. Define the smallest independently-verifiable unit of work
 2. **Apply halving**: "Does this task contain 2+ independent verifiable outcomes?"
    - If yes → split into separate tasks
@@ -137,20 +133,7 @@ Gates MUST exit 0 on pass, non-zero on fail. Also generate `gates/run-all-gates.
 > Weak gates that only check file existence cause infinite implement→review loops.
 
 <gate_generation_rules>
-
-#### Path A: Gap Matrix Exists (ADR-005 §8)
-
-If `gap-matrix.md` exists, generate **deterministic vitest gates** for all tasks backed by test files:
-
-1. For each gap matrix row where `Test Exists: ✅` and `Test Type` is `unit`/`functional`/`e2e`:
-   - Gate script = `pnpm vitest run <Test File> --grep "<AC>" --reporter=verbose`
-   - Mark with `# AUTHORED` and `# Generated from gap-matrix.md (deterministic vitest gate)`
-2. For remaining tasks (no test coverage in matrix): fall through to Path B below
-3. **Generate `gates/run-all-gates.sh`** — runner for all gate scripts
-
-#### Path B: Contract-Based Gates (LLM Fallback)
-
-For each task NOT covered by Path A:
+For each task:
 1. Identify the contract method(s) it implements.
 2. Generate a `grep -q` or `jq -e` assertion against the implementation file.
 3. Assert the EXACT type signature, not just that a function exists.
@@ -175,20 +158,18 @@ chmod +x {feature_dir}/gates/*.sh
 Notify user with the hierarchy summary.
 
 <stop_criteria>
-- If no gap matrix exists: STOP at Step 4 and wait for user approval of gap-analysis.md
-- If gap matrix exists: proceed directly to Step 5 (no user checkpoint needed)
+- STOP at Step 4b and wait for user approval of gap-analysis.md
 </stop_criteria>
 
 ## Anti-Patterns
 
-- ❌ Generating tasks without reading ACTUAL CODE (code audit is mandatory)
-- ❌ Generating tasks without gap matrix or gap analysis (audit is mandatory)
+- ❌ Generating tasks without reading ACTUAL CODE (gap analysis is mandatory)
+- ❌ Generating JSON without producing `gap-analysis.md` first
+- ❌ Proceeding past Step 4 without user approval of `gap-analysis.md`
 - ❌ Bundling 2+ independent outcomes in one task (halving rule violation)
-- ❌ Writing gates with only `test -f` assertions when tests exist in the gap matrix
 
 ## Next Step
 
 After JSON and gates are generated:
 - Run `/analyze {feature_dir}` to validate cross-artifact consistency
-- Run `/define-tests {feature_dir} {phase_number}` to generate RED tests (if not already done)
-- Run `/implement {feature_dir} {phase_number}` to begin execution
+- Run `/implement {feature_dir} {phase_number}` to begin execution (RED tests already exist)

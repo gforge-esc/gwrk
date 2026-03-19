@@ -319,7 +319,7 @@ export const tasksGenerateCommand = new Command("tasks")
 
               const result = await dispatchAgent({
                 backend,
-                workflowPath: ".agents/workflows/author-gates.md",
+                workflowPath: ".agents/workflows/gwrk-author-gates.md",
                 featureDir: relativeFeatureDir,
                 contextPath: paddedPhase || briefPath,
               });

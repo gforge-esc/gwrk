@@ -26,12 +26,11 @@ export const testsGenerateCommand = new Command("tests")
       
       const specPath = path.join(featureDir, "spec.md");
       const planPath = path.join(featureDir, "plan.md");
-      const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
 
-      if (!fs.existsSync(specPath) || !fs.existsSync(planPath) || !fs.existsSync(tasksPath)) {
-        blocked("Missing required files (spec.md, plan.md, or tasks.json)");
+      if (!fs.existsSync(specPath) || !fs.existsSync(planPath)) {
+        blocked("Missing required files (spec.md or plan.md)");
         throw new CommandError(
-          "spec, plan, and tasks must exist before generating tests. Run 'gwrk define tasks' first.",
+          "spec and plan must exist before generating tests. Run 'gwrk define plan' first.",
           1,
         );
       }
@@ -58,7 +57,7 @@ export const testsGenerateCommand = new Command("tests")
 
       const result = await dispatchAgent({
         backend,
-        workflowPath: ".agents/workflows/define-tests.md",
+        workflowPath: ".agents/workflows/gwrk-define-tests.md",
         featureDir: relativeFeatureDir,
         contextPath: paddedPhase, // Optional: restricts context to specific phase if provided
       });

@@ -2,7 +2,7 @@
 description: Execute a single phase from a feature to absolute completion
 ---
 
-# /implement
+# /gwrk-implement
 
 **Persona**: Senior Developer
 **Pillar**: Shipping (Throughput)

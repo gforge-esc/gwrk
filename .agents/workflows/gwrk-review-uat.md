@@ -2,7 +2,7 @@
 description: User acceptance testing of implementation against spec.
 ---
 
-# /review-uat
+# /gwrk-review-uat
 
 **Persona**: Product Manager
 **Pillar**: Delivery (Value Verification)

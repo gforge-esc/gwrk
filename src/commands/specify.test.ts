@@ -58,7 +58,7 @@ describe("specifyCommand", () => {
 
     expect(dispatchAgent).toHaveBeenCalledWith({
       backend: "gemini",
-      workflowPath: ".agents/workflows/specify.md",
+      workflowPath: ".agents/workflows/gwrk-specify.md",
       prompt: "new feature",
     });
   });

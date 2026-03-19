@@ -2,7 +2,7 @@
 description: Update the master build plan when adding, modifying, or reordering features.
 ---
 
-# /build-plan
+# /gwrk-build-plan
 
 **Persona**: Program Manager
 **Pillar**: Definition (Governance)

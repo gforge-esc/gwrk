@@ -2,7 +2,7 @@
 description: Author gate scripts from contracts and gate brief. Called by gwrk define tasks.
 ---
 
-# /author-gates
+# /gwrk-author-gates
 
 **Persona**: Test Engineer
 **Pillar**: Definition (Clarity)

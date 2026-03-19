@@ -32,17 +32,17 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "gemini",
-        workflowPath: ".agents/workflows/specify.md",
+        workflowPath: ".agents/workflows/gwrk-specify.md",
         prompt: "test feature",
       },
       "mock workflow content",
     );
 
     expect(result.command).toBe("gemini");
-    // Should produce: gemini -p "/specify test feature" --approval-mode yolo
+    // Should produce: gemini -p "/gwrk-specify test feature" --approval-mode yolo
     expect(result.args).toEqual([
       "-p",
-      "/specify test feature",
+      "/gwrk-specify test feature",
       "--approval-mode",
       "yolo",
     ]);
@@ -53,7 +53,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "gemini",
-        workflowPath: ".agents/workflows/plan.md",
+        workflowPath: ".agents/workflows/gwrk-plan.md",
         featureDir: "specs/001-cli-core",
       },
       "mock workflow content",
@@ -62,7 +62,7 @@ describe("buildCommand — agent backend routing", () => {
     expect(result.command).toBe("gemini");
     expect(result.args).toEqual([
       "-p",
-      "/plan specs/001-cli-core",
+      "/gwrk-plan specs/001-cli-core",
       "--approval-mode",
       "yolo",
     ]);
@@ -72,7 +72,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "gemini",
-        workflowPath: ".agents/workflows/analyze.md",
+        workflowPath: ".agents/workflows/gwrk-analyze.md",
         featureDir: "specs/001-cli-core",
       },
       "mock workflow content",
@@ -80,7 +80,7 @@ describe("buildCommand — agent backend routing", () => {
 
     expect(result.args).toEqual([
       "-p",
-      "/analyze specs/001-cli-core",
+      "/gwrk-analyze specs/001-cli-core",
       "--approval-mode",
       "plan",
     ]);
@@ -90,7 +90,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "claude",
-        workflowPath: ".agents/workflows/plan.md",
+        workflowPath: ".agents/workflows/gwrk-plan.md",
         featureDir: "specs/test-feature",
       },
       "mock workflow content",
@@ -106,7 +106,7 @@ describe("buildCommand — agent backend routing", () => {
     const result = buildCommand(
       {
         backend: "codex",
-        workflowPath: ".agents/workflows/analyze.md",
+        workflowPath: ".agents/workflows/gwrk-analyze.md",
         featureDir: "specs/test-feature",
       },
       "mock workflow content",
@@ -116,30 +116,20 @@ describe("buildCommand — agent backend routing", () => {
     expect(result.args).toEqual([
       "exec",
       "--full-auto",
-      ".agents/workflows/analyze.md",
+      ".agents/workflows/gwrk-analyze.md",
       "specs/test-feature",
     ]);
   });
 
-  it("builds correct command for codex-cloud with run --cloud", () => {
-    const result = buildCommand(
+  it("throws for codex-cloud (not yet implemented)", () => {
+    expect(() => buildCommand(
       {
         backend: "codex-cloud",
-        workflowPath: ".agents/workflows/effort.md",
+        workflowPath: ".agents/workflows/gwrk-effort.md",
         featureDir: "specs/test-feature",
       },
       "mock workflow content",
-    );
-
-    expect(result.command).toBe("codex");
-    expect(result.args).toEqual([
-      "run",
-      "--cloud",
-      "--non-interactive",
-      "--full-auto",
-      ".agents/workflows/effort.md",
-      "specs/test-feature",
-    ]);
+    )).toThrow("codex-cloud dispatch is not yet implemented");
   });
 });
 
@@ -153,7 +143,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
 
   const runOpts = {
     backend: "gemini" as const,
-    workflowPath: ".agents/workflows/plan.md",
+    workflowPath: ".agents/workflows/gwrk-plan.md",
     featureDir: "specs/test-feature",
   };
 

@@ -2,7 +2,7 @@
 description: Execute a research initiative to produce a draft reference document for review
 ---
 
-# /research
+# /gwrk-research
 
 **Persona**: Principal Engineer (Research Mode)
 **Pillar**: Definition (Understanding)
