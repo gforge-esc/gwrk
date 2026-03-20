@@ -44,7 +44,21 @@ describe("SandboxManager (Git Worktree)", () => {
     );
   });
 
-  it("FR-002: should destroy a sandbox, push the branch, and create a PR", async () => {
+  it("TC-004: No Host Mutation - should not modify the host repository working tree", async () => {
+    // TC-004 is satisfied by using git worktree add to a path outside the main worktree
+    // We verify that the sandbox path is NOT the current working directory
+    const workDir = await sandboxManager.createSandbox({
+      featureId: "005-parallel-dispatch",
+      phaseId: "phase-01",
+      backend: "gemini",
+      projectRoot: process.cwd(),
+    });
+
+    expect(workDir).not.toBe(process.cwd());
+    expect(workDir).toContain(".runs/sandboxes/");
+  });
+
+  it("FR-002 / TR-002: should destroy a sandbox, push the branch, and create a PR", async () => {
     const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-phase-01-uuid";
     
     await sandboxManager.destroySandbox(workDir);

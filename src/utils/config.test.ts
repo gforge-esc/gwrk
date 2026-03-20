@@ -22,6 +22,31 @@ describe("TC-H03 / T004: Config & Environment Validation", () => {
   });
 
   describe("TC-H03: Config Loading", () => {
+    it("TC-003: fails fast if .gwrkrc.json is missing", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      
+      const spy = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("EXIT"); });
+      
+      expect(() => loadConfig("/root")).toThrow("EXIT");
+      expect(spy).toHaveBeenCalledWith(1);
+    });
+
+    it("Phase 2: loads parallelism settings from config", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        project: { name: "test" },
+        agents: { define: "gemini", implement: "gemini" },
+        parallelism: {
+          local: { maxClones: 2 },
+          cloud: { maxConcurrent: 3 }
+        }
+      }));
+
+      const config = loadConfig("/root");
+      expect(config.parallelism.local.maxClones).toBe(2);
+      expect(config.parallelism.cloud.maxConcurrent).toBe(3);
+    });
+
     it("fails fast if GITHUB_WEBHOOK_SECRET is missing (forced RED for workflow)", () => {
       // Save original env
       const originalEnv = { ...process.env };
