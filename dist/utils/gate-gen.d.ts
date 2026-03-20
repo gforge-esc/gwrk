@@ -25,6 +25,18 @@ export interface TaskBrief {
  */
 export declare function generateGateBrief(featureDir: string, phases: Phase[], feature: string): string;
 export declare function generateRunner(gatesDir: string): void;
+/**
+ * lintGateScript — detect hollow gates that violate ADR-005 gate quality rules.
+ *
+ * Returns an array of violation strings. Empty array = gate is valid.
+ */
+export declare function lintGateScript(content: string): string[];
+/**
+ * lintAllGates — scan all gate scripts in a directory and return violations.
+ *
+ * Returns a map of gate filename → violations. Only includes gates with violations.
+ */
+export declare function lintAllGates(gatesDir: string): Map<string, string[]>;
 export interface GapMatrixRow {
     ac: string;
     criterion: string;

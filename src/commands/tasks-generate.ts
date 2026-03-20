@@ -7,7 +7,7 @@ import { classifyTask, extractFilePaths } from "../engine/classify.js";
 import { dispatchAgent } from "../utils/agent.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
-import { generateGateBrief, generateRunner, generateVitestGates } from "../utils/gate-gen.js";
+import { generateGateBrief, generateRunner, generateVitestGates, lintAllGates } from "../utils/gate-gen.js";
 import { parsePlan } from "../utils/parser.js";
 import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 import type { Task, TaskState } from "../utils/state.js";
@@ -359,6 +359,15 @@ export const tasksGenerateCommand = new Command("tasks")
             const gatesDirPath = path.join(featureDir, "gates");
             if (fs.existsSync(gatesDirPath)) {
               generateRunner(gatesDirPath);
+
+              // Lint gates for hollow assertions
+              const violations = lintAllGates(gatesDirPath);
+              if (violations.size > 0) {
+                console.log(`  ⚠ ${violations.size} hollow gate(s) detected:`);
+                for (const [file, issues] of violations) {
+                  console.log(`    ⚠ ${file}: ${issues.join(", ")}`);
+                }
+              }
             }
           }
 

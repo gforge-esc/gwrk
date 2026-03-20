@@ -129,6 +129,68 @@ echo "────────────────────────�
 [ $FAILED -eq 0 ]
 `, { mode: 0o755 });
 }
+// ─── Hollow Gate Linter (ADR-005) ────────────────────────────────────────────
+const FUNCTIONAL_VERBS = [
+    "pnpm vitest",
+    "pnpm test",
+    "vitest run",
+    "grep -q",
+    "jq ",
+    "curl ",
+    "bash -n",
+    "node ",
+    "gwrk ",
+];
+/**
+ * lintGateScript — detect hollow gates that violate ADR-005 gate quality rules.
+ *
+ * Returns an array of violation strings. Empty array = gate is valid.
+ */
+export function lintGateScript(content) {
+    const violations = [];
+    const lines = content
+        .split("\n")
+        .filter((l) => !l.startsWith("#") && l.trim().length > 0);
+    // Filter out set -euo pipefail and echo lines (boilerplate, not assertions)
+    const assertionLines = lines.filter((l) => !l.trim().startsWith("set ") &&
+        !l.trim().startsWith("echo "));
+    if (assertionLines.length === 0) {
+        violations.push("no assertions (only boilerplate)");
+        return violations;
+    }
+    // Check: test -f as sole assertion type
+    const hasTestF = assertionLines.some((l) => /\btest\s+-f\b/.test(l));
+    const hasFunctionalVerb = assertionLines.some((l) => FUNCTIONAL_VERBS.some((verb) => l.includes(verb)));
+    if (hasTestF && !hasFunctionalVerb) {
+        violations.push("test -f as sole assertion (hollow gate)");
+    }
+    // Check: no functional assertion verbs at all
+    if (!hasFunctionalVerb && !hasTestF) {
+        violations.push("no functional assertions found");
+    }
+    return violations;
+}
+/**
+ * lintAllGates — scan all gate scripts in a directory and return violations.
+ *
+ * Returns a map of gate filename → violations. Only includes gates with violations.
+ */
+export function lintAllGates(gatesDir) {
+    const violations = new Map();
+    if (!fs.existsSync(gatesDir))
+        return violations;
+    const gateFiles = fs
+        .readdirSync(gatesDir)
+        .filter((f) => /^T\d+-gate\.sh$/.test(f));
+    for (const file of gateFiles) {
+        const content = fs.readFileSync(path.join(gatesDir, file), "utf-8");
+        const issues = lintGateScript(content);
+        if (issues.length > 0) {
+            violations.set(file, issues);
+        }
+    }
+    return violations;
+}
 /**
  * parseGapMatrix — read and parse a gap-matrix.md file.
  *

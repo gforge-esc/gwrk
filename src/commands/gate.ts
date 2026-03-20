@@ -114,6 +114,7 @@ export const gateCommand = new Command("gate")
   .argument("[feature]", "Feature ID (optional if --task is provided)")
   .option("-p, --phase <n>", "Phase number to scope to")
   .option("-t, --task <taskId>", "Task ID to check a single gate (e.g., T001)")
+  .option("-v, --verbose", "Show full output for failing gates")
   .addHelpText(
     "after",
     `
@@ -128,7 +129,7 @@ Exit codes:
   .action(
     async (
       feature: string | undefined,
-      options: { phase?: string; task?: string },
+      options: { phase?: string; task?: string; verbose?: boolean },
       command,
     ) => {
       await withSignal("gate", async () => {
@@ -165,8 +166,18 @@ Exit codes:
               console.log(`✅ ${result.taskId} PASS`);
             } else {
               console.error(`❌ ${result.taskId} FAIL (exit: ${result.exitCode})`);
-              if (result.stdout) process.stdout.write(result.stdout);
-              if (result.stderr) process.stderr.write(result.stderr);
+              const combined = (result.stdout + result.stderr).trim();
+              if (combined) {
+                if (options.verbose) {
+                  process.stdout.write(`${combined}\n`);
+                } else {
+                  const lines = combined.split("\n");
+                  if (lines.length > 5) {
+                    console.log(`  ... (${lines.length - 5} lines truncated, use -v for full output)`);
+                  }
+                  process.stdout.write(`${lines.slice(-5).join("\n")}\n`);
+                }
+              }
             }
           }
 
@@ -263,8 +274,18 @@ Exit codes:
             console.log(`\n${color.RED}${color.BOLD}Failed Gate Details:${color.RESET}\n`);
             for (const result of results.filter(r => r.result !== "PASS")) {
                console.log(`${color.RED}--- ${result.taskId} ---${color.RESET}`);
-               if (result.stdout) process.stdout.write(result.stdout);
-               if (result.stderr) process.stderr.write(result.stderr);
+               const combined = (result.stdout + result.stderr).trim();
+               if (combined) {
+                 if (options.verbose) {
+                   process.stdout.write(`${combined}\n`);
+                 } else {
+                   const lines = combined.split("\n");
+                   if (lines.length > 5) {
+                     console.log(`  ... (${lines.length - 5} lines truncated, use -v for full output)`);
+                   }
+                   process.stdout.write(`${lines.slice(-5).join("\n")}\n`);
+                 }
+               }
             }
           }
         } else {
