@@ -1,0 +1,19 @@
+type: skill
+tier: atomic
+name: narrative
+version: 1.0.0
+description: Apply narrative reasoning mode
+category: reasoning
+prompt: "Frame the input as a story arc with tension, release, and a clear moral."
+interface:
+  input: stdin
+  output: stdout
+  exitCodes:
+    0: Success
+    1: Failed
+runtime:
+  preferredAgent: gemini
+  preferredModel: gemini-2.0-flash
+tags:
+  - reasoning
+  - storytelling

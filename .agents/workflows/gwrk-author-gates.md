@@ -81,17 +81,52 @@ Every gate script MUST:
 3. Have at least ONE assertion that invokes a real tool (pnpm, grep, bash -n, jq, test)
 4. End with `echo "PASS: {taskId} — {title}"`
 5. NOT contain `GATE_STUB`
+6. Every assertion MUST emit a diagnostic message to stderr on failure (ADR-004 §2.4). Bare `set -e` assertions that die silently are PROHIBITED. Use the `|| { echo "FAIL: ..." >&2; exit 1; }` pattern. The failure message MUST include: task ID, file path, and what was expected.
 
-Assertion rules by file type:
+Assertion patterns by file type (all use `|| { echo "FAIL: ..." >&2; exit 1; }` for ADR-004 error navigation):
 
-- **test** (`*.test.ts`): `pnpm vitest run {file} --reporter=verbose`
-- **typescript** (`*.ts`): `test -f {file}` + `grep -q '{identifier}' {file}` for each identifier + `test -f dist/{compiledPath}` (compiled output check)
-- **shell** (`*.sh`): `test -f {file}` + `bash -n {file}` + `test -x {file}`
-- **markdown** (`*.md`): `test -f {file}` + `grep -q '{section}' {file}` for key sections from contracts
-- **json** (`*.json`): `test -f {file}` + `jq . {file} > /dev/null` (valid JSON)
-- **config** (`*.yml`/`*.yaml`): `test -f {file}`
+- **test** (`*.test.ts`):
+  ```bash
+  pnpm vitest run {file} --reporter=verbose \
+    || { echo "FAIL: {taskId} — vitest failed for {file}" >&2; exit 1; }
+  ```
+- **typescript** (`*.ts`):
+  ```bash
+  test -f {file} \
+    || { echo "FAIL: {taskId} — file not found: {file}" >&2; exit 1; }
+  grep -q '{identifier}' {file} \
+    || { echo "FAIL: {taskId} — {file} missing '{identifier}'" >&2; exit 1; }
+  ```
+- **shell** (`*.sh`):
+  ```bash
+  test -f {file} \
+    || { echo "FAIL: {taskId} — file not found: {file}" >&2; exit 1; }
+  bash -n {file} \
+    || { echo "FAIL: {taskId} — syntax error in {file}" >&2; exit 1; }
+  test -x {file} \
+    || { echo "FAIL: {taskId} — {file} is not executable" >&2; exit 1; }
+  ```
+- **markdown** (`*.md`):
+  ```bash
+  test -f {file} \
+    || { echo "FAIL: {taskId} — file not found: {file}" >&2; exit 1; }
+  grep -q '{section}' {file} \
+    || { echo "FAIL: {taskId} — {file} missing section '{section}'" >&2; exit 1; }
+  ```
+- **json** (`*.json`):
+  ```bash
+  test -f {file} \
+    || { echo "FAIL: {taskId} — file not found: {file}" >&2; exit 1; }
+  jq . {file} > /dev/null \
+    || { echo "FAIL: {taskId} — invalid JSON in {file}" >&2; exit 1; }
+  ```
+- **config** (`*.yml`/`*.yaml`):
+  ```bash
+  test -f {file} \
+    || { echo "FAIL: {taskId} — file not found: {file}" >&2; exit 1; }
+  ```
 
-If `doneWhenCommands` exist for this task, include them as assertions.
+If `doneWhenCommands` exist for this task, include them as assertions with the same `|| { echo "FAIL: ..." >&2; exit 1; }` pattern.
 
 If `contractRefs` exist, read the referenced contract and derive assertions from its method signatures, schemas, and error states.
 

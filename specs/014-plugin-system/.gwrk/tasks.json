@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Implement src/plugins/manifest.ts",
           "description": "NEW: Zod schemas for Skill, Agent, and Workflow manifests",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "classification": "greenfield"
         },
@@ -24,7 +24,7 @@
           "id": "T002",
           "title": "Implement src/plugins/loader.ts",
           "description": "NEW: Plugin scanner, registry, and resolution engine",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "classification": "greenfield"
         },
@@ -89,7 +89,7 @@
           "id": "T009",
           "title": "Implement src/plugins/skill-runtime.ts",
           "description": "NEW: Atomic/Compound assembly and execution logic",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "classification": "greenfield"
         },
@@ -97,7 +97,7 @@
           "id": "T010",
           "title": "Implement src/commands/skill.ts",
           "description": "NEW: `gwrk skill <name>` command handler",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "classification": "greenfield"
         },
@@ -105,7 +105,7 @@
           "id": "T011",
           "title": "Implement src/utils/agent-layer.ts",
           "description": "MODIFY: Support ANSI stripping and binary guards for skill output",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "classification": "greenfield"
         },
@@ -113,7 +113,7 @@
           "id": "T012",
           "title": "Implement src/plugins/skill-runtime.test.ts",
           "description": "NEW: Unit tests for prompt assembly and mock invocation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "classification": "greenfield"
         },
@@ -121,7 +121,7 @@
           "id": "T013",
           "title": "Implement src/commands/skill.test.ts",
           "description": "NEW: Integration tests for skill piping",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "classification": "greenfield"
         },

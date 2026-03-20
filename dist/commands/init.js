@@ -80,7 +80,7 @@ export const initCommand = new Command("init")
             },
             agents: {
                 define: "gemini",
-                implement: "codex-cloud",
+                implement: "gemini",
             },
             server: {
                 port: 18790,

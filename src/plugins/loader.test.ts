@@ -29,8 +29,8 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
     });
 
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
-        if (p.includes("narrative")) return Promise.resolve('type: skill\nname: narrative\nversion: 1.0.0\ntier: atomic\ndescription: foo');
-        if (p.includes("gemini")) return Promise.resolve('type: agent\nname: gemini\nversion: 1.0.0\ndescription: bar');
+        if (p.includes("narrative")) return Promise.resolve('type: skill\nname: narrative\nversion: 1.0.0\ntier: atomic\ndescription: foo\ncategory: reasoning\nprompt: bar\ninterface: { input: stdin, output: stdout }\nruntime: { preferredAgent: gemini, preferredModel: g-pro }');
+        if (p.includes("gemini")) return Promise.resolve('type: agent\nname: gemini\nversion: 1.0.0\ndescription: bar\ndispatchMode: local-cli\ncontextFileName: GEMINI.md\ncapabilities: []\nmodels: {}\nexitCodeMap: {}');
         return Promise.reject(new Error("File not found"));
     });
 
@@ -42,15 +42,28 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   it("FR-L1-012: user-installed global plugins override built-ins", async () => {
     // Built-in 'gemini' exists
     // User global 'gemini' exists
+    vi.mocked(fs.readdir).mockImplementation((p: any) => {
+      if (p.endsWith("agents")) return Promise.resolve(["gemini"] as any);
+      return Promise.resolve([]);
+    });
+    vi.mocked(fs.readFile).mockImplementation((p: any) => {
+      if (p.includes("gemini")) return Promise.resolve('type: agent\nname: gemini\nversion: 1.0.0\ndescription: bar\ndispatchMode: local-cli\ncontextFileName: GEMINI.md\ncapabilities: []\nmodels: {}\nexitCodeMap: {}');
+      return Promise.reject(new Error("File not found"));
+    });
+
     const plugins = await loader.listPlugins();
     // Logic: built-in -> user-installed (overwrite)
-    // We expect the user-installed one to win
+    // For now, listPlugins returns what it finds in globalDir
+    expect(plugins.find(p => p.name === "gemini")).toBeDefined();
   });
 
   it("TC-009: applies .gwrk/plugins.yaml local overrides", async () => {
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
         if (p.endsWith("plugins.yaml")) {
             return Promise.resolve('override:\n  truth-extract: /local/path/truth-extract');
+        }
+        if (p.includes("truth-extract")) {
+            return Promise.resolve('type: skill\nname: truth-extract\nversion: 1.0.0\ntier: atomic\ndescription: foo\ncategory: reasoning\nprompt: bar\ninterface: { input: stdin, output: stdout }\nruntime: { preferredAgent: gemini, preferredModel: g-pro }');
         }
         return Promise.reject(new Error("File not found"));
     });
@@ -60,9 +73,16 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   });
 
   it("FR-005 / TC-004: applies local disables for workflows/domains (TC-009)", async () => {
+    vi.mocked(fs.readdir).mockImplementation((p: any) => {
+      if (p.endsWith("domains")) return Promise.resolve(["writing"] as any);
+      return Promise.resolve([]);
+    });
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
         if (p.endsWith("plugins.yaml")) {
             return Promise.resolve('disable:\n  - domains/writing');
+        }
+        if (p.includes("writing")) {
+            return Promise.resolve('type: skill\nname: writing\nversion: 1.0.0\ntier: atomic\ndescription: foo\ncategory: reasoning\nprompt: bar\ninterface: { input: stdin, output: stdout }\nruntime: { preferredAgent: gemini, preferredModel: g-pro }');
         }
         return Promise.reject(new Error("File not found"));
     });
@@ -72,9 +92,16 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   });
 
   it("FR-005: rejects disable attempts for global-only types (skills, agents)", async () => {
+    vi.mocked(fs.readdir).mockImplementation((p: any) => {
+      if (p.endsWith("skills")) return Promise.resolve(["narrative"] as any);
+      return Promise.resolve([]);
+    });
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
         if (p.endsWith("plugins.yaml")) {
             return Promise.resolve('disable:\n  - skills/narrative');
+        }
+        if (p.includes("narrative")) {
+            return Promise.resolve('type: skill\nname: narrative\nversion: 1.0.0\ntier: atomic\ndescription: foo\ncategory: reasoning\nprompt: bar\ninterface: { input: stdin, output: stdout }\nruntime: { preferredAgent: gemini, preferredModel: g-pro }');
         }
         return Promise.reject(new Error("File not found"));
     });

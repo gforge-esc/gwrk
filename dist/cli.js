@@ -13,6 +13,7 @@ import { shipCommand } from "./commands/ship.js";
 import { statusCommand } from "./commands/status.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { testCommand } from "./commands/test.js";
+import { skillCommand } from "./commands/skill.js";
 import { processForAgent } from "./utils/agent-layer.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
@@ -100,6 +101,7 @@ program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
 program.addCommand(setupCommand);
+program.addCommand(skillCommand);
 /**
  * Recursively apply exitOverride to a command and all its subcommands.
  */

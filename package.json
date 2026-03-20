@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/",
+    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/ && mkdir -p dist/plugins/builtins && cp -r src/plugins/builtins/* dist/plugins/builtins/",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
@@ -20,6 +20,7 @@
     "commander": "^13.1.0",
     "dockerode": "^4.0.9",
     "fastify": "^5.8.1",
+    "yaml": "^2.4.2",
     "zod": "^3.24.2"
   },
   "devDependencies": {
