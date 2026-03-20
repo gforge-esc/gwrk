@@ -1,101 +1,130 @@
 import { describe, expect, it } from "vitest";
 // @ts-ignore - Module does not exist yet (RED)
-import { AnyManifestSchema } from "./manifest.js";
+import { AnyManifestSchema, SkillManifestSchema, AgentManifestSchema, WorkflowManifestSchema } from "./manifest.js";
 
-describe("FR-002 / FR-013: Manifest Zod Schema Validation", () => {
-  it("US-001: validates a valid atomic skill manifest", () => {
-    const manifest = {
-      type: "skill",
-      name: "truth-extract",
-      tier: "atomic",
-      version: "1.0.0",
-      description: "Extract truth from messy inputs",
-      category: "reasoning",
-      prompt: "Extract the truth from: {{input}}",
-      interface: {
-        input: "stdin",
-        output: "stdout",
-        exitCodes: {
-          0: "Success",
-          1: "Failure",
+describe("FR-002 / FR-013 / FR-L1-001 / FR-L25-001: Manifest Schema Validation", () => {
+  describe("Skill Manifests", () => {
+    it("US-001: validates a valid atomic skill manifest (DM-001)", () => {
+      const validAtomic = {
+        type: "skill",
+        name: "narrative",
+        tier: "atomic",
+        version: "1.0.0",
+        description: "Produces a narrative arc from a brief.",
+        category: "reasoning",
+        prompt: "You are an expert storyteller...",
+        interface: {
+          input: "stdin",
+          output: "stdout",
+          exitCodes: { 0: "Success", 1: "Failure" }
         },
-      },
-      runtime: {
-        preferredAgent: "gemini",
-        preferredModel: "gemini-2.0-flash",
-        maxInputTokens: 100000,
-      },
-    };
+        runtime: {
+          preferredAgent: "claude",
+          preferredModel: "claude-3-opus",
+          maxInputTokens: 4096
+        }
+      };
+      expect(SkillManifestSchema.parse(validAtomic)).toEqual(validAtomic);
+    });
 
-    const result = AnyManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
+    it("US-001: validates a valid compound skill manifest (DM-002)", () => {
+      const validCompound = {
+        type: "skill",
+        name: "signal-cut",
+        tier: "compound",
+        version: "1.0.0",
+        description: "Multi-pass refinement.",
+        composes: ["narrative", "practitioner"],
+        passes: [
+          { name: "Draft", skill: "narrative", summary: "Initial draft" },
+          { name: "Refine", skill: "practitioner", summary: "Add practical details" }
+        ],
+        interface: {
+          input: "stdin",
+          output: "stdout",
+          exitCodes: { 0: "Success" }
+        },
+        runtime: {
+          preferredAgent: "gemini",
+          preferredModel: "gemini-1.5-pro",
+          maxInputTokens: 8192
+        }
+      };
+      expect(SkillManifestSchema.parse(validCompound)).toEqual(validCompound);
+    });
   });
 
-  it("US-006: validates a valid compound skill manifest", () => {
-    const manifest = {
-      type: "skill",
-      name: "signal-cut",
-      tier: "compound",
-      version: "1.0.0",
-      description: "Marketing content for technical audiences",
-      composes: ["narrative", "practitioner"],
-      passes: [
-        { name: "narrative", skill: "narrative", summary: "Frame as story" },
-        { name: "practitioner", skill: "practitioner", summary: "Optimize for execution" },
-      ],
-      interface: {
-        input: "stdin",
-        output: "stdout",
-        exitCodes: { 0: "Success" },
-      },
-      runtime: {
-        preferredAgent: "claude",
-        preferredModel: "claude-3-5-sonnet",
-        maxInputTokens: 200000,
-      },
-    };
-
-    const result = AnyManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(true);
+  describe("Agent Manifests", () => {
+    it("US-L1-001: validates a valid agent manifest (FR-L1-001)", () => {
+      const validAgent = {
+        type: "agent",
+        name: "gemini-local",
+        version: "1.0.0",
+        description: "Local Gemini CLI adapter",
+        dispatchMode: "local-cli",
+        contextFileName: "GEMINI.md",
+        invocation: {
+          command: "gemini",
+          args: ["--yolo", "-p"],
+          model: "gemini-1.5-pro"
+        },
+        capabilities: ["multi-file", "tool-use"],
+        models: { "pro": "gemini-1.5-pro", "flash": "gemini-1.5-flash" },
+        exitCodeMap: { 0: { exitCode: 0 }, 53: { exitCode: 1, errorType: "turn_limit" } }
+      };
+      expect(AgentManifestSchema.parse(validAgent)).toEqual(validAgent);
+    });
   });
 
-  it("US-001: rejects manifest with missing required fields", () => {
-    const manifest = {
-      type: "skill",
-      name: "incomplete",
-      // missing version, tier, etc.
-    };
-
-    const result = AnyManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
+  describe("Workflow Manifests", () => {
+    it("FR-L25-001: validates a valid workflow manifest", () => {
+      const validWorkflow = {
+        type: "workflow",
+        name: "specify",
+        version: "1.0.0",
+        description: "Generate feature specifications",
+        outputSchema: {
+          type: "object",
+          properties: {
+            spec: { type: "string" }
+          }
+        }
+      };
+      expect(WorkflowManifestSchema.parse(validWorkflow)).toEqual(validWorkflow);
+    });
   });
 
-  it("US-001: rejects manifest with unknown plugin type", () => {
-    const manifest = {
-      type: "unknown-type",
-      name: "bad-plugin",
-      version: "1.0.0",
-      description: "Should fail",
-    };
+  describe("Negative Paths", () => {
+    it("FR-001: rejects missing required fields", () => {
+      const invalid = { type: "skill", name: "incomplete" };
+      expect(() => SkillManifestSchema.parse(invalid)).toThrow();
+    });
 
-    const result = AnyManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
-  });
+    it("FR-001: rejects unknown plugin types", () => {
+      const invalid = { type: "invalid-type", name: "foo", version: "1.0.0" };
+      expect(() => AnyManifestSchema.parse(invalid)).toThrow();
+    });
 
-  it("US-001: rejects invalid version format", () => {
-    const manifest = {
-      type: "skill",
-      name: "bad-version",
-      tier: "atomic",
-      version: "v1", // Must be semver
-      description: "Bad version",
-      category: "reasoning",
-      prompt: "...",
-      interface: { input: "stdin", output: "stdout", exitCodes: {} },
-      runtime: { preferredAgent: "gemini", preferredModel: "...", maxInputTokens: 1 },
-    };
+    it("FR-L1-009: rejects invalid names (not kebab-case)", () => {
+      const invalid = {
+        type: "skill",
+        name: "Invalid_Name",
+        version: "1.0.0",
+        tier: "atomic",
+        description: "Foo"
+      };
+      expect(() => SkillManifestSchema.parse(invalid)).toThrow(/kebab-case/);
+    });
 
-    const result = AnyManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
+    it("TC-010: rejects Agent manifests with invalid dispatchMode", () => {
+        const invalid = {
+            type: "agent",
+            name: "bad-agent",
+            version: "1.0.0",
+            description: "Bad",
+            dispatchMode: "invalid-mode"
+        };
+        expect(() => AgentManifestSchema.parse(invalid)).toThrow();
+    });
   });
 });
