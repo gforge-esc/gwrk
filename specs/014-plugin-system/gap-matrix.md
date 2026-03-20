@@ -1,4 +1,6 @@
-# Gap Matrix: 014 Plugin System - Phase 1
+# Gap Matrix: 014 Plugin System - Phase 1 & 2
+
+## Phase 1: Foundation (Plugin Loader & Registry)
 
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
@@ -16,3 +18,17 @@
 | FR-L1-001 | Agent manifest schema | unit | src/plugins/manifest.test.ts | ✅ | |
 | FR-L1-012 | User-installed global plugins override built-ins | unit | src/plugins/loader.test.ts | ✅ | |
 | FR-L25-001 | Workflow manifest schema | unit | src/plugins/manifest.test.ts | ✅ | |
+
+## Phase 2: Skill Runtime
+
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-006 | `gwrk skill <name>` execution | integration | src/commands/skill.test.ts | ✅ | |
+| FR-007 | F013 contract (format, signals, --agent) | integration | src/commands/skill.test.ts | ✅ | |
+| FR-008 | Compound skill single LLM call | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| FR-009 | Compound skill manifest dependency validation | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| FR-010 | `gwrk skill --help` / `<name> --help` | integration | src/commands/skill.test.ts | ✅ | |
+| TC-007 | Single LLM call for compound skills | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| TC-008 | F013 contract inheritance | integration | src/commands/skill.test.ts | ✅ | |
+| TR-004 | Skill runtime prompt assembly logic | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| TR-008 | Pipe composition preserves signals | integration | src/commands/skill.test.ts | ✅ | |
