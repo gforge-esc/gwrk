@@ -82,6 +82,11 @@ export const GwrkConfigSchema = z.object({
         maxConcurrent: 10,
       },
     }),
+  plugins: z
+    .object({
+      globalDir: z.string().optional(),
+    })
+    .optional(),
   pulse: z
     .object({
       repos: z.array(z.string().min(1)),
