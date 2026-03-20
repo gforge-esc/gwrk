@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import fastify from "fastify";
+// @ts-ignore
 import githubWebhooks from "./github.js";
 
-describe("FR-H01: Webhook Handler", () => {
+describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
   it("US-H01: Valid PR merge webhook triggers harvest", async () => {
     const server = fastify();
+    // @ts-ignore
     await server.register(githubWebhooks);
 
     const payload = {
@@ -29,14 +31,15 @@ describe("FR-H01: Webhook Handler", () => {
       payload
     });
 
-    // In a RED test, this might fail with 404 (route not found) or 500 (import error)
-    // For FR-H01, we want to see it handling the payload correctly.
+    // Expect 200 even if it ignores some things, but in RED state this might be anything.
+    // For now, testing handler exists and responds.
     expect(response.statusCode).toBe(200);
   });
 
-  it("FR-H01: sandbox PRs ignored by harvest", async () => {
+  it("FR-H01/TC-H01: sandbox PRs ignored by harvest", async () => {
      // Scenario: PR targeting a feat branch (not develop/main)
      const server = fastify();
+     // @ts-ignore
      await server.register(githubWebhooks);
      
      const payload = {
@@ -55,7 +58,33 @@ describe("FR-H01: Webhook Handler", () => {
       payload
     });
     
-    // Should be ignored (still 200 but no harvest triggered - we'd need a spy for engine to verify)
     expect(response.statusCode).toBe(200);
+  });
+
+  it("FR-H09: only triggers for base=develop or base=main", async () => {
+    const server = fastify();
+    // @ts-ignore
+    await server.register(githubWebhooks);
+
+    const payload = {
+      action: "closed",
+      pull_request: {
+        merged: true,
+        head: { ref: "feat/some-feature" },
+        base: { ref: "other-branch" }
+      }
+    };
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/webhook/github",
+      headers: { "x-github-event": "pull_request" },
+      payload
+    });
+
+    // Should still return 200 but not call harvest engine
+    expect(response.statusCode).toBe(200);
+    // Ideally verify mock engine not called
+    expect(true).toBe(false); // RED
   });
 });
