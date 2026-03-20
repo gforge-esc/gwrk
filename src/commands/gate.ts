@@ -267,27 +267,25 @@ Exit codes:
         const durationS = Math.round((Date.now() - startTime) / 1000);
         if (anyFailed) {
           process.exitCode = 1;
-          if (!out.isJson) {
-            fail("gate", 1, durationS);
-            
-            // Output details of failed gates at the end
-            console.log(`\n${color.RED}${color.BOLD}Failed Gate Details:${color.RESET}\n`);
-            for (const result of results.filter(r => r.result !== "PASS")) {
-               console.log(`${color.RED}--- ${result.taskId} ---${color.RESET}`);
-               const combined = (result.stdout + result.stderr).trim();
-               if (combined) {
-                 if (options.verbose) {
-                   process.stdout.write(`${combined}\n`);
-                 } else {
-                   const lines = combined.split("\n");
-                   if (lines.length > 5) {
-                     console.log(`  ... (${lines.length - 5} lines truncated, use -v for full output)`);
+            if (!out.isJson) {
+              fail("gate", 1, durationS);
+              
+              if (options.verbose) {
+                // Verbose: full output per gate
+                console.log(`\n${color.RED}${color.BOLD}Failed Gate Details:${color.RESET}\n`);
+                for (const result of results.filter(r => r.result !== "PASS")) {
+                   console.log(`${color.RED}--- ${result.taskId} ---${color.RESET}`);
+                   const combined = (result.stdout + result.stderr).trim();
+                   if (combined) {
+                     process.stdout.write(`${combined}\n`);
                    }
-                   process.stdout.write(`${lines.slice(-5).join("\n")}\n`);
-                 }
-               }
+                }
+              } else {
+                // Default: compact — just tell them how to get details
+                console.log(`\n  Use ${color.BOLD}gwrk gate ${normalizedFeature} -v${color.RESET} for failure details`);
+                console.log(`  Or  ${color.BOLD}gwrk gate -t T001 ${normalizedFeature}${color.RESET} for a single gate\n`);
+              }
             }
-          }
         } else {
           if (!out.isJson) {
             success("gate", durationS);
