@@ -253,6 +253,13 @@ run_implement() {
     fi
   fi
 
+  # Safety net: auto-commit any agent-produced changes the agent forgot to commit
+  if [[ -n "$(git status --porcelain)" ]]; then
+    log WARN "Agent left uncommitted changes — auto-committing"
+    git add -A
+    git commit -m "feat(${FEATURE#*-}): Phase ${PHASE} agent implementation (auto-commit)"
+  fi
+
   # Push after implementation
   log INFO "Pushing implementation commits..."
   "$WUD_BRANCH" "$FEATURE" push
