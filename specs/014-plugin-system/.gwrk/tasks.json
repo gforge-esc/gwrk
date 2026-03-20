@@ -24,7 +24,7 @@
           "id": "T002",
           "title": "Implement src/plugins/loader.ts",
           "description": "NEW: Plugin scanner, registry, and resolution engine",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "classification": "greenfield"
         },

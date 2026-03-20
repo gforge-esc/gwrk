@@ -20,6 +20,7 @@
     "commander": "^13.1.0",
     "dockerode": "^4.0.9",
     "fastify": "^5.8.1",
+    "yaml": "^2.4.2",
     "zod": "^3.24.2"
   },
   "devDependencies": {
