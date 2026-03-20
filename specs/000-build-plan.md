@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-18 (v11)
+> **Status:** Authoritative · **Date:** 2026-03-20 (v12)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (agent-native output protocol), [ADR-005](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md) (TDD gate architecture), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends)
 
@@ -38,33 +38,57 @@ graph TD
     TDD --> F004
     F004 --> F005
     F004 --> F011["F011: Harvest"]
-    F005 --> F014
+    F004 --> F004R["F004-R: Ship Loop Rework (DispatchOrchestrator)"]
+    F014 --> F005
+    F014 --> F012
+    F014 --> F016["F016: Domain Packs"]
+    F014 --> F017["F017: Channel Abstraction"]
     F003 --> F009["F009: Agent-DUT"]
     F003 --> F011
     F002 --> F011
     F006 --> F010["F010: GForge Integration"]
     F007 --> F010
-    F014 --> F012
-    F014 --> F016["F016: Domain Packs"]
-    F014 --> F017["F017: Channel Abstraction"]
     F015 --> F017
     F003 --> F017
     F012 --> F016
+    F005 --> F014P4["F014 P4: Routing Intelligence"]
 ```
 
 ---
 
 ## Critical Path
 
-```
-F000 ✅ → F001 ✅ → F013 ✅ → TDD Hardening ✅ → F004 ✅ → F005 → F014 P4 (Routing)
-                                                         → F011
-                                                  → F002 ✅ → F003 ✅
-               → F006
-               → F007
+```mermaid
+gantt
+    title Critical Path (per cascade §5)
+    dateFormat X
+    axisFormat %s
+
+    section Main Chain
+    F000 Extraction          :done,    f000, 0, 1
+    F001 CLI Core            :done,    f001, after f000, 1
+    F013 Agent-Native        :done,    f013, after f001, 1
+    TDD Hardening 001-003   :done,    tdd,  after f013, 1
+    F004 Ship Loop           :done,    f004, after tdd, 1
+    F014 P1-P2 Plugin Core   :active,  f014p12, after f001, 2
+    F011 Harvest             :         f011, after f004, 1
+    F005 Parallel Dispatch   :         f005, after f014p12, 1
+    F014 P3 Agent Adapters   :         f014p3, after f005, 1
+    F014 P4 Routing          :         f014p4, after f014p3, 1
+
+    section F004 Rework
+    F004-R DispatchOrchestrator :      f004r, after f004, 1
+
+    section Server Branch
+    F002 Build Server        :done,    f002, after tdd, 1
+    F003 Slack               :done,    f003, after f002, 1
+
+    section Independent (off F001)
+    F006 Pulse               :         f006, after f001, 1
+    F007 Effort+Compression  :         f007, after f001, 1
 ```
 
-**F005 (Parallel Dispatch) is the immediate critical path.** F004 completed and merged (PR #12). Next: F005 (needs F002+F004), F011 Harvest (needs F002+F003+F004), F014 P1-3 (needs F001).
+**F014 P1–P2 (Plugin Loader + Skill Runtime) is the immediate critical path** (per cascade §5). F014 provides keystone infrastructure that F005 consumes. Implementation order: F014 P1–P2 → F011 (small, self-contained) → F005 (highest complexity, benefits from F014) → F014 P3–P4 (needs real dispatch experience from F005). F004-R (DispatchOrchestrator rework, per cascade §2.5 item 6) is a parallel rework track.
 
 ---
 
@@ -149,7 +173,7 @@ Local persistent daemon that serves as the control plane. Includes macOS sleep/w
 
 | Spec | Content | Gate |
 |---|---|---|
-| `002-build-server` | Fastify daemon, dispatch queue, Docker sandbox manager, sleep/wake lifecycle, network monitor, rich health endpoint, `gwrk harvest` manifest ETL | `gwrk server start` creates sandboxes; dispatch queue pauses on sleep/offline |
+| `002-build-server` | Fastify daemon, dispatch queue, worktree sandbox manager (R001), sleep/wake lifecycle, network monitor, rich health endpoint, `gwrk harvest` manifest ETL | `gwrk server start` creates sandboxes; dispatch queue pauses on sleep/offline |
 
 **Dependencies:** Feature 001
 **Agent:** Claude Code (long-context server architecture)
@@ -317,28 +341,49 @@ gwrk gate <feature> [-p <phase>]   # Run gate scripts for a feature/phase
 
 ---
 
-### Feature 005 — Parallel Dispatch
+### Feature 004-R — Ship Loop Rework (DispatchOrchestrator)
 
-Multi-phase concurrent execution with conflict resolution.
+Refactor `work-until-done.sh` and `define-until-solid.sh` shell state machines into a native TypeScript `DispatchOrchestrator`. Breaks IDE sandbox dependency and prepares architecture to consume F014's `WorkflowRuntime` JSON intent execution (per cascade §2.5 item 6).
 
 | Spec | Content | Gate |
 |---|---|---|
-| `005-parallel-dispatch` | Concurrent sandboxes, merge ordering, managed repo clones, per-backend capacity gate | Three agents work simultaneously without exceeding backend rate limits |
+| `004-ship-loop` (rework addendum) | Replace bash orchestrators with TypeScript `DispatchOrchestrator`, structured JSON intent execution, IDE-independent dispatch | `work-until-done.sh` deleted; `gwrk ship` drives dispatch natively |
 
-**Dependencies:** Feature 002, Feature 004
+**Dependencies:** Feature 004 ✅
+**SP:** 5 (estimated — scope TBD after R003)
+**Status:** 🟡 Pending — gated on F014 P1–P2 shipping (needs `WorkflowRuntime`)
+
+---
+
+### Feature 005 — Parallel Dispatch
+
+Multi-task concurrent execution using git worktree sandboxes. Scope: dispatch + sandbox lifecycle + PR creation. **No merge ownership, no conflict resolution** (per cascade §2.5 item 1 — orchestrator scope ends at `gh pr create`).
+
+| Spec | Content | Gate |
+|---|---|---|
+| `005-parallel-dispatch` | Worktree sandboxes (`.runs/sandboxes/`), `TaskDispatch`/`TaskResult` (ADR-006), per-backend capacity gate, resource gating (`maxClones`, `maxCpu`, `maxMem`). **Phase 1: `local-cli` only** (cloud agents deferred per cascade §2.5 item 3). | Three local agents work simultaneously in separate worktrees without exceeding backend rate limits |
+
+**Dependencies:** Feature 002, Feature 004, **Feature 014 P1–P2** (plugin loader for `AgentBackend` adapters, per cascade §5)
 **Agent:** Claude Code
+**Gating:** ⚠️ R003 (Agent Stage Containment) outcome may add containment enforcement requirements. See OQ-6.
 
 #### What ships:
 
 ```bash
-gwrk feature <feature>         # Full end-to-end lifecycle
-gwrk config set parallelism.local.clones 3
+gwrk ship <feature> --parallel     # Dispatch independent tasks concurrently
+gwrk config set parallelism.local.maxClones 3
 ```
+
+#### Sandbox model (R001):
+- Each task dispatched into an isolated git worktree under `.runs/sandboxes/<feature>-<task>-<uuid>/`
+- Agent runs `gwrk ship` within the worktree (hexagonal dispatch per R001)
+- On completion: agent pushes branch, creates PR via `gh pr create`, worktree auto-cleaned
+- Merge serialization handled by F004 Ship Loop (not F005)
 
 #### Agent capacity gate:
 - Before `processNext()` assigns a backend: check `maxConcurrent` and `rateLimit` sliding window
 - On 429/rate-limit: record in `runs`, exponential backoff with jitter
-- See [agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/references/agent-backends.md)
+- Resource gating: `maxCpu`, `maxMem`, `minDiskGb` checked pre-dispatch (R001)
 
 ---
 
@@ -418,11 +463,13 @@ Unified Pulse + Compression dashboard across repos.
 
 ### Feature 011 — Harvest (Done, Done!)
 
-Post-merge lifecycle. Triggered by GitHub webhook when a Ship Loop PR is merged. Rehomes logs, finalizes DB records, calculates compression, posts "🏆 Done, Done!" to Slack.
+Post-merge lifecycle. Triggered by GitHub webhook when a **Phase Rollup PR** is merged (per cascade §2.5 item 2). Rehomes logs, finalizes DB records, calculates compression, posts "🏆 Done, Done!" to Slack.
+
+> **Harvest trigger (cascade §2.5 item 2):** Harvest MUST trigger on a Phase Rollup PR merge, NOT on individual Sandbox `feat/*` PRs. With parallel dispatch (F005), a phase produces N task PRs — Harvest MUST wait for all sub-task PRs to merge before finalizing the phase.
 
 | Spec | Content | Gate |
 |---|---|---|
-| `011-harvest` | Merge webhook handler, log finalization, DB record completion, point+total compression, done-done Slack notification, branch cleanup | PR merge triggers harvest; compression recorded in SQLite; Slack 🏆 posted |
+| `011-harvest` | Merge webhook handler (Phase Rollup PR only), log finalization, DB record completion, point+total compression, done-done Slack notification, branch cleanup | Phase Rollup PR merge triggers harvest; compression recorded in SQLite; Slack 🏆 posted |
 
 **Dependencies:** Feature 002 (build server webhook handler), Feature 003 (Slack notification), Feature 004 (produces PRs and logs)
 **Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/011-harvest/spec.md)
@@ -468,16 +515,17 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 
 ### Feature 014 — Plugin System (Three-Layer Architecture)
 
-Manifest-driven plugin architecture with three layers: **Agent Backend adapters** (Layer 1, ADR-006), **Skills** (Layer 2, two-tier hierarchy), and **Extensions** (Layer 3, domain packs + channel adapters). All plugins are CLI commands with full F013 contract: stdin/stdout, `--format json`, `[exit:N | Xs]`, pipe-composable. Anti-MCP: Unix-native, not server-coupled.
+Manifest-driven plugin architecture with three layers: **Agent Backend adapters** (Layer 1, ADR-006), **Skills** (Layer 2, two-tier hierarchy), **WorkflowRuntime** (Layer 2.5, JSON intent execution per cascade §2.5 item 5), and **Extensions** (Layer 3, domain packs + channel adapters). All plugins are CLI commands with full F013 contract: stdin/stdout, `--format json`, `[exit:N | Xs]`, pipe-composable. Anti-MCP: Unix-native, not server-coupled.
 
 > **2026-03-17 (v10):** Absorbed F008 (Agent Router) as Phase 4: Routing Intelligence. See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
+> **2026-03-20 (cascade sync):** Layer 2.5 (WorkflowRuntime + JSON Schema Output Contracts) added per cascade §3 Stage 3. Config Isolation Rule added per cascade §2.5 item 4. F014 is now the **immediate critical path** (P1–P2 ship first as keystone infrastructure).
 
 | Spec | Content | Gate |
 |---|---|---|
-| `014-plugin-system` | Manifest schema (YAML), plugin loader, skill runtime, `AgentBackend` adapter interface (ADR-006), routing intelligence (ex-F008), `gwrk plugin install\|remove\|list`, migration from `.agents/skills/`, config ownership + conflict detection | `gwrk skill narrative < brief.md` produces output; `gwrk plugin list` shows installed; `dispatchToAgent()` routes through plugin adapter |
+| `014-plugin-system` | Manifest schema (YAML), plugin loader, skill runtime, `AgentBackend` adapter interface (ADR-006), **WorkflowRuntime** (JSON intent execution, Layer 2.5), routing intelligence (ex-F008), `gwrk plugin install\|remove\|list`, migration from `.agents/skills/`, config ownership + conflict detection, **strict config isolation** (sandbox `projectRoot` only, per cascade §2.5 item 4) | `gwrk skill narrative < brief.md` produces output; `gwrk plugin list` shows installed; `dispatchToAgent()` routes through plugin adapter |
 
 **Dependencies:** Feature 001 ✅
-**Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) (Draft — needs Layer 1 + Phase 4 additions)
+**Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) (Draft — needs Layer 1 + Layer 2.5 + Phase 4 additions)
 **Decisions:** [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends)
 **SP:** 8 → 20 (absorbed F008's 12 SP)
 
@@ -494,15 +542,16 @@ gwrk plugin check                  # Validate CLI config for conflicts
 gwrk plugin sync-context           # Regenerate CLI memory files from .gwrk/agent-context.md
 ```
 
-#### Three-layer architecture:
+#### Three-layer + WorkflowRuntime architecture:
 - **Layer 1: Agent Backends** — `AgentBackend` plugin interface (ADR-006). Claude, Codex, Gemini adapters. Stdin delivery, exit normalization, config ownership.
 - **Layer 2: Skills** — Two-tier hierarchy (atomic + compound). `manifest.yaml` + `SKILL.md`. Global only.
+- **Layer 2.5: WorkflowRuntime** — JSON intent execution. Workflows produce structured JSON Intents; `WorkflowRuntime` executes them natively. LLMs MUST NOT directly mutate the filesystem (cascade §2.5 item 5). JSON Schema output contracts.
 - **Layer 3: Extensions** — Domain Packs (F016), Channel Adapters (F017). Not yet designed.
 
 #### Implementation phases:
 1. **Phase 1 — Plugin Loader + Registry:** Manifest schema (Zod), `~/.gwrk/plugins/` scanner, `.gwrk/plugins.yaml` overrides
 2. **Phase 2 — Skill Runtime:** `gwrk skill <name>`, atomic + compound execution, pipe composition, F013 signals
-3. **Phase 3 — Agent Backend Adapters:** `AgentBackend` interface (ADR-006), Claude/Codex/Gemini adapters, stdin delivery, config conflict detection
+3. **Phase 3 — Agent Backend Adapters:** `AgentBackend` interface (ADR-006), Claude/Codex/Gemini adapters, stdin delivery, config conflict detection. **Strict Isolation Rule:** plugins MUST confine config mutation within sandbox `projectRoot` (cascade §2.5 item 4)
 4. **Phase 4 — Routing Intelligence (ex-F008):** Quota probing (per-adapter), `selectBackend()`, fallback chains, SQLite `routing_decisions` table, historical learning
 
 #### Key design decisions:
@@ -557,9 +606,10 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | **Wave 1** | F001 ✅ | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning |
 | **Wave 2** | F013 ✅, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
 | **Wave 3** | TDD Hardening (001-003) ✅ | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
-| **Wave 4** | F004 ✅, F011, F014 P1-3 | Partially (F004 needs F013+Hardening, F014 needs F001) | Execution + plugin foundation |
-| **Wave 5** | F005, F014 P4, F009, F015 | Yes (F005 needs F004; F014 P4 needs P1-3; F009 needs F003; F015 needs F002) | Dispatch + routing + comms + event bus |
-| **Wave 6** | F010, F012 | Partially (F010 needs F006+F007; F012 amended needs F014) | Integration + knowledge work |
+| **Wave 4a** | F004 ✅, **F014 P1–P2**, F004-R | Partially (F014 P1-P2 is keystone; F004-R parallel track) | Execution + plugin foundation (cascade §5: F014 P1-P2 first) |
+| **Wave 4b** | **F011** | No (small, self-contained, high visibility) | Harvest lifecycle (cascade §5: after F004, before F005) |
+| **Wave 5** | **F005**, **F014 P3–P4**, F009, F015 | Partially (F005 needs F014 P1-P2; F014 P3 needs F005; F009 needs F003; F015 needs F002) | Dispatch + agent adapters + routing + comms + event bus |
+| **Wave 6** | F010, F012 | Partially (F010 needs F006+F007; F012 needs F014) | Integration + knowledge work |
 | **Wave 7** | F016, F017 | Yes (F016 needs F012+F014; F017 needs F014+F015+F003) | Domain packs + channel abstraction |
 
 ---
@@ -581,7 +631,8 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | F013 (Agent-Native Interface) ✅ | 28 | PM+PE | Done |
 | TDD Hardening (001-003) ✅ | ~15 | PE | Done |
 | F004 (Ship Loop) ✅ | 5 | PM+PE | Done |
-| F005 (Parallel Dispatch) | 10 | PE | 50h |
+| **F004-R (DispatchOrchestrator)** | **5** | **PM+PE** | **25h** |
+| F005 (Parallel Dispatch) | 8 | PE | 40h |
 | F006 (Pulse) | 5 | PE | 25h |
 | F007 (Effort + Compression) | 8 | PM+PE | 40h |
 | ~~F008 (Agent Router)~~ | ~~12~~ | ~~PM+PE~~ | ⚫ Folded into F014 P4 |
@@ -593,7 +644,7 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | **F015 (Event Bus)** | **8** | **PE** | **40h** |
 | **F016 (Domain Packs)** | **13** | **PM+PE** | **65h** |
 | **F017 (Channel Abstraction)** | **8** | **PM+PE** | **40h** |
-| **Total** | **~210 SP** | | **~515h remaining** |
+| **Total** | **~213 SP** | | **~530h remaining** |
 
 ---
 
@@ -606,11 +657,13 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | 3 | Slack presence throttling: granularity beyond active/away? | F003 | 🟡 Open |
 | 4 | TDD Hardening scope: extend beyond 001-003 to 004-008? | Hardening | 🟡 Open (004-008 have 64-92% `test -f` contamination but haven't shipped code) |
 | 5 | ~~Should F008 fold into F014?~~ | ~~F008, F014~~ | ⚫ Decided: Yes — F008 folded into F014 Phase 4 (2026-03-17). See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md). |
+| 6 | R003 (Agent Stage Containment): How does gwrk prevent agents from exceeding pipeline stage mandate? Trigger incident: `define tests` agent wrote production code + tests, collapsing RED→GREEN cycle. | F005, F014, F004-R | 🟡 Open — [R003 brief](file:///Users/gonzo/Code/gwrk/docs/research/R003-agent-stage-containment/brief.md) active. Outcome may gate F005 implementation. |
 
 ---
 
 ## Changelog
 
+- **2026-03-20 (v12):** ✨ **Cascade Sync.** Full reconciliation of Wave 4 research findings from [`cascade.md`](file:///Users/gonzo/Code/gwrk/docs/research/cascade.md) (R001 ✅, R002 ✅, Stages 1–3 complete). **Critical path reversed:** F014 P1–P2 is now the immediate critical path (keystone infrastructure), replacing F005-first approach. **Dependency graph:** `F005→F014` reversed to `F014→F005` (per cascade §5); F014 P4 separated to its own node after F005; F004-R (DispatchOrchestrator rework) added per cascade §2.5 item 6. **Feature descriptions updated:** F005 scope narrowed (no merge ownership, worktree sandboxes, cloud agents deferred to Tier 3); F011 trigger logic updated (Phase Rollup PR only, not individual sandbox PRs); F014 expanded (Layer 2.5 WorkflowRuntime, Config Isolation Rule); F004-R added (bash → TypeScript DispatchOrchestrator). **Wave strategy:** Waves 4–5 restructured to match cascade ordering (4a: F014 P1-P2 + F004-R; 4b: F011; 5: F005 + F014 P3-P4). **Effort:** F005 SP 10→8 (scope reduced); F004-R 5 SP added; total ~210→~213 SP, ~515h→~530h. **OQ-6 added:** R003 (Agent Stage Containment) gating dependency on F005. **Terminology:** Docker sandbox → worktree sandbox, bash scripts → DispatchOrchestrator.
 - **2026-03-18 (v11):** F004 (Ship Loop) completed and merged via PR #12. 28/28 gates PASS, 404 tests green. TDD Hardening marked ✅ (cleared through F004 dev). F013 confirmed ✅. `gwrk gate` promoted as FC pillar command. `resolveFormat()` DRY refactor shipped (killed "human" format). Critical path advanced: **F005 Parallel Dispatch is next.** Effort remaining: ~755h → ~515h. Wave 4 half-complete (F004 ✅; F011 and F014 P1-3 remain). Dependency graph, wave strategy, and effort table updated.
 - **2026-03-17 (v10):** F008 (Agent Router, 12 SP) folded into F014 Phase 4: Routing Intelligence. F014 three-layer architecture established (Agent Backends, Skills, Extensions). F014 SP: 8→20 (absorbed F008). ADR-005 (TDD gates) and ADR-006 (plugin agent backends) added to decision registry. Dependency graph simplified (F008 node removed, F005→F014 replaces F005→F008). Wave 5 updated: F014 P4 replaces F008. OQ-5 resolved. F004 status updated with Phase 4 (Plugin Dispatch Boundary). Plugin strategy audit published: [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md). Total SP unchanged (~210).
 - **2026-03-15 (v9):** Plugin architecture registered. F014 Plugin System (8 SP), F015 Event Bus (8 SP), F016 Domain Packs (13 SP), F017 Channel Abstraction (8 SP) added. F008 amended 7->12 SP (+5 for AgentBackend plugin interface). F012 amended 8->13 SP (+5 for --domain flag). Dependency graph updated with 7 new edges. Wave strategy expanded to 7 waves. Total: 163->~210 SP. Derived from OpenClaw research.

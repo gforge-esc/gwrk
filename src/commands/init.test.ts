@@ -78,10 +78,10 @@ describe("initCommand", () => {
     );
   });
 
-  it("should provision GEMINI.md if gemini CLI is detected", async () => {
+  it("should provision GEMINI.md, CLAUDE.md, and .gwrk/agent-context.md if CLIs are detected (FR-L1-008)", async () => {
     vi.mocked(exec.execCommand).mockImplementation(async (cmd, args) => {
-      if (cmd === "which" && args[0] === "gemini") {
-        return { exitCode: 0, stdout: "/usr/local/bin/gemini", stderr: "" };
+      if (cmd === "which" && (args[0] === "gemini" || args[0] === "claude")) {
+        return { exitCode: 0, stdout: `/usr/local/bin/${args[0]}`, stderr: "" };
       }
       return { exitCode: 1, stdout: "", stderr: "" };
     });
@@ -89,9 +89,8 @@ describe("initCommand", () => {
     await initCommand.parseAsync([], { from: "user" });
 
     expect(fs.existsSync(path.join(tempDir, "GEMINI.md"))).toBe(true);
-    expect(fs.readFileSync(path.join(tempDir, "GEMINI.md"), "utf-8")).toContain(
-      "GEMINI Project Context",
-    );
+    expect(fs.existsSync(path.join(tempDir, "CLAUDE.md"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, ".gwrk/agent-context.md"))).toBe(true);
   });
 
   it("should be idempotent and exit 0 if already initialized", async () => {
