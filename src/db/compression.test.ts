@@ -25,5 +25,29 @@ describe("FR-H06: Compression recording", () => {
     // @ts-ignore - module doesn't exist yet
     const id = recordCompression(record, db);
     expect(id).toBeDefined();
+    expect(typeof id).toBe("number");
+  });
+
+  it("should fail if record is missing mandatory fields", () => {
+    const db = getDb();
+    // @ts-ignore
+    const record: Partial<CompressionRecord> = {
+      featureId: "011-harvest"
+      // Missing other mandatory fields
+    };
+
+    expect(() => {
+      // @ts-ignore
+      recordCompression(record, db);
+    }).toThrow();
+  });
+
+  it("should list compression records for a feature", () => {
+    const db = getDb();
+    // Assuming recordCompression was successful in previous test or we run separately
+    // @ts-ignore
+    const records = listCompression("011-harvest", db);
+    expect(Array.isArray(records)).toBe(true);
+    // Since it's RED, we expect this to fail to compile or return undefined/error
   });
 });

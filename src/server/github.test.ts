@@ -87,4 +87,27 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
     // Ideally verify mock engine not called
     expect(true).toBe(false); // RED
   });
+
+  it("TC-H03: should return 401 if HMAC signature is invalid", async () => {
+    const server = fastify();
+    // @ts-ignore
+    await server.register(githubWebhooks);
+
+    const payload = {
+      action: "closed",
+      pull_request: { merged: true }
+    };
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/webhook/github",
+      headers: {
+        "x-github-event": "pull_request",
+        "x-hub-signature-256": "sha256=invalid-signature"
+      },
+      payload
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
 });

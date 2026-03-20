@@ -149,5 +149,46 @@ describe("runs db", () => {
       // @ts-ignore - merge_commit_sha doesn't exist yet on type
       expect(run?.merge_commit_sha).toBe("abc1234567890");
     });
+
+    it("should fail gracefully if runId does not exist", () => {
+      const db = getDb();
+      expect(() => {
+        finishRun(
+          999999, // Non-existent ID
+          {
+            exit_code: 0,
+            duration_s: 10,
+          },
+          db,
+        );
+      }).not.toThrow(); // SQLite UPDATE on non-existent ID is usually a no-op, not an error.
+    });
+
+    it("should handle missing optional merge metadata", () => {
+      const db = getDb();
+      const runId = startRun(
+        {
+          feature_id: "harvest-partial-feat",
+          command: "ship",
+        },
+        db,
+      );
+
+      finishRun(
+        runId,
+        {
+          exit_code: 0,
+          duration_s: 60,
+          // Missing status, pr_number, etc.
+        },
+        db,
+      );
+
+      const runs = listRuns("harvest-partial-feat", db);
+      const run = runs.find((r) => r.id === runId);
+      expect(run).toBeDefined();
+      // @ts-ignore
+      expect(run?.status).toBeNull();
+    });
   });
 });
