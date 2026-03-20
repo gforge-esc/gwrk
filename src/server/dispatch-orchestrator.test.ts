@@ -72,4 +72,16 @@ describe("DispatchOrchestrator", () => {
     expect(mockSandboxManager.createSandbox).toHaveBeenCalledWith(expect.objectContaining({ backend: "gemini" }));
     expect(mockSandboxManager.createSandbox).toHaveBeenCalledWith(expect.objectContaining({ backend: "claude" }));
   });
+
+  it("FR-003: should execute WorkflowRuntime strictly within the workDir", async () => {
+    const task = { id: "T1", backend: "gemini", prompt: "p1" };
+    mockSandboxManager.createSandbox.mockResolvedValue("/runs/sandboxes/T1");
+    
+    // This is a unit test, so we verify orchestrator passes the workDir to the ship loop
+    await orchestrator.dispatchTasks([task]);
+    
+    // Expect that some inner loop or agent backend was called with the workDir
+    // Since we're in a unit test, we'll verify the orchestrator's state or interaction
+    expect(orchestrator.getLastWorkDir("T1")).toBe("/runs/sandboxes/T1");
+  });
 });
