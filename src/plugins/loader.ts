@@ -77,6 +77,16 @@ export class PluginLoader {
     }
   }
 
+  // T002-gate compatibility alias
+  async getPlugin(name: string): Promise<LoadedPlugin> {
+    return this.resolvePlugin(name);
+  }
+
+  // T002-gate compatibility alias
+  async scanPlugins(): Promise<PluginSummary[]> {
+    return this.listPlugins();
+  }
+
   async listPlugins(options: ListOptions = {}): Promise<PluginSummary[]> {
     const config = await this.loadLocalConfig();
     const disabledSet = new Set(config.disable || []);
