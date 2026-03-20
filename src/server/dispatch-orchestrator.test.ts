@@ -44,20 +44,39 @@ describe("DispatchOrchestrator", () => {
     expect(orchestrator.getCompletedCount()).toBe(5);
   });
 
-  it("FR-005: should apply exponential backoff on 429 errors", async () => {
+  it("FR-004 Error States: should throw 'Agent capacity queue timeout' after timeout", async () => {
+    // Submit tasks that take a long time to keep capacity busy
+    orchestrator = new DispatchOrchestrator(mockSandboxManager, { maxClones: 1, queueTimeout: 10 });
+    
+    mockSandboxManager.createSandbox.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve("workdir"), 100)));
+
+    // Task 1 will be running
+    const t1 = orchestrator.dispatchTasks([{ id: "T1", backend: "gemini", prompt: "p1" }]);
+
+    // Task 2 will be queued and timeout
+    await expect(orchestrator.dispatchTasks([{ id: "T2", backend: "gemini", prompt: "p2" }]))
+      .rejects.toThrow("Agent capacity queue timeout");
+
+    await t1;
+  });
+
+  it("FR-005: should apply exponential backoff with jitter on 429 errors", async () => {
     const task = { id: "T1", backend: "gemini", prompt: "p1" };
     
-    // First attempt fails with 429, second succeeds
+    // First two attempts fail with 429, third succeeds
     let attempts = 0;
+    const timestamps: number[] = [];
     mockSandboxManager.createSandbox.mockImplementation(() => {
       attempts++;
-      if (attempts === 1) throw new Error("429 Too Many Requests");
+      timestamps.push(Date.now());
+      if (attempts <= 2) throw new Error("429 Too Many Requests");
       return Promise.resolve("workdir");
     });
 
     await orchestrator.dispatchTasks([task]);
     
-    expect(attempts).toBe(2);
+    expect(attempts).toBe(3);
+    expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(10); // Check for some delay
     expect(orchestrator.getCompletedCount()).toBe(1);
   });
 

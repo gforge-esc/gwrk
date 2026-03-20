@@ -44,10 +44,22 @@ describe("SandboxManager (Git Worktree)", () => {
     );
   });
 
-  it("FR-002: should destroy a sandbox and remove the worktree", async () => {
+  it("FR-002: should destroy a sandbox, push the branch, and create a PR", async () => {
     const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-phase-01-uuid";
     
     await sandboxManager.destroySandbox(workDir);
+
+    // Should have called git push
+    expect(execSync).toHaveBeenCalledWith(
+      expect.stringContaining("git push origin"),
+      expect.objectContaining({ cwd: workDir })
+    );
+
+    // Should have called gh pr create
+    expect(execSync).toHaveBeenCalledWith(
+      expect.stringContaining("gh pr create"),
+      expect.objectContaining({ cwd: workDir })
+    );
 
     // Should have called git worktree remove
     expect(execSync).toHaveBeenCalledWith(
