@@ -129,7 +129,7 @@
           "id": "T014",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T014-gate.sh",
           "classification": "noop"
         }

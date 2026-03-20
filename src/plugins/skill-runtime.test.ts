@@ -31,7 +31,8 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
 
       const result = await executeSkill('narrative', { input: 'test' });
       expect(result.stdout).toBeDefined();
-      expect(result.stderr).toContain('[exit:0');
+      expect(result.exitCode).toBe(0);
+      expect(result.durationS).toBeGreaterThanOrEqual(0);
     });
 
     it("fails if skill is not found", async () => {
@@ -84,7 +85,8 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
         type: 'skill',
         name: 'signal-cut',
         tier: 'compound',
-        composes: ['narrative', 'missing-skill']
+        composes: ['narrative', 'missing-skill'],
+        passes: []
       } as any;
       await expect(validateCompoundManifest(manifest, mockLoader as any)).rejects.toThrow(/Missing dependency: skill 'missing-skill'/);
     });
@@ -112,7 +114,7 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
         expect(result.stdout).not.toMatch(/\x1B\[/);
     });
 
-    it("returns [exit:N | Xs] on stderr signal", async () => {
+    it("returns exitCode and durationS", async () => {
         const mockLoader = {
             resolvePlugin: vi.fn().mockResolvedValue({
               manifest: {
@@ -126,7 +128,8 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
           };
         (PluginLoader as any).mockImplementation(() => mockLoader);
         const result = await executeSkill('narrative');
-        expect(result.stderr).toMatch(/\[exit:\d+ \| \d+(\.\d+)?s\]/);
+        expect(result.exitCode).toBe(0);
+        expect(result.durationS).toBeGreaterThanOrEqual(0);
     });
   });
 });

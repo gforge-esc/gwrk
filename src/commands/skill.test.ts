@@ -45,8 +45,12 @@ describe("FR-006 / FR-007 / FR-010: Skill CLI Command", () => {
 
     it("errors if skill does not exist (FR-006 / US-005)", async () => {
       vi.mocked(skillRuntime.executeSkill).mockRejectedValueOnce(new Error("Plugin 'nonexistent' not found"));
-      await program.parseAsync(['node', 'gwrk', 'skill', 'nonexistent']);
-      expect(process.exit).toHaveBeenCalledWith(1);
+      try {
+        await program.parseAsync(['node', 'gwrk', 'skill', 'nonexistent']);
+      } catch (e) {
+        // Commander re-throws because of exitOverride
+      }
+      expect(process.exitCode).toBe(1);
     });
   });
 

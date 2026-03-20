@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { PluginLoader } from "./loader.js";
@@ -9,6 +8,7 @@ import type {
   CompoundSkillManifest 
 } from "./manifest.js";
 import { processForAgent } from "../utils/agent-layer.js";
+import { CommandError } from "../utils/signal.js";
 
 const execAsync = promisify(exec);
 
@@ -69,7 +69,8 @@ export async function validateCompoundManifest(
   manifest: CompoundSkillManifest,
   loader: PluginLoader
 ): Promise<void> {
-  for (const depName of manifest.composes) {
+  const allDeps = new Set([...manifest.composes, ...manifest.passes.map(p => p.skill)]);
+  for (const depName of allDeps) {
     try {
       await loader.resolvePlugin(depName);
     } catch (e) {
@@ -128,27 +129,24 @@ export async function executeSkill(
       processedStdout = processForAgent(stdout);
     }
 
-    // F013 signal on stderr
+    // F013 signal is handled by the caller (e.g. gwrk skill command via withSignal)
     const exitCode = 0;
-    const finalStderr = `${stderr}\n[exit:${exitCode} | ${durationS.toFixed(1)}s]`;
 
     return {
       stdout: processedStdout,
-      stderr: finalStderr,
+      stderr,
       exitCode,
       durationS
     };
   } catch (error: any) {
     const durationS = (Date.now() - startTime) / 1000;
     const exitCode = error.code || 1;
-    const finalStderr = `${error.stderr || ''}\n[exit:${exitCode} | ${durationS.toFixed(1)}s]`;
+    const message = `Skill invocation failed: ${error.message}. Agent: ${agent}, duration: ${durationS.toFixed(1)}s.`;
     
-    throw {
-      stdout: error.stdout || '',
-      stderr: finalStderr,
-      exitCode,
-      durationS,
-      message: `Skill invocation failed: ${error.message}. Agent: ${agent}, duration: ${durationS.toFixed(1)}s.`
-    };
+    const err: any = new CommandError(message, exitCode);
+    err.stdout = error.stdout || '';
+    err.stderr = error.stderr || '';
+    err.durationS = durationS;
+    throw err;
   }
 }
