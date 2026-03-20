@@ -39,3 +39,10 @@
 | **Phase 5: Migration** | | | | | |
 | FR-011 | gwrk plugin migrate (.agents/ skills) | unit | src/plugins/migrate.test.ts | ✅ | |
 | FR-012 | gwrk plugin seed (taxonomy -> skills) | unit | src/plugins/seed.test.ts | ✅ | |
+| **Verification Requirements (E2E)** | | | | | |
+| VR-001 | Install + invoke skill | e2e | src/plugins.e2e.test.ts | ✅ | |
+| VR-002 | JSON plugin list | e2e | src/plugins.e2e.test.ts | ✅ | |
+| VR-004 | Pipe composition | e2e | src/plugins.e2e.test.ts | ✅ | |
+| VR-005 | Nonexistent skill exit 1 | e2e | src/plugins.e2e.test.ts | ✅ | |
+| VR-008 | Disable plugin per-project | e2e | src/plugins.e2e.test.ts | ✅ | |
+| VR-009 | Reject global-only disable | e2e | src/plugins.e2e.test.ts | ✅ | |
