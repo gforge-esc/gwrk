@@ -45,11 +45,10 @@ describe("testsGenerateCommand", () => {
   });
 
   it("should dispatch the define-tests workflow", async () => {
-    vi.mocked(agentModule.dispatchAgent).mockResolvedValue({
-      exitCode: 0,
-      logPath: "mock.log",
-      stdout: "",
-      stderr: "",
+    vi.mocked(agentModule.dispatchAgent).mockImplementation(async () => {
+      // Simulate agent producing gap-matrix.md (output contract)
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+      return { exitCode: 0, logPath: "mock.log", stdout: "", stderr: "" };
     });
 
     await program.parseAsync(["node", "test", "tests", "test-feature"]);
@@ -61,11 +60,9 @@ describe("testsGenerateCommand", () => {
   });
 
   it("should pass phase context when --phase is provided", async () => {
-    vi.mocked(agentModule.dispatchAgent).mockResolvedValue({
-      exitCode: 0,
-      logPath: "mock.log",
-      stdout: "",
-      stderr: "",
+    vi.mocked(agentModule.dispatchAgent).mockImplementation(async () => {
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+      return { exitCode: 0, logPath: "mock.log", stdout: "", stderr: "" };
     });
 
     await program.parseAsync(["node", "test", "tests", "test-feature", "--phase", "1"]);
@@ -87,5 +84,31 @@ describe("testsGenerateCommand", () => {
 
     expect(process.exitCode).toBe(1);
     expect(agentModule.dispatchAgent).not.toHaveBeenCalled();
+  });
+
+  it("should refuse to re-run when gap-matrix.md exists without --force", async () => {
+    fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+    process.exitCode = 0;
+
+    try {
+      await program.parseAsync(["node", "test", "tests", "test-feature"]);
+    } catch {
+      // Expected
+    }
+
+    expect(process.exitCode).toBe(1);
+    expect(agentModule.dispatchAgent).not.toHaveBeenCalled();
+  });
+
+  it("should allow re-run with --force when gap-matrix.md exists", async () => {
+    fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+    vi.mocked(agentModule.dispatchAgent).mockImplementation(async () => {
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File | Updated |\n");
+      return { exitCode: 0, logPath: "mock.log", stdout: "", stderr: "" };
+    });
+
+    await program.parseAsync(["node", "test", "tests", "test-feature", "--force"]);
+
+    expect(agentModule.dispatchAgent).toHaveBeenCalled();
   });
 });

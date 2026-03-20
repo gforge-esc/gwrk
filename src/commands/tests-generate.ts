@@ -18,7 +18,8 @@ export const testsGenerateCommand = new Command("tests")
   .description("Generate RED test files for a whole feature (or specific phase)")
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option("-p, --phase <phase>", "Specific phase string or number to generate tests for (e.g. p01 or 1)")
-  .action(async (feature: string, options: { phase?: string }) => {
+  .option("--force", "Overwrite existing test artifacts (gap-matrix.md, test files)")
+  .action(async (feature: string, options: { phase?: string; force?: boolean }) => {
     await withSignal(`define tests ${feature}`, async () => {
       const projectRoot = process.cwd();
       const relativeFeatureDir = path.join("specs", feature);
@@ -31,6 +32,18 @@ export const testsGenerateCommand = new Command("tests")
         blocked("Missing required files (spec.md or plan.md)");
         throw new CommandError(
           "spec and plan must exist before generating tests. Run 'gwrk define plan' first.",
+          1,
+        );
+      }
+
+      // Guard: refuse to overwrite existing tests without --force
+      const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+      if (fs.existsSync(gapMatrixPath) && !options.force) {
+        blocked(
+          `Tests already exist for ${feature} (gap-matrix.md found).\n  Re-run: gwrk define tests ${feature} --force`,
+        );
+        throw new CommandError(
+          "Tests already exist. Use --force to regenerate.",
           1,
         );
       }
@@ -108,7 +121,6 @@ export const testsGenerateCommand = new Command("tests")
       }
 
       // Output contract: gap-matrix.md must exist after successful run
-      const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
       if (!fs.existsSync(gapMatrixPath)) {
         finishRun(runId, { exit_code: 2, duration_s: durationS });
         fail("define tests", 2, durationS, runId, result.logPath);
