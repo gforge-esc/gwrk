@@ -104,19 +104,39 @@ For each US-### with a user-facing flow in this phase:
 After generating all test files:
 
 ```bash
-# TypeScript tests should compile but FAIL
+# Tests should compile but FAIL
 pnpm test --run 2>&1 | tail -20
 # Expected: test failures (imports that don't resolve, assertions that fail)
 # If ALL tests pass: CRITICAL — tests are trivial, flag and revise
-
-# Rust tests (if applicable)
-cargo test --manifest-path crates/engine/Cargo.toml 2>&1 | tail -20
 ```
 
 - If tests pass → they're hollow. **Revise with stronger assertions.**
 - If tests fail to compile → acceptable for RED. Module doesn't exist yet.
 - If tests compile but fail assertions → ideal RED state.
 </red_validation_rules>
+
+### 7. Write Gap Matrix
+
+**MANDATORY OUTPUT.** Write `{feature_dir}/gap-matrix.md` — a coverage matrix mapping every requirement to its test file.
+
+Format:
+```markdown
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | Plugin manifest validation | unit | src/plugins/manifest.test.ts | ✅ | T001 |
+| FR-002 | Plugin loader resolution | unit | src/plugins/loader.test.ts | ✅ | T002 |
+| US-001 | User registers a plugin | integration | src/commands/plugin.test.ts | ✅ | T003 |
+```
+
+Rules:
+- One row per FR-###, US-###, or TR-### in this phase
+- Test Exists = ✅ if the test file was created, ❌ if deferred
+- Gate column left empty (filled by `define tasks`)
+- Every row with ❌ must have a comment explaining why it was deferred
+
+> [!CAUTION]
+> If this file is not written, `define tests` will fail with exit code 2.
+> `define tasks` will refuse to run without it.
 
 ### 8. Commit RED Tests
 
@@ -133,7 +153,6 @@ Red tests committed for Phase {phase_number}:
   Unit:        {N} test files ({X} test cases)
   Integration: {M} test files ({Y} test cases)
   E2E:         {K} test files ({Z} test cases)
-  Rust:        {R} test files ({W} test cases)
 
 Coverage:
   FR-### mapped: {count}/{total}
@@ -153,7 +172,6 @@ Before reporting, verify:
 - Negative/error paths tested (not just happy path)
 - Tests reference actual module paths from plan.md (not placeholder imports)
 - No test passes before implementation (RED check)
-- Rust tests include TR-005 golden-hash assertions (if engine phase)
 </quality_gate>
 
 ## Anti-Patterns
