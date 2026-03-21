@@ -34,6 +34,7 @@ export const GwrkConfigSchema = z.object({
     .object({
       port: z.number().int().min(0).max(65535),
       host: z.string().min(1),
+      githubWebhookSecret: z.string().optional(),
       heartbeatIntervalMs: z.number().int().min(100).default(30000),
       networkCheckIntervalMs: z.number().int().min(100).default(60000),
       slack: z

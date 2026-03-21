@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { commitFiles } from "../utils/git.js";
+import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
+import { finishRun, listRuns } from "../db/runs.js";
+import { recordCompression } from "../db/compression.js";
+import { gatherDeliveryActuals, computeCompression } from "./compression.js";
+import { parsePlan } from "../utils/parser.js";
+import { resolveRoleMultipliers } from "./roles.js";
+import { loadConfig } from "../utils/config.js";
+import type { HarvestRecord, CompressionReport, EffortForecast } from "./types.js";
 
 export interface LogEntry {
   runId: string | number;
@@ -77,4 +84,105 @@ export async function finalizeLogs(
     stagedFiles,
     `harvest: finalize logs for ${featureId}`
   );
+}
+
+/**
+ * Orchestrate the post-merge harvest for a feature phase.
+ * (FR-H01, FR-H03, FR-H04, FR-H05, FR-H06, FR-H07, FR-H08)
+ */
+export async function harvestFeature(
+  projectPath: string,
+  record: HarvestRecord,
+): Promise<CompressionReport | undefined> {
+  const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
+    record;
+
+  // 1. Finalize Logs (FR-H02)
+  await finalizeLogs(featureId, projectPath);
+
+  // 2. Finalize DB Run Records (FR-H03)
+  const runs = listRuns(featureId);
+  const targetRun = runs.find(
+    (r) =>
+      r.phase_id === phaseId &&
+      (r.pr_number === prNumber || !r.pr_number) &&
+      r.status !== "merged",
+  );
+
+  if (targetRun?.id) {
+    finishRun(targetRun.id, {
+      status: "merged",
+      merge_commit_sha: mergeCommitSha,
+      finished_at: mergedAt,
+    });
+  } else {
+    console.warn(
+      `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}`,
+    );
+  }
+
+  let report: CompressionReport | undefined;
+
+  // 3. Compression Engine (FR-H04, FR-H05)
+  if (phaseId) {
+    try {
+      const featureDir = path.join(projectPath, "specs", featureId);
+      const planPath = path.join(featureDir, "plan.md");
+
+      if (fs.existsSync(planPath)) {
+        const parsedPlan = parsePlan(planPath);
+        const targetPhase = parsedPlan.phases.find((p) => p.id === phaseId);
+
+        if (targetPhase && targetPhase.sp !== undefined) {
+          const config = loadConfig(projectPath);
+          const roleMultipliers = resolveRoleMultipliers(config);
+
+          // Use PE as default role if not specified, or TS
+          const peRole =
+            roleMultipliers.find((r) => r.role === "PE") || roleMultipliers[0];
+          const hoursPerSP = peRole?.hoursPerSP || 1.5;
+          const overheadFactor = 1.25;
+
+          const estimatedHours = targetPhase.sp * hoursPerSP * overheadFactor;
+          const estimatedDays = estimatedHours / 8;
+
+          const forecast: EffortForecast = {
+            totalSP: targetPhase.sp,
+            roles: [{ role: peRole?.role || "PE", sp: targetPhase.sp }],
+            estimatedHours,
+            estimatedDays,
+          };
+
+          const actuals = gatherDeliveryActuals(featureDir);
+          const compression = computeCompression(forecast, actuals);
+
+          report = {
+            featureId,
+            phaseId,
+            generatedAt: new Date().toISOString(),
+            forecast,
+            actuals,
+            compression,
+          };
+
+          recordCompression(report);
+          console.log(
+            `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
+          );
+        }
+      }
+    } catch (err: any) {
+      console.warn(
+        `Failed to calculate compression for ${featureId}: ${err.message}`,
+      );
+    }
+  }
+
+  // 4. Slack Done-Done (FR-H07) - Caller handles this
+  // 5. Branch Cleanup (FR-H08)
+  if (status === "merged" && record.headBranch) {
+    deleteRemoteBranch(projectPath, record.headBranch);
+  }
+
+  return report;
 }

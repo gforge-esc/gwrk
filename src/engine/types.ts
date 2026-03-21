@@ -117,10 +117,10 @@ export interface HarvestRecord {
   mergedAt: string;
   mergedBy: string;
   status: "merged" | "closed";
+  headBranch?: string;
 }
 
 export interface CompressionSummary {
-...
   projectName: string;
   generatedAt: string;
   features: CompressionReport[];

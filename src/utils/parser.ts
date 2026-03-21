@@ -10,6 +10,7 @@ export interface ParsedPhase {
   title: string;
   tasks: ParsedTask[];
   doneWhen: string[];
+  sp?: number;
 }
 
 export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
@@ -20,19 +21,29 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
   const content = fs.readFileSync(planPath, "utf-8");
   const phases: ParsedPhase[] = [];
 
-  // Split by phase headers: "### Phase N: Title"
-  const phaseSections = content.split(/^### Phase /m).slice(1);
+  // Split by phase headers: "## Phase N" or "### Phase N"
+  const phaseSections = content.split(/^#{2,3}\s+Phase\s+/m).slice(1);
 
   for (let index = 0; index < phaseSections.length; index++) {
     const section = phaseSections[index];
     const lines = section.split("\n");
-    const titleLine = lines[0];
-    const colonIndex = titleLine.indexOf(":");
-    let title = "";
-    if (colonIndex !== -1) {
-      title = titleLine.slice(colonIndex + 1).trim();
-    } else {
-      title = titleLine.trim();
+    const headerLine = lines[0];
+
+    // Header format examples:
+    // 1: Title (7 SP)
+    // 1 — Title (7 SP)
+    // 1 — Title
+    
+    // Extract Title
+    let title = headerLine.replace(/^\d+[:\s—-]*/, "").trim();
+    
+    // Extract SP
+    let sp: number | undefined;
+    const spMatch = headerLine.match(/\((\d+(?:\.\d+)?)\s*SP\)/i);
+    if (spMatch) {
+      sp = Number.parseFloat(spMatch[1]);
+      // Remove SP from title if it was there
+      title = title.replace(spMatch[0], "").trim();
     }
 
     const phaseId = `phase-${(index + 1).toString().padStart(2, "0")}`;
@@ -90,6 +101,7 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
       title,
       tasks,
       doneWhen,
+      sp,
     });
   }
 

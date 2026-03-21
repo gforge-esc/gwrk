@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { execSync } from "child_process";
 import fastify from "fastify";
-// @ts-ignore - plugin doesn't exist yet
-import githubWebhooks from "../src/server/github.js";
+import { githubRoutes } from "../src/server/github.js";
 
 describe("TR-H07: Full Harvest E2E Loop", () => {
   it("SC-H02: Comprehensive harvest verification", async () => {
@@ -10,8 +9,10 @@ describe("TR-H07: Full Harvest E2E Loop", () => {
     
     // 2. Trigger webhook
     const server = fastify();
-    // @ts-ignore
-    await server.register(githubWebhooks);
+    await githubRoutes(server, { 
+      config: { server: {} } as any, 
+      projectRoot: process.cwd() 
+    });
     
     const payload = {
       action: "closed",

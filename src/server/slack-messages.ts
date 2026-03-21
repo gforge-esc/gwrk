@@ -1,5 +1,9 @@
 import type { KnownBlock } from "@slack/types";
-import type { PulseReport, PulseSnapshot } from "../engine/types.js";
+import type {
+  CompressionReport,
+  PulseReport,
+  PulseSnapshot,
+} from "../engine/types.js";
 import type { DispatchRecord } from "./types.js";
 
 export interface SlackMessage {
@@ -251,28 +255,63 @@ export const MessageBuilder = {
     return { text, blocks };
   },
 
-  doneDone(featureId: string): SlackMessage {
+  doneDone(featureId: string, report?: CompressionReport): SlackMessage {
     const text = `🏆 Done Done! ${featureId} is shipped.`;
-    return {
-      text,
-      blocks: [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: "🏆 Done Done!",
-            emoji: true,
-          },
+    const blocks: KnownBlock[] = [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: "🏆 Done Done!",
+          emoji: true,
         },
-        {
-          type: "section",
-          text: {
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `Congratulations! *${featureId}* has been fully delivered and merged into the main branch.`,
+        },
+      },
+    ];
+
+    if (report) {
+      blocks.push({
+        type: "section",
+        fields: [
+          {
             type: "mrkdwn",
-            text: `Congratulations! *${featureId}* has been fully delivered and merged into the main branch.`,
+            text: `*Point Compression:* ${report.compression.pointCompression.toFixed(1)}x`,
           },
-        },
-      ],
-    };
+          {
+            type: "mrkdwn",
+            text: `*Total Compression:* ${report.compression.totalCompression.toFixed(1)}x`,
+          },
+          {
+            type: "mrkdwn",
+            text: `*Coding Time:* ${(report.actuals.activeCodingMinutes / 60).toFixed(1)}h`,
+          },
+          {
+            type: "mrkdwn",
+            text: `*Delivery Window:* ${(report.actuals.deliveryWindowHours / 24).toFixed(1)}d`,
+          },
+        ],
+      });
+
+      if (report.actuals.dormancyDays > 0) {
+        blocks.push({
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: `💤 Dormancy: ${report.actuals.dormancyDays} days`,
+            },
+          ],
+        });
+      }
+    }
+
+    return { text, blocks };
   },
 
   batchedSummary(events: { type: string; feature: string }[]): SlackMessage {

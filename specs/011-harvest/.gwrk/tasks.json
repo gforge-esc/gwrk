@@ -32,7 +32,7 @@
           "id": "T003",
           "title": "Implement src/db/compression.ts",
           "description": "NEW: DB access for the `compression` table",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T003-gate.sh",
           "classification": "greenfield"
         },
@@ -40,7 +40,7 @@
           "id": "T004",
           "title": "Implement src/engine/types.ts",
           "description": "MODIFY: Ensure all harvest and compression types are present",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T004-gate.sh",
           "classification": "greenfield"
         },
