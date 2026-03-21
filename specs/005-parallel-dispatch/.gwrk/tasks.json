@@ -65,7 +65,7 @@
           "id": "T006",
           "title": "Implement src/server/dispatch-orchestrator.ts",
           "description": "NEW: Implement `DispatchOrchestrator` for parallel task execution, concurrency management, and 429 backoff.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T006-gate.sh",
           "classification": "greenfield"
         },
