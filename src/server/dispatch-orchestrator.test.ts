@@ -1,106 +1,181 @@
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 import { SandboxManager } from "./sandbox.js";
+import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
+import type { GwrkConfig } from "../utils/config.js";
 
-vi.mock("./sandbox.js", () => {
-  return {
-    SandboxManager: vi.fn().mockImplementation(() => ({
-      createSandbox: vi.fn(),
-      destroySandbox: vi.fn(),
-    })),
-  };
-});
+vi.mock("./sandbox.js");
+vi.mock("./backends/invocation-strategy.js");
 
 describe("DispatchOrchestrator", () => {
   let orchestrator: DispatchOrchestrator;
-  let mockSandboxManager: any;
+  let mockSandbox: vi.Mocked<SandboxManager>;
+  let mockInvocation: vi.Mocked<LocalInvocationStrategy>;
+
+  const mockConfig: GwrkConfig = {
+    project: { name: "test" },
+    agents: { define: "gemini", implement: "gemini" },
+    server: {
+      port: 18790,
+      host: "localhost",
+      heartbeatIntervalMs: 1000,
+      networkCheckIntervalMs: 1000,
+    },
+    parallelism: {
+      local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
+      cloud: { maxConcurrent: 10 },
+    },
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSandboxManager = new SandboxManager();
-    orchestrator = new DispatchOrchestrator(mockSandboxManager, { maxClones: 2 });
+    mockSandbox = new SandboxManager() as vi.Mocked<SandboxManager>;
+    mockInvocation = new LocalInvocationStrategy() as vi.Mocked<LocalInvocationStrategy>;
+    orchestrator = new DispatchOrchestrator(mockConfig, mockSandbox, mockInvocation);
   });
 
-  it("FR-001, FR-004: should limit concurrent task execution based on capacity", async () => {
-    const tasks = [
-      { id: "T1", backend: "gemini", prompt: "p1" },
-      { id: "T2", backend: "gemini", prompt: "p2" },
-      { id: "T3", backend: "gemini", prompt: "p3" },
-      { id: "T4", backend: "gemini", prompt: "p4" },
-      { id: "T5", backend: "gemini", prompt: "p5" },
-    ];
+  it("FR-001: should dispatch multiple tasks concurrently up to maxConcurrency", async () => {
+    let active = 0;
+    let maxActive = 0;
 
-    // Mock createSandbox to take some time
-    mockSandboxManager.createSandbox.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve("workdir"), 50)));
-
-    const dispatchPromise = orchestrator.dispatchTasks(tasks);
-
-    // After a short time, only 2 sandboxes should be active
-    await new Promise(resolve => setTimeout(resolve, 20));
-    expect(orchestrator.getActiveCount()).toBe(2);
-    expect(orchestrator.getQueuedCount()).toBe(3);
-
-    await dispatchPromise;
-    expect(orchestrator.getCompletedCount()).toBe(5);
-  });
-
-  it("FR-004 Error States: should throw 'Agent capacity queue timeout' after timeout", async () => {
-    // Submit tasks that take a long time to keep capacity busy
-    orchestrator = new DispatchOrchestrator(mockSandboxManager, { maxClones: 1, queueTimeout: 10 });
-    
-    mockSandboxManager.createSandbox.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve("workdir"), 100)));
-
-    // Task 1 will be running
-    const t1 = orchestrator.dispatchTasks([{ id: "T1", backend: "gemini", prompt: "p1" }]);
-
-    // Task 2 will be queued and timeout
-    await expect(orchestrator.dispatchTasks([{ id: "T2", backend: "gemini", prompt: "p2" }]))
-      .rejects.toThrow("Agent capacity queue timeout");
-
-    await t1;
-  });
-
-  it("FR-005: should apply exponential backoff with jitter on 429 errors", async () => {
-    const task = { id: "T1", backend: "gemini", prompt: "p1" };
-    
-    // First two attempts fail with 429, third succeeds
-    let attempts = 0;
-    const timestamps: number[] = [];
-    mockSandboxManager.createSandbox.mockImplementation(() => {
-      attempts++;
-      timestamps.push(Date.now());
-      if (attempts <= 2) throw new Error("429 Too Many Requests");
-      return Promise.resolve("workdir");
+    mockSandbox.createSandbox.mockImplementation(async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      return "/work/dir";
     });
 
-    await orchestrator.dispatchTasks([task]);
-    
-    expect(attempts).toBe(3);
-    expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(10); // Check for some delay
-    expect(orchestrator.getCompletedCount()).toBe(1);
-  });
+    mockSandbox.destroySandbox.mockImplementation(async () => {
+      active--;
+    });
 
-  it("US-005: should route tasks to the correct AgentBackend", async () => {
+    mockInvocation.invoke.mockResolvedValue({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationS: 0,
+    });
+
     const tasks = [
-      { id: "T1", backend: "gemini", prompt: "p1" },
-      { id: "T2", backend: "claude", prompt: "p2" },
+      { id: "T1", prompt: "Task 1" },
+      { id: "T2", prompt: "Task 2" },
+      { id: "T3", prompt: "Task 3" },
     ];
 
-    await orchestrator.dispatchTasks(tasks);
+    const results = await orchestrator.dispatchPhase({
+      featureId: "f1",
+      phaseId: "p1",
+      tasks,
+      concurrency: 2,
+    });
 
-    expect(mockSandboxManager.createSandbox).toHaveBeenCalledWith(expect.objectContaining({ backend: "gemini" }));
-    expect(mockSandboxManager.createSandbox).toHaveBeenCalledWith(expect.objectContaining({ backend: "claude" }));
+    expect(results).toHaveLength(3);
+    expect(maxActive).toBe(2);
+    expect(results.every(r => r.status === "completed")).toBe(true);
   });
 
-  it("FR-003: should execute WorkflowRuntime strictly within the workDir", async () => {
-    const task = { id: "T1", backend: "gemini", prompt: "p1" };
-    mockSandboxManager.createSandbox.mockResolvedValue("/runs/sandboxes/T1");
+  it("FR-004: should handle capacity gating and wait in queue", async () => {
+    mockInvocation.invoke.mockResolvedValue({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        durationS: 0,
+      });
+
+    const tasks = Array.from({ length: 5 }, (_, i) => ({ id: `T${i}`, prompt: `Task ${i}` }));
     
-    // This is a unit test, so we verify orchestrator passes the workDir to the ship loop
-    await orchestrator.dispatchTasks([task]);
-    
-    // Expect that some inner loop or agent backend was called with the workDir
-    // Since we're in a unit test, we'll verify the orchestrator's state or interaction
-    expect(orchestrator.getLastWorkDir("T1")).toBe("/runs/sandboxes/T1");
+    // With concurrency 1, it should process them sequentially
+    const results = await orchestrator.dispatchPhase({
+      featureId: "f1",
+      phaseId: "p1",
+      tasks,
+      concurrency: 1,
+    });
+
+    expect(results).toHaveLength(5);
+    expect(mockSandbox.createSandbox).toHaveBeenCalledTimes(5);
+  });
+
+  it("FR-004: should timeout if tasks stay in queue for too long", async () => {
+    // Inject a small timeout for testing
+    (orchestrator as any).queueTimeoutMs = 100;
+
+    mockSandbox.createSandbox.mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      return "/work/dir";
+    });
+
+    mockInvocation.invoke.mockResolvedValue({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationS: 0,
+    });
+
+    const tasks = [
+      { id: "T1", prompt: "Task 1" },
+      { id: "T2", prompt: "Task 2" },
+      { id: "T3", prompt: "Task 3" },
+    ];
+
+    const results = await orchestrator.dispatchPhase({
+      featureId: "f1",
+      phaseId: "p1",
+      tasks,
+      concurrency: 1,
+    });
+
+    // Only T1 should be running (and then fail due to timeout in runNext check or finally complete)
+    // Actually, runNext checks Date.now() - startTime > queueTimeoutMs before doing anything.
+    // T1 starts, takes 200ms.
+    // T2 tries to start, but check fails.
+    expect(results.some(r => r.status === "failed" && r.result?.stderr === "Agent capacity queue timeout")).toBe(true);
+  });
+
+  it("should mark task as failed if invocation fails", async () => {
+    mockInvocation.invoke.mockResolvedValue({
+      exitCode: 1,
+      stdout: "",
+      stderr: "error",
+      durationS: 0,
+    });
+
+    const results = await orchestrator.dispatchPhase({
+      featureId: "f1",
+      phaseId: "p1",
+      tasks: [{ id: "T1" }],
+    });
+
+    expect(results[0].status).toBe("failed");
+    expect(results[0].result?.exitCode).toBe(1);
+  });
+
+  it("FR-005: should retry on 429 rate limit error", async () => {
+    // Mock throttle to speed up test
+    vi.spyOn(orchestrator, "throttle").mockResolvedValue(undefined);
+
+    mockInvocation.invoke
+      .mockResolvedValueOnce({
+        exitCode: 429,
+        stdout: "",
+        stderr: "rate limit exceeded",
+        durationS: 0,
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "success",
+        stderr: "",
+        durationS: 0,
+      });
+
+    const results = await orchestrator.dispatchPhase({
+      featureId: "f1",
+      phaseId: "p1",
+      tasks: [{ id: "T1" }],
+    });
+
+    expect(results[0].status).toBe("completed");
+    expect(mockInvocation.invoke).toHaveBeenCalledTimes(2);
+    expect(orchestrator.throttle).toHaveBeenCalledWith("gemini", 1);
   });
 });

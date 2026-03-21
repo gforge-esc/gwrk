@@ -1,7 +1,6 @@
 import fastify from "fastify";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
-import { ensureDocker } from "./docker.js";
 import { GitManager } from "./git-manager.js";
 import { LifecycleMonitor } from "./lifecycle.js";
 import { SystemMonitor } from "./monitor.js";
@@ -14,6 +13,8 @@ import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
 import { startSlackApp, stopSlackApp } from "./slack.js";
+import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
+import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
 
 export async function startServer(
   config: GwrkConfig,
@@ -32,50 +33,48 @@ export async function startServer(
     process.exit(1);
   }
 
-  // Ensure Docker is available — auto-start if needed
-  await ensureDocker();
-
   const monitor = new SystemMonitor(config);
-  monitor.startPolling();
-  const sandbox = new SandboxManager();
+      monitor.startPolling();
+      const sandbox = new SandboxManager();
 
-  const git = new GitManager(projectRoot);
-  const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
+      const git = new GitManager(projectRoot);
+      const invocationStrategy = new LocalInvocationStrategy();
+      const orchestrator = new DispatchOrchestrator(config, sandbox, invocationStrategy);
+      const queue = new DispatchQueue(config, monitor, sandbox, git, orchestrator, projectRoot);
 
-  const lifecycle = new LifecycleMonitor(config);
-  const network = new NetworkMonitor(config);
+      const lifecycle = new LifecycleMonitor(config);
+      const network = new NetworkMonitor(config);
 
-  const reconnect = async () => {
-    server.log.info("Executing Graceful Reconnect Protocol...");
-    lifecycle.setStatus("degraded");
+      const reconnect = async () => {
+        server.log.info("Executing Graceful Reconnect Protocol...");
+        lifecycle.setStatus("degraded");
 
-    // 1. Re-sample system resources
-    monitor.sample();
+        // 1. Re-sample system resources
+        monitor.sample();
 
-    // 2. Verify Docker daemon reachability
-    const dockerOk = await sandbox.checkDocker();
+        // 2. Verify Git availability
+        const gitOk = await sandbox.checkGit();
 
-    // 3. Verify network connectivity
-    const networkOk = network.isOnline();
+        // 3. Verify network connectivity
+        const networkOk = network.isOnline();
 
-    if (dockerOk && networkOk) {
-      server.log.info("Reconnect successful. Resuming...");
-      lifecycle.setStatus("ready");
-      await sandbox.unpauseAll();
-      queue.resume();
-    } else {
-      server.log.warn(
-        `Reconnect failed. Docker: ${dockerOk}, Network: ${networkOk}`,
-      );
-      lifecycle.setStatus("degraded");
-    }
-  };
+        if (gitOk && networkOk) {
+          server.log.info("Reconnect successful. Resuming...");
+          lifecycle.setStatus("ready");
+          queue.resume();
+        } else {
+          server.log.warn(
+            `Reconnect failed. Git: ${gitOk}, Network: ${networkOk}`,
+          );
+          lifecycle.setStatus("degraded");
+        }
+      };
 
-  lifecycle.on("server:sleep", async () => {
-    server.log.info("Sleep detected. Pausing...");
-    queue.pause();
-    await sandbox.pauseAll();
-  });
+      lifecycle.on("server:sleep", async () => {
+        server.log.info("Sleep detected. Pausing...");
+        queue.pause();
+      });
+
 
   lifecycle.on("server:wake", async () => {
     server.log.info("Wake detected. Waiting for health checks...");
@@ -127,6 +126,9 @@ export async function startServer(
     });
     console.log(`gwrk server listening on ${address}`);
     writePid(process.pid);
+
+    // FR-002: Prune worktrees on startup
+    await sandbox.pruneSandboxes();
 
     // Start Slack if configured
     await startSlackApp({

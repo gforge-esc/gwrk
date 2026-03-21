@@ -1,12 +1,15 @@
-import Docker from "dockerode";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 export class SandboxManager {
-    docker;
-    constructor() {
-        this.docker = new Docker();
+    runsDir;
+    constructor(projectRoot = process.cwd()) {
+        this.runsDir = path.join(projectRoot, ".runs", "sandboxes");
     }
-    async checkDocker() {
+    async checkGit() {
         try {
-            await this.docker.ping();
+            execSync("git --version", { stdio: "ignore" });
             return true;
         }
         catch {
@@ -14,97 +17,115 @@ export class SandboxManager {
         }
     }
     async createSandbox(opts) {
-        const { featureId, phaseId, backend, projectRoot, image = "gwrk-sandbox:bookworm-slim", } = opts;
-        const container = await this.docker.createContainer({
-            Image: image,
-            Labels: {
-                "gwrk.feature": featureId,
-                "gwrk.phase": phaseId,
-                "gwrk.backend": backend,
-                "gwrk.startedAt": new Date().toISOString(),
-            },
-            HostConfig: {
-                Binds: [`${projectRoot}:/workspace`],
-            },
-            Tty: true,
-            // We might want to keep it running for the agent to execute commands
-            Cmd: ["/bin/bash"],
-        });
-        await container.start();
-        return container.id;
+        const { featureId, phaseId, taskId, projectRoot } = opts;
+        const uuid = crypto.randomUUID().slice(0, 8);
+        const sandboxName = `${featureId}-${taskId}-${uuid}`;
+        const workDir = path.join(this.runsDir, sandboxName);
+        const branchName = `sandbox/${sandboxName}`;
+        if (!fs.existsSync(this.runsDir)) {
+            fs.mkdirSync(this.runsDir, { recursive: true });
+        }
+        // Create a new worktree with a new branch
+        // git worktree add -b <new-branch> <path> <base-branch>
+        // We assume the feature branch is current or we should specify it
+        const baseBranch = `feature/${featureId}-wip`;
+        try {
+            execSync(`git worktree add -b ${branchName} ${workDir} ${baseBranch}`, {
+                cwd: projectRoot,
+                stdio: "pipe",
+            });
+        }
+        catch (e) {
+            throw new Error(`Failed to create git worktree: ${e.message}`);
+        }
+        return workDir;
     }
-    async destroySandbox(containerId) {
-        const container = this.docker.getContainer(containerId);
+    async destroySandbox(workDir) {
+        if (!fs.existsSync(workDir))
+            return;
         try {
-            await container.stop();
+            // 1. Push the branch
+            execSync("git push origin HEAD", { cwd: workDir, stdio: "pipe" });
+            // 2. Create PR via gh CLI
+            const branchName = execSync("git rev-parse --abbrev-ref HEAD", {
+                cwd: workDir,
+                encoding: "utf-8",
+            }).trim();
+            // Extract featureId from branchName or workDir if needed for base branch
+            // For now, let's assume we push to the feature branch
+            const featureId = path.basename(workDir).split("-")[0];
+            const baseBranch = `feature/${featureId}-wip`;
+            try {
+                execSync(`gh pr create --base ${baseBranch} --head ${branchName} --title "Task contribution: ${branchName}" --body "Automated PR from gwrk sandbox"`, {
+                    cwd: workDir,
+                    stdio: "pipe",
+                });
+            }
+            catch (e) {
+                // gh pr create might fail if no changes or already exists
+                console.error(`Failed to create PR for ${workDir}: ${e.message}`);
+            }
+            // 3. Remove worktree
+            execSync(`git worktree remove --force ${workDir}`, {
+                cwd: path.dirname(this.runsDir), // main project root
+                stdio: "pipe",
+            });
         }
-        catch {
-            // Container might already be stopped
-        }
-        try {
-            await container.remove();
-        }
-        catch {
-            // Container might already be removed
+        catch (e) {
+            console.error(`Error during sandbox destruction for ${workDir}: ${e.message}`);
+            // Try to cleanup worktree anyway if it failed midway
+            try {
+                execSync(`git worktree remove --force ${workDir}`, {
+                    cwd: path.dirname(this.runsDir),
+                    stdio: "pipe",
+                });
+            }
+            catch {
+                // ignore
+            }
         }
     }
     async listSandboxes() {
-        const containers = (await this.docker.listContainers({
-            all: true,
-            filters: {
-                label: ["gwrk.feature"],
-            },
-        })) || [];
-        return containers.map((c) => ({
-            containerId: c.Id,
-            featureId: c.Labels["gwrk.feature"],
-            phaseId: c.Labels["gwrk.phase"],
-            backend: c.Labels["gwrk.backend"],
-            status: this.mapStateToStatus(c.State),
-            startedAt: c.Labels["gwrk.startedAt"],
-        }));
-    }
-    async pauseAll() {
-        const sandboxes = await this.listSandboxes();
-        for (const sandbox of sandboxes) {
-            if (sandbox.status === "running") {
-                const container = this.docker.getContainer(sandbox.containerId);
-                try {
-                    await container.pause();
+        try {
+            const output = execSync("git worktree list --porcelain", {
+                encoding: "utf-8",
+            });
+            const lines = output.split("\n");
+            const sandboxes = [];
+            let current = {};
+            for (const line of lines) {
+                if (line.startsWith("worktree ")) {
+                    const workDir = line.slice(9);
+                    if (workDir.includes(".runs/sandboxes/")) {
+                        current.workDir = workDir;
+                        const name = path.basename(workDir);
+                        const parts = name.split("-");
+                        current.featureId = parts[0];
+                        current.taskId = parts[1];
+                        current.status = "running";
+                        current.startedAt = new Date().toISOString(); // We don't have exact start time from git
+                    }
                 }
-                catch (e) {
-                    console.error(`Failed to pause container ${sandbox.containerId}:`, e);
+                else if (line.startsWith("branch ") && current.workDir) {
+                    // could extract branch if needed
+                }
+                else if (line === "" && current.workDir) {
+                    sandboxes.push(current);
+                    current = {};
                 }
             }
+            return sandboxes;
+        }
+        catch {
+            return [];
         }
     }
-    async unpauseAll() {
-        const sandboxes = await this.listSandboxes();
-        for (const sandbox of sandboxes) {
-            // In Dockerode, a paused container has status 'paused' but SandboxInfo might map it to something else
-            // Let's check raw state if needed or just try to unpause everything that's not destroyed
-            const container = this.docker.getContainer(sandbox.containerId);
-            try {
-                // We can check the state from listContainers directly if we want to be surgical
-                await container.unpause();
-            }
-            catch (e) {
-                // Might not be paused
-            }
+    async pruneSandboxes() {
+        try {
+            execSync("git worktree prune", { stdio: "pipe" });
         }
-    }
-    mapStateToStatus(state) {
-        switch (state) {
-            case "created":
-                return "creating";
-            case "running":
-            case "paused":
-                return "running";
-            case "exited":
-            case "stopped":
-                return "destroyed";
-            default:
-                return "stopping";
+        catch (e) {
+            console.error(`Failed to prune git worktrees: ${e.message}`);
         }
     }
 }

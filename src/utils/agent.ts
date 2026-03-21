@@ -16,6 +16,7 @@ export interface DispatchOptions {
   prompt?: string;
   approvalMode?: "yolo" | "auto" | "plan";
   contextPath?: string;
+  workDir?: string;
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
@@ -118,6 +119,7 @@ export async function dispatchAgent(
   opts: DispatchOptions,
 ): Promise<{ exitCode: number; logPath: string }> {
   const projectRoot = process.cwd();
+  const executionRoot = opts.workDir || projectRoot;
   const workflowFile = path.resolve(projectRoot, opts.workflowPath);
   const workflowContent = fs.readFileSync(workflowFile, "utf-8");
   const { command, args, stdin } = buildCommand(opts, workflowContent);
@@ -144,13 +146,14 @@ export async function dispatchAgent(
   logStream.write(`# Backend   : ${opts.backend}\n`);
   logStream.write(`# Branch    : ${branch}\n`);
   logStream.write(`# Command   : ${command} ${args.join(" ")}\n`);
+  logStream.write(`# WorkDir   : ${executionRoot}\n`);
   logStream.write("# ────────────────────────────────────────\n\n");
 
   return new Promise((resolve) => {
     const startEpoch = Date.now();
 
     const child = spawn(command, args, {
-      cwd: projectRoot,
+      cwd: executionRoot,
       env: {
         ...process.env,
         ...(opts.contextPath
@@ -293,6 +296,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     workflowPath: task.workflow ?? ".agents/workflows/gwrk-implement.md",
     featureDir: task.featureDir,
     prompt: task.prompt,
+    workDir: task.workDir,
   };
 
   const { exitCode: rawExitCode, logPath } = await dispatchAgent(opts);

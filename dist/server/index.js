@@ -1,12 +1,12 @@
 import fastify from "fastify";
 import { DispatchQueue } from "./dispatch.js";
-import { ensureDocker } from "./docker.js";
 import { GitManager } from "./git-manager.js";
 import { LifecycleMonitor } from "./lifecycle.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import { removePid, writePid } from "./pid.js";
 import { dispatchRoutes } from "./routes/dispatch.js";
+import { githubWebhookPlugin } from "./github.js";
 import { healthRoutes } from "./routes/health.js";
 import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
@@ -17,8 +17,11 @@ export async function startServer(config, options = { handleSignals: true }) {
     const server = fastify({
         logger: true,
     });
-    // Ensure Docker is available — auto-start if needed
-    await ensureDocker();
+    // Fail-fast if GitHub webhook secret is missing (FR-H01, TC-H03)
+    if (!config.server.githubWebhookSecret) {
+        console.error("Missing required configuration: GITHUB_WEBHOOK_SECRET. Run 'gwrk config set server.githubWebhookSecret <secret>' or set the environment variable.");
+        process.exit(1);
+    }
     const monitor = new SystemMonitor(config);
     monitor.startPolling();
     const sandbox = new SandboxManager();
@@ -31,25 +34,23 @@ export async function startServer(config, options = { handleSignals: true }) {
         lifecycle.setStatus("degraded");
         // 1. Re-sample system resources
         monitor.sample();
-        // 2. Verify Docker daemon reachability
-        const dockerOk = await sandbox.checkDocker();
+        // 2. Verify Git availability
+        const gitOk = await sandbox.checkGit();
         // 3. Verify network connectivity
         const networkOk = network.isOnline();
-        if (dockerOk && networkOk) {
+        if (gitOk && networkOk) {
             server.log.info("Reconnect successful. Resuming...");
             lifecycle.setStatus("ready");
-            await sandbox.unpauseAll();
             queue.resume();
         }
         else {
-            server.log.warn(`Reconnect failed. Docker: ${dockerOk}, Network: ${networkOk}`);
+            server.log.warn(`Reconnect failed. Git: ${gitOk}, Network: ${networkOk}`);
             lifecycle.setStatus("degraded");
         }
     };
     lifecycle.on("server:sleep", async () => {
         server.log.info("Sleep detected. Pausing...");
         queue.pause();
-        await sandbox.pauseAll();
     });
     lifecycle.on("server:wake", async () => {
         server.log.info("Wake detected. Waiting for health checks...");
@@ -68,6 +69,7 @@ export async function startServer(config, options = { handleSignals: true }) {
     await healthRoutes(server, lifecycle, network, sandbox);
     await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
     await dispatchRoutes(server, queue);
+    await githubWebhookPlugin(server, { config, projectRoot });
     await notifyRoutes(server);
     const shutdown = async () => {
         server.log.info("Shutting down server...");

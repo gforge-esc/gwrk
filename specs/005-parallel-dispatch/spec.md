@@ -67,10 +67,10 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 - **FR-001**: System MUST provide a `DispatchOrchestrator` that orchestrates multiple tasks within a phase concurrently. It MUST calculate independent tasks based on explicit task dependencies, or default to all tasks in a phase if no dependencies exist. (Implements: US-001)
 - **FR-002**: System MUST create an ephemeral git worktree for each dispatched task (a sandbox). Worktrees are created in `.runs/sandboxes/<feature>-<task>-<uuid>/`. Worktrees are auto-cleaned on `gwrk server start` via `git worktree prune`. Each sandbox pushes a branch and creates a PR against the feature branch via `gh pr create`. F005's lifecycle **ends** when the PR is created and the worktree is cleaned up. (Implements: US-001, US-002)
-- **FR-003**: System MUST invoke the native `DispatchOrchestrator` task-level inner loop (from F004) for each sandbox. The orchestrator MUST catch and execute JSON Intents emitted by the `WorkflowRuntime` strictly within the explicitly provided `workDir`, ensuring parallel modifications do not collide. (Implements: US-001)
+- **FR-003**: System MUST invoke `dispatchToAgent(TaskDispatch)` (F004 §FR-019) for each sandbox, passing the sandbox `workDir` as the execution directory. Each task's agent process MUST execute strictly within the provided `workDir`, ensuring parallel modifications do not collide. F005 does NOT implement `WorkflowRuntime` or `AgentBackend` interfaces — those are F014 P3 scope. (Implements: US-001)
 - **FR-004**: System MUST enforce a per-backend `maxConcurrent` capacity gate. Tasks exceeding the gate MUST wait in a queue. Default: `local.maxClones: 2`, `cloud.maxConcurrent: 3`. (Implements: US-004)
 - **FR-005**: System MUST catch HTTP 429 logic globally or instruct the single-task loop to apply exponential backoff + jitter, returning the sandbox to a suspended state if needed. (Implements: US-004)
-- **FR-006**: System MUST support dispatch to any registered `AgentBackend` adapter with `dispatchMode: local-cli`. Local CLI agents execute via sub-processes in worktree sandboxes. Cloud agents (`github-integration`) are deferred to Tier 3 and MUST NOT be implemented in F005 Phase 1 (see F014 FR-L1-007). (Implements: US-005)
+- **FR-006**: System MUST support dispatch to any configured `AgentBackend` (string enum: `'gemini' | 'claude' | 'codex' | 'codex-cloud'`) via the existing `dispatchToAgent(TaskDispatch)` facade. F005 does NOT create the `AgentBackend` object interface — that is F014 P3 scope. F005 passes the backend name through `TaskDispatch.agent`. Local CLI agents execute via sub-processes in worktree sandboxes. Cloud agents (`github-integration`) are deferred to Tier 3 (see F014 FR-L1-007). (Implements: US-005)
 
 #### FR-004 Error States
 | Condition | stderr contains | Exit code |
@@ -96,25 +96,32 @@ The orchestrator MUST maintain an in-memory/disk-persisted state of the queue.
 
 ### DM-002: TaskDispatch / TaskResult (ADR-006)
 
+These types **already exist** in `src/utils/agent.ts` (shipped in F004 §FR-019/020/021). F005 consumes them as-is via `dispatchToAgent(TaskDispatch): Promise<TaskResult>`.
+
 ```typescript
-// Input to AgentBackend.dispatch()
+// Input to dispatchToAgent() — already shipped in src/utils/agent.ts
 interface TaskDispatch {
-  prompt: string;
-  agent: string;              // AgentBackend name
-  workDir: string;            // Worktree sandbox path
-  stdin: string;              // Context delivery (required)
+  prompt?: string;
+  agent?: AgentBackend | string;  // String enum: 'gemini' | 'claude' | 'codex' | 'codex-cloud'
+  workDir?: string;               // Worktree sandbox path — F005 MUST set this
+  stdin?: string;                 // Context delivery
   env?: Record<string, string>;
+  workflow?: string;              // Workflow path (default: gwrk-implement.md)
+  featureDir?: string;
 }
 
-// Output from AgentBackend.parseResult()
+// Output from dispatchToAgent() — already shipped in src/utils/agent.ts
 interface TaskResult {
-  exitCode: 0 | 1 | 2 | 127;
-  errorType?: string;         // e.g., 'turn_limit', 'usage_error'
+  exitCode: number;               // Normalized: 0/1/2/127 (FR-020)
+  errorType?: string;             // e.g., 'turn_limit', 'usage_error'
   stdout: string;
   stderr: string;
   durationS: number;
+  logPath?: string;
 }
 ```
+
+> **Integration note:** When F014 P3 ships, `dispatchToAgent()` internals will be replaced by `pluginRegistry.getAgentBackend().dispatch()` — F005 code requires no changes.
 
 ---
 

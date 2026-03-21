@@ -6,17 +6,17 @@ export declare const WeeklyBucketSchema: z.ZodObject<{
     added: z.ZodNumber;
     deleted: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
-    added: number;
-    deleted: number;
     weekStart: string;
     totalMain: number;
     totalDrafts: number;
+    added: number;
+    deleted: number;
 }, {
-    added: number;
-    deleted: number;
     weekStart: string;
     totalMain: number;
     totalDrafts: number;
+    added: number;
+    deleted: number;
 }>;
 export type WeeklyBucket = z.infer<typeof WeeklyBucketSchema>;
 export declare const PulseSnapshotSchema: z.ZodObject<{
@@ -33,17 +33,17 @@ export declare const PulseSnapshotSchema: z.ZodObject<{
         added: z.ZodNumber;
         deleted: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        added: number;
-        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
+        added: number;
+        deleted: number;
     }, {
-        added: number;
-        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
+        added: number;
+        deleted: number;
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     repoPath: string;
@@ -53,11 +53,11 @@ export declare const PulseSnapshotSchema: z.ZodObject<{
     mainLoc: number;
     draftLoc: number;
     weeklyBuckets: {
-        added: number;
-        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
+        added: number;
+        deleted: number;
     }[];
 }, {
     repoPath: string;
@@ -67,11 +67,11 @@ export declare const PulseSnapshotSchema: z.ZodObject<{
     mainLoc: number;
     draftLoc: number;
     weeklyBuckets: {
-        added: number;
-        deleted: number;
         weekStart: string;
         totalMain: number;
         totalDrafts: number;
+        added: number;
+        deleted: number;
     }[];
 }>;
 export type PulseSnapshot = z.infer<typeof PulseSnapshotSchema>;
@@ -102,17 +102,17 @@ export declare const PulseReportSchema: z.ZodObject<{
             added: z.ZodNumber;
             deleted: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
-            added: number;
-            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
+            added: number;
+            deleted: number;
         }, {
-            added: number;
-            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
+            added: number;
+            deleted: number;
         }>, "many">;
     }, "strip", z.ZodTypeAny, {
         repoPath: string;
@@ -122,11 +122,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
-            added: number;
-            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
+            added: number;
+            deleted: number;
         }[];
     }, {
         repoPath: string;
@@ -136,11 +136,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
-            added: number;
-            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
+            added: number;
+            deleted: number;
         }[];
     }>, "many">;
     specProgress: z.ZodObject<{
@@ -163,11 +163,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
-            added: number;
-            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
+            added: number;
+            deleted: number;
         }[];
     }[];
     specProgress: {
@@ -184,11 +184,11 @@ export declare const PulseReportSchema: z.ZodObject<{
         mainLoc: number;
         draftLoc: number;
         weeklyBuckets: {
-            added: number;
-            deleted: number;
             weekStart: string;
             totalMain: number;
             totalDrafts: number;
+            added: number;
+            deleted: number;
         }[];
     }[];
     specProgress: {
@@ -258,10 +258,86 @@ export interface EffortForecast {
 }
 export interface CompressionReport {
     featureId: string;
+    phaseId?: string;
     generatedAt: string;
     forecast: EffortForecast;
     actuals: DeliveryActuals;
     compression: CompressionRatios;
+}
+export declare const HarvestPayloadSchema: z.ZodObject<{
+    featureId: z.ZodString;
+    phaseId: z.ZodOptional<z.ZodString>;
+    prNumber: z.ZodNumber;
+    mergeCommitSha: z.ZodString;
+    mergedAt: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    featureId: string;
+    prNumber: number;
+    mergeCommitSha: string;
+    mergedAt: string;
+    phaseId?: string | undefined;
+}, {
+    featureId: string;
+    prNumber: number;
+    mergeCommitSha: string;
+    mergedAt: string;
+    phaseId?: string | undefined;
+}>;
+export type HarvestPayload = z.infer<typeof HarvestPayloadSchema>;
+export declare const CompressionRecordSchema: z.ZodObject<{
+    featureId: z.ZodString;
+    phaseId: z.ZodOptional<z.ZodString>;
+    estimatedHours: z.ZodNumber;
+    actualCodingHours: z.ZodNumber;
+    estimatedDays: z.ZodNumber;
+    actualDeliveryDays: z.ZodNumber;
+    pointCompression: z.ZodNumber;
+    totalCompression: z.ZodNumber;
+    dormancyDays: z.ZodNumber;
+    firstImplCommit: z.ZodString;
+    mergeTimestamp: z.ZodString;
+    sessionCount: z.ZodNumber;
+    recordedAt: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    featureId: string;
+    estimatedHours: number;
+    actualCodingHours: number;
+    estimatedDays: number;
+    actualDeliveryDays: number;
+    pointCompression: number;
+    totalCompression: number;
+    dormancyDays: number;
+    firstImplCommit: string;
+    mergeTimestamp: string;
+    sessionCount: number;
+    phaseId?: string | undefined;
+    recordedAt?: string | undefined;
+}, {
+    featureId: string;
+    estimatedHours: number;
+    actualCodingHours: number;
+    estimatedDays: number;
+    actualDeliveryDays: number;
+    pointCompression: number;
+    totalCompression: number;
+    dormancyDays: number;
+    firstImplCommit: string;
+    mergeTimestamp: string;
+    sessionCount: number;
+    phaseId?: string | undefined;
+    recordedAt?: string | undefined;
+}>;
+export type CompressionRecord = z.infer<typeof CompressionRecordSchema>;
+export interface HarvestRecord {
+    featureId: string;
+    phaseId?: string;
+    prNumber: number;
+    prUrl: string;
+    mergeCommitSha: string;
+    mergedAt: string;
+    mergedBy: string;
+    status: "merged" | "closed";
+    headBranch?: string;
 }
 export interface CompressionSummary {
     projectName: string;

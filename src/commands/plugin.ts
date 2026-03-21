@@ -4,7 +4,7 @@ import os from "node:os";
 import { parse, stringify } from "yaml";
 import { Command } from "commander";
 import { PluginLoader, PluginNotFoundError, ManifestValidationError } from "../plugins/loader.js";
-import { AnyManifestSchema } from "../plugins/manifest.js";
+import { AnyManifestSchema, type PluginBase } from "../plugins/manifest.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
 
@@ -28,7 +28,7 @@ export async function installPlugin(sourcePath: string, options: { force?: boole
     throw new ManifestValidationError(path.basename(sourcePath), result.error.message);
   }
 
-  const manifest = result.data;
+  const manifest = result.data as PluginBase;
   const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
   const targetTypeDir = manifest.type === 'skill' ? 'skills' : 
                         manifest.type === 'agent' ? 'agents' : 
@@ -139,7 +139,7 @@ export async function togglePlugin(name: string, enabled: boolean) {
   const loader = new PluginLoader();
   const plugin = await loader.resolvePlugin(name);
 
-  if (plugin.manifest.type === 'skill' || plugin.manifest.type === 'agent' || plugin.manifest.type === 'channel') {
+  if (plugin.manifest.type === 'skill' || plugin.manifest.type === 'agent') {
     if (!enabled) throw new Error(`${plugin.manifest.type === 'skill' ? 'Skills' : plugin.manifest.type + 's'} are global-only and cannot be disabled per-project.`);
   }
 

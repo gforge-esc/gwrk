@@ -25,7 +25,7 @@ export interface HealthResponse {
   status: "ok" | "degraded";
   components: {
     server: ComponentHealth;
-    docker: ComponentHealth;
+    git: ComponentHealth;
     network: ComponentHealth;
     slack: ComponentHealth;
   };
@@ -41,19 +41,31 @@ export interface DispatchAttempt {
   runId?: number;
 }
 
+export interface TaskRecord {
+  id: string;                // e.g., "T001"
+  status: "pending" | "running" | "completed" | "failed";
+  sandboxDir: string;        // Path to git worktree: .runs/sandboxes/<feature>-<task>-<uuid>
+  backend: AgentBackend;
+  startedAt?: string;
+  completedAt?: string;
+  exitCode?: number;
+  error?: string;            // Capture stderr or error messages
+}
+
 export interface DispatchRecord {
   id: string;
   featureId: string;
   phaseId: string;
   backend: AgentBackend;
   status: DispatchStatus;
-  containerId?: string;
   branchName: string;
   attempts: DispatchAttempt[];
+  tasks: TaskRecord[];       // NEW: Parallel tasks within this phase
   createdAt: string;
   completedAt?: string;
   prUrl?: string;
   prNumber?: number;
+  workDir?: string;          // Keep workDir for backward compatibility if needed, though data-model doesn't show it for phase record
 }
 
 export interface SystemResources {
@@ -63,14 +75,13 @@ export interface SystemResources {
 }
 
 export interface SandboxInfo {
-  containerId: string;
+  workDir: string;
+  taskId: string;
   featureId: string;
   phaseId: string;
   backend: AgentBackend;
   status: "creating" | "running" | "stopping" | "destroyed";
   startedAt: string;
-  cpuPercent?: number;
-  memMb?: number;
 }
 
 export interface SystemStatus {

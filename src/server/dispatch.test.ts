@@ -5,6 +5,7 @@ import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { SystemMonitor } from "./monitor.js";
 import { SandboxManager } from "./sandbox.js";
+import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +15,7 @@ vi.mock("./sandbox.js");
 vi.mock("./git-manager.js");
 vi.mock("./persistence.js");
 vi.mock("./slack-notify.js");
+vi.mock("./dispatch-orchestrator.js");
 vi.mock("./context.js", () => ({
   compileContext: vi.fn().mockReturnValue("mock context"),
 }));
@@ -27,10 +29,11 @@ describe("DispatchQueue", () => {
   let mockMonitor: vi.Mocked<SystemMonitor>;
   let mockSandbox: vi.Mocked<SandboxManager>;
   let mockGit: vi.Mocked<GitManager>;
+  let mockOrchestrator: vi.Mocked<DispatchOrchestrator>;
   let tempDir: string;
   const mockConfig: GwrkConfig = {
     project: { name: "test" },
-    agents: { define: "gemini", implement: "codex-cloud" },
+    agents: { define: "gemini", implement: "gemini" },
     server: {
       port: 18790,
       host: "localhost",
@@ -47,13 +50,18 @@ describe("DispatchQueue", () => {
     vi.clearAllMocks();
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-dispatch-test-"));
     mockMonitor = new SystemMonitor() as vi.Mocked<SystemMonitor>;
-    mockSandbox = new SandboxManager() as vi.Mocked<SandboxManager>;
+    mockSandbox = new SandboxManager(tempDir) as vi.Mocked<SandboxManager>;
     mockGit = new GitManager(tempDir) as vi.Mocked<GitManager>;
+    mockOrchestrator = new DispatchOrchestrator() as vi.Mocked<DispatchOrchestrator>;
+    
+    mockOrchestrator.dispatchPhase.mockResolvedValue([]);
+
     queue = new DispatchQueue(
       mockConfig,
       mockMonitor,
       mockSandbox,
       mockGit,
+      mockOrchestrator,
       tempDir,
     );
   });
@@ -64,30 +72,32 @@ describe("DispatchQueue", () => {
 
   it("should enqueue a dispatch request", () => {
     mockMonitor.isThrottled.mockReturnValue(true);
-    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
     expect(record.status).toBe("queued");
     expect(queue.getQueueDepth()).toBe(1);
   });
 
   it("should process next if not throttled", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("container-1");
+    mockOrchestrator.dispatchPhase.mockResolvedValue([{ id: "T1", status: "completed", sandboxDir: "workdir-1", backend: "gemini" }]);
 
-    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
 
     // Wait for it to move to active
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (queue.getCompletedCount() !== 1) throw new Error("Not completed yet");
     });
 
     expect(queue.getQueueDepth()).toBe(0);
-    expect(mockSandbox.createSandbox).toHaveBeenCalled();
+    expect(mockOrchestrator.dispatchPhase).toHaveBeenCalledWith(expect.objectContaining({
+      tasks: [expect.objectContaining({ id: "T1" })]
+    }));
   });
 
   it("should not process next if throttled", async () => {
     mockMonitor.isThrottled.mockReturnValue(true);
 
-    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
 
     // Wait a bit to ensure it doesn't process
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -98,28 +108,25 @@ describe("DispatchQueue", () => {
 
   it("should handle successful completion", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("container-1");
+    mockOrchestrator.dispatchPhase.mockResolvedValue([{ id: "T1", status: "completed", sandboxDir: "workdir-1", backend: "gemini" }]);
 
-    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
 
-    // Wait for it to move to active
+    // Wait for it to complete
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.status !== "completed") throw new Error("Not completed yet");
     });
-
-    await queue.handleCompletion(record.id, 0, "");
 
     expect(record.status).toBe("completed");
     expect(queue.getActiveCount()).toBe(0);
     expect(mockGit.mergePhaseBack).toHaveBeenCalledWith("feat-1", "phase-1");
-    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith("container-1");
   });
 
   it("should retry if exit code is non-zero and attempts < 3", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("container-1");
+    mockSandbox.createSandbox.mockResolvedValue("workdir-1");
 
-    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
 
     // Wait for it to move to active
     await vi.waitFor(() => {
@@ -137,63 +144,39 @@ describe("DispatchQueue", () => {
 
   it("should escalate if attempts >= 3", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("container-1");
+    mockOrchestrator.dispatchPhase.mockResolvedValue([{ id: "T1", status: "failed", sandboxDir: "workdir-1", backend: "codex-cloud", exitCode: 1 }]);
 
-    // Config implement: codex-cloud (last in fallback order)
-    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    // Config implement: gemini (fallback order will move through it)
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1", backend: "codex-cloud" });
 
-    // Attempt 1
+    // Attempt 1 (Automatically triggered by enqueue -> processNext -> runDispatch -> orchestrator -> handleCompletion)
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.attempts.length < 1) throw new Error("Attempt 1 not recorded");
     });
-    await queue.handleCompletion(record.id, 1, "error");
 
     // Attempt 2
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.attempts.length < 2) throw new Error("Attempt 2 not recorded");
     });
-    await queue.handleCompletion(record.id, 1, "error");
 
     // Attempt 3
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.attempts.length < 3) throw new Error("Attempt 3 not recorded");
     });
-    // Final failure should not be throttled to see 'failed' status immediately
-    await queue.handleCompletion(record.id, 1, "error");
+
+    // Final failure
+    await vi.waitFor(() => {
+      if (record.status !== "failed") throw new Error("Not failed yet");
+    });
 
     expect(record.status).toBe("failed");
     expect(queue.getCompletedCount()).toBe(0);
     expect(queue.getFailedCount()).toBe(1);
   });
 
-  it("should process multiple tasks within a phase concurrently", async () => {
-    mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("workdir-1");
-
-    // In 005, a phase dispatch request should be able to contain tasks
-    queue.enqueue({ 
-      featureId: "feat-1", 
-      phaseId: "phase-1",
-      tasks: [
-        { id: "T1", prompt: "Task 1" },
-        { id: "T2", prompt: "Task 2" }
-      ]
-    });
-
-    // Wait for both tasks to move to active sandboxes
-    await vi.waitFor(() => {
-      // In 005, we check for active sandboxes, not just active phases
-      if (queue.getDispatch("feat-1", "phase-1")?.activeSandboxes?.length !== 2) {
-        throw new Error("Tasks not active yet");
-      }
-    });
-
-    expect(mockSandbox.createSandbox).toHaveBeenCalledTimes(2);
-  });
-
   it("should return correct queue status", () => {
     mockMonitor.isThrottled.mockReturnValue(true);
-    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
+    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
 
     const status = queue.getQueue();
     expect(status.throttled).toBe(true);
@@ -203,11 +186,11 @@ describe("DispatchQueue", () => {
 
   it("should get dispatch by feature and phase", () => {
     mockMonitor.isThrottled.mockReturnValue(true);
-    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1" });
-    const found = queue.getDispatch("feat-1", "phase-1");
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
+    const found = queue.getDispatch("feat-1", "phase-1", "T1");
     expect(found).toBe(record);
 
-    const notFound = queue.getDispatch("feat-2", "phase-1");
+    const notFound = queue.getDispatch("feat-2", "phase-1", "T1");
     expect(notFound).toBeNull();
   });
 });

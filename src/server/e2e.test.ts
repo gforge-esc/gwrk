@@ -20,6 +20,8 @@ import { healthRoutes } from "../server/routes/health.js";
 import { statusRoutes } from "../server/routes/status.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { loadConfig } from "../utils/config.js";
+import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
+import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
 
 describe("Build Server E2E", () => {
   let server: FastifyInstance;
@@ -41,7 +43,9 @@ describe("Build Server E2E", () => {
     lifecycle = new LifecycleMonitor(config);
     network = new NetworkMonitor(config);
 
-    queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
+    const invocationStrategy = new LocalInvocationStrategy();
+    const orchestrator = new DispatchOrchestrator(config, sandbox, invocationStrategy);
+    queue = new DispatchQueue(config, monitor, sandbox, git, orchestrator, projectRoot);
 
     // Register all routes — match exact signatures from index.ts
     await dispatchRoutes(server, queue);
@@ -70,7 +74,7 @@ describe("Build Server E2E", () => {
       expect(body.components).toBeDefined();
       expect(body.components.server).toBeDefined();
       expect(body.components.server.status).toMatch(/^(ok|degraded)$/);
-      expect(body.components.docker).toBeDefined();
+      expect(body.components.git).toBeDefined();
       expect(body.components.network).toBeDefined();
     });
   });

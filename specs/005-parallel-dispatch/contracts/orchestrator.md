@@ -18,15 +18,21 @@ Executes all tasks in a phase in parallel where possible.
   - Updates `TaskRecord` statuses.
   - Merges completed tasks back via PRs (managed by F004 Ship Loop per-task).
 
-#### `calculateConcurrencyLimit(backend: AgentBackend): number`
-Determines the current allowed concurrency for the specified backend.
+#### `calculateConcurrencyLimit(backend: string): number`
+Determines the current allowed concurrency for the specified backend (using `parallelism.local.maxClones` or `parallelism.cloud.maxConcurrent` from `.gwrkrc.json`).
 
-- **Returns:** `number` (e.g., `local.maxClones` or `cloud.maxConcurrent`)
+- **Parameters:** `backend: string` — AgentBackend name (e.g., `'gemini'`, `'claude'`)
+- **Returns:** `number`
 
-#### `throttle(backend: AgentBackend): Promise<void>`
-Applies exponential backoff with jitter on 429 errors.
+#### `throttle(backend: string): Promise<void>`
+Applies exponential backoff with jitter on 429/rate-limit errors.
 
-- **Parameters:** `backend: AgentBackend`
+- **Parameters:** `backend: string` — AgentBackend name
+
+## Integration Surface
+
+- **Dispatch:** Each task is executed via `dispatchToAgent(TaskDispatch)` from `src/utils/agent.ts` (F004 §FR-019). The orchestrator sets `TaskDispatch.workDir` to the sandbox path.
+- **Backends:** `AgentBackend` is a string enum (`'gemini' | 'claude' | 'codex' | 'codex-cloud'`) from `src/utils/config.ts`. F005 does NOT create the object `AgentBackend` interface — that is F014 P3 scope.
 
 ## Invariants
 

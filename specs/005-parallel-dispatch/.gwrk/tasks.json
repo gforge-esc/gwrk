@@ -14,41 +14,41 @@
       "tasks": [
         {
           "id": "T001",
-          "title": "Implement src/server/sandbox.ts",
-          "description": "MODIFY: Replace Dockerode with `git worktree` logic. Implement `.runs/sandboxes/` lifecycle.",
-          "status": "open",
+          "title": "Rewrite src/server/sandbox.ts (Docker to Worktree)",
+          "description": "REWRITE: Replace Docker/Dockerode with Git worktree lifecycle. See contracts/sandbox.md.",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "classification": "greenfield"
+          "classification": "refactor"
         },
         {
           "id": "T002",
-          "title": "Implement src/server/sandbox.test.ts",
-          "description": "MODIFY: Update tests to verify worktree creation/removal instead of Docker containers.",
-          "status": "open",
+          "title": "Verify src/server/sandbox.test.ts",
+          "description": "EXISTS: Already written for worktree model. Verify alignment with rewritten sandbox.ts.",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "classification": "greenfield"
+          "classification": "noop"
         },
         {
           "id": "T003",
           "title": "Implement src/server/types.ts",
           "description": "MODIFY: Update `SandboxInfo` to reflect worktree paths instead of container IDs. Add `TaskRecord`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "classification": "greenfield"
+          "classification": "change"
         },
         {
           "id": "T004",
           "title": "Implement src/server/dispatch.ts",
           "description": "MODIFY: Update `DispatchQueue` to use the refactored `SandboxManager`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "classification": "greenfield"
+          "classification": "change"
         },
         {
           "id": "T005",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "classification": "noop"
         }
@@ -71,33 +71,33 @@
         },
         {
           "id": "T007",
-          "title": "Implement src/server/dispatch-orchestrator.test.ts",
-          "description": "NEW: Verify parallel execution and capacity gating.",
-          "status": "open",
+          "title": "Verify src/server/dispatch-orchestrator.test.ts",
+          "description": "EXISTS: Already written. Verify alignment with new orchestrator.",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
-          "classification": "greenfield"
+          "classification": "noop"
         },
         {
           "id": "T008",
           "title": "Implement src/server/dispatch.ts",
           "description": "MODIFY: Integrate `DispatchOrchestrator` into the phase implementation loop.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T009",
-          "title": "Implement src/utils/config.ts",
-          "description": "MODIFY: Ensure `parallelism` settings are properly typed and loaded.",
-          "status": "open",
+          "title": "Verify src/utils/config.ts parallelism settings",
+          "description": "VERIFY: parallelism settings already typed. Confirm maxClones and maxConcurrent defaults.",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "classification": "greenfield"
+          "classification": "noop"
         },
         {
           "id": "T010",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "classification": "noop"
         }

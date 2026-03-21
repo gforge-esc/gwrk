@@ -28,6 +28,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         status: "running", // default
         branchName: payload.branch || "main",
         attempts: [],
+        tasks: [], // Notification doesn't need task list for minimal message
         createdAt: new Date().toISOString(),
         prUrl: payload.prUrl,
         prNumber: payload.prNumber,

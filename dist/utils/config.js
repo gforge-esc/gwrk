@@ -28,6 +28,7 @@ export const GwrkConfigSchema = z.object({
         .object({
         port: z.number().int().min(0).max(65535),
         host: z.string().min(1),
+        githubWebhookSecret: z.string().optional(),
         heartbeatIntervalMs: z.number().int().min(100).default(30000),
         networkCheckIntervalMs: z.number().int().min(100).default(60000),
         slack: z
@@ -76,6 +77,11 @@ export const GwrkConfigSchema = z.object({
             maxConcurrent: 10,
         },
     }),
+    plugins: z
+        .object({
+        globalDir: z.string().optional(),
+    })
+        .optional(),
     pulse: z
         .object({
         repos: z.array(z.string().min(1)),
@@ -95,6 +101,11 @@ export function loadConfig(projectRoot) {
     catch (error) {
         console.error("Configuration error: invalid JSON");
         process.exit(1);
+    }
+    // Inject environment variables into the raw object before parsing
+    if (process.env.GITHUB_WEBHOOK_SECRET) {
+        raw.server = raw.server ?? {};
+        raw.server.githubWebhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
     }
     const result = GwrkConfigSchema.safeParse(raw);
     if (!result.success) {
