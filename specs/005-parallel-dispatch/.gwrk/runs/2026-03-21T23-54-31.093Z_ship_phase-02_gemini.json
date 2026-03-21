@@ -1,0 +1,25 @@
+{
+  "runId": "2026-03-21T23:54:31.093Z_ship_p02",
+  "feature": "005-parallel-dispatch",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-21T23:54:31.093Z",
+  "finishedAt": "2026-03-21T23:54:45.410Z",
+  "durationS": 14,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 30,
+  "linesDeleted": 2,
+  "gitCommit": "c4257ba50015631d7b91f4dcc09df94f5217a217",
+  "gitBranch": "feat/005-parallel-dispatch",
+  "digest": [
+    "BRANCH_SETUP: FAILED — branch setup exited 1 [2026-03-21T15:46:32-0600]",
+    "BRANCH_SETUP: created/checked-out feat/005-parallel-dispatch (0s) [2026-03-21T17:54:31-0600]",
+    "PRE_FLIGHT: all gates pass, skip implementation [2026-03-21T17:54:31-0600]",
+    "CODE_REVIEW: GO — all assertions satisfied [2026-03-21T17:54:37-0600]",
+    "UAT_REVIEW: GO — UAT assertions satisfied [2026-03-21T17:54:40-0600]"
+  ]
+}
