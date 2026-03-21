@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Rewrite src/server/sandbox.ts (Docker to Worktree)",
           "description": "REWRITE: Replace Docker/Dockerode with Git worktree lifecycle. See contracts/sandbox.md.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "classification": "refactor"
         },
@@ -24,7 +24,7 @@
           "id": "T002",
           "title": "Verify src/server/sandbox.test.ts",
           "description": "EXISTS: Already written for worktree model. Verify alignment with rewritten sandbox.ts.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "classification": "noop"
         },
@@ -32,7 +32,7 @@
           "id": "T003",
           "title": "Implement src/server/types.ts",
           "description": "MODIFY: Update `SandboxInfo` to reflect worktree paths instead of container IDs. Add `TaskRecord`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "classification": "change"
         },
@@ -40,7 +40,7 @@
           "id": "T004",
           "title": "Implement src/server/dispatch.ts",
           "description": "MODIFY: Update `DispatchQueue` to use the refactored `SandboxManager`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "classification": "change"
         },
@@ -48,7 +48,7 @@
           "id": "T005",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "classification": "noop"
         }

@@ -142,6 +142,7 @@ async function shipPhase(
     status: "running",
     branchName: getCurrentBranch(cwd),
     attempts: [{ attemptNumber: 1, backend: backend, startedAt }],
+    tasks: [], // Phase-level record for sequential ship doesn't track sub-tasks here yet
     createdAt: startedAt,
   };
 

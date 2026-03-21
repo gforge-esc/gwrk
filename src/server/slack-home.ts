@@ -53,7 +53,7 @@ export async function buildHomeTab(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `• *${sb.featureId}* (${sb.phaseId}) - \`${sb.backend}\` [${sb.status}]\n  CPU: ${sb.cpuPercent?.toFixed(1) || 0}% | Mem: ${sb.memMb || 0}MB`,
+          text: `• *${sb.featureId}* (${sb.phaseId}) - \`${sb.backend}\` [${sb.status}]\n  Task: \`${sb.taskId}\``,
         },
       });
     }

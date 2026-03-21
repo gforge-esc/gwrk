@@ -9,7 +9,7 @@ import type { CompressionReport } from "../engine/types.js";
 export interface CompressionRecord {
   id?: number;
   feature_id: string;
-  phase_id: string;
+  phase_id?: string;
   estimated_hours: number;
   actual_coding_hours: number;
   estimated_days: number;
@@ -34,7 +34,7 @@ export function recordCompression(
   
   const record: CompressionRecord = {
     feature_id: report.featureId,
-    phase_id: report.phaseId,
+    phase_id: report.phaseId || "all",
     estimated_hours: report.forecast.estimatedHours,
     actual_coding_hours: report.actuals.activeCodingMinutes / 60,
     estimated_days: report.forecast.estimatedDays,

@@ -101,7 +101,7 @@ export interface EffortForecast {
 }
 export interface CompressionReport {
   featureId: string;
-  phaseId: string;
+  phaseId?: string;
   generatedAt: string;
   forecast: EffortForecast;
   actuals: DeliveryActuals;

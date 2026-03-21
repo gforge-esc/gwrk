@@ -106,7 +106,7 @@ function printStatus(status: SystemStatus) {
     console.log(`\n  ${CYAN}Active Sandboxes${RESET}`);
     for (const sb of sandboxes) {
       console.log(
-        `    ${DIM}${sb.containerId.substring(0, 12)}${RESET} | ${sb.featureId} | ${sb.phaseId} | ${sb.status}`,
+        `    ${DIM}${sb.taskId.padEnd(12)}${RESET} | ${sb.featureId} | ${sb.phaseId} | ${sb.status}`,
       );
     }
   }

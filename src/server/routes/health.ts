@@ -12,7 +12,7 @@ export async function healthRoutes(
   sandbox: SandboxManager,
 ) {
   server.get("/health", async (): Promise<HealthResponse> => {
-    const dockerOk = await sandbox.checkDocker();
+    const gitOk = await sandbox.checkGit();
     const networkOk = network.isOnline();
     const slackOk = await isSlackConnected();
     const lifecycleStatus = lifecycle.getStatus();
@@ -21,8 +21,8 @@ export async function healthRoutes(
       server: {
         status: lifecycleStatus === "degraded" ? "degraded" : "ok",
       } as const,
-      docker: {
-        status: dockerOk ? "ok" : "unavailable",
+      git: {
+        status: gitOk ? "ok" : "unavailable",
       } as const,
       network: {
         status: networkOk ? "ok" : "unavailable",
@@ -34,7 +34,7 @@ export async function healthRoutes(
 
     const overallStatus =
       components.server.status === "ok" &&
-      components.docker.status === "ok" &&
+      components.git.status === "ok" &&
       components.network.status === "ok" &&
       components.slack.status === "ok"
         ? "ok"
