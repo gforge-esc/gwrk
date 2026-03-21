@@ -149,4 +149,33 @@ describe("DispatchOrchestrator", () => {
     expect(results[0].status).toBe("failed");
     expect(results[0].result?.exitCode).toBe(1);
   });
+
+  it("FR-005: should retry on 429 rate limit error", async () => {
+    // Mock throttle to speed up test
+    vi.spyOn(orchestrator, "throttle").mockResolvedValue(undefined);
+
+    mockInvocation.invoke
+      .mockResolvedValueOnce({
+        exitCode: 429,
+        stdout: "",
+        stderr: "rate limit exceeded",
+        durationS: 0,
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "success",
+        stderr: "",
+        durationS: 0,
+      });
+
+    const results = await orchestrator.dispatchPhase({
+      featureId: "f1",
+      phaseId: "p1",
+      tasks: [{ id: "T1" }],
+    });
+
+    expect(results[0].status).toBe("completed");
+    expect(mockInvocation.invoke).toHaveBeenCalledTimes(2);
+    expect(orchestrator.throttle).toHaveBeenCalledWith("gemini", 1);
+  });
 });
