@@ -23,18 +23,23 @@ export function finishRun(runId, update, db) {
     const conn = db ?? getDb();
     conn
         .prepare(`UPDATE runs SET
-         finished_at = datetime('now'),
+         finished_at = COALESCE(@finished_at, datetime('now')),
          exit_code = @exit_code,
          duration_s = @duration_s,
          gate_result = @gate_result,
-         review_verdict = @review_verdict
+         review_verdict = @review_verdict,
+         status = @status,
+         merge_commit_sha = @merge_commit_sha
        WHERE id = @id`)
         .run({
         id: runId,
+        finished_at: update.finished_at ?? null,
         exit_code: update.exit_code ?? null,
         duration_s: update.duration_s ?? null,
         gate_result: update.gate_result ?? null,
         review_verdict: update.review_verdict ?? null,
+        status: update.status ?? null,
+        merge_commit_sha: update.merge_commit_sha ?? null,
     });
 }
 /**
@@ -48,6 +53,7 @@ export function recordRun(run, db) {
          model, workflow, attempt, exit_code, duration_s,
          gate_result, review_verdict, retry_reason,
          files_changed, lines_added, lines_deleted, log_file,
+         pr_number, pr_url, status, merge_commit_sha,
          finished_at
        )
        VALUES (
@@ -55,7 +61,8 @@ export function recordRun(run, db) {
          @model, @workflow, @attempt, @exit_code, @duration_s,
          @gate_result, @review_verdict, @retry_reason,
          @files_changed, @lines_added, @lines_deleted, @log_file,
-         datetime('now')
+         @pr_number, @pr_url, @status, @merge_commit_sha,
+         COALESCE(@finished_at, datetime('now'))
        )`)
         .run({
         feature_id: run.feature_id,
@@ -75,6 +82,11 @@ export function recordRun(run, db) {
         lines_added: run.lines_added ?? null,
         lines_deleted: run.lines_deleted ?? null,
         log_file: run.log_file ?? null,
+        pr_number: run.pr_number ?? null,
+        pr_url: run.pr_url ?? null,
+        status: run.status ?? null,
+        merge_commit_sha: run.merge_commit_sha ?? null,
+        finished_at: run.finished_at ?? null,
     });
     return Number(result.lastInsertRowid);
 }

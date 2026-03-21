@@ -20,6 +20,10 @@ export interface RunRecord {
     lines_added?: number;
     lines_deleted?: number;
     log_file?: string;
+    pr_number?: number;
+    pr_url?: string;
+    status?: string;
+    merge_commit_sha?: string;
 }
 /**
  * Start a new run record. Returns the run ID.
@@ -28,11 +32,13 @@ export declare function startRun(run: Pick<RunRecord, "feature_id" | "phase_id" 
 /**
  * Finish a run — record exit code, duration, and final status.
  */
-export declare function finishRun(runId: number, update: Pick<RunRecord, "exit_code" | "duration_s" | "gate_result" | "review_verdict">, db?: Database.Database): void;
+export declare function finishRun(runId: number, update: Partial<Pick<RunRecord, "exit_code" | "duration_s" | "gate_result" | "review_verdict" | "finished_at" | "status" | "merge_commit_sha">>, db?: Database.Database): void;
 /**
  * Record a complete run in a single call. Used by shell scripts via CLI.
  */
-export declare function recordRun(run: Omit<RunRecord, "id" | "started_at" | "finished_at">, db?: Database.Database): number;
+export declare function recordRun(run: Omit<RunRecord, "id" | "started_at" | "finished_at"> & {
+    finished_at?: string;
+}, db?: Database.Database): number;
 /**
  * List all runs for a feature, most recent first.
  */

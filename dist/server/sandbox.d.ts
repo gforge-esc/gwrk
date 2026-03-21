@@ -1,25 +1,18 @@
+import type { AgentBackend } from "../utils/config.js";
+import type { SandboxInfo } from "./types.js";
 export interface SandboxOptions {
     featureId: string;
     phaseId: string;
-    backend: string;
+    taskId: string;
+    backend: AgentBackend;
     projectRoot: string;
-    image?: string;
 }
 export declare class SandboxManager {
-    private docker;
-    constructor();
-    checkDocker(): Promise<boolean>;
+    private runsDir;
+    constructor(projectRoot?: string);
+    checkGit(): Promise<boolean>;
     createSandbox(opts: SandboxOptions): Promise<string>;
-    destroySandbox(containerId: string): Promise<void>;
-    listSandboxes(): Promise<{
-        containerId: string;
-        featureId: string;
-        phaseId: string;
-        backend: string;
-        status: "running" | "stopping" | "creating" | "destroyed";
-        startedAt: string;
-    }[]>;
-    pauseAll(): Promise<void>;
-    unpauseAll(): Promise<void>;
-    private mapStateToStatus;
+    destroySandbox(workDir: string): Promise<void>;
+    listSandboxes(): Promise<SandboxInfo[]>;
+    pruneSandboxes(): Promise<void>;
 }

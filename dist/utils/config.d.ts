@@ -67,6 +67,7 @@ export declare const GwrkConfigSchema: z.ZodObject<{
     server: z.ZodDefault<z.ZodObject<{
         port: z.ZodNumber;
         host: z.ZodString;
+        githubWebhookSecret: z.ZodOptional<z.ZodString>;
         heartbeatIntervalMs: z.ZodDefault<z.ZodNumber>;
         networkCheckIntervalMs: z.ZodDefault<z.ZodNumber>;
         slack: z.ZodOptional<z.ZodObject<{
@@ -84,12 +85,14 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack?: {
             presencePollIntervalMs: number;
         } | undefined;
+        githubWebhookSecret?: string | undefined;
     }, {
         port: number;
         host: string;
         slack?: {
             presencePollIntervalMs?: number | undefined;
         } | undefined;
+        githubWebhookSecret?: string | undefined;
         heartbeatIntervalMs?: number | undefined;
         networkCheckIntervalMs?: number | undefined;
     }>>;
@@ -138,6 +141,13 @@ export declare const GwrkConfigSchema: z.ZodObject<{
             maxConcurrent?: number | undefined;
         } | undefined;
     }>>;
+    plugins: z.ZodOptional<z.ZodObject<{
+        globalDir: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        globalDir?: string | undefined;
+    }, {
+        globalDir?: string | undefined;
+    }>>;
     pulse: z.ZodOptional<z.ZodObject<{
         repos: z.ZodArray<z.ZodString, "many">;
     }, "strip", z.ZodTypeAny, {
@@ -169,6 +179,7 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack?: {
             presencePollIntervalMs: number;
         } | undefined;
+        githubWebhookSecret?: string | undefined;
     };
     parallelism: {
         local: {
@@ -181,6 +192,9 @@ export declare const GwrkConfigSchema: z.ZodObject<{
             maxConcurrent: number;
         };
     };
+    plugins?: {
+        globalDir?: string | undefined;
+    } | undefined;
     pulse?: {
         repos: string[];
     } | undefined;
@@ -206,6 +220,7 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         slack?: {
             presencePollIntervalMs?: number | undefined;
         } | undefined;
+        githubWebhookSecret?: string | undefined;
         heartbeatIntervalMs?: number | undefined;
         networkCheckIntervalMs?: number | undefined;
     } | undefined;
@@ -219,6 +234,9 @@ export declare const GwrkConfigSchema: z.ZodObject<{
         cloud?: {
             maxConcurrent?: number | undefined;
         } | undefined;
+    } | undefined;
+    plugins?: {
+        globalDir?: string | undefined;
     } | undefined;
     pulse?: {
         repos: string[];

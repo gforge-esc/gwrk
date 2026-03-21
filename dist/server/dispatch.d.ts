@@ -6,6 +6,7 @@ import type { DispatchRecord } from "./types.js";
 export interface DispatchRequest {
     featureId: string;
     phaseId: string;
+    taskId?: string;
     backend?: AgentBackend;
 }
 export declare class DispatchQueue {
@@ -31,7 +32,7 @@ export declare class DispatchQueue {
         throttled: boolean;
         paused: boolean;
     };
-    getDispatch(featureId: string, phaseId: string): DispatchRecord | null;
+    getDispatch(featureId: string, phaseId: string, taskId?: string): DispatchRecord | null;
     getQueueDepth(): number;
     getActiveCount(): number;
     getCompletedCount(): number;

@@ -29,14 +29,26 @@ export declare function getCurrentCommit(repoPath: string): string;
  */
 export declare function getCurrentBranch(repoPath: string): string;
 /**
- * Checks if the working tree is clean.
+ * Gets diff stats between two refs (or between a ref and its parent if only one is provided).
  */
-export declare function isWorkingTreeClean(repoPath: string): boolean;
-/**
- * Gets the diff stats between current state and a ref (defaults to HEAD~1).
- */
-export declare function getDiffStats(repoPath: string, ref?: string): {
+export declare function getDiffStats(repoPath: string, ref: string): {
     filesChanged: number;
     linesAdded: number;
     linesDeleted: number;
 };
+/**
+ * Checks if the working tree is clean.
+ */
+export declare function isWorkingTreeClean(repoPath: string): boolean;
+/**
+ * Stages and commits specific files.
+ */
+export declare function commitFiles(repoPath: string, files: string[], message: string): void;
+/**
+ * Pushes the current branch to origin.
+ */
+export declare function gitPush(repoPath: string, remote?: string): void;
+/**
+ * Deletes a branch from origin.
+ */
+export declare function deleteRemoteBranch(repoPath: string, branch: string, remote?: string): void;

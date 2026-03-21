@@ -45,6 +45,12 @@ export class DispatchQueue {
             status: "queued",
             branchName: `phase/${request.featureId}-${request.phaseId}`,
             attempts: [],
+            tasks: request.taskId ? [{
+                    id: request.taskId,
+                    status: "pending",
+                    sandboxDir: "", // Will be set in runDispatch
+                    backend: request.backend || this.config.agents.implement,
+                }] : [],
             createdAt: new Date().toISOString(),
         };
         this.queue.push(record);
@@ -80,10 +86,11 @@ export class DispatchQueue {
             backend: record.backend,
             startedAt: new Date().toISOString(),
         };
+        const taskId = record.tasks.length > 0 ? record.tasks[0].id : "all";
         attempt.runId = startRun({
             feature_id: record.featureId,
             phase_id: record.phaseId,
-            command: `gwrk ship implement ${record.featureId} --phase ${record.phaseId}`,
+            command: `gwrk ship implement ${record.featureId} --phase ${record.phaseId}${taskId !== "all" ? ` --task ${taskId}` : ""}`,
             agent_backend: record.backend,
             workflow: "implement",
         });
@@ -106,14 +113,21 @@ export class DispatchQueue {
             const contextPath = path.join(this.projectRoot, ".gwrk", "phase-context.md");
             fs.mkdirSync(path.dirname(contextPath), { recursive: true });
             fs.writeFileSync(contextPath, context);
-            // 3. Create Sandbox
-            const containerId = await this.sandbox.createSandbox({
-                featureId: record.featureId,
-                phaseId: record.phaseId,
-                backend: record.backend,
-                projectRoot: this.projectRoot,
-            });
-            record.containerId = containerId;
+            // 3. Create Sandbox (For first task for now)
+            if (record.tasks.length > 0) {
+                const task = record.tasks[0];
+                task.status = "running";
+                task.startedAt = new Date().toISOString();
+                const workDir = await this.sandbox.createSandbox({
+                    featureId: record.featureId,
+                    phaseId: record.phaseId,
+                    taskId: task.id,
+                    backend: record.backend,
+                    projectRoot: this.projectRoot,
+                });
+                task.sandboxDir = workDir;
+                record.workDir = workDir;
+            }
             // 4. Simulate Agent Execution (for now)
             // TODO: Phase 06 — real agent execution
             await new Promise((resolve) => setTimeout(resolve, 50));
@@ -132,6 +146,13 @@ export class DispatchQueue {
         attempt.completedAt = new Date().toISOString();
         attempt.exitCode = exitCode;
         attempt.stderr = stderr;
+        if (record.tasks.length > 0) {
+            const task = record.tasks[0];
+            task.status = exitCode === 0 ? "completed" : "failed";
+            task.completedAt = attempt.completedAt;
+            task.exitCode = exitCode;
+            task.error = stderr;
+        }
         if (attempt.runId) {
             const duration = Math.floor((new Date(attempt.completedAt).getTime() -
                 new Date(attempt.startedAt).getTime()) /
@@ -197,14 +218,14 @@ export class DispatchQueue {
         else {
             this.history.push(record);
         }
-        if (record.containerId) {
+        if (record.workDir) {
             try {
-                await this.sandbox.destroySandbox(record.containerId);
+                await this.sandbox.destroySandbox(record.workDir);
             }
             catch (e) {
                 console.error("Failed to destroy sandbox:", e);
             }
-            record.containerId = undefined;
+            record.workDir = undefined;
         }
         persistDispatch(record);
         this.processNext();
@@ -217,10 +238,10 @@ export class DispatchQueue {
             paused: this.paused,
         };
     }
-    getDispatch(featureId, phaseId) {
-        return (this.active.find((r) => r.featureId === featureId && r.phaseId === phaseId) ||
-            this.queue.find((r) => r.featureId === featureId && r.phaseId === phaseId) ||
-            this.history.find((r) => r.featureId === featureId && r.phaseId === phaseId) ||
+    getDispatch(featureId, phaseId, taskId) {
+        return (this.active.find((r) => r.featureId === featureId && r.phaseId === phaseId && (!taskId || r.tasks.some(t => t.id === taskId))) ||
+            this.queue.find((r) => r.featureId === featureId && r.phaseId === phaseId && (!taskId || r.tasks.some(t => t.id === taskId))) ||
+            this.history.find((r) => r.featureId === featureId && r.phaseId === phaseId && (!taskId || r.tasks.some(t => t.id === taskId))) ||
             null);
     }
     getQueueDepth() {

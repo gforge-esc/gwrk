@@ -87,6 +87,7 @@ function stampLine(line, startEpoch, logStream) {
 }
 export async function dispatchAgent(opts) {
     const projectRoot = process.cwd();
+    const executionRoot = opts.workDir || projectRoot;
     const workflowFile = path.resolve(projectRoot, opts.workflowPath);
     const workflowContent = fs.readFileSync(workflowFile, "utf-8");
     const { command, args, stdin } = buildCommand(opts, workflowContent);
@@ -111,11 +112,12 @@ export async function dispatchAgent(opts) {
     logStream.write(`# Backend   : ${opts.backend}\n`);
     logStream.write(`# Branch    : ${branch}\n`);
     logStream.write(`# Command   : ${command} ${args.join(" ")}\n`);
+    logStream.write(`# WorkDir   : ${executionRoot}\n`);
     logStream.write("# ────────────────────────────────────────\n\n");
     return new Promise((resolve) => {
         const startEpoch = Date.now();
         const child = spawn(command, args, {
-            cwd: projectRoot,
+            cwd: executionRoot,
             env: {
                 ...process.env,
                 ...(opts.contextPath
@@ -215,6 +217,7 @@ export async function dispatchToAgent(task) {
         workflowPath: task.workflow ?? ".agents/workflows/gwrk-implement.md",
         featureDir: task.featureDir,
         prompt: task.prompt,
+        workDir: task.workDir,
     };
     const { exitCode: rawExitCode, logPath } = await dispatchAgent(opts);
     const durationS = Math.round((Date.now() - startTime) / 1000);

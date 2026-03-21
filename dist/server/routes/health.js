@@ -1,7 +1,7 @@
 import { isSlackConnected } from "../slack.js";
 export async function healthRoutes(server, lifecycle, network, sandbox) {
     server.get("/health", async () => {
-        const dockerOk = await sandbox.checkDocker();
+        const gitOk = await sandbox.checkGit();
         const networkOk = network.isOnline();
         const slackOk = await isSlackConnected();
         const lifecycleStatus = lifecycle.getStatus();
@@ -9,8 +9,8 @@ export async function healthRoutes(server, lifecycle, network, sandbox) {
             server: {
                 status: lifecycleStatus === "degraded" ? "degraded" : "ok",
             },
-            docker: {
-                status: dockerOk ? "ok" : "unavailable",
+            git: {
+                status: gitOk ? "ok" : "unavailable",
             },
             network: {
                 status: networkOk ? "ok" : "unavailable",
@@ -20,7 +20,7 @@ export async function healthRoutes(server, lifecycle, network, sandbox) {
             },
         };
         const overallStatus = components.server.status === "ok" &&
-            components.docker.status === "ok" &&
+            components.git.status === "ok" &&
             components.network.status === "ok" &&
             components.slack.status === "ok"
             ? "ok"
