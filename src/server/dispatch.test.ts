@@ -114,7 +114,7 @@ describe("DispatchQueue", () => {
     expect(record.status).toBe("completed");
     expect(queue.getActiveCount()).toBe(0);
     expect(mockGit.mergePhaseBack).toHaveBeenCalledWith("feat-1", "phase-1");
-    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith("workdir-1");
+    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith("workdir-1", "feat-1");
   });
 
   it("should retry if exit code is non-zero and attempts < 3", async () => {

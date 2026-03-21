@@ -123,6 +123,9 @@ export async function startServer(
     console.log(`gwrk server listening on ${address}`);
     writePid(process.pid);
 
+    // FR-002: Prune worktrees on startup
+    await sandbox.pruneSandboxes();
+
     // Start Slack if configured
     await startSlackApp({
       queue,

@@ -96,6 +96,42 @@ describe("DispatchOrchestrator", () => {
     expect(mockSandbox.createSandbox).toHaveBeenCalledTimes(5);
   });
 
+  it("FR-004: should timeout if tasks stay in queue for too long", async () => {
+    // Inject a small timeout for testing
+    (orchestrator as any).queueTimeoutMs = 100;
+
+    mockSandbox.createSandbox.mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      return "/work/dir";
+    });
+
+    mockInvocation.invoke.mockResolvedValue({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationS: 0,
+    });
+
+    const tasks = [
+      { id: "T1", prompt: "Task 1" },
+      { id: "T2", prompt: "Task 2" },
+      { id: "T3", prompt: "Task 3" },
+    ];
+
+    const results = await orchestrator.dispatchPhase({
+      featureId: "f1",
+      phaseId: "p1",
+      tasks,
+      concurrency: 1,
+    });
+
+    // Only T1 should be running (and then fail due to timeout in runNext check or finally complete)
+    // Actually, runNext checks Date.now() - startTime > queueTimeoutMs before doing anything.
+    // T1 starts, takes 200ms.
+    // T2 tries to start, but check fails.
+    expect(results.some(r => r.status === "failed" && r.result?.stderr === "Agent capacity queue timeout")).toBe(true);
+  });
+
   it("should mark task as failed if invocation fails", async () => {
     mockInvocation.invoke.mockResolvedValue({
       exitCode: 1,

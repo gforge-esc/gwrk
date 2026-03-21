@@ -62,12 +62,24 @@ describe("SandboxManager (Git Worktree)", () => {
     expect(workDir).toContain(".runs/sandboxes/");
   });
 
-  it("FR-002 / TR-002: should destroy a sandbox, push the branch, and create a PR", async () => {
+  it("FR-002 / TR-002: should destroy a sandbox, push the branch, and create a PR if changes exist", async () => {
     const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-T1-uuid";
     (fs.existsSync as Mock).mockReturnValue(true);
-    (execSync as Mock).mockReturnValue("sandbox/005-parallel-dispatch-T1-uuid");
     
-    await sandboxManager.destroySandbox(workDir);
+    // Mock git status --porcelain to return some changes
+    (execSync as Mock).mockImplementation((cmd, opts) => {
+      if (cmd === "git status --porcelain") return "M file.ts";
+      if (cmd === "git rev-parse --abbrev-ref HEAD") return "sandbox/005-parallel-dispatch-T1-uuid";
+      return "";
+    });
+    
+    await sandboxManager.destroySandbox(workDir, "005-parallel-dispatch");
+
+    // Should have checked status
+    expect(execSync).toHaveBeenCalledWith(
+      "git status --porcelain",
+      expect.objectContaining({ cwd: workDir })
+    );
 
     // Should have called git push
     expect(execSync).toHaveBeenCalledWith(
@@ -75,22 +87,47 @@ describe("SandboxManager (Git Worktree)", () => {
       expect.objectContaining({ cwd: workDir })
     );
 
-    // Should have called git rev-parse (to get branch name)
-    expect(execSync).toHaveBeenCalledWith(
-      "git rev-parse --abbrev-ref HEAD",
-      expect.objectContaining({ cwd: workDir })
-    );
-
     // Should have called gh pr create
     expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("gh pr create --base feature/005-wip"),
+      expect.stringContaining("gh pr create --base feature/005-parallel-dispatch-wip"),
       expect.objectContaining({ cwd: workDir })
     );
 
     // Should have called git worktree remove
     expect(execSync).toHaveBeenCalledWith(
       `git worktree remove --force ${workDir}`,
-      expect.objectContaining({ cwd: "/test/root/.runs" })
+      expect.objectContaining({ cwd: "/test/root" })
+    );
+  });
+
+  it("FR-002 / TR-002: should destroy a sandbox without PR if no changes exist", async () => {
+    const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-T1-uuid";
+    (fs.existsSync as Mock).mockReturnValue(true);
+    
+    // Mock git status --porcelain to return NO changes
+    (execSync as Mock).mockImplementation((cmd, opts) => {
+      if (cmd === "git status --porcelain") return "";
+      return "";
+    });
+    
+    await sandboxManager.destroySandbox(workDir, "005-parallel-dispatch");
+
+    // Should have checked status
+    expect(execSync).toHaveBeenCalledWith(
+      "git status --porcelain",
+      expect.objectContaining({ cwd: workDir })
+    );
+
+    // Should NOT have called git push
+    expect(execSync).not.toHaveBeenCalledWith(
+      "git push origin HEAD",
+      expect.any(Object)
+    );
+
+    // Should have called git worktree remove
+    expect(execSync).toHaveBeenCalledWith(
+      `git worktree remove --force ${workDir}`,
+      expect.objectContaining({ cwd: "/test/root" })
     );
   });
 

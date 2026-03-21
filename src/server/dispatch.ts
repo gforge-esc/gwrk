@@ -273,7 +273,7 @@ export class DispatchQueue {
 
     if (record.workDir) {
       try {
-        await this.sandbox.destroySandbox(record.workDir);
+        await this.sandbox.destroySandbox(record.workDir, record.featureId);
       } catch (e) {
         console.error("Failed to destroy sandbox:", e);
       }
