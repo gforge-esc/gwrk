@@ -23,11 +23,14 @@ import {
   getDiffStats,
 } from "../utils/git.js";
 import { assembleDigest, generateRunId, writeManifest } from "../utils/manifest.js";
-import { type TaskState, loadTaskState } from "../utils/state.js";
+import { type TaskState, loadTaskState, saveTaskState } from "../utils/state.js";
+import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
+import { SandboxManager } from "../server/sandbox.js";
+import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 
-const { GREEN, DIM, RESET } = color;
+const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
 /**
  * Ship a single phase through the full lifecycle.
@@ -340,6 +343,8 @@ Exit codes:
     "--format <format>",
     "Output format (json)",
   )
+  .option("--parallel", "Dispatch tasks within a phase in parallel")
+  .option("--concurrency <n>", "Max concurrent tasks (overrides config)", "2")
   .action(
     async (
       feature: string,
@@ -349,16 +354,6 @@ Exit codes:
       await withSignal("ship", async () => {
         const cwd = process.cwd();
         const config = loadConfig(cwd);
-
-        // FR-009/T010: Fail-fast if agents.implement is missing
-        if (!opts.agent && !config.agents?.implement) {
-          console.error("Missing required config: agents.implement");
-          process.exitCode = 1;
-          return;
-        }
-
-        const backend = ((opts.agent as string) ||
-          config.agents.implement) as AgentBackend;
 
         // Validate feature exists before any work
         const featureSpecDir = path.join(cwd, "specs", feature);
@@ -372,6 +367,73 @@ Exit codes:
             1,
           );
         }
+
+        if (opts.parallel) {
+          const orchestrator = new DispatchOrchestrator(
+            config,
+            new SandboxManager(cwd),
+            new LocalInvocationStrategy()
+          );
+
+          const taskState = loadTaskState(featureSpecDir);
+          const phaseIds = phase 
+            ? [`phase-${phase.padStart(2, "0")}`]
+            : taskState.phases.map(p => p.id);
+
+          console.log(`${GREEN}▶${RESET} Parallel dispatch enabled (concurrency: ${opts.concurrency || config.parallelism.local.maxClones})`);
+          
+          let finalExitCode = 0;
+          const shipStartTime = Date.now();
+
+          for (const phaseId of phaseIds) {
+            const phaseData = taskState.phases.find(p => p.id === phaseId);
+            if (!phaseData || isPhaseComplete(phaseData)) continue;
+
+            const openTasks = phaseData.tasks.filter(t => t.status === "open");
+            if (openTasks.length === 0) continue;
+
+            const backend = ((opts.agent as string) || config.agents.implement) as AgentBackend;
+            console.log(`\n${GREEN}Phase ${phaseId}${RESET}: Dispatching ${openTasks.length} tasks in parallel...`);
+            
+            const results = await orchestrator.dispatchPhase({
+              featureId: feature,
+              phaseId: phaseId,
+              tasks: openTasks.map(t => ({ id: t.id, prompt: `${t.title}\n\n${t.description}` })),
+              backend,
+              concurrency: opts.concurrency ? parseInt(opts.concurrency as string) : undefined,
+            });
+
+            for (const res of results) {
+              const task = phaseData.tasks.find(t => t.id === res.taskId)!;
+              if (res.status === "completed") {
+                task.status = "completed";
+                task.completedAt = new Date().toISOString();
+                console.log(`  ${GREEN}✓${RESET} ${res.taskId}: Success`);
+              } else {
+                finalExitCode = 1;
+                console.log(`  ${RED}✗${RESET} ${res.taskId}: Failed`);
+              }
+            }
+            
+            saveTaskState(featureSpecDir, taskState);
+            if (finalExitCode !== 0) break;
+          }
+
+          const totalDurationS = Math.round((Date.now() - shipStartTime) / 1000);
+          process.stderr.write(`[exit:${finalExitCode} | ${totalDurationS}s]\n`);
+          if (finalExitCode !== 0) process.exit(finalExitCode);
+          return;
+        }
+
+        // FR-009/T010: Fail-fast if agents.implement is missing
+        if (!opts.agent && !config.agents?.implement) {
+          console.error("Missing required config: agents.implement");
+          process.exitCode = 1;
+          return;
+        }
+
+        const backend = ((opts.agent as string) ||
+          config.agents.implement) as AgentBackend;
 
         // Determine which phases to ship
         let phases: string[];

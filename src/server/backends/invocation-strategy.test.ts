@@ -1,9 +1,9 @@
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalInvocationStrategy } from "./invocation-strategy.js";
-import { execSync } from "node:child_process";
+import { dispatchToAgent } from "../../utils/agent.js";
 
-vi.mock("node:child_process", () => ({
-  execSync: vi.fn(),
+vi.mock("../../utils/agent.js", () => ({
+  dispatchToAgent: vi.fn(),
 }));
 
 describe("LocalInvocationStrategy", () => {
@@ -15,39 +15,57 @@ describe("LocalInvocationStrategy", () => {
   });
 
   it("FR-006, US-005: should invoke gemini cli in the correct workDir", async () => {
+    (dispatchToAgent as Mock).mockResolvedValue({
+      exitCode: 0,
+      stdout: "success",
+      stderr: "",
+      durationS: 10,
+    });
+
     const task = {
-      agent: "gemini",
+      taskId: "T1",
+      featureId: "f1",
+      phaseId: "p1",
+      backend: "gemini" as const,
       workDir: "/test/root/.runs/sandboxes/T1",
       prompt: "Fix the bug",
-      stdin: "{\"context\": \"...\"}",
     };
 
     await strategy.invoke(task);
 
-    expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("gemini-cli"),
+    expect(dispatchToAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        cwd: task.workDir,
-        input: task.stdin,
+        agent: "gemini",
+        workDir: task.workDir,
+        prompt: task.prompt,
       })
     );
   });
 
   it("FR-006, US-005: should invoke claude cli in the correct workDir", async () => {
+    (dispatchToAgent as Mock).mockResolvedValue({
+      exitCode: 0,
+      stdout: "success",
+      stderr: "",
+      durationS: 10,
+    });
+
     const task = {
-      agent: "claude",
+      taskId: "T2",
+      featureId: "f1",
+      phaseId: "p1",
+      backend: "claude" as const,
       workDir: "/test/root/.runs/sandboxes/T2",
       prompt: "Implement the feature",
-      stdin: "{\"context\": \"...\"}",
     };
 
     await strategy.invoke(task);
 
-    expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("claude-cli"),
+    expect(dispatchToAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        cwd: task.workDir,
-        input: task.stdin,
+        agent: "claude",
+        workDir: task.workDir,
+        prompt: task.prompt,
       })
     );
   });

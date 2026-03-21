@@ -25,7 +25,7 @@ export interface HealthResponse {
   status: "ok" | "degraded";
   components: {
     server: ComponentHealth;
-    docker: ComponentHealth;
+    git: ComponentHealth;
     network: ComponentHealth;
     slack: ComponentHealth;
   };
@@ -45,9 +45,10 @@ export interface DispatchRecord {
   id: string;
   featureId: string;
   phaseId: string;
+  taskId: string;
   backend: AgentBackend;
   status: DispatchStatus;
-  containerId?: string;
+  workDir?: string;
   branchName: string;
   attempts: DispatchAttempt[];
   createdAt: string;
@@ -63,14 +64,13 @@ export interface SystemResources {
 }
 
 export interface SandboxInfo {
-  containerId: string;
+  workDir: string;
+  taskId: string;
   featureId: string;
   phaseId: string;
   backend: AgentBackend;
   status: "creating" | "running" | "stopping" | "destroyed";
   startedAt: string;
-  cpuPercent?: number;
-  memMb?: number;
 }
 
 export interface SystemStatus {

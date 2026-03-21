@@ -14,6 +14,10 @@ vi.mock("node:fs", () => ({
     rmSync: vi.fn(),
     readdirSync: vi.fn(),
   },
+  existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  rmSync: vi.fn(),
+  readdirSync: vi.fn(),
 }));
 
 describe("SandboxManager (Git Worktree)", () => {
@@ -21,7 +25,7 @@ describe("SandboxManager (Git Worktree)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    sandboxManager = new SandboxManager();
+    sandboxManager = new SandboxManager("/test/root");
   });
 
   it("FR-002: should create a git worktree sandbox", async () => {
@@ -30,55 +34,63 @@ describe("SandboxManager (Git Worktree)", () => {
     const workDir = await sandboxManager.createSandbox({
       featureId: "005-parallel-dispatch",
       phaseId: "phase-01",
+      taskId: "T1",
       backend: "gemini",
       projectRoot: "/test/root",
     });
 
     // Should create the sandbox directory in .runs/sandboxes/
-    expect(workDir).toContain(".runs/sandboxes/005-parallel-dispatch-phase-01-");
+    expect(workDir).toContain(".runs/sandboxes/005-parallel-dispatch-T1-");
     
     // Should have called git worktree add
     expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("git worktree add"),
+      expect.stringContaining("git worktree add -b sandbox/005-parallel-dispatch-T1-"),
       expect.any(Object)
     );
   });
 
   it("TC-004: No Host Mutation - should not modify the host repository working tree", async () => {
-    // TC-004 is satisfied by using git worktree add to a path outside the main worktree
-    // We verify that the sandbox path is NOT the current working directory
     const workDir = await sandboxManager.createSandbox({
       featureId: "005-parallel-dispatch",
       phaseId: "phase-01",
+      taskId: "T1",
       backend: "gemini",
-      projectRoot: process.cwd(),
+      projectRoot: "/test/root",
     });
 
-    expect(workDir).not.toBe(process.cwd());
+    expect(workDir).not.toBe("/test/root");
     expect(workDir).toContain(".runs/sandboxes/");
   });
 
   it("FR-002 / TR-002: should destroy a sandbox, push the branch, and create a PR", async () => {
-    const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-phase-01-uuid";
+    const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-T1-uuid";
+    (fs.existsSync as Mock).mockReturnValue(true);
+    (execSync as Mock).mockReturnValue("sandbox/005-parallel-dispatch-T1-uuid");
     
     await sandboxManager.destroySandbox(workDir);
 
     // Should have called git push
     expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("git push origin"),
+      "git push origin HEAD",
+      expect.objectContaining({ cwd: workDir })
+    );
+
+    // Should have called git rev-parse (to get branch name)
+    expect(execSync).toHaveBeenCalledWith(
+      "git rev-parse --abbrev-ref HEAD",
       expect.objectContaining({ cwd: workDir })
     );
 
     // Should have called gh pr create
     expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("gh pr create"),
+      expect.stringContaining("gh pr create --base feature/005-wip"),
       expect.objectContaining({ cwd: workDir })
     );
 
     // Should have called git worktree remove
     expect(execSync).toHaveBeenCalledWith(
       `git worktree remove --force ${workDir}`,
-      expect.any(Object)
+      expect.objectContaining({ cwd: "/test/root/.runs" })
     );
   });
 
@@ -93,15 +105,20 @@ describe("SandboxManager (Git Worktree)", () => {
 
   it("US-002: should list all active sandboxes from worktree list", async () => {
     const mockWorktreeList = 
-      "/test/root                          (detached HEAD)\n" +
-      "/test/root/.runs/sandboxes/f1-p1-uuid  (branch-f1-p1-uuid)\n";
+      "worktree /test/root\n" +
+      "branch refs/heads/main\n" +
+      "\n" +
+      "worktree /test/root/.runs/sandboxes/f1-T1-uuid\n" +
+      "branch refs/heads/sandbox/f1-T1-uuid\n" +
+      "\n";
     
-    (execSync as Mock).mockReturnValue(Buffer.from(mockWorktreeList));
+    (execSync as Mock).mockReturnValue(mockWorktreeList);
 
     const sandboxes = await sandboxManager.listSandboxes();
 
     expect(sandboxes).toHaveLength(1);
     expect(sandboxes[0].featureId).toBe("f1");
+    expect(sandboxes[0].taskId).toBe("T1");
     expect(sandboxes[0].status).toBe("running");
   });
 });

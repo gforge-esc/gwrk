@@ -17,6 +17,7 @@ import type { DispatchAttempt, DispatchRecord } from "./types.js";
 export interface DispatchRequest {
   featureId: string;
   phaseId: string;
+  taskId: string;
   backend?: AgentBackend;
 }
 
@@ -44,8 +45,8 @@ export class DispatchQueue {
   }
 
   enqueue(request: DispatchRequest): DispatchRecord {
-    // Idempotency guard: prevent double-dispatch for same feature+phase
-    const existing = this.getDispatch(request.featureId, request.phaseId);
+    // Idempotency guard: prevent double-dispatch for same feature+phase+task
+    const existing = this.getDispatch(request.featureId, request.phaseId, request.taskId);
     if (
       existing &&
       (existing.status === "queued" || existing.status === "running")
@@ -57,6 +58,7 @@ export class DispatchQueue {
       id: crypto.randomUUID(),
       featureId: request.featureId,
       phaseId: request.phaseId,
+      taskId: request.taskId,
       backend: request.backend || this.config.agents.implement,
       status: "queued",
       branchName: `phase/${request.featureId}-${request.phaseId}`,
@@ -107,7 +109,7 @@ export class DispatchQueue {
     attempt.runId = startRun({
       feature_id: record.featureId,
       phase_id: record.phaseId,
-      command: `gwrk ship implement ${record.featureId} --phase ${record.phaseId}`,
+      command: `gwrk ship implement ${record.featureId} --phase ${record.phaseId} --task ${record.taskId}`,
       agent_backend: record.backend,
       workflow: "implement",
     });
@@ -144,13 +146,14 @@ export class DispatchQueue {
       fs.writeFileSync(contextPath, context);
 
       // 3. Create Sandbox
-      const containerId = await this.sandbox.createSandbox({
+      const workDir = await this.sandbox.createSandbox({
         featureId: record.featureId,
         phaseId: record.phaseId,
+        taskId: record.taskId,
         backend: record.backend,
         projectRoot: this.projectRoot,
       });
-      record.containerId = containerId;
+      record.workDir = workDir;
 
       // 4. Simulate Agent Execution (for now)
       // TODO: Phase 06 — real agent execution
@@ -247,13 +250,13 @@ export class DispatchQueue {
       this.history.push(record);
     }
 
-    if (record.containerId) {
+    if (record.workDir) {
       try {
-        await this.sandbox.destroySandbox(record.containerId);
+        await this.sandbox.destroySandbox(record.workDir);
       } catch (e) {
         console.error("Failed to destroy sandbox:", e);
       }
-      record.containerId = undefined;
+      record.workDir = undefined;
     }
 
     persistDispatch(record);
@@ -269,16 +272,16 @@ export class DispatchQueue {
     };
   }
 
-  getDispatch(featureId: string, phaseId: string): DispatchRecord | null {
+  getDispatch(featureId: string, phaseId: string, taskId: string): DispatchRecord | null {
     return (
       this.active.find(
-        (r) => r.featureId === featureId && r.phaseId === phaseId,
+        (r) => r.featureId === featureId && r.phaseId === phaseId && r.taskId === taskId,
       ) ||
       this.queue.find(
-        (r) => r.featureId === featureId && r.phaseId === phaseId,
+        (r) => r.featureId === featureId && r.phaseId === phaseId && r.taskId === taskId,
       ) ||
       this.history.find(
-        (r) => r.featureId === featureId && r.phaseId === phaseId,
+        (r) => r.featureId === featureId && r.phaseId === phaseId && r.taskId === taskId,
       ) ||
       null
     );
