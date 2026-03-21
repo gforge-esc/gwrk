@@ -178,11 +178,37 @@ export async function harvestFeature(
     }
   }
 
-  // 4. Slack Done-Done (FR-H07) - Caller handles this
+  // 4. Slack Done-Done (FR-H07)
+  if (report) {
+    await notifyDoneDone(report);
+  }
+
   // 5. Branch Cleanup (FR-H08)
   if (status === "merged" && record.headBranch) {
-    deleteRemoteBranch(projectPath, record.headBranch);
+    await cleanupBranch(record.headBranch, projectPath);
   }
 
   return report;
+}
+
+/**
+ * Posts the "🏆 Done, Done!" notification to Slack.
+ * (FR-H07)
+ */
+export async function notifyDoneDone(report: CompressionReport): Promise<void> {
+  const { MessageBuilder } = await import("../server/slack-messages.js");
+  const { notifySlack } = await import("../server/slack-notify.js");
+  const message = MessageBuilder.doneDone(report.featureId, report);
+  await notifySlack(message, undefined, { opsOnly: true });
+}
+
+/**
+ * Deletes the merged branch from origin.
+ * (FR-H08)
+ */
+export async function cleanupBranch(
+  branchName: string,
+  projectPath: string,
+): Promise<void> {
+  deleteRemoteBranch(projectPath, branchName);
 }

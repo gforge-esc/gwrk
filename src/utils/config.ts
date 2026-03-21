@@ -105,12 +105,18 @@ export function loadConfig(projectRoot: string): GwrkConfig {
     process.exit(1);
   }
 
-  let raw: unknown;
+  let raw: any;
   try {
     raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
   } catch (error) {
     console.error("Configuration error: invalid JSON");
     process.exit(1);
+  }
+
+  // Inject environment variables into the raw object before parsing
+  if (process.env.GITHUB_WEBHOOK_SECRET) {
+    raw.server = raw.server ?? {};
+    raw.server.githubWebhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
   }
 
   const result = GwrkConfigSchema.safeParse(raw);

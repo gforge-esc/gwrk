@@ -187,6 +187,39 @@ export function getCurrentBranch(repoPath: string): string {
 }
 
 /**
+ * Gets diff stats between two refs (or between a ref and its parent if only one is provided).
+ */
+export function getDiffStats(
+  repoPath: string,
+  ref: string,
+): { filesChanged: number; linesAdded: number; linesDeleted: number } {
+  try {
+    const stdout = execFileSync(
+      "git",
+      ["diff", "--shortstat", ref],
+      { cwd: repoPath, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const output = stdout.toString().trim();
+    if (!output) {
+      return { filesChanged: 0, linesAdded: 0, linesDeleted: 0 };
+    }
+
+    // Output looks like: " 2 files changed, 10 insertions(+), 2 deletions(-)"
+    const filesMatch = output.match(/(\d+)\s+file/);
+    const insertionsMatch = output.match(/(\d+)\s+insertion/);
+    const deletionsMatch = output.match(/(\d+)\s+deletion/);
+
+    return {
+      filesChanged: filesMatch ? Number.parseInt(filesMatch[1], 10) : 0,
+      linesAdded: insertionsMatch ? Number.parseInt(insertionsMatch[1], 10) : 0,
+      linesDeleted: deletionsMatch ? Number.parseInt(deletionsMatch[1], 10) : 0,
+    };
+  } catch (_e) {
+    return { filesChanged: 0, linesAdded: 0, linesDeleted: 0 };
+  }
+}
+
+/**
  * Checks if the working tree is clean.
  */
 export function isWorkingTreeClean(repoPath: string): boolean {

@@ -6,7 +6,7 @@ import type { GwrkConfig } from "../utils/config.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
 
-export async function githubRoutes(
+export async function githubWebhookPlugin(
   fastify: FastifyInstance,
   options: { config: GwrkConfig; projectRoot: string },
 ) {

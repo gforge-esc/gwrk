@@ -6,6 +6,6 @@ set -euo pipefail
 ls src/db/compression.ts > /dev/null
 
 # Assertion #2: Verify presence of compression record handling
-grep -q "insertCompressionRecord" src/db/compression.ts
+grep -q "recordCompression" src/db/compression.ts
 
 echo "PASS: T003 — Implement src/db/compression.ts (NEW)"

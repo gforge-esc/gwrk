@@ -108,6 +108,32 @@ export interface CompressionReport {
   compression: CompressionRatios;
 }
 
+export const HarvestPayloadSchema = z.object({
+  featureId: z.string(),
+  phaseId: z.string().optional(),
+  prNumber: z.number(),
+  mergeCommitSha: z.string(),
+  mergedAt: z.string(), // ISO 8601
+});
+export type HarvestPayload = z.infer<typeof HarvestPayloadSchema>;
+
+export const CompressionRecordSchema = z.object({
+  featureId: z.string(),
+  phaseId: z.string().optional(),
+  estimatedHours: z.number(),
+  actualCodingHours: z.number(),
+  estimatedDays: z.number(),
+  actualDeliveryDays: z.number(),
+  pointCompression: z.number(),
+  totalCompression: z.number(),
+  dormancyDays: z.number(),
+  firstImplCommit: z.string(),
+  mergeTimestamp: z.string(),
+  sessionCount: z.number(),
+  recordedAt: z.string().optional(),
+});
+export type CompressionRecord = z.infer<typeof CompressionRecordSchema>;
+
 export interface HarvestRecord {
   featureId: string;
   phaseId?: string;

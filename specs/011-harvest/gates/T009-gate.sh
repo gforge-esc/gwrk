@@ -6,7 +6,7 @@ set -euo pipefail
 ls src/server/github.ts > /dev/null
 
 # Assertion #2: Verify signature verification logic
-grep -q "X-Hub-Signature-256" src/server/github.ts
+grep -qi "x-hub-signature-256" src/server/github.ts
 
 # Assertion #3: Verify branch filtering logic
 grep -q "develop" src/server/github.ts

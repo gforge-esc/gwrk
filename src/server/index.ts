@@ -8,7 +8,7 @@ import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import { removePid, writePid } from "./pid.js";
 import { dispatchRoutes } from "./routes/dispatch.js";
-import { githubRoutes } from "./github.js";
+import { githubWebhookPlugin } from "./github.js";
 import { healthRoutes } from "./routes/health.js";
 import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
@@ -98,7 +98,7 @@ export async function startServer(
   await healthRoutes(server, lifecycle, network, sandbox);
   await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
   await dispatchRoutes(server, queue);
-  await githubRoutes(server, { config, projectRoot });
+  await githubWebhookPlugin(server, { config, projectRoot });
   await notifyRoutes(server);
 
   const shutdown = async () => {
