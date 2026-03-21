@@ -14,17 +14,19 @@ Implement parallel dispatch of tasks within a phase using Git worktree sandboxes
 
 Refactor the sandbox management layer to use Git worktrees instead of Docker. This provides task-level isolation without the overhead of containerization.
 
-**Files (4):**
-- `src/server/sandbox.ts` (MODIFY: Replace Dockerode with `git worktree` logic. Implement `.runs/sandboxes/` lifecycle.)
-- `src/server/sandbox.test.ts` (MODIFY: Update tests to verify worktree creation/removal instead of Docker containers.)
-- `src/server/types.ts` (MODIFY: Update `SandboxInfo` to reflect worktree paths instead of container IDs. Add `TaskRecord`.)
+**Files (5):**
+- `src/server/sandbox.ts` (REWRITE: Replace Docker/Dockerode with Git worktree lifecycle. See `contracts/sandbox.md` for target interface.)
+- `src/server/sandbox.test.ts` (EXISTS: Already written for worktree model. Verify alignment with new `sandbox.ts` interface.)
+- `src/server/types.ts` (MODIFY: Replace `containerId` with `workDir`/`taskId` fields. Add `TaskRecord`. Remove Docker-specific `SandboxInfo`.)
 - `src/server/dispatch.ts` (MODIFY: Update `DispatchQueue` to use the refactored `SandboxManager`.)
+- `src/commands/ship.ts` (MODIFY: Add `--parallel` flag. When set, invoke `DispatchOrchestrator` instead of sequential dispatch.)
 
 **Requirements Addressed:** FR-002, TC-004, TC-005, US-002
 
 **Dependencies:** None
 
 **Contract Mapping:**
+- `specs/005-parallel-dispatch/contracts/sandbox.md` → `SandboxManager` → `src/server/sandbox.ts`
 - `specs/004-ship-loop/contracts/dispatch.md` → `dispatchToAgent` → `src/utils/agent.ts`
 
 #### Governance & Skills Contract
@@ -46,17 +48,19 @@ Refactor the sandbox management layer to use Git worktrees instead of Docker. Th
 
 Implement the orchestrator that manages multiple tasks within a phase, executing independent tasks concurrently up to the backend capacity limit.
 
-**Files (4):**
+**Files (5):**
 - `src/server/dispatch-orchestrator.ts` (NEW: Implement `DispatchOrchestrator` for parallel task execution, concurrency management, and 429 backoff.)
-- `src/server/dispatch-orchestrator.test.ts` (NEW: Verify parallel execution and capacity gating.)
+- `src/server/dispatch-orchestrator.test.ts` (EXISTS: Already written for worktree model. Verify alignment with new orchestrator.)
 - `src/server/dispatch.ts` (MODIFY: Integrate `DispatchOrchestrator` into the phase implementation loop.)
-- `src/utils/config.ts` (MODIFY: Ensure `parallelism` settings are properly typed and loaded.)
+- `src/utils/config.ts` (VERIFY: `parallelism` settings already typed and loaded. Confirm `maxClones` and `maxConcurrent` defaults.)
+- `src/server/backends/invocation-strategy.ts` (NEW: `LocalInvocationStrategy` for CLI backend dispatch via `dispatchToAgent()`.)
 
 **Requirements Addressed:** FR-001, FR-003, FR-004, FR-005, FR-006, US-001, US-004, US-005
 
 **Dependencies:** Phase 1
 
 **Contract Mapping:**
+- `specs/005-parallel-dispatch/contracts/orchestrator.md` → `DispatchOrchestrator` → `src/server/dispatch-orchestrator.ts`
 - `specs/004-ship-loop/contracts/dispatch.md` → `dispatchToAgent` → `src/utils/agent.ts`
 
 #### Governance & Skills Contract

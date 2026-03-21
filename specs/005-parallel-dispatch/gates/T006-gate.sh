@@ -1,9 +1,20 @@
 #!/bin/bash
-set -euo pipefail
 # AUTHORED
-# FR-001, FR-004: DispatchOrchestrator implementation
-test -f src/server/dispatch-orchestrator.ts
-grep -q "class DispatchOrchestrator" src/server/dispatch-orchestrator.ts
-grep -q "executePhase" src/server/dispatch-orchestrator.ts
-grep -q "calculateConcurrencyLimit" src/server/dispatch-orchestrator.ts
+set -euo pipefail
+
+# Task T006: Implement src/server/dispatch-orchestrator.ts
+# FR-001, FR-004: DispatchOrchestrator with concurrency management
+
+test -f src/server/dispatch-orchestrator.ts \
+  || { echo "FAIL: T006 — file not found: src/server/dispatch-orchestrator.ts" >&2; exit 1; }
+
+grep -q "DispatchOrchestrator" src/server/dispatch-orchestrator.ts \
+  || { echo "FAIL: T006 — src/server/dispatch-orchestrator.ts missing 'DispatchOrchestrator' class (FR-001)" >&2; exit 1; }
+
+grep -q "dispatchToAgent\|dispatchTasks" src/server/dispatch-orchestrator.ts \
+  || { echo "FAIL: T006 — src/server/dispatch-orchestrator.ts missing dispatch method (FR-003)" >&2; exit 1; }
+
+grep -q "maxClones\|maxConcurrent\|concurren" src/server/dispatch-orchestrator.ts \
+  || { echo "FAIL: T006 — src/server/dispatch-orchestrator.ts missing concurrency limit logic (FR-004)" >&2; exit 1; }
+
 echo "PASS: T006 — Implement src/server/dispatch-orchestrator.ts"

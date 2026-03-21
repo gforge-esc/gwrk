@@ -1,7 +1,14 @@
 #!/bin/bash
-set -euo pipefail
 # AUTHORED
-# FR-003: Integrate DispatchOrchestrator
-test -f src/server/dispatch.ts
-grep -q "DispatchOrchestrator" src/server/dispatch.ts
-echo "PASS: T008 — Implement src/server/dispatch.ts"
+set -euo pipefail
+
+# Task T008: Integrate DispatchOrchestrator into dispatch.ts
+# FR-003: dispatch.ts uses DispatchOrchestrator for parallel execution
+
+test -f src/server/dispatch.ts \
+  || { echo "FAIL: T008 — file not found: src/server/dispatch.ts" >&2; exit 1; }
+
+grep -q "DispatchOrchestrator" src/server/dispatch.ts \
+  || { echo "FAIL: T008 — src/server/dispatch.ts missing 'DispatchOrchestrator' integration (FR-003)" >&2; exit 1; }
+
+echo "PASS: T008 — Integrate DispatchOrchestrator into src/server/dispatch.ts"
