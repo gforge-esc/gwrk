@@ -73,7 +73,7 @@
           "id": "T007",
           "title": "Verify src/server/dispatch-orchestrator.test.ts",
           "description": "EXISTS: Already written. Verify alignment with new orchestrator.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "classification": "noop"
         },
@@ -89,7 +89,7 @@
           "id": "T009",
           "title": "Verify src/utils/config.ts parallelism settings",
           "description": "VERIFY: parallelism settings already typed. Confirm maxClones and maxConcurrent defaults.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "classification": "noop"
         },
@@ -97,7 +97,7 @@
           "id": "T010",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "classification": "noop"
         }

@@ -5,6 +5,7 @@ import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { SystemMonitor } from "./monitor.js";
 import { SandboxManager } from "./sandbox.js";
+import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +15,7 @@ vi.mock("./sandbox.js");
 vi.mock("./git-manager.js");
 vi.mock("./persistence.js");
 vi.mock("./slack-notify.js");
+vi.mock("./dispatch-orchestrator.js");
 vi.mock("./context.js", () => ({
   compileContext: vi.fn().mockReturnValue("mock context"),
 }));
@@ -27,6 +29,7 @@ describe("DispatchQueue", () => {
   let mockMonitor: vi.Mocked<SystemMonitor>;
   let mockSandbox: vi.Mocked<SandboxManager>;
   let mockGit: vi.Mocked<GitManager>;
+  let mockOrchestrator: vi.Mocked<DispatchOrchestrator>;
   let tempDir: string;
   const mockConfig: GwrkConfig = {
     project: { name: "test" },
@@ -49,11 +52,16 @@ describe("DispatchQueue", () => {
     mockMonitor = new SystemMonitor() as vi.Mocked<SystemMonitor>;
     mockSandbox = new SandboxManager(tempDir) as vi.Mocked<SandboxManager>;
     mockGit = new GitManager(tempDir) as vi.Mocked<GitManager>;
+    mockOrchestrator = new DispatchOrchestrator() as vi.Mocked<DispatchOrchestrator>;
+    
+    mockOrchestrator.dispatchPhase.mockResolvedValue([]);
+
     queue = new DispatchQueue(
       mockConfig,
       mockMonitor,
       mockSandbox,
       mockGit,
+      mockOrchestrator,
       tempDir,
     );
   });
@@ -71,18 +79,18 @@ describe("DispatchQueue", () => {
 
   it("should process next if not throttled", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("workdir-1");
+    mockOrchestrator.dispatchPhase.mockResolvedValue([{ id: "T1", status: "completed", sandboxDir: "workdir-1", backend: "gemini" }]);
 
     queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
 
     // Wait for it to move to active
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (queue.getCompletedCount() !== 1) throw new Error("Not completed yet");
     });
 
     expect(queue.getQueueDepth()).toBe(0);
-    expect(mockSandbox.createSandbox).toHaveBeenCalledWith(expect.objectContaining({
-      taskId: "T1"
+    expect(mockOrchestrator.dispatchPhase).toHaveBeenCalledWith(expect.objectContaining({
+      tasks: [expect.objectContaining({ id: "T1" })]
     }));
   });
 
@@ -100,21 +108,18 @@ describe("DispatchQueue", () => {
 
   it("should handle successful completion", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("workdir-1");
+    mockOrchestrator.dispatchPhase.mockResolvedValue([{ id: "T1", status: "completed", sandboxDir: "workdir-1", backend: "gemini" }]);
 
     const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
 
-    // Wait for it to move to active
+    // Wait for it to complete
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.status !== "completed") throw new Error("Not completed yet");
     });
-
-    await queue.handleCompletion(record.id, 0, "");
 
     expect(record.status).toBe("completed");
     expect(queue.getActiveCount()).toBe(0);
     expect(mockGit.mergePhaseBack).toHaveBeenCalledWith("feat-1", "phase-1");
-    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith("workdir-1", "feat-1");
   });
 
   it("should retry if exit code is non-zero and attempts < 3", async () => {
@@ -139,28 +144,30 @@ describe("DispatchQueue", () => {
 
   it("should escalate if attempts >= 3", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("workdir-1");
+    mockOrchestrator.dispatchPhase.mockResolvedValue([{ id: "T1", status: "failed", sandboxDir: "workdir-1", backend: "codex-cloud", exitCode: 1 }]);
 
     // Config implement: gemini (fallback order will move through it)
     const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1", backend: "codex-cloud" });
 
-    // Attempt 1
+    // Attempt 1 (Automatically triggered by enqueue -> processNext -> runDispatch -> orchestrator -> handleCompletion)
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.attempts.length < 1) throw new Error("Attempt 1 not recorded");
     });
-    await queue.handleCompletion(record.id, 1, "error");
 
     // Attempt 2
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.attempts.length < 2) throw new Error("Attempt 2 not recorded");
     });
-    await queue.handleCompletion(record.id, 1, "error");
 
     // Attempt 3
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.attempts.length < 3) throw new Error("Attempt 3 not recorded");
     });
-    await queue.handleCompletion(record.id, 1, "error");
+
+    // Final failure
+    await vi.waitFor(() => {
+      if (record.status !== "failed") throw new Error("Not failed yet");
+    });
 
     expect(record.status).toBe("failed");
     expect(queue.getCompletedCount()).toBe(0);

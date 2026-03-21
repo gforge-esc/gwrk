@@ -13,6 +13,8 @@ import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
 import { startSlackApp, stopSlackApp } from "./slack.js";
+import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
+import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
 
 export async function startServer(
   config: GwrkConfig,
@@ -36,7 +38,9 @@ export async function startServer(
       const sandbox = new SandboxManager();
 
       const git = new GitManager(projectRoot);
-      const queue = new DispatchQueue(config, monitor, sandbox, git, projectRoot);
+      const invocationStrategy = new LocalInvocationStrategy();
+      const orchestrator = new DispatchOrchestrator(config, sandbox, invocationStrategy);
+      const queue = new DispatchQueue(config, monitor, sandbox, git, orchestrator, projectRoot);
 
       const lifecycle = new LifecycleMonitor(config);
       const network = new NetworkMonitor(config);

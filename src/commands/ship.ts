@@ -405,14 +405,14 @@ Exit codes:
             });
 
             for (const res of results) {
-              const task = phaseData.tasks.find(t => t.id === res.taskId)!;
+              const task = phaseData.tasks.find(t => t.id === res.id)!;
               if (res.status === "completed") {
                 task.status = "completed";
                 task.completedAt = new Date().toISOString();
-                console.log(`  ${GREEN}✓${RESET} ${res.taskId}: Success`);
+                console.log(`  ${GREEN}✓${RESET} ${res.id}: Success`);
               } else {
                 finalExitCode = 1;
-                console.log(`  ${RED}✗${RESET} ${res.taskId}: Failed`);
+                console.log(`  ${RED}✗${RESET} ${res.id}: Failed`);
               }
             }
             
