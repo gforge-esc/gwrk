@@ -8,6 +8,7 @@ import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
 import { removePid, writePid } from "./pid.js";
 import { dispatchRoutes } from "./routes/dispatch.js";
+import { githubWebhookPlugin } from "./github.js";
 import { healthRoutes } from "./routes/health.js";
 import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
@@ -22,6 +23,14 @@ export async function startServer(
   const server = fastify({
     logger: true,
   });
+
+  // Fail-fast if GitHub webhook secret is missing (FR-H01, TC-H03)
+  if (!config.server.githubWebhookSecret) {
+    console.error(
+      "Missing required configuration: GITHUB_WEBHOOK_SECRET. Run 'gwrk config set server.githubWebhookSecret <secret>' or set the environment variable."
+    );
+    process.exit(1);
+  }
 
   // Ensure Docker is available — auto-start if needed
   await ensureDocker();
@@ -89,6 +98,7 @@ export async function startServer(
   await healthRoutes(server, lifecycle, network, sandbox);
   await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
   await dispatchRoutes(server, queue);
+  await githubWebhookPlugin(server, { config, projectRoot });
   await notifyRoutes(server);
 
   const shutdown = async () => {

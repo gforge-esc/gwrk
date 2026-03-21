@@ -1,0 +1,214 @@
+import fs from "node:fs";
+import path from "node:path";
+import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
+import { finishRun, listRuns } from "../db/runs.js";
+import { recordCompression } from "../db/compression.js";
+import { gatherDeliveryActuals, computeCompression } from "./compression.js";
+import { parsePlan } from "../utils/parser.js";
+import { resolveRoleMultipliers } from "./roles.js";
+import { loadConfig } from "../utils/config.js";
+import type { HarvestRecord, CompressionReport, EffortForecast } from "./types.js";
+
+export interface LogEntry {
+  runId: string | number;
+  phase?: string;
+  agent?: string;
+  timestamp: string;
+  size: number;
+  file: string;
+}
+
+export interface LogIndex {
+  featureId: string;
+  logs: LogEntry[];
+}
+
+/**
+ * Finalizes logs for a feature: indexes them and commits to git.
+ * (FR-H02)
+ */
+export async function finalizeLogs(
+  featureId: string,
+  projectPath: string,
+): Promise<void> {
+  const runsDir = path.join("specs", featureId, ".gwrk", "runs");
+  const fullRunsDir = path.join(projectPath, runsDir);
+  
+  if (!fs.existsSync(fullRunsDir)) return;
+
+  const indexPath = path.join(fullRunsDir, "index.json");
+  let index: LogIndex = { featureId, logs: [] };
+
+  if (fs.existsSync(indexPath)) {
+    try {
+      index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+    } catch (_e) {
+      // Re-create if corrupt
+    }
+  }
+
+  const files = fs.readdirSync(fullRunsDir).filter((f) => f.endsWith(".log"));
+  const stagedFiles: string[] = [];
+
+  for (const file of files) {
+    const filePath = path.join(runsDir, file);
+    const fullPath = path.join(fullRunsDir, file);
+    
+    // Always add all log files to git stage to be sure they are tracked
+    stagedFiles.push(filePath);
+
+    if (index.logs.some((l) => l.file === file)) continue;
+
+    const stats = fs.statSync(fullPath);
+    
+    // Attempt to extract metadata from filename
+    // Expected format: <timestamp>-<runId>-<phase>-<agent>.log
+    const nameParts = file.replace(".log", "").split("-");
+    const entry: LogEntry = {
+      timestamp: nameParts[0] || new Date(stats.mtime).toISOString(),
+      runId: nameParts[1] || "unknown",
+      phase: nameParts[2] || "unknown",
+      agent: nameParts[3] || "unknown",
+      size: stats.size,
+      file,
+    };
+
+    index.logs.push(entry);
+  }
+
+  fs.writeFileSync(indexPath, JSON.stringify(index, null, 2));
+  stagedFiles.push(path.join(runsDir, "index.json"));
+
+  commitFiles(
+    projectPath,
+    stagedFiles,
+    `harvest: finalize logs for ${featureId}`
+  );
+}
+
+/**
+ * Orchestrate the post-merge harvest for a feature phase.
+ * (FR-H01, FR-H03, FR-H04, FR-H05, FR-H06, FR-H07, FR-H08)
+ */
+export async function harvestFeature(
+  projectPath: string,
+  record: HarvestRecord,
+): Promise<CompressionReport | undefined> {
+  const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
+    record;
+
+  // 1. Finalize Logs (FR-H02)
+  await finalizeLogs(featureId, projectPath);
+
+  // 2. Finalize DB Run Records (FR-H03)
+  const runs = listRuns(featureId);
+  const targetRun = runs.find(
+    (r) =>
+      r.phase_id === phaseId &&
+      (r.pr_number === prNumber || !r.pr_number) &&
+      r.status !== "merged",
+  );
+
+  if (targetRun?.id) {
+    finishRun(targetRun.id, {
+      status: "merged",
+      merge_commit_sha: mergeCommitSha,
+      finished_at: mergedAt,
+    });
+  } else {
+    console.warn(
+      `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}`,
+    );
+  }
+
+  let report: CompressionReport | undefined;
+
+  // 3. Compression Engine (FR-H04, FR-H05)
+  if (phaseId) {
+    try {
+      const featureDir = path.join(projectPath, "specs", featureId);
+      const planPath = path.join(featureDir, "plan.md");
+
+      if (fs.existsSync(planPath)) {
+        const parsedPlan = parsePlan(planPath);
+        const targetPhase = parsedPlan.phases.find((p) => p.id === phaseId);
+
+        if (targetPhase && targetPhase.sp !== undefined) {
+          const config = loadConfig(projectPath);
+          const roleMultipliers = resolveRoleMultipliers(config);
+
+          // Use PE as default role if not specified, or TS
+          const peRole =
+            roleMultipliers.find((r) => r.role === "PE") || roleMultipliers[0];
+          const hoursPerSP = peRole?.hoursPerSP || 1.5;
+          const overheadFactor = 1.25;
+
+          const estimatedHours = targetPhase.sp * hoursPerSP * overheadFactor;
+          const estimatedDays = estimatedHours / 8;
+
+          const forecast: EffortForecast = {
+            totalSP: targetPhase.sp,
+            roles: [{ role: peRole?.role || "PE", sp: targetPhase.sp }],
+            estimatedHours,
+            estimatedDays,
+          };
+
+          const actuals = gatherDeliveryActuals(featureDir);
+          const compression = computeCompression(forecast, actuals);
+
+          report = {
+            featureId,
+            phaseId,
+            generatedAt: new Date().toISOString(),
+            forecast,
+            actuals,
+            compression,
+          };
+
+          recordCompression(report);
+          console.log(
+            `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
+          );
+        }
+      }
+    } catch (err: any) {
+      console.warn(
+        `Failed to calculate compression for ${featureId}: ${err.message}`,
+      );
+    }
+  }
+
+  // 4. Slack Done-Done (FR-H07)
+  if (report) {
+    await notifyDoneDone(report);
+  }
+
+  // 5. Branch Cleanup (FR-H08)
+  if (status === "merged" && record.headBranch) {
+    await cleanupBranch(record.headBranch, projectPath);
+  }
+
+  return report;
+}
+
+/**
+ * Posts the "🏆 Done, Done!" notification to Slack.
+ * (FR-H07)
+ */
+export async function notifyDoneDone(report: CompressionReport): Promise<void> {
+  const { MessageBuilder } = await import("../server/slack-messages.js");
+  const { notifySlack } = await import("../server/slack-notify.js");
+  const message = MessageBuilder.doneDone(report.featureId, report);
+  await notifySlack(message, undefined, { opsOnly: true });
+}
+
+/**
+ * Deletes the merged branch from origin.
+ * (FR-H08)
+ */
+export async function cleanupBranch(
+  branchName: string,
+  projectPath: string,
+): Promise<void> {
+  deleteRemoteBranch(projectPath, branchName);
+}

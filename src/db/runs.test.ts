@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getDb } from "./index.js";
+import { getTestDb } from "./index.js";
 import {
   type ProjectRecord,
   finishRun,
@@ -11,16 +11,16 @@ import {
   registerProject,
   startRun,
 } from "./runs.js";
+import type Database from "better-sqlite3";
 
 describe("runs db", () => {
+  let db: Database.Database;
+
   beforeEach(() => {
-    // Each test gets a fresh in-memory DB if getDb() supports it,
-    // but the current implementation might be sharing a file.
-    // Let's assume for now we want to test the logic.
+    db = getTestDb();
   });
 
   it("should start and finish a run", () => {
-    const db = getDb();
     const runId = startRun(
       {
         feature_id: "test-feat",
@@ -49,7 +49,6 @@ describe("runs db", () => {
   });
 
   it("should record a complete run in one call", () => {
-    const db = getDb();
     const runId = recordRun(
       {
         feature_id: "record-feat",
@@ -66,7 +65,6 @@ describe("runs db", () => {
   });
 
   it("should register and list projects", () => {
-    const db = getDb();
     const project: ProjectRecord = {
       id: "proj-1",
       name: "Test Project",
@@ -81,7 +79,6 @@ describe("runs db", () => {
   });
 
   it("should calculate stats", () => {
-    const db = getDb();
     recordRun(
       {
         feature_id: "stats-feat",
@@ -100,7 +97,6 @@ describe("runs db", () => {
   });
 
   it("should record history", () => {
-    const db = getDb();
     const historyId = recordHistory(
       {
         feature_id: "hist-feat",
@@ -115,7 +111,6 @@ describe("runs db", () => {
 
   describe("FR-H03: DB Record Finalization", () => {
     it("US-H03: finishRun updates status, PR, and merge commit", () => {
-      const db = getDb();
       const runId = startRun(
         {
           feature_id: "harvest-feat",
@@ -131,9 +126,7 @@ describe("runs db", () => {
         {
           exit_code: 0,
           duration_s: 120,
-          // @ts-ignore - status doesn't exist yet on type
           status: "merged",
-          pr_number: 42,
           merge_commit_sha: "abc1234567890",
         },
         db,
@@ -142,16 +135,11 @@ describe("runs db", () => {
       const runs = listRuns("harvest-feat", db);
       const run = runs.find((r) => r.id === runId);
       expect(run).toBeDefined();
-      // @ts-ignore - status doesn't exist yet on type
       expect(run?.status).toBe("merged");
-      // @ts-ignore - pr_number doesn't exist yet on type
-      expect(run?.pr_number).toBe(42);
-      // @ts-ignore - merge_commit_sha doesn't exist yet on type
       expect(run?.merge_commit_sha).toBe("abc1234567890");
     });
 
     it("should fail gracefully if runId does not exist", () => {
-      const db = getDb();
       expect(() => {
         finishRun(
           999999, // Non-existent ID
@@ -161,11 +149,10 @@ describe("runs db", () => {
           },
           db,
         );
-      }).not.toThrow(); // SQLite UPDATE on non-existent ID is usually a no-op, not an error.
+      }).not.toThrow();
     });
 
     it("should handle missing optional merge metadata", () => {
-      const db = getDb();
       const runId = startRun(
         {
           feature_id: "harvest-partial-feat",
@@ -179,7 +166,6 @@ describe("runs db", () => {
         {
           exit_code: 0,
           duration_s: 60,
-          // Missing status, pr_number, etc.
         },
         db,
       );
@@ -187,7 +173,6 @@ describe("runs db", () => {
       const runs = listRuns("harvest-partial-feat", db);
       const run = runs.find((r) => r.id === runId);
       expect(run).toBeDefined();
-      // @ts-ignore
       expect(run?.status).toBeNull();
     });
   });

@@ -1,0 +1,26 @@
+{
+  "runId": "2026-03-20T15:40:50.137Z_ship_p01",
+  "feature": "014-plugin-system",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-20T15:40:50.137Z",
+  "finishedAt": "2026-03-20T15:43:25.373Z",
+  "durationS": 155,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 13,
+  "linesAdded": 565,
+  "linesDeleted": 147,
+  "gitCommit": "0333e7b3563e2aeda0a99f5401693f7cc7a14ead",
+  "gitBranch": "feat/014-plugin-system",
+  "digest": [
+    "BRANCH_SETUP: created/checked-out feat/014-plugin-system (1s) [2026-03-20T09:39:06-0600]",
+    "IMPLEMENT: FAILED — agent exited 2, will retry [2026-03-20T09:39:11-0600]",
+    "IMPLEMENT: FAILED — agent exited 2, will retry [2026-03-20T09:39:15-0600]",
+    "IMPLEMENT: FAILED — agent exited 2, will retry [2026-03-20T09:39:19-0600]",
+    "CIRCUIT_BREAK: max 3 iterations reached during implementation [2026-03-20T09:39:19-0600]",
+    "BRANCH_SETUP: created/checked-out feat/014-plugin-system (0s) [2026-03-20T09:40:50-0600]"
+  ]
+}

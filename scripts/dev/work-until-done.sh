@@ -233,6 +233,11 @@ run_implement() {
     # SIGINT — human cancelled, abort cleanly
     log WARN "Implementation interrupted (SIGINT). Aborting."
     return 1
+  elif [[ "$exit_code" -ne 0 ]] && [[ "$duration" -lt 5 ]]; then
+    # Fast-fail: agent died in <5s — almost certainly a config/setup error,
+    # not a transient failure. Don't waste retries on it.
+    log ERROR "Implementation failed in ${duration}s (exit $exit_code) — likely config error, not retrying"
+    return 1
   elif [[ "$exit_code" -ne 0 ]]; then
     # Agent failed — return non-zero so WUD can decide to retry
     log WARN "Implementation failed (exit $exit_code) — will retry"
@@ -251,6 +256,13 @@ run_implement() {
       log WARN "Staging validation failed (exit $staging_exit) — will retry"
       return 2
     fi
+  fi
+
+  # Safety net: auto-commit any agent-produced changes the agent forgot to commit
+  if [[ -n "$(git status --porcelain)" ]]; then
+    log WARN "Agent left uncommitted changes — auto-committing"
+    git add -A
+    git commit -m "feat(${FEATURE#*-}): Phase ${PHASE} agent implementation (auto-commit)"
   fi
 
   # Push after implementation

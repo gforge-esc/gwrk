@@ -4,6 +4,7 @@ import pkg from "../package.json" with { type: "json" };
 import { dbCommand } from "./commands/db.js";
 import { defineCommand } from "./commands/define.js";
 import { gateCommand } from "./commands/gate.js";
+import { harvestCommand } from "./commands/harvest.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
 import { projectCommand } from "./commands/project.js";
@@ -13,6 +14,8 @@ import { shipCommand } from "./commands/ship.js";
 import { statusCommand } from "./commands/status.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { testCommand } from "./commands/test.js";
+import { skillCommand } from "./commands/skill.js";
+import { pluginCommand } from "./commands/plugin.js";
 import { processForAgent } from "./utils/agent-layer.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
@@ -57,6 +60,7 @@ program
           "server",
           "status",
           "project",
+          "plugin",
           "setup",
         ];
 
@@ -107,6 +111,7 @@ program.addCommand(defineCommand); // Define: spec → plan → tasks → analyz
 program.addCommand(shipCommand); // Ship: autonomous implement → review → PR loop
 program.addCommand(testCommand); // Test: run vitest scoped to feature
 program.addCommand(gateCommand); // Gate: execute gates and enforce truth
+program.addCommand(harvestCommand); // Harvest: post-merge lifecycle
 program.addCommand(measureCommand); // Measure: pulse, effort, compression
 
 // Operational queries
@@ -115,6 +120,8 @@ program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
 program.addCommand(setupCommand);
+program.addCommand(skillCommand);
+program.addCommand(pluginCommand);
 
 /**
  * Recursively apply exitOverride to a command and all its subcommands.
