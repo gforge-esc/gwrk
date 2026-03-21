@@ -203,34 +203,66 @@ export function isWorkingTreeClean(repoPath: string): boolean {
 }
 
 /**
- * Gets the diff stats between current state and a ref (defaults to HEAD~1).
+ * Stages and commits specific files.
  */
-export function getDiffStats(
+export function commitFiles(
   repoPath: string,
-  ref = "HEAD~1",
-): { filesChanged: number; linesAdded: number; linesDeleted: number } {
+  files: string[],
+  message: string,
+): void {
   try {
-    const stdout = execFileSync("git", ["diff", "--numstat", ref], {
+    // Stage files
+    execFileSync("git", ["add", ...files], {
       cwd: repoPath,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "ignore", "pipe"],
     });
 
-    let filesChanged = 0;
-    let linesAdded = 0;
-    let linesDeleted = 0;
-
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    filesChanged = lines.length;
-
-    for (const line of lines) {
-      const [added, deleted] = line.split(/\s+/);
-      if (added !== "-") linesAdded += Number.parseInt(added, 10);
-      if (deleted !== "-") linesDeleted += Number.parseInt(deleted, 10);
+    // Commit
+    execFileSync("git", ["commit", "-m", message], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+  } catch (e) {
+    // If there's nothing to commit, git commit will exit with non-zero
+    // but that's not necessarily an error we want to fail on.
+    const err = e as { stderr?: string };
+    if (
+      err.stderr?.includes("nothing to commit") ||
+      err.stderr?.includes("no changes added to commit")
+    ) {
+      return;
     }
-
-    return { filesChanged, linesAdded, linesDeleted };
-  } catch (_e) {
-    return { filesChanged: 0, linesAdded: 0, linesDeleted: 0 };
+    throw e;
   }
 }
+
+/**
+ * Pushes the current branch to origin.
+ */
+export function gitPush(repoPath: string, remote = "origin"): void {
+  const branch = getCurrentBranch(repoPath);
+  execFileSync("git", ["push", remote, branch], {
+    cwd: repoPath,
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+}
+
+/**
+ * Deletes a branch from origin.
+ */
+export function deleteRemoteBranch(
+  repoPath: string,
+  branch: string,
+  remote = "origin",
+): void {
+  try {
+    execFileSync("git", ["push", remote, "--delete", branch], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+  } catch (e) {
+    // Log error but don't fail, as per FR-H08
+    console.error(`Failed to delete remote branch ${branch}:`, e);
+  }
+}
+

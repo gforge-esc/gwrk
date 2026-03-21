@@ -99,16 +99,28 @@ export interface EffortForecast {
   estimatedHours: number;
   estimatedDays: number;
 }
-
 export interface CompressionReport {
   featureId: string;
+  phaseId: string;
   generatedAt: string;
   forecast: EffortForecast;
   actuals: DeliveryActuals;
   compression: CompressionRatios;
 }
 
+export interface HarvestRecord {
+  featureId: string;
+  phaseId?: string;
+  prNumber: number;
+  prUrl: string;
+  mergeCommitSha: string;
+  mergedAt: string;
+  mergedBy: string;
+  status: "merged" | "closed";
+}
+
 export interface CompressionSummary {
+...
   projectName: string;
   generatedAt: string;
   features: CompressionReport[];
