@@ -40,6 +40,9 @@ export interface TaskRecord {
 
 ## Persistence Strategy
 
+### Tier 0: Run State Homing (Git)
+Ship lifecycle artifacts (`specs/<feature>/.gwrk/runs/*.json`) are created by `gwrk ship` for each dispatch. These files are **auto-committed** by `wud-branch.sh` between phases to prevent dirty-tree guards from blocking multi-phase shipping. They travel with the feature branch as part of the execution record.
+
 ### Tier 1: Task State (JSON)
 Task state is persisted in the feature's `tasks.json` (managed by `gwrk tasks done`). The `DispatchRecord` and its `TaskRecord` items are persisted machine-locally in `.gwrk/dispatches.jsonl` (handled by `persistDispatch`).
 

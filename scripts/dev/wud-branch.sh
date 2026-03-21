@@ -27,6 +27,17 @@ fi
 BRANCH="feat/${FEATURE}"
 CURRENT=$(git branch --show-current)
 
+# FR-002: Auto-commit run state files, then dirty-tree fail-fast.
+# .gwrk/runs/*.json files are ship lifecycle artifacts (dispatch records,
+# timing data) created by `gwrk ship` between phases. They must be homed
+# (committed) so they don't block multi-phase shipping.
+RUN_FILES=$(git ls-files --others --exclude-standard -- 'specs/*/.gwrk/runs/*.json' '.gwrk/runs/*.json' 2>/dev/null || true)
+if [[ -n "$RUN_FILES" ]]; then
+  git add -- $RUN_FILES
+  git commit -m "chore: home run state files from ship lifecycle" --no-verify >/dev/null 2>&1
+  echo "[wud-branch] ✓ Homed run state files"
+fi
+
 # FR-002: Dirty-tree fail-fast — refuse to ship if working tree is dirty
 DIRTY=$(git status --porcelain 2>/dev/null)
 if [[ -n "$DIRTY" ]]; then
