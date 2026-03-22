@@ -1,4 +1,4 @@
-import type { GwrkConfig, AgentBackend } from "../utils/config.js";
+import type { GwrkConfig, AgentBackendType } from "../utils/config.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { InvocationStrategy } from "./backends/invocation-strategy.js";
 import type { TaskRecord } from "./types.js";
@@ -7,8 +7,8 @@ import type { TaskResult } from "../utils/agent.js";
 export interface DispatchPhaseOptions {
   featureId: string;
   phaseId: string;
-  tasks: Array<{ id: string; prompt?: string; backend?: AgentBackend }>;
-  backend?: AgentBackend;
+  tasks: Array<{ id: string; prompt?: string; backend?: AgentBackendType }>;
+  backend?: AgentBackendType;
   concurrency?: number;
 }
 

@@ -2,14 +2,14 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import type { AgentBackend } from "../utils/config.js";
+import type { AgentBackendType } from "../utils/config.js";
 import type { SandboxInfo } from "./types.js";
 
 export interface SandboxOptions {
   featureId: string;
   phaseId: string;
   taskId: string;
-  backend: AgentBackend;
+  backend: AgentBackendType;
   projectRoot: string;
 }
 
