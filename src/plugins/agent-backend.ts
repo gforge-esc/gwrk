@@ -30,6 +30,17 @@ export interface TaskResult {
 }
 
 /**
+ * Quota and availability status for an agent backend.
+ */
+export interface BackendQuota {
+  status: "available" | "busy" | "rate_limited" | "error";
+  backoffS?: number;
+  remaining?: number;
+  limit?: number;
+  resetAt?: string; // ISO timestamp
+}
+
+/**
  * Agent Backend plugin interface (ADR-006).
  */
 export interface AgentBackend {
@@ -60,6 +71,11 @@ export interface AgentBackend {
    * Normalize proprietary CLI output and exit codes to gwrk standard.
    */
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult;
+
+  /**
+   * Check current availability and quota for this backend.
+   */
+  checkQuota?(): Promise<BackendQuota>;
 }
 
 /**
