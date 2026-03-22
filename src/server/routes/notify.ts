@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { AgentBackend } from "../../utils/config.js";
+import type { AgentBackendType } from "../../utils/config.js";
 import { MessageBuilder, type SlackMessage } from "../slack-messages.js";
 import { notifySlack } from "../slack-notify.js";
 import type { DispatchRecord, NotifyPayload } from "../types.js";
@@ -24,7 +24,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         id: "notify-event", // dummy
         featureId: payload.feature,
         phaseId: payload.phase || "unknown",
-        backend: (payload.backend as AgentBackend) || "gemini",
+        backend: (payload.backend as AgentBackendType) || "gemini",
         status: "running", // default
         branchName: payload.branch || "main",
         attempts: [],
