@@ -158,7 +158,7 @@ Exit codes:
         // SINGLE TASK MODE
         if (options.task) {
           const result = await runGateCheck(options.task, normalizedFeature);
-          
+
           if (out.isJson) {
             out.write(result);
           } else {
@@ -193,7 +193,7 @@ Exit codes:
         // BATCH MODE (Feature / Phase)
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", normalizedFeature);
-        
+
         if (!fs.existsSync(featureDir)) {
           throw new CommandError(`Feature directory not found: ${featureDir}`, 1);
         }
@@ -203,7 +203,10 @@ Exit codes:
         }
 
         const state = loadTaskState(featureDir);
-        const tasksToRun: string[] = [];
+        const results: GateCheckResult[] = [];
+        let anyFailed = false;
+        let totalPassed = 0;
+        let totalFailed = 0;
 
         for (const phase of state.phases) {
           if (
@@ -213,79 +216,68 @@ Exit codes:
             continue;
           }
 
+          const phaseNum = phase.id.replace("phase-", "");
+          const phaseResults: GateCheckResult[] = [];
+
           for (const task of phase.tasks) {
-            tasksToRun.push(task.id);
-          }
-        }
-
-        if (tasksToRun.length === 0) {
-          if (out.isJson) {
-            out.write([]);
-          } else {
-            console.log("  No tasks found for this feature/phase.");
-            if (!out.isJson) success("gate", Math.round((Date.now() - startTime) / 1000));
-          }
-          return;
-        }
-
-        if (!out.isJson) {
-          console.log(`  Found ${tasksToRun.length} gates to check\n`);
-        }
-
-        const results: GateCheckResult[] = [];
-        let anyFailed = false;
-        let passedCount = 0;
-        let failedCount = 0;
-
-        for (const taskId of tasksToRun) {
-          if (!out.isJson) {
-            process.stdout.write(`  ▸ ${taskId}... `);
-          }
-          const result = await runGateCheck(taskId, normalizedFeature);
-          results.push(result);
-
-          if (result.result === "PASS") {
-            passedCount++;
             if (!out.isJson) {
-              console.log("✅ PASS");
+              process.stdout.write(`  ${color.DIM}▸${color.RESET} ${task.id}... `);
             }
-          } else {
-            failedCount++;
-            anyFailed = true;
-            if (!out.isJson) {
-              console.log(`❌ FAIL (exit: ${result.exitCode})`);
+            const result = await runGateCheck(task.id, normalizedFeature);
+            results.push(result);
+            phaseResults.push(result);
+
+            if (result.result === "PASS") {
+              totalPassed++;
+              if (!out.isJson) {
+                console.log("✅ PASS");
+              }
+            } else {
+              totalFailed++;
+              anyFailed = true;
+              if (!out.isJson) {
+                console.log(`❌ FAIL (exit: ${result.exitCode})`);
+              }
             }
+          }
+
+          // Phase summary line
+          if (!out.isJson && phaseResults.length > 0) {
+            const pPassed = phaseResults.filter(r => r.result === "PASS").length;
+            const pTotal = phaseResults.length;
+            const phaseIcon = pPassed === pTotal ? "✅" : "🔴";
+            console.log(`  ${color.DIM}────${color.RESET} Phase ${phaseNum}: ${pPassed}/${pTotal} ${phaseIcon}\n`);
           }
         }
 
         if (out.isJson) {
           out.write(results);
         } else {
-          console.log(`\n  ${passedCount} passed, ${failedCount} failed / ${results.length} total\n`);
+          console.log(`  ${totalPassed} passed, ${totalFailed} failed / ${results.length} total\n`);
         }
 
         const durationS = Math.round((Date.now() - startTime) / 1000);
         if (anyFailed) {
           process.exitCode = 1;
-            if (!out.isJson) {
-              fail("gate", 1, durationS);
-              
-              if (options.verbose) {
-                // Verbose: full output per gate
-                console.log(`\n${color.RED}${color.BOLD}Failed Gate Details:${color.RESET}\n`);
-                for (const result of results.filter(r => r.result !== "PASS")) {
-                   console.log(`${color.RED}--- ${result.taskId} ---${color.RESET}`);
-                   const combined = (result.stdout + result.stderr).trim();
-                   if (combined) {
-                     process.stdout.write(`${combined}\n`);
-                   }
+          if (!out.isJson) {
+            fail("gate", 1, durationS);
+
+            if (options.verbose) {
+              // Verbose: full output per gate
+              console.log(`\n${color.RED}${color.BOLD}Failed Gate Details:${color.RESET}\n`);
+              for (const result of results.filter(r => r.result !== "PASS")) {
+                console.log(`${color.RED}--- ${result.taskId} ---${color.RESET}`);
+                const combined = (result.stdout + result.stderr).trim();
+                if (combined) {
+                  process.stdout.write(`${combined}\n`);
                 }
-              } else {
-                // Default: compact — just tell them how to get details
-                console.log(`\n  Use ${color.BOLD}gwrk gate ${normalizedFeature} -v${color.RESET} for failure details`);
-                console.log(`  Or  ${color.BOLD}gwrk gate -t T001 ${normalizedFeature}${color.RESET} for a single gate\n`);
               }
+            } else {
+              // Default: compact — just tell them how to get details
+              console.log(`\n  Use ${color.BOLD}gwrk gate ${normalizedFeature} -v${color.RESET} for failure details`);
+              console.log(`  Or  ${color.BOLD}gwrk gate -t T001 ${normalizedFeature}${color.RESET} for a single gate\n`);
             }
+          }
         } else {
           if (!out.isJson) {
             success("gate", durationS);

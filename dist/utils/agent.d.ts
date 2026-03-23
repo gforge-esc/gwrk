@@ -1,19 +1,20 @@
-import type { AgentBackend } from "./config.js";
+import type { AgentBackend as ConfigAgentBackend } from "./config.js";
 export interface DispatchOptions {
-    backend: AgentBackend;
+    backend: ConfigAgentBackend | string;
     workflowPath: string;
     featureDir?: string;
     prompt?: string;
     approvalMode?: "yolo" | "auto" | "plan";
     contextPath?: string;
     workDir?: string;
+    stdin?: string;
 }
 /** Build the command + args for a given backend. Exported for testability. */
-export declare function buildCommand(opts: DispatchOptions, _workflowContent: string): {
+export declare function buildCommand(opts: DispatchOptions, _workflowContent: string): Promise<{
     command: string;
     args: string[];
     stdin?: string;
-};
+}>;
 export declare function dispatchAgent(opts: DispatchOptions): Promise<{
     exitCode: number;
     logPath: string;
@@ -24,7 +25,7 @@ export declare function dispatchAgent(opts: DispatchOptions): Promise<{
  */
 export interface TaskDispatch {
     prompt?: string;
-    agent?: AgentBackend | string;
+    agent?: ConfigAgentBackend | string;
     workDir?: string;
     stdin?: string;
     env?: Record<string, string>;
@@ -48,7 +49,6 @@ export interface TaskResult {
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
  * FR-021: Context delivered via stdin pipe.
  *
- * Today: wraps spawn(cli, args). When F014 ships, internals are replaced by
- * pluginRegistry.getAgentBackend().dispatch() — no other code changes.
+ * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export declare function dispatchToAgent(task: TaskDispatch): Promise<TaskResult>;
