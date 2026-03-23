@@ -4,12 +4,23 @@ import path from "node:path";
 import readline from "node:readline";
 import type { AgentBackend as ConfigAgentBackend } from "./config.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
-import { BUILTIN_AGENTS } from "../plugins/builtins/agents/index.js";
+import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { PluginLoader } from "../plugins/loader.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
+
+/**
+ * Normalized Exit Code Map (ADR-006)
+ */
+export const EXIT_CODE_MAP: Record<number, number> = {
+  53: 1, // Gemini turn limit
+  42: 2, // Usage error
+  126: 1, // Claude permission denied
+  127: 127, // Command not found
+};
 
 export interface DispatchOptions {
   backend: ConfigAgentBackend | string;
@@ -32,68 +43,23 @@ export async function buildCommand(
   stdin?: string;
 }> {
   const agentName = opts.backend as string;
-  const adapter = BUILTIN_AGENTS[agentName];
+  const registry = new AgentBackendRegistry(new PluginLoader());
+  const adapter = await registry.getAgentBackend(agentName);
 
-  if (adapter) {
-    const task: TaskDispatch = {
-      prompt: opts.prompt,
-      agent: agentName,
-      workflow: opts.workflowPath,
-      featureDir: opts.featureDir,
-      stdin: opts.stdin,
-    };
-    const dispatch = await adapter.dispatch(task);
-    return {
-      command: dispatch.command,
-      args: dispatch.args,
-      stdin: dispatch.stdin,
-    };
-  }
-
-  // Fallback to legacy logic for unknown backends if any
-  const args: string[] = [];
-  let command = "";
-  let stdin: string | undefined = opts.stdin;
-
-  // Extract slash command name from workflow path: .agents/workflows/gwrk-plan.md → /plan
-  const workflowName = path.basename(opts.workflowPath, ".md");
-
-  switch (opts.backend) {
-    case "gemini": {
-      command = "gemini";
-      // Build the slash command string matching agent-run.sh:
-      //   gemini -p "/plan specs/001-cli-core" --approval-mode yolo
-      let slashCmd = `/${workflowName}`;
-      if (opts.featureDir) slashCmd += ` ${opts.featureDir}`;
-      if (opts.prompt) slashCmd += ` ${opts.prompt}`;
-      args.push("-p", slashCmd);
-
-      // Approval mode: analyze is read-only (plan mode), everything else is yolo
-      const mode =
-        opts.approvalMode ?? (workflowName.endsWith("analyze") ? "plan" : "yolo");
-      args.push("--approval-mode", mode);
-
-      break;
-    }
-    case "claude":
-      command = "claude";
-      args.push("-p", _workflowContent, "--output-format", "json");
-      if (opts.featureDir) args.push(opts.featureDir);
-      if (opts.prompt) args.push(opts.prompt);
-      if (opts.contextPath) args.push("--context", opts.contextPath);
-      break;
-    case "codex":
-      command = "codex";
-      args.push("exec", "--full-auto", opts.workflowPath);
-      if (opts.featureDir) args.push(opts.featureDir);
-      if (opts.prompt) args.push(opts.prompt);
-      if (opts.contextPath) args.push("--context", opts.contextPath);
-      break;
-    default:
-      throw new Error(`Unsupported agent backend: ${opts.backend}`);
-  }
-
-  return { command, args, stdin };
+  const task: TaskDispatch = {
+    prompt: opts.prompt,
+    agent: agentName,
+    workflow: opts.workflowPath,
+    featureDir: opts.featureDir,
+    stdin: opts.stdin,
+  };
+  
+  const dispatch = await adapter.dispatch(task);
+  return {
+    command: dispatch.command,
+    args: dispatch.args,
+    stdin: dispatch.stdin,
+  };
 }
 
 /**
@@ -285,12 +251,9 @@ export interface TaskResult {
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const agentName = (task.agent ?? "gemini") as string;
-  const adapter = BUILTIN_AGENTS[agentName];
+  const registry = new AgentBackendRegistry(new PluginLoader());
+  const adapter = await registry.getAgentBackend(agentName);
   
-  if (!adapter) {
-    throw new Error(`Agent backend '${agentName}' not found.`);
-  }
-
   const startTime = Date.now();
   const dispatch = await adapter.dispatch(task);
 

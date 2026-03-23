@@ -1,14 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execCommand } from "../../../../utils/exec.js";
 import type { AgentBackend } from "../../../agent-backend.js";
 import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 
 export class CodexAdapter implements AgentBackend {
+  async isAvailable(): Promise<boolean> {
+    const res = await execCommand("which", ["codex"]);
+    return res.exitCode === 0;
+  }
+
   async syncGovernance(projectRoot: string, governance: string): Promise<string> {
-    const filePath = path.join(projectRoot, "GEMINI.md"); // Codex often shares context or has its own, but gemini.ts used GEMINI.md
-    // Re-checking spec for Codex context file... FR-L1-004 says "CLI-specific context file (e.g., GEMINI.md)"
-    // Let's use CODEX.md for clarity if it's specific.
-    const contextFile = "CODEX.md";
+    const contextFile = "AGENTS.md";
     const filePathCodex = path.join(projectRoot, contextFile);
     let content = "";
     try {

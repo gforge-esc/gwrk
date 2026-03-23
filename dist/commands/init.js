@@ -171,19 +171,16 @@ export const initCommand = new Command("init")
                 }
             }
         }
-        // CLI Detection & Provisioning
-        const clis = [
-            { name: "gemini", file: "GEMINI.md" },
-            { name: "claude", file: "CLAUDE.md" },
-            { name: "codex", file: "AGENTS.md" },
-        ];
-        for (const cli of clis) {
-            const res = await execCommand("which", [cli.name]);
-            if (res.exitCode === 0) {
-                fs.writeFileSync(path.join(projectRoot, cli.file), `# ${cli.name.toUpperCase()} Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n`);
-                console.log(`Detected ${cli.name}, provisioned ${cli.file}`);
-            }
-        }
+        // CLI Detection & Provisioning (Plugin-aware)
+        const gwrkDir = path.join(projectRoot, ".gwrk");
+        fs.mkdirSync(gwrkDir, { recursive: true });
+        const contextPath = path.join(gwrkDir, "agent-context.md");
+        const defaultGovernance = `# GWRK Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n`;
+        fs.writeFileSync(contextPath, defaultGovernance);
+        const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+        const { PluginLoader } = await import("../plugins/loader.js");
+        const registry = new AgentBackendRegistry(new PluginLoader());
+        await registry.syncAllBackends(projectRoot, defaultGovernance);
         console.log("Successfully initialized gwrk project");
     });
 });

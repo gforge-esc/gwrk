@@ -5,6 +5,7 @@ import { parse, stringify } from "yaml";
 import { Command } from "commander";
 import { PluginLoader, PluginNotFoundError, ManifestValidationError } from "../plugins/loader.js";
 import { AnyManifestSchema, type PluginBase } from "../plugins/manifest.js";
+import { syncContextCommand } from "./sync-context.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
 
@@ -230,4 +231,5 @@ export const pluginCommand = new Command("plugin")
           console.log(`${GREEN}Enabled plugin '${name}' for this project.${RESET}`);
         });
       })
-  );
+  )
+  .addCommand(syncContextCommand);

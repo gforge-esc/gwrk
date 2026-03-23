@@ -2,76 +2,39 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import { BUILTIN_AGENTS } from "../plugins/builtins/agents/index.js";
+import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { PluginLoader } from "../plugins/loader.js";
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
+/**
+ * Normalized Exit Code Map (ADR-006)
+ */
+export const EXIT_CODE_MAP = {
+    53: 1, // Gemini turn limit
+    42: 2, // Usage error
+    126: 1, // Claude permission denied
+    127: 127, // Command not found
+};
 /** Build the command + args for a given backend. Exported for testability. */
 export async function buildCommand(opts, _workflowContent) {
     const agentName = opts.backend;
-    const adapter = BUILTIN_AGENTS[agentName];
-    if (adapter) {
-        const task = {
-            prompt: opts.prompt,
-            agent: agentName,
-            workflow: opts.workflowPath,
-            featureDir: opts.featureDir,
-            stdin: opts.stdin,
-        };
-        const dispatch = await adapter.dispatch(task);
-        return {
-            command: dispatch.command,
-            args: dispatch.args,
-            stdin: dispatch.stdin,
-        };
-    }
-    // Fallback to legacy logic for unknown backends if any
-    const args = [];
-    let command = "";
-    let stdin = opts.stdin;
-    // Extract slash command name from workflow path: .agents/workflows/gwrk-plan.md → /plan
-    const workflowName = path.basename(opts.workflowPath, ".md");
-    switch (opts.backend) {
-        case "gemini": {
-            command = "gemini";
-            // Build the slash command string matching agent-run.sh:
-            //   gemini -p "/plan specs/001-cli-core" --approval-mode yolo
-            let slashCmd = `/${workflowName}`;
-            if (opts.featureDir)
-                slashCmd += ` ${opts.featureDir}`;
-            if (opts.prompt)
-                slashCmd += ` ${opts.prompt}`;
-            args.push("-p", slashCmd);
-            // Approval mode: analyze is read-only (plan mode), everything else is yolo
-            const mode = opts.approvalMode ?? (workflowName.endsWith("analyze") ? "plan" : "yolo");
-            args.push("--approval-mode", mode);
-            break;
-        }
-        case "claude":
-            command = "claude";
-            args.push("-p", _workflowContent, "--output-format", "json");
-            if (opts.featureDir)
-                args.push(opts.featureDir);
-            if (opts.prompt)
-                args.push(opts.prompt);
-            if (opts.contextPath)
-                args.push("--context", opts.contextPath);
-            break;
-        case "codex":
-            command = "codex";
-            args.push("exec", "--full-auto", opts.workflowPath);
-            if (opts.featureDir)
-                args.push(opts.featureDir);
-            if (opts.prompt)
-                args.push(opts.prompt);
-            if (opts.contextPath)
-                args.push("--context", opts.contextPath);
-            break;
-        default:
-            throw new Error(`Unsupported agent backend: ${opts.backend}`);
-    }
-    return { command, args, stdin };
+    const registry = new AgentBackendRegistry(new PluginLoader());
+    const adapter = await registry.getAgentBackend(agentName);
+    const task = {
+        prompt: opts.prompt,
+        agent: agentName,
+        workflow: opts.workflowPath,
+        featureDir: opts.featureDir,
+        stdin: opts.stdin,
+    };
+    const dispatch = await adapter.dispatch(task);
+    return {
+        command: dispatch.command,
+        args: dispatch.args,
+        stdin: dispatch.stdin,
+    };
 }
 /**
  * Prefixes each output line with "HH:MM:SS +MM:SS" (wall clock + elapsed).
@@ -207,10 +170,8 @@ export async function dispatchAgent(opts) {
  */
 export async function dispatchToAgent(task) {
     const agentName = (task.agent ?? "gemini");
-    const adapter = BUILTIN_AGENTS[agentName];
-    if (!adapter) {
-        throw new Error(`Agent backend '${agentName}' not found.`);
-    }
+    const registry = new AgentBackendRegistry(new PluginLoader());
+    const adapter = await registry.getAgentBackend(agentName);
     const startTime = Date.now();
     const dispatch = await adapter.dispatch(task);
     const opts = {

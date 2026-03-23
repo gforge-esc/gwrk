@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import { BUILTIN_AGENTS } from "./builtins/agents/index.js";
 import type { AgentBackend } from "./agent-backend.js";
 import type { PluginLoader } from "./loader.js";
+import { getAgentContextSync, recordAgentContextSync } from "../db/plugins.js";
 
 export class BackendNotFoundError extends Error {
   constructor(name: string) {
@@ -45,12 +47,28 @@ export class AgentBackendRegistry {
 
   /**
    * Calls syncGovernance() for all active/detected backends.
+   * Tracks sync state in SQLite to avoid redundant writes.
    */
   async syncAllBackends(projectRoot: string, governance: string): Promise<void> {
     const backends = Object.keys(BUILTIN_AGENTS);
+    const hash = crypto.createHash("sha256").update(governance).digest("hex");
+
     for (const name of backends) {
       const adapter = BUILTIN_AGENTS[name];
-      await adapter.syncGovernance(projectRoot, governance);
+      if (await adapter.isAvailable()) {
+        const lastSync = getAgentContextSync(projectRoot, name);
+        if (lastSync?.context_hash === hash) {
+          continue; // Skip redundant sync
+        }
+
+        await adapter.syncGovernance(projectRoot, governance);
+        recordAgentContextSync({
+          project_root: projectRoot,
+          backend_name: name,
+          context_hash: hash,
+          last_sync_at: new Date().toISOString(),
+        });
+      }
     }
   }
 }

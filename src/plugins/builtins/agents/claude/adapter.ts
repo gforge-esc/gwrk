@@ -1,9 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execCommand } from "../../../../utils/exec.js";
 import type { AgentBackend } from "../../../agent-backend.js";
 import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 
 export class ClaudeAdapter implements AgentBackend {
+  async isAvailable(): Promise<boolean> {
+    const res = await execCommand("which", ["claude"]);
+    return res.exitCode === 0;
+  }
+
   async syncGovernance(projectRoot: string, governance: string): Promise<string> {
     const filePath = path.join(projectRoot, "CLAUDE.md");
     let content = "";

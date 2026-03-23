@@ -22,6 +22,11 @@ export interface AgentBackend {
   }>;
 
   /**
+   * Returns true if the backend's required CLI or integration is available.
+   */
+  isAvailable(): Promise<boolean>;
+
+  /**
    * Normalizes the proprietary CLI output and exit codes into gwrk standard.
    */
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult;

@@ -10,16 +10,16 @@ export declare const TaskSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     id: string;
     status: "open" | "in_progress" | "completed" | "cancelled";
-    title: string;
     description: string;
+    title: string;
     gateScript: string;
     completedAt?: string | undefined;
     classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
 }, {
     id: string;
     status: "open" | "in_progress" | "completed" | "cancelled";
-    title: string;
     description: string;
+    title: string;
     gateScript: string;
     completedAt?: string | undefined;
     classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -38,16 +38,16 @@ export declare const PhaseSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         id: string;
         status: "open" | "in_progress" | "completed" | "cancelled";
-        title: string;
         description: string;
+        title: string;
         gateScript: string;
         completedAt?: string | undefined;
         classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
     }, {
         id: string;
         status: "open" | "in_progress" | "completed" | "cancelled";
-        title: string;
         description: string;
+        title: string;
         gateScript: string;
         completedAt?: string | undefined;
         classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -81,8 +81,8 @@ export declare const PhaseSchema: z.ZodObject<{
     tasks: {
         id: string;
         status: "open" | "in_progress" | "completed" | "cancelled";
-        title: string;
         description: string;
+        title: string;
         gateScript: string;
         completedAt?: string | undefined;
         classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -104,8 +104,8 @@ export declare const PhaseSchema: z.ZodObject<{
     tasks: {
         id: string;
         status: "open" | "in_progress" | "completed" | "cancelled";
-        title: string;
         description: string;
+        title: string;
         gateScript: string;
         completedAt?: string | undefined;
         classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -161,16 +161,16 @@ export declare const TaskStateSchema: z.ZodObject<{
         }, "strip", z.ZodTypeAny, {
             id: string;
             status: "open" | "in_progress" | "completed" | "cancelled";
-            title: string;
             description: string;
+            title: string;
             gateScript: string;
             completedAt?: string | undefined;
             classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
         }, {
             id: string;
             status: "open" | "in_progress" | "completed" | "cancelled";
-            title: string;
             description: string;
+            title: string;
             gateScript: string;
             completedAt?: string | undefined;
             classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -204,8 +204,8 @@ export declare const TaskStateSchema: z.ZodObject<{
         tasks: {
             id: string;
             status: "open" | "in_progress" | "completed" | "cancelled";
-            title: string;
             description: string;
+            title: string;
             gateScript: string;
             completedAt?: string | undefined;
             classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -227,8 +227,8 @@ export declare const TaskStateSchema: z.ZodObject<{
         tasks: {
             id: string;
             status: "open" | "in_progress" | "completed" | "cancelled";
-            title: string;
             description: string;
+            title: string;
             gateScript: string;
             completedAt?: string | undefined;
             classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -254,8 +254,8 @@ export declare const TaskStateSchema: z.ZodObject<{
         tasks: {
             id: string;
             status: "open" | "in_progress" | "completed" | "cancelled";
-            title: string;
             description: string;
+            title: string;
             gateScript: string;
             completedAt?: string | undefined;
             classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
@@ -287,8 +287,8 @@ export declare const TaskStateSchema: z.ZodObject<{
         tasks: {
             id: string;
             status: "open" | "in_progress" | "completed" | "cancelled";
-            title: string;
             description: string;
+            title: string;
             gateScript: string;
             completedAt?: string | undefined;
             classification?: "greenfield" | "change" | "refactor" | "noop" | undefined;
