@@ -220,6 +220,10 @@ export const pluginCommand = new Command("plugin")
         });
       })
   )
+import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+
+...
+
   .addCommand(
     new Command("enable")
       .description("Enable a plugin in the current project")
@@ -228,6 +232,26 @@ export const pluginCommand = new Command("plugin")
         await withSignal("plugin enable", async () => {
           await togglePlugin(name, true);
           console.log(`${GREEN}Enabled plugin '${name}' for this project.${RESET}`);
+        });
+      })
+  )
+  .addCommand(
+    new Command("sync-context")
+      .description("Synchronize agent context files (GEMINI.md, CLAUDE.md) from .gwrk/agent-context.md")
+      .action(async () => {
+        await withSignal("plugin sync-context", async () => {
+          const projectRoot = process.cwd();
+          const contextPath = path.join(projectRoot, ".gwrk", "agent-context.md");
+          let governance = "";
+          try {
+            governance = await fs.readFile(contextPath, "utf-8");
+          } catch (e) {
+            console.warn(`${YELLOW}Warning: .gwrk/agent-context.md not found. Using empty governance.${RESET}`);
+          }
+
+          const registry = new AgentBackendRegistry(new PluginLoader());
+          await registry.syncAllBackends(projectRoot, governance);
+          console.log(`${GREEN}Synchronized context files for all active agent backends.${RESET}`);
         });
       })
   );
