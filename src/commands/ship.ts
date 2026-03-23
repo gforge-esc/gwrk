@@ -6,7 +6,7 @@ import { MessageBuilder } from "../server/slack-messages.js";
 import { notifySlack } from "../server/slack-notify.js";
 import type { SlackEvent } from "../server/slack-presence.js";
 import type { DispatchRecord } from "../server/types.js";
-import { type AgentBackendType, loadConfig } from "../utils/config.js";
+import { type AgentBackend, loadConfig } from "../utils/config.js";
 import { dispatchToAgent, type TaskResult } from "../utils/agent.js";
 import { run } from "../utils/exec.js";
 import {
@@ -39,7 +39,7 @@ const { GREEN, DIM, RESET, YELLOW, RED } = color;
 async function shipPhase(
   feature: string,
   phase: string,
-  backend: AgentBackendType,
+  backend: AgentBackend,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
 ): Promise<number> {
@@ -300,7 +300,7 @@ function isPhaseComplete(
 export async function dispatchPhaseWork(
   feature: string,
   phase: string,
-  backend: AgentBackendType,
+  backend: AgentBackend,
   workflow: string,
 ): Promise<TaskResult> {
   return dispatchToAgent({
@@ -393,7 +393,7 @@ Exit codes:
             const openTasks = phaseData.tasks.filter(t => t.status === "open");
             if (openTasks.length === 0) continue;
 
-            const backend = ((opts.agent as string) || config.agents.implement) as AgentBackendType;
+            const backend = ((opts.agent as string) || config.agents.implement) as AgentBackend;
             console.log(`\n${GREEN}Phase ${phaseId}${RESET}: Dispatching ${openTasks.length} tasks in parallel...`);
             
             const results = await orchestrator.dispatchPhase({
@@ -434,7 +434,7 @@ Exit codes:
         }
 
         const backend = ((opts.agent as string) ||
-          config.agents.implement) as AgentBackendType;
+          config.agents.implement) as AgentBackend;
 
         // Determine which phases to ship
         let phases: string[];

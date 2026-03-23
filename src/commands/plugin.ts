@@ -7,7 +7,6 @@ import { PluginLoader, PluginNotFoundError, ManifestValidationError } from "../p
 import { AnyManifestSchema, type PluginBase } from "../plugins/manifest.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
-import { syncContextCommand } from "./sync-context.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
@@ -231,5 +230,4 @@ export const pluginCommand = new Command("plugin")
           console.log(`${GREEN}Enabled plugin '${name}' for this project.${RESET}`);
         });
       })
-  )
-  .addCommand(syncContextCommand);
+  );

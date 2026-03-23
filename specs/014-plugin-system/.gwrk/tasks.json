@@ -146,7 +146,7 @@
           "id": "T015",
           "title": "Implement src/plugins/builtins/agents/index.ts",
           "description": "NEW: Static registry of built-in adapters",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T015-gate.sh",
           "classification": "greenfield"
         },
@@ -154,7 +154,7 @@
           "id": "T016",
           "title": "Implement src/plugins/builtins/agents/claude/adapter.ts",
           "description": "NEW: Claude Code adapter",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T016-gate.sh",
           "classification": "greenfield"
         },
@@ -162,7 +162,7 @@
           "id": "T017",
           "title": "Implement src/plugins/builtins/agents/gemini/adapter.ts",
           "description": "NEW: Gemini CLI adapter",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T017-gate.sh",
           "classification": "greenfield"
         },
@@ -170,7 +170,7 @@
           "id": "T018",
           "title": "Implement src/plugins/builtins/agents/codex/adapter.ts",
           "description": "NEW: Codex CLI adapter",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T018-gate.sh",
           "classification": "greenfield"
         },
@@ -178,7 +178,7 @@
           "id": "T019",
           "title": "Implement src/utils/agent.ts",
           "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T019-gate.sh",
           "classification": "greenfield"
         },
@@ -186,7 +186,7 @@
           "id": "T020",
           "title": "Implement src/commands/sync-context.ts",
           "description": "NEW: `gwrk plugin sync-context` handler",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T020-gate.sh",
           "classification": "greenfield"
         },
@@ -194,7 +194,7 @@
           "id": "T021",
           "title": "Implement src/db/migrations/003-agent-context.sql",
           "description": "NEW: Track sync state in SQLite",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T021-gate.sh",
           "classification": "greenfield"
         },
@@ -202,7 +202,7 @@
           "id": "T022",
           "title": "Implement src/plugins/agent-adapter.test.ts",
           "description": "NEW: Verify stdin delivery and exit normalization",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "classification": "greenfield"
         },
@@ -210,7 +210,7 @@
           "id": "T023",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T023-gate.sh",
           "classification": "noop"
         }

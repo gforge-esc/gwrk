@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
 
-const AgentBackendTypeSchema = z.enum(["gemini", "claude", "codex", "codex-cloud"]);
-export type AgentBackendType = z.infer<typeof AgentBackendTypeSchema>;
+const AgentBackendSchema = z.enum(["gemini", "claude", "codex", "codex-cloud"]);
+export type AgentBackend = z.infer<typeof AgentBackendSchema>;
 
 export const SlackConfigSchema = z.object({
   botToken: z.string().startsWith("xoxb-"),
@@ -26,9 +26,9 @@ export const GwrkConfigSchema = z.object({
       .optional(),
   }),
   agents: z.object({
-    define: AgentBackendTypeSchema,
-    implement: AgentBackendTypeSchema,
-    fallbackOrder: z.array(AgentBackendTypeSchema).optional(),
+    define: AgentBackendSchema,
+    implement: AgentBackendSchema,
+    fallbackOrder: z.array(AgentBackendSchema).optional(),
   }),
   server: z
     .object({

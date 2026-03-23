@@ -1,17 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+// @ts-ignore - Module does not exist yet (RED)
 import { GeminiAdapter } from "./builtins/agents/gemini/adapter.js";
+// @ts-ignore - Module does not exist yet (RED)
 import { ClaudeAdapter } from "./builtins/agents/claude/adapter.js";
-import fs from "node:fs/promises";
-import path from "node:path";
-import os from "node:os";
-
-vi.mock("node:fs/promises");
 
 describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   describe("Gemini Adapter (FR-L1-010)", () => {
     const adapter = new GeminiAdapter();
 
@@ -19,7 +12,7 @@ describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", 
       const task = { prompt: "test prompt" };
       const dispatch = await adapter.dispatch(task);
       expect(dispatch.command).toBe("gemini");
-      expect(dispatch.args).toContain("--approval-mode");
+      expect(dispatch.args).toContain("--yolo");
       expect(dispatch.args).toContain("-p");
     });
 
@@ -57,34 +50,11 @@ describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", 
     it("US-L1-002: syncGovernance() generates GEMINI.md with boundary markers", async () => {
         const adapter = new GeminiAdapter();
         const governance = "Rule 1: Always use tabs";
-        
-        vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));
-        vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-        await adapter.syncGovernance("/fake/root", governance);
-        
-        const [filePath, content] = vi.mocked(fs.writeFile).mock.calls[0] as [string, string];
-        expect(filePath).toBe(path.join("/fake/root", "GEMINI.md"));
+        // This test would mock filesystem or verify the generated string
+        const content = await adapter.syncGovernance("/tmp", governance);
         expect(content).toContain("<!-- gwrk:begin -->");
         expect(content).toContain("Rule 1: Always use tabs");
         expect(content).toContain("<!-- gwrk:end -->");
-    });
-
-    it("US-L1-002: syncGovernance() preserves content outside boundary markers", async () => {
-        const adapter = new GeminiAdapter();
-        const governance = "New Rule";
-        const existingContent = "User addition\n<!-- gwrk:begin -->\nOld Rule\n<!-- gwrk:end -->\nAnother addition";
-        
-        vi.mocked(fs.readFile).mockResolvedValue(existingContent);
-        vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
-        await adapter.syncGovernance("/fake/root", governance);
-        
-        const [, content] = vi.mocked(fs.writeFile).mock.calls[0] as [string, string];
-        expect(content).toContain("User addition");
-        expect(content).toContain("Another addition");
-        expect(content).toContain("New Rule");
-        expect(content).not.toContain("Old Rule");
     });
   });
 });

@@ -2,43 +2,91 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import { builtInAgents } from "../plugins/builtins/agents/index.js";
-
-/**
- * FR-019: Input contract for dispatchToAgent().
- * Maps to ADR-006 AgentBackend.dispatch() input.
- */
-export interface TaskDispatch {
-  prompt?: string;
-  agent?: string;
-  workDir?: string;
-  stdin?: string;
-  env?: Record<string, string>;
-  workflow?: string;
-  featureDir?: string;
-}
-
-/**
- * FR-019: Output contract for dispatchToAgent().
- * Normalized result — proprietary exit codes mapped to gwrk standard.
- */
-export interface TaskResult {
-  success: boolean;
-  exitCode: 0 | 1 | 2 | 127;
-  errorType?: "gate_failure" | "turn_limit" | "auth_error" | "usage_error" | "not_found" | "turn_limit" | "permission_denied" | "killed" | "terminated";
-  stdout: string;
-  stderr: string;
-  output: string; // Combined or primary output
-  structuredOutput?: Record<string, unknown>;
-  tokenUsage?: { input: number; output: number };
-  durationMs?: number;
-  logPath?: string;
-}
+import type { AgentBackend } from "./config.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
+
+export interface DispatchOptions {
+  backend: AgentBackend;
+  workflowPath: string;
+  featureDir?: string;
+  prompt?: string;
+  approvalMode?: "yolo" | "auto" | "plan";
+  contextPath?: string;
+  workDir?: string;
+}
+
+/** Build the command + args for a given backend. Exported for testability. */
+export function buildCommand(
+  opts: DispatchOptions,
+  _workflowContent: string,
+): {
+  command: string;
+  args: string[];
+  stdin?: string;
+} {
+  const args: string[] = [];
+  let command = "";
+  let stdin: string | undefined;
+
+  // Extract slash command name from workflow path: .agents/workflows/gwrk-plan.md → /plan
+  const workflowName = path.basename(opts.workflowPath, ".md");
+
+  switch (opts.backend) {
+    case "gemini": {
+      command = "gemini";
+      // Build the slash command string matching agent-run.sh:
+      //   gemini -p "/plan specs/001-cli-core" --approval-mode yolo
+      let slashCmd = `/${workflowName}`;
+      if (opts.featureDir) slashCmd += ` ${opts.featureDir}`;
+      if (opts.prompt) slashCmd += ` ${opts.prompt}`;
+      args.push("-p", slashCmd);
+
+      // Approval mode: analyze is read-only (plan mode), everything else is yolo
+      const mode =
+        opts.approvalMode ?? (workflowName.endsWith("analyze") ? "plan" : "yolo");
+      args.push("--approval-mode", mode);
+
+      if (opts.contextPath) {
+        // Pass context via env var — gemini CLI doesn't support -c
+        // The workflow template can read GWRK_CONTEXT
+      }
+      break;
+    }
+    case "claude":
+      command = "claude";
+      args.push("-p", _workflowContent, "--output-format", "json");
+      if (opts.featureDir) args.push(opts.featureDir);
+      if (opts.prompt) args.push(opts.prompt);
+      if (opts.contextPath) args.push("--context", opts.contextPath);
+      break;
+    case "codex":
+      command = "codex";
+      args.push("exec", "--full-auto", opts.workflowPath);
+      if (opts.featureDir) args.push(opts.featureDir);
+      if (opts.prompt) args.push(opts.prompt);
+      if (opts.contextPath) args.push("--context", opts.contextPath);
+      break;
+    case "codex-cloud":
+      // Codex Cloud dispatches via GitHub issue creation, NOT a CLI command.
+      // `codex run --cloud` does not exist. See:
+      //   - docs/reference/codex-cloud-research-report.md
+      //   - docs/research/R001-parallel-dispatch/draft.md §Q2
+      //   - docs/research/R002-agent-backend-plugin/draft.md §Q2
+      // Will be replaced by CloudAgentBackend adapter in F014 P3.
+      throw new Error(
+        "codex-cloud dispatch is not yet implemented. " +
+          "Codex Cloud dispatches via GitHub integration, not CLI. " +
+          "See docs/reference/codex-cloud-research-report.md",
+      );
+
+  }
+
+  return { command, args, stdin };
+}
 
 /**
  * Prefixes each output line with "HH:MM:SS +MM:SS" (wall clock + elapsed).
@@ -67,46 +115,24 @@ function stampLine(
   }
 }
 
-/**
- * @deprecated Use AgentBackend.dispatch() via the adapter instead.
- * Kept for backward compatibility and T019 gate.
- */
-export function buildCommand(task: TaskDispatch): { command: string, args: string[], stdin: string } {
-  const agentName = task.agent || "gemini";
-  const adapter = builtInAgents[agentName];
-  if (!adapter) throw new Error(`Agent backend '${agentName}' not found.`);
-  const result = adapter.dispatch(task);
-  return {
-    command: result.command,
-    args: result.args,
-    stdin: result.stdin
-  };
-}
-
-/**
- * Low-level agent dispatch using the plugin adapter.
- */
 export async function dispatchAgent(
-  task: TaskDispatch,
-): Promise<TaskResult> {
-  const agentName = task.agent || "gemini";
-  const adapter = builtInAgents[agentName];
-  if (!adapter) {
-    throw new Error(`Agent backend '${agentName}' not found in built-in registry.`);
-  }
-
+  opts: DispatchOptions,
+): Promise<{ exitCode: number; logPath: string }> {
   const projectRoot = process.cwd();
-  const executionRoot = task.workDir || projectRoot;
-  const { command, args, stdin, env, streamable } = adapter.dispatch(task);
+  const executionRoot = opts.workDir || projectRoot;
+  const workflowFile = path.resolve(projectRoot, opts.workflowPath);
+  const workflowContent = fs.readFileSync(workflowFile, "utf-8");
+  const { command, args, stdin } = buildCommand(opts, workflowContent);
 
   // Set up .runs/ log file
   const runsDir = path.join(projectRoot, ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const workflow = task.workflow ? path.basename(task.workflow, ".md") : "implement";
-  const feature = (task.featureDir ? path.basename(task.featureDir) : (task.prompt ?? "unknown"))
-    .replace(/[^a-zA-Z0-9_-]/g, "_")
-    .slice(0, 80);
+  const workflow = path.basename(opts.workflowPath, ".md");
+  const rawFeature = opts.featureDir
+    ? path.basename(opts.featureDir)
+    : (opts.prompt ?? "unknown");
+  const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
   const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
@@ -117,14 +143,11 @@ export async function dispatchAgent(
   logStream.write(`# Timestamp : ${new Date().toISOString()}\n`);
   logStream.write(`# Workflow  : ${workflow}\n`);
   logStream.write(`# Feature   : ${feature}\n`);
-  logStream.write(`# Backend   : ${agentName}\n`);
+  logStream.write(`# Backend   : ${opts.backend}\n`);
   logStream.write(`# Branch    : ${branch}\n`);
   logStream.write(`# Command   : ${command} ${args.join(" ")}\n`);
   logStream.write(`# WorkDir   : ${executionRoot}\n`);
   logStream.write("# ────────────────────────────────────────\n\n");
-
-  let stdout = "";
-  let stderr = "";
 
   return new Promise((resolve) => {
     const startEpoch = Date.now();
@@ -133,7 +156,9 @@ export async function dispatchAgent(
       cwd: executionRoot,
       env: {
         ...process.env,
-        ...env,
+        ...(opts.contextPath
+          ? { GWRK_CONTEXT: opts.contextPath }
+          : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -147,10 +172,7 @@ export async function dispatchAgent(
     let squelch = false;
     let braceDepth = 0;
 
-    const processLine = (line: string, isStderr: boolean) => {
-      if (isStderr) stderr += line + "\n";
-      else stdout += line + "\n";
-
+    const processLine = (line: string) => {
       // Squelch 429 rate-limit error blocks
       if (!squelch && /^Attempt \d+ failed with status 429/.test(line)) {
         const attempt = line.match(/^Attempt (\d+)/)?.[1] ?? "?";
@@ -177,11 +199,7 @@ export async function dispatchAgent(
         return;
       }
 
-      if (streamable) {
-        stampLine(line, startEpoch, logStream);
-      } else {
-        logStream.write(`${line}\n`);
-      }
+      stampLine(line, startEpoch, logStream);
     };
 
     // Process stdout line by line
@@ -190,7 +208,7 @@ export async function dispatchAgent(
         input: child.stdout,
         crlfDelay: Number.POSITIVE_INFINITY,
       });
-      rl.on("line", (line) => processLine(line, false));
+      rl.on("line", processLine);
     }
 
     // Process stderr line by line (same formatting)
@@ -199,7 +217,7 @@ export async function dispatchAgent(
         input: child.stderr,
         crlfDelay: Number.POSITIVE_INFINITY,
       });
-      rlErr.on("line", (line) => processLine(line, true));
+      rlErr.on("line", processLine);
     }
 
     child.on("close", (code) => {
@@ -210,42 +228,90 @@ export async function dispatchAgent(
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
       logStream.write(`# Exit Code : ${code ?? 1}\n`);
       logStream.end();
-
-      const result = adapter.parseResult(stdout, stderr, code ?? 1);
-      result.logPath = logPath;
-      result.durationMs = Date.now() - startEpoch;
-      resolve(result);
+      resolve({ exitCode: code ?? 1, logPath });
     });
 
-    child.on("error", (err) => {
-      logStream.write(`\n# [ERROR] Agent process failed to start: ${err.message}\n`);
+    child.on("error", () => {
+      logStream.write("\n# [ERROR] Agent process failed to start\n");
       logStream.end();
-      resolve({
-        success: false,
-        exitCode: 127,
-        errorType: "not_found",
-        stdout: "",
-        stderr: err.message,
-        output: err.message,
-        durationMs: Date.now() - startEpoch,
-        logPath,
-      });
+      resolve({ exitCode: 1, logPath });
     });
   });
 }
+
+// ─── FR-019/020/021: Plugin Dispatch Boundary (ADR-006) ──────────
+
+/**
+ * FR-019: Input contract for dispatchToAgent().
+ * Maps to ADR-006 AgentBackend.dispatch() input.
+ */
+export interface TaskDispatch {
+  prompt?: string;
+  agent?: AgentBackend | string;
+  workDir?: string;
+  stdin?: string;
+  env?: Record<string, string>;
+  workflow?: string;
+  featureDir?: string;
+}
+
+/**
+ * FR-019: Output contract for dispatchToAgent().
+ * Normalized result — proprietary exit codes mapped to gwrk standard.
+ */
+export interface TaskResult {
+  exitCode: number;
+  errorType?: string;
+  stdout: string;
+  stderr: string;
+  durationS: number;
+  logPath?: string;
+}
+
 /**
  * FR-020: Exit code normalization table.
- * Maps proprietary CLI exit codes to gwrk standard.
- * Now owned by adapters per ADR-006, kept here for gate compliance.
+ * Maps proprietary CLI exit codes to gwrk standard (0/1/2/127) with errorType classification.
  */
-const EXIT_CODE_MAP: Record<number, any> = {};
+const EXIT_CODE_MAP: Record<number, { exitCode: number; errorType: string }> = {
+  53: { exitCode: 1, errorType: "turn_limit" },
+  126: { exitCode: 1, errorType: "permission_denied" },
+  137: { exitCode: 1, errorType: "killed" },
+  143: { exitCode: 1, errorType: "terminated" },
+};
 
 /**
  * FR-019: Dispatch agent work via a single facade.
- */
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
  * FR-021: Context delivered via stdin pipe.
+ *
+ * Today: wraps spawn(cli, args). When F014 ships, internals are replaced by
+ * pluginRegistry.getAgentBackend().dispatch() — no other code changes.
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
-  return dispatchAgent(task);
+  const backend = (task.agent ?? "gemini") as AgentBackend;
+  const startTime = Date.now();
+
+  const opts: DispatchOptions = {
+    backend,
+    workflowPath: task.workflow ?? ".agents/workflows/gwrk-implement.md",
+    featureDir: task.featureDir,
+    prompt: task.prompt,
+    workDir: task.workDir,
+  };
+
+  const { exitCode: rawExitCode, logPath } = await dispatchAgent(opts);
+  const durationS = Math.round((Date.now() - startTime) / 1000);
+
+  const mapped = EXIT_CODE_MAP[rawExitCode];
+  const exitCode = mapped ? mapped.exitCode : (rawExitCode > 2 && rawExitCode !== 127 ? 1 : rawExitCode);
+  const errorType = mapped?.errorType;
+
+  return {
+    exitCode,
+    errorType,
+    stdout: "",
+    stderr: "",
+    durationS,
+    logPath,
+  };
 }

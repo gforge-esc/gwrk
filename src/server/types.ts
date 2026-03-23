@@ -1,4 +1,4 @@
-import type { AgentBackendType } from "../utils/config.js";
+import type { AgentBackend } from "../utils/config.js";
 
 export type DispatchStatus =
   | "queued"
@@ -33,7 +33,7 @@ export interface HealthResponse {
 
 export interface DispatchAttempt {
   attemptNumber: number;
-  backend: AgentBackendType;
+  backend: AgentBackend;
   startedAt: string;
   completedAt?: string;
   exitCode?: number;
@@ -45,7 +45,7 @@ export interface TaskRecord {
   id: string;                // e.g., "T001"
   status: "pending" | "running" | "completed" | "failed";
   sandboxDir: string;        // Path to git worktree: .runs/sandboxes/<feature>-<task>-<uuid>
-  backend: AgentBackendType;
+  backend: AgentBackend;
   startedAt?: string;
   completedAt?: string;
   exitCode?: number;
@@ -56,7 +56,7 @@ export interface DispatchRecord {
   id: string;
   featureId: string;
   phaseId: string;
-  backend: AgentBackendType;
+  backend: AgentBackend;
   status: DispatchStatus;
   branchName: string;
   attempts: DispatchAttempt[];
@@ -79,7 +79,7 @@ export interface SandboxInfo {
   taskId: string;
   featureId: string;
   phaseId: string;
-  backend: AgentBackendType;
+  backend: AgentBackend;
   status: "creating" | "running" | "stopping" | "destroyed";
   startedAt: string;
 }

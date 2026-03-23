@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { finishRun, startRun } from "../db/runs.js";
-import type { AgentBackendType, GwrkConfig } from "../utils/config.js";
+import type { AgentBackend, GwrkConfig } from "../utils/config.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
 import type { SlackEvent } from "./slack-presence.js";
@@ -20,7 +20,7 @@ export interface DispatchRequest {
   phaseId: string;
   taskId?: string;
   taskIds?: string[]; // NEW: For multiple tasks
-  backend?: AgentBackendType;
+  backend?: AgentBackend;
   parallel?: boolean; // NEW: Enable parallel dispatch
 }
 
@@ -262,7 +262,7 @@ export class DispatchQueue {
         record.status = "retrying";
       } else {
         // Escalate to next backend in fallbackOrder
-        const fallbackOrder: AgentBackendType[] = [
+        const fallbackOrder: AgentBackend[] = [
           "gemini",
           "claude",
           "codex",
