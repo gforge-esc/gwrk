@@ -7,8 +7,9 @@ import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
-import { CommandError, withSignal } from "../utils/signal.js";
-import { BUILTIN_AGENTS } from "../plugins/builtins/agents/index.js";
+import { withSignal } from "../utils/signal.js";
+import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { PluginLoader } from "../plugins/loader.js";
 import { quotaProbe } from "../engine/quota.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
@@ -63,6 +64,7 @@ Exit codes:
           `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}`,
         );
         console.log(`    Run 'gwrk server start' to start the server.\n`);
+        await printAgents();
         return;
       }
 
@@ -89,7 +91,11 @@ Exit codes:
 
 async function printAgents() {
   console.log(`\n  ${CYAN}Agent Backends${RESET}`);
-  for (const [name, adapter] of Object.entries(BUILTIN_AGENTS)) {
+  const loader = new PluginLoader();
+  const registry = new AgentBackendRegistry(loader);
+  const backends = await registry.getBackends();
+
+  for (const [backendName, adapter] of Object.entries(backends)) {
     const q = await quotaProbe(adapter);
     let statusStr = "";
     switch (q.status) {
@@ -106,7 +112,7 @@ async function printAgents() {
         statusStr = `${RED}Unavailable${RESET}`;
         break;
     }
-    console.log(`    ${DIM}${name.padEnd(12)}${RESET} | ${statusStr}`);
+    console.log(`    ${DIM}${backendName.padEnd(12)}${RESET} | ${statusStr}`);
   }
 }
 

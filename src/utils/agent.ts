@@ -6,6 +6,7 @@ import type { AgentBackend as ConfigAgentBackend } from "./config.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
+import { recordRoutingDecision } from "../db/plugins.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
@@ -220,6 +221,7 @@ export async function dispatchAgent(
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
 export interface TaskDispatch {
+  type?: string;
   prompt?: string;
   agent?: ConfigAgentBackend | string;
   workDir?: string;
@@ -275,6 +277,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // Currently dispatchAgent only returns exitCode and logPath because it streams output.
   // In the future, we might need to capture output if parseResult needs it.
   const result = adapter.parseResult("", "", rawExitCode);
+
+  // Record routing decision for historical learning
+  const taskType = task.type || path.basename(task.workflow || 'unknown', '.md');
+  recordRoutingDecision({
+    task_type: taskType,
+    selected_backend: agentName,
+    outcome: result.exitCode === 0 ? "success" : "failure",
+    duration_ms: durationS * 1000,
+  });
   
   return {
     ...result,

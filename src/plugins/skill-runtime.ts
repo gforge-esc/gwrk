@@ -1,6 +1,4 @@
 import fs from "node:fs/promises";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { PluginLoader } from "./loader.js";
 import type { 
   SkillManifest, 
@@ -9,8 +7,9 @@ import type {
 } from "./manifest.js";
 import { processForAgent } from "../utils/agent-layer.js";
 import { CommandError } from "../utils/signal.js";
-
-const execAsync = promisify(exec);
+import { selectBackend } from "../engine/router.js";
+import { AgentBackendRegistry } from "./agent-registry.js";
+import { dispatchToAgent } from "../utils/agent.js";
 
 export interface SkillOptions {
   input?: string;
@@ -102,51 +101,34 @@ export async function executeSkill(
   const input = options.input || '';
   const prompt = await assemblePrompt(manifest, input, loader, options);
 
-  // FR-006: Determine agent and model
-  const agent = manifest.runtime.preferredAgent;
-  const model = manifest.runtime.preferredModel;
+  // FR-006: Determine agent and model via router
+  const projectRoot = loaderOptions.projectDir || process.cwd();
+  const registry = new AgentBackendRegistry(loader);
+  
+  const backend = await selectBackend(
+    { type: 'skill', skillName: name },
+    projectRoot,
+    registry
+  );
 
-  let command: string;
-  // Exact formats from FR-006
-  if (agent === 'claude') {
-    command = `claude --dangerously-skip-permissions --model ${model} -p "${prompt.replace(/"/g, '\\"')}"`;
-  } else if (agent === 'gemini') {
-    command = `gemini --yolo --model ${model} -p "${prompt.replace(/"/g, '\\"')}"`;
-  } else if (agent === 'codex') {
-    command = `codex exec --dangerously-bypass-approvals-and-sandbox --model ${model} "${prompt.replace(/"/g, '\\"')}"`;
-  } else {
-    // Fallback or generic (though FR-006 specifies these three)
-    throw new Error(`Unsupported agent backend: ${agent}`);
+  const taskResult = await dispatchToAgent({
+    type: `skill/${name}`,
+    prompt,
+    agent: backend.name,
+    stdin: prompt,
+    workflow: `.agents/skills/${name}/manifest.yaml`, // Symbolic path for logging
+    workDir: projectRoot,
+  });
+
+  let processedStdout = taskResult.stdout;
+  if (options.agent) {
+    processedStdout = processForAgent(taskResult.stdout);
   }
 
-  const startTime = Date.now();
-  try {
-    const { stdout, stderr } = await execAsync(command);
-    const durationS = (Date.now() - startTime) / 1000;
-
-    let processedStdout = stdout;
-    if (options.agent) {
-      processedStdout = processForAgent(stdout);
-    }
-
-    // F013 signal is handled by the caller (e.g. gwrk skill command via withSignal)
-    const exitCode = 0;
-
-    return {
-      stdout: processedStdout,
-      stderr,
-      exitCode,
-      durationS
-    };
-  } catch (error: any) {
-    const durationS = (Date.now() - startTime) / 1000;
-    const exitCode = error.code || 1;
-    const message = `Skill invocation failed: ${error.message}. Agent: ${agent}, duration: ${durationS.toFixed(1)}s.`;
-    
-    const err: any = new CommandError(message, exitCode);
-    err.stdout = error.stdout || '';
-    err.stderr = error.stderr || '';
-    err.durationS = durationS;
-    throw err;
-  }
+  return {
+    stdout: processedStdout,
+    stderr: taskResult.stderr,
+    exitCode: taskResult.exitCode,
+    durationS: taskResult.durationS
+  };
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
+import { recordRoutingDecision } from "../db/plugins.js";
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
@@ -190,6 +191,14 @@ export async function dispatchToAgent(task) {
     // Currently dispatchAgent only returns exitCode and logPath because it streams output.
     // In the future, we might need to capture output if parseResult needs it.
     const result = adapter.parseResult("", "", rawExitCode);
+    // Record routing decision for historical learning
+    const taskType = task.type || path.basename(task.workflow || 'unknown', '.md');
+    recordRoutingDecision({
+        task_type: taskType,
+        selected_backend: agentName,
+        outcome: result.exitCode === 0 ? "success" : "failure",
+        duration_ms: durationS * 1000,
+    });
     return {
         ...result,
         durationS,

@@ -5,6 +5,11 @@ import type { TaskDispatch, TaskResult } from '../utils/agent.js';
  */
 export interface AgentBackend {
   /**
+   * The unique name of this agent backend (e.g., "gemini", "claude").
+   */
+  readonly name: string;
+
+  /**
    * Generates the CLI-specific context file from the project's source of truth.
    * MUST use <!-- gwrk:begin --> / <!-- gwrk:end --> boundary markers.
    */

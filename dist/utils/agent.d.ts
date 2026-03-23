@@ -28,6 +28,7 @@ export declare function dispatchAgent(opts: DispatchOptions): Promise<{
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
 export interface TaskDispatch {
+    type?: string;
     prompt?: string;
     agent?: ConfigAgentBackend | string;
     workDir?: string;

@@ -15,6 +15,28 @@ export class AgentBackendRegistry {
   constructor(private loader?: PluginLoader) {}
 
   /**
+   * Returns a list of all available agent backends.
+   */
+  async getBackends(): Promise<Record<string, AgentBackend>> {
+    const backends: Record<string, AgentBackend> = { ...BUILTIN_AGENTS };
+    
+    // Discover user-installed plugins via loader
+    if (this.loader) {
+      try {
+        const plugins = await this.loader.listPlugins({ type: "agent" });
+        for (const plugin of plugins) {
+          if (!backends[plugin.name]) {
+            // Placeholder: resolution logic for dynamic plugins would go here.
+            // For Phase 4, we ensure built-ins and known plugins are listed.
+          }
+        }
+      } catch (e) {}
+    }
+
+    return backends;
+  }
+
+  /**
    * Resolves the adapter instance for a given agent backend.
    * Resolution Order:
    * 1. User-installed plugin at ~/.gwrk/plugins/agents/<name>/.

@@ -5,6 +5,8 @@ import type { AgentBackend } from "../../../agent-backend.js";
 import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 
 export class ClaudeAdapter implements AgentBackend {
+  readonly name = "claude";
+
   async isAvailable(): Promise<boolean> {
     const res = await execCommand("which", ["claude"]);
     return res.exitCode === 0;
