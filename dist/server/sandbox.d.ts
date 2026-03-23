@@ -12,7 +12,7 @@ export declare class SandboxManager {
     constructor(projectRoot?: string);
     checkGit(): Promise<boolean>;
     createSandbox(opts: SandboxOptions): Promise<string>;
-    destroySandbox(workDir: string): Promise<void>;
+    destroySandbox(workDir: string, featureId: string): Promise<void>;
     listSandboxes(): Promise<SandboxInfo[]>;
     pruneSandboxes(): Promise<void>;
 }
