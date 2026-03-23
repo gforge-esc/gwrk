@@ -111,6 +111,16 @@ function printStatus(status: SystemStatus) {
     }
   }
 
+  if (status.backends) {
+    console.log(`\n  ${CYAN}Backends${RESET}`);
+    for (const [name, info] of Object.entries(status.backends)) {
+      let s = info.status === "available" ? GREEN : info.status === "rate_limited" ? YELLOW : RED;
+      let label = info.status.charAt(0).toUpperCase() + info.status.slice(1).replace("_", " ");
+      if (info.backoffS) label += ` (${info.backoffS}s backoff)`;
+      console.log(`    ${DIM}${name.padEnd(12)}${RESET} | ${s}${label}${RESET}`);
+    }
+  }
+
   console.log("");
 }
 
