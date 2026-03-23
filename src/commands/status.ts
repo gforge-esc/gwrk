@@ -8,6 +8,8 @@ import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { BUILTIN_AGENTS } from "../plugins/builtins/agents/index.js";
+import { quotaProbe } from "../engine/quota.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
@@ -74,14 +76,39 @@ Exit codes:
 
         const status = (await response.json()) as SystemStatus;
         printStatus(status);
+        await printAgents();
       } catch (err) {
         console.log(
           `\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`,
         );
         console.log(`    ${DIM}Endpoint: ${url}${RESET}\n`);
+        await printAgents();
       }
     });
   });
+
+async function printAgents() {
+  console.log(`\n  ${CYAN}Agent Backends${RESET}`);
+  for (const [name, adapter] of Object.entries(BUILTIN_AGENTS)) {
+    const q = await quotaProbe(adapter);
+    let statusStr = "";
+    switch (q.status) {
+      case "available":
+        statusStr = `${GREEN}Available${RESET}`;
+        break;
+      case "rate-limited":
+        statusStr = `${YELLOW}Rate Limited${RESET} (backoff: ${q.backoffS}s)`;
+        break;
+      case "exhausted":
+        statusStr = `${RED}Exhausted${RESET}`;
+        break;
+      case "unavailable":
+        statusStr = `${RED}Unavailable${RESET}`;
+        break;
+    }
+    console.log(`    ${DIM}${name.padEnd(12)}${RESET} | ${statusStr}`);
+  }
+}
 
 function printStatus(status: SystemStatus) {
   const { server, system, dispatch, sandboxes } = status;

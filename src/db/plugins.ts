@@ -43,3 +43,43 @@ export function recordAgentContextSync(
       context_hash: sync.context_hash,
     });
 }
+
+export interface RoutingDecision {
+  task_type: string;
+  selected_backend: string;
+  outcome: "success" | "failure" | "rate-limited" | "timeout";
+  duration_ms?: number;
+  error_message?: string;
+}
+
+/**
+ * Record a routing decision for learning.
+ */
+export function recordRoutingDecision(
+  decision: RoutingDecision,
+  db?: Database.Database,
+): void {
+  const conn = db ?? getDb();
+  conn
+    .prepare(
+      `INSERT INTO routing_decisions (task_type, selected_backend, outcome, duration_ms, error_message)
+       VALUES (@task_type, @selected_backend, @outcome, @duration_ms, @error_message)`,
+    )
+    .run(decision);
+}
+
+/**
+ * Get routing history for a task type.
+ */
+export function getRoutingHistory(
+  taskType: string,
+  limit: number = 10,
+  db?: Database.Database,
+): RoutingDecision[] {
+  const conn = db ?? getDb();
+  return conn
+    .prepare(
+      "SELECT * FROM routing_decisions WHERE task_type = ? ORDER BY created_at DESC LIMIT ?",
+    )
+    .all(taskType, limit) as RoutingDecision[];
+}
