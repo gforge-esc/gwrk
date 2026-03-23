@@ -104,7 +104,6 @@ export interface SystemStatus {
     paused: boolean;
   };
   sandboxes: SandboxInfo[];
-  backends?: Record<string, { status: string; backoffS?: number }>;
 }
 
 export interface NotifyPayload {

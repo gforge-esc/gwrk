@@ -227,7 +227,7 @@
           "id": "T024",
           "title": "Implement src/engine/router.ts",
           "description": "NEW: `selectBackend(",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T024-gate.sh",
           "classification": "greenfield"
         },
@@ -235,7 +235,7 @@
           "id": "T025",
           "title": "Implement src/engine/quota.ts",
           "description": "NEW: Quota probing per adapter",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T025-gate.sh",
           "classification": "greenfield"
         },
@@ -243,7 +243,7 @@
           "id": "T026",
           "title": "Implement src/db/migrations/004-routing-history.sql",
           "description": "NEW: `routing_decisions` table",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T026-gate.sh",
           "classification": "greenfield"
         },
@@ -251,7 +251,7 @@
           "id": "T027",
           "title": "Implement src/engine/router.test.ts",
           "description": "NEW: Verify fallback chains and historical learning",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T027-gate.sh",
           "classification": "greenfield"
         },
@@ -259,7 +259,7 @@
           "id": "T028",
           "title": "Implement src/commands/status.ts",
           "description": "MODIFY: Include backend availability in status",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T028-gate.sh",
           "classification": "greenfield"
         },
@@ -267,7 +267,7 @@
           "id": "T029",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T029-gate.sh",
           "classification": "noop"
         }
