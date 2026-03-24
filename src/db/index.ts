@@ -86,6 +86,29 @@ function runMigrations(db: Database.Database): void {
     db.exec(sql);
     db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
   }
+
+  // Post-migration idempotent column additions.
+  // These handle stale DBs where migrations were renumbered (e.g. 003→005).
+  // SQLite lacks ALTER TABLE ... ADD COLUMN IF NOT EXISTS, so we check first.
+  safeAddColumn(db, "runs", "status", "TEXT");
+  safeAddColumn(db, "runs", "merge_commit_sha", "TEXT");
+}
+
+/**
+ * Idempotent ALTER TABLE ADD COLUMN — no-op if column already exists.
+ * SQLite lacks IF NOT EXISTS for ALTER TABLE, so we check pragma_table_info.
+ */
+function safeAddColumn(
+  db: Database.Database,
+  table: string,
+  column: string,
+  type: string,
+): void {
+  const cols = db
+    .prepare(`SELECT name FROM pragma_table_info(?)`)
+    .all(table) as { name: string }[];
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
 
 /**

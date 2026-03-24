@@ -1,9 +1,11 @@
 -- Compression and Harvest Tracking
--- 003-compression.sql
+-- Originally 003-compression.sql, renumbered to 005 after F014 P3/P4 migrations.
 
 -- Finalization data for runs
-ALTER TABLE runs ADD COLUMN status TEXT;
-ALTER TABLE runs ADD COLUMN merge_commit_sha TEXT;
+-- NOTE: These ALTER TABLEs are handled by the migration runner's
+-- idempotent column-add logic (see src/db/index.ts safeAddColumn).
+-- ALTER TABLE runs ADD COLUMN status TEXT;
+-- ALTER TABLE runs ADD COLUMN merge_commit_sha TEXT;
 
 -- Compression engine records (FR-H06)
 CREATE TABLE IF NOT EXISTS compression (
