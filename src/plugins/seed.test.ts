@@ -1,7 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
-// @ts-ignore - Module does not exist yet (RED)
 import { seedSkills } from "./seed.js";
 
 vi.mock("node:fs/promises");
@@ -13,10 +12,17 @@ describe("FR-012: Skill Seeding (Taxonomy to Skills)", () => {
 
   it("US-010: parses reasoning-modes.md and generates atomic skill plugins", async () => {
     // Mocking reasoning-modes.md content
-    vi.mocked(fs.readFile).mockResolvedValue(`## reasoning
-### narrative
-**Prompt:** You are a narrator...
+    vi.mocked(fs.readFile).mockResolvedValue(`Reasoning Modes
+1. **narrative** - Frame everything as story.
+    > "You are a narrator..."
+---
+Evaluative Modes
+1. **adversarial** - Attack the idea.
+    > "You are a skeptic..."
 `);
+
+    // Mock fs.stat to throw (not found)
+    vi.mocked(fs.stat).mockRejectedValue(new Error("Not found"));
 
     await seedSkills();
 
@@ -32,7 +38,18 @@ describe("FR-012: Skill Seeding (Taxonomy to Skills)", () => {
   });
 
   it("US-010: preserves categories from the taxonomy", async () => {
-    // Should extract 'reasoning' category
+    vi.mocked(fs.readFile).mockResolvedValue(`Creative Modes
+1. **generative** - Raw ideation.
+    > "No filtering..."
+`);
+    vi.mocked(fs.stat).mockRejectedValue(new Error("Not found"));
+
+    await seedSkills();
+
+    expect(fs.writeFile).toHaveBeenCalledWith(
+        expect.stringContaining("generative/manifest.yaml"),
+        expect.stringContaining("category: creative")
+    );
   });
 
   it("US-010: supports --dry-run mode", async () => {
