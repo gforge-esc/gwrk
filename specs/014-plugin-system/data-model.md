@@ -79,6 +79,16 @@ interface AgentManifest extends PluginBase {
 }
 ```
 
+### 1.5 Workflow Manifest (Layer 2.5 - F014-R)
+
+```typescript
+interface WorkflowManifest extends PluginBase {
+  type: 'workflow';
+  outputSchema: Record<string, any>; // JSON Schema (Zod-backed)
+  context?: string[];               // Required files/context
+}
+```
+
 ## 2. Shared Interfaces
 
 ### 2.1 Plugin Interface
@@ -105,6 +115,25 @@ interface SkillRuntime {
   preferredModel: string;
   fallbackAgent?: string;
   maxInputTokens?: number;
+}
+```
+
+## 2.3 JSON Intent (Layer 2.5)
+
+```typescript
+type IntentAction = 'WRITE_FILE' | 'CREATE_DIR' | 'RUN_COMMAND' | 'DELETE_FILE';
+
+interface JsonIntent {
+  action: IntentAction;
+  path?: string;
+  content?: string;
+  command?: string;
+  args?: string[];
+}
+
+interface WorkflowOutput {
+  intents: JsonIntent[];
+  summary: string;
 }
 ```
 

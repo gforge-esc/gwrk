@@ -1,10 +1,10 @@
-# Implementation Plan: 014 Plugin System
+# Implementation Plan: 014 Plugin System (F014-R Rework)
 
-**Branch**: `develop` | **Date**: 2026-03-19 | **Spec**: [spec.md](./spec.md)
+**Branch**: `develop` | **Date**: 2026-03-31 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
-Implement a three-layer plugin architecture (Agent Backends, Skills, Extensions) that enables gwrk to be extended via CLI-native, pipe-composable plugins. This plan delivers the manifest-driven registry, the skill reasoning runtime, the normalized AgentBackend interface (ADR-006), and the routing intelligence (ex-F008) required for multi-agent orchestration.
+Implement a three-layer plugin architecture (Agent Backends, Skills, Workflows) that enables gwrk to be extended via CLI-native, pipe-composable plugins. This plan delivers the manifest-driven registry, the skill reasoning runtime, the Layer 1 AgentBackend adapters (ADR-006), and the Layer 2.5 WorkflowRuntime (JSON Intent Engine) required for shareability and bash eradication.
 
 ---
 
@@ -20,10 +20,10 @@ Establish the core infrastructure for scanning, validating, and resolving plugin
 - `src/commands/plugin.ts` (NEW: `gwrk plugin list/install/remove/disable/enable` handlers)
 - `src/utils/config.ts` (MODIFY: Add support for reading `~/.gwrk/plugins/` paths)
 - `src/plugins/manifest.test.ts` (NEW: Unit tests for manifest validation)
-- `src/plugins/loader.test.ts` (NEW: Unit tests for plugin resolution order)
+- `src/plugins/loader.test.ts` (NEW: Unit tests for resolution order)
 - `src/commands/plugin.test.ts` (NEW: Integration tests for plugin CLI)
 
-**Requirements Addressed:** FR-001, FR-002, FR-003, FR-004, FR-005, FR-013, TC-001, TC-002, TC-004, TC-005, TC-009
+**Requirements Addressed:** FR-001, FR-002, FR-003, FR-004, FR-005, FR-013, US-001, US-002, US-003, US-004, TC-001, TC-002, TC-004, TC-005, TC-009
 
 **Dependencies:** None
 
@@ -41,7 +41,7 @@ Establish the core infrastructure for scanning, validating, and resolving plugin
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | Unit | `src/plugins/manifest.ts` | Validates Atomic/Compound/Agent manifests, rejects unknown types |
+| TR-001 | Unit | `src/plugins/manifest.ts` | Validates Atomic/Compound/Agent/Workflow manifests |
 | TR-002 | Unit | `src/plugins/loader.ts` | Global -> Local Override -> Local Disable resolution order |
 | TR-003 | Integration | `src/commands/plugin.ts` | `install` validates then copies; `remove` warns on dependencies |
 
@@ -50,7 +50,7 @@ Establish the core infrastructure for scanning, validating, and resolving plugin
 
 ---
 
-### Phase 2: Skill Runtime
+### Phase 2: Skill Runtime (Layer 2)
 
 Implement the execution engine for Layer 2 plugins (Skills). This includes assembling multi-pass prompts for compound skills and invoking agents with the full F013 contract.
 
@@ -58,10 +58,10 @@ Implement the execution engine for Layer 2 plugins (Skills). This includes assem
 - `src/plugins/skill-runtime.ts` (NEW: Atomic/Compound assembly and execution logic)
 - `src/commands/skill.ts` (NEW: `gwrk skill <name>` command handler)
 - `src/utils/agent-layer.ts` (MODIFY: Support ANSI stripping and binary guards for skill output)
-- `src/plugins/skill-runtime.test.ts` (NEW: Unit tests for prompt assembly and mock invocation)
+- `src/plugins/skill-runtime.test.ts` (NEW: Unit tests for prompt assembly)
 - `src/commands/skill.test.ts` (NEW: Integration tests for skill piping)
 
-**Requirements Addressed:** FR-006, FR-007, FR-008, FR-009, FR-010, TC-007, TC-008
+**Requirements Addressed:** FR-006, FR-007, FR-008, FR-009, FR-010, US-005, US-006, US-007, US-008, TC-007, TC-008
 
 **Dependencies:** Phase 1
 
@@ -86,19 +86,17 @@ Implement the execution engine for Layer 2 plugins (Skills). This includes assem
 
 ---
 
-### Phase 3: Agent Backend Adapters (Layer 1)
+### Phase 3: Agent Backend Adapters (Layer 1 - ADR-006)
 
-Implement the normalized `AgentBackend` interface as per ADR-006. This replaces hardcoded CLI dispatch with a plugin-driven adapter model.
+Implement the normalized `AgentBackend` interface. This replaces hardcoded CLI dispatch with a plugin-driven adapter model.
 
-**Files (8):**
+**Files (7):**
 - `src/plugins/builtins/agents/index.ts` (NEW: Static registry of built-in adapters)
-- `src/plugins/builtins/agents/claude/adapter.ts` (NEW: Claude Code adapter)
-- `src/plugins/builtins/agents/gemini/adapter.ts` (NEW: Gemini CLI adapter)
-- `src/plugins/builtins/agents/codex/adapter.ts` (NEW: Codex CLI adapter)
+- `src/plugins/builtins/agents/claude/adapter.ts`, `gemini/adapter.ts`, `codex/adapter.ts` (NEW: Adapters)
 - `src/utils/agent.ts` (MODIFY: Replace spawn logic with `AgentBackend.dispatch()`)
 - `src/commands/sync-context.ts` (NEW: `gwrk plugin sync-context` handler)
 - `src/db/migrations/003-agent-context.sql` (NEW: Track sync state in SQLite)
-- `src/plugins/agent-adapter.test.ts` (NEW: Verify stdin delivery and exit normalization)
+- `src/plugins/agent-adapter.test.ts` (NEW: Verify exit normalization)
 
 **Requirements Addressed:** FR-L1-001 to FR-L1-013, TC-010, ADR-006
 
@@ -119,16 +117,118 @@ Implement the normalized `AgentBackend` interface as per ADR-006. This replaces 
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
 | FR-L1-003 | Unit | `parseResult()` | Normalizes proprietary exit codes to gwrk standard |
-| FR-L1-004 | Integration | `syncGovernance()` | Updates GEMINI.md/CLAUDE.md from agent-context.md |
+| FR-L1-004 | Integration | `syncGovernance()` | Updates context files from agent-context.md |
 
 #### Done When
 - `gwrk plugin sync-context` generates context files with boundary markers
 
 ---
 
-### Phase 4: Routing & Intelligence
+### Phase 4: WorkflowRuntime (Layer 2.5 - F014-R)
 
-Implement the routing engine that selects the optimal backend based on task type, quota, and historical success. Absorbs the retired F008 feature.
+Implement the `WorkflowRuntime` engine and the `IntentEngine` for native filesystem mutation. This is the core of the F014-R rework.
+
+**Files (6):**
+- `src/plugins/workflow-runtime.ts` (NEW: Resolve and execute workflows via agents)
+- `src/engine/intent-engine.ts` (NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`)
+- `src/plugins/builtins/workflows/` (NEW: 10 core workflows as built-in plugins)
+- `src/plugins/workflow-runtime.test.ts` (NEW: Verify JSON intent parsing and validation)
+- `src/engine/intent-engine.test.ts` (NEW: Verify FS path containment and execution)
+
+**Requirements Addressed:** FR-L25-001, FR-L25-002, FR-L25-006, FR-L25-007, US-011, US-012, US-015, TC-011
+
+**Dependencies:** Phase 1
+
+**Contract Mapping:**
+- `contracts/workflow-runtime.md` → `executeWorkflow(name, input)` → `src/plugins/workflow-runtime.ts`
+- `contracts/workflow-runtime.md` → `executeIntents(intents, root)` → `src/engine/intent-engine.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| cascade-sync | LLMs MUST NOT directly mutate the filesystem |
+| decision-forge | Path containment enforcement for `IntentEngine` |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-009 | Unit | `WorkflowRuntime` | Catches invalid JSON intents and exits 1 |
+| TR-011 | Integration | `IntentEngine` | Blocks file writes outside the project root |
+
+#### Done When
+- `gwrk-specify` workflow executes in memory and returns valid `WRITE_FILE` intents
+
+---
+
+### Phase 5: DefineOrchestrator & CLI Rewiring
+
+Implement the `DefineOrchestrator` state machine and rewire existing commands to use the `WorkflowRuntime`. This eradicates the dependency on `define-until-solid.sh`.
+
+**Files (5):**
+- `src/engine/define-orchestrator.ts` (NEW: TS state machine for spec->plan->tasks loop)
+- `src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts` (MODIFY: Rewire to `WorkflowRuntime`)
+- `src/engine/define-orchestrator.test.ts` (NEW: Verify state transitions)
+- `src/commands/specify.test.ts`, `plan.test.ts` (MODIFY: E2E verification)
+
+**Requirements Addressed:** FR-L25-003, FR-L25-004, US-011, US-013
+
+**Dependencies:** Phase 4
+
+**Contract Mapping:**
+- `contracts/workflow-runtime.md` → `runLoop(specPath)` → `src/engine/define-orchestrator.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| architecture-stress-test | Applied to state machine transitions |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-010 | Unit | `DefineOrchestrator` | Transitions through SPEC, PLAN, TASKS sequentially |
+| TR-012 | E2E | `gwrk specify` | Successfully creates a spec file via WorkflowRuntime |
+
+#### Done When
+- `gwrk specify my-feature` works in a directory without an `.agents/` folder
+
+---
+
+### Phase 6: Provisioning & Migration
+
+Overhaul `gwrk init` to provision the global home and provide migration/seeding tools.
+
+**Files (6):**
+- `src/commands/init.ts` (MODIFY: Provision `~/.gwrk/plugins/` with built-ins)
+- `src/plugins/migrate.ts` (NEW: `.agents/` to `~/.gwrk/plugins/` migration)
+- `src/plugins/seed.ts` (NEW: Taxonomy to atomic skills seeding)
+- `src/commands/init.test.ts`, `src/plugins/migrate.test.ts`, `src/plugins/seed.test.ts`
+
+**Requirements Addressed:** FR-011, FR-012, FR-L25-005, US-009, US-010, US-014, TC-006
+
+**Dependencies:** Phase 2, Phase 4, Phase 5
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| TC-006 | Original `.agents/` files MUST NOT be deleted during migration |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-005 | Unit | `migrate()` | Generates valid `manifest.yaml` from frontmatter |
+| TR-006 | Unit | `seed()` | Categories (reasoning, evaluative, etc.) are preserved |
+
+#### Done When
+- `gwrk init` populates `~/.gwrk/plugins/workflows/` with 10 core workflows
+
+---
+
+### Phase 7: Routing & Intelligence (ex-F008)
+
+Implement the routing engine that selects the optimal backend based on task type, quota, and historical success.
 
 **Files (5):**
 - `src/engine/router.ts` (NEW: `selectBackend()` logic with fallback chains)
@@ -161,45 +261,14 @@ Implement the routing engine that selects the optimal backend based on task type
 
 ---
 
-### Phase 5: Migration & Seeding
-
-Provide tools for migrating legacy skills and seeding the atomic skill library from the reasoning modes taxonomy.
-
-**Files (4):**
-- `src/plugins/migrate.ts` (NEW: `.agents/skills/` migration logic)
-- `src/plugins/seed.ts` (NEW: `reasoning-modes.md` parsing and plugin generation)
-- `src/plugins/migrate.test.ts` (NEW: Verify manifest generation from frontmatter)
-- `src/plugins/seed.test.ts` (NEW: Verify ~40 atomic skills generated)
-
-**Requirements Addressed:** FR-011, FR-012, TC-006
-
-**Dependencies:** Phase 2
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| TC-006 | Original `.agents/` files MUST NOT be deleted |
-| compile-gate | Always |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-005 | Unit | `migrate()` | Generates valid `manifest.yaml` from SKILL.md frontmatter |
-| TR-006 | Unit | `seed()` | Categories (reasoning, evaluative, etc.) are preserved |
-
-#### Done When
-- `gwrk plugin seed --dry-run` lists 30+ atomic skills
-
----
-
 ## Type Dependency Graph
 
 | Shared Type | Defined In | Consumed By |
 |---|---|---|
 | `AnyManifest` | `src/plugins/manifest.ts` | Loader, Registry, CLI |
+| `JsonIntent` | `src/plugins/manifest.ts` | WorkflowRuntime, IntentEngine |
 | `TaskDispatch` | `src/utils/agent.ts` | AgentBackend, Router |
 | `TaskResult` | `src/utils/agent.ts` | AgentBackend, Ship Loop |
-| `PluginRegistry` | `src/plugins/loader.ts` | CLI, Engine, Server |
 
 ---
 
@@ -221,7 +290,7 @@ _No mockups exist for this feature._
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
-|--------|-------------|--------|
+|---|---|---|
 | US-001 | 1 | Planned |
 | US-002 | 1 | Planned |
 | US-003 | 1 | Planned |
@@ -230,8 +299,13 @@ _No mockups exist for this feature._
 | US-006 | 2 | Planned |
 | US-007 | 2 | Planned |
 | US-008 | 2 | Planned |
-| US-009 | 5 | Planned |
-| US-010 | 5 | Planned |
+| US-009 | 6 | Planned |
+| US-010 | 6 | Planned |
+| US-011 | 4, 5 | Planned |
+| US-012 | 4 | Planned |
+| US-013 | 5 | Planned |
+| US-014 | 6 | Planned |
+| US-015 | 4 | Planned |
 | FR-001 | 1 | Planned |
 | FR-002 | 1 | Planned |
 | FR-003 | 1 | Planned |
@@ -242,26 +316,30 @@ _No mockups exist for this feature._
 | FR-008 | 2 | Planned |
 | FR-009 | 2 | Planned |
 | FR-010 | 2 | Planned |
-| FR-011 | 5 | Planned |
-| FR-012 | 5 | Planned |
+| FR-011 | 6 | Planned |
+| FR-012 | 6 | Planned |
 | FR-013 | 1 | Planned |
 | FR-L1-001 | 3 | Planned |
 | FR-L1-002 | 3 | Planned |
 | FR-L1-003 | 3 | Planned |
 | FR-L1-004 | 3 | Planned |
-| FR-L1-005 | 3, 4 | Planned |
+| FR-L1-005 | 3, 7 | Planned |
 | FR-L1-006 | 3 | Planned |
-| FR-L1-007 | Deferred | Planned |
-| FR-L1-008 | 3 | Planned |
+| FR-L1-007 | Deferred | Deferred |
+| FR-L1-008 | 6 | Planned |
 | FR-L1-009 | 3 | Planned |
 | FR-L1-010 | 3 | Planned |
 | FR-L1-011 | 1 | Planned |
 | FR-L1-012 | 1 | Planned |
 | FR-L1-013 | 1 | Planned |
-| FR-L25-001 | 1 | Planned |
-| FR-L25-002 | 2 | Planned |
-| FR-L25-003 | 2 | Planned |
+| FR-L25-001 | 4 | Planned |
+| FR-L25-002 | 4 | Planned |
+| FR-L25-003 | 5 | Planned |
+| FR-L25-004 | 5 | Planned |
+| FR-L25-005 | 6 | Planned |
+| FR-L25-006 | 4 | Planned |
+| FR-L25-007 | 4 | Planned |
 | DM-001 to DM-007 | 1 | Planned |
-| TC-001 to TC-010 | 1, 2, 3 | Planned |
-| TR-001 to TR-008 | 1, 2, 3 | Planned |
-| VR-001 to VR-010 | All | Planned |
+| TC-001 to TC-011 | All | Planned |
+| TR-001 to TR-012 | All | Planned |
+| VR-011 to VR-016 | All | Planned |

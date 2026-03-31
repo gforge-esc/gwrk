@@ -3,8 +3,8 @@
   "createdAt": "2026-03-20T14:59:54.847Z",
   "generatedFrom": {
     "plan": {
-      "hash": "38cf7f37d2d2b97b3d0240d1b60342685110b2ccef7be98c32eb18b25a449b8d",
-      "modifiedAt": "2026-03-19T17:54:25.649Z"
+      "hash": "d3e3a22d4ec03bc3eed7ee85536f8f94e5b628fe45fb96df67d202ae3ee79d42",
+      "modifiedAt": "2026-03-31T19:22:57.721Z"
     }
   },
   "phases": [
@@ -55,7 +55,7 @@
         {
           "id": "T006",
           "title": "Implement src/plugins/loader.test.ts",
-          "description": "NEW: Unit tests for plugin resolution order",
+          "description": "NEW: Unit tests for resolution order",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "classification": "greenfield"
@@ -83,7 +83,7 @@
     },
     {
       "id": "phase-02",
-      "title": "Skill Runtime",
+      "title": "Skill Runtime (Layer 2)",
       "tasks": [
         {
           "id": "T009",
@@ -112,7 +112,7 @@
         {
           "id": "T012",
           "title": "Implement src/plugins/skill-runtime.test.ts",
-          "description": "NEW: Unit tests for prompt assembly and mock invocation",
+          "description": "NEW: Unit tests for prompt assembly",
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "classification": "greenfield"
@@ -140,7 +140,7 @@
     },
     {
       "id": "phase-03",
-      "title": "Agent Backend Adapters (Layer 1)",
+      "title": "Agent Backend Adapters (Layer 1 - ADR-006)",
       "tasks": [
         {
           "id": "T015",
@@ -152,67 +152,73 @@
         },
         {
           "id": "T016",
-          "title": "Implement src/plugins/builtins/agents/claude/adapter.ts",
-          "description": "NEW: Claude Code adapter",
+          "title": "Implement src/plugins/builtins/agents/claude/adapter.ts`, `gemini/adapter.ts`, `codex/adapter.ts",
+          "description": "NEW: Adapters",
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
+          "completedAt": "2026-03-31T19:35:27.577Z",
           "classification": "greenfield"
         },
         {
           "id": "T017",
-          "title": "Implement src/plugins/builtins/agents/gemini/adapter.ts",
-          "description": "NEW: Gemini CLI adapter",
+          "title": "Implement src/utils/agent.ts",
+          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(",
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T018",
-          "title": "Implement src/plugins/builtins/agents/codex/adapter.ts",
-          "description": "NEW: Codex CLI adapter",
+          "title": "Implement src/commands/sync-context.ts",
+          "description": "NEW: `gwrk plugin sync-context` handler",
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T019",
-          "title": "Implement src/utils/agent.ts",
-          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(",
+          "title": "Implement src/db/migrations/003-agent-context.sql",
+          "description": "NEW: Track sync state in SQLite",
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T020",
-          "title": "Implement src/commands/sync-context.ts",
-          "description": "NEW: `gwrk plugin sync-context` handler",
+          "title": "Implement src/plugins/agent-adapter.test.ts",
+          "description": "NEW: Verify exit normalization",
           "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T021",
-          "title": "Implement src/db/migrations/003-agent-context.sql",
-          "description": "NEW: Track sync state in SQLite",
-          "status": "completed",
-          "gateScript": "gates/T021-gate.sh",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T022",
-          "title": "Implement src/plugins/agent-adapter.test.ts",
-          "description": "NEW: Verify stdin delivery and exit normalization",
-          "status": "completed",
-          "gateScript": "gates/T022-gate.sh",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T023",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
-          "gateScript": "gates/T023-gate.sh",
+          "gateScript": "gates/T021-gate.sh",
           "classification": "noop"
+        },
+        {
+          "id": "T044",
+          "title": "Implement src/plugins/builtins/agents/claude/adapter.ts",
+          "description": "NEW: Claude Code adapter",
+          "status": "cancelled",
+          "gateScript": "gates/T016-gate.sh"
+        },
+        {
+          "id": "T045",
+          "title": "Implement src/plugins/builtins/agents/gemini/adapter.ts",
+          "description": "NEW: Gemini CLI adapter",
+          "status": "cancelled",
+          "gateScript": "gates/T017-gate.sh"
+        },
+        {
+          "id": "T046",
+          "title": "Implement src/plugins/builtins/agents/codex/adapter.ts",
+          "description": "NEW: Codex CLI adapter",
+          "status": "cancelled",
+          "gateScript": "gates/T018-gate.sh"
         }
       ],
       "doneWhen": [
@@ -221,108 +227,241 @@
     },
     {
       "id": "phase-04",
-      "title": "Routing & Intelligence",
+      "title": "WorkflowRuntime (Layer 2.5 - F014-R)",
       "tasks": [
         {
+          "id": "T022",
+          "title": "Implement src/plugins/workflow-runtime.ts",
+          "description": "NEW: Resolve and execute workflows via agents",
+          "status": "completed",
+          "gateScript": "gates/T022-gate.sh",
+          "completedAt": "2026-03-31T19:35:28.541Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T023",
+          "title": "Implement src/engine/intent-engine.ts",
+          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
+          "status": "completed",
+          "gateScript": "gates/T023-gate.sh",
+          "completedAt": "2026-03-31T19:35:31.453Z",
+          "classification": "greenfield"
+        },
+        {
           "id": "T024",
-          "title": "Implement src/engine/router.ts",
-          "description": "NEW: `selectBackend(",
+          "title": "Implement src/plugins/builtins/workflows/",
+          "description": "NEW: 10 core workflows as built-in plugins",
           "status": "completed",
           "gateScript": "gates/T024-gate.sh",
+          "completedAt": "2026-03-31T19:35:31.464Z",
           "classification": "greenfield"
         },
         {
           "id": "T025",
-          "title": "Implement src/engine/quota.ts",
-          "description": "NEW: Quota probing per adapter",
+          "title": "Implement src/plugins/workflow-runtime.test.ts",
+          "description": "NEW: Verify JSON intent parsing and validation",
           "status": "completed",
           "gateScript": "gates/T025-gate.sh",
+          "completedAt": "2026-03-31T19:35:31.475Z",
           "classification": "greenfield"
         },
         {
           "id": "T026",
-          "title": "Implement src/db/migrations/004-routing-history.sql",
-          "description": "NEW: `routing_decisions` table",
+          "title": "Implement src/engine/intent-engine.test.ts",
+          "description": "NEW: Verify FS path containment and execution",
           "status": "completed",
           "gateScript": "gates/T026-gate.sh",
+          "completedAt": "2026-03-31T19:35:31.486Z",
           "classification": "greenfield"
         },
         {
           "id": "T027",
-          "title": "Implement src/engine/router.test.ts",
-          "description": "NEW: Verify fallback chains and historical learning",
+          "title": "Implement test strategy for Phase 4",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T027-gate.sh",
-          "classification": "greenfield"
-        },
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`gwrk-specify` workflow executes in memory and returns valid `WRITE_FILE` intents"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "DefineOrchestrator & CLI Rewiring",
+      "tasks": [
         {
           "id": "T028",
-          "title": "Implement src/commands/status.ts",
-          "description": "MODIFY: Include backend availability in status",
+          "title": "Implement src/engine/define-orchestrator.ts",
+          "description": "NEW: TS state machine for spec->plan->tasks loop",
           "status": "completed",
           "gateScript": "gates/T028-gate.sh",
+          "completedAt": "2026-03-31T19:35:31.497Z",
           "classification": "greenfield"
         },
         {
           "id": "T029",
-          "title": "Implement test strategy for Phase 4",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
+          "description": "MODIFY: Rewire to `WorkflowRuntime`",
           "status": "completed",
           "gateScript": "gates/T029-gate.sh",
+          "completedAt": "2026-03-31T19:35:34.273Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T030",
+          "title": "Implement src/engine/define-orchestrator.test.ts",
+          "description": "NEW: Verify state transitions",
+          "status": "completed",
+          "gateScript": "gates/T030-gate.sh",
+          "completedAt": "2026-03-31T19:35:34.287Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T031",
+          "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
+          "description": "MODIFY: E2E verification",
+          "status": "completed",
+          "gateScript": "gates/T031-gate.sh",
+          "completedAt": "2026-03-31T19:35:34.299Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T032",
+          "title": "Implement test strategy for Phase 5",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T032-gate.sh",
+          "classification": "noop"
+        },
+        {
+          "id": "T047",
+          "title": "Implement src/plugins/migrate.test.ts",
+          "description": "NEW: Verify manifest generation from frontmatter",
+          "status": "cancelled",
+          "gateScript": "gates/T032-gate.sh"
+        },
+        {
+          "id": "T048",
+          "title": "Implement src/plugins/seed.test.ts",
+          "description": "NEW: Verify ~40 atomic skills generated",
+          "status": "cancelled",
+          "gateScript": "gates/T033-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`gwrk specify my-feature` works in a directory without an `.agents/` folder"
+      ]
+    },
+    {
+      "id": "phase-06",
+      "title": "Provisioning & Migration",
+      "tasks": [
+        {
+          "id": "T033",
+          "title": "Implement src/commands/init.ts",
+          "description": "MODIFY: Provision `~/.gwrk/plugins/` with built-ins",
+          "status": "completed",
+          "gateScript": "gates/T033-gate.sh",
+          "completedAt": "2026-03-31T19:35:35.248Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T034",
+          "title": "Implement src/plugins/migrate.ts",
+          "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration",
+          "status": "completed",
+          "gateScript": "gates/T034-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T035",
+          "title": "Implement src/plugins/seed.ts",
+          "description": "NEW: Taxonomy to atomic skills seeding",
+          "status": "completed",
+          "gateScript": "gates/T035-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T036",
+          "title": "Implement src/commands/init.test.ts",
+          "description": "Implement changes for src/commands/init.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T036-gate.sh",
+          "completedAt": "2026-03-31T19:35:35.261Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T037",
+          "title": "Implement test strategy for Phase 6",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T037-gate.sh",
+          "completedAt": "2026-03-31T19:35:36.268Z",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`gwrk init` populates `~/.gwrk/plugins/workflows/` with 10 core workflows"
+      ]
+    },
+    {
+      "id": "phase-07",
+      "title": "Routing & Intelligence (ex-F008)",
+      "tasks": [
+        {
+          "id": "T038",
+          "title": "Implement src/engine/router.ts",
+          "description": "NEW: `selectBackend(",
+          "status": "completed",
+          "gateScript": "gates/T038-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T039",
+          "title": "Implement src/engine/quota.ts",
+          "description": "NEW: Quota probing per adapter",
+          "status": "completed",
+          "gateScript": "gates/T039-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T040",
+          "title": "Implement src/db/migrations/004-routing-history.sql",
+          "description": "NEW: `routing_decisions` table",
+          "status": "completed",
+          "gateScript": "gates/T040-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T041",
+          "title": "Implement src/engine/router.test.ts",
+          "description": "NEW: Verify fallback chains and historical learning",
+          "status": "completed",
+          "gateScript": "gates/T041-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T042",
+          "title": "Implement src/commands/status.ts",
+          "description": "MODIFY: Include backend availability in status",
+          "status": "completed",
+          "gateScript": "gates/T042-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T043",
+          "title": "Implement test strategy for Phase 7",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T043-gate.sh",
+          "completedAt": "2026-03-31T19:35:37.125Z",
           "classification": "noop"
         }
       ],
       "doneWhen": [
         "`gwrk status` correctly identifies unavailable backends via quota probing"
-      ]
-    },
-    {
-      "id": "phase-05",
-      "title": "Migration & Seeding",
-      "tasks": [
-        {
-          "id": "T030",
-          "title": "Implement src/plugins/migrate.ts",
-          "description": "NEW: `.agents/skills/` migration logic",
-          "status": "completed",
-          "gateScript": "gates/T030-gate.sh",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T031",
-          "title": "Implement src/plugins/seed.ts",
-          "description": "NEW: `reasoning-modes.md` parsing and plugin generation",
-          "status": "completed",
-          "gateScript": "gates/T031-gate.sh",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T032",
-          "title": "Implement src/plugins/migrate.test.ts",
-          "description": "NEW: Verify manifest generation from frontmatter",
-          "status": "completed",
-          "gateScript": "gates/T032-gate.sh",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T033",
-          "title": "Implement src/plugins/seed.test.ts",
-          "description": "NEW: Verify ~40 atomic skills generated",
-          "status": "completed",
-          "gateScript": "gates/T033-gate.sh",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T034",
-          "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
-          "gateScript": "gates/T034-gate.sh",
-          "classification": "noop"
-        }
-      ],
-      "doneWhen": [
-        "`gwrk plugin seed --dry-run` lists 30+ atomic skills"
       ]
     }
   ]
