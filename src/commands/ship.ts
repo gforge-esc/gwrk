@@ -27,6 +27,8 @@ import { type TaskState, loadTaskState, saveTaskState } from "../utils/state.js"
 import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import { ShipStage, type ShipState } from "../engine/ship-types.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -161,23 +163,58 @@ async function shipPhase(
     "Max Iter": opts.maxIterations as string,
     "CI Timeout": `${opts.ciTimeout}m`,
     "Run ID": `${runId}`,
+    Orchestrator: opts.legacy ? "bash (legacy)" : "TypeScript",
   });
 
   const startTime = Date.now();
   let exitCode = 0;
 
   try {
-    await run(scriptPath, [feature, normalizedPhase], {
-      cwd,
-      env: {
-        ...process.env,
-        APPROVAL_MODE: "yolo",
-        MAX_ITERATIONS: opts.maxIterations as string,
-        CI_TIMEOUT: opts.ciTimeout as string,
-        AGENT_BACKEND: backend,
-      },
-      stdio: "inherit",
-    });
+    if (opts.legacy) {
+      await run(scriptPath, [feature, normalizedPhase], {
+        cwd,
+        env: {
+          ...process.env,
+          APPROVAL_MODE: "yolo",
+          MAX_ITERATIONS: opts.maxIterations as string,
+          CI_TIMEOUT: opts.ciTimeout as string,
+          AGENT_BACKEND: backend,
+        },
+        stdio: "inherit",
+      });
+    } else {
+      // FR-008: Crash recovery — load state if exists
+      const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
+      let existingState: ShipState | undefined;
+      if (fs.existsSync(statePath)) {
+        try {
+          existingState = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+          console.log(`  🔄 Resuming from state: ${existingState?.stage}`);
+        } catch (err) {
+          console.warn(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
+        }
+      }
+
+      // Manual override for testing/emergency
+      if (opts.resumeFrom && existingState) {
+        existingState.stage = opts.resumeFrom as ShipStage;
+      }
+
+      const orchestrator = new ShipOrchestrator({
+        featureId: feature,
+        phaseId: phaseId,
+        backend,
+        maxIterations: parseInt(opts.maxIterations as string),
+        ciTimeout: parseInt(opts.ciTimeout as string),
+        cwd,
+        dryRun: !!opts.dryRun,
+      }, existingState);
+
+      exitCode = await orchestrator.run();
+      if (exitCode !== 0) {
+        throw new Error(`ShipOrchestrator failed with exit code ${exitCode}`);
+      }
+    }
 
     const durationS = Math.round((Date.now() - startTime) / 1000);
     finishRun(runId, { exit_code: 0, duration_s: durationS });
@@ -346,6 +383,8 @@ Exit codes:
   )
   .option("--parallel", "Dispatch tasks within a phase in parallel")
   .option("--concurrency <n>", "Max concurrent tasks (overrides config)", "2")
+  .option("--legacy", "Use legacy bash ship loop (work-until-done.sh)")
+  .option("--resume-from <stage>", "Resume from a specific stage (BRANCH_SETUP, IMPLEMENT, etc.)")
   .action(
     async (
       feature: string,

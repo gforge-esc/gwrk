@@ -114,7 +114,7 @@ describe("shipCommand", () => {
   it("ship with phase should execute work-until-done.sh for that phase", async () => {
     mockRun.mockResolvedValueOnce(undefined);
 
-    await program.parseAsync(["node", "test", "ship", "001-cli-core", "7"]);
+    await program.parseAsync(["node", "test", "ship", "001-cli-core", "7", "--legacy"]);
 
     expect(execModule.run).toHaveBeenCalledTimes(1);
     const [scriptPath, args] = mockRun.mock.calls[0];
@@ -133,7 +133,7 @@ describe("shipCommand", () => {
   it("ship without phase should ship all phases from tasks.json", async () => {
     mockRun.mockResolvedValue(undefined);
 
-    await program.parseAsync(["node", "test", "ship", "001-cli-core"]);
+    await program.parseAsync(["node", "test", "ship", "001-cli-core", "--legacy"]);
 
     // Should call work-until-done.sh twice (phase-01, phase-02 from mock)
     expect(execModule.run).toHaveBeenCalledTimes(2);
@@ -152,6 +152,7 @@ describe("shipCommand", () => {
       "1",
       "--max-iterations",
       "5",
+      "--legacy",
     ]);
 
     expect(execModule.run).toHaveBeenCalledTimes(1);
@@ -170,6 +171,7 @@ describe("shipCommand", () => {
       "1",
       "--ci-timeout",
       "60",
+      "--legacy",
     ]);
 
     expect(execModule.run).toHaveBeenCalledTimes(1);
@@ -184,7 +186,7 @@ describe("shipCommand", () => {
 
     process.exitCode = 0;
     // Ship without phase — should fail on phase-01 and not attempt phase-02
-    await program.parseAsync(["node", "test", "ship", "001-cli-core"]);
+    await program.parseAsync(["node", "test", "ship", "001-cli-core", "--legacy"]);
 
     expect(process.exitCode).toBe(127);
     expect(execModule.run).toHaveBeenCalledTimes(1);
@@ -310,6 +312,7 @@ describe("shipCommand", () => {
       "1",
       "--agent",
       "claude",
+      "--legacy",
     ]);
 
     expect(execModule.run).toHaveBeenCalledTimes(1);
@@ -406,7 +409,7 @@ describe("FR-014: Phase Skip", () => {
 
     mockRun.mockResolvedValueOnce(undefined);
     process.exitCode = 0;
-    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1"]);
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1", "--legacy"]);
 
     expect(execModule.run).toHaveBeenCalledTimes(1);
   });

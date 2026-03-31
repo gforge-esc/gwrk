@@ -170,6 +170,50 @@ export function getDiffStats(repoPath, ref) {
     }
 }
 /**
+ * Checks if the working tree is dirty (has uncommitted changes).
+ */
+export async function isDirty(repoPath) {
+    try {
+        const stdout = execFileSync("git", ["status", "--porcelain"], {
+            cwd: repoPath,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        return stdout.trim().length > 0;
+    }
+    catch (_e) {
+        return true; // Assume dirty on error for safety
+    }
+}
+/**
+ * Creates a new branch from a base branch.
+ */
+export async function createBranch(repoPath, branchName, baseBranch = "develop") {
+    // First ensure base branch exists and is up to date
+    execFileSync("git", ["fetch", "origin", baseBranch], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "pipe"],
+    });
+    // Create and switch to new branch
+    execFileSync("git", ["checkout", "-b", branchName, `origin/${baseBranch}`], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "pipe"],
+    });
+}
+/**
+ * Syncs the current branch with a target branch (e.g., develop).
+ */
+export async function syncBranch(repoPath, targetBranch = "develop") {
+    execFileSync("git", ["fetch", "origin", targetBranch], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "pipe"],
+    });
+    execFileSync("git", ["merge", `origin/${targetBranch}`], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "pipe"],
+    });
+}
+/**
  * Checks if the working tree is clean.
  */
 export function isWorkingTreeClean(repoPath) {

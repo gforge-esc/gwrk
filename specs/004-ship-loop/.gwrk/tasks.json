@@ -318,57 +318,64 @@
           "id": "T029",
           "title": "Implement src/engine/ship-types.ts",
           "description": "NEW: ShipStage enum, ShipState interface, ShipRunConfig interface, StageResult type. Shared types for the TS orchestrator.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-31T14:30:00.000Z"
         },
         {
           "id": "T030",
           "title": "Implement src/utils/gate-runner.ts",
           "description": "NEW: Programmatic gate execution. runGate(scriptPath) → { passed: boolean, exitCode: number, output: string }. Replaces inline bash gate checks.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T030-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-31T14:40:00.000Z"
         },
         {
           "id": "T031",
           "title": "Implement src/engine/ship-orchestrator.ts",
           "description": "NEW: TypeScript state machine — BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE. Consumes dispatchToAgent(), assembleDigest(), runGate(). Persists state per FR-008. Circuit breaker per FR-007. Staging validation per FR-016.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T031-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-31T14:50:00.000Z"
         },
         {
           "id": "T032",
           "title": "Implement src/engine/ship-orchestrator.test.ts",
           "description": "NEW: Unit tests — state machine transitions, crash recovery, circuit breaker, pre-flight skip, staging validation, digest assembly, failureContext.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-31T14:55:00.000Z"
         },
         {
           "id": "T033",
           "title": "Implement specs/004-ship-loop/contracts/orchestrator.md",
           "description": "NEW: ShipOrchestrator interface contract — state machine stages, ShipState schema, ShipRunConfig, recovery semantics, circuit breaker behavior.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-03-31T15:00:00.000Z"
         },
         {
           "id": "T034",
           "title": "Wire ShipOrchestrator into src/commands/ship.ts",
           "description": "MODIFY: Replace work-until-done.sh spawn with ShipOrchestrator.run(). Add --legacy flag for bash fallback. This is the final cutover task.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T034-gate.sh",
-          "classification": "change"
+          "classification": "change",
+          "completedAt": "2026-03-31T15:10:00.000Z"
         },
         {
           "id": "T035",
           "title": "Implement test strategy for Phase 5",
           "description": "Verify all Phase 5 tests pass, pnpm build succeeds, and gwrk gate 004-ship-loop exits 0.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T035-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-03-31T15:15:00.000Z"
         }
       ],
       "doneWhen": [

@@ -1,0 +1,149 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ShipOrchestrator } from "./ship-orchestrator";
+import { ShipStage } from "./ship-types";
+import * as fs from "node:fs";
+import * as git from "../utils/git";
+import * as agent from "../utils/agent";
+import * as gateRunner from "../utils/gate-runner";
+import * as state from "../utils/state";
+
+vi.mock("node:fs");
+vi.mock("../utils/git");
+vi.mock("../utils/agent");
+vi.mock("../utils/gate-runner");
+vi.mock("../utils/state");
+vi.mock("../utils/manifest", () => ({
+  assembleDigest: vi.fn().mockReturnValue(["mock digest"]),
+}));
+
+describe("ShipOrchestrator", () => {
+  const config = {
+    featureId: "004-ship-loop",
+    phaseId: "phase-01",
+    backend: "gemini",
+    maxIterations: 3,
+    ciTimeout: 30,
+    cwd: "/mock/cwd",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(git.isDirty).mockResolvedValue(false);
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "Desc 1", status: "open", gateScript: "gates/T001-gate.sh" }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("should initialize with BRANCH_SETUP stage", () => {
+    const orchestrator = new ShipOrchestrator(config);
+    expect((orchestrator as any).state.stage).toBe(ShipStage.BRANCH_SETUP);
+  });
+
+  it("should complete full lifecycle successfully", async () => {
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Success",
+      stderr: "",
+      durationS: 10
+    });
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: false,
+      exitCode: 1,
+      output: "Fail"
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const exitCode = await orchestrator.run();
+
+    expect(exitCode).toBe(0);
+    expect((orchestrator as any).state.stage).toBe(ShipStage.DONE);
+    expect(git.createBranch).toHaveBeenCalledWith(config.cwd, "feat/004-ship-loop", "develop");
+    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(3); // IMPLEMENT, CODE_REVIEW, UAT_REVIEW
+  });
+
+  it("should fail-fast if working tree is dirty", async () => {
+    vi.mocked(git.isDirty).mockResolvedValue(true);
+
+    const orchestrator = new ShipOrchestrator(config);
+    const exitCode = await orchestrator.run();
+
+    expect(exitCode).toBe(1);
+    expect((orchestrator as any).state.stage).toBe(ShipStage.BRANCH_SETUP);
+    expect(git.createBranch).not.toHaveBeenCalled();
+  });
+
+  it("should skip implementation if pre-flight gate passes", async () => {
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "Pass"
+    });
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Success",
+      stderr: "",
+      durationS: 10
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const exitCode = await orchestrator.run();
+
+    expect(exitCode).toBe(0);
+    // IMPLEMENT stage should have called runGate but NOT dispatchToAgent for implementation
+    expect(gateRunner.runGate).toHaveBeenCalled();
+    // 2 calls for reviews, none for implementation
+    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(2); 
+  });
+
+  it("should loop back to IMPLEMENT on NO-GO review", async () => {
+    vi.mocked(agent.dispatchToAgent)
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "Imp Success", stderr: "", durationS: 10 }) // IMPLEMENT
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "Review Fail", stderr: "", durationS: 5 }) // CODE_REVIEW (NO-GO)
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "Imp Success 2", stderr: "", durationS: 10 }) // IMPLEMENT (Retry)
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "Review Success", stderr: "", durationS: 5 }) // CODE_REVIEW (GO)
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "UAT Success", stderr: "", durationS: 5 }); // UAT_REVIEW (GO)
+
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: false,
+      exitCode: 1,
+      output: "Fail"
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const exitCode = await orchestrator.run();
+
+    expect(exitCode).toBe(0);
+    expect((orchestrator as any).state.iteration).toBe(2);
+    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(5);
+  });
+
+  it("should trip circuit breaker after MAX_ITERATIONS", async () => {
+    vi.mocked(agent.dispatchToAgent)
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "Imp Success", stderr: "", durationS: 10 }) // IMPLEMENT
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "Review Fail", stderr: "", durationS: 5 }); // CODE_REVIEW (NO-GO)
+
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: false,
+      exitCode: 1,
+      output: "Fail"
+    });
+
+    const smallConfig = { ...config, maxIterations: 1 };
+    const orchestrator = new ShipOrchestrator(smallConfig);
+    const exitCode = await orchestrator.run();
+
+    expect(exitCode).toBe(1);
+    expect((orchestrator as any).state.stage).toBe(ShipStage.CIRCUIT_BREAK);
+  });
+});

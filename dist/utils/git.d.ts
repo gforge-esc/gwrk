@@ -37,6 +37,18 @@ export declare function getDiffStats(repoPath: string, ref: string): {
     linesDeleted: number;
 };
 /**
+ * Checks if the working tree is dirty (has uncommitted changes).
+ */
+export declare function isDirty(repoPath: string): Promise<boolean>;
+/**
+ * Creates a new branch from a base branch.
+ */
+export declare function createBranch(repoPath: string, branchName: string, baseBranch?: string): Promise<void>;
+/**
+ * Syncs the current branch with a target branch (e.g., develop).
+ */
+export declare function syncBranch(repoPath: string, targetBranch?: string): Promise<void>;
+/**
  * Checks if the working tree is clean.
  */
 export declare function isWorkingTreeClean(repoPath: string): boolean;
