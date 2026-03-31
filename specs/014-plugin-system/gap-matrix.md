@@ -32,13 +32,29 @@
 | FR-L1-010 | Built-in adapters (Claude/Gemini/Codex) | unit | src/plugins/agent-adapter.test.ts | ✅ | |
 | TC-010 | Strict Isolation (managedConfig boundary) | unit | src/plugins/manifest.test.ts | ✅ | T005 |
 | ADR-006 | Stdin context delivery | unit | src/plugins/agent-adapter.test.ts | ✅ | |
-| **Phase 4: Routing** | | | | | |
+| **Phase 4: WorkflowRuntime (Layer 2.5)** | | | | | |
+| FR-L25-001 | Workflow resolution & JSON output validation | unit | src/plugins/workflow-runtime.test.ts | ✅ | |
+| FR-L25-002 | Decoupled FS mutation (JSON intents) | unit | src/engine/intent-engine.test.ts | ✅ | |
+| FR-L25-006 | Resolution Order (.gwrk/ overrides) | unit | src/plugins/workflow-runtime.test.ts | ✅ | |
+| FR-L25-007 | Multi-action intent execution | unit | src/engine/intent-engine.test.ts | ✅ | |
+| US-011 | Execute built-in workflows | unit | src/plugins/workflow-runtime.test.ts | ✅ | |
+| US-012 | Filesystem mutation via intents | unit | src/engine/intent-engine.test.ts | ✅ | |
+| US-015 | Project-local workflow overrides | unit | src/plugins/workflow-runtime.test.ts | ✅ | |
+| TC-011 | Zero-dependency built-in workflows | unit | src/plugins/workflow-runtime.test.ts | ✅ | |
+| TR-009 | Invalid JSON intent catch | unit | src/plugins/workflow-runtime.test.ts | ✅ | |
+| TR-011 | Path containment (block outside root) | unit | src/engine/intent-engine.test.ts | ✅ | |
+| **Phase 5: DefineOrchestrator** | | | | | |
+| FR-L25-003 | CLI command rewiring to WorkflowRuntime | unit | src/engine/define-orchestrator.test.ts | ✅ | |
+| FR-L25-004 | DefineOrchestrator state machine | unit | src/engine/define-orchestrator.test.ts | ✅ | |
+| US-013 | Spec -> Plan -> Tasks loop | unit | src/engine/define-orchestrator.test.ts | ✅ | |
+| TR-010 | Sequential state transitions | unit | src/engine/define-orchestrator.test.ts | ✅ | |
+| **Phase 6: Migration** | | | | | |
+| FR-011 | gwrk plugin migrate (.agents/ skills) | unit | src/plugins/migrate.test.ts | ✅ | |
+| FR-012 | gwrk plugin seed (taxonomy -> skills) | unit | src/plugins/seed.test.ts | ✅ | |
+| **Phase 7: Routing** | | | | | |
 | FR-014 | Routing engine selection logic | unit | src/engine/router.test.ts | ✅ | |
 | FR-P4-001 | fallbackOrder support | unit | src/engine/router.test.ts | ✅ | |
 | FR-P4-002 | Quota/Rate-limit probing (429) | unit | src/engine/router.test.ts | ✅ | |
-| **Phase 5: Migration** | | | | | |
-| FR-011 | gwrk plugin migrate (.agents/ skills) | unit | src/plugins/migrate.test.ts | ✅ | |
-| FR-012 | gwrk plugin seed (taxonomy -> skills) | unit | src/plugins/seed.test.ts | ✅ | |
 | **Verification Requirements (E2E)** | | | | | |
 | VR-001 | Install + invoke skill | e2e | src/plugins.e2e.test.ts | ✅ | |
 | VR-002 | JSON plugin list | e2e | src/plugins.e2e.test.ts | ✅ | |
