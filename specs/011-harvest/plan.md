@@ -15,7 +15,7 @@ Implement the post-merge lifecycle for gwrk. This feature closes the loop by aut
 Establish the data model for harvest and compression tracking.
 
 **Files (4):**
-- `src/db/migrations/003-compression.sql` (NEW: Create `compression` table and add `status`, `merge_commit_sha` to `runs`)
+- `src/db/migrations/005-compression.sql` (VERIFY: Schema already merged during F014)
 - `src/db/runs.ts` (MODIFY: Update `RunRecord` type and `finishRun()` to support harvest data)
 - `src/db/compression.ts` (NEW: DB access for the `compression` table)
 - `src/engine/types.ts` (MODIFY: Ensure all harvest and compression types are present)

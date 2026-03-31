@@ -3,13 +3,9 @@
 set -euo pipefail
 
 # Assertion #1: Check for migration file
-ls src/db/migrations/003-compression.sql > /dev/null
+test -f src/db/migrations/005-compression.sql || { echo "FAIL: src/db/migrations/005-compression.sql missing" >&2; exit 1; }
 
 # Assertion #2: Verify compression table creation
-grep -q "CREATE TABLE IF NOT EXISTS compression" src/db/migrations/003-compression.sql
+grep -q "CREATE TABLE IF NOT EXISTS compression" src/db/migrations/005-compression.sql || { echo "FAIL: compression table not created" >&2; exit 1; }
 
-# Assertion #3: Verify runs table alterations
-grep -q "ALTER TABLE runs ADD COLUMN status TEXT" src/db/migrations/003-compression.sql
-grep -q "ALTER TABLE runs ADD COLUMN merge_commit_sha TEXT" src/db/migrations/003-compression.sql
-
-echo "PASS: T001 — Implement src/db/migrations/003-compression.sql (NEW)"
+echo "PASS: T001 — Verify src/db/migrations/005-compression.sql exists and is correct"

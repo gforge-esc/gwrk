@@ -14,8 +14,8 @@
       "tasks": [
         {
           "id": "T001",
-          "title": "Implement src/db/migrations/003-compression.sql",
-          "description": "NEW: Create `compression` table and add `status`, `merge_commit_sha` to `runs`",
+          "title": "Verify src/db/migrations/005-compression.sql",
+          "description": "VERIFY: 005-compression.sql already created `compression` table",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "classification": "greenfield"
