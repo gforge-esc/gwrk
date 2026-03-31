@@ -2,251 +2,167 @@
 
 > **Status:** Draft — Awaiting Review
 > **Initiative:** [R004 brief](file:///Users/gonzo/Code/gwrk/docs/research/R004-shareability-readiness/brief.md)
-> **Consumer:** README.md rewrite, DEVELOPMENT.md creation, onboarding documentation
+> **Consumer:** README.md rewrite, DEVELOPMENT.md creation, F014 rework scope
 
 ## Executive Summary
 
-gwrk is **not yet standalone**. Despite F014 (Plugin System) being complete, deep structural coupling to `.agents/` workflows and `scripts/dev/` bash orchestrators remains in the runtime hot path. Six CLI commands hardcode `.agents/workflows/` paths. Two commands (`ship`, `define`) spawn bash scripts that are themselves the orchestration engines. The README was last audited at F001, `WHAT_IS_GWRK.md` references Docker sandboxes (now replaced by git worktrees per R001), and the Makefile contains dead Docker Compose targets. No `DEVELOPMENT.md` or `CONTRIBUTING.md` exists.
+gwrk cannot be shared in its current state. The core problem is not documentation — it's that **gwrk's workflow engine is a facade over Gonzo's personal `.agents/` directory**. Every `gwrk specify`, `gwrk plan`, `gwrk define`, and `gwrk ship` command hardcodes paths to `.agents/workflows/gwrk-*.md` files and passes them to LLM agents as raw markdown. These workflow files are Gonzo's personal Foxtrot Charlie methodology — they do not ship with gwrk and `gwrk init` creates empty placeholders that say "Placeholder content for specify.md."
 
-**The critical finding:** F004-R (DispatchOrchestrator) is the keystone to standalone operation. It replaces the bash scripts that `ship.ts` and `define.ts` spawn. However, even after F004-R, the `.agents/` directory **does not go away** — it transitions from "gwrk's runtime dependency" to "gwrk's generated-and-maintained project scaffolding." The workflows in `.agents/` are consumed by LLM agents (Gemini, Claude, Codex) as reasoning programs, not by gwrk's TypeScript code. F014's `WorkflowRuntime` (Layer 2.5) is designed to replace this indirect coupling with native JSON intent execution, but that Layer 2.5 is not yet implemented.
+F014 (Plugin System) was intended to solve this. The spec explicitly calls out shareability as a goal (§1 Problem Statement: "Shareability — no install/publish mechanism for friends or collaborators"). **But F014 as implemented only solved half the problem:** it built excellent plugin infrastructure (loader, manifest schema, skill runtime, agent backend adapters) but did NOT internalize gwrk's own workflows as built-in plugins. There are no built-in workflows. The WorkflowRuntime (Layer 2.5) that was supposed to replace raw `.agents/` file passing with structured JSON intent execution — specified as FR-L25-001 through FR-L25-003 — was never implemented.
 
-**Verdict:** gwrk will be shareable **after F004-R completes + documentation remediation**, but with an honest caveat: `.agents/` workflows remain the LLM reasoning programs that power `gwrk specify`, `gwrk plan`, etc. They're not idiosyncratic — they're the product's domain knowledge, and new users will need them. The shareability question is really: "Can Joe, Lance, and Bert install gwrk, run it on their projects, and get value?" The answer is **conditional yes** — pending the items below.
+**The result:** Joe, Lance, and Bert install gwrk, run `gwrk init`, get empty workflow placeholders, run `gwrk specify`, and it dispatches an LLM with a path to a file that contains "Placeholder content for specify.md." gwrk is unusable without cloning Gonzo's `.agents/` directory.
 
 ---
 
 ## Q1: What Remains in F000–F003 That Needs Rework?
 
-### Findings
-
-The F000–F003 features are marked ✅ in the build plan, but multiple artifacts have drifted from the current architectural state. The drift falls into three categories: **documentation rot**, **dead code**, and **stale dependencies**.
-
 ### Drift Inventory
 
-| # | Item | Location | Severity | Category | Detail |
-|---|------|----------|----------|----------|--------|
-| 1 | README references Docker | [README.md](file:///Users/gonzo/Code/gwrk/README.md) L29, L59 | 🔴 High | Doc rot | "These shell scripts are the actual product orchestrators" (L29, no longer true post-F004-R). `Dockerfile.sandbox` referenced (L59). |
-| 2 | README last audited at F001 | [README.md](file:///Users/gonzo/Code/gwrk/README.md) L63 | 🔴 High | Doc rot | Entire README predates F004, F013, F014. Missing: plugin system, agent-native protocol, ship loop, gate architecture. |
-| 3 | WHAT_IS_GWRK.md: Docker sandboxes | [WHAT_IS_GWRK.md](file:///Users/gonzo/Code/gwrk/docs/WHAT_IS_GWRK.md) L248, L56 | 🟡 Medium | Doc rot | Tech stack table says "Docker (per-phase isolation)" for Sandboxes. Should be "Git worktrees" per R001. Docker sandbox pattern (L232-L237) references OpenClaw Docker model. |
-| 4 | WHAT_IS_GWRK.md: Quick Start stale | [WHAT_IS_GWRK.md](file:///Users/gonzo/Code/gwrk/docs/WHAT_IS_GWRK.md) L192-L215 | 🟡 Medium | Doc rot | References `gwrk dispatch` (not a real command — it's `gwrk ship`). Missing `gwrk skill`, `gwrk plugin`, `gwrk gate`. |
-| 5 | PRD: Docker throughout | [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md) | 🟡 Medium | Doc rot | 50+ Docker references. PR FAQ says "Build server requires Docker" (L66). Sandbox model sections describe Docker containers. Now worktrees per R001. |
-| 6 | PRD: pronunciation | [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md) L43 | 🟢 Low | Doc rot | Says "pronounced 'gee-work'" — `WHAT_IS_GWRK.md` L28 says "pronounced 'gwerk'". Inconsistent. |
-| 7 | Makefile: Docker Compose targets | [Makefile](file:///Users/gonzo/Code/gwrk/Makefile) L31-L48 | 🟡 Medium | Dead code | `up`, `down`, `ps`, `logs` targets reference `docker compose`. No `docker-compose.yml` exists. Dead targets. |
-| 8 | `docker.ts` module | [src/server/docker.ts](file:///Users/gonzo/Code/gwrk/src/server/docker.ts) | 🟡 Medium | Dead code | Full Docker lifecycle management (install check, daemon start, wait). Consumed by health check and sandbox. Architecture says worktrees replace Docker (R001). |
-| 9 | `dockerode` dependency | [package.json](file:///Users/gonzo/Code/gwrk/package.json) L21, L30-31 | 🟡 Medium | Stale dep | Runtime `dockerode` dependency + `@types/dockerode` in devDeps. No longer needed per R001 worktree decision. |
-| 10 | `Dockerfile.sandbox` | [Dockerfile.sandbox](file:///Users/gonzo/Code/gwrk/Dockerfile.sandbox) (referenced L59 README) | 🟡 Medium | Dead code | Sandbox container definition. Superseded by worktree model per R001. |
-| 11 | F001 gate contamination ⚠️ | [000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md) L139 | 🟢 Low | Tech debt | 91% gate contamination noted but "deferred to TDD Hardening" which is marked ✅. Build plan says "cleared through F004 dev" but original gates may still be stubs. |
-| 12 | F002 `server clean` missing | [000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md) L184 | 🟢 Low | Gap | FR-024 (`server clean`) identified as missing in gap analysis. Status unclear post-TDD hardening. |
-| 13 | F003 gap analysis is greenfield | [000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md) L217 | 🟢 Low | Tech debt | "Needs rewrite as proper FR-by-FR ✅/⚠️/❌ classification. Deferred to TDD Hardening." |
+| # | Item | Location | Severity | Detail |
+|---|------|----------|----------|--------|
+| 1 | README stale since F001 | [README.md](file:///Users/gonzo/Code/gwrk/README.md) L63 | 🔴 High | Missing: plugin system, agent-native protocol, ship loop, gate architecture. References Docker and bash scripts as core. |
+| 2 | WHAT_IS_GWRK.md: Docker refs | [WHAT_IS_GWRK.md](file:///Users/gonzo/Code/gwrk/docs/WHAT_IS_GWRK.md) L248 | 🟡 Medium | Tech stack says "Docker" for sandboxes — now worktrees per R001. Quick Start references `gwrk dispatch` (not a real command). |
+| 3 | `docker.ts` module + `dockerode` dep | [docker.ts](file:///Users/gonzo/Code/gwrk/src/server/docker.ts), [package.json](file:///Users/gonzo/Code/gwrk/package.json) L21 | 🟡 Medium | Dead Docker lifecycle code. Runtime dep on `dockerode`. Superseded by worktree model. |
+| 4 | Makefile Docker Compose targets | [Makefile](file:///Users/gonzo/Code/gwrk/Makefile) L31-48 | 🟡 Medium | `up`, `down`, `ps`, `logs` targets reference `docker compose`. No docker-compose.yml exists. |
+| 5 | PRD Docker throughout | [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md) | 🟡 Medium | 50+ Docker references. Internal doc but misleading. |
+| 6 | Pronunciation inconsistency | PRD L43 vs WHAT_IS_GWRK.md L28 | 🟢 Low | "gee-work" vs "gwerk". |
 
 ### Recommendation
 
-Remediation should be split into **pre-share** (required before Joe/Lance/Bert see the repo) and **post-share** (acceptable tech debt):
-
-**Pre-share (blockers):**
-- Items 1-2: README rewrite (complete overhaul)
-- Item 4: WHAT_IS_GWRK.md Quick Start fix
-- Item 7: Remove dead Makefile Docker targets
-
-**Post-share (acceptable debt, disclosed):**
-- Items 3, 5: WHAT_IS_GWRK.md and PRD Docker references (these are internal strategic docs, not onboarding)
-- Items 8-10: Docker code removal (cleanup task, not blocking)
-- Items 11-13: Gate quality debt (deeper work, honesty about it is fine)
+Items 1-4 are pre-share blockers. Items 5-6 are deferred.
 
 ---
 
-## Q2: Will F004-R + F005 Make gwrk Standalone?
+## Q2: F014 Implementation Audit — What Shipped vs. What's Missing
 
-### Findings
+This is the critical finding. F014 was marked ✅ Complete in the build plan. **It is not complete for shareability purposes.**
 
-#### The `.agents/` Dependency Map
+### What F014 Actually Shipped ✅
 
-Every runtime reference from `src/` to `.agents/`, `scripts/dev/`, and `.specify/` was traced. The dependencies fall into three functional categories:
+| Component | Files | Status | Evidence |
+|-----------|-------|--------|----------|
+| **Plugin Loader + Registry** | `src/plugins/loader.ts`, `manifest.ts` | ✅ Working | Scans `~/.gwrk/plugins/`, validates manifests via Zod, resolution order (global → local → builtins) |
+| **Manifest Schema** | `src/plugins/manifest.ts` | ✅ Working | Zod schemas for skills (atomic/compound), agents, workflows. All DM-001 through DM-007 types defined. |
+| **Skill Runtime** | `src/plugins/skill-runtime.ts` | ✅ Working | `executeSkill()` resolves skills, assembles prompts, dispatches to agent backends. Pipe-composable. |
+| **Agent Backend Adapters** | `src/plugins/builtins/agents/{claude,codex,gemini}/` | ✅ Working | Built-in adapters with manifest.yaml + adapter.ts. `AgentBackendRegistry` with resolution order. |
+| **Agent Backend Registry** | `src/plugins/agent-registry.ts` | ✅ Working | `getAgentBackend()`, `syncAllBackends()`, governance sync with SHA256 dedup. |
+| **Migration Tool** | `src/plugins/migrate.ts` | ✅ Working | Migrates `.agents/skills/` → `~/.gwrk/plugins/skills/` with auto-generated manifests. |
+| **Plugin CLI Commands** | `src/commands/plugin.ts`, `skill.ts` | ✅ Working | `gwrk plugin install/remove/list/check/sync-context`, `gwrk skill <name>` |
+| **One Built-in Skill** | `src/plugins/builtins/skills/narrative/` | ✅ Exists | Single example atomic skill. |
 
-**Category A: Bash Script Spawning (killed by F004-R)**
+### What F014 Did NOT Ship ❌
 
-| Source File | Dependency | What It Does | Post-F004-R Status |
-|-------------|-----------|--------------|-------------------|
-| [ship.ts](file:///Users/gonzo/Code/gwrk/src/commands/ship.ts) L46, L478 | `scripts/dev/work-until-done.sh` | Ship loop orchestration | ✅ **Replaced** by TypeScript DispatchOrchestrator |
-| [define.ts](file:///Users/gonzo/Code/gwrk/src/commands/define.ts) L55 | `scripts/dev/define-until-solid.sh` | Define loop orchestration | ✅ **Replaced** by TypeScript DispatchOrchestrator |
-| [implement.ts](file:///Users/gonzo/Code/gwrk/src/commands/implement.ts) L27 | `scripts/dev/agent-run.sh` | Single agent dispatch | ✅ **Replaced** by `dispatchToAgent()` |
-| [scripts-e2e.test.ts](file:///Users/gonzo/Code/gwrk/src/scripts-e2e.test.ts) | `scripts/dev/work-until-done.sh` | E2E tests for bash scripts | ✅ **Rewritten** as TypeScript tests |
+| Component | Spec Reference | Status | Impact |
+|-----------|---------------|--------|--------|
+| **Built-in Workflows** | FR-L25-001 | ❌ **Not implemented** | No `builtins/workflows/` directory exists. gwrk ships ZERO workflows. |
+| **WorkflowRuntime (Layer 2.5)** | FR-L25-001, FR-L25-002, FR-L25-003 | ❌ **Not implemented** | The engine that executes workflow JSON intents natively — never built. |
+| **Workflow integration into CLI commands** | FR-L25-003 | ❌ **Not implemented** | `specify.ts`, `plan.ts`, `define.ts` etc. still hardcode `.agents/workflows/` paths |
+| **`gwrk plugin seed`** | FR-012 | ❌ **Not implemented** | No `seed.ts` file exists. The ~40 reasoning modes from taxonomy are not auto-generated. |
+| **`gwrk plugin create agent`** | FR-L1-009 | ❌ **Unknown** | Need to verify — likely not implemented. |
+| **`gwrk plugin update`** | FR-L1-013 | ❌ **Unknown** | Re-clone from `.gwrk-source.json` — likely not implemented. |
+| **`gwrk init` workflow provisioning** | FR-L1-008 | ⚠️ **Partial** | Detects CLIs and syncs governance, but scaffolds empty placeholder workflows (L182-188). |
 
-**Category B: Workflow Path References (NOT killed by F004-R)**
+### The Coupling That Must Be Broken
 
-| Source File | Dependency | What It Does | Post-F004-R Status |
-|-------------|-----------|--------------|-------------------|
-| [specify.ts](file:///Users/gonzo/Code/gwrk/src/commands/specify.ts) L37 | `.agents/workflows/gwrk-specify.md` | Workflow doc passed to LLM | ⚠️ **Remains** — LLM needs the reasoning program |
-| [plan.ts](file:///Users/gonzo/Code/gwrk/src/commands/plan.ts) L78 | `.agents/workflows/gwrk-plan.md` | Workflow doc passed to LLM | ⚠️ **Remains** |
-| [tests-generate.ts](file:///Users/gonzo/Code/gwrk/src/commands/tests-generate.ts) L73 | `.agents/workflows/gwrk-define-tests.md` | Workflow doc passed to LLM | ⚠️ **Remains** |
-| [tasks-generate.ts](file:///Users/gonzo/Code/gwrk/src/commands/tasks-generate.ts) L337 | `.agents/workflows/gwrk-author-gates.md` | Gate authoring workflow passed to LLM | ⚠️ **Remains** |
-| [invocation-strategy.ts](file:///Users/gonzo/Code/gwrk/src/server/backends/invocation-strategy.ts) L24 | `.agents/workflows/gwrk-implement.md` | Implementation workflow passed to LLM | ⚠️ **Remains** |
-| [agent.ts](file:///Users/gonzo/Code/gwrk/src/utils/agent.ts) L264 | `.agents/workflows/gwrk-implement.md` | Default workflow path for agent dispatch | ⚠️ **Remains** |
+Six CLI commands directly hardcode `.agents/workflows/` paths and pass them as raw markdown to LLM agents:
 
-**Category C: Governance & Scaffolding (structural, by design)**
+| Command | Hardcoded Path | Source |
+|---------|---------------|--------|
+| `gwrk specify` (aka `define spec`) | `.agents/workflows/gwrk-specify.md` | [specify.ts:37](file:///Users/gonzo/Code/gwrk/src/commands/specify.ts#L37) |
+| `gwrk plan` (aka `define plan`) | `.agents/workflows/gwrk-plan.md` | [plan.ts:78](file:///Users/gonzo/Code/gwrk/src/commands/plan.ts#L78) |
+| `gwrk define tests` | `.agents/workflows/gwrk-define-tests.md` | [tests-generate.ts:73](file:///Users/gonzo/Code/gwrk/src/commands/tests-generate.ts#L73) |
+| `gwrk define tasks` (gate authoring) | `.agents/workflows/gwrk-author-gates.md` | [tasks-generate.ts:337](file:///Users/gonzo/Code/gwrk/src/commands/tasks-generate.ts#L337) |
+| `gwrk ship` / `gwrk implement` | `.agents/workflows/gwrk-implement.md` | [agent.ts:264](file:///Users/gonzo/Code/gwrk/src/utils/agent.ts#L264), [invocation-strategy.ts:24](file:///Users/gonzo/Code/gwrk/src/server/backends/invocation-strategy.ts#L24) |
 
-| Source File | Dependency | What It Does | Post-F004-R Status |
-|-------------|-----------|--------------|-------------------|
-| [context.ts](file:///Users/gonzo/Code/gwrk/src/server/context.ts) L13, L28 | `.agents/rules/`, `.agents/prompts/personas/` | Server loads governance rules for agent context | ⚠️ **By design** — governance is the product |
-| [init.ts](file:///Users/gonzo/Code/gwrk/src/commands/init.ts) L92-93, L185, L242 | `.agents/workflows`, `.agents/rules` | `gwrk init` scaffolds these dirs for new projects | ⚠️ **Foundational** — this IS the init behavior |
-| [skill-runtime.ts](file:///Users/gonzo/Code/gwrk/src/plugins/skill-runtime.ts) L119 | `.agents/skills/` | Symbolic path for skill logging | 🟢 **Cosmetic** — skills already migrated to `~/.gwrk/plugins/skills/` by F014 |
+Additionally:
+- [init.ts:91-96](file:///Users/gonzo/Code/gwrk/src/commands/init.ts#L91): Creates empty `.agents/workflows/` and `.agents/rules/`
+- [init.ts:182-188](file:///Users/gonzo/Code/gwrk/src/commands/init.ts#L182): Writes **placeholder** workflow files: `"# Workflow: specify.md\n\nPlaceholder content for specify.md."`
+- [context.ts:13,28](file:///Users/gonzo/Code/gwrk/src/server/context.ts#L13): Server loads governance from `.agents/rules/` and `.agents/prompts/personas/`
 
-#### The Key Insight: `.agents/` Is Not Going Away
+### What Needs to Happen
 
-The `.agents/` workflows are **not idiosyncratic implementation baggage** — they are the product's **domain knowledge layer**. When `gwrk specify 003-feature` runs:
+There are two viable paths to make gwrk standalone:
 
-1. gwrk determines the agent backend (Gemini, Claude, etc.)
-2. gwrk passes `.agents/workflows/gwrk-specify.md` as the reasoning program
-3. The LLM reads the workflow and executes the spec-creation steps
-4. The LLM produces `specs/003-feature/spec.md`
+#### Path A: Ship Workflows as Built-in Plugins (Recommended)
 
-The workflow file IS the prompt engineering. It's what makes `gwrk specify` produce good specs instead of generic ones. Joe, Lance, and Bert will need these workflows — they're not Gonzo-specific magic. They're the Foxtrot Charlie methodology encoded as LLM instructions.
+Package gwrk's core workflows as built-in plugins in `src/plugins/builtins/workflows/`, analogous to how agent backends are already built-in:
 
-**What F014 Layer 2.5 (WorkflowRuntime) will eventually do:** Replace the "pass .md file to LLM" pattern with structured JSON intents. The LLM will produce JSON intents → `WorkflowRuntime` executes them natively → LLM never directly mutates the filesystem. But Layer 2.5 is **not implemented yet** and is not on the immediate critical path.
+1. **Create `src/plugins/builtins/workflows/`** with manifest.yaml + workflow .md for each core workflow:
+   - `specify/` — the gwrk-specify workflow
+   - `plan/` — the gwrk-plan workflow
+   - `implement/` — the gwrk-implement workflow
+   - `define-tests/` — the gwrk-define-tests workflow
+   - `author-gates/` — the gwrk-author-gates workflow
+   
+2. **Update CLI commands** to resolve workflows through the plugin loader (built-in → user-override) instead of hardcoding `.agents/workflows/` paths.
 
-#### What About F005?
+3. **Update `gwrk init`** to scaffold from built-in workflow content, not empty placeholders.
 
-F005 (Parallel Dispatch) enables multi-task concurrent execution with worktree sandboxes. It does NOT remove any `.agents/` dependencies. F005 is about execution topology (how many agents, where they run), not about the workflow content they consume.
+4. **Update governance loading** (`context.ts`) to source rules from built-in defaults, not from a `.agents/` directory that doesn't exist in a fresh project.
 
-### Recommendation
+**What this does NOT require:** WorkflowRuntime (Layer 2.5) / JSON intent execution. That's an optimization for later. The immediate fix is just shipping the workflow content as built-in files that gwrk resolves through its plugin system.
 
-**Standalone verdict: Conditional YES.**
+#### Path B: Full WorkflowRuntime (Layer 2.5) — Deferred
 
-After F004-R completes:
-- ✅ bash scripts are no longer spawned — gwrk runs natively as TypeScript
-- ✅ `scripts/dev/work-until-done.sh` and `define-until-solid.sh` can be archived
-- ⚠️ `.agents/workflows/` remain required — but they're **portable project scaffolding**, not local hacks
-- ⚠️ `.agents/rules/` remain required — governance rules are the product
-- ⚠️ `.agents/skills/` are irrelevant for contributors — skills live in `~/.gwrk/plugins/skills/` per F014
+The spec's FR-L25-001/002/003 envision workflows producing JSON intents that gwrk executes natively, eliminating LLM filesystem mutation entirely. This is architecturally superior but is a large effort and should not block shareability. Path A is sufficient.
 
-**For Joe/Lance/Bert:** When they run `gwrk init` on their project, gwrk scaffolds `.agents/workflows/` and `.agents/rules/` for them. This is normal — it's like `eslint init` creating `.eslintrc`. The workflows ARE the methodology.
+### Standalone Readiness Verdict
 
-**F005 is not required for shareability.** Parallel dispatch is a power feature. Single-task sequential dispatch (`gwrk ship`) works fine without F005.
+**NO — gwrk is not standalone today.** Required for standalone:
 
----
-
-## Q3: What Onboarding Documentation Is Required?
-
-### Findings
-
-#### Current Documentation Inventory
-
-| Document | Exists | Audience | Onboarding Value | Status |
-|----------|--------|----------|-----------------|--------|
-| [README.md](file:///Users/gonzo/Code/gwrk/README.md) | ✅ | New visitors | ❌ Stale, internal, not a quick start | Needs complete rewrite |
-| [WHAT_IS_GWRK.md](file:///Users/gonzo/Code/gwrk/docs/WHAT_IS_GWRK.md) | ✅ | Stakeholders | 🟡 Good thesis/philosophy, stale tech details | Needs tech stack update |
-| [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md) | ✅ | PM/strategy | 🟡 Comprehensive, deep internal document | Not immediate onboarding |
-| [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md) | ✅ | Engineers | ✅ Current (v5.0, 850 lines) | Authoritative reference |
-| DEVELOPMENT.md | ❌ | Contributors | — | **Missing** |
-| CONTRIBUTING.md | ❌ | Contributors | — | **Missing** |
-| `gwrk --help` | ✅ | Users | 🟡 Exists but may not be complete | Needs audit |
-| [foxtrot-charlie.md](file:///Users/gonzo/Code/gwrk/docs/foxtrot-charlie.md) | ✅ | Everyone | 🟡 Philosophy, needed for "why" | Reference |
-| ADR-001 through ADR-006 | ✅ | Deep contributors | ✅ Well-maintained | Reference |
-
-#### What's Missing
-
-**1. README.md (complete rewrite needed)**
-
-Current README is a repository audit document, not an onboarding tool. For Joe/Lance/Bert it needs:
-- One-paragraph "what is this" (not 267 lines of WHAT_IS_GWRK.md — one paragraph)
-- Prerequisites (Node 20+, pnpm, at least one agent CLI installed)
-- Install steps (`pnpm install -g @gwrk/cli` or clone + link)
-- "Hello world" flow (`gwrk init` → `gwrk specify` → `gwrk plan` → `gwrk ship`)
-- Link to DEVELOPMENT.md for contributors
-- Link to architecture.md for deep dives
-
-**2. DEVELOPMENT.md (does not exist)**
-
-Principal engineers contributing need:
-- Clone + build + test (`git clone`, `pnpm install`, `pnpm build`, `pnpm test`)
-- Project structure walkthrough (what's in `src/commands/`, `src/server/`, `src/engine/`, `src/plugins/`)
-- How to run the dev server (`gwrk server start`)
-- How to run a single feature through the pipeline
-- Spec-first contribution model (don't code without spec + plan)
-- `.gwrkrc.json` configuration reference
-- Agent CLI setup (which CLIs, how to configure)
-- Common gotchas (fail-fast config, no graceful defaults, `.agents/` is generated scaffolding)
-
-**3. CONTRIBUTING.md (does not exist)**
-
-For contribution governance:
-- Branch naming conventions (from architecture.md §9)
-- PR process
-- Testing requirements (vitest, gate scripts)
-- Code style (Biome, TypeScript only, no `.js`)
-- The Foxtrot Charlie model (link to docs)
-
-### Recommendation
-
-**Priority order for onboarding documentation:**
-
-1. **README.md rewrite** — Gate 0. This is the first thing they see.
-2. **DEVELOPMENT.md creation** — Gate 1. How to build, run, test, contribute.
-3. **CONTRIBUTING.md creation** — Gate 2. Contribution standards.
-4. **WHAT_IS_GWRK.md tech stack fix** — Nice-to-have. Update Docker → worktrees.
-5. **Makefile cleanup** — Remove dead Docker targets, add useful dev targets.
+| Requirement | Status | Blocks Share? |
+|-------------|--------|--------------|
+| Built-in workflows shipped with gwrk | ❌ Not done | **YES** |
+| CLI commands resolve workflows via plugin system | ❌ Not done | **YES** |
+| `gwrk init` provisions real content | ❌ Placeholder only | **YES** |
+| F004-R (DispatchOrchestrator) | 🟡 In progress | **YES** — `ship.ts` spawns bash scripts |
+| README rewrite | ❌ Stale | **YES** — first impression |
+| DEVELOPMENT.md | ❌ Missing | **YES** — can't contribute |
+| WorkflowRuntime (Layer 2.5) | ❌ Not done | No — deferred optimization |
+| F005 (Parallel Dispatch) | ❌ Not done | No — power feature |
+| Docker code cleanup | 🟡 Dead code | No — cosmetic |
 
 ---
 
-## Output Contract Deliverables
+## Q3: Onboarding Documentation Gap
 
-### Deliverable 1: Drift Inventory for F000–F003
-
-See [Q1 Drift Inventory table](#drift-inventory) above. 13 items identified across 4 severity levels.
-
-### Deliverable 2: `.agents/` Dependency Map
-
-See [Q2 Dependency Map tables](#the-agents-dependency-map) above. Three categories:
-- **Category A (4 items):** Bash script spawning — killed by F004-R ✅
-- **Category B (6 items):** Workflow path references — remain by design ⚠️
-- **Category C (3 items):** Governance & scaffolding — structural, foundational ⚠️
-
-### Deliverable 3: Standalone Readiness Verdict
-
-**Conditional YES.** gwrk becomes standalone-useful after:
-1. ✅ F004-R completes (DispatchOrchestrator replaces bash scripts)
-2. ✅ README.md is rewritten for onboarding
-3. ✅ DEVELOPMENT.md is created
-
-**Not required for standalone:**
-- F005 (Parallel Dispatch) — power feature, not prerequisite
-- F014 Layer 2.5 (WorkflowRuntime) — future optimization of workflow delivery
-- Docker code removal — cleanup, not functional blocker
-- PRD updates — internal strategic doc, not user-facing
-
-**Honest caveat for Joe/Lance/Bert:** `.agents/` is part of the product, not a hack. `gwrk init` creates it. The workflows are the methodology encoded as LLM instructions. This is how gwrk knows how to produce specs, plans, and implementations. It's analogous to Next.js including `pages/` or Rails including `app/` — it's scaffolding with opinions.
-
-### Deliverable 4: Onboarding Documentation Gap Analysis
-
-| Document | Status | Priority | Effort | Blocker? |
-|----------|--------|----------|--------|----------|
-| README.md | ❌ Stale | P0 | ~2h | Yes — first impression |
-| DEVELOPMENT.md | ❌ Missing | P0 | ~3h | Yes — can't contribute without it |
-| CONTRIBUTING.md | ❌ Missing | P1 | ~1h | No — can share conventions verbally initially |
-| WHAT_IS_GWRK.md | 🟡 Stale tech | P2 | ~1h | No — philosophy is fine, tech details are secondary |
-| Makefile cleanup | 🟡 Dead targets | P2 | ~30m | No — cosmetic |
-| Dockerfile.sandbox removal | 🟡 Dead artifact | P3 | ~15m | No — cosmetic |
-| `dockerode` removal | 🟡 Dead dep | P3 | ~30m | No — cosmetic |
+| Document | Status | Priority | Blocker? |
+|----------|--------|----------|----------|
+| README.md | ❌ Stale | P0 | Yes |
+| DEVELOPMENT.md | ❌ Missing | P0 | Yes |
+| CONTRIBUTING.md | ❌ Missing | P1 | No (verbal at first) |
+| WHAT_IS_GWRK.md tech fixes | 🟡 Stale | P2 | No |
+| Makefile cleanup | 🟡 Dead targets | P2 | No |
 
 ---
 
 ## Spec Alignment Notes
 
-This research does not consume into a spec — it informs documentation work. Specifically:
+**F014 needs a rework addendum — not a full rewrite.** The spec already contains the right FRs (FR-L25-001/002/003 for WorkflowRuntime, FR-012 for seeding). What's needed is:
 
-1. **README.md** should be rewritten as a contributor-first onboarding document, not a repository audit.
-2. **DEVELOPMENT.md** should be created covering build, test, project structure, dev server, contribution model.
-3. **CONTRIBUTING.md** should codify the Foxtrot Charlie contribution workflow.
-4. **Post-F004-R:** `scripts/dev/` section should be removed from README project structure. The "Orchestration & Governance" heading should describe the TypeScript DispatchOrchestrator, not bash scripts.
+1. **New phase or rework track** to ship built-in workflows (Path A above). This is ~5-8 SP of work:
+   - Package 5 core workflow .md files as built-in plugins with manifests
+   - Update 6 CLI commands to resolve through plugin loader
+   - Update `gwrk init` to provision from builtins  
+   - Update `context.ts` governance loading
+
+2. **FR-L25-001/002/003 remain as a future phase** — WorkflowRuntime is still the right long-term architecture, but shouldn't block shareability.
+
+3. **`gwrk plugin seed` (FR-012) can be deferred** — nice-to-have, not a shareability blocker.
 
 ## Architecture Amendments
 
-None required. Architecture.md v5.0 is current. The drift is in downstream documents (README, WHAT_IS_GWRK, PRD, Makefile), not in the authoritative architecture spec.
+- Architecture.md §7 should note that core workflows ship as built-ins in `src/plugins/builtins/workflows/`
+- Architecture.md §4 project structure should show `src/plugins/builtins/workflows/` alongside existing `src/plugins/builtins/agents/`
+- `.agents/` should be documented as an **optional user-override directory**, not a required structural dependency
 
 ## Open Items
 
 | # | Item | Requires Decision |
 |---|------|------------------|
-| 1 | Should `scripts/dev/` bash scripts be **deleted** after F004-R, or archived in a `scripts/legacy/` directory? | PM decision — deletion is cleaner for new contributors; archive preserves history for lineage documentation |
-| 2 | Should `.agents/` be renamed to something less "internal-sounding" for external contributors? (e.g., `.gwrk/workflows/` or just keeping `.agents/`) | PM decision — `.agents/` is established in the codebase and architecture docs |
-| 3 | The PRD (1,593 lines) contains extensive Docker references. Full update is significant effort. Should this be deferred entirely or partially updated? | PM decision — internal doc, may not need update for first-share |
-| 4 | F004-R is being worked on by another agent. Is there a target completion date that gates the share timeline? | Coordination question |
+| 1 | Should this work be tracked as an F014 rework addendum (like F004-R) or as a new feature? | PM decision |
+| 2 | Which workflows are "core" and ship as builtins vs. which are Gonzo-specific and stay in `.agents/`? The 15 workflows in `.agents/workflows/` include domain-specific ones like `gwrk-constitution.md`, `gwrk-effort.md`, `gwrk-cascade-sync.md`. Likely core: specify, plan, implement, define-tests, author-gates, plan-to-tasks, review-code, review-uat. Likely user-specific: constitution, cascade-sync, build-plan, effort, research, checklist, analyze. | PM decision |
+| 3 | Should `.agents/skills/` content (9 compound skills like signal-cut, truth-extract, decision-forge) ship as builtin plugins? Or are these Gonzo-specific? | PM decision — some are generic (decision-forge), some are personal (audience-model for Nexus) |
+| 4 | Should `gwrk init` also scaffold `.agents/rules/` with default governance rules, or should governance be built into gwrk's defaults? | PM decision — affects how opinionated the product is |
+| 5 | F004-R completion date — it's the other hard blocker alongside this work. | Coordination |
+| 6 | Should `scripts/dev/` bash scripts be deleted post-F004-R or archived? | PM decision |

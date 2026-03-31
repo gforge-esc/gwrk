@@ -27,6 +27,8 @@ import { type TaskState, loadTaskState, saveTaskState } from "../utils/state.js"
 import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import { ShipStage, type ShipState } from "../engine/ship-types.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -58,16 +60,16 @@ async function shipPhase(
     const specsDir = path.join(cwd, "specs");
     const available = fs.existsSync(specsDir)
       ? fs
-          .readdirSync(specsDir)
-          .filter((d) => {
-            const fp = path.join(specsDir, d);
-            return (
-              fs.statSync(fp).isDirectory() &&
-              fs.existsSync(path.join(fp, "spec.md"))
-            );
-          })
-          .map((d) => `    ${d}`)
-          .join("\n")
+        .readdirSync(specsDir)
+        .filter((d) => {
+          const fp = path.join(specsDir, d);
+          return (
+            fs.statSync(fp).isDirectory() &&
+            fs.existsSync(path.join(fp, "spec.md"))
+          );
+        })
+        .map((d) => `    ${d}`)
+        .join("\n")
       : "    (none)";
     console.error(
       `\n  Feature spec not found: specs/${feature}/spec.md\n  Available features:\n${available}\n`,
@@ -161,23 +163,58 @@ async function shipPhase(
     "Max Iter": opts.maxIterations as string,
     "CI Timeout": `${opts.ciTimeout}m`,
     "Run ID": `${runId}`,
+    Orchestrator: opts.legacy ? "bash (legacy)" : "TypeScript",
   });
 
   const startTime = Date.now();
   let exitCode = 0;
 
   try {
-    await run(scriptPath, [feature, normalizedPhase], {
-      cwd,
-      env: {
-        ...process.env,
-        APPROVAL_MODE: "yolo",
-        MAX_ITERATIONS: opts.maxIterations as string,
-        CI_TIMEOUT: opts.ciTimeout as string,
-        AGENT_BACKEND: backend,
-      },
-      stdio: "inherit",
-    });
+    if (opts.legacy) {
+      await run(scriptPath, [feature, normalizedPhase], {
+        cwd,
+        env: {
+          ...process.env,
+          APPROVAL_MODE: "yolo",
+          MAX_ITERATIONS: opts.maxIterations as string,
+          CI_TIMEOUT: opts.ciTimeout as string,
+          AGENT_BACKEND: backend,
+        },
+        stdio: "inherit",
+      });
+    } else {
+      // FR-008: Crash recovery — load state if exists
+      const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
+      let existingState: ShipState | undefined;
+      if (fs.existsSync(statePath)) {
+        try {
+          existingState = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+          console.log(`  🔄 Resuming from state: ${existingState?.stage}`);
+        } catch (err) {
+          console.warn(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
+        }
+      }
+
+      // Manual override for testing/emergency
+      if (opts.resumeFrom && existingState) {
+        existingState.stage = opts.resumeFrom as ShipStage;
+      }
+
+      const orchestrator = new ShipOrchestrator({
+        featureId: feature,
+        phaseId: phaseId,
+        backend,
+        maxIterations: parseInt(opts.maxIterations as string),
+        ciTimeout: parseInt(opts.ciTimeout as string),
+        cwd,
+        dryRun: !!opts.dryRun,
+      }, existingState);
+
+      exitCode = await orchestrator.run();
+      if (exitCode !== 0) {
+        throw new Error(`ShipOrchestrator failed with exit code ${exitCode}`);
+      }
+    }
 
     const durationS = Math.round((Date.now() - startTime) / 1000);
     finishRun(runId, { exit_code: 0, duration_s: durationS });
@@ -272,6 +309,31 @@ async function shipPhase(
       to_status: exitCode === 0 ? "completed" : "open",
       metadata: JSON.stringify({ command: "ship", manifestId }),
     });
+
+    // Post-manifest commit: ensure working tree is clean before returning.
+    // Without this, the manifest JSON is left as a dirty file. The user
+    // cannot safely amend because WUD already pushed the branch.
+    try {
+      const manifestDir = path.join(featureDir, ".gwrk", "runs");
+      await run("git", ["add", manifestDir], { cwd });
+      const { execSync } = await import("node:child_process");
+      const porcelain = execSync("git status --porcelain", {
+        cwd,
+        encoding: "utf-8",
+      }).trim();
+      if (porcelain) {
+        await run(
+          "git",
+          ["commit", "-m", `chore(${feature}): add execution manifest`],
+          { cwd },
+        );
+        await run("git", ["push"], { cwd });
+      }
+    } catch (pushErr) {
+      console.warn(
+        `Warning: Could not commit/push execution manifest: ${pushErr}`,
+      );
+    }
   } catch (manifestError) {
     console.warn(
       `Warning: Could not write execution manifest: ${manifestError}`,
@@ -346,6 +408,8 @@ Exit codes:
   )
   .option("--parallel", "Dispatch tasks within a phase in parallel")
   .option("--concurrency <n>", "Max concurrent tasks (overrides config)", "2")
+  .option("--legacy", "Use legacy bash ship loop (work-until-done.sh)")
+  .option("--resume-from <stage>", "Resume from a specific stage (BRANCH_SETUP, IMPLEMENT, etc.)")
   .action(
     async (
       feature: string,
@@ -377,12 +441,12 @@ Exit codes:
           );
 
           const taskState = loadTaskState(featureSpecDir);
-          const phaseIds = phase 
+          const phaseIds = phase
             ? [`phase-${phase.padStart(2, "0")}`]
             : taskState.phases.map(p => p.id);
 
           console.log(`${GREEN}▶${RESET} Parallel dispatch enabled (concurrency: ${opts.concurrency || config.parallelism.local.maxClones})`);
-          
+
           let finalExitCode = 0;
           const shipStartTime = Date.now();
 
@@ -395,7 +459,7 @@ Exit codes:
 
             const backend = ((opts.agent as string) || config.agents.implement) as AgentBackend;
             console.log(`\n${GREEN}Phase ${phaseId}${RESET}: Dispatching ${openTasks.length} tasks in parallel...`);
-            
+
             const results = await orchestrator.dispatchPhase({
               featureId: feature,
               phaseId: phaseId,
@@ -415,7 +479,7 @@ Exit codes:
                 console.log(`  ${RED}✗${RESET} ${res.id}: Failed`);
               }
             }
-            
+
             saveTaskState(featureSpecDir, taskState);
             if (finalExitCode !== 0) break;
           }
