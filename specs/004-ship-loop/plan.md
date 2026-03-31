@@ -202,6 +202,68 @@ Extract the dispatch facade per ADR-006. Today it wraps `spawn(cli, args)`. When
 
 ---
 
+### Phase 5: DispatchOrchestrator — TypeScript Ship Loop (F004-R)
+
+Port the `work-until-done.sh` state machine into a native TypeScript `ShipOrchestrator`. This is the F004-R rework mandated by cascade §2.5 item 6. The new orchestrator consumes `dispatchToAgent()` (Phase 4) and prepares the architecture for F014's `WorkflowRuntime` JSON intent execution. Built **alongside** the existing bash scripts — only the final task wires `gwrk ship` to use the new TS orchestrator.
+
+> **TC-007 Override:** This phase explicitly supersedes TC-007 ("Shell Scripts ARE the Product") for the ship loop state machine. The bash scripts remain operational until the TS orchestrator is verified and wired in.
+
+**Files (6):**
+- `src/engine/ship-orchestrator.ts` (NEW: TypeScript state machine — BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE. Consumes `dispatchToAgent()`, `assembleDigest()`, gate runner. Persists state to `.runs/` per FR-008. Circuit breaker per FR-007. Staging validation per FR-016.)
+- `src/engine/ship-orchestrator.test.ts` (NEW: Unit tests — state machine transitions, crash recovery resume, circuit breaker, staging validation, pre-flight gate skip, digest assembly.)
+- `src/engine/ship-types.ts` (NEW: `ShipStage`, `ShipState`, `ShipRunConfig`, `StageResult` types. Shared between orchestrator and CLI.)
+- `src/utils/gate-runner.ts` (NEW: Programmatic gate execution — runs gate scripts and returns structured pass/fail. Replaces inline bash gate checks.)
+- `src/commands/ship.ts` (MODIFY: Replace `work-until-done.sh` spawn with `ShipOrchestrator.run()` call. Keep bash fallback behind `--legacy` flag for safety.)
+- `specs/004-ship-loop/contracts/orchestrator.md` (NEW: `ShipOrchestrator` interface contract — state machine stages, config, recovery, circuit breaker.)
+
+**Requirements Addressed:** FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-010, FR-016, FR-017, FR-018, US-001 through US-011, cascade §2.5 item 6
+
+**Dependencies:** Phase 4 (`dispatchToAgent()` facade)
+
+**Contract Mapping:**
+- `contracts/orchestrator.md` → `ShipOrchestrator` → `src/engine/ship-orchestrator.ts`
+- `contracts/orchestrator.md` → `ShipState` → `src/engine/ship-types.ts`
+- `contracts/orchestrator.md` → `runGate()` → `src/utils/gate-runner.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-006 | Agent dispatch through `dispatchToAgent()` facade |
+| TC-002 Fail-Fast Config | No graceful defaults in orchestrator config |
+| TC-003 TypeScript Only | All new code is `.ts` |
+| TC-006 Crash Safety | State flushed before every stage transition |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-010 | Unit | `src/engine/ship-orchestrator.test.ts` | State machine completes: BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE |
+| TR-010 | Unit | `src/engine/ship-orchestrator.test.ts` | CODE_REVIEW NO-GO → loops back to IMPLEMENT, increments iteration |
+| TR-010 | Unit | `src/engine/ship-orchestrator.test.ts` | Circuit breaker trips after MAX_ITERATIONS |
+| TR-010 | Unit | `src/engine/ship-orchestrator.test.ts` | Crash recovery: resumes from persisted state file |
+| TR-010 | Unit | `src/engine/ship-orchestrator.test.ts` | Pre-flight gate pass → skips implementation |
+| TR-010 | Unit | `src/engine/ship-orchestrator.test.ts` | Staging validation failure → re-runs implementation |
+| TR-010 | Unit | `src/engine/ship-orchestrator.test.ts` | `CIRCUIT_BREAK` writes `failureContext` to state file |
+| TR-011 | Unit | `src/utils/gate-runner.test.ts` | `runGate()` returns pass/fail with exit code and output |
+| TR-005 | Unit | `src/commands/ship.test.ts` | Ship CLI invokes `ShipOrchestrator` instead of spawning bash |
+
+#### Done When
+- `pnpm vitest run src/engine/ship-orchestrator.test.ts` exits 0
+- `pnpm vitest run src/utils/gate-runner.test.ts` exits 0
+- `grep -q 'ShipOrchestrator' src/commands/ship.ts` exits 0
+- `pnpm build` exits 0
+- `gwrk gate 004-ship-loop` exits 0
+
+---
+
+#### Deferred from Phase 5
+| Item | Reason | Target |
+|---|---|---|
+| `define-until-solid.sh` replacement | Different pipeline (define, not ship). Separate rework track. | F004-R2 or standalone |
+| `WorkflowRuntime` integration | Requires F014 Layer 2.5 to be production-ready. ShipOrchestrator is _prepared_ but does not consume JSON Intents yet. | Post-F014 L2.5 |
+
+---
+
 ## Type Dependency Graph
 
 | Shared Type | Defined In | Consumed By |

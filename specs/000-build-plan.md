@@ -341,17 +341,11 @@ gwrk gate <feature> [-p <phase>]   # Run gate scripts for a feature/phase
 
 ---
 
-### Feature 004-R — Ship Loop Rework (DispatchOrchestrator)
+### ~~Feature 004-R — Ship Loop Rework (DispatchOrchestrator)~~
 
-Refactor `work-until-done.sh` and `define-until-solid.sh` shell state machines into a native TypeScript `DispatchOrchestrator`. Breaks IDE sandbox dependency and prepares architecture to consume F014's `WorkflowRuntime` JSON intent execution (per cascade §2.5 item 6).
+> **2026-03-31:** Folded into **F004 Phase 5: DispatchOrchestrator — TypeScript Ship Loop**. The rework is now properly tracked as a sequential phase within `004-ship-loop` with 7 tasks (T029–T035) and dedicated gate scripts. See [plan.md](file:///Users/gonzo/Code/gwrk/specs/004-ship-loop/plan.md) Phase 5.
 
-| Spec | Content | Gate |
-|---|---|---|
-| `004-ship-loop` (rework addendum) | Replace bash orchestrators with TypeScript `DispatchOrchestrator`, structured JSON intent execution, IDE-independent dispatch | `work-until-done.sh` deleted; `gwrk ship` drives dispatch natively |
-
-**Dependencies:** Feature 004 ✅
-**SP:** 5 (estimated — scope TBD after R003)
-**Status:** 🟡 Pending — gated on F014 P1–P2 shipping (needs `WorkflowRuntime`)
+**Status:** ⚫ Absorbed into F004 Phase 5
 
 ---
 
@@ -608,7 +602,7 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | **Wave 1** | F001 ✅ | No (keystone) | Bootstrap: CLI, SQLite, multi-CLI provisioning |
 | **Wave 2** | F013 ✅, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
 | **Wave 3** | TDD Hardening (001-003) ✅ | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
-| **Wave 4a** | F004 ✅, **F014 P1–P2**, F004-R | Partially (F014 P1-P2 is keystone; F004-R parallel track) | Execution + plugin foundation (cascade §5: F014 P1-P2 first) |
+| **Wave 4a** | F004 ✅ (P1–P4), **F004 P5** (F004-R), **F014 ✅** | Partially (F004 P5 is rework; F014 complete) | Execution + plugin foundation |
 | **Wave 4b** | **F011** | No (small, self-contained, high visibility) | Harvest lifecycle (cascade §5: after F004, before F005) |
 | **Wave 5** | **F005**, **F014 P3–P4**, F009, F015 | Partially (F005 needs F014 P1-P2; F014 P3 needs F005; F009 needs F003; F015 needs F002) | Dispatch + agent adapters + routing + comms + event bus |
 | **Wave 6** | F010, F012 | Partially (F010 needs F006+F007; F012 needs F014) | Integration + knowledge work |
@@ -632,8 +626,8 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | F003 (Slack) ✅ | 13 | PE | Done |
 | F013 (Agent-Native Interface) ✅ | 28 | PM+PE | Done |
 | TDD Hardening (001-003) ✅ | ~15 | PE | Done |
-| F004 (Ship Loop) ✅ | 5 | PM+PE | Done |
-| **F004-R (DispatchOrchestrator)** | **5** | **PM+PE** | **25h** |
+| F004 (Ship Loop) ✅ (P1–P4) | 5 | PM+PE | Done (P1–P4). P5 (F004-R) in progress. |
+| ~~F004-R (DispatchOrchestrator)~~ | ~~5~~ | ~~PM+PE~~ | ⚫ Absorbed into F004 Phase 5 |
 | F005 (Parallel Dispatch) | 8 | PE | 40h |
 | F006 (Pulse) | 5 | PE | 25h |
 | F007 (Effort + Compression) | 8 | PM+PE | 40h |
