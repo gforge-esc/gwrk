@@ -241,7 +241,7 @@ async function shipPhase(
   } catch (err: unknown) {
     const durationS = Math.round((Date.now() - startTime) / 1000);
     exitCode =
-      err instanceof Error && "code" in err
+      err instanceof Error && "code" in err && typeof (err as { code?: unknown }).code === "number"
         ? (err as { code: number }).code
         : 1;
     finishRun(runId, { exit_code: exitCode, duration_s: durationS });

@@ -126,11 +126,12 @@ export class ShipOrchestrator {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
       return { success: true, exitCode: 0 };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const execErr = err as { status?: unknown; message?: string };
       return { 
         success: false, 
-        exitCode: 1, 
-        error: `Failed to create feature branch: ${err.message}` 
+        exitCode: typeof execErr.status === "number" ? execErr.status : 1, 
+        error: `Failed to create feature branch: ${execErr.message || String(err)}` 
       };
     }
   }
