@@ -13,7 +13,7 @@ describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", 
       const task = { prompt: "test prompt", workflow: "gwrk-implement.md" };
       const dispatch = await adapter.dispatch(task);
       expect(dispatch.command).toBe("gemini");
-      expect(dispatch.args).toContain("--yolo");
+      expect(dispatch.args).toContain("--approval-mode");
       expect(dispatch.args).toContain("-p");
       expect(dispatch.args).toContain("/gwrk-implement test prompt");
     });
