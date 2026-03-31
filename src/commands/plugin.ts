@@ -5,6 +5,9 @@ import { parse, stringify } from "yaml";
 import { Command } from "commander";
 import { PluginLoader, PluginNotFoundError, ManifestValidationError } from "../plugins/loader.js";
 import { AnyManifestSchema, type PluginBase } from "../plugins/manifest.js";
+import { syncContextCommand } from "./sync-context.js";
+import { migrateSkills } from "../plugins/migrate.js";
+import { seedSkills } from "../plugins/seed.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
 
@@ -230,4 +233,25 @@ export const pluginCommand = new Command("plugin")
           console.log(`${GREEN}Enabled plugin '${name}' for this project.${RESET}`);
         });
       })
-  );
+  )
+  .addCommand(
+    new Command("migrate")
+      .description("Migrate legacy skills to the new plugin system")
+      .option("--dry-run", "Show what would be migrated without copying")
+      .action(async (options) => {
+        await withSignal("plugin migrate", async () => {
+          await migrateSkills(options);
+        });
+      })
+  )
+  .addCommand(
+    new Command("seed")
+      .description("Seed atomic skills from the reasoning modes taxonomy")
+      .option("--dry-run", "Show what would be seeded without copying")
+      .action(async (options) => {
+        await withSignal("plugin seed", async () => {
+          await seedSkills(options);
+        });
+      })
+  )
+  .addCommand(syncContextCommand);

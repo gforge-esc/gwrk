@@ -2,90 +2,65 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import type { AgentBackend } from "./config.js";
+import type { AgentBackend as ConfigAgentBackend } from "./config.js";
+import type { AgentBackend } from "../plugins/agent-backend.js";
+import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { PluginLoader } from "../plugins/loader.js";
+import { recordRoutingDecision } from "../db/plugins.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
+/**
+ * Normalized Exit Code Map (ADR-006)
+ */
+export const EXIT_CODE_MAP: Record<number, number> = {
+  53: 1, // Gemini turn limit
+  42: 2, // Usage error
+  126: 1, // Claude permission denied
+  127: 127, // Command not found
+};
+
 export interface DispatchOptions {
-  backend: AgentBackend;
+  backend: ConfigAgentBackend | string;
   workflowPath: string;
   featureDir?: string;
   prompt?: string;
   approvalMode?: "yolo" | "auto" | "plan";
   contextPath?: string;
   workDir?: string;
+  stdin?: string;
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
-export function buildCommand(
+export async function buildCommand(
   opts: DispatchOptions,
   _workflowContent: string,
-): {
+): Promise<{
   command: string;
   args: string[];
   stdin?: string;
-} {
-  const args: string[] = [];
-  let command = "";
-  let stdin: string | undefined;
+}> {
+  const agentName = opts.backend as string;
+  const registry = new AgentBackendRegistry(new PluginLoader());
+  const adapter = await registry.getAgentBackend(agentName);
 
-  // Extract slash command name from workflow path: .agents/workflows/gwrk-plan.md → /plan
-  const workflowName = path.basename(opts.workflowPath, ".md");
-
-  switch (opts.backend) {
-    case "gemini": {
-      command = "gemini";
-      // Build the slash command string matching agent-run.sh:
-      //   gemini -p "/plan specs/001-cli-core" --approval-mode yolo
-      let slashCmd = `/${workflowName}`;
-      if (opts.featureDir) slashCmd += ` ${opts.featureDir}`;
-      if (opts.prompt) slashCmd += ` ${opts.prompt}`;
-      args.push("-p", slashCmd);
-
-      // Approval mode: analyze is read-only (plan mode), everything else is yolo
-      const mode =
-        opts.approvalMode ?? (workflowName.endsWith("analyze") ? "plan" : "yolo");
-      args.push("--approval-mode", mode);
-
-      if (opts.contextPath) {
-        // Pass context via env var — gemini CLI doesn't support -c
-        // The workflow template can read GWRK_CONTEXT
-      }
-      break;
-    }
-    case "claude":
-      command = "claude";
-      args.push("-p", _workflowContent, "--output-format", "json");
-      if (opts.featureDir) args.push(opts.featureDir);
-      if (opts.prompt) args.push(opts.prompt);
-      if (opts.contextPath) args.push("--context", opts.contextPath);
-      break;
-    case "codex":
-      command = "codex";
-      args.push("exec", "--full-auto", opts.workflowPath);
-      if (opts.featureDir) args.push(opts.featureDir);
-      if (opts.prompt) args.push(opts.prompt);
-      if (opts.contextPath) args.push("--context", opts.contextPath);
-      break;
-    case "codex-cloud":
-      // Codex Cloud dispatches via GitHub issue creation, NOT a CLI command.
-      // `codex run --cloud` does not exist. See:
-      //   - docs/reference/codex-cloud-research-report.md
-      //   - docs/research/R001-parallel-dispatch/draft.md §Q2
-      //   - docs/research/R002-agent-backend-plugin/draft.md §Q2
-      // Will be replaced by CloudAgentBackend adapter in F014 P3.
-      throw new Error(
-        "codex-cloud dispatch is not yet implemented. " +
-          "Codex Cloud dispatches via GitHub integration, not CLI. " +
-          "See docs/reference/codex-cloud-research-report.md",
-      );
-
-  }
-
-  return { command, args, stdin };
+  const task: TaskDispatch = {
+    prompt: opts.prompt,
+    agent: agentName,
+    workflow: opts.workflowPath,
+    featureDir: opts.featureDir,
+    stdin: opts.stdin,
+  };
+  
+  const dispatch = await adapter.dispatch(task);
+  return {
+    command: dispatch.command,
+    args: dispatch.args,
+    stdin: dispatch.stdin,
+  };
 }
 
 /**
@@ -122,7 +97,7 @@ export async function dispatchAgent(
   const executionRoot = opts.workDir || projectRoot;
   const workflowFile = path.resolve(projectRoot, opts.workflowPath);
   const workflowContent = fs.readFileSync(workflowFile, "utf-8");
-  const { command, args, stdin } = buildCommand(opts, workflowContent);
+  const { command, args, stdin } = await buildCommand(opts, workflowContent);
 
   // Set up .runs/ log file
   const runsDir = path.join(projectRoot, ".runs");
@@ -246,8 +221,9 @@ export async function dispatchAgent(
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
 export interface TaskDispatch {
+  type?: string;
   prompt?: string;
-  agent?: AgentBackend | string;
+  agent?: ConfigAgentBackend | string;
   workDir?: string;
   stdin?: string;
   env?: Record<string, string>;
@@ -269,48 +245,50 @@ export interface TaskResult {
 }
 
 /**
- * FR-020: Exit code normalization table.
- * Maps proprietary CLI exit codes to gwrk standard (0/1/2/127) with errorType classification.
- */
-const EXIT_CODE_MAP: Record<number, { exitCode: number; errorType: string }> = {
-  53: { exitCode: 1, errorType: "turn_limit" },
-  126: { exitCode: 1, errorType: "permission_denied" },
-  137: { exitCode: 1, errorType: "killed" },
-  143: { exitCode: 1, errorType: "terminated" },
-};
-
-/**
  * FR-019: Dispatch agent work via a single facade.
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
  * FR-021: Context delivered via stdin pipe.
  *
- * Today: wraps spawn(cli, args). When F014 ships, internals are replaced by
- * pluginRegistry.getAgentBackend().dispatch() — no other code changes.
+ * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
-  const backend = (task.agent ?? "gemini") as AgentBackend;
+  const agentName = (task.agent ?? "gemini") as string;
+  const registry = new AgentBackendRegistry(new PluginLoader());
+  const adapter = await registry.getAgentBackend(agentName);
+  
   const startTime = Date.now();
+  const dispatch = await adapter.dispatch(task);
 
   const opts: DispatchOptions = {
-    backend,
+    backend: agentName as ConfigAgentBackend,
     workflowPath: task.workflow ?? ".agents/workflows/gwrk-implement.md",
     featureDir: task.featureDir,
     prompt: task.prompt,
     workDir: task.workDir,
   };
 
-  const { exitCode: rawExitCode, logPath } = await dispatchAgent(opts);
+  const { exitCode: rawExitCode, logPath } = await dispatchAgent({
+    ...opts,
+    stdin: dispatch.stdin,
+  });
   const durationS = Math.round((Date.now() - startTime) / 1000);
 
-  const mapped = EXIT_CODE_MAP[rawExitCode];
-  const exitCode = mapped ? mapped.exitCode : (rawExitCode > 2 && rawExitCode !== 127 ? 1 : rawExitCode);
-  const errorType = mapped?.errorType;
+  // Note: we need stdout/stderr from dispatchAgent to call parseResult correctly.
+  // Currently dispatchAgent only returns exitCode and logPath because it streams output.
+  // In the future, we might need to capture output if parseResult needs it.
+  const result = adapter.parseResult("", "", rawExitCode);
 
+  // Record routing decision for historical learning
+  const taskType = task.type || path.basename(task.workflow || 'unknown', '.md');
+  recordRoutingDecision({
+    task_type: taskType,
+    selected_backend: agentName,
+    outcome: result.exitCode === 0 ? "success" : "failure",
+    duration_ms: durationS * 1000,
+  });
+  
   return {
-    exitCode,
-    errorType,
-    stdout: "",
-    stderr: "",
+    ...result,
     durationS,
     logPath,
   };

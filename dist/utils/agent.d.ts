@@ -1,4 +1,8 @@
 import type { AgentBackend as ConfigAgentBackend } from "./config.js";
+/**
+ * Normalized Exit Code Map (ADR-006)
+ */
+export declare const EXIT_CODE_MAP: Record<number, number>;
 export interface DispatchOptions {
     backend: ConfigAgentBackend | string;
     workflowPath: string;
@@ -24,6 +28,7 @@ export declare function dispatchAgent(opts: DispatchOptions): Promise<{
  * Maps to ADR-006 AgentBackend.dispatch() input.
  */
 export interface TaskDispatch {
+    type?: string;
     prompt?: string;
     agent?: ConfigAgentBackend | string;
     workDir?: string;

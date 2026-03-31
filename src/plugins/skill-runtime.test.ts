@@ -3,8 +3,28 @@ import { executeSkill, assemblePrompt, validateCompoundManifest } from "./skill-
 import { PluginLoader } from "./loader.js";
 
 vi.mock("./loader.js");
+vi.mock("../engine/router.js", () => ({
+  selectBackend: vi.fn().mockResolvedValue({ name: "gemini", model: "gemini-2.0-flash" }),
+}));
+vi.mock("./agent-registry.js", () => ({
+  AgentBackendRegistry: vi.fn().mockImplementation(() => ({})),
+}));
+vi.mock("../utils/agent.js", () => ({
+  dispatchToAgent: vi.fn().mockResolvedValue({
+    success: true,
+    exitCode: 0,
+    stdout: "Mocked agent output",
+    stderr: "",
+    output: "Mocked agent output",
+    durationMs: 150,
+    durationS: 0,
+  }),
+}));
+vi.mock("../utils/agent-layer.js", () => ({
+  processForAgent: vi.fn((text: string) => text.replace(/\x1B\[[0-9;]*m/g, "")),
+}));
 vi.mock("node:child_process", () => ({
-  exec: vi.fn((cmd, cb) => cb(null, { stdout: "Mocked output", stderr: "Mocked error" }))
+  exec: vi.fn((cmd: string, cb: Function) => cb(null, { stdout: "Mocked output", stderr: "Mocked error" }))
 }));
 
 describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {

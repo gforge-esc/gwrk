@@ -7,7 +7,10 @@ import { loadConfig } from "../utils/config.js";
 import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
-import { CommandError, withSignal } from "../utils/signal.js";
+import { withSignal } from "../utils/signal.js";
+import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { PluginLoader } from "../plugins/loader.js";
+import { quotaProbe } from "../engine/quota.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
@@ -61,6 +64,7 @@ Exit codes:
           `\n  ${RED}●${RESET} ${BOLD}gwrk server is stopped${RESET}`,
         );
         console.log(`    Run 'gwrk server start' to start the server.\n`);
+        await printAgents();
         return;
       }
 
@@ -74,14 +78,43 @@ Exit codes:
 
         const status = (await response.json()) as SystemStatus;
         printStatus(status);
+        await printAgents();
       } catch (err) {
         console.log(
           `\n  ${YELLOW}●${RESET} ${BOLD}gwrk server (PID ${pid}) is not responding${RESET}`,
         );
         console.log(`    ${DIM}Endpoint: ${url}${RESET}\n`);
+        await printAgents();
       }
     });
   });
+
+async function printAgents() {
+  console.log(`\n  ${CYAN}Agent Backends${RESET}`);
+  const loader = new PluginLoader();
+  const registry = new AgentBackendRegistry(loader);
+  const backends = await registry.getBackends();
+
+  for (const [backendName, adapter] of Object.entries(backends)) {
+    const q = await quotaProbe(adapter);
+    let statusStr = "";
+    switch (q.status) {
+      case "available":
+        statusStr = `${GREEN}Available${RESET}`;
+        break;
+      case "rate-limited":
+        statusStr = `${YELLOW}Rate Limited${RESET} (backoff: ${q.backoffS}s)`;
+        break;
+      case "exhausted":
+        statusStr = `${RED}Exhausted${RESET}`;
+        break;
+      case "unavailable":
+        statusStr = `${RED}Unavailable${RESET}`;
+        break;
+    }
+    console.log(`    ${DIM}${backendName.padEnd(12)}${RESET} | ${statusStr}`);
+  }
+}
 
 function printStatus(status: SystemStatus) {
   const { server, system, dispatch, sandboxes } = status;

@@ -32,7 +32,7 @@
           "id": "T003",
           "title": "Implement src/commands/plugin.ts",
           "description": "NEW: `gwrk plugin list/install/remove/disable/enable` handlers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "classification": "greenfield"
         },
@@ -40,7 +40,7 @@
           "id": "T004",
           "title": "Implement src/utils/config.ts",
           "description": "MODIFY: Add support for reading `~/.gwrk/plugins/` paths",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "classification": "greenfield"
         },
@@ -48,7 +48,7 @@
           "id": "T005",
           "title": "Implement src/plugins/manifest.test.ts",
           "description": "NEW: Unit tests for manifest validation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "classification": "greenfield"
         },
@@ -56,7 +56,7 @@
           "id": "T006",
           "title": "Implement src/plugins/loader.test.ts",
           "description": "NEW: Unit tests for plugin resolution order",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "classification": "greenfield"
         },
@@ -64,7 +64,7 @@
           "id": "T007",
           "title": "Implement src/commands/plugin.test.ts",
           "description": "NEW: Integration tests for plugin CLI",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "classification": "greenfield"
         },
@@ -72,7 +72,7 @@
           "id": "T008",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "classification": "noop"
         }
@@ -129,7 +129,7 @@
           "id": "T014",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "classification": "noop"
         }
@@ -146,7 +146,7 @@
           "id": "T015",
           "title": "Implement src/plugins/builtins/agents/index.ts",
           "description": "NEW: Static registry of built-in adapters",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "classification": "greenfield"
         },
@@ -178,7 +178,7 @@
           "id": "T019",
           "title": "Implement src/utils/agent.ts",
           "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "classification": "greenfield"
         },
@@ -186,7 +186,7 @@
           "id": "T020",
           "title": "Implement src/commands/sync-context.ts",
           "description": "NEW: `gwrk plugin sync-context` handler",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "classification": "greenfield"
         },
@@ -194,7 +194,7 @@
           "id": "T021",
           "title": "Implement src/db/migrations/003-agent-context.sql",
           "description": "NEW: Track sync state in SQLite",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "classification": "greenfield"
         },
@@ -210,7 +210,7 @@
           "id": "T023",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "classification": "noop"
         }
@@ -227,7 +227,7 @@
           "id": "T024",
           "title": "Implement src/engine/router.ts",
           "description": "NEW: `selectBackend(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh",
           "classification": "greenfield"
         },
@@ -235,7 +235,7 @@
           "id": "T025",
           "title": "Implement src/engine/quota.ts",
           "description": "NEW: Quota probing per adapter",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh",
           "classification": "greenfield"
         },
@@ -243,7 +243,7 @@
           "id": "T026",
           "title": "Implement src/db/migrations/004-routing-history.sql",
           "description": "NEW: `routing_decisions` table",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh",
           "classification": "greenfield"
         },
@@ -251,7 +251,7 @@
           "id": "T027",
           "title": "Implement src/engine/router.test.ts",
           "description": "NEW: Verify fallback chains and historical learning",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T027-gate.sh",
           "classification": "greenfield"
         },
@@ -259,7 +259,7 @@
           "id": "T028",
           "title": "Implement src/commands/status.ts",
           "description": "MODIFY: Include backend availability in status",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T028-gate.sh",
           "classification": "greenfield"
         },
@@ -267,7 +267,7 @@
           "id": "T029",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh",
           "classification": "noop"
         }
@@ -284,7 +284,7 @@
           "id": "T030",
           "title": "Implement src/plugins/migrate.ts",
           "description": "NEW: `.agents/skills/` migration logic",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T030-gate.sh",
           "classification": "greenfield"
         },
@@ -292,7 +292,7 @@
           "id": "T031",
           "title": "Implement src/plugins/seed.ts",
           "description": "NEW: `reasoning-modes.md` parsing and plugin generation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T031-gate.sh",
           "classification": "greenfield"
         },
@@ -300,7 +300,7 @@
           "id": "T032",
           "title": "Implement src/plugins/migrate.test.ts",
           "description": "NEW: Verify manifest generation from frontmatter",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh",
           "classification": "greenfield"
         },
@@ -308,7 +308,7 @@
           "id": "T033",
           "title": "Implement src/plugins/seed.test.ts",
           "description": "NEW: Verify ~40 atomic skills generated",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh",
           "classification": "greenfield"
         },
@@ -316,7 +316,7 @@
           "id": "T034",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T034-gate.sh",
           "classification": "noop"
         }
