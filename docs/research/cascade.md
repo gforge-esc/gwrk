@@ -1,8 +1,8 @@
 # Cascade Plan — Wave 4 Research → Specification → Implementation
 
-> **Status:** Active — Stages 1–3 complete, Stage 4 ready
-> **Initiatives:** R001 (Parallel Dispatch Architecture) ✅, R002 (Agent Backend Plugin Design) ✅
-> **Downstream:** F005 spec ✅, F011 spec ✅, F014 spec ✅, architecture.md v5.0 ✅
+> **Status:** Active — Stages 1–3 complete, R004 decisions locked, F004-R P5 landed
+> **Initiatives:** R001 ✅, R002 ✅, R003 ✅, **R004 (Shareability Readiness) ✅**
+> **Downstream:** F005 spec ✅, F011 spec ✅, F014 spec ✅, **F014-R rework** 🟡, architecture.md v5.0 ✅
 
 ---
 
@@ -11,6 +11,7 @@
 ```
 R001 brief ──→ /research ──→ R001 draft ──→ PM review ──→ publish to docs/reference/
 R002 brief ──→ /research ──→ R002 draft ──→ PM review ──→ publish to docs/reference/
+R004 brief ──→ /research ──→ R004 draft ──→ PM review ──→ F014-R rework scope
                                                               │
                           ┌───────────────────────────────────┘
                           ▼
@@ -20,14 +21,17 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
           ▼               ▼               ▼               ▼
      F004 spec       F005 spec       F014 spec       F011 spec
      (rework)        (rewrite)       (L1/L2.5 exp)   (polish)
-          │               │               │               │
-          ▼               ▼               ▼
-     define plan     define plan     define plan     define plan
-     define tasks    define tasks    define tasks    define tasks
-     define tests    define tests    define tests    define tests
           │               │               │
-          ▼               ▼               ▼
-     gwrk ship       gwrk ship       gwrk ship       gwrk ship
+          ▼               │           F014-R spec ←── R004 decisions
+     F004-R P5 ✅         │          (Layer 2.5 rework)
+     ShipOrchestrator     │               │
+                          ▼               ▼               ▼
+                     define plan     define plan     define plan
+                     define tasks    define tasks    define tasks
+                     define tests    define tests    define tests
+                          │               │               │
+                          ▼               ▼               ▼
+                     gwrk ship       gwrk ship       gwrk ship
 ```
 
 ---
@@ -38,6 +42,7 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
 |---|---|---|---|
 | R001 | `/research docs/research/R001-parallel-dispatch` | `R001-parallel-dispatch/draft.md` | ✅ **Complete** (v3, all items resolved) |
 | R002 | `/research docs/research/R002-agent-backend-plugin` | `R002-agent-backend-plugin/draft.md` | ✅ **Complete** (all 5 open items resolved) |
+| **R004** | `/research docs/research/R004-shareability-readiness` | `R004-shareability-readiness/draft.md` | ✅ **Complete** (2026-03-31, all decisions locked) |
 
 **Parallelizable:** Yes — R001 and R002 have no dependencies on each other. Can be dispatched to separate agents simultaneously.
 
@@ -46,10 +51,12 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
 **Publish:** Approved draft moves to:
 - R001 → `docs/reference/parallel-dispatch-architecture.md`
 - R002 → `docs/reference/agent-backend-plugin-design.md`
+- R004 → remains at `docs/research/R004-shareability-readiness/draft.md` (informs F014-R spec directly)
 
 **Additional deliverables:**
 - (R001) `docs/reference/codex-cloud-research-report.md` — Comprehensive Codex Cloud reference (separate feature, not F005).
 - (R002) 13 FRs for F014 spec expansion (FR-L1-001 through FR-L1-013), 4 sample agent manifests (Claude, Codex local, Codex Cloud, Gemini), plugin packaging decision (hybrid: built-in + git-native), scaffolding command (`gwrk plugin create agent`), compilation model (hybrid: adapter TS compiled, manifest YAML runtime).
+- **(R004)** F014 implementation audit, F014-R rework scope (25-40 SP), workflow classification (10 core, 3 excluded), directory model confirmation, DefineOrchestrator requirement.
 
 ---
 
@@ -86,15 +93,50 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
 
 ---
 
+## Stage 2.6: Shareability Readiness Assessment (R004)
+
+**Trigger:** Pre-share audit of gwrk for principal engineer onboarding. ✅ **Complete** (2026-03-31).
+
+**Outputs:**
+- [`docs/research/R004-shareability-readiness/draft.md`](file:///Users/gonzo/Code/gwrk/docs/research/R004-shareability-readiness/draft.md) (Implementation audit + rework scope)
+
+**Critical Finding:** F014 shipped plugin infrastructure (loader, manifest, skill runtime, agent backends) but did NOT internalize workflows. Every CLI command hardcodes `.agents/workflows/` paths pointing to personal files that don't ship with gwrk. `gwrk init` creates placeholder files. WorkflowRuntime (Layer 2.5, FR-L25-001/002/003) was specified but never implemented.
+
+**PM Decisions (Locked):**
+
+1. **F014 rework addendum** — proper spec, plan, tests, tasks. Not a new feature.
+2. **Full WorkflowRuntime (Path B)** — no half-measures. JSON intent execution engine, not raw markdown file bundling. Debt on the critical path compounds forever.
+3. **Workflow classification:**
+   - Core builtins (8): specify, plan, implement, define-tests, author-gates, plan-to-tasks, review-code, review-uat
+   - Ship (beta/alpha): research, build-plan
+   - Fold into parents (not standalone): checklist → specify/plan, analyze → specify/plan
+   - Excluded: effort (not ready), cascade-sync (personal), constitution (personal)
+4. **Skills ship separately** — not as builtins. Requires a new feature.
+5. **DefineOrchestrator** mirrors ShipOrchestrator (TypeScript state machine). Replaces `define-until-solid.sh`.
+6. **Directory model confirmed** per ADR-006: `~/.gwrk/` = global home (plugins, skills, workflows). `.gwrk/` = project-local overrides only. `.agents/` = never part of gwrk.
+7. **`scripts/dev/`** — gitignore and `git rm --cached`. Don't delete.
+
+**Impact on Critical Path:**
+
+F014-R is now a hard blocker for shareability. Estimated scope: 25-40 SP across 6 work items:
+- WorkflowRuntime engine (8-13 SP)
+- Core workflow plugins as builtins (5-8 SP)
+- CLI command rewiring off `.agents/` paths (3-5 SP)
+- `gwrk init` overhaul (2-3 SP)
+- DefineOrchestrator (5-8 SP)
+- Governance defaults as builtins (2-3 SP)
+
+---
+
 ## Stage 3: Specification Alignment
 
 **Trigger:** Architecture.md v5.0 approved & Ambiguity remediated. ✅ **Ready**.
 
 | Spec | Action | Draws From | Scope |
 |---|---|---|---|
-| **F004** | Rework | R002 Remediation Plan, plugin-strategy-audit | **CRITICAL UPDATE**: Refactor `work-until-done.sh` and `define-*` shell scripts into native TypeScript `DispatchOrchestrator`. Prepare architecture to consume `WorkflowRuntime` JSON intent execution. |
+| **F004** | Rework | R002 Remediation Plan, plugin-strategy-audit | **P5 LANDED** (ShipOrchestrator). Remaining: DefineOrchestrator (from R004), `--legacy` removal, `scripts/dev/` archival. |
 | **F005** | Rewrite | R001, ADR-006, F004 contracts, Ambiguity Remediation | Replace F008 refs, add `TaskDispatch/TaskResult`, new sandbox model, align DM-001 with F004 manifests **+ Delete FR-004/007/US-003 (merge locks) + Defer Cloud Agents to Tier 3.** |
-| **F014** | Expand | R002, ADR-006, skills-architecture.md, Ambiguity Remediation | Add L1 FRs (Agent manifest, governance sync). **+ Add Layer 2.5 FRs (WorkflowRuntime, JSON Schema Output Contracts). + Add Strict Isolation Rule.** |
+| **F014** | Expand + **Rework** | R002, R004, ADR-006, skills-architecture.md, Ambiguity Remediation | L1 FRs shipped ✅. **F014-R: Implement Layer 2.5 (WorkflowRuntime), ship 10 core workflows as builtins, rewire CLI commands, overhaul `gwrk init`.** |
 | **F011** | Polish | Architecture.md v5.0, Ambiguity Remediation | Add optional F015 event hooks. Reference `dispatchToAgent()` results in FR-H03. **+ Update FR-H01 trigger logic to ignore Sandbox PRs and require Phase completion.** |
 
 **Method:** Use `gwrk define spec` or manual rewrite. Each spec goes through PM review before define pipeline.
@@ -103,9 +145,9 @@ R002 brief ──→ /research ──→ R002 draft ──→ PM review ──�
 
 ## Stage 4: Define Pipeline
 
-**Trigger:** All three specs approved.
+**Trigger:** All specs approved.
 
-For each of F005, F011, F014:
+For each of F005, F011, F014-R:
 ```bash
 gwrk define plan <feature>       # plan.md + contracts/
 gwrk define tests <feature>      # gap-matrix.md + *.test.ts (RED)
@@ -120,10 +162,16 @@ gwrk define tasks <feature>      # tasks.json + gates/ (vitest gates reference t
 
 **Trigger:** Define pipeline complete, all gates verified RED.
 
-**Order recommendation:**
-1. **F014 P1–P2** (Plugin Loader + Skill Runtime) — keystone infrastructure
-2. **F011** (Harvest) — small, self-contained, high visibility
-3. **F005** (Parallel Dispatch) — highest complexity, benefits from F014 being in place
-4. **F014 P3** (Agent Backend Adapters) — needs real dispatch experience from F005
+**Order recommendation (updated post-R004):**
+1. **F014-R** (WorkflowRuntime + Core Workflows + CLI Rewiring) — **shareability blocker**. Must complete before gwrk can be shared. 25-40 SP.
+2. **F004-R remaining** (DefineOrchestrator + `scripts/dev/` archival) — completes bash eradication. Depends on F014-R for workflow delivery.
+3. **F011** (Harvest) — small, self-contained, high visibility
+4. **F005** (Parallel Dispatch) — highest complexity, benefits from F014-R being in place
+
+**Post-implementation (pre-share):**
+- README.md rewrite (~2h)
+- DEVELOPMENT.md creation (~3h)
+- Docker cleanup: remove `docker.ts`, `dockerode` dep, dead Makefile targets (~1h)
+- `scripts/dev/` → `.gitignore` + `git rm --cached` (~15m)
 
 **Method:** `gwrk ship <feature> <phase>` or `/implement` workflow.
