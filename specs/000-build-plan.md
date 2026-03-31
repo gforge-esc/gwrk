@@ -29,7 +29,7 @@ graph TD
     F001 --> F006["F006: Pulse"]
     F001 --> F007["F007: Effort + Compression"]
     F001 --> F012["F012: Knowledge Work"]
-    F001 --> F014["F014: Plugin System (incl. Routing Intelligence)"]
+    F001 --> F014["F014: Plugin System ✅"]
     F002 --> F003["F003: Slack ⚠️"]
     F002 --> F005["F005: Parallel Dispatch"]
     F002 --> F015["F015: Event Bus"]
@@ -51,7 +51,7 @@ graph TD
     F015 --> F017
     F003 --> F017
     F012 --> F016
-    F005 --> F014P4["F014 P4: Routing Intelligence"]
+    F005 --> F014P4["F014 P4: Routing Intelligence ✅"]
 ```
 
 ---
@@ -70,11 +70,11 @@ gantt
     F013 Agent-Native        :done,    f013, after f001, 1
     TDD Hardening 001-003   :done,    tdd,  after f013, 1
     F004 Ship Loop           :done,    f004, after tdd, 1
-    F014 P1-P2 Plugin Core   :active,  f014p12, after f001, 2
+    F014 P1-P2 Plugin Core   :done,    f014p12, after f001, 2
     F011 Harvest             :         f011, after f004, 1
     F005 Parallel Dispatch   :         f005, after f014p12, 1
-    F014 P3 Agent Adapters   :         f014p3, after f005, 1
-    F014 P4 Routing          :         f014p4, after f014p3, 1
+    F014 P3 Agent Adapters   :done,    f014p3, after f005, 1
+    F014 P4 Routing          :done,    f014p4, after f014p3, 1
 
     section F004 Rework
     F004-R DispatchOrchestrator :      f004r, after f004, 1
@@ -513,7 +513,7 @@ gwrk kw build-plan                 # Manage 000-deliverables-plan.md
 
 ---
 
-### Feature 014 — Plugin System (Three-Layer Architecture)
+### Feature 014 — Plugin System (Three-Layer Architecture) ✅
 
 Manifest-driven plugin architecture with three layers: **Agent Backend adapters** (Layer 1, ADR-006), **Skills** (Layer 2, two-tier hierarchy), **WorkflowRuntime** (Layer 2.5, JSON intent execution per cascade §2.5 item 5), and **Extensions** (Layer 3, domain packs + channel adapters). All plugins are CLI commands with full F013 contract: stdin/stdout, `--format json`, `[exit:N | Xs]`, pipe-composable. Anti-MCP: Unix-native, not server-coupled.
 
@@ -528,6 +528,8 @@ Manifest-driven plugin architecture with three layers: **Agent Backend adapters*
 **Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) (Draft — needs Layer 1 + Layer 2.5 + Phase 4 additions)
 **Decisions:** [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends)
 **SP:** 8 → 20 (absorbed F008's 12 SP)
+
+**Status:** Complete ✅. Merged and shipped.
 
 #### What ships:
 
@@ -640,7 +642,7 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | F010 (Integration) | 5 | PE | 25h |
 | F011 (Harvest) | 5 | PM+PE | 25h |
 | F012 (Knowledge Work) | 13 | PM+PE | 65h |
-| **F014 (Plugin System)** | **20** | **PM+PE** | **100h** |
+| F014 (Plugin System) ✅ | 20 | PM+PE | Done |
 | **F015 (Event Bus)** | **8** | **PE** | **40h** |
 | **F016 (Domain Packs)** | **13** | **PM+PE** | **65h** |
 | **F017 (Channel Abstraction)** | **8** | **PM+PE** | **40h** |
