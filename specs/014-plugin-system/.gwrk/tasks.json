@@ -233,7 +233,7 @@
           "id": "T022",
           "title": "Implement src/plugins/workflow-runtime.ts",
           "description": "NEW: Resolve and execute workflows via agents",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T022-gate.sh",
           "completedAt": "2026-03-31T19:35:28.541Z",
           "classification": "greenfield"
@@ -242,7 +242,7 @@
           "id": "T023",
           "title": "Implement src/engine/intent-engine.ts",
           "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T023-gate.sh",
           "completedAt": "2026-03-31T19:35:31.453Z",
           "classification": "greenfield"
@@ -251,7 +251,7 @@
           "id": "T024",
           "title": "Implement src/plugins/builtins/workflows/",
           "description": "NEW: 10 core workflows as built-in plugins",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T024-gate.sh",
           "completedAt": "2026-03-31T19:35:31.464Z",
           "classification": "greenfield"
@@ -260,7 +260,7 @@
           "id": "T025",
           "title": "Implement src/plugins/workflow-runtime.test.ts",
           "description": "NEW: Verify JSON intent parsing and validation",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T025-gate.sh",
           "completedAt": "2026-03-31T19:35:31.475Z",
           "classification": "greenfield"
@@ -269,7 +269,7 @@
           "id": "T026",
           "title": "Implement src/engine/intent-engine.test.ts",
           "description": "NEW: Verify FS path containment and execution",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T026-gate.sh",
           "completedAt": "2026-03-31T19:35:31.486Z",
           "classification": "greenfield"
@@ -278,7 +278,7 @@
           "id": "T027",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T027-gate.sh",
           "classification": "noop"
         }
@@ -295,7 +295,7 @@
           "id": "T028",
           "title": "Implement src/engine/define-orchestrator.ts",
           "description": "NEW: TS state machine for spec->plan->tasks loop",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T028-gate.sh",
           "completedAt": "2026-03-31T19:35:31.497Z",
           "classification": "greenfield"
@@ -304,7 +304,7 @@
           "id": "T029",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
           "description": "MODIFY: Rewire to `WorkflowRuntime`",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T029-gate.sh",
           "completedAt": "2026-03-31T19:35:34.273Z",
           "classification": "greenfield"
@@ -313,7 +313,7 @@
           "id": "T030",
           "title": "Implement src/engine/define-orchestrator.test.ts",
           "description": "NEW: Verify state transitions",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T030-gate.sh",
           "completedAt": "2026-03-31T19:35:34.287Z",
           "classification": "greenfield"
@@ -322,7 +322,7 @@
           "id": "T031",
           "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
           "description": "MODIFY: E2E verification",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T031-gate.sh",
           "completedAt": "2026-03-31T19:35:34.299Z",
           "classification": "greenfield"
@@ -331,7 +331,7 @@
           "id": "T032",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "pending",
           "gateScript": "gates/T032-gate.sh",
           "classification": "noop"
         },
