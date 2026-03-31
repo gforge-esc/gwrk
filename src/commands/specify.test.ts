@@ -8,7 +8,7 @@ import { specifyCommand } from "./specify.js";
 vi.mock("../utils/agent.js", () => ({
   dispatchAgent: vi
     .fn()
-    .mockResolvedValue({ exitCode: 0, stdout: "Success", stderr: "" }),
+    .mockResolvedValue({ exitCode: 0, stdout: "Success", stderr: "", logPath: "/tmp/test.log" }),
 }));
 
 describe("specifyCommand", () => {
@@ -22,6 +22,8 @@ describe("specifyCommand", () => {
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
+    // Prevent readStdin() from blocking in test environment
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
 
     // Create .gwrkrc.json
     fs.writeFileSync(
@@ -53,26 +55,71 @@ describe("specifyCommand", () => {
     vi.restoreAllMocks();
   });
 
-  it("should dispatch agent with correct workflow and prompt", async () => {
-    await specifyCommand.parseAsync(["new feature"], { from: "user" });
+  it("should dispatch agent in rework mode when spec exists", async () => {
+    // Create existing spec for rework mode
+    const specDir = path.join(tempDir, "specs", "014-plugin-system");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(path.join(specDir, "spec.md"), "# Existing spec");
 
-    expect(dispatchAgent).toHaveBeenCalledWith({
-      backend: "gemini",
-      workflowPath: ".agents/workflows/gwrk-specify.md",
-      prompt: "new feature",
-    });
+    await specifyCommand.parseAsync(
+      ["014-plugin-system", "Add WorkflowRuntime rework"],
+      { from: "user" },
+    );
+
+    expect(dispatchAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backend: "gemini",
+        workflowPath: ".agents/workflows/gwrk-specify.md",
+        featureDir: specDir,
+        prompt: expect.stringContaining("REWORK"),
+      }),
+    );
+    // Prompt should contain the rework instructions
+    const call = vi.mocked(dispatchAgent).mock.calls[0][0];
+    expect(call.prompt).toContain("Add WorkflowRuntime rework");
+    expect(call.prompt).toContain("014-plugin-system");
+  });
+
+  it("should dispatch agent in new mode with prompt", async () => {
+    await specifyCommand.parseAsync(
+      ["018-new-feature", "A brand new feature description"],
+      { from: "user" },
+    );
+
+    expect(dispatchAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backend: "gemini",
+        workflowPath: ".agents/workflows/gwrk-specify.md",
+        prompt: expect.stringContaining("NEW spec"),
+      }),
+    );
+    const call = vi.mocked(dispatchAgent).mock.calls[0][0];
+    expect(call.prompt).toContain("A brand new feature description");
+  });
+
+  it("should fail fast if new spec has no prompt", async () => {
+    process.exitCode = 0;
+    await specifyCommand.parseAsync(["018-new-feature"], { from: "user" });
+
+    expect(process.exitCode).toBe(1);
   });
 
   it("should exit with non-zero if agent fails", async () => {
+    // Create existing spec for rework mode
+    const specDir = path.join(tempDir, "specs", "014-plugin-system");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(path.join(specDir, "spec.md"), "# Existing spec");
+
     vi.mocked(dispatchAgent).mockResolvedValueOnce({
       exitCode: 1,
       stdout: "",
       stderr: "Error",
+      logPath: "/tmp/test-fail.log",
     });
 
     process.exitCode = 0;
-    await specifyCommand.parseAsync(["new feature"], { from: "user" });
-    
+    await specifyCommand.parseAsync(["014-plugin-system"], { from: "user" });
+
     expect(process.exitCode).toBe(1);
   });
 });
