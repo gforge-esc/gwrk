@@ -285,6 +285,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     selected_backend: agentName,
     outcome: result.exitCode === 0 ? "success" : "failure",
     duration_ms: durationS * 1000,
+    error_message: result.errorType ?? undefined,
   });
   
   return {
