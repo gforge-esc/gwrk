@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
-import { WorkflowManifest } from "./manifest.js";
-import { IntentEngine, JsonIntent, IntentSummary } from "../engine/intent-engine.js";
-import { dispatchToAgent, TaskDispatch } from "../utils/agent.js";
+import type { WorkflowManifest } from "./manifest.js";
+import { IntentEngine, type JsonIntent, type IntentSummary } from "../engine/intent-engine.js";
+import { dispatchToAgent, type TaskDispatch } from "../utils/agent.js";
 
 export interface WorkflowOptions {
   projectRoot?: string;
