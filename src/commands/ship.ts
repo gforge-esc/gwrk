@@ -245,6 +245,7 @@ async function shipPhase(
         ? (err as { code: number }).code
         : 1;
     finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+    console.error(`\n  Error: ${err instanceof Error ? err.message : String(err)}`);
     fail("ship", exitCode, durationS, runId);
 
     record.status = "failed";

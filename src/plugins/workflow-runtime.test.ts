@@ -1,75 +1,155 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkflowRuntime } from './workflow-runtime.js';
-import { WorkflowManifest } from './manifest.js';
+import { PluginLoader, PluginNotFoundError } from './loader.js';
+import { dispatchToAgent } from '../utils/agent.js';
+import { readFile } from 'node:fs/promises';
 
 /**
- * RED TESTS: Phase 4 - WorkflowRuntime (Layer 2.5 - F014-R)
- * 
- * Requirements addressed: 
- * FR-L25-001, FR-L25-006, FR-L25-007, US-011, US-015
+ * Phase 4 - WorkflowRuntime (Layer 2.5 - F014-R)
  */
+
+vi.mock('./loader.js', () => ({
+  PluginLoader: vi.fn(),
+  PluginNotFoundError: class PluginNotFoundError extends Error {
+    constructor(name: string) {
+      super(`Plugin '${name}' not found.`);
+      this.name = 'PluginNotFoundError';
+    }
+  }
+}));
+
+vi.mock('../utils/agent.js', () => ({
+  dispatchToAgent: vi.fn()
+}));
+
+vi.mock('node:fs/promises', () => {
+  const mockFs = {
+    readFile: vi.fn(),
+    mkdir: vi.fn().mockResolvedValue(undefined),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+  };
+  return {
+    ...mockFs,
+    default: mockFs
+  };
+});
 
 describe('WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)', () => {
   let runtime: WorkflowRuntime;
+  let mockLoader: any;
 
   beforeEach(() => {
-    // WorkflowRuntime doesn't exist yet, so this will fail to compile (ideal RED state)
-    runtime = new WorkflowRuntime();
+    mockLoader = {
+      resolvePlugin: vi.fn()
+    };
+    (PluginLoader as any).mockImplementation(() => mockLoader);
+    runtime = new WorkflowRuntime(mockLoader);
     vi.clearAllMocks();
   });
 
   describe('resolveWorkflow (FR-L25-006, US-015)', () => {
     it('US-015: SHOULD prioritize project-local overrides over global built-ins', async () => {
-      // Mock resolution logic
+      mockLoader.resolvePlugin.mockResolvedValue({
+        manifest: { name: 'gwrk-specify', type: 'workflow' },
+        path: '/tmp/project/.gwrk/plugins/workflows/gwrk-specify'
+      });
+
       const manifest = await runtime.resolveWorkflow('gwrk-specify', '/tmp/project');
-      
-      // Should find the one in .gwrk/plugins/workflows/gwrk-specify
       expect(manifest.name).toBe('gwrk-specify');
-      // We'd expect some indicator of source path or similar if available in manifest
     });
 
     it('FR-L25-006: SHOULD fallback to global built-ins if local override is missing', async () => {
+      mockLoader.resolvePlugin.mockResolvedValue({
+        manifest: { name: 'gwrk-plan', type: 'workflow' },
+        path: '/home/user/.gwrk/plugins/workflows/gwrk-plan'
+      });
+
       const manifest = await runtime.resolveWorkflow('gwrk-plan', '/tmp/empty-project');
       expect(manifest.name).toBe('gwrk-plan');
     });
 
     it('FR-L25-001: SHOULD throw WorkflowNotFoundError if workflow cannot be resolved', async () => {
+      mockLoader.resolvePlugin.mockRejectedValue(new (PluginNotFoundError as any)('nonexistent-workflow'));
+      
       await expect(runtime.resolveWorkflow('nonexistent-workflow'))
-        .rejects.toThrow('Workflow \'nonexistent-workflow\' not found');
+        .rejects.toThrow("Workflow 'nonexistent-workflow' not found");
     });
   });
 
   describe('executeWorkflow (FR-L25-001, FR-L25-007, US-011)', () => {
+    const mockManifest = {
+      name: 'gwrk-specify',
+      type: 'workflow',
+      outputSchema: { type: 'object' }
+    };
+
+    beforeEach(() => {
+      mockLoader.resolvePlugin.mockResolvedValue({
+        manifest: mockManifest,
+        path: '/fake/path'
+      });
+      (readFile as any).mockResolvedValue('Mock Prompt');
+    });
+
     it('US-011: SHOULD execute a built-in workflow and return valid intents', async () => {
+      (dispatchToAgent as any).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          summary: 'Created spec',
+          intents: [{ action: 'WRITE_FILE', filePath: 'spec.md', content: '# Spec' }]
+        }),
+        stderr: '',
+        durationS: 1
+      });
+
       const result = await runtime.executeWorkflow('gwrk-specify', 'Implement a new feature');
       
-      expect(result.summary).toBeDefined();
-      expect(Array.isArray(result.intents)).toBe(true);
-      expect(result.intents.length).toBeGreaterThan(0);
+      expect(result.summary).toBe('Created spec');
+      expect(result.intents.length).toBe(1);
+      expect(result.intents[0].action).toBe('WRITE_FILE');
     });
 
     it('FR-L25-001: SHOULD validate agent output against the workflow\'s outputSchema', async () => {
-      // Mock agent returning invalid JSON
-      // This test would likely require mocking the agent backend or a lower-level service
-      // For now, we assert the behavior of catching schema violations
-      
-      // Expected: Workflow output failed schema constraint: Expected JSON object.
+      (dispatchToAgent as any).mockResolvedValue({
+        exitCode: 0,
+        stdout: 'Not a JSON object',
+        stderr: '',
+        durationS: 1
+      });
+
       await expect(runtime.executeWorkflow('gwrk-specify', 'invalid-output'))
         .rejects.toThrow(/Workflow output failed schema constraint/);
     });
 
     it('FR-L25-007: SHOULD support multi-action intents from a single turn', async () => {
+      (dispatchToAgent as any).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          summary: 'Multi action',
+          intents: [
+            { action: 'CREATE_DIR', dirPath: 'src' },
+            { action: 'WRITE_FILE', filePath: 'src/main.ts', content: '' }
+          ]
+        }),
+        stderr: '',
+        durationS: 1
+      });
+
       const result = await runtime.executeWorkflow('gwrk-plan', 'Create a plan with multiple files');
-      
-      // Should have multiple intents if the agent returned them
-      expect(result.intents.length).toBeGreaterThan(1);
+      expect(result.intents.length).toBe(2);
     });
 
     it('FR-L25-001: SHOULD catch attempted direct FS edits by agents and exit 1', async () => {
-      // If the agent tries to use a raw shell command to write files instead of the intent engine
-      // The runtime should detect this (likely via prompt engineering or output parsing)
-      
-      // Expected: Workflow execution violation: Use WRITE_FILE JSON intent only.
+      (dispatchToAgent as any).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          summary: 'Naughty agent',
+          intents: [{ action: 'RUN_COMMAND', command: 'echo "hacked" > /etc/passwd' }]
+        }),
+        stderr: '',
+        durationS: 1
+      });
+
       await expect(runtime.executeWorkflow('gwrk-implement', 'attempt-direct-fs-edit'))
         .rejects.toThrow(/Workflow execution violation: Use WRITE_FILE JSON intent only/);
     });

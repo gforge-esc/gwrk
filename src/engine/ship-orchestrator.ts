@@ -176,61 +176,76 @@ export class ShipOrchestrator {
     }
 
     // FR-019: dispatchToAgent
-    const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n` + 
-      tasksToDispatch.map(t => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n");
+    try {
+      const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n` + 
+        tasksToDispatch.map(t => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n");
 
-    const result = await dispatchToAgent({
-      agent: this.config.backend,
-      workflow: ".agents/workflows/gwrk-implement.md",
-      featureDir: `specs/${this.config.featureId}`,
-      prompt,
-    });
+      const result = await dispatchToAgent({
+        agent: this.config.backend,
+        workflow: ".agents/workflows/gwrk-implement.md",
+        featureDir: `specs/${this.config.featureId}`,
+        prompt,
+      });
 
-    if (result.exitCode === 0) {
-      return { success: true, exitCode: 0 };
-    } else {
+      if (result.exitCode === 0) {
+        return { success: true, exitCode: 0 };
+      }
       return { 
         success: false, 
         exitCode: result.exitCode, 
         error: `Agent implementation failed: ${result.errorType || 'unknown'}` 
       };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  IMPLEMENT dispatch error: ${msg}`);
+      return { success: false, exitCode: 1, error: `IMPLEMENT dispatch failed: ${msg}` };
     }
   }
 
   private async stageCodeReview(): Promise<StageResult> {
     // FR-005: dispatch review
-    const result = await dispatchToAgent({
-      agent: this.config.backend,
-      workflow: ".agents/workflows/gwrk-review-code.md",
-      featureDir: `specs/${this.config.featureId}`,
-      prompt: `Phase ${this.config.phaseId} Code Review`,
-    });
+    try {
+      const result = await dispatchToAgent({
+        agent: this.config.backend,
+        workflow: ".agents/workflows/gwrk-review-code.md",
+        featureDir: `specs/${this.config.featureId}`,
+        prompt: `Phase ${this.config.phaseId} Code Review`,
+      });
 
-    // In a real implementation, we would parse the verdict from the output.
-    // For now, let's assume GO if exitCode is 0.
-    const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
+      // In a real implementation, we would parse the verdict from the output.
+      // For now, let's assume GO if exitCode is 0.
+      const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
 
-    if (verdict === "GO") {
-      return { success: true, exitCode: 0 };
-    } else {
+      if (verdict === "GO") {
+        return { success: true, exitCode: 0 };
+      }
       return this.handleNoGo("CODE_REVIEW");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  CODE_REVIEW dispatch error: ${msg}`);
+      return { success: false, exitCode: 1, error: `CODE_REVIEW dispatch failed: ${msg}` };
     }
   }
 
   private async stageUatReview(): Promise<StageResult> {
-    const result = await dispatchToAgent({
-      agent: this.config.backend,
-      workflow: ".agents/workflows/gwrk-review-uat.md",
-      featureDir: `specs/${this.config.featureId}`,
-      prompt: `Phase ${this.config.phaseId} UAT Review`,
-    });
+    try {
+      const result = await dispatchToAgent({
+        agent: this.config.backend,
+        workflow: ".agents/workflows/gwrk-review-uat.md",
+        featureDir: `specs/${this.config.featureId}`,
+        prompt: `Phase ${this.config.phaseId} UAT Review`,
+      });
 
-    const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
+      const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
 
-    if (verdict === "GO") {
-      return { success: true, exitCode: 0 };
-    } else {
+      if (verdict === "GO") {
+        return { success: true, exitCode: 0 };
+      }
       return this.handleNoGo("UAT_REVIEW");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  UAT_REVIEW dispatch error: ${msg}`);
+      return { success: false, exitCode: 1, error: `UAT_REVIEW dispatch failed: ${msg}` };
     }
   }
 
