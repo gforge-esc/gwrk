@@ -232,8 +232,8 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/workflow-runtime.ts",
-          "description": "NEW: Resolve and execute workflows via agents",
-          "status": "completed",
+          "description": "NEW: Resolve and execute workflows via agents\n\nREVIEW FAIL (code): Spec Match — FR-L25-001.\n  WHERE: src/plugins/workflow-runtime.ts:94-112\n  EXPECTED: Workflow output validated against manifest.outputSchema (using Zod or JSON Schema validator).\n  ACTUAL: Basic manual validation of intents and summary only.\n  FIX: Integrate a JSON Schema validator (e.g., ajv) or convert outputSchema to Zod at runtime to strictly enforce the workflow contract.\n  GATE: gates/T022-gate.sh assertion #4 (implicit)\n  REF: plan.md Phase 4 > WorkflowRuntime\n\nREVIEW FAIL (code): Type Safety — FR-L25-001.\n  WHERE: src/plugins/workflow-runtime.ts:94\n  EXPECTED: Defined interface for workflow output (e.g., WorkflowOutput).\n  ACTUAL: let parsedOutput: any;\n  FIX: Replace 'any' with a typed interface matching the expected JSON structure.\n  GATE: gates/T022-gate.sh assertion #1 (implicit)\n  REF: plan.md Phase 4 > WorkflowRuntime",
+          "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "completedAt": "2026-04-01T22:18:04.210Z",
           "classification": "greenfield"
@@ -241,8 +241,8 @@
         {
           "id": "T023",
           "title": "Implement src/engine/intent-engine.ts",
-          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
-          "status": "completed",
+          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`\n\nREVIEW FAIL (code): Type Safety — FR-L25-002.\n  WHERE: src/engine/intent-engine.ts:95, 107\n  EXPECTED: Proper error typing and intent action casting.\n  ACTUAL: catch (error: any), (intent as any).action\n  FIX: Replace 'any' with 'unknown' and use type guards or specific error types.\n  GATE: gates/T023-gate.sh assertion #1 (implicit)\n  REF: plan.md Phase 4 > IntentEngine",
+          "status": "open",
           "gateScript": "gates/T023-gate.sh",
           "completedAt": "2026-04-01T22:18:04.219Z",
           "classification": "greenfield"
@@ -259,8 +259,8 @@
         {
           "id": "T025",
           "title": "Implement src/plugins/workflow-runtime.test.ts",
-          "description": "NEW: Verify JSON intent parsing and validation",
-          "status": "completed",
+          "description": "NEW: Verify JSON intent parsing and validation\n\nREVIEW FAIL (code): Spec Match — FR-L25-006.\n  WHERE: src/plugins/workflow-runtime.test.ts:40-150\n  EXPECTED: Test that verifies PluginLoader actually checks .gwrk/plugins/workflows/ automatically.\n  ACTUAL: PluginLoader is mocked to return the path, hiding the lack of automatic local directory scanning in PluginLoader.ts.\n  FIX: Add an integration test that uses the real PluginLoader to verify the required resolution order from the local project directory.\n  GATE: gates/T025-gate.sh assertion #1 (implicit)\n  REF: plan.md Phase 4 > WorkflowRuntime.test.ts",
+          "status": "open",
           "gateScript": "gates/T025-gate.sh",
           "completedAt": "2026-04-01T22:18:05.167Z",
           "classification": "greenfield"
@@ -268,8 +268,8 @@
         {
           "id": "T026",
           "title": "Implement src/engine/intent-engine.test.ts",
-          "description": "NEW: Verify FS path containment and execution",
-          "status": "completed",
+          "description": "NEW: Verify FS path containment and execution\n\nREVIEW FAIL (code): Isolation — TR-011.\n  WHERE: src/engine/intent-engine.test.ts:1-100\n  EXPECTED: node:fs/promises and node:child_process are mocked in unit tests.\n  ACTUAL: No mocks for filesystem or child_process; tests perform actual mutations on /tmp/intent-test.\n  FIX: Mock node:fs/promises and node:child_process to prevent side effects during testing.\n  GATE: gates/T026-gate.sh assertion #1 (implicit)\n  REF: plan.md Phase 4 > IntentEngine.test.ts",
+          "status": "open",
           "gateScript": "gates/T026-gate.sh",
           "completedAt": "2026-04-01T22:18:05.963Z",
           "classification": "greenfield"
