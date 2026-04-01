@@ -181,7 +181,7 @@ export class ShipOrchestrator {
 
     const result = await dispatchToAgent({
       agent: this.config.backend,
-      workflow: "implement",
+      workflow: ".agents/workflows/gwrk-implement.md",
       featureDir: `specs/${this.config.featureId}`,
       prompt,
     });
@@ -201,7 +201,7 @@ export class ShipOrchestrator {
     // FR-005: dispatch review
     const result = await dispatchToAgent({
       agent: this.config.backend,
-      workflow: "review-code",
+      workflow: ".agents/workflows/gwrk-review-code.md",
       featureDir: `specs/${this.config.featureId}`,
       prompt: `Phase ${this.config.phaseId} Code Review`,
     });
@@ -220,7 +220,7 @@ export class ShipOrchestrator {
   private async stageUatReview(): Promise<StageResult> {
     const result = await dispatchToAgent({
       agent: this.config.backend,
-      workflow: "review-uat",
+      workflow: ".agents/workflows/gwrk-review-uat.md",
       featureDir: `specs/${this.config.featureId}`,
       prompt: `Phase ${this.config.phaseId} UAT Review`,
     });
