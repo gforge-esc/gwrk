@@ -228,9 +228,14 @@ export class ShipOrchestrator {
         prompt: `Phase ${this.config.phaseId} Code Review`,
       });
 
-      // In a real implementation, we would parse the verdict from the output.
-      // For now, let's assume GO if exitCode is 0.
-      const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
+      if (result.exitCode !== 0) {
+        return { success: false, exitCode: result.exitCode, error: `CODE_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}` };
+      }
+
+      // Determine verdict from task state — the review agent re-opens tasks on NO-GO.
+      // This is the ground truth, not exit code (agents exit 0 on successful completion regardless of verdict).
+      const verdict = this.readVerdict();
+      console.log(`  CODE_REVIEW verdict: ${verdict}`);
 
       if (verdict === "GO") {
         return { success: true, exitCode: 0 };
@@ -252,7 +257,12 @@ export class ShipOrchestrator {
         prompt: `Phase ${this.config.phaseId} UAT Review`,
       });
 
-      const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
+      if (result.exitCode !== 0) {
+        return { success: false, exitCode: result.exitCode, error: `UAT_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}` };
+      }
+
+      const verdict = this.readVerdict();
+      console.log(`  UAT_REVIEW verdict: ${verdict}`);
 
       if (verdict === "GO") {
         return { success: true, exitCode: 0 };
@@ -263,6 +273,24 @@ export class ShipOrchestrator {
       console.error(`  UAT_REVIEW dispatch error: ${msg}`);
       return { success: false, exitCode: 1, error: `UAT_REVIEW dispatch failed: ${msg}` };
     }
+  }
+
+  /**
+   * Read the verdict from task state after a review dispatch.
+   * If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
+   * Otherwise → GO.
+   */
+  private readVerdict(): "GO" | "NO-GO" {
+    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    if (!phase) return "NO-GO";
+    const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
+    if (openTasks.length > 0) {
+      console.log(`  ${openTasks.length} task(s) re-opened: ${openTasks.map(t => t.id).join(", ")}`);
+      return "NO-GO";
+    }
+    return "GO";
   }
 
   private async stagePrCi(): Promise<StageResult> {
