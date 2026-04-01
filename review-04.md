@@ -8,7 +8,7 @@
 | T024 | Implement src/plugins/builtins/workflows/ | PASS | 10 core workflows implemented in src/plugins/builtins/workflows/. |
 | T025 | Implement src/plugins/workflow-runtime.test.ts | FAIL | Spec Match: PluginLoader is mocked, hiding lack of automatic local directory scanning in loader (FR-L25-006). |
 | T026 | Implement src/engine/intent-engine.test.ts | FAIL | Isolation: Unit tests perform actual mutations on /tmp/intent-test without mocking fs or child_process (TR-011). |
-| T027 | Implement test strategy for Phase 4 | PASS | Test files exist and run, despite isolation/mocking issues found in individual tasks. |
+| T027 | Implement test strategy for Phase 4 | FAIL | Previous issues in T025/T026 remain unresolved. |
 
 ### Lint
 FAIL: Biome reported 11 errors related to 'any' usage in Phase 4 files.
