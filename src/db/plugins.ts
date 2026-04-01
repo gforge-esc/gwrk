@@ -65,7 +65,11 @@ export function recordRoutingDecision(
       `INSERT INTO routing_decisions (task_type, selected_backend, outcome, duration_ms, error_message)
        VALUES (@task_type, @selected_backend, @outcome, @duration_ms, @error_message)`,
     )
-    .run(decision);
+    .run({
+      ...decision,
+      duration_ms: decision.duration_ms ?? null,
+      error_message: decision.error_message ?? null,
+    });
 }
 
 /**
@@ -73,7 +77,7 @@ export function recordRoutingDecision(
  */
 export function getRoutingHistory(
   taskType: string,
-  limit: number = 10,
+  limit = 10,
   db?: Database.Database,
 ): RoutingDecision[] {
   const conn = db ?? getDb();

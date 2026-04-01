@@ -28,7 +28,7 @@ import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
-import { ShipStage, type ShipState } from "../engine/ship-types.js";
+import type { ShipStage, ShipState } from "../engine/ship-types.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -204,8 +204,8 @@ async function shipPhase(
         featureId: feature,
         phaseId: phaseId,
         backend,
-        maxIterations: parseInt(opts.maxIterations as string),
-        ciTimeout: parseInt(opts.ciTimeout as string),
+        maxIterations: Number.parseInt(opts.maxIterations as string),
+        ciTimeout: Number.parseInt(opts.ciTimeout as string),
         cwd,
         dryRun: !!opts.dryRun,
       }, existingState);
@@ -466,7 +466,7 @@ Exit codes:
               phaseId: phaseId,
               tasks: openTasks.map(t => ({ id: t.id, prompt: `${t.title}\n\n${t.description}` })),
               backend,
-              concurrency: opts.concurrency ? parseInt(opts.concurrency as string) : undefined,
+              concurrency: opts.concurrency ? Number.parseInt(opts.concurrency as string) : undefined,
             });
 
             for (const res of results) {
