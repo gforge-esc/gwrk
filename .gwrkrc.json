@@ -2,7 +2,7 @@
   "project": {
     "name": "gwrk",
     "slack": {
-      "channelId": "",
+      "channelId": "C0AL99J34PP",
       "channelName": "gwrk-dev",
       "opsChannelId": "C0ALGDPC725",
       "opsChannelName": "gwrk-ops"
