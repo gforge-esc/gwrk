@@ -3,7 +3,7 @@
     "name": "gwrk",
     "slack": {
       "channelId": "",
-      "channelName": "",
+      "channelName": "gwrk-dev",
       "opsChannelId": "C0ALGDPC725",
       "opsChannelName": "gwrk-ops"
     }

@@ -10,10 +10,7 @@ import { runGate } from "../utils/gate-runner.js";
 import { dispatchToAgent } from "../utils/agent.js";
 import { assembleDigest } from "../utils/manifest.js";
 import { loadTaskState, saveTaskState, type Phase, type Task } from "../utils/state.js";
-import { 
-  createBranch, 
-  isDirty 
-} from "../utils/git.js";
+import { createBranch, isDirty, syncBranch } from "../utils/git.js";
 
 export class ShipOrchestrator {
   private config: ShipRunConfig;
@@ -127,11 +124,30 @@ export class ShipOrchestrator {
       this.state.branchName = branchName;
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
-      const execErr = err as { status?: unknown; message?: string };
+      // Branch already exists — just check it out and sync with develop
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("already exists")) {
+        try {
+          const { execFileSync } = await import("node:child_process");
+          execFileSync("git", ["checkout", branchName], {
+            cwd: this.config.cwd,
+            stdio: ["ignore", "ignore", "pipe"],
+          });
+          // Sync with latest develop
+          await syncBranch(this.config.cwd, "develop");
+          this.state.branchName = branchName;
+          console.log(`  Branch ${branchName} exists — checked out and synced`);
+          return { success: true, exitCode: 0 };
+        } catch (syncErr: unknown) {
+          const syncMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+          return { success: false, exitCode: 1, error: `Failed to checkout existing branch: ${syncMsg}` };
+        }
+      }
+      const execErr = err as { status?: unknown };
       return { 
         success: false, 
         exitCode: typeof execErr.status === "number" ? execErr.status : 1, 
-        error: `Failed to create feature branch: ${execErr.message || String(err)}` 
+        error: `Failed to create feature branch: ${msg}` 
       };
     }
   }
