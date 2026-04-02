@@ -26,6 +26,7 @@ const mockConfig: GwrkConfig = {
   },
   agents: { define: "gemini", implement: "codex-cloud" },
   server: {
+    githubWebhookSecret: "mock_secret",
     port: 0,
     host: "localhost",
     heartbeatIntervalMs: 1000,
@@ -72,7 +73,7 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
       expect(callArgs[0].text).toContain(
         "Phase phase-1 started for test-feature",
       );
-      expect(callArgs[1].type).toBe("phase_start");
+      expect(callArgs[1]?.type).toBe("phase_start");
     } finally {
       await server.close();
     }

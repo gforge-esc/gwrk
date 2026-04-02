@@ -68,6 +68,10 @@ describe("005-parallel-dispatch E2E", () => {
     if (fs.existsSync(testFeatureDir)) {
       fs.rmSync(testFeatureDir, { recursive: true });
     }
+    const mocksDir = path.resolve(process.cwd(), ".test-mocks-parallel");
+    if (fs.existsSync(mocksDir)) {
+      fs.rmSync(mocksDir, { recursive: true, force: true });
+    }
   });
 
   it("US-001: should dispatch multiple tasks in parallel and update tasks.json", () => {
@@ -79,21 +83,21 @@ describe("005-parallel-dispatch E2E", () => {
     // Since we don't want to rely on external binaries, we'll verify the command doesn't crash
     // and correctly identifies the tasks.
 
-    // We'll skip actual execution if gemini is not found
-    let hasGemini = false;
-    try {
-      execSync("gemini --version", { stdio: "ignore" });
-      hasGemini = true;
-    } catch {}
-
-    if (!hasGemini) {
-      console.log("Skipping US-001 E2E: gemini CLI not found in PATH");
-      return;
-    }
+    // Create a mock executable so the CLI spawn thinks there is a real agent
+    const MOCKS_DIR = path.resolve(process.cwd(), ".test-mocks-parallel");
+    if (!fs.existsSync(MOCKS_DIR)) fs.mkdirSync(MOCKS_DIR, { recursive: true });
+    
+    const mockGemini = path.join(MOCKS_DIR, "gemini");
+    fs.writeFileSync(mockGemini, "#!/usr/bin/env bash\nexit 0\n");
+    fs.chmodSync(mockGemini, "755");
 
     const output = execSync(
-      `node ${CLI_PATH} ship ${testFeature} 1 --parallel --concurrency 3`,
+      `node ${CLI_PATH} ship ${testFeature} 1 --parallel --concurrency=3 --agent=gemini`,
       {
+        env: {
+          ...process.env,
+          PATH: `${MOCKS_DIR}:${process.env.PATH}`,
+        },
         encoding: "utf-8",
       },
     );
@@ -106,7 +110,7 @@ describe("005-parallel-dispatch E2E", () => {
       fs.readFileSync(path.join(gwrkDir, "tasks.json"), "utf-8"),
     );
     expect(
-      taskState.phases[0].tasks.every((t: any) => t.status === "completed"),
+      taskState.phases[0].tasks.every((t: { status: string }) => t.status === "completed"),
     ).toBe(true);
   });
 

@@ -51,6 +51,20 @@ describe("ShipOrchestrator", () => {
   });
 
   it("should complete full lifecycle successfully", async () => {
+    let callCount = 0;
+    vi.mocked(state.loadTaskState).mockImplementation(() => {
+      callCount++;
+      return {
+        featureId: "004-ship-loop",
+        createdAt: new Date().toISOString(),
+        phases: [{ 
+          id: "phase-01", 
+          title: "Phase 1", 
+          tasks: [{ id: "T001", status: callCount >= 2 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
+        }]
+      };
+    });
+
     vi.mocked(agent.dispatchToAgent).mockResolvedValue({
       exitCode: 0,
       stdout: "Success",
@@ -107,12 +121,24 @@ describe("ShipOrchestrator", () => {
   });
 
   it("should loop back to IMPLEMENT on NO-GO review", async () => {
+    // Return open initially (NO-GO for first review), then completed later (GO)
+    let callCount = 0;
+    vi.mocked(state.loadTaskState).mockImplementation(() => {
+      callCount++;
+      return {
+        featureId: "004-ship-loop",
+        createdAt: new Date().toISOString(),
+        phases: [{ 
+          id: "phase-01", 
+          title: "Phase 1", 
+          // 4th+ call is when we retry the review! Before that it's open.
+          tasks: [{ id: "T001", status: callCount >= 4 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
+        }]
+      };
+    });
+
     vi.mocked(agent.dispatchToAgent)
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "Imp Success", stderr: "", durationS: 10 }) // IMPLEMENT
-      .mockResolvedValueOnce({ exitCode: 1, stdout: "Review Fail", stderr: "", durationS: 5 }) // CODE_REVIEW (NO-GO)
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "Imp Success 2", stderr: "", durationS: 10 }) // IMPLEMENT (Retry)
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "Review Success", stderr: "", durationS: 5 }) // CODE_REVIEW (GO)
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "UAT Success", stderr: "", durationS: 5 }); // UAT_REVIEW (GO)
+      .mockResolvedValue({ exitCode: 0, stdout: "Success", stderr: "", durationS: 10 });
 
     vi.mocked(gateRunner.runGate).mockResolvedValue({
       passed: false,
@@ -129,9 +155,15 @@ describe("ShipOrchestrator", () => {
   });
 
   it("should trip circuit breaker after MAX_ITERATIONS", async () => {
+    // Always open = always NO-GO
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [{ id: "phase-01", title: "Phase 1", tasks: [{ id: "T001", status: "open", gateScript: "gates/T001-gate.sh" }] }]
+    });
+
     vi.mocked(agent.dispatchToAgent)
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "Imp Success", stderr: "", durationS: 10 }) // IMPLEMENT
-      .mockResolvedValueOnce({ exitCode: 1, stdout: "Review Fail", stderr: "", durationS: 5 }); // CODE_REVIEW (NO-GO)
+      .mockResolvedValue({ exitCode: 0, stdout: "Success", stderr: "", durationS: 10 });
 
     vi.mocked(gateRunner.runGate).mockResolvedValue({
       passed: false,

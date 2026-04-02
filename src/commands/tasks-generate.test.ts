@@ -28,6 +28,9 @@ describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
     fs.mkdirSync(path.join(specDir, "gates"), { recursive: true });
     fs.mkdirSync(path.join(specDir, "contracts"), { recursive: true });
     
+    // Create a mock config to satisfy fail-fast
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "test-feature" }, agents: { define: "gemini", implement: "gemini" } }));
+
     // Create a plan.md
     fs.writeFileSync(path.join(specDir, "plan.md"), `
 # Plan: 001-cli-core

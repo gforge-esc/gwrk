@@ -24,7 +24,7 @@ describe("healthRoutes", () => {
       isOnline: vi.fn().mockReturnValue(true),
     } as unknown as Mocked<NetworkMonitor>;
     sandbox = {
-      checkDocker: vi.fn().mockResolvedValue(true),
+      checkGit: vi.fn().mockResolvedValue(true),
     } as unknown as Mocked<SandboxManager>;
     await healthRoutes(server, lifecycle, network, sandbox);
   });
@@ -39,12 +39,12 @@ describe("healthRoutes", () => {
     const payload = JSON.parse(response.payload);
     expect(payload.status).toBe("ok");
     expect(payload.components.server.status).toBe("ok");
-    expect(payload.components.docker.status).toBe("ok");
+    expect(payload.components.git.status).toBe("ok");
     expect(payload.components.network.status).toBe("ok");
   });
 
-  it("should return degraded status when Docker is unavailable", async () => {
-    sandbox.checkDocker.mockResolvedValue(false);
+  it("should return degraded status when git is unavailable", async () => {
+    sandbox.checkGit.mockResolvedValue(false);
 
     const response = await server.inject({
       method: "GET",
@@ -54,7 +54,7 @@ describe("healthRoutes", () => {
     expect(response.statusCode).toBe(200);
     const payload = JSON.parse(response.payload);
     expect(payload.status).toBe("degraded");
-    expect(payload.components.docker.status).toBe("unavailable");
+    expect(payload.components.git.status).toBe("unavailable");
   });
 
   it("should return degraded status when network is offline", async () => {

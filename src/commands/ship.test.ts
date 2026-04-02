@@ -86,6 +86,9 @@ vi.mock("../utils/manifest.js", () => ({
 vi.mock("../utils/git.js", () => ({
   getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
   getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
+  isDirty: vi.fn().mockResolvedValue(false),
+  createBranch: vi.fn().mockResolvedValue(undefined),
+  syncBranch: vi.fn().mockResolvedValue(undefined),
   getDiffStats: vi
     .fn()
     .mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 }),
@@ -112,12 +115,13 @@ describe("shipCommand", () => {
   });
 
   it("ship with phase should execute work-until-done.sh for that phase", async () => {
-    mockRun.mockResolvedValueOnce(undefined);
+    mockRun.mockResolvedValue(undefined);
 
     await program.parseAsync(["node", "test", "ship", "001-cli-core", "7", "--legacy"]);
 
-    expect(execModule.run).toHaveBeenCalledTimes(1);
-    const [scriptPath, args] = mockRun.mock.calls[0];
+    const wudCalls = mockRun.mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls.length).toBe(1);
+    const [scriptPath, args] = wudCalls[0];
 
     expect(scriptPath).toContain("work-until-done.sh");
     expect(args).toEqual(["001-cli-core", "7"]);
@@ -136,13 +140,14 @@ describe("shipCommand", () => {
     await program.parseAsync(["node", "test", "ship", "001-cli-core", "--legacy"]);
 
     // Should call work-until-done.sh twice (phase-01, phase-02 from mock)
-    expect(execModule.run).toHaveBeenCalledTimes(2);
-    expect(mockRun.mock.calls[0][1]).toEqual(["001-cli-core", "01"]);
-    expect(mockRun.mock.calls[1][1]).toEqual(["001-cli-core", "02"]);
+    const wudCalls = mockRun.mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls.length).toBe(2);
+    expect(wudCalls[0][1]).toEqual(["001-cli-core", "01"]);
+    expect(wudCalls[1][1]).toEqual(["001-cli-core", "02"]);
   });
 
   it("ship should pass custom max-iterations", async () => {
-    mockRun.mockResolvedValueOnce(undefined);
+    mockRun.mockResolvedValue(undefined);
 
     await program.parseAsync([
       "node",
@@ -155,13 +160,14 @@ describe("shipCommand", () => {
       "--legacy",
     ]);
 
-    expect(execModule.run).toHaveBeenCalledTimes(1);
-    const [, , options] = mockRun.mock.calls[0];
+    const wudCalls = mockRun.mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls.length).toBe(1);
+    const [, , options] = wudCalls[0];
     expect(options.env.MAX_ITERATIONS).toBe("5");
   });
 
   it("ship should pass custom ci-timeout", async () => {
-    mockRun.mockResolvedValueOnce(undefined);
+    mockRun.mockResolvedValue(undefined);
 
     await program.parseAsync([
       "node",
@@ -174,22 +180,31 @@ describe("shipCommand", () => {
       "--legacy",
     ]);
 
-    expect(execModule.run).toHaveBeenCalledTimes(1);
-    const [, , options] = mockRun.mock.calls[0];
+    const wudCalls = mockRun.mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls.length).toBe(1);
+    const [, , options] = wudCalls[0];
     expect(options.env.CI_TIMEOUT).toBe("60");
   });
 
   it("should stop on first phase failure", async () => {
     const errorWithCode = new Error("shell error");
     (errorWithCode as unknown as { code: number }).code = 127;
-    mockRun.mockRejectedValueOnce(errorWithCode);
+    // mockRun will fail when work-until-done is called. For any subsequent branch or git run it would also fail if called,
+    // but the test asserts we fail fast. We use an implementation to conditionally throw.
+    mockRun.mockImplementation(async (cmd) => {
+      if (typeof cmd === "string" && cmd.includes("work-until-done.sh")) {
+        throw errorWithCode;
+      }
+      return undefined;
+    });
 
     process.exitCode = 0;
     // Ship without phase — should fail on phase-01 and not attempt phase-02
     await program.parseAsync(["node", "test", "ship", "001-cli-core", "--legacy"]);
 
     expect(process.exitCode).toBe(127);
-    expect(execModule.run).toHaveBeenCalledTimes(1);
+    const wudCalls = mockRun.mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls.length).toBe(1);
     expect(runsModule.finishRun).toHaveBeenCalledWith(
       999,
       expect.objectContaining({ exit_code: 127 }),
@@ -302,7 +317,7 @@ describe("shipCommand", () => {
   });
 
   it("FR-009/T009: Agent config hierarchy: --agent override takes precedence", async () => {
-    mockRun.mockResolvedValueOnce(undefined);
+    mockRun.mockResolvedValue(undefined);
 
     await program.parseAsync([
       "node",
@@ -315,8 +330,9 @@ describe("shipCommand", () => {
       "--legacy",
     ]);
 
-    expect(execModule.run).toHaveBeenCalledTimes(1);
-    const [, , options] = mockRun.mock.calls[0];
+    const wudCalls = mockRun.mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls.length).toBe(1);
+    const [, , options] = wudCalls[0];
     // Should pass the agent to WUD via env or arg
     expect(options.env.AGENT_BACKEND).toBe("claude");
   });
@@ -407,11 +423,12 @@ describe("FR-014: Phase Skip", () => {
       ],
     });
 
-    mockRun.mockResolvedValueOnce(undefined);
+    mockRun.mockResolvedValue(undefined);
     process.exitCode = 0;
     await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1", "--legacy"]);
 
-    expect(execModule.run).toHaveBeenCalledTimes(1);
+    const wudCalls = mockRun.mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls.length).toBe(1);
   });
 });
 

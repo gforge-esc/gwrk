@@ -16,6 +16,7 @@ const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "gemini" },
   server: {
+    githubWebhookSecret: "mock_secret",
     port: 18892,
     host: "localhost",
     heartbeatIntervalMs: 1000,

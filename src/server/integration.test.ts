@@ -25,7 +25,13 @@ vi.mock("./slack.js", () => ({
 const mockConfig: GwrkConfig = {
   project: { name: "test-integration" },
   agents: { define: "gemini", implement: "codex-cloud" },
-  server: { port: 18899, host: "localhost" },
+  server: { 
+    githubWebhookSecret: "mock_secret", 
+    port: 18899, 
+    host: "localhost",
+    heartbeatIntervalMs: 1000,
+    networkCheckIntervalMs: 1000
+  },
   parallelism: {
     local: { maxCpu: 100, maxMem: 100, minDiskGb: 0, maxClones: 10 },
     cloud: { maxConcurrent: 10 },

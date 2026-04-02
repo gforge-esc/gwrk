@@ -23,6 +23,9 @@ describe("gwrk define tasks --reconcile", () => {
     if (!fs.existsSync(path.join(specsDir, "gap-matrix.md"))) {
       fs.writeFileSync(path.join(specsDir, "gap-matrix.md"), "| AC | Test File |\n|----|-----------|\n");
     }
+    // Strict Gate Authoring requirement
+    fs.mkdirSync(path.join(specsDir, "contracts"), { recursive: true });
+    fs.writeFileSync(path.join(specsDir, "contracts", "mock.md"), "# Contract");
   }
 
   function readTasks(): Record<string, unknown> {
@@ -78,6 +81,8 @@ describe("gwrk define tasks --reconcile", () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
     fs.mkdirSync(tempDir, { recursive: true });
+    // Provide a mock standard config to satisfy loadConfig
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "test-feature" }, agents: { define: "gemini", implement: "gemini" } }));
   });
 
   afterEach(() => {

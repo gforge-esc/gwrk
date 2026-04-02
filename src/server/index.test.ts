@@ -29,6 +29,7 @@ const mockSandbox = {
   pauseAll: vi.fn().mockResolvedValue(undefined),
   unpauseAll: vi.fn().mockResolvedValue(undefined),
   listSandboxes: vi.fn().mockResolvedValue([]),
+  pruneSandboxes: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock("./sandbox.js", () => {
@@ -41,6 +42,7 @@ const mockConfig: GwrkConfig = {
   project: { name: "test" },
   agents: { define: "gemini", implement: "codex-cloud" },
   server: {
+    githubWebhookSecret: "mock_secret",
     port: 0,
     host: "localhost",
     heartbeatIntervalMs: 1000,
