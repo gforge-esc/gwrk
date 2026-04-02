@@ -1,30 +1,30 @@
 {
   "featureId": "999-test-parallel",
-  "createdAt": "2026-04-02T12:00:00Z",
+  "createdAt": "2026-04-02T20:12:50.387Z",
   "phases": [
     {
-      "id": "1",
+      "id": "phase-01",
       "title": "Phase 1",
       "tasks": [
         {
           "id": "T001",
           "title": "task 1",
           "description": "t1",
-          "status": "completed",
+          "status": "open",
           "gateScript": "exit 0"
         },
         {
           "id": "T002",
           "title": "task 2",
           "description": "t2",
-          "status": "completed",
+          "status": "open",
           "gateScript": "exit 0"
         },
         {
           "id": "T003",
           "title": "task 3",
           "description": "t3",
-          "status": "completed",
+          "status": "open",
           "gateScript": "exit 0"
         }
       ]

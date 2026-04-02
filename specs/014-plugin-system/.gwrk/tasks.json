@@ -232,8 +232,8 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/workflow-runtime.ts",
-          "description": "NEW: Resolve and execute workflows via agents",
-          "status": "completed",
+          "description": "NEW: Resolve and execute workflows via agents\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — Expected: gwrk specify my-feature runs built-in workflow. Actual: gwrk specify does not exist and spec command uses legacy dispatchAgent. See spec.md > US-011. Fix: Wire up CLI command so workflow runtime can be used by user, or move US-011 to Phase 5.",
+          "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "classification": "greenfield",
           "completedAt": "2026-04-02T04:15:42.626Z"
@@ -241,8 +241,8 @@
         {
           "id": "T023",
           "title": "Implement src/engine/intent-engine.ts",
-          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
-          "status": "completed",
+          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`\n\nREVIEW FAIL (uat): US-012 - Decoupled Filesystem Mutation — Expected: Agent output to be executed via JSON intent by WorkflowRuntime natively. Actual: Cannot trigger workflow runtime via CLI to verify file creation behavior. See spec.md > US-012. Fix: Wire up CLI invocation or move US-012 to Phase 5.",
+          "status": "open",
           "gateScript": "gates/T023-gate.sh",
           "classification": "greenfield",
           "completedAt": "2026-04-02T04:15:42.635Z"
@@ -250,8 +250,8 @@
         {
           "id": "T024",
           "title": "Implement src/plugins/builtins/workflows/",
-          "description": "NEW: 10 core workflows as built-in plugins",
-          "status": "completed",
+          "description": "NEW: 10 core workflows as built-in plugins\n\nREVIEW FAIL (uat): US-015 - Project-Local Workflow Override — Expected: gwrk specify prioritizes project-local override over built-in. Actual: Cannot invoke workflow to verify override. See spec.md > US-015. Fix: Wire up CLI invocation or move US-015 to Phase 5.",
+          "status": "open",
           "gateScript": "gates/T024-gate.sh",
           "classification": "greenfield",
           "completedAt": "2026-04-02T04:15:42.642Z"
