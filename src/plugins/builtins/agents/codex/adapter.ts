@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 import { execCommand } from "../../../../utils/exec.js";
 import type { AgentBackend } from "../../../agent-backend.js";
-import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 
 export class CodexAdapter implements AgentBackend {
   readonly name = "codex";
@@ -12,14 +12,17 @@ export class CodexAdapter implements AgentBackend {
     return res.exitCode === 0;
   }
 
-  async syncGovernance(projectRoot: string, governance: string): Promise<string> {
+  async syncGovernance(
+    projectRoot: string,
+    governance: string,
+  ): Promise<string> {
     const contextFile = "AGENTS.md";
     const filePathCodex = path.join(projectRoot, contextFile);
     let content = "";
     try {
       content = await fs.readFile(filePathCodex, "utf-8");
     } catch {
-      content = `# Codex Context\n\n<!-- gwrk:begin -->\n<!-- gwrk:end -->`;
+      content = "# Codex Context\n\n<!-- gwrk:begin -->\n<!-- gwrk:end -->";
     }
 
     const beginMarker = "<!-- gwrk:begin -->";
@@ -52,7 +55,7 @@ export class CodexAdapter implements AgentBackend {
     if (task.workflow) {
       args.push(task.workflow);
     }
-    
+
     if (task.featureDir) args.push(task.featureDir);
     if (task.prompt) args.push(task.prompt);
 

@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { stringify } from "yaml";
 
 export interface SeedOptions {
@@ -10,7 +10,12 @@ export interface SeedOptions {
 export async function seedSkills(options: SeedOptions = {}): Promise<void> {
   const projectRoot = process.cwd();
   const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
-  const taxonomyFile = path.join(projectRoot, "docs", "reference", "reasoning-modes.md");
+  const taxonomyFile = path.join(
+    projectRoot,
+    "docs",
+    "reference",
+    "reasoning-modes.md",
+  );
 
   try {
     const content = await fs.readFile(taxonomyFile, "utf-8");
@@ -19,7 +24,7 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
     for (const section of sections) {
       const lines = section.trim().split("\n");
       if (lines.length === 0) continue;
-      
+
       const categoryLine = lines[0].trim().toLowerCase();
       // Map "Reasoning Modes" -> "reasoning", "Evaluative Modes" -> "evaluative", etc.
       const category = categoryLine.split(" ")[0];
@@ -28,14 +33,21 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
       // Match: 1. **Name** - Description.
       // Followed by: > "Prompt" (with potential multiple newlines and spaces)
       const modeRegex = /(\d+)\. \*\*([^*]+)\*\* - ([^\n]+)\s+> "([^"]+)"/g;
-      
+
       let match;
       while ((match = modeRegex.exec(section)) !== null) {
         const name = match[2].toLowerCase().replace(/\s+/g, "-");
         const description = match[3];
         const prompt = match[4];
 
-        await createAtomicSkill(name, category, description, prompt, globalDir, options);
+        await createAtomicSkill(
+          name,
+          category,
+          description,
+          prompt,
+          globalDir,
+          options,
+        );
       }
     }
   } catch (e) {
@@ -49,7 +61,7 @@ async function createAtomicSkill(
   description: string,
   prompt: string,
   globalDir: string,
-  options: SeedOptions
+  options: SeedOptions,
 ): Promise<void> {
   const skillDestDir = path.join(globalDir, "skills", name);
 
@@ -80,7 +92,9 @@ ${description}
 `;
 
   if (options.dryRun) {
-    console.log(`[DRY RUN] Would seed skill '${name}' (${category}) to ${skillDestDir}`);
+    console.log(
+      `[DRY RUN] Would seed skill '${name}' (${category}) to ${skillDestDir}`,
+    );
     return;
   }
 
@@ -95,7 +109,10 @@ ${description}
 
   try {
     await fs.mkdir(skillDestDir, { recursive: true });
-    await fs.writeFile(path.join(skillDestDir, "manifest.yaml"), stringify(manifest));
+    await fs.writeFile(
+      path.join(skillDestDir, "manifest.yaml"),
+      stringify(manifest),
+    );
     await fs.writeFile(path.join(skillDestDir, "SKILL.md"), skillMarkdown);
     console.log(`Seeded skill '${name}' (${category}).`);
   } catch (e) {

@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
-import { getDb } from "./index.js";
 import type { CompressionReport } from "../engine/types.js";
+import { getDb } from "./index.js";
 
 /**
  * DB record for compression metrics.
@@ -31,7 +31,7 @@ export function recordCompression(
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
-  
+
   const record: CompressionRecord = {
     feature_id: report.featureId,
     phase_id: report.phaseId || "all",
@@ -76,9 +76,7 @@ export function getCompressionRecord(
 ): CompressionRecord | undefined {
   const conn = db ?? getDb();
   return conn
-    .prepare(
-      "SELECT * FROM compression WHERE feature_id = ? AND phase_id = ?",
-    )
+    .prepare("SELECT * FROM compression WHERE feature_id = ? AND phase_id = ?")
     .get(featureId, phaseId) as CompressionRecord | undefined;
 }
 
@@ -91,6 +89,8 @@ export function listCompressionRecords(
 ): CompressionRecord[] {
   const conn = db ?? getDb();
   return conn
-    .prepare("SELECT * FROM compression WHERE feature_id = ? ORDER BY recorded_at DESC")
+    .prepare(
+      "SELECT * FROM compression WHERE feature_id = ? ORDER BY recorded_at DESC",
+    )
     .all(featureId) as CompressionRecord[];
 }

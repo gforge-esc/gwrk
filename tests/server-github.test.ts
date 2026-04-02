@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
 import fastify from "fastify";
-import { githubWebhookPlugin } from "../src/server/github.js";
+import { describe, expect, it, vi } from "vitest";
 import { harvestFeature } from "../src/engine/harvest.js";
+import { githubWebhookPlugin } from "../src/server/github.js";
 
 // Mock harvestFeature
 vi.mock("../src/engine/harvest.js", () => ({
@@ -20,7 +20,11 @@ const projectRoot = "/tmp/gwrk-test";
 describe("TR-H01: GitHub Webhook Handler", () => {
   it("should ignore non-PR events", async () => {
     const server = fastify();
-    await githubWebhookPlugin(server, { config: { server: {} } } as any, projectRoot);
+    await githubWebhookPlugin(
+      server,
+      { config: { server: {} } } as any,
+      projectRoot,
+    );
 
     const response = await server.inject({
       method: "POST",
@@ -78,7 +82,11 @@ describe("TR-H01: GitHub Webhook Handler", () => {
 
   it("should ignore PR closure without merge", async () => {
     const server = fastify();
-    await githubWebhookPlugin(server, { config: { server: {} } } as any, projectRoot);
+    await githubWebhookPlugin(
+      server,
+      { config: { server: {} } } as any,
+      projectRoot,
+    );
 
     const response = await server.inject({
       method: "POST",
@@ -97,7 +105,11 @@ describe("TR-H01: GitHub Webhook Handler", () => {
 
   it("should accept valid PR merge targeting develop", async () => {
     const server = fastify();
-    await githubWebhookPlugin(server, { config: { server: {} } } as any, projectRoot);
+    await githubWebhookPlugin(
+      server,
+      { config: { server: {} } } as any,
+      projectRoot,
+    );
 
     const payload = {
       action: "closed",

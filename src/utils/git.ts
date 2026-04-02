@@ -194,11 +194,11 @@ export function getDiffStats(
   ref: string,
 ): { filesChanged: number; linesAdded: number; linesDeleted: number } {
   try {
-    const stdout = execFileSync(
-      "git",
-      ["diff", "--shortstat", ref],
-      { cwd: repoPath, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const stdout = execFileSync("git", ["diff", "--shortstat", ref], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     const output = stdout.toString().trim();
     if (!output) {
       return { filesChanged: 0, linesAdded: 0, linesDeleted: 0 };
@@ -353,4 +353,3 @@ export function deleteRemoteBranch(
     console.error(`Failed to delete remote branch ${branch}:`, e);
   }
 }
-

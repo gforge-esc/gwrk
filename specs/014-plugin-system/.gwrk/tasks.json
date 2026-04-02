@@ -233,54 +233,55 @@
           "id": "T022",
           "title": "Implement src/plugins/workflow-runtime.ts",
           "description": "NEW: Resolve and execute workflows via agents",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh",
-          "completedAt": "2026-03-31T19:35:28.541Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:42.626Z"
         },
         {
           "id": "T023",
           "title": "Implement src/engine/intent-engine.ts",
           "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh",
-          "completedAt": "2026-03-31T19:35:31.453Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:42.635Z"
         },
         {
           "id": "T024",
           "title": "Implement src/plugins/builtins/workflows/",
           "description": "NEW: 10 core workflows as built-in plugins",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh",
-          "completedAt": "2026-03-31T19:35:31.464Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:42.642Z"
         },
         {
           "id": "T025",
           "title": "Implement src/plugins/workflow-runtime.test.ts",
           "description": "NEW: Verify JSON intent parsing and validation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh",
-          "completedAt": "2026-03-31T19:35:31.475Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:43.584Z"
         },
         {
           "id": "T026",
           "title": "Implement src/engine/intent-engine.test.ts",
           "description": "NEW: Verify FS path containment and execution",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh",
-          "completedAt": "2026-03-31T19:35:31.486Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:44.381Z"
         },
         {
           "id": "T027",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T027-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-04-02T04:15:46.862Z"
         }
       ],
       "doneWhen": [

@@ -1,19 +1,19 @@
 import fs from "node:fs/promises";
-import { PluginLoader } from "./loader.js";
-import type { 
-  SkillManifest, 
-  AtomicSkillManifest, 
-  CompoundSkillManifest 
-} from "./manifest.js";
-import { processForAgent } from "../utils/agent-layer.js";
-import { CommandError } from "../utils/signal.js";
 import { selectBackend } from "../engine/router.js";
-import { AgentBackendRegistry } from "./agent-registry.js";
+import { processForAgent } from "../utils/agent-layer.js";
 import { dispatchToAgent } from "../utils/agent.js";
+import { CommandError } from "../utils/signal.js";
+import { AgentBackendRegistry } from "./agent-registry.js";
+import { PluginLoader } from "./loader.js";
+import type {
+  AtomicSkillManifest,
+  CompoundSkillManifest,
+  SkillManifest,
+} from "./manifest.js";
 
 export interface SkillOptions {
   input?: string;
-  format?: 'text' | 'json';
+  format?: "text" | "json";
   agent?: boolean;
   [key: string]: any;
 }
@@ -29,26 +29,26 @@ export interface SkillResult {
  * FR-008: Assemble prompt for atomic or compound skills.
  */
 export async function assemblePrompt(
-  manifest: SkillManifest, 
-  input: string, 
+  manifest: SkillManifest,
+  input: string,
   loader: PluginLoader,
-  options: SkillOptions = {}
+  options: SkillOptions = {},
 ): Promise<string> {
-  if (manifest.tier === 'atomic') {
+  if (manifest.tier === "atomic") {
     return `${manifest.prompt}\n\nInput:\n${input}`;
   }
 
   // Compound skill: assemble all passes
   let fullPrompt = `Compound Skill: ${manifest.description}\n\n`;
-  
+
   for (const pass of manifest.passes) {
     const loadedSkill = await loader.resolvePlugin(pass.skill);
     const skillManifest = loadedSkill.manifest as AtomicSkillManifest;
     fullPrompt += `Pass: ${pass.name}\nGoal: ${pass.summary}\nPrompt: ${skillManifest.prompt}\n\n`;
   }
-  
+
   fullPrompt += `Original Input:\n${input}`;
-  
+
   // Add optional context if provided in options
   if (manifest.context) {
     for (const opt of manifest.context.optional) {
@@ -66,14 +66,19 @@ export async function assemblePrompt(
  */
 export async function validateCompoundManifest(
   manifest: CompoundSkillManifest,
-  loader: PluginLoader
+  loader: PluginLoader,
 ): Promise<void> {
-  const allDeps = new Set([...manifest.composes, ...manifest.passes.map(p => p.skill)]);
+  const allDeps = new Set([
+    ...manifest.composes,
+    ...manifest.passes.map((p) => p.skill),
+  ]);
   for (const depName of allDeps) {
     try {
       await loader.resolvePlugin(depName);
     } catch (e) {
-      throw new Error(`Missing dependency: skill '${depName}' required by '${manifest.name}'. Run 'gwrk plugin install <path>'.`);
+      throw new Error(
+        `Missing dependency: skill '${depName}' required by '${manifest.name}'. Run 'gwrk plugin install <path>'.`,
+      );
     }
   }
 }
@@ -84,31 +89,31 @@ export async function validateCompoundManifest(
 export async function executeSkill(
   name: string,
   options: SkillOptions = {},
-  loaderOptions: { globalDir?: string; projectDir?: string } = {}
+  loaderOptions: { globalDir?: string; projectDir?: string } = {},
 ): Promise<SkillResult> {
   const loader = new PluginLoader(loaderOptions);
   const loaded = await loader.resolvePlugin(name);
   const manifest = loaded.manifest as SkillManifest;
 
-  if (manifest.type !== 'skill') {
+  if (manifest.type !== "skill") {
     throw new Error(`Plugin '${name}' is not a skill.`);
   }
 
-  if (manifest.tier === 'compound') {
+  if (manifest.tier === "compound") {
     await validateCompoundManifest(manifest, loader);
   }
 
-  const input = options.input || '';
+  const input = options.input || "";
   const prompt = await assemblePrompt(manifest, input, loader, options);
 
   // FR-006: Determine agent and model via router
   const projectRoot = loaderOptions.projectDir || process.cwd();
   const registry = new AgentBackendRegistry(loader);
-  
+
   const backend = await selectBackend(
-    { type: 'skill', skillName: name },
+    { type: "skill", skillName: name },
     projectRoot,
-    registry
+    registry,
   );
 
   const taskResult = await dispatchToAgent({
@@ -129,6 +134,6 @@ export async function executeSkill(
     stdout: processedStdout,
     stderr: taskResult.stderr,
     exitCode: taskResult.exitCode,
-    durationS: taskResult.durationS
+    durationS: taskResult.durationS,
   };
 }

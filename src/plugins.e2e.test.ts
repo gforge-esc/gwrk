@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
 import { execSync } from "node:child_process";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("VR-001 to VR-010: Plugin System E2E Verification", () => {
   it("VR-001: installs a skill and invokes it", async () => {

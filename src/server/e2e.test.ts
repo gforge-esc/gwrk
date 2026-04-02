@@ -10,6 +10,8 @@ import type { FastifyInstance } from "fastify";
  * do NOT require Docker to be running for the core API tests.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
+import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { DispatchQueue } from "../server/dispatch.js";
 import { GitManager } from "../server/git-manager.js";
 import { LifecycleMonitor } from "../server/lifecycle.js";
@@ -20,8 +22,6 @@ import { healthRoutes } from "../server/routes/health.js";
 import { statusRoutes } from "../server/routes/status.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { loadConfig } from "../utils/config.js";
-import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
-import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
 
 describe("Build Server E2E", () => {
   let server: FastifyInstance;
@@ -44,8 +44,19 @@ describe("Build Server E2E", () => {
     network = new NetworkMonitor(config);
 
     const invocationStrategy = new LocalInvocationStrategy();
-    const orchestrator = new DispatchOrchestrator(config, sandbox, invocationStrategy);
-    queue = new DispatchQueue(config, monitor, sandbox, git, orchestrator, projectRoot);
+    const orchestrator = new DispatchOrchestrator(
+      config,
+      sandbox,
+      invocationStrategy,
+    );
+    queue = new DispatchQueue(
+      config,
+      monitor,
+      sandbox,
+      git,
+      orchestrator,
+      projectRoot,
+    );
 
     // Register all routes — match exact signatures from index.ts
     await dispatchRoutes(server, queue);

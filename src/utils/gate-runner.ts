@@ -19,7 +19,10 @@ export interface GateResult {
 export async function runGate(scriptPath: string): Promise<GateResult> {
   try {
     const { stdout, stderr } = await execFilePromise(scriptPath);
-    const output = [stdout, stderr].filter(Boolean).map(s => s.trim()).join("\n");
+    const output = [stdout, stderr]
+      .filter(Boolean)
+      .map((s) => s.trim())
+      .join("\n");
     return {
       passed: true,
       exitCode: 0,
@@ -33,7 +36,10 @@ export async function runGate(scriptPath: string): Promise<GateResult> {
     };
 
     const exitCode = typeof err.code === "number" ? err.code : 1;
-    const output = [err.stdout, err.stderr].filter(Boolean).map(s => s!.trim()).join("\n");
+    const output = [err.stdout, err.stderr]
+      .filter(Boolean)
+      .map((s) => s?.trim())
+      .join("\n");
 
     if (err.code === "ENOENT") {
       return {

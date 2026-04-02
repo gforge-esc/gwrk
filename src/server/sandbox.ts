@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import type { AgentBackend } from "../utils/config.js";
 import type { SandboxInfo } from "./types.js";
 
@@ -45,11 +45,11 @@ export class SandboxManager {
     // git worktree add -b <new-branch> <path> <base-branch>
     // We assume the feature branch is current or we should specify it
     const baseBranch = `feature/${featureId}-wip`;
-    
+
     try {
       // First ensure the base branch exists locally or we can't create a worktree from it
       execSync(`git branch --list ${baseBranch}`, { cwd: projectRoot });
-      
+
       execSync(`git worktree add -b ${branchName} ${workDir} ${baseBranch}`, {
         cwd: projectRoot,
         stdio: "pipe",
@@ -76,11 +76,17 @@ export class SandboxManager {
 
     try {
       // 1. Check if there are changes
-      const status = execSync("git status --porcelain", { cwd: workDir, encoding: "utf-8" }).trim();
-      
+      const status = execSync("git status --porcelain", {
+        cwd: workDir,
+        encoding: "utf-8",
+      }).trim();
+
       if (status) {
         // 2. Commit changes (gwrk agents usually do this, but just in case)
-        execSync("git add . && git commit -m \"Task contribution\" || true", { cwd: workDir, stdio: "pipe" });
+        execSync('git add . && git commit -m "Task contribution" || true', {
+          cwd: workDir,
+          stdio: "pipe",
+        });
 
         // 3. Push the branch
         execSync("git push origin HEAD", { cwd: workDir, stdio: "pipe" });
@@ -90,14 +96,17 @@ export class SandboxManager {
           cwd: workDir,
           encoding: "utf-8",
         }).trim();
-        
+
         const baseBranch = `feature/${featureId}-wip`;
 
         try {
-          execSync(`gh pr create --base ${baseBranch} --head ${branchName} --title "Task contribution: ${branchName}" --body "Automated PR from gwrk sandbox"`, {
-            cwd: workDir,
-            stdio: "pipe",
-          });
+          execSync(
+            `gh pr create --base ${baseBranch} --head ${branchName} --title "Task contribution: ${branchName}" --body "Automated PR from gwrk sandbox"`,
+            {
+              cwd: workDir,
+              stdio: "pipe",
+            },
+          );
         } catch (e: any) {
           console.error(`Failed to create PR for ${workDir}: ${e.message}`);
         }
@@ -109,7 +118,9 @@ export class SandboxManager {
         stdio: "pipe",
       });
     } catch (e: any) {
-      console.error(`Error during sandbox destruction for ${workDir}: ${e.message}`);
+      console.error(
+        `Error during sandbox destruction for ${workDir}: ${e.message}`,
+      );
       // Try to cleanup worktree anyway if it failed midway
       try {
         execSync(`git worktree remove --force ${workDir}`, {
@@ -144,7 +155,7 @@ export class SandboxManager {
             current.startedAt = new Date().toISOString(); // We don't have exact start time from git
           }
         } else if (line.startsWith("branch ") && current.workDir) {
-           // could extract branch if needed
+          // could extract branch if needed
         } else if (line === "" && current.workDir) {
           sandboxes.push(current as SandboxInfo);
           current = {};

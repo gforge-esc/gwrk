@@ -1,6 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { seedSkills } from "./seed.js";
 
 vi.mock("node:fs/promises");
@@ -28,12 +28,12 @@ Evaluative Modes
 
     // Verify it attempted to write manifest.yaml and SKILL.md for 'narrative'
     expect(fs.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining("narrative/manifest.yaml"),
-        expect.stringContaining("tier: atomic")
+      expect.stringContaining("narrative/manifest.yaml"),
+      expect.stringContaining("tier: atomic"),
     );
     expect(fs.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining("narrative/SKILL.md"),
-        expect.stringContaining("You are a narrator")
+      expect.stringContaining("narrative/SKILL.md"),
+      expect.stringContaining("You are a narrator"),
     );
   });
 
@@ -47,8 +47,8 @@ Evaluative Modes
     await seedSkills();
 
     expect(fs.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining("generative/manifest.yaml"),
-        expect.stringContaining("category: creative")
+      expect.stringContaining("generative/manifest.yaml"),
+      expect.stringContaining("category: creative"),
     );
   });
 

@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { parse } from "yaml";
-import { AnyManifestSchema, type AnyManifest } from "./manifest.js";
+import { type AnyManifest, AnyManifestSchema } from "./manifest.js";
 
 export class PluginNotFoundError extends Error {
   constructor(name: string) {
@@ -190,17 +190,47 @@ export class PluginLoader {
       };
     }
 
-    // 3. Scan global directory
-    const types = ["agents", "skills", "workflows", "extensions", "channels", "domains"];
+    const types = [
+      "agents",
+      "skills",
+      "workflows",
+      "extensions",
+      "channels",
+      "domains",
+    ];
     const visitedPaths = new Set<string>();
 
+    // 3. Scan project-local .gwrk/plugins/ directory (FR-L25-006)
+    if (this.projectDir) {
+      const projectPluginBase = path.join(this.projectDir, ".gwrk", "plugins");
+      for (const type of types) {
+        const pluginPath = path.join(projectPluginBase, type, name);
+        try {
+          const manifest = await this.loadManifest(pluginPath);
+          visitedPaths.add(pluginPath);
+          return {
+            manifest,
+            path: pluginPath,
+            status: "active",
+          };
+        } catch {
+          // Continue to next type
+        }
+      }
+    }
+
+    // 4. Scan global directory
     for (const type of types) {
       const pluginPath = path.join(this.globalDir, type, name);
       try {
         const manifest = await this.loadManifest(pluginPath);
         visitedPaths.add(pluginPath);
         const fullName = `${type}/${name}`;
-        if (disabledSet.has(fullName) || disabledSet.has(name) || disabledSet.has(`${type}s/${name}`)) {
+        if (
+          disabledSet.has(fullName) ||
+          disabledSet.has(name) ||
+          disabledSet.has(`${type}s/${name}`)
+        ) {
           // Check if it's a global-only type that cannot be disabled
           if (type === "skills" || type === "agents") {
             // Ignore disable for these types (FR-005)
@@ -219,7 +249,7 @@ export class PluginLoader {
       }
     }
 
-    // 4. Built-ins
+    // 5. Built-ins
     // @ts-ignore - import.meta.dirname exists in Node 20.11+
     const builtInBase = path.join(import.meta.dirname, "builtins");
     for (const type of types) {
@@ -237,7 +267,7 @@ export class PluginLoader {
       }
     }
 
-    // 5. Not found
+    // 6. Not found
     throw new PluginNotFoundError(name);
   }
 

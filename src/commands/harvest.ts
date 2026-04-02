@@ -19,10 +19,10 @@ export const harvestCommand = new Command("harvest")
   .action(async (feature, phase, options) => {
     await withSignal(`harvest ${feature}`, async () => {
       const projectRoot = process.cwd();
-      
+
       // Format phase uniformly to phase-0X if it's just a number
       let phaseId = phase;
-      if (phase && phase.match(/^\d+$/)) {
+      if (phase?.match(/^\d+$/)) {
         phaseId = `phase-${phase.padStart(2, "0")}`;
       }
 
@@ -37,7 +37,9 @@ export const harvestCommand = new Command("harvest")
         status: "merged",
       };
 
-      console.log(`Manually triggering harvest for ${feature}${phaseId ? ` (${phaseId})` : ""}...`);
+      console.log(
+        `Manually triggering harvest for ${feature}${phaseId ? ` (${phaseId})` : ""}...`,
+      );
       await harvestFeature(projectRoot, record);
       console.log("Harvest complete.");
     });

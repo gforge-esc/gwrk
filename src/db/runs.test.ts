@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getTestDb } from "./index.js";
 import {
@@ -11,7 +12,6 @@ import {
   registerProject,
   startRun,
 } from "./runs.js";
-import type Database from "better-sqlite3";
 
 describe("runs db", () => {
   let db: Database.Database;

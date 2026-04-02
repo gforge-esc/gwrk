@@ -1,6 +1,6 @@
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
-import { LocalInvocationStrategy } from "./invocation-strategy.js";
 import { dispatchToAgent } from "../../utils/agent.js";
+import { LocalInvocationStrategy } from "./invocation-strategy.js";
 
 vi.mock("../../utils/agent.js", () => ({
   dispatchToAgent: vi.fn(),
@@ -38,7 +38,7 @@ describe("LocalInvocationStrategy", () => {
         agent: "gemini",
         workDir: task.workDir,
         prompt: task.prompt,
-      })
+      }),
     );
   });
 
@@ -66,7 +66,7 @@ describe("LocalInvocationStrategy", () => {
         agent: "claude",
         workDir: task.workDir,
         prompt: task.prompt,
-      })
+      }),
     );
   });
 });

@@ -2,11 +2,11 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import type { AgentBackend as ConfigAgentBackend } from "./config.js";
+import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
-import { recordRoutingDecision } from "../db/plugins.js";
+import type { AgentBackend as ConfigAgentBackend } from "./config.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
@@ -54,7 +54,7 @@ export async function buildCommand(
     featureDir: opts.featureDir,
     stdin: opts.stdin,
   };
-  
+
   const dispatch = await adapter.dispatch(task);
   return {
     command: dispatch.command,
@@ -131,9 +131,7 @@ export async function dispatchAgent(
       cwd: executionRoot,
       env: {
         ...process.env,
-        ...(opts.contextPath
-          ? { GWRK_CONTEXT: opts.contextPath }
-          : {}),
+        ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -255,7 +253,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const agentName = (task.agent ?? "gemini") as string;
   const registry = new AgentBackendRegistry(new PluginLoader());
   const adapter = await registry.getAgentBackend(agentName);
-  
+
   const startTime = Date.now();
   const dispatch = await adapter.dispatch(task);
 
@@ -279,14 +277,16 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const result = adapter.parseResult("", "", rawExitCode);
 
   // Record routing decision for historical learning
-  const taskType = task.type || path.basename(task.workflow || 'unknown', '.md');
+  const taskType =
+    task.type || path.basename(task.workflow || "unknown", ".md");
   recordRoutingDecision({
     task_type: taskType,
     selected_backend: agentName,
     outcome: result.exitCode === 0 ? "success" : "failure",
     duration_ms: durationS * 1000,
+    error_message: result.errorType ?? undefined,
   });
-  
+
   return {
     ...result,
     durationS,

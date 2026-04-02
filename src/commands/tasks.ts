@@ -206,7 +206,9 @@ tasksCommand
       command,
     ) => {
       await withSignal("tasks list", async () => {
-        const out = options.json ? createOutput("json") : resolveFormat(command);
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
 
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
@@ -283,7 +285,9 @@ tasksCommand
       command,
     ) => {
       await withSignal("tasks next", async () => {
-        const out = options.json ? createOutput("json") : resolveFormat(command);
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
 
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);

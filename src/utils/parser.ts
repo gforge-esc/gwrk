@@ -33,10 +33,10 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
     // 1: Title (7 SP)
     // 1 — Title (7 SP)
     // 1 — Title
-    
+
     // Extract Title
     let title = headerLine.replace(/^\d+[:\s—-]*/, "").trim();
-    
+
     // Extract SP
     let sp: number | undefined;
     const spMatch = headerLine.match(/\((\d+(?:\.\d+)?)\s*SP\)/i);

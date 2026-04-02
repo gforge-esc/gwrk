@@ -237,15 +237,18 @@ export const initCommand = new Command("init")
       // CLI Detection & Provisioning (Plugin-aware)
       const gwrkDir = path.join(projectRoot, ".gwrk");
       fs.mkdirSync(gwrkDir, { recursive: true });
-      
+
       const contextPath = path.join(gwrkDir, "agent-context.md");
-      const defaultGovernance = `# GWRK Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n`;
+      const defaultGovernance =
+        "# GWRK Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n";
       fs.writeFileSync(contextPath, defaultGovernance);
 
-      const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+      const { AgentBackendRegistry } = await import(
+        "../plugins/agent-registry.js"
+      );
       const { PluginLoader } = await import("../plugins/loader.js");
       const registry = new AgentBackendRegistry(new PluginLoader());
-      
+
       await registry.syncAllBackends(projectRoot, defaultGovernance);
 
       console.log("Successfully initialized gwrk project");

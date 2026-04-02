@@ -1,19 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
-import { 
-  ShipStage, 
-  type ShipState, 
-  type ShipRunConfig, 
-  type StageResult 
-} from "./ship-types.js";
-import { runGate } from "../utils/gate-runner.js";
 import { dispatchToAgent } from "../utils/agent.js";
+import { runGate } from "../utils/gate-runner.js";
+import { createBranch, isDirty, syncBranch } from "../utils/git.js";
 import { assembleDigest } from "../utils/manifest.js";
-import { loadTaskState, saveTaskState, type Phase, type Task } from "../utils/state.js";
-import { 
-  createBranch, 
-  isDirty 
-} from "../utils/git.js";
+import {
+  type Phase,
+  type Task,
+  loadTaskState,
+  saveTaskState,
+} from "../utils/state.js";
+import {
+  type ShipRunConfig,
+  ShipStage,
+  type ShipState,
+  type StageResult,
+} from "./ship-types.js";
 
 export class ShipOrchestrator {
   private config: ShipRunConfig;
@@ -42,7 +44,11 @@ export class ShipOrchestrator {
   }
 
   private getStatePath(): string {
-    return path.join(this.config.cwd, ".runs", `${this.config.featureId}_${this.config.phaseId}.state`);
+    return path.join(
+      this.config.cwd,
+      ".runs",
+      `${this.config.featureId}_${this.config.phaseId}.state`,
+    );
   }
 
   private persistState(): void {
@@ -56,8 +62,11 @@ export class ShipOrchestrator {
 
   public async run(): Promise<number> {
     console.log(`Starting/Resuming Ship Loop: ${this.state.stage}`);
-    
-    while (this.state.stage !== ShipStage.DONE && this.state.stage !== ShipStage.CIRCUIT_BREAK) {
+
+    while (
+      this.state.stage !== ShipStage.DONE &&
+      this.state.stage !== ShipStage.CIRCUIT_BREAK
+    ) {
       this.persistState();
       let result: StageResult;
 
@@ -114,10 +123,10 @@ export class ShipOrchestrator {
   private async stageBranchSetup(): Promise<StageResult> {
     // FR-002: Dirty tree fail fast
     if (await isDirty(this.config.cwd)) {
-      return { 
-        success: false, 
-        exitCode: 1, 
-        error: "Dirty working tree — commit or stash before shipping" 
+      return {
+        success: false,
+        exitCode: 1,
+        error: "Dirty working tree — commit or stash before shipping",
       };
     }
 
@@ -126,23 +135,58 @@ export class ShipOrchestrator {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
       return { success: true, exitCode: 0 };
-    } catch (err: any) {
-      return { 
-        success: false, 
-        exitCode: 1, 
-        error: `Failed to create feature branch: ${err.message}` 
+    } catch (err: unknown) {
+      // Branch already exists — just check it out and sync with develop
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("already exists")) {
+        try {
+          const { execFileSync } = await import("node:child_process");
+          execFileSync("git", ["checkout", branchName], {
+            cwd: this.config.cwd,
+            stdio: ["ignore", "ignore", "pipe"],
+          });
+          // Sync with latest develop
+          await syncBranch(this.config.cwd, "develop");
+          this.state.branchName = branchName;
+          console.log(`  Branch ${branchName} exists — checked out and synced`);
+          return { success: true, exitCode: 0 };
+        } catch (syncErr: unknown) {
+          const syncMsg =
+            syncErr instanceof Error ? syncErr.message : String(syncErr);
+          return {
+            success: false,
+            exitCode: 1,
+            error: `Failed to checkout existing branch: ${syncMsg}`,
+          };
+        }
+      }
+      const execErr = err as { status?: unknown };
+      return {
+        success: false,
+        exitCode: typeof execErr.status === "number" ? execErr.status : 1,
+        error: `Failed to create feature branch: ${msg}`,
       };
     }
   }
 
   private async stageImplement(): Promise<StageResult> {
     // FR-003: Pre-flight gate check
-    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
 
     if (!phase) {
-      return { success: false, exitCode: 1, error: `Phase ${this.config.phaseId} not found` };
+      return {
+        success: false,
+        exitCode: 1,
+        error: `Phase ${this.config.phaseId} not found`,
+      };
     }
 
     const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
@@ -175,62 +219,132 @@ export class ShipOrchestrator {
     }
 
     // FR-019: dispatchToAgent
-    const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n` + 
-      tasksToDispatch.map(t => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n");
+    try {
+      const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n${tasksToDispatch.map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n")}`;
 
-    const result = await dispatchToAgent({
-      agent: this.config.backend,
-      workflow: "implement",
-      featureDir: `specs/${this.config.featureId}`,
-      prompt,
-    });
+      const result = await dispatchToAgent({
+        agent: this.config.backend,
+        workflow: ".agents/workflows/gwrk-implement.md",
+        featureDir: `specs/${this.config.featureId}`,
+        prompt,
+      });
 
-    if (result.exitCode === 0) {
-      return { success: true, exitCode: 0 };
-    } else {
-      return { 
-        success: false, 
-        exitCode: result.exitCode, 
-        error: `Agent implementation failed: ${result.errorType || 'unknown'}` 
+      if (result.exitCode === 0) {
+        return { success: true, exitCode: 0 };
+      }
+      return {
+        success: false,
+        exitCode: result.exitCode,
+        error: `Agent implementation failed: ${result.errorType || "unknown"}`,
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  IMPLEMENT dispatch error: ${msg}`);
+      return {
+        success: false,
+        exitCode: 1,
+        error: `IMPLEMENT dispatch failed: ${msg}`,
       };
     }
   }
 
   private async stageCodeReview(): Promise<StageResult> {
     // FR-005: dispatch review
-    const result = await dispatchToAgent({
-      agent: this.config.backend,
-      workflow: "review-code",
-      featureDir: `specs/${this.config.featureId}`,
-      prompt: `Phase ${this.config.phaseId} Code Review`,
-    });
+    try {
+      const result = await dispatchToAgent({
+        agent: this.config.backend,
+        workflow: ".agents/workflows/gwrk-review-code.md",
+        featureDir: `specs/${this.config.featureId}`,
+        prompt: `Phase ${this.config.phaseId} Code Review`,
+      });
 
-    // In a real implementation, we would parse the verdict from the output.
-    // For now, let's assume GO if exitCode is 0.
-    const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          exitCode: result.exitCode,
+          error: `CODE_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
+        };
+      }
 
-    if (verdict === "GO") {
-      return { success: true, exitCode: 0 };
-    } else {
+      // Determine verdict from task state — the review agent re-opens tasks on NO-GO.
+      // This is the ground truth, not exit code (agents exit 0 on successful completion regardless of verdict).
+      const verdict = this.readVerdict();
+      console.log(`  CODE_REVIEW verdict: ${verdict}`);
+
+      if (verdict === "GO") {
+        return { success: true, exitCode: 0 };
+      }
       return this.handleNoGo("CODE_REVIEW");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  CODE_REVIEW dispatch error: ${msg}`);
+      return {
+        success: false,
+        exitCode: 1,
+        error: `CODE_REVIEW dispatch failed: ${msg}`,
+      };
     }
   }
 
   private async stageUatReview(): Promise<StageResult> {
-    const result = await dispatchToAgent({
-      agent: this.config.backend,
-      workflow: "review-uat",
-      featureDir: `specs/${this.config.featureId}`,
-      prompt: `Phase ${this.config.phaseId} UAT Review`,
-    });
+    try {
+      const result = await dispatchToAgent({
+        agent: this.config.backend,
+        workflow: ".agents/workflows/gwrk-review-uat.md",
+        featureDir: `specs/${this.config.featureId}`,
+        prompt: `Phase ${this.config.phaseId} UAT Review`,
+      });
 
-    const verdict = result.exitCode === 0 ? "GO" : "NO-GO";
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          exitCode: result.exitCode,
+          error: `UAT_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
+        };
+      }
 
-    if (verdict === "GO") {
-      return { success: true, exitCode: 0 };
-    } else {
+      const verdict = this.readVerdict();
+      console.log(`  UAT_REVIEW verdict: ${verdict}`);
+
+      if (verdict === "GO") {
+        return { success: true, exitCode: 0 };
+      }
       return this.handleNoGo("UAT_REVIEW");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  UAT_REVIEW dispatch error: ${msg}`);
+      return {
+        success: false,
+        exitCode: 1,
+        error: `UAT_REVIEW dispatch failed: ${msg}`,
+      };
     }
+  }
+
+  /**
+   * Read the verdict from task state after a review dispatch.
+   * If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
+   * Otherwise → GO.
+   */
+  private readVerdict(): "GO" | "NO-GO" {
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    if (!phase) return "NO-GO";
+    const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
+    if (openTasks.length > 0) {
+      console.log(
+        `  ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
+      );
+      return "NO-GO";
+    }
+    return "GO";
   }
 
   private async stagePrCi(): Promise<StageResult> {
@@ -250,16 +364,24 @@ export class ShipOrchestrator {
         openTasks: [], // Should populate from state
         lastVerdict: "NO-GO",
         iterationTimeline: [], // Should populate
-        digest: assembleDigest(path.join(this.config.cwd, ".runs", `${this.config.featureId}_p${this.config.phaseId.replace("phase-", "")}.events`)),
+        digest: assembleDigest(
+          path.join(
+            this.config.cwd,
+            ".runs",
+            `${this.config.featureId}_p${this.config.phaseId.replace("phase-", "")}.events`,
+          ),
+        ),
       };
-      return { 
-        success: false, 
-        exitCode: 1, 
-        error: `Circuit breaker tripped after ${this.config.maxIterations} iterations` 
+      return {
+        success: false,
+        exitCode: 1,
+        error: `Circuit breaker tripped after ${this.config.maxIterations} iterations`,
       };
     }
 
-    console.log(`NO-GO in ${stage}, looping back to IMPLEMENT (Iteration ${this.state.iteration})`);
+    console.log(
+      `NO-GO in ${stage}, looping back to IMPLEMENT (Iteration ${this.state.iteration})`,
+    );
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
   }
 }

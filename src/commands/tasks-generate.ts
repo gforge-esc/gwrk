@@ -7,7 +7,12 @@ import { classifyTask, extractFilePaths } from "../engine/classify.js";
 import { dispatchAgent } from "../utils/agent.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
-import { generateGateBrief, generateRunner, generateVitestGates, lintAllGates } from "../utils/gate-gen.js";
+import {
+  generateGateBrief,
+  generateRunner,
+  generateVitestGates,
+  lintAllGates,
+} from "../utils/gate-gen.js";
 import { parsePlan } from "../utils/parser.js";
 import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 import type { Task, TaskState } from "../utils/state.js";
@@ -24,12 +29,26 @@ import { CommandError, withSignal } from "../utils/signal.js";
 export const tasksGenerateCommand = new Command("tasks")
   .description("Decompose plan into tasks.json + gate scripts")
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
-  .option("-p, --phase <phase>", "Specific phase string or number to generate tasks for (e.g. p01 or 1)")
+  .option(
+    "-p, --phase <phase>",
+    "Specific phase string or number to generate tasks for (e.g. p01 or 1)",
+  )
   .option("--force", "Overwrite existing tasks.json and gate scripts")
   .option("--reconcile", "Merge updated plan, preserving completed task status")
-  .option("--no-llm", "Skip LLM gate authoring (writes tasks.json only, no gates)")
+  .option(
+    "--no-llm",
+    "Skip LLM gate authoring (writes tasks.json only, no gates)",
+  )
   .action(
-    async (feature: string, opts: { force?: boolean; reconcile?: boolean; llm?: boolean; phase?: string }) => {
+    async (
+      feature: string,
+      opts: {
+        force?: boolean;
+        reconcile?: boolean;
+        llm?: boolean;
+        phase?: string;
+      },
+    ) => {
       await withSignal(`define tasks ${feature}`, async () => {
         const projectRoot = process.cwd();
         const featureDir = path.join(projectRoot, "specs", feature);
@@ -40,14 +59,17 @@ export const tasksGenerateCommand = new Command("tasks")
         // Format phase uniformly to p0X if it's just a number
         let paddedPhase: string | undefined = undefined;
         if (opts.phase) {
-          paddedPhase = opts.phase.match(/^\d+$/) ? `p${opts.phase.padStart(2, '0')}` : opts.phase;
+          paddedPhase = opts.phase.match(/^\d+$/)
+            ? `p${opts.phase.padStart(2, "0")}`
+            : opts.phase;
         }
 
         // Guard: ADR-005 §8.4 — define tests must run before define tasks
         // Check for evidence that define tests ran: gap-matrix.md or .gwrk/runs/ (execution manifest)
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
         const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
-        const testsRan = fs.existsSync(gapMatrixPath) || fs.existsSync(runsManifestDir);
+        const testsRan =
+          fs.existsSync(gapMatrixPath) || fs.existsSync(runsManifestDir);
         if (!testsRan) {
           blocked(
             `RED tests must exist before generating tasks (ADR-005 §8.4).\n  Run: gwrk define tests ${feature}`,
@@ -58,7 +80,10 @@ export const tasksGenerateCommand = new Command("tasks")
           );
         }
 
-        banner("define tasks", { Feature: feature, Phase: paddedPhase || "All" });
+        banner("define tasks", {
+          Feature: feature,
+          Phase: paddedPhase || "All",
+        });
         const startTime = Date.now();
 
         // Guard: refuse to overwrite without --force or --reconcile
@@ -269,8 +294,14 @@ export const tasksGenerateCommand = new Command("tasks")
           let vitestGatesSkipped = 0;
 
           if (fs.existsSync(gapMatrixPath)) {
-            console.log("  Reading gap-matrix.md for deterministic vitest gates...");
-            const result = generateVitestGates(featureDir, gapMatrixPath, taskState.phases);
+            console.log(
+              "  Reading gap-matrix.md for deterministic vitest gates...",
+            );
+            const result = generateVitestGates(
+              featureDir,
+              gapMatrixPath,
+              taskState.phases,
+            );
             vitestGatesGenerated = result.generated;
             vitestGatesSkipped = result.skipped;
             console.log(
@@ -280,21 +311,28 @@ export const tasksGenerateCommand = new Command("tasks")
 
           if (skipLlm) {
             if (vitestGatesGenerated > 0) {
-              console.log("  ⚠ --no-llm: LLM dispatch skipped (vitest gates generated from gap matrix)");
+              console.log(
+                "  ⚠ --no-llm: LLM dispatch skipped (vitest gates generated from gap matrix)",
+              );
             } else {
-              console.log("  ⚠ --no-llm: skipping gate authoring (tasks.json only)");
+              console.log(
+                "  ⚠ --no-llm: skipping gate authoring (tasks.json only)",
+              );
             }
           } else {
             // Contracts guard — contracts are a define plan deliverable
             const contractsDir = path.join(featureDir, "contracts");
             const hasContracts =
               fs.existsSync(contractsDir) &&
-              fs.readdirSync(contractsDir).filter((f) => f.endsWith(".md")).length > 0;
+              fs.readdirSync(contractsDir).filter((f) => f.endsWith(".md"))
+                .length > 0;
 
             if (!hasContracts) {
               console.log("");
               console.log("  ✗ Contracts required for gate authoring.");
-              console.log(`    Run 'gwrk define plan ${feature}' to generate plan.md and contracts/.`);
+              console.log(
+                `    Run 'gwrk define plan ${feature}' to generate plan.md and contracts/.`,
+              );
               console.log("    See 'gwrk define plan --help'.");
               throw new CommandError(
                 `Contracts required for gate authoring. Run 'gwrk define plan ${feature}' first.`,
@@ -303,15 +341,24 @@ export const tasksGenerateCommand = new Command("tasks")
             }
 
             // Determine if LLM dispatch is needed (tasks not covered by vitest gates)
-            const totalTasks = taskState.phases.reduce((n, p) => n + p.tasks.length, 0);
+            const totalTasks = taskState.phases.reduce(
+              (n, p) => n + p.tasks.length,
+              0,
+            );
             const uncoveredCount = totalTasks - vitestGatesGenerated;
 
             if (vitestGatesGenerated > 0 && uncoveredCount <= 0) {
-              console.log("  ✓ All tasks covered by deterministic vitest gates — LLM dispatch skipped");
+              console.log(
+                "  ✓ All tasks covered by deterministic vitest gates — LLM dispatch skipped",
+              );
             } else {
               // Generate structured brief for the LLM agent (for uncovered tasks)
               console.log("  Generating gate brief...");
-              const briefPath = generateGateBrief(featureDir, taskState.phases, feature);
+              const briefPath = generateGateBrief(
+                featureDir,
+                taskState.phases,
+                feature,
+              );
               console.log(`  Brief: ${briefPath}`);
 
               // Dispatch agent for gate authoring (same pattern as plan.ts)
@@ -328,7 +375,9 @@ export const tasksGenerateCommand = new Command("tasks")
 
               console.log(`  Dispatching ${backend} for gate authoring...`);
               if (vitestGatesGenerated > 0) {
-                console.log(`    (${uncoveredCount} tasks not covered by gap matrix — LLM will author remaining gates)`);
+                console.log(
+                  `    (${uncoveredCount} tasks not covered by gap matrix — LLM will author remaining gates)`,
+                );
               }
               const agentStart = Date.now();
 
@@ -339,11 +388,18 @@ export const tasksGenerateCommand = new Command("tasks")
                 contextPath: paddedPhase || briefPath,
               });
 
-              const agentDurationS = Math.round((Date.now() - agentStart) / 1000);
+              const agentDurationS = Math.round(
+                (Date.now() - agentStart) / 1000,
+              );
 
               if (result.exitCode !== 0) {
-                finishRun(runId, { exit_code: result.exitCode, duration_s: agentDurationS });
-                console.log(`  ✗ Gate authoring failed (exit ${result.exitCode})`);
+                finishRun(runId, {
+                  exit_code: result.exitCode,
+                  duration_s: agentDurationS,
+                });
+                console.log(
+                  `  ✗ Gate authoring failed (exit ${result.exitCode})`,
+                );
                 console.log(`    Log: ${result.logPath}`);
                 throw new CommandError(
                   `Gate authoring failed (exit ${result.exitCode}). See ${result.logPath}`,
