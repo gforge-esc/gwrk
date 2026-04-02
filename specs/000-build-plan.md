@@ -1,9 +1,9 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-03-31 (v13)
+> **Status:** Authoritative · **Date:** 2026-04-02 (v14)
 > **Anchored to:** [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md), [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (gate architecture), [ADR-002](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) (SQLite execution ledger), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (execution state contract), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (agent-native output protocol), [ADR-005](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md) (TDD gate architecture), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends)
-> **Research:** [R004 Shareability Readiness](file:///Users/gonzo/Code/gwrk/docs/research/R004-shareability-readiness/draft.md) — F014-R rework scope, PM decisions locked
+> **Research:** [R004 Shareability Readiness](file:///Users/gonzo/Code/gwrk/docs/research/R004-shareability-readiness/draft.md) — F014-R rework scope, PM decisions locked · [R005 Better Build Plan](file:///Users/gonzo/Code/gwrk/docs/research/R005-better-build-plan/seed-payload.md) — F018 feature state audit
 
 ---
 
@@ -55,8 +55,16 @@ graph TD
     F003 --> F017
     F012 --> F016
     F005 --> F014P4["F014 P4: Routing Intelligence ✅"]
+    F018["F018: Build Plan Orchestrator 🟡"] --> F018P2["F018 P2: Solver"]
+    F018["F018: Build Plan Orchestrator 🟡"] --> F018P3["F018 P3: Mutation"]
+    F018P2 --> F018P4["F018 P4: Hooks"]
+    F018P3 --> F018P4
+    F018P4 --> F018P5["F018 P5: Viz + Heartbeat"]
+    F018P5 --> F002
+    F018P5 --> F003
 
     style F014R fill:#ff4444,stroke:#cc0000,color:#fff
+    style F018 fill:#ffaa00,stroke:#cc8800,color:#000
 ```
 
 ---
@@ -65,7 +73,7 @@ graph TD
 
 ```mermaid
 gantt
-    title Critical Path (updated per R004 decisions)
+    title Critical Path (updated per R005 audit)
     dateFormat X
     axisFormat %s
 
@@ -77,11 +85,16 @@ gantt
     F004 Ship Loop (P1-P5)   :done,    f004, after tdd, 2
     F014 P1-P4 Plugin Core   :done,    f014, after f001, 2
 
+    section F018 Build Plan (PM decision: before F014-R-P5)
+    F018 P1 Data Model+Seed  :active,  f018p1, after f014, 1
+    F018 P2 Solver+CLI       :         f018p2, after f018p1, 1
+
     section Shareability Blocker
     F014-R WorkflowRuntime   :crit,    f014r, after f014, 2
     F004-R DefineOrchestrator:         f004rd, after f014r, 1
 
     section Post-F014-R
+    F018 P3-P5 Hooks+Viz     :         f018p3, after f018p2, 2
     F011 Harvest             :         f011, after f004, 1
     F005 Parallel Dispatch   :         f005, after f014r, 1
 
@@ -94,7 +107,7 @@ gantt
     F007 Effort+Compression  :         f007, after f001, 1
 ```
 
-**F014-R (WorkflowRuntime) is the new critical path** (per R004 decisions, cascade §2.6). F014-R is a hard shareability blocker — gwrk cannot be distributed until CLI commands resolve workflows through the plugin system instead of hardcoding `.agents/` paths. Implementation order: **F014-R (shareability blocker, 25-40 SP) → F004-R DefineOrchestrator (depends on F014-R for workflow delivery) → F011 (small, self-contained) → F005 (highest complexity, benefits from F014-R)**.
+**F018-P1+P2 ships before F014-R-P5** (PM decision). F018 has no external dependencies for P1-P2 (SQLite schema + graphology solver). F014-R remains the shareability blocker. Implementation order: **F018-P1+P2 (build plan infrastructure) → F014-R (shareability blocker, 25-40 SP) → F004-R DefineOrchestrator → F011 → F005**.
 
 ---
 
@@ -222,6 +235,9 @@ Slack integration for the comms layer via Socket Mode + Bolt SDK. Channel-per-pr
 > [!WARNING]
 > **Gap analysis is a greenfield inventory (2026-03-10), NOT a test-coverage audit.** Needs rewrite as proper FR-by-FR ✅/⚠️/❌ classification. Deferred to TDD Hardening.
 
+> [!WARNING]
+> **⚠️ Drift (R005 audit, 2026-04-02):** DRIFTED health — FR-014 webhook implementation status unclear. Gap analysis format is an inventory, not a coverage audit. Rework needed for F018 heartbeat → Slack and F018 viz links → Slack.
+
 #### What ships:
 
 ```bash
@@ -335,6 +351,9 @@ gwrk gate <feature> [-p <phase>]   # Run gate scripts for a feature/phase
 > **Scope (2026-03-14):** Ship Loop = steps 1-7 (DISPATCH → NOTIFY). Harvest (post-merge lifecycle) moved to F011. See architecture.md §6.2-6.3.
 
 **Status:** Complete ✅. Merged via PR #12. 28/28 gates PASS. 68 test files, 404 tests, 0 failures. `gwrk gate` command promoted as Foxtrot Charlie pillar. `resolveFormat()` DRY refactor shipped. Also includes: dispatch idempotency guard, plugin dispatch boundary (Phase 4), execution manifests, `dispatchToAgent()` abstraction.
+
+> [!WARNING]
+> **⚠️ Drift (R005 audit, 2026-04-02):** `stagePrCi()` in `ship-orchestrator.ts` is a **stub that mocks success** — real PR creation via `gh pr create` is not implemented. Multiple hotfix iterations during F014 ship attempts (branch handling, ENOENT crashes). Phase 3 (PR + CI) is DRIFTED.
 
 **Deliverables produced:**
 - `gwrk ship <feature> [phase]` — full autonomous Ship Loop lifecycle (4 phases)
@@ -580,7 +599,7 @@ Implement Layer 2.5 (WorkflowRuntime) that F014 specified but never built. Inter
 **Research:** [R004 Shareability Readiness](file:///Users/gonzo/Code/gwrk/docs/research/R004-shareability-readiness/draft.md)
 **SP:** 25-40 (estimated from R004)
 
-**Status:** 🔴 Spec pending. Define pipeline not started.
+**Status:** 🔴 IN_PROGRESS. P4 (schema validation, type safety) landed after 4+ rework iterations (ed75d5f). P5-P7 not started. User deleted `intent-engine.ts` and `workflow-runtime.ts` from feature branch — P4 artifacts partially invalidated.
 
 #### What ships:
 
@@ -604,6 +623,53 @@ Implement Layer 2.5 (WorkflowRuntime) that F014 specified but never built. Inter
 - `scripts/dev/define-until-solid.sh` as runtime dependency (gitignored, not deleted)
 - `gwrk init` scaffolding `.agents/` directories
 - Placeholder workflow content in `gwrk init`
+
+---
+
+### Feature 018 — Build Plan Orchestrator 🟡
+
+Build plan as a **DAG to solve**. Evolves `specs/000-build-plan.md` from a passive markdown scratchpad into an active "Commitment Spine" — a graph stored in SQLite, solved via CPM and topological sorting, rendered as Gantt-capable output. Integrates into ship loop for automated status tracking, drift detection, and "what's next" computation.
+
+> **2026-04-02 (R005):** PM decision — F018 ships P1+P2 before F014-R-P5. `gwrk plan` becomes a new CLI pillar command (F001 rework).
+
+| Spec | Content | Gate |
+|---|---|---|
+| `018-build-plan-orchestrator` | SQLite DAG (plan_features, plan_phases, plan_edges), `graphology` solver (CPM, Kahn's ready queue, topological waves), `gwrk plan next/critical/status/verify/render/add/remove/dep/set/seed/viz/review/waves`, ship:complete + define:complete event hooks, drift detection, sigma.js (P5), heartbeat cron (P5), governance proposals | `gwrk plan next --format json` returns ready items; `gwrk plan seed` populates from 000-build-plan.md; `gwrk plan verify` detects drift |
+
+**Dependencies:** None (P1-P2). F002 + F003 (P5 only, viz + heartbeat)
+**Spec:** [spec.md](file:///Users/gonzo/Code/gwrk/specs/018-build-plan-orchestrator/spec.md)
+**Research:** [R005 Better Build Plan](file:///Users/gonzo/Code/gwrk/docs/research/R005-better-build-plan/seed-payload.md)
+**SP:** 25
+
+**Status:** 🟡 SPECIFIED. Spec created via `gwrk define spec`. Plan and tasks pending.
+
+#### What ships:
+
+```bash
+gwrk plan next                    # Ready queue (all deps satisfied, sorted by critical path)
+gwrk plan critical                # Critical path (zero-slack chain)
+gwrk plan status                  # Per-feature, per-phase status from SQLite
+gwrk plan verify [--fix]          # Drift detection (claimed vs actual)
+gwrk plan waves                   # Topological generations (parallel waves)
+gwrk plan render [--stdout]       # Generate 000-build-plan.md from graph
+gwrk plan add feature|phase       # Create nodes
+gwrk plan remove <id>             # Delete nodes + cascade edges
+gwrk plan dep add|remove          # Manage DEPENDS_ON edges (cycle detection)
+gwrk plan set <id> --status|--sp  # Manual override (PM only for DONE)
+gwrk plan seed [--dry-run]        # One-time import from 000-build-plan.md
+gwrk plan viz                     # sigma.js interactive graph (P5)
+gwrk plan review                  # Approve/reject agent proposals (P5)
+```
+
+#### Implementation phases:
+1. **Phase 1 — Data Model + Seed (5 SP):** SQLite schema, migration, `gwrk plan seed`, `gwrk plan status`
+2. **Phase 2 — Solver + CLI (5 SP):** graphology, ready queue, CPM, `gwrk plan next/critical/waves`
+3. **Phase 3 — Graph Mutation (5 SP):** add/remove, dep add/remove, set, cycle detection
+4. **Phase 4 — Event Hooks + Verify + Render (5 SP):** ship:complete, define:complete, verify, render
+5. **Phase 5 — Viz + Heartbeat + Governance (5 SP):** sigma.js, heartbeat cron, proposals, `gwrk plan review`
+
+#### Seed payload:
+- [R005 seed-payload.md](file:///Users/gonzo/Code/gwrk/docs/research/R005-better-build-plan/seed-payload.md) — structured YAML inventory of all 19 features with status, health, SP, artifacts, rework count, dependency edges, per-phase breakdown
 
 ---
 
@@ -651,8 +717,8 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | **Wave 2** | F013 ✅, F006, F007, F012 | Yes (F013 is critical path; others independent after F001) | Agent-native foundation + independent engines |
 | **Wave 3** | TDD Hardening (001-003) ✅ | Partially (001/002 parallel, 003 independent) | Harden shipped work to TDD standard |
 | **Wave 4a** | F004 ✅ (P1–P5), **F014 ✅** (L1-L2, P1-P4) | Done | Execution + plugin foundation |
-| **Wave 4b** | **F014-R** (WorkflowRuntime) 🔴 | No (shareability blocker, must complete before share) | Internalize workflows, kill `.agents/` coupling |
-| **Wave 4c** | **F004-R DefineOrchestrator**, **F011** | Partially (DefineOrchestrator depends on F014-R; F011 independent) | Complete bash eradication + harvest lifecycle |
+| **Wave 4b** | **F018 P1-P2** (Build Plan Infra) 🟡, **F014-R** (WorkflowRuntime) 🔴 | Partially (F018 P1-P2 has no deps; F014-R blocked on F014) | Build plan graph + shareability |
+| **Wave 4c** | **F018 P3-P5**, **F004-R DefineOrchestrator**, **F011** | Partially (F018 P4-P5 need F002+F003; F004-R needs F014-R; F011 independent) | Build plan hooks + bash eradication + harvest |
 | **Wave 5** | **F005**, F009, F015 | Partially (F005 needs F014-R; F009 needs F003; F015 needs F002) | Dispatch + comms + event bus |
 | **Wave 6** | F010, F012 | Partially (F010 needs F006+F007; F012 needs F014) | Integration + knowledge work |
 | **Wave 7** | F016, F017 | Yes (F016 needs F012+F014; F017 needs F014+F015+F003) | Domain packs + channel abstraction |
@@ -690,7 +756,8 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 | **F015 (Event Bus)** | **8** | **PE** | **40h** |
 | **F016 (Domain Packs)** | **13** | **PM+PE** | **65h** |
 | **F017 (Channel Abstraction)** | **8** | **PM+PE** | **40h** |
-| **Total** | **~245-258 SP** | | **~655-730h remaining** |
+| **F018 (Build Plan Orchestrator)** 🟡 | **25** | **PM+PE** | **125h** |
+| **Total** | **~270-283 SP** | | **~780-855h remaining** |
 
 ---
 
@@ -710,6 +777,7 @@ Domain-specific plugin packs that extend Knowledge Work (F012) with specialized 
 
 ## Changelog
 
+- **2026-04-02 (v14):** 🟡 **R005 Feature State Audit + F018.** Comprehensive audit of all 19 features from R005 (Better Build Plan). F018 (Build Plan Orchestrator, 25 SP) added — build plan as a solvable DAG in SQLite with graphology solver. PM decision: F018-P1+P2 ships before F014-R-P5. Dependency graph updated with F018 nodes. Critical path updated (F018 preceding F014-R). **Drift corrections:** F004-P3 (stagePrCi is a stub — PR creation not implemented), F003 (gap analysis is greenfield inventory not test audit), F014-R status updated (P4 landed after 4+ iterations, P5-P7 pending, user deleted implementation files). Wave strategy: F018-P1+P2 inserted into Wave 4b alongside F014-R; F018-P3+P5 into Wave 4c. Effort: +25 SP (F018), total ~270-283 SP, ~780-855h. Seed payload published: [R005 seed-payload.md](file:///Users/gonzo/Code/gwrk/docs/research/R005-better-build-plan/seed-payload.md).
 - **2026-03-31 (v13):** 🔴 **R004 Shareability Readiness.** F014 implementation audit revealed Layer 2.5 (WorkflowRuntime) was specified but never built — all CLI commands still hardcode `.agents/workflows/` paths, `gwrk init` writes placeholder files. PM decision: Path B (full WorkflowRuntime, no half-measures). **F014-R rework addendum** created as shareability blocker (25-40 SP). **F014 status:** ✅→⚠️ (L1-L2 shipped, L2.5 missing). **Critical path updated:** F014-R is now the hard blocker. **F004** status: P5 (ShipOrchestrator) landed on develop ✅; DefineOrchestrator extracted as separate work item post-F014-R. **Dependency graph:** F014-R inserted between F014 and F005; F004-R DefineOrchestrator depends on F014-R. **Wave strategy:** 4a→done, 4b→F014-R (blocker), 4c→DefineOrchestrator+F011. **Workflow classification locked:** 8 core + 2 shipped (research beta, build-plan alpha); checklist/analyze fold into parents; effort/cascade-sync/constitution excluded. **Effort:** F014-R 25-40 SP + F004-R DefineOrchestrator 5-8 SP added; total ~213→~245-258 SP, ~530h→~655-730h. **OQ-7 added:** R004 decisions resolved. **Directory model confirmed:** `~/.gwrk/` global, `.gwrk/` project overrides, `.agents/` never gwrk. `scripts/dev/` → gitignore + `git rm --cached`.
 - **2026-03-20 (v12):** ✨ **Cascade Sync.** Full reconciliation of Wave 4 research findings from [`cascade.md`](file:///Users/gonzo/Code/gwrk/docs/research/cascade.md) (R001 ✅, R002 ✅, Stages 1–3 complete). **Critical path reversed:** F014 P1–P2 is now the immediate critical path (keystone infrastructure), replacing F005-first approach. **Dependency graph:** `F005→F014` reversed to `F014→F005` (per cascade §5); F014 P4 separated to its own node after F005; F004-R (DispatchOrchestrator rework) added per cascade §2.5 item 6. **Feature descriptions updated:** F005 scope narrowed (no merge ownership, worktree sandboxes, cloud agents deferred to Tier 3); F011 trigger logic updated (Phase Rollup PR only, not individual sandbox PRs); F014 expanded (Layer 2.5 WorkflowRuntime, Config Isolation Rule); F004-R added (bash → TypeScript DispatchOrchestrator). **Wave strategy:** Waves 4–5 restructured to match cascade ordering (4a: F014 P1-P2 + F004-R; 4b: F011; 5: F005 + F014 P3-P4). **Effort:** F005 SP 10→8 (scope reduced); F004-R 5 SP added; total ~210→~213 SP, ~515h→~530h. **OQ-6 added:** R003 (Agent Stage Containment) gating dependency on F005. **Terminology:** Docker sandbox → worktree sandbox, bash scripts → DispatchOrchestrator.
 - **2026-03-18 (v11):** F004 (Ship Loop) completed and merged via PR #12. 28/28 gates PASS, 404 tests green. TDD Hardening marked ✅ (cleared through F004 dev). F013 confirmed ✅. `gwrk gate` promoted as FC pillar command. `resolveFormat()` DRY refactor shipped (killed "human" format). Critical path advanced: **F005 Parallel Dispatch is next.** Effort remaining: ~755h → ~515h. Wave 4 half-complete (F004 ✅; F011 and F014 P1-3 remain). Dependency graph, wave strategy, and effort table updated.
