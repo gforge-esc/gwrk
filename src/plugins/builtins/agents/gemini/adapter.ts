@@ -65,6 +65,7 @@ export class GeminiAdapter implements AgentBackend {
     }
 
     args.push("--approval-mode", "yolo");
+    args.push("--model", "gemini-3.1-pro-preview");
 
     return {
       command,
