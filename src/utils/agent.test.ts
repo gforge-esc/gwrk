@@ -10,6 +10,8 @@ const mockEnd = vi.fn();
 vi.mock("node:fs", () => ({
   default: {
     readFileSync: vi.fn().mockReturnValue("mock workflow content"),
+    existsSync: vi.fn().mockReturnValue(true),
+    readdirSync: vi.fn().mockReturnValue([]),
     mkdirSync: vi.fn(),
     createWriteStream: vi.fn(() => ({
       write: mockWrite,
@@ -121,7 +123,7 @@ describe("buildCommand — agent backend routing", () => {
         featureDir: "specs/test-feature",
       },
       "mock workflow content",
-    )).rejects.toThrow("Unsupported agent backend: unknown-agent");
+    )).rejects.toThrow("Agent backend 'unknown-agent' not found");
   });
 });
 
@@ -153,7 +155,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
     mockSpawn.mockReturnValue(child);
 
     const promise = dispatchAgent(runOpts);
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
 
     // Write some logs through the simulated agent output
     stdoutStream.write("Doing work...\n");
@@ -183,7 +185,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
     mockSpawn.mockReturnValue(child);
 
     const promise = dispatchAgent(runOpts);
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
     child.emit("close", 123);
 
     const result = await promise;
@@ -197,8 +199,9 @@ describe("dispatchAgent — process execution and stream handling", () => {
     mockSpawn.mockReturnValue(child);
 
     const promise = dispatchAgent(runOpts);
-    // Use setImmediate to ensure dispatchAgent has reached the child.on('error') registration
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+    // Short delay to ensure event listeners are attached
+    await new Promise(r => setTimeout(r, 10));
     child.emit("error", new Error("EACCES"));
 
     const result = await promise;
@@ -226,7 +229,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
       env: { TEST: "1" },
     });
 
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
     child.emit("close", 0);
     const result = await promise;
     expect(result).toHaveProperty("exitCode");
@@ -244,7 +247,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
 
     const { dispatchToAgent } = await import("./agent.js");
     const promise = dispatchToAgent({ agent: "gemini" });
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
     child.emit("close", 53);
 
     const result = await promise;
@@ -265,7 +268,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
       stdin: "LONG CONTEXT DATA",
     });
 
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
     child.emit("close", 0);
     await promise;
 
@@ -279,7 +282,7 @@ describe("dispatchAgent — process execution and stream handling", () => {
     mockSpawn.mockReturnValue(child);
 
     const promise = dispatchAgent(runOpts);
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
 
     // First line triggers squelch
     stdoutStream.write("Attempt 1 failed with status 429\n");
