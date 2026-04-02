@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 import { execCommand } from "../../../../utils/exec.js";
 import type { AgentBackend } from "../../../agent-backend.js";
-import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 
 export class ClaudeAdapter implements AgentBackend {
   readonly name = "claude";
@@ -12,7 +12,10 @@ export class ClaudeAdapter implements AgentBackend {
     return res.exitCode === 0;
   }
 
-  async syncGovernance(projectRoot: string, governance: string): Promise<string> {
+  async syncGovernance(
+    projectRoot: string,
+    governance: string,
+  ): Promise<string> {
     const filePath = path.join(projectRoot, "CLAUDE.md");
     let content = "";
     try {
@@ -51,7 +54,7 @@ export class ClaudeAdapter implements AgentBackend {
     if (task.featureDir) args.push(task.featureDir);
     // Note: dispatchAgent in agent.ts uses workflowPath but buildCommand uses _workflowContent
     // Here we use task properties normalized to TaskDispatch
-    
+
     args.push("--dangerously-skip-permissions");
 
     return {

@@ -1,8 +1,8 @@
-import type { GwrkConfig, AgentBackend } from "../utils/config.js";
-import type { SandboxManager } from "./sandbox.js";
-import type { InvocationStrategy } from "./backends/invocation-strategy.js";
-import type { TaskRecord } from "./types.js";
 import type { TaskResult } from "../utils/agent.js";
+import type { AgentBackend, GwrkConfig } from "../utils/config.js";
+import type { InvocationStrategy } from "./backends/invocation-strategy.js";
+import type { SandboxManager } from "./sandbox.js";
+import type { TaskRecord } from "./types.js";
 
 export interface DispatchPhaseOptions {
   featureId: string;
@@ -50,24 +50,31 @@ export class DispatchOrchestrator {
   constructor(
     private config: GwrkConfig,
     private sandboxManager: SandboxManager,
-    private invocationStrategy: InvocationStrategy
+    private invocationStrategy: InvocationStrategy,
   ) {}
 
   private getSemaphore(backend: string): Semaphore {
     const key = backend === "codex-cloud" ? "cloud" : "local";
     if (!this.semaphores.has(key)) {
-      const limit = key === "cloud" 
-        ? this.config.parallelism.cloud.maxConcurrent 
-        : this.config.parallelism.local.maxClones;
+      const limit =
+        key === "cloud"
+          ? this.config.parallelism.cloud.maxConcurrent
+          : this.config.parallelism.local.maxClones;
       this.semaphores.set(key, new Semaphore(limit));
     }
     return this.semaphores.get(key)!;
   }
 
   async dispatchPhase(options: DispatchPhaseOptions): Promise<TaskRecord[]> {
-    const { featureId, phaseId, tasks, concurrency, backend: topBackend } = options;
-    
-    const taskRecords: TaskRecord[] = tasks.map(t => ({
+    const {
+      featureId,
+      phaseId,
+      tasks,
+      concurrency,
+      backend: topBackend,
+    } = options;
+
+    const taskRecords: TaskRecord[] = tasks.map((t) => ({
       id: t.id,
       status: "pending",
       sandboxDir: "",
@@ -82,7 +89,7 @@ export class DispatchOrchestrator {
 
     const dispatchTask = async (taskRecord: TaskRecord): Promise<void> => {
       const globalSemaphore = this.getSemaphore(taskRecord.backend);
-      
+
       // Wait for both slots
       await localSemaphore.acquire();
       try {
@@ -92,7 +99,10 @@ export class DispatchOrchestrator {
             taskRecord.status = "failed";
             taskRecord.error = "Agent capacity queue timeout";
             if (!(taskRecord as any).result) {
-              (taskRecord as any).result = { stderr: "Agent capacity queue timeout", exitCode: 1 };
+              (taskRecord as any).result = {
+                stderr: "Agent capacity queue timeout",
+                exitCode: 1,
+              };
             }
             return;
           }
@@ -122,7 +132,7 @@ export class DispatchOrchestrator {
                 phaseId,
                 backend: taskRecord.backend,
                 workDir: sandboxDir,
-                prompt: tasks.find(t => t.id === taskRecord.id)?.prompt,
+                prompt: tasks.find((t) => t.id === taskRecord.id)?.prompt,
               });
 
               success = result.exitCode === 0;
@@ -136,8 +146,10 @@ export class DispatchOrchestrator {
               }
 
               // Check for 429 status or rate-limit message in stderr
-              const isRateLimited = result.exitCode === 429 || 
-                                  (result.stderr && /rate limit|429|too many requests/i.test(result.stderr));
+              const isRateLimited =
+                result.exitCode === 429 ||
+                (result.stderr &&
+                  /rate limit|429|too many requests/i.test(result.stderr));
 
               if (isRateLimited && attempts < this.maxRetries) {
                 await this.sandboxManager.destroySandbox(sandboxDir, featureId);
@@ -155,7 +167,7 @@ export class DispatchOrchestrator {
               if (sandboxDir) {
                 await this.sandboxManager.destroySandbox(sandboxDir, featureId);
               }
-              break; 
+              break;
             }
           }
 
@@ -171,8 +183,8 @@ export class DispatchOrchestrator {
     // Note: concurrency option from DispatchPhaseOptions can override the backend limit if needed,
     // but for now we prioritize global resource gating per Invariants 2.
     // If concurrency is provided and is SMALLER than backend limit, we could use a per-call semaphore.
-    
-    const taskPromises = taskRecords.map(record => dispatchTask(record));
+
+    const taskPromises = taskRecords.map((record) => dispatchTask(record));
     await Promise.all(taskPromises);
 
     return taskRecords;
@@ -186,8 +198,8 @@ export class DispatchOrchestrator {
   }
 
   async throttle(backend: string, attempt = 1): Promise<void> {
-    const baseDelay = 1000 * Math.pow(2, attempt - 1);
+    const baseDelay = 1000 * 2 ** (attempt - 1);
     const jitter = Math.random() * 500;
-    await new Promise(resolve => setTimeout(resolve, baseDelay + jitter));
+    await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
   }
 }

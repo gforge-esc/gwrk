@@ -42,14 +42,14 @@ export interface DispatchAttempt {
 }
 
 export interface TaskRecord {
-  id: string;                // e.g., "T001"
+  id: string; // e.g., "T001"
   status: "pending" | "running" | "completed" | "failed";
-  sandboxDir: string;        // Path to git worktree: .runs/sandboxes/<feature>-<task>-<uuid>
+  sandboxDir: string; // Path to git worktree: .runs/sandboxes/<feature>-<task>-<uuid>
   backend: AgentBackend;
   startedAt?: string;
   completedAt?: string;
   exitCode?: number;
-  error?: string;            // Capture stderr or error messages
+  error?: string; // Capture stderr or error messages
 }
 
 export interface DispatchRecord {
@@ -60,12 +60,12 @@ export interface DispatchRecord {
   status: DispatchStatus;
   branchName: string;
   attempts: DispatchAttempt[];
-  tasks: TaskRecord[];       // NEW: Parallel tasks within this phase
+  tasks: TaskRecord[]; // NEW: Parallel tasks within this phase
   createdAt: string;
   completedAt?: string;
   prUrl?: string;
   prNumber?: number;
-  workDir?: string;          // Keep workDir for backward compatibility if needed, though data-model doesn't show it for phase record
+  workDir?: string; // Keep workDir for backward compatibility if needed, though data-model doesn't show it for phase record
 }
 
 export interface SystemResources {

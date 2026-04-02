@@ -134,9 +134,7 @@ function buildTaskBrief(
   };
 }
 
-function classifyFileType(
-  filePath: string,
-): TaskBrief["fileType"] {
+function classifyFileType(filePath: string): TaskBrief["fileType"] {
   const base = path.basename(filePath);
   const ext = path.extname(filePath);
   if (base.endsWith(".test.ts") || base.endsWith(".test.js")) return "test";
@@ -244,9 +242,7 @@ export function lintGateScript(content: string): string[] {
 
   // Filter out set -euo pipefail and echo lines (boilerplate, not assertions)
   const assertionLines = lines.filter(
-    (l) =>
-      !l.trim().startsWith("set ") &&
-      !l.trim().startsWith("echo "),
+    (l) => !l.trim().startsWith("set ") && !l.trim().startsWith("echo "),
   );
 
   if (assertionLines.length === 0) {
@@ -277,9 +273,7 @@ export function lintGateScript(content: string): string[] {
  *
  * Returns a map of gate filename → violations. Only includes gates with violations.
  */
-export function lintAllGates(
-  gatesDir: string,
-): Map<string, string[]> {
+export function lintAllGates(gatesDir: string): Map<string, string[]> {
   const violations = new Map<string, string[]>();
 
   if (!fs.existsSync(gatesDir)) return violations;

@@ -8,12 +8,12 @@ import { notifySlack } from "./slack-notify.js";
 import type { SlackEvent } from "./slack-presence.js";
 
 import { compileContext } from "./context.js";
+import type { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchAttempt, DispatchRecord, TaskRecord } from "./types.js";
-import type { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 
 export interface DispatchRequest {
   featureId: string;
@@ -109,7 +109,10 @@ export class DispatchQueue {
     }
 
     // Capacity check: count active sandboxes instead of just active phase records
-    const activeSandboxCount = this.active.reduce((acc, r) => acc + r.tasks.filter(t => t.status === "running").length, 0);
+    const activeSandboxCount = this.active.reduce(
+      (acc, r) => acc + r.tasks.filter((t) => t.status === "running").length,
+      0,
+    );
     if (activeSandboxCount >= this.config.parallelism.local.maxClones) {
       return;
     }
@@ -177,20 +180,24 @@ export class DispatchQueue {
         const results = await this.orchestrator.dispatchPhase({
           featureId: record.featureId,
           phaseId: record.phaseId,
-          tasks: record.tasks.map(t => ({ id: t.id, backend: t.backend })),
+          tasks: record.tasks.map((t) => ({ id: t.id, backend: t.backend })),
           // Use config limit by default, orchestrator handles it
         });
-        
+
         // Update task records in dispatch record
         for (const res of results) {
-          const task = record.tasks.find(t => t.id === res.id);
+          const task = record.tasks.find((t) => t.id === res.id);
           if (task) {
             Object.assign(task, res);
           }
         }
 
-        const anyFailed = results.some(r => r.status === "failed");
-        await this.handleCompletion(record.id, anyFailed ? 1 : 0, anyFailed ? "Some tasks failed" : "");
+        const anyFailed = results.some((r) => r.status === "failed");
+        await this.handleCompletion(
+          record.id,
+          anyFailed ? 1 : 0,
+          anyFailed ? "Some tasks failed" : "",
+        );
       } else {
         // Fallback for phase-level implementation (Phase 06)
         // Simulate Agent Execution (for now)
@@ -319,16 +326,29 @@ export class DispatchQueue {
     };
   }
 
-  getDispatch(featureId: string, phaseId: string, taskId?: string): DispatchRecord | null {
+  getDispatch(
+    featureId: string,
+    phaseId: string,
+    taskId?: string,
+  ): DispatchRecord | null {
     return (
       this.active.find(
-        (r) => r.featureId === featureId && r.phaseId === phaseId && (!taskId || r.tasks.some(t => t.id === taskId)),
+        (r) =>
+          r.featureId === featureId &&
+          r.phaseId === phaseId &&
+          (!taskId || r.tasks.some((t) => t.id === taskId)),
       ) ||
       this.queue.find(
-        (r) => r.featureId === featureId && r.phaseId === phaseId && (!taskId || r.tasks.some(t => t.id === taskId)),
+        (r) =>
+          r.featureId === featureId &&
+          r.phaseId === phaseId &&
+          (!taskId || r.tasks.some((t) => t.id === taskId)),
       ) ||
       this.history.find(
-        (r) => r.featureId === featureId && r.phaseId === phaseId && (!taskId || r.tasks.some(t => t.id === taskId)),
+        (r) =>
+          r.featureId === featureId &&
+          r.phaseId === phaseId &&
+          (!taskId || r.tasks.some((t) => t.id === taskId)),
       ) ||
       null
     );

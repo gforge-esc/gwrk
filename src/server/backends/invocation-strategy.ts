@@ -1,5 +1,5 @@
+import { type TaskResult, dispatchToAgent } from "../../utils/agent.js";
 import type { AgentBackend } from "../../utils/config.js";
-import { dispatchToAgent, type TaskResult } from "../../utils/agent.js";
 
 export interface TaskInvocation {
   taskId: string;

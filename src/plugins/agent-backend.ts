@@ -1,4 +1,4 @@
-import type { TaskDispatch, TaskResult } from '../utils/agent.js';
+import type { TaskDispatch, TaskResult } from "../utils/agent.js";
 
 /**
  * Interface for AgentBackend plugins (ADR-006)

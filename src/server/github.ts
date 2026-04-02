@@ -26,7 +26,10 @@ export async function githubWebhookPlugin(
         return reply.status(401).send({ error: "Missing signature" });
       }
 
-      const hmac = crypto.createHmac("sha256", config.server.githubWebhookSecret);
+      const hmac = crypto.createHmac(
+        "sha256",
+        config.server.githubWebhookSecret,
+      );
       const digest = `sha256=${hmac.update(JSON.stringify(request.body)).digest("hex")}`;
 
       const digestBuffer = Buffer.from(digest);
@@ -42,7 +45,9 @@ export async function githubWebhookPlugin(
 
     // Only process pull_request events
     if (event !== "pull_request") {
-      return reply.status(200).send({ status: "ignored", reason: "not_pr_event" });
+      return reply
+        .status(200)
+        .send({ status: "ignored", reason: "not_pr_event" });
     }
 
     const payload = request.body as any;
@@ -61,12 +66,16 @@ export async function githubWebhookPlugin(
     // 3. Filter Branches (FR-H01)
     // Harvest MUST only trigger on phase rollup PRs targeting trunk
     if (baseRef !== "main" && baseRef !== "develop") {
-      return reply.status(200).send({ status: "ignored", reason: "not_trunk_target" });
+      return reply
+        .status(200)
+        .send({ status: "ignored", reason: "not_trunk_target" });
     }
 
     // 4. Parse Feature (FR-H01)
     if (!headRef?.startsWith("feat/")) {
-      return reply.status(200).send({ status: "ignored", reason: "not_feat_branch" });
+      return reply
+        .status(200)
+        .send({ status: "ignored", reason: "not_feat_branch" });
     }
 
     const branchName = headRef.replace("feat/", "");

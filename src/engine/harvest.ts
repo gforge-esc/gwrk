@@ -1,13 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
-import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
-import { finishRun, listRuns } from "../db/runs.js";
 import { recordCompression } from "../db/compression.js";
-import { gatherDeliveryActuals, computeCompression } from "./compression.js";
-import { parsePlan } from "../utils/parser.js";
-import { resolveRoleMultipliers } from "./roles.js";
+import { finishRun, listRuns } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import type { HarvestRecord, CompressionReport, EffortForecast } from "./types.js";
+import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
+import { parsePlan } from "../utils/parser.js";
+import { computeCompression, gatherDeliveryActuals } from "./compression.js";
+import { resolveRoleMultipliers } from "./roles.js";
+import type {
+  CompressionReport,
+  EffortForecast,
+  HarvestRecord,
+} from "./types.js";
 
 export interface LogEntry {
   runId: string | number;
@@ -33,7 +37,7 @@ export async function finalizeLogs(
 ): Promise<void> {
   const runsDir = path.join("specs", featureId, ".gwrk", "runs");
   const fullRunsDir = path.join(projectPath, runsDir);
-  
+
   if (!fs.existsSync(fullRunsDir)) return;
 
   const indexPath = path.join(fullRunsDir, "index.json");
@@ -53,14 +57,14 @@ export async function finalizeLogs(
   for (const file of files) {
     const filePath = path.join(runsDir, file);
     const fullPath = path.join(fullRunsDir, file);
-    
+
     // Always add all log files to git stage to be sure they are tracked
     stagedFiles.push(filePath);
 
     if (index.logs.some((l) => l.file === file)) continue;
 
     const stats = fs.statSync(fullPath);
-    
+
     // Attempt to extract metadata from filename
     // Expected format: <timestamp>-<runId>-<phase>-<agent>.log
     const nameParts = file.replace(".log", "").split("-");
@@ -82,7 +86,7 @@ export async function finalizeLogs(
   commitFiles(
     projectPath,
     stagedFiles,
-    `harvest: finalize logs for ${featureId}`
+    `harvest: finalize logs for ${featureId}`,
   );
 }
 

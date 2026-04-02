@@ -1,7 +1,7 @@
-import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
-import { SandboxManager } from "./sandbox.js";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
+import { SandboxManager } from "./sandbox.js";
 
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
@@ -41,11 +41,13 @@ describe("SandboxManager (Git Worktree)", () => {
 
     // Should create the sandbox directory in .runs/sandboxes/
     expect(workDir).toContain(".runs/sandboxes/005-parallel-dispatch-T1-");
-    
+
     // Should have called git worktree add
     expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("git worktree add -b sandbox/005-parallel-dispatch-T1-"),
-      expect.any(Object)
+      expect.stringContaining(
+        "git worktree add -b sandbox/005-parallel-dispatch-T1-",
+      ),
+      expect.any(Object),
     );
   });
 
@@ -65,69 +67,72 @@ describe("SandboxManager (Git Worktree)", () => {
   it("FR-002 / TR-002: should destroy a sandbox, push the branch, and create a PR if changes exist", async () => {
     const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-T1-uuid";
     (fs.existsSync as Mock).mockReturnValue(true);
-    
+
     // Mock git status --porcelain to return some changes
     (execSync as Mock).mockImplementation((cmd, opts) => {
       if (cmd === "git status --porcelain") return "M file.ts";
-      if (cmd === "git rev-parse --abbrev-ref HEAD") return "sandbox/005-parallel-dispatch-T1-uuid";
+      if (cmd === "git rev-parse --abbrev-ref HEAD")
+        return "sandbox/005-parallel-dispatch-T1-uuid";
       return "";
     });
-    
+
     await sandboxManager.destroySandbox(workDir, "005-parallel-dispatch");
 
     // Should have checked status
     expect(execSync).toHaveBeenCalledWith(
       "git status --porcelain",
-      expect.objectContaining({ cwd: workDir })
+      expect.objectContaining({ cwd: workDir }),
     );
 
     // Should have called git push
     expect(execSync).toHaveBeenCalledWith(
       "git push origin HEAD",
-      expect.objectContaining({ cwd: workDir })
+      expect.objectContaining({ cwd: workDir }),
     );
 
     // Should have called gh pr create
     expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("gh pr create --base feature/005-parallel-dispatch-wip"),
-      expect.objectContaining({ cwd: workDir })
+      expect.stringContaining(
+        "gh pr create --base feature/005-parallel-dispatch-wip",
+      ),
+      expect.objectContaining({ cwd: workDir }),
     );
 
     // Should have called git worktree remove
     expect(execSync).toHaveBeenCalledWith(
       `git worktree remove --force ${workDir}`,
-      expect.objectContaining({ cwd: "/test/root" })
+      expect.objectContaining({ cwd: "/test/root" }),
     );
   });
 
   it("FR-002 / TR-002: should destroy a sandbox without PR if no changes exist", async () => {
     const workDir = "/test/root/.runs/sandboxes/005-parallel-dispatch-T1-uuid";
     (fs.existsSync as Mock).mockReturnValue(true);
-    
+
     // Mock git status --porcelain to return NO changes
     (execSync as Mock).mockImplementation((cmd, opts) => {
       if (cmd === "git status --porcelain") return "";
       return "";
     });
-    
+
     await sandboxManager.destroySandbox(workDir, "005-parallel-dispatch");
 
     // Should have checked status
     expect(execSync).toHaveBeenCalledWith(
       "git status --porcelain",
-      expect.objectContaining({ cwd: workDir })
+      expect.objectContaining({ cwd: workDir }),
     );
 
     // Should NOT have called git push
     expect(execSync).not.toHaveBeenCalledWith(
       "git push origin HEAD",
-      expect.any(Object)
+      expect.any(Object),
     );
 
     // Should have called git worktree remove
     expect(execSync).toHaveBeenCalledWith(
       `git worktree remove --force ${workDir}`,
-      expect.objectContaining({ cwd: "/test/root" })
+      expect.objectContaining({ cwd: "/test/root" }),
     );
   });
 
@@ -136,19 +141,19 @@ describe("SandboxManager (Git Worktree)", () => {
 
     expect(execSync).toHaveBeenCalledWith(
       "git worktree prune",
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
   it("US-002: should list all active sandboxes from worktree list", async () => {
-    const mockWorktreeList = 
+    const mockWorktreeList =
       "worktree /test/root\n" +
       "branch refs/heads/main\n" +
       "\n" +
       "worktree /test/root/.runs/sandboxes/f1-T1-uuid\n" +
       "branch refs/heads/sandbox/f1-T1-uuid\n" +
       "\n";
-    
+
     (execSync as Mock).mockReturnValue(mockWorktreeList);
 
     const sandboxes = await sandboxManager.listSandboxes();

@@ -1,8 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { getTestDb } from "./index.js";
-import { recordCompression, getCompressionRecord, listCompressionRecords } from "./compression.js";
-import type { CompressionReport } from "../engine/types.js";
 import type Database from "better-sqlite3";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { CompressionReport } from "../engine/types.js";
+import {
+  getCompressionRecord,
+  listCompressionRecords,
+  recordCompression,
+} from "./compression.js";
+import { getTestDb } from "./index.js";
 
 describe("FR-H06: Compression recording", () => {
   let db: Database.Database;
@@ -52,7 +56,7 @@ describe("FR-H06: Compression recording", () => {
   it("should fail if report is missing mandatory fields", () => {
     // @ts-ignore
     const report: Partial<CompressionReport> = {
-      featureId: "011-harvest"
+      featureId: "011-harvest",
     };
 
     expect(() => {
@@ -77,11 +81,15 @@ describe("FR-H06: Compression recording", () => {
         sessionCount: 1,
         deliveryWindowHours: 24,
       },
-      compression: { pointCompression: 10, totalCompression: 1, dormancyDays: 0 },
+      compression: {
+        pointCompression: 10,
+        totalCompression: 1,
+        dormancyDays: 0,
+      },
     };
 
     recordCompression(report, db);
-    
+
     const records = listCompressionRecords("list-feat", db);
     expect(Array.isArray(records)).toBe(true);
     expect(records.length).toBe(1);

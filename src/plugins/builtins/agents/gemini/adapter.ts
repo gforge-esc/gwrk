@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 import { execCommand } from "../../../../utils/exec.js";
 import type { AgentBackend } from "../../../agent-backend.js";
-import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 
 export class GeminiAdapter implements AgentBackend {
   readonly name = "gemini";
@@ -12,7 +12,10 @@ export class GeminiAdapter implements AgentBackend {
     return res.exitCode === 0;
   }
 
-  async syncGovernance(projectRoot: string, governance: string): Promise<string> {
+  async syncGovernance(
+    projectRoot: string,
+    governance: string,
+  ): Promise<string> {
     const filePath = path.join(projectRoot, "GEMINI.md");
     let content = "";
     try {

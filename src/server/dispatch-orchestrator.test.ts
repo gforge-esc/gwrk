@@ -1,8 +1,8 @@
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GwrkConfig } from "../utils/config.js";
+import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
 import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 import { SandboxManager } from "./sandbox.js";
-import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
-import type { GwrkConfig } from "../utils/config.js";
 
 vi.mock("./sandbox.js");
 vi.mock("./backends/invocation-strategy.js");
@@ -30,8 +30,13 @@ describe("DispatchOrchestrator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSandbox = new SandboxManager() as vi.Mocked<SandboxManager>;
-    mockInvocation = new LocalInvocationStrategy() as vi.Mocked<LocalInvocationStrategy>;
-    orchestrator = new DispatchOrchestrator(mockConfig, mockSandbox, mockInvocation);
+    mockInvocation =
+      new LocalInvocationStrategy() as vi.Mocked<LocalInvocationStrategy>;
+    orchestrator = new DispatchOrchestrator(
+      mockConfig,
+      mockSandbox,
+      mockInvocation,
+    );
   });
 
   it("FR-001: should dispatch multiple tasks concurrently up to maxConcurrency", async () => {
@@ -41,7 +46,7 @@ describe("DispatchOrchestrator", () => {
     mockSandbox.createSandbox.mockImplementation(async () => {
       active++;
       maxActive = Math.max(maxActive, active);
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       return "/work/dir";
     });
 
@@ -71,19 +76,22 @@ describe("DispatchOrchestrator", () => {
 
     expect(results).toHaveLength(3);
     expect(maxActive).toBe(2);
-    expect(results.every(r => r.status === "completed")).toBe(true);
+    expect(results.every((r) => r.status === "completed")).toBe(true);
   });
 
   it("FR-004: should handle capacity gating and wait in queue", async () => {
     mockInvocation.invoke.mockResolvedValue({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-        durationS: 0,
-      });
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationS: 0,
+    });
 
-    const tasks = Array.from({ length: 5 }, (_, i) => ({ id: `T${i}`, prompt: `Task ${i}` }));
-    
+    const tasks = Array.from({ length: 5 }, (_, i) => ({
+      id: `T${i}`,
+      prompt: `Task ${i}`,
+    }));
+
     // With concurrency 1, it should process them sequentially
     const results = await orchestrator.dispatchPhase({
       featureId: "f1",
@@ -101,7 +109,7 @@ describe("DispatchOrchestrator", () => {
     (orchestrator as any).queueTimeoutMs = 100;
 
     mockSandbox.createSandbox.mockImplementation(async () => {
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
       return "/work/dir";
     });
 
@@ -129,7 +137,13 @@ describe("DispatchOrchestrator", () => {
     // Actually, runNext checks Date.now() - startTime > queueTimeoutMs before doing anything.
     // T1 starts, takes 200ms.
     // T2 tries to start, but check fails.
-    expect(results.some(r => r.status === "failed" && r.result?.stderr === "Agent capacity queue timeout")).toBe(true);
+    expect(
+      results.some(
+        (r) =>
+          r.status === "failed" &&
+          r.result?.stderr === "Agent capacity queue timeout",
+      ),
+    ).toBe(true);
   });
 
   it("should mark task as failed if invocation fails", async () => {

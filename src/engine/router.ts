@@ -1,8 +1,8 @@
+import { getRoutingHistory } from "../db/plugins.js";
+import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { loadConfig } from "../utils/config.js";
 import { quotaProbe } from "./quota.js";
-import type { AgentBackend } from "../plugins/agent-backend.js";
-import { getRoutingHistory } from "../db/plugins.js";
 
 export interface RoutingTask {
   type: string;
@@ -21,45 +21,52 @@ export interface RoutingTask {
 export async function selectBackend(
   task: RoutingTask,
   projectRoot: string = process.cwd(),
-  registry: AgentBackendRegistry = new AgentBackendRegistry()
+  registry: AgentBackendRegistry = new AgentBackendRegistry(),
 ): Promise<AgentBackend> {
   const config = loadConfig(projectRoot);
-  
+
   // 1. Check skill-specific preference (Mocked for now as we don't have skill loader here yet)
-  if (task.type === 'skill' && task.skillName) {
-      if (task.skillName === 'narrative') {
-          try {
-              const backend = await registry.getAgentBackend('claude');
-              const status = await quotaProbe(backend);
-              if (status.status === 'available') return backend;
-          } catch (e) {}
-      }
+  if (task.type === "skill" && task.skillName) {
+    if (task.skillName === "narrative") {
+      try {
+        const backend = await registry.getAgentBackend("claude");
+        const status = await quotaProbe(backend);
+        if (status.status === "available") return backend;
+      } catch (e) {}
+    }
   }
 
   // 2. Historical Learning
   const history = getRoutingHistory(task.type, 50);
   if (history.length > 5) {
-      // Simple heuristic: count successes per backend
-      const stats = history.reduce((acc, d) => {
-          acc[d.selected_backend] = acc[d.selected_backend] || { success: 0, total: 0 };
-          acc[d.selected_backend].total++;
-          if (d.outcome === 'success') acc[d.selected_backend].success++;
-          return acc;
-      }, {} as Record<string, { success: number, total: number }>);
+    // Simple heuristic: count successes per backend
+    const stats = history.reduce(
+      (acc, d) => {
+        acc[d.selected_backend] = acc[d.selected_backend] || {
+          success: 0,
+          total: 0,
+        };
+        acc[d.selected_backend].total++;
+        if (d.outcome === "success") acc[d.selected_backend].success++;
+        return acc;
+      },
+      {} as Record<string, { success: number; total: number }>,
+    );
 
-      const ranked = Object.entries(stats)
-          .map(([name, s]) => ({ name, rate: s.success / s.total }))
-          .sort((a, b) => b.rate - a.rate);
+    const ranked = Object.entries(stats)
+      .map(([name, s]) => ({ name, rate: s.success / s.total }))
+      .sort((a, b) => b.rate - a.rate);
 
-      for (const item of ranked) {
-          if (item.rate > 0.8) { // High confidence
-              try {
-                  const backend = await registry.getAgentBackend(item.name);
-                  const status = await quotaProbe(backend);
-                  if (status.status === 'available') return backend;
-              } catch (e) {}
-          }
+    for (const item of ranked) {
+      if (item.rate > 0.8) {
+        // High confidence
+        try {
+          const backend = await registry.getAgentBackend(item.name);
+          const status = await quotaProbe(backend);
+          if (status.status === "available") return backend;
+        } catch (e) {}
       }
+    }
   }
 
   // 3. Task-specific mapping from config
@@ -68,27 +75,31 @@ export async function selectBackend(
     try {
       const backend = await registry.getAgentBackend(taskBackendName);
       const status = await quotaProbe(backend);
-      if (status.status === 'available') return backend;
+      if (status.status === "available") return backend;
     } catch (e) {}
   }
 
   // 3. Fallback order
-  const fallbackOrder = config.agents.fallbackOrder || ['claude', 'gemini', 'codex'];
+  const fallbackOrder = config.agents.fallbackOrder || [
+    "claude",
+    "gemini",
+    "codex",
+  ];
   for (const name of fallbackOrder) {
     try {
       const backend = await registry.getAgentBackend(name);
       const status = await quotaProbe(backend);
-      if (status.status === 'available') return backend;
+      if (status.status === "available") return backend;
     } catch (e) {}
   }
 
   // 4. Last resort: any available built-in
-  const builtins = ['claude', 'gemini', 'codex'];
+  const builtins = ["claude", "gemini", "codex"];
   for (const name of builtins) {
-      try {
-          const backend = await registry.getAgentBackend(name);
-          if (await backend.isAvailable()) return backend;
-      } catch (e) {}
+    try {
+      const backend = await registry.getAgentBackend(name);
+      if (await backend.isAvailable()) return backend;
+    } catch (e) {}
   }
 
   throw new Error("No available agent backends found.");

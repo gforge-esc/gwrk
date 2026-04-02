@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import { BUILTIN_AGENTS } from "./builtins/agents/index.js";
-import type { AgentBackend } from "./agent-backend.js";
-import type { PluginLoader } from "./loader.js";
 import { getAgentContextSync, recordAgentContextSync } from "../db/plugins.js";
+import type { AgentBackend } from "./agent-backend.js";
+import { BUILTIN_AGENTS } from "./builtins/agents/index.js";
+import type { PluginLoader } from "./loader.js";
 
 export class BackendNotFoundError extends Error {
   constructor(name: string) {
@@ -19,7 +19,7 @@ export class AgentBackendRegistry {
    */
   async getBackends(): Promise<Record<string, AgentBackend>> {
     const backends: Record<string, AgentBackend> = { ...BUILTIN_AGENTS };
-    
+
     // Discover user-installed plugins via loader
     if (this.loader) {
       try {
@@ -47,11 +47,11 @@ export class AgentBackendRegistry {
     if (this.loader) {
       try {
         const plugin = await this.loader.resolvePlugin(name);
-        if (plugin.manifest.type === 'agent') {
-           // For now, user plugins would need a way to be instantiated.
-           // ADR-006 Phase 3 focused on built-ins and the interface.
-           // User-installed agent plugins might need a dynamic import or separate logic.
-           // If it's a built-in name, we return the built-in below.
+        if (plugin.manifest.type === "agent") {
+          // For now, user plugins would need a way to be instantiated.
+          // ADR-006 Phase 3 focused on built-ins and the interface.
+          // User-installed agent plugins might need a dynamic import or separate logic.
+          // If it's a built-in name, we return the built-in below.
         }
       } catch (e) {
         // Not found in user plugins, continue to built-ins
@@ -71,7 +71,10 @@ export class AgentBackendRegistry {
    * Calls syncGovernance() for all active/detected backends.
    * Tracks sync state in SQLite to avoid redundant writes.
    */
-  async syncAllBackends(projectRoot: string, governance: string): Promise<void> {
+  async syncAllBackends(
+    projectRoot: string,
+    governance: string,
+  ): Promise<void> {
     const backends = Object.keys(BUILTIN_AGENTS);
     const hash = crypto.createHash("sha256").update(governance).digest("hex");
 

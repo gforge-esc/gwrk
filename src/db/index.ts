@@ -105,7 +105,7 @@ function safeAddColumn(
   type: string,
 ): void {
   const cols = db
-    .prepare(`SELECT name FROM pragma_table_info(?)`)
+    .prepare("SELECT name FROM pragma_table_info(?)")
     .all(table) as { name: string }[];
   if (cols.some((c) => c.name === column)) return;
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);

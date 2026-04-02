@@ -178,9 +178,7 @@ const gatesCmd = projectCommand
             `${res.taskId.padEnd(4)} | ${res.feature.padEnd(15)} | ${res.gatePath}\n`,
           );
         }
-        out.write(
-          `\nRun 'gwrk project gates --run' to execute all gates.\n`,
-        );
+        out.write(`\nRun 'gwrk project gates --run' to execute all gates.\n`);
       }
     });
   });

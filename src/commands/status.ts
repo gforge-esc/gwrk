@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { quotaProbe } from "../engine/quota.js";
+import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { PluginLoader } from "../plugins/loader.js";
 import { readPid } from "../server/pid.js";
 import type { SystemStatus } from "../server/types.js";
 import { loadConfig } from "../utils/config.js";
@@ -8,9 +11,6 @@ import { color } from "../utils/format.js";
 import { getCurrentBranch, isWorkingTreeClean } from "../utils/git.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
 import { withSignal } from "../utils/signal.js";
-import { AgentBackendRegistry } from "../plugins/agent-registry.js";
-import { PluginLoader } from "../plugins/loader.js";
-import { quotaProbe } from "../engine/quota.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 

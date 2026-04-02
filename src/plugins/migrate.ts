@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { parse, stringify } from "yaml";
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]+?)\n---\n?([\s\S]*)$/;
@@ -9,7 +9,9 @@ export interface MigrateOptions {
   dryRun?: boolean;
 }
 
-export async function migrateSkills(options: MigrateOptions = {}): Promise<void> {
+export async function migrateSkills(
+  options: MigrateOptions = {},
+): Promise<void> {
   const projectRoot = process.cwd();
   const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
   const skillsDir = path.join(projectRoot, ".agents", "skills");
@@ -30,7 +32,7 @@ async function migrateSkill(
   name: string,
   sourceBase: string,
   destBase: string,
-  options: MigrateOptions
+  options: MigrateOptions,
 ): Promise<void> {
   const skillSourceDir = path.join(sourceBase, name);
   const skillDestDir = path.join(destBase, "skills", name);
@@ -104,7 +106,10 @@ async function migrateSkill(
     await fs.mkdir(skillDestDir, { recursive: true });
 
     // Write manifest.yaml
-    await fs.writeFile(path.join(skillDestDir, "manifest.yaml"), stringify(manifest));
+    await fs.writeFile(
+      path.join(skillDestDir, "manifest.yaml"),
+      stringify(manifest),
+    );
 
     // Write SKILL.md (preserving the original content)
     await fs.writeFile(path.join(skillDestDir, "SKILL.md"), content);

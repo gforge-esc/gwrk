@@ -1,10 +1,10 @@
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
-import { parse } from "yaml";
+import path from "node:path";
 import { Command } from "commander";
-import { executeSkill } from "../plugins/skill-runtime.js";
+import { parse } from "yaml";
 import { PluginLoader } from "../plugins/loader.js";
+import { executeSkill } from "../plugins/skill-runtime.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
 
@@ -16,8 +16,14 @@ const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, MAGENTA, RESET } = color;
 function getSkillsSync() {
   const globalBase = path.join(os.homedir(), ".gwrk", "plugins", "skills");
   // @ts-ignore
-  const builtInBase = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "plugins", "builtins", "skills");
-  
+  const builtInBase = path.join(
+    path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "plugins",
+    "builtins",
+    "skills",
+  );
+
   const skills: any[] = [];
   const visited = new Set<string>();
 
@@ -34,14 +40,18 @@ function getSkillsSync() {
             const raw = parse(content);
             skills.push({
               name: raw.name || entry,
-              tier: raw.tier || 'atomic',
-              description: raw.description || ''
+              tier: raw.tier || "atomic",
+              description: raw.description || "",
             });
             visited.add(entry);
-          } catch (e) { /* skip */ }
+          } catch (e) {
+            /* skip */
+          }
         }
       }
-    } catch (e) { /* skip */ }
+    } catch (e) {
+      /* skip */
+    }
   };
 
   scan(globalBase);
@@ -57,15 +67,31 @@ function getSkillManifestHelpSync(name: string): string {
   try {
     // resolvePlugin is async, but we need sync for help text.
     // We'll do a quick sync search.
-    const globalPath = path.join(os.homedir(), ".gwrk", "plugins", "skills", name);
+    const globalPath = path.join(
+      os.homedir(),
+      ".gwrk",
+      "plugins",
+      "skills",
+      name,
+    );
     // @ts-ignore
-    const builtInPath = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "plugins", "builtins", "skills", name);
-    
+    const builtInPath = path.join(
+      path.dirname(new URL(import.meta.url).pathname),
+      "..",
+      "plugins",
+      "builtins",
+      "skills",
+      name,
+    );
+
     let manifestPath = "";
-    if (fs.existsSync(path.join(globalPath, "manifest.yaml"))) manifestPath = path.join(globalPath, "manifest.yaml");
-    else if (fs.existsSync(path.join(builtInPath, "manifest.yaml"))) manifestPath = path.join(builtInPath, "manifest.yaml");
-    
-    if (!manifestPath) return `\n${RED}Error:${RESET} Skill '${name}' not found.\n`;
+    if (fs.existsSync(path.join(globalPath, "manifest.yaml")))
+      manifestPath = path.join(globalPath, "manifest.yaml");
+    else if (fs.existsSync(path.join(builtInPath, "manifest.yaml")))
+      manifestPath = path.join(builtInPath, "manifest.yaml");
+
+    if (!manifestPath)
+      return `\n${RED}Error:${RESET} Skill '${name}' not found.\n`;
 
     const content = fs.readFileSync(manifestPath, "utf-8");
     const m = parse(content);
@@ -73,11 +99,11 @@ function getSkillManifestHelpSync(name: string): string {
     let out = `\n${BOLD}${CYAN}Skill: ${m.name}${RESET}\n`;
     out += `${DIM}${m.description}${RESET}\n\n`;
     out += `${BOLD}Tier:${RESET} ${m.tier}\n`;
-    if (m.tier === 'compound') {
+    if (m.tier === "compound") {
       out += `${BOLD}Composes:${RESET} ${m.composes?.join(", ") || "none"}\n`;
     }
     out += `${BOLD}Preferred Agent:${RESET} ${m.runtime?.preferredAgent} (${m.runtime?.preferredModel})\n`;
-    
+
     if (m.interface?.flags) {
       out += `\n${BOLD}Flags:${RESET}\n`;
       for (const f of m.interface.flags) {
@@ -100,32 +126,30 @@ export const skillCommand = new Command("skill")
   .argument("[name]", "Name of the skill to invoke")
   .option("--format <type>", "Output format (json)")
   .option("--agent", "Enable Agent-Native Mode (ANSI-stripped)", false)
-  .addHelpText(
-    "after",
-    () => {
-      const argv = process.argv;
-      const skillIdx = argv.indexOf('skill');
-      const name = argv[skillIdx + 1];
+  .addHelpText("after", () => {
+    const argv = process.argv;
+    const skillIdx = argv.indexOf("skill");
+    const name = argv[skillIdx + 1];
 
-      if (name && !name.startsWith('-')) {
-        return getSkillManifestHelpSync(name);
-      }
+    if (name && !name.startsWith("-")) {
+      return getSkillManifestHelpSync(name);
+    }
 
-      const skills = getSkillsSync();
-      const atomic = skills.filter(s => s.tier === 'atomic');
-      const compound = skills.filter(s => s.tier === 'compound');
+    const skills = getSkillsSync();
+    const atomic = skills.filter((s) => s.tier === "atomic");
+    const compound = skills.filter((s) => s.tier === "compound");
 
-      let out = `\n${BOLD}${CYAN}Atomic Skills${RESET}\n`;
-      for (const s of atomic) {
-        out += `  ${GREEN}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
-      }
+    let out = `\n${BOLD}${CYAN}Atomic Skills${RESET}\n`;
+    for (const s of atomic) {
+      out += `  ${GREEN}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
+    }
 
-      out += `\n${BOLD}${CYAN}Compound Skills${RESET}\n`;
-      for (const s of compound) {
-        out += `  ${MAGENTA}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
-      }
+    out += `\n${BOLD}${CYAN}Compound Skills${RESET}\n`;
+    for (const s of compound) {
+      out += `  ${MAGENTA}${s.name.padEnd(20)}${RESET} ${DIM}${s.description}${RESET}\n`;
+    }
 
-      out += `\n${BOLD}Examples:${RESET}
+    out += `\n${BOLD}Examples:${RESET}
   echo "brief.md" | gwrk skill narrative
   gwrk skill signal-cut < input.md --format json
   gwrk skill truth-extract --product gwrk
@@ -137,9 +161,8 @@ ${BOLD}Exit codes:${RESET}
   1: Skill not found, dependency missing, or execution failed
   2: Usage error
 `;
-      return out;
-    }
-  )
+    return out;
+  })
   .action(async (name, options, command) => {
     if (!name) {
       command.help();
@@ -158,21 +181,20 @@ ${BOLD}Exit codes:${RESET}
       }
 
       try {
-        const result = await executeSkill(name, { 
-          input, 
-          format: options.format, 
+        const result = await executeSkill(name, {
+          input,
+          format: options.format,
           agent: options.agent,
-          ...options // Pass extra flags from command line
+          ...options, // Pass extra flags from command line
         });
 
         // stdout is the skill result
         process.stdout.write(result.stdout);
-        
+
         // stderr might have agent output, but no signal (we'll let withSignal do it)
         if (result.stderr) {
           process.stderr.write(result.stderr);
         }
-
       } catch (err: any) {
         if (err.stderr) {
           process.stderr.write(err.stderr);

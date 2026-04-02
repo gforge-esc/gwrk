@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import fastify from "fastify";
+import { describe, expect, it, vi } from "vitest";
 // @ts-ignore
 import githubWebhooks from "./github.js";
 
@@ -17,8 +17,8 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
         merged_at: "2026-04-01T09:15:00Z",
         merge_commit_sha: "abc1234567890",
         head: { ref: "feat/011-harvest" },
-        base: { ref: "develop" }
-      }
+        base: { ref: "develop" },
+      },
     };
 
     const response = await server.inject({
@@ -26,9 +26,9 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       url: "/webhook/github",
       headers: {
         "x-github-event": "pull_request",
-        "x-hub-signature-256": "sha256=invalid-signature-for-red-test"
+        "x-hub-signature-256": "sha256=invalid-signature-for-red-test",
       },
-      payload
+      payload,
     });
 
     // Expect 200 even if it ignores some things, but in RED state this might be anything.
@@ -37,27 +37,27 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
   });
 
   it("FR-H01/TC-H01: sandbox PRs ignored by harvest", async () => {
-     // Scenario: PR targeting a feat branch (not develop/main)
-     const server = fastify();
-     // @ts-ignore
-     await server.register(githubWebhooks);
-     
-     const payload = {
+    // Scenario: PR targeting a feat branch (not develop/main)
+    const server = fastify();
+    // @ts-ignore
+    await server.register(githubWebhooks);
+
+    const payload = {
       action: "closed",
       pull_request: {
         merged: true,
         head: { ref: "task/sandbox-1" },
-        base: { ref: "feat/some-feature" }
-      }
+        base: { ref: "feat/some-feature" },
+      },
     };
-    
+
     const response = await server.inject({
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "pull_request" },
-      payload
+      payload,
     });
-    
+
     expect(response.statusCode).toBe(200);
   });
 
@@ -71,15 +71,15 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       pull_request: {
         merged: true,
         head: { ref: "feat/some-feature" },
-        base: { ref: "other-branch" }
-      }
+        base: { ref: "other-branch" },
+      },
     };
 
     const response = await server.inject({
       method: "POST",
       url: "/webhook/github",
       headers: { "x-github-event": "pull_request" },
-      payload
+      payload,
     });
 
     // Should still return 200 but not call harvest engine
@@ -95,7 +95,7 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
 
     const payload = {
       action: "closed",
-      pull_request: { merged: true }
+      pull_request: { merged: true },
     };
 
     const response = await server.inject({
@@ -103,9 +103,9 @@ describe("FR-H01/FR-H09/TC-H01: Webhook Handler", () => {
       url: "/webhook/github",
       headers: {
         "x-github-event": "pull_request",
-        "x-hub-signature-256": "sha256=invalid-signature"
+        "x-hub-signature-256": "sha256=invalid-signature",
       },
-      payload
+      payload,
     });
 
     expect(response.statusCode).toBe(401);
