@@ -24,7 +24,7 @@
           "id": "T003",
           "title": "task 3",
           "description": "t3",
-          "status": "open",
+          "status": "completed",
           "gateScript": "exit 0"
         }
       ]
