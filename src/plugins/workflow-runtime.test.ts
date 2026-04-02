@@ -6,6 +6,9 @@ import { WorkflowRuntime } from "./workflow-runtime.js";
 
 /**
  * Phase 4 - WorkflowRuntime (Layer 2.5 - F014-R)
+ *
+ * Requirements addressed:
+ * FR-L25-001, FR-L25-006, FR-L25-007, US-011, US-015
  */
 
 vi.mock("./loader.js", () => ({
@@ -36,14 +39,16 @@ vi.mock("node:fs/promises", () => {
 
 describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
   let runtime: WorkflowRuntime;
-  let mockLoader: any;
+  let mockLoader: { resolvePlugin: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     mockLoader = {
       resolvePlugin: vi.fn(),
     };
-    (PluginLoader as any).mockImplementation(() => mockLoader);
-    runtime = new WorkflowRuntime(mockLoader);
+    (PluginLoader as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => mockLoader,
+    );
+    runtime = new WorkflowRuntime(mockLoader as unknown as PluginLoader);
     vi.clearAllMocks();
   });
 
@@ -61,6 +66,18 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
       expect(manifest.name).toBe("gwrk-specify");
     });
 
+    it("US-015: SHOULD construct PluginLoader with projectDir for project-local resolution", async () => {
+      mockLoader.resolvePlugin.mockResolvedValue({
+        manifest: { name: "gwrk-specify", type: "workflow" },
+        path: "/tmp/project/.gwrk/plugins/workflows/gwrk-specify",
+      });
+
+      await runtime.resolveWorkflow("gwrk-specify", "/tmp/project");
+
+      // Verify PluginLoader was constructed with projectDir so it can scan .gwrk/plugins/
+      expect(PluginLoader).toHaveBeenCalledWith({ projectDir: "/tmp/project" });
+    });
+
     it("FR-L25-006: SHOULD fallback to global built-ins if local override is missing", async () => {
       mockLoader.resolvePlugin.mockResolvedValue({
         manifest: { name: "gwrk-plan", type: "workflow" },
@@ -76,7 +93,9 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
 
     it("FR-L25-001: SHOULD throw WorkflowNotFoundError if workflow cannot be resolved", async () => {
       mockLoader.resolvePlugin.mockRejectedValue(
-        new (PluginNotFoundError as any)("nonexistent-workflow"),
+        new (PluginNotFoundError as unknown as new (name: string) => Error)(
+          "nonexistent-workflow",
+        ),
       );
 
       await expect(
@@ -89,7 +108,14 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
     const mockManifest = {
       name: "gwrk-specify",
       type: "workflow",
-      outputSchema: { type: "object" },
+      outputSchema: {
+        type: "object",
+        required: ["intents", "summary"],
+        properties: {
+          summary: { type: "string" },
+          intents: { type: "array" },
+        },
+      },
     };
 
     beforeEach(() => {
@@ -97,11 +123,15 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
         manifest: mockManifest,
         path: "/fake/path",
       });
-      (readFile as any).mockResolvedValue("Mock Prompt");
+      (readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        "Mock Prompt",
+      );
     });
 
     it("US-011: SHOULD execute a built-in workflow and return valid intents", async () => {
-      (dispatchToAgent as any).mockResolvedValue({
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
         exitCode: 0,
         stdout: JSON.stringify({
           summary: "Created spec",
@@ -124,7 +154,9 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
     });
 
     it("FR-L25-001: SHOULD validate agent output against the workflow's outputSchema", async () => {
-      (dispatchToAgent as any).mockResolvedValue({
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
         exitCode: 0,
         stdout: "Not a JSON object",
         stderr: "",
@@ -136,8 +168,50 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
       ).rejects.toThrow(/Workflow output failed schema constraint/);
     });
 
+    it("FR-L25-001: SHOULD reject output missing required properties from outputSchema", async () => {
+      // Output has intents but is missing required 'summary' per outputSchema
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          intents: [
+            { action: "WRITE_FILE", filePath: "test.md", content: "# Test" },
+          ],
+          // 'summary' is missing — required by outputSchema
+        }),
+        stderr: "",
+        durationS: 1,
+      });
+
+      await expect(
+        runtime.executeWorkflow("gwrk-specify", "missing-summary"),
+      ).rejects.toThrow(/missing required property 'summary'/);
+    });
+
+    it("FR-L25-001: SHOULD reject output with wrong property types per outputSchema", async () => {
+      // intents should be array per schema, but we send a string
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          summary: "Bad output",
+          intents: "not-an-array",
+        }),
+        stderr: "",
+        durationS: 1,
+      });
+
+      await expect(
+        runtime.executeWorkflow("gwrk-specify", "wrong-types"),
+      ).rejects.toThrow(/property 'intents' expected array/);
+    });
+
     it("FR-L25-007: SHOULD support multi-action intents from a single turn", async () => {
-      (dispatchToAgent as any).mockResolvedValue({
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
         exitCode: 0,
         stdout: JSON.stringify({
           summary: "Multi action",
@@ -158,7 +232,9 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
     });
 
     it("FR-L25-001: SHOULD catch attempted direct FS edits by agents and exit 1", async () => {
-      (dispatchToAgent as any).mockResolvedValue({
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
         exitCode: 0,
         stdout: JSON.stringify({
           summary: "Naughty agent",

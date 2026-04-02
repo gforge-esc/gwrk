@@ -1,16 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
-import { 
-  ShipStage, 
-  type ShipState, 
-  type ShipRunConfig, 
-  type StageResult 
-} from "./ship-types.js";
-import { runGate } from "../utils/gate-runner.js";
 import { dispatchToAgent } from "../utils/agent.js";
-import { assembleDigest } from "../utils/manifest.js";
-import { loadTaskState, saveTaskState, type Phase, type Task } from "../utils/state.js";
+import { runGate } from "../utils/gate-runner.js";
 import { createBranch, isDirty, syncBranch } from "../utils/git.js";
+import { assembleDigest } from "../utils/manifest.js";
+import {
+  type Phase,
+  type Task,
+  loadTaskState,
+  saveTaskState,
+} from "../utils/state.js";
+import {
+  type ShipRunConfig,
+  ShipStage,
+  type ShipState,
+  type StageResult,
+} from "./ship-types.js";
 
 export class ShipOrchestrator {
   private config: ShipRunConfig;
@@ -39,7 +44,11 @@ export class ShipOrchestrator {
   }
 
   private getStatePath(): string {
-    return path.join(this.config.cwd, ".runs", `${this.config.featureId}_${this.config.phaseId}.state`);
+    return path.join(
+      this.config.cwd,
+      ".runs",
+      `${this.config.featureId}_${this.config.phaseId}.state`,
+    );
   }
 
   private persistState(): void {
@@ -53,8 +62,11 @@ export class ShipOrchestrator {
 
   public async run(): Promise<number> {
     console.log(`Starting/Resuming Ship Loop: ${this.state.stage}`);
-    
-    while (this.state.stage !== ShipStage.DONE && this.state.stage !== ShipStage.CIRCUIT_BREAK) {
+
+    while (
+      this.state.stage !== ShipStage.DONE &&
+      this.state.stage !== ShipStage.CIRCUIT_BREAK
+    ) {
       this.persistState();
       let result: StageResult;
 
@@ -111,10 +123,10 @@ export class ShipOrchestrator {
   private async stageBranchSetup(): Promise<StageResult> {
     // FR-002: Dirty tree fail fast
     if (await isDirty(this.config.cwd)) {
-      return { 
-        success: false, 
-        exitCode: 1, 
-        error: "Dirty working tree — commit or stash before shipping" 
+      return {
+        success: false,
+        exitCode: 1,
+        error: "Dirty working tree — commit or stash before shipping",
       };
     }
 
@@ -139,27 +151,42 @@ export class ShipOrchestrator {
           console.log(`  Branch ${branchName} exists — checked out and synced`);
           return { success: true, exitCode: 0 };
         } catch (syncErr: unknown) {
-          const syncMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
-          return { success: false, exitCode: 1, error: `Failed to checkout existing branch: ${syncMsg}` };
+          const syncMsg =
+            syncErr instanceof Error ? syncErr.message : String(syncErr);
+          return {
+            success: false,
+            exitCode: 1,
+            error: `Failed to checkout existing branch: ${syncMsg}`,
+          };
         }
       }
       const execErr = err as { status?: unknown };
-      return { 
-        success: false, 
-        exitCode: typeof execErr.status === "number" ? execErr.status : 1, 
-        error: `Failed to create feature branch: ${msg}` 
+      return {
+        success: false,
+        exitCode: typeof execErr.status === "number" ? execErr.status : 1,
+        error: `Failed to create feature branch: ${msg}`,
       };
     }
   }
 
   private async stageImplement(): Promise<StageResult> {
     // FR-003: Pre-flight gate check
-    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
 
     if (!phase) {
-      return { success: false, exitCode: 1, error: `Phase ${this.config.phaseId} not found` };
+      return {
+        success: false,
+        exitCode: 1,
+        error: `Phase ${this.config.phaseId} not found`,
+      };
     }
 
     const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
@@ -193,8 +220,7 @@ export class ShipOrchestrator {
 
     // FR-019: dispatchToAgent
     try {
-      const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n` + 
-        tasksToDispatch.map(t => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n");
+      const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n${tasksToDispatch.map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n")}`;
 
       const result = await dispatchToAgent({
         agent: this.config.backend,
@@ -206,15 +232,19 @@ export class ShipOrchestrator {
       if (result.exitCode === 0) {
         return { success: true, exitCode: 0 };
       }
-      return { 
-        success: false, 
-        exitCode: result.exitCode, 
-        error: `Agent implementation failed: ${result.errorType || 'unknown'}` 
+      return {
+        success: false,
+        exitCode: result.exitCode,
+        error: `Agent implementation failed: ${result.errorType || "unknown"}`,
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  IMPLEMENT dispatch error: ${msg}`);
-      return { success: false, exitCode: 1, error: `IMPLEMENT dispatch failed: ${msg}` };
+      return {
+        success: false,
+        exitCode: 1,
+        error: `IMPLEMENT dispatch failed: ${msg}`,
+      };
     }
   }
 
@@ -229,7 +259,11 @@ export class ShipOrchestrator {
       });
 
       if (result.exitCode !== 0) {
-        return { success: false, exitCode: result.exitCode, error: `CODE_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}` };
+        return {
+          success: false,
+          exitCode: result.exitCode,
+          error: `CODE_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
+        };
       }
 
       // Determine verdict from task state — the review agent re-opens tasks on NO-GO.
@@ -244,7 +278,11 @@ export class ShipOrchestrator {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  CODE_REVIEW dispatch error: ${msg}`);
-      return { success: false, exitCode: 1, error: `CODE_REVIEW dispatch failed: ${msg}` };
+      return {
+        success: false,
+        exitCode: 1,
+        error: `CODE_REVIEW dispatch failed: ${msg}`,
+      };
     }
   }
 
@@ -258,7 +296,11 @@ export class ShipOrchestrator {
       });
 
       if (result.exitCode !== 0) {
-        return { success: false, exitCode: result.exitCode, error: `UAT_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}` };
+        return {
+          success: false,
+          exitCode: result.exitCode,
+          error: `UAT_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
+        };
       }
 
       const verdict = this.readVerdict();
@@ -271,7 +313,11 @@ export class ShipOrchestrator {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  UAT_REVIEW dispatch error: ${msg}`);
-      return { success: false, exitCode: 1, error: `UAT_REVIEW dispatch failed: ${msg}` };
+      return {
+        success: false,
+        exitCode: 1,
+        error: `UAT_REVIEW dispatch failed: ${msg}`,
+      };
     }
   }
 
@@ -281,13 +327,21 @@ export class ShipOrchestrator {
    * Otherwise → GO.
    */
   private readVerdict(): "GO" | "NO-GO" {
-    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
     if (!phase) return "NO-GO";
     const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
     if (openTasks.length > 0) {
-      console.log(`  ${openTasks.length} task(s) re-opened: ${openTasks.map(t => t.id).join(", ")}`);
+      console.log(
+        `  ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
+      );
       return "NO-GO";
     }
     return "GO";
@@ -310,16 +364,24 @@ export class ShipOrchestrator {
         openTasks: [], // Should populate from state
         lastVerdict: "NO-GO",
         iterationTimeline: [], // Should populate
-        digest: assembleDigest(path.join(this.config.cwd, ".runs", `${this.config.featureId}_p${this.config.phaseId.replace("phase-", "")}.events`)),
+        digest: assembleDigest(
+          path.join(
+            this.config.cwd,
+            ".runs",
+            `${this.config.featureId}_p${this.config.phaseId.replace("phase-", "")}.events`,
+          ),
+        ),
       };
-      return { 
-        success: false, 
-        exitCode: 1, 
-        error: `Circuit breaker tripped after ${this.config.maxIterations} iterations` 
+      return {
+        success: false,
+        exitCode: 1,
+        error: `Circuit breaker tripped after ${this.config.maxIterations} iterations`,
       };
     }
 
-    console.log(`NO-GO in ${stage}, looping back to IMPLEMENT (Iteration ${this.state.iteration})`);
+    console.log(
+      `NO-GO in ${stage}, looping back to IMPLEMENT (Iteration ${this.state.iteration})`,
+    );
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
   }
 }

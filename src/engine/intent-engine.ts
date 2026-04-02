@@ -106,19 +106,26 @@ export class IntentEngine {
             cwd: absoluteRoot,
           });
           return { action: "RUN_COMMAND", status: "success", stdout, stderr };
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const execError = error as {
+            message?: string;
+            stdout?: string;
+            stderr?: string;
+          };
           return {
             action: "RUN_COMMAND",
             status: "failure",
-            error: error.message,
-            stdout: error.stdout,
-            stderr: error.stderr,
+            error: execError.message,
+            stdout: execError.stdout,
+            stderr: execError.stderr,
           };
         }
       }
 
-      default:
-        throw new Error(`Unknown intent action: ${(intent as any).action}`);
+      default: {
+        const _exhaustive: never = intent.action;
+        throw new Error(`Unknown intent action: ${_exhaustive}`);
+      }
     }
   }
 }

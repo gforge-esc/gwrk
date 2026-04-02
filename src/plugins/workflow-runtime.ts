@@ -15,10 +15,77 @@ export interface WorkflowOptions {
   model?: string;
 }
 
+/** Typed output contract for workflow agent responses. */
+export interface WorkflowOutput {
+  summary?: string;
+  intents: JsonIntent[];
+}
+
 export interface WorkflowResult {
   summary: string;
   intents: JsonIntent[];
   summaries: IntentSummary[];
+}
+
+/**
+ * Validates a parsed object against a JSON Schema (lightweight structural check).
+ * Checks required properties exist and top-level types match.
+ * Throws if validation fails with a descriptive error.
+ */
+function validateAgainstSchema(
+  data: unknown,
+  schema: Record<string, unknown>,
+  context: string,
+): void {
+  if (typeof data !== "object" || data === null) {
+    throw new Error(
+      `Workflow output failed schema constraint: ${context} — expected object, got ${typeof data}.`,
+    );
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  // Check "type" constraint
+  if (schema.type && schema.type !== "object") {
+    throw new Error(
+      `Workflow output failed schema constraint: ${context} — expected type '${schema.type}'.`,
+    );
+  }
+
+  // Check "required" properties
+  if (Array.isArray(schema.required)) {
+    for (const prop of schema.required) {
+      if (!(prop in obj)) {
+        throw new Error(
+          `Workflow output failed schema constraint: ${context} — missing required property '${prop}'.`,
+        );
+      }
+    }
+  }
+
+  // Check "properties" type constraints
+  if (schema.properties && typeof schema.properties === "object") {
+    const propSchemas = schema.properties as Record<
+      string,
+      Record<string, unknown>
+    >;
+    for (const [key, propSchema] of Object.entries(propSchemas)) {
+      if (key in obj && propSchema.type) {
+        const value = obj[key];
+        const expectedType = propSchema.type;
+        if (expectedType === "array" && !Array.isArray(value)) {
+          throw new Error(
+            `Workflow output failed schema constraint: ${context} — property '${key}' expected array, got ${typeof value}.`,
+          );
+        }
+        if (expectedType === "string" && typeof value !== "string") {
+          throw new Error(
+            `Workflow output failed schema constraint: ${context} — property '${key}' expected string, got ${typeof value}.`,
+          );
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -83,7 +150,7 @@ export class WorkflowRuntime {
     let basePrompt = "";
     try {
       basePrompt = await readFile(promptPath, "utf-8");
-    } catch (e) {
+    } catch {
       // If PROMPT.md is missing, we use a default or fail
       // For core workflows, PROMPT.md is expected.
       throw new Error(
@@ -110,7 +177,8 @@ export class WorkflowRuntime {
       );
     }
 
-    let parsedOutput: any;
+    // Parse the JSON output from the agent
+    let parsedOutput: unknown;
     try {
       // Find the JSON block in the agent's output
       const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
@@ -121,20 +189,29 @@ export class WorkflowRuntime {
       }
       parsedOutput = JSON.parse(jsonMatch[0]);
     } catch (e) {
+      if (e instanceof Error && e.message.includes("schema constraint")) {
+        throw e;
+      }
       throw new Error(
         `Workflow output failed schema constraint: Expected JSON object. Original output: ${result.stdout}`,
       );
     }
 
+    // FR-L25-001: Validate output against manifest.outputSchema
+    validateAgainstSchema(parsedOutput, manifest.outputSchema, name);
+
+    // Type-narrow after schema validation
+    const output = parsedOutput as WorkflowOutput;
+
     // Basic validation: must have intents and summary
-    if (!parsedOutput.intents || !Array.isArray(parsedOutput.intents)) {
+    if (!output.intents || !Array.isArray(output.intents)) {
       throw new Error(
         `Workflow output failed schema constraint: Missing 'intents' array.`,
       );
     }
 
     // FR-L25-001: Catch direct FS edit attempts in RUN_COMMAND
-    for (const intent of parsedOutput.intents) {
+    for (const intent of output.intents) {
       if (intent.action === "RUN_COMMAND" && intent.command) {
         if (
           intent.command.includes(">") ||
@@ -150,13 +227,13 @@ export class WorkflowRuntime {
 
     // Execute the intents natively
     const summaries = await this.intentEngine.executeIntents(
-      parsedOutput.intents,
+      output.intents,
       projectRoot,
     );
 
     return {
-      summary: parsedOutput.summary || "Workflow completed successfully.",
-      intents: parsedOutput.intents,
+      summary: output.summary || "Workflow completed successfully.",
+      intents: output.intents,
       summaries,
     };
   }
