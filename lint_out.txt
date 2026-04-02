@@ -1,0 +1,300 @@
+
+> @gwrk/cli@0.1.0 lint /Users/gonzo/Code/gwrk
+> biome check
+
+/Users/gonzo/Code/gwrk/tests/server-github.test.ts:16:6 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    14 │     githubWebhookSecret: "test-secret",
+    15 │   },
+  > 16 │ } as any;
+       │      ^^^
+    17 │ 
+    18 │ const projectRoot = "/tmp/gwrk-test";
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/tests/server-github.test.ts:25:37 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    23 │     await githubWebhookPlugin(
+    24 │       server,
+  > 25 │       { config: { server: {} } } as any,
+       │                                     ^^^
+    26 │       projectRoot,
+    27 │     );
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/tests/server-github.test.ts:87:37 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    85 │     await githubWebhookPlugin(
+    86 │       server,
+  > 87 │       { config: { server: {} } } as any,
+       │                                     ^^^
+    88 │       projectRoot,
+    89 │     );
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/tests/server-github.test.ts:110:37 lint/suspicious/noExplicitAny ━━━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    108 │     await githubWebhookPlugin(
+    109 │       server,
+  > 110 │       { config: { server: {} } } as any,
+        │                                     ^^^
+    111 │       projectRoot,
+    112 │     );
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/tests/harvest-e2e.test.ts:13:33 lint/suspicious/noExplicitAny ━━━━━━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    11 │     const server = fastify();
+    12 │     await githubWebhookPlugin(server, {
+  > 13 │       config: { server: {} } as any,
+       │                                 ^^^
+    14 │       projectRoot: process.cwd(),
+    15 │     });
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/plugin.ts:59:7 lint/suspicious/noImplicitAnyLet ━━━━━━━━━━
+
+  × This variable implicitly has the any type.
+  
+    57 │   const targetDir = path.join(globalDir, targetTypeDir, manifest.name);
+    58 │ 
+  > 59 │   let stats;
+       │       ^^^^^
+    60 │   try {
+    61 │     stats = await fs.stat(targetDir);
+  
+  i Variable declarations without type annotation and initialization implicitly have the any type. Declare a type or initialize the variable with some value.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/plugin.ts:62:15 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    60 │   try {
+    61 │     stats = await fs.stat(targetDir);
+  > 62 │   } catch (e: any) {
+       │               ^^^
+    63 │     // Ignore ENOENT
+    64 │   }
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/plugin.ts:108:25 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    106 │   if (
+    107 │     plugin.manifest.type === "skill" &&
+  > 108 │     (plugin.manifest as any).tier === "atomic" &&
+        │                         ^^^
+    109 │     !options.force
+    110 │   ) {
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/plugin.ts:113:45 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    111 │     const allPlugins = await loader.listPlugins();
+    112 │     const dependents = allPlugins.filter(
+  > 113 │       (p) => p.tier === "compound" && (p as any).composes?.includes(name),
+        │                                             ^^^
+    114 │     );
+    115 │     if (dependents.length > 0) {
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/005-parallel-dispatch.e2e.test.ts:109:43 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    107 │     );
+    108 │     expect(
+  > 109 │       taskState.phases[0].tasks.every((t: any) => t.status === "completed"),
+        │                                           ^^^
+    110 │     ).toBe(true);
+    111 │   });
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/specify.ts:37:13 lint/style/noParameterAssign ━━━━━━━━━━
+
+  × Reassigning a function parameter is confusing.
+  
+    35 │           const stdinContent = await readStdin();
+    36 │           if (stdinContent.trim()) {
+  > 37 │             prompt = stdinContent.trim();
+       │             ^^^^^^
+    38 │           }
+    39 │         }
+  
+  i The parameter is declared here:
+  
+    18 │     async (
+    19 │       feature: string,
+  > 20 │       prompt: string | undefined,
+       │       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    21 │       opts: { refs?: string },
+    22 │     ) => {
+  
+  i Use a local variable instead.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/skill.ts:27:17 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    25 │   );
+    26 │ 
+  > 27 │   const skills: any[] = [];
+       │                 ^^^
+    28 │   const visited = new Set<string>();
+    29 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/skill.ts:198:21 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    196 │           process.stderr.write(result.stderr);
+    197 │         }
+  > 198 │       } catch (err: any) {
+        │                     ^^^
+    199 │         if (err.stderr) {
+    200 │           process.stderr.write(err.stderr);
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/commands/ship.ts:498:28 lint/style/noNonNullAssertion ━━━━━━━━━━
+
+  × Forbidden non-null assertion.
+  
+    497 │             for (const res of results) {
+  > 498 │               const task = phaseData.tasks.find((t) => t.id === res.id)!;
+        │                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    499 │               if (res.status === "completed") {
+    500 │                 task.status = "completed";
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/engine/quota.ts:16:26 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    14 │ export async function quotaProbe(backend: AgentBackend): Promise<QuotaStatus> {
+    15 │   // If the backend has a native checkQuota method, use it.
+  > 16 │   if (typeof (backend as any).checkQuota === "function") {
+       │                          ^^^
+    17 │     return await (backend as any).checkQuota();
+    18 │   }
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/engine/quota.ts:17:30 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    15 │   // If the backend has a native checkQuota method, use it.
+    16 │   if (typeof (backend as any).checkQuota === "function") {
+  > 17 │     return await (backend as any).checkQuota();
+       │                              ^^^
+    18 │   }
+    19 │ 
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/engine/harvest.ts:178:19 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    176 │         }
+    177 │       }
+  > 178 │     } catch (err: any) {
+        │                   ^^^
+    179 │       console.warn(
+    180 │         `Failed to calculate compression for ${featureId}: ${err.message}`,
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/engine/router.ts:73:45 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    72 │   // 3. Task-specific mapping from config
+  > 73 │   const taskBackendName = (config.agents as any)[task.type];
+       │                                             ^^^
+    74 │   if (taskBackendName) {
+    75 │     try {
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/plugins/loader.test.ts:11:15 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    10 │ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engine", () => {
+  > 11 │   let loader: any;
+       │               ^^^
+    12 │   const mockGlobalDir = path.join(os.homedir(), ".gwrk", "plugins");
+    13 │   const mockProjectDir = "/work/project";
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+/Users/gonzo/Code/gwrk/.runs/sandboxes/999-test-parallel-T001-038e6baa/src/plugins/loader.test.ts:25:50 lint/suspicious/noExplicitAny ━━━━━━━━━━
+
+  × Unexpected any. Specify a different type.
+  
+    24 │   it("US-002: scans global plugins directory and resolves by type (FR-003)", async () => {
+  > 25 │     vi.mocked(fs.readdir).mockImplementation((p: any) => {
+       │                                                  ^^^
+    26 │       if (p.endsWith("skills")) return Promise.resolve(["narrative"] as any);
+    27 │       if (p.endsWith("agents")) return Promise.resolve(["gemini"] as any);
+  
+  i any disables many type checking rules. Its use should be avoided.
+  
+
+Skipped 1 suggested fixes.
+If you wish to apply the suggested (unsafe) fixes, use the command biome check --fix --unsafe
+
+The number of diagnostics exceeds the number allowed by Biome.
+Diagnostics not shown: 1501.
+Checked 3366 files in 946ms. No fixes applied.
+Found 1521 errors.
+check ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Some errors were emitted while running checks.
+  
+
+ ELIFECYCLE  Command failed with exit code 1.
