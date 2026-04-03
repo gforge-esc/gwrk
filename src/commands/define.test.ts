@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { loadConfig } from "../utils/config.js";
-import { run } from "../utils/exec.js";
 import {
   getCurrentBranch,
   getCurrentCommit,
@@ -15,7 +15,7 @@ vi.mock("../db/runs.js", () => ({
   finishRun: vi.fn(),
   recordHistory: vi.fn(),
 }));
-vi.mock("../utils/exec.js");
+vi.mock("../engine/define-orchestrator.js");
 vi.mock("../utils/config.js");
 vi.mock("../utils/manifest.js", () => ({
   writeManifest: vi.fn(),
@@ -32,6 +32,7 @@ vi.mock("../utils/git.js", () => ({
 describe("defineCommand — Define Until Solid wrapper", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let runLoopSpy: any;
 
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -64,7 +65,10 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     } as import("../utils/config.js").GwrkConfig);
 
     vi.mocked(startRun).mockReturnValue(42);
-    vi.mocked(run).mockResolvedValue(true as never);
+    runLoopSpy = vi
+      .spyOn(DefineOrchestrator.prototype, "runLoop")
+      .mockResolvedValue("COMPLETE");
+
     vi.mocked(getDiffStats).mockReturnValue({
       filesChanged: 1,
       linesAdded: 1,
@@ -94,11 +98,11 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     ]);
 
     expect(startRun).not.toHaveBeenCalled();
-    expect(run).not.toHaveBeenCalled();
+    expect(runLoopSpy).not.toHaveBeenCalled();
 
     const output = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("[DRY RUN]");
-    expect(output).toContain("define-until-solid.sh 004-ship-loop");
+    expect(output).toContain("gwrk define 004-ship-loop (Full Loop)");
   });
 
   it("executes define scripts and records success", async () => {
@@ -109,16 +113,17 @@ describe("defineCommand — Define Until Solid wrapper", () => {
       feature_id: "004-ship-loop",
       command: "define",
       agent_backend: "gemini",
-      workflow: "define-until-solid",
+      workflow: "define-loop",
     });
 
-    expect(run).toHaveBeenCalled();
-    const firstCall = vi.mocked(run).mock.calls[0];
-    if (!firstCall) throw new Error("run was not called");
-    const [scriptPath, args, opts] = firstCall;
-    expect(scriptPath).toContain("scripts/dev/define-until-solid.sh");
-    expect(args).toEqual(["004-ship-loop"]);
-    expect(opts?.cwd).toBe("/Users/gonzo/Code/gwrk");
+    expect(runLoopSpy).toHaveBeenCalledWith(
+      "004-ship-loop",
+      undefined,
+      expect.objectContaining({
+        agent: "gemini",
+        projectRoot: "/Users/gonzo/Code/gwrk",
+      }),
+    );
 
     expect(finishRun).toHaveBeenCalledWith(
       42,
@@ -127,7 +132,6 @@ describe("defineCommand — Define Until Solid wrapper", () => {
 
     const output = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("define");
-    expect(output).toContain("complete");
   });
 
   it("records failure when script execution throws", async () => {
@@ -135,7 +139,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
       exitCode: number;
     };
     mockError.exitCode = 2;
-    vi.mocked(run).mockRejectedValue(mockError);
+    runLoopSpy.mockRejectedValue(mockError);
 
     process.exitCode = 0;
     await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);

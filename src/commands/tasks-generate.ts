@@ -401,7 +401,11 @@ export const tasksGenerateCommand = new Command("tasks")
                 const agentDurationS = Math.round(
                   (Date.now() - agentStart) / 1000,
                 );
-                const err = error as { exitCode?: number; message?: string; logPath?: string };
+                const err = error as {
+                  exitCode?: number;
+                  message?: string;
+                  logPath?: string;
+                };
                 const exitCode = err.exitCode || 1;
                 finishRun(runId, {
                   exit_code: exitCode,

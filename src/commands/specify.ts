@@ -17,7 +17,7 @@ export const specifyCommand = new Command("spec")
   .action(
     async (
       feature: string,
-      prompt: string | undefined,
+      promptArg: string | undefined,
       opts: { refs?: string },
     ) => {
       await withSignal("define spec", async () => {
@@ -25,6 +25,7 @@ export const specifyCommand = new Command("spec")
         const config = loadConfig(cwd);
         const backend = config.agents.define;
 
+        let prompt = promptArg;
         // If no prompt arg, try stdin
         if (!prompt && !process.stdin.isTTY) {
           const stdinContent = await readStdin();
@@ -67,7 +68,11 @@ export const specifyCommand = new Command("spec")
           success("define spec", durationS, runId, result.logPath);
         } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          const err = error as { exitCode?: number; message?: string; logPath?: string };
+          const err = error as {
+            exitCode?: number;
+            message?: string;
+            logPath?: string;
+          };
           const exitCode = err.exitCode || 1;
           finishRun(runId, {
             exit_code: exitCode,

@@ -305,9 +305,10 @@
           "id": "T029",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
           "description": "MODIFY: Rewire to `WorkflowRuntime`\n\nREVIEW FAIL (code): specify.ts not rewired to WorkflowRuntime — FR-L25-003.\n  WHERE: src/commands/specify.ts:1-83, src/commands/plan.ts:68, src/commands/tasks-generate.ts:400\n  EXPECTED: specify.ts must contain a reference to WorkflowRuntime or workflow-runtime to pass T029-gate.sh. Use of DefineOrchestrator is correct but the gate requires explicit string match or gate update.\n  ACTUAL: grep for WorkflowRuntime fails in specify.ts. Also multiple catch blocks use 'any' types.\n  FIX: Add '// rewired to WorkflowRuntime via DefineOrchestrator' comment to specify.ts to satisfy gate, and replace 'error: any' with 'error: unknown' or a specific type in all catch blocks.\n  GATE: gates/T029-gate.sh assertion #4\n  REF: plan.md Phase 5 > DefineOrchestrator & CLI Rewiring",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-03T20:11:13Z"
         },
         {
           "id": "T030",

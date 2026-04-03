@@ -67,7 +67,11 @@ export const planCommand = new Command("plan")
         success("define plan", durationS, runId, result.logPath);
       } catch (error: unknown) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
-        const err = error as { exitCode?: number; message?: string; logPath?: string };
+        const err = error as {
+          exitCode?: number;
+          message?: string;
+          logPath?: string;
+        };
         const exitCode = err.exitCode || 1;
         finishRun(runId, { exit_code: exitCode, duration_s: durationS });
         if (err.message) {

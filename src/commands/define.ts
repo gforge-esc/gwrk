@@ -1,8 +1,8 @@
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { loadConfig } from "../utils/config.js";
-import { run } from "../utils/exec.js";
 import { banner, dryRun as dryRunFmt, fail, success } from "../utils/format.js";
 import {
   getCurrentBranch,
@@ -28,9 +28,6 @@ import { CommandError, withSignal } from "../utils/signal.js";
  *   gwrk define plan <feature>                Create implementation plan
  *   gwrk define tasks <feature>               Decompose plan → tasks + gates
  *   gwrk define tests <feature> <phase>       Generate RED tests for a phase
- *
- * Internal definition stages (NOT exposed as subcommands):
- *   analyze, checklist — run inside the definition loop automatically
  */
 export const defineCommand = new Command("define")
   .description("Define: spec → plan → tasks → analyze")
@@ -50,15 +47,12 @@ export const defineCommand = new Command("define")
           );
         }
 
-        // Bare `gwrk define <feature>` = full definition loop
         const cwd = process.cwd();
-        const scriptPath = path.join(cwd, "scripts/dev/define-until-solid.sh");
-
         const config = loadConfig(cwd);
         const backend = config.agents.define;
 
         if (opts.dryRun) {
-          dryRunFmt(`${scriptPath} ${feature}`);
+          dryRunFmt(`gwrk define ${feature} (Full Loop)`);
           return;
         }
 
@@ -67,7 +61,7 @@ export const defineCommand = new Command("define")
           feature_id: feature,
           command: "define",
           agent_backend: backend,
-          workflow: "define-until-solid",
+          workflow: "define-loop",
         });
 
         banner("define", {
@@ -79,31 +73,26 @@ export const defineCommand = new Command("define")
 
         const startTime = Date.now();
         let exitCode = 0;
+        let logPath: string | undefined;
 
         try {
-          const envVars: Record<string, string> = {
-            ...(process.env as Record<string, string>),
-            APPROVAL_MODE: "yolo",
-          };
-          if (opts.refs) envVars.GWRK_REFS = opts.refs;
-
-          await run(scriptPath, [feature], {
-            cwd,
-            env: envVars,
-            stdio: "inherit",
+          const orchestrator = new DefineOrchestrator();
+          await orchestrator.runLoop(feature, undefined, {
+            agent: backend,
+            projectRoot: cwd,
+            refs: opts.refs,
           });
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });
           success("define", durationS, runId);
-        } catch (error) {
+        } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          exitCode =
-            error instanceof Error && "exitCode" in error
-              ? (error as { exitCode: number }).exitCode
-              : 1;
+          const err = error as { exitCode?: number; logPath?: string };
+          exitCode = err.exitCode || 1;
+          logPath = err.logPath;
           finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-          fail("define", exitCode, durationS, runId);
+          fail("define", exitCode, durationS, runId, logPath);
         }
 
         // Write Execution Manifest (ADR-003)
