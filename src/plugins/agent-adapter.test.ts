@@ -25,7 +25,10 @@ describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", 
     });
 
     it("passes --model when GEMINI_MODEL is set in env", async () => {
-      const task = { prompt: "test", env: { GEMINI_MODEL: "gemini-3-flash-preview" } };
+      const task = {
+        prompt: "test",
+        env: { GEMINI_MODEL: "gemini-3-flash-preview" },
+      };
       const dispatch = await adapter.dispatch(task);
       expect(dispatch.args).toContain("--model");
       expect(dispatch.args).toContain("gemini-3-flash-preview");

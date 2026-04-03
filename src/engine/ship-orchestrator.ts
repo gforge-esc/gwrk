@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { type TaskDispatch, type TaskResult, dispatchToAgent } from "../utils/agent.js";
+import {
+  type TaskDispatch,
+  type TaskResult,
+  dispatchToAgent,
+} from "../utils/agent.js";
 import { runGate } from "../utils/gate-runner.js";
 import { createBranch, isDirty, syncBranch } from "../utils/git.js";
 import { assembleDigest } from "../utils/manifest.js";

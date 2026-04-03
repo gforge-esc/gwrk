@@ -2,10 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-import { dispatchAgent } from "../utils/agent.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
-import { loadTaskState } from "../utils/state.js";
 
 import {
   getCurrentBranch,
@@ -86,71 +85,82 @@ export const testsGenerateCommand = new Command("tests")
           Agent: backend,
         });
         const startTime = Date.now();
-
-        const result = await dispatchAgent({
-          backend,
-          workflowPath: ".agents/workflows/gwrk-define-tests.md",
-          featureDir: relativeFeatureDir,
-          contextPath: paddedPhase, // Optional: restricts context to specific phase if provided
-        });
-
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        const exitCode = result.exitCode;
+        const orchestrator = new DefineOrchestrator();
 
         try {
-          const finishedAt = new Date().toISOString();
-          const gitCommit = getCurrentCommit(projectRoot);
-          const gitBranch = getCurrentBranch(projectRoot);
-          const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
-            projectRoot,
-            `${gitCommit}~1`,
-          );
-
-          const manifestPhase = paddedPhase || "all";
-          const manifestId = generateRunId(startedAt, "define", manifestPhase);
-
-          writeManifest(featureDir, {
-            runId: manifestId,
+          const result = await orchestrator.executeDefineTests(
             feature,
-            phase: manifestPhase,
-            command: "define tests",
-            agent: backend,
-            model: "unknown",
-            startedAt,
-            finishedAt,
-            durationS,
-            exitCode,
-            attempt: 1,
-            filesChanged,
-            linesAdded,
-            linesDeleted,
-            gitCommit,
-            gitBranch,
-            digest: [],
-          });
-        } catch (err) {
-          console.warn(`Warning: Could not write execution manifest: ${err}`);
-        }
-
-        if (exitCode !== 0) {
-          finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-          fail("define tests", exitCode, durationS, runId, result.logPath);
-          process.exitCode = exitCode;
-          return;
-        }
-
-        // Output contract: gap-matrix.md must exist after successful run
-        if (!fs.existsSync(gapMatrixPath)) {
-          finishRun(runId, { exit_code: 2, duration_s: durationS });
-          fail("define tests", 2, durationS, runId, result.logPath);
-          throw new CommandError(
-            `Agent exited 0 but did not produce gap-matrix.md. Output contract violated. See ${result.logPath}`,
-            2,
+            paddedPhase,
+            {
+              agent: backend,
+              projectRoot,
+            },
           );
-        }
 
-        finishRun(runId, { exit_code: 0, duration_s: durationS });
-        success("define tests", durationS, runId, result.logPath);
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          const exitCode = 0; // Success if no throw
+
+          try {
+            const finishedAt = new Date().toISOString();
+            const gitCommit = getCurrentCommit(projectRoot);
+            const gitBranch = getCurrentBranch(projectRoot);
+            const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+              projectRoot,
+              `${gitCommit}~1`,
+            );
+
+            const manifestPhase = paddedPhase || "all";
+            const manifestId = generateRunId(
+              startedAt,
+              "define",
+              manifestPhase,
+            );
+
+            writeManifest(featureDir, {
+              runId: manifestId,
+              feature,
+              phase: manifestPhase,
+              command: "define tests",
+              agent: backend,
+              model: "unknown",
+              startedAt,
+              finishedAt,
+              durationS,
+              exitCode,
+              attempt: 1,
+              filesChanged,
+              linesAdded,
+              linesDeleted,
+              gitCommit,
+              gitBranch,
+              digest: [],
+            });
+          } catch (err) {
+            console.warn(`Warning: Could not write execution manifest: ${err}`);
+          }
+
+          // Output contract: gap-matrix.md must exist after successful run
+          if (!fs.existsSync(gapMatrixPath)) {
+            finishRun(runId, { exit_code: 2, duration_s: durationS });
+            fail("define tests", 2, durationS, runId, result.logPath);
+            throw new CommandError(
+              `Agent exited 0 but did not produce gap-matrix.md. Output contract violated. See ${result.logPath}`,
+              2,
+            );
+          }
+
+          finishRun(runId, { exit_code: 0, duration_s: durationS });
+          success("define tests", durationS, runId, result.logPath);
+        } catch (error: any) {
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          const exitCode = error.exitCode || 1;
+          finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+          if (error.message) {
+            blocked(error.message);
+          }
+          fail("define tests", exitCode, durationS, runId, error.logPath);
+          process.exitCode = exitCode;
+        }
       });
     },
   );

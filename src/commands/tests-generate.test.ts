@@ -1,21 +1,17 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { testsGenerateCommand } from "./tests-generate.js";
-import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import * as agentModule from "../utils/agent.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { loadConfig } from "../utils/config.js";
 
-vi.mock("../utils/agent.js", () => ({
-  dispatchAgent: vi.fn(),
+vi.mock("../engine/define-orchestrator.js", () => ({
+  DefineOrchestrator: vi.fn(),
 }));
 
 vi.mock("../utils/config.js", () => ({
-  loadConfig: vi.fn().mockReturnValue({
-    agents: {
-      define: "mock-agent",
-    },
-  }),
+  loadConfig: vi.fn(),
 }));
 
 vi.mock("../db/runs.js", () => ({
@@ -26,10 +22,26 @@ vi.mock("../db/runs.js", () => ({
 describe("testsGenerateCommand", () => {
   let tempDir: string;
   let featureDir: string;
-  let program: Command;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    vi.mocked(loadConfig).mockReturnValue({
+      agents: {
+        define: "mock-agent",
+        implement: "gemini",
+      },
+    } as any);
+
+    vi.mocked(DefineOrchestrator).mockReturnValue({
+      executeDefineTests: vi.fn().mockResolvedValue({
+        summary: "Success",
+        intents: [],
+        summaries: [],
+        logPath: "mock.log",
+      }),
+    } as any);
+
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tests-gen-test-"));
     featureDir = path.join(tempDir, "specs", "test-feature");
     fs.mkdirSync(featureDir, { recursive: true });
@@ -38,77 +50,77 @@ describe("testsGenerateCommand", () => {
     fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
     fs.writeFileSync(path.join(featureDir, "plan.md"), "# Plan");
 
-    program = new Command();
-    program.addCommand(testsGenerateCommand);
-
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit(${code})`);
+    });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
   });
 
   it("should dispatch the define-tests workflow", async () => {
-    vi.mocked(agentModule.dispatchAgent).mockImplementation(async () => {
-      // Simulate agent producing gap-matrix.md (output contract)
-      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
-      return { exitCode: 0, logPath: "mock.log", stdout: "", stderr: "" };
-    });
+    await testsGenerateCommand.parseAsync(["test-feature"], { from: "user" });
 
-    await program.parseAsync(["node", "test", "tests", "test-feature"]);
-
-    expect(agentModule.dispatchAgent).toHaveBeenCalledWith(expect.objectContaining({
-      workflowPath: ".agents/workflows/gwrk-define-tests.md",
-      featureDir: "specs/test-feature",
-    }));
+    const instance = vi.mocked(DefineOrchestrator).mock.results[0].value;
+    
+    expect(instance.executeDefineTests).toHaveBeenCalledWith(
+      "test-feature",
+      undefined,
+      expect.objectContaining({
+        agent: "mock-agent",
+      }),
+    );
   });
 
   it("should pass phase context when --phase is provided", async () => {
-    vi.mocked(agentModule.dispatchAgent).mockImplementation(async () => {
-      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
-      return { exitCode: 0, logPath: "mock.log", stdout: "", stderr: "" };
-    });
+    await testsGenerateCommand.parseAsync(["test-feature", "--phase", "1"], { from: "user" });
 
-    await program.parseAsync(["node", "test", "tests", "test-feature", "--phase", "1"]);
+    const instance = vi.mocked(DefineOrchestrator).mock.results[0].value;
 
-    expect(agentModule.dispatchAgent).toHaveBeenCalledWith(expect.objectContaining({
-      contextPath: "p01",
-    }));
+    expect(instance.executeDefineTests).toHaveBeenCalledWith(
+      "test-feature",
+      "p01",
+      expect.anything(),
+    );
   });
 
   it("should fail if spec.md is missing", async () => {
     fs.unlinkSync(path.join(featureDir, "spec.md"));
     process.exitCode = 0;
 
-    try {
-      await program.parseAsync(["node", "test", "tests", "test-feature"]);
-    } catch {
-      // Expected
-    }
+    await testsGenerateCommand.parseAsync(["test-feature"], { from: "user" });
 
     expect(process.exitCode).toBe(1);
-    expect(agentModule.dispatchAgent).not.toHaveBeenCalled();
+    expect(DefineOrchestrator).not.toHaveBeenCalled();
   });
 
   it("should refuse to re-run when gap-matrix.md exists without --force", async () => {
     fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
     process.exitCode = 0;
 
-    try {
-      await program.parseAsync(["node", "test", "tests", "test-feature"]);
-    } catch {
-      // Expected
-    }
+    await testsGenerateCommand.parseAsync(["test-feature"], { from: "user" });
 
     expect(process.exitCode).toBe(1);
-    expect(agentModule.dispatchAgent).not.toHaveBeenCalled();
+    expect(DefineOrchestrator).not.toHaveBeenCalled();
   });
 
   it("should allow re-run with --force when gap-matrix.md exists", async () => {
     fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
-    vi.mocked(agentModule.dispatchAgent).mockImplementation(async () => {
-      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File | Updated |\n");
-      return { exitCode: 0, logPath: "mock.log", stdout: "", stderr: "" };
-    });
+    
+    vi.mocked(DefineOrchestrator).mockReturnValueOnce({
+      executeDefineTests: vi.fn().mockImplementation(async () => {
+        fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File | Updated |\n");
+        return { summary: "Success", intents: [], summaries: [], logPath: "mock.log" };
+      }),
+    } as any);
 
-    await program.parseAsync(["node", "test", "tests", "test-feature", "--force"]);
+    await testsGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
 
-    expect(agentModule.dispatchAgent).toHaveBeenCalled();
+    expect(DefineOrchestrator).toHaveBeenCalled();
   });
 });

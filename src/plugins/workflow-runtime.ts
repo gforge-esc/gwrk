@@ -25,6 +25,7 @@ export interface WorkflowResult {
   summary: string;
   intents: JsonIntent[];
   summaries: IntentSummary[];
+  logPath?: string;
 }
 
 /**
@@ -235,6 +236,7 @@ export class WorkflowRuntime {
       summary: output.summary || "Workflow completed successfully.",
       intents: output.intents,
       summaries,
+      logPath: result.logPath,
     };
   }
 }
