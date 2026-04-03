@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { dispatchToAgent } from "../utils/agent.js";
+import { type TaskDispatch, type TaskResult, dispatchToAgent } from "../utils/agent.js";
 import { runGate } from "../utils/gate-runner.js";
 import { createBranch, isDirty, syncBranch } from "../utils/git.js";
 import { assembleDigest } from "../utils/manifest.js";
@@ -222,7 +222,7 @@ export class ShipOrchestrator {
     try {
       const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n${tasksToDispatch.map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n")}`;
 
-      const result = await dispatchToAgent({
+      const result = await this.dispatchWithFailback({
         agent: this.config.backend,
         workflow: ".agents/workflows/gwrk-implement.md",
         featureDir: `specs/${this.config.featureId}`,
@@ -251,7 +251,7 @@ export class ShipOrchestrator {
   private async stageCodeReview(): Promise<StageResult> {
     // FR-005: dispatch review
     try {
-      const result = await dispatchToAgent({
+      const result = await this.dispatchWithFailback({
         agent: this.config.backend,
         workflow: ".agents/workflows/gwrk-review-code.md",
         featureDir: `specs/${this.config.featureId}`,
@@ -288,7 +288,7 @@ export class ShipOrchestrator {
 
   private async stageUatReview(): Promise<StageResult> {
     try {
-      const result = await dispatchToAgent({
+      const result = await this.dispatchWithFailback({
         agent: this.config.backend,
         workflow: ".agents/workflows/gwrk-review-uat.md",
         featureDir: `specs/${this.config.featureId}`,
@@ -383,5 +383,48 @@ export class ShipOrchestrator {
       `NO-GO in ${stage}, looping back to IMPLEMENT (Iteration ${this.state.iteration})`,
     );
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
+  }
+
+  /**
+   * Dispatch with graceful model failback (stopgap until F005/F008).
+   * Tries primary model, then falls back through the chain on non-zero exit.
+   * Only applies when backend is "gemini" and failbackModels are configured.
+   */
+  private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
+    const isGemini = this.config.backend === "gemini";
+    const primaryModel = this.config.geminiModel;
+    const failbackModels = this.config.geminiFailbackModels ?? [];
+
+    // Build the model chain: [primary, ...failbacks]
+    const modelChain: (string | undefined)[] = isGemini
+      ? [primaryModel, ...failbackModels]
+      : [undefined]; // Non-gemini backends: single attempt, no model override
+
+    let lastResult: TaskResult | undefined;
+
+    for (const model of modelChain) {
+      const env: Record<string, string> = { ...task.env };
+      if (model) {
+        env.GEMINI_MODEL = model;
+        console.log(`  ▸ Dispatching with model: ${model}`);
+      }
+
+      lastResult = await dispatchToAgent({ ...task, env });
+
+      if (lastResult.exitCode === 0) {
+        return lastResult;
+      }
+
+      // Only failback if there are more models to try
+      const currentIndex = modelChain.indexOf(model);
+      if (currentIndex < modelChain.length - 1) {
+        const nextModel = modelChain[currentIndex + 1];
+        console.log(
+          `  ⚠ Model ${model ?? "default"} failed (exit ${lastResult.exitCode}), failing back to ${nextModel}`,
+        );
+      }
+    }
+
+    return lastResult as TaskResult;
   }
 }

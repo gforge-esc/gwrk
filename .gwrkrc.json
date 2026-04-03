@@ -10,7 +10,11 @@
   },
   "agents": {
     "define": "gemini",
-    "implement": "gemini"
+    "implement": "gemini",
+    "gemini": {
+      "model": "gemini-3-flash-preview",
+      "failbackModels": ["gemini-2.5-flash", "gemini-3.1-pro-preview"]
+    }
   },
   "server": {
     "port": 18790,

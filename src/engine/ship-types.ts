@@ -58,6 +58,8 @@ export interface ShipRunConfig {
   ciTimeout: number; // minutes
   cwd: string;
   dryRun?: boolean;
+  geminiModel?: string;
+  geminiFailbackModels?: string[];
 }
 
 /**

@@ -29,6 +29,12 @@ export const GwrkConfigSchema = z.object({
     define: AgentBackendSchema,
     implement: AgentBackendSchema,
     fallbackOrder: z.array(AgentBackendSchema).optional(),
+    gemini: z
+      .object({
+        model: z.string().optional(),
+        failbackModels: z.array(z.string()).optional(),
+      })
+      .optional(),
   }),
   server: z
     .object({
