@@ -16,7 +16,7 @@ export const TaskSchema = z.object({
   description: z.string(),
   status: TaskStatusSchema,
   gateScript: z.string(),
-  completedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().optional().nullable().transform(v => v ?? undefined),
   classification: z
     .enum(["greenfield", "change", "refactor", "noop"])
     .optional(),
