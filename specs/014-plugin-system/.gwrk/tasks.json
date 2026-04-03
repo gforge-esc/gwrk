@@ -304,8 +304,8 @@
         {
           "id": "T029",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
-          "description": "MODIFY: Rewire to `WorkflowRuntime`",
-          "status": "completed",
+          "description": "MODIFY: Rewire to `WorkflowRuntime`\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — Expected: Workflow resolves and agent is dispatched. Actual: ENOENT failure in dispatchAgent (src/utils/agent.ts:99) because it tries to read the workflow name as a path in the project root. See spec.md > US-011. Fix: Ensure dispatchAgent skips readFileSync if it's a plugin name (already reported in T017).",
+          "status": "open",
           "gateScript": "gates/T029-gate.sh",
           "completedAt": "2026-03-31T19:35:34.273Z",
           "classification": "greenfield"
@@ -322,8 +322,8 @@
         {
           "id": "T031",
           "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
-          "description": "MODIFY: E2E verification",
-          "status": "completed",
+          "description": "MODIFY: E2E verification\n\nREVIEW FAIL (uat): US-011/US-013 - E2E verification failed. Expected: Commands work in a clean project without .agents folder. Actual: Failed with ENOENT. The existing vitest tests likely mock WorkflowRuntime.executeWorkflow, hiding this bug in the agent dispatch layer. Fix: Add integration tests that don't mock the dispatch boundary.",
+          "status": "open",
           "gateScript": "gates/T031-gate.sh",
           "completedAt": "2026-03-31T19:35:34.299Z",
           "classification": "greenfield"
