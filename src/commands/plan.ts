@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-import { dispatchAgent } from "../utils/agent.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
@@ -16,25 +16,6 @@ export const planCommand = new Command("plan")
   .action(async (feature, opts: { refs?: string }) => {
     await withSignal("define plan", async () => {
       const projectRoot = process.cwd();
-      const relativeFeatureDir = path.join("specs", feature);
-      const featureDir = path.join(projectRoot, relativeFeatureDir);
-      const specPath = path.join(featureDir, "spec.md");
-
-      if (!fs.existsSync(specPath)) {
-        blocked("spec.md not found");
-        throw new CommandError(
-          "spec.md not found. Run 'gwrk define spec <feature>' to create. See 'gwrk project specs' for available features.",
-          1,
-        );
-      }
-
-      const specContent = fs.readFileSync(specPath, "utf-8");
-      if (/^>?\s*\*\*Status:\*\*\s*Stub/im.test(specContent)) {
-        const msg = `Spec ${feature} is marked as a Stub. Run 'gwrk define spec ${feature}' first.`;
-        blocked(msg);
-        throw new CommandError(msg, 1);
-      }
-
       const config = loadConfig(projectRoot);
       const backend = config.agents.define;
 
@@ -72,24 +53,28 @@ export const planCommand = new Command("plan")
       });
 
       const startTime = Date.now();
+      const orchestrator = new DefineOrchestrator();
 
-      const result = await dispatchAgent({
-        backend,
-        workflowPath: ".agents/workflows/gwrk-plan.md",
-        featureDir: relativeFeatureDir,
-        contextPath,
-      });
+      try {
+        const result = await orchestrator.executePlan(feature, {
+          agent: backend,
+          projectRoot,
+          refs: opts.refs,
+        });
 
-      const durationS = Math.round((Date.now() - startTime) / 1000);
-
-      if (result.exitCode !== 0) {
-        finishRun(runId, { exit_code: result.exitCode, duration_s: durationS });
-        fail("define plan", result.exitCode, durationS, runId, result.logPath);
-        process.exitCode = result.exitCode;
-        return;
+        const durationS = Math.round((Date.now() - startTime) / 1000);
+        finishRun(runId, { exit_code: 0, duration_s: durationS });
+        success("define plan", durationS, runId, result.logPath);
+      } catch (error: unknown) {
+        const durationS = Math.round((Date.now() - startTime) / 1000);
+        const err = error as { exitCode?: number; message?: string; logPath?: string };
+        const exitCode = err.exitCode || 1;
+        finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+        if (err.message) {
+          blocked(err.message);
+        }
+        fail("define plan", exitCode, durationS, runId, err.logPath);
+        process.exitCode = exitCode;
       }
-
-      finishRun(runId, { exit_code: 0, duration_s: durationS });
-      success("define plan", durationS, runId, result.logPath);
     });
   });
