@@ -1,6 +1,6 @@
 {
   "project": {
-    "name": "gwrk"
+    "name": "test-temp"
   },
   "agents": {
     "define": "gemini",

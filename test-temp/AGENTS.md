@@ -1,9 +1,4 @@
-# GEMINI Project Context
-
-This project is managed by gwrk.
-Rules: .agents/rules/
-Workflows: .agents/workflows/
-
+# Codex Context
 
 <!-- gwrk:begin -->
 # GWRK Project Context

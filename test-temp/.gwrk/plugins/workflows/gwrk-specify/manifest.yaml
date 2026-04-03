@@ -1,0 +1,5 @@
+type: workflow
+name: gwrk-specify
+version: 0.1.0-override
+description: OVERRIDE for gwrk-specify
+outputSchema: {}
