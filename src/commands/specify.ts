@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-import { dispatchAgent } from "../utils/agent.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
@@ -24,6 +24,7 @@ export const specifyCommand = new Command("spec")
         const cwd = process.cwd();
         const config = loadConfig(cwd);
         const backend = config.agents.define;
+        const runtime = new WorkflowRuntime();
 
         // Detect mode: rework (spec exists) vs new (spec doesn't exist)
         const specDir = path.join(cwd, "specs", feature);
@@ -31,10 +32,11 @@ export const specifyCommand = new Command("spec")
         const isRework = fs.existsSync(specFile);
 
         // If no prompt arg, try stdin
-        if (!prompt && !process.stdin.isTTY) {
+        let effectiveInput = prompt;
+        if (!effectiveInput && !process.stdin.isTTY) {
           const stdinContent = await readStdin();
           if (stdinContent.trim()) {
-            prompt = stdinContent.trim();
+            effectiveInput = stdinContent.trim();
           }
         }
 
@@ -42,10 +44,10 @@ export const specifyCommand = new Command("spec")
         let effectivePrompt: string;
         if (isRework) {
           const reworkInstructions =
-            prompt || "Review and refine this specification";
+            effectiveInput || "Review and refine this specification";
           effectivePrompt = `REWORK existing spec for feature ${feature}.\n\nExisting spec: specs/${feature}/spec.md\n\nRework instructions: ${reworkInstructions}`;
         } else {
-          if (!prompt) {
+          if (!effectiveInput) {
             throw new CommandError(
               `No spec found at specs/${feature}/spec.md and no prompt provided.\nFor new specs, provide a description:\n  gwrk define spec ${feature} "Description of the feature"`,
               1,
@@ -84,33 +86,30 @@ export const specifyCommand = new Command("spec")
 
         const startTime = Date.now();
 
-        const result = await dispatchAgent({
-          backend,
-          workflowPath: ".agents/workflows/gwrk-specify.md",
-          featureDir: specDir,
-          prompt: effectivePrompt,
-        });
+        try {
+          const result = await runtime.executeWorkflow(
+            "gwrk-specify",
+            effectivePrompt,
+            {
+              agent: backend,
+              projectRoot: cwd,
+            },
+          );
 
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-
-        if (result.exitCode !== 0) {
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          finishRun(runId, { exit_code: 0, duration_s: durationS });
+          success("define spec", durationS, runId);
+        } catch (err: unknown) {
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          const msg = err instanceof Error ? err.message : String(err);
           finishRun(runId, {
-            exit_code: result.exitCode,
+            exit_code: 1,
             duration_s: durationS,
           });
-          fail(
-            "define spec",
-            result.exitCode,
-            durationS,
-            runId,
-            result.logPath,
-          );
-          process.exitCode = result.exitCode;
-          return;
+          fail("define spec", 1, durationS, runId);
+          console.error(msg);
+          process.exitCode = 1;
         }
-
-        finishRun(runId, { exit_code: 0, duration_s: durationS });
-        success("define spec", durationS, runId, result.logPath);
       });
     },
   );

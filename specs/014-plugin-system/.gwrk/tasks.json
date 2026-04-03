@@ -162,8 +162,8 @@
         {
           "id": "T017",
           "title": "Implement src/utils/agent.ts",
-          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(",
-          "status": "completed",
+          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — RE-OPENED by Code Review.\n  WHERE: src/utils/agent.ts:99\n  EXPECTED: dispatchAgent should resolve built-in workflows without failing with ENOENT.\n  ACTUAL: dispatchAgent fails to read the workflow file as a path if it's a plugin name.\n  FIX: Update dispatchAgent in src/utils/agent.ts to skip fs.readFileSync if it's not a path, and rely on the adapter's dispatch() to provide the prompt.\n  GATE: US-011 integration test\n  REF: plan.md Phase 5 > US-011",
+          "status": "open",
           "gateScript": "gates/T017-gate.sh",
           "classification": "greenfield"
         },
@@ -296,7 +296,7 @@
           "id": "T028",
           "title": "Implement src/engine/define-orchestrator.ts",
           "description": "NEW: TS state machine for spec->plan->tasks loop",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T028-gate.sh",
           "completedAt": "2026-03-31T19:35:31.497Z",
           "classification": "greenfield"
@@ -305,7 +305,7 @@
           "id": "T029",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
           "description": "MODIFY: Rewire to `WorkflowRuntime`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh",
           "completedAt": "2026-03-31T19:35:34.273Z",
           "classification": "greenfield"
@@ -314,7 +314,7 @@
           "id": "T030",
           "title": "Implement src/engine/define-orchestrator.test.ts",
           "description": "NEW: Verify state transitions",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T030-gate.sh",
           "completedAt": "2026-03-31T19:35:34.287Z",
           "classification": "greenfield"
@@ -323,7 +323,7 @@
           "id": "T031",
           "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
           "description": "MODIFY: E2E verification",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T031-gate.sh",
           "completedAt": "2026-03-31T19:35:34.299Z",
           "classification": "greenfield"
@@ -332,7 +332,7 @@
           "id": "T032",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh",
           "classification": "noop"
         },
@@ -340,14 +340,14 @@
           "id": "T047",
           "title": "Implement src/plugins/migrate.test.ts",
           "description": "NEW: Verify manifest generation from frontmatter",
-          "status": "cancelled",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh"
         },
         {
           "id": "T048",
           "title": "Implement src/plugins/seed.test.ts",
           "description": "NEW: Verify ~40 atomic skills generated",
-          "status": "cancelled",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh"
         }
       ],
