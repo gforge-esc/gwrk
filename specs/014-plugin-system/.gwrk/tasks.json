@@ -295,7 +295,7 @@
         {
           "id": "T028",
           "title": "Implement src/engine/define-orchestrator.ts",
-          "description": "NEW: TS state machine for spec->plan->tasks loop\n\nREVIEW FAIL (code): Incomplete implementation — FR-L25-004.\n  WHERE: src/engine/define-orchestrator.ts:55-80\n  EXPECTED: Orchestrator must manage the full loop: SPECIFY -> PLAN -> PLAN_TO_TASKS -> ANALYZE -> DEFINE_TESTS.\n  ACTUAL: Implementation starts at PLAN_TO_TASKS, skipping SPECIFY and PLAN stages.\n  FIX: Add stageSpecify and stagePlan methods; update initializeState to start at SPECIFY and getNextStage to include them in the sequence.\n  REF: plan.md Phase 5 > DefineOrchestrator\n\nREVIEW FAIL (uat): US-013 - DefineOrchestrator Loop — Still starts at PLAN_TO_TASKS. Fix: Implement stageSpecify and stagePlan; start initializeState at SPECIFY. REF: DefineOrchestrator implementation required by spec.",
+          "description": "NEW: TS state machine for spec->plan->tasks loop\n\nREVIEW FAIL (code): Incomplete implementation — FR-L25-004.\n  WHERE: src/engine/define-orchestrator.ts:55-80\n  EXPECTED: Orchestrator must manage the full loop: SPECIFY -> PLAN -> PLAN_TO_TASKS -> ANALYZE -> DEFINE_TESTS.\n  ACTUAL: Implementation starts at PLAN_TO_TASKS, skipping SPECIFY and PLAN stages.\n  FIX: Add stageSpecify and stagePlan methods; update initializeState to start at SPECIFY and getNextStage to include them in the sequence.\n  REF: plan.md Phase 5 > DefineOrchestrator\n\nREVIEW FAIL (uat): US-013 - DefineOrchestrator Loop — Still starts at PLAN_TO_TASKS. Fix: Implement stageSpecify and stagePlan; start initializeState at SPECIFY. Also improve error handling for invalid tasks.json to avoid crashing. REF: DefineOrchestrator implementation required by spec.",
           "status": "open",
           "gateScript": "gates/T028-gate.sh",
           "completedAt": "2026-04-04T03:57:59.522Z",
@@ -304,8 +304,8 @@
         {
           "id": "T029",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
-          "description": "MODIFY: Rewire to WorkflowRuntime\n\nREVIEW FAIL (code): Logic bug in effectivePrompt — FR-L25-003.\n  WHERE: src/commands/specify.ts:61\n  EXPECTED: effectivePrompt for NEW specs should use description: ${effectiveInput}\n  ACTUAL: It uses description: ${prompt}, which is undefined if input comes from stdin.\n  FIX: Change ${prompt} to ${effectiveInput} in the NEW spec template on line 61.\n  REF: spec.md > US-011",
-          "status": "completed",
+          "description": "MODIFY: Rewire to WorkflowRuntime\n\nREVIEW FAIL (code): Logic bug in effectivePrompt — FR-L25-003.\n  WHERE: src/commands/specify.ts:61\n  EXPECTED: effectivePrompt for NEW specs should use description: ${effectiveInput}\n  ACTUAL: It uses description: ${prompt}, which is undefined if input comes from stdin.\n  FIX: Change ${prompt} to ${effectiveInput} in the NEW spec template on line 61.\n  REF: spec.md > US-011\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — RE-OPENED because the system loop fails when using these commands in sequence due to invalid tasks.json generation by the underlying workflow. Fix: Ensure gwrk-plan-to-tasks (Phase 4) is updated to match TaskStateSchema.",
+          "status": "open",
           "gateScript": "gates/T029-gate.sh",
           "completedAt": "2026-04-04T03:57:59.526Z",
           "classification": "greenfield"
@@ -331,7 +331,7 @@
         {
           "id": "T032",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (uat): Test strategy is incomplete — Integration tests are using mocks and missing coverage for initial stages. Fix: Implement actual E2E verification of the define loop.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (uat): Test strategy is incomplete — Integration tests are using mocks and missing coverage for initial stages. Fix: Implement actual E2E verification of the define loop and ensure gwrk-analyze built-in is resolvable.",
           "status": "open",
           "gateScript": "gates/T032-gate.sh",
           "classification": "noop"
