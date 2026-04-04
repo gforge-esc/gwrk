@@ -96,14 +96,11 @@ export async function dispatchAgent(
   const projectRoot = process.cwd();
   const executionRoot = opts.workDir || projectRoot;
   const workflowFile = path.resolve(projectRoot, opts.workflowPath);
-  // Workflow content is only used for legacy logging — plugin-based workflows
-  // resolved via the adapter don't need the file to exist on disk.
-  let workflowContent = "";
-  try {
-    workflowContent = fs.readFileSync(workflowFile, "utf-8");
-  } catch {
-    // Plugin-based workflow — file doesn't exist on disk, which is fine.
-  }
+  // Guard: plugin-based workflows (e.g. "gwrk-specify") are names, not file paths.
+  // workflowContent is passed to buildCommand as _workflowContent (unused).
+  const workflowContent = fs.existsSync(workflowFile)
+    ? fs.readFileSync(workflowFile, "utf-8")
+    : "";
   const { command, args, stdin } = await buildCommand(opts, workflowContent);
 
   // Set up .runs/ log file

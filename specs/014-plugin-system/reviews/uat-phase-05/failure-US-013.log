@@ -1,0 +1,19 @@
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk define[0m  [2m17:42:33[0m
+  [2mFeature   [0m test-feature
+  [2mAgent     [0m gemini
+  [2mRun ID    [0m 3813
+[2m──────────────────────────────────────────────────[0m
+
+Starting Define Loop: PLAN_TO_TASKS
+Stage: PLAN_TO_TASKS
+Stage PLAN_TO_TASKS failed: ENOENT: no such file or directory, open '/Users/gonzo/Code/gwrk/test-project-uat/gwrk-plan-to-tasks'
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [31m✗ [1mdefine[0m [31mfailed (exit 1)[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m│[0m  Run:      [2m#3813[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+[exit:1 | 72ms]

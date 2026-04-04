@@ -1,10 +1,10 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-// rewired to WorkflowRuntime via DefineOrchestrator
-import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
-import { banner, blocked, fail, success } from "../utils/format.js";
+import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
@@ -17,22 +17,52 @@ export const specifyCommand = new Command("spec")
   .action(
     async (
       feature: string,
-      promptArg: string | undefined,
+      prompt: string | undefined,
       opts: { refs?: string },
     ) => {
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
         const config = loadConfig(cwd);
         const backend = config.agents.define;
+        const runtime = new WorkflowRuntime();
 
-        let prompt = promptArg;
+        // Detect mode: rework (spec exists) vs new (spec doesn't exist)
+        const specDir = path.join(cwd, "specs", feature);
+        const specFile = path.join(specDir, "spec.md");
+        const isRework = fs.existsSync(specFile);
+
         // If no prompt arg, try stdin
-        if (!prompt && !process.stdin.isTTY) {
+        let effectiveInput = prompt;
+        if (!effectiveInput && !process.stdin.isTTY) {
           const stdinContent = await readStdin();
           if (stdinContent.trim()) {
-            prompt = stdinContent.trim();
+            effectiveInput = stdinContent.trim();
           }
         }
+
+        // Build the effective prompt
+        let effectivePrompt: string;
+        if (isRework) {
+          const reworkInstructions =
+            effectiveInput || "Review and refine this specification";
+          effectivePrompt = `REWORK existing spec for feature ${feature}.\n\nExisting spec: specs/${feature}/spec.md\n\nRework instructions: ${reworkInstructions}`;
+        } else {
+          if (!effectiveInput) {
+            throw new CommandError(
+              `No spec found at specs/${feature}/spec.md and no prompt provided.\nFor new specs, provide a description:\n  gwrk define spec ${feature} "Description of the feature"`,
+              1,
+            );
+          }
+          effectivePrompt = `Create a NEW spec for feature ${feature}.\n\nDescription: ${prompt}`;
+        }
+
+        // Append refs context if provided
+        if (opts.refs && fs.existsSync(opts.refs)) {
+          const refsContent = fs.readFileSync(opts.refs, "utf-8");
+          effectivePrompt += `\n\nReference document (${opts.refs}):\n${refsContent}`;
+        }
+
+        const mode = isRework ? "rework" : "new";
 
         const runId = startRun({
           feature_id: feature,
@@ -44,6 +74,7 @@ export const specifyCommand = new Command("spec")
         banner("define spec", {
           Agent: backend,
           Feature: feature,
+          Mode: mode,
           ...(prompt
             ? {
                 Prompt: `"${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}"`,
@@ -54,35 +85,30 @@ export const specifyCommand = new Command("spec")
         });
 
         const startTime = Date.now();
-        const orchestrator = new DefineOrchestrator();
 
         try {
-          const result = await orchestrator.executeSpecify(feature, prompt, {
-            agent: backend,
-            projectRoot: cwd,
-            refs: opts.refs,
-          });
+          const result = await runtime.executeWorkflow(
+            "gwrk-specify",
+            effectivePrompt,
+            {
+              agent: backend,
+              projectRoot: cwd,
+            },
+          );
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });
-          success("define spec", durationS, runId, result.logPath);
-        } catch (error: unknown) {
+          success("define spec", durationS, runId);
+        } catch (err: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          const err = error as {
-            exitCode?: number;
-            message?: string;
-            logPath?: string;
-          };
-          const exitCode = err.exitCode || 1;
+          const msg = err instanceof Error ? err.message : String(err);
           finishRun(runId, {
-            exit_code: exitCode,
+            exit_code: 1,
             duration_s: durationS,
           });
-          if (err.message) {
-            blocked(err.message);
-          }
-          fail("define spec", exitCode, durationS, runId, err.logPath);
-          process.exitCode = exitCode;
+          fail("define spec", 1, durationS, runId);
+          console.error(msg);
+          process.exitCode = 1;
         }
       });
     },

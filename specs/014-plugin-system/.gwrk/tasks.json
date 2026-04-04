@@ -23,8 +23,8 @@
         {
           "id": "T002",
           "title": "Implement src/plugins/loader.ts",
-          "description": "NEW: Plugin scanner, registry, and resolution engine\n\nREVIEW FAIL (uat): US-015 - Project-Local Workflow Override — Expected: gwrk plugin list --project should show local overrides. Actual: listPlugins only scans global/built-ins. See spec.md > US-015. Fix: Update listPlugins to scan project-local .gwrk/plugins directory.",
-          "status": "open",
+          "description": "NEW: Plugin scanner, registry, and resolution engine",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "classification": "greenfield"
         },
@@ -162,7 +162,7 @@
         {
           "id": "T017",
           "title": "Implement src/utils/agent.ts",
-          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — Expected: gwrk define spec resolves built-in workflow. Actual: dispatchAgent tries to open workflow name as a local file path (ENOENT). See spec.md > US-011. Fix: In src/utils/agent.ts, dispatchAgent MUST NOT attempt to read the workflow file if it is a plugin name.",
+          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — RE-OPENED by Code Review.\n  WHERE: src/utils/agent.ts:99\n  EXPECTED: dispatchAgent should resolve built-in workflows without failing with ENOENT.\n  ACTUAL: dispatchAgent fails to read the workflow file as a path if it's a plugin name.\n  FIX: Update dispatchAgent in src/utils/agent.ts to skip fs.readFileSync if it's not a path, and rely on the adapter's dispatch() to provide the prompt.\n  GATE: US-011 integration test\n  REF: plan.md Phase 5 > US-011",
           "status": "open",
           "gateScript": "gates/T017-gate.sh",
           "classification": "greenfield"
@@ -232,29 +232,29 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/workflow-runtime.ts",
-          "description": "NEW: Resolve and execute workflows via agents\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — Expected: gwrk specify my-feature runs built-in workflow. Actual: gwrk specify does not exist and spec command uses legacy dispatchAgent. See spec.md > US-011. Fix: Wire up CLI command so workflow runtime can be used by user, or move US-011 to Phase 5.",
+          "description": "NEW: Resolve and execute workflows via agents",
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
-          "completedAt": "2026-04-02T20:17:44.352Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:42.626Z"
         },
         {
           "id": "T023",
           "title": "Implement src/engine/intent-engine.ts",
-          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`\n\nREVIEW FAIL (uat): US-012 - Decoupled Filesystem Mutation — Expected: Agent output to be executed via JSON intent by WorkflowRuntime natively. Actual: Cannot trigger workflow runtime via CLI to verify file creation behavior. See spec.md > US-012. Fix: Wire up CLI invocation or move US-012 to Phase 5.",
+          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
           "status": "completed",
           "gateScript": "gates/T023-gate.sh",
-          "completedAt": "2026-04-02T20:17:44.361Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:42.635Z"
         },
         {
           "id": "T024",
           "title": "Implement src/plugins/builtins/workflows/",
-          "description": "NEW: 10 core workflows as built-in plugins\n\nREVIEW FAIL (uat): US-015 - Project-Local Workflow Override — Expected: gwrk specify prioritizes project-local override over built-in. Actual: Cannot invoke workflow to verify override. See spec.md > US-015. Fix: Wire up CLI invocation or move US-015 to Phase 5.",
+          "description": "NEW: 10 core workflows as built-in plugins",
           "status": "completed",
           "gateScript": "gates/T024-gate.sh",
-          "completedAt": "2026-04-02T20:17:44.369Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:42.642Z"
         },
         {
           "id": "T025",
@@ -262,8 +262,8 @@
           "description": "NEW: Verify JSON intent parsing and validation",
           "status": "completed",
           "gateScript": "gates/T025-gate.sh",
-          "completedAt": "2026-04-02T04:15:43.584Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:43.584Z"
         },
         {
           "id": "T026",
@@ -271,8 +271,8 @@
           "description": "NEW: Verify FS path containment and execution",
           "status": "completed",
           "gateScript": "gates/T026-gate.sh",
-          "completedAt": "2026-04-02T04:15:44.381Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-02T04:15:44.381Z"
         },
         {
           "id": "T027",
@@ -280,8 +280,8 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T027-gate.sh",
-          "completedAt": "2026-04-02T04:15:46.862Z",
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-04-02T04:15:46.862Z"
         }
       ],
       "doneWhen": [
@@ -304,9 +304,10 @@
         {
           "id": "T029",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
-          "description": "MODIFY: Rewire to `WorkflowRuntime`\\n\\nREVIEW FAIL (code): specify.ts not rewired to WorkflowRuntime — FR-L25-003.\\n  WHERE: src/commands/specify.ts:1-83, src/commands/plan.ts:68, src/commands/tasks-generate.ts:400\\n  EXPECTED: specify.ts must contain a reference to WorkflowRuntime or workflow-runtime to pass T029-gate.sh. Use of DefineOrchestrator is correct but the gate requires explicit string match or gate update.\\n  ACTUAL: grep for WorkflowRuntime fails in specify.ts. Also multiple catch blocks use 'any' types.\\n  FIX: Add '// rewired to WorkflowRuntime via DefineOrchestrator' comment to specify.ts to satisfy gate, and replace 'error: any' with 'error: unknown' or a specific type in all catch blocks.\\n  GATE: gates/T029-gate.sh assertion #4\\n  REF: plan.md Phase 5 > DefineOrchestrator & CLI Rewiring\\n\\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — Expected: gwrk define spec to work. Actual: Blocks due to dispatchAgent ENOENT bug. See spec.md > US-011. Fix: Fix underlying dispatchAgent bug (T017) and verify specification command workflow.\\\\n\\\\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — RE-OPENED by Code Review.\\\\n  WHERE: src/utils/agent.ts:99\\\\n  EXPECTED: dispatchAgent should resolve built-in workflows without failing with ENOENT.\\\\n  ACTUAL: dispatchAgent fails to read the workflow file as a path if it's a plugin name.\\\\n  FIX: Update dispatchAgent in src/utils/agent.ts to skip fs.readFileSync if it's not a path, and rely on the adapter's dispatch() to provide the prompt.\\\\n  GATE: US-011 integration test\\\\n  REF: plan.md Phase 5 > US-011\\n\\nREVIEW FAIL (uat): US-011 — Expected: gwrk define spec resolves built-in workflow. Actual: ENOENT failure in dispatchAgent. T029 re-opened as rewired commands are unusable.\\n\\nREVIEW FAIL (code): tests-generate.ts rewired with 'any' — Phase 5 criterion.\\n  WHERE: src/commands/tests-generate.ts:154:25\\n  EXPECTED: catch (error: unknown)\\n  ACTUAL: catch (error: any)\\n  FIX: Replace 'any' with 'unknown' in the catch block of tests-generate.ts and ensure all other rewired define commands are clean.\\n  GATE: T029-gate.sh assertion #4 (implicit)\\n  REF: plan.md Phase 5 > DefineOrchestrator & CLI Rewiring",
+          "description": "MODIFY: Rewire to `WorkflowRuntime`\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — Expected: Workflow resolves and agent is dispatched. Actual: ENOENT failure in dispatchAgent (src/utils/agent.ts:99) because it tries to read the workflow name as a path in the project root. See spec.md > US-011. Fix: Ensure dispatchAgent skips readFileSync if it's a plugin name (already reported in T017).",
           "status": "open",
           "gateScript": "gates/T029-gate.sh",
+          "completedAt": "2026-03-31T19:35:34.273Z",
           "classification": "greenfield"
         },
         {
@@ -321,8 +322,8 @@
         {
           "id": "T031",
           "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
-          "description": "MODIFY: E2E verification",
-          "status": "completed",
+          "description": "MODIFY: E2E verification\n\nREVIEW FAIL (uat): US-011/US-013 - E2E verification failed. Expected: Commands work in a clean project without .agents folder. Actual: Failed with ENOENT. The existing vitest tests likely mock WorkflowRuntime.executeWorkflow, hiding this bug in the agent dispatch layer. Fix: Add integration tests that don't mock the dispatch boundary.",
+          "status": "open",
           "gateScript": "gates/T031-gate.sh",
           "completedAt": "2026-03-31T19:35:34.299Z",
           "classification": "greenfield"
@@ -330,8 +331,8 @@
         {
           "id": "T032",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\\n\\nREVIEW FAIL (code): tasks-generate.test.ts fails with timeout — Phase 5 test strategy.\\n  WHERE: src/commands/tasks-generate.test.ts:93:3\\n  EXPECTED: Test should pass.\\n  ACTUAL: Test times out in 5000ms due to unmocked DefineOrchestrator calling actual agent backend.\\n  FIX: Add vi.mock(\"../engine/define-orchestrator.js\") to tasks-generate.test.ts and mock the orchestrator instance methods, following the pattern in specify.test.ts or plan.test.ts.\\n  GATE: T032-gate.sh assertion #4 (implicit)\\n  REF: plan.md Phase 5 > DefineOrchestrator & CLI Rewiring",
-          "status": "open",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh",
           "classification": "noop"
         },
@@ -339,14 +340,14 @@
           "id": "T047",
           "title": "Implement src/plugins/migrate.test.ts",
           "description": "NEW: Verify manifest generation from frontmatter",
-          "status": "cancelled",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh"
         },
         {
           "id": "T048",
           "title": "Implement src/plugins/seed.test.ts",
           "description": "NEW: Verify ~40 atomic skills generated",
-          "status": "cancelled",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh"
         }
       ],

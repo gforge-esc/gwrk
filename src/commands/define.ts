@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { loadConfig } from "../utils/config.js";
+import { run } from "../utils/exec.js";
 import { banner, dryRun as dryRunFmt, fail, success } from "../utils/format.js";
 import {
   getCurrentBranch,
@@ -28,6 +29,9 @@ import { CommandError, withSignal } from "../utils/signal.js";
  *   gwrk define plan <feature>                Create implementation plan
  *   gwrk define tasks <feature>               Decompose plan → tasks + gates
  *   gwrk define tests <feature> <phase>       Generate RED tests for a phase
+ *
+ * Internal definition stages (NOT exposed as subcommands):
+ *   analyze, checklist — run inside the definition loop automatically
  */
 export const defineCommand = new Command("define")
   .description("Define: spec → plan → tasks → analyze")
@@ -51,17 +55,12 @@ export const defineCommand = new Command("define")
         const config = loadConfig(cwd);
         const backend = config.agents.define;
 
-        if (opts.dryRun) {
-          dryRunFmt(`gwrk define ${feature} (Full Loop)`);
-          return;
-        }
-
         const startedAt = new Date().toISOString();
         const runId = startRun({
           feature_id: feature,
           command: "define",
           agent_backend: backend,
-          workflow: "define-loop",
+          workflow: "define-orchestrator",
         });
 
         banner("define", {
@@ -73,26 +72,31 @@ export const defineCommand = new Command("define")
 
         const startTime = Date.now();
         let exitCode = 0;
-        let logPath: string | undefined;
 
         try {
-          const orchestrator = new DefineOrchestrator();
-          await orchestrator.runLoop(feature, undefined, {
-            agent: backend,
-            projectRoot: cwd,
+          const orchestrator = new DefineOrchestrator({
+            featureId: feature,
+            backend,
+            cwd,
             refs: opts.refs,
+            dryRun: opts.dryRun,
           });
 
+          exitCode = await orchestrator.run();
+
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          finishRun(runId, { exit_code: 0, duration_s: durationS });
-          success("define", durationS, runId);
+          finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+          if (exitCode === 0) {
+            success("define", durationS, runId);
+          } else {
+            fail("define", exitCode, durationS, runId);
+          }
         } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          const err = error as { exitCode?: number; logPath?: string };
-          exitCode = err.exitCode || 1;
-          logPath = err.logPath;
+          exitCode = 1;
           finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-          fail("define", exitCode, durationS, runId, logPath);
+          fail("define", exitCode, durationS, runId);
+          console.error(error);
         }
 
         // Write Execution Manifest (ADR-003)

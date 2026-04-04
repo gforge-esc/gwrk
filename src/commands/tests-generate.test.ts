@@ -1,17 +1,27 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { testsGenerateCommand } from "./tests-generate.js";
+import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { DefineOrchestrator } from "../engine/define-orchestrator.js";
-import { loadConfig } from "../utils/config.js";
 
-vi.mock("../engine/define-orchestrator.js", () => ({
-  DefineOrchestrator: vi.fn(),
+const { mockExecuteWorkflow, mockLoadConfig } = vi.hoisted(() => ({
+  mockExecuteWorkflow: vi.fn(),
+  mockLoadConfig: vi.fn().mockReturnValue({
+    agents: {
+      define: "mock-agent",
+    },
+  }),
+}));
+
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: class {
+    executeWorkflow = mockExecuteWorkflow;
+  },
 }));
 
 vi.mock("../utils/config.js", () => ({
-  loadConfig: vi.fn(),
+  loadConfig: mockLoadConfig,
 }));
 
 vi.mock("../db/runs.js", () => ({
@@ -22,26 +32,10 @@ vi.mock("../db/runs.js", () => ({
 describe("testsGenerateCommand", () => {
   let tempDir: string;
   let featureDir: string;
+  let program: Command;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    vi.mocked(loadConfig).mockReturnValue({
-      agents: {
-        define: "mock-agent",
-        implement: "gemini",
-      },
-    } as any);
-
-    vi.mocked(DefineOrchestrator).mockReturnValue({
-      executeDefineTests: vi.fn().mockResolvedValue({
-        summary: "Success",
-        intents: [],
-        summaries: [],
-        logPath: "mock.log",
-      }),
-    } as any);
-
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tests-gen-test-"));
     featureDir = path.join(tempDir, "specs", "test-feature");
     fs.mkdirSync(featureDir, { recursive: true });
@@ -50,11 +44,24 @@ describe("testsGenerateCommand", () => {
     fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
     fs.writeFileSync(path.join(featureDir, "plan.md"), "# Plan");
 
+    program = new Command();
+    program.addCommand(testsGenerateCommand);
+
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
+
+    mockExecuteWorkflow.mockReset();
+    mockExecuteWorkflow.mockResolvedValue({
+      summary: "Success",
+      intents: [],
+      summaries: [],
+    });
+    
+    mockLoadConfig.mockReturnValue({
+      agents: {
+        define: "mock-agent",
+      },
     });
   });
 
@@ -64,28 +71,36 @@ describe("testsGenerateCommand", () => {
   });
 
   it("should dispatch the define-tests workflow", async () => {
-    await testsGenerateCommand.parseAsync(["test-feature"], { from: "user" });
+    mockExecuteWorkflow.mockImplementation(async () => {
+      // Simulate agent producing gap-matrix.md (output contract)
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+      return { summary: "Success", intents: [], summaries: [] };
+    });
 
-    const instance = vi.mocked(DefineOrchestrator).mock.results[0].value;
-    
-    expect(instance.executeDefineTests).toHaveBeenCalledWith(
-      "test-feature",
-      undefined,
+    await program.parseAsync(["node", "test", "tests", "test-feature"]);
+
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-define-tests",
+      expect.stringContaining("Generate tests for feature test-feature"),
       expect.objectContaining({
         agent: "mock-agent",
-      }),
+        projectRoot: tempDir,
+      })
     );
   });
 
   it("should pass phase context when --phase is provided", async () => {
-    await testsGenerateCommand.parseAsync(["test-feature", "--phase", "1"], { from: "user" });
+    mockExecuteWorkflow.mockImplementation(async () => {
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+      return { summary: "Success", intents: [], summaries: [] };
+    });
 
-    const instance = vi.mocked(DefineOrchestrator).mock.results[0].value;
+    await program.parseAsync(["node", "test", "tests", "test-feature", "--phase", "1"]);
 
-    expect(instance.executeDefineTests).toHaveBeenCalledWith(
-      "test-feature",
-      "p01",
-      expect.anything(),
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-define-tests",
+      expect.stringContaining("phase p01"),
+      expect.anything()
     );
   });
 
@@ -93,34 +108,39 @@ describe("testsGenerateCommand", () => {
     fs.unlinkSync(path.join(featureDir, "spec.md"));
     process.exitCode = 0;
 
-    await testsGenerateCommand.parseAsync(["test-feature"], { from: "user" });
+    try {
+      await program.parseAsync(["node", "test", "tests", "test-feature"]);
+    } catch {
+      // Expected
+    }
 
     expect(process.exitCode).toBe(1);
-    expect(DefineOrchestrator).not.toHaveBeenCalled();
+    expect(mockExecuteWorkflow).not.toHaveBeenCalled();
   });
 
   it("should refuse to re-run when gap-matrix.md exists without --force", async () => {
     fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
     process.exitCode = 0;
 
-    await testsGenerateCommand.parseAsync(["test-feature"], { from: "user" });
+    try {
+      await program.parseAsync(["node", "test", "tests", "test-feature"]);
+    } catch {
+      // Expected
+    }
 
     expect(process.exitCode).toBe(1);
-    expect(DefineOrchestrator).not.toHaveBeenCalled();
+    expect(mockExecuteWorkflow).not.toHaveBeenCalled();
   });
 
   it("should allow re-run with --force when gap-matrix.md exists", async () => {
     fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
-    
-    vi.mocked(DefineOrchestrator).mockReturnValueOnce({
-      executeDefineTests: vi.fn().mockImplementation(async () => {
-        fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File | Updated |\n");
-        return { summary: "Success", intents: [], summaries: [], logPath: "mock.log" };
-      }),
-    } as any);
+    mockExecuteWorkflow.mockImplementation(async () => {
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File | Updated |\n");
+      return { summary: "Success", intents: [], summaries: [] };
+    });
 
-    await testsGenerateCommand.parseAsync(["test-feature", "--force"], { from: "user" });
+    await program.parseAsync(["node", "test", "tests", "test-feature", "--force"]);
 
-    expect(DefineOrchestrator).toHaveBeenCalled();
+    expect(mockExecuteWorkflow).toHaveBeenCalled();
   });
 });

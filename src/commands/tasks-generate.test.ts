@@ -5,6 +5,16 @@ import path from "node:path";
 import os from "node:os";
 import { Command } from "commander";
 
+const { mockExecuteWorkflow } = vi.hoisted(() => ({
+  mockExecuteWorkflow: vi.fn(),
+}));
+
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: class {
+    executeWorkflow = mockExecuteWorkflow;
+  },
+}));
+
 // Mock format.js to avoid messy output
 vi.mock("../utils/format.js", () => ({
   banner: vi.fn(),
@@ -52,6 +62,13 @@ describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
     
     // Create gap-matrix.md to pass ADR-005 §8.4 guard (define tests must run before define tasks)
     fs.writeFileSync(path.join(specDir, "gap-matrix.md"), "| AC | Test File |\n|----|-----------|\n");
+
+    mockExecuteWorkflow.mockReset();
+    mockExecuteWorkflow.mockResolvedValue({
+      summary: "Success",
+      intents: [],
+      summaries: [],
+    });
   });
 
   afterEach(() => {
@@ -108,6 +125,12 @@ describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
     expect(fs.existsSync(gatePath)).toBe(true);
     const content = fs.readFileSync(gatePath, "utf-8");
     expect(content).toBe(customContent);
+    // Should have called WorkflowRuntime for gate authoring
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-author-gates",
+      expect.stringContaining("Author gates for feature 001-cli-core"),
+      expect.anything()
+    );
   });
 
   it("TR-012: should generate vitest gates from gap matrix with --no-llm", async () => {
@@ -143,5 +166,7 @@ describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
     expect(gateContent).toContain("pnpm vitest run");
     expect(gateContent).toContain("FR-001");
     expect(gateContent).toContain("# Generated from gap-matrix.md");
+    // Should NOT have called WorkflowRuntime for gate authoring because --no-llm
+    expect(mockExecuteWorkflow).not.toHaveBeenCalled();
   });
 });

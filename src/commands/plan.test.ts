@@ -2,11 +2,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DefineOrchestrator } from "../engine/define-orchestrator.js";
-import { readStdin } from "../utils/output.js";
 import { planCommand } from "./plan.js";
+import { Command } from "commander";
 
-vi.mock("../engine/define-orchestrator.js");
+const { mockExecuteWorkflow } = vi.hoisted(() => ({
+  mockExecuteWorkflow: vi.fn(),
+}));
+
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: class {
+    executeWorkflow = mockExecuteWorkflow;
+  },
+}));
+
 vi.mock("../utils/output.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../utils/output.js")>();
   return {
@@ -17,15 +25,9 @@ vi.mock("../utils/output.js", async (importOriginal) => {
 
 describe("planCommand", () => {
   let tempDir: string;
-  let executePlanSpy: any;
+  let program: Command;
 
   beforeEach(() => {
-    executePlanSpy = vi.spyOn(DefineOrchestrator.prototype, "executePlan").mockResolvedValue({
-      summary: "Success",
-      intents: [],
-      summaries: [],
-      logPath: "/tmp/test.log",
-    });
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-plan-test-"));
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -57,6 +59,16 @@ describe("planCommand", () => {
         },
       }),
     );
+
+    program = new Command();
+    program.addCommand(planCommand);
+
+    mockExecuteWorkflow.mockReset();
+    mockExecuteWorkflow.mockResolvedValue({
+      summary: "Success",
+      intents: [],
+      summaries: [],
+    });
   });
 
   afterEach(() => {
@@ -65,39 +77,54 @@ describe("planCommand", () => {
   });
 
   it("should fail if spec.md does not exist", async () => {
-    executePlanSpy.mockRejectedValueOnce(new Error("spec.md not found"));
     process.exitCode = 0;
-    await planCommand.parseAsync(["feature-x"], { from: "user" });
+    try {
+      await program.parseAsync(["node", "test", "plan", "feature-x"]);
+    } catch {
+      // Expected
+    }
     expect(process.exitCode).toBe(1);
-    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("spec.md not found"),
     );
   });
 
-  it("should dispatch agent if spec.md exists", async () => {
+  it("should dispatch workflow if spec.md exists", async () => {
     const featureDir = path.join(tempDir, "specs/feature-x");
     fs.mkdirSync(featureDir, { recursive: true });
     fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
 
     process.exitCode = 0;
-    await planCommand.parseAsync(["feature-x"], { from: "user" });
+    await program.parseAsync(["node", "test", "plan", "feature-x"]);
 
     expect(process.exitCode).toBe(0);
-    expect(executePlanSpy).toHaveBeenCalledWith(
-      "feature-x",
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan",
+      expect.stringContaining("Plan implementation for feature feature-x"),
       expect.objectContaining({
         agent: "gemini",
+        projectRoot: tempDir,
       }),
     );
   });
 
   it("should fail if spec.md is marked as a Stub", async () => {
-    executePlanSpy.mockRejectedValueOnce(new Error("is marked as a Stub"));
+    const featureDir = path.join(tempDir, "specs/feature-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(featureDir, "spec.md"),
+      "# Spec\n> **Status:** Stub\n",
+    );
+
     process.exitCode = 0;
-    await planCommand.parseAsync(["feature-x"], { from: "user" });
+    try {
+      await program.parseAsync(["node", "test", "plan", "feature-x"]);
+    } catch {
+      // Expected
+    }
     
     expect(process.exitCode).toBe(1);
-    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("is marked as a Stub"),
     );
   });

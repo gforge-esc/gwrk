@@ -1,0 +1,24 @@
+{
+  "runId": "2026-04-04T01:04:10.755Z_ship_p05",
+  "feature": "014-plugin-system",
+  "phase": "phase-05",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-04-04T01:04:10.755Z",
+  "finishedAt": "2026-04-04T01:04:10.838Z",
+  "durationS": 0,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 17,
+  "linesAdded": 420,
+  "linesDeleted": 275,
+  "gitCommit": "3ba9ecbb953b32c5b699b1421f57a245af02f963",
+  "gitBranch": "develop",
+  "digest": [
+    "BRANCH_SETUP: created/checked-out feat/014-plugin-system (1s) [2026-03-24T16:56:24-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-24T16:59:50-0600]",
+    "CODE_REVIEW: GO — all assertions satisfied [2026-03-24T16:59:55-0600]",
+    "UAT_REVIEW: GO — UAT assertions satisfied [2026-03-24T16:59:58-0600]"
+  ]
+}
