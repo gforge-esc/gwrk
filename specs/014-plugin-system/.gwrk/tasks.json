@@ -162,7 +162,7 @@
         {
           "id": "T017",
           "title": "Implement src/utils/agent.ts",
-          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — RE-OPENED by Code Review.\n  WHERE: src/utils/agent.ts:99\n  EXPECTED: dispatchAgent should resolve built-in workflows without failing with ENOENT.\n  ACTUAL: dispatchAgent fails to read the workflow file as a path if it's a plugin name.\n  FIX: Update dispatchAgent in src/utils/agent.ts to skip fs.readFileSync if it's not a path, and rely on the adapter's dispatch() to provide the prompt.\n  GATE: US-011 integration test\n  REF: plan.md Phase 5 > US-011",
+          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — RE-OPENED by Code Review.\n  WHERE: src/utils/agent.ts:99\n  EXPECTED: dispatchAgent should resolve built-in workflows without failing with ENOENT.\n  ACTUAL: dispatchAgent fails to read the workflow file as a path if it's a plugin name.\n  FIX: Update dispatchAgent in src/utils/agent.ts to skip fs.readFileSync if it's not a path, and rely on the adapter's dispatch() to provide the prompt.\n  GATE: US-011 integration test\n  REF: plan.md Phase 5 > US-011\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — dispatchToAgent MUST capture stdout/stderr to allow WorkflowRuntime to parse JSON intents. Fix: Capture stdout in dispatchAgent and return it in TaskResult. REF: FR-L25-001 WorkflowRuntime Requirement.",
           "status": "open",
           "gateScript": "gates/T017-gate.sh",
           "classification": "greenfield"
@@ -295,8 +295,8 @@
         {
           "id": "T028",
           "title": "Implement src/engine/define-orchestrator.ts",
-          "description": "NEW: TS state machine for spec->plan->tasks loop\n\nREVIEW FAIL (code): Incomplete implementation — FR-L25-004.\n  WHERE: src/engine/define-orchestrator.ts:55-80\n  EXPECTED: Orchestrator must manage the full loop: SPECIFY -> PLAN -> PLAN_TO_TASKS -> ANALYZE -> DEFINE_TESTS.\n  ACTUAL: Implementation starts at PLAN_TO_TASKS, skipping SPECIFY and PLAN stages.\n  FIX: Add stageSpecify and stagePlan methods; update initializeState to start at SPECIFY and getNextStage to include them in the sequence.\n  REF: plan.md Phase 5 > DefineOrchestrator",
-          "status": "completed",
+          "description": "NEW: TS state machine for spec->plan->tasks loop\n\nREVIEW FAIL (code): Incomplete implementation — FR-L25-004.\n  WHERE: src/engine/define-orchestrator.ts:55-80\n  EXPECTED: Orchestrator must manage the full loop: SPECIFY -> PLAN -> PLAN_TO_TASKS -> ANALYZE -> DEFINE_TESTS.\n  ACTUAL: Implementation starts at PLAN_TO_TASKS, skipping SPECIFY and PLAN stages.\n  FIX: Add stageSpecify and stagePlan methods; update initializeState to start at SPECIFY and getNextStage to include them in the sequence.\n  REF: plan.md Phase 5 > DefineOrchestrator\n\nREVIEW FAIL (uat): US-013 - DefineOrchestrator Loop — Still starts at PLAN_TO_TASKS. Fix: Implement stageSpecify and stagePlan; start initializeState at SPECIFY. REF: DefineOrchestrator implementation required by spec.",
+          "status": "open",
           "gateScript": "gates/T028-gate.sh",
           "completedAt": "2026-04-04T03:57:59.522Z",
           "classification": "greenfield"
@@ -313,8 +313,8 @@
         {
           "id": "T030",
           "title": "Implement src/engine/define-orchestrator.test.ts",
-          "description": "NEW: Verify state transitions\n\nREVIEW FAIL (tests): Incomplete test coverage — TR-010.\n  WHERE: src/engine/define-orchestrator.test.ts\n  EXPECTED: Tests must verify transitions through all stages: SPECIFY, PLAN, PLAN_TO_TASKS, ANALYZE, DEFINE_TESTS.\n  ACTUAL: Tests only verify PLAN_TO_TASKS, ANALYZE, and DEFINE_TESTS.\n  FIX: Add test cases for SPECIFY and PLAN stages.\n  REF: plan.md Phase 5 > Test Strategy",
-          "status": "completed",
+          "description": "NEW: Verify state transitions\n\nREVIEW FAIL (tests): Incomplete test coverage — TR-010.\n  WHERE: src/engine/define-orchestrator.test.ts\n  EXPECTED: Tests must verify transitions through all stages: SPECIFY, PLAN, PLAN_TO_TASKS, ANALYZE, DEFINE_TESTS.\n  ACTUAL: Tests only verify PLAN_TO_TASKS, ANALYZE, and DEFINE_TESTS.\n  FIX: Add test cases for SPECIFY and PLAN stages.\n  REF: plan.md Phase 5 > Test Strategy\n\nREVIEW FAIL (uat): Incomplete test coverage — Still missing test cases for SPECIFY and PLAN stages. Fix: Add tests for all orchestrator stages. REF: TR-010 Test Requirement.",
+          "status": "open",
           "gateScript": "gates/T030-gate.sh",
           "completedAt": "2026-03-31T19:35:34.287Z",
           "classification": "greenfield"
@@ -322,8 +322,8 @@
         {
           "id": "T031",
           "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
-          "description": "MODIFY: E2E verification\n\nREVIEW FAIL (tests): Mocking boundary violation — VR-013.\n  WHERE: src/commands/specify.test.ts and src/commands/plan.test.ts\n  EXPECTED: Integration tests verify the end-to-end path from CLI to WorkflowRuntime without mocking the runtime itself.\n  ACTUAL: WorkflowRuntime is mocked, hiding potential resolution or dispatch bugs.\n  FIX: Update specify.test.ts and plan.test.ts to use actual WorkflowRuntime. Mock the AgentBackend instead.\n  REF: spec.md > VR-013",
-          "status": "completed",
+          "description": "MODIFY: E2E verification\n\nREVIEW FAIL (tests): Mocking boundary violation — VR-013.\n  WHERE: src/commands/specify.test.ts and src/commands/plan.test.ts\n  EXPECTED: Integration tests verify the end-to-end path from CLI to WorkflowRuntime without mocking the runtime itself.\n  ACTUAL: WorkflowRuntime is mocked, hiding potential resolution or dispatch bugs.\n  FIX: Update specify.test.ts and plan.test.ts to use actual WorkflowRuntime. Mock the AgentBackend instead.\n  REF: spec.md > VR-013\n\nREVIEW FAIL (uat): Mocking boundary violation — Still mocks WorkflowRuntime in specify.test.ts and plan.test.ts. Fix: Use actual WorkflowRuntime and mock AgentBackend. REF: VR-013 Integration Test Requirement.",
+          "status": "open",
           "gateScript": "gates/T031-gate.sh",
           "completedAt": "2026-04-04T03:58:00.431Z",
           "classification": "greenfield"
@@ -331,8 +331,8 @@
         {
           "id": "T032",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (uat): Test strategy is incomplete — Integration tests are using mocks and missing coverage for initial stages. Fix: Implement actual E2E verification of the define loop.",
+          "status": "open",
           "gateScript": "gates/T032-gate.sh",
           "classification": "noop"
         },

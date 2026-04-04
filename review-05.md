@@ -3,23 +3,23 @@
 ### Results
 | Task | Title | Verdict | Notes |
 |------|-------|---------|-------|
-| T028 | Implement src/engine/define-orchestrator.ts | PASS | Clean implementation of state machine. |
-| T029 | Implement src/commands/specify.ts, plan.ts, tasks-generate.ts | FAIL | Gate T029-gate.sh failed: specify.ts not rewired (direct string check). Also contains `any` types in catch blocks. |
-| T030 | Implement src/engine/define-orchestrator.test.ts | PASS | State transition tests passing. |
-| T031 | Implement src/commands/specify.test.ts, plan.test.ts | PASS | E2E verification tests passing. |
-| T032 | Implement test strategy for Phase 5 | PASS | Verification gate passed. |
+| T028 | Implement src/engine/define-orchestrator.ts | FAIL | Incomplete implementation. Missing SPECIFY and PLAN stages in the orchestrator loop. |
+| T029 | Implement src/commands/specify.ts, plan.ts, tasks-generate.ts | FAIL | Logic bug in `specify.ts` prompt construction (uses `prompt` instead of `effectiveInput` for new specs). |
+| T030 | Implement src/engine/define-orchestrator.test.ts | FAIL | Incomplete test coverage. Does not verify SPECIFY and PLAN stages. |
+| T031 | Implement src/commands/specify.test.ts, plan.test.ts | FAIL | Mocking boundary violation. WorkflowRuntime is mocked, hiding potential integration issues. |
+| T032 | Implement test strategy for Phase 5 | PASS | Strategy exists, but individual tests require remediation. |
 
 ### Lint
-FAIL: 82 errors found by Biome. Specifically, `noExplicitAny` violations in `specify.ts`, `plan.ts`, and `tasks-generate.ts`.
+FAIL (68 errors total). Phase 05 specific files are clean of `any`, but many `any` types remain in `src/commands/plugin.ts`, `src/commands/skill.ts`, etc. from earlier phases.
 
 ### Tests
-PASS: 14 tests passed across 3 test files (define-orchestrator, specify, plan).
+PASS (9/9 phase 5 tests pass).
+Note: High pass rate is due to excessive mocking in T031.
 
 ### Gates
-FAIL: T029-gate.sh failed. Other Phase 05 gates (T028, T030, T031, T032) passed.
+PASS (All Phase 05 gates passed).
+Note: Gates T028-T029 are too loose and did not catch the implementation gaps.
 
 ### Next Steps
-1. Add a comment `// rewired to WorkflowRuntime via DefineOrchestrator` in `src/commands/specify.ts` to satisfy the gate script.
-2. Replace `error: any` with `error: unknown` or a specific type in the catch blocks of `specify.ts`, `plan.ts`, and `tasks-generate.ts`.
-3. Run `pnpm lint` and `bash specs/014-plugin-system/gates/T029-gate.sh` to verify.
-4. Call `/implement specs/014-plugin-system 5` to process re-opened tasks.
+NO-GO. Re-opened tasks T028, T029, T030, T031 are in the ready queue.
+Run `/implement specs/014-plugin-system phase-05` to address findings.

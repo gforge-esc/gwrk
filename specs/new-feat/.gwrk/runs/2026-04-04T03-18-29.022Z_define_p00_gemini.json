@@ -1,0 +1,19 @@
+{
+  "runId": "2026-04-04T03:18:29.022Z_define_p00",
+  "feature": "new-feat",
+  "phase": "p00",
+  "command": "define",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-04-04T03:18:29.022Z",
+  "finishedAt": "2026-04-04T03:30:02.461Z",
+  "durationS": 693,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 25,
+  "linesAdded": 809,
+  "linesDeleted": 641,
+  "gitCommit": "45688f626169564ebaf89726b54a5636ab2f6773",
+  "gitBranch": "feat/014-plugin-system",
+  "digest": []
+}
