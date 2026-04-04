@@ -295,18 +295,20 @@
         {
           "id": "T028",
           "title": "Implement src/engine/define-orchestrator.ts",
-          "description": "NEW: TS state machine for spec->plan->tasks loop\n\nREVIEW FAIL (code): Incomplete implementation — FR-L25-004.\n  WHERE: src/engine/define-orchestrator.ts:55-80\n  EXPECTED: Orchestrator must manage the full loop: SPEC -> PLAN -> TASKS -> ANALYZE.\n  ACTUAL: Implementation starts at PLAN_TO_TASKS, skipping specification and planning.\n  FIX: Add stageSpecify and stagePlan methods; update getNextStage and initializeState to start at SPECIFY.\n  REF: plan.md Phase 5 > DefineOrchestrator",
+          "description": "NEW: TS state machine for spec->plan->tasks loop\n\nREVIEW FAIL (code): Incomplete implementation — FR-L25-004.\n  WHERE: src/engine/define-orchestrator.ts:55-80\n  EXPECTED: Orchestrator must manage the full loop: SPEC -> PLAN -> TASKS -> ANALYZE.\n  ACTUAL: Implementation starts at PLAN_TO_TASKS, skipping specification and planning.\n  FIX: Add stageSpecify and stagePlan methods; update getNextStage and initializeState to start at SPECIFY.\n  REF: plan.md Phase 5 > DefineOrchestrator\n\nREVIEW FAIL (code): Incomplete implementation — FR-L25-004.\n  WHERE: src/engine/define-orchestrator.ts:55-80\n  EXPECTED: Orchestrator must manage the full loop: SPEC -> PLAN -> TASKS -> ANALYZE.\n  ACTUAL: Implementation starts at PLAN_TO_TASKS, skipping specification and planning.\n  FIX: Add stageSpecify and stagePlan methods; update getNextStage and initializeState to start at SPECIFY.\n  REF: plan.md Phase 5 > DefineOrchestrator",
           "status": "open",
           "gateScript": "gates/T028-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-04T03:43:08.858Z"
         },
         {
           "id": "T029",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
-          "description": "MODIFY: Rewire to WorkflowRuntime\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — FR-L25-003.\n  WHERE: src/utils/agent.ts:102\n  EXPECTED: dispatchAgent resolves built-in workflow names without failing with ENOENT.\n  ACTUAL: dispatchAgent attempts to readFileSync plugin names as file paths in the project root.\n  FIX: Ensure dispatchAgent skips fs operations if opts.workflowPath is a known plugin name.\n  GATE: gates/T029-gate.sh (Assertion #2 — missing)\n  REF: plan.md Phase 5 > US-011",
+          "description": "MODIFY: Rewire to WorkflowRuntime\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — FR-L25-003.\n  WHERE: src/utils/agent.ts:102\n  EXPECTED: dispatchAgent resolves built-in workflow names without failing with ENOENT.\n  ACTUAL: dispatchAgent attempts to readFileSync plugin names as file paths in the project root.\n  FIX: Ensure dispatchAgent skips fs operations if opts.workflowPath is a known plugin name.\n  GATE: gates/T029-gate.sh (Assertion #2 — missing)\n  REF: plan.md Phase 5 > US-011\n\nREVIEW FAIL (code): Logic bug in effectivePrompt — FR-L25-003.\n  WHERE: src/commands/specify.ts:60\n  EXPECTED: effectivePrompt for NEW specs should use description: ${effectiveInput}\n  ACTUAL: It uses description: ${prompt}, which is undefined if input comes from stdin.\n  FIX: Change ${prompt} to ${effectiveInput} in the NEW spec template.\n  REF: spec.md > US-011",
           "status": "open",
           "gateScript": "gates/T029-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-04T03:43:08.862Z"
         },
         {
           "id": "T030",
@@ -320,10 +322,11 @@
         {
           "id": "T031",
           "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
-          "description": "MODIFY: E2E verification\n\nREVIEW FAIL (tests): Mocking boundary violation — VR-013.\n  WHERE: src/commands/specify.test.ts:15-22\n  EXPECTED: Integration tests verify the end-to-end path from CLI to Agent Dispatch.\n  ACTUAL: WorkflowRuntime is mocked, hiding the ENOENT bug in the underlying utility.\n  FIX: Add an integration test that uses the actual WorkflowRuntime and mocks only the child_process.spawn boundary.\n  REF: spec.md > VR-013",
+          "description": "MODIFY: E2E verification\n\nREVIEW FAIL (tests): Mocking boundary violation — VR-013.\n  WHERE: src/commands/specify.test.ts:15-22\n  EXPECTED: Integration tests verify the end-to-end path from CLI to Agent Dispatch.\n  ACTUAL: WorkflowRuntime is mocked, hiding the ENOENT bug in the underlying utility.\n  FIX: Add an integration test that uses the actual WorkflowRuntime and mocks only the child_process.spawn boundary.\n  REF: spec.md > VR-013\n\nREVIEW FAIL (tests): Broken and missing tests — TR-010.\n  WHERE: src/commands/define.test.ts\n  EXPECTED: define.test.ts must mock DefineOrchestrator and verify the command's interaction with the new orchestrator.\n  ACTUAL: define.test.ts is outdated, testing define-until-solid.sh, and invokes real agents during test execution.\n  FIX: Update define.test.ts to mock DefineOrchestrator and WorkflowRuntime. Ensure all Phase 5 commands have passing unit and integration tests.\n  REF: plan.md Phase 5 > Test Strategy",
           "status": "open",
           "gateScript": "gates/T031-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-04T03:43:09.832Z"
         },
         {
           "id": "T032",
