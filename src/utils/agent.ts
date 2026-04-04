@@ -92,7 +92,7 @@ function stampLine(
 
 export async function dispatchAgent(
   opts: DispatchOptions,
-): Promise<{ exitCode: number; logPath: string }> {
+): Promise<{ exitCode: number; logPath: string; stdout: string; stderr: string }> {
   const projectRoot = process.cwd();
   const executionRoot = opts.workDir || projectRoot;
   const workflowFile = path.resolve(projectRoot, opts.workflowPath);
@@ -130,6 +130,8 @@ export async function dispatchAgent(
 
   return new Promise((resolve) => {
     const startEpoch = Date.now();
+    const stdoutLines: string[] = [];
+    const stderrLines: string[] = [];
 
     const child = spawn(command, args, {
       cwd: executionRoot,
@@ -149,7 +151,14 @@ export async function dispatchAgent(
     let squelch = false;
     let braceDepth = 0;
 
-    const processLine = (line: string) => {
+    const processLine = (line: string, stream: "stdout" | "stderr") => {
+      // Always accumulate raw output for callers that need it (WorkflowRuntime)
+      if (stream === "stdout") {
+        stdoutLines.push(line);
+      } else {
+        stderrLines.push(line);
+      }
+
       // Squelch 429 rate-limit error blocks
       if (!squelch && /^Attempt \d+ failed with status 429/.test(line)) {
         const attempt = line.match(/^Attempt (\d+)/)?.[1] ?? "?";
@@ -185,7 +194,7 @@ export async function dispatchAgent(
         input: child.stdout,
         crlfDelay: Number.POSITIVE_INFINITY,
       });
-      rl.on("line", processLine);
+      rl.on("line", (line) => processLine(line, "stdout"));
     }
 
     // Process stderr line by line (same formatting)
@@ -194,7 +203,7 @@ export async function dispatchAgent(
         input: child.stderr,
         crlfDelay: Number.POSITIVE_INFINITY,
       });
-      rlErr.on("line", processLine);
+      rlErr.on("line", (line) => processLine(line, "stderr"));
     }
 
     child.on("close", (code) => {
@@ -205,13 +214,23 @@ export async function dispatchAgent(
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
       logStream.write(`# Exit Code : ${code ?? 1}\n`);
       logStream.end();
-      resolve({ exitCode: code ?? 1, logPath });
+      resolve({
+        exitCode: code ?? 1,
+        logPath,
+        stdout: stdoutLines.join("\n"),
+        stderr: stderrLines.join("\n"),
+      });
     });
 
     child.on("error", () => {
       logStream.write("\n# [ERROR] Agent process failed to start\n");
       logStream.end();
-      resolve({ exitCode: 1, logPath });
+      resolve({
+        exitCode: 1,
+        logPath,
+        stdout: stdoutLines.join("\n"),
+        stderr: stderrLines.join("\n"),
+      });
     });
   });
 }
@@ -269,16 +288,18 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     workDir: task.workDir,
   };
 
-  const { exitCode: rawExitCode, logPath } = await dispatchAgent({
+  const {
+    exitCode: rawExitCode,
+    logPath,
+    stdout,
+    stderr,
+  } = await dispatchAgent({
     ...opts,
     stdin: dispatch.stdin,
   });
   const durationS = Math.round((Date.now() - startTime) / 1000);
 
-  // Note: we need stdout/stderr from dispatchAgent to call parseResult correctly.
-  // Currently dispatchAgent only returns exitCode and logPath because it streams output.
-  // In the future, we might need to capture output if parseResult needs it.
-  const result = adapter.parseResult("", "", rawExitCode);
+  const result = adapter.parseResult(stdout, stderr, rawExitCode);
 
   // Record routing decision for historical learning
   const taskType =
