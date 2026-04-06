@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -291,12 +292,78 @@ export class ShipOrchestrator {
   }
 
   private async stageUatReview(): Promise<StageResult> {
+    // Fix A: Build before UAT so the agent tests freshly compiled code,
+    // not a stale dist/ from before IMPLEMENT ran.
+    try {
+      console.log("  Building before UAT...");
+      execSync("pnpm build", {
+        cwd: this.config.cwd,
+        stdio: "pipe",
+        timeout: 60_000,
+      });
+    } catch {
+      return {
+        success: false,
+        exitCode: 1,
+        error: "Build failed before UAT — cannot test stale binary",
+      };
+    }
+
+    // Fix B: Scope UAT prompt to phase-specific user stories.
+    // Include doneWhen and the plan's requirements addressed by this phase.
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    const doneWhen = phase?.doneWhen?.join("\n- ") || "All tasks pass gates";
+
+    // Read plan.md to extract the Requirements Addressed for this phase
+    let requirementsScope = "";
+    const planPath = path.join(featureDir, "plan.md");
+    if (fs.existsSync(planPath)) {
+      const planContent = fs.readFileSync(planPath, "utf-8") ?? "";
+      // Extract the phase section from plan.md
+      const phaseTitle = phase?.title || "";
+      const phaseRegex = new RegExp(
+        `### Phase \\d+:.*?${phaseTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?(?=### Phase \\d+:|---\\s*$|$)`,
+      );
+      const phaseMatch = planContent.match(phaseRegex);
+      if (phaseMatch) {
+        const reqMatch = phaseMatch[0].match(
+          /\*\*Requirements Addressed:\*\*\s*(.*)/,
+        );
+        if (reqMatch) {
+          requirementsScope = reqMatch[1].trim();
+        }
+      }
+    }
+
+    const scopedPrompt = [
+      `Phase ${this.config.phaseId} UAT Review`,
+      "",
+      "SCOPE CONSTRAINT: Only evaluate user stories and requirements addressed by THIS phase.",
+      "Do NOT evaluate stories belonging to other phases.",
+      requirementsScope
+        ? `Requirements in scope: ${requirementsScope}`
+        : "",
+      "",
+      "Done When:",
+      `- ${doneWhen}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     try {
       const result = await this.dispatchWithFailback({
         agent: this.config.backend,
         workflow: ".agents/workflows/gwrk-review-uat.md",
         featureDir: `specs/${this.config.featureId}`,
-        prompt: `Phase ${this.config.phaseId} UAT Review`,
+        prompt: scopedPrompt,
       });
 
       if (result.exitCode !== 0) {

@@ -8,6 +8,10 @@ import * as gateRunner from "../utils/gate-runner";
 import * as state from "../utils/state";
 
 vi.mock("node:fs");
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, execSync: vi.fn() };
+});
 vi.mock("../utils/git");
 vi.mock("../utils/agent");
 vi.mock("../utils/gate-runner");
