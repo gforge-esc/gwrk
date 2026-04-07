@@ -77,8 +77,8 @@ export const specifyCommand = new Command("spec")
           Mode: mode,
           ...(prompt
             ? {
-              Prompt: `"${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}"`,
-            }
+                Prompt: `"${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}"`,
+              }
             : {}),
           "Run ID": `${runId}`,
           ...(opts.refs ? { Refs: opts.refs } : {}),
