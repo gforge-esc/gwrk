@@ -12,14 +12,15 @@ description: User acceptance testing of implementation against spec.
 - DO re-open failed tasks in tasks.json with structured remediation notes.
 - DO re-open the phase if any tasks fail.
 - DO post review summary as a PR comment.
-- DO capture screenshot evidence for UI findings.
 - Evaluate user experience and acceptance criteria, not code quality.
+- ONLY evaluate user stories and requirements in the prompt's "Requirements in scope" section.
+- Do NOT evaluate stories from other phases. If a requirement is not listed, skip it.
 </scope_constraints>
 
 ## Inputs
 
-- `feature_dir`: Path to spec directory (e.g., `specs/001-pipeline-setup`)
-- `phase_number`: Phase to review (e.g., `3`)
+- `feature_dir`: Path to spec directory (e.g., `specs/014-plugin-system`)
+- `phase_number`: Phase to review (e.g., `5`)
 - `pr_number`: Optional — PR to post review comment on
 
 ## Prerequisites
@@ -29,20 +30,16 @@ description: User acceptance testing of implementation against spec.
 
 ## Algorithm
 
-### 0. Dev Environment (I-007 — MANDATORY)
+### 0. Build (MANDATORY)
+
+gwrk is a CLI tool. No Docker, no web server.
 
 ```bash
-# Kill any zombie dev processes
-pkill -f 'pnpm.*dev' || true
-
-# STRICT DOCKER MANDATE — UAT always needs the running app
-make up
-./scripts/dev/verify-dev-stack.sh
+pnpm build
 ```
 
 > [!CAUTION]
-> Do NOT use bare `pnpm dev`. UAT requires `http://localhost` via Docker.
-> If the gate fails, report as **BLOCKING** infrastructure issue.
+> If `pnpm build` fails, report as **BLOCKING** infrastructure issue. Cannot proceed.
 
 ### 1. Load Context
 
@@ -52,8 +49,9 @@ TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
 
 Read:
 - `{feature_dir}/spec.md` — user stories, acceptance criteria
-- `{feature_dir}/plan.md` — Phase {N} acceptance criteria
-- `{feature_dir}/mockups/` — if exists, for visual comparison
+- `{feature_dir}/plan.md` — Phase {N} acceptance criteria and "Done When"
+
+**CRITICAL**: Check the prompt for `Requirements in scope:` and `Done When:`. Only evaluate those requirements. Do not test stories from other phases.
 
 ### 2. Get Closed Tasks
 
@@ -62,54 +60,41 @@ TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
 CLOSED=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status == "completed")]' "$TASKS_FILE")
 ```
 
-### 3. Infrastructure Verification
+### 3. CLI Command Verification
 
-The dev stack was started in Step 0. Verify the app is accessible:
+gwrk commands follow this taxonomy:
+- `gwrk define spec <feature>` — create/rework a spec (NOT `gwrk specify`)
+- `gwrk define plan <feature>` — create a plan
+- `gwrk define tasks <feature>` — generate tasks
+- `gwrk ship <feature> <phase>` — ship a phase
+- `gwrk plugin list` — list plugins
 
-```bash
-# Verify UI loads (browser tool or curl)
-curl -sf http://localhost/ > /dev/null || { echo "BLOCKING: Web UI not reachable"; }
-curl -sf http://localhost/api > /dev/null || { echo "BLOCKING: API not reachable"; }
-```
+For each user story in scope:
 
-- PASS: App starts, UI loads in browser at `http://localhost`.
-- FAIL: Document as **BLOCKING**. Cannot proceed with UAT. Re-open phase.
+a. **Golden Path**: Execute the CLI command described in the acceptance criteria.
+   - Run the command with valid arguments
+   - Check exit code: `echo $?`
+   - Check stdout/stderr for expected output
+   - PASS: Command produces expected behavior.
+   - FAIL: Record finding with command, expected vs actual.
 
-### 4. User Story Testing
+b. **Negative Path**: Test error conditions from spec.
+   - Missing arguments, invalid input, missing config
+   - PASS: Graceful error with corrective message, non-zero exit.
+   - FAIL: Record confusing or missing error handling.
 
-For each user story / acceptance criterion in scope:
+c. **Unit Tests**: Verify relevant test suites pass.
+   ```bash
+   pnpm vitest run <relevant-test-file> --reporter=verbose
+   ```
+   - PASS: All tests green.
+   - FAIL: Record failing tests.
 
-a. **Golden Path**: Execute the primary user flow.
-   - Navigate to the relevant page/component
-   - Perform the actions described in the spec
-   - PASS: Flow completes as described.
-   - FAIL: Record finding with the specific step that fails.
+### 4. "Done When" Verification
 
-b. **Visual Fidelity**:
-   - Compare against `{feature_dir}/mockups/` if available
-   - PASS: Matches spec visual requirements.
-   - FAIL: Record deviations with screenshots.
+Execute each item in the plan's "Done When" criteria literally and verify the result.
 
-c. **Error States**: Trigger error conditions.
-   - Empty states, network failures, invalid input
-   - PASS: Graceful handling, clear user messaging.
-   - FAIL: Record confusing or missing error states.
-
-d. **Edge Cases**: Test boundaries defined in spec.
-   - Max lengths, empty lists, concurrent actions
-   - PASS: Edge cases handled.
-   - FAIL: Record which edge cases break.
-
-### 5. Capture Evidence
-
-Use browser tool to capture screenshots for:
-- Each successful flow (proof of completion)
-- Each failure (evidence for remediation)
-- Visual fidelity issues
-
-Save to `{feature_dir}/reviews/uat-phase-{N}/` for audit trail.
-
-### 6. Apply Task State Changes
+### 5. Apply Task State Changes
 
 For each failed acceptance criterion, identify the related task(s) and:
 
@@ -127,25 +112,25 @@ jq --arg n "{phase_number}" --arg t "$TASK_ID" --arg note "REVIEW FAIL (uat): {s
   "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
 ```
 
-### 7. Post PR Comment
+### 6. Post PR Comment
 
 If `pr_number` provided:
 
-Write the review to `/tmp/uat-review-{phase_number}.md` using the template at `.specify/templates/review-uat-comment-template.md`. Fill every `{{PLACEHOLDER}}` token.
+Write the review to `/tmp/uat-review-{phase_number}.md`. Post:
 
 ```bash
 gh pr comment {pr_number} --body-file /tmp/uat-review-{phase_number}.md
 ```
 
-### 8. Commit Review State
+### 7. Commit Review State
 
 ```bash
 git add -A && git commit -m "review: UAT Phase {phase_number} - {GO|NO-GO}"
 ```
 
 <verdict_criteria>
-- **GO**: All user stories pass acceptance criteria. All tests pass.
-- **NO-GO**: Any story fails. Visual deviations from spec.
+- **GO**: All in-scope user stories pass acceptance criteria. All relevant tests pass.
+- **NO-GO**: Any in-scope story fails. Only re-open tasks for in-scope failures.
 </verdict_criteria>
 
 Report via notify_user:
@@ -153,7 +138,6 @@ Report via notify_user:
 UAT: {GO|NO-GO}
 Phase: {phase_number}
 Stories: {PASS_COUNT}/{TOTAL} pass, {FAIL_COUNT} re-opened
-PR comment: #{pr_number} (if applicable)
 
 Next:
   GO   → Ready for merge. PM may set 🟢 GREEN.
@@ -164,10 +148,10 @@ Next:
 <closed_loop_contract>
 | UAT finds... | Action taken | `/implement` sees... |
 |--------------|-------------|---------------------|
-| Story fails golden path | Update status to open + append note | Task in ready queue with UX notes |
-| Visual fidelity issue | Update status to open + append note | Task with screenshot refs |
-| Error state missing | Update status to open + append note | Task with expected error behavior |
-| Edge case breaks | Update status to open + append note | Task with boundary details |
+| CLI command returns wrong exit code | Update status to open + append note | Task with expected vs actual exit code |
+| Missing error message | Update status to open + append note | Task with expected stderr message |
+| Test failure | Update status to open + append note | Task with test file and failure details |
+| "Done When" item fails | Update status to open + append note | Task with specific failed criterion |
 </closed_loop_contract>
 
 <note_format>
@@ -183,9 +167,11 @@ REVIEW FAIL (uat): {story_name} — Expected: {what_user_expects}. Actual: {what
 - ❌ Fix source code (re-open the task instead)
 - ❌ Leave failed tasks in completed state
 - ❌ Run UAT before `/review-code` passes
-- ❌ Skip screenshot evidence for visual findings
 - ❌ Evaluate code quality (that's `/review-code`'s job)
 - ❌ Write vague notes ("looks wrong" — always include expected vs actual)
+- ❌ Test stories from other phases (stick to "Requirements in scope")
+- ❌ Use `make up` or Docker for CLI-only features
+- ❌ Use `gwrk specify` (correct command is `gwrk define spec`)
 
 ## Next Step
 

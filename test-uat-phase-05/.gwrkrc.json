@@ -1,0 +1,26 @@
+{
+  "project": {
+    "name": "test-uat-phase-05"
+  },
+  "agents": {
+    "define": "gemini",
+    "implement": "gemini"
+  },
+  "server": {
+    "port": 18790,
+    "host": "localhost",
+    "heartbeatIntervalMs": 5000,
+    "networkCheckIntervalMs": 30000
+  },
+  "parallelism": {
+    "local": {
+      "maxCpu": 80,
+      "maxMem": 80,
+      "minDiskGb": 10,
+      "maxClones": 2
+    },
+    "cloud": {
+      "maxConcurrent": 10
+    }
+  }
+}

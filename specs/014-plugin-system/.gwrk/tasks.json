@@ -353,7 +353,7 @@
         }
       ],
       "doneWhen": [
-        "`gwrk specify my-feature` works in a directory without an `.agents/` folder"
+        "`gwrk define spec my-feature` works in a directory without an `.agents/` folder"
       ]
     },
     {

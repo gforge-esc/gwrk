@@ -64,7 +64,7 @@ export class GeminiAdapter implements AgentBackend {
       args.push("-p", slashCmd);
     }
 
-    args.push("--approval-mode", "yolo");
+    args.push("--approval-mode", "yolo", "--sandbox", "false");
 
     // Model selection flows from config → TaskDispatch.env.GEMINI_MODEL
     const model = task.env?.GEMINI_MODEL;
