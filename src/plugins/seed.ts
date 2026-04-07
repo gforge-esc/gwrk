@@ -34,11 +34,10 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
       // Followed by: > "Prompt" (with potential multiple newlines and spaces)
       const modeRegex = /(\d+)\. \*\*([^*]+)\*\* - ([^\n]+)\s+> "([^"]+)"/g;
 
-      let match;
-      while ((match = modeRegex.exec(section)) !== null) {
-        const name = match[2].toLowerCase().replace(/\s+/g, "-");
-        const description = match[3];
-        const prompt = match[4];
+      for (const execResult of section.matchAll(modeRegex)) {
+        const name = execResult[2].toLowerCase().replace(/\s+/g, "-");
+        const description = execResult[3];
+        const prompt = execResult[4];
 
         await createAtomicSkill(
           name,

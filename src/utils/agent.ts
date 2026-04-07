@@ -90,9 +90,12 @@ function stampLine(
   }
 }
 
-export async function dispatchAgent(
-  opts: DispatchOptions,
-): Promise<{ exitCode: number; logPath: string; stdout: string; stderr: string }> {
+export async function dispatchAgent(opts: DispatchOptions): Promise<{
+  exitCode: number;
+  logPath: string;
+  stdout: string;
+  stderr: string;
+}> {
   const projectRoot = process.cwd();
   const executionRoot = opts.workDir || projectRoot;
   const workflowFile = path.resolve(projectRoot, opts.workflowPath);

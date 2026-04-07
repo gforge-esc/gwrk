@@ -348,9 +348,7 @@ export class ShipOrchestrator {
       "",
       "SCOPE CONSTRAINT: Only evaluate user stories and requirements addressed by THIS phase.",
       "Do NOT evaluate stories belonging to other phases.",
-      requirementsScope
-        ? `Requirements in scope: ${requirementsScope}`
-        : "",
+      requirementsScope ? `Requirements in scope: ${requirementsScope}` : "",
       "",
       "Done When:",
       `- ${doneWhen}`,

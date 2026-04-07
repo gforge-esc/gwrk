@@ -42,7 +42,7 @@ async function migrateSkill(
     const content = await fs.readFile(skillFile, "utf-8");
     const match = content.match(FRONTMATTER_REGEX);
 
-    let frontmatter: any = {};
+    let frontmatter: Record<string, unknown> = {};
     let markdown = content;
 
     if (match) {
@@ -51,7 +51,7 @@ async function migrateSkill(
     }
 
     // Prepare manifest
-    const manifest: any = {
+    const manifest: Record<string, unknown> = {
       type: "skill",
       name: frontmatter.name || name,
       version: frontmatter.version || "0.1.0",

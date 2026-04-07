@@ -163,9 +163,10 @@
           "id": "T017",
           "title": "Implement src/utils/agent.ts",
           "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — RE-OPENED by Code Review.\n  WHERE: src/utils/agent.ts:99\n  EXPECTED: dispatchAgent should resolve built-in workflows without failing with ENOENT.\n  ACTUAL: dispatchAgent fails to read the workflow file as a path if it's a plugin name.\n  FIX: Update dispatchAgent in src/utils/agent.ts to skip fs.readFileSync if it's not a path, and rely on the adapter's dispatch() to provide the prompt.\n  GATE: US-011 integration test\n  REF: plan.md Phase 5 > US-011\n\nREVIEW FAIL (uat): US-011 - Execute a Built-in Workflow — dispatchToAgent MUST capture stdout/stderr to allow WorkflowRuntime to parse JSON intents. Fix: Capture stdout in dispatchAgent and return it in TaskResult. REF: FR-L25-001 WorkflowRuntime Requirement.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-07T21:53:00.000Z"
         },
         {
           "id": "T018",
@@ -364,25 +365,28 @@
           "id": "T033",
           "title": "Implement src/commands/init.ts",
           "description": "MODIFY: Provision `~/.gwrk/plugins/` with built-ins\n\nREVIEW FAIL (gate): Mismatched gate script — T033-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T033-gate.sh\n  EXPECTED: Gate script should verify init.ts implementation, potentially by running src/commands/init.test.ts.\n  ACTUAL: It runs src/plugins/seed.test.ts instead.\n  FIX: Update T033-gate.sh to test init.ts functionality via vitest run src/commands/init.test.ts.\n  GATE: gates/T033-gate.sh\n  REF: plan.md Phase 6 > src/commands/init.ts\n\nSTILL FAIL: T033-gate.sh still tests seed.test.ts instead of init.test.ts.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-07T21:53:00.000Z"
         },
         {
           "id": "T034",
           "title": "Implement src/plugins/migrate.ts",
           "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration\n\nREVIEW FAIL (gate): Broken gate logic — T034-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T034-gate.sh\n  EXPECTED: Gate script should fail if Vitest tests fail.\n  ACTUAL: It uses `|| echo ...` which masks test failures.\n  FIX: Remove `|| echo ...` from the Vitest execution line in T034-gate.sh.\n  GATE: gates/T034-gate.sh\n  REF: plan.md Phase 6 > src/plugins/migrate.ts\n\nREVIEW FAIL (code): Non-clean typing — src/plugins/migrate.ts.\\n  WHERE: src/plugins/migrate.ts:45,54\\n  ACTUAL: 'any' types used for frontmatter and manifest.\\n  FIX: Define interfaces for SkillFrontmatter and PluginManifest; use them instead of 'any'.\\n  GATE: gates/T034-gate.sh\\n  REF: plan.md Phase 6 > src/plugins/migrate.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T034-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-07T21:53:00.000Z"
         },
         {
           "id": "T035",
           "title": "Implement src/plugins/seed.ts",
           "description": "NEW: Taxonomy to atomic skills seeding\n\nREVIEW FAIL (lint): Non-clean lint — src/plugins/seed.ts.\n  WHERE: src/plugins/seed.ts:37-38\n  ACTUAL: Biome reports `noImplicitAnyLet` for `match` and `noAssignInExpressions` for the while loop.\n  FIX: Refactor the while loop to avoid assignment in expression and provide an explicit type for `match` (e.g., `RegExpExecArray | null`).\n  GATE: gates/T035-gate.sh\n  REF: plan.md Phase 6 > src/plugins/seed.ts\n\nSTILL FAIL: src/plugins/seed.ts line 38-39 has lint errors (noImplicitAnyLet, noAssignInExpressions).",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T035-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-07T21:53:00.000Z"
         },
         {
           "id": "T036",

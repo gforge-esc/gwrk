@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { registerProject } from "../db/runs.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 
+import { seedSkills } from "../plugins/seed.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const initCommand = new Command("init")
@@ -16,11 +18,11 @@ export const initCommand = new Command("init")
   .action(async (options) => {
     await withSignal("init", async () => {
       const projectRoot = process.cwd();
-      const agentDir = path.join(projectRoot, ".agent");
+      const gwrkDir = path.join(projectRoot, ".gwrk");
       const rcPath = path.join(projectRoot, ".gwrkrc.json");
 
       // Already initialized — handle additive flags, then exit
-      if (fs.existsSync(agentDir)) {
+      if (fs.existsSync(gwrkDir) && fs.existsSync(rcPath)) {
         let didWork = false;
 
         if (options.slack || options.slackOps) {
@@ -88,15 +90,47 @@ export const initCommand = new Command("init")
         return;
       }
 
-      const dirs = [
-        ".agents/workflows",
-        ".agents/rules",
-        ".specify/templates",
-        "specs",
-      ];
+      const dirs = [".specify/templates", "specs"];
 
       for (const dir of dirs) {
         fs.mkdirSync(path.join(projectRoot, dir), { recursive: true });
+      }
+
+      // Provision global plugins (US-014)
+      const globalPluginBase = path.join(os.homedir(), ".gwrk", "plugins");
+      const pluginTypes = ["skills", "agents", "workflows"];
+      for (const type of pluginTypes) {
+        fs.mkdirSync(path.join(globalPluginBase, type), { recursive: true });
+      }
+
+      // Seed Skills (FR-012)
+      await seedSkills();
+
+      // Seed Workflows (FR-L25-005)
+      // @ts-ignore
+      const builtInWorkflowsDir = path.join(
+        import.meta.dirname,
+        "../plugins/builtins/workflows",
+      );
+      const workflowDestDir = path.join(globalPluginBase, "workflows");
+
+      try {
+        const workflows = fs.readdirSync(builtInWorkflowsDir);
+        for (const wf of workflows) {
+          const src = path.join(builtInWorkflowsDir, wf);
+          const dest = path.join(workflowDestDir, wf);
+          if (fs.statSync(src).isDirectory()) {
+            fs.mkdirSync(dest, { recursive: true });
+            const files = fs.readdirSync(src);
+            for (const file of files) {
+              fs.copyFileSync(path.join(src, file), path.join(dest, file));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(
+          `Warning: Could not seed workflows: ${(e as Error).message}`,
+        );
       }
 
       const projectName = path.basename(projectRoot);
@@ -178,15 +212,6 @@ export const initCommand = new Command("init")
         JSON.stringify(config, null, 2),
       );
 
-      // Placeholder for "copying template files"
-      const workflows = ["specify.md", "plan.md"];
-      for (const wf of workflows) {
-        fs.writeFileSync(
-          path.join(projectRoot, ".agents/workflows", wf),
-          `# Workflow: ${wf}\n\nPlaceholder content for ${wf}.`,
-        );
-      }
-
       // SQLite Project Registration
       const projectId = crypto
         .createHash("md5")
@@ -235,12 +260,12 @@ export const initCommand = new Command("init")
       }
 
       // CLI Detection & Provisioning (Plugin-aware)
-      const gwrkDir = path.join(projectRoot, ".gwrk");
-      fs.mkdirSync(gwrkDir, { recursive: true });
+      const gwrkLocalDir = path.join(projectRoot, ".gwrk");
+      fs.mkdirSync(gwrkLocalDir, { recursive: true });
 
-      const contextPath = path.join(gwrkDir, "agent-context.md");
+      const contextPath = path.join(gwrkLocalDir, "agent-context.md");
       const defaultGovernance =
-        "# GWRK Project Context\n\nThis project is managed by gwrk.\nRules: .agents/rules/\nWorkflows: .agents/workflows/\n";
+        "# GWRK Project Context\n\nThis project is managed by gwrk.\nWorkflows: ~/.gwrk/plugins/workflows/\nSkills: ~/.gwrk/plugins/skills/\n";
       fs.writeFileSync(contextPath, defaultGovernance);
 
       const { AgentBackendRegistry } = await import(
