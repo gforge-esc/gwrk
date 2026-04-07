@@ -26,6 +26,7 @@ vi.mock("./slack.js", () => ({
 
 const mockSandbox = {
   checkDocker: vi.fn().mockResolvedValue(true),
+  checkGit: vi.fn().mockResolvedValue(true),
   pauseAll: vi.fn().mockResolvedValue(undefined),
   unpauseAll: vi.fn().mockResolvedValue(undefined),
   listSandboxes: vi.fn().mockResolvedValue([]),

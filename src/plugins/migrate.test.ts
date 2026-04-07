@@ -37,8 +37,9 @@ description: Forensic analysis
   });
 
   it("US-009: skips migration if plugin already exists at destination", async () => {
-    vi.mocked(fs.stat).mockResolvedValue({ isDirectory: () => true } as any);
+    vi.mocked(fs.stat).mockResolvedValue({ isDirectory: () => true } as unknown as import("node:fs").Stats);
     await migrateSkills();
     expect(fs.writeFile).not.toHaveBeenCalled();
   });
 });
+

@@ -23,8 +23,8 @@
         {
           "id": "T002",
           "title": "Implement src/plugins/loader.ts",
-          "description": "NEW: Plugin scanner, registry, and resolution engine",
-          "status": "completed",
+          "description": "NEW: Plugin scanner, registry, and resolution engine\n\nREVIEW FAIL (uat): Plugin List Duplication — Expected: gwrk plugin list should deduplicate plugins by name. Actual: Workflows are listed twice after gwrk init copies built-ins to global home. Fix: Update loader.ts to deduplicate by manifest.name across scan locations.",
+          "status": "open",
           "gateScript": "gates/T002-gate.sh",
           "classification": "greenfield"
         },
@@ -373,8 +373,8 @@
         {
           "id": "T034",
           "title": "Implement src/plugins/migrate.ts",
-          "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration\n\nREVIEW FAIL (gate): Broken gate logic — T034-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T034-gate.sh\n  EXPECTED: Gate script should fail if Vitest tests fail.\n  ACTUAL: It uses `|| echo ...` which masks test failures.\n  FIX: Remove `|| echo ...` from the Vitest execution line in T034-gate.sh.\n  GATE: gates/T034-gate.sh\n  REF: plan.md Phase 6 > src/plugins/migrate.ts\n\nREVIEW FAIL (code): Non-clean typing — src/plugins/migrate.ts.\\n  WHERE: src/plugins/migrate.ts:45,54\\n  ACTUAL: 'any' types used for frontmatter and manifest.\\n  FIX: Define interfaces for SkillFrontmatter and PluginManifest; use them instead of 'any'.\\n  GATE: gates/T034-gate.sh\\n  REF: plan.md Phase 6 > src/plugins/migrate.ts",
-          "status": "completed",
+          "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration\n\nREVIEW FAIL (gate): Broken gate logic — T034-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T034-gate.sh\n  EXPECTED: Gate script should fail if Vitest tests fail.\n  ACTUAL: It uses `|| echo ...` which masks test failures.\n  FIX: Remove `|| echo ...` from the Vitest execution line in T034-gate.sh.\n  GATE: gates/T034-gate.sh\n  REF: plan.md Phase 6 > src/plugins/migrate.ts\n\nREVIEW FAIL (code): Non-clean typing — src/plugins/migrate.ts.\\n  WHERE: src/plugins/migrate.ts:45,54\\n  ACTUAL: 'any' types used for frontmatter and manifest.\\n  FIX: Define interfaces for SkillFrontmatter and PluginManifest; use them instead of 'any'.\\n  GATE: gates/T034-gate.sh\\n  REF: plan.md Phase 6 > src/plugins/migrate.ts\n\nREVIEW FAIL (uat): FR-011 - Workflow Migration missing — Expected: gwrk plugin migrate should migrate both .agents/skills/ and .agents/workflows/. Actual: Only skills are migrated. Fix: Update migrate.ts to also iterate over .agents/workflows/ and generate valid workflow manifests. See spec.md > FR-011.",
+          "status": "open",
           "gateScript": "gates/T034-gate.sh",
           "classification": "greenfield",
           "completedAt": "2026-04-07T21:53:00.000Z"
@@ -382,8 +382,8 @@
         {
           "id": "T035",
           "title": "Implement src/plugins/seed.ts",
-          "description": "NEW: Taxonomy to atomic skills seeding\n\nREVIEW FAIL (lint): Non-clean lint — src/plugins/seed.ts.\n  WHERE: src/plugins/seed.ts:37-38\n  ACTUAL: Biome reports `noImplicitAnyLet` for `match` and `noAssignInExpressions` for the while loop.\n  FIX: Refactor the while loop to avoid assignment in expression and provide an explicit type for `match` (e.g., `RegExpExecArray | null`).\n  GATE: gates/T035-gate.sh\n  REF: plan.md Phase 6 > src/plugins/seed.ts\n\nSTILL FAIL: src/plugins/seed.ts line 38-39 has lint errors (noImplicitAnyLet, noAssignInExpressions).",
-          "status": "completed",
+          "description": "NEW: Taxonomy to atomic skills seeding\n\nREVIEW FAIL (lint): Non-clean lint — src/plugins/seed.ts.\n  WHERE: src/plugins/seed.ts:37-38\n  ACTUAL: Biome reports `noImplicitAnyLet` for `match` and `noAssignInExpressions` for the while loop.\n  FIX: Refactor the while loop to avoid assignment in expression and provide an explicit type for `match` (e.g., `RegExpExecArray | null`).\n  GATE: gates/T035-gate.sh\n  REF: plan.md Phase 6 > src/plugins/seed.ts\n\nSTILL FAIL: src/plugins/seed.ts line 38-39 has lint errors (noImplicitAnyLet, noAssignInExpressions).\n\nREVIEW FAIL (uat): FR-012 - Seeding is not robust — Expected: gwrk init should work in any directory. Actual: seedSkills fails if docs/reference/reasoning-modes.md is missing from CWD. Fix: Resolve taxonomy file path relative to the built-in directory. See spec.md > FR-012.",
+          "status": "open",
           "gateScript": "gates/T035-gate.sh",
           "classification": "greenfield",
           "completedAt": "2026-04-07T21:53:00.000Z"
