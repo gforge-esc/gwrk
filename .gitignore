@@ -5,3 +5,14 @@ dist
 coverage/
 .runs/
 .gwrk/server.pid
+
+# ─── Anti-Cruft: block agent-dropped one-offs ───
+# Agents create test directories, review dumps, and one-off scripts in root.
+# All temporary work goes to /tmp/ (workspace rule: "we don't shit in our own yard").
+test-*/
+.test-*/
+lint_out*
+review-*.md
+uat_verify*.sh
+*.bak
+*.tmp
