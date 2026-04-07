@@ -363,7 +363,7 @@
         {
           "id": "T033",
           "title": "Implement src/commands/init.ts",
-          "description": "MODIFY: Provision `~/.gwrk/plugins/` with built-ins\n\nREVIEW FAIL (code): Incomplete implementation — US-014 / FR-L25-005.\n  WHERE: src/commands/init.ts:100-110\n  EXPECTED: gwrk init MUST provision global home ~/.gwrk/plugins/workflows/ with core workflows and MUST NOT create legacy .agents/ directory in the project root.\n  ACTUAL: It still creates .agents/ and does not provision global plugins.\n  FIX: Update init.ts to create ~/.gwrk/plugins/ and its subdirectories. Copy core workflows from src/plugins/builtins/workflows/ to ~/.gwrk/plugins/workflows/. Eliminate legacy folder creation.\n  GATE: gates/T033-gate.sh (Needs fix: current gate checks seed.test.ts instead of init.ts)\n  REF: plan.md Phase 6 > src/commands/init.ts",
+          "description": "MODIFY: Provision `~/.gwrk/plugins/` with built-ins\n\nREVIEW FAIL (gate): Mismatched gate script — T033-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T033-gate.sh\n  EXPECTED: Gate script should verify init.ts implementation, potentially by running src/commands/init.test.ts.\n  ACTUAL: It runs src/plugins/seed.test.ts instead.\n  FIX: Update T033-gate.sh to test init.ts functionality via vitest run src/commands/init.test.ts.\n  GATE: gates/T033-gate.sh\n  REF: plan.md Phase 6 > src/commands/init.ts",
           "status": "open",
           "gateScript": "gates/T033-gate.sh",
           "classification": "greenfield"
@@ -371,7 +371,7 @@
         {
           "id": "T034",
           "title": "Implement src/plugins/migrate.ts",
-          "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration\n\nREVIEW FAIL (gate): Broken gate logic — T034-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T034-gate.sh\n  EXPECTED: Gate must fail if tests fail.\n  ACTUAL: It uses || echo which masks test failures.\n  FIX: Remove '|| echo ...' from line 17 of T034-gate.sh.\n  GATE: gates/T034-gate.sh\n  REF: plan.md Phase 6 > src/plugins/migrate.ts",
+          "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration\n\nREVIEW FAIL (gate): Broken gate logic — T034-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T034-gate.sh\n  EXPECTED: Gate script should fail if Vitest tests fail.\n  ACTUAL: It uses `|| echo ...` which masks test failures.\n  FIX: Remove `|| echo ...` from the Vitest execution line in T034-gate.sh.\n  GATE: gates/T034-gate.sh\n  REF: plan.md Phase 6 > src/plugins/migrate.ts",
           "status": "open",
           "gateScript": "gates/T034-gate.sh",
           "classification": "greenfield"
@@ -379,7 +379,7 @@
         {
           "id": "T035",
           "title": "Implement src/plugins/seed.ts",
-          "description": "NEW: Taxonomy to atomic skills seeding\n\nREVIEW FAIL (gate): Permissions — T035-gate.sh.\n  WHERE: specs/014-plugin-system/gates/T035-gate.sh\n  EXPECTED: Gate scripts must be executable.\n  ACTUAL: T035-gate.sh is not executable.\n  FIX: Run chmod +x specs/014-plugin-system/gates/T035-gate.sh.\n  GATE: gates/T035-gate.sh\n  REF: plan.md Phase 6 > src/plugins/seed.ts",
+          "description": "NEW: Taxonomy to atomic skills seeding\n\nREVIEW FAIL (lint): Non-clean lint — src/plugins/seed.ts.\n  WHERE: src/plugins/seed.ts:37-38\n  ACTUAL: Biome reports `noImplicitAnyLet` for `match` and `noAssignInExpressions` for the while loop.\n  FIX: Refactor the while loop to avoid assignment in expression and provide an explicit type for `match` (e.g., `RegExpExecArray | null`).\n  GATE: gates/T035-gate.sh\n  REF: plan.md Phase 6 > src/plugins/seed.ts",
           "status": "open",
           "gateScript": "gates/T035-gate.sh",
           "classification": "greenfield"
@@ -387,7 +387,7 @@
         {
           "id": "T036",
           "title": "Implement src/commands/init.test.ts",
-          "description": "Implement changes for src/commands/init.test.ts\n\nREVIEW FAIL (code): Outdated tests — US-014.\n  WHERE: src/commands/init.test.ts:50-70\n  EXPECTED: Tests must verify US-014 requirements (global home provisioning, no .agents/ in root).\n  ACTUAL: Tests still expect legacy .agents/ behavior.\n  FIX: Update init.test.ts to mock homedir() and verify ~/.gwrk/plugins/ structure. Remove expectations for .agents/ in project root.\n  GATE: gates/T036-gate.sh\n  REF: plan.md Phase 6 > src/commands/init.test.ts",
+          "description": "Implement changes for src/commands/init.test.ts\n\nREVIEW FAIL (code): Incomplete test coverage — US-014.\n  WHERE: src/commands/init.test.ts:50-70\n  EXPECTED: Tests must verify that core workflows from `src/plugins/builtins/workflows/` are successfully copied to `~/.gwrk/plugins/workflows/` during `gwrk init`.\n  ACTUAL: It only asserts that the directory exists, not its content.\n  FIX: Add an assertion to check for at least one core workflow directory (e.g., `gwrk-specify`) in the mocked global home.\n  GATE: gates/T036-gate.sh\n  REF: plan.md Phase 6 > src/commands/init.test.ts",
           "status": "open",
           "gateScript": "gates/T036-gate.sh",
           "classification": "greenfield"
@@ -395,7 +395,7 @@
         {
           "id": "T037",
           "title": "Implement test strategy for Phase 6",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (tests): Incomplete/Outdated verification — US-014.\n  WHERE: src/commands/init.test.ts\n  EXPECTED: Test strategy must verify the new provisioning logic.\n  ACTUAL: Tests are passing because they test for the wrong (legacy) behavior.\n  FIX: Update the entire test suite for Phase 6 to align with US-014 and FR-L25-005.\n  GATE: gates/T037-gate.sh (Is also not executable)\n  REF: plan.md Phase 6 > Test Strategy",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (tests): Incomplete verification — US-014.\n  WHERE: src/commands/init.test.ts\n  EXPECTED: Test strategy must verify the actual presence of seeded workflows in the global home.\n  ACTUAL: Verification only checks for directory presence, not the content of `src/plugins/builtins/workflows/` being copied.\n  FIX: Update the test strategy to verify workflow seeding depth (presence of specific workflow directories).\n  GATE: gates/T037-gate.sh\n  REF: plan.md Phase 6 > Test Strategy",
           "status": "open",
           "gateScript": "gates/T037-gate.sh",
           "classification": "noop"
