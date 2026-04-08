@@ -2,4 +2,5 @@
 
 This project is managed by gwrk.
 Rules: .agents/rules/
-Workflows: .agents/workflows/
+Workflows: ~/.gwrk/plugins/workflows/
+Skills: ~/.gwrk/plugins/skills/
