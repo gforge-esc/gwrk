@@ -1,17 +1,23 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { stringify } from "yaml";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface SeedOptions {
   dryRun?: boolean;
 }
 
 export async function seedSkills(options: SeedOptions = {}): Promise<void> {
-  const projectRoot = process.cwd();
   const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
+
+  // Resolve taxonomy file relative to CLI installation, fallback to cwd()
+  const cliRoot = path.resolve(__dirname, "..", "..");
   const taxonomyFile = path.join(
-    projectRoot,
+    cliRoot,
     "docs",
     "reference",
     "reasoning-modes.md",

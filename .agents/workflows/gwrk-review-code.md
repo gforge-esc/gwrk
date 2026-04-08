@@ -14,6 +14,8 @@ description: Technical code review of implementation against spec.
 - DO re-open the phase if any tasks fail.
 - DO post review summary as a PR comment.
 - Evaluate against spec and plan, not personal preference.
+- ONLY re-open tasks in the CURRENT phase. Do NOT touch tasks from other phases.
+- ONLY run tests relevant to the current phase's files, not the full test suite.
 </scope_constraints>
 
 ## Inputs
@@ -29,19 +31,16 @@ description: Technical code review of implementation against spec.
 
 ## Algorithm
 
-### 0. Dev Environment (I-007 — MANDATORY)
+### 0. Build (MANDATORY)
+
+gwrk is a CLI tool. No Docker, no web server.
 
 ```bash
-# Kill any zombie dev processes
-pkill -f 'pnpm.*dev' || true
-
-# STRICT DOCKER MANDATE
-make up
-./scripts/dev/verify-dev-stack.sh
+pnpm build
 ```
 
 > [!CAUTION]
-> Do NOT use bare `pnpm dev`. Do NOT override ports.
+> If `pnpm build` fails, report as **BLOCKING** infrastructure issue. Cannot proceed.
 
 ### 1. Load Context
 
@@ -134,21 +133,16 @@ c. **Type Safety**: No `any` types in non-test critical paths?
 
 ### 7. Test Verification
 
+Run ONLY phase-relevant tests, not the full suite:
+
 ```bash
-pnpm test 2>&1
+# Identify test files from this phase's tasks
+TEST_FILES=$(jq -r --arg pid "$PHASE_ID" '.phases[] | select(.id == $pid) | .tasks[].title' "$TASKS_FILE" | grep -oE 'src/[^ ]+\.ts' | sed 's/\.ts$/.test.ts/' | xargs -I{} sh -c 'test -f "{}" && echo "{}"')
+pnpm vitest run $TEST_FILES --reporter=verbose 2>&1
 ```
 
-- PASS: All tests pass.
-- FAIL: Document which tests fail and why.
-
-E2E (if UI phase):
-```bash
-make test-e2e 2>&1
-```
-
-- PASS: All pass.
-- FAIL: Mark as blocking.
-- SKIP: Only if phase has no UI. Document reason.
+- PASS: All phase tests pass.
+- FAIL: Document which tests fail and why. Only re-open tasks in THIS phase.
 
 ### 8. Apply Task State Changes
 
@@ -264,6 +258,9 @@ REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
 - ❌ Write vague notes ("needs fix" — always include the specific remediation)
 - ❌ Using tasks.json status as primary verdict when gates exist (gates are truth)
 - ❌ Running `git add -A` (scope commits to phase files and tasks.json only)
+- ❌ Re-opening tasks from OTHER phases (only touch tasks in the current phase)
+- ❌ Running `pnpm test` globally (run only phase-relevant test files)
+- ❌ Using `make up` or Docker for CLI-only features
 
 ## Next Step
 

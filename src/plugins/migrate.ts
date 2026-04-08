@@ -9,13 +9,14 @@ export interface MigrateOptions {
   dryRun?: boolean;
 }
 
-export async function migrateSkills(
+export async function migratePlugins(
   options: MigrateOptions = {},
 ): Promise<void> {
   const projectRoot = process.cwd();
   const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
-  const skillsDir = path.join(projectRoot, ".agents", "skills");
 
+  // Migrate skills from .agents/skills/
+  const skillsDir = path.join(projectRoot, ".agents", "skills");
   try {
     const entries = await fs.readdir(skillsDir, { withFileTypes: true });
     for (const entry of entries) {
@@ -23,10 +24,26 @@ export async function migrateSkills(
         await migrateSkill(entry.name, skillsDir, globalDir, options);
       }
     }
-  } catch (e) {
+  } catch {
     // Skills directory missing, skip
   }
+
+  // Migrate workflows from .agents/workflows/
+  const workflowsDir = path.join(projectRoot, ".agents", "workflows");
+  try {
+    const entries = await fs.readdir(workflowsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        await migrateWorkflow(entry.name, workflowsDir, globalDir, options);
+      }
+    }
+  } catch {
+    // Workflows directory missing, skip
+  }
 }
+
+// Keep old name as alias for backward compatibility
+export const migrateSkills = migratePlugins;
 
 async function migrateSkill(
   name: string,
@@ -117,5 +134,63 @@ async function migrateSkill(
     console.log(`Migrated skill '${name}'.`);
   } catch (e) {
     console.error(`Failed to migrate skill '${name}':`, e);
+  }
+}
+
+async function migrateWorkflow(
+  filename: string,
+  sourceBase: string,
+  destBase: string,
+  options: MigrateOptions,
+): Promise<void> {
+  const name = path.basename(filename, ".md");
+  const sourcePath = path.join(sourceBase, filename);
+  const workflowDestDir = path.join(destBase, "workflows", name);
+
+  try {
+    const content = await fs.readFile(sourcePath, "utf-8");
+    const match = content.match(FRONTMATTER_REGEX);
+
+    let description = `Migrated workflow: ${name}`;
+    if (match) {
+      const frontmatter = parse(match[1]) as Record<string, unknown>;
+      if (typeof frontmatter.description === "string") {
+        description = frontmatter.description;
+      }
+    }
+
+    const manifest: Record<string, unknown> = {
+      type: "workflow",
+      name,
+      version: "0.1.0",
+      description,
+    };
+
+    if (options.dryRun) {
+      console.log(
+        `[DRY RUN] Would migrate workflow '${name}' to ${workflowDestDir}`,
+      );
+      return;
+    }
+
+    // Check if destination exists
+    try {
+      await fs.stat(workflowDestDir);
+      console.log(`Skipping workflow '${name}' — already installed.`);
+      return;
+    } catch {
+      // Destination does not exist, proceed
+    }
+
+    await fs.mkdir(workflowDestDir, { recursive: true });
+    await fs.writeFile(
+      path.join(workflowDestDir, "manifest.yaml"),
+      stringify(manifest),
+    );
+    await fs.writeFile(path.join(workflowDestDir, `${name}.md`), content);
+
+    console.log(`Migrated workflow '${name}'.`);
+  } catch (e) {
+    console.error(`Failed to migrate workflow '${name}':`, e);
   }
 }
