@@ -10,10 +10,10 @@ import { runGate } from "../utils/gate-runner.js";
 import { createBranch, isDirty, syncBranch } from "../utils/git.js";
 import { assembleDigest } from "../utils/manifest.js";
 import {
-  type Phase,
   type Task,
   loadTaskState,
   saveTaskState,
+  type Phase,
 } from "../utils/state.js";
 import {
   type ShipRunConfig,
@@ -21,10 +21,16 @@ import {
   type ShipState,
   type StageResult,
 } from "./ship-types.js";
+import {
+  resolveReviewPlugin,
+  validatePhaseScope,
+} from "../plugins/review-plugin.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 
 export class ShipOrchestrator {
   private config: ShipRunConfig;
   private state: ShipState;
+  private workflowRuntime: WorkflowRuntime;
 
   constructor(config: ShipRunConfig, state?: ShipState) {
     this.config = config;
@@ -33,6 +39,7 @@ export class ShipOrchestrator {
     } else {
       this.state = this.initializeState();
     }
+    this.workflowRuntime = new WorkflowRuntime();
   }
 
   private initializeState(): ShipState {
@@ -110,6 +117,51 @@ export class ShipOrchestrator {
 
     this.persistState();
     return this.state.stage === ShipStage.DONE ? 0 : 1;
+  }
+
+  private async executeReviewWorkflow(
+    workflowName: string,
+    prompt: string,
+  ): Promise<StageResult> {
+    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    
+    // 1. Snapshot
+    const beforeState = loadTaskState(featureDir);
+    
+    try {
+      // 2. Resolve and Execute via WorkflowRuntime
+      // This handles built-ins vs local overrides automatically.
+      const result = await this.workflowRuntime.executeWorkflow(workflowName, prompt, {
+        projectRoot: this.config.cwd,
+        agent: this.config.backend,
+        model: this.config.geminiModel,
+      });
+
+      // 3. Post-dispatch validation (Snapshot-Diff-Revert)
+      validatePhaseScope(
+        this.config.cwd,
+        this.config.featureId,
+        this.config.phaseId,
+        beforeState,
+      );
+
+      // Determine verdict from task state - the review agent re-opens tasks on NO-GO.
+      const verdict = this.readVerdict();
+      console.log(`  ${workflowName} verdict: ${verdict}`);
+
+      if (verdict === "GO") {
+        return { success: true, exitCode: 0 };
+      }
+      return this.handleNoGo(workflowName);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  ${workflowName} dispatch error: ${msg}`);
+      return {
+        success: false,
+        exitCode: 1,
+        error: `${workflowName} dispatch failed: ${msg}`,
+      };
+    }
   }
 
   private getNextStage(stage: ShipStage): ShipStage {
@@ -254,140 +306,30 @@ export class ShipOrchestrator {
   }
 
   private async stageCodeReview(): Promise<StageResult> {
-    // FR-005: dispatch review
-    try {
-      const result = await this.dispatchWithFailback({
-        agent: this.config.backend,
-        workflow: ".agents/workflows/gwrk-review-code.md",
-        featureDir: `specs/${this.config.featureId}`,
-        prompt: `Phase ${this.config.phaseId} Code Review`,
-      });
-
-      if (result.exitCode !== 0) {
-        return {
-          success: false,
-          exitCode: result.exitCode,
-          error: `CODE_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
-        };
-      }
-
-      // Determine verdict from task state — the review agent re-opens tasks on NO-GO.
-      // This is the ground truth, not exit code (agents exit 0 on successful completion regardless of verdict).
-      const verdict = this.readVerdict();
-      console.log(`  CODE_REVIEW verdict: ${verdict}`);
-
-      if (verdict === "GO") {
-        return { success: true, exitCode: 0 };
-      }
-      return this.handleNoGo("CODE_REVIEW");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  CODE_REVIEW dispatch error: ${msg}`);
-      return {
-        success: false,
-        exitCode: 1,
-        error: `CODE_REVIEW dispatch failed: ${msg}`,
-      };
-    }
+    const plugin = await resolveReviewPlugin(this.config.cwd);
+    const prompt = `Phase ${this.config.phaseId} Code Review`;
+    return this.executeReviewWorkflow(plugin.codeReviewWorkflow, prompt);
   }
 
   private async stageUatReview(): Promise<StageResult> {
-    // Fix A: Build before UAT so the agent tests freshly compiled code,
-    // not a stale dist/ from before IMPLEMENT ran.
-    try {
-      console.log("  Building before UAT...");
-      execSync("pnpm build", {
-        cwd: this.config.cwd,
-        stdio: "pipe",
-        timeout: 60_000,
-      });
-    } catch {
-      return {
-        success: false,
-        exitCode: 1,
-        error: "Build failed before UAT — cannot test stale binary",
-      };
-    }
-
-    // Fix B: Scope UAT prompt to phase-specific user stories.
-    // Include doneWhen and the plan's requirements addressed by this phase.
-    const featureDir = path.join(
-      this.config.cwd,
-      "specs",
-      this.config.featureId,
-    );
+    const plugin = await resolveReviewPlugin(this.config.cwd);
+    
+    // Scope UAT prompt to phase-specific user stories.
+    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find(
-      (p: Phase) => p.id === this.config.phaseId,
-    );
+    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
     const doneWhen = phase?.doneWhen?.join("\n- ") || "All tasks pass gates";
-
-    // Read plan.md to extract the Requirements Addressed for this phase
-    let requirementsScope = "";
-    const planPath = path.join(featureDir, "plan.md");
-    if (fs.existsSync(planPath)) {
-      const planContent = fs.readFileSync(planPath, "utf-8") ?? "";
-      // Extract the phase section from plan.md
-      const phaseTitle = phase?.title || "";
-      const phaseRegex = new RegExp(
-        `### Phase \\d+:.*?${phaseTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?(?=### Phase \\d+:|---\\s*$|$)`,
-      );
-      const phaseMatch = planContent.match(phaseRegex);
-      if (phaseMatch) {
-        const reqMatch = phaseMatch[0].match(
-          /\*\*Requirements Addressed:\*\*\s*(.*)/,
-        );
-        if (reqMatch) {
-          requirementsScope = reqMatch[1].trim();
-        }
-      }
-    }
 
     const scopedPrompt = [
       `Phase ${this.config.phaseId} UAT Review`,
       "",
       "SCOPE CONSTRAINT: Only evaluate user stories and requirements addressed by THIS phase.",
-      "Do NOT evaluate stories belonging to other phases.",
-      requirementsScope ? `Requirements in scope: ${requirementsScope}` : "",
       "",
       "Done When:",
       `- ${doneWhen}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].join("\n");
 
-    try {
-      const result = await this.dispatchWithFailback({
-        agent: this.config.backend,
-        workflow: ".agents/workflows/gwrk-review-uat.md",
-        featureDir: `specs/${this.config.featureId}`,
-        prompt: scopedPrompt,
-      });
-
-      if (result.exitCode !== 0) {
-        return {
-          success: false,
-          exitCode: result.exitCode,
-          error: `UAT_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
-        };
-      }
-
-      const verdict = this.readVerdict();
-      console.log(`  UAT_REVIEW verdict: ${verdict}`);
-
-      if (verdict === "GO") {
-        return { success: true, exitCode: 0 };
-      }
-      return this.handleNoGo("UAT_REVIEW");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  UAT_REVIEW dispatch error: ${msg}`);
-      return {
-        success: false,
-        exitCode: 1,
-        error: `UAT_REVIEW dispatch failed: ${msg}`,
-      };
-    }
+    return this.executeReviewWorkflow(plugin.uatReviewWorkflow, scopedPrompt);
   }
 
   /**
