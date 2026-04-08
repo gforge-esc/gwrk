@@ -2,7 +2,7 @@
 # AUTHORED
 set -euo pipefail
 
-# T045: 4 built-in review plugins
+# T050: 4 built-in review plugins
 test -d src/plugins/builtins/reviews/review-code-cli
 test -d src/plugins/builtins/reviews/review-uat-cli
 test -d src/plugins/builtins/reviews/review-code-webapp
@@ -14,4 +14,4 @@ test -f src/plugins/builtins/reviews/review-uat-cli/manifest.yaml
 test -f src/plugins/builtins/reviews/review-code-webapp/manifest.yaml
 test -f src/plugins/builtins/reviews/review-uat-webapp/manifest.yaml
 
-echo "PASS: T045 — Implement built-in review plugins"
+echo "PASS: T050 — Implement built-in review plugins"

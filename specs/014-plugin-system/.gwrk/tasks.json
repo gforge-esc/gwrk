@@ -199,27 +199,6 @@
           "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "classification": "noop"
-        },
-        {
-          "id": "T044",
-          "title": "Implement src/plugins/builtins/agents/claude/adapter.ts",
-          "description": "NEW: Claude Code adapter",
-          "status": "cancelled",
-          "gateScript": "gates/T016-gate.sh"
-        },
-        {
-          "id": "T045",
-          "title": "Implement src/plugins/builtins/agents/gemini/adapter.ts",
-          "description": "NEW: Gemini CLI adapter",
-          "status": "cancelled",
-          "gateScript": "gates/T017-gate.sh"
-        },
-        {
-          "id": "T046",
-          "title": "Implement src/plugins/builtins/agents/codex/adapter.ts",
-          "description": "NEW: Codex CLI adapter",
-          "status": "cancelled",
-          "gateScript": "gates/T018-gate.sh"
         }
       ],
       "doneWhen": [
@@ -337,20 +316,6 @@
           "gateScript": "gates/T032-gate.sh",
           "completedAt": "2026-04-06T17:45:00.000Z",
           "classification": "noop"
-        },
-        {
-          "id": "T047",
-          "title": "Implement src/plugins/migrate.test.ts",
-          "description": "NEW: Verify manifest generation from frontmatter",
-          "status": "completed",
-          "gateScript": "gates/T032-gate.sh"
-        },
-        {
-          "id": "T048",
-          "title": "Implement src/plugins/seed.test.ts",
-          "description": "NEW: Verify ~40 atomic skills generated",
-          "status": "completed",
-          "gateScript": "gates/T033-gate.sh"
         }
       ],
       "doneWhen": [
@@ -477,43 +442,43 @@
       ],
       "tasks": [
         {
-          "id": "T044",
+          "id": "T049",
           "title": "Implement src/plugins/review-plugin.ts",
           "description": "NEW: ReviewPlugin interface, ReviewStep schema, resolveReviewPlugin(), project-type detection",
           "status": "open",
-          "gateScript": "gates/T044-gate.sh",
+          "gateScript": "gates/T049-gate.sh",
           "classification": "greenfield"
         },
         {
-          "id": "T045",
+          "id": "T050",
           "title": "Implement built-in review plugins (4 plugins)",
           "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
           "status": "open",
-          "gateScript": "gates/T045-gate.sh",
+          "gateScript": "gates/T050-gate.sh",
           "classification": "greenfield"
         },
         {
-          "id": "T046",
+          "id": "T051",
           "title": "Modify src/engine/ship-orchestrator.ts for plugin dispatch",
           "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).",
           "status": "open",
-          "gateScript": "gates/T046-gate.sh",
+          "gateScript": "gates/T051-gate.sh",
           "classification": "refactor"
         },
         {
-          "id": "T047",
+          "id": "T052",
           "title": "Implement src/plugins/review-plugin.test.ts",
           "description": "NEW: Unit tests for resolveReviewPlugin, phase-scope validation, step template schema",
           "status": "open",
-          "gateScript": "gates/T047-gate.sh",
+          "gateScript": "gates/T052-gate.sh",
           "classification": "greenfield"
         },
         {
-          "id": "T048",
+          "id": "T053",
           "title": "Implement test strategy for Phase 8",
           "description": "Integration test: ship loop dispatches via review plugin resolution end-to-end",
           "status": "open",
-          "gateScript": "gates/T048-gate.sh",
+          "gateScript": "gates/T053-gate.sh",
           "classification": "greenfield"
         }
       ]
