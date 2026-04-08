@@ -498,7 +498,7 @@
           "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).",
           "status": "open",
           "gateScript": "gates/T046-gate.sh",
-          "classification": "rework"
+          "classification": "refactor"
         },
         {
           "id": "T047",
