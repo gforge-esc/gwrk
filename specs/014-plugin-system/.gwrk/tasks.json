@@ -437,7 +437,7 @@
       "title": "Review Plugin Layer (Layer 3 — First Extension)",
       "doneWhen": [
         "ShipOrchestrator no longer hardcodes workflow paths — resolves via ReviewPlugin",
-        "Post-dispatch validation reverts any cross-phase task re-opens",
+        "Post-dispatch validation reverts any cross-phase task mutations",
         ".gwrkrc.json review field selects active review strategy"
       ],
       "tasks": [
@@ -453,10 +453,11 @@
         {
           "id": "T050",
           "title": "Implement built-in review plugins (4 plugins)",
-          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each\n\nREVIEW FAIL (code): NOT IMPLEMENTED — T050 — FR-L3-001.\n  WHERE: src/plugins/builtins/reviews/\n  EXPECTED: Separate directories for review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp, each with manifest.yaml and workflow .md files.\n  ACTUAL: Directories do not exist; plugins are hardcoded in src/plugins/review-plugin.ts.\n  FIX: Implement the built-in plugins as actual plugin files in src/plugins/builtins/reviews/ and update T050-gate.sh to pass.\n  GATE: gates/T050-gate.sh\n  REF: plan.md Phase 8 > Files",
-          "status": "open",
+          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
+          "status": "completed",
           "gateScript": "gates/T050-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-08T14:48:00.000Z"
         },
         {
           "id": "T051",
@@ -479,10 +480,11 @@
         {
           "id": "T053",
           "title": "Implement test strategy for Phase 8",
-          "description": "Integration test: ship loop dispatches via review plugin resolution end-to-end\n\nREVIEW FAIL (tests): Test failure — T053 — TR-015.\n  WHERE: src/engine/ship-orchestrator.test.ts\n  EXPECTED: Integration tests verify the end-to-end path from ShipOrchestrator to ReviewPlugin.\n  ACTUAL: Tests fail with \"Configuration error: invalid JSON\" because loadConfig calls process.exit(1) when it cannot find/parse .gwrkrc.json in the mocked environment.\n  FIX: Update ship-orchestrator.test.ts to properly mock loadConfig or provide a valid mocked .gwrkrc.json. Also, consider refactoring loadConfig to throw errors instead of calling process.exit(1).\n  GATE: gates/T053-gate.sh\n  REF: plan.md Phase 8 > Test Strategy",
-          "status": "open",
+          "description": "Integration test: ship loop dispatches via review plugin resolution end-to-end",
+          "status": "completed",
           "gateScript": "gates/T053-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-08T14:48:00.000Z"
         }
       ]
     }
