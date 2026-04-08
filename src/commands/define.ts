@@ -1,6 +1,7 @@
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import { banner, dryRun as dryRunFmt, fail, success } from "../utils/format.js";
@@ -50,24 +51,16 @@ export const defineCommand = new Command("define")
           );
         }
 
-        // Bare `gwrk define <feature>` = full definition loop
         const cwd = process.cwd();
-        const scriptPath = path.join(cwd, "scripts/dev/define-until-solid.sh");
-
         const config = loadConfig(cwd);
         const backend = config.agents.define;
-
-        if (opts.dryRun) {
-          dryRunFmt(`${scriptPath} ${feature}`);
-          return;
-        }
 
         const startedAt = new Date().toISOString();
         const runId = startRun({
           feature_id: feature,
           command: "define",
           agent_backend: backend,
-          workflow: "define-until-solid",
+          workflow: "define-orchestrator",
         });
 
         banner("define", {
@@ -81,29 +74,29 @@ export const defineCommand = new Command("define")
         let exitCode = 0;
 
         try {
-          const envVars: Record<string, string> = {
-            ...(process.env as Record<string, string>),
-            APPROVAL_MODE: "yolo",
-          };
-          if (opts.refs) envVars.GWRK_REFS = opts.refs;
-
-          await run(scriptPath, [feature], {
+          const orchestrator = new DefineOrchestrator({
+            featureId: feature,
+            backend,
             cwd,
-            env: envVars,
-            stdio: "inherit",
+            refs: opts.refs,
+            dryRun: opts.dryRun,
           });
 
+          exitCode = await orchestrator.run();
+
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          finishRun(runId, { exit_code: 0, duration_s: durationS });
-          success("define", durationS, runId);
-        } catch (error) {
+          finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+          if (exitCode === 0) {
+            success("define", durationS, runId);
+          } else {
+            fail("define", exitCode, durationS, runId);
+          }
+        } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          exitCode =
-            error instanceof Error && "exitCode" in error
-              ? (error as { exitCode: number }).exitCode
-              : 1;
+          exitCode = 1;
           finishRun(runId, { exit_code: exitCode, duration_s: durationS });
           fail("define", exitCode, durationS, runId);
+          console.error(error);
         }
 
         // Write Execution Manifest (ADR-003)

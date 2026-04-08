@@ -14,7 +14,7 @@ export const SEMVER_REGEX = /^\d+\.\d+\.\d+$/;
  * Base schema for all plugins
  */
 export const PluginBaseSchema = z.object({
-  type: z.enum(["agent", "skill", "workflow", "extension", "channel"]),
+  type: z.enum(["agent", "skill", "workflow", "extension", "channel", "review"]),
   name: z.string().min(1).regex(KEBAB_CASE_REGEX),
   version: z.string().regex(SEMVER_REGEX),
   description: z.string().min(1),
@@ -164,6 +164,28 @@ export const WorkflowManifestSchema = PluginBaseSchema.extend({
 });
 
 /**
+ * Review Manifest (Layer 3)
+ */
+export const ReviewStepSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  required: z.boolean().optional(),
+  skip: z.boolean().optional(),
+});
+
+export const ReviewManifestSchema = PluginBaseSchema.extend({
+  type: z.literal("review"),
+  projectType: z.enum(["cli", "webapp"]),
+  codeReviewWorkflow: z.string(),
+  uatReviewWorkflow: z.string(),
+  steps: z.object({
+    code: z.array(ReviewStepSchema),
+    uat: z.array(ReviewStepSchema),
+  }),
+});
+
+/**
  * Any Plugin Manifest (Union of all types)
  * We use z.union instead of z.discriminatedUnion at the top level because
  * SkillManifestSchema is itself a discriminated union, and members of
@@ -173,6 +195,7 @@ export const AnyManifestSchema = z.union([
   SkillManifestSchema,
   AgentManifestSchema,
   WorkflowManifestSchema,
+  ReviewManifestSchema,
   // Future: ExtensionManifestSchema, ChannelManifestSchema
 ]);
 
@@ -181,4 +204,5 @@ export type CompoundSkillManifest = z.infer<typeof CompoundSkillManifestSchema>;
 export type SkillManifest = z.infer<typeof SkillManifestSchema>;
 export type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type WorkflowManifest = z.infer<typeof WorkflowManifestSchema>;
+export type ReviewManifest = z.infer<typeof ReviewManifestSchema>;
 export type AnyManifest = z.infer<typeof AnyManifestSchema>;

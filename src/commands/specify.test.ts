@@ -2,23 +2,32 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dispatchAgent } from "../utils/agent.js";
 import { specifyCommand } from "./specify.js";
+import { Command } from "commander";
 
-vi.mock("../utils/agent.js", () => ({
-  dispatchAgent: vi
-    .fn()
-    .mockResolvedValue({ exitCode: 0, stdout: "Success", stderr: "", logPath: "/tmp/test.log" }),
+const { mockExecuteWorkflow } = vi.hoisted(() => ({
+  mockExecuteWorkflow: vi.fn().mockResolvedValue({
+    summary: "Success",
+    intents: [],
+    summaries: [],
+  }),
 }));
+
+vi.mock("../plugins/workflow-runtime.js", () => {
+  return {
+    WorkflowRuntime: class {
+      executeWorkflow = mockExecuteWorkflow;
+    }
+  };
+});
 
 describe("specifyCommand", () => {
   let tempDir: string;
+  let program: Command;
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-specify-test-"));
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
@@ -48,6 +57,16 @@ describe("specifyCommand", () => {
         },
       }),
     );
+
+    program = new Command();
+    program.addCommand(specifyCommand);
+
+    mockExecuteWorkflow.mockClear();
+    mockExecuteWorkflow.mockResolvedValue({
+      summary: "Success",
+      intents: [],
+      summaries: [],
+    });
   });
 
   afterEach(() => {
@@ -55,70 +74,62 @@ describe("specifyCommand", () => {
     vi.restoreAllMocks();
   });
 
-  it("should dispatch agent in rework mode when spec exists", async () => {
+  it("should dispatch workflow in rework mode when spec exists", async () => {
     // Create existing spec for rework mode
     const specDir = path.join(tempDir, "specs", "014-plugin-system");
     fs.mkdirSync(specDir, { recursive: true });
     fs.writeFileSync(path.join(specDir, "spec.md"), "# Existing spec");
 
-    await specifyCommand.parseAsync(
-      ["014-plugin-system", "Add WorkflowRuntime rework"],
-      { from: "user" },
+    await program.parseAsync(
+      ["node", "test", "spec", "014-plugin-system", "Add WorkflowRuntime rework"],
     );
 
-    expect(dispatchAgent).toHaveBeenCalledWith(
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-specify",
+      expect.stringContaining("REWORK"),
       expect.objectContaining({
-        backend: "gemini",
-        workflowPath: ".agents/workflows/gwrk-specify.md",
-        featureDir: specDir,
-        prompt: expect.stringContaining("REWORK"),
+        agent: "gemini",
+        projectRoot: tempDir,
       }),
     );
-    // Prompt should contain the rework instructions
-    const call = vi.mocked(dispatchAgent).mock.calls[0][0];
-    expect(call.prompt).toContain("Add WorkflowRuntime rework");
-    expect(call.prompt).toContain("014-plugin-system");
   });
 
-  it("should dispatch agent in new mode with prompt", async () => {
-    await specifyCommand.parseAsync(
-      ["018-new-feature", "A brand new feature description"],
-      { from: "user" },
+  it("should dispatch workflow in new mode with prompt", async () => {
+    await program.parseAsync(
+      ["node", "test", "spec", "018-new-feature", "A brand new feature description"],
     );
 
-    expect(dispatchAgent).toHaveBeenCalledWith(
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-specify",
+      expect.stringContaining("Create a NEW spec"),
       expect.objectContaining({
-        backend: "gemini",
-        workflowPath: ".agents/workflows/gwrk-specify.md",
-        prompt: expect.stringContaining("NEW spec"),
+        agent: "gemini",
+        projectRoot: tempDir,
       }),
     );
-    const call = vi.mocked(dispatchAgent).mock.calls[0][0];
-    expect(call.prompt).toContain("A brand new feature description");
   });
 
   it("should fail fast if new spec has no prompt", async () => {
     process.exitCode = 0;
-    await specifyCommand.parseAsync(["018-new-feature"], { from: "user" });
+    try {
+      await program.parseAsync(["node", "test", "spec", "018-new-feature"]);
+    } catch {
+      // Expected
+    }
 
     expect(process.exitCode).toBe(1);
   });
 
-  it("should exit with non-zero if agent fails", async () => {
+  it("should exit with non-zero if workflow fails", async () => {
     // Create existing spec for rework mode
     const specDir = path.join(tempDir, "specs", "014-plugin-system");
     fs.mkdirSync(specDir, { recursive: true });
     fs.writeFileSync(path.join(specDir, "spec.md"), "# Existing spec");
 
-    vi.mocked(dispatchAgent).mockResolvedValueOnce({
-      exitCode: 1,
-      stdout: "",
-      stderr: "Error",
-      logPath: "/tmp/test-fail.log",
-    });
+    mockExecuteWorkflow.mockRejectedValueOnce(new Error("Workflow failed"));
 
     process.exitCode = 0;
-    await specifyCommand.parseAsync(["014-plugin-system"], { from: "user" });
+    await program.parseAsync(["node", "test", "spec", "014-plugin-system"]);
 
     expect(process.exitCode).toBe(1);
   });

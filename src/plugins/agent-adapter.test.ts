@@ -24,6 +24,22 @@ describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", 
       expect(dispatch.stdin).toBe("context data");
     });
 
+    it("passes --model when GEMINI_MODEL is set in env", async () => {
+      const task = {
+        prompt: "test",
+        env: { GEMINI_MODEL: "gemini-3-flash-preview" },
+      };
+      const dispatch = await adapter.dispatch(task);
+      expect(dispatch.args).toContain("--model");
+      expect(dispatch.args).toContain("gemini-3-flash-preview");
+    });
+
+    it("omits --model when GEMINI_MODEL is not set", async () => {
+      const task = { prompt: "test" };
+      const dispatch = await adapter.dispatch(task);
+      expect(dispatch.args).not.toContain("--model");
+    });
+
     it("FR-L1-003: normalizes Gemini 53 exit code to gwrk 1 (turn_limit)", () => {
       const result = adapter.parseResult("", "", 53);
       expect(result.exitCode).toBe(1);

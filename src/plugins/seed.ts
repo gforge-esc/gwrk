@@ -1,17 +1,23 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { stringify } from "yaml";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface SeedOptions {
   dryRun?: boolean;
 }
 
 export async function seedSkills(options: SeedOptions = {}): Promise<void> {
-  const projectRoot = process.cwd();
   const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
+
+  // Resolve taxonomy file relative to CLI installation, fallback to cwd()
+  const cliRoot = path.resolve(__dirname, "..", "..");
   const taxonomyFile = path.join(
-    projectRoot,
+    cliRoot,
     "docs",
     "reference",
     "reasoning-modes.md",
@@ -34,11 +40,10 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
       // Followed by: > "Prompt" (with potential multiple newlines and spaces)
       const modeRegex = /(\d+)\. \*\*([^*]+)\*\* - ([^\n]+)\s+> "([^"]+)"/g;
 
-      let match;
-      while ((match = modeRegex.exec(section)) !== null) {
-        const name = match[2].toLowerCase().replace(/\s+/g, "-");
-        const description = match[3];
-        const prompt = match[4];
+      for (const execResult of section.matchAll(modeRegex)) {
+        const name = execResult[2].toLowerCase().replace(/\s+/g, "-");
+        const description = execResult[3];
+        const prompt = execResult[4];
 
         await createAtomicSkill(
           name,

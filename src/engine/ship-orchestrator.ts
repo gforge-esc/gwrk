@@ -1,6 +1,16 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { dispatchToAgent } from "../utils/agent.js";
+import {
+  resolveReviewPlugin,
+  validatePhaseScope,
+} from "../plugins/review-plugin.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import {
+  type TaskDispatch,
+  type TaskResult,
+  dispatchToAgent,
+} from "../utils/agent.js";
 import { runGate } from "../utils/gate-runner.js";
 import { createBranch, isDirty, syncBranch } from "../utils/git.js";
 import { assembleDigest } from "../utils/manifest.js";
@@ -20,6 +30,7 @@ import {
 export class ShipOrchestrator {
   private config: ShipRunConfig;
   private state: ShipState;
+  private workflowRuntime: WorkflowRuntime;
 
   constructor(config: ShipRunConfig, state?: ShipState) {
     this.config = config;
@@ -28,6 +39,7 @@ export class ShipOrchestrator {
     } else {
       this.state = this.initializeState();
     }
+    this.workflowRuntime = new WorkflowRuntime();
   }
 
   private initializeState(): ShipState {
@@ -105,6 +117,59 @@ export class ShipOrchestrator {
 
     this.persistState();
     return this.state.stage === ShipStage.DONE ? 0 : 1;
+  }
+
+  private async executeReviewWorkflow(
+    workflowName: string,
+    prompt: string,
+  ): Promise<StageResult> {
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+
+    // 1. Snapshot
+    const beforeState = loadTaskState(featureDir);
+
+    try {
+      // 2. Resolve and Execute via WorkflowRuntime
+      // This handles built-ins vs local overrides automatically.
+      const result = await this.workflowRuntime.executeWorkflow(
+        workflowName,
+        prompt,
+        {
+          projectRoot: this.config.cwd,
+          agent: this.config.backend,
+          model: this.config.geminiModel,
+        },
+      );
+
+      // 3. Post-dispatch validation (Snapshot-Diff-Revert)
+      validatePhaseScope(
+        this.config.cwd,
+        this.config.featureId,
+        this.config.phaseId,
+        beforeState,
+      );
+
+      // Determine verdict from task state - the review agent re-opens tasks on NO-GO.
+      const verdict = this.readVerdict();
+      console.log(`  ${workflowName} verdict: ${verdict}`);
+
+      if (verdict === "GO") {
+        return { success: true, exitCode: 0 };
+      }
+      return this.handleNoGo(workflowName);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  ${workflowName} dispatch error: ${msg}`);
+      return {
+        success: false,
+        exitCode: 1,
+        error: `${workflowName} dispatch failed: ${msg}`,
+      };
+    }
   }
 
   private getNextStage(stage: ShipStage): ShipStage {
@@ -222,7 +287,7 @@ export class ShipOrchestrator {
     try {
       const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n${tasksToDispatch.map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n")}`;
 
-      const result = await dispatchToAgent({
+      const result = await this.dispatchWithFailback({
         agent: this.config.backend,
         workflow: ".agents/workflows/gwrk-implement.md",
         featureDir: `specs/${this.config.featureId}`,
@@ -249,76 +314,36 @@ export class ShipOrchestrator {
   }
 
   private async stageCodeReview(): Promise<StageResult> {
-    // FR-005: dispatch review
-    try {
-      const result = await dispatchToAgent({
-        agent: this.config.backend,
-        workflow: ".agents/workflows/gwrk-review-code.md",
-        featureDir: `specs/${this.config.featureId}`,
-        prompt: `Phase ${this.config.phaseId} Code Review`,
-      });
-
-      if (result.exitCode !== 0) {
-        return {
-          success: false,
-          exitCode: result.exitCode,
-          error: `CODE_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
-        };
-      }
-
-      // Determine verdict from task state — the review agent re-opens tasks on NO-GO.
-      // This is the ground truth, not exit code (agents exit 0 on successful completion regardless of verdict).
-      const verdict = this.readVerdict();
-      console.log(`  CODE_REVIEW verdict: ${verdict}`);
-
-      if (verdict === "GO") {
-        return { success: true, exitCode: 0 };
-      }
-      return this.handleNoGo("CODE_REVIEW");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  CODE_REVIEW dispatch error: ${msg}`);
-      return {
-        success: false,
-        exitCode: 1,
-        error: `CODE_REVIEW dispatch failed: ${msg}`,
-      };
-    }
+    const plugin = await resolveReviewPlugin(this.config.cwd);
+    const prompt = `Phase ${this.config.phaseId} Code Review`;
+    return this.executeReviewWorkflow(plugin.codeReviewWorkflow, prompt);
   }
 
   private async stageUatReview(): Promise<StageResult> {
-    try {
-      const result = await dispatchToAgent({
-        agent: this.config.backend,
-        workflow: ".agents/workflows/gwrk-review-uat.md",
-        featureDir: `specs/${this.config.featureId}`,
-        prompt: `Phase ${this.config.phaseId} UAT Review`,
-      });
+    const plugin = await resolveReviewPlugin(this.config.cwd);
 
-      if (result.exitCode !== 0) {
-        return {
-          success: false,
-          exitCode: result.exitCode,
-          error: `UAT_REVIEW agent exited non-zero: ${result.errorType || result.exitCode}`,
-        };
-      }
+    // Scope UAT prompt to phase-specific user stories.
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    const doneWhen = phase?.doneWhen?.join("\n- ") || "All tasks pass gates";
 
-      const verdict = this.readVerdict();
-      console.log(`  UAT_REVIEW verdict: ${verdict}`);
+    const scopedPrompt = [
+      `Phase ${this.config.phaseId} UAT Review`,
+      "",
+      "SCOPE CONSTRAINT: Only evaluate user stories and requirements addressed by THIS phase.",
+      "",
+      "Done When:",
+      `- ${doneWhen}`,
+    ].join("\n");
 
-      if (verdict === "GO") {
-        return { success: true, exitCode: 0 };
-      }
-      return this.handleNoGo("UAT_REVIEW");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  UAT_REVIEW dispatch error: ${msg}`);
-      return {
-        success: false,
-        exitCode: 1,
-        error: `UAT_REVIEW dispatch failed: ${msg}`,
-      };
-    }
+    return this.executeReviewWorkflow(plugin.uatReviewWorkflow, scopedPrompt);
   }
 
   /**
@@ -348,11 +373,62 @@ export class ShipOrchestrator {
   }
 
   private async stagePrCi(): Promise<StageResult> {
-    // FR-006: Create PR and poll CI
-    // This would use 'gh pr create' and 'gh pr checks'
     console.log("Creating PR and awaiting CI...");
-    // Mocking success for now
-    return { success: true, exitCode: 0, nextStage: ShipStage.DONE };
+    const branchName = this.state.branchName;
+    const specName = this.config.featureId;
+
+    try {
+      // Check for existing PR
+      const prListRaw = execSync(`gh pr list --head "${branchName}" --base develop --json number --jq '.[0].number'`, { cwd: this.config.cwd, encoding: "utf-8" }).trim();
+      
+      let prNumber = prListRaw !== "null" && prListRaw !== "" ? prListRaw : null;
+
+      if (!prNumber) {
+        // Read tasks.json to build PR body
+        const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+        const taskState = loadTaskState(featureDir);
+        const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+        
+        const tasksList = phase?.tasks.map((t: Task) => `- [${t.status === "completed" ? "x" : " "}] ${t.title}`).join("\n") || "- See tasks.json for task list";
+        const phaseNum = this.config.phaseId.replace("phase-", "").replace(/^0+/, "");
+        const formattedSpec = specName.replace(/^\d+-/, "");
+
+        const prBody = `## feat(${formattedSpec}): Phase ${phaseNum}
+
+### Tasks Completed
+${tasksList}
+
+### Verification
+- [x] All tasks verified via Hard Gates
+- [x] Code review: GO
+- [x] UAT: GO
+
+---
+_Generated by gwrk ship_`;
+        
+        const prBodyPath = path.join("/tmp", `gwrk-pr-body-${Date.now()}.md`);
+        fs.writeFileSync(prBodyPath, prBody, "utf-8");
+        
+        const createOutput = execSync(`gh pr create --title "feat(${formattedSpec}): Phase ${phaseNum}" --body-file "${prBodyPath}" --base develop`, { cwd: this.config.cwd, encoding: "utf-8" });
+        
+        const match = createOutput.match(/pull\/(\d+)/);
+        if (match) {
+          prNumber = match[1];
+        }
+      }
+
+      if (prNumber) {
+        console.log(`  PR #${prNumber} created/found. Waiting for CI...`);
+        // gh pr checks blocks until finished, returning non-zero if failed
+        execSync(`gh pr checks "${prNumber}" --watch --required --interval 30`, { cwd: this.config.cwd, stdio: "inherit" });
+        return { success: true, exitCode: 0, nextStage: ShipStage.DONE };
+      }
+      
+      return { success: false, exitCode: 1, error: "Could not determine PR number." };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, exitCode: 1, error: `PR/CI step failed: ${msg}` };
+    }
   }
 
   private handleNoGo(stage: string): StageResult {
@@ -383,5 +459,48 @@ export class ShipOrchestrator {
       `NO-GO in ${stage}, looping back to IMPLEMENT (Iteration ${this.state.iteration})`,
     );
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
+  }
+
+  /**
+   * Dispatch with graceful model failback (stopgap until F005/F008).
+   * Tries primary model, then falls back through the chain on non-zero exit.
+   * Only applies when backend is "gemini" and failbackModels are configured.
+   */
+  private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
+    const isGemini = this.config.backend === "gemini";
+    const primaryModel = this.config.geminiModel;
+    const failbackModels = this.config.geminiFailbackModels ?? [];
+
+    // Build the model chain: [primary, ...failbacks]
+    const modelChain: (string | undefined)[] = isGemini
+      ? [primaryModel, ...failbackModels]
+      : [undefined]; // Non-gemini backends: single attempt, no model override
+
+    let lastResult: TaskResult | undefined;
+
+    for (const model of modelChain) {
+      const env: Record<string, string> = { ...task.env };
+      if (model) {
+        env.GEMINI_MODEL = model;
+        console.log(`  ▸ Dispatching with model: ${model}`);
+      }
+
+      lastResult = await dispatchToAgent({ ...task, env });
+
+      if (lastResult.exitCode === 0) {
+        return lastResult;
+      }
+
+      // Only failback if there are more models to try
+      const currentIndex = modelChain.indexOf(model);
+      if (currentIndex < modelChain.length - 1) {
+        const nextModel = modelChain[currentIndex + 1];
+        console.log(
+          `  ⚠ Model ${model ?? "default"} failed (exit ${lastResult.exitCode}), failing back to ${nextModel}`,
+        );
+      }
+    }
+
+    return lastResult as TaskResult;
   }
 }

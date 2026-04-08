@@ -99,6 +99,7 @@ export class PluginLoader {
       "extensions",
       "channels",
       "domains",
+      "reviews",
     ];
 
     const visitedPaths = new Set<string>();
@@ -197,6 +198,7 @@ export class PluginLoader {
       "extensions",
       "channels",
       "domains",
+      "reviews",
     ];
     const visitedPaths = new Set<string>();
 

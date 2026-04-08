@@ -19,7 +19,7 @@ export const GwrkConfigSchema = z.object({
     slack: z
       .object({
         channelId: z.string(),
-        channelName: z.string(),
+        channelName: z.string().optional(),
         opsChannelId: z.string().optional(),
         opsChannelName: z.string().optional(),
       })
@@ -28,7 +28,14 @@ export const GwrkConfigSchema = z.object({
   agents: z.object({
     define: AgentBackendSchema,
     implement: AgentBackendSchema,
+    throttleMs: z.number().int().min(0).optional(),
     fallbackOrder: z.array(AgentBackendSchema).optional(),
+    gemini: z
+      .object({
+        model: z.string().optional(),
+        failbackModels: z.array(z.string()).optional(),
+      })
+      .optional(),
   }),
   server: z
     .object({
@@ -88,6 +95,11 @@ export const GwrkConfigSchema = z.object({
       globalDir: z.string().optional(),
     })
     .optional(),
+  review: z
+    .object({
+      strategy: z.enum(["cli", "webapp"]).optional(),
+    })
+    .optional(),
   pulse: z
     .object({
       repos: z.array(z.string().min(1)),
@@ -101,16 +113,14 @@ export function loadConfig(projectRoot: string): GwrkConfig {
   const configPath = path.join(projectRoot, ".gwrkrc.json");
 
   if (!fs.existsSync(configPath)) {
-    console.error("Configuration file .gwrkrc.json not found");
-    process.exit(1);
+    throw new Error(`Configuration file .gwrkrc.json not found at ${configPath}`);
   }
 
-  let raw: any;
+  let raw: Record<string, any>;
   try {
     raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
   } catch (error) {
-    console.error("Configuration error: invalid JSON");
-    process.exit(1);
+    throw new Error("Configuration error: invalid JSON in .gwrkrc.json");
   }
 
   // Inject environment variables into the raw object before parsing
@@ -121,8 +131,7 @@ export function loadConfig(projectRoot: string): GwrkConfig {
 
   const result = GwrkConfigSchema.safeParse(raw);
   if (!result.success) {
-    console.error(`Configuration error: ${result.error.message}`);
-    process.exit(1);
+    throw new Error(`Configuration error in .gwrkrc.json: ${result.error.message}`);
   }
 
   return result.data;

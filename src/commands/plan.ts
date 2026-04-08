@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-import { dispatchAgent } from "../utils/agent.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
@@ -37,22 +37,14 @@ export const planCommand = new Command("plan")
 
       const config = loadConfig(projectRoot);
       const backend = config.agents.define;
+      const runtime = new WorkflowRuntime();
 
       // TC-007: Read stdin if piped (discovery JSON)
-      let contextPath: string | undefined;
+      let contextContent: string | undefined;
       if (!process.stdin.isTTY) {
         const stdinContent = await readStdin();
-
         if (stdinContent.trim()) {
-          try {
-            // Verify valid JSON
-            JSON.parse(stdinContent);
-            const hash = Date.now();
-            contextPath = `/tmp/gwrk-discovery-${hash}.json`;
-            fs.writeFileSync(contextPath, stdinContent);
-          } catch (e) {
-            // Ignore if not valid JSON
-          }
+          contextContent = stdinContent.trim();
         }
       }
 
@@ -68,28 +60,27 @@ export const planCommand = new Command("plan")
         Agent: backend,
         "Run ID": `${runId}`,
         ...(opts.refs ? { Refs: opts.refs } : {}),
-        ...(contextPath ? { Context: contextPath } : {}),
       });
 
       const startTime = Date.now();
 
-      const result = await dispatchAgent({
-        backend,
-        workflowPath: ".agents/workflows/gwrk-plan.md",
-        featureDir: relativeFeatureDir,
-        contextPath,
-      });
+      try {
+        const input = `Plan implementation for feature ${feature}${contextContent ? `\n\nContext:\n${contextContent}` : ""}${opts.refs ? `\n\nReference: ${opts.refs}` : ""}`;
+        const result = await runtime.executeWorkflow("gwrk-plan", input, {
+          agent: backend,
+          projectRoot,
+        });
 
-      const durationS = Math.round((Date.now() - startTime) / 1000);
-
-      if (result.exitCode !== 0) {
-        finishRun(runId, { exit_code: result.exitCode, duration_s: durationS });
-        fail("define plan", result.exitCode, durationS, runId, result.logPath);
-        process.exitCode = result.exitCode;
-        return;
+        const durationS = Math.round((Date.now() - startTime) / 1000);
+        finishRun(runId, { exit_code: 0, duration_s: durationS });
+        success("define plan", durationS, runId);
+      } catch (err: unknown) {
+        const durationS = Math.round((Date.now() - startTime) / 1000);
+        const msg = err instanceof Error ? err.message : String(err);
+        finishRun(runId, { exit_code: 1, duration_s: durationS });
+        fail("define plan", 1, durationS, runId);
+        console.error(msg);
+        process.exitCode = 1;
       }
-
-      finishRun(runId, { exit_code: 0, duration_s: durationS });
-      success("define plan", durationS, runId, result.logPath);
     });
   });

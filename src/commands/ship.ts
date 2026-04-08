@@ -208,6 +208,7 @@ async function shipPhase(
         existingState.stage = opts.resumeFrom as ShipStage;
       }
 
+      const gwrkConfig = loadConfig(cwd);
       const orchestrator = new ShipOrchestrator(
         {
           featureId: feature,
@@ -217,6 +218,8 @@ async function shipPhase(
           ciTimeout: Number.parseInt(opts.ciTimeout as string),
           cwd,
           dryRun: !!opts.dryRun,
+          geminiModel: gwrkConfig.agents.gemini?.model,
+          geminiFailbackModels: gwrkConfig.agents.gemini?.failbackModels,
         },
         existingState,
       );

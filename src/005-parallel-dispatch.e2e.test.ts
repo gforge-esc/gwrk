@@ -86,7 +86,7 @@ describe("005-parallel-dispatch E2E", () => {
     // Create a mock executable so the CLI spawn thinks there is a real agent
     const MOCKS_DIR = path.resolve(process.cwd(), ".test-mocks-parallel");
     if (!fs.existsSync(MOCKS_DIR)) fs.mkdirSync(MOCKS_DIR, { recursive: true });
-    
+
     const mockGemini = path.join(MOCKS_DIR, "gemini");
     fs.writeFileSync(mockGemini, "#!/usr/bin/env bash\nexit 0\n");
     fs.chmodSync(mockGemini, "755");
@@ -110,7 +110,9 @@ describe("005-parallel-dispatch E2E", () => {
       fs.readFileSync(path.join(gwrkDir, "tasks.json"), "utf-8"),
     );
     expect(
-      taskState.phases[0].tasks.every((t: { status: string }) => t.status === "completed"),
+      taskState.phases[0].tasks.every(
+        (t: { status: string }) => t.status === "completed",
+      ),
     ).toBe(true);
   });
 

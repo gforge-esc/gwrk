@@ -4,7 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
 import { classifyTask, extractFilePaths } from "../engine/classify.js";
-import { dispatchAgent } from "../utils/agent.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
@@ -364,9 +364,9 @@ export const tasksGenerateCommand = new Command("tasks")
               // Dispatch agent for gate authoring (same pattern as plan.ts)
               const config = loadConfig(projectRoot);
               const backend = config.agents.define;
-              const relativeFeatureDir = path.join("specs", feature);
+              const runtime = new WorkflowRuntime();
 
-              const runId = startRun({
+              const runIdAuthor = startRun({
                 feature_id: feature,
                 command: "define tasks:gates",
                 agent_backend: backend,
@@ -381,34 +381,37 @@ export const tasksGenerateCommand = new Command("tasks")
               }
               const agentStart = Date.now();
 
-              const result = await dispatchAgent({
-                backend,
-                workflowPath: ".agents/workflows/gwrk-author-gates.md",
-                featureDir: relativeFeatureDir,
-                contextPath: paddedPhase || briefPath,
-              });
+              try {
+                const input = `Author gates for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}\n\nBrief: ${briefPath}`;
+                const result = await runtime.executeWorkflow(
+                  "gwrk-author-gates",
+                  input,
+                  {
+                    agent: backend,
+                    projectRoot,
+                  },
+                );
 
-              const agentDurationS = Math.round(
-                (Date.now() - agentStart) / 1000,
-              );
-
-              if (result.exitCode !== 0) {
-                finishRun(runId, {
-                  exit_code: result.exitCode,
+                const agentDurationS = Math.round(
+                  (Date.now() - agentStart) / 1000,
+                );
+                finishRun(runIdAuthor, {
+                  exit_code: 0,
                   duration_s: agentDurationS,
                 });
-                console.log(
-                  `  ✗ Gate authoring failed (exit ${result.exitCode})`,
+                console.log(`  ✓ Gates authored (${agentDurationS}s)`);
+              } catch (err: unknown) {
+                const agentDurationS = Math.round(
+                  (Date.now() - agentStart) / 1000,
                 );
-                console.log(`    Log: ${result.logPath}`);
-                throw new CommandError(
-                  `Gate authoring failed (exit ${result.exitCode}). See ${result.logPath}`,
-                  1,
-                );
+                const msg = err instanceof Error ? err.message : String(err);
+                finishRun(runIdAuthor, {
+                  exit_code: 1,
+                  duration_s: agentDurationS,
+                });
+                console.log(`  ✗ Gate authoring failed: ${msg}`);
+                throw new CommandError(`Gate authoring failed: ${msg}`, 1);
               }
-
-              finishRun(runId, { exit_code: 0, duration_s: agentDurationS });
-              console.log(`  ✓ Gates authored (${agentDurationS}s)`);
             }
 
             // Generate runner after all gates are written

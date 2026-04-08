@@ -53,7 +53,7 @@ export const specifyCommand = new Command("spec")
               1,
             );
           }
-          effectivePrompt = `Create a NEW spec for feature ${feature}.\n\nDescription: ${prompt}`;
+          effectivePrompt = `Create a NEW spec for feature ${feature}.\n\nDescription: ${effectiveInput}`;
         }
 
         // Append refs context if provided

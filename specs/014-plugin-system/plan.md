@@ -258,6 +258,38 @@ Implement the routing engine that selects the optimal backend based on task type
 
 #### Done When
 - `gwrk status` correctly identifies unavailable backends via quota probing
+---
+
+### Phase 8: Review Plugin Layer (Layer 3 — First Extension)
+
+**Requirements Addressed:** F014 Layer 3 (partial), F004 ship orchestrator decoupling
+**Dependencies:** Phase 1 (loader/registry), Phase 4 (WorkflowRuntime)
+
+#### Files
+- `src/plugins/review-plugin.ts` (NEW: `ReviewPlugin` interface, `ReviewStep` schema, resolution)
+- `src/plugins/builtins/reviews/review-code-cli/` (NEW: built-in CLI code review plugin)
+- `src/plugins/builtins/reviews/review-uat-cli/` (NEW: built-in CLI UAT review plugin)
+- `src/plugins/builtins/reviews/review-code-webapp/` (NEW: built-in webapp code review plugin)
+- `src/plugins/builtins/reviews/review-uat-webapp/` (NEW: built-in webapp UAT review plugin)
+- `src/engine/ship-orchestrator.ts` (MODIFY: delegate to ReviewPlugin, add post-dispatch phase-scope validation)
+- `src/plugins/review-plugin.test.ts` (NEW: unit tests)
+
+#### Governance & Skills Contract
+- `contracts/review-plugin.md` → `ReviewPlugin` interface, `ReviewStep` schema, `ReviewDispatch` return type
+- Plugin owns strategy (what to build, test, check). Orchestrator owns enforcement (phase-scope validation via snapshot + diff + revert).
+- Every review plugin declares steps as a template; steps support `skip: true`.
+
+#### Test Strategy
+| ID | Type | Subject | Assertion |
+|---|---|---|---|
+| TR-013 | Unit | `resolveReviewPlugin()` | Returns correct plugin for project type |
+| TR-014 | Unit | Phase-scope validation | Reverts cross-phase task mutations |
+| TR-015 | Integration | Ship loop with review plugin | End-to-end dispatch via plugin resolution |
+
+#### Done When
+- `ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`
+- Post-dispatch validation reverts any cross-phase task re-opens
+- `.gwrkrc.json` `review` field selects active review strategy
 
 ---
 
@@ -283,7 +315,7 @@ _No mockups exist for this feature._
 | Spec Item | Title | Reason | Target |
 |---|---|---|---|
 | FR-L1-007 | github-integration dispatchMode | Codex Cloud integration is a separate high-effort feature (F005 Tier 3) | Wave 5 |
-| Layer 3 | Extension Plugins | Requires F012 (Knowledge Work) and F017 (Channel Abstraction) specs | Wave 7 |
+| Layer 3 | Extension Plugins (remaining) | Review plugins (Phase 8) are the first L3 use case. Domain Packs and Channel Adapters require F012 and F017 | Wave 7 |
 
 ---
 

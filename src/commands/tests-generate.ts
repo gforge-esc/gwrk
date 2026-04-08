@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-import { dispatchAgent } from "../utils/agent.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { loadTaskState } from "../utils/state.js";
@@ -71,6 +71,7 @@ export const testsGenerateCommand = new Command("tests")
 
         const config = loadConfig(projectRoot);
         const backend = config.agents.define;
+        const runtime = new WorkflowRuntime();
 
         const startedAt = new Date().toISOString();
         const runId = startRun({
@@ -87,17 +88,20 @@ export const testsGenerateCommand = new Command("tests")
         });
         const startTime = Date.now();
 
-        const result = await dispatchAgent({
-          backend,
-          workflowPath: ".agents/workflows/gwrk-define-tests.md",
-          featureDir: relativeFeatureDir,
-          contextPath: paddedPhase, // Optional: restricts context to specific phase if provided
-        });
-
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        const exitCode = result.exitCode;
-
+        let exitCode = 0;
         try {
+          const input = `Generate tests for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}`;
+          const result = await runtime.executeWorkflow(
+            "gwrk-define-tests",
+            input,
+            {
+              agent: backend,
+              projectRoot,
+            },
+          );
+
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+
           const finishedAt = new Date().toISOString();
           const gitCommit = getCurrentCommit(projectRoot);
           const gitBranch = getCurrentBranch(projectRoot);
@@ -119,7 +123,7 @@ export const testsGenerateCommand = new Command("tests")
             startedAt,
             finishedAt,
             durationS,
-            exitCode,
+            exitCode: 0,
             attempt: 1,
             filesChanged,
             linesAdded,
@@ -128,29 +132,29 @@ export const testsGenerateCommand = new Command("tests")
             gitBranch,
             digest: [],
           });
-        } catch (err) {
-          console.warn(`Warning: Could not write execution manifest: ${err}`);
-        }
 
-        if (exitCode !== 0) {
+          // Output contract: gap-matrix.md must exist after successful run
+          if (!fs.existsSync(gapMatrixPath)) {
+            finishRun(runId, { exit_code: 2, duration_s: durationS });
+            fail("define tests", 2, durationS, runId);
+            throw new CommandError(
+              `Agent exited 0 but did not produce gap-matrix.md. Output contract violated.`,
+              2,
+            );
+          }
+
+          finishRun(runId, { exit_code: 0, duration_s: durationS });
+          success("define tests", durationS, runId);
+        } catch (err: unknown) {
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          const msg = err instanceof Error ? err.message : String(err);
+          exitCode = 1;
           finishRun(runId, { exit_code: exitCode, duration_s: durationS });
-          fail("define tests", exitCode, durationS, runId, result.logPath);
+          fail("define tests", exitCode, durationS, runId);
+          console.error(msg);
           process.exitCode = exitCode;
           return;
         }
-
-        // Output contract: gap-matrix.md must exist after successful run
-        if (!fs.existsSync(gapMatrixPath)) {
-          finishRun(runId, { exit_code: 2, duration_s: durationS });
-          fail("define tests", 2, durationS, runId, result.logPath);
-          throw new CommandError(
-            `Agent exited 0 but did not produce gap-matrix.md. Output contract violated. See ${result.logPath}`,
-            2,
-          );
-        }
-
-        finishRun(runId, { exit_code: 0, duration_s: durationS });
-        success("define tests", durationS, runId, result.logPath);
       });
     },
   );
