@@ -1,10 +1,12 @@
 {
   "project": {
-    "name": "gwrk"
+    "name": "gwrk",
+    "slack":{"channelId":"C0AL99J34PP"}
   },
   "agents": {
     "define": "gemini",
-    "implement": "gemini"
+    "implement": "gemini",
+    "throttleMs": 15000
   },
   "server": {
     "port": 18790,

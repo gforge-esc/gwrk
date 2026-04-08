@@ -1,0 +1,37 @@
+type: workflow
+name: review-uat-webapp
+version: 1.0.0
+description: Built-in UAT Review for WebApp projects
+outputSchema:
+  type: object
+  required:
+    - summary
+    - verdict
+    - reopenedTasks
+    - intents
+  properties:
+    summary:
+      type: string
+    verdict:
+      type: string
+      enum: [GO, NO-GO]
+    reopenedTasks:
+      type: array
+      items:
+        type: string
+    intents:
+      type: array
+      items:
+        type: object
+        required:
+          - action
+        properties:
+          action:
+            type: string
+            enum: [WRITE_FILE, RUN_COMMAND]
+          filePath:
+            type: string
+          content:
+            type: string
+          command:
+            type: string

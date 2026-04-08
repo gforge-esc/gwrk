@@ -6,7 +6,7 @@ import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
-import type { AgentBackend as ConfigAgentBackend } from "./config.js";
+import { loadConfig, type AgentBackend as ConfigAgentBackend } from "./config.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
@@ -276,6 +276,36 @@ export interface TaskResult {
  * Internals are replaced by pluginRegistry.getAgentBackend().dispatch()
  */
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
+  const projectRoot = process.cwd();
+  try {
+    const config = loadConfig(projectRoot);
+    const throttleMs = config.agents.throttleMs ?? 0;
+
+    if (throttleMs > 0) {
+      const runsDir = path.join(projectRoot, ".runs");
+      if (!fs.existsSync(runsDir)) {
+        fs.mkdirSync(runsDir, { recursive: true });
+      }
+      const statePath = path.join(runsDir, "last-dispatch.state");
+      let lastDispatch = 0;
+      if (fs.existsSync(statePath)) {
+        lastDispatch = Number.parseInt(fs.readFileSync(statePath, "utf-8"), 10) || 0;
+      }
+      const now = Date.now();
+      if (now - lastDispatch < throttleMs) {
+        const wait = throttleMs - (now - lastDispatch);
+        const waitSecs = Math.ceil(wait / 1000);
+        process.stdout.write(
+          `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`
+        );
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+      fs.writeFileSync(statePath, Date.now().toString(), "utf-8");
+    }
+  } catch (e) {
+    // Ignore config errors here, allow dispatch to proceed
+  }
+
   const agentName = (task.agent ?? "gemini") as string;
   const registry = new AgentBackendRegistry(new PluginLoader());
   const adapter = await registry.getAgentBackend(agentName);
