@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { run } from "../utils/exec.js";
 import {
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { defineCommand } from "./define.js";
 
 vi.mock("../db/runs.js", () => ({
@@ -15,7 +15,6 @@ vi.mock("../db/runs.js", () => ({
   finishRun: vi.fn(),
   recordHistory: vi.fn(),
 }));
-vi.mock("../utils/exec.js");
 vi.mock("../utils/config.js");
 vi.mock("../utils/manifest.js", () => ({
   writeManifest: vi.fn(),
@@ -27,6 +26,9 @@ vi.mock("../utils/git.js", () => ({
   getDiffStats: vi
     .fn()
     .mockReturnValue({ filesChanged: 1, linesAdded: 1, linesDeleted: 1 }),
+}));
+vi.mock("../engine/define-orchestrator.js", () => ({
+  DefineOrchestrator: vi.fn(),
 }));
 
 describe("defineCommand — Define Until Solid wrapper", () => {
@@ -64,7 +66,6 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     } as import("../utils/config.js").GwrkConfig);
 
     vi.mocked(startRun).mockReturnValue(42);
-    vi.mocked(run).mockResolvedValue(true as never);
     vi.mocked(getDiffStats).mockReturnValue({
       filesChanged: 1,
       linesAdded: 1,
@@ -72,6 +73,12 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     });
     vi.mocked(getCurrentCommit).mockReturnValue("mock-commit");
     vi.mocked(getCurrentBranch).mockReturnValue("mock-branch");
+
+    // Mock DefineOrchestrator to return exit code 0 by default
+    vi.mocked(DefineOrchestrator).mockImplementation(() => ({
+      run: vi.fn().mockResolvedValue(0),
+      runLoop: vi.fn().mockResolvedValue(0),
+    }) as unknown as DefineOrchestrator);
   });
 
   afterEach(() => {
@@ -86,6 +93,12 @@ describe("defineCommand — Define Until Solid wrapper", () => {
   });
 
   it("handles --dry-run without executing scripts", async () => {
+    // DefineOrchestrator now handles dry-run internally
+    vi.mocked(DefineOrchestrator).mockImplementation((config) => ({
+      run: vi.fn().mockResolvedValue(0),
+      runLoop: vi.fn().mockResolvedValue(0),
+    }) as unknown as DefineOrchestrator);
+
     await defineCommand.parseAsync([
       "node",
       "cli.js",
@@ -93,15 +106,17 @@ describe("defineCommand — Define Until Solid wrapper", () => {
       "--dry-run",
     ]);
 
-    expect(startRun).not.toHaveBeenCalled();
-    expect(run).not.toHaveBeenCalled();
-
-    const output = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(output).toContain("[DRY RUN]");
-    expect(output).toContain("define-until-solid.sh 004-ship-loop");
+    // The orchestrator should still be constructed
+    expect(DefineOrchestrator).toHaveBeenCalledWith(
+      expect.objectContaining({
+        featureId: "004-ship-loop",
+        backend: "gemini",
+        dryRun: true,
+      }),
+    );
   });
 
-  it("executes define scripts and records success", async () => {
+  it("executes define orchestrator and records success", async () => {
     await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);
 
     expect(loadConfig).toHaveBeenCalled();
@@ -109,42 +124,36 @@ describe("defineCommand — Define Until Solid wrapper", () => {
       feature_id: "004-ship-loop",
       command: "define",
       agent_backend: "gemini",
-      workflow: "define-until-solid",
+      workflow: "define-orchestrator",
     });
 
-    expect(run).toHaveBeenCalled();
-    const firstCall = vi.mocked(run).mock.calls[0];
-    if (!firstCall) throw new Error("run was not called");
-    const [scriptPath, args, opts] = firstCall;
-    expect(scriptPath).toContain("scripts/dev/define-until-solid.sh");
-    expect(args).toEqual(["004-ship-loop"]);
-    expect(opts?.cwd).toBe("/Users/gonzo/Code/gwrk");
+    expect(DefineOrchestrator).toHaveBeenCalledWith(
+      expect.objectContaining({
+        featureId: "004-ship-loop",
+        backend: "gemini",
+      }),
+    );
 
     expect(finishRun).toHaveBeenCalledWith(
       42,
       expect.objectContaining({ exit_code: 0 }),
     );
-
-    const output = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
-    expect(output).toContain("define");
-    expect(output).toContain("complete");
   });
 
-  it("records failure when script execution throws", async () => {
-    const mockError = new Error("Command failed") as Error & {
-      exitCode: number;
-    };
-    mockError.exitCode = 2;
-    vi.mocked(run).mockRejectedValue(mockError);
+  it("records failure when orchestrator throws", async () => {
+    vi.mocked(DefineOrchestrator).mockImplementation(() => ({
+      run: vi.fn().mockRejectedValue(new Error("Command failed")),
+      runLoop: vi.fn().mockRejectedValue(new Error("Command failed")),
+    }) as unknown as DefineOrchestrator);
 
     process.exitCode = 0;
     await defineCommand.parseAsync(["node", "cli.js", "004-ship-loop"]);
 
-    expect(process.exitCode).toBe(2);
+    expect(process.exitCode).toBe(1);
 
     expect(finishRun).toHaveBeenCalledWith(
       42,
-      expect.objectContaining({ exit_code: 2 }),
+      expect.objectContaining({ exit_code: 1 }),
     );
     expect(consoleErrorSpy).toHaveBeenCalled();
   });

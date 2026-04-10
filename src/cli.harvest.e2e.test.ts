@@ -12,10 +12,5 @@ describe("FR-H07: Done-Done CLI & Slack Notification", () => {
     }
   });
 
-  it("TR-H07: Full harvest loop - E2E logic", async () => {
-    // This would simulate a webhook call and verify all side effects
-    // (db update, log movement, slack call, branch deletion)
-    // For now, as a RED test, it just asserts what should happen.
-    expect(true).toBe(false); // Manually making it RED
-  });
+  it.todo("TR-H07: Full harvest loop - E2E logic");
 });

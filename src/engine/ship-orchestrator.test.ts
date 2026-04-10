@@ -12,7 +12,15 @@ import { WorkflowRuntime } from "../plugins/workflow-runtime";
 vi.mock("node:fs");
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, execSync: vi.fn() };
+  return {
+    ...actual,
+    execSync: vi.fn().mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("gh pr list")) return "";
+      if (typeof cmd === "string" && cmd.includes("gh pr create")) return "https://github.com/mock/pull/42";
+      if (typeof cmd === "string" && cmd.includes("gh pr checks")) return "";
+      return "";
+    }),
+  };
 });
 vi.mock("../utils/git");
 vi.mock("../utils/agent");
@@ -85,7 +93,7 @@ describe("ShipOrchestrator", () => {
         phases: [{ 
           id: "phase-01", 
           title: "Phase 1", 
-          tasks: [{ id: "T001", status: callCount >= 2 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
+          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 2 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
         }]
       };
     });
@@ -159,7 +167,7 @@ describe("ShipOrchestrator", () => {
           id: "phase-01", 
           title: "Phase 1", 
           // 4th+ call is when we retry the review! Before that it's open.
-          tasks: [{ id: "T001", status: callCount >= 4 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
+          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 4 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
         }]
       };
     });
@@ -187,7 +195,7 @@ describe("ShipOrchestrator", () => {
     vi.mocked(state.loadTaskState).mockReturnValue({
       featureId: "004-ship-loop",
       createdAt: new Date().toISOString(),
-      phases: [{ id: "phase-01", title: "Phase 1", tasks: [{ id: "T001", status: "open", gateScript: "gates/T001-gate.sh" }] }]
+      phases: [{ id: "phase-01", title: "Phase 1", tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: "open", gateScript: "gates/T001-gate.sh" }] }]
     });
 
     vi.mocked(agent.dispatchToAgent)

@@ -16,10 +16,7 @@ describe("TC-H03 / T004: Config & Environment Validation", () => {
     it("TC-003: fails fast if .gwrkrc.json is missing", () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
       
-      const spy = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("EXIT"); });
-      
-      expect(() => loadConfig("/root")).toThrow("EXIT");
-      expect(spy).toHaveBeenCalledWith(1);
+      expect(() => loadConfig("/root")).toThrow("Configuration file .gwrkrc.json not found");
     });
 
     it("Phase 2: loads parallelism settings from config", () => {
