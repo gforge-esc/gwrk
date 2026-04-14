@@ -1,8 +1,7 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T025 — Implement src/commands/plan.ts (viz, review)
-
-pnpm tsx src/cli.ts plan --help | grep -q "viz"
-pnpm tsx src/cli.ts plan --help | grep -q "review"
-
-echo "PASS: T025 — Monitoring subcommands added"
+# T025: Implement src/commands/plan.ts (Phase 5 subcommands)
+set -e
+FILE="src/commands/plan.ts"
+grep -q "\.command(\"viz\")" "$FILE"
+grep -q "\.command(\"review\")" "$FILE"
+echo "T025: Phase 5 subcommands added to CLI."

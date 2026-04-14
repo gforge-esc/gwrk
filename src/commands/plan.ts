@@ -276,6 +276,7 @@ planCommand
 planCommand
   .command("viz")
   .description("Open interactive graph visualization")
+  .option("--dry-run", "Show visualization data without opening browser")
   .action(async () => {
     await withSignal("plan viz", async () => {
       const store = new PlanStore();

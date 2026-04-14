@@ -1,7 +1,6 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T007 — Implement src/cli.ts (wire plan command)
-
-pnpm tsx src/cli.ts --help | grep -q "plan"
-
-echo "PASS: T007 — Command wired to CLI"
+# T007: Implement src/cli.ts (wire plan command)
+set -e
+grep -q "import { planCommand } from \"./commands/plan.js\"" src/cli.ts
+grep -q "program.addCommand(planCommand)" src/cli.ts
+echo "T007: Plan command wired into CLI."

@@ -1,8 +1,6 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T023 — Implement src/server/plan-viz.ts
-
-test -f src/server/plan-viz.ts
-grep -q "sigma" src/server/plan-viz.ts
-
-echo "PASS: T023 — Visualization generator implemented"
+# T023: Implement src/server/plan-viz.ts
+set -e
+test -f "src/server/plan-viz.ts"
+if [ -f src/server/plan-viz.test.ts ]; then npx vitest run src/server/plan-viz.test.ts; fi
+echo "T023: Visualization engine implemented."

@@ -1,8 +1,8 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T016 — Implement src/engine/plan-store.ts (mutation)
-
-grep -q "addPhase" src/engine/plan-store.ts
-grep -q "removePhase" src/engine/plan-store.ts
-
-echo "PASS: T016 — Mutation methods added to PlanStore"
+# T016: Implement src/engine/plan-store.ts (mutation)
+set -e
+FILE="src/engine/plan-store.ts"
+grep -q "addFeature" "$FILE"
+grep -q "addPhase" "$FILE"
+grep -q "addEdge" "$FILE"
+echo "T016: Plan store mutations implemented."

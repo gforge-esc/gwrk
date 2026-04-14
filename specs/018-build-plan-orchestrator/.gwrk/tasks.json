@@ -1,10 +1,10 @@
 {
   "featureId": "018-build-plan-orchestrator",
-  "createdAt": "2026-04-14T17:35:29.260Z",
+  "createdAt": "2026-04-14T19:07:57.598Z",
   "generatedFrom": {
     "plan": {
       "hash": "a77426f060b0e989b3c866cec95a1c9353705d07c5563fbccf5e492b0a850c5f",
-      "modifiedAt": "2026-04-14T17:07:21.227Z"
+      "modifiedAt": "2026-04-14T17:42:13.981Z"
     }
   },
   "phases": [
@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Implement src/db/migrations/006-build-plan.sql",
           "description": "NEW: SQLite schema for features, phases, edges, and proposals",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T001-gate.sh",
           "classification": "greenfield"
         },
@@ -24,7 +24,7 @@
           "id": "T002",
           "title": "Implement src/db/plan.ts",
           "description": "NEW: Low-level DB access for plan items",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T002-gate.sh",
           "classification": "greenfield"
         },
@@ -32,14 +32,14 @@
           "id": "T003",
           "title": "Implement src/engine/plan-store.ts",
           "description": "NEW: Business logic for plan management, seed, init, and render",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T003-gate.sh",
           "classification": "greenfield"
         },
         {
           "id": "T004",
           "title": "Implement src/engine/readiness-scanner.ts",
-          "description": "NEW: Scan specs/*/ to determine L0–L3 readiness level per feature\n\nREVIEW FAIL (code): LINT — 018-build-plan-orchestrator.\n  WHERE: src/engine/readiness-scanner.ts:61:33\n  EXPECTED: No explicit 'any' types.\n  ACTUAL: (sum: number, task: any) => sum + (task.sp || 0)\n  FIX: Use proper task type or extract sp value safely.",
+          "description": "NEW: Scan specs/*/ to determine L0–L3 readiness level per feature",
           "status": "open",
           "gateScript": "gates/T004-gate.sh",
           "classification": "greenfield"
@@ -47,7 +47,7 @@
         {
           "id": "T005",
           "title": "Implement src/commands/plan.ts",
-          "description": "NEW: CLI command entry point with empty-graph guards on all subcommands\n\nREVIEW FAIL (code): GATE/TEST — .\n  WHERE: src/commands/plan.ts\n  EXPECTED: 'gwrk plan status' on empty graph should print 'No build plan data' and exit 1.\n  ACTUAL: Command prints real data (exit 0) or test fails to trigger guard.\n  FIX: Ensure empty-graph guard is active and correctly checks if the database is empty.",
+          "description": "NEW: CLI command entry point with empty-graph guards on all subcommands",
           "status": "open",
           "gateScript": "gates/T005-gate.sh",
           "classification": "greenfield"
@@ -56,7 +56,7 @@
           "id": "T006",
           "title": "Implement src/utils/parser-plan.ts",
           "description": "NEW: Specialized parser for 000-build-plan.md YAML/Markdown",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T006-gate.sh",
           "classification": "greenfield"
         },
@@ -64,7 +64,7 @@
           "id": "T007",
           "title": "Implement src/cli.ts",
           "description": "MODIFY: Wire `gwrk plan` command",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T007-gate.sh",
           "classification": "greenfield"
         },
@@ -72,7 +72,7 @@
           "id": "T008",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T008-gate.sh",
           "classification": "noop"
         }

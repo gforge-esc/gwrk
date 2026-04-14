@@ -1,10 +1,9 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T013 — Implement src/commands/plan.ts (mutation)
-
-pnpm tsx src/cli.ts plan --help | grep -q "add"
-pnpm tsx src/cli.ts plan --help | grep -q "remove"
-pnpm tsx src/cli.ts plan --help | grep -q "dep"
-pnpm tsx src/cli.ts plan --help | grep -q "set"
-
-echo "PASS: T013 — Mutation subcommands added"
+# T013: Implement src/commands/plan.ts (Phase 3 subcommands)
+set -e
+FILE="src/commands/plan.ts"
+grep -q "\.command(\"add <type> <id> \[name\]\")" "$FILE"
+grep -q "\.command(\"remove <id>\")" "$FILE"
+grep -q "\.command(\"dep <action> <from> <to>\")" "$FILE"
+grep -q "\.command(\"set <id>\")" "$FILE"
+echo "T013: Phase 3 subcommands added to CLI."

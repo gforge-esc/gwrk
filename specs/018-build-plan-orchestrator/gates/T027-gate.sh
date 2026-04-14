@@ -1,7 +1,6 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T027 — Implement test strategy for Phase 5
-
-pnpm vitest run src/engine/plan-store.test.ts
-
-echo "PASS: T027 — Phase 5 tests pass"
+# T027: Implement test strategy for Phase 5
+set -e
+npx vitest run src/engine/plan-store.proposals.test.ts
+if [ -f src/server/plan-viz.test.ts ]; then npx vitest run src/server/plan-viz.test.ts; fi
+echo "T027: All Phase 5 tests passing."

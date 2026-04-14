@@ -1,8 +1,6 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T002 — Implement src/db/plan.ts
-
-test -f src/db/plan.ts
-pnpm vitest run src/db/plan.test.ts
-
-echo "PASS: T002 — Low-level DB access implemented"
+# T002: Implement src/db/plan.ts
+set -e
+test -f "src/db/plan.ts"
+npx vitest run src/db/plan.test.ts
+echo "T002: DB access logic implemented and verified."

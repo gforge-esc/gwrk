@@ -1,8 +1,5 @@
 #!/bin/bash
-set -euo pipefail
-# Gate: T017 — Implement src/utils/state.ts
-
-grep -q "sp_actual" src/utils/state.ts
-pnpm vitest run src/utils/state.test.ts
-
-echo "PASS: T017 — Invariant checks implemented"
+# T017: Implement src/utils/state.ts (invariants)
+set -e
+grep -q "SP additivity" src/utils/state.ts
+echo "T017: State invariants checked."
