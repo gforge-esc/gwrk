@@ -182,3 +182,20 @@ Before reporting, verify:
 After red tests are committed:
 - Run `/implement {feature_dir} {phase_number}` to turn them green
 - `/review-code` will verify both gate results AND test results
+
+<mandatory_output_contract>
+## MANDATORY: Required Output Intents
+
+Your JSON output MUST include ALL of the following as WRITE_FILE intents.
+Missing any of these causes a hard workflow failure (exit code 2).
+
+1. **Test files** — one WRITE_FILE per test file (co-located `*.test.ts`)
+2. **Gap matrix** — WRITE_FILE with:
+   - `filePath`: `specs/{feature_id}/gap-matrix.md`
+   - `content`: the coverage matrix table mapping every FR/US/TR to test files
+
+The gap-matrix.md MUST be a WRITE_FILE intent in your JSON output.
+It goes in the SPECS directory (e.g., `specs/018-build-plan-orchestrator/gap-matrix.md`),
+NOT in `src/`. The command runner checks for this file on disk after applying your intents.
+If it is missing, the entire workflow fails.
+</mandatory_output_contract>
