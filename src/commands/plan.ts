@@ -1,86 +1,302 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
-import { finishRun, startRun } from "../db/runs.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
-import { loadConfig } from "../utils/config.js";
-import { banner, blocked, fail, success } from "../utils/format.js";
-import { readStdin } from "../utils/output.js";
-
+import { PlanStore } from "../engine/plan-store.js";
+import { color } from "../utils/format.js";
+import { createOutput, resolveFormat } from "../utils/output.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const planCommand = new Command("plan")
-  .description("Create an implementation plan for a feature")
-  .argument("<feature>", "The feature directory under specs/")
-  .option("--refs <path>", "Path to additional reference docs")
-  .action(async (feature, opts: { refs?: string }) => {
-    await withSignal("define plan", async () => {
-      const projectRoot = process.cwd();
-      const relativeFeatureDir = path.join("specs", feature);
-      const featureDir = path.join(projectRoot, relativeFeatureDir);
-      const specPath = path.join(featureDir, "spec.md");
+  .description(
+    "Build Plan Orchestrator (DAG) — query and manage the project spine",
+  )
+  .addHelpText(
+    "after",
+    `
+Subcommands:
+  status         View per-phase project status
+  next           Show ready work items (all deps satisfied)
+  critical       Show the critical path
+  waves          Show parallel execution waves
+  verify         Detect drift between plan and actual state
+  seed           Seed graph from 000-build-plan.md
+  init           Bootstrap graph by scanning specs/ directory
+  render         Regenerate 000-build-plan.md from graph
+  add/remove     Manage features/phases
+  dep add/remove Manage dependency edges
+  set            Manual status/SP overrides
+  viz            Open interactive graph visualization
+  review         Review agent proposals
+`,
+  );
 
-      if (!fs.existsSync(specPath)) {
-        blocked("spec.md not found");
-        throw new CommandError(
-          "spec.md not found. Run 'gwrk define spec <feature>' to create. See 'gwrk project specs' for available features.",
-          1,
+/** Guard against empty graph for subcommands that require data */
+function guardEmpty(store: PlanStore) {
+  if (store.isEmpty()) {
+    const msg = "No build plan data. Run 'gwrk plan seed' or 'gwrk plan init'.";
+    console.error(msg);
+    throw new CommandError(msg, 1);
+  }
+}
+
+planCommand
+  .command("status")
+  .description("View project status from the build plan graph")
+  .option("--json", "Output in JSON format")
+  .action(async (options, command) => {
+    await withSignal("plan status", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      const out = options.json ? createOutput("json") : resolveFormat(command);
+      const status = store.getPlanStatus();
+
+      if (out.isJson) {
+        out.write(status);
+        return;
+      }
+
+      const { BOLD, CYAN, GREEN, YELLOW, RED, DIM, RESET } = color;
+      console.log(`${BOLD}Build Plan Status${RESET}\n`);
+
+      for (const f of status.features) {
+        let statusColor = RESET;
+        if (f.status === "DONE") statusColor = GREEN;
+        else if (f.status === "SHIPPED") statusColor = GREEN;
+        else if (f.status === "IN_PROGRESS") statusColor = YELLOW;
+        else if (f.status === "SPECIFIED" || f.status === "DEFINED")
+          statusColor = CYAN;
+
+        console.log(
+          `${BOLD}${statusColor}${f.id.padEnd(10)}${RESET} ${BOLD}${f.name}${RESET} [${statusColor}${f.status}${RESET}]`,
         );
-      }
 
-      const specContent = fs.readFileSync(specPath, "utf-8");
-      if (/^>?\s*\*\*Status:\*\*\s*Stub/im.test(specContent)) {
-        const msg = `Spec ${feature} is marked as a Stub. Run 'gwrk define spec ${feature}' first.`;
-        blocked(msg);
-        throw new CommandError(msg, 1);
-      }
+        for (const p of f.phases) {
+          let pColor = DIM;
+          if (p.status === "DONE" || p.status === "SHIPPED") pColor = GREEN;
+          else if (p.status === "IN_PROGRESS") pColor = YELLOW;
 
-      const config = loadConfig(projectRoot);
-      const backend = config.agents.define;
-      const runtime = new WorkflowRuntime();
-
-      // TC-007: Read stdin if piped (discovery JSON)
-      let contextContent: string | undefined;
-      if (!process.stdin.isTTY) {
-        const stdinContent = await readStdin();
-        if (stdinContent.trim()) {
-          contextContent = stdinContent.trim();
+          console.log(
+            `  ${pColor}↳ ${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${pColor}${p.status}${RESET} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+          );
         }
+        console.log("");
+      }
+    });
+  });
+
+planCommand
+  .command("seed")
+  .description("Seed the build plan graph from 000-build-plan.md")
+  .option("--dry-run", "Show what would be seeded without writing to DB")
+  .action(async (options) => {
+    await withSignal("plan seed", async () => {
+      const projectRoot = process.cwd();
+      const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
+      const store = new PlanStore();
+
+      if (options.dryRun) {
+        const { parsePlan } = await import("../utils/parser-plan.js");
+        const payload = parsePlan(planPath);
+        console.log("Dry Run: Seed Payload extracted from 000-build-plan.md");
+        console.log(JSON.stringify(payload, null, 2));
+        return;
       }
 
-      const runId = startRun({
-        feature_id: feature,
-        command: "define plan",
-        agent_backend: backend,
-        workflow: "plan",
-      });
+      store.seedFromFile(planPath);
+      console.log(
+        "Successfully seeded build plan graph from 000-build-plan.md",
+      );
+    });
+  });
 
-      banner("define plan", {
-        Feature: feature,
-        Agent: backend,
-        "Run ID": `${runId}`,
-        ...(opts.refs ? { Refs: opts.refs } : {}),
-      });
+planCommand
+  .command("init")
+  .description("Initialize the build plan graph by scanning specs/ directory")
+  .option("--dry-run", "Show discovered features without writing to DB")
+  .action(async (options) => {
+    await withSignal("plan init", async () => {
+      const projectRoot = process.cwd();
+      const specsDir = path.join(projectRoot, "specs");
+      const store = new PlanStore();
 
-      const startTime = Date.now();
-
-      try {
-        const input = `Plan implementation for feature ${feature}${contextContent ? `\n\nContext:\n${contextContent}` : ""}${opts.refs ? `\n\nReference: ${opts.refs}` : ""}`;
-        const result = await runtime.executeWorkflow("gwrk-plan", input, {
-          agent: backend,
-          projectRoot,
-        });
-
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        finishRun(runId, { exit_code: 0, duration_s: durationS });
-        success("define plan", durationS, runId);
-      } catch (err: unknown) {
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        const msg = err instanceof Error ? err.message : String(err);
-        finishRun(runId, { exit_code: 1, duration_s: durationS });
-        fail("define plan", 1, durationS, runId);
-        console.error(msg);
-        process.exitCode = 1;
+      if (options.dryRun) {
+        const readiness = store.scanReadiness(specsDir);
+        console.log("Dry Run: Discovered features from specs/");
+        console.log(JSON.stringify(readiness, null, 2));
+        return;
       }
+
+      const { added, skipped } = store.initFromSpecs(specsDir);
+      console.log(
+        `Initialized build plan graph. Added: ${added.length}, Skipped (existing): ${skipped.length}`,
+      );
+      if (added.length > 0) console.log(`  Added: ${added.join(", ")}`);
+    });
+  });
+
+// --- Phase 2+ Subcommands (Placeholders with guards) ---
+
+planCommand
+  .command("next")
+  .description("Show items ready to work on (dependencies satisfied)")
+  .option("--json", "Output in JSON format")
+  .action(async () => {
+    await withSignal("plan next", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan next' is not yet implemented (Phase 2).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("critical")
+  .description("Show the critical path through the build plan")
+  .action(async () => {
+    await withSignal("plan critical", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan critical' is not yet implemented (Phase 2).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("waves")
+  .description("Show mathematically computed parallel execution waves")
+  .action(async () => {
+    await withSignal("plan waves", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan waves' is not yet implemented (Phase 2).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("verify")
+  .description("Detect drift between plan and actual state")
+  .action(async () => {
+    await withSignal("plan verify", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan verify' is not yet implemented (Phase 4).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("render")
+  .description("Regenerate 000-build-plan.md from the graph state")
+  .option("--stdout", "Print to stdout instead of writing to file")
+  .action(async (options) => {
+    await withSignal("plan render", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      const md = store.render();
+
+      if (options.stdout) {
+        console.log(md);
+        return;
+      }
+
+      const projectRoot = process.cwd();
+      const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
+      fs.writeFileSync(planPath, md, "utf-8");
+      console.log(`Successfully regenerated ${planPath} from graph state.`);
+    });
+  });
+
+planCommand
+  .command("add <type> <id> [name]")
+  .description("Add a feature or phase to the build plan")
+  .action(async () => {
+    await withSignal("plan add", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan add' is not yet implemented (Phase 3).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("remove <id>")
+  .description("Remove a feature or phase from the build plan")
+  .action(async () => {
+    await withSignal("plan remove", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan remove' is not yet implemented (Phase 3).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("dep <action> <from> <to>")
+  .description("Manage dependency edges (add/remove)")
+  .action(async () => {
+    await withSignal("plan dep", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan dep' is not yet implemented (Phase 3).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("set <id>")
+  .description("Manually override status, SP, or health")
+  .option("--status <status>", "Set status")
+  .option("--sp <sp>", "Set SP estimate")
+  .action(async () => {
+    await withSignal("plan set", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan set' is not yet implemented (Phase 3).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("viz")
+  .description("Open interactive graph visualization")
+  .action(async () => {
+    await withSignal("plan viz", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan viz' is not yet implemented (Phase 5).",
+        1,
+      );
+    });
+  });
+
+planCommand
+  .command("review")
+  .description("Review agent proposals for the build plan")
+  .action(async () => {
+    await withSignal("plan review", async () => {
+      const store = new PlanStore();
+      guardEmpty(store);
+      throw new CommandError(
+        "Command 'gwrk plan review' is not yet implemented (Phase 5).",
+        1,
+      );
     });
   });

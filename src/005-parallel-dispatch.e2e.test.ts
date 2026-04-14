@@ -75,7 +75,9 @@ describe("005-parallel-dispatch E2E", () => {
   });
 
   // RED: --parallel dispatch not yet implemented in ship command
-  it.todo("US-001: should dispatch multiple tasks in parallel and update tasks.json");
+  it.todo(
+    "US-001: should dispatch multiple tasks in parallel and update tasks.json",
+  );
 
   it("US-004: should respect max concurrency limits", () => {
     // This is hard to test E2E without a long-running mock agent

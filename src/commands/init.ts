@@ -271,7 +271,10 @@ export const initCommand = new Command("init")
       // Install git hooks from scripts/hooks/ if available
       const hooksSource = path.join(projectRoot, "scripts", "hooks");
       const hooksTarget = path.join(projectRoot, ".git", "hooks");
-      if (fs.existsSync(hooksSource) && fs.existsSync(path.join(projectRoot, ".git"))) {
+      if (
+        fs.existsSync(hooksSource) &&
+        fs.existsSync(path.join(projectRoot, ".git"))
+      ) {
         const hookFiles = fs.readdirSync(hooksSource);
         for (const hook of hookFiles) {
           const src = path.join(hooksSource, hook);
@@ -280,7 +283,9 @@ export const initCommand = new Command("init")
           fs.chmodSync(dest, 0o755);
         }
         if (hookFiles.length > 0) {
-          console.log(`Installed ${hookFiles.length} git hook(s) from scripts/hooks/`);
+          console.log(
+            `Installed ${hookFiles.length} git hook(s) from scripts/hooks/`,
+          );
         }
       }
 

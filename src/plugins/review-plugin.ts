@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { loadConfig } from "../utils/config.js";
-import { type TaskState, loadTaskState, saveTaskState } from "../utils/state.js";
+import {
+  type TaskState,
+  loadTaskState,
+  saveTaskState,
+} from "../utils/state.js";
 import { PluginLoader } from "./loader.js";
 import type { ReviewManifest, WorkflowManifest } from "./manifest.js";
 import { WorkflowRuntime } from "./workflow-runtime.js";

@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 
-const GWRK_DIR = path.join(os.homedir(), ".gwrk");
-const DB_PATH = path.join(GWRK_DIR, "gwrk.db");
+const GWRK_DIR = process.env.GWRK_DIR || path.join(os.homedir(), ".gwrk");
+const DB_PATH = process.env.GWRK_DB_PATH || path.join(GWRK_DIR, "gwrk.db");
 const MIGRATIONS_DIR = path.join(
   path.dirname(new URL(import.meta.url).pathname),
   "migrations",

@@ -113,7 +113,9 @@ export function loadConfig(projectRoot: string): GwrkConfig {
   const configPath = path.join(projectRoot, ".gwrkrc.json");
 
   if (!fs.existsSync(configPath)) {
-    throw new Error(`Configuration file .gwrkrc.json not found at ${configPath}`);
+    throw new Error(
+      `Configuration file .gwrkrc.json not found at ${configPath}`,
+    );
   }
 
   let raw: Record<string, any>;
@@ -131,7 +133,9 @@ export function loadConfig(projectRoot: string): GwrkConfig {
 
   const result = GwrkConfigSchema.safeParse(raw);
   if (!result.success) {
-    throw new Error(`Configuration error in .gwrkrc.json: ${result.error.message}`);
+    throw new Error(
+      `Configuration error in .gwrkrc.json: ${result.error.message}`,
+    );
   }
 
   return result.data;

@@ -14,7 +14,14 @@ export const SEMVER_REGEX = /^\d+\.\d+\.\d+$/;
  * Base schema for all plugins
  */
 export const PluginBaseSchema = z.object({
-  type: z.enum(["agent", "skill", "workflow", "extension", "channel", "review"]),
+  type: z.enum([
+    "agent",
+    "skill",
+    "workflow",
+    "extension",
+    "channel",
+    "review",
+  ]),
   name: z.string().min(1).regex(KEBAB_CASE_REGEX),
   version: z.string().regex(SEMVER_REGEX),
   description: z.string().min(1),

@@ -7,8 +7,8 @@ import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
 import {
-  loadConfig,
   type AgentBackend as ConfigAgentBackend,
+  loadConfig,
 } from "./config.js";
 
 // ANSI — must match format.ts

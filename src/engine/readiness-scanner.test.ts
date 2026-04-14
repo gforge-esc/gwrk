@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'os';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
-// @ts-ignore - Module does not exist yet (RED)
 import { scanReadiness } from './readiness-scanner.js';
 
 describe('src/engine/readiness-scanner.ts (FR-018)', () => {

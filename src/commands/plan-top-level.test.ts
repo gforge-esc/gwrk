@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
-// @ts-ignore - Module does not exist yet (RED)
-import { planCommand } from './plan-new.js';
+import { planCommand } from './plan.js';
 
 describe('gwrk plan subcommands (FR-005/013/017/019)', () => {
   let program: Command;

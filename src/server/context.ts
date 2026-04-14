@@ -75,4 +75,3 @@ export function compileContext(
 
   return context;
 }
-

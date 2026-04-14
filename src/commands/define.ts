@@ -12,7 +12,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 
-import { planCommand } from "./plan.js";
+import { planCommand as definePlanCommand } from "./define-plan.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
@@ -156,6 +156,6 @@ export const defineCommand = new Command("define")
 
 // Register user-facing subcommands only
 defineCommand.addCommand(specifyCommand); // gwrk define spec
-defineCommand.addCommand(planCommand); // gwrk define plan
+defineCommand.addCommand(definePlanCommand); // gwrk define plan
 defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests

@@ -10,7 +10,7 @@
   "phases": [
     {
       "id": "phase-01",
-      "title": "Project Bootstrap & Config ✅",
+      "title": "Project Bootstrap & Config",
       "tasks": [
         {
           "id": "T001",
@@ -31,10 +31,9 @@
         {
           "id": "T003",
           "title": "Implement src/cli.ts",
-          "description": "Implement changes for src/cli.ts",
-          "status": "completed",
-          "gateScript": "gates/T003-gate.sh",
-          "completedAt": "2026-03-14T18:28:46.000Z"
+          "description": "Implement changes for src/cli.ts\n\nREVIEW FAIL (code): Integration Test — FR-001 / US-001.\n  WHERE: src/utils/parser-plan.ts:104\n  EXPECTED: Valid regex or functional CLI.\n  ACTUAL: SyntaxError: Invalid regular expression in parser-plan.ts breaks CLI boot.\n  FIX: Fix regex in src/utils/parser-plan.ts:104 by moving hyphen to the end of character class: [—–-:] -> [—–:-].",
+          "status": "open",
+          "gateScript": "gates/T003-gate.sh"
         },
         {
           "id": "T004",
@@ -47,10 +46,9 @@
         {
           "id": "T005",
           "title": "Implement src/utils/config.ts",
-          "description": "Implement changes for src/utils/config.ts",
-          "status": "completed",
-          "gateScript": "gates/T005-gate.sh",
-          "completedAt": "2026-03-14T18:28:46.000Z"
+          "description": "Implement changes for src/utils/config.ts\n\nREVIEW FAIL (code): Lint — FR-008 / US-008.\n  WHERE: src/utils/config.ts:121:27\n  EXPECTED: Specific type instead of 'any'.\n  ACTUAL: let raw: Record<string, any>;\n  FIX: Replace 'any' with a more specific type or 'unknown' with proper validation.",
+          "status": "open",
+          "gateScript": "gates/T005-gate.sh"
         },
         {
           "id": "T006",

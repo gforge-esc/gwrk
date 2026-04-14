@@ -7,6 +7,7 @@ import { gateCommand } from "./commands/gate.js";
 import { harvestCommand } from "./commands/harvest.js";
 import { initCommand } from "./commands/init.js";
 import { measureCommand } from "./commands/measure.js";
+import { planCommand } from "./commands/plan.js";
 import { pluginCommand } from "./commands/plugin.js";
 import { projectCommand } from "./commands/project.js";
 import { serverCommand } from "./commands/server.js";
@@ -56,6 +57,7 @@ program
         const ops = [
           "init",
           "tasks",
+          "plan",
           "db",
           "server",
           "status",
@@ -116,6 +118,7 @@ program.addCommand(measureCommand); // Measure: pulse, effort, compression
 
 // Operational queries
 program.addCommand(tasksCommand);
+program.addCommand(planCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
