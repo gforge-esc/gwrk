@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ─────────────────────────────────────────────────
+# gwrk Pre-Commit Hook — Tiered Verification
+# ─────────────────────────────────────────────────
+# Feature branches: build only (~3s)
+# develop / main:   build + test (~25s)
+#
+# TDD Support: RED test files (containing the marker
+# "Module does not exist yet (RED)") are excluded
+# from the test run. These are intentionally-failing
+# tests written by `gwrk define tests` before
+# implementation begins. Once /implement makes them
+# green and removes the @ts-ignore, they rejoin the
+# gate automatically.
+#
+# Skip with: git commit --no-verify (escape hatch)
+# ─────────────────────────────────────────────────
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+echo "▸ pre-commit [${BRANCH}]: running pnpm build..."
+pnpm build || { echo "❌ Build failed. Commit blocked."; exit 1; }
+
+# Full test suite only on protected branches
+if [[ "$BRANCH" == "develop" || "$BRANCH" == "main" ]]; then
+  # Detect RED test files — intentionally failing TDD tests
+  RED_TESTS=$(grep -rl "Module does not exist yet (RED)" src/ --include="*.test.ts" 2>/dev/null || true)
+
+  if [[ -n "$RED_TESTS" ]]; then
+    # Count them for reporting
+    RED_COUNT=$(echo "$RED_TESTS" | wc -l | tr -d ' ')
+    echo "▸ pre-commit [${BRANCH}]: excluding ${RED_COUNT} RED test file(s):"
+    echo "$RED_TESTS" | sed 's/^/    /'
+
+    # Build exclude args for vitest
+    EXCLUDE_ARGS=""
+    for f in $RED_TESTS; do
+      EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude $f"
+    done
+
+    echo "▸ pre-commit [${BRANCH}]: running pnpm vitest run (excluding RED tests)..."
+    pnpm vitest run $EXCLUDE_ARGS || { echo "❌ Tests failed. Commit to ${BRANCH} blocked."; exit 1; }
+  else
+    echo "▸ pre-commit [${BRANCH}]: running pnpm test (protected branch)..."
+    pnpm test || { echo "❌ Tests failed. Commit to ${BRANCH} blocked."; exit 1; }
+  fi
+fi
+
+echo "✅ pre-commit [${BRANCH}]: all checks passed."
