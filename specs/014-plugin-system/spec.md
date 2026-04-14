@@ -316,6 +316,26 @@ As a Principal Engineer, I want to override a built-in workflow by placing a cus
 
 ---
 
+### US-016 - Enforcement Skills for Code Quality (Priority: P1)
+As a Principal Engineer, I want coding standards (e.g., TypeScript strict typing, lint compliance) to be shipped as builtin enforcement skills, so that implementing agents automatically follow project quality standards without relying on local config files.
+
+**Implements**: FR-014
+
+**Independent Test**: `gwrk plugin list --type skills | grep typescript-standards`
+
+**Acceptance Scenarios**:
+1. **Given** `gwrk init` has been run, **When** `gwrk plugin list` is run, **Then**:
+   - The `typescript-standards` skill is listed as `tier: enforcement`.
+   - The skill ships as a builtin in `src/plugins/builtins/skills/`.
+2. **Given** `gwrk ship` dispatches an implement workflow, **When** the agent starts, **Then**:
+   - The implement prompt's `<code_quality>` section references the enforcement skill.
+   - The agent reads the skill and applies its constraints to all generated code.
+3. **Given** a project needs custom standards, **When** a user installs a project-local skill at `.gwrk/plugins/skills/typescript-standards/`, **Then**:
+   - The local override takes precedence over the builtin (same as workflow resolution).
+   - stderr shows: `Using project-local override for 'typescript-standards'`.
+
+---
+
 ## 3. Roles, Scopes & Permissions
 
 _Leverages shared RBAC. No feature-specific roles. See RP-000._
@@ -340,7 +360,11 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-007**: Skill invocation MUST inherit the full F013 contract: `--format json` for structured output, `[exit:N | Xs]` on stderr, `--agent` mode for ANSI-free output, pipe-composable stdin/stdout. (Implements: US-005, US-006)
 - **FR-008**: Compound skills MUST be executable as a single LLM call. The runtime assembles all passes from SKILL.md into one prompt. The `composes` field in manifest.yaml declares dependencies — runtime MUST verify all composed skills are installed before invocation. (Implements: US-006, US-007)
 - **FR-009**: Compound skill manifest MUST declare `composes: [<skill-name>, ...]` and `passes: [{name, skill, summary}, ...]`. The runtime validates that every entry in `composes` resolves to an installed atomic skill. (Implements: US-006)
-- **FR-010**: `gwrk skill --help` MUST list all installed skills grouped by tier (atomic, compound). `gwrk skill <name> --help` MUST display the skill's interface contract from manifest.yaml: description, composed skills (if compound), flags, exit codes, runtime. (Implements: US-008)
+- **FR-010**: `gwrk skill --help` MUST list all installed skills grouped by tier (atomic, compound, enforcement). `gwrk skill <name> --help` MUST display the skill's interface contract from manifest.yaml: description, composed skills (if compound), flags, exit codes, runtime. (Implements: US-008)
+
+### Enforcement Skills
+
+- **FR-014**: System MUST ship builtin enforcement skills in `src/plugins/builtins/skills/`. Enforcement skills (`tier: enforcement`) define coding standards, quality constraints, and project conventions that are automatically loaded by write workflows (`gwrk-implement`, `gwrk-ship`). The implement prompt MUST reference enforcement skills in its `<code_quality>` section. Enforcement skills follow the same resolution order as workflows: project-local `.gwrk/plugins/skills/` overrides global `~/.gwrk/plugins/skills/` overrides builtins. (Implements: US-016)
 
 ### Migration & Seeding
 
@@ -395,9 +419,10 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 
 ### Manifest Schema
 
-- **FR-013**: Manifest schema (validated by Zod) MUST support three plugin geometries:
+- **FR-013**: Manifest schema (validated by Zod) MUST support four plugin geometries:
   - **Skill (Atomic)**: `type: 'skill'`, `name`, `tier: atomic`, `version`, `prompt`, `interface`
   - **Skill (Compound)**: `type: 'skill'`, `tier: compound`, `composes`
+  - **Skill (Enforcement)**: `type: 'skill'`, `tier: enforcement`, `scope: implementation`. Auto-loaded by write workflows. Contains coding standards, lint rules, and quality constraints as structured SKILL.md.
   - **Workflow**: `type: 'workflow'`, `name`, `outputSchema`
   - All user-facing config (manifest.yaml, plugins.yaml) MUST be YAML.
 
@@ -661,3 +686,4 @@ interface PluginSource {
 | — | — | FR-L25-004 | US-013 | TR-010 |
 | — | — | FR-L25-005 | US-014 | TR-002 |
 | — | — | FR-L25-006 | US-015 | TR-002 |
+| US-016 | FR-014 | FR-014 | US-016 | TR-004 |
