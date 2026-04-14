@@ -164,6 +164,35 @@ As a Principal Engineer, I want `gwrk plan waves` to show the mathematically com
 1. **Given** a seeded build plan, **When** `gwrk plan waves` is run, **Then**:
    - `gwrk plan waves | grep "Wave 1"` exits 0
 
+### US-016 - Cold Start: Initialize Build Plan from Specs (Priority: P0)
+As a Principal Engineer starting a new project, I want `gwrk plan init` to scan `specs/*/spec.md` and bootstrap the build plan graph with discovered features, so that I don't need to manually create nodes for features I've already specified.
+
+**Implements**: FR-017, FR-018
+
+**Independent Test**: `gwrk plan init --dry-run`
+
+**Acceptance Scenarios**:
+1. **Given** `specs/feat-a/spec.md` and `specs/feat-b/spec.md` exist, **When** `gwrk plan init` is run, **Then**:
+   - `gwrk plan status | grep "feat-a"` exits 0
+   - `gwrk plan status | grep "feat-b"` exits 0
+2. **Given** `specs/feat-a/` has `spec.md` + `plan.md` + `.gwrk/tasks.json`, **When** `gwrk plan init` is run, **Then**:
+   - `gwrk plan status --format json | jq '.[] | select(.id == "feat-a") | .status' | grep "DEFINED"` exits 0
+3. **Given** feature `feat-a` already exists in graph, **When** `gwrk plan init` is run, **Then**:
+   - Existing node is preserved (no clobber). Output: `⚠️ feat-a already in graph — skipped.`
+4. **Given** `--dry-run`, **When** `gwrk plan init --dry-run`, **Then**:
+   - Output lists discovered features with readiness levels but writes nothing to SQLite.
+
+### US-017 - Feature Readiness Warnings (Priority: P0)
+As a Principal Engineer, I want `gwrk plan next` and `gwrk plan critical` to warn when critical-path nodes lack SP estimates, so that I know CPM results are approximate and which features need `gwrk define plan` or `gwrk define tasks`.
+
+**Implements**: FR-018
+
+**Acceptance Scenarios**:
+1. **Given** F018-P3 is on the critical path with `sp_estimate = 0`, **When** `gwrk plan critical`, **Then**:
+   - Output contains `⚠️ F018-P3 has no SP estimate — CPM results approximate`
+2. **Given** all critical-path nodes have SP estimates, **When** `gwrk plan critical`, **Then**:
+   - No warnings.
+
 ---
 
 ## 3. Roles, Scopes & Permissions
@@ -191,6 +220,20 @@ _Only PM can set status to DONE or approve proposals (Tier 3 Governance)._
 - **FR-014**: System MUST provide `gwrk plan viz` for interactive sigma.js visualization. (Implements: US-012)
 - **FR-015**: System MUST provide heartbeat cron for staleness, drift, and Slack reporting. (Implements: US-013)
 - **FR-016**: System MUST provide `gwrk plan review` to display, approve, and reject agent proposals. (Implements: US-014)
+- **FR-017**: System MUST provide `gwrk plan init` to scan `specs/*/` directories and bootstrap plan nodes at the correct readiness level. Existing nodes MUST NOT be clobbered. (Implements: US-016)
+- **FR-018**: System MUST define Feature Readiness Levels (L0–L3) and assign them during `plan init` and `plan status`. CPM warnings MUST appear when critical-path nodes lack SP estimates. (Implements: US-017)
+- **FR-019**: Every `gwrk plan` subcommand MUST handle empty-graph state with a clear remediation message. (Implements: US-016, US-017)
+
+### Feature Readiness Levels
+
+| Level | Feature has... | Status set to | Graph-ready? | CPM-ready? |
+|-------|---------------|---------------|--------------|------------|
+| **L0** | Directory in `specs/` only | `PLANNED` | ✅ (node, no edges) | ❌ (no SP) |
+| **L1** | `spec.md` | `SPECIFIED` | ✅ (can add deps) | ❌ (no SP) |
+| **L2** | `spec.md` + `plan.md` | `DEFINED` (partial) | ✅ (phases extractable) | ❌ (no SP) |
+| **L3** | `spec.md` + `plan.md` + `tasks.json` | `DEFINED` | ✅ | ✅ (SP from tasks) |
+
+> CPM results are only valid when all nodes on the critical path have SP estimates (L3+). `gwrk plan next` and `gwrk plan critical` MUST warn when critical-path nodes lack SP data.
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -201,7 +244,62 @@ _Only PM can set status to DONE or approve proposals (Tier 3 Governance)._
 #### FR-006 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| No build plan | `No build plan data. Run 'gwrk plan seed'` | 1 |
+| No build plan | `No build plan data. Run 'gwrk plan seed' or 'gwrk plan init'` | 1 |
+
+#### FR-017 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| No specs/ directory | `No specs/ directory found. Run 'gwrk init' first.` | 1 |
+| No features discovered | `No features found in specs/. Run 'gwrk define spec <name>' first.` | 1 |
+
+---
+
+## 11. Error Catalogue
+
+Every `gwrk plan` subcommand MUST handle these states:
+
+### Empty Graph (no seed/init yet)
+
+| Command | Behavior |
+|---------|----------|
+| `gwrk plan status` | `No build plan data. Run 'gwrk plan seed' or 'gwrk plan init'.` (exit 1) |
+| `gwrk plan next` | Same as above |
+| `gwrk plan critical` | Same as above |
+| `gwrk plan waves` | Same as above |
+| `gwrk plan verify` | Same as above |
+| `gwrk plan add/dep/set` | Same as above |
+| `gwrk plan render` | Same as above |
+| `gwrk plan init` | Scans `specs/`, bootstraps graph (this IS the fix) |
+| `gwrk plan seed` | Parses `000-build-plan.md`, bootstraps graph (alternative fix) |
+
+### Structural Warnings (non-fatal)
+
+| Condition | Shown by | Message |
+|-----------|----------|----------|
+| Orphan node (no edges) | `gwrk plan status` | `⚠️ {id} has no dependencies declared` |
+| SP missing on critical path | `gwrk plan critical`, `gwrk plan next` | `⚠️ {id} has no SP estimate — CPM results approximate` |
+| Feature in specs/ but not in graph | `gwrk plan verify` | `⚠️ Feature '{id}' found in specs/ but missing from build plan` |
+| Feature in graph but not in specs/ | `gwrk plan verify` | `⚠️ Feature '{id}' in build plan but no specs/ directory` |
+
+### Fatal Errors
+
+| Condition | Shown by | Message | Exit |
+|-----------|----------|---------|------|
+| Cycle detected | `gwrk plan dep add` | `Error: Dependency cycle detected: {path}` | 1 |
+| Feature not found | `gwrk plan set`, `gwrk plan dep` | `Error: Feature '{id}' not found in build plan` | 1 |
+| Invalid status transition | `gwrk plan set` | `Error: Cannot transition {id} from {current} to {target}` | 1 |
+| Seed parse failure | `gwrk plan seed` | `Error: Failed to parse 000-build-plan.md: {detail}. Parsed {n}/{total} features.` | 1 |
+
+### Cold Start Decision Tree
+
+```
+User runs `gwrk plan status`
+  → No build plan data
+    → "Run 'gwrk plan seed' or 'gwrk plan init'"
+      → Has 000-build-plan.md? → gwrk plan seed
+      → Has specs/*? → gwrk plan init
+      → Neither? → gwrk define spec <name> first
+```
 
 ---
 
@@ -297,4 +395,7 @@ _Only PM can set status to DONE or approve proposals (Tier 3 Governance)._
 | US-013 | FR-015 | FR-013 | US-011 | TR-018-003 |
 | US-014 | FR-016 | FR-014 | US-012 | DEFERRED |
 | US-015 | FR-002 | FR-015 | US-013 | DEFERRED |
-| | | FR-016 | US-014 | TR-018-002 |
+| US-016 | FR-017, FR-018 | FR-016 | US-014 | TR-018-002 |
+| US-017 | FR-018 | FR-017 | US-016 | TR-018-006 |
+| | | FR-018 | US-016, US-017 | TR-018-006 |
+| | | FR-019 | US-016, US-017 | TR-018-006 |
