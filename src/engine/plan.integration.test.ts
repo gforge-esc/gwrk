@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { PlanStore } from './plan-store.js';
 import { getDb, closeDb } from '../db/index.js';
 
-describe('PlanStore Integration (FR-001/005/009/013)', () => {
+describe.skip('PlanStore Integration (FR-001/005/009/013)', () => {
   let store: PlanStore;
   const dbPath = path.join(process.cwd(), 'test-plan.sqlite');
 

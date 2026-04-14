@@ -127,23 +127,31 @@ export class PluginLoader {
 
               // Filter by options
               if (options.type && manifest.type !== options.type) continue;
+              const manifestRecord = manifest as unknown as Record<
+                string,
+                unknown
+              >;
               if (
                 options.tier &&
-                (manifest as any).tier &&
-                (manifest as any).tier !== options.tier
+                typeof manifestRecord.tier === "string" &&
+                manifestRecord.tier !== options.tier
               )
                 continue;
+
               if (
                 options.category &&
-                (manifest as any).category &&
-                (manifest as any).category !== options.category
+                typeof manifestRecord.category === "string" &&
+                manifestRecord.category !== options.category
               )
                 continue;
 
               plugins.push({
                 name: manifest.name,
                 type: manifest.type,
-                tier: (manifest as any).tier,
+                tier:
+                  typeof manifestRecord.tier === "string"
+                    ? manifestRecord.tier
+                    : undefined,
                 version: manifest.version,
                 description: manifest.description,
                 status: isDisabled ? "disabled" : "active",

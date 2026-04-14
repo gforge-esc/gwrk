@@ -13,8 +13,11 @@ export interface QuotaStatus {
  */
 export async function quotaProbe(backend: AgentBackend): Promise<QuotaStatus> {
   // If the backend has a native checkQuota method, use it.
-  if (typeof (backend as any).checkQuota === "function") {
-    return await (backend as any).checkQuota();
+  const backendWithQuota = backend as unknown as {
+    checkQuota?: () => Promise<QuotaStatus>;
+  };
+  if (typeof backendWithQuota.checkQuota === "function") {
+    return await backendWithQuota.checkQuota();
   }
 
   // Fallback to availability check

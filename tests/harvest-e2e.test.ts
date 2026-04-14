@@ -10,7 +10,7 @@ describe("TR-H07: Full Harvest E2E Loop", () => {
     // 2. Trigger webhook
     const server = fastify();
     await githubWebhookPlugin(server, {
-      config: { server: {} } as any,
+      config: { server: {} } as never,
       projectRoot: process.cwd(),
     });
 

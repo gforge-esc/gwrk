@@ -1,4 +1,12 @@
-import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  type Mocked,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type { GwrkConfig } from "../utils/config.js";
 import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
 import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
@@ -9,8 +17,8 @@ vi.mock("./backends/invocation-strategy.js");
 
 describe("DispatchOrchestrator", () => {
   let orchestrator: DispatchOrchestrator;
-  let mockSandbox: vi.Mocked<SandboxManager>;
-  let mockInvocation: vi.Mocked<LocalInvocationStrategy>;
+  let mockSandbox: Mocked<SandboxManager>;
+  let mockInvocation: Mocked<LocalInvocationStrategy>;
 
   const mockConfig: GwrkConfig = {
     project: { name: "test" },
@@ -29,9 +37,9 @@ describe("DispatchOrchestrator", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSandbox = new SandboxManager() as vi.Mocked<SandboxManager>;
+    mockSandbox = new SandboxManager() as Mocked<SandboxManager>;
     mockInvocation =
-      new LocalInvocationStrategy() as vi.Mocked<LocalInvocationStrategy>;
+      new LocalInvocationStrategy() as Mocked<LocalInvocationStrategy>;
     orchestrator = new DispatchOrchestrator(
       mockConfig,
       mockSandbox,
@@ -106,6 +114,7 @@ describe("DispatchOrchestrator", () => {
 
   it("FR-004: should timeout if tasks stay in queue for too long", async () => {
     // Inject a small timeout for testing
+    // biome-ignore lint/suspicious/noExplicitAny: Testing private property
     (orchestrator as any).queueTimeoutMs = 100;
 
     mockSandbox.createSandbox.mockImplementation(async () => {
@@ -141,7 +150,8 @@ describe("DispatchOrchestrator", () => {
       results.some(
         (r) =>
           r.status === "failed" &&
-          r.result?.stderr === "Agent capacity queue timeout",
+          // biome-ignore lint/suspicious/noExplicitAny: Dynamic testing assignment
+          (r as any).result?.stderr === "Agent capacity queue timeout",
       ),
     ).toBe(true);
   });
@@ -161,7 +171,8 @@ describe("DispatchOrchestrator", () => {
     });
 
     expect(results[0].status).toBe("failed");
-    expect(results[0].result?.exitCode).toBe(1);
+    // biome-ignore lint/suspicious/noExplicitAny: Dynamic testing assignment
+    expect((results[0] as any).result?.exitCode).toBe(1);
   });
 
   it("FR-005: should retry on 429 rate limit error", async () => {

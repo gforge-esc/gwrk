@@ -13,8 +13,10 @@ describe("FR-011: Skill Migration", () => {
   it("US-009: generates valid manifest.yaml from SKILL.md frontmatter", async () => {
     // Mock readdir to return truth-extract
     vi.mocked(fs.readdir).mockResolvedValue([
-      { name: "truth-extract", isDirectory: () => true },
-    ] as any);
+      // biome-ignore lint/suspicious/noExplicitAny: mock test dirent
+      { name: "truth-extract", isDirectory: () => true } as any,
+      // biome-ignore lint/suspicious/noExplicitAny: mock test dirent array
+    ] as any[]);
 
     // Mock fs.stat to throw (not found)
     vi.mocked(fs.stat).mockRejectedValue(new Error("Not found"));

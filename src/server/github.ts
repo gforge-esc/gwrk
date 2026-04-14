@@ -50,6 +50,7 @@ export async function githubWebhookPlugin(
         .send({ status: "ignored", reason: "not_pr_event" });
     }
 
+    // biome-ignore lint/suspicious/noExplicitAny: Fastify request body parsing
     const payload = request.body as any;
 
     // 2. Filter Actions (FR-H01)

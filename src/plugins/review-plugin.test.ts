@@ -16,6 +16,7 @@ vi.mock("../utils/config.js");
 describe("ReviewPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // biome-ignore lint/suspicious/noExplicitAny: mock
     (configUtils.loadConfig as any).mockReturnValue({
       review: { strategy: undefined },
     });
@@ -23,6 +24,7 @@ describe("ReviewPlugin", () => {
 
   describe("detectProjectType", () => {
     it("should detect webapp from markers", () => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (fs.existsSync as any).mockImplementation((p: string) =>
         p.endsWith("next.config.js"),
       );
@@ -30,9 +32,11 @@ describe("ReviewPlugin", () => {
     });
 
     it("should detect cli from package.json bin", () => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (fs.existsSync as any).mockImplementation((p: string) =>
         p.endsWith("package.json"),
       );
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (fs.readFileSync as any).mockReturnValue(
         JSON.stringify({ bin: { gwrk: "bin/gwrk" } }),
       );
@@ -40,6 +44,7 @@ describe("ReviewPlugin", () => {
     });
 
     it("should default to cli", () => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (fs.existsSync as any).mockReturnValue(false);
       expect(detectProjectType("/root")).toBe("cli");
     });
@@ -47,6 +52,7 @@ describe("ReviewPlugin", () => {
 
   describe("resolveReviewPlugin", () => {
     it("should return webapp plugin for webapp project", async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (fs.existsSync as any).mockImplementation((p: string) =>
         p.endsWith("next.config.js"),
       );
@@ -56,6 +62,7 @@ describe("ReviewPlugin", () => {
     });
 
     it("should return cli plugin for cli project", async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (fs.existsSync as any).mockReturnValue(false);
       const plugin = await resolveReviewPlugin("/root");
       expect(plugin.projectType).toBe("cli");
@@ -63,10 +70,12 @@ describe("ReviewPlugin", () => {
     });
 
     it("should respect config override", async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (configUtils.loadConfig as any).mockReturnValue({
         review: { strategy: "webapp" },
       });
       // Even if it looks like a CLI
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (fs.existsSync as any).mockReturnValue(false);
 
       const plugin = await resolveReviewPlugin("/root");
@@ -90,9 +99,11 @@ describe("ReviewPlugin", () => {
         ],
       };
 
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (stateUtils.loadTaskState as any).mockReturnValue(afterState);
 
-      validatePhaseScope("/root", "F1", "phase-1", beforeState);
+      // biome-ignore lint/suspicious/noExplicitAny: mock
+      validatePhaseScope("/root", "F1", "phase-1", beforeState as any);
 
       expect(afterState.phases[0].tasks[0].status).toBe("open"); // Allowed
       expect(afterState.phases[1].tasks[0].status).toBe("completed"); // Reverted
@@ -108,9 +119,11 @@ describe("ReviewPlugin", () => {
         phases: [{ id: "phase-1", tasks: [{ id: "T1", status: "open" }] }],
       };
 
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       (stateUtils.loadTaskState as any).mockReturnValue(afterState);
 
-      validatePhaseScope("/root", "F1", "phase-1", beforeState);
+      // biome-ignore lint/suspicious/noExplicitAny: mock
+      validatePhaseScope("/root", "F1", "phase-1", beforeState as any);
 
       expect(stateUtils.saveTaskState).not.toHaveBeenCalled();
     });

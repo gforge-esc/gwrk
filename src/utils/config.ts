@@ -118,6 +118,7 @@ export function loadConfig(projectRoot: string): GwrkConfig {
     );
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: Parsed json configuration
   let raw: Record<string, any>;
   try {
     raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));

@@ -24,7 +24,13 @@ function getSkillsSync() {
     "skills",
   );
 
-  const skills: any[] = [];
+  const skills: Array<{
+    name: string;
+    description?: string;
+    runtime?: { preferredAgent?: string };
+    category?: string;
+    tier?: string;
+  }> = [];
   const visited = new Set<string>();
 
   const scan = (dir: string) => {
@@ -195,15 +201,20 @@ ${BOLD}Exit codes:${RESET}
         if (result.stderr) {
           process.stderr.write(result.stderr);
         }
-      } catch (err: any) {
-        if (err.stderr) {
-          process.stderr.write(err.stderr);
+      } catch (err: unknown) {
+        if (typeof err === "object" && err !== null && "stderr" in err) {
+          process.stderr.write((err as { stderr: string }).stderr);
         }
-        if (err.message && !options.agent) {
-          console.error(`${RED}Error:${RESET} ${err.message}`);
+        if (
+          typeof err === "object" &&
+          err !== null &&
+          "message" in err &&
+          !options.agent
+        ) {
+          console.error(`${RED}Error:${RESET} ${(err as Error).message}`);
         }
         // withSignal will pick up this exitCode if we set it
-        process.exitCode = err.exitCode || 1;
+        process.exitCode = (err as { exitCode?: number }).exitCode || 1;
         throw err; // Re-throw so withSignal can report the error message if needed
       }
     });

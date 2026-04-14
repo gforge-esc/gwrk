@@ -153,4 +153,17 @@ export class PlanStore {
   scanReadiness(specsDir: string) {
     return scanReadiness(specsDir);
   }
+
+  /**
+   * Get a PlanSolver instance for the current graph state.
+   */
+  async getSolver() {
+    const { PlanSolver } = await import("./plan-solver.js");
+    const status = this.getPlanStatus();
+    return new PlanSolver(
+      status.features,
+      status.features.flatMap((f) => f.phases),
+      status.edges,
+    );
+  }
 }

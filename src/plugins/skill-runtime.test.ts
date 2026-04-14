@@ -27,9 +27,11 @@ vi.mock("../utils/agent.js", () => ({
   }),
 }));
 vi.mock("../utils/agent-layer.js", () => ({
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Testing ansi strip
   processForAgent: vi.fn((text: string) => text.replace(/\x1B\[[0-9;]*m/g, "")),
 }));
 vi.mock("node:child_process", () => ({
+  // biome-ignore lint/complexity/noBannedTypes: Mock callback
   exec: vi.fn((cmd: string, cb: Function) =>
     cb(null, { stdout: "Mocked output", stderr: "Mocked error" }),
   ),
@@ -58,6 +60,7 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
           status: "active",
         }),
       };
+      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
       (PluginLoader as any).mockImplementation(() => mockLoader);
 
       const result = await executeSkill("narrative", { input: "test" });
@@ -72,6 +75,7 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
           .fn()
           .mockRejectedValue(new Error("Plugin 'nonexistent' not found")),
       };
+      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
       (PluginLoader as any).mockImplementation(() => mockLoader);
 
       await expect(executeSkill("nonexistent")).rejects.toThrow(
@@ -102,10 +106,12 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
           { name: "p1", skill: "s1", summary: "Apply s1" },
           { name: "p2", skill: "s2", summary: "Apply s2" },
         ],
+        // biome-ignore lint/suspicious/noExplicitAny: Mock structure
       } as any;
       const prompt = await assemblePrompt(
         compoundManifest,
         "test input",
+        // biome-ignore lint/suspicious/noExplicitAny: Mock class dependency
         mockLoader as any,
       );
       expect(prompt).toContain("s1");
@@ -126,8 +132,10 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
         tier: "compound",
         composes: ["narrative", "missing-skill"],
         passes: [],
+        // biome-ignore lint/suspicious/noExplicitAny: Mock structure
       } as any;
       await expect(
+        // biome-ignore lint/suspicious/noExplicitAny: Mock class dependency
         validateCompoundManifest(manifest, mockLoader as any),
       ).rejects.toThrow(/Missing dependency: skill 'missing-skill'/);
     });
@@ -152,12 +160,14 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
           },
         }),
       };
+      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
       (PluginLoader as any).mockImplementation(() => mockLoader);
 
       const result = await executeSkill("narrative", {
         agent: true,
         input: "test",
       });
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Testing ansi strip
       expect(result.stdout).not.toMatch(/\x1B\[/);
     });
 
@@ -176,6 +186,7 @@ describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
           },
         }),
       };
+      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
       (PluginLoader as any).mockImplementation(() => mockLoader);
       const result = await executeSkill("narrative");
       expect(result.exitCode).toBe(0);

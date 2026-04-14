@@ -56,10 +56,10 @@ export async function installPlugin(
 
   const targetDir = path.join(globalDir, targetTypeDir, manifest.name);
 
-  let stats;
+  let stats: import("fs").Stats | undefined;
   try {
     stats = await fs.stat(targetDir);
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Ignore ENOENT
   }
 
@@ -105,12 +105,14 @@ export async function removePlugin(
   // Dependency check (FR-004)
   if (
     plugin.manifest.type === "skill" &&
-    (plugin.manifest as any).tier === "atomic" &&
+    (plugin.manifest as unknown as Record<string, unknown>).tier === "atomic" &&
     !options.force
   ) {
     const allPlugins = await loader.listPlugins();
     const dependents = allPlugins.filter(
-      (p) => p.tier === "compound" && (p as any).composes?.includes(name),
+      (p) =>
+        p.tier === "compound" &&
+        (p as unknown as Record<string, string[]>).composes?.includes(name),
     );
     if (dependents.length > 0) {
       throw new Error(

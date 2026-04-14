@@ -175,10 +175,9 @@ export async function harvestFeature(
           );
         }
       }
-    } catch (err: any) {
-      console.warn(
-        `Failed to calculate compression for ${featureId}: ${err.message}`,
-      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`Failed to calculate compression for ${featureId}: ${msg}`);
     }
   }
 

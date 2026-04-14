@@ -70,7 +70,9 @@ export async function selectBackend(
   }
 
   // 3. Task-specific mapping from config
-  const taskBackendName = (config.agents as any)[task.type];
+  const taskBackendName = (config.agents as unknown as Record<string, string>)[
+    task.type
+  ];
   if (taskBackendName) {
     try {
       const backend = await registry.getAgentBackend(taskBackendName);

@@ -55,14 +55,16 @@ export class DispatchOrchestrator {
 
   private getSemaphore(backend: string): Semaphore {
     const key = backend === "codex-cloud" ? "cloud" : "local";
-    if (!this.semaphores.has(key)) {
+    let semaphore = this.semaphores.get(key);
+    if (!semaphore) {
       const limit =
         key === "cloud"
           ? this.config.parallelism.cloud.maxConcurrent
           : this.config.parallelism.local.maxClones;
-      this.semaphores.set(key, new Semaphore(limit));
+      semaphore = new Semaphore(limit);
+      this.semaphores.set(key, semaphore);
     }
-    return this.semaphores.get(key)!;
+    return semaphore;
   }
 
   async dispatchPhase(options: DispatchPhaseOptions): Promise<TaskRecord[]> {
@@ -98,7 +100,9 @@ export class DispatchOrchestrator {
           if (Date.now() - startTime > this.queueTimeoutMs) {
             taskRecord.status = "failed";
             taskRecord.error = "Agent capacity queue timeout";
+            // biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment
             if (!(taskRecord as any).result) {
+              // biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment
               (taskRecord as any).result = {
                 stderr: "Agent capacity queue timeout",
                 exitCode: 1,
@@ -137,6 +141,7 @@ export class DispatchOrchestrator {
 
               success = result.exitCode === 0;
               taskRecord.exitCode = result.exitCode;
+              // biome-ignore lint/suspicious/noExplicitAny: Dynamic assignment
               (taskRecord as any).result = result;
 
               if (success) {
@@ -161,9 +166,11 @@ export class DispatchOrchestrator {
               taskRecord.status = "failed";
               await this.sandboxManager.destroySandbox(sandboxDir, featureId);
               break;
-            } catch (error: any) {
+            } catch (error: unknown) {
+              const err =
+                error instanceof Error ? error : new Error(String(error));
               taskRecord.status = "failed";
-              taskRecord.error = error.message;
+              taskRecord.error = err.message;
               if (sandboxDir) {
                 await this.sandboxManager.destroySandbox(sandboxDir, featureId);
               }

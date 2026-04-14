@@ -91,7 +91,7 @@
         {
           "id": "T009",
           "title": "Implement src/engine/plan-solver.ts",
-          "description": "NEW: Graph analysis logic using graphology",
+          "description": "NEW: Graph analysis logic using graphology.\n\nREVIEW FAIL (code): FR-003 — Ready queue sorting.\n  WHERE: src/engine/plan-solver.ts:88-112\n  EXPECTED: readyPhases.sort((a, b) => criticalPathPriority(a, b))\n  ACTUAL: return readyPhases; (unsorted)\n  FIX: Implement sorting by critical path priority (slack ascending), then by Most Successors First.\nREVIEW FAIL (lint): FR-018 — Non-null assertions.\n  WHERE: src/engine/plan-solver.ts:131, 152, 169, 200, 205\n  EXPECTED: Safe access with guards or error handling.\n  ACTUAL: Non-null assertions (!).\n  FIX: Replace '!' with proper null-checks or descriptive error throws.",
           "status": "open",
           "gateScript": "gates/T009-gate.sh",
           "classification": "greenfield"
@@ -99,7 +99,7 @@
         {
           "id": "T010",
           "title": "Implement src/commands/plan.ts",
-          "description": "MODIFY: Add `next`, `critical`, `waves` subcommands",
+          "description": "MODIFY: Add next, critical, waves subcommands.\n\nREVIEW FAIL (logic): FR-003 — Subcommand output ranking.\n  WHERE: src/commands/plan.ts\n  EXPECTED: Correct ranking in 'next' command output based on critical path.\n  ACTUAL: Unsorted output due to broken T009.\n  FIX: Ensure T009 is fixed and verify CLI output ranking.",
           "status": "open",
           "gateScript": "gates/T010-gate.sh",
           "classification": "greenfield"
@@ -108,14 +108,15 @@
           "id": "T011",
           "title": "Implement package.json",
           "description": "MODIFY: Add `graphology` dependency",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
+          "completedAt": "2026-04-14T13:35:00.000Z",
           "classification": "change"
         },
         {
           "id": "T012",
           "title": "Implement test strategy for Phase 2",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-003 — Hollow tests.\n  WHERE: src/commands/plan.phase2.test.ts\n  EXPECTED: Assertions for success scenarios checking actual CLI output content.\n  ACTUAL: try/catch block with no success assertions (passes if no error thrown).\n  FIX: Add actual output assertions for 'next', 'critical', and 'waves' commands. Use a mock store with a known graph to verify sorting.",
           "status": "open",
           "gateScript": "gates/T012-gate.sh",
           "classification": "noop"

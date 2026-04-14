@@ -138,7 +138,7 @@ export const testsGenerateCommand = new Command("tests")
             finishRun(runId, { exit_code: 2, duration_s: durationS });
             fail("define tests", 2, durationS, runId);
             throw new CommandError(
-              `Agent exited 0 but did not produce gap-matrix.md. Output contract violated.`,
+              "Agent exited 0 but did not produce gap-matrix.md. Output contract violated.",
               2,
             );
           }

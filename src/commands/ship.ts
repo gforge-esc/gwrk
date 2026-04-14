@@ -498,7 +498,8 @@ Exit codes:
             });
 
             for (const res of results) {
-              const task = phaseData.tasks.find((t) => t.id === res.id)!;
+              const task = phaseData.tasks.find((t) => t.id === res.id);
+              if (!task) continue;
               if (res.status === "completed") {
                 task.status = "completed";
                 task.completedAt = new Date().toISOString();

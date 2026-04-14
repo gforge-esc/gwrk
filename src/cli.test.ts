@@ -43,6 +43,7 @@ describe("FR-001 / FR-004: CLI Command Registration", () => {
     expect(commandNames).toContain("db");
     expect(commandNames).toContain("server");
     expect(commandNames).toContain("status");
+    expect(commandNames).toContain("plan");
 
     // Eliminated groups — must NOT exist as top-level
     const eliminated = [
@@ -51,7 +52,6 @@ describe("FR-001 / FR-004: CLI Command Registration", () => {
       "implement",
       "pulse",
       "specify",
-      "plan",
       "analyze",
       "new",
     ];

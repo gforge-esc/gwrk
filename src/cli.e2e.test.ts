@@ -44,6 +44,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).toMatch(/^\s+db\s+/m);
     expect(stdout).toMatch(/^\s+server\s+/m);
     expect(stdout).toMatch(/^\s+status\s+/m);
+    expect(stdout).toMatch(/^\s+plan\s+/m);
 
     // Eliminated / Hidden — must NOT appear as top-level in help
     const hidden = [
@@ -51,7 +52,6 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
       "metrics",
       "implement",
       "specify",
-      "plan",
       "analyze",
       "effort",
       "pulse",

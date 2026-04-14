@@ -13,18 +13,17 @@ const mockConfig = {
   server: {
     githubWebhookSecret: "test-secret",
   },
-} as any;
+} as never;
 
 const projectRoot = "/tmp/gwrk-test";
 
 describe("TR-H01: GitHub Webhook Handler", () => {
   it("should ignore non-PR events", async () => {
     const server = fastify();
-    await githubWebhookPlugin(
-      server,
-      { config: { server: {} } } as any,
+    await githubWebhookPlugin(server, {
+      config: { server: {} } as never,
       projectRoot,
-    );
+    });
 
     const response = await server.inject({
       method: "POST",
@@ -82,11 +81,10 @@ describe("TR-H01: GitHub Webhook Handler", () => {
 
   it("should ignore PR closure without merge", async () => {
     const server = fastify();
-    await githubWebhookPlugin(
-      server,
-      { config: { server: {} } } as any,
+    await githubWebhookPlugin(server, {
+      config: { server: {} } as never,
       projectRoot,
-    );
+    });
 
     const response = await server.inject({
       method: "POST",
@@ -105,11 +103,10 @@ describe("TR-H01: GitHub Webhook Handler", () => {
 
   it("should accept valid PR merge targeting develop", async () => {
     const server = fastify();
-    await githubWebhookPlugin(
-      server,
-      { config: { server: {} } } as any,
+    await githubWebhookPlugin(server, {
+      config: { server: {} } as never,
       projectRoot,
-    );
+    });
 
     const payload = {
       action: "closed",

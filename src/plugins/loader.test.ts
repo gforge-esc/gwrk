@@ -8,7 +8,7 @@ import { PluginLoader } from "./loader.js";
 vi.mock("node:fs/promises");
 
 describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engine", () => {
-  let loader: any;
+  let loader: PluginLoader;
   const mockGlobalDir = path.join(os.homedir(), ".gwrk", "plugins");
   const mockProjectDir = "/work/project";
 
@@ -22,12 +22,18 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   });
 
   it("US-002: scans global plugins directory and resolves by type (FR-003)", async () => {
+    // @ts-ignore
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readdir).mockImplementation((p: any) => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       if (p.endsWith("skills")) return Promise.resolve(["narrative"] as any);
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       if (p.endsWith("agents")) return Promise.resolve(["gemini"] as any);
       return Promise.resolve([]);
     });
 
+    // @ts-ignore
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
       if (p.includes("narrative"))
         return Promise.resolve(
@@ -48,10 +54,13 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   it("FR-L1-012: user-installed global plugins override built-ins", async () => {
     // Built-in 'gemini' exists
     // User global 'gemini' exists
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readdir).mockImplementation((p: any) => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       if (p.endsWith("agents")) return Promise.resolve(["gemini"] as any);
       return Promise.resolve([]);
     });
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
       if (p.includes("gemini"))
         return Promise.resolve(
@@ -67,6 +76,7 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   });
 
   it("TC-009: applies .gwrk/plugins.yaml local overrides", async () => {
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
       if (p.endsWith("plugins.yaml")) {
         return Promise.resolve(
@@ -86,10 +96,13 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   });
 
   it("FR-005 / TC-004: applies local disables for workflows/domains (TC-009)", async () => {
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readdir).mockImplementation((p: any) => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       if (p.endsWith("domains")) return Promise.resolve(["writing"] as any);
       return Promise.resolve([]);
     });
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
       if (p.endsWith("plugins.yaml")) {
         return Promise.resolve("disable:\n  - domains/writing");
@@ -107,10 +120,15 @@ describe("FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engin
   });
 
   it("FR-005: rejects disable attempts for global-only types (skills, agents)", async () => {
+    // @ts-ignore
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readdir).mockImplementation((p: any) => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock
       if (p.endsWith("skills")) return Promise.resolve(["narrative"] as any);
       return Promise.resolve([]);
     });
+    // @ts-ignore
+    // biome-ignore lint/suspicious/noExplicitAny: Mocking filesystem
     vi.mocked(fs.readFile).mockImplementation((p: any) => {
       if (p.endsWith("plugins.yaml")) {
         return Promise.resolve("disable:\n  - skills/narrative");

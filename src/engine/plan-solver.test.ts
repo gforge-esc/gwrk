@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-ignore: PlanSolver might not exist yet
 import { PlanSolver } from "./plan-solver.js";
 
 describe("src/engine/plan-solver.ts (FR-002/003/004)", () => {
@@ -11,10 +10,10 @@ describe("src/engine/plan-solver.ts (FR-002/003/004)", () => {
   ];
 
   const mockPhases = [
-    { id: "F1-P1", feature_id: "F1", name: "P1", status: "DONE", sp_estimate: 10 },
-    { id: "F2-P1", feature_id: "F2", name: "P1", status: "PLANNED", sp_estimate: 20 },
-    { id: "F3-P1", feature_id: "F3", name: "P1", status: "PLANNED", sp_estimate: 15 },
-    { id: "F4-P1", feature_id: "F4", name: "P1", status: "PLANNED", sp_estimate: 0 }, // Missing SP (FR-018)
+    { id: "F1-P1", feature_id: "F1", name: "P1", status: "DONE", sp_estimate: 10, seq: 1, health: "CLEAN" },
+    { id: "F2-P1", feature_id: "F2", name: "P1", status: "PLANNED", sp_estimate: 20, seq: 1, health: "CLEAN" },
+    { id: "F3-P1", feature_id: "F3", name: "P1", status: "PLANNED", sp_estimate: 15, seq: 1, health: "CLEAN" },
+    { id: "F4-P1", feature_id: "F4", name: "P1", status: "PLANNED", sp_estimate: 0, seq: 1, health: "CLEAN" }, // Missing SP (FR-018)
   ];
 
   const mockEdges = [
@@ -41,7 +40,7 @@ describe("src/engine/plan-solver.ts (FR-002/003/004)", () => {
     expect(path.map(p => p.id)).toEqual(["F1-P1", "F2-P1", "F3-P1", "F4-P1"]);
     
     // FR-018: Should warn about F4-P1 having 0 SP
-    expect(warnings).toContain(expect.stringContaining("F4-P1 has no SP estimate"));
+    expect(warnings.find(w => w.includes("F4-P1 has no SP estimate"))).toBeDefined();
   });
 
   it("FR-002: should compute topological waves (generations)", () => {

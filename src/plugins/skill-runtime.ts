@@ -15,6 +15,7 @@ export interface SkillOptions {
   input?: string;
   format?: "text" | "json";
   agent?: boolean;
+  // biome-ignore lint/suspicious/noExplicitAny: dynamic configuration overrides
   [key: string]: any;
 }
 

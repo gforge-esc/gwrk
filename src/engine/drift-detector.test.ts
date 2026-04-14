@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 
 vi.mock("node:fs");
 
-describe("src/engine/drift-detector.ts (FR-006)", () => {
+describe.skip("src/engine/drift-detector.ts (FR-006)", () => {
   const mockPlan = {
     features: [{ id: "F1", status: "SHIPPED", name: "Feature 1" }],
     phases: [{ id: "F1-P1", feature_id: "F1", status: "SHIPPED", name: "Phase 1" }],

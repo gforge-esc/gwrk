@@ -140,27 +140,68 @@ planCommand
   .command("next")
   .description("Show items ready to work on (dependencies satisfied)")
   .option("--json", "Output in JSON format")
-  .action(async () => {
+  .action(async (options, command) => {
     await withSignal("plan next", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan next' is not yet implemented (Phase 2).",
-        1,
-      );
+      const solver = await store.getSolver();
+      const ready = solver.getReadyQueue();
+      const out = options.json ? createOutput("json") : resolveFormat(command);
+
+      if (out.isJson) {
+        out.write(ready);
+        return;
+      }
+
+      if (ready.length === 0) {
+        console.log("All build plan items complete.");
+        return;
+      }
+
+      const { BOLD, GREEN, DIM, RESET } = color;
+      console.log(`${BOLD}Ready Work Items${RESET}\n`);
+      for (const p of ready) {
+        console.log(
+          `${BOLD}${GREEN}${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+        );
+      }
     });
   });
 
 planCommand
   .command("critical")
   .description("Show the critical path through the build plan")
-  .action(async () => {
+  .option("--json", "Output in JSON format")
+  .action(async (options, command) => {
     await withSignal("plan critical", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan critical' is not yet implemented (Phase 2).",
-        1,
+      const solver = await store.getSolver();
+      const { path, warnings } = solver.getCriticalPath();
+      const out = options.json ? createOutput("json") : resolveFormat(command);
+
+      if (out.isJson) {
+        out.write({ path, warnings });
+        return;
+      }
+
+      const { BOLD, RED, YELLOW, RESET, DIM } = color;
+      console.log(`${BOLD}Critical Path${RESET}\n`);
+
+      if (warnings.length > 0) {
+        for (const w of warnings) {
+          console.warn(`${YELLOW}${w}${RESET}`);
+        }
+        console.log("");
+      }
+
+      console.log(
+        path
+          .map(
+            (p) =>
+              `${BOLD}${RED}${p.id}${RESET} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+          )
+          .join(" → "),
       );
     });
   });
@@ -168,14 +209,32 @@ planCommand
 planCommand
   .command("waves")
   .description("Show mathematically computed parallel execution waves")
-  .action(async () => {
+  .option("--json", "Output in JSON format")
+  .action(async (options, command) => {
     await withSignal("plan waves", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan waves' is not yet implemented (Phase 2).",
-        1,
-      );
+      const solver = await store.getSolver();
+      const waves = solver.getTopologicalWaves();
+      const out = options.json ? createOutput("json") : resolveFormat(command);
+
+      if (out.isJson) {
+        out.write(waves);
+        return;
+      }
+
+      const { BOLD, CYAN, RESET, DIM } = color;
+      console.log(`${BOLD}Parallel Execution Waves${RESET}\n`);
+
+      waves.forEach((wave, i) => {
+        console.log(`${BOLD}${CYAN}Wave ${i + 1}${RESET}`);
+        for (const p of wave) {
+          console.log(
+            `  ${p.id.padEnd(12)} ${p.name.padEnd(35)} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+          );
+        }
+        console.log("");
+      });
     });
   });
 

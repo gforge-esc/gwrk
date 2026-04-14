@@ -54,15 +54,17 @@ export class SandboxManager {
         cwd: projectRoot,
         stdio: "pipe",
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
       // Fallback to current branch if baseBranch doesn't exist (though it should in gwrk flow)
       try {
         execSync(`git worktree add -b ${branchName} ${workDir}`, {
           cwd: projectRoot,
           stdio: "pipe",
         });
-      } catch (e2: any) {
-        throw new Error(`Failed to create git worktree: ${e2.message}`);
+      } catch (e2: unknown) {
+        const err2 = e2 instanceof Error ? e2 : new Error(String(e2));
+        throw new Error(`Failed to create git worktree: ${err2.message}`);
       }
     }
 
@@ -107,8 +109,9 @@ export class SandboxManager {
               stdio: "pipe",
             },
           );
-        } catch (e: any) {
-          console.error(`Failed to create PR for ${workDir}: ${e.message}`);
+        } catch (e: unknown) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          console.error(`Failed to create PR for ${workDir}: ${err.message}`);
         }
       }
 
@@ -117,9 +120,10 @@ export class SandboxManager {
         cwd: projectRoot,
         stdio: "pipe",
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
       console.error(
-        `Error during sandbox destruction for ${workDir}: ${e.message}`,
+        `Error during sandbox destruction for ${workDir}: ${err.message}`,
       );
       // Try to cleanup worktree anyway if it failed midway
       try {
@@ -170,8 +174,9 @@ export class SandboxManager {
   async pruneSandboxes(): Promise<void> {
     try {
       execSync("git worktree prune", { stdio: "pipe" });
-    } catch (e: any) {
-      console.error(`Failed to prune git worktrees: ${e.message}`);
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      console.error(`Failed to prune git worktrees: ${err.message}`);
     }
   }
 }
