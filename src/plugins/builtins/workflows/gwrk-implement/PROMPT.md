@@ -35,7 +35,29 @@ Executes ALL TASKS in a phase greedily via the tasks.json ready queue. Each task
 
 ## Algorithm
 
-### 0. Dev Environment
+### 0. Code Quality Rules (MANDATORY)
+
+<code_quality>
+Before writing ANY code, read ALL rule files in `.gwrk/rules/`:
+
+```bash
+for rule in .gwrk/rules/*.md; do
+  cat "$rule"
+done
+```
+
+These rules are BINDING. Violations cause review failures.
+Key rules (from `.gwrk/rules/typescript.md`):
+- **NEVER use `any`** — use `unknown` + narrowing or define a type
+- **NEVER use `@ts-ignore`** in production code
+- All exports MUST have explicit return types
+- Code MUST pass `pnpm lint` (Biome) before task completion
+- Error messages MUST be actionable
+
+If no `.gwrk/rules/` directory exists, apply TypeScript strict mode defaults.
+</code_quality>
+
+### 1. Dev Environment
 
 ```bash
 # Kill any zombie dev processes from previous sessions
