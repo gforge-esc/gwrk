@@ -35,16 +35,21 @@ Executes ALL TASKS in a phase greedily via the tasks.json ready queue. Each task
 
 ## Algorithm
 
-### 0. Dev Environment (I-007 — MANDATORY)
+### 0. Dev Environment
 
 ```bash
 # Kill any zombie dev processes from previous sessions
 pkill -f 'pnpm.*dev' || true
 
-# STRICT DOCKER MANDATE — all dev runs in Docker
-make up
-./scripts/dev/verify-dev-stack.sh
+# Build to verify baseline
+pnpm build
 ```
+
+> [!CAUTION]
+> **Shared Schema Protection**: When modifying shared Zod schemas (e.g., `GwrkConfigSchema`
+> in `config.ts`), new fields MUST be `.optional()` OR all existing test mocks MUST be updated
+> in the same commit. Adding required fields without updating all consumers = guaranteed
+> global test regression across 7+ suites. This is a circuit-breaker-level bug.
 
 ### 1. Preflight
 
@@ -91,6 +96,176 @@ if [[ "$READY_COUNT" -eq 0 ]]; then
 fi
 ```
 
+<stop_criteria>
+- STOP if tasks.json has 0 open tasks for this phase (phase is complete or un-planned)
+- STOP if a task reaches Round 4+ of escalation (3+ review failures)
+- STOP if `pnpm build` fails (infrastructure broken)
+- STOP if the agent cannot determine which files to modify (missing plan.md context)
+- Do NOT stop between tasks — continue to next ready task
+- Do NOT stop to ask clarifying questions — implement from task description
+- Do NOT "self-heal" by running setup scripts when no work is found
+</stop_criteria>
+
 ### 2. Task Loop (Greedy)
 
-... (rest of the steps from the original implement workflow)
+```
+while true:
+    TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
+
+    # Get next open task in this phase
+    NEXT_TASK=$(jq -r --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] | select(.status == "open")][0].id // empty' "$TASKS_FILE")
+
+    if [[ -z "$NEXT_TASK" ]]:
+        break  # All tasks complete
+
+    # === Load Context ===
+    TASK_DESC=$(jq -r --arg n "{phase_number}" --arg t "$NEXT_TASK" '.phases[] | select(.id == $n) | .tasks[] | select(.id == $t) | .description // .title' "$TASKS_FILE")
+    # Read plan.md and relevant source files for context
+    # If task has review remediation notes, follow them
+```
+
+<read_before_write>
+Before writing ANY code for a task, the agent MUST:
+1. Read EVERY file listed in the task's ## Files to Modify section
+2. If REVIEW FAIL notes exist, also read: `cat {feature_dir}/gates/{task_id}-gate.sh`
+3. Compare current file state against the task's ## Target state
+4. Only THEN plan and write code — targeting the specific gaps
+
+Rationale: "Never speculate about code you have not opened."
+"Map the scope before coding."
+</read_before_write>
+
+```
+    # === Mark in-progress ===
+    jq --arg n "{phase_number}" --arg t "$NEXT_TASK" \
+      '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).status = "in_progress"' \
+      "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+
+    # === IMPLEMENT ===
+    # Agent implements based on task description, plan.md, and spec.md
+    # Task descriptions contain literal code — apply the diff
+```
+
+<review_notes_priority>
+If task description contains "REVIEW FAIL", the agent MUST:
+1. Address the SPECIFIC remediation in the notes FIRST
+2. Verify the remediation manually (e.g., grep, jq check)
+3. ONLY THEN run the gate script
+
+Notes from /review-code are binding — they override gate-only logic.
+The gate is necessary but NOT sufficient when notes exist.
+</review_notes_priority>
+
+<escalation_protocol>
+Check how many times this task has been re-opened (count REVIEW FAIL entries in description).
+Adjust strategy based on round:
+
+Round 1 (first attempt — no REVIEW FAIL notes):
+  Implement from task description. Standard flow.
+
+Round 2 (after first review fail):
+  1. Read the REVIEW FAIL notes verbatim — WHERE, EXPECTED, ACTUAL, FIX
+  2. Read the gate script that failed: `cat {feature_dir}/gates/{task_id}-gate.sh`
+  3. Run the gate and capture EXACT output
+  4. Read the contract method the gate tests
+  5. Implement targeting the SPECIFIC assertion gaps only
+
+Round 3 (after second review fail):
+  1. Re-read the FULL spec.md section for this FR-###
+  2. Re-read the contract file for this task
+  3. Diff your implementation against the contract field-by-field
+  4. Write a 3-line remediation plan BEFORE writing any code
+  5. Implement ONLY the remediation plan — no other changes
+
+Round 4+ (third+ review fail): STOP. Report to user with:
+  - Gate script path and its EXACT output
+  - Your implementation vs contract diff (field-by-field)
+  - Your hypothesis for why the gate still fails
+  - Proposed approach for human review
+  Mark task as blocked in tasks.json.
+</escalation_protocol>
+
+<skill_gates>
+1. Read the ## Skills section from the task description
+2. For each listed skill: read the skill's SKILL.md and apply its checks to the code just written
+3. ALWAYS run compile-gate even if not listed in ## Skills (compile-gate is implicit — like a seatbelt, you don't list it, you wear it)
+
+The skills are NOT guessed from what files were touched.
+They are EXPLICITLY listed in the task description, propagated from plan.md's Governance & Skills Contract.
+The agent reads and follows — no interpretation.
+</skill_gates>
+
+<verification_rules>
+Run the pre-committed gate script (written by /plan-to-tasks, NOT by this agent):
+  `bash {feature_dir}/gates/{task_id}-gate.sh`
+
+- Gate exits 0 = PASS, non-zero = FAIL
+- If no gate file exists, run the ## Verification section from the task description
+- If verification fails, follow the `<escalation_protocol>` above
+- The old "3 attempts then block" rule is replaced by the escalation rounds
+</verification_rules>
+
+```
+    # === Complete ===
+    jq --arg n "{phase_number}" --arg t "$NEXT_TASK" \
+      '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).status = "completed"' \
+      "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
+    git add -A && git commit -m "feat: $NEXT_TASK done"
+```
+
+### 3. Phase Completion
+
+```bash
+git add -A && git commit -m "feat: Phase {phase_number} complete"
+```
+
+### 4. Create Pull Request
+
+```bash
+TASKS_SUMMARY=$(jq -r --arg n "{phase_number}" '.phases[] | select(.id == $n) | .tasks[] | "- [x] \(.title)"' "$TASKS_FILE")
+
+gh pr create \
+  --title "feat($(basename {feature_dir})): Phase {phase_number} - {phase_name}" \
+  --body "## Summary
+{Brief description}
+
+## Tasks Completed
+$TASKS_SUMMARY
+
+## Verification
+- [x] All tasks verified
+" \
+  --base develop
+```
+
+### 5. Cleanup & Report
+
+```bash
+# Kill any local dev processes started during session
+pkill -f 'pnpm.*dev' || true
+```
+
+```
+Phase {phase_number} COMPLETE.
+Tasks: $(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[]] | length' "$TASKS_FILE") completed
+PR: #{pr_number}
+```
+
+<quality_gate>
+Before closing any task, verify:
+1. One task at a time — agent cannot start T002 until T001 is closed
+2. Verification required — agent must run gate script or ## Verification before closing
+3. Greedy but gated — agent loops autonomously but cannot skip verification
+4. Commit per task — each task gets its own commit for auditability
+</quality_gate>
+
+## Anti-Patterns
+
+- ❌ Mark task done without verification passing
+- ❌ Edit or delete gate files in `gates/` (they are pre-committed acceptance contracts)
+- ❌ Skip to "easier" tasks
+- ❌ Batch commits (each task = one commit)
+- ❌ Proceed to next phase without user instruction
+- ❌ Reference `tasks.md` or `phases/*.md` (tasks.json is the source of truth)
+- ❌ Leave dev processes running after phase completion
+- ❌ Attempt to "Self-Heal" if no open tasks are found by running setup scripts. If no work is found, report and STOP.

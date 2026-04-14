@@ -106,10 +106,10 @@ Determine which governance rules and skills apply to this feature. Read each app
 | If feature touches... | Read this governance rule | Applicable skills |
 |---|---|---|
 | CLI commands, output | `docs/decisions/ADR-004-agent-native-output.md` | — |
-| Fixtures, test data | `.agents/rules/seeding-governance.md` | — |
-| Environment variables, config | `.agents/rules/workspace.md` | — |
-| Architecture decisions | `.agents/skills/decision-forge/SKILL.md` | `decision-forge` |
-| Spec quality | `.agents/skills/specify-sharpen/SKILL.md` | `specify-sharpen` |
+| Fixtures, test data | `.gwrk/rules/seeding-governance.md` | — |
+| Environment variables, config | `.gwrk/rules/workspace.md` | — |
+| Architecture decisions | `~/.gwrk/plugins/skills/decision-forge/SKILL.md` | `decision-forge` |
+| Spec quality | `~/.gwrk/plugins/skills/specify-sharpen/SKILL.md` | `specify-sharpen` |
 | Any code changes | — | `compile-gate` (always implicit) |
 
 ### 4. Generate plan.md
