@@ -6,7 +6,10 @@ import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
-import { loadConfig, type AgentBackend as ConfigAgentBackend } from "./config.js";
+import {
+  loadConfig,
+  type AgentBackend as ConfigAgentBackend,
+} from "./config.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
@@ -269,6 +272,54 @@ export interface TaskResult {
 }
 
 /**
+ * Resolves a workflow name to its actual file path.
+ * Uses PluginLoader to check builtins and ~/.gwrk/ plugins.
+ * Falls back to returning the input as-is if it looks like a path (backwards compat).
+ */
+async function resolveWorkflowPath(workflowName: string): Promise<string> {
+  // If it looks like an existing file path, use it directly (backwards compat)
+  if (
+    workflowName.includes("/") &&
+    fs.existsSync(path.resolve(process.cwd(), workflowName))
+  ) {
+    return workflowName;
+  }
+
+  // Strip .md extension and directory prefix for resolution
+  const name = workflowName.replace(/\.md$/, "").replace(/^.*\//, "");
+
+  try {
+    const loader = new PluginLoader();
+    const plugin = await loader.resolvePlugin(name);
+    if (plugin.manifest.type === "workflow") {
+      const promptPath = path.join(plugin.path, "PROMPT.md");
+      if (fs.existsSync(promptPath)) {
+        return promptPath;
+      }
+    }
+  } catch {
+    // Try with gwrk- prefix if not already present
+    if (!name.startsWith("gwrk-")) {
+      try {
+        const loader = new PluginLoader();
+        const plugin = await loader.resolvePlugin(`gwrk-${name}`);
+        if (plugin.manifest.type === "workflow") {
+          const promptPath = path.join(plugin.path, "PROMPT.md");
+          if (fs.existsSync(promptPath)) {
+            return promptPath;
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+  }
+
+  // Final fallback: return name as-is (dispatchAgent handles missing file gracefully)
+  return workflowName;
+}
+
+/**
  * FR-019: Dispatch agent work via a single facade.
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
  * FR-021: Context delivered via stdin pipe.
@@ -289,14 +340,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       const statePath = path.join(runsDir, "last-dispatch.state");
       let lastDispatch = 0;
       if (fs.existsSync(statePath)) {
-        lastDispatch = Number.parseInt(fs.readFileSync(statePath, "utf-8"), 10) || 0;
+        lastDispatch =
+          Number.parseInt(fs.readFileSync(statePath, "utf-8"), 10) || 0;
       }
       const now = Date.now();
       if (now - lastDispatch < throttleMs) {
         const wait = throttleMs - (now - lastDispatch);
         const waitSecs = Math.ceil(wait / 1000);
         process.stdout.write(
-          `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`
+          `\x1b[2m\x1b[33m⏳ Metering API limits (waiting ${waitSecs}s)...\x1b[0m\n`,
         );
         await new Promise((resolve) => setTimeout(resolve, wait));
       }
@@ -315,7 +367,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const opts: DispatchOptions = {
     backend: agentName as ConfigAgentBackend,
-    workflowPath: task.workflow ?? ".agents/workflows/gwrk-implement.md",
+    workflowPath: await resolveWorkflowPath(task.workflow ?? "gwrk-implement"),
     featureDir: task.featureDir,
     prompt: task.prompt,
     workDir: task.workDir,

@@ -9,8 +9,8 @@ describe("compileContext", () => {
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-context-test-"));
-    fs.mkdirSync(path.join(tempDir, ".agents/rules"), { recursive: true });
-    fs.mkdirSync(path.join(tempDir, ".agents/prompts/personas"), {
+    fs.mkdirSync(path.join(tempDir, ".gwrk/rules"), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, ".gwrk/personas"), {
       recursive: true,
     });
     fs.mkdirSync(path.join(tempDir, "specs/feature-001/.gwrk"), {
@@ -18,11 +18,11 @@ describe("compileContext", () => {
     });
 
     fs.writeFileSync(
-      path.join(tempDir, ".agents/rules/coding-style.md"),
+      path.join(tempDir, ".gwrk/rules/coding-style.md"),
       "Keep it clean.",
     );
     fs.writeFileSync(
-      path.join(tempDir, ".agents/prompts/personas/default.md"),
+      path.join(tempDir, ".gwrk/personas/default.md"),
       "Be helpful.",
     );
     fs.writeFileSync(

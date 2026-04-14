@@ -21,7 +21,7 @@ export class LocalInvocationStrategy implements InvocationStrategy {
       workDir: task.workDir,
       featureDir: `specs/${task.featureId}`,
       prompt: task.prompt || `Task ${task.taskId} in phase ${task.phaseId}`,
-      workflow: ".agents/workflows/gwrk-implement.md",
+      workflow: "gwrk-implement",
     });
   }
 }

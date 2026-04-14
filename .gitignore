@@ -16,3 +16,6 @@ review-*.md
 uat_verify*.sh
 *.bak
 *.tmp
+
+# R004: Personal shell scripts — not part of gwrk distribution
+scripts/dev/

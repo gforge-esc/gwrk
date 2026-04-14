@@ -289,7 +289,7 @@ export class ShipOrchestrator {
 
       const result = await this.dispatchWithFailback({
         agent: this.config.backend,
-        workflow: ".agents/workflows/gwrk-implement.md",
+        workflow: "gwrk-implement",
         featureDir: `specs/${this.config.featureId}`,
         prompt,
       });

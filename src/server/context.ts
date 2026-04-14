@@ -1,42 +1,44 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
+
+/**
+ * Reads all .md files from a directory, if it exists.
+ */
+function readMarkdownDir(dir: string): string {
+  if (!fs.existsSync(dir)) return "";
+  let content = "";
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .sort();
+  for (const file of files) {
+    content += `### ${file}\n\n`;
+    content += fs.readFileSync(path.join(dir, file), "utf-8");
+    content += "\n\n";
+  }
+  return content;
+}
 
 export function compileContext(
   projectRoot: string,
   featureId: string,
   phaseId: string,
 ): string {
+  const gwrkGlobal = path.join(os.homedir(), ".gwrk");
+  const gwrkLocal = path.join(projectRoot, ".gwrk");
+
   let context = "# gwrk Phase Context\n\n";
 
-  // 1. Governance Rules
+  // 1. Governance Rules — .gwrk/rules/ (project) then ~/.gwrk/rules/ (global)
   context += "## Governance Rules\n\n";
-  const rulesDir = path.join(projectRoot, ".agents/rules");
-  if (fs.existsSync(rulesDir)) {
-    const rules = fs
-      .readdirSync(rulesDir)
-      .filter((f) => f.endsWith(".md"))
-      .sort();
-    for (const rule of rules) {
-      context += `### ${rule}\n\n`;
-      context += fs.readFileSync(path.join(rulesDir, rule), "utf-8");
-      context += "\n\n";
-    }
-  }
+  context += readMarkdownDir(path.join(gwrkLocal, "rules"));
+  context += readMarkdownDir(path.join(gwrkGlobal, "rules"));
 
-  // 2. Persona
+  // 2. Persona — .gwrk/personas/ (project) then ~/.gwrk/personas/ (global)
   context += "## Persona\n\n";
-  const personasDir = path.join(projectRoot, ".agents/prompts/personas");
-  if (fs.existsSync(personasDir)) {
-    const personas = fs
-      .readdirSync(personasDir)
-      .filter((f) => f.endsWith(".md"))
-      .sort();
-    for (const persona of personas) {
-      context += `### ${persona}\n\n`;
-      context += fs.readFileSync(path.join(personasDir, persona), "utf-8");
-      context += "\n\n";
-    }
-  }
+  context += readMarkdownDir(path.join(gwrkLocal, "personas"));
+  context += readMarkdownDir(path.join(gwrkGlobal, "personas"));
 
   // 3. Spec & Plan
   const specPath = path.join(projectRoot, `specs/${featureId}/spec.md`);
@@ -73,3 +75,4 @@ export function compileContext(
 
   return context;
 }
+
