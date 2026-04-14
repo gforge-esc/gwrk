@@ -46,8 +46,6 @@ describe('src/db/plan.ts (DM-018-001/002/003)', () => {
   });
 
   it('FR-001: should support recursive dependency traversal (CTE)', () => {
-    // This test will verify that the DB logic can handle dependency chains
-    // Implementer should use a recursive CTE in getEdgesForFeature or similar
     insertFeature({ id: 'A', name: 'A', status: 'PLANNED', sp_total: 0 });
     insertFeature({ id: 'B', name: 'B', status: 'PLANNED', sp_total: 0 });
     insertFeature({ id: 'C', name: 'C', status: 'PLANNED', sp_total: 0 });

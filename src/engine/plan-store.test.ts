@@ -22,12 +22,10 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
   });
 
   it('FR-017: should init from specs directory without clobbering', () => {
-    // Mocking FS-related operations inside the store
     vi.spyOn(store, 'scanReadiness').mockReturnValue([
       { featureId: 'F1', level: 1, status: 'SPECIFIED', hasSpec: true, hasPlan: false, hasTasks: false, spTotal: null }
     ]);
     
-    // Seed one already
     store.seedPlan([{ id: 'F1', name: 'Existing', status: 'DONE', sp_total: 0 }], [], []);
     
     const report = store.initFromSpecs('/mock/specs');
@@ -35,7 +33,7 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     expect(report.skipped).toContain('F1');
     
     const status = store.getPlanStatus();
-    expect(status.features.find(f => f.id === 'F1').status).toBe('DONE'); // No clobber
+    expect(status.features.find(f => f.id === 'F1').status).toBe('DONE');
   });
 
   it('FR-019: should detect empty graph', () => {
