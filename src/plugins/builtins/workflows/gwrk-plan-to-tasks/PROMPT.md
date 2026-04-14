@@ -107,7 +107,7 @@ Structure:
         {
           "id": "T001",
           "title": "Create CLI entrypoint",
-          "description": "Initialize src/cli.ts with Commander.js",
+          "description": "Initialize src/cli.ts with Commander.js. Tests: src/cli.test.ts",
           "status": "open"
         }
       ]
@@ -115,6 +115,9 @@ Structure:
   ]
 }
 ```
+
+> [!IMPORTANT]
+> The `description` field MUST include the absolute path to the `.test.ts` files (e.g., `Tests: src/cli.test.ts`). This is structurally MANDATORY because the execution runner uses regex on the description field to locate the tests for each task.
 
 ### 7. Emit Verification Gates (Hard Gate Architecture)
 

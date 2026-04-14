@@ -105,9 +105,17 @@ pnpm test --run 2>&1 | tail -20
 ```
 
 - If tests pass → they're hollow. **Revise with stronger assertions.**
-- If tests fail to compile → acceptable for RED. Module doesn't exist yet.
 - If tests compile but fail assertions → ideal RED state.
-</red_validation_rules>
+
+### 6. Write RED implementation stubs
+
+**MANDATORY FOR TYPESCRIPT**: If you write `.test.ts` files, `tsc` compilation will fail ("Cannot find module") unless the target source module exists. You MUST also generate minimal source file stubs (classes/functions throwing `Not implemented`).
+
+<stub_generation_rules>
+- Provide minimal signatures so tests compile.
+- **NEVER hallucinate import paths for shared types**. If a stub requires a type from `plan.md` (e.g., `PlanFeature`), do NOT guess the import path `import type { PlanFeature } from "./types.js"`.
+- Instead, **inline dummy types directly in the stub** (e.g., `export type PlanFeature = any;`). The implementing agent will resolve the actual import path when writing the real logic. This prevents the TS build from failing due to broken imports.
+</stub_generation_rules>
 
 ### 7. Write Gap Matrix
 
