@@ -64,7 +64,19 @@ export class GeminiAdapter implements AgentBackend {
       args.push("-p", slashCmd);
     }
 
-    args.push("--approval-mode", "yolo", "--sandbox", "false");
+    // YOLO mode for all agentic dispatches (agent can't pause for approval)
+    args.push("--approval-mode", "yolo");
+
+    // Sandbox: disabled only for write workflows that must modify source code.
+    // All other workflows (define, research, review, analyze) keep sandbox enabled.
+    const writeWorkflows = ["gwrk-implement", "gwrk-ship", "implement", "ship"];
+    const isWriteWorkflow = task.workflow
+      ? writeWorkflows.some((w) => task.workflow?.includes(w) ?? false)
+      : false;
+
+    if (isWriteWorkflow) {
+      args.push("--sandbox", "false");
+    }
 
     // Model selection flows from config → TaskDispatch.env.GEMINI_MODEL
     const model = task.env?.GEMINI_MODEL;

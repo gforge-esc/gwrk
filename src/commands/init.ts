@@ -268,6 +268,22 @@ export const initCommand = new Command("init")
         "# GWRK Project Context\n\nThis project is managed by gwrk.\nWorkflows: ~/.gwrk/plugins/workflows/\nSkills: ~/.gwrk/plugins/skills/\n";
       fs.writeFileSync(contextPath, defaultGovernance);
 
+      // Install git hooks from scripts/hooks/ if available
+      const hooksSource = path.join(projectRoot, "scripts", "hooks");
+      const hooksTarget = path.join(projectRoot, ".git", "hooks");
+      if (fs.existsSync(hooksSource) && fs.existsSync(path.join(projectRoot, ".git"))) {
+        const hookFiles = fs.readdirSync(hooksSource);
+        for (const hook of hookFiles) {
+          const src = path.join(hooksSource, hook);
+          const dest = path.join(hooksTarget, hook);
+          fs.copyFileSync(src, dest);
+          fs.chmodSync(dest, 0o755);
+        }
+        if (hookFiles.length > 0) {
+          console.log(`Installed ${hookFiles.length} git hook(s) from scripts/hooks/`);
+        }
+      }
+
       const { AgentBackendRegistry } = await import(
         "../plugins/agent-registry.js"
       );
