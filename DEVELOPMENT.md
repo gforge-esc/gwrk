@@ -60,14 +60,22 @@ gwrk uses `.gwrkrc.json` at the project root. All values are validated by Zod at
 
 ## Pre-Commit Hook
 
-A branch-aware pre-commit hook is installed in `.git/hooks/pre-commit`:
+Install from the version-controlled copy (required after clone):
+
+```bash
+cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+```
+
+A branch-aware, TDD-aware pre-commit hook:
 
 | Branch | Checks | Duration |
 |--------|--------|----------|
 | Feature branches | `pnpm build` | ~3s |
 | `develop` / `main` | `pnpm build` + `pnpm test` | ~25s |
 
-Bypass with `git commit --no-verify` (human-only, intentional).
+**TDD support**: RED test files (containing `// @ts-ignore - Module does not exist yet (RED)`) are auto-excluded from the test run. Once `/implement` makes them green and removes the marker, they rejoin the gate automatically.
+
+Bypass with `git commit --no-verify` (escape hatch — human-only, intentional).
 
 ## Plugin Development
 
