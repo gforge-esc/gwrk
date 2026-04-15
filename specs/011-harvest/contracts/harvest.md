@@ -23,13 +23,13 @@ interface HarvestPayload {
 ```
 
 ### Steps
-1. **Idempotency Check**: Check `runs` table for `merge_commit_sha`. Skip if exists.
+1. **Idempotency Check (FR-H10)**: Query `compression` table for existing `feature_id + phase_id`. If record exists with matching `merge_commit_sha`, log skip and return early.
 2. **Finalize DB Records**: Update `runs` table with `status: 'merged'`, `finished_at: mergedAt`, `pr_number`, and `merge_commit_sha`.
 3. **Log Finalization**: Move logs from `.runs/` to `specs/<featureId>/.gwrk/runs/`. Update `index.json`.
 4. **Git Commit**: Add and commit the new logs and index.
 5. **Calculate Compression**: Call `compression.computeCompression()` using Git actuals and Effort forecast.
 6. **Record Compression**: Insert record into `compression` table.
-7. **Notify Slack**: Post "🏆 Done, Done!" message via `src/server/slack.ts`.
+7. **Notify Slack (FR-H07, FR-H11)**: Post "🏆 Done, Done!" message via `notifyDoneDone()`. This is the **sole notification point** — the webhook handler in `github.ts` MUST NOT duplicate this call.
 8. **Cleanup**: Delete the phase branch from remote.
 
 ---

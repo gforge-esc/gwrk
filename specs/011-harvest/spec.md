@@ -119,6 +119,10 @@ As the build server, I want phase branches cleaned up after successful merge.
 
 - **FR-H08**: Harvest MUST delete the merged phase branch from the remote via `git push origin --delete <branch>`. Deletion failure is logged but does not fail the harvest pipeline. (Implements: US-H06)
 
+- **FR-H10**: *(Remediation — Gap Analysis 2026-04-14)* `harvestFeature()` MUST perform an idempotency check before processing: query the `compression` table for an existing record matching `feature_id + phase_id`. If a record exists and `merge_commit_sha` matches, skip all processing and log `"Harvest already completed for {featureId} {phaseId}, skipping."` (Implements: TC-H02, SC-H04)
+
+- **FR-H11**: *(Remediation — Gap Analysis 2026-04-14)* The Slack "🏆 Done, Done!" notification MUST be sent exactly once per harvest. The webhook handler (`src/server/github.ts`) MUST NOT duplicate the notification that `harvestFeature()` already sends internally via `notifyDoneDone()`. (Implements: US-H05, FR-H07)
+
 ---
 
 ## 4. Dependencies
@@ -136,7 +140,7 @@ As the build server, I want phase branches cleaned up after successful merge.
 ## 5. Technical Constraints
 
 - **TC-H01**: Webhook-triggered — Harvest MUST be initiated by GitHub webhook, not polling.
-- **TC-H02**: Idempotent — Running harvest twice for the same merge MUST NOT create duplicate records.
+- **TC-H02**: Idempotent — Running harvest twice for the same merge MUST NOT create duplicate records. Implemented via FR-H10: compression table lookup before processing.
 - **TC-H03**: Fail-fast config — `GITHUB_WEBHOOK_SECRET` required; missing → `process.exit(1)`.
 - **TC-H04**: Compression timestamps from Git only — no OS file dates (unreliable across environments).
 
@@ -173,3 +177,17 @@ As the build server, I want phase branches cleaned up after successful merge.
 - **SC-H03**: Slack "🏆 Done, Done!" message posted with compression ratios.
 - **SC-H04**: Harvest is idempotent — safe to re-run.
 - **SC-H05**: `gwrk compression <feature>` shows calculated ratios after harvest.
+
+---
+
+## 8. Remediation Scope (Gap Analysis 2026-04-14)
+
+The following gaps were identified during forensic audit and require implementation before shareability:
+
+| Gap | FR | Severity | Description |
+|---|---|---|---|
+| No idempotency guard | FR-H10 | HIGH | `harvestFeature()` has no duplicate check before processing |
+| Double Slack notification | FR-H11 | HIGH | `github.ts` duplicates the Done-Done message already sent by `harvestFeature()` |
+| Compression test stub | FR-H04/H05 | HIGH | `it.todo()` — compression calculation correctness unverified |
+| Slack notification test stub | FR-H07 | MEDIUM | `it.todo()` — message format and delivery untested |
+| Branch cleanup test stub | FR-H08 | LOW | `it.todo()` — cleanup error resilience untested |

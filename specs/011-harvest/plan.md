@@ -161,6 +161,42 @@ Post notifications, clean up branches, and provide a CLI interface.
 - `gwrk harvest --help` exits 0
 - `pnpm vitest run tests/harvest-e2e.test.ts` exits 0
 
+### Phase 6: Remediation — Idempotency, Dedup, Test Coverage (F011-P6)
+
+Address gaps identified in forensic audit (2026-04-14). This phase makes harvest production-safe and clears test debt.
+
+**Files (3):**
+- `src/engine/harvest.ts` (MODIFY: Add idempotency guard at top of `harvestFeature()` via compression table lookup)
+- `src/server/github.ts` (MODIFY: Remove duplicate Slack notification after `harvestFeature()` — harvest already calls `notifyDoneDone()` internally)
+- `src/engine/harvest.test.ts` (MODIFY: Implement the 3 `it.todo()` test stubs for compression, Slack, and branch cleanup)
+
+**Requirements Addressed:** FR-H10, FR-H11, FR-H04, FR-H05, FR-H07, FR-H08, TC-H02, SC-H04
+
+**Dependencies:** F011-P4, F011-P5
+
+**Contract Mapping:**
+- `specs/011-harvest/contracts/harvest.md` → `harvestFeature` idempotency guard → `src/engine/harvest.ts`
+- `specs/011-harvest/contracts/webhook.md` → notification dedup → `src/server/github.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| TDD mandate | Tests MUST be implemented, not todo |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-H10 | Unit | `src/engine/harvest.test.ts` | `harvestFeature` skips processing when compression record already exists |
+| TR-H04 | Unit | `src/engine/harvest.test.ts` | `harvestFeature` calculates correct point and total compression from mocked git actuals |
+| TR-H07 | Unit | `src/engine/harvest.test.ts` | `notifyDoneDone` calls Slack with feature name and compression values |
+| TR-H08 | Unit | `src/engine/harvest.test.ts` | `cleanupBranch` calls `deleteRemoteBranch` and handles failure gracefully |
+| TR-H11 | Integration | `tests/server-github.test.ts` | Webhook handler does NOT call `notifySlack` directly (harvest handles it) |
+
+#### Done When
+- `pnpm vitest run src/engine/harvest.test.ts` exits 0 with zero `it.todo()` stubs
+- `pnpm vitest run tests/server-github.test.ts` exits 0
+
 ---
 
 ## Type Dependency Graph
@@ -183,6 +219,7 @@ _No mockups exist for this feature._
 | Spec Item | Title | Reason | Target |
 |---|---|---|---|
 | F015 integration | Event Bus notification | F015 is not yet implemented | Wave 5 |
+| E2E harvest loop | Full webhook→harvest→Slack E2E | Requires live server infra | Post-ship |
 
 ---
 
@@ -202,15 +239,17 @@ _No mockups exist for this feature._
 | FR-H04 | Phase 4 | Planned |
 | FR-H05 | Phase 4 | Planned |
 | FR-H06 | Phase 1, 4 | Planned |
-| FR-H07 | Phase 5 | Planned |
-| FR-H08 | Phase 5 | Planned |
+| FR-H07 | Phase 5, 6 | Planned |
+| FR-H08 | Phase 5, 6 | Planned |
 | FR-H09 | Phase 3 | Planned |
+| FR-H10 | Phase 6 | Planned |
+| FR-H11 | Phase 6 | Planned |
 | TC-H01 | Phase 3 | Planned |
-| TC-H02 | Phase 3, 4 | Planned |
+| TC-H02 | Phase 3, 4, 6 | Planned |
 | TC-H03 | Phase 3 | Planned |
 | TC-H04 | Phase 4 | Planned |
 | SC-H01 | Phase 3 | Planned |
 | SC-H02 | Phase 1-4 | Planned |
 | SC-H03 | Phase 5 | Planned |
-| SC-H04 | Phase 4 | Planned |
+| SC-H04 | Phase 4, 6 | Planned |
 | SC-H05 | Phase 5 | Planned |

@@ -36,6 +36,7 @@ This contract defines the build server's GitHub webhook handler for `pull_reques
 3. **Filter Branches**: Ignore if `base.ref` is not `develop` or `main`.
 4. **Parse Feature**: Extract `<featureId>` from `head.ref` (e.g., `feat/011-harvest` -> `011-harvest`).
 5. **Trigger Harvest**: Call `engine.harvestFeature()` with extracted payload.
+6. **Notification Dedup (FR-H11)**: The webhook handler MUST NOT call `notifySlack()` or `MessageBuilder.doneDone()` directly. The `harvestFeature()` function handles notification internally via `notifyDoneDone()`. Duplicating here causes double Slack messages.
 
 ### Response
 - `200 OK`: Webhook accepted and processed (or ignored by filter).
