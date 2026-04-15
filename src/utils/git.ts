@@ -249,11 +249,17 @@ export async function createBranch(
     stdio: ["ignore", "ignore", "pipe"],
   });
 
-  // Create and switch to new branch
-  execFileSync("git", ["checkout", "-b", branchName, `origin/${baseBranch}`], {
-    cwd: repoPath,
-    stdio: ["ignore", "ignore", "pipe"],
-  });
+  // Create branch from baseBranch but do NOT track it as upstream.
+  // The upstream should be origin/<branchName>, not origin/develop.
+  // gitPush() sets the correct upstream on first push via -u.
+  execFileSync(
+    "git",
+    ["checkout", "-b", branchName, "--no-track", `origin/${baseBranch}`],
+    {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
 }
 
 /**
@@ -329,7 +335,8 @@ export function commitFiles(
  */
 export function gitPush(repoPath: string, remote = "origin"): void {
   const branch = getCurrentBranch(repoPath);
-  execFileSync("git", ["push", remote, branch], {
+  // Always use -u to set upstream to origin/<branch> (not origin/develop).
+  execFileSync("git", ["push", "-u", remote, branch], {
     cwd: repoPath,
     stdio: ["ignore", "ignore", "pipe"],
   });
