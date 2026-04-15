@@ -247,9 +247,10 @@
           "id": "T021",
           "title": "Implement test strategy for Phase 6",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
+          "completedAt": "2026-04-15T02:34:21.295Z",
           "classification": "noop"
         }
       ],

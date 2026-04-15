@@ -77,7 +77,13 @@ export function generateGateBrief(
     tasks,
   };
 
-  const briefPath = `/tmp/gwrk-gate-brief-${Date.now()}.json`;
+  // Write brief into the feature's .gwrk/ directory so agent sandboxes can read it.
+  // /tmp/ is inaccessible from sandboxed agents (e.g., Gemini CLI restricts to workspace).
+  const gwrkDir = path.join(featureDir, ".gwrk");
+  if (!fs.existsSync(gwrkDir)) {
+    fs.mkdirSync(gwrkDir, { recursive: true });
+  }
+  const briefPath = path.join(gwrkDir, "gate-brief.json");
   fs.writeFileSync(briefPath, JSON.stringify(brief, null, 2));
   return briefPath;
 }
