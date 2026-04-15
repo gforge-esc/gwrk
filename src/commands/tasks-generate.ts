@@ -4,6 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
 import { classifyTask, extractFilePaths } from "../engine/classify.js";
+import { PlanStore } from "../engine/plan-store.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
@@ -220,6 +221,7 @@ export const tasksGenerateCommand = new Command("tasks")
                 description: t.description,
                 status,
                 gateScript: `gates/${taskId}-gate.sh`,
+                sp: 0,
                 completedAt,
                 classification: classifyTask({
                   files,
@@ -233,6 +235,7 @@ export const tasksGenerateCommand = new Command("tasks")
               id: p.id,
               title: p.title,
               tasks: phaseTasks,
+              sp_estimate: 0,
               doneWhen: p.doneWhen,
             };
           });
@@ -257,6 +260,7 @@ export const tasksGenerateCommand = new Command("tasks")
                   description: task.description,
                   status: "cancelled",
                   gateScript: task.gateScript,
+                  sp: task.sp || 0,
                   completedAt: task.completedAt,
                 };
 
@@ -500,6 +504,12 @@ export const tasksGenerateCommand = new Command("tasks")
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           success("define tasks", durationS);
+
+          const planStore = new PlanStore();
+          planStore.handleDefineComplete({
+            featureId: feature,
+            status: "DEFINED",
+          });
         } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
           const message =

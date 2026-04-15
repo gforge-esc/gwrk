@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -27,12 +28,13 @@ import {
   type StageResult,
 } from "./ship-types.js";
 
-export class ShipOrchestrator {
+export class ShipOrchestrator extends EventEmitter {
   private config: ShipRunConfig;
   private state: ShipState;
   private workflowRuntime: WorkflowRuntime;
 
   constructor(config: ShipRunConfig, state?: ShipState) {
+    super();
     this.config = config;
     if (state) {
       this.state = state;
@@ -116,7 +118,40 @@ export class ShipOrchestrator {
     }
 
     this.persistState();
-    return this.state.stage === ShipStage.DONE ? 0 : 1;
+
+    if (this.state.stage === ShipStage.DONE) {
+      const sp_actual = this.calculateSpActual();
+      const duration_ms = Date.now() - new Date(this.state.startedAt).getTime();
+
+      this.emit("plan:ship:complete", {
+        featureId: this.config.featureId,
+        phaseId: this.config.phaseId,
+        sp_actual,
+        duration_ms,
+        evidence: `Completed via gwrk ship (Run ID: ${this.state.runId})`,
+      });
+      return 0;
+    }
+
+    return 1;
+  }
+
+  private calculateSpActual(): number {
+    try {
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find((p) => p.id === this.config.phaseId);
+      if (!phase) return 0;
+      return phase.tasks
+        .filter((t) => t.status === "completed")
+        .reduce((sum, t) => sum + (t.sp || 0), 0);
+    } catch (e) {
+      return 0;
+    }
   }
 
   private async executeReviewWorkflow(

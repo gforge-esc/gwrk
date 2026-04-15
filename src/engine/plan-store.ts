@@ -97,6 +97,87 @@ export class PlanStore {
   }
 
   /**
+   * Add a new phase.
+   */
+  addPhase(phase: db.PlanPhase): void {
+    db.insertPhase(phase);
+  }
+
+  /**
+   * Remove a phase.
+   */
+  removePhase(id: string): void {
+    db.deletePhase(id);
+  }
+
+  /**
+   * Update a phase's status and metadata.
+   */
+  updatePhase(id: string, updates: Partial<db.PlanPhase>): void {
+    const existing = db.getPhase(id);
+    if (!existing) throw new Error(`Phase ${id} not found`);
+    db.insertPhase({ ...existing, ...updates });
+  }
+
+  /**
+   * Add a dependency edge.
+   */
+  addEdge(edge: db.PlanEdge): void {
+    db.insertEdge(edge);
+  }
+
+  /**
+   * Remove a dependency edge.
+   */
+  removeEdge(from_id: string, to_id: string, edge_type: string): void {
+    db.deleteEdge(from_id, to_id, edge_type);
+  }
+
+  /**
+   * Hook handler for successful ship completion.
+   */
+  handleShipComplete(event: {
+    featureId: string;
+    phaseId: string;
+    sp_actual: number;
+    duration_ms: number;
+    evidence: string;
+  }): void {
+    const phase = db.getPhase(event.phaseId);
+    if (phase) {
+      db.insertPhase({
+        ...phase,
+        status: "SHIPPED",
+        sp_actual: event.sp_actual,
+        duration_ms: event.duration_ms,
+        completed_at: new Date().toISOString(),
+        evidence: event.evidence,
+      });
+    }
+  }
+
+  /**
+   * Hook handler for successful definition completion.
+   */
+  handleDefineComplete(event: { featureId: string; status: string }): void {
+    const feature = db.getFeature(event.featureId);
+    if (feature) {
+      db.insertFeature({
+        ...feature,
+        status: event.status,
+      });
+
+      // Also update all phases of this feature that are currently PLANNED
+      const phases = db.listPhases(event.featureId);
+      for (const p of phases) {
+        if (p.status === "PLANNED") {
+          db.insertPhase({ ...p, status: event.status });
+        }
+      }
+    }
+  }
+
+  /**
    * Render the build plan as Markdown (000-build-plan.md).
    */
   render(): string {

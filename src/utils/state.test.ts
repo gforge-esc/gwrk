@@ -51,6 +51,46 @@ describe("Task Engine State", () => {
     expect(loaded.phases[0].tasks[0].id).toBe("T001");
   });
 
+  it("should enforce SP additivity invariant", () => {
+    const invalidState: TaskState = {
+      ...mockState,
+      phases: [
+        {
+          ...mockState.phases[0],
+          sp_estimate: 5,
+          tasks: [
+            {
+              ...mockState.phases[0].tasks[0],
+              sp: 2,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(() => saveTaskState(tempDir, invalidState)).toThrow(
+      /SP Invariant Violation/,
+    );
+
+    const validState: TaskState = {
+      ...mockState,
+      phases: [
+        {
+          ...mockState.phases[0],
+          sp_estimate: 5,
+          tasks: [
+            {
+              ...mockState.phases[0].tasks[0],
+              sp: 5,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(() => saveTaskState(tempDir, validState)).not.toThrow();
+  });
+
   it("should mark a task as complete", () => {
     const newState = markTaskComplete(mockState, "T001");
     expect(newState.phases[0].tasks[0].status).toBe("completed");

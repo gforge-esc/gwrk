@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
+import { PlanStore } from "../engine/plan-store.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
@@ -99,6 +100,12 @@ export const specifyCommand = new Command("spec")
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });
           success("define spec", durationS, runId);
+
+          const planStore = new PlanStore();
+          planStore.handleDefineComplete({
+            featureId: feature,
+            status: "SPECIFIED",
+          });
         } catch (err: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
           const msg = err instanceof Error ? err.message : String(err);

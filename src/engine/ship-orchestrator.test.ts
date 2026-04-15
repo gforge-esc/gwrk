@@ -214,4 +214,53 @@ describe("ShipOrchestrator", () => {
     expect(exitCode).toBe(1);
     expect((orchestrator as any).state.stage).toBe(ShipStage.CIRCUIT_BREAK);
   });
+
+  it("should emit plan:ship:complete when stage becomes DONE", async () => {
+    // Mock successful run
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "Pass",
+    });
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Success",
+      stderr: "",
+      durationS: 10,
+    });
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          sp_estimate: 5,
+          tasks: [
+            {
+              id: "T001",
+              title: "Task 1",
+              description: "Desc 1",
+              status: "completed",
+              gateScript: "gates/T001-gate.sh",
+              sp: 5,
+            },
+          ],
+        },
+      ],
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const spy = vi.fn();
+    orchestrator.on("plan:ship:complete", spy);
+
+    await orchestrator.run();
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        featureId: config.featureId,
+        phaseId: config.phaseId,
+        sp_actual: 5,
+      }),
+    );
+  });
 });

@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
@@ -9,7 +10,7 @@ import {
   type StageResult,
 } from "./define-types.js";
 
-export class DefineOrchestrator {
+export class DefineOrchestrator extends EventEmitter {
   private config: DefineRunConfig;
   private state: DefineState;
   private runtime: WorkflowRuntime;
@@ -19,6 +20,7 @@ export class DefineOrchestrator {
     state?: DefineState,
     runtime?: WorkflowRuntime,
   ) {
+    super();
     this.config = config;
     this.runtime = runtime || new WorkflowRuntime();
     if (state) {
@@ -75,6 +77,10 @@ export class DefineOrchestrator {
           break;
         default:
           // If we are in an unknown stage (like specify or plan which are handled outside the loop), we are done
+          this.emit("plan:define:complete", {
+            featureId: this.config.featureId,
+            status: "DEFINED",
+          });
           return 0;
       }
 
@@ -92,6 +98,12 @@ export class DefineOrchestrator {
     if (fs.existsSync(this.getStatePath())) {
       fs.unlinkSync(this.getStatePath());
     }
+
+    this.emit("plan:define:complete", {
+      featureId: this.config.featureId,
+      status: "DEFINED",
+    });
+
     return 0;
   }
 

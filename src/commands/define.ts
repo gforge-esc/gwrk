@@ -2,6 +2,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { PlanStore } from "../engine/plan-store.js";
 import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import { banner, dryRun as dryRunFmt, fail, success } from "../utils/format.js";
@@ -80,6 +81,11 @@ export const defineCommand = new Command("define")
             cwd,
             refs: opts.refs,
             dryRun: opts.dryRun,
+          });
+
+          const planStore = new PlanStore();
+          orchestrator.on("plan:define:complete", (event) => {
+            planStore.handleDefineComplete(event);
           });
 
           exitCode = await orchestrator.run();

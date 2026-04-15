@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
+import { PlanStore } from "../engine/plan-store.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
@@ -223,6 +224,11 @@ async function shipPhase(
         },
         existingState,
       );
+
+      const planStore = new PlanStore();
+      orchestrator.on("plan:ship:complete", (event) => {
+        planStore.handleShipComplete(event);
+      });
 
       exitCode = await orchestrator.run();
       if (exitCode !== 0) {

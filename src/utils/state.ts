@@ -16,6 +16,7 @@ export const TaskSchema = z.object({
   description: z.string(),
   status: TaskStatusSchema,
   gateScript: z.string(),
+  sp: z.number().int().nonnegative().default(0),
   completedAt: z
     .string()
     .datetime()
@@ -31,6 +32,7 @@ export const PhaseSchema = z.object({
   id: z.string().regex(/^phase-\d{2}$/),
   title: z.string().min(1),
   tasks: z.array(TaskSchema).min(1),
+  sp_estimate: z.number().int().nonnegative().default(0),
   doneWhen: z.array(z.string()).optional(),
   // New optional fields (Phase 3.4)
   objective: z.string().optional(),
@@ -94,6 +96,16 @@ export function loadTaskState(featureDir: string): TaskState {
 }
 
 export function saveTaskState(featureDir: string, state: TaskState): void {
+  // SP Additivity Invariant Check
+  for (const phase of state.phases) {
+    const taskSum = phase.tasks.reduce((sum, t) => sum + (t.sp || 0), 0);
+    if (phase.sp_estimate > 0 && phase.sp_estimate !== taskSum) {
+      throw new Error(
+        `SP Invariant Violation in ${phase.id}: phase.sp_estimate (${phase.sp_estimate}) != sum(tasks.sp) (${taskSum})`,
+      );
+    }
+  }
+
   const gwrkDir = path.join(featureDir, ".gwrk");
   if (!fs.existsSync(gwrkDir)) {
     fs.mkdirSync(gwrkDir, { recursive: true });

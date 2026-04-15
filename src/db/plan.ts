@@ -194,6 +194,31 @@ export function getAllDependencies(
 }
 
 /**
+ * Delete a phase.
+ */
+export function deletePhase(id: string, db?: Database.Database): void {
+  const conn = db ?? getDb();
+  conn.prepare("DELETE FROM plan_phases WHERE id = ?").run(id);
+}
+
+/**
+ * Delete a specific edge.
+ */
+export function deleteEdge(
+  from_id: string,
+  to_id: string,
+  edge_type: string,
+  db?: Database.Database,
+): void {
+  const conn = db ?? getDb();
+  conn
+    .prepare(
+      "DELETE FROM plan_edges WHERE from_id = ? AND to_id = ? AND edge_type = ?",
+    )
+    .run(from_id, to_id, edge_type);
+}
+
+/**
  * Delete a feature and its phases/edges (cascade).
  */
 export function deleteFeature(id: string, db?: Database.Database): void {
