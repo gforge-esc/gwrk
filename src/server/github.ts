@@ -105,10 +105,7 @@ export async function githubWebhookPlugin(
 
     // 5. Trigger Harvest (FR-H01)
     harvestFeature(projectRoot, record)
-      .then(async (report) => {
-        // 6. Slack Done-Done (FR-H07)
-        const message = MessageBuilder.doneDone(featureId, report);
-        await notifySlack(message, undefined, { opsOnly: true });
+      .then(async (_report) => {
         fastify.log.info(`Harvest complete for ${featureId}`);
       })
       .catch((err) => {

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { recordCompression } from "../db/compression.js";
+import { getCompressionRecord, recordCompression } from "../db/compression.js";
 import { finishRun, listRuns } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
@@ -100,6 +100,17 @@ export async function harvestFeature(
 ): Promise<CompressionReport | undefined> {
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
+
+  // 0. Idempotency Guard (FR-H10)
+  if (phaseId) {
+    const existing = getCompressionRecord(featureId, phaseId);
+    if (existing) {
+      console.log(
+        `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
+      );
+      return;
+    }
+  }
 
   // 1. Finalize Logs (FR-H02)
   await finalizeLogs(featureId, projectPath);
