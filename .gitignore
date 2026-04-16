@@ -21,3 +21,5 @@ uat_verify*.sh
 scripts/dev/
 .gwrk/dispatches.jsonl
 empty.sqlite
+test-empty.db
+uat-results.json

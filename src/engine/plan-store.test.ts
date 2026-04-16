@@ -7,6 +7,9 @@ vi.mock('../db/plan.js', () => ({
   insertPhase: vi.fn(),
   insertEdge: vi.fn(),
   getFeature: vi.fn(),
+  getPhase: vi.fn(),
+  deletePhase: vi.fn(),
+  deleteEdge: vi.fn(),
   listFeatures: vi.fn(() => []),
   listPhases: vi.fn(() => []),
   listAllEdges: vi.fn(() => []),
@@ -76,5 +79,43 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     expect(md).toContain('F0 --> F1');
     expect(md).toContain('### Feature 1 — Feat 1 ✅');
     expect(md).toContain('| 1 | P1 | DONE ✅ | 5 |');
+  });
+
+  describe('Phase 3 Mutations (FR-011)', () => {
+    it('should add a feature', () => {
+      const feature = { id: 'F2', name: 'Feat 2', status: 'PLANNED', sp_total: 5 };
+      store.addFeature(feature);
+      expect(db.insertFeature).toHaveBeenCalledWith(feature);
+    });
+
+    it('should add a phase', () => {
+      const phase = { id: 'F2-P1', feature_id: 'F2', name: 'Phase 1', status: 'PLANNED', seq: 1 };
+      store.addPhase(phase);
+      expect(db.insertPhase).toHaveBeenCalledWith(phase);
+    });
+
+    it('should update a phase', () => {
+      const existing = { id: 'F2-P1', feature_id: 'F2', name: 'Phase 1', status: 'PLANNED', seq: 1 };
+      vi.mocked(db.getPhase).mockReturnValue(existing);
+      
+      store.updatePhase('F2-P1', { status: 'IN_PROGRESS' });
+      expect(db.insertPhase).toHaveBeenCalledWith({ ...existing, status: 'IN_PROGRESS' });
+    });
+
+    it('should remove a phase', () => {
+      store.removePhase('F2-P1');
+      expect(db.deletePhase).toHaveBeenCalledWith('F2-P1');
+    });
+
+    it('should add an edge', () => {
+      const edge = { from_id: 'F1', to_id: 'F2', edge_type: 'DEPENDS_ON' };
+      store.addEdge(edge);
+      expect(db.insertEdge).toHaveBeenCalledWith(edge);
+    });
+
+    it('should remove an edge', () => {
+      store.removeEdge('F1', 'F2', 'DEPENDS_ON');
+      expect(db.deleteEdge).toHaveBeenCalledWith('F1', 'F2', 'DEPENDS_ON');
+    });
   });
 });
