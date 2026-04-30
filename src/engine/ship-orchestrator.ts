@@ -412,6 +412,43 @@ export class ShipOrchestrator extends EventEmitter {
     const branchName = this.state.branchName;
     const specName = this.config.featureId;
 
+    // ── Git housekeeping: commit any uncommitted changes and push ──
+    // Review agents may modify files via native tools without committing.
+    // The orchestrator must own this boundary deterministically.
+    try {
+      const porcelain = execSync("git status --porcelain", {
+        cwd: this.config.cwd,
+        encoding: "utf-8",
+      }).trim();
+
+      if (porcelain) {
+        const changeCount = porcelain.split("\n").length;
+        console.log(`  Committing ${changeCount} uncommitted change(s)...`);
+        execSync("git add -A", { cwd: this.config.cwd });
+        const phaseNum = this.config.phaseId
+          .replace("phase-", "")
+          .replace(/^0+/, "");
+        execSync(
+          `git commit -m "chore(${this.config.featureId}): pre-PR cleanup (Phase ${phaseNum})"`,
+          { cwd: this.config.cwd },
+        );
+      }
+
+      // Always push — branch may not be on remote yet, or have unpushed commits
+      console.log(`  Pushing ${branchName} to origin...`);
+      execSync(`git push -u origin ${branchName}`, {
+        cwd: this.config.cwd,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+    } catch (gitErr: unknown) {
+      const msg = gitErr instanceof Error ? gitErr.message : String(gitErr);
+      return {
+        success: false,
+        exitCode: 1,
+        error: `Pre-PR git housekeeping failed: ${msg}`,
+      };
+    }
+
     try {
       // Check for existing PR
       const prListRaw = execSync(
