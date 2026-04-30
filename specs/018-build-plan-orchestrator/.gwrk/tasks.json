@@ -89,8 +89,8 @@
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-04-30T17:40:29.531Z"
+          "completedAt": "2026-04-30T17:40:29.531Z",
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
@@ -158,55 +158,61 @@
           "id": "T013",
           "title": "Implement src/commands/plan.ts",
           "description": "MODIFY: Add `add/remove`, `dep add/remove`, `set` subcommands",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-30T18:27:09.565Z"
         },
         {
           "id": "T014",
           "title": "Implement src/engine/ship-orchestrator.ts",
           "description": "MODIFY: Emit `plan:ship:complete` event",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-30T18:27:10.733Z"
         },
         {
           "id": "T015",
           "title": "Implement src/engine/define-orchestrator.ts",
           "description": "MODIFY: Emit `plan:define:complete` event",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-30T18:27:11.564Z"
         },
         {
           "id": "T016",
           "title": "Implement src/engine/plan-store.ts",
           "description": "MODIFY: Add mutation methods and hook handlers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-30T18:27:11.574Z"
         },
         {
           "id": "T017",
           "title": "Implement src/utils/state.ts",
           "description": "MODIFY: Ensure SP additivity invariant check",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-04-30T18:27:11.578Z"
         },
         {
           "id": "T018",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-04-30T18:27:12.507Z"
         }
       ],
       "sp_estimate": 0,
