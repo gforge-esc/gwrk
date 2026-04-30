@@ -38,4 +38,4 @@ Your final output must be a single JSON object containing:
 - `summary`: A concise description of the review results.
 - `verdict`: "GO" if all checks pass and all tasks remain completed, "NO-GO" otherwise.
 - `reopenedTasks`: Array of task IDs that were re-opened.
-- `intents`: Array of `WRITE_FILE` or `RUN_COMMAND` actions to apply changes (e.g., updating `tasks.json`, running lint --write).
+- `intents`: Array of `WRITE_FILE` or `RUN_COMMAND` actions. If you have already applied changes using your iterative tools (like run_command or write_file), you MUST leave this array empty (`[]`).

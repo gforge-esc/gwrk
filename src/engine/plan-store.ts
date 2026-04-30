@@ -97,6 +97,13 @@ export class PlanStore {
   }
 
   /**
+   * Add a new feature.
+   */
+  addFeature(feature: db.PlanFeature): void {
+    db.insertFeature(feature);
+  }
+
+  /**
    * Add a new phase.
    */
   addPhase(phase: db.PlanPhase): void {

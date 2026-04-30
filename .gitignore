@@ -20,3 +20,6 @@ uat_verify*.sh
 # R004: Personal shell scripts — not part of gwrk distribution
 scripts/dev/
 .gwrk/dispatches.jsonl
+empty.sqlite
+test-empty.db
+uat-results.json

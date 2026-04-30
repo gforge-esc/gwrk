@@ -224,6 +224,20 @@ export class WorkflowRuntime {
           );
         }
       }
+      // Guard: reject WRITE_FILE intents targeting tasks.json.
+      // Review agents use native tools to update tasks.json before emitting their
+      // final JSON payload. If we allow WRITE_FILE to execute afterward, it overwrites
+      // the native changes with a potentially truncated string from the JSON output.
+      if (
+        intent.action === "WRITE_FILE" &&
+        intent.filePath?.endsWith("tasks.json")
+      ) {
+        console.warn(
+          "  ⚠ Blocked WRITE_FILE intent targeting tasks.json — agent already applied changes natively.",
+        );
+        // Remove the intent so it isn't executed
+        output.intents = output.intents.filter((i) => i !== intent);
+      }
     }
 
     // Execute the intents natively

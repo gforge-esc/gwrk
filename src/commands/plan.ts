@@ -277,42 +277,98 @@ planCommand
 planCommand
   .command("add <type> <id> [name]")
   .description("Add a feature or phase to the build plan")
-  .action(async () => {
+  .option("--feature-id <featureId>", "Parent feature (required for phase type)")
+  .option("--sp <sp>", "SP estimate (for phases)", "0")
+  .action(async (type, id, name, options) => {
     await withSignal("plan add", async () => {
       const store = new PlanStore();
-      guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan add' is not yet implemented (Phase 3).",
-        1,
-      );
+
+      if (type === "feature") {
+        store.addFeature({
+          id,
+          name: name || id,
+          status: "PLANNED",
+          sp_total: 0,
+        });
+        console.log(`${color.GREEN}✓${color.RESET} Added feature ${color.BOLD}${id}${color.RESET}`);
+      } else if (type === "phase") {
+        if (!options.featureId) {
+          throw new CommandError(
+            "Phase requires --feature-id <featureId>",
+            1,
+          );
+        }
+        store.addPhase({
+          id,
+          feature_id: options.featureId,
+          name: name || id,
+          status: "PLANNED",
+          health: "GREEN",
+          sp_estimate: Number.parseInt(options.sp, 10) || 0,
+          seq: 0,
+        });
+        console.log(
+          `${color.GREEN}✓${color.RESET} Added phase ${color.BOLD}${id}${color.RESET} to feature ${options.featureId}`,
+        );
+      } else {
+        throw new CommandError(
+          `Unknown type '${type}'. Use 'feature' or 'phase'.`,
+          1,
+        );
+      }
     });
   });
 
 planCommand
   .command("remove <id>")
   .description("Remove a feature or phase from the build plan")
-  .action(async () => {
+  .option("--type <type>", "Specify 'feature' or 'phase'", "phase")
+  .action(async (id, options) => {
     await withSignal("plan remove", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan remove' is not yet implemented (Phase 3).",
-        1,
-      );
+
+      if (options.type === "feature") {
+        const { deleteFeature } = await import("../db/plan.js");
+        deleteFeature(id);
+        console.log(
+          `${color.GREEN}✓${color.RESET} Removed feature ${color.BOLD}${id}${color.RESET} and all its phases/edges`,
+        );
+      } else {
+        store.removePhase(id);
+        console.log(`${color.GREEN}✓${color.RESET} Removed phase ${color.BOLD}${id}${color.RESET}`);
+      }
     });
   });
 
 planCommand
   .command("dep <action> <from> <to>")
   .description("Manage dependency edges (add/remove)")
-  .action(async () => {
+  .option("--type <edgeType>", "Edge type", "DEPENDS_ON")
+  .action(async (action, from, to, options) => {
     await withSignal("plan dep", async () => {
       const store = new PlanStore();
-      guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan dep' is not yet implemented (Phase 3).",
-        1,
-      );
+
+      if (action === "add") {
+        store.addEdge({
+          from_id: from,
+          to_id: to,
+          edge_type: options.type,
+        });
+        console.log(
+          `${color.GREEN}✓${color.RESET} Added ${options.type} edge: ${color.BOLD}${from}${color.RESET} → ${color.BOLD}${to}${color.RESET}`,
+        );
+      } else if (action === "remove") {
+        store.removeEdge(from, to, options.type);
+        console.log(
+          `${color.GREEN}✓${color.RESET} Removed ${options.type} edge: ${color.BOLD}${from}${color.RESET} → ${color.BOLD}${to}${color.RESET}`,
+        );
+      } else {
+        throw new CommandError(
+          `Unknown action '${action}'. Use 'add' or 'remove'.`,
+          1,
+        );
+      }
     });
   });
 
@@ -321,13 +377,27 @@ planCommand
   .description("Manually override status, SP, or health")
   .option("--status <status>", "Set status")
   .option("--sp <sp>", "Set SP estimate")
-  .action(async () => {
+  .option("--health <health>", "Set health (GREEN/YELLOW/RED)")
+  .action(async (id, options) => {
     await withSignal("plan set", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan set' is not yet implemented (Phase 3).",
-        1,
+
+      const updates: Record<string, unknown> = {};
+      if (options.status) updates.status = options.status;
+      if (options.sp) updates.sp_estimate = Number.parseInt(options.sp, 10);
+      if (options.health) updates.health = options.health;
+
+      if (Object.keys(updates).length === 0) {
+        throw new CommandError(
+          "Provide at least one option: --status, --sp, or --health",
+          1,
+        );
+      }
+
+      store.updatePhase(id, updates);
+      console.log(
+        `${color.GREEN}✓${color.RESET} Updated phase ${color.BOLD}${id}${color.RESET}: ${Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(", ")}`,
       );
     });
   });
