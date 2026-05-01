@@ -52,7 +52,6 @@ describe("gate-gen", () => {
     expect(brief.tasks[0].fileType).toBe("typescript");
 
     fs.rmSync(tempDir, { recursive: true, force: true });
-    fs.unlinkSync(briefPath);
   });
 
   it("should classify .test.ts files as test type", () => {
@@ -79,7 +78,6 @@ describe("gate-gen", () => {
     expect(brief.tasks[0].primaryFile).toBe("src/app.test.ts");
 
     fs.rmSync(tempDir, { recursive: true, force: true });
-    fs.unlinkSync(briefPath);
   });
 
   it("should extract identifiers from descriptions", () => {
@@ -109,7 +107,6 @@ describe("gate-gen", () => {
     expect(brief.tasks[0].identifiers).toContain("formatDuration");
 
     fs.rmSync(tempDir, { recursive: true, force: true });
-    fs.unlinkSync(briefPath);
   });
 
   it("should match contract refs when contracts exist", () => {
@@ -141,7 +138,6 @@ describe("gate-gen", () => {
     expect(brief.tasks[0].contractRefs).toContain("contracts/signal.md");
 
     fs.rmSync(tempDir, { recursive: true, force: true });
-    fs.unlinkSync(briefPath);
   });
 
   it("should include doneWhen commands relevant to the task file", () => {
@@ -175,7 +171,6 @@ describe("gate-gen", () => {
     expect(brief.tasks[0].doneWhenCommands).not.toContain("pnpm build");
 
     fs.rmSync(tempDir, { recursive: true, force: true });
-    fs.unlinkSync(briefPath);
   });
 });
 

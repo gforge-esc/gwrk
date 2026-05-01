@@ -271,12 +271,16 @@ planCommand
       const clean = results.filter((r) => r.status === "CLEAN");
 
       if (drifted.length === 0 && missing.length === 0) {
-        console.log(`${color.GREEN}✓${color.RESET} No drift detected. ${clean.length} phase(s) clean.`);
+        console.log(
+          `${color.GREEN}✓${color.RESET} No drift detected. ${clean.length} phase(s) clean.`,
+        );
         return;
       }
 
       if (drifted.length > 0) {
-        console.log(`\n${color.RED}Drift Detected (${drifted.length}):${color.RESET}`);
+        console.log(
+          `\n${color.RED}Drift Detected (${drifted.length}):${color.RESET}`,
+        );
         for (const d of drifted) {
           console.log(
             `  ${color.RED}✗${color.RESET} ${d.featureId}${d.phaseId ? `/${d.phaseId}` : ""}: ${d.reason}`,
@@ -285,7 +289,9 @@ planCommand
       }
 
       if (missing.length > 0) {
-        console.log(`\n${color.YELLOW}Missing (${missing.length}):${color.RESET}`);
+        console.log(
+          `\n${color.YELLOW}Missing (${missing.length}):${color.RESET}`,
+        );
         for (const m of missing) {
           console.log(
             `  ${color.YELLOW}⚠${color.RESET} ${m.featureId}: ${m.reason}`,
@@ -294,7 +300,9 @@ planCommand
       }
 
       if (clean.length > 0) {
-        console.log(`\n${color.GREEN}Clean (${clean.length}):${color.RESET} ${clean.map((c) => c.phaseId || c.featureId).join(", ")}`);
+        console.log(
+          `\n${color.GREEN}Clean (${clean.length}):${color.RESET} ${clean.map((c) => c.phaseId || c.featureId).join(", ")}`,
+        );
       }
     });
   });

@@ -30,6 +30,11 @@ vi.mock("../utils/git.js", () => ({
 vi.mock("../engine/define-orchestrator.js", () => ({
   DefineOrchestrator: vi.fn(),
 }));
+vi.mock("../engine/plan-store.js", () => ({
+  PlanStore: vi.fn().mockImplementation(() => ({
+    handleDefineComplete: vi.fn(),
+  })),
+}));
 
 describe("defineCommand — Define Until Solid wrapper", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -78,6 +83,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     vi.mocked(DefineOrchestrator).mockImplementation(() => ({
       run: vi.fn().mockResolvedValue(0),
       runLoop: vi.fn().mockResolvedValue(0),
+      on: vi.fn(),
     }) as unknown as DefineOrchestrator);
   });
 
@@ -144,6 +150,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     vi.mocked(DefineOrchestrator).mockImplementation(() => ({
       run: vi.fn().mockRejectedValue(new Error("Command failed")),
       runLoop: vi.fn().mockRejectedValue(new Error("Command failed")),
+      on: vi.fn(),
     }) as unknown as DefineOrchestrator);
 
     process.exitCode = 0;

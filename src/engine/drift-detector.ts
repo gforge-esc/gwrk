@@ -114,8 +114,7 @@ export class DriftDetector {
           if (tasksData.phases) {
             for (const taskPhase of tasksData.phases) {
               const graphPhase = this.plan.phases.find(
-                (p) =>
-                  p.feature_id === feature.id && p.id === taskPhase.id,
+                (p) => p.feature_id === feature.id && p.id === taskPhase.id,
               );
               if (!graphPhase) continue;
 

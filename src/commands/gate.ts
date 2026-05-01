@@ -87,12 +87,10 @@ function preFlightCheck(
       // Check if OTHER phases also reference this same file
       // (e.g., plan.ts is touched by Phase 3, 4, AND 5)
       const otherPhasesReferenceFile = allPhases
-        .filter((p) => p.id !== taskPhase!.id)
+        .filter((p) => p.id !== taskPhase?.id)
         .some((p) =>
           p.tasks.some(
-            (t) =>
-              t.title.includes(targetFile) &&
-              t.status !== "completed",
+            (t) => t.title.includes(targetFile) && t.status !== "completed",
           ),
         );
 
