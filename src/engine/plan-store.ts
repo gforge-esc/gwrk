@@ -187,52 +187,19 @@ export class PlanStore {
   /**
    * Render the build plan as Markdown (000-build-plan.md).
    */
-  render(): string {
+  async render(): Promise<string> {
     const status = this.getPlanStatus();
-    let md = "# 000 Build Plan — gwrk\n\n";
+    const solver = await this.getSolver();
+    const { PlanRenderer } = await import("./plan-renderer.js");
 
-    md += `> **Status:** Authoritative · **Date:** ${new Date().toISOString().split("T")[0]}\n`;
-    md +=
-      "> **Anchored to:** [architecture.md](docs/architecture.md), [GWRK-PRD-PRFAQ.md](docs/GWRK-PRD-PRFAQ.md)\n\n---\n\n";
+    const renderer = new PlanRenderer(
+      status.features,
+      status.features.flatMap((f) => f.phases),
+      status.edges,
+      solver,
+    );
 
-    md += "## Dependency Graph\n\n```mermaid\ngraph TD\n";
-    for (const edge of status.edges) {
-      const from = status.features.find((f) => f.id === edge.from_id);
-      const to = status.features.find((f) => f.id === edge.to_id);
-      const fromLabel = from
-        ? `${from.id}["${from.id}: ${from.name}${from.status === "DONE" ? " ✅" : ""}"]`
-        : edge.from_id;
-      const toLabel = to
-        ? `${to.id}["${to.id}: ${to.name}${to.status === "DONE" ? " ✅" : ""}"]`
-        : edge.to_id;
-      md += `    ${fromLabel} --> ${toLabel}\n`;
-    }
-    md += "```\n\n---\n\n## Features\n\n";
-
-    for (const f of status.features) {
-      let icon = "⚪";
-      if (f.status === "DONE" || f.status === "SHIPPED") icon = "✅";
-      else if (f.status === "IN_PROGRESS") icon = "🔴";
-      else if (f.status === "SPECIFIED" || f.status === "DEFINED") icon = "🟡";
-
-      md += `### Feature ${f.id.replace(/^F/, "")} — ${f.name} ${icon}\n\n`;
-      md += `**Status:** ${f.status}\n\n`;
-
-      if (f.phases && f.phases.length > 0) {
-        md += "| Phase | Name | Status | SP |\n";
-        md += "|---|---|---|---|\n";
-        for (const p of f.phases) {
-          let pIcon = "⚪";
-          if (p.status === "DONE" || p.status === "SHIPPED") pIcon = "✅";
-          else if (p.status === "IN_PROGRESS") pIcon = "🔴";
-
-          md += `| ${p.seq} | ${p.name} | ${p.status} ${pIcon} | ${p.sp_estimate} |\n`;
-        }
-        md += "\n";
-      }
-    }
-
-    return md;
+    return renderer.render();
   }
 
   /**
