@@ -23,6 +23,135 @@ export interface GateCheckResult {
 }
 
 /**
+ * Anti-pattern pre-flight guard.
+ *
+ * Scans source/test files associated with a task for known stub patterns
+ * BEFORE the gate script runs. This is hard-coded in the gate runner
+ * and cannot be gamed by agent-authored gate scripts.
+ *
+ * Known anti-patterns:
+ * - throw "not implemented" / "Method not implemented" in source
+ * - describe.skip / it.skip / test.skip in test files
+ * - "not yet implemented" in CLI command handlers
+ */
+function preFlightCheck(
+  taskId: string,
+  feature: string,
+  projectRoot: string,
+): string[] {
+  const violations: string[] = [];
+  const featureDir = path.join(projectRoot, "specs", feature);
+
+  // Load task state to find referenced files and phase scope
+  interface TaskInfo {
+    id: string;
+    title: string;
+    description?: string;
+    status?: string;
+  }
+  interface PhaseInfo {
+    id: string;
+    tasks: TaskInfo[];
+  }
+
+  let task: TaskInfo | undefined;
+  let taskPhase: PhaseInfo | undefined;
+  let allPhases: PhaseInfo[] = [];
+  try {
+    const state = loadTaskState(featureDir);
+    allPhases = state.phases;
+    for (const phase of state.phases) {
+      const found = phase.tasks.find((t) => t.id === taskId);
+      if (found) {
+        task = found;
+        taskPhase = phase;
+        break;
+      }
+    }
+  } catch {
+    return violations; // No tasks.json — skip pre-flight
+  }
+
+  if (!task || !taskPhase) return violations;
+
+  // Extract source file path from task title (e.g. "Implement src/engine/foo.ts")
+  const fileMatch = task.title.match(
+    /(?:Implement|Modify)\s+(src\/[^\s,]+\.ts)/,
+  );
+  if (fileMatch) {
+    const targetFile = fileMatch[1];
+    const filePath = path.join(projectRoot, targetFile);
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8");
+
+      // Check if OTHER phases also reference this same file
+      // (e.g., plan.ts is touched by Phase 3, 4, AND 5)
+      const otherPhasesReferenceFile = allPhases
+        .filter((p) => p.id !== taskPhase!.id)
+        .some((p) =>
+          p.tasks.some(
+            (t) =>
+              t.title.includes(targetFile) &&
+              t.status !== "completed",
+          ),
+        );
+
+      // Only flag stubs if no other incomplete phase owns this file
+      // If another phase legitimately has stubs (from define-tests), skip
+      if (!otherPhasesReferenceFile) {
+        const stubPatterns: [RegExp, string][] = [
+          [
+            /throw new Error\(["'](?:Method )?not implemented/,
+            "throws 'not implemented'",
+          ],
+          [
+            /throw new CommandError\([^)]*not yet implemented/,
+            "throws 'not yet implemented'",
+          ],
+        ];
+
+        for (const [pattern, label] of stubPatterns) {
+          if (pattern.test(content)) {
+            violations.push(`STUB in ${targetFile}: ${label}`);
+          }
+        }
+      }
+    }
+
+    // Check for associated test file with .skip() blocks
+    const testPath = targetFile.replace(/\.ts$/, ".test.ts");
+    const absTestPath = path.join(projectRoot, testPath);
+    if (fs.existsSync(absTestPath)) {
+      const testContent = fs.readFileSync(absTestPath, "utf-8");
+      if (/describe\.skip\s*\(/.test(testContent)) {
+        violations.push(
+          `SKIPPED TESTS in ${testPath}: describe.skip() bypasses gate verification`,
+        );
+      }
+    }
+  }
+
+  // Also check if the task title mentions "test strategy" — scan for skips
+  if (/test strategy/i.test(task.title)) {
+    const taskDesc = task.description || "";
+    const testFiles = taskDesc.match(/src\/[^\s,]+\.test\.ts/g) || [];
+    for (const tf of testFiles) {
+      const absTf = path.join(projectRoot, tf);
+      if (fs.existsSync(absTf)) {
+        const tfContent = fs.readFileSync(absTf, "utf-8");
+        if (/describe\.skip\s*\(/.test(tfContent)) {
+          violations.push(
+            `SKIPPED TESTS in ${tf}: describe.skip() bypasses gate verification`,
+          );
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
  * Executes a gate script and returns the result.
  */
 export async function runGateCheck(
@@ -48,6 +177,26 @@ export async function runGateCheck(
       `Gate script not found: ${gatePath}. Run 'gwrk project gates' to list available gates.`,
       1,
     );
+  }
+
+  // ── Anti-pattern pre-flight ──
+  // Hard-coded guard that runs BEFORE the gate script.
+  // Catches stubs and skipped tests that would pass gates vacuously.
+  const violations = preFlightCheck(taskId, normalizedFeature, projectRoot);
+  if (violations.length > 0) {
+    const violationMsg = violations
+      .map((v) => `  ⚠ PRE-FLIGHT: ${v}`)
+      .join("\n");
+    return {
+      taskId,
+      feature: normalizedFeature,
+      gatePath,
+      result: "FAIL",
+      exitCode: 1,
+      stdout: "",
+      stderr: `Gate pre-flight failed — anti-pattern detected:\n${violationMsg}`,
+      durationMs: 0,
+    };
   }
 
   const start = performance.now();
