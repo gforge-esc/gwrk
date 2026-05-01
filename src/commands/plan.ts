@@ -241,14 +241,61 @@ planCommand
 planCommand
   .command("verify")
   .description("Detect drift between plan and actual state")
-  .action(async () => {
+  .option("--json", "Output in JSON format")
+  .action(async (options) => {
     await withSignal("plan verify", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan verify' is not yet implemented (Phase 4).",
-        1,
+
+      const { DriftDetector } = await import("../engine/drift-detector.js");
+      const status = store.getPlanStatus();
+      const detector = new DriftDetector({
+        features: status.features,
+        phases: status.features.flatMap((f) => f.phases),
+      });
+
+      const projectRoot = process.cwd();
+      const results = detector.verify(projectRoot);
+
+      if (options.json) {
+        console.log(JSON.stringify(results, null, 2));
+        return;
+      }
+
+      const drifted = results.filter((r) => r.status === "DRIFTED");
+      const missing = results.filter(
+        (r) =>
+          r.status === "MISSING_FROM_GRAPH" ||
+          r.status === "MISSING_FROM_SPECS",
       );
+      const clean = results.filter((r) => r.status === "CLEAN");
+
+      if (drifted.length === 0 && missing.length === 0) {
+        console.log(`${color.GREEN}✓${color.RESET} No drift detected. ${clean.length} phase(s) clean.`);
+        return;
+      }
+
+      if (drifted.length > 0) {
+        console.log(`\n${color.RED}Drift Detected (${drifted.length}):${color.RESET}`);
+        for (const d of drifted) {
+          console.log(
+            `  ${color.RED}✗${color.RESET} ${d.featureId}${d.phaseId ? `/${d.phaseId}` : ""}: ${d.reason}`,
+          );
+        }
+      }
+
+      if (missing.length > 0) {
+        console.log(`\n${color.YELLOW}Missing (${missing.length}):${color.RESET}`);
+        for (const m of missing) {
+          console.log(
+            `  ${color.YELLOW}⚠${color.RESET} ${m.featureId}: ${m.reason}`,
+          );
+        }
+      }
+
+      if (clean.length > 0) {
+        console.log(`\n${color.GREEN}Clean (${clean.length}):${color.RESET} ${clean.map((c) => c.phaseId || c.featureId).join(", ")}`);
+      }
     });
   });
 
@@ -260,7 +307,7 @@ planCommand
     await withSignal("plan render", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      const md = store.render();
+      const md = await store.render();
 
       if (options.stdout) {
         console.log(md);
@@ -277,7 +324,10 @@ planCommand
 planCommand
   .command("add <type> <id> [name]")
   .description("Add a feature or phase to the build plan")
-  .option("--feature-id <featureId>", "Parent feature (required for phase type)")
+  .option(
+    "--feature-id <featureId>",
+    "Parent feature (required for phase type)",
+  )
   .option("--sp <sp>", "SP estimate (for phases)", "0")
   .action(async (type, id, name, options) => {
     await withSignal("plan add", async () => {
@@ -290,13 +340,12 @@ planCommand
           status: "PLANNED",
           sp_total: 0,
         });
-        console.log(`${color.GREEN}✓${color.RESET} Added feature ${color.BOLD}${id}${color.RESET}`);
+        console.log(
+          `${color.GREEN}✓${color.RESET} Added feature ${color.BOLD}${id}${color.RESET}`,
+        );
       } else if (type === "phase") {
         if (!options.featureId) {
-          throw new CommandError(
-            "Phase requires --feature-id <featureId>",
-            1,
-          );
+          throw new CommandError("Phase requires --feature-id <featureId>", 1);
         }
         store.addPhase({
           id,
@@ -336,7 +385,9 @@ planCommand
         );
       } else {
         store.removePhase(id);
-        console.log(`${color.GREEN}✓${color.RESET} Removed phase ${color.BOLD}${id}${color.RESET}`);
+        console.log(
+          `${color.GREEN}✓${color.RESET} Removed phase ${color.BOLD}${id}${color.RESET}`,
+        );
       }
     });
   });
@@ -397,7 +448,11 @@ planCommand
 
       store.updatePhase(id, updates);
       console.log(
-        `${color.GREEN}✓${color.RESET} Updated phase ${color.BOLD}${id}${color.RESET}: ${Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(", ")}`,
+        `${color.GREEN}✓${color.RESET} Updated phase ${color.BOLD}${id}${color.RESET}: ${Object.entries(
+          updates,
+        )
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ")}`,
       );
     });
   });

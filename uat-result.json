@@ -1,10 +1,7 @@
 {
   "summary": "UAT Review for Phase 3 (Graph Mutation & Lifecycle Hooks) failed. The primary user story for CLI-based dependency management is not satisfied as 'gwrk plan dep' (and other mutation commands) remain placeholders in src/commands/plan.ts, throwing 'not yet implemented' errors. Integration tests for Phase 3 mutation commands are also missing or hollow.",
   "verdict": "NO-GO",
-  "reopenedTasks": [
-    "T013",
-    "T018"
-  ],
+  "reopenedTasks": ["T013", "T018"],
   "intents": [
     {
       "action": "WRITE_FILE",

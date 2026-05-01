@@ -161,8 +161,8 @@
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-04-30T18:27:09.565Z"
+          "completedAt": "2026-04-30T18:27:09.565Z",
+          "classification": "greenfield"
         },
         {
           "id": "T014",
@@ -171,8 +171,8 @@
           "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-04-30T18:27:10.733Z"
+          "completedAt": "2026-04-30T18:27:10.733Z",
+          "classification": "greenfield"
         },
         {
           "id": "T015",
@@ -181,8 +181,8 @@
           "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-04-30T18:27:11.564Z"
+          "completedAt": "2026-04-30T18:27:11.564Z",
+          "classification": "greenfield"
         },
         {
           "id": "T016",
@@ -191,8 +191,8 @@
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-04-30T18:27:11.574Z"
+          "completedAt": "2026-04-30T18:27:11.574Z",
+          "classification": "greenfield"
         },
         {
           "id": "T017",
@@ -201,8 +201,8 @@
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-04-30T18:27:11.578Z"
+          "completedAt": "2026-04-30T18:27:11.578Z",
+          "classification": "greenfield"
         },
         {
           "id": "T018",
@@ -211,8 +211,8 @@
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-04-30T18:27:12.507Z"
+          "completedAt": "2026-04-30T18:27:12.507Z",
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
@@ -229,37 +229,41 @@
           "id": "T019",
           "title": "Implement src/engine/drift-detector.ts",
           "description": "NEW: Logic to detect .agents refs in SHIPPED phases",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-01T16:04:14.000Z"
         },
         {
           "id": "T020",
           "title": "Implement src/engine/plan-renderer.ts",
           "description": "NEW: Logic to generate Markdown from graph state",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "sp": 0,
+          "completedAt": "2026-04-30T15:53:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T021",
           "title": "Implement src/commands/plan.ts",
           "description": "MODIFY: Add `verify` and `render` subcommands",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-01T16:04:14.000Z"
         },
         {
           "id": "T022",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-05-01T16:04:14.000Z"
         }
       ],
       "sp_estimate": 0,

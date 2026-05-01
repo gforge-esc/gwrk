@@ -61,10 +61,10 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     expect(store.isEmpty()).toBe(false);
   });
 
-  it('FR-009: should render build plan as markdown', () => {
+  it('FR-009: should render build plan as markdown', async () => {
     const features = [
       { id: 'F1', name: 'Feat 1', status: 'DONE', sp_total: 10, phases: [
-        { seq: 1, name: 'P1', status: 'DONE', sp_estimate: 5 }
+        { id: 'F1-P1', feature_id: 'F1', name: 'P1', status: 'DONE', sp_estimate: 5, seq: 1 }
       ]}
     ];
     const edges = [{ from_id: 'F0', to_id: 'F1', edge_type: 'DEPENDS_ON' }];
@@ -73,10 +73,10 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     vi.mocked(db.listPhases).mockReturnValue(features[0].phases);
     vi.mocked(db.listAllEdges).mockReturnValue(edges);
     
-    const md = store.render();
+    const md = await store.render();
     expect(md).toContain('# 000 Build Plan — gwrk');
     expect(md).toContain('graph TD');
-    expect(md).toContain('F0 --> F1');
+    expect(md).toContain('F0 --> F1["F1: Feat 1 ✅"]');
     expect(md).toContain('### Feature 1 — Feat 1 ✅');
     expect(md).toContain('| 1 | P1 | DONE ✅ | 5 |');
   });
