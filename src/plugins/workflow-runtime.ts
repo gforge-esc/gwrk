@@ -13,6 +13,7 @@ export interface WorkflowOptions {
   projectRoot?: string;
   agent?: string;
   model?: string;
+  quiet?: boolean;
 }
 
 /** Typed output contract for workflow agent responses. */
@@ -168,6 +169,7 @@ export class WorkflowRuntime {
       agent: options.agent,
       workDir: projectRoot,
       workflow: name,
+      quiet: options.quiet,
     };
 
     const result = await dispatchToAgent(task);

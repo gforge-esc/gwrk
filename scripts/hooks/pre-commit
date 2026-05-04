@@ -25,6 +25,12 @@ pnpm build || { echo "❌ Build failed. Commit blocked."; exit 1; }
 
 # Full test suite only on protected branches
 if [[ "$BRANCH" == "develop" || "$BRANCH" == "main" ]]; then
+  # When running under gwrk ship, use compact output
+  REPORTER_ARGS=""
+  if [[ -n "${GWRK_SHIP:-}" ]]; then
+    REPORTER_ARGS="--reporter=dot"
+  fi
+
   # Detect RED test files — intentionally failing TDD tests
   RED_TESTS=$(grep -rl "Module does not exist yet (RED)" src/ --include="*.test.ts" 2>/dev/null || true)
 
@@ -41,10 +47,10 @@ if [[ "$BRANCH" == "develop" || "$BRANCH" == "main" ]]; then
     done
 
     echo "▸ pre-commit [${BRANCH}]: running pnpm vitest run (excluding RED tests)..."
-    pnpm vitest run $EXCLUDE_ARGS || { echo "❌ Tests failed. Commit to ${BRANCH} blocked."; exit 1; }
+    pnpm vitest run $REPORTER_ARGS $EXCLUDE_ARGS || { echo "❌ Tests failed. Commit to ${BRANCH} blocked."; exit 1; }
   else
     echo "▸ pre-commit [${BRANCH}]: running pnpm test (protected branch)..."
-    pnpm test || { echo "❌ Tests failed. Commit to ${BRANCH} blocked."; exit 1; }
+    pnpm vitest run $REPORTER_ARGS || { echo "❌ Tests failed. Commit to ${BRANCH} blocked."; exit 1; }
   fi
 fi
 
