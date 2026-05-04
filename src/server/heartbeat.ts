@@ -63,13 +63,17 @@ export class PlanHeartbeat {
     );
     const isBlocked = ready.length === 0 && !isProjectDone;
 
-    // 4. Update Health in DB
-    for (const p of stalePhases) {
-      this.store.updatePhase(p.id, { health: "YELLOW" });
-    }
-    for (const d of drifted) {
-      if (d.phaseId) {
-        this.store.updatePhase(d.phaseId, { health: "RED" });
+    // 4. Update Health in DB with recovery logic
+    for (const p of phases) {
+      const isStale = stalePhases.some((sp) => sp.id === p.id);
+      const isDrifted = drifted.some((d) => d.phaseId === p.id);
+
+      let targetHealth = "GREEN";
+      if (isDrifted) targetHealth = "RED";
+      else if (isStale) targetHealth = "YELLOW";
+
+      if (p.health !== targetHealth) {
+        this.store.updatePhase(p.id, { health: targetHealth as "GREEN" | "YELLOW" | "RED" });
       }
     }
 

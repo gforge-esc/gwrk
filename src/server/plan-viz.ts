@@ -33,22 +33,30 @@ export function generatePlanVizHtml(
 
   // Add nodes for phases
   for (const p of phases) {
-    let color = "#eeeeee";
+    let color = "#eeeeee"; // Default PLANNED
     if (p.status === "DONE" || p.status === "SHIPPED") {
-      color = "#2ecc71";
+      color = "#2ecc71"; // Green status
     } else if (p.status === "IN_PROGRESS") {
-      color = "#f1c40f";
+      color = "#f1c40f"; // Yellow status
     }
 
-    // Highlight critical path
+    // Override with health if problematic
+    if (p.health === "RED") {
+      color = "#e74c3c"; // Red health
+    } else if (p.health === "YELLOW") {
+      color = "#e67e22"; // Orange health (distinct from yellow status)
+    }
+
+    // Highlight critical path with border
     const isCritical = criticalPathIds.includes(p.id);
-    const borderColor = isCritical ? "#e74c3c" : undefined;
+    const borderColor = isCritical ? "#000000" : undefined; // Black border for critical path if we use red for health
 
     graph.addNode(p.id, {
       label: p.name,
       size: 10,
       color,
       status: p.status,
+      health: p.health,
       type: "phase",
       feature_id: p.feature_id,
       borderColor,

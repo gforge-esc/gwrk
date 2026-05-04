@@ -75,8 +75,13 @@ planCommand
           if (p.status === "DONE" || p.status === "SHIPPED") pColor = GREEN;
           else if (p.status === "IN_PROGRESS") pColor = YELLOW;
 
+          let healthIcon = " ";
+          if (p.health === "YELLOW") healthIcon = `${YELLOW}⚠${RESET}`;
+          else if (p.health === "RED") healthIcon = `${RED}✗${RESET}`;
+          else if (p.health === "GREEN") healthIcon = `${GREEN}✓${RESET}`;
+
           console.log(
-            `  ${pColor}↳ ${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${pColor}${p.status}${RESET} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+            `  ${pColor}↳ ${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${pColor}${p.status.padEnd(12)}${RESET} ${healthIcon} ${DIM}(${p.sp_estimate} SP)${RESET}`,
           );
         }
         console.log("");
