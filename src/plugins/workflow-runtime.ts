@@ -195,8 +195,10 @@ export class WorkflowRuntime {
       if (e instanceof Error && e.message.includes("schema constraint")) {
         throw e;
       }
+      // Truncate raw output in error — full output is in the log file
+      const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
       throw new Error(
-        `Workflow output failed schema constraint: Expected JSON object. Original output: ${result.stdout}`,
+        `Workflow output failed schema constraint: Expected JSON object. Preview: ${preview}… (see log file for full output)`,
       );
     }
 
