@@ -10,6 +10,7 @@ vi.mock("../docker.js", () => ({
 vi.mock("../slack.js", () => ({
   startSlackApp: vi.fn().mockResolvedValue(undefined),
   stopSlackApp: vi.fn().mockResolvedValue(undefined),
+  getSlackApp: vi.fn().mockReturnValue(undefined),
 }));
 
 const mockConfig: GwrkConfig = {

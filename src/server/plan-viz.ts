@@ -79,18 +79,20 @@ export function generatePlanVizHtml(
   }
 
   // Pre-calculate layout
-  const fa2 = forceAtlas2 as any;
-  const layoutFunc = fa2.default || fa2;
-  const assign = layoutFunc.assign || layoutFunc;
-
-  if (typeof assign === "function") {
-    assign(graph, {
-      iterations: 100,
-      settings: layoutFunc.inferSettings?.(graph) || {},
-    });
+  // graphology-layout-forceatlas2 CJS/ESM interop: the default export
+  // is an IForceAtlas2Layout with .assign and .inferSettings, but TS
+  // sees the import shape differently. We use a typed interface.
+  interface FA2Layout {
+    assign: (graph: InstanceType<typeof MultiGraph>, params: { iterations: number; settings: Record<string, unknown> }) => void;
+    inferSettings: (graph: InstanceType<typeof MultiGraph>) => Record<string, unknown>;
   }
+  const fa2 = forceAtlas2 as unknown as FA2Layout;
+  fa2.assign(graph, {
+    iterations: 100,
+    settings: fa2.inferSettings(graph),
+  });
 
-  const graphData = (graph as any).export();
+  const graphData = graph.export();
 
   return `
 <!DOCTYPE html>
