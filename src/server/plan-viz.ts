@@ -83,8 +83,13 @@ export function generatePlanVizHtml(
   // is an IForceAtlas2Layout with .assign and .inferSettings, but TS
   // sees the import shape differently. We use a typed interface.
   interface FA2Layout {
-    assign: (graph: InstanceType<typeof MultiGraph>, params: { iterations: number; settings: Record<string, unknown> }) => void;
-    inferSettings: (graph: InstanceType<typeof MultiGraph>) => Record<string, unknown>;
+    assign: (
+      graph: InstanceType<typeof MultiGraph>,
+      params: { iterations: number; settings: Record<string, unknown> },
+    ) => void;
+    inferSettings: (
+      graph: InstanceType<typeof MultiGraph>,
+    ) => Record<string, unknown>;
   }
   const fa2 = forceAtlas2 as unknown as FA2Layout;
   fa2.assign(graph, {

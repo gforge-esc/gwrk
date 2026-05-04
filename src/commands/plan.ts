@@ -503,8 +503,15 @@ planCommand
       fs.writeFileSync(tempPath, html, "utf-8");
       console.log(`Visualization generated: ${tempPath}`);
 
-      // In a real CLI, we'd use 'open' or similar here.
-      // For now, we just print the path.
+      // Open in default browser
+      const { exec } = await import("node:child_process");
+      const openCmd = process.platform === "darwin" ? "open" : "xdg-open";
+      exec(`${openCmd} "${tempPath}"`, (err) => {
+        if (err) {
+          console.error(`Could not open browser: ${err.message}`);
+          console.log(`Open manually: file://${tempPath}`);
+        }
+      });
     });
   });
 

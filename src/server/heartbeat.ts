@@ -87,7 +87,11 @@ export class PlanHeartbeat {
     drifted: DriftResult[],
     isBlocked: boolean,
   ) {
-    const channelId = "C_GWRK_CHANNEL"; // TODO: get from config
+    const channelId = this.config.project.slack?.channelId;
+    if (!channelId) {
+      console.error("Heartbeat: no slack.channelId configured — skipping Slack report");
+      return;
+    }
 
     let text = "*🚨 Build Plan Health Report*\n";
     if (drifted.length > 0) {

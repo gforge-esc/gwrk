@@ -9,6 +9,73 @@ import { type TaskDispatch, dispatchToAgent } from "../utils/agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
 import type { WorkflowManifest } from "./manifest.js";
 
+/**
+ * Extract a JSON object from raw agent output.
+ *
+ * Handles common agent output patterns:
+ * 1. JSON wrapped in markdown code fences (```json ... ```)
+ * 2. Multiple JSON blocks (takes the last one — agents often self-correct)
+ * 3. Plain text mixed with JSON (ignores the plain text)
+ */
+export function extractJsonFromOutput(stdout: string): unknown {
+  // Step 1: Extract content from markdown code fences (```json ... ```)
+  const fenceBlocks = [...stdout.matchAll(/```(?:json)?\s*\n?([\s\S]*?)```/g)];
+  if (fenceBlocks.length > 0) {
+    // Try each fenced block in reverse order (last = most likely final answer)
+    for (let i = fenceBlocks.length - 1; i >= 0; i--) {
+      try {
+        const parsed = JSON.parse(fenceBlocks[i][1].trim());
+        if (typeof parsed === "object" && parsed !== null) {
+          return parsed;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  // Step 2: Try to find bare JSON objects (no fences)
+  // Use a balanced-brace approach: find substrings starting with { and ending with }
+  // Work backwards from the end (last JSON block is most likely the final output)
+  const lines = stdout.split("\n");
+  let braceDepth = 0;
+  let jsonEnd = -1;
+  let jsonStart = -1;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    for (let j = lines[i].length - 1; j >= 0; j--) {
+      const ch = lines[i][j];
+      if (ch === "}") {
+        if (braceDepth === 0) jsonEnd = i;
+        braceDepth++;
+      } else if (ch === "{") {
+        braceDepth--;
+        if (braceDepth === 0) {
+          jsonStart = i;
+          break;
+        }
+      }
+    }
+    if (jsonStart !== -1) break;
+  }
+
+  if (jsonStart !== -1 && jsonEnd !== -1) {
+    const candidate = lines.slice(jsonStart, jsonEnd + 1).join("\n");
+    // Extract just the JSON object part
+    const startIdx = candidate.indexOf("{");
+    const endIdx = candidate.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx !== -1) {
+      try {
+        return JSON.parse(candidate.substring(startIdx, endIdx + 1));
+      } catch {
+        // Fall through to error
+      }
+    }
+  }
+
+  throw new Error("Expected JSON object in agent output");
+}
+
 export interface WorkflowOptions {
   projectRoot?: string;
   agent?: string;
@@ -183,22 +250,12 @@ export class WorkflowRuntime {
     // Parse the JSON output from the agent
     let parsedOutput: unknown;
     try {
-      // Find the JSON block in the agent's output
-      const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error(
-          "Workflow output failed schema constraint: Expected JSON object.",
-        );
-      }
-      parsedOutput = JSON.parse(jsonMatch[0]);
+      parsedOutput = extractJsonFromOutput(result.stdout);
     } catch (e) {
-      if (e instanceof Error && e.message.includes("schema constraint")) {
-        throw e;
-      }
       // Truncate raw output in error — full output is in the log file
       const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
       throw new Error(
-        `Workflow output failed schema constraint: Expected JSON object. Preview: ${preview}… (see log file for full output)`,
+        `Workflow output failed schema constraint: ${(e as Error).message}. Preview: ${preview}… (see log file for full output)`,
       );
     }
 

@@ -45,7 +45,7 @@
         {
           "id": "T004",
           "title": "Implement src/engine/readiness-scanner.ts",
-          "description": "NEW: Scan specs/*/ to determine L0\u2013L3 readiness level per feature",
+          "description": "NEW: Scan specs/*/ to determine L0–L3 readiness level per feature",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
@@ -85,7 +85,7 @@
         {
           "id": "T008",
           "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-003/006 \u2014 Hollow and broken tests.\n  WHERE: src/commands/plan-top-level.test.ts\n  EXPECTED: Assertions checking actual CLI output and state changes. No global mocking that breaks PlanStore methods.\n  ACTUAL: try/catch blocks swallow errors; vi.mock hoisting removes seedFromFile and scanReadiness from PlanStore in tests.\n  FIX: Use vi.spyOn or vi.doMock to avoid global interference. Add real output assertions for all subcommands. Ensure seed/init actually populate the DB in integration tests.\n\nRE-OPENED (UAT): Tests in src/commands/plan-top-level.test.ts for 'seed' and 'init' remain hollow and continue to use try/catch blocks to swallow errors, failing to meet the remediation standard.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-003/006 — Hollow and broken tests.\n  WHERE: src/commands/plan-top-level.test.ts\n  EXPECTED: Assertions checking actual CLI output and state changes. No global mocking that breaks PlanStore methods.\n  ACTUAL: try/catch blocks swallow errors; vi.mock hoisting removes seedFromFile and scanReadiness from PlanStore in tests.\n  FIX: Use vi.spyOn or vi.doMock to avoid global interference. Add real output assertions for all subcommands. Ensure seed/init actually populate the DB in integration tests.\n\nRE-OPENED (UAT): Tests in src/commands/plan-top-level.test.ts for 'seed' and 'init' remain hollow and continue to use try/catch blocks to swallow errors, failing to meet the remediation standard.",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
@@ -108,7 +108,7 @@
         {
           "id": "T009",
           "title": "Implement src/engine/plan-solver.ts",
-          "description": "NEW: Graph analysis logic using graphology.\n\nREVIEW FAIL (code): FR-003 \u2014 Ready queue sorting.\n  WHERE: src/engine/plan-solver.ts:88-112\n  EXPECTED: readyPhases.sort((a, b) => criticalPathPriority(a, b))\n  ACTUAL: return readyPhases; (unsorted)\n  FIX: Implement sorting by critical path priority (slack ascending), then by Most Successors First.\nREVIEW FAIL (lint): FR-018 \u2014 Non-null assertions.\n  WHERE: src/engine/plan-solver.ts:131, 152, 169, 200, 205\n  EXPECTED: Safe access with guards or error handling.\n  ACTUAL: Non-null assertions (!).\n  FIX: Replace '!' with proper null-checks or descriptive error throws.",
+          "description": "NEW: Graph analysis logic using graphology.\n\nREVIEW FAIL (code): FR-003 — Ready queue sorting.\n  WHERE: src/engine/plan-solver.ts:88-112\n  EXPECTED: readyPhases.sort((a, b) => criticalPathPriority(a, b))\n  ACTUAL: return readyPhases; (unsorted)\n  FIX: Implement sorting by critical path priority (slack ascending), then by Most Successors First.\nREVIEW FAIL (lint): FR-018 — Non-null assertions.\n  WHERE: src/engine/plan-solver.ts:131, 152, 169, 200, 205\n  EXPECTED: Safe access with guards or error handling.\n  ACTUAL: Non-null assertions (!).\n  FIX: Replace '!' with proper null-checks or descriptive error throws.",
           "status": "open",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
@@ -117,7 +117,7 @@
         {
           "id": "T010",
           "title": "Implement src/commands/plan.ts",
-          "description": "MODIFY: Add next, critical, waves subcommands.\n\nREVIEW FAIL (logic): FR-003 \u2014 Subcommand output ranking.\n  WHERE: src/commands/plan.ts\n  EXPECTED: Correct ranking in 'next' command output based on critical path.\n  ACTUAL: Unsorted output due to broken T009.\n  FIX: Ensure T009 is fixed and verify CLI output ranking.",
+          "description": "MODIFY: Add next, critical, waves subcommands.\n\nREVIEW FAIL (logic): FR-003 — Subcommand output ranking.\n  WHERE: src/commands/plan.ts\n  EXPECTED: Correct ranking in 'next' command output based on critical path.\n  ACTUAL: Unsorted output due to broken T009.\n  FIX: Ensure T009 is fixed and verify CLI output ranking.",
           "status": "open",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
@@ -136,7 +136,7 @@
         {
           "id": "T012",
           "title": "Implement test strategy for Phase 2",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-003 \u2014 Hollow tests.\n  WHERE: src/commands/plan.phase2.test.ts\n  EXPECTED: Assertions for success scenarios checking actual CLI output content.\n  ACTUAL: try/catch block with no success assertions (passes if no error thrown).\n  FIX: Add actual output assertions for 'next', 'critical', and 'waves' commands. Use a mock store with a known graph to verify sorting.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-003 — Hollow tests.\n  WHERE: src/commands/plan.phase2.test.ts\n  EXPECTED: Assertions for success scenarios checking actual CLI output content.\n  ACTUAL: try/catch block with no success assertions (passes if no error thrown).\n  FIX: Add actual output assertions for 'next', 'critical', and 'waves' commands. Use a mock store with a known graph to verify sorting.",
           "status": "open",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
@@ -146,7 +146,7 @@
       "sp_estimate": 0,
       "doneWhen": [
         "`gwrk plan critical` identifies the zero-slack path through the current project",
-        "`gwrk plan critical` warns `\u26a0\ufe0f {id} has no SP estimate` for any critical-path node without SP",
+        "`gwrk plan critical` warns `⚠️ {id} has no SP estimate` for any critical-path node without SP",
         "`gwrk plan waves` groups tasks into mathematically parallelizable generations"
       ]
     },
@@ -280,31 +280,29 @@
         {
           "id": "T023",
           "title": "Implement src/server/plan-viz.ts",
-          "description": "NEW: Sigma.js HTML generation\n\nREVIEW FAIL (lint): noExplicitAny \u2014 FR-018.\n  WHERE: src/server/plan-viz.ts:82, 93\n  EXPECTED: Specific types for Sigma.js and Graphology objects.\n  ACTUAL: Use of 'as any'.\n  FIX: Define proper types or use interfaces from graphology/sigma to avoid 'any'.",
+          "description": "NEW: Sigma.js HTML generation\n\nREVIEW FAIL (lint): noExplicitAny — FR-018.\n  WHERE: src/server/plan-viz.ts:82, 93\n  EXPECTED: Specific types for Sigma.js and Graphology objects.\n  ACTUAL: Use of 'as any'.\n  FIX: Define proper types or use interfaces from graphology/sigma to avoid 'any'.",
           "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-04T22:07:00Z"
+          "completedAt": "2026-05-04T22:07:00Z",
+          "classification": "greenfield"
         },
         {
           "id": "T024",
           "title": "Implement src/server/heartbeat.ts",
-          "description": "MODIFY: Add build plan health checks",
-          "status": "completed",
+          "description": "MODIFY: Add build plan health checks\n\nRE-OPENED (UAT): Heartbeat reporting uses a placeholder channel ID ('C_GWRK_CHANNEL') instead of fetching from configuration, preventing actual Slack alerts.\n\nREVIEW FAIL (code): TR-018-005 — Persistent placeholder.\n  WHERE: src/server/heartbeat.ts:90\n  EXPECTED: const channelId = this.config.slack?.defaultChannel || \"general\";\n  ACTUAL: const channelId = \"C_GWRK_CHANNEL\"; // TODO: get from config\n  FIX: Fetch the correct Slack channel ID from GwrkConfig instead of using a hardcoded placeholder.",
+          "status": "open",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-01T17:02:14.103Z",
           "classification": "greenfield"
         },
         {
           "id": "T025",
           "title": "Implement src/commands/plan.ts",
-          "description": "MODIFY: Add `viz` and `review` subcommands",
-          "status": "completed",
+          "description": "MODIFY: Add `viz` and `review` subcommands\n\nRE-OPENED (UAT): 'gwrk plan viz' command generates HTML but does not open a browser as required by the 'Done When' criteria.\n\nREVIEW FAIL (code): FR-018-005 — Missing browser integration.\n  WHERE: src/commands/plan.ts:473-475\n  EXPECTED: await import('open').then(open => open.default(tempPath));\n  ACTUAL: // In a real CLI, we'd use 'open' or similar here. \\n // For now, we just print the path.\n  FIX: Use the 'open' package to automatically launch the default browser with the generated visualization file.",
+          "status": "open",
           "gateScript": "gates/T025-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-01T17:02:14.108Z",
           "classification": "greenfield"
         },
         {
@@ -320,12 +318,11 @@
         {
           "id": "T027",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-005 \u2014 Hollow and broken tests.\n  WHERE: src/commands/plan.phase5.test.ts\n  EXPECTED: Assertions for success scenarios checking actual CLI output content (e.g. 'No pending proposals' for review list).\n  ACTUAL: try/catch block expecting placeholder error 'not yet implemented (Phase 5)' which is now failing.\n  FIX: Update tests to verify actual implementation. Remove try/catch placeholder patterns.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-005 — Hollow and broken tests.\n  WHERE: src/commands/plan.phase5.test.ts\n  EXPECTED: Assertions for success scenarios checking actual CLI output content (e.g. 'No pending proposals' for review list).\n  ACTUAL: try/catch block expecting placeholder error 'not yet implemented (Phase 5)' which is now failing.\n  FIX: Update tests to verify actual implementation. Remove try/catch placeholder patterns.\n\nRE-OPENED (UAT): Tests in src/commands/plan.phase5.test.ts remain hollow and do not verify the heartbeat logic or actual visualization content.\n\nREVIEW FAIL (code): TR-018-005 — Hollow tests.\n  WHERE: src/commands/plan.phase5.test.ts\n  EXPECTED: Assertions that verify PlanHeartbeat logic and specific generatePlanVizHtml output structure.\n  ACTUAL: Mocking the very functions being tested and only checking if 'Dry Run' is printed.\n  FIX: Implement meaningful tests that verify the internal logic of the viz and heartbeat components, ensuring they interact correctly with the PlanStore and configuration.",
+          "status": "open",
           "gateScript": "gates/T027-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-05-04T22:07:00Z"
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,

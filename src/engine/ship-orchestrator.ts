@@ -6,7 +6,7 @@ import {
   resolveReviewPlugin,
   validatePhaseScope,
 } from "../plugins/review-plugin.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+
 import {
   type TaskDispatch,
   type TaskResult,
@@ -66,7 +66,7 @@ function withSpinner<T>(label: string, fn: () => T): T {
 export class ShipOrchestrator extends EventEmitter {
   private config: ShipRunConfig;
   private state: ShipState;
-  private workflowRuntime: WorkflowRuntime;
+
 
   constructor(config: ShipRunConfig, state?: ShipState) {
     super();
@@ -76,7 +76,7 @@ export class ShipOrchestrator extends EventEmitter {
     } else {
       this.state = this.initializeState();
     }
-    this.workflowRuntime = new WorkflowRuntime();
+
   }
 
   private initializeState(): ShipState {
@@ -204,22 +204,29 @@ export class ShipOrchestrator extends EventEmitter {
       this.config.featureId,
     );
 
-    // 1. Snapshot
+    // 1. Snapshot tasks.json before review
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // 2. Resolve and Execute via WorkflowRuntime
-      // This handles built-ins vs local overrides automatically.
-      const result = await this.workflowRuntime.executeWorkflow(
-        workflowName,
+      // 2. Dispatch the review agent directly.
+      //    The review agent modifies tasks.json via tool calls (re-opening
+      //    failed tasks). We don't need its JSON output — readVerdict()
+      //    determines GO/NO-GO by diffing tasks.json.
+      const result = await this.dispatchWithFailback({
         prompt,
-        {
-          projectRoot: this.config.cwd,
-          agent: this.config.backend,
-          model: this.config.geminiModel,
-          quiet: true,
-        },
-      );
+        featureDir: `specs/${this.config.featureId}`,
+        agent: this.config.backend,
+        env: {},
+        quiet: true,
+      });
+
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          exitCode: result.exitCode,
+          error: `${workflowName} agent exited ${result.exitCode}`,
+        };
+      }
 
       // 3. Post-dispatch validation (Snapshot-Diff-Revert)
       validatePhaseScope(
@@ -229,7 +236,7 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // Determine verdict from task state - the review agent re-opens tasks on NO-GO.
+      // 4. Determine verdict from task state diff
       const verdict = this.readVerdict();
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
@@ -241,7 +248,6 @@ export class ShipOrchestrator extends EventEmitter {
       return this.handleNoGo(workflowName);
     } catch (err: unknown) {
       const rawMsg = err instanceof Error ? err.message : String(err);
-      // Truncate for terminal — full error is in the log file
       const msg = rawMsg.length > 300 ? `${rawMsg.substring(0, 300)}…` : rawMsg;
       console.error(`  ${workflowName} dispatch error: ${msg}`);
       return {
