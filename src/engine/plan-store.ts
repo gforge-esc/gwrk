@@ -221,4 +221,52 @@ export class PlanStore {
       status.edges,
     );
   }
+
+  /**
+   * List all proposals.
+   */
+  listProposals(): db.PlanProposal[] {
+    return db.listProposals();
+  }
+
+  /**
+   * Add a new proposal.
+   */
+  addProposal(proposal: db.PlanProposal): void {
+    db.insertProposal(proposal);
+  }
+
+  /**
+   * Approve a proposal.
+   */
+  approveProposal(id: string): void {
+    const proposal = db.getProposal(id);
+    if (!proposal) throw new Error(`Proposal ${id} not found`);
+
+    if (proposal.proposal_type === "STATUS_UPDATE" && proposal.detail) {
+      this.updatePhase(proposal.target_phase_id, {
+        status: proposal.detail,
+      });
+    }
+
+    db.insertProposal({
+      ...proposal,
+      status: "APPROVED",
+      resolved_at: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Reject a proposal.
+   */
+  rejectProposal(id: string): void {
+    const proposal = db.getProposal(id);
+    if (!proposal) throw new Error(`Proposal ${id} not found`);
+
+    db.insertProposal({
+      ...proposal,
+      status: "REJECTED",
+      resolved_at: new Date().toISOString(),
+    });
+  }
 }

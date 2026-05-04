@@ -1,31 +1,95 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { PlanStore } from "./plan-store.js";
 import * as db from "../db/plan.js";
 
-vi.mock("../db/plan.js");
+vi.mock("../db/plan.js", async () => {
+  const actual = await vi.importActual("../db/plan.js");
+  return {
+    ...actual as any,
+    getDb: vi.fn(),
+    insertProposal: vi.fn(),
+    getProposal: vi.fn(),
+    listProposals: vi.fn(),
+    deleteProposal: vi.fn(),
+    getPhase: vi.fn(),
+    insertPhase: vi.fn(),
+  };
+});
 
-describe.skip("PlanStore Proposals (US-014)", () => {
+describe("PlanStore Proposals (Phase 5)", () => {
   let store: PlanStore;
 
   beforeEach(() => {
-    store = new PlanStore();
     vi.clearAllMocks();
+    store = new PlanStore();
   });
 
-  it("should create a proposal", () => {
+  it("should add a proposal", () => {
     const proposal = {
-      target_phase_id: "F1-P1",
+      id: "prop-1",
+      target_phase_id: "phase-1",
       proposal_type: "STATUS_UPDATE",
-      detail: "Update to DONE",
-      source: "agent"
+      detail: "DONE",
+      status: "PENDING",
     };
 
-    if (typeof (store as any).proposeChange === 'function') {
-        (db as any).insertProposal = vi.fn().mockReturnValue({ id: "PR-123" });
-        (store as any).proposeChange(proposal);
-        expect((db as any).insertProposal).toHaveBeenCalledWith(expect.objectContaining(proposal));
-    } else {
-        throw new Error("proposeChange not implemented");
-    }
+    store.addProposal(proposal);
+    expect(db.insertProposal).toHaveBeenCalledWith(proposal);
+  });
+
+  it("should list proposals", () => {
+    const mockProposals = [
+      { id: "p1", status: "PENDING" },
+      { id: "p2", status: "APPROVED" },
+    ];
+    vi.mocked(db.listProposals).mockReturnValue(mockProposals as any);
+
+    const result = store.listProposals();
+    expect(result).toEqual(mockProposals);
+  });
+
+  it("should approve a status update proposal", () => {
+    const proposal = {
+      id: "prop-1",
+      target_phase_id: "phase-1",
+      proposal_type: "STATUS_UPDATE",
+      detail: "DONE",
+      status: "PENDING",
+    };
+    const phase = { id: "phase-1", status: "IN_PROGRESS" };
+
+    vi.mocked(db.getProposal).mockReturnValue(proposal as any);
+    vi.mocked(db.getPhase).mockReturnValue(phase as any);
+
+    store.approveProposal("prop-1");
+
+    // Should update the phase status
+    expect(db.insertPhase).toHaveBeenCalledWith(expect.objectContaining({
+      id: "phase-1",
+      status: "DONE",
+    }));
+
+    // Should mark proposal as APPROVED
+    expect(db.insertProposal).toHaveBeenCalledWith(expect.objectContaining({
+      id: "prop-1",
+      status: "APPROVED",
+    }));
+  });
+
+  it("should reject a proposal", () => {
+    const proposal = {
+      id: "prop-1",
+      target_phase_id: "phase-1",
+      status: "PENDING",
+    };
+
+    vi.mocked(db.getProposal).mockReturnValue(proposal as any);
+
+    store.rejectProposal("prop-1");
+
+    expect(db.insertProposal).toHaveBeenCalledWith(expect.objectContaining({
+      id: "prop-1",
+      status: "REJECTED",
+    }));
   });
 });
