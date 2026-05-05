@@ -41,13 +41,9 @@ export class ShipBridge {
         },
       ];
 
-      notifySlack(MessageBuilder.phaseStart(this.record), {
-        type: "phase_start",
-        feature: event.featureId,
-        phase: event.phaseId,
-        payload: this.record as any,
-        timestamp: new Date().toISOString(),
-      });
+      // Foxtrot Charlie: No phaseStart notification.
+      // The PE started the ship — they know. Only messages
+      // with a bless CTA should reach Slack.
     });
 
     orchestrator.on("ship:failed", (event) => {
