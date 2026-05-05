@@ -26,12 +26,11 @@ export async function startServer(
     logger: true,
   });
 
-  // Fail-fast if GitHub webhook secret is missing (FR-H01, TC-H03)
+  // GitHub webhook is optional — plugin handles the missing case gracefully
   if (!config.server.githubWebhookSecret) {
-    console.error(
-      "Missing required configuration: GITHUB_WEBHOOK_SECRET. Run 'gwrk config set server.githubWebhookSecret <secret>' or set the environment variable.",
+    console.warn(
+      "GitHub webhook secret not configured. Webhook endpoint will be disabled. Set GITHUB_WEBHOOK_SECRET to enable.",
     );
-    process.exit(1);
   }
 
   const monitor = new SystemMonitor(config);
