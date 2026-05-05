@@ -8,12 +8,9 @@ import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
 import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { SandboxManager } from "../server/sandbox.js";
-import { MessageBuilder } from "../server/slack-messages.js";
-import { notifySlack } from "../server/slack-notify.js";
-import type { SlackEvent } from "../server/slack-presence.js";
-import type { DispatchRecord } from "../server/types.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
 import { type AgentBackend, loadConfig } from "../utils/config.js";
+import { ShipBridge } from "../server/ship-bridge.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -145,26 +142,6 @@ async function shipPhase(
     workflow: "work-until-done",
   });
 
-  const record: DispatchRecord = {
-    id: `ship-${runId}`,
-    featureId: feature,
-    phaseId: phaseId,
-    backend: backend,
-    status: "running",
-    branchName: getCurrentBranch(cwd),
-    attempts: [{ attemptNumber: 1, backend: backend, startedAt }],
-    tasks: [], // Phase-level record for sequential ship doesn't track sub-tasks here yet
-    createdAt: startedAt,
-  };
-
-  await notifySlack(MessageBuilder.phaseStart(record), {
-    type: "phase_start",
-    feature: record.featureId,
-    phase: record.phaseId,
-    payload: record as unknown as Record<string, unknown>,
-    timestamp: new Date().toISOString(),
-  });
-
   banner("ship", {
     Feature: feature,
     Phase: phase,
@@ -225,6 +202,9 @@ async function shipPhase(
         existingState,
       );
 
+      // Wire events to bridge for Slack notifications
+      new ShipBridge(orchestrator, cwd);
+
       const planStore = new PlanStore();
       orchestrator.on("plan:ship:complete", (event) => {
         planStore.handleShipComplete(event);
@@ -239,25 +219,6 @@ async function shipPhase(
     const durationS = Math.round((Date.now() - startTime) / 1000);
     finishRun(runId, { exit_code: 0, duration_s: durationS });
     success("ship", durationS, runId);
-
-    record.status = "completed";
-    // Notify about completion
-    await notifySlack(MessageBuilder.phaseComplete(record), {
-      type: "phase_complete",
-      feature: record.featureId,
-      phase: record.phaseId,
-      payload: record as unknown as Record<string, unknown>,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Also notify about review readiness
-    await notifySlack(MessageBuilder.reviewReady(record), {
-      type: "review_ready",
-      feature: record.featureId,
-      phase: record.phaseId,
-      payload: record as unknown as Record<string, unknown>,
-      timestamp: new Date().toISOString(),
-    });
   } catch (err: unknown) {
     const durationS = Math.round((Date.now() - startTime) / 1000);
     exitCode =
@@ -271,24 +232,6 @@ async function shipPhase(
       `\n  Error: ${err instanceof Error ? err.message : String(err)}`,
     );
     fail("ship", exitCode, durationS, runId);
-
-    record.status = "failed";
-    await notifySlack(
-      MessageBuilder.phaseFail(
-        record,
-        err instanceof Error ? err.message : String(err),
-      ),
-      {
-        type: "phase_fail",
-        feature: record.featureId,
-        phase: record.phaseId,
-        payload: {
-          ...record,
-          error: err instanceof Error ? err.message : String(err),
-        } as unknown as Record<string, unknown>,
-        timestamp: new Date().toISOString(),
-      },
-    );
   }
 
   // Write Execution Manifest (ADR-003)

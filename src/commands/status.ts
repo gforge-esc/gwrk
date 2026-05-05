@@ -45,7 +45,7 @@ Exit codes:
               .filter((d) => fs.statSync(path.join(specsDir, d)).isDirectory())
           : [];
 
-        out.write({
+        const statusData: any = {
           project: {
             name: config.project.name,
             root: projectRoot,
@@ -53,7 +53,27 @@ Exit codes:
           },
           specs: specs.length,
           agents: config.agents,
-        });
+        };
+
+        const pid = readPid();
+        if (pid) {
+          const url = `http://${config.server.host}:${config.server.port}/api/status`;
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              const serverStatus = (await response.json()) as SystemStatus;
+              statusData.server = serverStatus.server;
+              statusData.system = serverStatus.system;
+              statusData.dispatch = serverStatus.dispatch;
+              statusData.sandboxes = serverStatus.sandboxes;
+              statusData.network = serverStatus.network;
+            }
+          } catch (err) {
+            // Ignore fetch errors in JSON mode, just return project info
+          }
+        }
+
+        out.write(statusData);
         return;
       }
 
