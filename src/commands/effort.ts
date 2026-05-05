@@ -8,6 +8,7 @@ import { extractStories } from "../engine/spec-parser.js";
 import { loadConfig } from "../utils/config.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 export const effortCommand = new Command("effort")
   .description("Calculate deterministic effort estimation from spec stories")
@@ -16,9 +17,10 @@ export const effortCommand = new Command("effort")
     "The feature directory under specs/ (e.g. 001-cli-core)",
   )
   .option("--json", "Output structured JSON report to stdout")
-  .action(async (feature, options) => {
+  .action(async (featureInput, options) => {
     await withSignal("effort", async () => {
       const projectRoot = process.cwd();
+      const feature = resolveFeature(featureInput, projectRoot);
       const featureDir = path.join(projectRoot, "specs", feature);
 
       if (!fs.existsSync(featureDir)) {

@@ -9,6 +9,7 @@ import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 export const specifyCommand = new Command("spec")
   .description("Create or refine a feature specification")
@@ -23,6 +24,8 @@ export const specifyCommand = new Command("spec")
     ) => {
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
+        // Resolve prefix: "003" → "003-slack"
+        feature = resolveFeature(feature, cwd);
         const config = loadConfig(cwd);
         const backend = config.agents.define;
         const runtime = new WorkflowRuntime();

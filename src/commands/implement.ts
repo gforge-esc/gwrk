@@ -13,16 +13,18 @@ import {
 } from "../utils/state.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 
 export const implementAction = async (
-  feature: string,
+  featureInput: string,
   phase: string,
   opts: { dryRun?: boolean; agent?: string },
 ) => {
   await withSignal("implement", async () => {
     const cwd = process.cwd();
+    const feature = resolveFeature(featureInput, cwd);
     const specDir = path.join(cwd, "specs", feature);
     const scriptPath = path.join(cwd, "scripts/dev/agent-run.sh");
 

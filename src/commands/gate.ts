@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { runGate } from "../utils/exec.js";
 import { banner, color, fail, success } from "../utils/format.js";
 import { resolveFormat } from "../utils/output.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { loadTaskState } from "../utils/state.js";
 
@@ -298,9 +299,11 @@ Exit codes:
           );
         }
 
-        const normalizedFeature = targetFeature.startsWith("specs/")
-          ? targetFeature.replace("specs/", "")
-          : targetFeature;
+        const normalizedFeature = resolveFeature(
+          targetFeature.startsWith("specs/")
+            ? targetFeature.replace("specs/", "")
+            : targetFeature,
+        );
 
         // SINGLE TASK MODE
         if (options.task) {

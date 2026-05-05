@@ -6,6 +6,7 @@ import { banner, fail, success } from "../utils/format.js";
 import { loadTaskState } from "../utils/state.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 /**
  * gwrk test <feature> [--phase <N>]
@@ -16,9 +17,10 @@ export const testCommand = new Command("test")
   .description("Run vitest scoped to feature test files")
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option("-p, --phase <n>", "Phase number")
-  .action(async (feature: string, options: { phase?: string }) => {
+  .action(async (featureInput: string, options: { phase?: string }) => {
     await withSignal("test", async () => {
       const projectRoot = process.cwd();
+      const feature = resolveFeature(featureInput, projectRoot);
       const featureDir = path.join(projectRoot, "specs", feature);
 
       if (!fs.existsSync(featureDir)) {

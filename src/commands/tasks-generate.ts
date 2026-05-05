@@ -19,6 +19,7 @@ import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 import type { Task, TaskState } from "../utils/state.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 /**
  * gwrk define tasks <feature> — Decompose plan → tasks.json + gates
@@ -52,6 +53,8 @@ export const tasksGenerateCommand = new Command("tasks")
     ) => {
       await withSignal(`define tasks ${feature}`, async () => {
         const projectRoot = process.cwd();
+        // Resolve prefix: "003" → "003-slack"
+        feature = resolveFeature(feature, projectRoot);
         const featureDir = path.join(projectRoot, "specs", feature);
         const planPath = path.join(featureDir, "plan.md");
         const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");

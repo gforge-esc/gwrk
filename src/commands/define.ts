@@ -20,6 +20,7 @@ import { tasksGenerateCommand } from "./tasks-generate.js";
 import { testsGenerateCommand } from "./tests-generate.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 /**
  * gwrk define — The Definition Pillar (Clarity)
@@ -53,6 +54,8 @@ export const defineCommand = new Command("define")
         }
 
         const cwd = process.cwd();
+        // Resolve prefix: "003" → "003-slack"
+        feature = resolveFeature(feature, cwd);
         const config = loadConfig(cwd);
         const backend = config.agents.define;
 
