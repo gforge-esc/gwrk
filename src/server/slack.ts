@@ -50,9 +50,21 @@ export async function startSlackApp(deps: {
 }) {
   const slackApp = getSlackApp();
   if (slackApp) {
+    // Resolve real userId from Slack auth.test()
+    let userId = "U_UNKNOWN";
+    try {
+      const authResult = await slackApp.client.auth.test();
+      userId = (authResult.user_id as string) || "U_UNKNOWN";
+    } catch (err) {
+      console.warn("Failed to resolve Slack user ID from auth.test():", err);
+    }
+
+    // Resolve channelId from project config
+    const channelId = deps.config.project.slack?.channelId || "";
+
     const context: CommandContext = {
-      userId: "U_PE_USER", // This should be loaded or configured
-      channelId: "C_GWRK_CHANNEL", // Default channel
+      userId,
+      channelId,
       projectRoot: deps.projectRoot,
       buildServerUrl: `http://${deps.config.server.host}:${deps.config.server.port}`,
       queue: deps.queue,

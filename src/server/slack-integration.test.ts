@@ -17,6 +17,11 @@ vi.mock("@slack/bolt", () => {
     event: vi.fn(),
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
+    client: {
+      auth: {
+        test: vi.fn().mockResolvedValue({ user_id: "U_TEST" }),
+      },
+    },
   }));
   return { App };
 });
@@ -63,6 +68,7 @@ describe("slack-integration", () => {
       projectRoot: "/tmp",
       config: {
         server: { port: 18790, host: "localhost" },
+        project: { slack: { channelId: "C_TEST" } },
       } as unknown as GwrkConfig,
     });
 

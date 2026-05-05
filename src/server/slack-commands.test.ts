@@ -4,6 +4,28 @@ import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
 
+// Mock findOpenPr for approve command
+vi.mock("../db/runs.js", () => ({
+  findOpenPr: vi.fn().mockReturnValue({ pr_number: 42, pr_url: "https://github.com/test/pr/42" }),
+  listRuns: vi.fn().mockReturnValue([]),
+  getStats: vi.fn().mockReturnValue([]),
+}));
+
+// Mock execSync for gh pr merge
+vi.mock("node:child_process", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...mod,
+    execSync: vi.fn().mockReturnValue("Merged PR #42"),
+    spawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
+  };
+});
+
+// Mock resolveFeature to pass through
+vi.mock("../utils/resolve-feature.js", () => ({
+  resolveFeature: vi.fn().mockImplementation((input: string) => input),
+}));
+
 describe("slack-commands", () => {
   let mockQueue: Mocked<DispatchQueue>;
   let mockMonitor: Mocked<SystemMonitor>;
@@ -11,6 +33,7 @@ describe("slack-commands", () => {
   let context: CommandContext;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     mockQueue = {
       getQueue: vi.fn().mockReturnValue({
         active: [],
@@ -64,23 +87,61 @@ describe("slack-commands", () => {
     );
   });
 
-  it("handles dispatch command with feature ID", async () => {
-    const response = await handleSlashCommand("dispatch 003-slack", context);
+  it("handles dispatch command with feature and phase", async () => {
+    const response = await handleSlashCommand("dispatch 003-slack 3", context);
     expect(response.response_type).toBe("in_channel");
     expect(response.blocks[0].text.text).toContain(
       "Dispatching feature *003-slack*",
     );
+    expect(mockQueue.enqueue).toHaveBeenCalledWith({
+      featureId: "003-slack",
+      phaseId: "phase-03",
+    });
   });
 
-  it("handles approve command", async () => {
+  it("handles approve command — calls gh pr merge with PR from runs", async () => {
+    const { execSync } = await import("node:child_process");
     const response = await handleSlashCommand(
       "approve 003-slack phase-01",
       context,
     );
     expect(response.response_type).toBe("in_channel");
-    expect(response.blocks[0].text.text).toContain(
-      "*003-slack* phase *phase-01* approved and merged",
+    expect(response.blocks[0].text.text).toContain("PR #42");
+    expect(response.blocks[0].text.text).toContain("merged");
+    expect(execSync).toHaveBeenCalledWith(
+      "gh pr merge 42 --merge --delete-branch",
+      expect.objectContaining({ cwd: "/tmp" }),
     );
+  });
+
+  it("handles approve with no PR found", async () => {
+    const { findOpenPr } = await import("../db/runs.js");
+    vi.mocked(findOpenPr).mockReturnValue(null);
+
+    const response = await handleSlashCommand(
+      "approve 003-slack phase-01",
+      context,
+    );
+    expect(response.response_type).toBe("ephemeral");
+    expect(response.blocks[0].text.text).toContain("No open PR found");
+  });
+
+  it("handles ship command — spawns background process", async () => {
+    const { spawn } = await import("node:child_process");
+    const response = await handleSlashCommand("ship 003-slack 1", context);
+    expect(response.response_type).toBe("in_channel");
+    expect(response.blocks[0].text.text).toContain("Dispatching *003-slack*");
+    expect(spawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["ship", "003-slack", "1"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+  });
+
+  it("handles ship without args — returns usage", async () => {
+    const response = await handleSlashCommand("ship 003-slack", context);
+    expect(response.response_type).toBe("ephemeral");
+    expect(response.blocks[0].text.text).toContain("Usage");
   });
 
   it("handles pause command without args", async () => {
@@ -89,8 +150,9 @@ describe("slack-commands", () => {
     expect(response.blocks[0].text.text).toContain("Dispatch queue paused");
   });
 
-  it("returns help for empty command", async () => {
+  it("returns help for empty command — includes ship", async () => {
     const response = await handleSlashCommand("", context);
+    expect(response.blocks[0].text.text).toContain("ship");
     expect(response.blocks[0].text.text).toContain("Available commands");
   });
 
