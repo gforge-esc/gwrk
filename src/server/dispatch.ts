@@ -146,16 +146,8 @@ export class DispatchQueue {
 
     record.attempts.push(attempt);
 
-    // Phase Start Notification
-    if (record.attempts.length === 1) {
-      await notifySlack(MessageBuilder.phaseStart(record), {
-        type: "phase_start",
-        feature: record.featureId,
-        phase: record.phaseId,
-        payload: record as unknown as Record<string, unknown>,
-        timestamp: new Date().toISOString(),
-      });
-    }
+    // Foxtrot Charlie: No phaseStart notification.
+    // PE started the dispatch — they know. Only bless messages.
 
     try {
       // 1. Prepare Git
@@ -249,8 +241,9 @@ export class DispatchQueue {
       record.status = "completed";
       record.completedAt = attempt.completedAt;
 
-      await notifySlack(MessageBuilder.phaseComplete(record), {
-        type: "phase_complete",
+      // Foxtrot Charlie: reviewReady with merge CTA, not phaseComplete
+      await notifySlack(MessageBuilder.reviewReady(record), {
+        type: "review_ready",
         feature: record.featureId,
         phase: record.phaseId,
         payload: record as unknown as Record<string, unknown>,
