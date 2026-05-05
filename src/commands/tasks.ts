@@ -17,6 +17,7 @@ import {
 import type { Task, TaskState } from "../utils/state.js";
 
 import { createOutput, resolveFormat } from "../utils/output.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const tasksCommand = new Command("tasks")
@@ -38,9 +39,10 @@ Exit codes:
 tasksCommand
   .command("done <feature> <taskId>")
   .description("Mark a task as complete if the gate passes")
-  .action(async (feature: string, taskId: string) => {
+  .action(async (featureInput: string, taskId: string) => {
     await withSignal("tasks done", async () => {
       const projectRoot = process.cwd();
+      const feature = resolveFeature(featureInput, projectRoot);
       const featureDir = path.join(projectRoot, "specs", feature);
 
       let state: TaskState;
@@ -141,9 +143,10 @@ tasksCommand
 tasksCommand
   .command("verify <feature>")
   .description("Validate execution manifests and task coverage")
-  .action(async (feature: string) => {
+  .action(async (featureInput: string) => {
     await withSignal("tasks verify", async () => {
       const projectRoot = process.cwd();
+      const feature = resolveFeature(featureInput, projectRoot);
       const featureDir = path.join(projectRoot, "specs", feature);
 
       if (!fs.existsSync(featureDir)) {
@@ -201,7 +204,7 @@ tasksCommand
   .option("--compact", "Hide descriptions on open tasks")
   .action(
     async (
-      feature: string,
+      featureInput: string,
       options: { json?: boolean; compact?: boolean },
       command,
     ) => {
@@ -211,6 +214,7 @@ tasksCommand
           : resolveFormat(command);
 
         const projectRoot = process.cwd();
+        const feature = resolveFeature(featureInput, projectRoot);
         const featureDir = path.join(projectRoot, "specs", feature);
         let state: TaskState;
         try {
@@ -279,7 +283,7 @@ tasksCommand
   .option("--json", "Output in JSON format")
   .action(
     async (
-      feature: string,
+      featureInput: string,
       phase: string,
       options: { json?: boolean },
       command,
@@ -290,6 +294,7 @@ tasksCommand
           : resolveFormat(command);
 
         const projectRoot = process.cwd();
+        const feature = resolveFeature(featureInput, projectRoot);
         const featureDir = path.join(projectRoot, "specs", feature);
         const state = loadTaskState(featureDir);
 
@@ -316,11 +321,12 @@ tasksCommand
   .command("ready <feature>")
   .description("List all tasks ready for implementation")
   .option("--json", "Output in JSON format")
-  .action(async (feature: string, options: { json?: boolean }, command) => {
+  .action(async (featureInput: string, options: { json?: boolean }, command) => {
     await withSignal("tasks ready", async () => {
       const out = options.json ? createOutput("json") : resolveFormat(command);
 
       const projectRoot = process.cwd();
+      const feature = resolveFeature(featureInput, projectRoot);
       const featureDir = path.join(projectRoot, "specs", feature);
       const state = loadTaskState(featureDir);
       const readyTasks = listTasks(state).filter(

@@ -37,6 +37,7 @@ import {
 } from "../utils/state.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
@@ -45,12 +46,14 @@ const { GREEN, DIM, RESET, YELLOW, RED } = color;
  * Returns the exit code (0 = success, non-zero = failure).
  */
 async function shipPhase(
-  feature: string,
+  featureInput: string,
   phase: string,
   backend: AgentBackend,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
 ): Promise<number> {
+  // Resolve prefix: "003" → "003-slack"
+  const feature = resolveFeature(featureInput, cwd);
   const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
   // Normalize: accept "02", "2", or "phase-02" — scripts expect bare number
   const normalizedPhase = phase.replace(/^phase-/, "");

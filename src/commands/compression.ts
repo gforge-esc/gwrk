@@ -26,6 +26,7 @@ function getEffortReport(
 }
 
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 export const compressionCommand = new Command("compression")
   .description("Calculate development compression ratios")
@@ -136,6 +137,7 @@ export const compressionCommand = new Command("compression")
           );
         }
 
+        feature = resolveFeature(feature, projectRoot);
         const featureDir = path.join(projectRoot, "specs", feature);
         if (!fs.existsSync(featureDir)) {
           throw new CommandError(
