@@ -1,360 +1,204 @@
 ---
 type: specification
 feature: 002-build-server
-last_modified: "2026-03-08T18:40:00Z"
+last_modified: "2026-05-05T16:30:00Z"
+revision: 3
 ---
 
 # Feature Specification: 002 Build Server
 
-**Feature Branch**: `002-build-server`
+**Feature Branch**: `feat/002-build-server`
 **Created**: 2026-02-27
-**Revised**: 2026-03-08
-**Status**: Active
-**Input**: Local persistent Fastify daemon that serves as the control plane — dispatch queue, Docker sandbox manager, Git branch lifecycle, system resource monitoring, and SQLite execution ledger (ADR-002) integration.
+**Revised**: 2026-05-05 (v3 — daily-driver respec, remove Docker sandboxes, add Slack event bridge)
+**Status**: Revised
+**Input**: Local persistent Fastify daemon that serves as the gwrk control plane — agent dispatch tracking, Slack event bridge, system resource monitoring, sleep/wake resilience, and SQLite execution ledger.
+
+> **Revision Note (v3):** The original spec centered on Docker sandbox containers that were never implemented or needed. The ship loop runs agents locally via `child_process.spawn`. This revision removes the Docker abstraction, focuses on what the server *actually does* for a daily-driver workflow, and adds the missing Slack event bridge that connects the ship orchestrator to Slack notifications.
+
+---
+
+## 1. Architecture Summary
+
+The build server is a **background daemon** that provides:
+1. **Daemon lifecycle** — start/stop/status via CLI
+2. **Dispatch tracking** — record every agent dispatch in the execution ledger
+3. **Slack event bridge** — convert ShipOrchestrator events into actionable Slack messages
+4. **System resilience** — sleep/wake detection, network awareness, graceful degradation
+5. **Plan heartbeat** — periodic staleness/drift checks (implemented in 018)
+
+The server does NOT execute agents directly. That's the ShipOrchestrator's job. The server is the **observability and notification layer**.
 
 ---
 
 ## 2. User Scenarios & Testing
 
-### US-001 - Start Build Server (Priority: P0)
-As a Principal Engineer, I want to run `gwrk server start` so that a persistent Fastify daemon starts on `localhost:18790` and is ready to accept dispatch requests and manage Docker sandboxes.
+### US-001 - Start/Stop Build Server (Priority: P0)
+As a Principal Engineer, I want `gwrk server start` to launch a background daemon and `gwrk server stop` to shut it down, so that observability and Slack notifications are always running while I work.
 
-**Implements**: FR-001, FR-002
-
-**Independent Test**: Run `gwrk server start` and verify the daemon responds to HTTP.
+**Implements**: FR-001, FR-002, FR-003
 
 **Acceptance Scenarios**:
-1. **Given** no daemon is running, **When** the user runs `gwrk server start`, **Then**:
-   - `curl -s -o /dev/null -w '%{http_code}' http://localhost:18790/health` exits 0 and outputs `200`
-   - `gwrk server start 2>&1 | grep -q 'gwrk server listening on'` exits 0
-2. **Given** the daemon is already running, **When** the user runs `gwrk server start`, **Then**:
-   - Command exits with code 1
-   - `gwrk server start 2>&1 | grep -q 'Server already running'` exits 0
+1. **Given** no daemon is running, **When** `gwrk server start`, **Then**:
+   - `curl -s http://localhost:18790/health | jq -r '.status'` outputs `ok`
+   - PID file exists at `.gwrk/server.pid`
+2. **Given** daemon is running, **When** `gwrk server stop`, **Then**:
+   - Port released, PID file removed
+3. **Given** daemon is running, **When** `gwrk server start` again, **Then**:
+   - Exits 1 with "Server already running"
 
-### US-002 - Stop Build Server (Priority: P0)
-As a Principal Engineer, I want to run `gwrk server stop` so that the daemon shuts down gracefully, terminating any active sandboxes and releasing the port.
-
-**Implements**: FR-003
-
-**Independent Test**: Start the server, then stop it, verify the port is released.
-
-**Acceptance Scenarios**:
-1. **Given** the daemon is running, **When** the user runs `gwrk server stop`, **Then**:
-   - Command exits with code 0
-   - `curl -s http://localhost:18790/health 2>&1 | grep -qE 'Connection refused|Failed to connect'` exits 0
-2. **Given** no daemon is running, **When** the user runs `gwrk server stop`, **Then**:
-   - Command exits with code 1
-   - `gwrk server stop 2>&1 | grep -q 'No server running'` exits 0
-
-### US-003 - System Status (Priority: P0)
-As a Principal Engineer, I want to run `gwrk status` so that I see active agents, active sandboxes, dispatch queue depth, and system resource usage (CPU, memory, disk).
+### US-002 - System Status (Priority: P0)
+As a Principal Engineer, I want `gwrk status` to show server health, active ships, and system resources, so I can check operational state from any terminal.
 
 **Implements**: FR-004
 
-**Independent Test**: Start the server, run `gwrk status`, verify JSON output includes resource metrics.
+**Acceptance Scenarios**:
+1. **Given** daemon running, **When** `gwrk status --json`, **Then** JSON includes:
+   - `server.status`, `server.lifecycle`, `server.pid`, `server.port`
+   - `system.cpuPercent`, `system.memPercent`, `system.diskFreeGb`
+   - `network.status`
+   - `dispatch.queueDepth`, `dispatch.activeCount`
+
+### US-003 - Slack Event Bridge (Priority: P0)
+As a Principal Engineer, I want the server to listen for ShipOrchestrator events and convert them into Slack messages with clear "bless" actions, so that I can approve, retry, or review from my phone.
+
+**Implements**: FR-005, FR-006
+
+**Foxtrot Charlie Interaction Contract**:
+
+| Event | Pillar | Slack Message | Primary CTA |
+|-------|--------|---------------|-------------|
+| `ship:complete` | P3 Shipping | "🚢 Shipped: {feature} phase {N} — PR #{M}" | `[✅ Merge]` |
+| `ship:failed` | P3 Shipping | "⚠️ Ship Failed: {feature} — {reason}" | `[🔄 Retry]` |
+| `ship:blocked` | P3 Shipping | "🛑 Blocked: {feature} — {N} failed attempts" | `[📋 Escalate]` |
+| `define:spec:ready` | P2 Definition | "📐 Spec Ready: {feature}" | `[✅ Approve]` |
+| `define:plan:ready` | P2 Definition | "📐 Plan Ready: {feature}" | `[✅ Approve]` |
+| `plan:proposal` | P2 Definition | "📐 Proposal: {description}" | `[✅ Approve]` `[❌ Reject]` |
+| `harvest:done` | P4 Delivery | "🏆 Done Done! {feature}" | `[📊 View Metrics]` |
 
 **Acceptance Scenarios**:
-1. **Given** the daemon is running, **When** the user runs `gwrk status --json`, **Then**:
-   - `gwrk status --json | jq -r '.server.status'` outputs `running`
-   - `gwrk status --json | jq -e '.system.cpuPercent'` exits 0
-   - `gwrk status --json | jq -e '.system.memPercent'` exits 0
-   - `gwrk status --json | jq -e '.system.diskFreeGb'` exits 0
-   - `gwrk status --json | jq -e '.dispatch.queueDepth'` exits 0
-   - `gwrk status --json | jq -e '.sandboxes'` exits 0
-2. **Given** no daemon is running, **When** the user runs `gwrk status`, **Then**:
-   - `gwrk status --json | jq -r '.server.status'` outputs `stopped`
+1. **Given** server running with Slack configured, **When** ShipOrchestrator emits `ship:complete`, **Then**:
+   - Block Kit message with `[✅ Merge]` button appears in project channel
+   - Tapping Merge triggers `gh pr merge`
+2. **Given** ship fails, **When** `ship:failed` event fires, **Then**:
+   - Message with truncated error + `[🔄 Retry]` button
+   - Tapping Retry re-dispatches the same feature/phase
 
-### US-004 - Dispatch Phase to Sandbox (Priority: P0)
-As Agent-ZFG, I want the build server to accept a phase dispatch request so that a Docker sandbox is created, the phase branch is mounted, the agent context is injected, and the WUD loop executes inside the container.
+### US-004 - Slack Bless Actions (Priority: P0)
+As a Principal Engineer, I want button taps and emoji reactions in Slack to trigger real pipeline actions (merge PR, retry phase, approve spec), so that the pipeline advances from my phone.
 
-**Implements**: FR-005, FR-006, FR-007
-
-**Independent Test**: POST a dispatch request and verify a Docker container is created with the correct branch mounted.
+**Implements**: FR-007
 
 **Acceptance Scenarios**:
-1. **Given** the daemon is running and Docker is available, **When** a dispatch request is sent via `curl -X POST http://localhost:18790/api/dispatch -H 'Content-Type: application/json' -d '{"featureId":"001-cli-core","phaseId":"phase-01","backend":"gemini"}'`, **Then**:
-   - `curl -s http://localhost:18790/api/dispatch/001-cli-core/phase-01 | jq -r '.status'` outputs one of `queued`, `running`, `completed`, `failed`
-   - `docker ps --filter label=gwrk.feature=001-cli-core --filter label=gwrk.phase=phase-01 --format '{{.ID}}' | wc -l | grep -q '^1$'` exits 0 (while running)
+1. **Given** a `[✅ Merge]` button on a ship:complete message, **When** tapped, **Then**:
+   - PR is merged via `gh pr merge`
+   - Confirmation posted: "PR #{N} merged ✅"
+   - Message updated to show merged state
+2. **Given** a `[🔄 Retry]` button on a ship:failed message, **When** tapped, **Then**:
+   - Ship re-dispatched for the same feature/phase
+   - Confirmation posted: "Retrying {feature} phase {N}..."
+3. **Given** a ship:complete message, **When** user reacts with ✅, **Then**:
+   - Same merge flow as button tap
 
-### US-005 - Dispatch Queue with Retry (Priority: P0)
-As the build server orchestrator, I want a dispatch queue that manages phase assignments, respects system resource limits, and retries failed dispatches up to 3 times with backend escalation.
+### US-005 - Sleep/Wake Resilience (Priority: P0)
+As a Principal Engineer on a laptop, I want the daemon to survive macOS sleep/wake cycles without losing state, so that I can close my laptop and the server resumes cleanly.
 
 **Implements**: FR-008, FR-009
 
-**Independent Test**: Submit multiple dispatches exceeding resource limits and verify queuing behavior.
-
 **Acceptance Scenarios**:
-1. **Given** the daemon is running with `parallelism.local.maxClones` set to 2, **When** 3 dispatch requests are submitted, **Then**:
-   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.active | length'` outputs at most `2`
-   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.queued | length'` outputs at least `1`
-2. **Given** a dispatch fails 3 times on the primary backend, **When** `fallbackOrder` is configured, **Then**:
-   - `curl -s http://localhost:18790/api/dispatch/001-cli-core/phase-01 | jq -r '.attempts[-1].backend'` differs from `.attempts[0].backend`
+1. **Given** daemon running, **When** system sleeps (heartbeat drift > 3× interval), **Then**:
+   - `gwrk status --json | jq -r '.server.lifecycle'` → `sleeping`
+2. **Given** system wakes, **When** network verified, **Then**:
+   - lifecycle → `ready`, Slack reconnects
 
-### US-006 - Git Branch Lifecycle (Priority: P0)
-As Agent-ZFG, I want the build server to manage Git branches for each dispatched phase — creating the phase branch from the feature branch, and supporting merge-back with conflict detection.
+### US-006 - Network Awareness (Priority: P1)
+As a Principal Engineer, I want the server to detect when I'm offline and pause gracefully, so that agent dispatches don't fail due to network issues.
 
 **Implements**: FR-010
 
-**Independent Test**: Dispatch a phase and verify the correct branch is created from the feature branch.
-
 **Acceptance Scenarios**:
-1. **Given** a feature `001-cli-core` with a feature branch `feature/001-cli-core-wip`, **When** phase-01 is dispatched, **Then**:
-   - `git branch --list 'phase/001-cli-core-phase-01' | grep -q 'phase/001-cli-core-phase-01'` exits 0
-2. **Given** phase-01 is completed, **When** a merge-back is triggered, **Then**:
-   - `git log feature/001-cli-core-wip --oneline -1 | grep -q 'Merge phase/001-cli-core-phase-01'` exits 0
+1. **Given** network goes down, **When** detected, **Then**:
+   - `gwrk status --json | jq -r '.network.status'` → `offline`
+2. **Given** network restored, **When** detected, **Then**:
+   - status → `online`, operations resume
 
-### US-007 - Daemon PID Management (Priority: P0)
-As the CLI, I want the daemon to write a PID file on start and remove it on stop, so that `gwrk server start/stop` can detect whether the daemon is already running.
+### US-007 - Execution Ledger (Priority: P0)
+As a Principal Engineer, I want every agent dispatch recorded in SQLite with duration, exit code, and log path, so that I can query historical performance.
 
 **Implements**: FR-011
 
-**Independent Test**: Start the server, verify PID file exists, stop the server, verify PID file is removed.
-
 **Acceptance Scenarios**:
-1. **Given** no daemon is running, **When** `gwrk server start` is executed, **Then**:
-   - `test -f .gwrk/server.pid` exits 0
-   - `kill -0 $(cat .gwrk/server.pid) 2>/dev/null` exits 0
-2. **Given** the daemon is running, **When** `gwrk server stop` is executed, **Then**:
-   - `test -f .gwrk/server.pid` exits 1
-
-### US-008 - Sandbox Docker Image (Priority: P1)
-As a Platform Engineer, I want the build server to use a standard `gwrk-sandbox:bookworm-slim` Docker image with Node.js, Git, and `gh` pre-installed, so that agent sandboxes have a consistent execution environment.
-
-**Implements**: FR-012
-
-**Independent Test**: Build the sandbox image and verify required tools are available inside the container.
-
-**Acceptance Scenarios**:
-1. **Given** the sandbox Dockerfile exists, **When** `docker build -t gwrk-sandbox:bookworm-slim -f Dockerfile.sandbox .` runs, **Then**:
-   - `docker run --rm gwrk-sandbox:bookworm-slim node --version` exits 0
-   - `docker run --rm gwrk-sandbox:bookworm-slim git --version` exits 0
-   - `docker run --rm gwrk-sandbox:bookworm-slim gh --version` exits 0
-
-### US-009 - Context Compilation (Priority: P0)
-As the dispatch engine, I want the build server to compile agent context from `.agent/rules/`, persona files, spec, plan, and tasks into a single context payload injected into the sandbox at `/workspace/.gwrk/phase-context.md`.
-
-**Implements**: FR-013
-
-**Independent Test**: Dispatch a phase and verify the context file exists and contains expected sections.
-
-**Acceptance Scenarios**:
-1. **Given** a dispatch for feature `001-cli-core` phase-01, **When** the sandbox is created, **Then**:
-   - `docker exec <container_id> test -f /workspace/.gwrk/phase-context.md` exits 0
-   - `docker exec <container_id> grep -q 'Governance Rules' /workspace/.gwrk/phase-context.md` exits 0
-   - `docker exec <container_id> grep -q 'spec.md' /workspace/.gwrk/phase-context.md` exits 0
-
-### US-010 - Resource Throttling (Priority: P1)
-As the build server, I want to monitor CPU, memory, and disk usage and pause queued dispatches when limits are exceeded, so that the developer's machine stays responsive.
-
-**Implements**: FR-014
-
-**Independent Test**: Simulate high CPU usage and verify dispatch queue pauses.
-
-**Acceptance Scenarios**:
-1. **Given** `parallelism.local.maxCpu` is set to 80 and current CPU usage exceeds 80%, **When** a new dispatch request arrives, **Then**:
-   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.throttled'` outputs `true`
-2. **Given** `parallelism.local.minDiskGb` is set to 10 and free disk is below 10 GB, **When** a clone is requested, **Then**:
-   - `curl -s http://localhost:18790/api/dispatch -X POST -d '{}' 2>&1 | grep -q 'Insufficient disk space'` exits 0
-
-### US-011 - Survive macOS Sleep/Wake (Priority: P0)
-As the build server daemon, I want to detect macOS sleep and wake events so that dispatches pause during sleep, sandboxes freeze, and the queue resumes only after all downstream systems (Docker, network) are verified healthy on wake.
-
-**Implements**: FR-015, FR-016, FR-019
-
-**Independent Test**: Simulate a sleep/wake cycle (heartbeat drift injection) and verify dispatch queue pauses and resumes.
-
-**Acceptance Scenarios**:
-1. **Given** the daemon is running with active dispatches, **When** the system sleeps (heartbeat drift > `3 × interval`), **Then**:
-   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `sleeping`
-   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `true`
-   - All active sandbox containers are in `paused` state (`docker inspect --format '{{.State.Paused}}' <id>` outputs `true`)
-2. **Given** the daemon has detected sleep, **When** the system wakes and network is available, **Then**:
-   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `ready`
-   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `false`
-   - Previously paused sandbox containers are in `running` state
-3. **Given** the system wakes but network is unavailable, **When** the wake protocol runs, **Then**:
-   - `curl -s http://localhost:18790/api/status --json | jq -r '.server.lifecycle'` outputs `degraded`
-   - Dispatch queue remains paused
-
-### US-012 - Network Connectivity Awareness (Priority: P0)
-As the build server daemon, I want to monitor network interface state so that dispatches pause when the machine goes offline of the network and resume when connectivity is restored.
-
-**Implements**: FR-017, FR-018
-
-**Independent Test**: Simulate network loss (mock interface watcher) and verify dispatch queue pauses.
-
-**Acceptance Scenarios**:
-1. **Given** the daemon is running and network is available, **When** network connectivity is lost, **Then**:
-   - `curl -s http://localhost:18790/api/status --json | jq -r '.network.status'` outputs `offline`
-   - `curl -s http://localhost:18790/api/dispatch/queue | jq '.paused'` outputs `true`
-2. **Given** network is offline, **When** connectivity is restored, **Then**:
-   - `curl -s http://localhost:18790/api/status --json | jq -r '.network.status'` outputs `online`
-   - Dispatch queue resumes after health re-check
-
-### US-013 - Rich Health Check (Priority: P1)
-As a Principal Engineer, I want the `/health` endpoint to report component-level readiness (server, Docker, network) so that `gwrk status` shows the real operational state, not just "daemon is listening."
-
-**Implements**: FR-020, FR-021
-
-**Independent Test**: Query `/health` and verify it includes component-level status fields.
-
-**Acceptance Scenarios**:
-1. **Given** the daemon is running with Docker available and network online, **When** `/health` is queried, **Then**:
-   - `curl -s http://localhost:18790/health | jq -e '.components.server'` outputs `ok`
-   - `curl -s http://localhost:18790/health | jq -e '.components.docker'` outputs `ok`
-   - `curl -s http://localhost:18790/health | jq -e '.components.network'` outputs `ok`
-2. **Given** Docker daemon is unreachable, **When** `/health` is queried, **Then**:
-   - `curl -s http://localhost:18790/health | jq -r '.components.docker'` outputs `unavailable`
-   - `curl -s -o /dev/null -w '%{http_code}' http://localhost:18790/health` outputs `200` (degraded, not dead)
+1. **Given** a ship run completes, **When** querying `gwrk db query runs`, **Then**:
+   - Row exists with feature_id, phase_id, agent_backend, duration, exit_code, log_file
 
 ---
 
-## 3. Roles, Scopes & Permissions
+## 3. Functional Requirements
 
-_Leverages shared RBAC. No feature-specific roles. See RP-000._
+### Server Lifecycle
+- **FR-001**: `gwrk server start` MUST start a Fastify daemon on `localhost:18790` (configurable), write PID to `.gwrk/server.pid`, start Slack connection if configured.
+- **FR-002**: `/health` endpoint MUST return `{ status, components: { server, slack, network } }`.
+- **FR-003**: `gwrk server stop` MUST send SIGTERM, wait for graceful shutdown, remove PID file.
 
----
+### Status
+- **FR-004**: `/api/status` MUST return server state, system resources, network status, and dispatch stats.
 
-## 4. Functional Requirements
+### Slack Event Bridge
+- **FR-005**: Server MUST listen for ShipOrchestrator events (`ship:complete`, `ship:failed`, `ship:blocked`) and convert them to Block Kit Slack messages per the Foxtrot Charlie interaction contract.
+- **FR-006**: Every Slack message MUST have exactly one primary CTA that advances the Foxtrot Charlie progression. Messages without a bless action MUST NOT be sent.
+- **FR-007**: Button taps (`merge_pr`, `retry_phase`, `request_changes`) MUST trigger the corresponding pipeline action and post confirmation.
 
-- **FR-001**: System MUST provide a `gwrk server start` command that starts a Fastify daemon on `localhost:18790`, writes a PID file to `.gwrk/server.pid`, and responds to `/health` with HTTP 200. (Implements: US-001)
-- **FR-002**: The Fastify daemon MUST bind to `localhost:18790` (port configurable via `server.port` in `.gwrkrc.json`) and expose REST endpoints for dispatch, status, and queue management. (Implements: US-001)
-- **FR-003**: System MUST provide a `gwrk server stop` command that sends SIGTERM to the daemon process (via PID file), waits for graceful shutdown (active sandboxes terminated), removes the PID file, and confirms the port is released. (Implements: US-002)
-- **FR-004**: System MUST provide a `gwrk status` command that queries the daemon's `/api/status` endpoint and returns server state, active agents, sandbox count, dispatch queue depth, and system resources. (Implements: US-003)
-- **FR-005**: The daemon MUST expose `POST /api/dispatch` accepting `{featureId, phaseId, backend}` to create a sandbox, mount the phase branch, inject context, and start the agent's WUD loop. (Implements: US-004)
-- **FR-006**: The daemon MUST manage Docker container lifecycle for each dispatched phase: create container from `gwrk-sandbox:bookworm-slim`, mount phase branch at `/workspace`, label with `gwrk.feature` and `gwrk.phase`, destroy on completion or failure. (Implements: US-004)
-- **FR-007**: The dispatch engine MUST compile agent context into `/workspace/.gwrk/phase-context.md` containing: governance rules (`.agent/rules/*.md`), persona definition, feature spec, plan, current tasks, and phase-specific gate scripts. (Implements: US-009)
-- **FR-008**: The daemon MUST implement a dispatch queue that respects `parallelism.local.maxClones` and `parallelism.cloud.maxConcurrent` from `.gwrkrc.json`. Dispatches exceeding limits MUST be queued and processed FIFO as slots become available. (Implements: US-005)
-- **FR-009**: The dispatch engine MUST retry failed dispatches up to 3 times, then escalate to the next backend in `agents.fallbackOrder`. Every attempt MUST be recorded in the SQLite execution ledger (`runs` table) with timestamps, backend, exit code, and log path. (Implements: US-005, ADR-002)
-- **FR-010**: The daemon MUST manage Git branch lifecycle: create `phase/<feature>-<phase>` branches from `feature/<feature>-wip`, and support merge-back to the feature branch with conflict detection. (Implements: US-006)
-- **FR-011**: The daemon MUST write its process ID to `.gwrk/server.pid` on startup and remove the file on clean shutdown. `gwrk server start` MUST check for an existing PID file and verify the process is alive. (Implements: US-007)
-- **FR-012**: The project MUST include a `Dockerfile.sandbox` that builds `gwrk-sandbox:bookworm-slim` with Node.js, Git, `gh` CLI, and configured agent CLIs. (Implements: US-008)
-- **FR-013**: The dispatch engine MUST compile agent context by reading `.agent/rules/*.md`, the persona file, `specs/<feature>/spec.md`, `specs/<feature>/plan.md`, and `specs/<feature>/.gwrk/tasks.json`. (Implements: US-009)
-- **FR-014**: The daemon MUST monitor system resources (CPU, memory, disk) and throttle queued dispatches when limits from `.gwrkrc.json` are exceeded. (Implements: US-010)
-- **FR-015**: The daemon MUST detect macOS sleep/wake via wall-clock heartbeat drift. If elapsed time between heartbeat ticks exceeds `3 × heartbeatInterval`, the daemon MUST emit a `server:sleep` event, pause the dispatch queue, and call `docker pause` on all active gwrk sandbox containers. (Implements: US-011)
-- **FR-016**: On wake detection, the daemon MUST execute a Graceful Reconnect Protocol: (1) re-sample system resources, (2) verify Docker daemon reachability, (3) verify network connectivity, (4) emit `server:ready` only when all checks pass. The dispatch queue MUST NOT resume and sandboxes MUST NOT unpause until `server:ready` is emitted. (Implements: US-011)
-- **FR-017**: The daemon MUST monitor network interface state (via `os.networkInterfaces()` polling or platform-appropriate watcher) and emit `network:down` / `network:up` events. (Implements: US-012)
-- **FR-018**: When `network:down` is emitted, the dispatch queue MUST pause. When `network:up` is emitted, the Graceful Reconnect Protocol (FR-016) MUST execute before the queue resumes. (Implements: US-012)
-- **FR-019**: On `server:sleep`, the daemon MUST call `docker pause` on all containers labeled `gwrk.feature=*`. On `server:ready`, the daemon MUST call `docker unpause` on those containers and reset their internal timeout tracking. (Implements: US-011)
-- **FR-020**: The `/health` endpoint MUST return a JSON object with component-level readiness: `{ status: "ok" | "degraded", components: { server, docker, network } }`. Each component MUST report `ok`, `unavailable`, or `degraded`. (Implements: US-013)
-- **FR-021**: The daemon MUST expose a `server.lifecycle` field on the `/api/status` endpoint reporting one of: `starting`, `ready`, `sleeping`, `degraded`, `stopping`. (Implements: US-011, US-013)
-- **FR-022**: The daemon MUST run a container reaper on a 60-second interval that destroys any gwrk-labeled container whose `gwrk.startedAt` label age exceeds a configurable TTL (default: 2 hours). (Implements: GAP-002-A)
-- **FR-023**: On shutdown (`SIGTERM`/`SIGINT`), the daemon MUST destroy all gwrk-labeled Docker containers before releasing the PID file. (Implements: GAP-002-A, FR-003)
-- **FR-024**: System MUST provide a `gwrk server clean` command that removes all gwrk-labeled Docker containers and reports the count destroyed. This command MUST NOT require a running daemon. (Implements: GAP-002-A)
-- **FR-025**: `SandboxManager.createSandbox()` MUST check the count of active gwrk-labeled containers against `config.server.parallelism.maxConcurrentSandboxes` and reject with an error if the limit is reached. (Implements: GAP-002-A, FR-008)
-- **FR-026**: All integration test suites that call `createSandbox()` MUST call `destroyAll()` in `afterAll` to prevent container leaks across test runs. (Implements: GAP-002-A)
+### Resilience
+- **FR-008**: Daemon MUST detect sleep via heartbeat drift (elapsed > 3× interval) and transition lifecycle to `sleeping`.
+- **FR-009**: On wake, daemon MUST verify network + Slack before transitioning to `ready`.
+- **FR-010**: Daemon MUST monitor network via `os.networkInterfaces()` polling and emit `network:down`/`network:up`.
 
-#### FR-001 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Port already in use | `Port 18790 already in use` | 1 |
-| Server already running | `Server already running (pid: <PID>)` | 1 |
-| Docker not available | `Docker daemon not reachable` | 1 |
+### Execution Ledger
+- **FR-011**: Every agent dispatch MUST be recorded in SQLite `runs` table with: feature_id, phase_id, agent_backend, started_at, finished_at, exit_code, log_file, duration_s.
 
 ---
 
-## 5. Data Model Requirements
+## 4. What Was Removed (v3 Cuts)
 
-### DM-001: SQLite Execution Ledger (`~/.gwrk/gwrk.db`)
+The following were in v2 but are cut because they were never implemented and aren't needed for daily-driver:
 
-The build server is the primary writer for dispatch-related telemetry.
+- **Docker sandbox containers** (FR-005-old, FR-006-old, FR-012, FR-019, FR-022-026) — ship runs locally via child_process
+- **Dockerfile.sandbox** — not needed
+- **Container reaper** — not needed
+- **Git branch lifecycle via server** (FR-010-old) — ship-orchestrator owns this
+- **Context compilation** (FR-007-old, FR-013) — ship-orchestrator owns this
+- **Dispatch queue** (FR-008-old) — ship-orchestrator runs one phase at a time
+- **Resource throttling** (FR-014-old) — premature; no parallel dispatch
 
-- **Table: `runs`**: Records every dispatch attempt.
-  - `feature_id`, `phase_id`, `agent_backend`, `started_at`, `finished_at`, `exit_code`, `log_file`.
-- **Table: `history`**: Records state transitions (e.g., `queued` → `running` → `completed`).
-
-### DM-002: Dispatch Record (In-Memory)
-
-```typescript
-interface DispatchRecord {
-  id: string;                    // UUID
-  featureId: string;
-  phaseId: string;
-  backend: AgentBackend;
-  status: "queued" | "running" | "completed" | "failed" | "retrying";
-  containerId?: string;
-  branchName: string;
-  attempts: DispatchAttempt[];
-}
-```
+These may return in 005-parallel-dispatch if/when parallel agent execution is needed.
 
 ---
 
-## 6. Technical Constraints
+## 5. Technical Constraints
 
-- **TC-001**: Determinism — SHA256 input/output stability for all engine functions. Dispatch IDs are UUIDs. Dispatch ordering is FIFO.
-- **TC-002**: Air-Gapped — The daemon itself makes no external network calls.
-- **TC-003**: Fail-Fast Config — Zod validation with no `.default()` calls. Missing `server.port` → `process.exit(1)`.
-- **TC-004**: Localhost Only — The daemon MUST bind to `127.0.0.1` or `localhost`.
-- **TC-005**: PID File Discipline — PID file at `.gwrk/server.pid`.
-- **TC-006**: Docker Label Convention — labeled with `gwrk.feature=<featureId>` and `gwrk.phase=<phaseId>`.
-- **TC-007**: Graceful Shutdown — On SIGTERM/SIGINT, stop accepting new dispatches, wait for sandboxes (30s timeout), destroy containers, remove PID.
-- **TC-008**: No In-Process Agent Execution — Agents are ALWAYS invoked via Docker sandbox or `child_process`.
-- **TC-009**: Sleep Detection Cross-Platform — Sleep detection MUST use wall-clock heartbeat drift (pure JS). No native addons. IOKit/`caffeinate` integration is explicitly out of scope for initial implementation.
-- **TC-010**: Network Detection — Network state MUST use `os.networkInterfaces()` polling (configurable interval via `server.networkCheckIntervalMs` in `.gwrkrc.json`). No platform-specific watchers.
+- **TC-001**: Localhost only — daemon binds to `127.0.0.1`
+- **TC-002**: PID file at `.gwrk/server.pid`
+- **TC-003**: No in-process agent execution — agents run via child_process
+- **TC-004**: Sleep detection via pure JS heartbeat drift (no native addons)
+- **TC-005**: Network detection via `os.networkInterfaces()` polling
+- **TC-006**: Zod config validation — missing required fields = exit 1
 
 ---
 
-## 7. Testing Requirements
+## 6. Testing Requirements
 
-- **TR-001**: `src/commands/server.test.ts` — `server start/stop` logic. Vitest. (FR-001, FR-003, FR-011)
-- **TR-002**: `src/server/index.test.ts` — Fastify bootstrap and endpoints. Vitest. (FR-002, FR-004)
-- **TR-003**: `src/server/dispatch.test.ts` — Queue, throttle, retry, and SQLite recording. Vitest. (FR-008, FR-009)
-- **TR-004**: `src/server/sandbox.test.ts` — Docker container lifecycle. Vitest. (FR-006)
-- **TR-005**: `src/server/git-manager.test.ts` — Branch management and merge-back. Vitest. (FR-010)
-- **TR-006**: `src/server/context.test.ts` — Context compilation logic. Vitest. (FR-007, FR-013)
-- **TR-007**: `src/server/monitor.test.ts` — Resource monitoring and throttling. Vitest. (FR-014)
-- **TR-008**: Integration test — subprocess daemon + POST dispatch + Docker. Vitest. (FR-001, FR-005)
-- **TR-009**: `Dockerfile.sandbox` — Build sandbox image, verify `node`, `git`, `gh` are available. Shell test. (FR-012)
-- **TR-010**: `src/server/lifecycle.test.ts` — Heartbeat drift sleep detection, wake protocol, event emission. Vitest. (FR-015, FR-016, FR-021)
-- **TR-011**: `src/server/network.test.ts` — Network state detection, `isOnline()`, event emission. Vitest. (FR-017, FR-018)
-- **TR-012**: `src/server/routes/health.test.ts` — Component-level health response shape, degraded states. Vitest. (FR-020)
-
+- **TR-001**: `src/commands/server.test.ts` — start/stop, PID management
+- **TR-002**: `src/server/routes/status.test.ts` — status endpoint shape
+- **TR-003**: `src/server/routes/health.test.ts` — component health reporting
+- **TR-004**: `src/server/lifecycle.test.ts` — heartbeat drift, sleep/wake protocol
+- **TR-005**: `src/server/network.test.ts` — network state detection
+- **TR-006**: `src/server/slack-notify.test.ts` — event bridge, message dispatch
+- **TR-007**: `src/server/slack-actions.test.ts` — button handlers, bless actions
 
 ---
 
-## 8. Success Criteria
+## 7. Success Criteria
 
-- **SC-001**: `gwrk server start` launches a daemon that responds to `/health` within 2 seconds.
-- **SC-002**: `gwrk server stop` gracefully shuts down within 30 seconds.
-- **SC-003**: Dispatch request creates a Docker sandbox with correct branch and context.
-- **SC-004**: Every dispatch attempt is recorded in the SQLite `runs` table.
-- **SC-005**: Dispatch queue pauses within 1 heartbeat interval of sleep detection and resumes only after wake health checks pass.
-- **SC-006**: `/health` endpoint reports component-level status for server, Docker, and network.
-
----
-
-## 9. Verification Requirements
-
-- **VR-001**: E2E lifecycle test: start → dispatch → sandbox → check SQLite → stop.
-- **VR-002**: Queue throttle test: verify Nth+1 dispatch is queued.
-- **VR-003**: Retry escalation test: verify 3× fail → fallback backend.
-- **VR-004**: Sleep/wake lifecycle test: inject heartbeat drift, verify queue pauses, sandbox freezes, wake protocol runs, queue resumes.
-
----
-
-## 10. Coverage Matrix
-
-| US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
-|--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001, FR-002 | FR-001 | US-001 | TR-001 |
-| US-001 | FR-001, FR-002 | FR-002 | US-001 | TR-002 |
-| US-002 | FR-003 | FR-003 | US-002 | TR-001 |
-| US-003 | FR-004 | FR-004 | US-003 | TR-002 |
-| US-004 | FR-005, FR-006, FR-007 | FR-005 | US-004 | TR-002, TR-008 |
-| US-004 | FR-005, FR-006, FR-007 | FR-006 | US-004 | TR-004 |
-| US-004 | FR-005, FR-006, FR-007 | FR-007 | US-009 | TR-006 |
-| US-005 | FR-008, FR-009 | FR-008 | US-005 | TR-003 |
-| US-005 | FR-008, FR-009 | FR-009 | US-005 | TR-003 |
-| US-006 | FR-010 | FR-010 | US-006 | TR-005 |
-| US-007 | FR-011 | FR-011 | US-007 | TR-001 |
-| US-008 | FR-012 | FR-012 | US-008 | TR-009 |
-| US-009 | FR-013 | FR-013 | US-009 | TR-006 |
-| US-010 | FR-014 | FR-014 | US-010 | TR-007 |
-| US-011 | FR-015, FR-016, FR-019 | FR-015 | US-011 | TR-010 |
-| US-011 | FR-015, FR-016, FR-019 | FR-016 | US-011 | TR-010 |
-| US-011 | FR-015, FR-016, FR-019 | FR-019 | US-011 | TR-010 |
-| US-012 | FR-017, FR-018 | FR-017 | US-012 | TR-011 |
-| US-012 | FR-017, FR-018 | FR-018 | US-012 | TR-011 |
-| US-013 | FR-020, FR-021 | FR-020 | US-013 | TR-012 |
-| US-013 | FR-020, FR-021 | FR-021 | US-011, US-013 | TR-010 |
+- **SC-001**: `gwrk server start/stop` works reliably across sleep/wake cycles
+- **SC-002**: Every ship event produces exactly one Slack message with one clear CTA
+- **SC-003**: Every agent dispatch is recorded in the execution ledger
+- **SC-004**: `gwrk status` reflects real operational state

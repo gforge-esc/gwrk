@@ -1,325 +1,222 @@
-# Implementation Plan: 002 Build Server
+# Implementation Plan: 002 Build Server (v3 — Daily Driver)
 
-**Branch**: `002-build-server` | **Date**: 2026-03-11 | **Spec**: [spec.md](./spec.md)
+**Branch**: `feat/002-build-server` | **Date**: 2026-05-05 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
-Implement a local persistent Fastify daemon (localhost:18790) that serves as the gwrk control plane. The build server manages the dispatch queue, Docker sandbox lifecycle (including automated cleanup), Git branch management for phases, and system resource monitoring with sleep/wake resilience and network awareness. All execution data is persisted to the shared SQLite ledger.
+The build server is the **always-on backbone** that lets the principal engineer drive gwrk from Slack instead of a terminal. With 018 (build plan orchestrator) shipped, the DAG knows what's ready. With 004 (ship loop) hardened, the orchestrator can execute. What's missing is the **bridge**: server → Slack → principal engineer → bless → advance.
+
+**Target experience**: Open Slack on your phone. See "🚢 Shipped: 003-slack phase 2 — PR #31." Tap ✅ Merge. Move on. See "📐 Plan Ready: 006-pulse." Tap ✅ Approve. The pipeline advances. Close Slack. Done.
+
+Most of the server infrastructure exists (lifecycle, PID, status, monitoring, Slack connection). What's broken is the **event bridge** between the orchestrator and Slack, and the **bless actions** that make Slack interactions actually advance the pipeline.
 
 ---
 
 ## Phases and File Structure
 
-### Phase 1: Foundation & PID Management
+### Phase 1: Audit & Prune Dead Code
 
-Bootstrap the Fastify server, implement PID file management to ensure single-instance execution, and register the `server start/stop/clean` CLI commands.
+Remove Docker sandbox abstractions and dispatch queue code that was never used. The ship loop runs agents locally via `child_process`. These files add complexity, confuse agents during implementation, and test nothing real.
 
-**Files (7):**
-- `package.json` (MODIFY: Add `fastify`, `fastify-healthcheck`, `dockerode`, `uuid` dependencies)
-- `src/utils/config.ts` (MODIFY: Extend `GwrkConfigSchema` with `server` and `parallelism` blocks)
-- `src/server/pid.ts` (NEW: Implementation of `writePid`, `readPid`, `removePid`)
-- `src/server/index.ts` (NEW: Implementation of `startServer`, `stopServer` bootstrap)
-- `src/commands/server.ts` (NEW: Implementation of `gwrk server start/stop/clean` commands)
-- `src/cli.ts` (MODIFY: Register `server` command group)
-- `src/server/types.ts` (NEW: Shared domain types and Zod schemas)
+**Files (6):**
+- `src/server/sandbox.ts` (DELETE: Docker container lifecycle — never used)
+- `src/server/docker.ts` (MODIFY: Keep `ensureDocker()` health check only, remove sandbox operations)
+- `src/server/context.ts` (DELETE: Context compilation — ship-orchestrator owns this)
+- `src/server/dispatch-orchestrator.ts` (DELETE: Server-side dispatch queue — ship-orchestrator owns this)
+- `src/server/git-manager.ts` (DELETE: Server-side git lifecycle — ship-orchestrator owns this)
+- `src/server/routes/dispatch.ts` (MODIFY: Remove sandbox dispatch endpoints, keep run-tracking POST)
 
-**Requirements Addressed**: FR-001, FR-002, FR-003, FR-011, FR-024, TC-003, TC-004, TC-005
+**Requirements Addressed:** Removes technical debt, clears path for Phase 2
 
-**Dependencies**: 001-cli-core (Phase 1)
-
-**Contract Mapping**:
-- `contracts/server.md` → `startServer` → `src/server/index.ts`
-- `contracts/server.md` → `stopServer` → `src/server/index.ts`
-- `contracts/server.md` → `writePid` → `src/server/pid.ts`
-- `contracts/server.md` → `readPid` → `src/server/pid.ts`
-- `contracts/server.md` → `removePid` → `src/server/pid.ts`
+**Dependencies:** None
 
 #### Governance & Skills Contract
 | Rule / Skill | Applicability |
 |---|---|
-| .agents/rules/workspace.md | Config and environment management |
 | compile-gate | Always |
+| No breaking changes to `gwrk server start/stop/status` | Must verify |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | Unit | `src/commands/server.test.ts` | `gwrk server start` writes PID, `stop` removes it |
-| TR-002 | Unit | `src/server/index.test.ts` | Fastify starts on configured port |
+| TR-002-001 | E2E | `gwrk server start` + `gwrk server stop` | Still works after pruning |
+| TR-002-002 | E2E | `gwrk status --json` | Status shape unchanged |
+| TR-002-003 | Build | `pnpm build` | No dead import errors |
 
 #### Done When
-- `gwrk server start && test -f .gwrk/server.pid && gwrk server stop && test ! -f .gwrk/server.pid` exits 0
+- `pnpm build` passes with no dead imports
+- `gwrk server start` / `gwrk server stop` work unchanged
+- `gwrk status` returns same JSON shape
+- All deleted files have zero live importers
 
 ---
 
-### Phase 2: System Monitoring & Status
+### Phase 2: Ship Orchestrator → Server Event Bridge
 
-Implement the `SystemMonitor` for resource sampling (CPU, Mem, Disk) and the `status` command to report server health and resource usage.
+Wire the ShipOrchestrator's EventEmitter to the server's Slack notification system. Currently `ship.ts` (the CLI command handler) calls `notifySlack()` directly, bypassing the orchestrator. The orchestrator should own the events; the server should listen and route to Slack.
+
+**Files (4):**
+- `src/engine/ship-orchestrator.ts` (MODIFY: Emit typed events for every stage transition: `ship:start`, `ship:stage`, `ship:complete`, `ship:failed`, `ship:blocked`)
+- `src/server/ship-bridge.ts` (NEW: Listens for orchestrator events, converts to `MessageBuilder` calls, dispatches via `notifySlack()`)
+- `src/commands/ship.ts` (MODIFY: Remove direct `notifySlack` calls — the bridge handles it. Wire orchestrator events to bridge when server is running.)
+- `src/server/index.ts` (MODIFY: Initialize ship-bridge listener on server start)
+
+**Requirements Addressed:** FR-005, FR-006, US-003
+
+**Dependencies:** Phase 1
+
+**Contract Mapping:**
+- ShipOrchestrator emits → `ship-bridge.ts` listens → `MessageBuilder` builds → `notifySlack()` sends
+- If server is NOT running, ship still works (CLI output only, no Slack)
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| compile-gate | Always |
+| Foxtrot Charlie interaction contract | Every message must have exactly one primary CTA |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-002-004 | Unit | `src/server/ship-bridge.ts` | Event → correct MessageBuilder call |
+| TR-002-005 | Unit | `src/server/ship-bridge.ts` | `ship:complete` → `reviewReady` with Merge button |
+| TR-002-006 | Unit | `src/server/ship-bridge.ts` | `ship:failed` → `phaseFail` with Retry button |
+| TR-002-007 | Integration | `src/commands/ship.ts` | Ship without server running = no Slack calls, no crash |
+
+#### Done When
+- `gwrk ship 018 5` with server running sends exactly one Slack message (ship:complete → reviewReady)
+- Ship without server running works identically to today (CLI output only)
+- No `notifySlack` calls remain in `ship.ts` — all moved to bridge
+
+---
+
+### Phase 3: Bless Actions — Slack → Pipeline
+
+Make button taps and emoji reactions in Slack actually advance the pipeline. The `slack-actions.ts` handlers exist but several are stubs. Wire them to real operations using `gh` CLI and the plan DAG.
+
+**Files (4):**
+- `src/server/slack-actions.ts` (MODIFY: Wire `merge_pr` to `gh pr merge`, `retry_phase` to re-dispatch, `request_changes` to add PR comment)
+- `src/server/slack-commands.ts` (MODIFY: Wire `/gwrk status` to `gwrk plan status` DAG output, `/gwrk ship` to trigger dispatch)
+- `src/server/slack-home.ts` (MODIFY: Home tab shows: plan DAG status, pending blessings, active ships — not raw data dump)
+- `src/engine/plan-store.ts` (MODIFY: Add `advanceFeature()` — after merge, update plan DAG status for the feature/phase)
+
+**Requirements Addressed:** FR-007, US-004, US-005
+
+**Dependencies:** Phase 2
+
+**Foxtrot Charlie Bless Map:**
+| Action | Button/Command | Pipeline Effect |
+|---|---|---|
+| Merge PR | `[✅ Merge]` or ✅ reaction | `gh pr merge`, update plan DAG, post confirmation |
+| Retry Ship | `[🔄 Retry]` | Re-dispatch `gwrk ship <feature> <phase>` |
+| Request Changes | `[✏️ Request Changes]` | Add PR review comment, post note to channel |
+| Approve Spec | `[✅ Approve Spec]` | Mark spec reviewed, advance to plan generation |
+| Approve Plan | `[✅ Approve Plan]` | Mark plan reviewed, enable shipping |
+| View Logs | `[📋 View Logs]` | Post log file tail to ephemeral message |
+| Status | `/gwrk status` | Plan DAG summary from `gwrk plan status` |
+| Ship from Slack | `/gwrk ship <feature> <phase>` | Trigger ship dispatch from phone |
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| compile-gate | Always |
+| No silent failures | Every button tap must post confirmation or error |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-002-008 | Unit | `src/server/slack-actions.ts` | `merge_pr` calls `execSync('gh pr merge')` |
+| TR-002-009 | Unit | `src/server/slack-actions.ts` | `retry_phase` triggers dispatch |
+| TR-002-010 | Unit | `src/server/slack-home.ts` | Home tab includes plan DAG status section |
+| TR-002-011 | Unit | `src/server/slack-commands.ts` | `/gwrk status` returns plan DAG output |
+
+#### Done When
+- Tap ✅ Merge in Slack → PR merged, plan DAG updated, confirmation posted
+- Tap 🔄 Retry → ship re-dispatched, confirmation posted
+- `/gwrk status` → plan DAG summary (same output as `gwrk plan status`)
+- `/gwrk ship 006 1` → ship dispatched from Slack
+- Home tab shows: features by status, pending blessings, active ships
+
+---
+
+### Phase 4: Define Event Bridge
+
+Extend the event bridge to cover the Definition pillar. When `gwrk define spec` or `gwrk define plan` completes, the server should notify Slack so the PE can approve from their phone.
 
 **Files (3):**
-- `src/server/monitor.ts` (NEW: Implementation of `SystemMonitor` class)
-- `src/server/routes/status.ts` (NEW: `GET /api/status` route)
-- `src/commands/status.ts` (NEW: `gwrk status` CLI command)
+- `src/commands/define.ts` (MODIFY: Emit `define:spec:ready` and `define:plan:ready` events after successful agent dispatch)
+- `src/server/ship-bridge.ts` (MODIFY: Also handle define events — build spec/plan-ready messages with Approve/Revise buttons)
+- `src/server/slack-actions.ts` (MODIFY: Add `approve_spec` and `approve_plan` action handlers)
 
-**Requirements Addressed**: FR-004, FR-014, US-003, US-010
+**Requirements Addressed:** US-003 (extend to Definition pillar)
 
-**Dependencies**: Phase 1
-
-**Contract Mapping**:
-- `contracts/monitor.md` → `SystemMonitor.sample()` → `src/server/monitor.ts`
-- `contracts/monitor.md` → `SystemMonitor.isThrottled()` → `src/server/monitor.ts`
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/workspace.md | System resource sampling |
-| compile-gate | Always |
+**Dependencies:** Phase 3
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-007 | Unit | `src/server/monitor.test.ts` | `sample()` returns correct resource usage metrics |
+| TR-002-012 | Unit | `src/server/ship-bridge.ts` | `define:spec:ready` → spec-ready message with Approve button |
+| TR-002-013 | Unit | `src/server/slack-actions.ts` | `approve_spec` advances plan state |
 
 #### Done When
-- `gwrk server start && gwrk status --json | jq -e '.system.cpuPercent'` exits 0
+- `gwrk define spec 006` → Slack: "📐 Spec Ready: 006-pulse" with `[✅ Approve]`
+- Tap Approve → spec marked reviewed in plan DAG
+- `gwrk define plan 006` → Slack: "📐 Plan Ready" with `[✅ Approve]`
 
 ---
 
-### Phase 3: Git & Context Management
+### Phase 5: Resilience & Polish
 
-Implement Git branch lifecycle management for phases and the context compiler that prepares the agent's work environment.
-
-**Files (2):**
-- `src/server/git-manager.ts` (NEW: Implementation of `createPhaseBranch`, `mergePhaseBack`)
-- `src/server/context.ts` (NEW: Implementation of `compileContext`, `writeContextToSandbox`)
-
-**Requirements Addressed**: FR-007, FR-010, FR-013, US-006, US-009
-
-**Dependencies**: Phase 1
-
-**Contract Mapping**:
-- `contracts/git-manager.md` → `createPhaseBranch` → `src/server/git-manager.ts`
-- `contracts/git-manager.md` → `mergePhaseBack` → `src/server/git-manager.ts`
-- `contracts/context.md` → `compileContext` → `src/server/context.ts`
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/workspace.md | Git operations and branch management |
-| compile-gate | Always |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-005 | Unit | `src/server/git-manager.test.ts` | `createPhaseBranch` creates branch from feature-wip |
-| TR-006 | Unit | `src/server/context.test.ts` | `compileContext` includes all required markdown sections |
-
-#### Done When
-- `vitest src/server/git-manager.test.ts src/server/context.test.ts` exits 0
-
----
-
-### Phase 4: Docker Sandbox Lifecycle
-
-Implement the `SandboxManager` to handle Docker container creation, destruction, labeling, and automated cleanup (reaper). Provide the `Dockerfile.sandbox` for the agent execution environment.
-
-**Files (2):**
-- `src/server/sandbox.ts` (NEW: Implementation of `createSandbox`, `destroySandbox`, `destroyAllSandboxes`, `reapStale`)
-- `Dockerfile.sandbox` (NEW: Bookworm-slim image with Node, Git, gh)
-
-**Requirements Addressed**: FR-006, FR-012, FR-019, FR-022, FR-023, FR-025, FR-026, US-008, TC-006, TC-008, GAP-002-A
-
-**Dependencies**: Phase 1
-
-**Contract Mapping**:
-- `contracts/sandbox.md` → `createSandbox` → `src/server/sandbox.ts`
-- `contracts/sandbox.md` → `destroySandbox` → `src/server/sandbox.ts`
-- `contracts/sandbox.md` → `destroyAllSandboxes` → `src/server/sandbox.ts`
-- `contracts/sandbox.md` → `reapStale` → `src/server/sandbox.ts`
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/workspace.md | Docker operations and image management |
-| compile-gate | Always |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-004 | Integration | `src/server/sandbox.test.ts` | `createSandbox` starts container with correct labels |
-| TR-009 | Shell | `Dockerfile.sandbox` | Image builds and contains node, git, gh |
-
-#### Done When
-- `docker images | grep gwrk-sandbox` exits 0
-
----
-
-### Phase 5: Dispatch Queue & API
-
-Implement the FIFO dispatch queue with retry/escalation logic and expose the `/api/dispatch` endpoints. Persist dispatch events directly to the shared SQLite ledger.
-
-**Files (2):**
-- `src/server/dispatch.ts` (NEW: Implementation of `DispatchQueue` class)
-- `src/server/routes/dispatch.ts` (NEW: POST/GET dispatch routes)
-
-**Requirements Addressed**: FR-005, FR-008, FR-009, US-004, US-005, DM-001, DM-002, TC-001
-
-**Dependencies**: Phase 2, Phase 3, Phase 4, 001-cli-core (SQLite utility)
-
-**Contract Mapping**:
-- `contracts/dispatch.md` → `DispatchQueue.enqueue` → `src/server/dispatch.ts`
-- `contracts/dispatch.md` → `DispatchQueue.processNext` → `src/server/dispatch.ts`
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/workspace.md | API design and persistence |
-| compile-gate | Always |
-
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-003 | Unit | `src/server/dispatch.test.ts` | `enqueue` adds to FIFO queue and records in SQLite |
-| TR-008 | Integration | `src/server/dispatch.integration.test.ts` | POST /api/dispatch triggers sandbox creation |
-
-#### Done When
-- `curl -X POST http://localhost:18790/api/dispatch -d '{"featureId":"001-cli-core","phaseId":"phase-01","backend":"gemini"}'` returns 200
-
----
-
-### Phase 6: Resilience & Connectivity
-
-Implement macOS sleep/wake detection, network connectivity monitoring, and the rich health check endpoint.
+Harden sleep/wake, network detection, and the execution ledger. These exist but need testing and edge-case fixes.
 
 **Files (3):**
-- `src/server/lifecycle.ts` (NEW: Heartbeat drift detection, sleep/wake events)
-- `src/server/network.ts` (NEW: Connectivity monitoring via `os.networkInterfaces()`)
-- `src/server/routes/health.ts` (NEW: Rich `/health` endpoint with component status)
+- `src/server/lifecycle.ts` (MODIFY: Verify heartbeat drift detection works with Slack reconnection)
+- `src/server/network.ts` (MODIFY: Verify network state polling emits correct events)
+- `src/server/slack.ts` (MODIFY: Add Slack reconnection on wake — currently drops connection after sleep)
 
-**Requirements Addressed**: FR-015, FR-016, FR-017, FR-018, FR-019, FR-020, FR-021, US-011, US-012, US-013
+**Requirements Addressed:** FR-008, FR-009, FR-010, US-005, US-006
 
-**Dependencies**: Phase 1, Phase 5
-
-**Contract Mapping**:
-- `contracts/server.md` → `/health` → `src/server/routes/health.ts`
-
-#### Governance & Skills Contract
-| Rule / Skill | Applicability |
-|---|---|
-| .agents/rules/workspace.md | Lifecycle and event management |
-| compile-gate | Always |
+**Dependencies:** Phase 4
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-010 | Unit | `src/server/lifecycle.test.ts` | Heartbeat drift > 3x interval triggers `server:sleep` |
-| TR-011 | Unit | `src/server/network.test.ts` | `network:down` pauses the dispatch queue |
-| TR-012 | Unit | `src/server/routes/health.test.ts` | `/health` returns status for server, docker, network |
+| TR-002-014 | Unit | `src/server/lifecycle.ts` | Heartbeat drift → lifecycle `sleeping` |
+| TR-002-015 | Unit | `src/server/network.ts` | Interface change → correct event |
+| TR-002-016 | Integration | Sleep/wake | Slack reconnects after wake |
 
 #### Done When
-- `curl -s http://localhost:18790/health | jq -e '.components.docker'` exits 0
+- Close laptop lid, open it → `gwrk status` shows `ready` within 30s
+- Slack bot reconnects and responds to `/gwrk status` after wake
+- Network loss → `gwrk status` shows `offline` → network restore → `online`
 
 ---
 
-## Type Dependency Graph
+## Build Plan Integration
 
-| Shared Type | Defined In | Consumed By |
-|---|---|---|
-| `SystemStatus` | `src/server/types.ts` | `monitor.ts`, `routes/status.ts`, `commands/status.ts` |
-| `SandboxInfo` | `src/server/types.ts` | `sandbox.ts`, `routes/status.ts` |
-| `AgentBackend` | `src/server/types.ts` | `dispatch.ts`, `sandbox.ts`, `config.ts` |
+This plan uses 018's DAG for tracking. After spec approval:
 
----
+```bash
+# Generate tasks from this plan
+gwrk define plan-to-tasks 002
 
-## Mockup-to-Selector Mapping
+# Check what's ready
+gwrk plan next
 
-_No mockups exist for this feature._
+# Ship phase by phase
+gwrk ship 002 1
+gwrk ship 002 2
+# ... etc
+```
 
----
-
-## Deferred Items
-
-| Spec Item | Title | Reason | Target |
-|---|---|---|---|
-| TC-009 | Sleep Detection (Native) | Out of scope for initial implementation (using heartbeat drift). | Future |
-| TC-010 | Network Detection (Native) | Out of scope for initial implementation (using polling). | Future |
+The ship orchestrator (018) handles the implement→review→PR→CI loop for each phase. The build server (this feature) handles the Slack bridge so the PE can bless each phase from their phone.
 
 ---
 
-## Coverage Matrix
+## Success Criteria
 
-| Spec Item | Phase | Status |
-|---|---|---|
-| US-001 | 1 | Planned |
-| US-002 | 1 | Planned |
-| US-003 | 2 | Planned |
-| US-004 | 5 | Planned |
-| US-005 | 5 | Planned |
-| US-006 | 3 | Planned |
-| US-007 | 1 | Planned |
-| US-008 | 4 | Planned |
-| US-009 | 3 | Planned |
-| US-010 | 2 | Planned |
-| US-011 | 6 | Planned |
-| US-012 | 6 | Planned |
-| US-013 | 6 | Planned |
-| FR-001 | 1 | Planned |
-| FR-002 | 1 | Planned |
-| FR-003 | 1 | Planned |
-| FR-004 | 2 | Planned |
-| FR-005 | 5 | Planned |
-| FR-006 | 4 | Planned |
-| FR-007 | 3 | Planned |
-| FR-008 | 5 | Planned |
-| FR-009 | 5 | Planned |
-| FR-010 | 3 | Planned |
-| FR-011 | 1 | Planned |
-| FR-012 | 4 | Planned |
-| FR-013 | 3 | Planned |
-| FR-014 | 2 | Planned |
-| FR-015 | 6 | Planned |
-| FR-016 | 6 | Planned |
-| FR-017 | 6 | Planned |
-| FR-018 | 6 | Planned |
-| FR-019 | 4, 6 | Planned |
-| FR-020 | 6 | Planned |
-| FR-021 | 6 | Planned |
-| FR-022 | 4 | Planned |
-| FR-023 | 4 | Planned |
-| FR-024 | 1 | Planned |
-| FR-025 | 4 | Planned |
-| FR-026 | 4 | Planned |
-| DM-001 | 5 | Planned |
-| DM-002 | 1 | Planned |
-| DM-003 | 1, 2 | Planned |
-| TC-001 | 5 | Planned |
-| TC-002 | - | N/A (CLI Mandate) |
-| TC-003 | 1 | Planned |
-| TC-004 | 1 | Planned |
-| TC-005 | 1 | Planned |
-| TC-006 | 4 | Planned |
-| TC-007 | 1 | Planned |
-| TC-008 | 4 | Planned |
-| TC-009 | 6 | Planned |
-| TC-010 | 6 | Planned |
-| TR-001 | 1 | Planned |
-| TR-002 | 1 | Planned |
-| TR-003 | 5 | Planned |
-| TR-004 | 4 | Planned |
-| TR-005 | 3 | Planned |
-| TR-006 | 3 | Planned |
-| TR-007 | 2 | Planned |
-| TR-008 | 5 | Planned |
-| TR-009 | 4 | Planned |
-| TR-010 | 6 | Planned |
-| TR-011 | 6 | Planned |
-| TR-012 | 6 | Planned |
-| SC-001 | 1 | Planned |
-| SC-002 | 1 | Planned |
-| SC-003 | 4, 5 | Planned |
-| SC-004 | 5 | Planned |
-| SC-005 | 6 | Planned |
-| SC-006 | 6 | Planned |
-| VR-001 | 5 | Planned |
-| VR-002 | 2, 5 | Planned |
-| VR-003 | 5 | Planned |
-| VR-004 | 6 | Planned |
+1. **Phone-first**: PE can approve specs, merge PRs, retry failures, and check status from Slack without opening a laptop
+2. **Silent when idle**: No Slack noise when nothing needs attention
+3. **One CTA per message**: Every notification has exactly one primary action that advances the pipeline
+4. **Resilient**: Server survives sleep/wake, network loss, and Slack disconnection
+5. **Ledger complete**: Every agent dispatch recorded with queryable history
