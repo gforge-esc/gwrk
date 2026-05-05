@@ -254,3 +254,61 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
     });
   });
 });
+
+describe("extractJsonFromOutput", () => {
+  // Import the function directly (it's exported)
+  let extractJsonFromOutput: (stdout: string) => unknown;
+
+  beforeEach(async () => {
+    const mod = await import("./workflow-runtime.js");
+    extractJsonFromOutput = mod.extractJsonFromOutput;
+  });
+
+  it("should extract JSON from markdown code fences", () => {
+    const stdout = `I will review the code now.
+\`\`\`json
+{"summary": "All good", "intents": []}
+\`\`\``;
+    const result = extractJsonFromOutput(stdout) as Record<string, unknown>;
+    expect(result.summary).toBe("All good");
+  });
+
+  it("should take the LAST fenced JSON block when agent self-corrects", () => {
+    const stdout = `Generating output...
+\`\`\`json
+{"summary": "Wrong answer", "intents": []}
+\`\`\`
+Wait, let me fix that.
+\`\`\`json
+{"summary": "Corrected answer", "intents": [{"action": "WRITE_FILE"}]}
+\`\`\``;
+    const result = extractJsonFromOutput(stdout) as Record<string, unknown>;
+    expect(result.summary).toBe("Corrected answer");
+  });
+
+  it("should extract bare JSON from mixed thinking + output", () => {
+    const stdout = `I checked the files and found issues.
+{"summary": "Review done", "intents": []}`;
+    const result = extractJsonFromOutput(stdout) as Record<string, unknown>;
+    expect(result.summary).toBe("Review done");
+  });
+
+  it("should handle pure JSON output", () => {
+    const stdout = '{"summary": "Clean", "intents": []}';
+    const result = extractJsonFromOutput(stdout) as Record<string, unknown>;
+    expect(result.summary).toBe("Clean");
+  });
+
+  it("should throw on no JSON in output", () => {
+    expect(() => extractJsonFromOutput("Just plain text")).toThrow(
+      /Expected JSON object/,
+    );
+  });
+
+  it("should handle nested objects in JSON", () => {
+    const json = '{"summary": "s", "intents": [{"action": "WRITE_FILE", "nested": {"a": 1}}]}';
+    const stdout = `Thinking...\n\`\`\`json\n${json}\n\`\`\``;
+    const result = extractJsonFromOutput(stdout) as Record<string, unknown>;
+    expect(result.summary).toBe("s");
+  });
+});

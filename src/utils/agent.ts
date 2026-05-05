@@ -35,6 +35,7 @@ export interface DispatchOptions {
   contextPath?: string;
   workDir?: string;
   stdin?: string;
+  quiet?: boolean;
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
@@ -148,6 +149,23 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       stdio: ["pipe", "pipe", "pipe"],
     });
 
+    // Quiet mode: spinner instead of streaming output
+    const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let spinnerIdx = 0;
+    let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+    if (opts.quiet) {
+      spinnerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        const frame = SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length];
+        spinnerIdx++;
+        process.stdout.write(
+          `\r${DIM}${frame} agent running... ${mins}m ${secs}s${RESET}  `,
+        );
+      }, 200);
+    }
+
     if (stdin && child.stdin) {
       child.stdin.write(stdin);
       child.stdin.end();
@@ -191,6 +209,14 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
         return;
       }
 
+      // Quiet mode: write to log only, skip stdout
+      if (opts.quiet) {
+        if (logStream) {
+          logStream.write(`${line}\n`);
+        }
+        return;
+      }
+
       stampLine(line, startEpoch, logStream);
     };
 
@@ -213,6 +239,10 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
     }
 
     child.on("close", (code) => {
+      if (spinnerInterval) {
+        clearInterval(spinnerInterval);
+        process.stdout.write("\r\x1b[K"); // Clear spinner line
+      }
       const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
       const mins = Math.floor(elapsed / 60);
       const secs = elapsed % 60;
@@ -220,6 +250,15 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
       logStream.write(`# Exit Code : ${code ?? 1}\n`);
       logStream.end();
+
+      if (opts.quiet) {
+        const status = (code ?? 1) === 0 ? "✓" : "✗";
+        const relLogPath = path.relative(process.cwd(), logPath);
+        process.stdout.write(
+          `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
+        );
+      }
+
       resolve({
         exitCode: code ?? 1,
         logPath,
@@ -256,6 +295,7 @@ export interface TaskDispatch {
   env?: Record<string, string>;
   workflow?: string;
   featureDir?: string;
+  quiet?: boolean;
 }
 
 /**
@@ -381,6 +421,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   } = await dispatchAgent({
     ...opts,
     stdin: dispatch.stdin,
+    quiet: task.quiet,
   });
   const durationS = Math.round((Date.now() - startTime) / 1000);
 

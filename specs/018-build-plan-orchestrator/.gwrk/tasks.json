@@ -232,8 +232,8 @@
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-01T16:04:14.000Z"
+          "completedAt": "2026-05-01T16:04:14.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T020",
@@ -252,8 +252,8 @@
           "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-01T16:04:14.000Z"
+          "completedAt": "2026-05-01T16:04:14.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T022",
@@ -262,8 +262,8 @@
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-05-01T16:04:14.000Z"
+          "completedAt": "2026-05-01T16:04:14.000Z",
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
@@ -280,47 +280,52 @@
         {
           "id": "T023",
           "title": "Implement src/server/plan-viz.ts",
-          "description": "NEW: Sigma.js HTML generation",
-          "status": "open",
+          "description": "NEW: Sigma.js HTML generation\n\nREVIEW FAIL (lint): noExplicitAny — FR-018. (FIXED)\nREVIEW PASS (code): Health visualization added to nodes. Critical path highlighted with border.",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-04T23:40:00Z",
           "classification": "greenfield"
         },
         {
           "id": "T024",
           "title": "Implement src/server/heartbeat.ts",
-          "description": "MODIFY: Add build plan health checks",
-          "status": "open",
+          "description": "MODIFY: Add build plan health checks\n\nRE-OPENED (UAT): Heartbeat reporting uses a placeholder channel ID ('C_GWRK_CHANNEL') instead of fetching from configuration, preventing actual Slack alerts. (FIXED)\n\nREVIEW FAIL (code): TR-018-005 — Persistent placeholder. (FIXED)\nREVIEW PASS (code): Smart health updates prevent unnecessary updated_at resets. Recovery logic implemented to clear health to GREEN when no longer stale/drifted.",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-04T23:40:00Z"
         },
         {
           "id": "T025",
           "title": "Implement src/commands/plan.ts",
-          "description": "MODIFY: Add `viz` and `review` subcommands",
-          "status": "open",
+          "description": "MODIFY: Add `viz` and `review` subcommands\n\nRE-OPENED (UAT): 'gwrk plan viz' command generates HTML but does not open a browser as required by the 'Done When' criteria. (FIXED)\n\nREVIEW FAIL (code): FR-018-005 — Missing browser integration. (FIXED)\nREVIEW PASS (code): Added health status visualization to 'gwrk plan status' output per US-014.",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-04T23:40:00Z"
         },
         {
           "id": "T026",
           "title": "Implement src/engine/plan-store.ts",
-          "description": "MODIFY: Proposal management",
-          "status": "open",
+          "description": "MODIFY: Proposal management\n\nREVIEW PASS (code): Proposal CRUD and status update logic verified.",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-01T17:02:15.053Z",
           "classification": "greenfield"
         },
         {
           "id": "T027",
           "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-018-005 — Hollow tests. (FIXED)\nREVIEW PASS (test): Robust tests added for PlanHeartbeat logic and generatePlanVizHtml content. CLI subcommands coverage verified.",
+          "status": "completed",
           "gateScript": "gates/T027-gate.sh",
           "sp": 0,
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-05-04T23:40:00Z"
         }
       ],
       "sp_estimate": 0,

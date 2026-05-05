@@ -6,7 +6,7 @@ import {
   resolveReviewPlugin,
   validatePhaseScope,
 } from "../plugins/review-plugin.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+
 import {
   type TaskDispatch,
   type TaskResult,
@@ -28,10 +28,45 @@ import {
   type StageResult,
 } from "./ship-types.js";
 
+// ANSI helpers for progress output
+const DIM = "\x1b[2m";
+const RESET = "\x1b[0m";
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/**
+ * Run a synchronous blocking operation with a visible spinner.
+ * Clears the spinner line on completion and prints the result.
+ */
+function withSpinner<T>(label: string, fn: () => T): T {
+  let idx = 0;
+  const start = Date.now();
+  const interval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    const frame = SPINNER[idx % SPINNER.length];
+    idx++;
+    process.stdout.write(
+      `\r${DIM}    ${frame} ${label}... ${elapsed}s${RESET}  `,
+    );
+  }, 150);
+
+  try {
+    const result = fn();
+    clearInterval(interval);
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    process.stdout.write(`\r\x1b[K    ✓ ${label} (${elapsed}s)\n`);
+    return result;
+  } catch (err) {
+    clearInterval(interval);
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    process.stdout.write(`\r\x1b[K    ✗ ${label} (${elapsed}s)\n`);
+    throw err;
+  }
+}
+
 export class ShipOrchestrator extends EventEmitter {
   private config: ShipRunConfig;
   private state: ShipState;
-  private workflowRuntime: WorkflowRuntime;
+
 
   constructor(config: ShipRunConfig, state?: ShipState) {
     super();
@@ -41,7 +76,7 @@ export class ShipOrchestrator extends EventEmitter {
     } else {
       this.state = this.initializeState();
     }
-    this.workflowRuntime = new WorkflowRuntime();
+
   }
 
   private initializeState(): ShipState {
@@ -75,7 +110,12 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   public async run(): Promise<number> {
-    console.log(`Starting/Resuming Ship Loop: ${this.state.stage}`);
+    const phaseNum = this.config.phaseId
+      .replace("phase-", "")
+      .replace(/^0+/, "");
+    console.log(
+      `\n▸ ship ${this.config.featureId} Phase ${phaseNum} (Iteration ${this.state.iteration}/${this.config.maxIterations})`,
+    );
 
     while (
       this.state.stage !== ShipStage.DONE &&
@@ -105,7 +145,7 @@ export class ShipOrchestrator extends EventEmitter {
       }
 
       if (!result.success) {
-        console.error(`Stage ${this.state.stage} failed: ${result.error}`);
+        console.log(`  \x1b[31m✗ ${this.state.stage}\x1b[0m — ${result.error}`);
         return result.exitCode;
       }
 
@@ -164,21 +204,29 @@ export class ShipOrchestrator extends EventEmitter {
       this.config.featureId,
     );
 
-    // 1. Snapshot
+    // 1. Snapshot tasks.json before review
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // 2. Resolve and Execute via WorkflowRuntime
-      // This handles built-ins vs local overrides automatically.
-      const result = await this.workflowRuntime.executeWorkflow(
-        workflowName,
+      // 2. Dispatch the review agent directly.
+      //    The review agent modifies tasks.json via tool calls (re-opening
+      //    failed tasks). We don't need its JSON output — readVerdict()
+      //    determines GO/NO-GO by diffing tasks.json.
+      const result = await this.dispatchWithFailback({
         prompt,
-        {
-          projectRoot: this.config.cwd,
-          agent: this.config.backend,
-          model: this.config.geminiModel,
-        },
-      );
+        featureDir: `specs/${this.config.featureId}`,
+        agent: this.config.backend,
+        env: {},
+        quiet: true,
+      });
+
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          exitCode: result.exitCode,
+          error: `${workflowName} agent exited ${result.exitCode}`,
+        };
+      }
 
       // 3. Post-dispatch validation (Snapshot-Diff-Revert)
       validatePhaseScope(
@@ -188,16 +236,19 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // Determine verdict from task state - the review agent re-opens tasks on NO-GO.
+      // 4. Determine verdict from task state diff
       const verdict = this.readVerdict();
-      console.log(`  ${workflowName} verdict: ${verdict}`);
+      console.log(
+        `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
+      );
 
       if (verdict === "GO") {
         return { success: true, exitCode: 0 };
       }
       return this.handleNoGo(workflowName);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const msg = rawMsg.length > 300 ? `${rawMsg.substring(0, 300)}…` : rawMsg;
       console.error(`  ${workflowName} dispatch error: ${msg}`);
       return {
         success: false,
@@ -221,6 +272,7 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   private async stageBranchSetup(): Promise<StageResult> {
+    console.log("  ▸ BRANCH_SETUP");
     // FR-002: Dirty tree fail fast
     if (await isDirty(this.config.cwd)) {
       return {
@@ -301,7 +353,7 @@ export class ShipOrchestrator extends EventEmitter {
       if (fs.existsSync(gatePath)) {
         const gateResult = await runGate(gatePath);
         if (gateResult.passed) {
-          console.log(`  pre-flight PASS — gate already satisfied: ${task.id}`);
+          console.log(`  ✓ pre-flight PASS: ${task.id}`);
           // Mark task as completed in state
           task.status = "completed";
           task.completedAt = new Date().toISOString();
@@ -320,13 +372,22 @@ export class ShipOrchestrator extends EventEmitter {
 
     // FR-019: dispatchToAgent
     try {
-      const prompt = `Phase ${this.config.phaseId} Implementation\n\nTasks:\n${tasksToDispatch.map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n")}`;
+      const isRetry = this.state.iteration > 1;
+      const prompt = isRetry
+        ? this.buildRetryPrompt(tasksToDispatch)
+        : this.buildInitialPrompt(tasksToDispatch);
+
+      const taskIds = tasksToDispatch.map((t) => t.id).join(", ");
+      console.log(
+        `  ▸ IMPLEMENT  ${isRetry ? `retry (${this.state.iteration}/${this.config.maxIterations})` : `${tasksToDispatch.length} task(s) (${taskIds})`}`,
+      );
 
       const result = await this.dispatchWithFailback({
         agent: this.config.backend,
         workflow: "gwrk-implement",
         featureDir: `specs/${this.config.featureId}`,
         prompt,
+        quiet: true,
       });
 
       if (result.exitCode === 0) {
@@ -349,12 +410,14 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   private async stageCodeReview(): Promise<StageResult> {
+    console.log("  ▸ CODE_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
     const prompt = `Phase ${this.config.phaseId} Code Review`;
     return this.executeReviewWorkflow(plugin.codeReviewWorkflow, prompt);
   }
 
   private async stageUatReview(): Promise<StageResult> {
+    console.log("  ▸ UAT_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
 
     // Scope UAT prompt to phase-specific user stories.
@@ -400,15 +463,22 @@ export class ShipOrchestrator extends EventEmitter {
     const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
     if (openTasks.length > 0) {
       console.log(
-        `  ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
+        `    ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
       );
+      // Show review feedback summary for each re-opened task
+      for (const task of openTasks) {
+        if (task.description) {
+          const firstLine = task.description.split("\n")[0].trim();
+          console.log(`      ${task.id}: ${firstLine}`);
+        }
+      }
       return "NO-GO";
     }
     return "GO";
   }
 
   private async stagePrCi(): Promise<StageResult> {
-    console.log("Creating PR and awaiting CI...");
+    console.log("  ▸ PR_CI");
     const branchName = this.state.branchName;
     const specName = this.config.featureId;
 
@@ -423,23 +493,30 @@ export class ShipOrchestrator extends EventEmitter {
 
       if (porcelain) {
         const changeCount = porcelain.split("\n").length;
-        console.log(`  Committing ${changeCount} uncommitted change(s)...`);
+        console.log(`    committing ${changeCount} change(s)`);
         execSync("git add -A", { cwd: this.config.cwd });
         const phaseNum = this.config.phaseId
           .replace("phase-", "")
           .replace(/^0+/, "");
-        execSync(
-          `git commit -m "chore(${this.config.featureId}): pre-PR cleanup (Phase ${phaseNum})"`,
-          { cwd: this.config.cwd },
+        withSpinner("running pre-commit checks", () =>
+          execSync(
+            `git commit -m "chore(${this.config.featureId}): pre-PR cleanup (Phase ${phaseNum})"`,
+            {
+              cwd: this.config.cwd,
+              env: { ...process.env, GWRK_SHIP: "1" },
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          ),
         );
       }
 
       // Always push — branch may not be on remote yet, or have unpushed commits
-      console.log(`  Pushing ${branchName} to origin...`);
-      execSync(`git push -u origin ${branchName}`, {
-        cwd: this.config.cwd,
-        stdio: ["ignore", "ignore", "pipe"],
-      });
+      withSpinner(`pushing ${branchName}`, () =>
+        execSync(`git push -u origin ${branchName}`, {
+          cwd: this.config.cwd,
+          stdio: ["ignore", "pipe", "pipe"],
+        }),
+      );
     } catch (gitErr: unknown) {
       const msg = gitErr instanceof Error ? gitErr.message : String(gitErr);
       return {
@@ -451,10 +528,12 @@ export class ShipOrchestrator extends EventEmitter {
 
     try {
       // Check for existing PR
-      const prListRaw = execSync(
-        `gh pr list --head "${branchName}" --base develop --json number --jq '.[0].number'`,
-        { cwd: this.config.cwd, encoding: "utf-8" },
-      ).trim();
+      const prListRaw = withSpinner("checking for existing PR", () =>
+        execSync(
+          `gh pr list --head "${branchName}" --base develop --json number --jq '.[0].number'`,
+          { cwd: this.config.cwd, encoding: "utf-8" },
+        ).trim(),
+      );
 
       let prNumber =
         prListRaw !== "null" && prListRaw !== "" ? prListRaw : null;
@@ -499,9 +578,11 @@ _Generated by gwrk ship_`;
         const prBodyPath = path.join("/tmp", `gwrk-pr-body-${Date.now()}.md`);
         fs.writeFileSync(prBodyPath, prBody, "utf-8");
 
-        const createOutput = execSync(
-          `gh pr create --title "feat(${formattedSpec}): Phase ${phaseNum}" --body-file "${prBodyPath}" --base develop`,
-          { cwd: this.config.cwd, encoding: "utf-8" },
+        const createOutput = withSpinner("creating PR", () =>
+          execSync(
+            `gh pr create --title "feat(${formattedSpec}): Phase ${phaseNum}" --body-file "${prBodyPath}" --base develop`,
+            { cwd: this.config.cwd, encoding: "utf-8" },
+          ),
         );
 
         const match = createOutput.match(/pull\/(\d+)/);
@@ -511,17 +592,19 @@ _Generated by gwrk ship_`;
       }
 
       if (prNumber) {
-        console.log(`  PR #${prNumber} created/found. Waiting for CI...`);
+        console.log(`    PR #${prNumber} ready`);
         // gh pr checks blocks until finished, returning non-zero if failed.
         // If no required checks are configured, treat as pass.
         try {
-          execSync(
-            `gh pr checks "${prNumber}" --watch --required --interval 30`,
-            {
-              cwd: this.config.cwd,
-              encoding: "utf-8",
-              stdio: ["ignore", "pipe", "pipe"],
-            },
+          withSpinner("waiting for CI", () =>
+            execSync(
+              `gh pr checks "${prNumber}" --watch --required --interval 30`,
+              {
+                cwd: this.config.cwd,
+                encoding: "utf-8",
+                stdio: ["ignore", "pipe", "pipe"],
+              },
+            ),
           );
         } catch (ciErr: unknown) {
           const ciMsg = ciErr instanceof Error ? ciErr.message : String(ciErr);
@@ -549,6 +632,52 @@ _Generated by gwrk ship_`;
     }
   }
 
+  /**
+   * Build the prompt for a first-attempt implementation.
+   */
+  private buildInitialPrompt(tasks: Task[]): string {
+    return `Phase ${this.config.phaseId} Implementation\n\nTasks:\n${tasks.map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n")}`;
+  }
+
+  /**
+   * Build a targeted prompt for retry after NO-GO review.
+   * Extracts structured feedback (WHERE/FIX) from task descriptions
+   * and constrains the agent to edit only those specific files.
+   */
+  private buildRetryPrompt(tasks: Task[]): string {
+    const fixes: string[] = [];
+
+    for (const task of tasks) {
+      const desc = task.description || "";
+
+      // Extract WHERE field — the file the review flagged
+      const whereMatch = desc.match(/WHERE:\s*(\S+)/);
+      const fixMatch = desc.match(/FIX:\s*(.+?)(?:\n|$)/);
+
+      if (whereMatch) {
+        fixes.push(
+          `## ${task.id}: ${task.title}\n**FILE TO EDIT:** ${whereMatch[1]}\n${fixMatch ? `**WHAT TO FIX:** ${fixMatch[1].trim()}\n` : ""}**FULL REVIEW FEEDBACK:**\n${desc}`,
+        );
+      } else {
+        // No structured WHERE — pass through with constraint reminder
+        fixes.push(
+          `## ${task.id}: ${task.title}\n` + `**REVIEW FEEDBACK:**\n${desc}`,
+        );
+      }
+    }
+
+    return [
+      `Phase ${this.config.phaseId} — RETRY (Iteration ${this.state.iteration}/${this.config.maxIterations})`,
+      "",
+      "CONSTRAINT: This is a RETRY after code review returned NO-GO.",
+      "Do NOT re-implement files from scratch. Only edit the SPECIFIC files",
+      "mentioned in the review feedback below. If the review says a TEST file",
+      "is broken, fix the TEST file — do not rewrite the source file.",
+      "",
+      ...fixes,
+    ].join("\n");
+  }
+
   private handleNoGo(stage: string): StageResult {
     this.state.iteration++;
     if (this.state.iteration > this.config.maxIterations) {
@@ -574,7 +703,7 @@ _Generated by gwrk ship_`;
     }
 
     console.log(
-      `NO-GO in ${stage}, looping back to IMPLEMENT (Iteration ${this.state.iteration})`,
+      `  ↻ NO-GO → retry IMPLEMENT (${this.state.iteration}/${this.config.maxIterations})`,
     );
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
   }

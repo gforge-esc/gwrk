@@ -64,6 +64,13 @@ Violations cause review failures. No exceptions.
 - `import type` for type-only imports.
 - Source files: `.ts` only. NEVER `.js` in `src/`.
 
+**No Placeholders**:
+- NEVER use hardcoded placeholder values (e.g., `"TODO"`, `"C_GWRK_CHANNEL"`, `"PLACEHOLDER"`).
+- If a value should come from config, READ the config schema (`config.ts`) and wire it.
+- If a feature requires a system call (e.g., opening a browser), IMPLEMENT the call.
+- Comments like `// In a real CLI, we'd...` or `// TODO: get from config` are FAILURES.
+  Implement it or mark the task as blocked with a specific reason — never stub.
+
 **Project-specific overrides**: If `.gwrk/rules/` exists, read those files too.
 They extend (not replace) these baseline rules.
 </code_quality>

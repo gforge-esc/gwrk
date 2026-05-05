@@ -5,6 +5,7 @@ import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
+import { PlanHeartbeat } from "./heartbeat.js";
 import { LifecycleMonitor } from "./lifecycle.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
@@ -14,7 +15,7 @@ import { healthRoutes } from "./routes/health.js";
 import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
-import { startSlackApp, stopSlackApp } from "./slack.js";
+import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
 
 export async function startServer(
   config: GwrkConfig,
@@ -102,6 +103,11 @@ export async function startServer(
   lifecycle.start();
   network.start();
 
+  // FR-015: Build Plan Heartbeat
+  const slackApp = getSlackApp();
+  const planHeartbeat = new PlanHeartbeat(config, slackApp);
+  planHeartbeat.start();
+
   await healthRoutes(server, lifecycle, network, sandbox);
   await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
   await dispatchRoutes(server, queue);
@@ -110,6 +116,7 @@ export async function startServer(
 
   const shutdown = async () => {
     server.log.info("Shutting down server...");
+    planHeartbeat.stop();
     await stopSlackApp();
     lifecycle.stop();
     network.stop();

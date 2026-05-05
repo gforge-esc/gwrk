@@ -7,7 +7,7 @@ import * as agent from "../utils/agent";
 import * as gateRunner from "../utils/gate-runner";
 import * as state from "../utils/state";
 import * as reviewPlugin from "../plugins/review-plugin";
-import { WorkflowRuntime } from "../plugins/workflow-runtime";
+
 
 vi.mock("node:fs");
 vi.mock("node:child_process", async (importOriginal) => {
@@ -27,7 +27,7 @@ vi.mock("../utils/agent");
 vi.mock("../utils/gate-runner");
 vi.mock("../utils/state");
 vi.mock("../plugins/review-plugin");
-vi.mock("../plugins/workflow-runtime");
+
 vi.mock("../utils/manifest", () => ({
   assembleDigest: vi.fn().mockReturnValue(["mock digest"]),
 }));
@@ -58,11 +58,7 @@ describe("ShipOrchestrator", () => {
         uat: []
       }
     });
-    vi.mocked(WorkflowRuntime.prototype.executeWorkflow).mockResolvedValue({
-      summary: "Review passed",
-      verdict: "GO",
-      reopenedTasks: [],
-    } as any);
+
     vi.mocked(state.loadTaskState).mockReturnValue({
       featureId: "004-ship-loop",
       createdAt: new Date().toISOString(),
@@ -116,8 +112,7 @@ describe("ShipOrchestrator", () => {
     expect(exitCode).toBe(0);
     expect((orchestrator as any).state.stage).toBe(ShipStage.DONE);
     expect(git.createBranch).toHaveBeenCalledWith(config.cwd, "feat/004-ship-loop", "develop");
-    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(1); // IMPLEMENT
-    expect(WorkflowRuntime.prototype.executeWorkflow).toHaveBeenCalledTimes(2); // CODE_REVIEW, UAT_REVIEW
+    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(3); // IMPLEMENT + CODE_REVIEW + UAT_REVIEW
   });
 
   it("should fail-fast if working tree is dirty", async () => {
@@ -150,9 +145,8 @@ describe("ShipOrchestrator", () => {
     expect(exitCode).toBe(0);
     // IMPLEMENT stage should have called runGate but NOT dispatchToAgent for implementation
     expect(gateRunner.runGate).toHaveBeenCalled();
-    // 2 calls for reviews, none for implementation
-    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(0); 
-    expect(WorkflowRuntime.prototype.executeWorkflow).toHaveBeenCalledTimes(2);
+    // 2 calls for reviews (dispatchToAgent), none for implementation
+    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(2);
   });
 
   it("should loop back to IMPLEMENT on NO-GO review", async () => {
@@ -186,8 +180,7 @@ describe("ShipOrchestrator", () => {
 
     expect(exitCode).toBe(0);
     expect((orchestrator as any).state.iteration).toBe(2);
-    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(1); // 1 IMPLEMENT pass, 2nd is skipped as tasks are completed
-    expect(WorkflowRuntime.prototype.executeWorkflow).toHaveBeenCalledTimes(3); // 1 NO-GO, 2 GO reviews
+    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(4); // 1 IMPLEMENT + 1 CODE_REVIEW (NO-GO) + 1 IMPLEMENT retry skipped (tasks completed via loadTaskState) + review retries
   });
 
   it("should trip circuit breaker after MAX_ITERATIONS", async () => {

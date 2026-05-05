@@ -194,6 +194,61 @@ export function getAllDependencies(
 }
 
 /**
+ * Insert or replace a proposal.
+ */
+export function insertProposal(
+  proposal: PlanProposal,
+  db?: Database.Database,
+): void {
+  const conn = db ?? getDb();
+  conn
+    .prepare(
+      `INSERT OR REPLACE INTO plan_proposals (
+         id, target_phase_id, proposal_type, detail, source, status, updated_at
+       )
+       VALUES (
+         @id, @target_phase_id, @proposal_type, @detail, @source, @status, datetime('now')
+       )`,
+    )
+    .run({
+      ...proposal,
+      detail: proposal.detail ?? null,
+      source: proposal.source ?? null,
+    });
+}
+
+/**
+ * Get a proposal by ID.
+ */
+export function getProposal(
+  id: string,
+  db?: Database.Database,
+): PlanProposal | undefined {
+  const conn = db ?? getDb();
+  return conn.prepare("SELECT * FROM plan_proposals WHERE id = ?").get(id) as
+    | PlanProposal
+    | undefined;
+}
+
+/**
+ * List all proposals.
+ */
+export function listProposals(db?: Database.Database): PlanProposal[] {
+  const conn = db ?? getDb();
+  return conn
+    .prepare("SELECT * FROM plan_proposals ORDER BY created_at DESC")
+    .all() as PlanProposal[];
+}
+
+/**
+ * Delete a proposal.
+ */
+export function deleteProposal(id: string, db?: Database.Database): void {
+  const conn = db ?? getDb();
+  conn.prepare("DELETE FROM plan_proposals WHERE id = ?").run(id);
+}
+
+/**
  * Delete a phase.
  */
 export function deletePhase(id: string, db?: Database.Database): void {

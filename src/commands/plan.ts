@@ -75,8 +75,13 @@ planCommand
           if (p.status === "DONE" || p.status === "SHIPPED") pColor = GREEN;
           else if (p.status === "IN_PROGRESS") pColor = YELLOW;
 
+          let healthIcon = " ";
+          if (p.health === "YELLOW") healthIcon = `${YELLOW}⚠${RESET}`;
+          else if (p.health === "RED") healthIcon = `${RED}✗${RESET}`;
+          else if (p.health === "GREEN") healthIcon = `${GREEN}✓${RESET}`;
+
           console.log(
-            `  ${pColor}↳ ${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${pColor}${p.status}${RESET} ${DIM}(${p.sp_estimate} SP)${RESET}`,
+            `  ${pColor}↳ ${p.id.padEnd(12)}${RESET} ${p.name.padEnd(35)} ${pColor}${p.status.padEnd(12)}${RESET} ${healthIcon} ${DIM}(${p.sp_estimate} SP)${RESET}`,
           );
         }
         console.log("");
@@ -469,27 +474,115 @@ planCommand
   .command("viz")
   .description("Open interactive graph visualization")
   .option("--dry-run", "Show visualization data without opening browser")
-  .action(async () => {
+  .option("--output <path>", "Write HTML to specific path instead of opening")
+  .action(async (options) => {
     await withSignal("plan viz", async () => {
       const store = new PlanStore();
       guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan viz' is not yet implemented (Phase 5).",
-        1,
+
+      const status = store.getPlanStatus();
+      const solver = await store.getSolver();
+      const { path: criticalPath } = solver.getCriticalPath();
+
+      const { generatePlanVizHtml } = await import("../server/plan-viz.js");
+      const html = generatePlanVizHtml(
+        status.features,
+        status.features.flatMap((f) => f.phases),
+        status.edges,
+        criticalPath.map((p) => p.id),
+      );
+
+      if (options.dryRun) {
+        console.log("Dry Run: Generated Visualization HTML (truncated)");
+        console.log(`${html.substring(0, 500)}...`);
+        return;
+      }
+
+      const tempPath =
+        options.output || path.join(process.cwd(), "dist", "plan-viz.html");
+      const distDir = path.dirname(tempPath);
+      if (!fs.existsSync(distDir)) {
+        fs.mkdirSync(distDir, { recursive: true });
+      }
+
+      fs.writeFileSync(tempPath, html, "utf-8");
+      console.log(`Visualization generated: ${tempPath}`);
+
+      // Open in default browser
+      const { exec } = await import("node:child_process");
+      const openCmd = process.platform === "darwin" ? "open" : "xdg-open";
+      exec(`${openCmd} "${tempPath}"`, (err) => {
+        if (err) {
+          console.error(`Could not open browser: ${err.message}`);
+          console.log(`Open manually: file://${tempPath}`);
+        }
+      });
+    });
+  });
+
+const reviewCommand = planCommand
+  .command("review")
+  .description("Review agent proposals for the build plan");
+
+reviewCommand
+  .command("list")
+  .description("List pending proposals")
+  .option("--json", "Output in JSON format")
+  .action(async (options) => {
+    await withSignal("plan review list", async () => {
+      const store = new PlanStore();
+      const proposals = store.listProposals();
+
+      if (options.json) {
+        console.log(JSON.stringify(proposals, null, 2));
+        return;
+      }
+
+      if (proposals.length === 0) {
+        console.log("No pending proposals.");
+        return;
+      }
+
+      const { BOLD, CYAN, RESET, DIM, YELLOW, GREEN, RED } = color;
+      console.log(`${BOLD}Build Plan Proposals${RESET}\n`);
+
+      for (const p of proposals) {
+        let statusColor = YELLOW;
+        if (p.status === "APPROVED") statusColor = GREEN;
+        if (p.status === "REJECTED") statusColor = RED;
+
+        console.log(
+          `${BOLD}${CYAN}${p.id.padEnd(12)}${RESET} [${statusColor}${p.status}${RESET}] ${BOLD}${p.proposal_type}${RESET} for ${p.target_phase_id}`,
+        );
+        if (p.detail) console.log(`  ${DIM}Detail: ${p.detail}${RESET}`);
+        if (p.source) console.log(`  ${DIM}Source: ${p.source}${RESET}`);
+        console.log("");
+      }
+    });
+  });
+
+reviewCommand
+  .command("approve <id>")
+  .description("Approve a proposal")
+  .action(async (id) => {
+    await withSignal("plan review approve", async () => {
+      const store = new PlanStore();
+      store.approveProposal(id);
+      console.log(
+        `${color.GREEN}✓${color.RESET} Approved proposal ${color.BOLD}${id}${color.RESET}`,
       );
     });
   });
 
-planCommand
-  .command("review")
-  .description("Review agent proposals for the build plan")
-  .action(async () => {
-    await withSignal("plan review", async () => {
+reviewCommand
+  .command("reject <id>")
+  .description("Reject a proposal")
+  .action(async (id) => {
+    await withSignal("plan review reject", async () => {
       const store = new PlanStore();
-      guardEmpty(store);
-      throw new CommandError(
-        "Command 'gwrk plan review' is not yet implemented (Phase 5).",
-        1,
+      store.rejectProposal(id);
+      console.log(
+        `${color.RED}✗${color.RESET} Rejected proposal ${color.BOLD}${id}${color.RESET}`,
       );
     });
   });
