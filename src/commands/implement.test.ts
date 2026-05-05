@@ -47,6 +47,10 @@ vi.mock("node:fs", () => ({
   existsSync: vi.fn().mockReturnValue(true),
 }));
 
+vi.mock("../utils/resolve-feature.js", () => ({
+  resolveFeature: vi.fn().mockImplementation((input: string) => input),
+}));
+
 describe("implementAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();

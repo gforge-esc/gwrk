@@ -34,11 +34,21 @@ export function resolveFeature(
     return fs.statSync(fullPath).isDirectory();
   });
 
-  const matches = entries.filter(
-    (entry) =>
-      entry.startsWith(`${featureInput}-`) ||
-      entry === featureInput,
-  );
+  // Match: "003" → "003-slack", "00" → ["001-...", "002-...", "003-..."]
+  const isNumericInput = /^\d+$/.test(featureInput);
+  const matches = entries.filter((entry) => {
+    if (entry.startsWith(`${featureInput}-`) || entry === featureInput) {
+      return true;
+    }
+    // For pure numeric input, also match against the feature's numeric prefix
+    if (isNumericInput) {
+      const entryNumeric = entry.match(/^(\d+)/);
+      if (entryNumeric && entryNumeric[1].startsWith(featureInput)) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   if (matches.length === 1) {
     return matches[0];
