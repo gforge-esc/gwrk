@@ -3,8 +3,6 @@ import type { FastifyInstance } from "fastify";
 import { harvestFeature } from "../engine/harvest.js";
 import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
-import { MessageBuilder } from "./slack-messages.js";
-import { notifySlack } from "./slack-notify.js";
 
 export async function githubWebhookPlugin(
   fastify: FastifyInstance,

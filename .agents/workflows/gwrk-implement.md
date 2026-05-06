@@ -210,6 +210,29 @@ Run the pre-committed gate script (written by /plan-to-tasks, NOT by this agent)
 - The old "3 attempts then block" rule is replaced by the escalation rounds
 </verification_rules>
 
+<regression_gate>
+After the per-task gate passes, run a regression check to catch collateral damage:
+
+```bash
+# Compile check (implicit — always runs)
+pnpm build 2>&1 || { echo "REGRESSION: build failed after $NEXT_TASK"; exit 1; }
+
+# Run tests for files modified in this task (not full suite)
+MODIFIED_FILES=$(git diff --name-only HEAD~1 -- 'src/**/*.ts' | grep -v '.test.ts')
+for f in $MODIFIED_FILES; do
+  TEST_FILE="${f%.ts}.test.ts"
+  if [ -f "$TEST_FILE" ]; then
+    pnpm vitest run "$TEST_FILE" --reporter=verbose 2>&1 \
+      || { echo "REGRESSION: $TEST_FILE failed after $NEXT_TASK"; exit 1; }
+  fi
+done
+```
+
+- If regression gate fails, the task is NOT complete — follow escalation protocol
+- The regression gate catches ghost tests and collateral breakage BEFORE phase completion
+- This is distinct from the per-task gate: gates verify forward progress, regression gates verify backward integrity
+</regression_gate>
+
     # === Complete ===
     jq --arg n "{phase_number}" --arg t "$NEXT_TASK" \
       '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).status = "completed"' \
@@ -218,6 +241,30 @@ Run the pre-committed gate script (written by /plan-to-tasks, NOT by this agent)
 ```
 
 ### 3. Phase Completion
+
+<infrastructure_migration_checklist>
+**When the phase involves replacing infrastructure** (e.g., bash → TypeScript, REST → WebSocket, monolith → plugin):
+
+Before committing the phase completion:
+1. **List all test files referencing the old infrastructure**:
+   ```bash
+   grep -rn 'old_script_name\|old_module_path' src/**/*.test.ts
+   ```
+2. **For each orphaned test**: map the test's FR-### to the new test file that covers it
+3. **If coverage is maintained** → `git rm` the old test file (or the orphaned `describe` block)
+4. **If coverage is NOT maintained** → **BLOCK** the phase. Write replacement tests FIRST.
+5. **Update gap-matrix.md** in the same commit as the migration
+6. **Run full test suite** as final check:
+   ```bash
+   pnpm test --run 2>&1
+   ```
+   If any test references deleted infrastructure, the phase MUST NOT be committed.
+
+> [!CAUTION]
+> `.skip` is NOT an acceptable long-term fix for infrastructure migration.
+> If you skip a test, you MUST open a cleanup task in tasks.json with a 1-sprint deadline.
+> Ghost tests that survive past one sprint are coverage lies.
+</infrastructure_migration_checklist>
 
 ```bash
 git add -A && git commit -m "feat: Phase {phase_number} complete"
@@ -275,3 +322,6 @@ Before closing any task, verify:
 - ❌ Run bare `pnpm dev` without `make up` first (I-007)
 - ❌ Leave dev processes running after phase completion (I-007)
 - ❌ Attempt to "Self-Heal" if no open tasks are found by running setup scripts. If no work is found, report and STOP.
+- ❌ Leave `.skip`'d tests without a cleanup task (ghost test debt)
+- ❌ Replace infrastructure (bash → TS, etc.) without migrating or retiring affected tests
+- ❌ Commit a phase that breaks existing tests outside the feature scope (regression)

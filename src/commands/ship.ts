@@ -389,6 +389,19 @@ Exit codes:
         const cwd = process.cwd();
         const config = loadConfig(cwd);
 
+        // Resolve prefix (e.g. "011" → "011-harvest")
+        let resolvedFeature: string;
+        try {
+          resolvedFeature = resolveFeature(feature, cwd);
+        } catch {
+          console.error(`Feature not found: specs/${feature}`);
+          throw new CommandError(
+            `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
+            1,
+          );
+        }
+        feature = resolvedFeature;
+
         // Validate feature exists before any work
         const featureSpecDir = path.join(cwd, "specs", feature);
         if (

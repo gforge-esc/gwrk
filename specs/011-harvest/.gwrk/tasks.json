@@ -220,28 +220,31 @@
           "id": "T018",
           "title": "Implement src/engine/harvest.ts",
           "description": "MODIFY: Add idempotency guard at top of `harvestFeature(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-06T20:25:15.126Z"
         },
         {
           "id": "T019",
           "title": "Implement src/server/github.ts",
           "description": "MODIFY: Remove duplicate Slack notification after `harvestFeature(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-06T20:25:15.332Z"
         },
         {
           "id": "T020",
           "title": "Implement src/engine/harvest.test.ts",
           "description": "MODIFY: Implement the 3 `it.todo(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-06T20:25:15.534Z"
         },
         {
           "id": "T021",

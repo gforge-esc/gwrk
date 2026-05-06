@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-06T20:20:12.621Z_ship_p06",
+  "feature": "011-harvest",
+  "phase": "phase-06",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-06T20:20:12.621Z",
+  "finishedAt": "2026-05-06T20:26:35.102Z",
+  "durationS": 382,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 6,
+  "linesAdded": 69,
+  "linesDeleted": 16,
+  "gitCommit": "8b64bd7e78518ad016bfada42ac3d0c6c8fb0363",
+  "gitBranch": "develop",
+  "digest": []
+}

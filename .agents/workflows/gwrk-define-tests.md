@@ -98,7 +98,63 @@ For each US-### with a user-facing flow in this phase:
 - Assert visible text, element existence, navigation outcomes
 - Include error state tests from the spec
 
+### 6. Reconcile Existing Tests (Test Lifecycle — MANDATORY)
 
+Before writing new tests, detect and handle orphaned tests from previous phases or refactors:
+
+```bash
+# Find tests referencing files/scripts that no longer exist
+for tf in $(find src/ -name '*.test.ts' -not -path '*/node_modules/*'); do
+  # Extract file references from import/require/path.join patterns
+  refs=$(grep -oE '(scripts|src)/[^"'\''\)\s,]+' "$tf" 2>/dev/null | sort -u)
+  for ref in $refs; do
+    if [[ ! -f "$ref" && ! -d "$(dirname "$ref")" ]]; then
+      echo "ORPHAN: $tf references missing: $ref"
+    fi
+  done
+done
+
+# Find tests marked .skip or .todo without a tracking reason
+grep -rn '\.skip\|\.todo' src/**/*.test.ts 2>/dev/null | grep -v 'DEPRECATED\|TODO:' || true
+```
+
+For each orphaned test:
+1. **If replacement coverage exists** in a new test file for the same FR-### → **DELETE** the orphan
+2. **If no replacement coverage exists** → **FLAG** as coverage gap in gap-matrix.md
+3. **If the test targets deprecated infrastructure** → **DELETE** with `git rm` and record the reason
+
+> [!CAUTION]
+> Tests that reference deleted files are **ghost tests** — they can't pass, they can't fail
+> meaningfully, and they silently poison the suite. Ghost tests MUST be retired, not `.skip`'d.
+> A `.skip` is a temporary bridge (max 1 sprint). Permanent skips are coverage lies.
+
+<async_test_guidance>
+### Async State Machine Testing
+
+For event-driven or self-scheduling systems (dispatch queues, orchestrators, WebSocket handlers):
+
+1. **Mock the scheduler, not just the inputs.** If the system under test calls `processNext()` internally, inject a throttle/gate after the first invocation to create a deterministic assertion window.
+2. **Use `vi.waitFor()` with specific state assertions**, not timing-based `setTimeout` waits.
+3. **Never rely on automatic scheduling order** — if `enqueue()` triggers `processNext()` which triggers `handleCompletion()` which triggers `processNext()` again, the assertion window between state transitions is a microtask boundary. Tests MUST control when the next tick fires.
+4. **Prefer mock-resolved-value-once** over manual state manipulation — let the system exercise its own state transitions rather than calling internal methods directly.
+5. **Test the state machine diagram, not the happy path** — assert on intermediate states (queued → running → retrying), not just the final state.
+
+Example pattern for self-scheduling queues:
+```typescript
+// BAD: race between handleCompletion's processNext() and assertion
+const record = queue.enqueue(request);
+await sleep(50);
+expect(record.status).toBe("retrying"); // ← might already be "running" again
+
+// GOOD: throttle after first attempt to freeze state
+mockMonitor.isThrottled.mockImplementation(() => attemptCount++ > 1);
+const record = queue.enqueue(request);
+await vi.waitFor(() => {
+  if (record.status !== "retrying") throw new Error("Not retrying yet");
+});
+expect(record.status).toBe("retrying"); // ← deterministic
+```
+</async_test_guidance>
 
 <red_validation_rules>
 After generating all test files:
@@ -182,6 +238,9 @@ Before reporting, verify:
 - ❌ Skipping negative paths (error states, invalid input, missing config)
 - ❌ Tests that pass before implementation (hollow tests)
 - ❌ Generating tests for deferred TR-### items
+- ❌ Leaving ghost tests (`.skip` with no plan to delete or migrate)
+- ❌ Writing async tests that rely on `setTimeout` instead of `vi.waitFor()`
+- ❌ Testing self-scheduling systems without controlling the scheduler
 
 ## Next Step
 

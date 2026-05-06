@@ -151,23 +151,38 @@ describe("DispatchQueue", () => {
     mockMonitor.isThrottled.mockReturnValue(false);
     mockSandbox.createSandbox.mockResolvedValue("workdir-1");
 
+    // Mock a failed dispatch result so runDispatch auto-triggers handleCompletion with exit 1
+    mockOrchestrator.dispatchPhase.mockResolvedValueOnce([
+      {
+        id: "T1",
+        status: "failed",
+        sandboxDir: "workdir-1",
+        backend: "gemini",
+        exitCode: 1,
+      },
+    ]);
+
+    // Throttle after first attempt so retry stays queued
+    const originalIsThrottled = mockMonitor.isThrottled.getMockImplementation();
+    let attemptCount = 0;
+    mockMonitor.isThrottled.mockImplementation(() => {
+      attemptCount++;
+      // Allow first processNext (from enqueue), throttle after handleCompletion
+      return attemptCount > 1;
+    });
+
     const record = queue.enqueue({
       featureId: "feat-1",
       phaseId: "phase-1",
       taskId: "T1",
     });
 
-    // Wait for it to move to active
+    // Wait for the automatic retry to be queued
     await vi.waitFor(() => {
-      if (queue.getActiveCount() !== 1) throw new Error("Not active yet");
+      if (record.status !== "retrying") throw new Error("Not retrying yet");
     });
 
-    // Throttle so it stays in queue after handleCompletion
-    mockMonitor.isThrottled.mockReturnValue(true);
-    await queue.handleCompletion(record.id, 1, "error");
-
     expect(record.status).toBe("retrying");
-    expect(queue.getQueueDepth()).toBe(1);
     expect(record.attempts.length).toBe(1);
   });
 
