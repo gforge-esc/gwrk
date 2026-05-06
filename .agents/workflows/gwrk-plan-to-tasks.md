@@ -153,7 +153,35 @@ For each task:
 chmod +x {feature_dir}/gates/*.sh
 ```
 
-### 9. Report
+### 9. Reconcile Gap Matrix (Test Lifecycle — MANDATORY)
+
+Regenerate `{feature_dir}/gap-matrix.md` from current filesystem state, not from memory of what was written before.
+
+```bash
+# Scan all test files for FR-###/US-###/TR-### references
+for tf in $(find src/ -name '*.test.ts' -not -path '*/node_modules/*'); do
+  grep -oE '(FR|US|TR)-[A-Z]?[0-9]+' "$tf" 2>/dev/null
+done | sort -u > /tmp/covered-requirements.txt
+
+# Compare against spec requirements
+grep -oE '(FR|US|TR)-[A-Z]?[0-9]+' {feature_dir}/spec.md | sort -u > /tmp/spec-requirements.txt
+
+# Identify gaps
+comm -23 /tmp/spec-requirements.txt /tmp/covered-requirements.txt
+```
+
+For each row in the gap matrix:
+1. Verify the **Test File** column points to an existing file on disk
+2. If the file doesn't exist → mark row as ❌ and flag as **COVERAGE REGRESSION**
+3. If the test file exists but contains `.skip` or `.todo` for this FR → mark as ⚠️ DEFERRED
+4. If a different test file now covers this FR (e.g., after refactor) → update the row
+
+> [!WARNING]
+> A gap matrix that diverges from the filesystem is a **coverage lie**.
+> Any FR-### that loses test coverage between plan-to-tasks runs is a regression.
+> Flag it, don't silently accept it.
+
+### 10. Report
 
 Notify user with the hierarchy summary.
 
@@ -167,6 +195,8 @@ Notify user with the hierarchy summary.
 - ❌ Generating JSON without producing `gap-analysis.md` first
 - ❌ Proceeding past Step 4 without user approval of `gap-analysis.md`
 - ❌ Bundling 2+ independent outcomes in one task (halving rule violation)
+- ❌ Treating gap-matrix.md as write-once (it MUST be regenerated from filesystem on every run)
+- ❌ Leaving test file references in gap-matrix.md that point to deleted files
 
 ## Next Step
 
