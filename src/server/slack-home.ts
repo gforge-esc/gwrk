@@ -100,31 +100,55 @@ export async function buildHomeTab(
     ],
   });
 
-  // 4. Feature Progress
+  // 4. Build Plan (from Plan DAG)
   blocks.push({ type: "divider" });
   blocks.push({
     type: "section",
-    text: { type: "mrkdwn", text: "📑 *Feature Progress*" },
+    text: { type: "mrkdwn", text: "📊 *Build Plan*" },
   });
 
-  const progress = await getFeatureProgress(projectRoot);
-  if (progress.length === 0) {
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: "_No feature history found._" },
-    });
-  } else {
-    for (const p of progress.slice(0, 5)) {
-      const statusEmoji =
-        p.status === "completed" ? "✅" : p.status === "failed" ? "❌" : "⏳";
+  try {
+    const { PlanStore } = await import("../engine/plan-store.js");
+    const store = new PlanStore();
+    if (!store.isEmpty()) {
+      const planStatus = store.getPlanStatus();
+
+      const statusEmoji: Record<string, string> = {
+        SHIPPED: "✅",
+        IN_PROGRESS: "🔄",
+        DEFINED: "📐",
+        READY: "🟢",
+        BLOCKED: "🔴",
+        PLANNED: "⬜",
+      };
+
+      for (const f of planStatus.features.slice(0, 10)) {
+        const emoji = statusEmoji[f.status] || "⬜";
+        const phaseCount = f.phases?.length || 0;
+        const shippedCount =
+          f.phases?.filter((p) => p.status === "SHIPPED").length || 0;
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} shipped)`,
+          },
+        });
+      }
+    } else {
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `${statusEmoji} *${p.featureId}*: Phase ${p.phaseId} - ${p.status}`,
+          text: "_No build plan. Run `gwrk plan seed` to initialize._",
         },
       });
     }
+  } catch {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "_Plan data unavailable._" },
+    });
   }
 
   // 5. Pulse Summary
