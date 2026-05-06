@@ -20,6 +20,7 @@ export const GwrkConfigSchema = z.object({
       .object({
         channelId: z.string(),
         channelName: z.string().optional(),
+        webhookUrl: z.string().url().optional(),
         opsChannelId: z.string().optional(),
         opsChannelName: z.string().optional(),
       })

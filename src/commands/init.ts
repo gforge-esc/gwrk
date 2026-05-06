@@ -15,6 +15,7 @@ export const initCommand = new Command("init")
   .option("--github <repo>", "GitHub repository (owner/name)")
   .option("--slack <channel>", "Slack channel")
   .option("--slack-ops <channel>", "Slack ops channel")
+  .option("--webhook <url>", "Slack incoming webhook URL for this project")
   .action(async (options) => {
     await withSignal("init", async () => {
       const projectRoot = process.cwd();
@@ -81,6 +82,16 @@ export const initCommand = new Command("init")
           }
 
           fs.writeFileSync(rcPath, JSON.stringify(existing, null, 2));
+          didWork = true;
+        }
+
+        if (options.webhook) {
+          const existing = JSON.parse(fs.readFileSync(rcPath, "utf-8"));
+          existing.project = existing.project || {};
+          existing.project.slack = existing.project.slack || {};
+          existing.project.slack.webhookUrl = options.webhook;
+          fs.writeFileSync(rcPath, JSON.stringify(existing, null, 2));
+          console.log(`Webhook URL saved to .gwrkrc.json`);
           didWork = true;
         }
 
@@ -205,6 +216,17 @@ export const initCommand = new Command("init")
             "Warning: Slack not configured (no tokens found). Run gwrk setup slack first to enable Slack features.",
           );
         }
+      }
+
+      // Webhook URL
+      if (options.webhook) {
+        const slack = config.project.slack ?? {
+          channelId: "",
+          channelName: "",
+        };
+        config.project.slack = slack;
+        slack.webhookUrl = options.webhook;
+        console.log(`Webhook URL saved to .gwrkrc.json`);
       }
 
       fs.writeFileSync(
