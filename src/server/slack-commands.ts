@@ -125,23 +125,51 @@ const handlers: Record<string, SlashCommandHandler> = {
         }
       }
     } else {
-      // No feature ID — show active dispatches + overall stats
-      const activeDispatches = queueInfo.active;
-      let text = `*Active Dispatches:* ${activeDispatches.length}`;
-      for (const d of activeDispatches as DispatchRecord[]) {
-        text += `\n• ${d.featureId} (${d.phaseId}): ${d.status}`;
-      }
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text },
-      });
+      // No feature ID — show Plan DAG + active dispatches + pending PRs
 
-      // Add overall stats from DB
+      // 1. Plan DAG summary
       try {
+        const { PlanStore } = await import("../engine/plan-store.js");
+        const store = new PlanStore();
+        if (!store.isEmpty()) {
+          const planStatus = store.getPlanStatus();
+
+          const statusEmoji: Record<string, string> = {
+            SHIPPED: "✅",
+            IN_PROGRESS: "🔄",
+            DEFINED: "📐",
+            READY: "🟢",
+            BLOCKED: "🔴",
+            PLANNED: "⬜",
+          };
+
+          let dagText = "*📊 Build Plan:*";
+          for (const f of planStatus.features) {
+            const emoji = statusEmoji[f.status] || "⬜";
+            const phaseCount = f.phases?.length || 0;
+            const shippedCount = f.phases?.filter(
+              (p) => p.status === "SHIPPED",
+            ).length || 0;
+            dagText += `\n${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} phases)`;
+          }
+
+          blocks.push({
+            type: "section",
+            text: { type: "mrkdwn", text: dagText },
+          });
+        }
+      } catch {
+        // Plan DB not initialized — skip
+      }
+
+      // 2. Pending PRs (awaiting bless)
+      try {
+        const { listRuns: listAllRuns } = await import("../db/runs.js");
+        // Find features with PRs that haven't been merged
         const { getStats } = await import("../db/runs.js");
         const stats = getStats();
         if (stats.length > 0) {
-          let statsText = "*Run History (DB):*";
+          let statsText = "*📈 Run History:*";
           for (const s of stats.slice(0, 5)) {
             const rate =
               s.total_runs > 0
@@ -156,6 +184,19 @@ const handlers: Record<string, SlashCommandHandler> = {
         }
       } catch {
         // DB not available — skip
+      }
+
+      // 3. Active dispatches
+      const activeDispatches = queueInfo.active;
+      if (activeDispatches.length > 0) {
+        let text = `*🔧 Active Dispatches:* ${activeDispatches.length}`;
+        for (const d of activeDispatches as DispatchRecord[]) {
+          text += `\n• ${d.featureId} (${d.phaseId}): ${d.status}`;
+        }
+        blocks.push({
+          type: "section",
+          text: { type: "mrkdwn", text },
+        });
       }
     }
 
