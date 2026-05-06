@@ -1,7 +1,42 @@
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import type { GwrkConfig } from "../utils/config.js";
 import type { SystemResources } from "./types.js";
+
+/**
+ * Returns available memory in bytes.
+ * On macOS, os.freemem() only reports truly free pages (near zero on a busy Mac).
+ * We parse vm_stat to include free + inactive + purgeable pages, which are all
+ * reclaimable by the OS for new allocations.
+ * Falls back to os.freemem() on non-macOS or if vm_stat fails.
+ */
+function getAvailableMemory(): number {
+  if (process.platform !== "darwin") {
+    return os.freemem();
+  }
+
+  try {
+    const output = execSync("vm_stat", { encoding: "utf-8", timeout: 2000 });
+    // Parse page size from first line: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
+    const pageSizeMatch = output.match(/page size of (\d+) bytes/);
+    const pageSize = pageSizeMatch ? Number(pageSizeMatch[1]) : 16384;
+
+    const getValue = (label: string): number => {
+      const match = output.match(new RegExp(`${label}:\\s+(\\d+)`));
+      return match ? Number(match[1]) : 0;
+    };
+
+    const free = getValue("Pages free");
+    const inactive = getValue("Pages inactive");
+    const purgeable = getValue("Pages purgeable");
+    const speculative = getValue("Pages speculative");
+
+    return (free + inactive + purgeable + speculative) * pageSize;
+  } catch {
+    return os.freemem();
+  }
+}
 
 export class SystemMonitor {
   private lastCpus: os.CpuInfo[] | undefined;
@@ -48,14 +83,9 @@ export class SystemMonitor {
 
     const memTotal = os.totalmem();
     // os.freemem() on macOS returns only truly free memory (excludes
-    // cached/purgeable), so it always reads near 0.  Node 22+ provides
-    // os.availableMemory() which accounts for reclaimable pages.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const osExt = os as Record<string, unknown>;
-    const memAvailable =
-      typeof osExt.availableMemory === "function"
-        ? (osExt.availableMemory as () => number)()
-        : os.freemem();
+    // inactive/purgeable/cached), so it always reads near 0 on a busy Mac.
+    // We parse vm_stat on macOS to get the real available memory.
+    const memAvailable = getAvailableMemory();
     const memPercent = ((memTotal - memAvailable) / memTotal) * 100;
 
     let diskFreeGb = 0;
