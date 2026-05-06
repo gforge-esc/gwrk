@@ -20,7 +20,7 @@ const cleanupState = () => {
   if (fs.existsSync(SPEC_DIR)) fs.rmSync(SPEC_DIR, { recursive: true, force: true });
 };
 
-describe("work-until-done.sh execution flow", () => {
+describe.skip("work-until-done.sh execution flow [DEPRECATED: shell ship loop removed]", () => {
   let branchMock = "";
   let verdictMock = "";
   let agentMock = "";
@@ -301,7 +301,7 @@ describe("FR-018/T007: Circuit Breaker failureContext", () => {
   it.todo("FR-018/T007: produces non-empty failureContext in the JSON state file on CIRCUIT_BREAK");
 });
 
-describe("FR-002/T005: wud-branch.sh dirty-tree guard", () => {
+describe.skip("FR-002/T005: wud-branch.sh dirty-tree guard [DEPRECATED: shell ship loop removed]", () => {
   beforeAll(() => {
     cleanupState();
     fs.mkdirSync(MOCKS_DIR, { recursive: true });
@@ -345,7 +345,7 @@ describe("FR-002/T005: wud-branch.sh dirty-tree guard", () => {
   });
 });
 
-describe("FR-016/T006: validate-staging.sh integration with WUD", () => {
+describe.skip("FR-016/T006: validate-staging.sh integration with WUD [DEPRECATED: shell ship loop removed]", () => {
   it("WUD calls validate-staging.sh before push", () => {
     // Read WUD source and check it references validate-staging
     const wudContent = fs.readFileSync(

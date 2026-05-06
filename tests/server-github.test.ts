@@ -3,10 +3,16 @@ import fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { harvestFeature } from "../src/engine/harvest.js";
 import { githubWebhookPlugin } from "../src/server/github.js";
+import { notifySlack } from "../src/server/slack-notify.js";
 
 // Mock harvestFeature
 vi.mock("../src/engine/harvest.js", () => ({
   harvestFeature: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock notifySlack
+vi.mock("../src/server/slack-notify.js", () => ({
+  notifySlack: vi.fn(),
 }));
 
 const mockConfig = {
@@ -136,5 +142,38 @@ describe("TR-H01: GitHub Webhook Handler", () => {
       phaseId: "phase-01",
     });
     expect(harvestFeature).toHaveBeenCalled();
+  });
+
+  it("TR-H11: Webhook handler does NOT call notifySlack directly", async () => {
+    const server = fastify();
+    await githubWebhookPlugin(server, {
+      config: { server: {} } as never,
+      projectRoot,
+    });
+
+    const payload = {
+      action: "closed",
+      pull_request: {
+        number: 42,
+        merged: true,
+        merged_at: "2026-04-01T09:15:00Z",
+        merge_commit_sha: "abc1234567890",
+        html_url: "https://github.com/org/repo/pull/42",
+        head: { ref: "feat/011-harvest-phase-01" },
+        base: { ref: "develop" },
+        merged_by: { login: "tester" },
+      },
+    };
+
+    await server.inject({
+      method: "POST",
+      url: "/webhook/github",
+      headers: { "x-github-event": "pull_request" },
+      payload,
+    });
+
+    // harvestFeature should be called, but NOT notifySlack (it's handled inside harvestFeature)
+    expect(harvestFeature).toHaveBeenCalled();
+    expect(notifySlack).not.toHaveBeenCalled();
   });
 });

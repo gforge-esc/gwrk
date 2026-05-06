@@ -239,17 +239,17 @@ _No mockups exist for this feature._
 | FR-H04 | Phase 4 | Planned |
 | FR-H05 | Phase 4 | Planned |
 | FR-H06 | Phase 1, 4 | Planned |
-| FR-H07 | Phase 5, 6 | Planned |
-| FR-H08 | Phase 5, 6 | Planned |
+| FR-H07 | Phase 5, 6 | Done |
+| FR-H08 | Phase 5, 6 | Done |
 | FR-H09 | Phase 3 | Planned |
-| FR-H10 | Phase 6 | Planned |
-| FR-H11 | Phase 6 | Planned |
+| FR-H10 | Phase 6 | Done |
+| FR-H11 | Phase 6 | Done |
 | TC-H01 | Phase 3 | Planned |
-| TC-H02 | Phase 3, 4, 6 | Planned |
+| TC-H02 | Phase 3, 4, 6 | Done |
 | TC-H03 | Phase 3 | Planned |
 | TC-H04 | Phase 4 | Planned |
 | SC-H01 | Phase 3 | Planned |
 | SC-H02 | Phase 1-4 | Planned |
 | SC-H03 | Phase 5 | Planned |
-| SC-H04 | Phase 4, 6 | Planned |
+| SC-H04 | Phase 4, 6 | Done |
 | SC-H05 | Phase 5 | Planned |

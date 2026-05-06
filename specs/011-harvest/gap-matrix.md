@@ -24,5 +24,5 @@
 | SC-H03 | Slack "🏆 Done, Done!" posted | integration | src/engine/harvest.test.ts | ✅ | |
 | SC-H04 | Idempotent re-run safety | integration | src/engine/harvest.test.ts | ✅ | |
 | SC-H05 | CLI gwrk harvest --help | e2e | src/cli.harvest.e2e.test.ts | ✅ | |
-| FR-H10 | Idempotency guard (compression table lookup) | unit | src/engine/harvest.test.ts | ❌ | Phase 6 |
-| FR-H11 | Single Slack notification (no webhook dedup) | integration | tests/server-github.test.ts | ❌ | Phase 6 |
+| FR-H10 | Idempotency guard (compression table lookup) | unit | src/engine/harvest.test.ts | ✅ | Phase 6 |
+| FR-H11 | Single Slack notification (no webhook dedup) | integration | tests/server-github.test.ts | ✅ | Phase 6 |
