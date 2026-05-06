@@ -151,6 +151,38 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     fs.writeFileSync(envPath, `${lines.join("\n").trim()}\n`, { mode: 0o600 });
 
     console.log(`Slack app configured for workspace: ${result.workspace}`);
+
+    // ── Post-setup: Webhook guidance ──────────────
+    console.error("");
+    console.error(`  ${CYAN}Next Step${RESET}  Enable Incoming Webhooks`);
+    console.error("");
+    console.error(
+      `  Each project tracked by gwrk needs its own webhook URL.`,
+    );
+    console.error(
+      `  Go to your app's ${BOLD}Incoming Webhooks${RESET} page:`,
+    );
+    console.error("");
+    console.error(
+      `    ${CYAN}https://api.slack.com/apps → gwrk → Incoming Webhooks${RESET}`,
+    );
+    console.error("");
+    console.error(
+      `  1. Toggle ${BOLD}"Activate Incoming Webhooks"${RESET} to On`,
+    );
+    console.error(
+      `  2. Click ${BOLD}"Add New Webhook to Workspace"${RESET}`,
+    );
+    console.error(
+      `  3. Select the channel for your project (e.g. ${MAGENTA}gwrk-ops${RESET})`,
+    );
+    console.error(`  4. Copy the webhook URL and run:`);
+    console.error("");
+    console.error(
+      `    ${GREEN}gwrk init --webhook <paste-url-here>${RESET}`,
+    );
+    console.error("");
+
     success("setup slack", 0);
 
     return {

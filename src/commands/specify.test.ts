@@ -21,6 +21,21 @@ vi.mock("../plugins/workflow-runtime.js", () => {
   };
 });
 
+vi.mock("../utils/resolve-feature.js", () => ({
+  resolveFeature: vi.fn().mockImplementation((input: string) => input),
+}));
+
+vi.mock("../db/runs.js", () => ({
+  startRun: vi.fn().mockReturnValue(1),
+  finishRun: vi.fn(),
+}));
+
+vi.mock("../engine/plan-store.js", () => ({
+  PlanStore: class {
+    handleDefineComplete = vi.fn();
+  },
+}));
+
 describe("specifyCommand", () => {
   let tempDir: string;
   let program: Command;

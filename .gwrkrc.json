@@ -2,8 +2,9 @@
   "project": {
     "name": "gwrk",
     "slack": {
-      "channelId": "C0ALGDPC725",
-      "channelName": "gwrk-ops"
+      "channelId": "C0AL99J34PP",
+      "channelName": "gwrk-dev",
+      "webhookUrl": "https://hooks.slack.com/services/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"
     }
   },
   "agents": {

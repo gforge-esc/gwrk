@@ -1,6 +1,9 @@
+import { execSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
+import { findOpenPr } from "../db/runs.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
@@ -122,23 +125,51 @@ const handlers: Record<string, SlashCommandHandler> = {
         }
       }
     } else {
-      // No feature ID — show active dispatches + overall stats
-      const activeDispatches = queueInfo.active;
-      let text = `*Active Dispatches:* ${activeDispatches.length}`;
-      for (const d of activeDispatches as DispatchRecord[]) {
-        text += `\n• ${d.featureId} (${d.phaseId}): ${d.status}`;
-      }
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text },
-      });
+      // No feature ID — show Plan DAG + active dispatches + pending PRs
 
-      // Add overall stats from DB
+      // 1. Plan DAG summary
       try {
+        const { PlanStore } = await import("../engine/plan-store.js");
+        const store = new PlanStore();
+        if (!store.isEmpty()) {
+          const planStatus = store.getPlanStatus();
+
+          const statusEmoji: Record<string, string> = {
+            SHIPPED: "✅",
+            IN_PROGRESS: "🔄",
+            DEFINED: "📐",
+            READY: "🟢",
+            BLOCKED: "🔴",
+            PLANNED: "⬜",
+          };
+
+          let dagText = "*📊 Build Plan:*";
+          for (const f of planStatus.features) {
+            const emoji = statusEmoji[f.status] || "⬜";
+            const phaseCount = f.phases?.length || 0;
+            const shippedCount = f.phases?.filter(
+              (p) => p.status === "SHIPPED",
+            ).length || 0;
+            dagText += `\n${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} phases)`;
+          }
+
+          blocks.push({
+            type: "section",
+            text: { type: "mrkdwn", text: dagText },
+          });
+        }
+      } catch {
+        // Plan DB not initialized — skip
+      }
+
+      // 2. Pending PRs (awaiting bless)
+      try {
+        const { listRuns: listAllRuns } = await import("../db/runs.js");
+        // Find features with PRs that haven't been merged
         const { getStats } = await import("../db/runs.js");
         const stats = getStats();
         if (stats.length > 0) {
-          let statsText = "*Run History (DB):*";
+          let statsText = "*📈 Run History:*";
           for (const s of stats.slice(0, 5)) {
             const rate =
               s.total_runs > 0
@@ -154,6 +185,19 @@ const handlers: Record<string, SlashCommandHandler> = {
       } catch {
         // DB not available — skip
       }
+
+      // 3. Active dispatches
+      const activeDispatches = queueInfo.active;
+      if (activeDispatches.length > 0) {
+        let text = `*🔧 Active Dispatches:* ${activeDispatches.length}`;
+        for (const d of activeDispatches as DispatchRecord[]) {
+          text += `\n• ${d.featureId} (${d.phaseId}): ${d.status}`;
+        }
+        blocks.push({
+          type: "section",
+          text: { type: "mrkdwn", text },
+        });
+      }
     }
 
     return {
@@ -164,6 +208,7 @@ const handlers: Record<string, SlashCommandHandler> = {
 
   dispatch: async (args, context) => {
     const featureId = args[0];
+    const phaseArg = args[1];
     if (!featureId) {
       return {
         response_type: "ephemeral",
@@ -172,7 +217,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: ":warning: Feature ID is required. Usage: `/gwrk dispatch <featureId>`",
+              text: ":warning: Feature ID is required. Usage: `/gwrk dispatch <featureId> [phase]`",
             },
           },
         ],
@@ -180,8 +225,13 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      // Trigger dispatch - needs phase selection or default to first open
-      context.queue.enqueue({ featureId, phaseId: "phase-01" });
+      const resolved = resolveFeature(featureId, context.projectRoot);
+      const phaseId = phaseArg
+        ? phaseArg.startsWith("phase-")
+          ? phaseArg
+          : `phase-${phaseArg.padStart(2, "0")}`
+        : "phase-01";
+      context.queue.enqueue({ featureId: resolved, phaseId });
 
       return {
         response_type: "in_channel",
@@ -190,7 +240,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `🚀 Dispatching feature *${featureId}* phase *phase-01*...`,
+              text: `🚀 Dispatching feature *${resolved}* phase *${phaseId}*...`,
             },
           },
         ],
@@ -214,8 +264,8 @@ const handlers: Record<string, SlashCommandHandler> = {
   },
 
   approve: async (args, context) => {
-    const [featureId, phaseId] = args;
-    if (!featureId || !phaseId) {
+    const [featureArg, phaseArg] = args;
+    if (!featureArg) {
       return {
         response_type: "ephemeral",
         blocks: [
@@ -223,7 +273,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: ":warning: Feature ID and Phase ID are required. Usage: `/gwrk approve <featureId> <phaseId>`",
+              text: ":warning: Feature ID required. Usage: `/gwrk approve <featureId> [phaseId]`",
             },
           },
         ],
@@ -231,8 +281,34 @@ const handlers: Record<string, SlashCommandHandler> = {
     }
 
     try {
-      // Logic to merge PR
-      context.git.mergePhaseBack(featureId, phaseId);
+      const resolved = resolveFeature(featureArg, context.projectRoot);
+      const phaseId = phaseArg
+        ? phaseArg.startsWith("phase-")
+          ? phaseArg
+          : `phase-${phaseArg.padStart(2, "0")}`
+        : undefined;
+
+      const pr = findOpenPr(resolved, phaseId);
+      if (!pr) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `:warning: No open PR found for *${resolved}*${phaseId ? ` phase *${phaseId}*` : ""}`,
+              },
+            },
+          ],
+        };
+      }
+
+      execSync(
+        `gh pr merge ${pr.pr_number} --merge --delete-branch`,
+        { cwd: context.projectRoot, encoding: "utf-8", timeout: 30_000 },
+      );
+
       return {
         response_type: "in_channel",
         blocks: [
@@ -240,7 +316,7 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `✅ *${featureId}* phase *${phaseId}* approved and merged!`,
+              text: `✅ PR #${pr.pr_number} for *${resolved}*${phaseId ? ` phase *${phaseId}*` : ""} merged!`,
             },
           },
         ],
@@ -536,6 +612,69 @@ const handlers: Record<string, SlashCommandHandler> = {
       blocks,
     };
   },
+
+  ship: async (args, context) => {
+    const featureArg = args[0];
+    const phaseArg = args[1];
+    if (!featureArg || !phaseArg) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: ":warning: Usage: `/gwrk ship <featureId> <phase>`\nExample: `/gwrk ship 003 1`",
+            },
+          },
+        ],
+      };
+    }
+
+    try {
+      const resolved = resolveFeature(featureArg, context.projectRoot);
+
+      // Spawn gwrk ship as background process
+      const child = spawn(
+        "gwrk",
+        ["ship", resolved, phaseArg],
+        {
+          cwd: context.projectRoot,
+          detached: true,
+          stdio: "ignore",
+        },
+      );
+      child.unref();
+
+      return {
+        response_type: "in_channel",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `🚀 Dispatching *${resolved}* phase *${phaseArg}*... Progress will be posted here.`,
+            },
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:warning: Error: ${errorMessage}`,
+            },
+          },
+        ],
+      };
+    }
+  },
 };
 
 export async function handleSlashCommand(
@@ -552,7 +691,7 @@ export async function handleSlashCommand(
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "Available commands: `status`, `dispatch`, `approve`, `reject`, `pause`, `pulse`, `effort`, `logs`",
+            text: "Available commands: `status`, `dispatch`, `approve`, `reject`, `pause`, `pulse`, `effort`, `logs`, `ship`",
           },
         },
       ],

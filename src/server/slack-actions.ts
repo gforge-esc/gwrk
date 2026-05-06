@@ -1,5 +1,40 @@
+import { execSync } from "node:child_process";
 import type { App } from "@slack/bolt";
+import { findOpenPr } from "../db/runs.js";
 import type { CommandContext } from "./slack-commands.js";
+
+/**
+ * Merge a PR using the GitHub CLI.
+ * Returns the merge output or throws on failure.
+ */
+function mergeGitHubPr(prNumber: number, cwd: string): string {
+  return execSync(
+    `gh pr merge ${prNumber} --merge --delete-branch`,
+    { cwd, encoding: "utf-8", timeout: 30_000 },
+  ).trim();
+}
+
+/**
+ * Look up the PR for a feature/phase from the runs table.
+ * Returns { pr_number, pr_url } or throws with a user-friendly message.
+ */
+function lookupPr(
+  featureId: string,
+  phaseId: string,
+): { pr_number: number; pr_url: string | null } {
+  const pr = findOpenPr(featureId, phaseId);
+  if (!pr) {
+    // Try without phase filter as fallback
+    const anyPr = findOpenPr(featureId);
+    if (anyPr) {
+      return anyPr;
+    }
+    throw new Error(
+      `No open PR found for ${featureId} ${phaseId}. Has the ship loop created a PR?`,
+    );
+  }
+  return pr;
+}
 
 export async function registerSlackActions(app: App, context: CommandContext) {
   // Handle button actions
@@ -12,12 +47,12 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const { featureId, phaseId } = JSON.parse(payload);
 
     try {
-      // Real PR merge logic using context.git
-      context.git.mergePhaseBack(featureId, phaseId);
+      const pr = lookupPr(featureId, phaseId);
+      mergeGitHubPr(pr.pr_number, context.projectRoot);
 
       await client.chat.postMessage({
         channel: actionBody.channel?.id || "",
-        text: `✅ PR for *${featureId}* phase *${phaseId}* merged by <@${actionBody.user.id}>`,
+        text: `✅ PR #${pr.pr_number} for *${featureId}* phase *${phaseId}* merged by <@${actionBody.user.id}>`,
       });
     } catch (error) {
       const errorMessage =
@@ -44,7 +79,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
       text: `🔄 Changes requested for *${featureId}* phase *${phaseId}* by <@${actionBody.user.id}>. Agent notified.`,
     });
 
-    // In a real system, we'd trigger a re-dispatch or update task status
+    // TODO: trigger a re-dispatch or update task status
   });
 
   app.action("view_review", async ({ ack, body, client }) => {
@@ -53,10 +88,45 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const actionBody = body as any;
     const payload = actionBody.actions[0].value;
     if (!payload) return;
-    const { featureId, phaseId } = JSON.parse(payload);
+    const { featureId, phaseId, prNumber: payloadPrNumber } = JSON.parse(payload);
 
-    // Construct link to PR or review page
-    const reviewUrl = `${context.buildServerUrl}/review/${featureId}/${phaseId}`;
+    // Resolve PR URL: payload prNumber → runs table → gh pr list fallback
+    let reviewUrl = "";
+    const resolvedPrNumber = payloadPrNumber || findOpenPr(featureId, phaseId)?.pr_number;
+
+    if (resolvedPrNumber) {
+      try {
+        reviewUrl = execSync(
+          `gh pr view ${resolvedPrNumber} --json url -q .url`,
+          { cwd: context.projectRoot, encoding: "utf-8", timeout: 10_000 },
+        ).trim();
+      } catch {
+        // PR might not exist anymore
+      }
+    }
+
+    if (!reviewUrl) {
+      // Fallback: find any open PR for this feature branch
+      try {
+        reviewUrl = execSync(
+          `gh pr list --head feat/${featureId} --json url -q '.[0].url'`,
+          { cwd: context.projectRoot, encoding: "utf-8", timeout: 10_000 },
+        ).trim();
+      } catch {
+        // No PR found
+      }
+    }
+
+    if (!reviewUrl) {
+      reviewUrl = `No PR found for ${featureId}`;
+      await client.chat.postEphemeral({
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: No open PR found for *${featureId}*. Has a ship run created one?`,
+      });
+      return;
+    }
+
     await client.chat.postEphemeral({
       channel: actionBody.channel?.id || "",
       user: actionBody.user.id,
@@ -129,10 +199,11 @@ export async function registerSlackActions(app: App, context: CommandContext) {
             if (actionValue) {
               const { featureId, phaseId } = JSON.parse(actionValue);
 
-              context.git.mergePhaseBack(featureId, phaseId);
+              const pr = lookupPr(featureId, phaseId);
+              mergeGitHubPr(pr.pr_number, context.projectRoot);
               await client.chat.postMessage({
                 channel: event.item.channel,
-                text: `✅ Reaction-approval detected! Merged *${featureId}* phase *${phaseId}*.`,
+                text: `✅ Reaction-approval detected! Merged PR #${pr.pr_number} for *${featureId}* phase *${phaseId}*.`,
               });
             }
           }

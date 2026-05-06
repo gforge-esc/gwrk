@@ -167,6 +167,30 @@ export function listRuns(
     .all(featureId) as RunRecord[];
 }
 
+/**
+ * Find the most recent PR number for a feature (optionally filtered by phase).
+ * Returns { pr_number, pr_url } or null if no PR found.
+ */
+export function findOpenPr(
+  featureId: string,
+  phaseId?: string,
+  db?: Database.Database,
+): { pr_number: number; pr_url: string | null } | null {
+  const conn = db ?? getDb();
+  const query = phaseId
+    ? `SELECT pr_number, pr_url FROM runs
+       WHERE feature_id = ? AND phase_id = ? AND pr_number IS NOT NULL
+       ORDER BY id DESC LIMIT 1`
+    : `SELECT pr_number, pr_url FROM runs
+       WHERE feature_id = ? AND pr_number IS NOT NULL
+       ORDER BY id DESC LIMIT 1`;
+  const args = phaseId ? [featureId, phaseId] : [featureId];
+  const row = conn.prepare(query).get(...args) as
+    | { pr_number: number; pr_url: string | null }
+    | undefined;
+  return row ?? null;
+}
+
 export interface ProjectRecord {
   id: string;
   name: string;
