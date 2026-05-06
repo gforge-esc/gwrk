@@ -1,0 +1,92 @@
+// src/utils/branch.test.ts
+// RED tests — Phase 1: Branch management utility
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ensureBranch, pushBranch } from "./branch.js"; // RED — module does not exist yet
+
+// Mock child_process
+vi.mock("node:child_process", () => ({
+  execFileSync: vi.fn(),
+}));
+
+import { execFileSync } from "node:child_process";
+
+const mockExec = vi.mocked(execFileSync);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("FR-002: Branch management — ensureBranch()", () => {
+  it("US-007 #1: creates feat/<feature> from develop when no local branch exists", async () => {
+    // Simulate: no local branch, no remote branch
+    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
+      const argsArr = args as string[];
+      if (cmd === "git" && argsArr?.[0] === "branch" && argsArr?.[1] === "--list") {
+        return "" as any; // no local branch
+      }
+      if (cmd === "git" && argsArr?.[0] === "ls-remote") {
+        return "" as any; // no remote branch
+      }
+      return "" as any;
+    });
+
+    const branch = await ensureBranch("004-ship-loop");
+    expect(branch).toBe("feat/004-ship-loop");
+
+    // Must have checked out develop first
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["checkout", "develop"]),
+      expect.anything()
+    );
+    // Must have created the branch
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["checkout", "-b", "feat/004-ship-loop"]),
+      expect.anything()
+    );
+  });
+
+  it("US-007 #2: checks out existing branch and merges develop", async () => {
+    // Simulate: local branch exists
+    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
+      const argsArr = args as string[];
+      if (cmd === "git" && argsArr?.[0] === "branch" && argsArr?.[1] === "--list") {
+        return "  feat/004-ship-loop\n" as any;
+      }
+      return "" as any;
+    });
+
+    const branch = await ensureBranch("004-ship-loop");
+    expect(branch).toBe("feat/004-ship-loop");
+
+    // Must merge develop
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["merge", "develop"]),
+      expect.anything()
+    );
+  });
+
+  it("rejects invalid input: empty featureName", async () => {
+    // FR-002 error state — empty feature name
+    await expect(ensureBranch("")).rejects.toThrow();
+  });
+});
+
+describe("FR-002: Branch management — pushBranch()", () => {
+  it("pushes with --force-with-lease", async () => {
+    mockExec.mockReturnValue("" as any);
+    await pushBranch("004-ship-loop");
+
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["push", "--force-with-lease"]),
+      expect.anything()
+    );
+  });
+
+  it("rejects invalid input: empty featureName", async () => {
+    await expect(pushBranch("")).rejects.toThrow();
+  });
+});

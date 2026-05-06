@@ -1,0 +1,19 @@
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk define spec[0m  [2m17:42:33[0m
+  [2mAgent     [0m gemini
+  [2mFeature   [0m test-feature
+  [2mMode      [0m new
+  [2mPrompt    [0m "Testing UAT"
+  [2mRun ID    [0m 3812
+[2m──────────────────────────────────────────────────[0m
+
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [31m✗ [1mdefine spec[0m [31mfailed (exit 1)[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m│[0m  Run:      [2m#3812[0m
+[36m└─────────────────────────────────────────────┘[0m
+ENOENT: no such file or directory, open '/Users/gonzo/Code/gwrk/test-project-uat/gwrk-specify'
+
+[exit:1 | 24ms]

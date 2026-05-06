@@ -1,0 +1,32 @@
+{
+  "project": {
+    "name": "gwrk",
+    "slack": {
+      "channelId": "C0AL99J34PP",
+      "channelName": "gwrk-dev",
+      "webhookUrl": "https://hooks.slack.com/services/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"
+    }
+  },
+  "agents": {
+    "define": "gemini",
+    "implement": "gemini",
+    "throttleMs": 15000
+  },
+  "server": {
+    "port": 18790,
+    "host": "localhost",
+    "heartbeatIntervalMs": 5000,
+    "networkCheckIntervalMs": 30000
+  },
+  "parallelism": {
+    "local": {
+      "maxCpu": 80,
+      "maxMem": 80,
+      "minDiskGb": 10,
+      "maxClones": 2
+    },
+    "cloud": {
+      "maxConcurrent": 10
+    }
+  }
+}

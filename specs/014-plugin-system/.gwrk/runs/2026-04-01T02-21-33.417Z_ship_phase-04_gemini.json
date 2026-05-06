@@ -1,0 +1,30 @@
+{
+  "runId": "2026-04-01T02:21:33.417Z_ship_p04",
+  "feature": "014-plugin-system",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-04-01T02:21:33.417Z",
+  "finishedAt": "2026-04-01T02:25:46.109Z",
+  "durationS": 253,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 110,
+  "linesDeleted": 30,
+  "gitCommit": "717fe1b7e979478cfa1de45fbe48c1e27757c0b9",
+  "gitBranch": "feat/014-plugin-system",
+  "digest": [
+    "BRANCH_SETUP: created/checked-out feat/014-plugin-system (2s) [2026-03-21T19:02:34-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-21T19:04:32-0600]",
+    "CODE_REVIEW: GO — all assertions satisfied [2026-03-21T19:04:36-0600]",
+    "UAT_REVIEW: GO — UAT assertions satisfied [2026-03-21T19:04:38-0600]",
+    "BRANCH_SETUP: created/checked-out feat/014-plugin-system (0s) [2026-03-23T14:22:20-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-23T14:25:38-0600]",
+    "CODE_REVIEW: NO-GO — open tasks remain, will retry [2026-03-23T14:25:42-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-23T14:30:56-0600]",
+    "CODE_REVIEW: GO — all assertions satisfied [2026-03-23T14:31:02-0600]",
+    "UAT_REVIEW: GO — UAT assertions satisfied [2026-03-23T14:31:06-0600]"
+  ]
+}

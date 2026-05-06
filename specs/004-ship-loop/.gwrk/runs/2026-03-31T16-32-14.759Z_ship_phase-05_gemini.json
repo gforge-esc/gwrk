@@ -1,0 +1,24 @@
+{
+  "runId": "2026-03-31T16:32:14.759Z_ship_p05",
+  "feature": "004-ship-loop",
+  "phase": "phase-05",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-31T16:32:14.759Z",
+  "finishedAt": "2026-03-31T16:44:12.336Z",
+  "durationS": 718,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 13,
+  "linesAdded": 930,
+  "linesDeleted": 40,
+  "gitCommit": "197332ef2a86ecd2aae6a16bcd2fcf826f54d720",
+  "gitBranch": "feat/004-ship-loop",
+  "digest": [
+    "BRANCH_SETUP: created/checked-out feat/004-ship-loop (2s) [2026-03-31T10:32:16-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-31T10:43:44-0600]",
+    "CODE_REVIEW: GO — all assertions satisfied [2026-03-31T10:43:55-0600]",
+    "UAT_REVIEW: GO — UAT assertions satisfied [2026-03-31T10:44:05-0600]"
+  ]
+}

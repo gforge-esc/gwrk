@@ -1,0 +1,128 @@
+// src/utils/pr.test.ts
+// RED tests — Phase 2: PR + CI gate utility
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createPR, waitForCI } from "./pr.js"; // RED — module does not exist yet
+
+vi.mock("node:child_process", () => ({
+  execFileSync: vi.fn(),
+  execFile: vi.fn(),
+}));
+
+vi.mock("./state.js", () => ({
+  loadTaskState: vi.fn(),
+}));
+
+import { execFileSync } from "node:child_process";
+import { loadTaskState } from "./state.js";
+
+const mockExec = vi.mocked(execFileSync);
+const mockLoadTaskState = vi.mocked(loadTaskState);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("FR-006: PR creation — createPR()", () => {
+  it("US-006 #1: creates PR via gh pr create targeting develop", async () => {
+    // gh pr list returns empty (no existing PR)
+    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
+      const argsArr = args as string[];
+      if (cmd === "gh" && argsArr?.[0] === "pr" && argsArr?.[1] === "list") {
+        return "[]" as any; // no existing PRs
+      }
+      if (cmd === "gh" && argsArr?.[0] === "pr" && argsArr?.[1] === "create") {
+        return "https://github.com/org/repo/pull/42\n" as any;
+      }
+      return "" as any;
+    });
+
+    mockLoadTaskState.mockReturnValue({
+      feature: "004-ship-loop",
+      phases: [{
+        id: "phase-01",
+        name: "Phase 1",
+        tasks: [{ id: "T001", title: "Task 1", description: "Desc", status: "completed" }],
+      }],
+    });
+
+    const prNumber = await createPR({
+      featureName: "004-ship-loop",
+      phaseNumber: 1,
+      featureDir: "specs/004-ship-loop",
+    });
+
+    expect(prNumber).toBe(42);
+    // Must target develop
+    expect(mockExec).toHaveBeenCalledWith(
+      "gh",
+      expect.arrayContaining(["--base", "develop"]),
+      expect.anything()
+    );
+  });
+
+  it("US-006 #2: returns existing PR number if PR already exists", async () => {
+    mockExec.mockImplementation((cmd: string, args?: readonly string[]) => {
+      const argsArr = args as string[];
+      if (cmd === "gh" && argsArr?.[0] === "pr" && argsArr?.[1] === "list") {
+        return '[{"number": 99}]' as any;
+      }
+      return "" as any;
+    });
+
+    const prNumber = await createPR({
+      featureName: "004-ship-loop",
+      phaseNumber: 1,
+      featureDir: "specs/004-ship-loop",
+    });
+
+    expect(prNumber).toBe(99);
+  });
+
+  it("rejects: gh CLI not found", async () => {
+    // FR-006 error state
+    mockExec.mockImplementation(() => {
+      const err = new Error("gh not found") as any;
+      err.code = "ENOENT";
+      throw err;
+    });
+
+    await expect(
+      createPR({
+        featureName: "004-ship-loop",
+        phaseNumber: 1,
+        featureDir: "specs/004-ship-loop",
+      })
+    ).rejects.toThrow(/gh.*not found|ENOENT/);
+  });
+});
+
+describe("FR-006: CI gate — waitForCI()", () => {
+  it("returns true when all CI checks pass", async () => {
+    mockExec.mockReturnValue("" as any); // gh pr checks --watch exits 0
+
+    const result = await waitForCI(42, 30);
+    expect(result).toBe(true);
+  });
+
+  it("returns false when CI checks fail", async () => {
+    mockExec.mockImplementation(() => {
+      const err = new Error("checks failed") as any;
+      err.status = 1;
+      throw err;
+    });
+
+    const result = await waitForCI(42, 30);
+    expect(result).toBe(false);
+  });
+
+  it("returns false on timeout", async () => {
+    mockExec.mockImplementation(() => {
+      const err = new Error("timed out") as any;
+      err.status = 1;
+      throw err;
+    });
+
+    const result = await waitForCI(42, 1); // 1 minute timeout
+    expect(result).toBe(false);
+  });
+});

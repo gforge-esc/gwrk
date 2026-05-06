@@ -1,0 +1,19 @@
+{
+  "runId": "2026-03-20T12:54:52.913Z_define_all",
+  "feature": "005-parallel-dispatch",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-20T12:54:52.913Z",
+  "finishedAt": "2026-03-20T12:56:40.140Z",
+  "durationS": 107,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 146,
+  "linesDeleted": 18,
+  "gitCommit": "39a111126437af6a1b9e5ef29015181016f08f86",
+  "gitBranch": "develop",
+  "digest": []
+}

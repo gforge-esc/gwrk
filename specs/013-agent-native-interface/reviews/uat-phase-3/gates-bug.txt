@@ -1,0 +1,5 @@
+Task | Feature         | Gate Path
+-----|-----------------|----------
+T001 | 000             | specs/000-tdd-infrastructure/gates/T001-gate.sh
+T002 | 000             | specs/000-tdd-infrastructure/gates/T002-gate.sh
+T003 | 000             | specs/000-tdd-infrastructure/gates/T003-gate.sh

@@ -1,0 +1,21 @@
+{
+  "runId": "2026-03-21T18:32:12.867Z_ship_p02",
+  "feature": "011-harvest",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-21T18:32:12.867Z",
+  "finishedAt": "2026-03-21T18:32:13.178Z",
+  "durationS": 0,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 12,
+  "linesAdded": 120,
+  "linesDeleted": 29,
+  "gitCommit": "a0559e1b2392618a76c068fa323760279ce156b0",
+  "gitBranch": "feat/011-harvest",
+  "digest": [
+    "BRANCH_SETUP: FAILED — branch setup exited 1 [2026-03-21T12:32:13-0600]"
+  ]
+}

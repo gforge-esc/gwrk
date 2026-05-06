@@ -1,0 +1,33 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "files": {
+    "ignore": [
+      "dist",
+      "coverage",
+      ".gwrk",
+      "node_modules",
+      "specs/**/.gwrk/runs/*.json",
+      "src/utils/*.test.ts",
+      "src/engine/*.test.ts",
+      "src/commands/*.test.ts",
+      "src/scripts-e2e.test.ts"
+    ]
+  },
+  "organizeImports": {
+    "enabled": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "error"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  }
+}

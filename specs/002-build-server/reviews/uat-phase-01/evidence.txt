@@ -1,0 +1,16 @@
+UAT Phase 01 - Daemon Bootstrap
+--------------------------------
+1. Start server
+gwrk server started (pid: 23602)
+gwrk server listening on http://localhost:18790
+2. Check /health
+{"status":"ok"}
+3. Check PID file
+-rw-r--r--@ 1 gonzo  staff  5 Mar  9 22:52 .gwrk/server.pid
+PID: $(cat .gwrk/server.pid)
+4. Stop server
+Stopping server (pid: 23602)...
+Server stopped.
+5. Verify PID file removed
+ls: .gwrk/server.pid: No such file or directory
+PID file removed

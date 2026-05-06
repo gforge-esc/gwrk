@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-01T16:48:01.906Z_ship_p04",
+  "feature": "018-build-plan-orchestrator",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-01T16:48:01.906Z",
+  "finishedAt": "2026-05-01T16:48:02.404Z",
+  "durationS": 0,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 8,
+  "linesAdded": 241,
+  "linesDeleted": 684,
+  "gitCommit": "081cb16d1ef107f81430ae84a8c1daece433cfb3",
+  "gitBranch": "develop",
+  "digest": []
+}

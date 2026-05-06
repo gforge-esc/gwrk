@@ -1,80 +1,56 @@
 # gwrk Makefile
-# Extracted from code-red to bootstrap gwrk using its own workflows.
+# Local developer workflows
 
-HELP_WIDTH ?= 24
+HELP_WIDTH ?= 15
 
-.PHONY: help agent-review-code agent-review-uat agent-plan agent-plan-to-beads agent-specify agent-analyze \
-	agent-wud agent-dus agent-kill
+.PHONY: help test coverage build lint format clean
 
 help: ## Show available make targets with descriptions
 	@printf 'Available make targets:\n'
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  \\033[36m%-"$(HELP_WIDTH)"s\\033[0m %s\\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ─────────────────────────────────────────────────────────────
-# Agent Workflows — governed Gemini CLI invocation
+# Local Development Targets
 # ─────────────────────────────────────────────────────────────
 
-AGENT_RUNNER ?= ./scripts/dev/agent-run.sh
+test: ## Run the vitest suite
+	@pnpm test
 
-agent-review-code: ## Run agent code review: make agent-review-code SPEC=001-pipeline-setup PHASE=1
-	@if [ -z "$(SPEC)" ] || [ -z "$(PHASE)" ]; then \
-		echo "Usage: make agent-review-code SPEC=<feature> PHASE=<n>"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) review-code $(SPEC) $(PHASE)
+coverage: ## Run the vitest suite with coverage
+	@pnpm test:coverage
 
-agent-review-uat: ## Run agent UAT review: make agent-review-uat SPEC=006-fieldnotes-explorer PHASE=3
-	@if [ -z "$(SPEC)" ] || [ -z "$(PHASE)" ]; then \
-		echo "Usage: make agent-review-uat SPEC=<feature> PHASE=<n>"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) review-uat $(SPEC) $(PHASE)
+build: ## Compile TypeScript and run postbuild tasks
+	@pnpm build
 
-agent-plan: ## Run agent planning: make agent-plan SPEC=001-pipeline-setup
-	@if [ -z "$(SPEC)" ]; then \
-		echo "Usage: make agent-plan SPEC=<feature>"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) plan $(SPEC)
+lint: ## Run Biome linter
+	@pnpm lint
 
-agent-plan-to-beads: ## Generate beads import scripts: make agent-plan-to-beads SPEC=001-pipeline-setup
-	@if [ -z "$(SPEC)" ]; then \
-		echo "Usage: make agent-plan-to-beads SPEC=<feature>"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) plan-to-beads $(SPEC)
+format: ## Run Biome auto-formatter
+	@pnpm format
 
-agent-specify: ## Run agent specification: make agent-specify SPEC=001-pipeline-setup
-	@if [ -z "$(SPEC)" ]; then \
-		echo "Usage: make agent-specify SPEC=<feature>"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) specify $(SPEC)
+# ─────────────────────────────────────────────────────────────
+# Infrastructure Targets (STRICT DOCKER MANDATE)
+# ─────────────────────────────────────────────────────────────
 
-agent-analyze: ## Run agent analysis (read-only): make agent-analyze SPEC=001-pipeline-setup
-	@if [ -z "$(SPEC)" ]; then \
-		echo "Usage: make agent-analyze SPEC=<feature>"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) analyze $(SPEC)
+up: build ## Start the dev stack (Docker Compose)
+	@docker compose --project-name gwrk-dev up -d --build
+	@echo "Dev stack up: http://localhost:18790"
 
-agent-wud: ## Work-Until-Done: autonomous phase lifecycle (implement→review→PR→CI)
-	@if [ -z "$(SPEC)" ] || [ -z "$(PHASE)" ]; then \
-		echo "Usage: make agent-wud SPEC=<feature> PHASE=<n> [ISSUE=<gh_issue>]"; \
-		echo "  e.g. make agent-wud SPEC=001-pipeline-setup PHASE=1 ISSUE=42"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) work-until-done $(SPEC) $(PHASE) $(ISSUE)
+down: ## Stop the dev stack
+	@docker compose --project-name gwrk-dev down
+	@echo "Dev stack down."
 
-agent-dus: ## Define-Until-Solid: autonomous definitional lifecycle (plan-to-beads→analyze→tests→import)
-	@if [ -z "$(SPEC)" ]; then \
-		echo "Usage: make agent-dus SPEC=<feature> [PHASE=<n>] [SKIP_TESTS=true]"; \
-		echo "  e.g. make agent-dus SPEC=001-monorepo-scaffold"; \
-		exit 2; \
-	fi
-	@$(AGENT_RUNNER) define-until-solid $(SPEC) $(PHASE)
+ps: ## View dev stack status
+	@docker compose --project-name gwrk-dev ps
 
-agent-kill: ## Kill orphaned dev processes (I-007 cleanup)
-	@echo "Killing orphaned dev and cargo processes..."
-	@pkill -f 'pnpm.*dev' 2>/dev/null && echo "Killed pnpm dev." || echo "No pnpm dev found."
-	@pkill -f 'cargo.*run' 2>/dev/null && echo "Killed cargo run." || echo "No cargo run found."
+logs: ## Follow dev stack logs
+	@docker compose --project-name gwrk-dev logs -f
+
+agent-kill: ## Kill orphaned local dev processes
+	@pkill -f "pnpm.*dev" 2>/dev/null || true
+	@pkill -f "cargo.*run" 2>/dev/null || true
+	@echo "Orphaned local dev processes killed."
+
+clean: ## Remove build artifacts and coverage output
+	@rm -rf dist/ coverage/
+	@echo "Cleaned dist/ and coverage/"

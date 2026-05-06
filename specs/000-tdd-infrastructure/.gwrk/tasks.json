@@ -1,0 +1,139 @@
+{
+  "featureId": "000-tdd-infrastructure",
+  "createdAt": "2026-03-16T20:55:17.052Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "7fa2c9c1593f361edc090aadda8ef9ad7cb206a4bd5c30cacea164c7338f23dd",
+      "modifiedAt": "2026-03-16T20:35:05.733Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Hard Gate Enforcement & CLI Infrastructure",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Implement src/utils/gate-gen.ts",
+          "description": "MODIFY: `generateGates(",
+          "status": "open",
+          "gateScript": "gates/T001-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T002",
+          "title": "Implement src/commands/tasks-generate.ts",
+          "description": "MODIFY: Add contracts guard (exit 1 if contracts/ missing",
+          "status": "open",
+          "gateScript": "gates/T002-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T003",
+          "title": "Implement src/commands/ship.ts",
+          "description": "MODIFY: Add pre-flight check — scan phase deliverable files for matching `.test.ts`. If none found, exit 1 with `[BLOCKED] No test files found for <phase>`. Active immediately, no flag.",
+          "status": "open",
+          "gateScript": "gates/T003-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T004",
+          "title": "Implement src/commands/test.ts",
+          "description": "NEW: `gwrk test <feature> [--phase <N>]` — runs `pnpm vitest run` scoped to feature test file paths from tasks.json, exits 0 only if all pass.",
+          "status": "open",
+          "gateScript": "gates/T004-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T005",
+          "title": "Implement src/cli.ts",
+          "description": "MODIFY: Register `test` command.",
+          "status": "open",
+          "gateScript": "gates/T005-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T006",
+          "title": "Implement src/commands/ship.test.ts",
+          "description": "MODIFY: Fix broken mock — `SlackConfigSchema` is not exported from the vi.mock of `../utils/config.js`. Fix mock, then add test for BLOCKED pre-flight.",
+          "status": "open",
+          "gateScript": "gates/T006-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T007",
+          "title": "Implement src/commands/server.test.ts",
+          "description": "MODIFY: Fix EADDRINUSE — server tests must use a mock port or `vi.mock` the net binding. Real port 18794 is in use during test runs.",
+          "status": "open",
+          "gateScript": "gates/T007-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T008",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T008-gate.sh",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/utils/gate-gen.test.ts src/commands/tasks-generate.test.ts src/commands/tasks-done.test.ts src/commands/ship.test.ts src/commands/test-cmd.test.ts src/commands/server.test.ts` exits 0",
+        "`pnpm build` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Retroactive Audit & Gap Analysis (001, 002)",
+      "tasks": [
+        {
+          "id": "T009",
+          "title": "Implement specs/001-cli-core/gap-analysis.md",
+          "description": "NEW: Classify each FR-### as ✅ tested | ⚠️ weak | ❌ untested. For every ❌ or ⚠️, describe exactly what assertion is missing and what test file should contain it.",
+          "status": "open",
+          "gateScript": "gates/T009-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T010",
+          "title": "Implement specs/002-build-server/gap-analysis.md",
+          "description": "NEW: Same classification. Focus on: server lifecycle start/stop, health endpoint, dispatch queue, Docker sandbox, git manager.",
+          "status": "open",
+          "gateScript": "gates/T010-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T011",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T011-gate.sh",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`grep -cE \"✅|⚠️|❌\" specs/001-cli-core/gap-analysis.md | xargs test 0 -lt` exits 0",
+        "`grep -cE \"✅|⚠️|❌\" specs/002-build-server/gap-analysis.md | xargs test 0 -lt` exits 0"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "003-slack Remediation & Red-First Authoring",
+      "tasks": [
+        {
+          "id": "T012",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T012-gate.sh",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/ 2>&1 | grep -q \" 0 failed\"` exits 0",
+        "`cat specs/003-slack/gates/T007-gate.sh | grep -q \"pnpm vitest run\"` exits 0",
+        "`pnpm vitest run 2>&1 | tail -3 | grep -q \" 0 failed\"` exits 0 (full suite green)"
+      ]
+    }
+  ]
+}

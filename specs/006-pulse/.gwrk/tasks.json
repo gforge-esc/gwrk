@@ -1,0 +1,119 @@
+{
+  "featureId": "006-pulse",
+  "createdAt": "2026-03-10T23:15:24.004Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "92d591651b35a701fa878ae00c5b384c300f143d7206566306171c2cf7affe9d",
+      "modifiedAt": "2026-03-10T04:38:34.366Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Engine & Git Utility Refinement",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Implement src/utils/git.ts",
+          "description": "MODIFY: Update `detectDefaultBranch` to support overrides; Replace slow `gitLineCount` loop with a single `git rev-list --objects --all` or `git ls-tree` based approach for better performance; Implement `gitDraftLineCount` correctly.",
+          "status": "open",
+          "gateScript": "gates/T001-gate.sh"
+        },
+        {
+          "id": "T002",
+          "title": "Implement src/engine/pulse.ts",
+          "description": "MODIFY: Update `scanRepository` and `bucketByWeek` signatures to accept `branch` override; Implement `totalDrafts` calculation in `bucketByWeek`.",
+          "status": "open",
+          "gateScript": "gates/T002-gate.sh"
+        },
+        {
+          "id": "T003",
+          "title": "Implement src/engine/types.ts",
+          "description": "MODIFY: Ensure Zod schemas align with DM-001/DM-002; remove hardcoded stubs.",
+          "status": "open",
+          "gateScript": "gates/T003-gate.sh"
+        },
+        {
+          "id": "T004",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: Verify `pulse.repos` Zod validation.",
+          "status": "open",
+          "gateScript": "gates/T004-gate.sh"
+        },
+        {
+          "id": "T005",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T005-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`npm test src/engine/pulse.test.ts` exits 0",
+        "`npm test src/engine/pulse-integration.test.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "CLI Commands & Terminal Rendering",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Implement src/commands/pulse.ts",
+          "description": "MODIFY: Implement `renderPulseTable` and `renderSnapshotTable` using Unicode box-drawing; Support `--branch` and `--json` flags; Implement `gwrk pulse` multi-repo logic.",
+          "status": "open",
+          "gateScript": "gates/T006-gate.sh"
+        },
+        {
+          "id": "T007",
+          "title": "Implement src/engine/pulse.ts",
+          "description": "MODIFY: Complete `generatePulseReport` and `scanSpecProgress` implementation.",
+          "status": "open",
+          "gateScript": "gates/T007-gate.sh"
+        },
+        {
+          "id": "T008",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T008-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`npm test src/commands/pulse.test.ts` exits 0",
+        "`gwrk pulse --json | jq '.'` (in a repo with config) exits 0"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Final Verification & E2E",
+      "tasks": [
+        {
+          "id": "T009",
+          "title": "Implement src/cli.test.ts",
+          "description": "MODIFY: Add E2E scenarios for `pulse` and `pulse scan`.",
+          "status": "open",
+          "gateScript": "gates/T009-gate.sh"
+        },
+        {
+          "id": "T010",
+          "title": "Implement src/engine/pulse-integration.test.ts",
+          "description": "MODIFY: Add performance benchmark and large-repo simulation.",
+          "status": "open",
+          "gateScript": "gates/T010-gate.sh"
+        },
+        {
+          "id": "T011",
+          "title": "Implement test strategy for Phase 3",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "open",
+          "gateScript": "gates/T011-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`npm test` (all tests) exits 0",
+        "`npx tsc` (full project) exits 0"
+      ]
+    }
+  ]
+}

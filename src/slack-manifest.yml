@@ -1,0 +1,42 @@
+_metadata:
+  major_version: 2
+  minor_version: 1
+display_information:
+  name: gwrk
+  description: "🦩 You better gwrk!"
+  long_description: "gwrk is a CLI and local build server that orchestrates fleets of AI coding agents through governed, parallelized pipelines — and lets you control the whole thing from Slack. It takes your architectural vision, decomposes it into executable phases, dispatches agents to build them in parallel, drives results through review gates and CI, and reports back here. You ship features while walking the dog. gwrk is not another AI code generator. It's the general contractor for your software factory."
+  background_color: "#FF1493"
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: false
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: gwrk
+    always_online: true
+  slash_commands:
+    - command: /gwrk
+      description: "Show gwrk status or run a subcommand"
+      usage_hint: "[status|dispatch|approve|ship|reject|pause|pulse|effort|logs] [args]"
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - channels:read
+      - channels:manage
+      - channels:join
+      - commands
+      - app_mentions:read
+      - users:read
+      - reactions:read
+settings:
+  socket_mode_enabled: true
+  incoming_webhooks_enabled: true
+  org_deploy_enabled: false
+  interactivity:
+    is_enabled: true
+  event_subscriptions:
+    bot_events:
+      - app_home_opened
+      - app_mention

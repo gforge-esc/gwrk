@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "components": {
+    "server": {
+      "status": "ok"
+    },
+    "docker": {
+      "status": "ok"
+    },
+    "network": {
+      "status": "ok"
+    }
+  }
+}

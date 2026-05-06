@@ -1,0 +1,30 @@
+type: review
+name: review-webapp
+version: 1.0.0
+description: Default WebApp Review Strategy
+projectType: webapp
+codeReviewWorkflow: review-code-webapp
+uatReviewWorkflow: review-uat-webapp
+steps:
+  code:
+    - id: lint
+      title: Linting
+      description: Check for lint errors
+      required: true
+    - id: types
+      title: Type Check
+      description: Verify TypeScript types
+      required: true
+    - id: tests
+      title: Unit Tests
+      description: Run component unit tests
+      required: true
+  uat:
+    - id: visual
+      title: Visual Regression
+      description: Verify UI components
+      required: true
+    - id: e2e
+      title: E2E Tests
+      description: Run Playwright/Cypress tests
+      required: true

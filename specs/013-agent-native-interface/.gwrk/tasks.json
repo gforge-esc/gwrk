@@ -1,0 +1,176 @@
+{
+  "featureId": "013-agent-native-interface",
+  "createdAt": "2026-03-13T22:48:00.000Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "pending",
+      "modifiedAt": "2026-03-13T22:48:00.000Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Phase 1: Foundation",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create withSignal() HOF",
+          "description": "Create src/utils/signal.ts implementing the withSignal(name, fn) higher-order function per contracts/signal.md. Must: time execution via performance.now(), emit [exit:N | duration] on stderr, set process.exitCode (not process.exit()), catch all errors. Duration: <1s → Nms, ≥1s → N.Ns. Create src/utils/signal.test.ts with unit tests per TR-001.\nREVIEW FAIL (lint): noInferrableTypes — style.\n  WHERE: src/utils/signal.ts:9:18\n  EXPECTED: public exitCode = 1 (type inferred)\n  ACTUAL: public exitCode: number = 1\n  FIX: Remove : number from the parameter.\n  GATE: pnpm lint\n  REF: plan.md Phase 1.1",
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh"
+        },
+        {
+          "id": "T002",
+          "title": "Wrap all command actions with withSignal()",
+          "description": "Retrofit all 24 .action() callbacks across 19 command files to use withSignal(). Files: define.ts, specify.ts, plan.ts, implement.ts, tasks-generate.ts, ship.ts, test.ts, measure.ts, effort.ts, compression.ts, pulse.ts (2 actions), tasks.ts (4 actions: done/list/next/ready), runs.ts, stats.ts, db.ts, server.ts (3 actions), status.ts, init.ts, setup-slack.ts. Each action wrapped as: await withSignal('command-name', async () => { existing logic }). Remove direct process.exit() calls from action bodies — withSignal handles exit codes.\nREVIEW FAIL (code): Regression in existing tests — US-001.\n  WHERE: src/commands/*.test.ts (20+ tests)\n  EXPECTED: Tests pass when checking error conditions or exit codes.\n  ACTUAL: many tests resolve/fail because withSignal catches errors and sets process.exitCode, while tests expect rejection or process.exit(1).\n  FIX: Update tests to check process.exitCode instead of expecting rejection. If using withSignal, command actions no longer throw to Commander; they set exitCode and return.\n  GATE: pnpm test\n  REF: plan.md Phase 1.1",
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh"
+        },
+        {
+          "id": "T003",
+          "title": "Create CommandOutput abstraction",
+          "description": "Create src/utils/output.ts implementing the CommandOutput interface and createOutput(format) factory per contracts/output.md. Human mode: write() → stdout as text, info() → stderr. JSON mode: write() → JSON.stringify to stdout, info() → stderr. Create src/utils/output.test.ts with unit tests per TR-002.\nREVIEW FAIL (code): Regression in JSON query tests — FR-002.\n  WHERE: src/commands/tasks-query.test.ts (87:70, 125:70)\n  EXPECTED: Tests capture output and verify JSON.\n  ACTUAL: TypeError: Cannot read properties of undefined (reading '0'). logSpy.mock.calls is empty because createOutput writes to stdout, not console.log.\n  FIX: Update tests to spy on process.stdout.write or provide a mock CommandOutput for testing.\n  GATE: pnpm test\n  REF: plan.md Phase 1.2",
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh"
+        },
+        {
+          "id": "T004",
+          "title": "Add --format global flag to CLI",
+          "description": "Modify src/cli.ts to add program.option('--format <type>', 'Output format: human | json', 'human'). Validate format value — exit 2 on invalid (e.g., --format xml → 'Unknown format: xml. Supported: human, json'). Make format option accessible to all commands via Commander's opts() chain.\nREVIEW FAIL (gate): Gate script T004-gate.sh failed — FR-002.\n  WHERE: specs/013-agent-native-interface/gates/T004-gate.sh\n  EXPECTED: Gate script passes (exits 0).\n  ACTUAL: Exits 2 because gwrk returns 2 and set -e is on.\n  FIX: Fix gate script to handle non-zero exit from gwrk (e.g., EXITCODE=0; gwrk ... || EXITCODE=$?).\n  GATE: gates/T004-gate.sh\n  REF: spec FR-002",
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh"
+        },
+        {
+          "id": "T005",
+          "title": "Retrofit queryable commands for --format json",
+          "description": "Retrofit tasks.ts (list, next, ready subcommands) and status.ts to use CommandOutput from output.ts. When --format json: tasks list → { tasks: [...] }, tasks next → { task: {...} | null }, status → { project, specs, agents }. Human mode unchanged. Per plan Phase 1.2 queryable command table.\nREVIEW FAIL (code): Regression in JSON query tests — FR-002.\n  WHERE: src/commands/tasks-query.test.ts\n  EXPECTED: JSON output captured and parsed.\n  ACTUAL: logSpy empty because tasksCommand list/next uses createOutput.\n  FIX: Update tests to spy on process.stdout.write or use a test-ready output abstraction.\n  GATE: pnpm test\n  REF: plan.md Phase 1.2",
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh"
+        },
+        {
+          "id": "T006",
+          "title": "Create gwrk gate-check command",
+          "description": "Create src/commands/gate-check.ts per contracts/gate-check.md. Arguments: <task_id>, -f/--feature <dir>. Resolves gate script path: specs/<feature>/gates/<taskId>-gate.sh. Executes gate script, captures exit code + stdout + stderr. Returns GateCheckResult (DM-002). Supports --format json. Feature inference when -f omitted: glob specs/**/gates/<taskId>-gate.sh. Error-as-navigation on missing gate. Register in src/cli.ts. Create src/commands/gate-check.test.ts per TR-005.\nREVIEW FAIL (gate): Gate script T006-gate.sh failed — FR-006.\n  WHERE: specs/013-agent-native-interface/gates/T006-gate.sh: Assertion #3\n  EXPECTED: grep -q 'gates/' matches code.\n  ACTUAL: Code uses \"gates\" in path.join, not \"gates/\".\n  FIX: Update gate script to match code pattern (grep -q '\"gates\"') or update code with slash (unsafe for path.join).\n  GATE: gates/T006-gate.sh\n  REF: spec FR-006",
+          "status": "completed",
+          "gateScript": "gates/T006-gate.sh"
+        },
+        {
+          "id": "T007",
+          "title": "Standardize exit codes across all commands",
+          "description": "Audit all 19 command files. Ensure: 0=success, 1=expected failure (gate failed, feature not found), 2=usage error (missing args, invalid flags), 127=unknown command. Currently all errors use process.exit(1). Replace usage errors with exit 2. Configure Commander's exitOverride or custom handler for unknown commands → exit 127. Update withSignal to propagate error types. Per spec FR-009.\nREVIEW FAIL (code): Regression in tests and gate fail — FR-009.\n  WHERE: src/commands/*.test.ts (especially test-cmd.test.ts)\n  EXPECTED: Usage errors return 2, and tests pass.\n  ACTUAL: Tests expecting 1 for usage error now fail. Gate script T007-gate.sh also fails due to set -e.\n  FIX: Update tests to expect 2 for usage errors. Fix gate script T007-gate.sh to handle non-zero exit from gwrk.\n\nREVIEW FAIL (lint): noExplicitAny and noUselessElse — FR-009.\n  WHERE: src/cli.ts:141:17 and src/commands/tasks.ts:61:11\n  EXPECTED: Error caught with type (unknown/Error), no useless else in tasks.ts.\n  ACTUAL: catch (err: any) and useless else after throw.\n  FIX: Use unknown/Error type and remove else clause after throw.\n  GATE: pnpm lint\n  REF: spec FR-009, Step 4 & 6",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh"
+        }
+      ],
+      "doneWhen": [
+        "`gwrk status 2>/dev/null` produces clean stdout",
+        "`gwrk status 2>&1 >/dev/null | grep -q 'exit:'` exits 0",
+        "`gwrk tasks list 000-tdd-infrastructure --format json | jq .` produces valid JSON",
+        "`gwrk gate-check T001 -f specs/000-tdd-infrastructure --format json | jq .result` returns string",
+        "`gwrk nonexistent-command; echo $?` returns non-zero"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Phase 2: Discovery",
+      "tasks": [
+        {
+          "id": "T008",
+          "title": "Create project discovery engine",
+          "description": "Create src/engine/discover.ts implementing discoverProject(root) per contracts/discover.md. Assembles ProjectDiscovery (DM-001) from repo-only sources: git state (git status, git branch, git log), spec inventory (glob specs/*/spec.md, derive status from plan.md/tasks.json existence), gate aggregation (execute gate scripts), config (.gwrkrc.json). MUST NOT read ~/.gwrk/gwrk.db or call localhost:18790 (TC-004). Create src/engine/discover.test.ts per TR-004 — mock filesystem, verify no sqlite/http calls.",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "completedAt": "2026-03-14T17:54:27.000Z"
+        },
+        {
+          "id": "T009",
+          "title": "Create gwrk project command group",
+          "description": "Create src/commands/project.ts with parent command 'project' and 'discover' subcommand. Wire discoverProject() from discover.ts. Support --format json (via CommandOutput). Register project command in src/cli.ts. Human mode: formatted summary. JSON mode: full ProjectDiscovery schema. Create src/commands/project.test.ts per TR-006.",
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh",
+          "completedAt": "2026-03-14T06:00:52.625Z"
+        },
+        {
+          "id": "T010",
+          "title": "Add project specs and gates subcommands",
+          "description": "Add 'specs' and 'gates' subcommands to project command in src/commands/project.ts. specs: list all specs with id, name, status, phase count, open tasks. gates: run all gate scripts and report task id, result (PASS/FAIL), duration. Both support --format json. Per spec FR-005.",
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh",
+          "completedAt": "2026-03-14T17:54:27.000Z"
+        },
+        {
+          "id": "T011",
+          "title": "Rewrite help text for agent discoverability",
+          "description": "Rewrite --help text for all commands to include: command type (query/generator/verifier/mutator), exit codes section, available format options (--format json where queryable), mutation declarations where applicable. Use CommandMeta (DM-003) as static metadata co-located with each command definition. Per spec FR-008, TR-008.",
+          "status": "completed",
+          "gateScript": "gates/T011-gate.sh",
+          "completedAt": "2026-03-14T06:00:54.540Z"
+        },
+        {
+          "id": "T012",
+          "title": "Implement error-as-navigation across all commands",
+          "description": "Systematic error message rewrite across all command files. Every error must include: (1) what failed, (2) corrective command to run, (3) --help reference. Pattern: '<what failed>. Run '<fix command>' to <resolution>. See '<related> --help'.' Per spec FR-007, TR-008. Audit every throw/console.error/process.exit path.",
+          "status": "completed",
+          "gateScript": "gates/T012-gate.sh",
+          "completedAt": "2026-03-14T06:00:55.520Z"
+        }
+      ],
+      "doneWhen": [
+        "`gwrk project discover --format json | jq .project.name` returns project name",
+        "`gwrk project specs --format json | jq '.[0].status'` returns valid status",
+        "`gwrk tasks list nonexistent 2>&1 | grep -c \"Run '\"` returns ≥ 1",
+        "`gwrk gate-check --help | grep -c 'Exit codes'` returns ≥ 1"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Phase 3: Agent Mode",
+      "tasks": [
+        {
+          "id": "T013",
+          "title": "Create Layer 2 agent protections",
+          "description": "Create src/utils/agent-layer.ts with processForAgent(output) composing: stripAnsi() (remove \\x1b[...m sequences from src/utils/format.ts), guardBinary() (detect null bytes or >30% non-printable → '[binary content, N bytes]'), truncateOverflow() (trigger: >8192 bytes → first 100 lines + '/tmp/gwrk-output-<hash>.txt' reference). Create src/utils/agent-layer.test.ts per TR-003.\n\nREVIEW FAIL (uat): US-003.3 — Expected: Large output (>8KB) is truncated and written to a file. Actual: Output is not truncated if written in chunks < 8KB (e.g., line-by-line). Fix: Use a stateful stream wrapper in the patched process.stdout.write to track total bytes written.",
+          "status": "completed",
+          "gateScript": "gates/T013-gate.sh",
+          "completedAt": "2026-03-14T17:54:27.000Z"
+        },
+        {
+          "id": "T014",
+          "title": "Wire --agent global flag",
+          "description": "Add program.option('--agent', 'Enable agent mode: ANSI-stripped output with Layer 2 protections') to src/cli.ts. Also detect GWRK_AGENT=1 env var. When active, pipe all stdout through processForAgent() from agent-layer.ts. --agent does NOT change output format (TC-006). --agent and --format json compose independently.",
+          "status": "completed",
+          "gateScript": "gates/T014-gate.sh"
+        },
+        {
+          "id": "T015",
+          "title": "Add stdin acceptance to define plan",
+          "description": "Modify src/commands/define.ts: when process.stdin.isTTY is false, read stdin as JSON, write to /tmp/gwrk-discovery-<timestamp>.json, pass contextPath to agent dispatch prompt template. Enables pipeline: gwrk project discover --format json | gwrk define plan --spec <spec> --format json. Per plan Phase 3.2.\n\nREVIEW FAIL (uat): Phase 3.2 — Expected: define plan accepts discovery JSON and passes context to agent. Actual: Agent dispatch fails with 'Unknown argument: c' because gemini CLI does not support -c. Fix: Update src/utils/agent.ts to pass context via a supported flag or method for the gemini backend.",
+          "status": "completed",
+          "gateScript": "gates/T015-gate.sh",
+          "completedAt": "2026-03-14T17:54:27.000Z"
+        },
+        {
+          "id": "T016",
+          "title": "Create task classification engine",
+          "description": "Create src/engine/classify.ts implementing classifyTask(touchPoints). Classification: greenfield (file doesn't exist), change (file exists, task modifies behavior), refactor (file exists, changes structure not behavior), noop (no code change). Called during gwrk define tasks to enrich tasks.json with classification field. Per plan Phase 3.3.",
+          "status": "completed",
+          "gateScript": "gates/T016-gate.sh"
+        },
+        {
+          "id": "T017",
+          "title": "Enrich PhaseSchema with optional fields",
+          "description": "Modify src/utils/state.ts: add optional fields to PhaseSchema: objective (z.string().optional()), scope ({in_scope, out_of_scope} z.object().optional()), classification_summary (z.record(z.number()).optional()), inputs ({spec_refs, project_signals} z.object().optional()). All .optional() — existing tasks.json files remain valid. Per plan Phase 3.4.\n\nREVIEW FAIL (uat): Phase 3.4 — Expected: define tasks populates new optional phase fields (objective, scope, inputs). Actual: Fields are missing from generated tasks.json. Fix: Update src/utils/parser.ts and src/commands/tasks-generate.ts to extract and populate these fields from plan.md.",
+          "status": "completed",
+          "gateScript": "gates/T017-gate.sh",
+          "completedAt": "2026-03-14T17:54:27.000Z"
+        }
+      ],
+      "doneWhen": [
+        "`GWRK_AGENT=1 gwrk status | cat -v | grep -c '\\^\\['` returns 0",
+        "`gwrk project discover --format json | gwrk define plan --spec specs/000-tdd-infrastructure/spec.md --format json` pipeline connects",
+        "`jq '.phases[0].tasks[0].classification' specs/000-tdd-infrastructure/.gwrk/tasks.json` returns valid classification",
+        "`pnpm test` passes all tests"
+      ]
+    }
+  ]
+}

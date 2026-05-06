@@ -1,0 +1,19 @@
+{
+  "runId": "2026-03-16T23:12:02.280Z_define_all",
+  "feature": "000-tdd-infrastructure",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-16T23:12:02.280Z",
+  "finishedAt": "2026-03-16T23:15:44.103Z",
+  "durationS": 222,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 41,
+  "linesAdded": 526,
+  "linesDeleted": 186,
+  "gitCommit": "b140b49b0232c35623f4e496b51f9bf0f9cb8bb9",
+  "gitBranch": "feat/004-ship-loop",
+  "digest": []
+}

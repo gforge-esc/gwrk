@@ -1,0 +1,19 @@
+{
+  "runId": "2026-04-14T19:04:14.309Z_define_all",
+  "feature": "018-build-plan-orchestrator",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-04-14T19:04:14.309Z",
+  "finishedAt": "2026-04-14T19:06:40.301Z",
+  "durationS": 146,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 35,
+  "linesDeleted": 5,
+  "gitCommit": "ec0f157fb73691450116eed4c845c861bcb15bfb",
+  "gitBranch": "feat/018-build-plan-orchestrator",
+  "digest": []
+}

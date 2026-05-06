@@ -1,0 +1,18 @@
+{
+  "runId": "2026-03-13T03:02:56.906Z_ship_p03",
+  "feature": "000-tdd-infrastructure",
+  "phase": "phase-03",
+  "command": "ship",
+  "agent": "codex-cloud",
+  "model": "unknown",
+  "startedAt": "2026-03-13T03:02:56.906Z",
+  "finishedAt": "2026-03-13T03:03:00.736Z",
+  "durationS": 3,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 12,
+  "linesAdded": 72,
+  "linesDeleted": 30,
+  "gitCommit": "b53829ddf16410bee9bedf9461129f12cf7be94d",
+  "gitBranch": "feat/000-tdd-infrastructure"
+}

@@ -1,0 +1,1040 @@
+
+ RUN  v3.2.4 /Users/gonzo/Code/gwrk
+
+ × src/engine/drift-detector.test.ts > src/engine/drift-detector.ts (FR-006) > should detect DRIFTED if SHIPPED phase has artifacts in .agents/ 2ms
+   → Method not implemented.
+ × src/engine/drift-detector.test.ts > src/engine/drift-detector.ts (FR-006) > should report CLEAN if SHIPPED phase has NO artifacts in .agents/ 0ms
+   → Method not implemented.
+ × src/engine/drift-detector.test.ts > src/engine/drift-detector.ts (FR-006) > should detect features in specs/ missing from graph 0ms
+   → Method not implemented.
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > US-001.1: emits [exit:0 | Nms] on stderr for successful command 2ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > US-001.2: emits [exit:1 | Ns] cmd: message on stderr for failed command 0ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > US-001.3: signal never appears on stdout (TC-007 pipe safety) 0ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > formats duration as Nms when execution < 1000ms 0ms
+ ✓ src/utils/exec.test.ts > exec utilities > run > should resolve on successful command execution without input 66ms
+[2m14:59:51 +00:00[0m  Doing work...
+[2m14:59:51 +00:00[0m  Debug info...
+ ✓ src/utils/exec.test.ts > exec utilities > run > should reject with exitCode on failure 68ms
+ ✓ src/utils/exec.test.ts > exec utilities > run > should reject on child process 'error' event (e.g., command not found) 6ms
+ ✓ src/utils/exec.test.ts > exec utilities > run > should pass input to child process stdin 68ms
+ ✓ src/utils/agent.test.ts > buildCommand — agent backend routing > builds gemini slash command with -p flag matching agent-run.sh 4ms
+ ✓ src/utils/agent.test.ts > buildCommand — agent backend routing > builds gemini plan command with featureDir 1ms
+ ✓ src/utils/agent.test.ts > buildCommand — agent backend routing > uses plan approval mode for analyze (read-only) 2ms
+ ✓ src/utils/agent.test.ts > buildCommand — agent backend routing > builds correct command for claude with -p flag 3ms
+ ✓ src/utils/agent.test.ts > buildCommand — agent backend routing > builds correct command for codex with exec --full-auto 3ms
+ ✓ src/utils/agent.test.ts > buildCommand — agent backend routing > throws for unknown backend 2ms
+ ✓ src/utils/agent.test.ts > dispatchAgent — process execution and stream handling > should spawn agent, trace stdout/stderr, and return 0 on success 55ms
+stdout | src/commands/ship.test.ts > shipCommand > ship without phase should ship all phases from tasks.json
+▶ Shipping feature 001-cli-core: 2 phases (P01, P02)
+
+ ✓ src/cli.e2e.test.ts > CLI E2E Integration (UI / Command Surface) > shows exactly the settled hierarchy on --help (US-018) 340ms
+ ✓ src/commands/ship.test.ts > shipCommand > ship with phase should execute work-until-done.sh for that phase 57ms
+ ✓ src/commands/ship.test.ts > shipCommand > ship without phase should ship all phases from tasks.json 61ms
+ ✓ src/utils/exec.test.ts > exec utilities > run > should pass input to child process stdin and fail if wrong input 72ms
+ ✓ src/server/git-manager.test.ts > GitManager > should create a phase branch from a feature branch 217ms
+ ✓ src/utils/agent.test.ts > dispatchAgent — process execution and stream handling > should propagate non-zero exit code if agent fails 52ms
+ ✓ src/utils/agent.test.ts > dispatchAgent — process execution and stream handling > should return exitCode 1 when spawn fails natively with error event 63ms
+stdout | src/commands/ship.test.ts > shipCommand > should stop on first phase failure
+▶ Shipping feature 001-cli-core: 2 phases (P01, P02)
+
+ ✓ src/commands/ship.test.ts > shipCommand > ship should pass custom max-iterations 29ms
+ ✓ src/commands/ship.test.ts > shipCommand > ship should pass custom ci-timeout 31ms
+ ✓ src/commands/ship.test.ts > shipCommand > should stop on first phase failure 41ms
+stdout | src/commands/ship.test.ts > shipCommand > should support dry-run mode for all phases
+▶ Shipping feature 001-cli-core: 2 phases (P01, P02)
+
+stdout | src/commands/ship.test.ts > FR-014: Phase Skip > US-009: should skip phase when all tasks have status 'completed'
+  ⏭  Phase 01: all tasks complete — skipping
+✓ All phases complete for 004-ship-loop — nothing to ship
+
+stdout | src/commands/ship.test.ts > FR-014: Phase Skip > US-009: should skip phase when all tasks are either 'completed' or 'cancelled'
+  ⏭  Phase 01: all tasks complete — skipping
+✓ All phases complete for 004-ship-loop — nothing to ship
+
+ ✓ src/utils/exec.test.ts > exec utilities > execCommand > should return stdout on success 78ms
+ ✓ src/utils/exec.test.ts > exec utilities > execCommand > should pass stdin correctly 87ms
+ ✓ src/commands/server.test.ts > serverCommand > start > should start the server in foreground if -f is provided 3ms
+ ✓ src/commands/server.test.ts > serverCommand > start > should fail if server is already running 1ms
+{"level":30,"time":1776200391875,"pid":40260,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+ ✓ src/utils/agent.test.ts > dispatchAgent — process execution and stream handling > FR-019: dispatchToAgent returns TaskResult with exitCode and durationS 60ms
+ ✓ src/utils/agent.test.ts > dispatchAgent — process execution and stream handling > FR-020: should normalize Gemini exit 53 to turn_limit 53ms
+stdout | src/commands/ship.test.ts > FR-012, FR-017/T003: Execution Manifest Digest > US-007/T003: writeManifest receives a manifest object with digest array
+  🔄 Resuming from state: IMPLEMENT
+Starting/Resuming Ship Loop: IMPLEMENT
+
+ × src/cli.test.ts > FR-001 / FR-004: CLI Command Registration > US-001 / US-003: registers Foxtrot Charlie pillar commands 502ms
+   → expected [ 'init', 'project', 'define', …(13) ] to not include 'plan'
+{"level":30,"time":1776200391875,"pid":40260,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200391898,"pid":40260,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200391909,"pid":40260,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:18899"}
+{"level":30,"time":1776200391910,"pid":40260,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:18899"}
+ ✓ src/commands/ship.test.ts > shipCommand > should support dry-run mode 0ms
+ ✓ src/commands/ship.test.ts > shipCommand > should support dry-run mode for all phases 0ms
+ ✓ src/commands/ship.test.ts > shipCommand > FR-008, US-008: should exit 1 with BLOCKED message if no test files found for phase 1ms
+ ✓ src/commands/ship.test.ts > shipCommand > should exit 1 without side effects when feature spec.md does not exist 0ms
+ ✓ src/commands/ship.test.ts > shipCommand > FR-009/T009: Agent config hierarchy: --agent override takes precedence 47ms
+ ✓ src/commands/ship.test.ts > FR-014: Phase Skip > US-009: should skip phase when all tasks have status 'completed' 1ms
+ ✓ src/commands/ship.test.ts > FR-014: Phase Skip > US-009: should skip phase when all tasks are either 'completed' or 'cancelled' 0ms
+ ✓ src/commands/ship.test.ts > FR-014: Phase Skip > US-009: should NOT skip phase if mixed open and completed tasks exist 30ms
+ ✓ src/commands/ship.test.ts > FR-012, FR-017/T003: Execution Manifest Digest > US-007/T003: writeManifest receives a manifest object with digest array 35ms
+stdout | src/commands/ship.test.ts > FR-015/T008: Agent-Native [exit:N | Xs] wrapper > US-010/T008: ship command emits [exit:N | Xs] on stderr after completion
+  🔄 Resuming from state: IMPLEMENT
+Starting/Resuming Ship Loop: IMPLEMENT
+
+[2m14:59:51 +00:00[0m  [33m⏳ 429 — Rate limited (attempt 1), retrying…[0m
+[2m14:59:51 +00:00[0m  Attempt 2 succeeded
+{"level":30,"time":1776200391930,"pid":40256,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+ ✓ src/utils/agent.test.ts > dispatchAgent — process execution and stream handling > FR-021: dispatchToAgent delivers context via stdin to child process 50ms
+ ✓ src/utils/agent.test.ts > dispatchAgent — process execution and stream handling > should squelch 429 error JSON block traces correctly 52ms
+stdout | src/server/integration.test.ts > Server E2E Integration > should start daemon and accept a dispatch request
+gwrk server listening on http://[::1]:18899
+
+stdout | src/commands/ship.test.ts > FR-015/T009: --format json support > US-010/T009: --format json emits structured JSON to stdout
+  🔄 Resuming from state: IMPLEMENT
+Starting/Resuming Ship Loop: IMPLEMENT
+
+{"level":30,"time":1776200391931,"pid":40256,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200391949,"pid":40256,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+ ✓ src/utils/exec.test.ts > exec utilities > execCommand > should return exitCode and stderr on failure 74ms
+ ✓ src/utils/exec.test.ts > exec utilities > execCommand > should gracefully handle ENOENT when command is not found 16ms
+ ✓ src/utils/exec.test.ts > exec utilities > runGate > should return exitCode 127 for ENOENT when script is missing 19ms
+ ✓ src/cli.harvest.e2e.test.ts > FR-H07: Done-Done CLI & Slack Notification > US-H05: gwrk harvest --help displays help 321ms
+ ↓ src/cli.harvest.e2e.test.ts > FR-H07: Done-Done CLI & Slack Notification > TR-H07: Full harvest loop - E2E logic
+{"level":30,"time":1776200391971,"pid":40256,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52732"}
+{"level":30,"time":1776200391974,"pid":40256,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52732"}
+ ✓ src/cli.e2e.test.ts > CLI E2E Integration (UI / Command Surface) > gwrk define --help shows settled hierarchy (US-018) 302ms
+ ✓ src/commands/ship.test.ts > FR-012, FR-017/T003: Execution Manifest Digest > FR-012/T003: Manifest schema includes digest field (negative: missing digest fails validation) 14ms
+ ✓ src/commands/ship.test.ts > FR-015/T008: Agent-Native [exit:N | Xs] wrapper > US-010/T008: ship command emits [exit:N | Xs] on stderr after completion 28ms
+ ✓ src/commands/ship.test.ts > FR-015/T009: --format json support > US-010/T009: --format json emits structured JSON to stdout 28ms
+ ✓ src/commands/ship.test.ts > FR-009/T010: Agent config fail-fast > FR-009/T010: crashes with exit 1 when agents.implement is missing from config 0ms
+ ✓ src/utils/exec.test.ts > exec utilities > runGate > should return success and stdout for a successful gate 17ms
+ ✓ src/utils/exec.test.ts > exec utilities > runGate > should return failure, stdout, and stderr for a failed gate 11ms
+stdout | src/server/routes/dispatch.test.ts > dispatch routes > should enqueue a dispatch via POST /api/dispatch
+gwrk server listening on http://[::1]:52732
+
+{"level":30,"time":1776200391939,"pid":40260,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"POST","url":"/api/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200391959,"pid":40260,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":201},"responseTime":19.65083360671997,"msg":"request completed"}
+{"level":30,"time":1776200392037,"pid":40260,"hostname":"Mac.lan","reqId":"req-2","req":{"method":"GET","url":"/api/dispatch/queue","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392038,"pid":40260,"hostname":"Mac.lan","reqId":"req-2","res":{"statusCode":200},"responseTime":0.38141727447509766,"msg":"request completed"}
+{"level":30,"time":1776200392038,"pid":40260,"hostname":"Mac.lan","reqId":"req-3","req":{"method":"GET","url":"/api/dispatch/feat-1/phase-1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392038,"pid":40260,"hostname":"Mac.lan","reqId":"req-3","res":{"statusCode":200},"responseTime":0.11520814895629883,"msg":"request completed"}
+ ✓ src/server/integration.test.ts > Server E2E Integration > should start daemon and accept a dispatch request 348ms
+ ✓ src/engine/pulse-integration.test.ts > TR-007: Integration test — real git repo > VR-001: scans real repo and produces valid PulseSnapshot 219ms
+ ✓ src/server/routes/dispatch.test.ts > dispatch routes > should enqueue a dispatch via POST /api/dispatch 265ms
+{"level":30,"time":1776200392152,"pid":40256,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1776200391999,"pid":40256,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"POST","url":"/api/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392004,"pid":40256,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":201},"responseTime":4.241499900817871,"msg":"request completed"}
+{"level":30,"time":1776200392152,"pid":40256,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200392170,"pid":40256,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200392174,"pid":40256,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52733"}
+{"level":30,"time":1776200392176,"pid":40256,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52733"}
+stdout | src/server/routes/dispatch.test.ts > dispatch routes > should return the queue status via GET /api/dispatch/queue
+gwrk server listening on http://[::1]:52733
+
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > should complete a full execution loop without unbound variables 859ms
+ ✓ src/server/git-manager.test.ts > GitManager > should detect merge conflicts 650ms
+ ✓ src/cli.e2e.test.ts > CLI E2E Integration (UI / Command Surface) > gwrk ship --help shows settled hierarchy (US-018) 351ms
+ ✓ src/engine/pulse-integration.test.ts > TR-007: Integration test — real git repo > VR-001: weekly buckets span 3+ weeks 218ms
+ ✓ src/server/routes/dispatch.test.ts > dispatch routes > should return the queue status via GET /api/dispatch/queue 200ms
+{"level":30,"time":1776200392353,"pid":40256,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+ ✓ src/commands/server.test.ts > serverCommand > start > should daemonize if -f is NOT provided 504ms
+{"level":30,"time":1776200392198,"pid":40256,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"GET","url":"/api/dispatch/queue","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392199,"pid":40256,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":0.26433420181274414,"msg":"request completed"}
+{"level":30,"time":1776200392353,"pid":40256,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200392370,"pid":40256,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200392372,"pid":40256,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52734"}
+{"level":30,"time":1776200392372,"pid":40256,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52734"}
+stdout | src/server/routes/dispatch.test.ts > dispatch routes > should return a specific dispatch via GET /api/dispatch/:feature/:phase
+gwrk server listening on http://[::1]:52734
+
+{"level":30,"time":1776200392393,"pid":40256,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"POST","url":"/api/dispatch","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392394,"pid":40256,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":201},"responseTime":0.8737502098083496,"msg":"request completed"}
+{"level":30,"time":1776200392395,"pid":40256,"hostname":"Mac.lan","reqId":"req-2","req":{"method":"GET","url":"/api/dispatch/feat-1/phase-1","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392395,"pid":40256,"hostname":"Mac.lan","reqId":"req-2","res":{"statusCode":200},"responseTime":0.1191248893737793,"msg":"request completed"}
+ ✓ src/server/routes/dispatch.test.ts > dispatch routes > should return a specific dispatch via GET /api/dispatch/:feature/:phase 190ms
+ ✓ src/commands/tests-generate.test.ts > testsGenerateCommand > should dispatch the define-tests workflow 70ms
+ ✓ src/server/dispatch-orchestrator.test.ts > DispatchOrchestrator > FR-001: should dispatch multiple tasks concurrently up to maxConcurrency 103ms
+ ✓ src/server/dispatch-orchestrator.test.ts > DispatchOrchestrator > FR-004: should handle capacity gating and wait in queue 0ms
+{"level":30,"time":1776200392443,"pid":40964,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1776200392448,"pid":40826,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+ ✓ src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > US-H01: Valid PR merge webhook triggers harvest 74ms
+ ✓ src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > FR-H01/TC-H01: sandbox PRs ignored by harvest 2ms
+ ✓ src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > FR-H09: only triggers for base=develop or base=main 1ms
+ ✓ src/server/github.test.ts > FR-H01/FR-H09/TC-H01: Webhook Handler > TC-H03: should return 401 if HMAC signature is invalid 3ms
+{"level":30,"time":1776200392443,"pid":40964,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200392462,"pid":40964,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200392472,"pid":40964,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:18892"}
+{"level":30,"time":1776200392473,"pid":40964,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:18892"}
+{"level":30,"time":1776200392449,"pid":40826,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200392469,"pid":40826,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200392478,"pid":40826,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52737"}
+{"level":30,"time":1776200392479,"pid":40826,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52737"}
+ ✓ src/commands/tests-generate.test.ts > testsGenerateCommand > should pass phase context when --phase is provided 56ms
+ ✓ src/commands/tests-generate.test.ts > testsGenerateCommand > should fail if spec.md is missing 1ms
+ ✓ src/commands/tests-generate.test.ts > testsGenerateCommand > should refuse to re-run when gap-matrix.md exists without --force 1ms
+ ✓ src/commands/tests-generate.test.ts > testsGenerateCommand > should allow re-run with --force when gap-matrix.md exists 61ms
+stdout | src/server/routes/status.test.ts > status routes > should respond to /api/status with SystemStatus JSON
+gwrk server listening on http://[::1]:18892
+
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should enqueue a dispatch request 3ms
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should process next if not throttled 66ms
+stdout | src/server/routes/notify.test.ts > notify routes (FR-003, FR-007, US-003, US-007) > US-003, US-007: should post a notification via POST /api/notify
+gwrk server listening on http://[::1]:52737
+
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > formats duration as N.Ns when execution >= 1000ms 1101ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > sets process.exitCode instead of calling process.exit() 0ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > rejects invalid input: handles non-Error throw (string) 0ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > rejects invalid input: handles non-Error throw (undefined) 0ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > TC-005: signal is the last line written to stderr 0ms
+ ✓ src/utils/signal.test.ts > FR-001: Operational Signal (withSignal) > FR-001 error state: catches unhandled async rejections 0ms
+ ✓ src/engine/pulse-integration.test.ts > TR-007: Integration test — real git repo > VR-001: mainLoc is positive (repo has content on main) 183ms
+ ✓ src/server/routes/status.test.ts > status routes > should respond to /api/status with SystemStatus JSON 108ms
+{"level":30,"time":1776200392517,"pid":40826,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1776200392496,"pid":40964,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"GET","url":"/api/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392515,"pid":40964,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":19.29200029373169,"msg":"request completed"}
+ ✓ src/server/dispatch-orchestrator.test.ts > DispatchOrchestrator > FR-004: should timeout if tasks stay in queue for too long 202ms
+ ✓ src/server/dispatch-orchestrator.test.ts > DispatchOrchestrator > should mark task as failed if invocation fails 0ms
+ ✓ src/server/dispatch-orchestrator.test.ts > DispatchOrchestrator > FR-005: should retry on 429 rate limit error 1ms
+{"level":30,"time":1776200392500,"pid":40826,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"POST","url":"/api/notify","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392515,"pid":40826,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":14.849166870117188,"msg":"request completed"}
+{"level":30,"time":1776200392517,"pid":40826,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200392533,"pid":40826,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200392539,"pid":40826,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52738"}
+{"level":30,"time":1776200392541,"pid":40826,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52738"}
+stdout | src/server/routes/notify.test.ts > notify routes (FR-003, FR-007, US-003, US-007) > FR-003, US-003: should return 400 for missing required fields
+gwrk server listening on http://[::1]:52738
+
+{"level":30,"time":1776200392570,"pid":40826,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/agent-run.sh should have valid bash syntax 11ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/define-until-solid.sh should have valid bash syntax 10ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/gwrk-notify.sh should have valid bash syntax 9ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/validate-staging.sh should have valid bash syntax 13ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/verify-dev-stack.sh should have valid bash syntax 11ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/work-until-done.sh should have valid bash syntax 13ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/wud-branch.sh should have valid bash syntax 15ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/wud-ci-wait.sh should have valid bash syntax 16ms
+ ✓ src/scripts.test.ts > Shell Scripts Syntax Check > /Users/gonzo/Code/gwrk/scripts/dev/wud-verdict.sh should have valid bash syntax 18ms
+{"level":30,"time":1776200392568,"pid":40826,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"POST","url":"/api/notify","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392568,"pid":40826,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":400},"responseTime":0.6007499694824219,"msg":"request completed"}
+{"level":30,"time":1776200392570,"pid":40826,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200392598,"pid":40826,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200392600,"pid":40826,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52740"}
+{"level":30,"time":1776200392602,"pid":40826,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52740"}
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should not process next if throttled 52ms
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should handle successful completion 54ms
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should retry if exit code is non-zero and attempts < 3 1ms
+ ✓ src/cli.e2e.test.ts > CLI E2E Integration (UI / Command Surface) > gwrk measure --help shows settled hierarchy (US-018) 292ms
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should escalate if attempts >= 3 52ms
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should return correct queue status 1ms
+ ✓ src/server/dispatch.test.ts > DispatchQueue > should get dispatch by feature and phase 1ms
+stdout | src/server/routes/notify.test.ts > notify routes (FR-003, FR-007, US-003, US-007) > FR-004, US-004: should handle opsOnly flag
+gwrk server listening on http://[::1]:52740
+
+ ✓ src/server/routes/notify.test.ts > notify routes (FR-003, FR-007, US-003, US-007) > US-003, US-007: should post a notification via POST /api/notify 103ms
+ ✓ src/server/routes/notify.test.ts > notify routes (FR-003, FR-007, US-003, US-007) > FR-003, US-003: should return 400 for missing required fields 53ms
+{"level":30,"time":1776200392650,"pid":40826,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"POST","url":"/api/notify","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200392650,"pid":40826,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":0.2735419273376465,"msg":"request completed"}
+ ✓ src/server/routes/notify.test.ts > notify routes (FR-003, FR-007, US-003, US-007) > FR-004, US-004: should handle opsOnly flag 82ms
+stdout | src/commands/test-cmd.test.ts > testCommand > feature-level run (all phases) > scopes vitest to test files extracted from all task descriptions
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk test[0m  [2m14:59:52[0m
+  [2mFeature   [0m 001-cli-core
+  [2mPhase     [0m all
+[2m──────────────────────────────────────────────────[0m
+
+  Found 3 test files
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mtest[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+stdout | src/commands/test-cmd.test.ts > testCommand > feature-level run (all phases) > exits 0 when vitest passes
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk test[0m  [2m14:59:52[0m
+  [2mFeature   [0m 001-cli-core
+  [2mPhase     [0m all
+[2m──────────────────────────────────────────────────[0m
+
+  Found 3 test files
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mtest[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+ ✓ src/commands/server.test.ts > serverCommand > stop > should stop a running server 503ms
+ ✓ src/commands/server.test.ts > serverCommand > stop > should fail if no server is running 1ms
+stdout | src/commands/test-cmd.test.ts > testCommand > feature-level run (all phases) > exits 1 when vitest fails
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk test[0m  [2m14:59:52[0m
+  [2mFeature   [0m 001-cli-core
+  [2mPhase     [0m all
+[2m──────────────────────────────────────────────────[0m
+
+  Found 3 test files
+
+stdout | src/commands/test-cmd.test.ts > testCommand > --phase scoping > restricts test files to the specified phase only
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk test[0m  [2m14:59:52[0m
+  [2mFeature   [0m 001-cli-core
+  [2mPhase     [0m 01
+[2m──────────────────────────────────────────────────[0m
+
+  Found 1 test files
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mtest[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+ ✓ src/engine/pulse-integration.test.ts > TR-007: Integration test — real git repo > VR-001: draftLoc is positive (repo has content on feature branch) 267ms
+ ✓ src/commands/test-cmd.test.ts > testCommand > feature-level run (all phases) > scopes vitest to test files extracted from all task descriptions 19ms
+ ✓ src/commands/test-cmd.test.ts > testCommand > feature-level run (all phases) > exits 0 when vitest passes 3ms
+ ✓ src/commands/test-cmd.test.ts > testCommand > feature-level run (all phases) > exits 1 when vitest fails 5ms
+ ✓ src/commands/test-cmd.test.ts > testCommand > --phase scoping > restricts test files to the specified phase only 4ms
+ ✓ src/commands/test-cmd.test.ts > testCommand > edge cases > exits 1 if feature directory does not exist 5ms
+ ✓ src/commands/test-cmd.test.ts > testCommand > edge cases > prints 'No tests found' and exits 0 when phase has no test files 9ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > detectProjectType > should detect webapp from markers 1ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > detectProjectType > should detect cli from package.json bin 0ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > detectProjectType > should default to cli 0ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > resolveReviewPlugin > should return webapp plugin for webapp project 10ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > resolveReviewPlugin > should return cli plugin for cli project 4ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > resolveReviewPlugin > should respect config override 6ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > validatePhaseScope > should revert changes to tasks in other phases 3ms
+ ✓ src/plugins/review-plugin.test.ts > ReviewPlugin > validatePhaseScope > should not save if no violations found 1ms
+ ✓ src/server/routes/health.test.ts > healthRoutes > should return 200 and ok status when all components are ok 61ms
+ ✓ src/server/routes/health.test.ts > healthRoutes > should return degraded status when git is unavailable 1ms
+ ✓ src/server/routes/health.test.ts > healthRoutes > should return degraded status when network is offline 1ms
+ ✓ src/commands/init.test.ts > initCommand > should create scaffold directories, .gwrkrc.json, and register project (US-014) 41ms
+ ✓ src/commands/init.test.ts > initCommand > should provision GEMINI.md, CLAUDE.md, and .gwrk/agent-context.md if CLIs are detected (FR-L1-008) 16ms
+ ✓ src/commands/init.test.ts > initCommand > should be idempotent and exit 0 if already initialized 1ms
+ ✓ src/commands/init.test.ts > initCommand > should create private GitHub repository if --github is provided and gh is available 21ms
+ ✓ src/engine/pulse.test.ts > FR-002/FR-004: parseGitLog > TR-001: parses git log --numstat output into ParsedCommit array 2ms
+ ✓ src/engine/pulse.test.ts > FR-002/FR-004: parseGitLog > TR-001: handles empty git log output 0ms
+ ✓ src/engine/pulse.test.ts > FR-002/FR-004: parseGitLog > TR-001: handles binary files (- - path format) 0ms
+ ✓ src/engine/pulse.test.ts > FR-002/FR-004: parseGitLog > rejects: malformed commit line without separator 0ms
+ ✓ src/engine/pulse.test.ts > FR-004: bucketByWeek > TR-001: groups commits into ISO-week buckets 8ms
+ ✓ src/engine/pulse.test.ts > FR-004: bucketByWeek > TR-001: returns empty array for no commits 0ms
+ ✓ src/engine/pulse.test.ts > FR-003: Published/Draft LOC separation > TR-002: scanRepository separates mainLoc vs draftLoc 0ms
+ ✓ src/engine/pulse.test.ts > FR-005: scanSpecProgress > TR-008: counts spec.md and plan.md files in specs directory 0ms
+ ✓ src/engine/pulse.test.ts > FR-005: scanSpecProgress > rejects: returns zero counts for non-existent specs directory 0ms
+ ✓ src/engine/pulse.test.ts > FR-001: generatePulseReport multi-repo aggregation > TR-004: aggregates PulseSnapshots from multiple repos 1ms
+ ✓ src/engine/pulse.test.ts > FR-001: generatePulseReport multi-repo aggregation > rejects: throws when pulse.repos is empty (FR-001 error state) 0ms
+{"level":30,"time":1776200392997,"pid":41928,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1776200392997,"pid":41928,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200393007,"pid":41928,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200393019,"pid":41928,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52741"}
+{"level":30,"time":1776200393033,"pid":41928,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52741"}
+stdout | src/server/index.test.ts > server bootstrap > should start the server and write PID
+gwrk server listening on http://[::1]:52741
+
+{"level":30,"time":1776200393035,"pid":41928,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1776200393035,"pid":41928,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1776200393035,"pid":41928,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1776200393037,"pid":41928,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:52743"}
+{"level":30,"time":1776200393044,"pid":41928,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:52743"}
+stdout | src/server/index.test.ts > server bootstrap > should respond to /health
+gwrk server listening on http://[::1]:52743
+
+ ✓ src/server/index.test.ts > server bootstrap > should start the server and write PID 73ms
+ ✓ src/server/index.test.ts > server bootstrap > should respond to /health 17ms
+ ↓ src/server/index.test.ts > server bootstrap > should fail to start if Docker is not available
+{"level":30,"time":1776200393049,"pid":41928,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"GET","url":"/health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1776200393051,"pid":41928,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":1.8374156951904297,"msg":"request completed"}
+ ✓ src/server/e2e.test.ts > Build Server E2E > GET /health > should return health status with components 36ms
+ ✓ src/server/slack-commands.test.ts > slack-commands > handles status command without args 19ms
+ ✓ src/server/slack-commands.test.ts > slack-commands > handles status command with feature ID 1ms
+ ✓ src/server/slack-commands.test.ts > slack-commands > handles dispatch command with feature ID 0ms
+ ✓ src/server/slack-commands.test.ts > slack-commands > handles approve command 0ms
+ ✓ src/server/slack-commands.test.ts > slack-commands > handles pause command without args 0ms
+ ✓ src/server/slack-commands.test.ts > slack-commands > returns help for empty command 0ms
+ ✓ src/server/slack-commands.test.ts > slack-commands > returns error for unknown command 0ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > GET /api/status > should return system metrics and dispatch state 21ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Dispatch lifecycle > POST /api/dispatch should enqueue a valid request 6ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Dispatch lifecycle > GET /api/dispatch/queue should show the queued dispatch 1ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Dispatch lifecycle > GET /api/dispatch/:feature/:phase should find the dispatch 1ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Dispatch lifecycle > POST /api/dispatch should enqueue a second request 2ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Dispatch lifecycle > queue depth should reflect both dispatches 22ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Error handling > POST /api/dispatch with missing phaseId should return error 1ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Error handling > POST /api/dispatch with empty body should return error 1ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Error handling > GET /api/dispatch for nonexistent feature should return error 0ms
+ ✓ src/server/e2e.test.ts > Build Server E2E > Error handling > GET unknown route should return 404 0ms
+ ✓ src/cli.e2e.test.ts > CLI E2E Integration (UI / Command Surface) > gwrk db --help shows settled hierarchy (US-018) 502ms
+ ✓ src/engine/compression.test.ts > FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit clustering > TR-005 & TR-006: extracts timestamps and clusters commits (15 mins active across 2 sessions) 4ms
+ ✓ src/engine/compression.test.ts > FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit clustering > TR-010: throws when feature has no implementation commits 1ms
+ ✓ src/engine/compression.test.ts > FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit clustering > TR-010: throws feature directory not found 1ms
+ ✓ src/engine/compression.test.ts > FR-007: computeCompression — Point Compression > TR-007: computes 287.5h estimated / 0.75h actual = 383× point compression 0ms
+ ✓ src/engine/compression.test.ts > FR-007: computeCompression — Point Compression > handles zero active coding time (reports Infinity) 0ms
+ ✓ src/engine/compression.test.ts > FR-008: computeCompression — Total Compression > TR-008: computes 36 days estimated / 0.73 days actual = ~49× total compression 0ms
+ ✓ src/engine/compression.test.ts > FR-008: computeCompression — Total Compression > dormancy is tracked but excluded from compression calculation 0ms
+ ✓ src/engine/compression.test.ts > FR-009: generateSummary — cross-feature summary > TR-009: generates summary with totals, averages, best, worst, trend 3ms
+ ✓ src/engine/compression.test.ts > FR-009: generateSummary — cross-feature summary > handles single feature without crashing 0ms
+ ✓ src/engine/compression.test.ts > FR-009: generateSummary — cross-feature summary > handles empty reports array 0ms
+ ✓ src/commands/tasks-done.test.ts > gwrk tasks done > should complete a task when gate passes 14ms
+ ✓ src/commands/tasks-done.test.ts > gwrk tasks done > should fail and keep status open when gate fails 4ms
+ ✓ src/commands/tasks-done.test.ts > gwrk tasks done > should fail when gate script is missing 16ms
+ ✓ src/commands/tasks-done.test.ts > gwrk tasks done > should fail and block when gate contains only test -f (FR-001) 2ms
+ ✓ tests/server-github.test.ts > TR-H01: GitHub Webhook Handler > should ignore non-PR events 39ms
+ ✓ tests/server-github.test.ts > TR-H01: GitHub Webhook Handler > should verify signature correctly 2ms
+ ✓ tests/server-github.test.ts > TR-H01: GitHub Webhook Handler > should reject invalid signature 1ms
+ ✓ tests/server-github.test.ts > TR-H01: GitHub Webhook Handler > should ignore PR closure without merge 4ms
+ ✓ tests/server-github.test.ts > TR-H01: GitHub Webhook Handler > should accept valid PR merge targeting develop 28ms
+ ✓ src/engine/pulse-integration.test.ts > TR-007: Integration test — real git repo > VR-004: determinism — two scans produce identical output 488ms
+ ↓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > should fail gracefully if the agent exits non-zero
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > should handle dry-run gracefully 38ms
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > FR-017/T002: should emit structured events to .events sidecar during run 966ms
+ ✓ src/engine/pulse-integration.test.ts > FR-002: Error handling for invalid paths > VR-002: throws for non-git-repo path 0ms
+ ✓ src/engine/pulse-integration.test.ts > FR-002: Error handling for invalid paths > FR-002 error state: throws for non-existent path 0ms
+stdout | src/commands/specify.test.ts > specifyCommand > should dispatch workflow in rework mode when spec exists
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk define spec[0m  [2m14:59:53[0m
+  [2mAgent     [0m gemini
+  [2mFeature   [0m 014-plugin-system
+  [2mMode      [0m rework
+  [2mPrompt    [0m "Add WorkflowRuntime rework"
+  [2mRun ID    [0m 4409
+[2m──────────────────────────────────────────────────[0m
+
+
+stdout | src/commands/specify.test.ts > specifyCommand > should dispatch workflow in rework mode when spec exists
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mdefine spec[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m│[0m  Run:      [2m#4409[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+stdout | src/commands/specify.test.ts > specifyCommand > should dispatch workflow in new mode with prompt
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk define spec[0m  [2m14:59:53[0m
+  [2mAgent     [0m gemini
+  [2mFeature   [0m 018-new-feature
+  [2mMode      [0m new
+  [2mPrompt    [0m "A brand new feature description"
+  [2mRun ID    [0m 4410
+[2m──────────────────────────────────────────────────[0m
+
+
+stdout | src/commands/specify.test.ts > specifyCommand > should dispatch workflow in new mode with prompt
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mdefine spec[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m│[0m  Run:      [2m#4410[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > US-006.1: returns PASS with exit 0 for passing gate 9ms
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > US-006.2: returns FAIL with captured output for failing gate 5ms
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > US-006.2: returns GateCheckResult schema (DM-002) 5ms
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > rejects invalid input: gate script not found with corrective message 2ms
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > resolves gate script path from taskId and feature 11ms
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > infers feature from taskId when exactly one match 6ms
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > throws exit 2 when no matches found for taskId 3ms
+ ✓ src/commands/gate.test.ts > FR-006: First-Class Gate Checking > gate command is registered in cli.ts 1ms
+stdout | src/commands/specify.test.ts > specifyCommand > should exit with non-zero if workflow fails
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk define spec[0m  [2m14:59:53[0m
+  [2mAgent     [0m gemini
+  [2mFeature   [0m 014-plugin-system
+  [2mMode      [0m rework
+  [2mRun ID    [0m 4411
+[2m──────────────────────────────────────────────────[0m
+
+
+ ✓ src/commands/define-plan.test.ts > planCommand > should fail if spec.md does not exist 4ms
+ ✓ src/commands/define-plan.test.ts > planCommand > should dispatch workflow if spec.md exists 23ms
+ ✓ src/commands/define-plan.test.ts > planCommand > should fail if spec.md is marked as a Stub 5ms
+ ✓ src/commands/specify.test.ts > specifyCommand > should dispatch workflow in rework mode when spec exists 51ms
+ ✓ src/commands/specify.test.ts > specifyCommand > should dispatch workflow in new mode with prompt 1ms
+ ✓ src/commands/specify.test.ts > specifyCommand > should fail fast if new spec has no prompt 1ms
+ ✓ src/commands/specify.test.ts > specifyCommand > should exit with non-zero if workflow fails 19ms
+stdout | src/server/slack-presence.test.ts > PresenceManager > should initialize and poll presence
+Presence polling started for user: human-user (U123)
+
+stdout | src/server/slack-presence.test.ts > PresenceManager > should deliver notifications immediately when active
+Presence polling started for user: human-user (U123)
+
+ ✓ src/commands/define.test.ts > defineCommand — Define Until Solid wrapper > fails if feature is not provided 12ms
+ ✓ src/commands/define.test.ts > defineCommand — Define Until Solid wrapper > handles --dry-run without executing scripts 22ms
+ ✓ src/commands/define.test.ts > defineCommand — Define Until Solid wrapper > executes define orchestrator and records success 1ms
+ ✓ src/commands/define.test.ts > defineCommand — Define Until Solid wrapper > records failure when orchestrator throws 2ms
+stdout | src/server/slack-presence.test.ts > PresenceManager > should queue notifications when away and flush when returning to active
+Presence polling started for user: human-user (U123)
+
+stdout | src/server/slack-presence.test.ts > PresenceManager > should queue notifications when away and flush when returning to active
+User away. Queuing event: phase_start for feat-1
+
+stdout | src/server/slack-presence.test.ts > PresenceManager > should queue notifications when away and flush when returning to active
+User returned. Flushing 1 events.
+
+ ✓ src/server/slack-presence.test.ts > PresenceManager > should initialize and poll presence 3ms
+ ✓ src/server/slack-presence.test.ts > PresenceManager > should deliver notifications immediately when active 32ms
+ ✓ src/server/slack-presence.test.ts > PresenceManager > should queue notifications when away and flush when returning to active 7ms
+ ✓ src/server/slack-home.test.ts > slack-home > builds the home tab with all expected sections 14ms
+ ✓ src/server/slack-home.test.ts > slack-home > handles empty active agents 0ms
+ ✓ src/commands/pulse.test.ts > FR-001: gwrk pulse command > TR-004: reads pulse.repos from config and invokes scanner per repo 2ms
+ ✓ src/commands/pulse.test.ts > FR-001: gwrk pulse command > TR-006: exits 1 with error when no repos configured (FR-001 error state) 0ms
+ ✓ src/commands/pulse.test.ts > FR-002/FR-006: gwrk pulse scan command > TR-005: validates path and calls scanRepository 0ms
+ ✓ src/commands/pulse.test.ts > FR-002/FR-006: gwrk pulse scan command > TR-005: outputs JSON when --json flag is passed 0ms
+ ✓ src/commands/pulse.test.ts > FR-002/FR-006: gwrk pulse scan command > TR-006: exits 1 for non-existent path (FR-002 error state) 0ms
+ ✓ src/commands/pulse.test.ts > FR-002/FR-006: gwrk pulse scan command > TR-006: exits 1 for path that does not exist (FR-002 error state) 0ms
+ ✓ src/commands/pulse.test.ts > FR-001: renderPulseTable (Phase 3) > renders multi-repo PulseReport as formatted terminal table 30ms
+ ✓ src/commands/pulse.test.ts > FR-006: renderSnapshotTable > renders single PulseSnapshot as formatted terminal table 0ms
+stdout | src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > FR-002, US-002: should fail if contracts are missing and --no-llm is not used
+  Parsing plan.md...
+  Found 1 phases in plan.md
+  Writing tasks.json...
+  Reading gap-matrix.md for deterministic vitest gates...
+  Deterministic vitest gates: 0 generated, 0 skipped
+
+  ✗ Contracts required for gate authoring.
+    Run 'gwrk define plan 001-cli-core' to generate plan.md and contracts/.
+    See 'gwrk define plan --help'.
+
+stdout | src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > FR-002, US-002: should succeed if contracts are missing but --no-llm is used
+  Parsing plan.md...
+  Found 1 phases in plan.md
+  Writing tasks.json...
+  Reading gap-matrix.md for deterministic vitest gates...
+  Deterministic vitest gates: 0 generated, 0 skipped
+  ⚠ --no-llm: skipping gate authoring (tasks.json only)
+
+  ✓ 1 phases, 1 tasks, 1 gates
+
+stdout | src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > TR-010: should preserve # AUTHORED gates even with --force
+  Parsing plan.md...
+  Found 1 phases in plan.md
+  Preserving 1 # AUTHORED gate scripts...
+  Writing tasks.json...
+  Reading gap-matrix.md for deterministic vitest gates...
+  Deterministic vitest gates: 0 generated, 0 skipped
+  Generating gate brief...
+  Brief: /tmp/gwrk-gate-brief-1776200393486.json
+  Dispatching gemini for gate authoring...
+
+stdout | src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > TR-010: should preserve # AUTHORED gates even with --force
+  ✓ Gates authored (0s)
+  ⚠ 1 hollow gate(s) detected:
+    ⚠ T001-gate.sh: no assertions (only boilerplate)
+
+  ✓ 1 phases, 1 tasks, 1 gates
+
+stdout | src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > TR-012: should generate vitest gates from gap matrix with --no-llm
+  Parsing plan.md...
+  Found 1 phases in plan.md
+  Writing tasks.json...
+  Reading gap-matrix.md for deterministic vitest gates...
+  Deterministic vitest gates: 1 generated, 0 skipped
+  ⚠ --no-llm: LLM dispatch skipped (vitest gates generated from gap matrix)
+
+  ✓ 1 phases, 1 tasks, 1 gates
+
+ ✓ src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > FR-002, US-002: should fail if contracts are missing and --no-llm is not used 8ms
+ ✓ src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > FR-002, US-002: should succeed if contracts are missing but --no-llm is used 3ms
+ ✓ src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > TR-010: should preserve # AUTHORED gates even with --force 11ms
+ ✓ src/commands/tasks-generate.test.ts > tasks-generate (FR-002, US-002, ADR-005) > TR-012: should generate vitest gates from gap matrix with --no-llm 5ms
+ ✓ src/db/runs.test.ts > runs db > should start and finish a run 4ms
+ ✓ src/db/runs.test.ts > runs db > should record a complete run in one call 1ms
+ ✓ src/db/runs.test.ts > runs db > should register and list projects 6ms
+ ✓ src/db/runs.test.ts > runs db > should calculate stats 2ms
+ ✓ src/db/runs.test.ts > runs db > should record history 1ms
+ ✓ src/db/runs.test.ts > runs db > FR-H03: DB Record Finalization > US-H03: finishRun updates status, PR, and merge commit 1ms
+ ✓ src/db/runs.test.ts > runs db > FR-H03: DB Record Finalization > should fail gracefully if runId does not exist 1ms
+ ✓ src/db/runs.test.ts > runs db > FR-H03: DB Record Finalization > should handle missing optional merge metadata 1ms
+ ✓ src/cli.e2e.test.ts > CLI E2E Integration (UI / Command Surface) > gwrk tasks --help shows settled hierarchy (US-005, US-006) 406ms
+ ✓ src/commands/sync-context.test.ts > gwrk plugin sync-context > FR-L1-006: syncAgentContext() reads .gwrk/agent-context.md and calls syncAllBackends 43ms
+ ✓ src/commands/sync-context.test.ts > gwrk plugin sync-context > warns if .gwrk/agent-context.md is missing but still calls syncAllBackends with empty string 5ms
+ ✓ src/plugins/loader.test.ts > FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engine > US-002: scans global plugins directory and resolves by type (FR-003) 10ms
+ ✓ src/plugins/loader.test.ts > FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engine > FR-L1-012: user-installed global plugins override built-ins 1ms
+ ✓ src/plugins/loader.test.ts > FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engine > TC-009: applies .gwrk/plugins.yaml local overrides 1ms
+ ✓ src/plugins/loader.test.ts > FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engine > FR-005 / TC-004: applies local disables for workflows/domains (TC-009) 1ms
+ ✓ src/plugins/loader.test.ts > FR-003 / FR-005 / TC-004 / TC-009 / FR-L1-012: Plugin Resolution Engine > FR-005: rejects disable attempts for global-only types (skills, agents) 0ms
+ ✓ src/engine/discover.test.ts > discoverProject > should assemble project state from repository 3ms
+stdout | src/commands/implement.test.ts > implementAction > iterates through tasks and calls agent-run.sh
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk implement[0m  [2m14:59:53[0m
+  [2mFeature   [0m 004-ship-loop
+  [2mPhase     [0m 1
+  [2mAgent     [0m mock-backend
+  [2mRun ID    [0m 123
+[2m──────────────────────────────────────────────────[0m
+
+[32m▶[0m Implementing T001: Task 1
+
+stdout | src/commands/implement.test.ts > implementAction > iterates through tasks and calls agent-run.sh
+
+[2mVerifying gate for T001...[0m
+[32m✓[0m T001 gate passed. Marking completed.
+[32m▶[0m Implementing T002: Task 2
+
+stdout | src/commands/implement.test.ts > implementAction > iterates through tasks and calls agent-run.sh
+
+[2mVerifying gate for T002...[0m
+[32m✓[0m T002 gate passed. Marking completed.
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mimplement[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m│[0m  Run:      [2m#123[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+stdout | src/commands/implement.test.ts > implementAction > skips tasks that already pass pre-flight gate
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk implement[0m  [2m14:59:53[0m
+  [2mFeature   [0m 004-ship-loop
+  [2mPhase     [0m 1
+  [2mAgent     [0m mock-backend
+  [2mRun ID    [0m 123
+[2m──────────────────────────────────────────────────[0m
+
+[33m⚠[0m T001 pre-flight PASS — gate already satisfied, skipping
+[32m▶[0m Implementing T002: Task 2
+
+stdout | src/commands/implement.test.ts > implementAction > skips tasks that already pass pre-flight gate
+
+[2mVerifying gate for T002...[0m
+[32m✓[0m T002 gate passed. Marking completed.
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mimplement[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m│[0m  Run:      [2m#123[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+stdout | src/commands/implement.test.ts > implementAction > respects dry-run flag
+
+[2m──────────────────────────────────────────────────[0m
+[1m[36m▸ gwrk implement[0m  [2m14:59:53[0m
+  [2mFeature   [0m 004-ship-loop
+  [2mPhase     [0m 1
+  [2mAgent     [0m mock-backend
+  [2mRun ID    [0m 123
+[2m──────────────────────────────────────────────────[0m
+
+[35m[DRY RUN][0m Would execute: [2m/Users/gonzo/Code/gwrk/scripts/dev/agent-run.sh implement 004-ship-loop 1 T001[0m
+[35m[DRY RUN][0m Would execute: [2m/Users/gonzo/Code/gwrk/scripts/dev/agent-run.sh implement 004-ship-loop 1 T002[0m
+
+[36m┌─────────────────────────────────────────────┐[0m
+[36m│[0m  [32m✓ [1mimplement[0m [32mcomplete[0m
+[36m│[0m  Duration: [1m0s[0m
+[36m│[0m  Run:      [2m#123[0m
+[36m└─────────────────────────────────────────────┘[0m
+
+ ✓ src/commands/implement.test.ts > implementAction > iterates through tasks and calls agent-run.sh 25ms
+ ✓ src/commands/implement.test.ts > implementAction > skips tasks that already pass pre-flight gate 1ms
+ ✓ src/commands/implement.test.ts > implementAction > respects dry-run flag 0ms
+ ✓ src/engine/effort.test.ts > FR-001: extractStories — parsing markdown spec > TR-001: extracts stories with SP and role brackets 7ms
+ ✓ src/engine/effort.test.ts > FR-001: extractStories — parsing markdown spec > TR-001: handles unestimated stories 0ms
+ ✓ src/engine/effort.test.ts > FR-001: extractStories — parsing markdown spec > TR-004: throws when spec.md is missing 0ms
+ ✓ src/engine/effort.test.ts > FR-001: extractStories — parsing markdown spec > TR-004: throws when no stories are found 0ms
+ ✓ src/engine/effort.test.ts > FR-002: computeEffort — role-bracketed hour computation > TR-002: computes 5 SP × TS(4h/SP) = 20h raw, 25h with 1.25× overhead 0ms
+ ✓ src/engine/effort.test.ts > FR-002: computeEffort — role-bracketed hour computation > computes multi-role stories with independent hour calculations 15ms
+ ✓ src/engine/effort.test.ts > FR-002: computeEffort — role-bracketed hour computation > returns EffortReport with correct structure 0ms
+ ✓ src/engine/effort.test.ts > FR-002: computeEffort — role-bracketed hour computation > aggregates role breakdowns across multiple stories 0ms
+ ✓ src/engine/effort.test.ts > FR-002: computeEffort — role-bracketed hour computation > handles zero SP stories without crashing 0ms
+ ✓ src/engine/effort.test.ts > FR-012: resolveRoleMultipliers — config override > TR-013: uses canonical defaults when no config overrides exist 0ms
+ ✓ src/engine/effort.test.ts > FR-012: resolveRoleMultipliers — config override > TR-013: config override TS.hoursPerSP=6 takes precedence over default 0ms
+ ✓ src/engine/effort.test.ts > FR-012: resolveRoleMultipliers — config override > returns all 5 canonical roles even when no overrides 0ms
+ ✓ src/engine/effort.test.ts > FR-003: writeEffortReport — markdown report generation > TR-003: writes markdown file to docs/assessments/effort-<feature>-YYYY-MM-DD.md 6ms
+ ✓ src/engine/effort.test.ts > FR-003: writeEffortReport — markdown report generation > report contains Total Story Points header 0ms
+stdout | src/server/slack-integration.test.ts > slack-integration > starts the Slack app and registers handlers
+⚡️ Slack Bolt app is running!
+
+ ✓ src/server/slack-integration.test.ts > slack-integration > starts the Slack app and registers handlers 3ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > json mode > US-002.1: write(object) emits JSON.stringify to stdout 20ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > json mode > US-002.1: write(string) wraps in JSON on stdout 1ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > json mode > US-002.1: info() goes to stderr even in json mode 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > json mode > json mode: isJson is true 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > text mode (default) > write(string) emits text to stdout 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > text mode (default) > write(object) emits String(data) to stdout 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > text mode (default) > info() goes to stderr in text mode 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > text mode (default) > text mode: isJson is false 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > text mode (default) > undefined format: isJson is false 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > write() never writes to stderr 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > info() never writes to stdout 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > rejects invalid input: unknown format value 0ms
+ ✓ src/utils/output.test.ts > FR-002: JSON Output (CommandOutput) > createOutput returns object with write, info, and isJson 0ms
+ ✓ src/utils/state.test.ts > Task Engine State > should save and load task state 3ms
+ ✓ src/utils/state.test.ts > Task Engine State > should mark a task as complete 0ms
+ ✓ src/utils/state.test.ts > Task Engine State > should throw when marking non-existent task 1ms
+ ✓ src/utils/state.test.ts > Task Engine State > should throw when marking already completed task 0ms
+ ✓ src/utils/state.test.ts > Task Engine State > should fail-fast on invalid state file 2ms
+ ✓ src/utils/state.test.ts > Task Engine State > should append history correctly 5ms
+ ✓ src/commands/tasks-query.test.ts > gwrk tasks query > should list tasks 5ms
+ ✓ src/commands/tasks-query.test.ts > gwrk tasks query > should list tasks as JSON 1ms
+ ✓ src/commands/tasks-query.test.ts > gwrk tasks query > should show next task 1ms
+ ✓ src/commands/tasks-query.test.ts > gwrk tasks query > should show next task as JSON 1ms
+ ✓ src/db/plan.test.ts > src/db/plan.ts (DM-018-001/002/003) > FR-001: should insert and retrieve a feature 5ms
+ ✓ src/db/plan.test.ts > src/db/plan.ts (DM-018-001/002/003) > FR-001: should insert and retrieve a phase 1ms
+ ✓ src/db/plan.test.ts > src/db/plan.ts (DM-018-001/002/003) > FR-001: should insert and retrieve edges 1ms
+ ✓ src/db/plan.test.ts > src/db/plan.ts (DM-018-001/002/003) > FR-001: should support recursive dependency traversal (CTE) 1ms
+ ✓ src/commands/project.test.ts > FR-004: Project Discovery Command (gwrk project) > US-004.1: projectCommand has 'discover' subcommand 1ms
+ ✓ src/commands/project.test.ts > FR-004: Project Discovery Command (gwrk project) > project command is registered in cli.ts 0ms
+ ✓ src/commands/project.test.ts > FR-004: Project Discovery Command (gwrk project) > rejects invalid input: unknown subcommand handled 0ms
+ ✓ src/commands/project.test.ts > FR-005: Spec and Gate Subcommands > US-005.1: projectCommand has 'specs' subcommand 0ms
+ ✓ src/commands/project.test.ts > FR-005: Spec and Gate Subcommands > US-005.2: projectCommand has 'gates' subcommand 0ms
+ ✓ src/commands/project.test.ts > FR-005: Spec and Gate Subcommands > US-005.1: specs output has id, name, status fields 0ms
+ ✓ src/commands/project.test.ts > FR-005: Spec and Gate Subcommands > US-005.2: gates output has taskId, result, durationMs fields 1ms
+ ✓ src/commands/project.test.ts > FR-008: Help Text Discoverability > US-008.1: project discover --help includes command type 0ms
+ ✓ src/commands/project.test.ts > FR-008: Help Text Discoverability > commands use CommandMeta for structured help 0ms
+ ✓ src/commands/project.test.ts > FR-007: Error-as-Navigation > US-007.1: error paths contain 'Run ' corrective suggestions 2ms
+ ✓ src/commands/plugin.test.ts > FR-001 / FR-003 / FR-004 / US-001 / US-002 / US-003: Plugin CLI Commands > gwrk plugin install (FR-001 / US-001) > successfully installs a valid skill plugin 8ms
+ ✓ src/commands/plugin.test.ts > FR-001 / FR-003 / FR-004 / US-001 / US-002 / US-003: Plugin CLI Commands > gwrk plugin install (FR-001 / US-001) > fails if manifest.yaml is missing (FR-001) 1ms
+ ✓ src/commands/plugin.test.ts > FR-001 / FR-003 / FR-004 / US-001 / US-002 / US-003: Plugin CLI Commands > gwrk plugin install (FR-001 / US-001) > fails if plugin already exists (FR-001) 1ms
+ ✓ src/commands/plugin.test.ts > FR-001 / FR-003 / FR-004 / US-001 / US-002 / US-003: Plugin CLI Commands > gwrk plugin list (FR-003 / US-002) > lists installed plugins grouped by type 17ms
+ ✓ src/commands/plugin.test.ts > FR-001 / FR-003 / FR-004 / US-001 / US-002 / US-003: Plugin CLI Commands > gwrk plugin remove (FR-004 / US-003) > successfully removes an installed plugin 2ms
+ ✓ src/commands/plugin.test.ts > FR-001 / FR-003 / FR-004 / US-001 / US-002 / US-003: Plugin CLI Commands > gwrk plugin remove (FR-004 / US-003) > warns if dependencies exist (FR-004) 0ms
+ ✓ src/cli.e2e.test.ts > CLI E2E Integration (UI / Command Surface) > fails gracefully with correct error when spec is missing 495ms
+ ✓ src/server/slack-messages.test.ts > MessageBuilder > should build phaseStart message 30ms
+ ✓ src/server/slack-messages.test.ts > MessageBuilder > should build phaseComplete message without buttons 0ms
+ ✓ src/server/slack-messages.test.ts > MessageBuilder > should build reviewReady message with buttons 0ms
+ ✓ src/server/slack-messages.test.ts > MessageBuilder > should build phaseFail message with error 0ms
+ ✓ src/server/slack-messages.test.ts > MessageBuilder > should build ciResult message 0ms
+ ✓ src/server/slack-messages.test.ts > MessageBuilder > should build batchedSummary message 0ms
+ ✓ src/engine/spec-parser.test.ts > FR-001: extractStories — story extraction from spec.md > US-001: extracts stories with storyId, title, SP, and roles from valid spec 2ms
+ ✓ src/engine/spec-parser.test.ts > FR-001: extractStories — story extraction from spec.md > US-001: extracts SP values as numbers from story headers 1ms
+ ✓ src/engine/spec-parser.test.ts > FR-001: extractStories — story extraction from spec.md > US-001: extracts role codes (RE, TS, PM, PE, DE) from stories 2ms
+ ✓ src/engine/spec-parser.test.ts > FR-001: extractStories — story extraction from spec.md > flags stories without explicit SP as unestimated 0ms
+ ✓ src/engine/spec-parser.test.ts > FR-001: extractStories — story extraction from spec.md > handles sub-stories with dot notation (US-006a, US-006b) 0ms
+ ✓ src/engine/spec-parser.test.ts > FR-001: extractStories — story extraction from spec.md > extracts priority from story headers 0ms
+ ✓ src/engine/spec-parser.test.ts > FR-004: extractStories — error handling > US-002: throws with 'spec.md not found' for missing spec file 1ms
+ ✓ src/engine/spec-parser.test.ts > FR-004: extractStories — error handling > US-002: throws with 'No user stories found' for spec with no US markers 0ms
+ ✓ src/db/db.test.ts > SQLite execution ledger > should create tables on init 5ms
+ ✓ src/db/db.test.ts > SQLite execution ledger > should record and finish a run 5ms
+ ✓ src/db/db.test.ts > SQLite execution ledger > should list runs most recent first 2ms
+ ✓ src/db/db.test.ts > SQLite execution ledger > should return empty array for unknown feature 1ms
+ ✓ src/db/db.test.ts > SQLite execution ledger > should register and list projects 1ms
+ ✓ src/db/db.test.ts > SQLite execution ledger > should upsert projects by path 1ms
+ ✓ src/db/db.test.ts > SQLite execution ledger > should aggregate run statistics with getStats 2ms
+ ✓ src/utils/gate-gen.test.ts > gate-gen > should produce valid GateBrief JSON 3ms
+ ✓ src/utils/gate-gen.test.ts > gate-gen > should classify .test.ts files as test type 1ms
+ ✓ src/utils/gate-gen.test.ts > gate-gen > should extract identifiers from descriptions 3ms
+ ✓ src/utils/gate-gen.test.ts > gate-gen > should match contract refs when contracts exist 3ms
+ ✓ src/utils/gate-gen.test.ts > gate-gen > should include doneWhen commands relevant to the task file 1ms
+ ✓ src/utils/gate-gen.test.ts > parseGapMatrix (TR-011) > should parse a valid gap matrix markdown table 1ms
+ ✓ src/utils/gate-gen.test.ts > parseGapMatrix (TR-011) > should return empty array for missing file 0ms
+ ✓ src/utils/gate-gen.test.ts > parseGapMatrix (TR-011) > should return empty array for file without table 0ms
+ ✓ src/utils/gate-gen.test.ts > parseGapMatrix (TR-011) > should handle — (dash) values as null 0ms
+ ✓ src/utils/gate-gen.test.ts > generateVitestGates (TR-011, FR-012) > should generate vitest gate scripts for ✅ rows 1ms
+ ✓ src/utils/gate-gen.test.ts > generateVitestGates (TR-011, FR-012) > should skip structural rows 1ms
+ ✓ src/utils/gate-gen.test.ts > generateVitestGates (TR-011, FR-012) > should skip ❌ rows (test doesn't exist yet) 0ms
+ ✓ src/utils/gate-gen.test.ts > generateVitestGates (TR-011, FR-012) > should preserve existing # AUTHORED gates 1ms
+ ✓ src/utils/gate-gen.test.ts > generateVitestGates (TR-011, FR-012) > should return zeros for missing gap matrix 0ms
+ ✓ src/utils/parser-plan.test.ts > src/utils/parser-plan.ts > FR-013: should parse Mermaid edges correctly 2ms
+ ✓ src/utils/parser-plan.test.ts > src/utils/parser-plan.ts > FR-013: should parse features and phases correctly 1ms
+ ✓ src/utils/parser-plan.test.ts > src/utils/parser-plan.ts > FR-013: should parse YAML seed payloads 4ms
+ ✓ src/server/context.test.ts > compileContext > should compile all context sections into one markdown 14ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > should generate a runId with shorthand phase 1ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > should write an execution manifest to .gwrk/runs/ 6ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > should load multiple manifests 2ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > should throw on invalid manifest 1ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > should handle missing runs directory in loadManifests 0ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > assembleDigest > should assemble digest from events sidecar file 0ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > assembleDigest > should return empty array for missing sidecar file 0ms
+ ✓ src/utils/manifest.test.ts > Execution Manifest Utility > assembleDigest > should return empty array for empty sidecar file 0ms
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > creates timestamped log file tracking the execution 946ms
+ ✓ src/commands/compression.test.ts > FR-011 & FR-009 & FR-010: compressionCommand > TR-012: --json outputs valid JSON with pointCompression 59ms
+ ✓ src/commands/compression.test.ts > FR-011 & FR-009 & FR-010: compressionCommand > US-005: --all flag computes summary across features 1ms
+ ✓ src/commands/compression.test.ts > FR-011 & FR-009 & FR-010: compressionCommand > TR-010: exits with code 1 when no impl commits (error bubbled from gatherDeliveryActuals) 1ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Gemini Adapter (FR-L1-010) > US-L1-001: dispatches tasks with correct CLI arguments (FR-L1-002) 1ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Gemini Adapter (FR-L1-010) > ADR-006: delivers context via stdin (FR-021) 0ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Gemini Adapter (FR-L1-010) > passes --model when GEMINI_MODEL is set in env 0ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Gemini Adapter (FR-L1-010) > omits --model when GEMINI_MODEL is not set 1ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Gemini Adapter (FR-L1-010) > FR-L1-003: normalizes Gemini 53 exit code to gwrk 1 (turn_limit) 0ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Gemini Adapter (FR-L1-010) > FR-L1-003: normalizes Gemini 42 exit code to gwrk 2 (usage_error) 12ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Claude Adapter (FR-L1-010) > US-L1-001: dispatches tasks with correct CLI arguments (FR-L1-002) 16ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Claude Adapter (FR-L1-010) > FR-L1-003: normalizes Claude 126 exit code to gwrk 1 (permission_denied) 0ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Governance Sync (FR-L1-004) > US-L1-002: syncGovernance() generates GEMINI.md with boundary markers 78ms
+ ✓ src/plugins/agent-adapter.test.ts > FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters > Governance Sync (FR-L1-004) > preserves content outside boundary markers 8ms
+ ✓ src/engine/readiness-scanner.test.ts > src/engine/readiness-scanner.ts (FR-018) > should assign L0 if only directory exists 2ms
+ ✓ src/engine/readiness-scanner.test.ts > src/engine/readiness-scanner.ts (FR-018) > should assign L1 if spec.md exists 1ms
+ ✓ src/engine/readiness-scanner.test.ts > src/engine/readiness-scanner.ts (FR-018) > should assign L2 if spec.md and plan.md exist 1ms
+ ✓ src/engine/readiness-scanner.test.ts > src/engine/readiness-scanner.ts (FR-018) > should assign L3 if spec.md, plan.md and tasks.json exist 1ms
+ ✓ src/commands/skill.test.ts > FR-006 / FR-007 / FR-010: Skill CLI Command > gwrk skill <name> (FR-006 / US-005) > invokes a skill 4ms
+ ✓ src/commands/skill.test.ts > FR-006 / FR-007 / FR-010: Skill CLI Command > gwrk skill <name> (FR-006 / US-005) > errors if skill does not exist (FR-006 / US-005) 1ms
+ ✓ src/commands/skill.test.ts > FR-006 / FR-007 / FR-010: Skill CLI Command > F013 Contract (FR-007 / US-005) > supports --format json for structured output 1ms
+ ✓ src/commands/skill.test.ts > FR-006 / FR-007 / FR-010: Skill CLI Command > F013 Contract (FR-007 / US-005) > supports --agent mode for ANSI stripping 1ms
+ ✓ src/commands/skill.test.ts > FR-006 / FR-007 / FR-010: Skill CLI Command > F013 Contract (FR-007 / US-005) > preserves signals on stderr when piped (TR-008) 1ms
+ ✓ src/db/compression.test.ts > FR-H06: Compression recording > US-H04: recordCompression correctly inserts record 17ms
+ ✓ src/db/compression.test.ts > FR-H06: Compression recording > should fail if report is missing mandatory fields 1ms
+ ✓ src/db/compression.test.ts > FR-H06: Compression recording > should list compression records for a feature 1ms
+ ✓ src/engine/harvest.test.ts > FR-H02: Log Management & Finalization > US-H02: finalizeLogs indexes logs and updates index.json 4ms
+ ✓ src/engine/harvest.test.ts > FR-H02: Log Management & Finalization > should handle missing runs directory gracefully 1ms
+ ✓ src/engine/harvest.test.ts > FR-H02: Log Management & Finalization > should append to existing index.json 2ms
+ ↓ src/engine/harvest.test.ts > FR-H04: Compression Engine > US-H04: harvestFeature calculates Point and Total compression correctly
+ ↓ src/engine/harvest.test.ts > FR-H07: Done-Done Slack Notification > US-H05: notifyDoneDone posts to Slack correctly
+ ↓ src/engine/harvest.test.ts > FR-H08: Remote Branch Cleanup > US-H06: cleanupBranch deletes branch and handles failure gracefully
+ ✓ src/server/monitor.test.ts > SystemMonitor > should sample system resources 1ms
+ ✓ src/server/monitor.test.ts > SystemMonitor > should throttle when CPU limits are exceeded 1ms
+ ✓ src/server/monitor.test.ts > SystemMonitor > should throttle when Memory limits are exceeded 0ms
+ ✓ src/server/monitor.test.ts > SystemMonitor > should throttle when Disk limits are exceeded 0ms
+ ✓ src/server/monitor.test.ts > SystemMonitor > should not throttle when within limits 0ms
+ ✓ src/server/monitor.test.ts > SystemMonitor > should support polling 2ms
+ ✓ src/commands/effort.test.ts > FR-011: effortCommand — CLI and JSON output > TR-011: --json flag outputs valid JSON with EffortReport schema 8ms
+ ✓ src/commands/effort.test.ts > FR-011: effortCommand — CLI and JSON output > prints human readable success message when --json is omitted 2ms
+ ✓ src/commands/runs.test.ts > runsCommand — CLI and JSON output > handles empty runs gracefully 4ms
+ ✓ src/commands/runs.test.ts > runsCommand — CLI and JSON output > --json flag outputs valid JSON 1ms
+ ✓ src/commands/runs.test.ts > runsCommand — CLI and JSON output > prints human readable table 0ms
+stdout | src/commands/test.test.ts > testCommand > should run vitest for all test files in a feature
+  Found 1 test files
+
+ ✓ src/server/slack-actions.test.ts > slack-actions > registers actions 2ms
+ ✓ src/server/slack-actions.test.ts > slack-actions > handles merge_pr action 1ms
+ ✓ src/server/slack-actions.test.ts > slack-actions > registers reaction_added event 0ms
+stdout | src/commands/test.test.ts > testCommand > should filter by phase
+  Found 1 test files
+
+stdout | src/commands/test.test.ts > testCommand > should exit 1 if vitest fails
+  Found 1 test files
+
+ ✓ src/commands/test.test.ts > testCommand > should run vitest for all test files in a feature 8ms
+ ✓ src/commands/test.test.ts > testCommand > should filter by phase 1ms
+ ✓ src/commands/test.test.ts > testCommand > should exit 1 if vitest fails 1ms
+stdout | src/plugins/migrate.test.ts > FR-011: Skill Migration > US-009: generates valid manifest.yaml from SKILL.md frontmatter
+Migrated skill 'truth-extract'.
+
+stdout | src/plugins/migrate.test.ts > FR-011: Skill Migration > US-009: skips migration if plugin already exists at destination
+Skipping 'truth-extract' — already installed.
+
+ ✓ src/plugins/migrate.test.ts > FR-011: Skill Migration > US-009: generates valid manifest.yaml from SKILL.md frontmatter 8ms
+ ✓ src/plugins/migrate.test.ts > FR-011: Skill Migration > US-009: skips migration if plugin already exists at destination 1ms
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should complete full lifecycle successfully
+Starting/Resuming Ship Loop: BRANCH_SETUP
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should complete full lifecycle successfully
+  review-code-cli verdict: GO
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should complete full lifecycle successfully
+  review-uat-cli verdict: GO
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should complete full lifecycle successfully
+Creating PR and awaiting CI...
+  PR #42 created/found. Waiting for CI...
+
+ ✓ src/engine/plan-solver.test.ts > src/engine/plan-solver.ts (FR-002/003/004) > FR-003: should compute the ready queue using Kahn's algorithm 2ms
+ ✓ src/engine/plan-solver.test.ts > src/engine/plan-solver.ts (FR-002/003/004) > FR-004: should compute the critical path using CPM 0ms
+ ✓ src/engine/plan-solver.test.ts > src/engine/plan-solver.ts (FR-002/003/004) > FR-002: should compute topological waves (generations) 0ms
+ ✓ src/engine/plan-solver.test.ts > src/engine/plan-solver.ts (FR-002/003/004) > FR-011: should detect dependency cycles 0ms
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should fail-fast if working tree is dirty
+Starting/Resuming Ship Loop: BRANCH_SETUP
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should skip implementation if pre-flight gate passes
+Starting/Resuming Ship Loop: BRANCH_SETUP
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should skip implementation if pre-flight gate passes
+  pre-flight PASS — gate already satisfied: T001
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should skip implementation if pre-flight gate passes
+  review-code-cli verdict: GO
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should skip implementation if pre-flight gate passes
+  review-uat-cli verdict: GO
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should skip implementation if pre-flight gate passes
+Creating PR and awaiting CI...
+  PR #42 created/found. Waiting for CI...
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should loop back to IMPLEMENT on NO-GO review
+Starting/Resuming Ship Loop: BRANCH_SETUP
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should loop back to IMPLEMENT on NO-GO review
+  1 task(s) re-opened: T001
+  review-code-cli verdict: NO-GO
+NO-GO in review-code-cli, looping back to IMPLEMENT (Iteration 2)
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should loop back to IMPLEMENT on NO-GO review
+  review-code-cli verdict: GO
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should loop back to IMPLEMENT on NO-GO review
+  review-uat-cli verdict: GO
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should loop back to IMPLEMENT on NO-GO review
+Creating PR and awaiting CI...
+  PR #42 created/found. Waiting for CI...
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should trip circuit breaker after MAX_ITERATIONS
+Starting/Resuming Ship Loop: BRANCH_SETUP
+
+stdout | src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should trip circuit breaker after MAX_ITERATIONS
+  1 task(s) re-opened: T001
+  review-code-cli verdict: NO-GO
+
+ ✓ src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should initialize with BRANCH_SETUP stage 2ms
+ ✓ src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should complete full lifecycle successfully 7ms
+ ✓ src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should fail-fast if working tree is dirty 1ms
+ ✓ src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should skip implementation if pre-flight gate passes 35ms
+ ✓ src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should loop back to IMPLEMENT on NO-GO review 1ms
+ ✓ src/engine/ship-orchestrator.test.ts > ShipOrchestrator > should trip circuit breaker after MAX_ITERATIONS 1ms
+ ✓ src/commands/setup-slack.test.ts > setupSlack > should detect already configured slack 3ms
+ ✓ src/commands/setup-slack.test.ts > setupSlack > should setup slack when tokens are provided in env 2ms
+ ✓ src/commands/setup-slack.test.ts > setupSlack > should fail if tokens are missing 2ms
+ ✓ src/commands/setup-slack.test.ts > setupSlack > should verify existing config when --verify is used 0ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > resolveWorkflow (FR-L25-006, US-015) > US-015: SHOULD prioritize project-local overrides over global built-ins 1ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > resolveWorkflow (FR-L25-006, US-015) > US-015: SHOULD construct PluginLoader with projectDir for project-local resolution 1ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > resolveWorkflow (FR-L25-006, US-015) > FR-L25-006: SHOULD fallback to global built-ins if local override is missing 0ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > resolveWorkflow (FR-L25-006, US-015) > FR-L25-001: SHOULD throw WorkflowNotFoundError if workflow cannot be resolved 2ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > executeWorkflow (FR-L25-001, FR-L25-007, US-011) > US-011: SHOULD execute a built-in workflow and return valid intents 1ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > executeWorkflow (FR-L25-001, FR-L25-007, US-011) > FR-L25-001: SHOULD validate agent output against the workflow's outputSchema 0ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > executeWorkflow (FR-L25-001, FR-L25-007, US-011) > FR-L25-001: SHOULD reject output missing required properties from outputSchema 0ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > executeWorkflow (FR-L25-001, FR-L25-007, US-011) > FR-L25-001: SHOULD reject output with wrong property types per outputSchema 0ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > executeWorkflow (FR-L25-001, FR-L25-007, US-011) > FR-L25-007: SHOULD support multi-action intents from a single turn 0ms
+ ✓ src/plugins/workflow-runtime.test.ts > WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007) > executeWorkflow (FR-L25-001, FR-L25-007, US-011) > FR-L25-001: SHOULD catch attempted direct FS edits by agents and exit 1 0ms
+stdout | src/plugins/seed.test.ts > FR-012: Skill Seeding (Taxonomy to Skills) > US-010: parses reasoning-modes.md and generates atomic skill plugins
+Seeded skill 'narrative' (reasoning).
+
+stdout | src/plugins/seed.test.ts > FR-012: Skill Seeding (Taxonomy to Skills) > US-010: parses reasoning-modes.md and generates atomic skill plugins
+Seeded skill 'adversarial' (evaluative).
+
+ ✓ src/server/slack-channel.test.ts > ensureSlackChannel > should return existing channel ID if it exists 3ms
+ ✓ src/server/slack-channel.test.ts > ensureSlackChannel > should join existing channel if not a member 0ms
+ ✓ src/server/slack-channel.test.ts > ensureSlackChannel > should create a new channel if it doesn't exist 0ms
+ ✓ src/server/slack-channel.test.ts > ensureSlackChannel > should handle name_taken error by re-fetching 0ms
+ ✓ src/server/slack-channel.test.ts > ensureSlackChannel > should throw error if slack is not configured 1ms
+ ✓ src/server/slack-channel.test.ts > ensureSlackChannel > should auto-invite workspace owner after channel create 0ms
+ ✓ src/server/slack-channel.test.ts > ensureSlackChannel > should skip invite gracefully when already in channel 0ms
+stdout | src/plugins/seed.test.ts > FR-012: Skill Seeding (Taxonomy to Skills) > US-010: preserves categories from the taxonomy
+Seeded skill 'generative' (creative).
+
+stdout | src/plugins/seed.test.ts > FR-012: Skill Seeding (Taxonomy to Skills) > US-010: supports --dry-run mode
+[DRY RUN] Would seed skill 'generative' (creative) to /Users/gonzo/.gwrk/plugins/skills/generative
+
+ ✓ src/plugins/seed.test.ts > FR-012: Skill Seeding (Taxonomy to Skills) > US-010: parses reasoning-modes.md and generates atomic skill plugins 6ms
+ ✓ src/plugins/seed.test.ts > FR-012: Skill Seeding (Taxonomy to Skills) > US-010: preserves categories from the taxonomy 1ms
+ ✓ src/plugins/seed.test.ts > FR-012: Skill Seeding (Taxonomy to Skills) > US-010: supports --dry-run mode 0ms
+ ✓ src/commands/plan.phase5.test.ts > gwrk plan subcommands (Phase 5) > US-012: gwrk plan viz --dry-run should reach implemented action 8ms
+ ✓ src/commands/plan.phase5.test.ts > gwrk plan subcommands (Phase 5) > US-014: gwrk plan review should show proposals 1ms
+ ✓ src/commands/plan.phase2.test.ts > gwrk plan subcommands (Phase 2) > US-001: gwrk plan next should show ready work items 3ms
+ ✓ src/commands/plan.phase2.test.ts > gwrk plan subcommands (Phase 2) > US-002: gwrk plan critical should show the critical path 1ms
+ ✓ src/commands/plan.phase2.test.ts > gwrk plan subcommands (Phase 2) > US-015: gwrk plan waves should show parallel waves 0ms
+ ✓ src/utils/git.test.ts > FR-008: Default branch auto-detection > US-008 scenario 1: detects main via symbolic-ref 1ms
+ ✓ src/utils/git.test.ts > FR-008: Default branch auto-detection > US-008 scenario 2: detects master via symbolic-ref 0ms
+ ✓ src/utils/git.test.ts > FR-008: Default branch auto-detection > US-008 fallback: falls back to main when symbolic-ref fails but main exists 0ms
+ ✓ src/utils/git.test.ts > FR-008: Default branch auto-detection > US-008 fallback: falls back to master when symbolic-ref fails and main absent 0ms
+ ✓ src/utils/git.test.ts > FR-008: Default branch auto-detection > rejects: throws when no known default branch found (FR-008 error state) 0ms
+ ✓ src/utils/git.test.ts > FR-002: gitLog returns raw git log output > returns raw string from git log --numstat 0ms
+ ✓ src/utils/git.test.ts > FR-002: gitLog returns raw git log output > rejects: throws when path is not a git repository 0ms
+ ✓ src/utils/git.test.ts > FR-002: gitBranches lists repository branches > returns array of branch names 0ms
+ ✓ src/utils/git.test.ts > FR-003: gitLineCount counts lines at a ref > returns line count as number 0ms
+ ✓ src/utils/git.test.ts > FR-003: gitLineCount counts lines at a ref > returns 0 for empty repository 0ms
+ ✓ src/engine/define-orchestrator.test.ts > DefineOrchestrator (FR-L25-003, FR-L25-004, US-013, TR-010) > run (FR-L25-004, US-013, TR-010) > TR-010: SHOULD transition through PLAN_TO_TASKS, ANALYZE, and DEFINE_TESTS 5ms
+ ✓ src/engine/define-orchestrator.test.ts > DefineOrchestrator (FR-L25-003, FR-L25-004, US-013, TR-010) > run (FR-L25-004, US-013, TR-010) > FR-L25-003: SHOULD use WorkflowRuntime for all stage transitions 1ms
+ ✓ src/commands/plan-top-level.test.ts > gwrk plan subcommands (FR-005/013/017/019) > FR-019: all subcommands should fail on empty graph with remediation message 4ms
+ ✓ src/commands/plan-top-level.test.ts > gwrk plan subcommands (FR-005/013/017/019) > FR-013: gwrk plan seed should populate graph 0ms
+ ✓ src/commands/plan-top-level.test.ts > gwrk plan subcommands (FR-005/013/017/019) > FR-017: gwrk plan init --dry-run should list features 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > stripAnsi > US-003.1: removes ANSI escape sequences from output 1ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > stripAnsi > preserves plain text without ANSI codes 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > stripAnsi > handles multiple ANSI codes in sequence 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > guardBinary > US-003.2: replaces binary content with descriptor 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > guardBinary > passes through clean text content 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > guardBinary > detects >30% non-printable characters as binary 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > truncateOverflow > US-003.3: truncates when output exceeds 8192 bytes 1ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > truncateOverflow > preserves content under 8192 bytes 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > truncateOverflow > writes full output to /tmp file when truncating 1ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > processForAgent > composes stripAnsi + guardBinary + truncateOverflow 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > processForAgent > TC-006: does NOT change output format (json stays json) 0ms
+ ✓ src/utils/agent-layer.test.ts > FR-003: Agent Layer 2 Protections > rejects invalid input: handles empty string 0ms
+ ✓ src/server/lifecycle.test.ts > LifecycleMonitor > should start in ready state 2ms
+ ✓ src/server/lifecycle.test.ts > LifecycleMonitor > should detect sleep when heartbeat drifts 1ms
+ ✓ src/server/lifecycle.test.ts > LifecycleMonitor > should detect wake when heartbeat resumes 0ms
+ ✓ src/server/sandbox.test.ts > SandboxManager (Git Worktree) > FR-002: should create a git worktree sandbox 2ms
+ ✓ src/server/sandbox.test.ts > SandboxManager (Git Worktree) > TC-004: No Host Mutation - should not modify the host repository working tree 0ms
+ ✓ src/server/sandbox.test.ts > SandboxManager (Git Worktree) > FR-002 / TR-002: should destroy a sandbox, push the branch, and create a PR if changes exist 1ms
+ ✓ src/server/sandbox.test.ts > SandboxManager (Git Worktree) > FR-002 / TR-002: should destroy a sandbox without PR if no changes exist 0ms
+ ✓ src/server/sandbox.test.ts > SandboxManager (Git Worktree) > TC-005: should prune all gwrk worktrees 0ms
+ ✓ src/server/sandbox.test.ts > SandboxManager (Git Worktree) > US-002: should list all active sandboxes from worktree list 1ms
+ ✓ src/engine/router.test.ts > FR-014 / Phase 4: Routing & Intelligence > selectBackend() (FR-014 / FR-P4-001) > respects fallbackOrder from config (FR-P4-001) 2ms
+ ✓ src/engine/router.test.ts > FR-014 / Phase 4: Routing & Intelligence > selectBackend() (FR-014 / FR-P4-001) > picks the preferredAgent for skill if available 2ms
+ ✓ src/engine/router.test.ts > FR-014 / Phase 4: Routing & Intelligence > selectBackend() (FR-014 / FR-P4-001) > uses historical learning to pick the best backend 1ms
+ ✓ src/engine/router.test.ts > FR-014 / Phase 4: Routing & Intelligence > quotaProbe() (FR-P4-002) > detects 429 rate-limit and applies backoff (FR-P4-002) 0ms
+ ✓ src/engine/classify.test.ts > Task Classification Engine > classifies as 'greenfield' when target file does not exist 1ms
+ ✓ src/engine/classify.test.ts > Task Classification Engine > classifies as 'change' when target file exists and task modifies behavior 1ms
+ ✓ src/engine/classify.test.ts > Task Classification Engine > classifies as 'refactor' when file exists and task changes structure only 1ms
+ ✓ src/engine/classify.test.ts > Task Classification Engine > classifies as 'noop' when task has no file changes 3ms
+ ✓ src/engine/classify.test.ts > Task Classification Engine > classifies as 'greenfield' if any file is greenfield 1ms
+ ✓ src/engine/classify.test.ts > Task Classification Engine > rejects invalid input: handles non-existent rootDir 1ms
+ ✓ src/plugins.e2e.test.ts > VR-001 to VR-010: Plugin System E2E Verification > VR-001: installs a skill and invokes it 6ms
+ ✓ src/plugins.e2e.test.ts > VR-001 to VR-010: Plugin System E2E Verification > VR-002: lists installed plugins in JSON format 0ms
+ ✓ src/plugins.e2e.test.ts > VR-001 to VR-010: Plugin System E2E Verification > VR-004: composes skills via Unix pipes 0ms
+ ✓ src/plugins.e2e.test.ts > VR-001 to VR-010: Plugin System E2E Verification > VR-005: exits 1 with message for nonexistent skill 0ms
+ ✓ src/plugins.e2e.test.ts > VR-001 to VR-010: Plugin System E2E Verification > VR-008: disables a plugin per-project 0ms
+ ✓ src/plugins.e2e.test.ts > VR-001 to VR-010: Plugin System E2E Verification > VR-009: rejects disabling a global-only plugin 1ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > executeIntents (FR-L25-002, US-012) > US-012: SHOULD execute WRITE_FILE intent and create parent directories if needed 2ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > executeIntents (FR-L25-002, US-012) > US-012: SHOULD execute CREATE_DIR intent 0ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > executeIntents (FR-L25-002, US-012) > US-012: SHOULD execute RUN_COMMAND intent in the project root context 0ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > Security & Path Containment (TR-011) > TR-011: SHOULD block WRITE_FILE outside the project root 1ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > Security & Path Containment (TR-011) > TR-011: SHOULD block CREATE_DIR outside the project root 0ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > Security & Path Containment (TR-011) > TR-011: SHOULD block RUN_COMMAND from escaping project root (if supported) 0ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > Security & Path Containment (TR-011) > TR-011: SHOULD NOT call real FS operations during tests 0ms
+ ✓ src/engine/intent-engine.test.ts > IntentEngine (FR-L25-002, US-012, TR-011) > Multi-action intents (FR-L25-007) > FR-L25-007: SHOULD execute multiple intents in sequence 0ms
+ ✓ src/utils/config.test.ts > TC-H03 / T004: Config & Environment Validation > TC-H03: Config Loading > TC-003: fails fast if .gwrkrc.json is missing 4ms
+ ✓ src/utils/config.test.ts > TC-H03 / T004: Config & Environment Validation > TC-H03: Config Loading > Phase 2: loads parallelism settings from config 1ms
+ ✓ src/engine/plan-store.test.ts > src/engine/plan-store.ts (FR-013/017) > FR-013: should seed from parsed markdown payload 2ms
+ ✓ src/engine/plan-store.test.ts > src/engine/plan-store.ts (FR-013/017) > FR-017: should init from specs directory without clobbering 0ms
+ ✓ src/engine/plan-store.test.ts > src/engine/plan-store.ts (FR-013/017) > FR-019: should detect empty graph 0ms
+ ✓ src/engine/plan-store.test.ts > src/engine/plan-store.ts (FR-013/017) > FR-009: should render build plan as markdown 0ms
+ ✓ src/commands/stats.test.ts > FR: statsCommand — CLI and JSON output > --json flag outputs valid JSON with stats schema 3ms
+ ✓ src/commands/stats.test.ts > FR: statsCommand — CLI and JSON output > prints human readable success message when --json is omitted 0ms
+ ✓ src/commands/stats.test.ts > FR: statsCommand — CLI and JSON output > handles empty database gracefully 0ms
+ ✓ src/server/network.test.ts > NetworkMonitor > should detect online state when interfaces are present 3ms
+ ✓ src/server/network.test.ts > NetworkMonitor > should detect offline state when no external interfaces are present 0ms
+ ✓ src/server/network.test.ts > NetworkMonitor > should emit network:down when going offline 4ms
+ ✓ src/server/network.test.ts > NetworkMonitor > should emit network:up when going online 0ms
+ ✓ src/plugins/manifest.test.ts > Plugin Manifest Schemas > AtomicSkillManifestSchema > should validate a valid atomic skill manifest 1ms
+ ✓ src/plugins/manifest.test.ts > Plugin Manifest Schemas > AtomicSkillManifestSchema > should reject invalid kebab-case names 0ms
+ ✓ src/plugins/manifest.test.ts > Plugin Manifest Schemas > CompoundSkillManifestSchema > should validate a valid compound skill manifest 0ms
+ ✓ src/plugins/manifest.test.ts > Plugin Manifest Schemas > AgentManifestSchema > should validate a valid agent manifest 1ms
+ ✓ src/plugins/manifest.test.ts > Plugin Manifest Schemas > WorkflowManifestSchema > should validate a valid workflow manifest 0ms
+ ✓ src/plugins/manifest.test.ts > Plugin Manifest Schemas > AnyManifestSchema (Discriminated Union) > should resolve different types correctly 0ms
+ ✓ src/plugins/manifest.test.ts > Plugin Manifest Schemas > AnyManifestSchema (Discriminated Union) > should reject unknown types 0ms
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > FR-003/T004: should run pre-flight tasks.json gates before implementation 1040ms
+ ✓ src/plugins/skill-runtime.test.ts > FR-006 / FR-008 / FR-009: Skill Runtime Logic > Skill Execution (FR-006 / US-005) > resolves and executes an atomic skill 1ms
+ ✓ src/plugins/skill-runtime.test.ts > FR-006 / FR-008 / FR-009: Skill Runtime Logic > Skill Execution (FR-006 / US-005) > fails if skill is not found 1ms
+ ✓ src/plugins/skill-runtime.test.ts > FR-006 / FR-008 / FR-009: Skill Runtime Logic > Compound Skill Logic (FR-008 / FR-009 / US-006) > assembles multiple passes into a single prompt (FR-008) 0ms
+ ✓ src/plugins/skill-runtime.test.ts > FR-006 / FR-008 / FR-009: Skill Runtime Logic > Compound Skill Logic (FR-008 / FR-009 / US-006) > validates that all composed skills are installed (FR-009) 0ms
+ ✓ src/plugins/skill-runtime.test.ts > FR-006 / FR-008 / FR-009: Skill Runtime Logic > F013 Contract (FR-007 / US-005) > strips ANSI codes in --agent mode 0ms
+ ✓ src/plugins/skill-runtime.test.ts > FR-006 / FR-008 / FR-009: Skill Runtime Logic > F013 Contract (FR-007 / US-005) > returns exitCode and durationS 0ms
+ ✓ src/utils/slack-client.test.ts > loadSlackConfig > should return null if no tokens are provided 1ms
+ ✓ src/utils/slack-client.test.ts > loadSlackConfig > should return config if valid tokens are in env 1ms
+ ✓ src/utils/slack-client.test.ts > loadSlackConfig > should fail-fast if tokens are invalid 1ms
+ ✓ src/utils/slack-client.test.ts > loadSlackConfig > should load tokens from .env file if not in environment 0ms
+ ✓ src/server/slack.test.ts > Slack Server Integration > should initialize Bolt App with correct config 3ms
+ ✓ src/server/slack.test.ts > Slack Server Integration > should return null if slack is not configured 0ms
+ ✓ src/server/slack.test.ts > Slack Server Integration > should start and stop the app 0ms
+ ✓ src/utils/gate-runner.test.ts > gate-runner > runGate > should return passed: true when exit code is 0 1ms
+ ✓ src/utils/gate-runner.test.ts > gate-runner > runGate > should return passed: false when exit code is non-zero 0ms
+ ✓ src/utils/gate-runner.test.ts > gate-runner > runGate > should return exitCode 127 when script is not found 0ms
+ ✓ src/utils/gate-runner.test.ts > gate-runner > runGate > should combine stdout and stderr in output 0ms
+ ↓ src/005-parallel-dispatch.e2e.test.ts > 005-parallel-dispatch E2E > US-001: should dispatch multiple tasks in parallel and update tasks.json
+ ✓ src/005-parallel-dispatch.e2e.test.ts > 005-parallel-dispatch E2E > US-004: should respect max concurrency limits 2ms
+ ✓ src/server/backends/invocation-strategy.test.ts > LocalInvocationStrategy > FR-006, US-005: should invoke gemini cli in the correct workDir 3ms
+ ✓ src/server/backends/invocation-strategy.test.ts > LocalInvocationStrategy > FR-006, US-005: should invoke claude cli in the correct workDir 0ms
+ ↓ src/commands/tasks-reconcile.test.ts > gwrk define tasks --reconcile > preserves completed task status when title matches
+ ↓ src/commands/tasks-reconcile.test.ts > gwrk define tasks --reconcile > adds new tasks from updated plan as open
+ ↓ src/commands/tasks-reconcile.test.ts > gwrk define tasks --reconcile > marks removed tasks as cancelled
+ ↓ src/commands/tasks-reconcile.test.ts > gwrk define tasks --reconcile > updates generatedFrom hash to current plan
+ ↓ src/engine/plan.integration.test.ts > PlanStore Integration (FR-001/005/009/013) > should seed from markdown and render back
+ ↓ src/engine/plan-store.proposals.test.ts > PlanStore Proposals (US-014) > should create a proposal
+ ↓ src/engine/ship-orchestrator.plan-event.test.ts > ShipOrchestrator Event Emission (FR-007) > should emit plan:ship:complete when stage becomes DONE
+ ↓ tests/harvest-e2e.test.ts > TR-H07: Full Harvest E2E Loop > SC-H02: Comprehensive harvest verification
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > FR-005: should loop back to IMPLEMENT if review returns NO-GO 783ms
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > FR-006: should create PR and wait for CI 419ms
+ ✓ src/scripts-e2e.test.ts > work-until-done.sh execution flow > FR-008/US-005: should resume from last persisted stage in state file 370ms
+ ↓ src/scripts-e2e.test.ts > FR-018/T007: Circuit Breaker failureContext > FR-018/T007: produces non-empty failureContext in the JSON state file on CIRCUIT_BREAK
+ ✓ src/scripts-e2e.test.ts > FR-002/T005: wud-branch.sh dirty-tree guard > exits 1 if the working tree is dirty 50ms
+ ✓ src/scripts-e2e.test.ts > FR-016/T006: validate-staging.sh integration with WUD > WUD calls validate-staging.sh before push 0ms
+
+ Test Files  2 failed | 99 passed | 5 skipped (106)
+      Tests  4 failed | 541 passed | 3 skipped | 13 todo (561)
+   Start at  14:59:50
+   Duration  5.95s (transform 1.98s, setup 0ms, collect 9.73s, tests 19.25s, environment 20ms, prepare 5.76s)
+

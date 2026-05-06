@@ -1,0 +1,28 @@
+{
+  "runId": "2026-03-21T18:14:56.875Z_ship_p01",
+  "feature": "011-harvest",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-21T18:14:56.875Z",
+  "finishedAt": "2026-03-21T18:32:12.836Z",
+  "durationS": 1036,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 12,
+  "linesAdded": 120,
+  "linesDeleted": 29,
+  "gitCommit": "a0559e1b2392618a76c068fa323760279ce156b0",
+  "gitBranch": "feat/011-harvest",
+  "digest": [
+    "BRANCH_SETUP: created/checked-out feat/011-harvest (2s) [2026-03-21T12:14:59-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-21T12:18:08-0600]",
+    "CODE_REVIEW: NO-GO — open tasks remain, will retry [2026-03-21T12:18:12-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-21T12:26:06-0600]",
+    "CODE_REVIEW: NO-GO — open tasks remain, will retry [2026-03-21T12:26:09-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-21T12:31:59-0600]",
+    "CODE_REVIEW: GO — all assertions satisfied [2026-03-21T12:32:02-0600]",
+    "UAT_REVIEW: GO — UAT assertions satisfied [2026-03-21T12:32:04-0600]"
+  ]
+}

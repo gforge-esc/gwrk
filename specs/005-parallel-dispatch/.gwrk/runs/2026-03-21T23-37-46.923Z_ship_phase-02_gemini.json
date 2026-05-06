@@ -1,0 +1,28 @@
+{
+  "runId": "2026-03-21T23:37:46.923Z_ship_p02",
+  "feature": "005-parallel-dispatch",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-21T23:37:46.923Z",
+  "finishedAt": "2026-03-21T23:47:07.554Z",
+  "durationS": 561,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 168,
+  "linesDeleted": 73,
+  "gitCommit": "3cea083222a22672d9ab1c105e00bc9ab48d5bb7",
+  "gitBranch": "feat/005-parallel-dispatch",
+  "digest": [
+    "BRANCH_SETUP: FAILED — branch setup exited 1 [2026-03-21T17:36:09-0600]",
+    "BRANCH_SETUP: created/checked-out feat/005-parallel-dispatch (1s) [2026-03-21T17:37:47-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-21T17:40:13-0600]",
+    "CODE_REVIEW: NO-GO — open tasks remain, will retry [2026-03-21T17:40:18-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-21T17:43:34-0600]",
+    "CODE_REVIEW: NO-GO — open tasks remain, will retry [2026-03-21T17:43:39-0600]",
+    "IMPLEMENT: agent completed successfully, pushed commits [2026-03-21T17:47:02-0600]",
+    "CODE_REVIEW: NO-GO — open tasks remain, will retry [2026-03-21T17:47:07-0600]"
+  ]
+}

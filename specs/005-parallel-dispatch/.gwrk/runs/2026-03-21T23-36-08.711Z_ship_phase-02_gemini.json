@@ -1,0 +1,21 @@
+{
+  "runId": "2026-03-21T23:36:08.711Z_ship_p02",
+  "feature": "005-parallel-dispatch",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-03-21T23:36:08.711Z",
+  "finishedAt": "2026-03-21T23:36:09.160Z",
+  "durationS": 0,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 26,
+  "linesAdded": 591,
+  "linesDeleted": 207,
+  "gitCommit": "6efdd1fbc91e3239cb8e9c88e66fa478c6044375",
+  "gitBranch": "feat/005-parallel-dispatch",
+  "digest": [
+    "BRANCH_SETUP: FAILED — branch setup exited 1 [2026-03-21T17:36:09-0600]"
+  ]
+}

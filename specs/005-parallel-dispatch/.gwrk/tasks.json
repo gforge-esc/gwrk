@@ -1,0 +1,110 @@
+{
+  "featureId": "005-parallel-dispatch",
+  "createdAt": "2026-03-20T00:15:26.321Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "7a71c844355fe3b417e29555e97061cfc39ebca311358951c7c84ae21b67763a",
+      "modifiedAt": "2026-03-19T17:54:30.722Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Worktree Sandbox Manager",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Rewrite src/server/sandbox.ts (Docker to Worktree)",
+          "description": "REWRITE: Replace Docker/Dockerode with Git worktree lifecycle. See contracts/sandbox.md.",
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh",
+          "classification": "refactor"
+        },
+        {
+          "id": "T002",
+          "title": "Verify src/server/sandbox.test.ts",
+          "description": "EXISTS: Already written for worktree model. Verify alignment with rewritten sandbox.ts.",
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh",
+          "classification": "noop"
+        },
+        {
+          "id": "T003",
+          "title": "Implement src/server/types.ts",
+          "description": "MODIFY: Update `SandboxInfo` to reflect worktree paths instead of container IDs. Add `TaskRecord`.",
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh",
+          "classification": "change"
+        },
+        {
+          "id": "T004",
+          "title": "Implement src/server/dispatch.ts",
+          "description": "MODIFY: Update `DispatchQueue` to use the refactored `SandboxManager`.",
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh",
+          "classification": "change"
+        },
+        {
+          "id": "T005",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/sandbox.test.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Parallel Dispatch Orchestrator",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Implement src/server/dispatch-orchestrator.ts",
+          "description": "NEW: Implement `DispatchOrchestrator` for parallel task execution, concurrency management, and 429 backoff.",
+          "status": "open",
+          "gateScript": "gates/T006-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T007",
+          "title": "Verify src/server/dispatch-orchestrator.test.ts",
+          "description": "EXISTS: Already written. Verify alignment with new orchestrator.",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh",
+          "classification": "noop"
+        },
+        {
+          "id": "T008",
+          "title": "Implement src/server/dispatch.ts",
+          "description": "MODIFY: Integrate `DispatchOrchestrator` into the phase implementation loop.",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T009",
+          "title": "Verify src/utils/config.ts parallelism settings",
+          "description": "VERIFY: parallelism settings already typed. Confirm maxClones and maxConcurrent defaults.",
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh",
+          "classification": "noop"
+        },
+        {
+          "id": "T010",
+          "title": "Implement test strategy for Phase 2",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh",
+          "classification": "noop"
+        }
+      ],
+      "doneWhen": [
+        "`pnpm vitest run src/server/dispatch-orchestrator.test.ts` exits 0"
+      ]
+    }
+  ]
+}

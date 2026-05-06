@@ -1,0 +1,54 @@
+
+ RUN  v3.2.4 /Users/gonzo/Code/gwrk
+
+{"level":30,"time":1773163141855,"pid":48976,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1773163141855,"pid":48976,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1773163141855,"pid":48976,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1773163141855,"pid":48976,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:19001"}
+{"level":30,"time":1773163141855,"pid":48976,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:19001"}
+stdout | src/server/phase6.uat.test.ts > Phase 6 Integration (UAT Simulation) > should handle sleep/wake cycle (US-011)
+gwrk server listening on http://[::1]:19001
+
+{"level":30,"time":1773163141855,"pid":48976,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"GET","url":"/api/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1773163141855,"pid":48976,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":0,"msg":"request completed"}
+{"level":30,"time":1773163142955,"pid":48976,"hostname":"Mac.lan","msg":"Sleep detected. Pausing..."}
+{"level":30,"time":1773163142955,"pid":48976,"hostname":"Mac.lan","reqId":"req-2","req":{"method":"GET","url":"/api/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1773163142955,"pid":48976,"hostname":"Mac.lan","reqId":"req-2","res":{"statusCode":200},"responseTime":0,"msg":"request completed"}
+{"level":30,"time":1773163143055,"pid":48976,"hostname":"Mac.lan","msg":"Wake detected. Waiting for health checks..."}
+{"level":30,"time":1773163143055,"pid":48976,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1773163143055,"pid":48976,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1773163143155,"pid":48976,"hostname":"Mac.lan","reqId":"req-3","req":{"method":"GET","url":"/api/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1773163141939,"pid":48976,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1773163143155,"pid":48976,"hostname":"Mac.lan","reqId":"req-3","res":{"statusCode":200},"responseTime":0,"msg":"request completed"}
+{"level":30,"time":1773163141939,"pid":48976,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1773163141939,"pid":48976,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1773163141939,"pid":48976,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:19002"}
+{"level":30,"time":1773163141939,"pid":48976,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:19002"}
+stdout | src/server/phase6.uat.test.ts > Phase 6 Integration (UAT Simulation) > should handle network connectivity changes (US-012)
+gwrk server listening on http://[::1]:19002
+
+{"level":40,"time":1773163142039,"pid":48976,"hostname":"Mac.lan","msg":"Network down. Pausing dispatch queue."}
+{"level":30,"time":1773163142139,"pid":48976,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"GET","url":"/api/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1773163142139,"pid":48976,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":0,"msg":"request completed"}
+{"level":30,"time":1773163142239,"pid":48976,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1773163142239,"pid":48976,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1773163142239,"pid":48976,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1773163142339,"pid":48976,"hostname":"Mac.lan","reqId":"req-2","req":{"method":"GET","url":"/api/status","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1773163141943,"pid":48976,"hostname":"Mac.lan","msg":"Network up. Verifying health..."}
+{"level":30,"time":1773163142339,"pid":48976,"hostname":"Mac.lan","reqId":"req-2","res":{"statusCode":200},"responseTime":0,"msg":"request completed"}
+{"level":30,"time":1773163141943,"pid":48976,"hostname":"Mac.lan","msg":"Executing Graceful Reconnect Protocol..."}
+{"level":30,"time":1773163141943,"pid":48976,"hostname":"Mac.lan","msg":"Reconnect successful. Resuming..."}
+{"level":30,"time":1773163141943,"pid":48976,"hostname":"Mac.lan","msg":"Server listening at http://[::1]:19003"}
+{"level":30,"time":1773163141943,"pid":48976,"hostname":"Mac.lan","msg":"Server listening at http://127.0.0.1:19003"}
+stdout | src/server/phase6.uat.test.ts > Phase 6 Integration (UAT Simulation) > should provide rich health status (US-013)
+gwrk server listening on http://[::1]:19003
+
+{"level":30,"time":1773163141943,"pid":48976,"hostname":"Mac.lan","reqId":"req-1","req":{"method":"GET","url":"/health","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1773163141943,"pid":48976,"hostname":"Mac.lan","reqId":"req-1","res":{"statusCode":200},"responseTime":0,"msg":"request completed"}
+ ✓ src/server/phase6.uat.test.ts (3 tests) 92ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  11:19:01
+   Duration  486ms (transform 60ms, setup 0ms, collect 101ms, tests 92ms, environment 0ms, prepare 52ms)
+

@@ -1,0 +1,10 @@
+T009 | 013             | specs/013-agent-native-interface/gates/T009-gate.sh
+T010 | 013             | specs/013-agent-native-interface/gates/T010-gate.sh
+T011 | 013             | specs/013-agent-native-interface/gates/T011-gate.sh
+T012 | 013             | specs/013-agent-native-interface/gates/T012-gate.sh
+T013 | 013             | specs/013-agent-native-interface/gates/T013-gate.sh
+T014 | 013             | specs/013-agent-native-interface/gates/T014-gate.sh
+T015 | 013             | specs/013-agent-native-interface/gates/T015-gate.sh
+T016 | 013             | specs/013-agent-native-interface/gates/T016-gate.sh
+T017 | 013             | specs/013-agent-native-interface/gates/T017-gate.sh
+T001 | test            | specs/test/gates/T001-gate.sh
