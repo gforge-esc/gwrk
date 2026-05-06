@@ -88,22 +88,43 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const actionBody = body as any;
     const payload = actionBody.actions[0].value;
     if (!payload) return;
-    const { featureId, phaseId, prNumber } = JSON.parse(payload);
+    const { featureId, phaseId, prNumber: payloadPrNumber } = JSON.parse(payload);
 
-    // Use actual PR URL from payload or construct from pr_number
-    let reviewUrl: string;
-    if (prNumber) {
+    // Resolve PR URL: payload prNumber → runs table → gh pr list fallback
+    let reviewUrl = "";
+    const resolvedPrNumber = payloadPrNumber || findOpenPr(featureId, phaseId)?.pr_number;
+
+    if (resolvedPrNumber) {
       try {
-        const prUrl = execSync(
-          `gh pr view ${prNumber} --json url -q .url`,
+        reviewUrl = execSync(
+          `gh pr view ${resolvedPrNumber} --json url -q .url`,
           { cwd: context.projectRoot, encoding: "utf-8", timeout: 10_000 },
         ).trim();
-        reviewUrl = prUrl;
       } catch {
-        reviewUrl = `${context.buildServerUrl}/review/${featureId}/${phaseId}`;
+        // PR might not exist anymore
       }
-    } else {
-      reviewUrl = `${context.buildServerUrl}/review/${featureId}/${phaseId}`;
+    }
+
+    if (!reviewUrl) {
+      // Fallback: find any open PR for this feature branch
+      try {
+        reviewUrl = execSync(
+          `gh pr list --head feat/${featureId} --json url -q '.[0].url'`,
+          { cwd: context.projectRoot, encoding: "utf-8", timeout: 10_000 },
+        ).trim();
+      } catch {
+        // No PR found
+      }
+    }
+
+    if (!reviewUrl) {
+      reviewUrl = `No PR found for ${featureId}`;
+      await client.chat.postEphemeral({
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: No open PR found for *${featureId}*. Has a ship run created one?`,
+      });
+      return;
     }
 
     await client.chat.postEphemeral({
