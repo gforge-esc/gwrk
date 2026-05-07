@@ -59,6 +59,11 @@ export class CodexAdapter implements AgentBackend {
     if (task.featureDir) args.push(task.featureDir);
     if (task.prompt) args.push(task.prompt);
 
+    const model = task.model || task.env?.CODEX_MODEL;
+    if (model) {
+      args.push("--model", model);
+    }
+
     args.push("--dangerously-bypass-approvals-and-sandbox");
 
     return {

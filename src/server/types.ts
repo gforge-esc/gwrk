@@ -46,6 +46,7 @@ export interface TaskRecord {
   status: "pending" | "running" | "completed" | "failed";
   sandboxDir: string; // Path to git worktree: .runs/sandboxes/<feature>-<task>-<uuid>
   backend: AgentBackend;
+  model?: string;
   startedAt?: string;
   completedAt?: string;
   exitCode?: number;
