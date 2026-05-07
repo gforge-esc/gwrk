@@ -264,6 +264,14 @@ export class ShipOrchestrator extends EventEmitter {
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
 
+      // 5. Discard review agent's source file mutations.
+      //    Review agents in YOLO mode can modify source files (fixing imports,
+      //    reformatting, etc.). These edits are often incomplete and can break
+      //    the build (e.g., removing non-null assertions without adding guards).
+      //    The review's value is the verdict + task feedback, not code edits.
+      //    We preserve tasks.json (carries verdict state) but restore everything else.
+      this.revertSourceMutations();
+
       if (verdict === "GO") {
         return { success: true, exitCode: 0 };
       }
@@ -497,6 +505,59 @@ export class ShipOrchestrator extends EventEmitter {
       return "NO-GO";
     }
     return "GO";
+  }
+
+  /**
+   * Discard source file mutations left by review agents.
+   *
+   * Review agents in YOLO mode can modify source files during review
+   * (fixing imports, reformatting, removing non-null assertions, etc.).
+   * These edits are often incomplete and can break the build.
+   *
+   * Strategy: `git checkout -- .` restores all tracked files to HEAD,
+   * then re-apply tasks.json from disk (it was already saved by
+   * validatePhaseScope and carries the verdict state we need).
+   */
+  private revertSourceMutations(): void {
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const tasksJsonPath = path.join(featureDir, ".gwrk", "tasks.json");
+
+    // Snapshot tasks.json — this carries the review verdict and must be preserved
+    let tasksJsonContent: string | null = null;
+    try {
+      tasksJsonContent = fs.readFileSync(tasksJsonPath, "utf-8");
+    } catch {
+      // No tasks.json to preserve — proceed with full restore
+    }
+
+    try {
+      // Restore all tracked files to HEAD state
+      execSync("git checkout -- .", {
+        cwd: this.config.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      // Remove any untracked files the review agent created
+      execSync("git clean -fd --exclude=.runs/", {
+        cwd: this.config.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      // Non-fatal: if git restore fails, the pre-commit hook will catch issues
+      console.warn(
+        `    ⚠ Could not revert review mutations: ${err instanceof Error ? err.message : err}`,
+      );
+      return;
+    }
+
+    // Restore tasks.json with review verdict state
+    if (tasksJsonContent) {
+      fs.writeFileSync(tasksJsonPath, tasksJsonContent, "utf-8");
+    }
   }
 
   private async stagePrCi(): Promise<StageResult> {
