@@ -36,6 +36,7 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
+import { getBackendSelector } from "../server/index.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -51,6 +52,8 @@ async function shipPhase(
   backend: AgentBackend,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
+  selectedModel?: string,
+  selectedCommand?: string,
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
   const feature = resolveFeature(featureInput, cwd);
@@ -61,9 +64,6 @@ async function shipPhase(
   const featureDir = path.join(cwd, "specs", feature);
 
   // CRITICAL: Validate feature exists before ANY side effects.
-  // Without this, writeManifest() creates bogus dirs via mkdir -p
-  // which can lead to accidental deletion of other spec dirs when
-  // agents commit with broad git staging. (ref: 001-cli-core clobber)
   const specFile = path.join(featureDir, "spec.md");
   if (!fs.existsSync(specFile)) {
     const specsDir = path.join(cwd, "specs");
@@ -149,6 +149,7 @@ async function shipPhase(
     Feature: feature,
     Phase: phase,
     Agent: backend,
+    Model: selectedModel || "default",
     "Max Iter": opts.maxIterations as string,
     "CI Timeout": `${opts.ciTimeout}m`,
     "Run ID": `${runId}`,
@@ -168,6 +169,7 @@ async function shipPhase(
           MAX_ITERATIONS: opts.maxIterations as string,
           CI_TIMEOUT: opts.ciTimeout as string,
           AGENT_BACKEND: backend,
+          GEMINI_MODEL: selectedModel || process.env.GEMINI_MODEL,
         },
         stdio: "inherit",
       });
@@ -199,6 +201,8 @@ async function shipPhase(
           ciTimeout: Number.parseInt(opts.ciTimeout as string),
           cwd,
           dryRun: !!opts.dryRun,
+          selectedModel,
+          selectedCommand,
           geminiModel: gwrkConfig.agents.gemini?.model,
           geminiFailbackModels: gwrkConfig.agents.gemini?.failbackModels,
         },
@@ -257,7 +261,7 @@ async function shipPhase(
       phase: phaseId,
       command: "ship",
       agent: backend,
-      model: "unknown",
+      model: selectedModel || "unknown",
       startedAt,
       finishedAt,
       durationS,
@@ -282,8 +286,6 @@ async function shipPhase(
     });
 
     // Post-manifest commit: ensure working tree is clean before returning.
-    // Without this, the manifest JSON is left as a dirty file. The user
-    // cannot safely amend because WUD already pushed the branch.
     try {
       const manifestDir = path.join(featureDir, ".gwrk", "runs");
       await run("git", ["add", manifestDir], { cwd });
@@ -443,8 +445,25 @@ Exit codes:
             );
             if (openTasks.length === 0) continue;
 
-            const backend = ((opts.agent as string) ||
-              config.agents.implement) as AgentBackend;
+            let backend = (opts.agent as string) as AgentBackend;
+            let selectedModel: string | undefined;
+            if (!backend) {
+              const selector = getBackendSelector(cwd);
+              const selection = await selector.selectBackend({
+                runId: `ship-${feature}-${Date.now()}`,
+                feature,
+                phase: phaseId,
+                taskType: "implement",
+                language: "typescript",
+                taskSP: openTasks.reduce((sum, t) => sum + (t.sp || 0), 0),
+              });
+              backend = selection.backend as AgentBackend;
+              selectedModel = selection.model;
+              console.log(
+                `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
+              );
+            }
+
             console.log(
               `\n${GREEN}Phase ${phaseId}${RESET}: Dispatching ${openTasks.length} tasks in parallel...`,
             );
@@ -457,6 +476,7 @@ Exit codes:
                 prompt: `${t.title}\n\n${t.description}`,
               })),
               backend,
+              model: selectedModel,
               concurrency: opts.concurrency
                 ? Number.parseInt(opts.concurrency as string)
                 : undefined,
@@ -488,16 +508,6 @@ Exit codes:
           if (finalExitCode !== 0) process.exit(finalExitCode);
           return;
         }
-
-        // FR-009/T010: Fail-fast if agents.implement is missing
-        if (!opts.agent && !config.agents?.implement) {
-          console.error("Missing required config: agents.implement");
-          process.exitCode = 1;
-          return;
-        }
-
-        const backend = ((opts.agent as string) ||
-          config.agents.implement) as AgentBackend;
 
         // Determine which phases to ship
         let phases: string[];
@@ -549,7 +559,29 @@ Exit codes:
         const shipStartTime = Date.now();
         let finalExitCode = 0;
         for (const p of phases) {
-          const exitCode = await shipPhase(feature, p, backend, opts, cwd);
+          let currentBackend = (opts.agent as string) as AgentBackend;
+          let selectedModel: string | undefined;
+          let selectedCommand: string | undefined;
+
+          if (!currentBackend) {
+            const selector = getBackendSelector(cwd);
+            const selection = await selector.selectBackend({
+              runId: `ship-${feature}-${Date.now()}`,
+              feature,
+              phase: `phase-${p.padStart(2, "0")}`,
+              taskType: "implement",
+              language: "typescript",
+              taskSP: 1, // Default for orchestrator
+            });
+            currentBackend = selection.backend as AgentBackend;
+            selectedModel = selection.model;
+            selectedCommand = selection.command;
+            console.log(
+              `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
+            );
+          }
+
+          const exitCode = await shipPhase(feature, p, currentBackend, opts, cwd, selectedModel, selectedCommand);
           if (exitCode !== 0) {
             finalExitCode = exitCode;
             break;

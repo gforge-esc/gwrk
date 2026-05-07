@@ -78,8 +78,8 @@ export class GeminiAdapter implements AgentBackend {
       args.push("--sandbox", "false");
     }
 
-    // Model selection flows from config → TaskDispatch.env.GEMINI_MODEL
-    const model = task.env?.GEMINI_MODEL;
+    // Model selection flows from Router (task.model) or config (task.env.GEMINI_MODEL)
+    const model = task.model || task.env?.GEMINI_MODEL;
     if (model) {
       args.push("--model", model);
     }

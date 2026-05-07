@@ -35,6 +35,37 @@ describe("TC-H03 / T004: Config & Environment Validation", () => {
       expect(config.parallelism.cloud.maxConcurrent).toBe(3);
     });
 
+    it("TR-003: loads agents registry from config", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+        project: { name: "test" },
+        agents: {
+          registry: {
+            gemini: {
+              type: "local-cli",
+              command: "gemini --model {{model}}",
+              discoveryMethod: "manual",
+              quotaProbe: {
+                method: "interactive-scrape",
+                command: "gemini",
+                sendKeys: "/stats",
+                parseRegex: "(\\d+)%",
+                cacheTTLMinutes: 5
+              },
+              maxConcurrent: 2,
+              models: [
+                { name: "flash", tier: "fast", modelFlag: "flash" }
+              ]
+            }
+          }
+        }
+      }));
+
+      const config = loadConfig("/root");
+      expect(config.agents.registry).toBeDefined();
+      expect(config.agents.registry?.gemini.type).toBe("local-cli");
+    });
+
 
   });
 });

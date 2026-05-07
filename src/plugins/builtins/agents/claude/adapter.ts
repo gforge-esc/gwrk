@@ -52,8 +52,11 @@ export class ClaudeAdapter implements AgentBackend {
     const args: string[] = ["-p", task.prompt || "", "--output-format", "json"];
 
     if (task.featureDir) args.push(task.featureDir);
-    // Note: dispatchAgent in agent.ts uses workflowPath but buildCommand uses _workflowContent
-    // Here we use task properties normalized to TaskDispatch
+
+    const model = task.model || task.env?.CLAUDE_MODEL;
+    if (model) {
+      args.push("--model", model);
+    }
 
     args.push("--dangerously-skip-permissions");
 

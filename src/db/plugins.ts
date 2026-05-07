@@ -62,7 +62,7 @@ export function recordRoutingDecision(
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT INTO routing_decisions (task_type, selected_backend, outcome, duration_ms, error_message)
+      `INSERT INTO routing_history (task_type, selected_backend, outcome, duration_ms, error_message)
        VALUES (@task_type, @selected_backend, @outcome, @duration_ms, @error_message)`,
     )
     .run({
@@ -83,7 +83,7 @@ export function getRoutingHistory(
   const conn = db ?? getDb();
   return conn
     .prepare(
-      "SELECT * FROM routing_decisions WHERE task_type = ? ORDER BY created_at DESC LIMIT ?",
+      "SELECT * FROM routing_history WHERE task_type = ? ORDER BY created_at DESC LIMIT ?",
     )
     .all(taskType, limit) as RoutingDecision[];
 }

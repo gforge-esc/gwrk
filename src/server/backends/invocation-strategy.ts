@@ -6,6 +6,7 @@ export interface TaskInvocation {
   featureId: string;
   phaseId: string;
   backend: AgentBackend;
+  model?: string;
   workDir: string;
   prompt?: string;
 }
@@ -18,6 +19,7 @@ export class LocalInvocationStrategy implements InvocationStrategy {
   async invoke(task: TaskInvocation): Promise<TaskResult> {
     return dispatchToAgent({
       agent: task.backend,
+      model: task.model,
       workDir: task.workDir,
       featureDir: `specs/${task.featureId}`,
       prompt: task.prompt || `Task ${task.taskId} in phase ${task.phaseId}`,
