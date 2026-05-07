@@ -16,43 +16,49 @@
           "id": "T001",
           "title": "Implement src/server/agent-registry.ts",
           "description": "NEW: Zod schema with model tier/modelFlag, loadRegistry(), AgentBackendConfig type, ModelEntry type",
-          "status": "open",
-          "gateScript": "gates/T001-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh",
+          "completedAt": "2026-05-07T17:46:00Z"
         },
         {
           "id": "T002",
           "title": "Implement src/server/agent-registry.test.ts",
-          "description": "NEW: TR-003 — valid/invalid registry, model tier validation, fail-fast",
-          "status": "open",
-          "gateScript": "gates/T002-gate.sh"
+          "description": "NEW: TR-003 \u2014 valid/invalid registry, model tier validation, fail-fast",
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh",
+          "completedAt": "2026-05-07T17:46:00Z"
         },
         {
           "id": "T003",
           "title": "Implement src/utils/config.ts",
           "description": "MODIFY: Add `agents.registry` to project config schema",
-          "status": "open",
-          "gateScript": "gates/T003-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T003-gate.sh",
+          "completedAt": "2026-05-07T17:46:00Z"
         },
         {
           "id": "T004",
           "title": "Implement package.json",
-          "description": "MODIFY: No new deps — Zod already available",
-          "status": "open",
-          "gateScript": "gates/T004-gate.sh"
+          "description": "MODIFY: No new deps \u2014 Zod already available",
+          "status": "completed",
+          "gateScript": "gates/T004-gate.sh",
+          "completedAt": "2026-05-07T17:46:00Z"
         },
         {
           "id": "T005",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy including TR-003 and TR-010.",
-          "status": "open",
-          "gateScript": "gates/T005-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh",
+          "completedAt": "2026-05-07T17:46:00Z"
         },
         {
           "id": "T021",
           "title": "Implement src/server/task-classifier.ts",
-          "description": "NEW: TaskClassification enum, classifyTask() — implement→thinking, test→fast, review→thinking, define→high-context, remediation→thinking",
-          "status": "open",
-          "gateScript": "gates/T021-gate.sh"
+          "description": "NEW: TaskClassification enum, classifyTask() \u2014 implement\u2192thinking, test\u2192fast, review\u2192thinking, define\u2192high-context, remediation\u2192thinking",
+          "status": "completed",
+          "gateScript": "gates/T021-gate.sh",
+          "completedAt": "2026-05-07T17:46:00Z"
         }
       ],
       "doneWhen": [
@@ -149,7 +155,7 @@
         {
           "id": "T022",
           "title": "Implement src/server/model-selector.ts",
-          "description": "NEW: ModelSelector, selectModel() — picks from models[] by task tier, handles model cooldowns, renderCommand() with {{model}} template substitution",
+          "description": "NEW: ModelSelector, selectModel() \u2014 picks from models[] by task tier, handles model cooldowns, renderCommand() with {{model}} template substitution",
           "status": "open",
           "gateScript": "gates/T022-gate.sh"
         },
@@ -196,7 +202,7 @@
         {
           "id": "T019",
           "title": "Implement src/server/backend-selector.integration.test.ts",
-          "description": "NEW: End-to-end — registry→probe→classify→select model→select provider→record",
+          "description": "NEW: End-to-end \u2014 registry\u2192probe\u2192classify\u2192select model\u2192select provider\u2192record",
           "status": "open",
           "gateScript": "gates/T019-gate.sh"
         },

@@ -1,9 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
+import { AgentBackendConfigSchema } from "../server/agent-registry.js";
 
-const AgentBackendSchema = z.enum(["gemini", "claude", "codex", "codex-cloud"]);
-export type AgentBackend = z.infer<typeof AgentBackendSchema>;
+const AgentBackendSchema = z.string();
+export type AgentBackend = string;
 
 export const SlackConfigSchema = z.object({
   botToken: z.string().startsWith("xoxb-"),
@@ -27,10 +28,11 @@ export const GwrkConfigSchema = z.object({
       .optional(),
   }),
   agents: z.object({
-    define: AgentBackendSchema,
-    implement: AgentBackendSchema,
+    define: AgentBackendSchema.default("gemini"),
+    implement: AgentBackendSchema.default("gemini"),
     throttleMs: z.number().int().min(0).optional(),
-    fallbackOrder: z.array(AgentBackendSchema).optional(),
+    fallbackOrder: z.array(z.string()).optional(),
+    registry: z.record(z.string(), AgentBackendConfigSchema).optional(),
     gemini: z
       .object({
         model: z.string().optional(),
@@ -131,6 +133,15 @@ export function loadConfig(projectRoot: string): GwrkConfig {
   if (process.env.GITHUB_WEBHOOK_SECRET) {
     raw.server = raw.server ?? {};
     raw.server.githubWebhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
+  }
+
+  // Inject names into agents.registry entries if they exist
+  if (raw.agents?.registry) {
+    for (const [name, config] of Object.entries(raw.agents.registry)) {
+      if (typeof config === "object" && config !== null) {
+        (config as any).name = (config as any).name ?? name;
+      }
+    }
   }
 
   const result = GwrkConfigSchema.safeParse(raw);
