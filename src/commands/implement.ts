@@ -12,8 +12,8 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 

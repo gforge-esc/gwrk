@@ -30,12 +30,13 @@ const mockLoadConfig = vi.mocked(loadConfig);
 
 // ─── Phase 2 Tests ───────────────────────────────────────────────
 
-describe("FR-001: gwrk pulse command", () => {
+describe("FR-001: gwrk measure pulse command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
-  it("TR-004: reads pulse.repos from config and invokes scanner per repo", () => {
+  it("TR-004: reads pulse.repos from config and invokes scanner per repo", async () => {
     // US-001 acceptance scenario 1
     const mockConfig = {
       project: { name: "test" },
@@ -44,40 +45,58 @@ describe("FR-001: gwrk pulse command", () => {
     };
     mockLoadConfig.mockReturnValue(mockConfig);
 
+    const mockReport = {
+      generatedAt: new Date().toISOString(),
+      repositories: [],
+      specProgress: { totalSpecs: 0, totalPlans: 0 },
+    };
+    mockGeneratePulseReport.mockReturnValue(mockReport);
+
     // Register commands
     const program = new Command();
-    registerPulseCommands(program);
+    program.exitOverride(); 
+    program.enablePositionalOptions();
+    const measure = program.command("measure");
+    registerPulseCommands(measure);
 
-    // The pulse command should be registered
-    const pulseCmd = program.commands.find((c) => c.name() === "pulse");
-    expect(pulseCmd).toBeDefined();
+    await program.parseAsync(["measure", "pulse"], { from: "user" });
+
+    expect(mockLoadConfig).toHaveBeenCalled();
+    expect(mockGeneratePulseReport).toHaveBeenCalledWith(mockConfig);
+    expect(console.log).toHaveBeenCalled();
   });
 
-  it("TR-006: exits 1 with error when no repos configured (FR-001 error state)", () => {
+  it("TR-006: exits with error when no repos configured (FR-001 error state)", async () => {
     // US-001 acceptance scenario 2
     const mockConfig = {
       project: { name: "test" },
       agents: { define: "gemini" as const, implement: "codex-cloud" as const },
-      // No pulse section
+      pulse: { repos: [] },
     };
     mockLoadConfig.mockReturnValue(mockConfig);
+    mockGeneratePulseReport.mockImplementation(() => {
+      throw new Error("No repositories tracked");
+    });
 
-    // When gwrk pulse runs without pulse.repos, should error
-    // Testing the handler logic directly since Commander async parsing is complex
     const program = new Command();
-    registerPulseCommands(program);
+    program.exitOverride();
+    program.enablePositionalOptions();
+    const measure = program.command("measure");
+    registerPulseCommands(measure);
 
-    const pulseCmd = program.commands.find((c) => c.name() === "pulse");
-    expect(pulseCmd).toBeDefined();
+    await program.parseAsync(["measure", "pulse"], { from: "user" });
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0; 
   });
 });
 
-describe("FR-002/FR-006: gwrk pulse scan command", () => {
+describe("FR-002/FR-006: gwrk measure pulse scan command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
-  it("TR-005: validates path and calls scanRepository", () => {
+  it("TR-005: validates path and calls scanRepository", async () => {
     // US-002 acceptance scenario 1
     const mockSnapshot = {
       repoPath: "/tmp/test-repo",
@@ -90,18 +109,22 @@ describe("FR-002/FR-006: gwrk pulse scan command", () => {
     };
     mockScanRepository.mockReturnValue(mockSnapshot);
 
+    const fs = require("node:fs");
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+
     const program = new Command();
-    registerPulseCommands(program);
+    program.exitOverride();
+    program.enablePositionalOptions();
+    const measure = program.command("measure");
+    registerPulseCommands(measure);
 
-    // Verify scan subcommand exists
-    const pulseCmd = program.commands.find((c) => c.name() === "pulse");
-    expect(pulseCmd).toBeDefined();
+    await program.parseAsync(["measure", "pulse", "scan", "/tmp/test-repo"], { from: "user" });
 
-    const scanCmd = pulseCmd?.commands.find((c) => c.name() === "scan");
-    expect(scanCmd).toBeDefined();
+    expect(mockScanRepository).toHaveBeenCalledWith(expect.stringContaining("test-repo"), undefined);
+    expect(console.log).toHaveBeenCalled();
   });
 
-  it("TR-005: outputs JSON when --json flag is passed", () => {
+  it("TR-005: outputs JSON when --json flag is passed", async () => {
     // US-006 acceptance scenario 2
     const mockSnapshot = {
       repoPath: "/tmp/test-repo",
@@ -113,34 +136,19 @@ describe("FR-002/FR-006: gwrk pulse scan command", () => {
       weeklyBuckets: [],
     };
     mockScanRepository.mockReturnValue(mockSnapshot);
+    const fs = require("node:fs");
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
 
-    // When --json is passed, output should be valid JSON
-    const jsonOutput = JSON.stringify({ snapshot: mockSnapshot });
-    const parsed = JSON.parse(jsonOutput);
+    const program = new Command();
+    program.exitOverride();
+    program.enablePositionalOptions();
+    const measure = program.command("measure");
+    registerPulseCommands(measure);
 
-    expect(parsed.snapshot).toHaveProperty("mainLoc");
-    expect(parsed.snapshot).toHaveProperty("draftLoc");
-    expect(parsed.snapshot.mainLoc).toBe(500);
-  });
+    await program.parseAsync(["measure", "pulse", "scan", "/tmp/test-repo", "--json"], { from: "user" });
 
-  it("TR-006: exits 1 for non-existent path (FR-002 error state)", () => {
-    // US-002 acceptance scenario 2 — non-git-repo
-    mockScanRepository.mockImplementation(() => {
-      throw new Error("Not a git repository: /tmp/not-a-repo");
-    });
-
-    expect(() => mockScanRepository("/tmp/not-a-repo")).toThrow(
-      /Not a git repository/,
-    );
-  });
-
-  it("TR-006: exits 1 for path that does not exist (FR-002 error state)", () => {
-    mockScanRepository.mockImplementation(() => {
-      throw new Error("Path not found: /tmp/nonexistent");
-    });
-
-    expect(() => mockScanRepository("/tmp/nonexistent")).toThrow(
-      /Path not found/,
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('"repoName": "test-repo"')
     );
   });
 });

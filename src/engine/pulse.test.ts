@@ -18,6 +18,7 @@ vi.mock("../utils/git.js", () => ({
   gitBranches: vi.fn(() => []),
   gitLineCount: vi.fn(() => 0),
   gitDraftLineCount: vi.fn(() => 0),
+  gitMainCommits: vi.fn(() => new Set()),
 }));
 
 // ─── Phase 1 Tests ───────────────────────────────────────────────
@@ -107,7 +108,7 @@ describe("FR-004: bucketByWeek", () => {
       },
     ];
 
-    const buckets = bucketByWeek(commits, "main");
+    const buckets = bucketByWeek(commits, new Set(["a1", "a2", "b1", "c1"]));
 
     expect(buckets.length).toBeGreaterThanOrEqual(3);
 
@@ -133,7 +134,7 @@ describe("FR-004: bucketByWeek", () => {
   });
 
   it("TR-001: returns empty array for no commits", () => {
-    const buckets = bucketByWeek([], "main");
+    const buckets = bucketByWeek([], new Set());
 
     expect(buckets).toEqual([]);
   });
@@ -170,59 +171,62 @@ describe("FR-003: Published/Draft LOC separation", () => {
 describe("FR-005: scanSpecProgress", () => {
   it("TR-008: counts spec.md and plan.md files in specs directory", () => {
     // US-005 acceptance scenario 1
-    // Given a project with specs/001-cli-core/spec.md and specs/002-build-server/spec.md
-    // The function should scan the filesystem
+    const fs = require("node:fs");
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readdirSync").mockReturnValue([
+      { isDirectory: () => true, name: "001-cli-core" },
+      { isDirectory: () => true, name: "002-build-server" },
+    ] as any);
 
-    // For RED state, just verify the function exists and returns the right shape
+    // Mock individual file checks
+    vi.spyOn(fs, "existsSync").mockImplementation((p: string) => {
+      if (p.includes("specs/001-cli-core/spec.md")) return true;
+      if (p.includes("specs/001-cli-core/plan.md")) return true;
+      if (p.includes("specs/002-build-server/spec.md")) return true;
+      if (p.includes("specs/002-build-server/plan.md")) return false;
+      if (p.endsWith("specs")) return true;
+      return false;
+    });
+
     const result = scanSpecProgress("/tmp/mock-project");
 
-    expect(result).toHaveProperty("totalSpecs");
-    expect(result).toHaveProperty("totalPlans");
-    expect(typeof result.totalSpecs).toBe("number");
-    expect(typeof result.totalPlans).toBe("number");
+    expect(result.totalSpecs).toBe(2);
+    expect(result.totalPlans).toBe(1);
+    
+    vi.restoreAllMocks();
   });
 
   it("rejects: returns zero counts for non-existent specs directory", () => {
+    const fs = require("node:fs");
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
     const result = scanSpecProgress("/tmp/no-specs-here");
 
     expect(result.totalSpecs).toBe(0);
     expect(result.totalPlans).toBe(0);
+    
+    vi.restoreAllMocks();
   });
 });
 
 describe("FR-001: generatePulseReport multi-repo aggregation", () => {
   it("TR-004: aggregates PulseSnapshots from multiple repos", () => {
     // US-001 acceptance scenario 1
-    // Given a config with two tracked repos
-
     const mockConfig = {
       project: { name: "test" },
       agents: { define: "gemini" as const, implement: "codex-cloud" as const },
       pulse: { repos: ["/tmp/repo-a", "/tmp/repo-b"] },
     };
 
-    // Need to mock fs to avoid "Path not found" since we call the real scanRepository
     const fs = require("node:fs");
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
     vi.spyOn(fs, "readdirSync").mockReturnValue([]);
 
-    // Also need to mock git helpers imported by pulse.js
-    // We achieve this generically by mocking the whole git.js module or specific functions
-    // Since we can't reliably vi.mock in the middle of a test for an already imported module,
-    // we should mock it at the top of the file.
-    // Wait, let's just use what's returned.
-    // Actually, detectDefaultBranch will fail if git isn't mocked.
-
-    // Instead of mocking inside the test which is hard for ESM, let's just
-    // mock the imported functions. But we didn't import them...
-    // Let me add the vi.mock at the top of the file in another edit.
-
     const report = generatePulseReport(mockConfig);
 
-    expect(report).toHaveProperty("repositories");
-    expect(report).toHaveProperty("specProgress");
-    expect(report).toHaveProperty("generatedAt");
     expect(report.repositories).toHaveLength(2);
+    expect(report.repositories[0].repoName).toBe("repo-a");
+    expect(report.repositories[1].repoName).toBe("repo-b");
 
     vi.restoreAllMocks();
   });

@@ -8,10 +8,11 @@ import type { CommandContext } from "./slack-commands.js";
  * Returns the merge output or throws on failure.
  */
 function mergeGitHubPr(prNumber: number, cwd: string): string {
-  return execSync(
-    `gh pr merge ${prNumber} --merge --delete-branch`,
-    { cwd, encoding: "utf-8", timeout: 30_000 },
-  ).trim();
+  return execSync(`gh pr merge ${prNumber} --merge --delete-branch`, {
+    cwd,
+    encoding: "utf-8",
+    timeout: 30_000,
+  }).trim();
 }
 
 /**
@@ -88,11 +89,16 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const actionBody = body as any;
     const payload = actionBody.actions[0].value;
     if (!payload) return;
-    const { featureId, phaseId, prNumber: payloadPrNumber } = JSON.parse(payload);
+    const {
+      featureId,
+      phaseId,
+      prNumber: payloadPrNumber,
+    } = JSON.parse(payload);
 
     // Resolve PR URL: payload prNumber → runs table → gh pr list fallback
     let reviewUrl = "";
-    const resolvedPrNumber = payloadPrNumber || findOpenPr(featureId, phaseId)?.pr_number;
+    const resolvedPrNumber =
+      payloadPrNumber || findOpenPr(featureId, phaseId)?.pr_number;
 
     if (resolvedPrNumber) {
       try {

@@ -8,7 +8,12 @@ import type { CommandContext } from "./slack-commands.js";
 
 // Mock findOpenPr
 vi.mock("../db/runs.js", () => ({
-  findOpenPr: vi.fn().mockReturnValue({ pr_number: 42, pr_url: "https://github.com/test/pr/42" }),
+  findOpenPr: vi
+    .fn()
+    .mockReturnValue({
+      pr_number: 42,
+      pr_url: "https://github.com/test/pr/42",
+    }),
 }));
 
 // Mock execSync for gh pr merge
@@ -78,7 +83,7 @@ describe("slack-actions", () => {
   it("handles merge_pr action — calls gh pr merge with PR from runs table", async () => {
     const { execSync } = await import("node:child_process");
     const { findOpenPr } = await import("../db/runs.js");
-    
+
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const postMessage = vi.fn();

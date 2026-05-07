@@ -8,9 +8,9 @@ import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
 import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { SandboxManager } from "../server/sandbox.js";
+import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
 import { type AgentBackend, loadConfig } from "../utils/config.js";
-import { ShipBridge } from "../server/ship-bridge.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -36,8 +36,8 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 

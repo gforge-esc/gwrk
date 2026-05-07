@@ -22,13 +22,15 @@ export function renderSnapshotTable(snap: PulseSnapshot): string {
   out += `LOC: ${snap.mainLoc} (Main) / ${snap.draftLoc} (Draft)\n\n`;
 
   if (snap.weeklyBuckets.length > 0) {
-    out += "Week Start | Total LOC | Added | Deleted\n";
-    out += "-----------|-----------|-------|--------\n";
+    out += "┌────────────┬───────────┬───────┬─────────┐\n";
+    out += "│ Week Start │ Total LOC │ Added │ Deleted │\n";
+    out += "├────────────┼───────────┼───────┼─────────┤\n";
     for (const bucket of snap.weeklyBuckets.slice(-4)) {
       // Show last 4 weeks
       const dateStr = bucket.weekStart.split("T")[0];
-      out += `${dateStr.padEnd(10)} | ${bucket.totalMain.toString().padEnd(9)} | +${bucket.added.toString().padEnd(4)} | -${bucket.deleted}\n`;
+      out += `│ ${dateStr.padEnd(10)} │ ${bucket.totalMain.toString().padEnd(9)} │ +${bucket.added.toString().padEnd(4)} │ -${bucket.deleted.toString().padEnd(7)} │\n`;
     }
+    out += "└────────────┴───────────┴───────┴─────────┘\n";
   } else {
     out += "No git history found.\n";
   }
@@ -46,7 +48,7 @@ export function registerPulseSubcommands(program: Command) {
     .command("pulse")
     .description("Pulse productivity dashboard")
     .option("--json", "Output full PulseReport as JSON")
-    .action(async (options) => {
+    .action(async (options, command) => {
       await withSignal("pulse", async () => {
         const config = loadConfig(process.cwd());
         const report = generatePulseReport(config);
@@ -63,7 +65,8 @@ export function registerPulseSubcommands(program: Command) {
     .command("scan <path>")
     .description("Run a historical scan of any git repository")
     .option("--json", "Output PulseSnapshot as JSON")
-    .action(async (repoPath, options) => {
+    .option("-b, --branch <name>", "Override default branch detection")
+    .action(async (repoPath, options, command) => {
       await withSignal("pulse scan", async () => {
         const absolutePath = path.resolve(process.cwd(), repoPath);
 
@@ -75,7 +78,7 @@ export function registerPulseSubcommands(program: Command) {
           throw new CommandError(`Not a git repository: ${absolutePath}`, 1);
         }
 
-        const snapshot = scanRepository(absolutePath);
+        const snapshot = scanRepository(absolutePath, options.branch);
 
         if (options.json) {
           console.log(JSON.stringify(snapshot, null, 2));

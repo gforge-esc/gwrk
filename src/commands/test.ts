@@ -5,8 +5,8 @@ import { Command } from "commander";
 import { banner, fail, success } from "../utils/format.js";
 import { loadTaskState } from "../utils/state.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
  * gwrk test <feature> [--phase <N>]

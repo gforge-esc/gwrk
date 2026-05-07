@@ -73,7 +73,9 @@ export class PlanHeartbeat {
       else if (isStale) targetHealth = "YELLOW";
 
       if (p.health !== targetHealth) {
-        this.store.updatePhase(p.id, { health: targetHealth as "GREEN" | "YELLOW" | "RED" });
+        this.store.updatePhase(p.id, {
+          health: targetHealth as "GREEN" | "YELLOW" | "RED",
+        });
       }
     }
 
@@ -93,7 +95,9 @@ export class PlanHeartbeat {
   ) {
     const channelId = this.config.project.slack?.channelId;
     if (!channelId) {
-      console.error("Heartbeat: no slack.channelId configured — skipping Slack report");
+      console.error(
+        "Heartbeat: no slack.channelId configured — skipping Slack report",
+      );
       return;
     }
 

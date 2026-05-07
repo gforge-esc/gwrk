@@ -3,10 +3,16 @@ import path from "node:path";
 
 /**
  * Auto-detects the default branch of a repository.
+ * If an override is provided, it is returned immediately.
  * Tries `git symbolic-ref refs/remotes/origin/HEAD` first.
  * Then falls back to checking if 'main', 'master', or 'trunk' exist.
  */
-export function detectDefaultBranch(repoPath: string): string {
+export function detectDefaultBranch(
+  repoPath: string,
+  override?: string,
+): string {
+  if (override) return override;
+
   try {
     const stdout = execFileSync(
       "git",
@@ -55,6 +61,22 @@ export function gitLog(repoPath: string): string {
 }
 
 /**
+ * Gets a set of commit hashes reachable from the given branch.
+ */
+export function gitMainCommits(repoPath: string, branch: string): Set<string> {
+  try {
+    const stdout = execFileSync("git", ["rev-list", branch], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return new Set(stdout.toString().split("\n").filter(Boolean));
+  } catch (_e) {
+    return new Set();
+  }
+}
+
+/**
  * Lists all branch names in the repository.
  */
 export function gitBranches(repoPath: string): string[] {
@@ -74,23 +96,17 @@ export function gitBranches(repoPath: string): string[] {
 }
 
 /**
- * Counts total lines of code at a specific ref using ls-files and wc.
+ * Counts total lines of code at a specific ref using git archive.
+ * This is significantly faster than checking out or ls-tree for large repos.
  */
 export function gitLineCount(repoPath: string, ref: string): number {
   try {
-    // This pipeline counts lines in all tracked files at the given ref.
-    // We use a shell command to pipe git archive into tar and wc.
-    // (git ls-files doesn't work well for bare refs, so we check out to index or use archive)
-    // A simpler approximation for active repo is `git ls-files | xargs wc -l`
-
-    // For FR-003, we need LOC at a specific ref.
-    // git ls-tree -r $ref --name-only | xargs git show | wc -l
+    // Use git archive piped to wc -l to count lines of all files at the ref.
+    // We filter for common text files to avoid binary noise if possible,
+    // or just count everything if we want a raw metric.
     const stdout = execFileSync(
       "bash",
-      [
-        "-c",
-        `git ls-tree -r ${ref} --name-only | grep -v 'png\\|jpg\\|jpeg\\|gif\\|webp\\|mp4\\|mov' | xargs -I {} git show ${ref}:"{}" 2>/dev/null | wc -l`,
-      ],
+      ["-c", `git archive ${ref} | tar -xO | wc -l`],
       { cwd: repoPath, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
     );
     return Number.parseInt(stdout.toString().trim(), 10) || 0;

@@ -306,7 +306,8 @@ Wait, let me fix that.
   });
 
   it("should handle nested objects in JSON", () => {
-    const json = '{"summary": "s", "intents": [{"action": "WRITE_FILE", "nested": {"a": 1}}]}';
+    const json =
+      '{"summary": "s", "intents": [{"action": "WRITE_FILE", "nested": {"a": 1}}]}';
     const stdout = `Thinking...\n\`\`\`json\n${json}\n\`\`\``;
     const result = extractJsonFromOutput(stdout) as Record<string, unknown>;
     expect(result.summary).toBe("s");

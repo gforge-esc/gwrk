@@ -25,8 +25,8 @@ function getEffortReport(
   return report;
 }
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const compressionCommand = new Command("compression")
   .description("Calculate development compression ratios")
