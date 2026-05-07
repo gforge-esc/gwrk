@@ -14,7 +14,7 @@ export class ShipBridge {
 
   constructor(orchestrator: ShipOrchestrator, cwd: string) {
     const startedAt = new Date().toISOString();
-    
+
     // Initialize with partial data, will be fully populated on ship:start
     this.record = {
       id: "pending",

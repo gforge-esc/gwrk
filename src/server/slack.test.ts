@@ -24,7 +24,9 @@ vi.mock("@slack/bolt", () => {
     action: vi.fn(),
     client: {
       auth: {
-        test: vi.fn().mockResolvedValue({ team: "test-team", user_id: "U_TEST" }),
+        test: vi
+          .fn()
+          .mockResolvedValue({ team: "test-team", user_id: "U_TEST" }),
       },
     },
   };

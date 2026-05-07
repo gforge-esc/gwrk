@@ -7,8 +7,8 @@ import { resolveRoleMultipliers } from "../engine/roles.js";
 import { extractStories } from "../engine/spec-parser.js";
 import { loadConfig } from "../utils/config.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const effortCommand = new Command("effort")
   .description("Calculate deterministic effort estimation from spec stories")

@@ -120,7 +120,7 @@ describe("FR-002/FR-006: gwrk measure pulse scan command", () => {
 
     await program.parseAsync(["measure", "pulse", "scan", "/tmp/test-repo"], { from: "user" });
 
-    expect(mockScanRepository).toHaveBeenCalledWith(expect.stringContaining("test-repo"));
+    expect(mockScanRepository).toHaveBeenCalledWith(expect.stringContaining("test-repo"), undefined);
     expect(console.log).toHaveBeenCalled();
   });
 

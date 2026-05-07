@@ -147,9 +147,8 @@ const handlers: Record<string, SlashCommandHandler> = {
           for (const f of planStatus.features) {
             const emoji = statusEmoji[f.status] || "⬜";
             const phaseCount = f.phases?.length || 0;
-            const shippedCount = f.phases?.filter(
-              (p) => p.status === "SHIPPED",
-            ).length || 0;
+            const shippedCount =
+              f.phases?.filter((p) => p.status === "SHIPPED").length || 0;
             dagText += `\n${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} phases)`;
           }
 
@@ -304,10 +303,11 @@ const handlers: Record<string, SlashCommandHandler> = {
         };
       }
 
-      execSync(
-        `gh pr merge ${pr.pr_number} --merge --delete-branch`,
-        { cwd: context.projectRoot, encoding: "utf-8", timeout: 30_000 },
-      );
+      execSync(`gh pr merge ${pr.pr_number} --merge --delete-branch`, {
+        cwd: context.projectRoot,
+        encoding: "utf-8",
+        timeout: 30_000,
+      });
 
       return {
         response_type: "in_channel",
@@ -635,15 +635,11 @@ const handlers: Record<string, SlashCommandHandler> = {
       const resolved = resolveFeature(featureArg, context.projectRoot);
 
       // Spawn gwrk ship as background process
-      const child = spawn(
-        "gwrk",
-        ["ship", resolved, phaseArg],
-        {
-          cwd: context.projectRoot,
-          detached: true,
-          stdio: "ignore",
-        },
-      );
+      const child = spawn("gwrk", ["ship", resolved, phaseArg], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
       child.unref();
 
       return {

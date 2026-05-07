@@ -67,7 +67,6 @@ export class ShipOrchestrator extends EventEmitter {
   private config: ShipRunConfig;
   private state: ShipState;
 
-
   constructor(config: ShipRunConfig, state?: ShipState) {
     super();
     this.config = config;
@@ -76,7 +75,6 @@ export class ShipOrchestrator extends EventEmitter {
     } else {
       this.state = this.initializeState();
     }
-
   }
 
   private initializeState(): ShipState {

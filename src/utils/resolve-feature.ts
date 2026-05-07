@@ -21,10 +21,7 @@ export function resolveFeature(
 
   // Exact match first
   const exactPath = path.join(specsDir, featureInput);
-  if (
-    fs.existsSync(exactPath) &&
-    fs.statSync(exactPath).isDirectory()
-  ) {
+  if (fs.existsSync(exactPath) && fs.statSync(exactPath).isDirectory()) {
     return featureInput;
   }
 

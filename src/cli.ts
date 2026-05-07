@@ -106,6 +106,10 @@ program
     },
   });
 
+import { registerPulseCommands } from "./commands/pulse.js";
+
+// ... (existing imports)
+
 program.addCommand(initCommand);
 program.addCommand(projectCommand);
 
@@ -116,6 +120,7 @@ program.addCommand(testCommand); // Test: run vitest scoped to feature
 program.addCommand(gateCommand); // Gate: execute gates and enforce truth
 program.addCommand(harvestCommand); // Harvest: post-merge lifecycle
 program.addCommand(measureCommand); // Measure: pulse, effort, compression
+registerPulseCommands(program); // Top-level alias for measure pulse
 
 // Operational queries
 program.addCommand(tasksCommand);

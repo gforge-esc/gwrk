@@ -321,29 +321,33 @@ tasksCommand
   .command("ready <feature>")
   .description("List all tasks ready for implementation")
   .option("--json", "Output in JSON format")
-  .action(async (featureInput: string, options: { json?: boolean }, command) => {
-    await withSignal("tasks ready", async () => {
-      const out = options.json ? createOutput("json") : resolveFormat(command);
+  .action(
+    async (featureInput: string, options: { json?: boolean }, command) => {
+      await withSignal("tasks ready", async () => {
+        const out = options.json
+          ? createOutput("json")
+          : resolveFormat(command);
 
-      const projectRoot = process.cwd();
-      const feature = resolveFeature(featureInput, projectRoot);
-      const featureDir = path.join(projectRoot, "specs", feature);
-      const state = loadTaskState(featureDir);
-      const readyTasks = listTasks(state).filter(
-        (t) => t.status === "open" || t.status === "in_progress",
-      );
+        const projectRoot = process.cwd();
+        const feature = resolveFeature(featureInput, projectRoot);
+        const featureDir = path.join(projectRoot, "specs", feature);
+        const state = loadTaskState(featureDir);
+        const readyTasks = listTasks(state).filter(
+          (t) => t.status === "open" || t.status === "in_progress",
+        );
 
-      if (out.isJson) {
-        out.write({ tasks: readyTasks });
-      } else {
-        console.log(`Ready tasks for ${feature}:`);
-        if (readyTasks.length === 0) {
-          console.log("  (none)");
-          return;
+        if (out.isJson) {
+          out.write({ tasks: readyTasks });
+        } else {
+          console.log(`Ready tasks for ${feature}:`);
+          if (readyTasks.length === 0) {
+            console.log("  (none)");
+            return;
+          }
+          for (const t of readyTasks) {
+            console.log(`  ${t.id}: ${t.title}`);
+          }
         }
-        for (const t of readyTasks) {
-          console.log(`  ${t.id}: ${t.title}`);
-        }
-      }
-    });
-  });
+      });
+    },
+  );
