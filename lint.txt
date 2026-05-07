@@ -1,7 +1,0 @@
-
-> @gwrk/cli@0.1.0 lint /Users/gonzo/Code/gwrk
-> biome check
-
-Checked 166 files in 44ms. No fixes applied.
-Found 1 error.
- ELIFECYCLE  Command failed with exit code 1.

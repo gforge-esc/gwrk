@@ -11,15 +11,22 @@ coverage/
 # All temporary work goes to /tmp/ (workspace rule: "we don't shit in our own yard").
 test-*/
 .test-*/
+temp-*/
 lint_out*
 review-*.md
 uat_verify*.sh
 *.bak
 *.tmp
 
+# Agent artifacts that leak into root
+*.db
+*.sqlite
+*-report.txt
+*-output.txt
+uat-*.json
+lint.txt
+lint-report.txt
+
 # R004: Personal shell scripts — not part of gwrk distribution
 scripts/dev/
 .gwrk/dispatches.jsonl
-empty.sqlite
-test-empty.db
-uat-results.json
