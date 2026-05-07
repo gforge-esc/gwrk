@@ -7,6 +7,7 @@ import {
   gitDraftLineCount,
   gitLineCount,
   gitLog,
+  gitMainCommits,
 } from "../utils/git.js";
 import type {
   PulseReport,
@@ -77,7 +78,7 @@ export function parseGitLog(raw: string): ParsedCommit[] {
  */
 export function bucketByWeek(
   commits: ParsedCommit[],
-  defaultBranch: string,
+  defaultBranchCommits: Set<string>,
 ): WeeklyBucket[] {
   if (commits.length === 0) return [];
 
@@ -109,7 +110,14 @@ export function bucketByWeek(
 
     const bucket = buckets.get(weekStartIso) as WeeklyBucket;
 
+    const isMain = defaultBranchCommits.has(commit.hash);
     for (const file of commit.files) {
+      const net = file.added - file.deleted;
+      if (isMain) {
+        bucket.totalMain += net;
+      } else {
+        bucket.totalDrafts += net;
+      }
       bucket.added += file.added;
       bucket.deleted += file.deleted;
     }
@@ -118,15 +126,14 @@ export function bucketByWeek(
   const result = Array.from(buckets.values());
   result.sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
-  // Compute totalMain and totalDrafts cumulatively (rough approximation for buckets based on added/deleted)
-  // For precise LOC at point in time, git checkout + count per week is required,
-  // but FR-004 asks to bucket LOC changes. The acceptance criteria implies
-  // totalMain is cumulativeLOC. Let's compute running totals.
-  let runningTotal = 0;
+  // Compute totalMain and totalDrafts cumulatively
+  let runningMain = 0;
+  let runningDrafts = 0;
   for (const bucket of result) {
-    runningTotal += bucket.added - bucket.deleted;
-    bucket.totalMain = Math.max(0, runningTotal); // Cannot be < 0
-    bucket.totalDrafts = 0; // Precise separation by branch over time requires deep ancestry parsing
+    runningMain += bucket.totalMain;
+    runningDrafts += bucket.totalDrafts;
+    bucket.totalMain = Math.max(0, runningMain);
+    bucket.totalDrafts = Math.max(0, runningDrafts);
   }
 
   return result;
@@ -135,7 +142,10 @@ export function bucketByWeek(
 /**
  * Scans a single repository and returns a PulseSnapshot.
  */
-export function scanRepository(repoPath: string): PulseSnapshot {
+export function scanRepository(
+  repoPath: string,
+  branchOverride?: string,
+): PulseSnapshot {
   if (!fs.existsSync(repoPath)) {
     throw new Error(`Path not found: ${repoPath}`);
   }
@@ -143,10 +153,11 @@ export function scanRepository(repoPath: string): PulseSnapshot {
     throw new Error(`Not a git repository: ${repoPath}`);
   }
 
-  const defaultBranch = detectDefaultBranch(repoPath);
+  const defaultBranch = detectDefaultBranch(repoPath, branchOverride);
+  const mainCommits = gitMainCommits(repoPath, defaultBranch);
   const rawLog = gitLog(repoPath);
   const commits = parseGitLog(rawLog);
-  const buckets = bucketByWeek(commits, defaultBranch);
+  const buckets = bucketByWeek(commits, mainCommits);
 
   const mainLoc = gitLineCount(repoPath, defaultBranch);
 
@@ -159,7 +170,7 @@ export function scanRepository(repoPath: string): PulseSnapshot {
     defaultBranch,
     scannedAt: new Date().toISOString(),
     mainLoc,
-    draftLoc, // Mock implementation for FR-003 draft separation
+    draftLoc,
     weeklyBuckets: buckets,
   };
 

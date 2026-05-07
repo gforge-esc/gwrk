@@ -18,6 +18,7 @@ vi.mock("../utils/git.js", () => ({
   gitBranches: vi.fn(() => []),
   gitLineCount: vi.fn(() => 0),
   gitDraftLineCount: vi.fn(() => 0),
+  gitMainCommits: vi.fn(() => new Set()),
 }));
 
 // ─── Phase 1 Tests ───────────────────────────────────────────────
@@ -107,7 +108,7 @@ describe("FR-004: bucketByWeek", () => {
       },
     ];
 
-    const buckets = bucketByWeek(commits, "main");
+    const buckets = bucketByWeek(commits, new Set(["a1", "a2", "b1", "c1"]));
 
     expect(buckets.length).toBeGreaterThanOrEqual(3);
 
@@ -133,7 +134,7 @@ describe("FR-004: bucketByWeek", () => {
   });
 
   it("TR-001: returns empty array for no commits", () => {
-    const buckets = bucketByWeek([], "main");
+    const buckets = bucketByWeek([], new Set());
 
     expect(buckets).toEqual([]);
   });
