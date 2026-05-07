@@ -74,7 +74,7 @@
         {
           "id": "T006",
           "title": "Implement src/server/quota-prober.ts",
-          "description": "NEW: probeQuota(), cache logic, tmux scraping, timeout handling, per-model cooldown tracking",
+          "description": "NEW: probeQuota(), cache logic, tmux scraping, timeout handling, per-model cooldown tracking\n\nREVIEW FAIL (code): Lint and Spec Mismatch \u2014 FR-002.\n  WHERE: src/server/quota-prober.ts\n  EXPECTED: No lint errors; return probeStatus instead of status; parse resetsIn.\n  ACTUAL: 3 lint errors (noAsyncPromiseExecutor, noUselessSwitchCase, useOptionalChain); returns status; hardcoded resetsIn.\n  FIX: Fix lint errors (refactor Promise to remove async executor); rename status to probeStatus; attempt to parse resetsIn from scrape output.\n  GATE: gates/T006-gate.sh assertion #2\n  REF: plan.md Phase 2 > src/server/quota-prober.ts",
           "status": "open",
           "gateScript": "gates/T006-gate.sh"
         },
@@ -82,13 +82,14 @@
           "id": "T007",
           "title": "Implement src/server/quota-prober.test.ts",
           "description": "NEW: TR-005 timeout, TR-007 cache TTL",
-          "status": "open",
-          "gateScript": "gates/T007-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh",
+          "completedAt": "2026-05-07T18:00:00Z"
         },
         {
           "id": "T008",
           "title": "Implement scripts/dev/quota-probe.sh",
-          "description": "NEW: Shell helper for tmux-based interactive scrape",
+          "description": "NEW: Shell helper for tmux-based interactive scrape\n\nREVIEW FAIL (code): Contract Mismatch \u2014 FR-002.\n  WHERE: scripts/dev/quota-probe.sh\n  EXPECTED: Return JSON { \"percent\": N, \"resetsIn\": \"...\" }; Use flags --timeout, --invert.\n  ACTUAL: Returns plain value; uses positional arguments.\n  FIX: Refactor script to return JSON and support flags as per contracts/quota-prober.md.\n  GATE: gates/T008-gate.sh assertion #1\n  REF: plan.md Phase 2 > scripts/dev/quota-probe.sh",
           "status": "open",
           "gateScript": "gates/T008-gate.sh"
         },
@@ -96,15 +97,17 @@
           "id": "T009",
           "title": "Implement .runs/quota-cache.json",
           "description": "RUNTIME: Gitignored cache file, DM-003",
-          "status": "open",
-          "gateScript": "gates/T009-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh",
+          "completedAt": "2026-05-07T18:00:00Z"
         },
         {
           "id": "T010",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T010-gate.sh"
+          "status": "completed",
+          "gateScript": "gates/T010-gate.sh",
+          "completedAt": "2026-05-07T18:00:00Z"
         }
       ],
       "doneWhen": [
