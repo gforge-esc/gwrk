@@ -24,7 +24,7 @@
         {
           "id": "T002",
           "title": "Implement src/server/agent-registry.test.ts",
-          "description": "NEW: TR-003 \u2014 valid/invalid registry, model tier validation, fail-fast",
+          "description": "NEW: TR-003 — valid/invalid registry, model tier validation, fail-fast",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
@@ -42,7 +42,7 @@
         {
           "id": "T004",
           "title": "Implement package.json",
-          "description": "MODIFY: No new deps \u2014 Zod already available",
+          "description": "MODIFY: No new deps — Zod already available",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
@@ -60,7 +60,7 @@
         {
           "id": "T021",
           "title": "Implement src/server/task-classifier.ts",
-          "description": "NEW: TaskClassification enum, classifyTask() \u2014 implement\u2192thinking, test\u2192fast, review\u2192thinking, define\u2192high-context, remediation\u2192thinking",
+          "description": "NEW: TaskClassification enum, classifyTask() — implement→thinking, test→fast, review→thinking, define→high-context, remediation→thinking",
           "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
@@ -81,7 +81,7 @@
         {
           "id": "T006",
           "title": "Implement src/server/quota-prober.ts",
-          "description": "NEW: probeQuota(), cache logic, tmux scraping, timeout handling, per-model cooldown tracking\n\nREVIEW FAIL (code): Lint and Spec Mismatch \u2014 FR-002.\n  WHERE: src/server/quota-prober.ts\n  EXPECTED: No lint errors; return probeStatus instead of status; parse resetsIn.\n  ACTUAL: 3 lint errors (noAsyncPromiseExecutor, noUselessSwitchCase, useOptionalChain); returns status; hardcoded resetsIn.\n  FIX: Fix lint errors (refactor Promise to remove async executor); rename status to probeStatus; attempt to parse resetsIn from scrape output.\n  GATE: gates/T006-gate.sh assertion #2\n  REF: plan.md Phase 2 > src/server/quota-prober.ts",
+          "description": "NEW: probeQuota(), cache logic, tmux scraping, timeout handling, per-model cooldown tracking\n\nREVIEW FAIL (code): Lint and Spec Mismatch — FR-002.\n  WHERE: src/server/quota-prober.ts\n  EXPECTED: No lint errors; return probeStatus instead of status; parse resetsIn.\n  ACTUAL: 3 lint errors (noAsyncPromiseExecutor, noUselessSwitchCase, useOptionalChain); returns status; hardcoded resetsIn.\n  FIX: Fix lint errors (refactor Promise to remove async executor); rename status to probeStatus; attempt to parse resetsIn from scrape output.\n  GATE: gates/T006-gate.sh assertion #2\n  REF: plan.md Phase 2 > src/server/quota-prober.ts",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
@@ -99,7 +99,7 @@
         {
           "id": "T008",
           "title": "Implement scripts/dev/quota-probe.sh",
-          "description": "NEW: Shell helper for tmux-based interactive scrape\n\nREVIEW FAIL (code): Contract Mismatch \u2014 FR-002.\n  WHERE: scripts/dev/quota-probe.sh\n  EXPECTED: Return JSON { \"percent\": N, \"resetsIn\": \"...\" }; Use flags --timeout, --invert.\n  ACTUAL: Returns plain value; uses positional arguments.\n  FIX: Refactor script to return JSON and support flags as per contracts/quota-prober.md.\n  GATE: gates/T008-gate.sh assertion #1\n  REF: plan.md Phase 2 > scripts/dev/quota-probe.sh",
+          "description": "NEW: Shell helper for tmux-based interactive scrape\n\nREVIEW FAIL (code): Contract Mismatch — FR-002.\n  WHERE: scripts/dev/quota-probe.sh\n  EXPECTED: Return JSON { \"percent\": N, \"resetsIn\": \"...\" }; Use flags --timeout, --invert.\n  ACTUAL: Returns plain value; uses positional arguments.\n  FIX: Refactor script to return JSON and support flags as per contracts/quota-prober.md.\n  GATE: gates/T008-gate.sh assertion #1\n  REF: plan.md Phase 2 > scripts/dev/quota-probe.sh",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
@@ -183,7 +183,7 @@
         {
           "id": "T022",
           "title": "Implement src/server/model-selector.ts",
-          "description": "NEW: ModelSelector, selectModel() \u2014 picks from models[] by task tier, handles model cooldowns, renderCommand() with {{model}} template substitution",
+          "description": "NEW: ModelSelector, selectModel() — picks from models[] by task tier, handles model cooldowns, renderCommand() with {{model}} template substitution",
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -215,41 +215,46 @@
           "id": "T016",
           "title": "Implement src/server/index.ts",
           "description": "MODIFY: Export `BackendSelector` instance",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T22:15:42.136Z"
         },
         {
           "id": "T017",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY: Call `selectBackend(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T22:15:42.143Z"
         },
         {
           "id": "T018",
           "title": "Implement src/server/routing-decisions.test.ts",
           "description": "NEW: TR-006 integration",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T22:15:42.146Z"
         },
         {
           "id": "T019",
           "title": "Implement src/server/backend-selector.integration.test.ts",
-          "description": "NEW: End-to-end \u2014 registry\u2192probe\u2192classify\u2192select model\u2192select provider\u2192record",
-          "status": "open",
+          "description": "NEW: End-to-end — registry→probe→classify→select model→select provider→record",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T22:15:42.148Z"
         },
         {
           "id": "T020",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T22:15:44.871Z"
         }
       ],
       "sp_estimate": 0,
