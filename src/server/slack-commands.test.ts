@@ -6,12 +6,10 @@ import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
 
 // Mock findOpenPr for approve command
 vi.mock("../db/runs.js", () => ({
-  findOpenPr: vi
-    .fn()
-    .mockReturnValue({
-      pr_number: 42,
-      pr_url: "https://github.com/test/pr/42",
-    }),
+  findOpenPr: vi.fn().mockReturnValue({
+    pr_number: 42,
+    pr_url: "https://github.com/test/pr/42",
+  }),
   listRuns: vi.fn().mockReturnValue([]),
   getStats: vi.fn().mockReturnValue([]),
 }));
