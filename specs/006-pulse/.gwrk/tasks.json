@@ -108,27 +108,30 @@
       "tasks": [
         {
           "id": "T009",
-          "title": "Implement src/cli.test.ts",
+          "title": "Implement src/cli.pulse.e2e.test.ts",
           "description": "MODIFY: Add E2E scenarios for `pulse` and `pulse scan`.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T17:15:00Z"
         },
         {
           "id": "T010",
           "title": "Implement src/engine/pulse-integration.test.ts",
           "description": "MODIFY: Add performance benchmark and large-repo simulation.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T17:15:00Z"
         },
         {
           "id": "T011",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-07T17:15:00Z"
         }
       ],
       "sp_estimate": 0,
