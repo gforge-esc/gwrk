@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-07T20:33:37.497Z_ship_p02",
+  "feature": "008-agent-router",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-07T20:33:37.497Z",
+  "finishedAt": "2026-05-07T20:40:55.209Z",
+  "durationS": 438,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 378,
+  "linesDeleted": 24,
+  "gitCommit": "23e32df1f36b6dfc81f6e6bd8ff78a224893abd5",
+  "gitBranch": "feat/008-agent-router",
+  "digest": []
+}
