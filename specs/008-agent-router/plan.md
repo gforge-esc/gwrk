@@ -15,7 +15,7 @@ Implements the intelligence layer of the shipping triad (004→005→008). The r
 Registry loader that reads `.gwrkrc.json`, validates the `agents.registry` schema (including `quotaProbe` config), and exports typed backend configs.
 
 **Files (4):**
-- `src/server/agent-registry.ts` (NEW: Zod schema with model `tier`/`modelFlag`, `loadRegistry()`, `AgentBackendConfig` type, `ModelEntry` type)
+- `src/server/agent-registry.ts` (NEW: Zod schema with model `tier`/`modelFlag`, `docs?`/`discoveryMethod?`, `loadRegistry()`, `AgentBackendConfig` type, `ProviderDocs` type, `ModelEntry` type)
 - `src/server/agent-registry.test.ts` (NEW: TR-003 — valid/invalid registry, model tier validation, fail-fast)
 - `src/utils/config.ts` (MODIFY: Add `agents.registry` to project config schema)
 - `src/server/task-classifier.ts` (NEW: `TaskClassification` enum, `classifyTask()` function — `implement` → `thinking`, `test` → `fast`, `review` → `thinking`, `define` → `high-context`, `remediation` → `thinking`)
@@ -173,6 +173,7 @@ Wire the `BackendSelector` into the ship pipeline so 004 and 005 can consume it.
 | Shared Type | Defined In | Consumed By |
 |---|---|---|
 | `AgentBackendConfig` | `src/server/agent-registry.ts` | `quota-prober.ts`, `backend-selector.ts`, `model-selector.ts` |
+| `ProviderDocs` | `src/server/agent-registry.ts` | _(informational — not consumed at runtime, available for tooling)_ |
 | `ModelEntry` | `src/server/agent-registry.ts` | `model-selector.ts`, `backend-selector.ts` |
 | `QuotaReading` | `src/server/quota-prober.ts` | `backend-selector.ts` |
 | `TaskContext` | `src/server/backend-selector.ts` | 005 `dispatch-orchestrator.ts` |

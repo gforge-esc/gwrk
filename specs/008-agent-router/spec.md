@@ -146,13 +146,13 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-002**: System MUST implement a `QuotaProber` per backend type. Probing strategies, in order of preference: (a) cached reading from last probe within TTL (default 5 min), (b) headless interactive session scraping (tmux-based, inspired by ccquota pattern), (c) shared-pool lookup (e.g. `codex-cloud` reads the `codex` local probe — they share the same 5h window), (d) optimistic assumption (100%). The probe MUST return `{ percent: number, resetsIn: string, probeStatus: "fresh" | "cached" | "shared-pool" | "timeout-assumed-available" }`. (Implements: US-001, US-003)
 - **FR-003**: System MUST check backend availability before selection. A backend is available if: (a) configured in registry, (b) quota > 0% (or probe assumed available), (c) not in cooldown from a recent failure. (Implements: US-001)
 - **FR-004**: System MUST implement a two-level fallback chain. Level 1 (model failover): if the selected model within a provider returns a transient 429, try the next model in the same provider's `models[]` array. Level 2 (provider failover): if all models within a provider are exhausted or quota is 0%, select the next provider from `agents.fallbackOrder`. Max 3 provider-level fallback attempts. (Implements: US-002, US-009)
-- **FR-005**: System MUST load the agent registry from `.gwrkrc.json` under `agents.registry`. The schema MUST be Zod-validated with fail-fast on invalid config. Registry schema per backend: `{ name, type: "local-cli" | "cloud", command, quotaProbe, maxConcurrent, models: [{ name, tier, modelFlag? }], fallback? }`. Each model entry specifies its capability `tier` ("thinking" | "fast" | "high-context") and optional `modelFlag` for CLI injection. (Implements: US-004, US-008)
+- **FR-005**: System MUST load the agent registry from `.gwrkrc.json` under `agents.registry`. The schema MUST be Zod-validated with fail-fast on invalid config. Registry schema per backend: `{ name, type: "local-cli" | "cloud", command, docs?: { models, routing?, configuration? }, quotaProbe, maxConcurrent, models: [{ name, tier, modelFlag?, effort?, lastVerified? }], discoveryMethod?: "manual" | "cli-scrape", reviewModel?: string, fallback? }`. Each model entry specifies its capability `tier` ("thinking" | "fast" | "high-context"), optional `modelFlag` for CLI injection, optional `effort` for CLI-native effort flags (e.g. Claude's `--effort`), and optional `lastVerified` ISO date for staleness tracking. The `docs` object provides documentation URLs per provider for human and agent reference. `discoveryMethod` defaults to `"manual"`. Provider-level `reviewModel` is optional — when present, the router uses it for `review`/`test` tasks instead of the primary model (aligns with Codex's native `review_model` config). (Implements: US-004, US-008)
 - **FR-006**: System MUST query the SQLite `runs` table to calculate per-backend AND per-model success rates. Used as tiebreaker when multiple backends have similar quota (within 20% of each other). (Implements: US-005)
 - **FR-007**: System MUST handle probe failures gracefully. If a quota probe times out (> 5s) or returns unparseable output, the backend MUST be assumed available (100%) with `probeStatus: "timeout-assumed-available"`. The router MUST NOT block on a broken probe. (Implements: US-006)
 - **FR-008**: System MUST record every routing decision in a `routing_decisions` SQLite table with columns: `id`, `run_id`, `feature`, `phase`, `selected_backend`, `selected_model`, `task_classification`, `reason`, `quota_percent`, `probe_status`, `task_sp`, `fallback_used`, `model_failover_used`, `created_at`. (Implements: US-007)
-- **FR-009**: System MUST implement a `ModelSelector` that picks from a provider's `models[]` based on `TaskClassification`. The selector matches task tier to model tier. If the preferred-tier model is unavailable (cooldown from 429), it falls to the next model in the array. (Implements: US-008)
+- **FR-009**: System MUST implement a `ModelSelector` that picks from a provider's `models[]` based on `TaskClassification`. The selector matches task tier to model tier. **Array order defines priority** — the first model matching the requested tier is preferred; subsequent models of the same tier serve as intra-tier failovers. If the preferred-tier model is unavailable (cooldown from 429), it falls to the next model in the array regardless of tier. (Implements: US-008)
 - **FR-010**: System MUST distinguish between quota depletion (provider-level, 0% remaining in rate window) and transient capacity exhaustion (model-level, 429 `MODEL_CAPACITY_EXHAUSTED`). Quota depletion triggers provider failover (FR-004 Level 2). Transient 429 triggers model failover (FR-004 Level 1) with per-model cooldown (default 60s). (Implements: US-009)
-- **FR-011**: System MUST define a `TaskClassification` enum: `implement` → `thinking`, `test` → `fast`, `review` → `thinking`, `define` → `high-context`, `remediation` → `thinking`. Classification is derived from `TaskContext.taskType`. The command string MUST support `{{model}}` template substitution so the selected model's `modelFlag` is injected at invocation time. (Implements: US-010)
+- **FR-011**: System MUST define a `TaskClassification` enum: `implement` → `thinking`, `test` → `fast`, `review` → `thinking`, `define` → `high-context`, `remediation` → `thinking`. Classification is derived from `TaskContext.taskType`. The command string MUST support `{{model}}` template substitution so the selected model's `modelFlag` is injected at invocation time. If the selected model has an `effort` value, the command MUST also inject `--effort <value>`. If the provider has a `reviewModel` configured and the task is `review` or `test`, the `reviewModel` flag overrides the primary model selection. (Implements: US-010)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -196,6 +196,11 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
       "codex": {
         "type": "local-cli",
         "command": "codex exec --full-auto --model {{model}}",
+        "docs": {
+          "models": "https://github.com/openai/codex",
+          "configuration": "https://github.com/openai/codex#configuration"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "interactive-scrape",
           "command": "codex",
@@ -205,13 +210,21 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
         },
         "maxConcurrent": 1,
         "models": [
-          { "name": "gpt-5.3-codex", "tier": "thinking", "modelFlag": "gpt-5.3-codex" },
-          { "name": "gpt-5.1-codex-mini", "tier": "fast", "modelFlag": "gpt-5.1-codex-mini" }
-        ]
+          { "name": "gpt-5.4", "tier": "thinking", "modelFlag": "gpt-5.4", "lastVerified": "2026-05-07" },
+          { "name": "gpt-5.3-codex", "tier": "thinking", "modelFlag": "gpt-5.3-codex", "lastVerified": "2026-05-07" },
+          { "name": "gpt-5.1-codex-mini", "tier": "fast", "modelFlag": "gpt-5.1-codex-mini", "lastVerified": "2026-05-07" }
+        ],
+        "reviewModel": "gpt-5.1-codex-max"
       },
       "gemini": {
         "type": "local-cli",
         "command": "gemini -p --model {{model}}",
+        "docs": {
+          "models": "https://geminicli.com/docs/cli/model/",
+          "routing": "https://geminicli.com/docs/cli/model-routing/",
+          "configuration": "https://geminicli.com/docs/reference/configuration/"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "interactive-scrape",
           "command": "gemini",
@@ -221,13 +234,19 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
         },
         "maxConcurrent": 2,
         "models": [
-          { "name": "gemini-3.1-pro-preview", "tier": "thinking", "modelFlag": "gemini-3.1-pro-preview" },
-          { "name": "gemini-3-flash-preview", "tier": "fast", "modelFlag": "gemini-3-flash-preview" }
+          { "name": "gemini-3.1-pro-preview", "tier": "thinking", "modelFlag": "gemini-3.1-pro-preview", "lastVerified": "2026-05-07" },
+          { "name": "gemini-3-flash-preview", "tier": "fast", "modelFlag": "gemini-3-flash-preview", "lastVerified": "2026-05-07" },
+          { "name": "gemini-2.5-flash-lite", "tier": "fast", "modelFlag": "gemini-2.5-flash-lite", "lastVerified": "2026-05-07" }
         ]
       },
       "claude": {
         "type": "local-cli",
         "command": "claude -p --model {{model}} --output-format json",
+        "docs": {
+          "models": "https://docs.anthropic.com/en/docs/claude-code/cli-usage",
+          "configuration": "https://docs.anthropic.com/en/docs/claude-code/settings"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "interactive-scrape",
           "command": "claude",
@@ -238,12 +257,17 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
         },
         "maxConcurrent": 2,
         "models": [
-          { "name": "claude-sonnet-4.6", "tier": "thinking", "modelFlag": "claude-sonnet-4.6" }
+          { "name": "claude-sonnet-4.6", "tier": "thinking", "modelFlag": "claude-sonnet-4.6", "effort": "max", "lastVerified": "2026-05-07" },
+          { "name": "claude-haiku-4.5", "tier": "fast", "modelFlag": "haiku", "effort": "high", "lastVerified": "2026-05-07" }
         ]
       },
       "codex-cloud": {
         "type": "cloud",
         "command": "@codex",
+        "docs": {
+          "models": "https://github.com/openai/codex"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "shared-pool",
           "sharedWith": "codex",
@@ -251,7 +275,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
         },
         "maxConcurrent": 3,
         "models": [
-          { "name": "gpt-5.3-codex", "tier": "thinking", "modelFlag": "gpt-5.3-codex" }
+          { "name": "gpt-5.3-codex", "tier": "thinking", "modelFlag": "gpt-5.3-codex", "lastVerified": "2026-05-07" }
         ]
       }
     },

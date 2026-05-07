@@ -1,7 +1,7 @@
 ---
 type: contract
 feature: 008-agent-router
-last_modified: "2026-05-07T15:48:00Z"
+last_modified: "2026-05-07T16:25:00Z"
 ---
 
 # Contract: Backend Selector
@@ -81,16 +81,27 @@ interface AgentBackendConfig {
   name: string;
   type: "local-cli" | "cloud";
   command: string;            // Template with {{model}} placeholder
+  docs?: ProviderDocs;        // Documentation URLs for human/agent reference
+  discoveryMethod?: "manual" | "cli-scrape";  // Default: "manual"
   quotaProbe: QuotaProbeConfig;
   maxConcurrent: number;
-  models: ModelEntry[];
+  models: ModelEntry[];       // Array order = priority (first match wins per tier)
+  reviewModel?: string;       // Optional: override model for review/test tasks (e.g. Codex review_model)
   fallback?: string;
+}
+
+interface ProviderDocs {
+  models: string;             // URL to model listing/docs
+  routing?: string;           // URL to routing/fallback docs (if applicable)
+  configuration?: string;     // URL to configuration reference
 }
 
 interface ModelEntry {
   name: string;               // Display name, e.g. "gemini-3.1-pro-preview"
   tier: "thinking" | "fast" | "high-context";
   modelFlag?: string;         // CLI flag value for {{model}} substitution
+  effort?: string;            // CLI-native effort flag (e.g. Claude --effort "max")
+  lastVerified?: string;      // ISO date — when this model was confirmed available
 }
 
 interface QuotaProbeConfig {
@@ -155,8 +166,9 @@ type TaskClassification = "thinking" | "fast" | "high-context";
 
 ### Selection Logic
 1. Filter `models[]` to entries matching `classification` tier
-2. If preferred-tier match is in cooldown → try other models in array order
-3. If ALL models in cooldown → return `null` (triggers provider failover)
+2. **Array order defines priority** — first matching model is preferred
+3. If preferred-tier match is in cooldown → try next same-tier model, then any model in array order
+4. If ALL models in cooldown → return `null` (triggers provider failover)
 
 ---
 
@@ -186,8 +198,13 @@ Unknown task types default to `"thinking"` (safest choice).
 **Consumed by**: invocation strategy
 
 Substitutes `{{model}}` in command template with selected model's `modelFlag`.
+If the model has an `effort` value, appends `--effort <value>` to the rendered command.
+If the provider has `reviewModel` set and the task is `review` or `test`, uses the `reviewModel` instead.
 
 ```typescript
 renderCommand("gemini -p --model {{model}}", "gemini-3.1-pro-preview")
 // → "gemini -p --model gemini-3.1-pro-preview"
+
+renderCommand("claude -p --model {{model}} --output-format json", "claude-sonnet-4.6", { effort: "max" })
+// → "claude -p --model claude-sonnet-4.6 --output-format json --effort max"
 ```
