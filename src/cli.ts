@@ -26,6 +26,7 @@ const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 export const program = new Command();
 
 program.exitOverride();
+program.enablePositionalOptions();
 
 const setupCommand = new Command("setup")
   .description("Configure gwrk integrations")

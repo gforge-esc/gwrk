@@ -46,7 +46,7 @@ export function registerPulseSubcommands(program: Command) {
     .command("pulse")
     .description("Pulse productivity dashboard")
     .option("--json", "Output full PulseReport as JSON")
-    .action(async (options) => {
+    .action(async (options, command) => {
       await withSignal("pulse", async () => {
         const config = loadConfig(process.cwd());
         const report = generatePulseReport(config);
@@ -63,7 +63,7 @@ export function registerPulseSubcommands(program: Command) {
     .command("scan <path>")
     .description("Run a historical scan of any git repository")
     .option("--json", "Output PulseSnapshot as JSON")
-    .action(async (repoPath, options) => {
+    .action(async (repoPath, options, command) => {
       await withSignal("pulse scan", async () => {
         const absolutePath = path.resolve(process.cwd(), repoPath);
 
