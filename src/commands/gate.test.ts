@@ -73,7 +73,7 @@ describe("FR-006: First-Class Gate Checking", () => {
 	// --- Negative: gate script not found ---
 	it("rejects invalid input: gate script not found with corrective message", async () => {
 		await expect(runGateCheck("T999", testFeature)).rejects.toThrow(
-			/Gate script not found.*Run 'gwrk project gates'/,
+			/Gate script not found.*Run 'gwrk gate/,
 		);
 	});
 

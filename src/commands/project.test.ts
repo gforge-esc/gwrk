@@ -51,12 +51,12 @@ describe("FR-005: Spec and Gate Subcommands", () => {
 		expect(subcommandNames).toContain("specs");
 	});
 
-	// --- US-005 Acceptance Scenario 2: gates subcommand ---
-	it("US-005.2: projectCommand has 'gates' subcommand", () => {
+	// --- US-005 Acceptance Scenario 2: gates is top-level only (not a project subcommand) ---
+	it("US-005.2: gates moved to top-level 'gwrk gate' (not under project)", () => {
 		const subcommandNames = projectCommand.commands.map(
 			(c: { name: () => string }) => c.name(),
 		);
-		expect(subcommandNames).toContain("gates");
+		expect(subcommandNames).not.toContain("gates");
 	});
 
 	// --- Contract: specs returns SpecSummary[] shape ---
@@ -69,13 +69,12 @@ describe("FR-005: Spec and Gate Subcommands", () => {
 		expect(moduleExists, "project.ts must exist").toBe(true);
 	});
 
-	// --- Contract: gates returns GateCheckResult[] shape ---
-	it("US-005.2: gates output has taskId, result, durationMs fields", () => {
-		// RED ASSERTION — module doesn't exist
+	// --- Contract: gate command exists at top level ---
+	it("US-005.2: gate command exists at src/commands/gate.ts", () => {
 		const moduleExists = fs.existsSync(
-			path.resolve("src/commands/project.ts"),
+			path.resolve("src/commands/gate.ts"),
 		);
-		expect(moduleExists, "project.ts must exist").toBe(true);
+		expect(moduleExists, "gate.ts must exist").toBe(true);
 	});
 });
 
