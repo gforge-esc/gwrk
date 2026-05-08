@@ -10,7 +10,38 @@
   "agents": {
     "define": "gemini",
     "implement": "gemini",
-    "throttleMs": 15000
+    "throttleMs": 15000,
+    "registry": {
+      "gemini": {
+        "type": "local-cli",
+        "command": "gemini",
+        "discoveryMethod": "manual",
+        "quotaProbe": {
+          "method": "optimistic",
+          "cacheTTLMinutes": 5
+        },
+        "maxConcurrent": 2,
+        "models": [
+          { "name": "gemini-2.5-pro", "tier": "thinking" },
+          { "name": "gemini-2.5-flash", "tier": "fast" }
+        ]
+      },
+      "claude": {
+        "type": "local-cli",
+        "command": "claude",
+        "discoveryMethod": "manual",
+        "quotaProbe": {
+          "method": "optimistic",
+          "cacheTTLMinutes": 5
+        },
+        "maxConcurrent": 1,
+        "models": [
+          { "name": "claude-sonnet-4", "tier": "thinking" }
+        ],
+        "fallback": "gemini"
+      }
+    },
+    "fallbackOrder": ["gemini", "claude"]
   },
   "server": {
     "port": 18790,
