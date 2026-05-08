@@ -595,36 +595,40 @@
           "id": "T050",
           "title": "Implement src/commands/define-plan.ts",
           "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-08T01:49:50.550Z",
           "classification": "greenfield"
         },
         {
           "id": "T051",
           "title": "Implement src/commands/tests-generate.ts",
           "description": "MODIFY — Add resolveFeature + relax output contract",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-08T01:49:50.753Z",
           "classification": "greenfield"
         },
         {
           "id": "T052",
           "title": "Implement src/commands/runs.ts",
           "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T052-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-08T01:49:50.959Z",
           "classification": "greenfield"
         },
         {
           "id": "T053",
           "title": "Implement src/commands/harvest.ts",
           "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T053-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-08T01:49:51.164Z",
           "classification": "greenfield"
         },
         {

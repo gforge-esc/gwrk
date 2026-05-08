@@ -1,0 +1,570 @@
+{
+  "feature": "001-cli-core",
+  "projectType": "gwrk-typescript",
+  "tasks": [
+    {
+      "taskId": "T001",
+      "title": "Implement package.json",
+      "description": "Implement changes for package.json",
+      "primaryFile": "package.json",
+      "fileType": "json",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T002",
+      "title": "Implement tsconfig.json",
+      "description": "Implement changes for tsconfig.json",
+      "primaryFile": "tsconfig.json",
+      "fileType": "json",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/config.md"
+      ]
+    },
+    {
+      "taskId": "T003",
+      "title": "Implement src/cli.ts",
+      "description": "Implement changes for src/cli.ts",
+      "primaryFile": "src/cli.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T004",
+      "title": "Implement src/commands/init.ts",
+      "description": "Implement changes for src/commands/init.ts",
+      "primaryFile": "src/commands/init.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T005",
+      "title": "Implement src/utils/config.ts",
+      "description": "Implement changes for src/utils/config.ts",
+      "primaryFile": "src/utils/config.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/config.md"
+      ]
+    },
+    {
+      "taskId": "T006",
+      "title": "Implement src/utils/format.ts",
+      "description": "Implement changes for src/utils/format.ts",
+      "primaryFile": "src/utils/format.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T007",
+      "title": "Implement src/db/index.ts",
+      "description": "Implement changes for src/db/index.ts",
+      "primaryFile": "src/db/index.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T008",
+      "title": "Implement src/db/migrations/001-initial.sql",
+      "description": "Implement changes for src/db/migrations/001-initial.sql",
+      "primaryFile": "src/db/migrations/001-initial.sql",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T009",
+      "title": "Implement src/db/runs.ts",
+      "description": "Implement changes for src/db/runs.ts",
+      "primaryFile": "src/db/runs.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T010",
+      "title": "Implement src/commands/db.ts",
+      "description": "Implement changes for src/commands/db.ts",
+      "primaryFile": "src/commands/db.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T011",
+      "title": "Implement src/commands/define.ts",
+      "description": "Implement changes for src/commands/define.ts",
+      "primaryFile": "src/commands/define.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T012",
+      "title": "Implement src/commands/specify.ts",
+      "description": "Implement changes for src/commands/specify.ts",
+      "primaryFile": "src/commands/specify.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T013",
+      "title": "Implement src/commands/plan.ts",
+      "description": "Implement changes for src/commands/plan.ts",
+      "primaryFile": "src/commands/plan.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T014",
+      "title": "Implement src/commands/analyze.ts",
+      "description": "Implement changes for src/commands/analyze.ts",
+      "primaryFile": "src/commands/analyze.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T015",
+      "title": "Implement src/commands/tasks-generate.ts",
+      "description": "Implement changes for src/commands/tasks-generate.ts",
+      "primaryFile": "src/commands/tasks-generate.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/tasks.md"
+      ]
+    },
+    {
+      "taskId": "T016",
+      "title": "Implement src/utils/agent.ts",
+      "description": "Implement changes for src/utils/agent.ts",
+      "primaryFile": "src/utils/agent.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/agent.md"
+      ]
+    },
+    {
+      "taskId": "T017",
+      "title": "Implement src/utils/parser.ts",
+      "description": "Implement changes for src/utils/parser.ts",
+      "primaryFile": "src/utils/parser.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T018",
+      "title": "Implement src/utils/exec.ts",
+      "description": "Implement changes for src/utils/exec.ts",
+      "primaryFile": "src/utils/exec.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T019",
+      "title": "Implement src/commands/ship.ts",
+      "description": "Implement changes for src/commands/ship.ts",
+      "primaryFile": "src/commands/ship.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T020",
+      "title": "Implement src/commands/implement.ts",
+      "description": "Implement changes for src/commands/implement.ts",
+      "primaryFile": "src/commands/implement.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T021",
+      "title": "Implement src/commands/tasks.ts",
+      "description": "Implement changes for src/commands/tasks.ts",
+      "primaryFile": "src/commands/tasks.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/tasks.md"
+      ]
+    },
+    {
+      "taskId": "T022",
+      "title": "Implement src/utils/state.ts",
+      "description": "Implement changes for src/utils/state.ts",
+      "primaryFile": "src/utils/state.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T023",
+      "title": "Implement src/utils/gate-gen.ts",
+      "description": "Implement changes for src/utils/gate-gen.ts",
+      "primaryFile": "src/utils/gate-gen.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T024",
+      "title": "Implement src/utils/history.ts",
+      "description": "Implement changes for src/utils/history.ts",
+      "primaryFile": "src/utils/history.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T025",
+      "title": "Implement src/commands/measure.ts",
+      "description": "Implement changes for src/commands/measure.ts",
+      "primaryFile": "src/commands/measure.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T026",
+      "title": "Implement src/commands/pulse.ts",
+      "description": "Implement changes for src/commands/pulse.ts",
+      "primaryFile": "src/commands/pulse.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T027",
+      "title": "Implement src/commands/effort.ts",
+      "description": "Implement changes for src/commands/effort.ts",
+      "primaryFile": "src/commands/effort.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T028",
+      "title": "Implement src/commands/compression.ts",
+      "description": "Implement changes for src/commands/compression.ts",
+      "primaryFile": "src/commands/compression.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T029",
+      "title": "Implement src/engine/pulse.ts",
+      "description": "Implement changes for src/engine/pulse.ts",
+      "primaryFile": "src/engine/pulse.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T030",
+      "title": "Implement src/engine/effort.ts",
+      "description": "Implement changes for src/engine/effort.ts",
+      "primaryFile": "src/engine/effort.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T031",
+      "title": "Implement src/engine/compression.ts",
+      "description": "Implement changes for src/engine/compression.ts",
+      "primaryFile": "src/engine/compression.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T032",
+      "title": "Implement src/commands/init.ts",
+      "description": "Implement changes for src/commands/init.ts",
+      "primaryFile": "src/commands/init.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T033",
+      "title": "Implement src/commands/new.ts",
+      "description": "Implement changes for src/commands/new.ts",
+      "primaryFile": "src/commands/new.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T034",
+      "title": "Implement src/commands/run.ts",
+      "description": "Implement changes for src/commands/run.ts",
+      "primaryFile": "src/commands/run.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T035",
+      "title": "Implement src/commands/metrics.ts",
+      "description": "Implement changes for src/commands/metrics.ts",
+      "primaryFile": "src/commands/metrics.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T036",
+      "title": "Implement src/cli.e2e.test.ts",
+      "description": "Implement changes for src/cli.e2e.test.ts",
+      "primaryFile": "src/cli.e2e.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T037",
+      "title": "Implement src/utils/manifest.ts",
+      "description": "NEW",
+      "primaryFile": "src/utils/manifest.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T038",
+      "title": "Implement src/commands/tasks.ts",
+      "description": "MODIFY",
+      "primaryFile": "src/commands/tasks.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/tasks.md"
+      ]
+    },
+    {
+      "taskId": "T039",
+      "title": "Implement src/commands/ship.ts",
+      "description": "MODIFY",
+      "primaryFile": "src/commands/ship.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T040",
+      "title": "Implement src/commands/define.ts",
+      "description": "MODIFY",
+      "primaryFile": "src/commands/define.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T041",
+      "title": "Implement src/commands/setup.ts",
+      "description": "NEW",
+      "primaryFile": "src/commands/setup.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T042",
+      "title": "Implement src/commands/ship.ts",
+      "description": "MODIFY",
+      "primaryFile": "src/commands/ship.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T043",
+      "title": "Implement src/utils/setup-state.ts",
+      "description": "NEW",
+      "primaryFile": "src/utils/setup-state.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T044",
+      "title": "Implement src/commands/ship.ts",
+      "description": "MODIFY — Add Examples to help text",
+      "primaryFile": "src/commands/ship.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T045",
+      "title": "Implement src/commands/define.ts",
+      "description": "MODIFY — Add Examples to help text",
+      "primaryFile": "src/commands/define.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T046",
+      "title": "Implement src/commands/tasks.ts",
+      "description": "MODIFY — Add Examples to help text",
+      "primaryFile": "src/commands/tasks.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/tasks.md"
+      ]
+    },
+    {
+      "taskId": "T047",
+      "title": "Implement src/commands/measure.ts",
+      "description": "MODIFY — Add Examples to help text",
+      "primaryFile": "src/commands/measure.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T048",
+      "title": "Implement src/commands/db.ts",
+      "description": "MODIFY — Add Examples to help text",
+      "primaryFile": "src/commands/db.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T049",
+      "title": "Implement src/commands/test.ts",
+      "description": "MODIFY — Add Examples to help text",
+      "primaryFile": "src/commands/test.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T050",
+      "title": "Implement src/commands/define-plan.ts",
+      "description": "MODIFY — Add resolveFeature for prefix aliasing",
+      "primaryFile": "src/commands/define-plan.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T051",
+      "title": "Implement src/commands/tests-generate.ts",
+      "description": "MODIFY — Add resolveFeature + relax output contract",
+      "primaryFile": "src/commands/tests-generate.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T052",
+      "title": "Implement src/commands/runs.ts",
+      "description": "MODIFY — Add resolveFeature for prefix aliasing",
+      "primaryFile": "src/commands/runs.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T053",
+      "title": "Implement src/commands/harvest.ts",
+      "description": "MODIFY — Add resolveFeature for prefix aliasing",
+      "primaryFile": "src/commands/harvest.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T054",
+      "title": "Implement src/commands/gate.ts",
+      "description": "✅ Already done — Examples added 2026-05-07",
+      "primaryFile": "src/commands/gate.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T055",
+      "title": "Implement docs/governance/cli-grammar.md",
+      "description": "NEW — Canonical CLI grammar standard",
+      "primaryFile": "docs/governance/cli-grammar.md",
+      "fileType": "markdown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    }
+  ]
+}
