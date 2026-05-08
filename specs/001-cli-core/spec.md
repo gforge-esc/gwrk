@@ -277,6 +277,10 @@ As a developer, I want all feature-scoped commands to accept feature as the firs
 **Acceptance**:
 1. Every command accepting `<feature>` has it as positional arg 1 (after the subcommand verb if applicable).
 2. No command requires feature as a flag or in a non-standard position.
+3. Every command accepting `<feature>` calls `resolveFeature()` to resolve prefix aliases (e.g., `001` → `001-cli-core`). Specifically: `define plan`, `define tests`, `db runs`, and `harvest` are currently missing this.
+4. `gwrk define plan 001` resolves to `001-cli-core` and succeeds.
+5. `gwrk define tests 001` resolves to `001-cli-core` and succeeds.
+6. `gwrk db runs 001` resolves to `001-cli-core` and succeeds.
 
 ### US-024 - No Duplicate Surfaces (P1)
 As a developer, I want each capability exposed through exactly one command path so I'm never confused by overlapping commands with different interfaces.
@@ -324,9 +328,10 @@ As a maintainer, I want a documented CLI grammar standard so new commands are co
 - **FR-021**: `history.jsonl` deprecation. Reads still supported; writes redirected to `gwrk.db history` + manifest. Removal deferred until `gwrk harvest` is operational.
 - **FR-022**: `gwrk setup` — Interactive workstation provisioning. Detects TCC, SSH, gh auth. Generates dedicated SSH key by default. Writes `~/.gwrk/setup.json`. Ship pre-flight checks setup state. (US-021)
 - **FR-023**: Every command with arguments MUST include an `Examples:` section in `--help` output. (US-022)
-- **FR-024**: Feature-arg consistency. All feature-scoped commands accept feature as first positional argument. (US-023)
+- **FR-024**: Feature-arg consistency. All feature-scoped commands accept feature as first positional argument AND call `resolveFeature()` for prefix resolution. (US-023)
 - **FR-025**: No duplicate command surfaces. Each capability has exactly one CLI path. (US-024)
 - **FR-026**: CLI grammar governance doc at `docs/governance/cli-grammar.md`. (US-025)
+- **FR-027**: `gwrk define tests` output contract fix. Agent test file output must not require `gap-matrix.md` when the workflow produces test files directly. The command must accept either `gap-matrix.md` OR test files in `src/` as valid output. (US-022)
 
 ### Error States
 

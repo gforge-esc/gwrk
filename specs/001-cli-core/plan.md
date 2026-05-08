@@ -241,9 +241,15 @@ Interactive workstation provisioning for unattended agent execution. Detects TCC
 
 ### Phase 11: CLI UX Polish
 
-Consolidate CLI usability fixes identified during 008-agent-router shipping. Add concrete examples to all command help text, audit argument patterns for consistency, remove duplicate surfaces, and document the CLI grammar standard.
+Consolidate CLI usability fixes identified during 008-agent-router shipping. Three categories:
+1. **Help text examples** — Add `Examples:` to all command help text
+2. **Feature aliasing** — Add `resolveFeature()` to commands that are missing it
+3. **Define tests contract** — Fix rigid `gap-matrix.md` output contract
+4. **Governance** — Document CLI grammar standard
 
-**Files (8+ MODIFY, 1 NEW):**
+**Files (11 MODIFY, 1 NEW):**
+
+*Help text examples:*
 - `src/commands/ship.ts` (MODIFY) — Add `Examples:` section to `.addHelpText()`
 - `src/commands/define.ts` (MODIFY) — Add `Examples:` to parent and subcommands (spec, plan, tasks)
 - `src/commands/tasks.ts` (MODIFY) — Add `Examples:` to subcommands (list, next, done, ready)
@@ -252,18 +258,33 @@ Consolidate CLI usability fixes identified during 008-agent-router shipping. Add
 - `src/commands/gate.ts` — ✅ Already done (2026-05-07)
 - `src/commands/project.ts` — ✅ `project gates` already removed (2026-05-07)
 - `src/commands/test.ts` (MODIFY) — Add `Examples:` section
+
+*Feature aliasing (resolveFeature):*
+- `src/commands/define-plan.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
+- `src/commands/tests-generate.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
+- `src/commands/runs.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
+- `src/commands/harvest.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
+
+*Define tests contract:*
+- `src/commands/tests-generate.ts` (MODIFY) — Relax output contract: accept `gap-matrix.md` OR new test files in `src/` as valid output
+
+*Governance:*
 - `docs/governance/cli-grammar.md` (NEW) — Canonical CLI grammar standard
 
-**Requirements Addressed:** FR-023, FR-024, FR-025, FR-026, US-022, US-023, US-024, US-025
+**Requirements Addressed:** FR-023, FR-024, FR-025, FR-026, FR-027, US-022, US-023, US-024, US-025
 
 **Tests:**
-- `src/cli.e2e.test.ts` (MODIFY) — TR-022: Assert `Examples:` in help output for all commands with args
-- Feature-arg consistency audit — TR-023: Programmatic Commander arg position check
-- `docs/governance/cli-grammar.md` existence check — TR-025
+- `src/cli.ux.test.ts` (NEW) — TR-022: Assert `Examples:` in help output for all commands with args
+- `src/cli.consistency.test.ts` (NEW) — TR-023: Programmatic Commander arg position + resolveFeature check
+- `tests/governance.test.ts` (NEW) — TR-025: Grammar doc existence and content check
+- `src/commands/tests-generate.test.ts` (MODIFY) — TR-027: Test that `define tests` accepts test file output without gap-matrix.md
 
 #### Done When
 - `gwrk <any-command-with-args> --help` shows an `Examples:` section
-- Feature-arg audit passes (all feature-scoped commands: feature is arg 1)
+- `gwrk define plan 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk define tests 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk db runs 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk define tests` no longer fails when agent produces test files instead of gap-matrix.md
 - `docs/governance/cli-grammar.md` exists with canonical grammar, rules, and command inventory
 - `project gates` remains removed (✅ verified)
 - `pnpm build` compiles clean, `pnpm test` all passing
@@ -323,6 +344,7 @@ Consolidate CLI usability fixes identified during 008-agent-router shipping. Add
 | FR-024 | 11 | ☐ Open |
 | FR-025 | 11 | ✅ Done |
 | FR-026 | 11 | ☐ Open |
+| FR-027 | 11 | ☐ Open |
 
 ## Deferred Items
 
