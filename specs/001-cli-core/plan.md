@@ -241,43 +241,29 @@ Interactive workstation provisioning for unattended agent execution. Detects TCC
 
 ### Phase 11: CLI UX Polish
 
-Consolidate CLI usability fixes identified during 008-agent-router shipping. Three categories:
-1. **Help text examples** — Add `Examples:` to all command help text
-2. **Feature aliasing** — Add `resolveFeature()` to commands that are missing it
-3. **Define tests contract** — Fix rigid `gap-matrix.md` output contract
-4. **Governance** — Document CLI grammar standard
+Consolidate CLI usability fixes: help text examples, resolveFeature aliasing, define tests contract fix, CLI grammar governance doc.
 
-**Files (11 MODIFY, 1 NEW):**
-
-*Help text examples:*
-- `src/commands/ship.ts` (MODIFY) — Add `Examples:` section to `.addHelpText()`
-- `src/commands/define.ts` (MODIFY) — Add `Examples:` to parent and subcommands (spec, plan, tasks)
-- `src/commands/tasks.ts` (MODIFY) — Add `Examples:` to subcommands (list, next, done, ready)
-- `src/commands/measure.ts` (MODIFY) — Add `Examples:` to parent and subcommands (pulse, effort, compression)
-- `src/commands/db.ts` (MODIFY) — Add `Examples:` to subcommands (runs, stats)
-- `src/commands/gate.ts` — ✅ Already done (2026-05-07)
-- `src/commands/project.ts` — ✅ `project gates` already removed (2026-05-07)
-- `src/commands/test.ts` (MODIFY) — Add `Examples:` section
-
-*Feature aliasing (resolveFeature):*
-- `src/commands/define-plan.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
-- `src/commands/tests-generate.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
-- `src/commands/runs.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
-- `src/commands/harvest.ts` (MODIFY) — Add `import { resolveFeature }` + call on feature arg
-
-*Define tests contract:*
-- `src/commands/tests-generate.ts` (MODIFY) — Relax output contract: accept `gap-matrix.md` OR new test files in `src/` as valid output
-
-*Governance:*
-- `docs/governance/cli-grammar.md` (NEW) — Canonical CLI grammar standard
+**Files (12):**
+- `src/commands/ship.ts` (MODIFY — Add Examples to help text)
+- `src/commands/define.ts` (MODIFY — Add Examples to help text)
+- `src/commands/tasks.ts` (MODIFY — Add Examples to help text)
+- `src/commands/measure.ts` (MODIFY — Add Examples to help text)
+- `src/commands/db.ts` (MODIFY — Add Examples to help text)
+- `src/commands/test.ts` (MODIFY — Add Examples to help text)
+- `src/commands/define-plan.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/tests-generate.ts` (MODIFY — Add resolveFeature + relax output contract)
+- `src/commands/runs.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/harvest.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/gate.ts` (✅ Already done — Examples added 2026-05-07)
+- `docs/governance/cli-grammar.md` (NEW — Canonical CLI grammar standard)
 
 **Requirements Addressed:** FR-023, FR-024, FR-025, FR-026, FR-027, US-022, US-023, US-024, US-025
 
 **Tests:**
-- `src/cli.ux.test.ts` (NEW) — TR-022: Assert `Examples:` in help output for all commands with args
-- `src/cli.consistency.test.ts` (NEW) — TR-023: Programmatic Commander arg position + resolveFeature check
-- `tests/governance.test.ts` (NEW) — TR-025: Grammar doc existence and content check
-- `src/commands/tests-generate.test.ts` (MODIFY) — TR-027: Test that `define tests` accepts test file output without gap-matrix.md
+- `src/cli.ux.test.ts` — TR-022: Assert Examples in help output
+- `src/cli.consistency.test.ts` — TR-023: Feature-arg position + resolveFeature check
+- `tests/governance.test.ts` — TR-025: Grammar doc existence and content check
+- `src/commands/tests-generate-contract.test.ts` — TR-027: Accept test file output
 
 #### Done When
 - `gwrk <any-command-with-args> --help` shows an `Examples:` section
