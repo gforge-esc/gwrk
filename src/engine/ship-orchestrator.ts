@@ -421,6 +421,35 @@ export class ShipOrchestrator extends EventEmitter {
       });
 
       if (result.exitCode === 0) {
+        // Checkpoint: commit implementation work BEFORE code review.
+        // revertSourceMutations() does `git checkout -- .` to undo review
+        // agent edits. Without this commit, it wipes the implementation too.
+        try {
+          const porcelain = execSync("git status --porcelain", {
+            cwd: this.config.cwd,
+            encoding: "utf-8",
+          }).trim();
+          if (porcelain) {
+            const phaseNum = this.config.phaseId
+              .replace("phase-", "")
+              .replace(/^0+/, "");
+            execSync("git add -A", { cwd: this.config.cwd });
+            execSync(
+              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "feat(${this.config.featureId}): implement Phase ${phaseNum}"`,
+              {
+                cwd: this.config.cwd,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: ["ignore", "pipe", "pipe"],
+              },
+            );
+            console.log("    ✓ implementation committed");
+          }
+        } catch (commitErr: unknown) {
+          console.warn(
+            `    ⚠ Could not commit implementation: ${commitErr instanceof Error ? commitErr.message : commitErr}`,
+          );
+          // Non-fatal: proceed to code review with uncommitted changes
+        }
         return { success: true, exitCode: 0 };
       }
       return {
