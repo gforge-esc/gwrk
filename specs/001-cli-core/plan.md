@@ -1,7 +1,7 @@
 ---
 type: implementation_plan
 feature: 001-cli-core
-last_modified: "2026-03-08T14:22:00Z"
+last_modified: "2026-05-07T17:35:00Z"
 ---
 
 # Implementation Plan: 001 CLI Core
@@ -239,6 +239,44 @@ Interactive workstation provisioning for unattended agent execution. Detects TCC
 
 ---
 
+### Phase 11: CLI UX Polish
+
+Consolidate CLI usability fixes: help text examples, resolveFeature aliasing, define tests contract fix, CLI grammar governance doc.
+
+**Files (12):**
+- `src/commands/ship.ts` (MODIFY — Add Examples to help text)
+- `src/commands/define.ts` (MODIFY — Add Examples to help text)
+- `src/commands/tasks.ts` (MODIFY — Add Examples to help text)
+- `src/commands/measure.ts` (MODIFY — Add Examples to help text)
+- `src/commands/db.ts` (MODIFY — Add Examples to help text)
+- `src/commands/test.ts` (MODIFY — Add Examples to help text)
+- `src/commands/define-plan.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/tests-generate.ts` (MODIFY — Add resolveFeature + relax output contract)
+- `src/commands/runs.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/harvest.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/gate.ts` (✅ Already done — Examples added 2026-05-07)
+- `docs/governance/cli-grammar.md` (NEW — Canonical CLI grammar standard)
+
+**Requirements Addressed:** FR-023, FR-024, FR-025, FR-026, FR-027, US-022, US-023, US-024, US-025
+
+**Tests:**
+- `src/cli.ux.test.ts` — TR-022: Assert Examples in help output
+- `src/cli.consistency.test.ts` — TR-023: Feature-arg position + resolveFeature check
+- `tests/governance.test.ts` — TR-025: Grammar doc existence and content check
+- `src/commands/tests-generate-contract.test.ts` — TR-027: Accept test file output
+
+#### Done When
+- `gwrk <any-command-with-args> --help` shows an `Examples:` section
+- `gwrk define plan 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk define tests 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk db runs 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk define tests` no longer fails when agent produces test files instead of gap-matrix.md
+- `docs/governance/cli-grammar.md` exists with canonical grammar, rules, and command inventory
+- `project gates` remains removed (✅ verified)
+- `pnpm build` compiles clean, `pnpm test` all passing
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -284,6 +322,15 @@ Interactive workstation provisioning for unattended agent execution. Detects TCC
 | FR-021 | 9 | ☐ Open |
 | US-021 | 10 | ☐ Open |
 | FR-022 | 10 | ☐ Open |
+| US-022 | 11 | ☐ Open |
+| US-023 | 11 | ☐ Open |
+| US-024 | 11 | ✅ Done |
+| US-025 | 11 | ☐ Open |
+| FR-023 | 11 | ☐ Open |
+| FR-024 | 11 | ☐ Open |
+| FR-025 | 11 | ✅ Done |
+| FR-026 | 11 | ☐ Open |
+| FR-027 | 11 | ☐ Open |
 
 ## Deferred Items
 

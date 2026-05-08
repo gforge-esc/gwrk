@@ -180,7 +180,7 @@ async function discoverGates(
   let total = 0;
 
   // Count gate files across all specs — don't execute during discovery
-  // (execution of 100+ gates would hang; use `gwrk project gates --run` instead)
+  // (execution of 100+ gates would hang; use `gwrk gate <feature>` instead)
   for (const spec of specs) {
     const gatesDir = path.join(projectRoot, spec.dirPath, "gates");
     if (!fs.existsSync(gatesDir)) continue;
@@ -191,7 +191,7 @@ async function discoverGates(
     total += gateFiles.length;
   }
 
-  // passing/failing are only available via `project gates --run`
+  // passing/failing are only available via `gwrk gate <feature>`
   return { total, passing: -1, failing: -1 };
 }
 
