@@ -540,7 +540,7 @@
         {
           "id": "T044",
           "title": "Implement src/commands/ship.ts",
-          "description": "MODIFY — Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in help — FR-023.\n  WHERE: src/commands/ship.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...')\n  ACTUAL: Section missing from --help output.\n  FIX: Add concrete usage examples to the help text.\n  GATE: gates/T044-gate.sh",
           "status": "open",
           "gateScript": "gates/T044-gate.sh",
           "sp": 0,
@@ -549,7 +549,7 @@
         {
           "id": "T045",
           "title": "Implement src/commands/define.ts",
-          "description": "MODIFY — Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in help — FR-023.\n  WHERE: src/commands/define.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...')\n  ACTUAL: Section missing from --help output.\n  FIX: Add concrete usage examples to the help text.\n  GATE: gates/T045-gate.sh",
           "status": "open",
           "gateScript": "gates/T045-gate.sh",
           "sp": 0,
@@ -558,7 +558,7 @@
         {
           "id": "T046",
           "title": "Implement src/commands/tasks.ts",
-          "description": "MODIFY — Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in help — FR-023.\n  WHERE: src/commands/tasks.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...')\n  ACTUAL: Section missing from --help output.\n  FIX: Add concrete usage examples to the help text.\n  GATE: gates/T046-gate.sh",
           "status": "open",
           "gateScript": "gates/T046-gate.sh",
           "sp": 0,
@@ -567,7 +567,7 @@
         {
           "id": "T047",
           "title": "Implement src/commands/measure.ts",
-          "description": "MODIFY — Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in help — FR-023.\n  WHERE: src/commands/measure.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...')\n  ACTUAL: Section missing from --help output.\n  FIX: Add concrete usage examples to the help text.\n  GATE: gates/T047-gate.sh\n\nREVIEW FAIL (code): 'feature' argument should be required in 'measure compression' — US-023.\n  WHERE: src/commands/compression.ts\n  EXPECTED: .argument('<feature>', ...)\n  ACTUAL: .argument('[feature]', ...)\n  FIX: Change argument to required.",
           "status": "open",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
@@ -576,7 +576,7 @@
         {
           "id": "T048",
           "title": "Implement src/commands/db.ts",
-          "description": "MODIFY — Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in help — FR-023.\n  WHERE: src/commands/db.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...')\n  ACTUAL: Section missing from --help output.\n  FIX: Add concrete usage examples to the help text.\n  GATE: gates/T048-gate.sh",
           "status": "open",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
@@ -585,7 +585,7 @@
         {
           "id": "T049",
           "title": "Implement src/commands/test.ts",
-          "description": "MODIFY — Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in help — FR-023.\n  WHERE: src/commands/test.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...')\n  ACTUAL: Section missing from --help output.\n  FIX: Add concrete usage examples to the help text.\n  GATE: gates/T049-gate.sh",
           "status": "open",
           "gateScript": "gates/T049-gate.sh",
           "sp": 0,
@@ -594,8 +594,8 @@
         {
           "id": "T050",
           "title": "Implement src/commands/define-plan.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "completed",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing\n\nREVIEW FAIL (code): Missing resolveFeature — FR-024.\n  WHERE: src/commands/define-plan.ts\n  EXPECTED: feature = resolveFeature(feature, projectRoot);\n  ACTUAL: Missing resolution. Command fails with 001 prefix.\n  FIX: Add resolveFeature import and call in action handler.\n  GATE: gates/T050-gate.sh failed (false positive in script)",
+          "status": "open",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-08T01:49:50.550Z",
@@ -614,8 +614,8 @@
         {
           "id": "T052",
           "title": "Implement src/commands/runs.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "completed",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing\n\nREVIEW FAIL (code): Missing resolveFeature — FR-024.\n  WHERE: src/commands/runs.ts\n  EXPECTED: feature = resolveFeature(feature, projectRoot);\n  ACTUAL: Missing resolution. Command fails with 001 prefix.\n  FIX: Add resolveFeature import and call in action handler.\n  GATE: gates/T052-gate.sh failed (false positive in script)",
+          "status": "open",
           "gateScript": "gates/T052-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-08T01:49:50.959Z",
@@ -624,8 +624,8 @@
         {
           "id": "T053",
           "title": "Implement src/commands/harvest.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "completed",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing\n\nREVIEW FAIL (code): Missing resolveFeature — FR-024.\n  WHERE: src/commands/harvest.ts\n  EXPECTED: feature = resolveFeature(feature, projectRoot);\n  ACTUAL: Missing resolution. Command fails with 001 prefix.\n  FIX: Add resolveFeature import and call in action handler.\n  GATE: gates/T053-gate.sh failed (false positive in script)",
+          "status": "open",
           "gateScript": "gates/T053-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-08T01:49:51.164Z",
@@ -635,7 +635,7 @@
           "id": "T054",
           "title": "Implement src/commands/gate.ts",
           "description": "✅ Already done — Examples added 2026-05-07",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T054-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -644,7 +644,7 @@
           "id": "T055",
           "title": "Implement docs/governance/cli-grammar.md",
           "description": "NEW — Canonical CLI grammar standard",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T055-gate.sh",
           "sp": 0,
           "classification": "greenfield"
