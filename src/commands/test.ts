@@ -15,14 +15,6 @@ import { CommandError, withSignal } from "../utils/signal.js";
  */
 export const testCommand = new Command("test")
   .description("Run vitest scoped to feature test files")
-  .addHelpText(
-    "after",
-    `
-Examples:
-  gwrk test 001-cli-core           # Run all tests for a feature
-  gwrk test 001 --phase 02         # Run tests for a specific phase
-`,
-  )
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option("-p, --phase <n>", "Phase number")
   .action(async (featureInput: string, options: { phase?: string }) => {

@@ -31,7 +31,7 @@ import { CommandError, withSignal } from "../utils/signal.js";
 export const compressionCommand = new Command("compression")
   .description("Calculate development compression ratios")
   .argument(
-    "<feature>",
+    "[feature]",
     "The feature directory under specs/ to calculate. Omit if --all flag is used.",
   )
   .option("--all", "Generate summary for all shipped features under specs/")
