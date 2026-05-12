@@ -37,6 +37,15 @@ import { CommandError, withSignal } from "../utils/signal.js";
  */
 export const defineCommand = new Command("define")
   .description("Define: spec → plan → tasks → analyze")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define 001-cli-core         # Run full definition loop
+  gwrk define spec 001             # Create or refine spec
+  gwrk define plan 001             # Create implementation plan
+`,
+  )
   .argument("[feature]", "Feature ID (e.g. 001-cli-core)")
   .option("--refs <path>", "Path to additional reference docs")
   .option("--dry-run", "Print the command without executing")

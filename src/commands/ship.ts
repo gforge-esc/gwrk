@@ -362,6 +362,11 @@ Exit codes:
   0: All phases shipped successfully
   1: Phase failed or feature not found
   2: Usage error
+
+Examples:
+  gwrk ship 001-cli-core           # Ship all phases of a feature
+  gwrk ship 001 02                 # Ship specific phase (phase-02)
+  gwrk ship 001 --dry-run          # Preview shipping steps
 `,
   )
   .argument("<feature>", "Feature ID")

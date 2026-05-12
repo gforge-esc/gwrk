@@ -31,6 +31,11 @@ Exit codes:
   0: Success
   1: Task not found or gate failed
   2: Usage error
+
+Examples:
+  gwrk tasks list 001              # List all tasks for a feature
+  gwrk tasks done 001 T001         # Mark task T001 as done (runs gate)
+  gwrk tasks next 001 01           # Show next open task for phase 1
 `,
   );
 
