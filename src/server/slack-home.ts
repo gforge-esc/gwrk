@@ -48,12 +48,21 @@ export async function buildHomeTab(
       text: { type: "mrkdwn", text: "_No active agents._" },
     });
   } else {
-    for (const sb of status.sandboxes) {
+    for (const sb of status.sandboxes.slice(0, 5)) {
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
           text: `• *${sb.featureId}* (${sb.phaseId}) - \`${sb.backend}\` [${sb.status}]\n  Task: \`${sb.taskId}\``,
+        },
+      });
+    }
+    if (status.sandboxes.length > 5) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `_...and ${status.sandboxes.length - 5} more agents active._`,
         },
       });
     }
