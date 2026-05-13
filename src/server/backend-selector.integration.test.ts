@@ -62,11 +62,11 @@ describe("BackendSelector Integration", () => {
   });
 
   it("performs full flow: select -> record -> query (TR-006)", async () => {
-    // 1. Select backend
+    // 1. Select backend — IMPLEMENT classifies as FAST, so gemini-flash is preferred
     const selection = await selector.selectBackend(context);
     
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-pro");
+    expect(selection.model).toBe("gemini-flash");
     expect(selection.quotaPercent).toBe(85);
 
     // 2. Verify it was recorded in the database
@@ -74,26 +74,27 @@ describe("BackendSelector Integration", () => {
     
     expect(row).toBeDefined();
     expect(row.selected_backend).toBe("gemini");
-    expect(row.selected_model).toBe("gemini-pro");
-    expect(row.task_classification).toBe(TaskClassification.THINKING);
+    expect(row.selected_model).toBe("gemini-flash");
+    expect(row.task_classification).toBe(TaskClassification.FAST);
     expect(row.quota_percent).toBe(85);
     expect(row.probe_status).toBe("fresh");
     expect(row.run_id).toBe(context.runId);
   });
 
   it("handles model failover and records it (TR-009)", async () => {
-    // Mark gemini-pro as failed/in cooldown
-    prober.markModelFailure("gemini", "gemini-pro");
+    // Mark gemini-flash as failed — it's the preferred FAST model for IMPLEMENT tasks.
+    // Failover should fall back to gemini-pro (the only remaining model).
+    prober.markModelFailure("gemini", "gemini-flash");
 
     const selection = await selector.selectBackend(context);
     
     expect(selection.backend).toBe("gemini");
-    expect(selection.model).toBe("gemini-flash");
+    expect(selection.model).toBe("gemini-pro");
     expect(selection.modelFailoverUsed).toBe(true);
 
     // Verify record
     const row = db.prepare("SELECT * FROM routing_decisions WHERE run_id = ?").get(context.runId) as any;
-    expect(row.selected_model).toBe("gemini-flash");
+    expect(row.selected_model).toBe("gemini-pro");
     expect(row.model_failover_used).toBe(1);
   });
 });

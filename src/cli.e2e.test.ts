@@ -133,7 +133,8 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
   });
 
   it("fails gracefully with correct error when spec is missing", async () => {
-    const { stderr, exitCode } = await runCli("define plan 999-stub");
+    // 099-drift-test exists as a feature dir but has no spec.md
+    const { stderr, exitCode } = await runCli("define plan 099");
     expect(exitCode).not.toBe(0);
     expect(stderr).toMatch(/BLOCKED.*spec\.md not found/);
   }, 15_000);
