@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import type { App } from "@slack/bolt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchQueue } from "./dispatch.js";
@@ -17,6 +20,7 @@ vi.mock("../db/runs.js", () => ({
 // Mock execSync for gh pr merge
 vi.mock("node:child_process", () => ({
   execSync: vi.fn().mockReturnValue("Merged PR #42"),
+  spawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
 }));
 
 // biome-ignore lint/suspicious/noExplicitAny: complex mock args
@@ -75,6 +79,94 @@ describe("slack-actions", () => {
     expect(mockApp.action).toHaveBeenCalledWith(
       "retry_phase",
       expect.any(Function),
+    );
+    expect(mockApp.action).toHaveBeenCalledWith(
+      "approve_spec",
+      expect.any(Function),
+    );
+    expect(mockApp.action).toHaveBeenCalledWith(
+      "approve_plan",
+      expect.any(Function),
+    );
+    expect(mockApp.action).toHaveBeenCalledWith(
+      "revise_spec",
+      expect.any(Function),
+    );
+  });
+
+  it("handles approve_spec action — spawns background define plan (FR-015)", async () => {
+    const { spawn } = await import("node:child_process");
+    await registerSlackActions(mockApp as App, mockContext);
+
+    const ack = vi.fn();
+    const postMessage = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({ featureId: "003-slack" }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage } };
+
+    await actionHandlers.approve_spec({
+      ack,
+      body,
+      client,
+      logger: console,
+      // biome-ignore lint/suspicious/noExplicitAny: complex mock
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(spawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "plan", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Spec approved"),
+      }),
+    );
+  });
+
+  it("handles approve_plan action — spawns background tasks and updates state (FR-015)", async () => {
+    const { spawn } = await import("node:child_process");
+    await registerSlackActions(mockApp as App, mockContext);
+
+    const ack = vi.fn();
+    const postMessage = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({ featureId: "003-slack" }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage } };
+
+    await actionHandlers.approve_plan({
+      ack,
+      body,
+      client,
+      logger: console,
+      // biome-ignore lint/suspicious/noExplicitAny: complex mock
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(spawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "tasks", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Plan approved"),
+      }),
     );
   });
 

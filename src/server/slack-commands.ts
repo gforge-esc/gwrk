@@ -671,6 +671,26 @@ const handlers: Record<string, SlashCommandHandler> = {
       };
     }
   },
+
+  define: async (args, context) => {
+    const featureId = args[0];
+    if (!featureId) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: ":warning: Feature ID is required. Usage: `/gwrk define <featureId>`",
+            },
+          },
+        ],
+      };
+    }
+
+    throw new Error("Not implemented: define command");
+  },
 };
 
 export async function handleSlashCommand(

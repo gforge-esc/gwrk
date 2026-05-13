@@ -83,6 +83,21 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     // TODO: trigger a re-dispatch or update task status
   });
 
+  app.action("approve_spec", async ({ ack, body, client, logger }) => {
+    await ack();
+    throw new Error("Not implemented: approve_spec action handler");
+  });
+
+  app.action("approve_plan", async ({ ack, body, client, logger }) => {
+    await ack();
+    throw new Error("Not implemented: approve_plan action handler");
+  });
+
+  app.action("revise_spec", async ({ ack, body, client, logger }) => {
+    await ack();
+    throw new Error("Not implemented: revise_spec action handler");
+  });
+
   app.action("view_review", async ({ ack, body, client }) => {
     await ack();
     // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex

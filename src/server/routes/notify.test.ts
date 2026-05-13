@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../../utils/config.js";
 import * as slackClient from "../../utils/slack-client.js";
@@ -116,6 +119,51 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
       expect(spy).toHaveBeenCalled();
       const options = spy.mock.calls[0][2];
       expect(options?.opsOnly).toBe(true);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("FR-016: should handle define_spec_ready notification", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        payload: {
+          type: "define_spec_ready",
+          feature: "003-slack",
+          specPath: "specs/003-slack/spec.md",
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("FR-016: should handle define_plan_ready notification", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        payload: {
+          type: "define_plan_ready",
+          feature: "003-slack",
+          planPath: "specs/003-slack/plan.md",
+          phaseCount: 3,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(spy).toHaveBeenCalled();
     } finally {
       await server.close();
     }

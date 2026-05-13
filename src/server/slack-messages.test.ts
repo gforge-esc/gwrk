@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import type { ActionsBlock, HeaderBlock, SectionBlock } from "@slack/types";
 import { describe, expect, it } from "vitest";
 import { MessageBuilder } from "./slack-messages.js";
@@ -66,5 +69,31 @@ describe("MessageBuilder", () => {
     expect(msg.text).toContain("Batched Notification Summary");
     expect(JSON.stringify(msg.blocks)).toContain("feat-1");
     expect(JSON.stringify(msg.blocks)).toContain("feat-2");
+  });
+
+  it("should build specReady message with buttons (FR-016)", () => {
+    const msg = MessageBuilder.specReady("003-slack", "specs/003-slack/spec.md");
+    expect(msg.text).toContain("Spec Ready: 003-slack");
+    const actions = msg.blocks.find(
+      (b) => b.type === "actions",
+    ) as ActionsBlock;
+    expect(actions.elements).toHaveLength(2);
+    expect(JSON.stringify(actions.elements)).toContain("approve_spec");
+    expect(JSON.stringify(actions.elements)).toContain("revise_spec");
+  });
+
+  it("should build planReady message with buttons (FR-016)", () => {
+    const msg = MessageBuilder.planReady(
+      "003-slack",
+      "specs/003-slack/plan.md",
+      5,
+    );
+    expect(msg.text).toContain("Plan Ready: 003-slack");
+    expect(JSON.stringify(msg.blocks)).toContain("5 phases");
+    const actions = msg.blocks.find(
+      (b) => b.type === "actions",
+    ) as ActionsBlock;
+    expect(actions.elements).toHaveLength(2);
+    expect(JSON.stringify(actions.elements)).toContain("approve_plan");
   });
 });

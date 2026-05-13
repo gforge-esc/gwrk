@@ -114,7 +114,9 @@ export interface NotifyPayload {
     | "phase_fail"
     | "ci_result"
     | "review_ready"
-    | "done_done";
+    | "done_done"
+    | "define_spec_ready"
+    | "define_plan_ready";
   feature: string;
   phase?: string;
   prUrl?: string;
@@ -124,4 +126,7 @@ export interface NotifyPayload {
   branch?: string;
   backend?: string;
   opsOnly?: boolean;
+  specPath?: string;
+  planPath?: string;
+  phaseCount?: number;
 }

@@ -334,4 +334,16 @@ export const MessageBuilder = {
       ],
     };
   },
+
+  specReady(featureId: string, specPath: string): SlackMessage {
+    throw new Error("Not implemented: specReady message builder");
+  },
+
+  planReady(
+    featureId: string,
+    planPath: string,
+    phaseCount: number,
+  ): SlackMessage {
+    throw new Error("Not implemented: planReady message builder");
+  },
 };

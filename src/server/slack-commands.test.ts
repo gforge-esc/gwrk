@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
@@ -137,6 +140,18 @@ describe("slack-commands", () => {
     expect(spawn).toHaveBeenCalledWith(
       "gwrk",
       ["ship", "003-slack", "1"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+  });
+
+  it("handles define command — spawns background process (FR-015)", async () => {
+    const { spawn } = await import("node:child_process");
+    const response = await handleSlashCommand("define 003-slack", context);
+    expect(response.response_type).toBe("in_channel");
+    expect(response.blocks[0].text.text).toContain("Defining *003-slack*");
+    expect(spawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "003-slack"],
       expect.objectContaining({ cwd: "/tmp", detached: true }),
     );
   });
