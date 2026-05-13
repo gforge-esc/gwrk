@@ -6,12 +6,14 @@
 
 | Feature | Status | Verdict |
 |---------|--------|---------|
-| **CLI core** (001) | ✅ 44 source files, 104 test files, 573 tests passing | Solid foundation |
+| **CLI core** (001) | ✅ 44 source files, 104 test files, 646 tests passing | Solid foundation |
 | **define spec/plan** | ✅ Agent dispatches, creates spec.md + plan.md | Works, used daily |
-| **ship** (004 + 018) | ✅ Branch→implement→review→PR. Quiet UX. Retry prompts. | Just proven on Phase 5 |
+| **ship** (004 + 018) | ✅ Branch→implement→review→PR. Quiet UX. Retry prompts. | Proven across features |
 | **plan DAG** (018) | ✅ Seed, status, viz, solver, proposals, heartbeat | Freshly shipped |
 | **plugin system** (014) | ✅ WorkflowRuntime, PluginLoader, manifest validation | Working infra |
 | **execution ledger** | ✅ SQLite, run tracking, .runs/ logs | Working but underused |
+| **agent-router** (008) | ✅ Phase 1: BackendSelector, ModelSelector, flash-first | Smart model routing |
+| **CLI UX polish** (001 P11) | ✅ resolveFeature, help examples, grammar doc, test contracts | PR #36 |
 
 ### Shipped Features
 
@@ -26,7 +28,7 @@
 
 | Feature | Status | What's Left |
 |---------|--------|-------------|
-| **006 (pulse)** | Phase 1-2 done (8/11 tasks). PR #33 open. | Phase 3: 3 tasks remaining |
+| **006 (pulse)** | Phase 1-2 done (8/11 tasks). PR #33 merged. | Phase 3: 3 tasks remaining |
 
 ### Specified But Not Started
 
@@ -63,9 +65,9 @@ The critical path is NOT "complete all features." It's: **make the core define�
 ### Phase 2: Daily-Driver (in progress) — "Use It on Real Projects"
 
 > [!IMPORTANT]
-> This is where gwrk stops being a tool you're building and starts being a tool you're using. Deploy it on `the-ai-skeptic`, `resonancexl`, and `gforge`.
+> This is where gwrk stops being a tool you're building and starts being a tool you're using. Deploy it on **gforge** (gforge.ai), **zionoliviagonzalez.com**, and **energy.work**.
 
-4. **006 pulse (Phase 1-2 done, Phase 3 in progress)**: Git commit velocity dashboard. `gwrk measure pulse` shows you a useful summary of what shipped this week across repos. PR #33 open.
+4. **006 pulse (Phase 1-2 done, Phase 3 in progress)**: Git commit velocity dashboard. `gwrk measure pulse` shows you a useful summary of what shipped this week across repos.
 5. **007 effort-compression (Phase 1 only)**: `gwrk measure effort <feature>` gives you SP estimate from spec stories. `gwrk measure compression` shows actual-vs-estimated. These are the numbers that make gwrk's value legible.
 6. **Build plan status reconciliation**: The plan DAG says everything is `DEFINED` when 002/003/004/011 are actually `SHIPPED`. Reconcile plan status with reality so `gwrk plan status` tells the truth.
 
@@ -75,8 +77,10 @@ The critical path is NOT "complete all features." It's: **make the core define�
 
 ### Phase 3: Shareable (1 week) — "Other People Can Use This"
 
-7. **008 agent-router (Phase 1-2)**: Smart model selection is what makes gwrk portable. Right now it's hardcoded to Gemini. Add Claude/Codex routing so it works for people on different providers.
-8. **README + setup wizard**: `gwrk init` should bootstrap a project with `.gwrkrc.json`, spec templates, and a "hello world" define→ship cycle in < 5 minutes.
+> Target audience: **Joe Kaiser** and **Lance Helsten**.
+
+7. **008 agent-router (Phase 2-4)**: Phase 1 shipped (PR #35). Remaining: rate-limit awareness, cost tracking, failback chains. Smart model selection is what makes gwrk portable.
+8. **README + setup wizard**: `gwrk init` should bootstrap a project with `.gwrkrc.json`, spec templates, and a "hello world" define→ship cycle in < 5 minutes. (001-cli-core Phase 10 covers `gwrk setup`.)
 9. **011 harvest + knowledge items**: The discovery pillar. This is what makes gwrk a *learning system* vs a task runner.
 
 **Exit criteria:** Someone clones gwrk, runs `gwrk init`, and completes a define→ship cycle on their own project within 30 minutes.
@@ -143,11 +147,23 @@ The define→ship loop is the product. Everything else is measurement and distri
 
 ## Open Questions
 
-1. **Pulse repos**: Which repos should `gwrk measure pulse` track? Just `gwrk`, or also `gforge`, `the-ai-skeptic`, `resonancexl`?
-2. **Shareable target**: Joe Kaiser and Lance Helsten.
+1. **Pulse repos**: Which repos should `gwrk measure pulse` track? gwrk + the three daily-driver targets (gforge.ai, zionoliviagonzalez.com, energy.work).
+2. **Shareable target**: Joe Kaiser and Lance Helsten. ✅ Confirmed.
 
 ## What's Next
 
 > [!IMPORTANT]
-> **Immediate**: Finish 006-pulse Phase 3 (3 tasks). Merge PR #33.
+> **Immediate**: Merge PR #36 (001-cli-core Phase 11 — all tests green). Finish 006-pulse Phase 3 (3 tasks).
 > **After that**: 007 effort-compression Phase 1, plan status reconciliation.
+> **Then**: Deploy gwrk on gforge.ai, zionoliviagonzalez.com, energy.work.
+
+### 2026-05-13: 001-cli-core Phase 11
+
+| What | Impact |
+|------|--------|
+| resolveFeature consistency | All feature-scoped commands accept prefix aliases |
+| Help text examples | Every command with args shows `Examples:` |
+| CLI grammar governance | `docs/governance/cli-grammar.md` canonical standard |
+| define tests contract fix | Accepts test files OR gap-matrix.md |
+| Test fixes (4) | Flash-first model priority + resolveFeature alignment |
+| Test count | 573 → 646 tests, all green |

@@ -12,7 +12,7 @@ last_modified: "2026-05-07T17:35:00Z"
 
 The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), project scaffolding (`init`), agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
 
-> **Status**: Phases 1–8 are **implemented and tested** (191 tests, 38 files, all passing). Phase 9 (State Contract) is next.
+> **Status**: Phases 1–11 are **implemented and tested** (646 tests, all passing). Phases 9-10 remain for state contracts and workstation setup.
 
 ---
 
@@ -239,7 +239,7 @@ Interactive workstation provisioning for unattended agent execution. Detects TCC
 
 ---
 
-### Phase 11: CLI UX Polish
+### Phase 11: CLI UX Polish ✅
 
 Consolidate CLI usability fixes: help text examples, resolveFeature aliasing, define tests contract fix, CLI grammar governance doc.
 
@@ -322,15 +322,15 @@ Consolidate CLI usability fixes: help text examples, resolveFeature aliasing, de
 | FR-021 | 9 | ☐ Open |
 | US-021 | 10 | ☐ Open |
 | FR-022 | 10 | ☐ Open |
-| US-022 | 11 | ☐ Open |
-| US-023 | 11 | ☐ Open |
+| US-022 | 11 | ✅ Done |
+| US-023 | 11 | ✅ Done |
 | US-024 | 11 | ✅ Done |
-| US-025 | 11 | ☐ Open |
-| FR-023 | 11 | ☐ Open |
-| FR-024 | 11 | ☐ Open |
+| US-025 | 11 | ✅ Done |
+| FR-023 | 11 | ✅ Done |
+| FR-024 | 11 | ✅ Done |
 | FR-025 | 11 | ✅ Done |
-| FR-026 | 11 | ☐ Open |
-| FR-027 | 11 | ☐ Open |
+| FR-026 | 11 | ✅ Done |
+| FR-027 | 11 | ✅ Done |
 
 ## Deferred Items
 
