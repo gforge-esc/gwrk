@@ -36,7 +36,7 @@ export const compressionCommand = new Command("compression")
 Examples:
   gwrk measure compression 001
   gwrk measure compression 001-cli-core --json
-  gwrk measure compression all
+  gwrk measure compression --all
 `,
   )
   .argument(

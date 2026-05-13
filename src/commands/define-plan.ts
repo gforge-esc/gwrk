@@ -27,12 +27,7 @@ Examples:
   .action(async (featureArg, opts: { refs?: string }) => {
     await withSignal("define plan", async () => {
       const projectRoot = process.cwd();
-      let feature: string;
-      try {
-        feature = resolveFeature(featureArg, projectRoot);
-      } catch {
-        feature = featureArg;
-      }
+      const feature = resolveFeature(featureArg, projectRoot);
       const relativeFeatureDir = path.join("specs", feature);
       const featureDir = path.join(projectRoot, relativeFeatureDir);
       const specPath = path.join(featureDir, "spec.md");
