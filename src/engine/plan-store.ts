@@ -124,6 +124,23 @@ export class PlanStore {
     const existing = db.getPhase(id);
     if (!existing) throw new Error(`Phase ${id} not found`);
     db.insertPhase({ ...existing, ...updates });
+
+    // Auto-cascade if status was updated
+    if (updates.status) {
+      const feature = db.getFeature(existing.feature_id);
+      if (feature) {
+        const phases = db.listPhases(existing.feature_id);
+        const allCompleted = phases.every(
+          (p) => p.status === "DONE" || p.status === "SHIPPED"
+        );
+        if (allCompleted) {
+          db.insertFeature({
+            ...feature,
+            status: "SHIPPED",
+          });
+        }
+      }
+    }
   }
 
   /**
@@ -160,6 +177,21 @@ export class PlanStore {
         completed_at: new Date().toISOString(),
         evidence: event.evidence,
       });
+
+      // Auto-cascade: If all phases in the feature are now DONE/SHIPPED, mark the feature as SHIPPED
+      const feature = db.getFeature(event.featureId);
+      if (feature) {
+        const phases = db.listPhases(event.featureId);
+        const allCompleted = phases.every(
+          (p) => p.status === "DONE" || p.status === "SHIPPED"
+        );
+        if (allCompleted) {
+          db.insertFeature({
+            ...feature,
+            status: "SHIPPED",
+          });
+        }
+      }
     }
   }
 
