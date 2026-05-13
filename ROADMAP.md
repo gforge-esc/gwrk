@@ -21,14 +21,8 @@
 |---------|------------|-------|
 | **002 (build-server)** | 25/25 ✅ | Server runs, routes exist. macOS memory reporting fixed (vm_stat). |
 | **003 (slack)** | 26/26 ✅ | Merge from Slack (`gh pr merge`), ship from Slack, status → PlanStore DAG, Foxtrot Charlie noise kill, webhook fallback, init provisioning. |
-| **004 (ship-loop)** | 35/35 ✅ | Core loop works. 018 hardening fixed 3 systemic breaks. |
 | **011 (harvest)** | 21/21 ✅ | `harvest.ts` engine, `github.ts` webhook handler, idempotency guard, dedup notifications, full test coverage. Phase 6 remediation complete. |
-
-### In Progress
-
-| Feature | Status | What's Left |
-|---------|--------|-------------|
-| **006 (pulse)** | Phase 1-2 done (8/11 tasks). PR #33 merged. | Phase 3: 3 tasks remaining |
+| **006 (pulse)** | 11/11 ✅ | Git commit velocity dashboard. `gwrk measure pulse` multi-repo tracking. Phase 3 shipped in PR #34. |
 
 ### Specified But Not Started
 
@@ -67,7 +61,7 @@ The critical path is NOT "complete all features." It's: **make the core define�
 > [!IMPORTANT]
 > This is where gwrk stops being a tool you're building and starts being a tool you're using. Deploy it on **gforge** (gforge.ai), **zionoliviagonzalez.com**, and **energy.work**.
 
-4. **006 pulse (Phase 1-2 done, Phase 3 in progress)**: Git commit velocity dashboard. `gwrk measure pulse` shows you a useful summary of what shipped this week across repos.
+4. **006 pulse (Done)**: Git commit velocity dashboard. `gwrk measure pulse` shows you a useful summary of what shipped this week across repos.
 5. **007 effort-compression (Phase 1 only)**: `gwrk measure effort <feature>` gives you SP estimate from spec stories. `gwrk measure compression` shows actual-vs-estimated. These are the numbers that make gwrk's value legible.
 6. **Build plan status reconciliation**: The plan DAG says everything is `DEFINED` when 002/003/004/011 are actually `SHIPPED`. Reconcile plan status with reality so `gwrk plan status` tells the truth.
 
@@ -153,8 +147,7 @@ The define→ship loop is the product. Everything else is measurement and distri
 ## What's Next
 
 > [!IMPORTANT]
-> **Immediate**: Merge PR #36 (001-cli-core Phase 11 — all tests green). Finish 006-pulse Phase 3 (3 tasks).
-> **After that**: 007 effort-compression Phase 1, plan status reconciliation.
+> **Immediate**: 007 effort-compression Phase 1, plan status reconciliation.
 > **Then**: Deploy gwrk on gforge.ai, zionoliviagonzalez.com, energy.work.
 
 ### 2026-05-13: 001-cli-core Phase 11
