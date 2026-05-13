@@ -1,9 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T050 — Implement src/commands/define-plan.ts (resolveFeature)
-# Asserts: Command accepts '001' prefix for '001-cli-core'
+# AUTHORED
+# Gate: T050 — Implement src/commands/db.ts (Phase 11 update)
 
-# Should resolve 001 to 001-cli-core and not fail with 'feature not found'
-gwrk define plan 001 --help > /dev/null
+test -f src/commands/db.ts \
+  || { echo "FAIL: T050 — file not found: src/commands/db.ts" >&2; exit 1; }
 
-echo "PASS: T050 — resolveFeature in define-plan"
+grep -q 'statsCommand' src/commands/db.ts \
+  || { echo "FAIL: T050 — src/commands/db.ts missing 'statsCommand'" >&2; exit 1; }
+
+echo "PASS: T050 — Implement src/commands/db.ts (stats)"

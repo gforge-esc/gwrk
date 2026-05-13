@@ -1,9 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T053 — Implement src/commands/harvest.ts (resolveFeature)
-# Asserts: Command accepts '001' prefix
+# AUTHORED
+# Gate: T053 — Implement src/commands/harvest.ts (prefix aliasing)
 
-# harvest might not be implemented yet, but gate should assert intended resolution
-gwrk harvest 001 --help > /dev/null
+test -f src/commands/harvest.ts \
+  || { echo "FAIL: T053 — file not found: src/commands/harvest.ts" >&2; exit 1; }
 
-echo "PASS: T053 — resolveFeature in harvest"
+grep -q 'resolveFeature' src/commands/harvest.ts \
+  || { echo "FAIL: T053 — src/commands/harvest.ts missing 'resolveFeature'" >&2; exit 1; }
+
+echo "PASS: T053 — Implement src/commands/harvest.ts (resolveFeature)"

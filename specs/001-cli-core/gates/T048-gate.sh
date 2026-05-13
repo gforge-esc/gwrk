@@ -1,8 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T048 — Implement src/commands/db.ts (Add Examples)
-# Asserts: Help text contains Examples section
+# AUTHORED
+# Gate: T048 — Implement src/commands/gate.ts
 
-gwrk db --help | grep -q "Examples:"
+test -f src/commands/gate.ts \
+  || { echo "FAIL: T048 — file not found: src/commands/gate.ts" >&2; exit 1; }
 
-echo "PASS: T048 — Examples in db help"
+grep -q 'new Command("gate")' src/commands/gate.ts \
+  || { echo "FAIL: T048 — src/commands/gate.ts missing 'new Command(\"gate\")'" >&2; exit 1; }
+
+echo "PASS: T048 — Implement src/commands/gate.ts"

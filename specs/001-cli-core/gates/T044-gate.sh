@@ -1,8 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T044 — Implement src/commands/ship.ts (Add Examples)
-# Asserts: Help text contains Examples section
+# AUTHORED
+# Gate: T044 — Implement src/commands/define-plan.ts
 
-gwrk ship --help | grep -q "Examples:"
+test -f src/commands/define-plan.ts \
+  || { echo "FAIL: T044 — file not found: src/commands/define-plan.ts" >&2; exit 1; }
 
-echo "PASS: T044 — Examples in ship help"
+grep -q 'new Command("plan")' src/commands/define-plan.ts \
+  || { echo "FAIL: T044 — src/commands/define-plan.ts missing 'new Command(\"plan\")'" >&2; exit 1; }
+
+echo "PASS: T044 — Implement src/commands/define-plan.ts"

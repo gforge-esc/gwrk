@@ -1,8 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T045 — Implement src/commands/define.ts (Add Examples)
-# Asserts: Help text contains Examples section
+# AUTHORED
+# Gate: T045 — Implement src/commands/tests-generate.ts
 
-gwrk define --help | grep -q "Examples:"
+test -f src/commands/tests-generate.ts \
+  || { echo "FAIL: T045 — file not found: src/commands/tests-generate.ts" >&2; exit 1; }
 
-echo "PASS: T045 — Examples in define help"
+grep -q 'new Command("tests")' src/commands/tests-generate.ts \
+  || { echo "FAIL: T045 — src/commands/tests-generate.ts missing 'new Command(\"tests\")'" >&2; exit 1; }
+
+echo "PASS: T045 — Implement src/commands/tests-generate.ts"

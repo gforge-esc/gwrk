@@ -1,8 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T051 — Implement src/commands/tests-generate.ts (resolveFeature)
-# Asserts: Command accepts '001' prefix
+# AUTHORED
+# Gate: T051 — Implement docs/governance/cli-grammar.md
 
-gwrk define tests 001 --help > /dev/null
+test -f docs/governance/cli-grammar.md \
+  || { echo "FAIL: T051 — file not found: docs/governance/cli-grammar.md" >&2; exit 1; }
 
-echo "PASS: T051 — resolveFeature in tests-generate"
+grep -q 'gwrk define' docs/governance/cli-grammar.md \
+  || { echo "FAIL: T051 — docs/governance/cli-grammar.md missing 'gwrk define'" >&2; exit 1; }
+
+echo "PASS: T051 — Implement docs/governance/cli-grammar.md"
