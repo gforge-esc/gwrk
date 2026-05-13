@@ -14,6 +14,15 @@ import { registerPulseSubcommands } from "./pulse.js";
  */
 export const measureCommand = new Command("measure")
   .description("Measure: pulse, effort, compression (Value)")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk measure pulse
+  gwrk measure effort 001
+  gwrk measure compression 001
+`,
+  )
   .enablePositionalOptions()
   .addCommand(effortCommand)
   .addCommand(compressionCommand);

@@ -47,6 +47,14 @@ export function registerPulseSubcommands(program: Command) {
   const pulseCmd = program
     .command("pulse")
     .description("Pulse productivity dashboard")
+    .addHelpText(
+      "after",
+      `
+Examples:
+  gwrk measure pulse
+  gwrk measure pulse --json
+`,
+    )
     .option("--json", "Output full PulseReport as JSON")
     .action(async (options, command) => {
       await withSignal("pulse", async () => {
@@ -64,6 +72,14 @@ export function registerPulseSubcommands(program: Command) {
   pulseCmd
     .command("scan <path>")
     .description("Run a historical scan of any git repository")
+    .addHelpText(
+      "after",
+      `
+Examples:
+  gwrk measure pulse scan .
+  gwrk measure pulse scan ../other-project --branch develop
+`,
+    )
     .option("--json", "Output PulseSnapshot as JSON")
     .option("-b, --branch <name>", "Override default branch detection")
     .action(async (repoPath, options, command) => {

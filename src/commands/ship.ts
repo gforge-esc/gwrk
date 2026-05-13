@@ -362,6 +362,11 @@ Exit codes:
   0: All phases shipped successfully
   1: Phase failed or feature not found
   2: Usage error
+
+Examples:
+  gwrk ship 001 1
+  gwrk ship 001-cli-core --dry-run
+  gwrk ship 001 --parallel --concurrency 4
 `,
   )
   .argument("<feature>", "Feature ID")
@@ -383,7 +388,7 @@ Exit codes:
   )
   .action(
     async (
-      feature: string,
+      featureArg: string,
       phase: string | undefined,
       opts: Record<string, string | boolean | undefined>,
     ) => {
@@ -392,17 +397,16 @@ Exit codes:
         const config = loadConfig(cwd);
 
         // Resolve prefix (e.g. "011" → "011-harvest")
-        let resolvedFeature: string;
+        let feature: string;
         try {
-          resolvedFeature = resolveFeature(feature, cwd);
+          feature = resolveFeature(featureArg, cwd);
         } catch {
-          console.error(`Feature not found: specs/${feature}`);
+          console.error(`Feature not found: specs/${featureArg}`);
           throw new CommandError(
-            `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
+            `Feature not found: specs/${featureArg}. Run 'gwrk project specs' to list available features.`,
             1,
           );
         }
-        feature = resolvedFeature;
 
         // Validate feature exists before any work
         const featureSpecDir = path.join(cwd, "specs", feature);

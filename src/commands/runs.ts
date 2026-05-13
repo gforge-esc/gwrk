@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { listRuns } from "../db/runs.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -8,10 +9,20 @@ import { CommandError, withSignal } from "../utils/signal.js";
  */
 export const runsCommand = new Command("runs")
   .description("Show execution history for a feature")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk db runs 001
+  gwrk db runs 001-cli-core --json
+`,
+  )
   .argument("<feature>", "Feature ID")
   .option("--json", "Output as JSON")
-  .action(async (feature: string, opts: { json?: boolean }) => {
+  .action(async (featureArg: string, opts: { json?: boolean }) => {
     await withSignal("db runs", async () => {
+      const projectRoot = process.cwd();
+      const feature = resolveFeature(featureArg, projectRoot);
       const runs = listRuns(feature);
 
       if (runs.length === 0) {

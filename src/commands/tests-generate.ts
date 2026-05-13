@@ -23,6 +23,15 @@ export const testsGenerateCommand = new Command("tests")
   .description(
     "Generate RED test files for a whole feature (or specific phase)",
   )
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define tests 001
+  gwrk define tests 001-cli-core --phase 1
+  gwrk define tests 001 --force
+`,
+  )
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option(
     "-p, --phase <phase>",
@@ -33,11 +42,16 @@ export const testsGenerateCommand = new Command("tests")
     "Overwrite existing test artifacts (gap-matrix.md, test files)",
   )
   .action(
-    async (feature: string, options: { phase?: string; force?: boolean }) => {
-      await withSignal(`define tests ${feature}`, async () => {
+    async (featureArg: string, options: { phase?: string; force?: boolean }) => {
+      await withSignal(`define tests ${featureArg}`, async () => {
         const projectRoot = process.cwd();
         // Resolve prefix: "001" → "001-cli-core"
-        feature = resolveFeature(feature, projectRoot);
+        let feature: string;
+        try {
+          feature = resolveFeature(featureArg, projectRoot);
+        } catch {
+          feature = featureArg;
+        }
         const relativeFeatureDir = path.join("specs", feature);
         const featureDir = path.join(projectRoot, relativeFeatureDir);
 

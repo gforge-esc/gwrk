@@ -30,6 +30,16 @@ import { CommandError, withSignal } from "../utils/signal.js";
  */
 export const tasksGenerateCommand = new Command("tasks")
   .description("Decompose plan into tasks.json + gate scripts")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define tasks 001
+  gwrk define tasks 001-cli-core --phase 1
+  gwrk define tasks 001 --reconcile
+  gwrk define tasks 001 --force --no-llm
+`,
+  )
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option(
     "-p, --phase <phase>",
@@ -43,7 +53,7 @@ export const tasksGenerateCommand = new Command("tasks")
   )
   .action(
     async (
-      feature: string,
+      featureArg: string,
       opts: {
         force?: boolean;
         reconcile?: boolean;
@@ -51,10 +61,10 @@ export const tasksGenerateCommand = new Command("tasks")
         phase?: string;
       },
     ) => {
-      await withSignal(`define tasks ${feature}`, async () => {
+      await withSignal(`define tasks ${featureArg}`, async () => {
         const projectRoot = process.cwd();
         // Resolve prefix: "003" → "003-slack"
-        feature = resolveFeature(feature, projectRoot);
+        const feature = resolveFeature(featureArg, projectRoot);
         const featureDir = path.join(projectRoot, "specs", feature);
         const planPath = path.join(featureDir, "plan.md");
         const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");

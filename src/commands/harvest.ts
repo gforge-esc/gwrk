@@ -2,6 +2,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { harvestFeature } from "../engine/harvest.js";
 import type { HarvestRecord } from "../engine/types.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { withSignal } from "../utils/signal.js";
 
 /**
@@ -12,13 +13,22 @@ import { withSignal } from "../utils/signal.js";
  */
 export const harvestCommand = new Command("harvest")
   .description("Manually trigger the post-merge harvest pipeline")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk harvest 001
+  gwrk harvest 001-cli-core 1 --pr 42
+`,
+  )
   .argument("<feature>", "Feature ID (e.g. 011-harvest)")
   .argument("[phase]", "Phase ID (e.g. phase-01 or 1)")
   .option("--pr <number>", "PR number", Number.parseInt)
   .option("--commit <sha>", "Merge commit SHA")
-  .action(async (feature, phase, options) => {
-    await withSignal(`harvest ${feature}`, async () => {
+  .action(async (featureArg, phase, options) => {
+    await withSignal(`harvest ${featureArg}`, async () => {
       const projectRoot = process.cwd();
+      const feature = resolveFeature(featureArg, projectRoot);
 
       // Format phase uniformly to phase-0X if it's just a number
       let phaseId = phase;
