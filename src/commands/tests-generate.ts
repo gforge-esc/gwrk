@@ -23,6 +23,15 @@ export const testsGenerateCommand = new Command("tests")
   .description(
     "Generate RED test files for a whole feature (or specific phase)",
   )
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define tests 001
+  gwrk define tests 001-cli-core --phase 1
+  gwrk define tests 001 --force
+`,
+  )
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option(
     "-p, --phase <phase>",
@@ -33,11 +42,11 @@ export const testsGenerateCommand = new Command("tests")
     "Overwrite existing test artifacts (gap-matrix.md, test files)",
   )
   .action(
-    async (feature: string, options: { phase?: string; force?: boolean }) => {
-      await withSignal(`define tests ${feature}`, async () => {
+    async (featureArg: string, options: { phase?: string; force?: boolean }) => {
+      await withSignal(`define tests ${featureArg}`, async () => {
         const projectRoot = process.cwd();
         // Resolve prefix: "001" → "001-cli-core"
-        feature = resolveFeature(feature, projectRoot);
+        const feature = resolveFeature(featureArg, projectRoot);
         const relativeFeatureDir = path.join("specs", feature);
         const featureDir = path.join(projectRoot, relativeFeatureDir);
 
@@ -52,11 +61,31 @@ export const testsGenerateCommand = new Command("tests")
           );
         }
 
-        // Guard: refuse to overwrite existing tests without --force
+        // Guard: refuse to overwrite existing tests without --force (ADR-005 §8.4)
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
-        if (fs.existsSync(gapMatrixPath) && !options.force) {
+        const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
+        const hasTestFiles = (() => {
+          try {
+            const srcDir = path.join(projectRoot, "src");
+            if (!fs.existsSync(srcDir)) return false;
+            const allFiles = fs.readdirSync(srcDir);
+            // Look for tests that match the feature ID or are generally feature tests
+            return allFiles.some(
+              (f) => (f.includes(feature) || f.endsWith(".test.ts")) && !f.startsWith("cli.e2e"),
+            );
+          } catch {
+            return false;
+          }
+        })();
+
+        const testsExist =
+          fs.existsSync(gapMatrixPath) ||
+          fs.existsSync(runsManifestDir) ||
+          (hasTestFiles && !options.force);
+
+        if (testsExist && !options.force) {
           blocked(
-            `Tests already exist for ${feature} (gap-matrix.md found).\n  Re-run: gwrk define tests ${feature} --force`,
+            `Tests already exist for ${feature} (artifacts found).\n  Re-run: gwrk define tests ${feature} --force`,
           );
           throw new CommandError(
             "Tests already exist. Use --force to regenerate.",

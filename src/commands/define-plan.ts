@@ -8,15 +8,26 @@ import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const planCommand = new Command("plan")
   .description("Create an implementation plan for a feature")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define plan 001
+  gwrk define plan 001-cli-core --refs docs/reference/
+  cat discovery.json | gwrk define plan 001
+`,
+  )
   .argument("<feature>", "The feature directory under specs/")
   .option("--refs <path>", "Path to additional reference docs")
-  .action(async (feature, opts: { refs?: string }) => {
+  .action(async (featureArg, opts: { refs?: string }) => {
     await withSignal("define plan", async () => {
       const projectRoot = process.cwd();
+      const feature = resolveFeature(featureArg, projectRoot);
       const relativeFeatureDir = path.join("specs", feature);
       const featureDir = path.join(projectRoot, relativeFeatureDir);
       const specPath = path.join(featureDir, "spec.md");

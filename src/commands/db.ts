@@ -38,6 +38,15 @@ export const recordCommand = new Command("record")
 
 export const dbCommand = new Command("db")
   .description("Query the local execution ledger")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk db runs
+  gwrk db runs 001
+  gwrk db stats
+`,
+  )
   .addCommand(runsCommand)
   .addCommand(statsCommand)
   .addCommand(recordCommand, { hidden: true });

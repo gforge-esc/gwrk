@@ -14,15 +14,15 @@ export enum TaskType {
 
 export function classifyTask(taskType: string | TaskType): TaskClassification {
   switch (taskType) {
-    case TaskType.IMPLEMENT:
     case TaskType.REVIEW:
-    case TaskType.REMEDIATION:
       return TaskClassification.THINKING;
+    case TaskType.IMPLEMENT:
+    case TaskType.REMEDIATION:
     case TaskType.TEST:
       return TaskClassification.FAST;
     case TaskType.DEFINE:
       return TaskClassification.HIGH_CONTEXT;
     default:
-      return TaskClassification.THINKING; // Default to thinking for safety
+      return TaskClassification.FAST; // Default to fast — escalate explicitly
   }
 }

@@ -31,14 +31,28 @@ Exit codes:
   0: Success
   1: Task not found or gate failed
   2: Usage error
+
+Examples:
+  gwrk tasks list 001
+  gwrk tasks next 001 1
+  gwrk tasks done 001 T001
+  gwrk tasks verify 001
 `,
   );
 
-// generate is now under `gwrk define tasks` — see tasks-generate.ts
+// generate is now under \`gwrk define tasks\` — see tasks-generate.ts
 
 tasksCommand
   .command("done <feature> <taskId>")
   .description("Mark a task as complete if the gate passes")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk tasks done 001 T001
+  gwrk tasks done 001-cli-core T042
+`,
+  )
   .action(async (featureInput: string, taskId: string) => {
     await withSignal("tasks done", async () => {
       const projectRoot = process.cwd();
@@ -143,6 +157,14 @@ tasksCommand
 tasksCommand
   .command("verify <feature>")
   .description("Validate execution manifests and task coverage")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk tasks verify 001
+  gwrk tasks verify 001-cli-core
+`,
+  )
   .action(async (featureInput: string) => {
     await withSignal("tasks verify", async () => {
       const projectRoot = process.cwd();
@@ -200,6 +222,15 @@ function checkDrift(
 tasksCommand
   .command("list <feature>")
   .description("List all tasks for a feature")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk tasks list 001
+  gwrk tasks list 001-cli-core --compact
+  gwrk tasks list 001 --json
+`,
+  )
   .option("--json", "Output in JSON format")
   .option("--compact", "Hide descriptions on open tasks")
   .action(
@@ -280,6 +311,15 @@ tasksCommand
 tasksCommand
   .command("next <feature> <phase>")
   .description("Show the next open task for a phase")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk tasks next 001 1
+  gwrk tasks next 001-cli-core p02
+  gwrk tasks next 001 3 --json
+`,
+  )
   .option("--json", "Output in JSON format")
   .action(
     async (
@@ -320,6 +360,14 @@ tasksCommand
 tasksCommand
   .command("ready <feature>")
   .description("List all tasks ready for implementation")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk tasks ready 001
+  gwrk tasks ready 001-cli-core --json
+`,
+  )
   .option("--json", "Output in JSON format")
   .action(
     async (featureInput: string, options: { json?: boolean }, command) => {

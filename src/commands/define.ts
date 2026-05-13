@@ -37,16 +37,27 @@ import { CommandError, withSignal } from "../utils/signal.js";
  */
 export const defineCommand = new Command("define")
   .description("Define: spec → plan → tasks → analyze")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define 001
+  gwrk define 001-cli-core --refs docs/reference/
+  gwrk define spec 001
+  gwrk define plan 001
+  gwrk define tasks 001
+`,
+  )
   .argument("[feature]", "Feature ID (e.g. 001-cli-core)")
   .option("--refs <path>", "Path to additional reference docs")
   .option("--dry-run", "Print the command without executing")
   .action(
     async (
-      feature: string | undefined,
+      featureArg: string | undefined,
       opts: { dryRun?: boolean; refs?: string },
     ) => {
       await withSignal("define", async () => {
-        if (!feature) {
+        if (!featureArg) {
           throw new CommandError(
             "Feature ID required. Run 'gwrk project specs' to list available features.",
             2,
@@ -55,7 +66,7 @@ export const defineCommand = new Command("define")
 
         const cwd = process.cwd();
         // Resolve prefix: "003" → "003-slack"
-        feature = resolveFeature(feature, cwd);
+        const feature = resolveFeature(featureArg, cwd);
         const config = loadConfig(cwd);
         const backend = config.agents.define;
 

@@ -77,6 +77,10 @@ describe("planCommand", () => {
   });
 
   it("should fail if spec.md does not exist", async () => {
+    // Create specs/feature-x/ dir so resolveFeature succeeds, but omit spec.md
+    const featureDir = path.join(tempDir, "specs/feature-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+
     process.exitCode = 0;
     try {
       await program.parseAsync(["node", "test", "plan", "feature-x"]);

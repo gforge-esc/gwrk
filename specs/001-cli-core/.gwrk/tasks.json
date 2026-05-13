@@ -540,114 +540,122 @@
         {
           "id": "T044",
           "title": "Implement src/commands/ship.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Lint error — noParameterAssign.\n  WHERE: src/commands/ship.ts:410\n  EXPECTED: Use local variable for resolved feature.\n  ACTUAL: feature = resolvedFeature; (parameter reassignment)\n  FIX: Use a local variable like const resolvedFeatureStr = resolvedFeature; and use it throughout.\n  REF: plan.md Phase 11",
+          "status": "completed",
           "gateScript": "gates/T044-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:22.066Z"
         },
         {
           "id": "T045",
           "title": "Implement src/commands/define.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in subcommands — FR-023.\n  WHERE: src/commands/specify.ts, src/commands/define-plan.ts, src/commands/tasks-generate.ts, src/commands/tests-generate.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...') in each subcommand.\n  ACTUAL: Subcommands lack examples, causing src/cli.ux.test.ts failures.\n  FIX: Add concrete usage examples to each subcommand's help text.\n\nREVIEW FAIL (code): Lint error — noParameterAssign.\n  WHERE: src/commands/define.ts:67, src/commands/specify.ts:28\n  ACTUAL: feature = resolveFeature(feature, cwd); (parameter reassignment)\n  FIX: Use a local variable for the resolved feature string.",
+          "status": "completed",
           "gateScript": "gates/T045-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:22.285Z"
         },
         {
           "id": "T046",
           "title": "Implement src/commands/tasks.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in subcommands — FR-023.\n  WHERE: src/commands/tasks.ts (list, next, done subcommands)\n  EXPECTED: .addHelpText('after', 'Examples: ...') in each subcommand.\n  ACTUAL: Subcommands lack examples, causing src/cli.ux.test.ts failures.\n  FIX: Add concrete usage examples to each subcommand's help text.",
+          "status": "completed",
           "gateScript": "gates/T046-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:22.509Z"
         },
         {
           "id": "T047",
           "title": "Implement src/commands/measure.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in subcommands — FR-023.\n  WHERE: src/commands/pulse.ts, src/commands/effort.ts, src/commands/compression.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...') in each subcommand.\n  ACTUAL: Subcommands lack examples, causing src/cli.ux.test.ts failures.\n  FIX: Add concrete usage examples to each subcommand's help text.\n\nREVIEW FAIL (code): Lint error — noParameterAssign.\n  WHERE: src/commands/compression.ts:140\n  ACTUAL: feature = resolveFeature(feature, projectRoot); (parameter reassignment)\n  FIX: Use a local variable for the resolved feature string.",
+          "status": "completed",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:22.718Z"
         },
         {
           "id": "T048",
           "title": "Implement src/commands/db.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY — Add Examples to help text\n\nREVIEW FAIL (code): Missing Examples in subcommands — FR-023.\n  WHERE: src/commands/runs.ts\n  EXPECTED: .addHelpText('after', 'Examples: ...') in the runs subcommand.\n  ACTUAL: Subcommand lacks examples, causing src/cli.ux.test.ts failures.\n  FIX: Add concrete usage examples to the runs subcommand's help text.",
+          "status": "completed",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:22.943Z"
         },
         {
           "id": "T049",
           "title": "Implement src/commands/test.ts",
           "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T049-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-12T16:20:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T050",
           "title": "Implement src/commands/define-plan.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing\n\nREVIEW FAIL (code): Missing resolveFeature — FR-024.\n  WHERE: src/commands/define-plan.ts\n  EXPECTED: feature = resolveFeature(feature, projectRoot);\n  ACTUAL: Missing resolution. Command fails with 001 prefix.\n  FIX: Add resolveFeature import and call in action handler.\n  GATE: gates/T050-gate.sh (Needs improvement to test action, not just --help)",
           "status": "completed",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-08T01:49:50.550Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:23.157Z"
         },
         {
           "id": "T051",
           "title": "Implement src/commands/tests-generate.ts",
-          "description": "MODIFY — Add resolveFeature + relax output contract",
+          "description": "MODIFY — Add resolveFeature + relax output contract\n\nREVIEW FAIL (code): Lint error — noParameterAssign.\n  WHERE: src/commands/tests-generate.ts:40\n  ACTUAL: feature = resolveFeature(feature, projectRoot); (parameter reassignment)\n  FIX: Use a local variable for the resolved feature string.",
           "status": "completed",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-08T01:49:50.753Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:23.368Z"
         },
         {
           "id": "T052",
           "title": "Implement src/commands/runs.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing\n\nREVIEW FAIL (code): Missing resolveFeature — FR-024.\n  WHERE: src/commands/runs.ts\n  EXPECTED: feature = resolveFeature(feature, projectRoot);\n  ACTUAL: Missing resolution. Command fails with 001 prefix.\n  FIX: Add resolveFeature import and call in action handler.\n  GATE: gates/T052-gate.sh (Needs improvement to test action, not just --help)",
           "status": "completed",
           "gateScript": "gates/T052-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-08T01:49:50.959Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:23.576Z"
         },
         {
           "id": "T053",
           "title": "Implement src/commands/harvest.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing\n\nREVIEW FAIL (code): Missing resolveFeature — FR-024.\n  WHERE: src/commands/harvest.ts\n  EXPECTED: feature = resolveFeature(feature, projectRoot);\n  ACTUAL: Missing resolution. Command fails with 001 prefix.\n  FIX: Add resolveFeature import and call in action handler.\n  GATE: gates/T053-gate.sh (Needs improvement to test action, not just --help)",
           "status": "completed",
           "gateScript": "gates/T053-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-08T01:49:51.164Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:23.783Z"
         },
         {
           "id": "T054",
           "title": "Implement src/commands/gate.ts",
           "description": "✅ Already done — Examples added 2026-05-07",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T054-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-12T16:20:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T055",
           "title": "Implement docs/governance/cli-grammar.md",
-          "description": "NEW — Canonical CLI grammar standard",
-          "status": "open",
+          "description": "NEW — Canonical CLI grammar standard\n\nREVIEW FAIL (code): Missing file — US-025.\n  WHERE: docs/governance/cli-grammar.md\n  ACTUAL: File does not exist.\n  FIX: Create the file with canonical grammar rules and command inventory.\n  GATE: gates/T055-gate.sh",
+          "status": "completed",
           "gateScript": "gates/T055-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-13T01:03:23.787Z"
         }
       ],
       "sp_estimate": 0,

@@ -12,6 +12,14 @@ import { CommandError, withSignal } from "../utils/signal.js";
 
 export const effortCommand = new Command("effort")
   .description("Calculate deterministic effort estimation from spec stories")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk measure effort 001
+  gwrk measure effort 001-cli-core --json
+`,
+  )
   .argument(
     "<feature>",
     "The feature directory under specs/ (e.g. 001-cli-core)",
