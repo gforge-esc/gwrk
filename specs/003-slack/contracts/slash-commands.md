@@ -14,6 +14,7 @@ All commands are registered as `/gwrk <subcommand>`.
 | `/gwrk pulse [repo]` | optional repo path | Block Kit (ephemeral) | FR-004 |
 | `/gwrk effort <feature>` | required feature ID | Block Kit (ephemeral) | FR-004 |
 | `/gwrk logs <feature> <phase>` | required both | Block Kit (ephemeral) | FR-004 |
+| `/gwrk define <feature>` | required feature ID | Block Kit (ephemeral) | FR-015 |
 
 ## Handler Interface
 

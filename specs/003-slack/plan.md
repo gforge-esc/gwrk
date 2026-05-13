@@ -1,197 +1,167 @@
-# Implementation Plan: 003 Slack (v3 — Daily Driver)
+# Implementation Plan: 003 Slack
 
-**Branch**: `feat/003-slack` | **Date**: 2026-05-05 | **Spec**: [spec.md](./spec.md)
+**Branch**: `feat/003-slack` | **Date**: 2026-05-13 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
-Slack is the **primary control surface** for gwrk. The principal engineer should be able to drive most pipeline operations from their phone. The existing scaffolding (Bolt app, Socket Mode, channels, message builders, presence routing) is in place but disconnected — messages build but nobody sends them, buttons render but actions are stubs.
-
-This plan connects the wiring. Every phase below delivers one end-to-end interaction that works from Slack.
-
-**Design Principle — Foxtrot Charlie Bless Model:**
-Every Slack message must answer two questions:
-1. **What pillar is this?** (Discovery / Definition / Shipping / Delivery)
-2. **What do I bless?** (The ONE action that advances the progression)
-
-If there's nothing to bless, the message should not exist.
-
----
-
-## Dependency
-
-This plan depends on 002-build-server Phase 2 (ship-bridge.ts event bridge). The event bridge is what converts ShipOrchestrator events into Slack notifications. Without it, the ship loop can't talk to Slack through the server.
-
-**Execution order**: 002 Phase 1 → 002 Phase 2 → 003 Phase 1 → interleave from there.
+This plan hardens the Slack integration by implementing the missing v3 requirements: the full Definition pillar in Slack (slash command, spec/plan approval loops), a conversational agent surface for @gwrk mentions, and hardening of the webhook-first notification bridge for cloud-native dispatches.
 
 ---
 
 ## Phases and File Structure
 
-### Phase 1: Bless the Ship — Merge from Slack
+### Phase 1: Slack Definition Pillar (P0)
 
-The single most valuable interaction: ship completes → Slack message → tap ✅ Merge → PR merged → pipeline advances. This closes the loop between `gwrk ship` and the PE's phone.
+Enable the PE to define features entirely from Slack. This involves adding the `/gwrk define` command, interactive approval buttons for specs and plans, and the corresponding backend logic in the `DefineOrchestrator`.
 
-**Prerequisite**: 002 Phase 2 (ship-bridge.ts) must be complete so ship events reach Slack.
+**Files (4):**
+- `src/server/slack-commands.ts` (MODIFY: Add `define` subcommand handler)
+- `src/server/slack-messages.ts` (MODIFY: Add `specReady` and `planReady` Block Kit builders)
+- `src/server/slack-actions.ts` (MODIFY: Add `approve_spec`, `approve_plan`, `revise_spec` handlers)
+- `src/server/routes/notify.ts` (MODIFY: Handle `define_spec_ready` and `define_plan_ready` event types)
+
+**Requirements Addressed:** US-014, FR-015, FR-016, FR-005
+
+**Dependencies:** F002 (Build Server), F018 (Build Plan Orchestrator)
+
+**Contract Mapping:**
+- `specs/003-slack/contracts/slash-commands.md` → `/gwrk define` → `src/server/slack-commands.ts`
+- `specs/003-slack/contracts/block-kit-messages.md` → `specReady`, `planReady` → `src/server/slack-messages.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-004 | Output signal protocol for background jobs |
+| specify-sharpen | Applied during background spec generation |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-013 | Unit | `src/server/slack-commands.test.ts` | `/gwrk define 001` spawns background process and acknowledges |
+| TR-014 | Unit | `src/server/slack-messages.test.ts` | `specReady` and `planReady` blocks contain correct buttons and feature IDs |
+| TR-015 | Unit | `src/server/slack-actions.test.ts` | `approve_spec` triggers plan generation; `approve_plan` updates PlanStore to DEFINED |
+
+#### Done When
+- `/gwrk define 003` from Slack returns immediate acknowledgment and eventually posts a spec approval message.
+- Tapping `Approve` on a spec message triggers plan generation and posts a plan approval message.
+
+---
+
+### Phase 2: Conversational Agent Surface (P1)
+
+Surface the agent's reasoning and project knowledge directly in Slack threads. This allows for ad-hoc project interrogation and architectural thinking from mobile.
 
 **Files (3):**
-- `src/server/slack-actions.ts` (MODIFY: Wire `merge_pr` handler to real `gh pr merge` via `execSync`. Currently a stub that posts confirmation without merging.)
-- `src/server/slack-actions.ts` (MODIFY: Wire `retry_phase` handler to spawn `gwrk ship <feature> <phase>` as background process.)
-- `src/server/slack-messages.ts` (MODIFY: Ensure `reviewReady` message includes PR number in button value payload for lookup.)
+- `src/server/slack-agent.ts` (NEW: Handle app mentions and threaded context)
+- `src/server/slack.ts` (MODIFY: Register `app_mention` and `message.channels` handlers)
+- `src/utils/agent-context.ts` (NEW: Utility to build project context for the agent from local files and SQLite)
 
-**Foxtrot Charlie Contract:**
-| Event | Pillar | Message | Primary CTA |
-|-------|--------|---------|-------------|
-| `ship:complete` | P3 Shipping | "🚢 Shipped: {feature} phase {N} — PR #{M}" | `[✅ Merge]` |
-| `ship:failed` | P3 Shipping | "⚠️ Ship Failed: {feature} — {reason}" | `[🔄 Retry]` |
+**Requirements Addressed:** US-015, FR-006, FR-017
 
-**Requirements Addressed:** FR-005, FR-011, US-005, US-011
+**Dependencies:** F014 (Plugin System - Skills)
 
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
-|---|---|---|---|
-| TR-003-001 | Unit | `slack-actions.ts` | `merge_pr` handler calls `execSync('gh pr merge #N')` |
-| TR-003-002 | Unit | `slack-actions.ts` | `merge_pr` posts confirmation "PR #{N} merged ✅" |
-| TR-003-003 | Unit | `slack-actions.ts` | `retry_phase` spawns `gwrk ship` subprocess |
-| TR-003-004 | Unit | `slack-actions.ts` | ✅ reaction triggers same merge flow |
+**Contract Mapping:**
+- `specs/003-slack/contracts/bolt-events.md` → `app_mention` → `src/server/slack-agent.ts`
 
-#### Done When
-- Tap ✅ Merge in Slack → PR actually merged via `gh`
-- Tap 🔄 Retry → ship re-dispatched
-- React with ✅ emoji → same as tapping Merge
-- Every button tap posts confirmation or error (no silent failures)
-
----
-
-### Phase 2: Status from Slack — `/gwrk status`
-
-Wire `/gwrk status` to the plan DAG (018). This is the principal engineer's "what's going on?" from their phone.
-
-**Files (2):**
-- `src/server/slack-commands.ts` (MODIFY: Wire `status` handler to call `PlanStore.getStatus()` and format as Block Kit. Current handler queries dispatch queue which is mostly empty.)
-- `src/server/slack-home.ts` (MODIFY: Home tab shows plan DAG status, pending blessings queue, active ships. Replace the current data-dump sections with actionable information.)
-
-**Foxtrot Charlie Contract:**
-- `/gwrk status` → Plan DAG summary: features by status (SHIPPED/IN_PROGRESS/READY/BLOCKED), active ships, pending PRs
-- Home tab → Same info + pending blessings (specs/plans awaiting approval)
-
-**Requirements Addressed:** FR-004, FR-008, US-004, US-007
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| decision-forge | Invoked via mentions for architectural queries |
+| architecture-stress-test | Invoked via mentions for plan/spec reviews |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-003-005 | Unit | `slack-commands.ts` | `status` handler returns plan DAG Block Kit |
-| TR-003-006 | Unit | `slack-home.ts` | Home tab includes plan status section |
+| TR-016 | Integration | `src/server/slack-agent.test.ts` | Mentioning @gwrk in thread returns contextual response using project metadata |
+| TR-017 | Integration | `src/server/slack-agent.test.ts` | Agent maintains context across 3+ messages in the same thread |
 
 #### Done When
-- `/gwrk status` → Block Kit response with plan DAG summary
-- Home tab shows: features by status, active ships, pending blessings
-- Response arrives within 3 seconds
+- `@gwrk what is the status of 003?` in Slack returns a coherent summary of the Slack feature.
+- `@gwrk help me think through the plugin system` triggers a thinking mode response.
 
 ---
 
-### Phase 3: Ship from Slack — `/gwrk ship`
+### Phase 3: Webhook Hardening & Topology (P1)
 
-Dispatch a ship run from Slack. This is the "start work from my phone" interaction.
+Harden the notification path for Cloud environments (Codex Cloud) and enforce the two-tier channel topology (ops vs. project).
 
-**Files (2):**
-- `src/server/slack-commands.ts` (MODIFY: Wire `ship` handler to spawn `gwrk ship <feature> <phase>` as background subprocess, acknowledge immediately)
-- `src/server/slack-commands.ts` (MODIFY: Wire `approve` handler to call `gh pr merge` with PR lookup from execution ledger)
+**Files (3):**
+- `src/utils/slack-webhook.ts` (NEW: Extracted webhook logic for use in ship loop without Fastify)
+- `src/server/slack-notify.ts` (MODIFY: Refine routing logic to respect `opsChannelId`)
+- `src/commands/ship.ts` (MODIFY: Ensure ship loop uses `SLACK_WEBHOOK_URL` directly if set)
 
-**Foxtrot Charlie Contract:**
-- `/gwrk ship 006 1` → "🚀 Dispatching 006-pulse phase 1..." → ship runs in background
-- `/gwrk approve 002 3` → "PR #31 merged ✅"
+**Requirements Addressed:** US-010, US-013, FR-013, FR-014
 
-**Requirements Addressed:** FR-004, FR-012, US-004, US-012
+**Dependencies:** F004 (Ship Loop)
+
+**Contract Mapping:**
+- `specs/003-slack/contracts/notify.md` → `notifySlack` → `src/server/slack-notify.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| workspace.md | Environment variable security (WEBHOOK_URL) |
 
 #### Test Strategy
 | TR-### | Test type | Target | Assertion |
 |---|---|---|---|
-| TR-003-007 | Unit | `slack-commands.ts` | `ship` handler spawns subprocess |
-| TR-003-008 | Unit | `slack-commands.ts` | `ship` handler acknowledges immediately |
-| TR-003-009 | Unit | `slack-commands.ts` | `approve` handler calls `gh pr merge` |
+| TR-011 | Integration | `src/server/routes/notify.test.ts` | Webhook fallback works when build server is unreachable |
+| TR-005 | Unit | `src/server/slack-messages.test.ts` | `doneDone` and `pulse` route to `opsChannelId` |
 
 #### Done When
-- `/gwrk ship 006 1` → acknowledgment → ship starts → progress posted
-- `/gwrk approve 002 3` → PR merged → confirmation
+- Running `SLACK_WEBHOOK_URL=... gwrk ship 003 1` posts to Slack even if the build server is offline.
+- Pulse summary appears in `#gwrk-ops` while phase updates appear in `#gwrk-dev`.
 
 ---
 
-### Phase 4: Bless the Definition — Spec/Plan Approval
+## Type Dependency Graph
 
-When `gwrk define spec` or `gwrk define plan` completes, notify Slack so the PE can approve without opening a laptop.
+| Shared Type | Defined In | Consumed By |
+|---|---|---|
+| SlackMessage | `src/server/slack-messages.ts` | notify.ts, slack-notify.ts, slack-agent.ts |
+| NotifyPayload | `src/server/types.ts` | notify.ts, slack-notify.ts |
+| SlackProjectConfig | `src/utils/config.ts` | init.ts, setup-slack.ts, slack-notify.ts |
 
-**Prerequisite**: 002 Phase 4 (define event bridge) must be complete.
+---
 
-**Files (2):**
-- `src/server/slack-actions.ts` (MODIFY: Add `approve_spec` and `approve_plan` handlers that update plan DAG status)
-- `src/server/slack-messages.ts` (MODIFY: Add `specReady` and `planReady` message builders with Approve/Revise buttons)
+## Mockup-to-Selector Mapping
 
-**Foxtrot Charlie Contract:**
-| Event | Pillar | Message | Primary CTA |
-|-------|--------|---------|-------------|
-| `define:spec:ready` | P2 Definition | "📐 Spec Ready: {feature}" | `[✅ Approve]` |
-| `define:plan:ready` | P2 Definition | "📐 Plan Ready: {feature} — {N} phases" | `[✅ Approve]` |
+_No mockups exist for this feature._
 
-**Requirements Addressed:** US-003 (extended to Definition pillar)
+---
 
-#### Test Strategy
-| TR-### | Test type | Target | Assertion |
+## Deferred Items
+
+| Spec Item | Title | Reason | Target |
 |---|---|---|---|
-| TR-003-010 | Unit | `slack-actions.ts` | `approve_spec` updates plan DAG |
-| TR-003-011 | Unit | `slack-messages.ts` | `specReady` Block Kit has Approve button |
-
-#### Done When
-- Spec completes → Slack: "📐 Spec Ready" with `[✅ Approve]`
-- Tap Approve → plan DAG updated
-- Same for plan approval
+| US-009 | Setup Verification | Combined with US-008. | US-008 |
+| DM-006 | DUT Thread State | Deferred to 009-agent-dut. | F009 |
 
 ---
 
-### Phase 5: Message Hygiene — Kill the Noise
+## Coverage Matrix
 
-Remove messages that don't have a bless action. Tighten the interaction contract.
-
-**Files (2):**
-- `src/server/slack-messages.ts` (MODIFY: Remove `phaseStart` builder — user started it, they know)
-- `src/server/slack-messages.ts` (MODIFY: Remove `phaseComplete` standalone — fold into `reviewReady`)
-- `src/server/slack-presence.ts` (MODIFY: Replace raw `batchedSummary` with actionable pending-blessings summary)
-
-**Killed messages:**
-- ❌ `phaseStart` — PE started it, they know
-- ❌ `phaseComplete` without PR — redundant with `reviewReady`
-- ❌ `ciResult` standalone — fold into ship:complete or ship:failed
-- ❌ `batchedSummary` raw event list — replace with pending-blessings on return
-
-**Requirements Addressed:** Foxtrot Charlie interaction contract enforcement
-
-#### Done When
-- Ship start → no Slack message
-- Ship complete → exactly one message with one CTA
-- Return from away → pending blessings summary, not raw event dump
-
----
-
-## Build Plan Integration
-
-After spec approval, generate tasks and ship:
-
-```bash
-gwrk plan next              # 003 should appear as ready
-gwrk ship 003 1             # Ship Phase 1
-# Slack: "🚢 Shipped: 003-slack phase 1 — PR #N"
-# Tap ✅ Merge (from Slack!)
-gwrk ship 003 2             # Ship Phase 2
-# ...
-```
-
-The goal is that by Phase 3, you're shipping from Slack itself.
-
----
-
-## Success Criteria
-
-1. **Merge from phone**: Tap ✅ → PR merged → confirmed in 5 seconds
-2. **Ship from phone**: `/gwrk ship` → ship runs → progress posted
-3. **Status from phone**: `/gwrk status` → plan DAG summary
-4. **Zero noise**: Only messages with bless actions. No FYI spam.
-5. **Bless model**: Every message maps to one Foxtrot Charlie pillar with one primary CTA
+| Spec Item | Phase | Status |
+|---|---|---|
+| US-014 (Define from Slack) | 1 | PLANNED |
+| FR-015 (define slash command) | 1 | PLANNED |
+| FR-016 (define event bridge) | 1 | PLANNED |
+| US-015 (Conversational Agent) | 2 | PLANNED |
+| FR-006 (Mentions) | 2 | PLANNED |
+| FR-017 (Skills in Slack) | 2 | PLANNED |
+| US-010 (Ship loop notify bridge) | 3 | PLANNED |
+| FR-014 (Webhook-first) | 3 | PLANNED |
+| US-013 (Multi-channel topology) | 3 | PLANNED |
+| FR-013 (opsChannelId) | 3 | PLANNED |
+| DM-004 (Notify Payload) | 1, 3 | PLANNED |
+| TR-013 (Define slash test) | 1 | PLANNED |
+| TR-014 (Define message test) | 1 | PLANNED |
+| TR-015 (Define action test) | 1 | PLANNED |
+| TR-016 (Agent mention test) | 2 | PLANNED |
+| TR-017 (Thread context test) | 2 | PLANNED |
+| SC-010 (Define from Slack SC) | 1 | PLANNED |
+| SC-011 (Approve spec/plan SC) | 1 | PLANNED |
+| SC-012 (Conversational SC) | 2 | PLANNED |
+| VR-009 (E2E Define) | 1 | PLANNED |
+| VR-010 (E2E Approve spec) | 1 | PLANNED |
