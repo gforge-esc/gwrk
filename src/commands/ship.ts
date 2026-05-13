@@ -386,6 +386,7 @@ Examples:
     "--resume-from <stage>",
     "Resume from a specific stage (BRANCH_SETUP, IMPLEMENT, etc.)",
   )
+  .option("--force", "Force ship even if phase is already complete")
   .action(
     async (
       featureArg: string,
@@ -515,22 +516,53 @@ Examples:
 
         // Determine which phases to ship
         let phases: string[];
+        const specDir = path.join(cwd, "specs", feature);
+        const taskState = loadTaskState(specDir);
+
         if (phase) {
+          const phaseId = `phase-${phase.padStart(2, "0")}`;
+          const phaseData = taskState.phases.find((p) => p.id === phaseId);
+          if (phaseData && isPhaseComplete(phaseData)) {
+            if (!opts.force) {
+              console.error(`${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`);
+              process.exitCode = 1;
+              return;
+            }
+            // If forcing, clear orchestrator state and reopen tasks
+            const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
+            if (fs.existsSync(statePath)) {
+              fs.unlinkSync(statePath);
+            }
+            for (const t of phaseData.tasks) {
+              t.status = "open";
+            }
+            saveTaskState(specDir, taskState);
+            console.log(`${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`);
+          }
           phases = [phase];
         } else {
-          const specDir = path.join(cwd, "specs", feature);
-          const taskState = loadTaskState(specDir);
           const allPhases = taskState.phases.map((p) =>
             p.id.replace("phase-", ""),
           );
 
           // FR-014: Skip phases where all tasks are terminal (completed or cancelled)
           phases = allPhases.filter((phaseNum) => {
-            const phaseData = taskState.phases.find(
-              (p) => p.id === `phase-${phaseNum.padStart(2, "0")}`,
-            );
+            const phaseId = `phase-${phaseNum.padStart(2, "0")}`;
+            const phaseData = taskState.phases.find((p) => p.id === phaseId);
             if (!phaseData) return true;
             if (isPhaseComplete(phaseData)) {
+              if (opts.force) {
+                const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
+                if (fs.existsSync(statePath)) {
+                  fs.unlinkSync(statePath);
+                }
+                for (const t of phaseData.tasks) {
+                  t.status = "open";
+                }
+                saveTaskState(specDir, taskState);
+                console.log(`${YELLOW}⚠${RESET} Force mode: resetting Phase ${phaseNum} tasks to open`);
+                return true;
+              }
               console.log(
                 `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
               );
