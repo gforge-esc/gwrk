@@ -242,7 +242,7 @@ describe("shipCommand", () => {
 
   it("FR-008, US-008: should exit 1 with BLOCKED message if no test files found for phase", async () => {
     // Modify loadTaskState mock to return a task with a source file but no tests
-    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+    const mockState = {
       featureId: "004-ship-loop",
       createdAt: new Date().toISOString(),
       generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
@@ -262,7 +262,8 @@ describe("shipCommand", () => {
           doneWhen: [],
         },
       ],
-    });
+    };
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce(mockState as any).mockReturnValueOnce(mockState as any);
 
     // Ensure fs.existsSync returns false for the corresponding test file but true for others
     const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
