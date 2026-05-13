@@ -109,6 +109,25 @@ describe("specifyCommand", () => {
     );
   });
 
+  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12)", async () => {
+    // Create existing spec for rework mode
+    const specDir = path.join(tempDir, "specs", "014-plugin-system");
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(path.join(specDir, "spec.md"), "# Existing spec");
+
+    await program.parseAsync(
+      ["node", "test", "spec", "014-plugin-system", "Rework"],
+    );
+
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-specify",
+      expect.anything(),
+      expect.objectContaining({
+        quiet: true,
+      }),
+    );
+  });
+
   // TODO: Pre-existing failure — withSignal catches "path argument must be string"
   // before executeWorkflow runs. Likely a Commander + async action timing issue.
   it.todo("should dispatch workflow in new mode with prompt");

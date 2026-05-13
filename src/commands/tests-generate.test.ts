@@ -89,6 +89,23 @@ describe("testsGenerateCommand", () => {
     );
   });
 
+  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12)", async () => {
+    mockExecuteWorkflow.mockImplementation(async () => {
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+      return { summary: "Success", intents: [], summaries: [] };
+    });
+
+    await program.parseAsync(["node", "test", "tests", "test-feature"]);
+
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-define-tests",
+      expect.anything(),
+      expect.objectContaining({
+        quiet: true,
+      }),
+    );
+  });
+
   it("should pass phase context when --phase is provided", async () => {
     mockExecuteWorkflow.mockImplementation(async () => {
       fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { dispatchToAgent } from "../utils/agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
-import { WorkflowRuntime } from "./workflow-runtime.js";
+import { WorkflowRuntime, extractJsonFromOutput } from "./workflow-runtime.js";
 
 /**
  * Phase 4 - WorkflowRuntime (Layer 2.5 - F014-R)
@@ -153,6 +153,45 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
       expect(result.intents[0].action).toBe("WRITE_FILE");
     });
 
+    it("US-026/FR-029: SHOULD tolerate prose-only output if agent committed work natively (Phase 12)", async () => {
+      // Simulate agent that did native work (commit) but returned prose
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        exitCode: 0,
+        stdout: "I have updated the spec and plan. Everything looks good.",
+        stderr: "",
+        durationS: 1,
+      });
+
+      // This should NOT throw in the new Phase 12 implementation
+      const result = await runtime.executeWorkflow(
+        "gwrk-specify",
+        "Update the spec",
+      );
+      expect(result.summary).toContain("completed successfully");
+      expect(result.intents).toEqual([]);
+    });
+
+    it("FR-028: SHOULD pass quiet: true to dispatchToAgent (Phase 12)", async () => {
+      (
+        dispatchToAgent as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({ summary: "ok", intents: [] }),
+        stderr: "",
+        durationS: 1,
+      });
+
+      await runtime.executeWorkflow("gwrk-specify", "Quiet please", { quiet: true });
+
+      expect(dispatchToAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quiet: true,
+        }),
+      );
+    });
+
     it("FR-L25-001: SHOULD validate agent output against the workflow's outputSchema", async () => {
       (
         dispatchToAgent as unknown as ReturnType<typeof vi.fn>
@@ -256,14 +295,6 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
 });
 
 describe("extractJsonFromOutput", () => {
-  // Import the function directly (it's exported)
-  let extractJsonFromOutput: (stdout: string) => unknown;
-
-  beforeEach(async () => {
-    const mod = await import("./workflow-runtime.js");
-    extractJsonFromOutput = mod.extractJsonFromOutput;
-  });
-
   it("should extract JSON from markdown code fences", () => {
     const stdout = `I will review the code now.
 \`\`\`json

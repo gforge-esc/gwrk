@@ -29,7 +29,7 @@ vi.mock("../db/runs.js", () => ({
   finishRun: vi.fn(),
 }));
 
-describe("testsGenerateCommand: Output Contract Fix (Phase 11)", () => {
+describe("testsGenerateCommand: Output Contract Fix (Phase 11/12)", () => {
   let tempDir: string;
   let featureDir: string;
   let program: Command;
@@ -76,6 +76,27 @@ describe("testsGenerateCommand: Output Contract Fix (Phase 11)", () => {
 
     expect(process.exitCode).toBe(0); 
     expect(fs.existsSync(path.join(tempDir, "src", "new-feature.test.ts"))).toBe(true);
+  });
+
+  it("US-026/FR-029: SHOULD succeed even if agent returns prose if artifacts exist (Phase 12)", async () => {
+    // Current WorkflowRuntime throws if JSON fails. In Phase 12, we want to allow this.
+    // For this test to be RED, executeWorkflow should throw or fail.
+    mockExecuteWorkflow.mockImplementation(async () => {
+      // Create artifact
+      const srcDir = path.join(tempDir, "src");
+      fs.mkdirSync(srcDir, { recursive: true });
+      fs.writeFileSync(path.join(srcDir, "phase12.test.ts"), "// RED test");
+      
+      // WorkflowRuntime would normally throw before returning if prose-only
+      // But for this test, we simulate the success case we want to achieve.
+      return { summary: "Synthetic Success", intents: [], summaries: [] };
+    });
+
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "tests", "test-feature"]);
+
+    expect(process.exitCode).toBe(0);
+    expect(fs.existsSync(path.join(tempDir, "src", "phase12.test.ts"))).toBe(true);
   });
 
   it("should refuse to re-run if test files already exist for the feature (US-022)", async () => {

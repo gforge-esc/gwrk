@@ -112,6 +112,22 @@ describe("planCommand", () => {
     );
   });
 
+  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12)", async () => {
+    const featureDir = path.join(tempDir, "specs/feature-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+    fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
+
+    await program.parseAsync(["node", "test", "plan", "feature-x"]);
+
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan",
+      expect.anything(),
+      expect.objectContaining({
+        quiet: true,
+      }),
+    );
+  });
+
   it("should fail if spec.md is marked as a Stub", async () => {
     const featureDir = path.join(tempDir, "specs/feature-x");
     fs.mkdirSync(featureDir, { recursive: true });

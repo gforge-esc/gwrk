@@ -107,6 +107,20 @@ describe("tasks-generate (FR-002, US-002, ADR-005)", () => {
     expect(fs.existsSync(path.join(specDir, ".gwrk", "tasks.json"))).toBe(true);
   });
 
+  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime during gate authoring (Phase 12)", async () => {
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    await program.parseAsync(["node", "test", "tasks", "001-cli-core", "--force"]);
+    
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-author-gates",
+      expect.anything(),
+      expect.objectContaining({
+        quiet: true,
+      }),
+    );
+  });
+
   it("TR-010: should preserve # AUTHORED gates even with --force", async () => {
     const specDir = path.join(tempDir, "specs", "001-cli-core");
     const gatesDir = path.join(specDir, "gates");
