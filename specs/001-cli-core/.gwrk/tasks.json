@@ -4,66 +4,72 @@
   "generatedFrom": {
     "plan": {
       "hash": "829512fc456f09fab9d0c15938c3506b60dfa49541e0aed9feaa55e04b5ccabb",
-      "modifiedAt": "2026-05-13T22:30:40.756Z"
+      "modifiedAt": "2026-05-14T12:55:46.953Z"
     }
   },
   "phases": [
     {
       "id": "phase-01",
-      "title": "Project Bootstrap & Config ✅",
+      "title": "Project Bootstrap & Config \u2705",
       "tasks": [
         {
           "id": "T001",
           "title": "Implement package.json",
           "description": "Implement changes for package.json",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.427Z",
           "classification": "change"
         },
         {
           "id": "T002",
           "title": "Implement tsconfig.json",
           "description": "Implement changes for tsconfig.json",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.441Z",
           "classification": "change"
         },
         {
           "id": "T003",
           "title": "Implement src/cli.ts",
           "description": "Implement changes for src/cli.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.452Z",
           "classification": "greenfield"
         },
         {
           "id": "T004",
           "title": "Implement src/commands/init.ts",
           "description": "Implement changes for src/commands/init.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.463Z",
           "classification": "greenfield"
         },
         {
           "id": "T005",
           "title": "Implement src/utils/config.ts",
           "description": "Implement changes for src/utils/config.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.473Z",
           "classification": "greenfield"
         },
         {
           "id": "T006",
           "title": "Implement src/utils/format.ts",
           "description": "Implement changes for src/utils/format.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.484Z",
           "classification": "greenfield"
         }
       ],
@@ -72,42 +78,46 @@
     },
     {
       "id": "phase-02",
-      "title": "SQLite Execution Ledger ✅",
+      "title": "SQLite Execution Ledger \u2705",
       "tasks": [
         {
           "id": "T007",
           "title": "Implement src/db/index.ts",
           "description": "Implement changes for src/db/index.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.494Z",
           "classification": "greenfield"
         },
         {
           "id": "T008",
           "title": "Implement src/db/migrations/001-initial.sql",
           "description": "Implement changes for src/db/migrations/001-initial.sql",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.503Z",
           "classification": "greenfield"
         },
         {
           "id": "T009",
           "title": "Implement src/db/runs.ts",
           "description": "Implement changes for src/db/runs.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.515Z",
           "classification": "greenfield"
         },
         {
           "id": "T010",
           "title": "Implement src/commands/db.ts",
           "description": "Implement changes for src/commands/db.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.526Z",
           "classification": "greenfield"
         }
       ],
@@ -116,78 +126,86 @@
     },
     {
       "id": "phase-03",
-      "title": "Clarity Pillar — Define ✅",
+      "title": "Clarity Pillar \u2014 Define \u2705",
       "tasks": [
         {
           "id": "T011",
           "title": "Implement src/commands/define.ts",
           "description": "Implement changes for src/commands/define.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.538Z",
           "classification": "greenfield"
         },
         {
           "id": "T012",
           "title": "Implement src/commands/specify.ts",
           "description": "Implement changes for src/commands/specify.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.548Z",
           "classification": "greenfield"
         },
         {
           "id": "T013",
           "title": "Implement src/commands/plan.ts",
           "description": "Implement changes for src/commands/plan.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.558Z",
           "classification": "greenfield"
         },
         {
           "id": "T014",
           "title": "Implement src/commands/analyze.ts",
           "description": "Implement changes for src/commands/analyze.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.565Z",
           "classification": "greenfield"
         },
         {
           "id": "T015",
           "title": "Implement src/commands/tasks-generate.ts",
           "description": "Implement changes for src/commands/tasks-generate.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.574Z",
           "classification": "greenfield"
         },
         {
           "id": "T016",
           "title": "Implement src/utils/agent.ts",
           "description": "Implement changes for src/utils/agent.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.584Z",
           "classification": "greenfield"
         },
         {
           "id": "T017",
           "title": "Implement src/utils/parser.ts",
           "description": "Implement changes for src/utils/parser.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.593Z",
           "classification": "greenfield"
         },
         {
           "id": "T018",
           "title": "Implement src/utils/exec.ts",
           "description": "Implement changes for src/utils/exec.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.602Z",
           "classification": "greenfield"
         }
       ],
@@ -196,24 +214,26 @@
     },
     {
       "id": "phase-04",
-      "title": "Throughput Pillar — Ship ✅",
+      "title": "Throughput Pillar \u2014 Ship \u2705",
       "tasks": [
         {
           "id": "T019",
           "title": "Implement src/commands/ship.ts",
           "description": "Implement changes for src/commands/ship.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.612Z",
           "classification": "greenfield"
         },
         {
           "id": "T020",
           "title": "Implement src/commands/implement.ts",
           "description": "Implement changes for src/commands/implement.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.623Z",
           "classification": "greenfield"
         }
       ],
@@ -222,42 +242,46 @@
     },
     {
       "id": "phase-05",
-      "title": "Task Engine — State, Gates & History ✅",
+      "title": "Task Engine \u2014 State, Gates & History \u2705",
       "tasks": [
         {
           "id": "T021",
           "title": "Implement src/commands/tasks.ts",
           "description": "Implement changes for src/commands/tasks.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.633Z",
           "classification": "greenfield"
         },
         {
           "id": "T022",
           "title": "Implement src/utils/state.ts",
           "description": "Implement changes for src/utils/state.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.643Z",
           "classification": "greenfield"
         },
         {
           "id": "T023",
           "title": "Implement src/utils/gate-gen.ts",
           "description": "Implement changes for src/utils/gate-gen.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.652Z",
           "classification": "greenfield"
         },
         {
           "id": "T024",
           "title": "Implement src/utils/history.ts",
           "description": "Implement changes for src/utils/history.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.662Z",
           "classification": "greenfield"
         }
       ],
@@ -266,69 +290,76 @@
     },
     {
       "id": "phase-06",
-      "title": "Value Pillar — Measure ✅",
+      "title": "Value Pillar \u2014 Measure \u2705",
       "tasks": [
         {
           "id": "T025",
           "title": "Implement src/commands/measure.ts",
           "description": "Implement changes for src/commands/measure.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.672Z",
           "classification": "greenfield"
         },
         {
           "id": "T026",
           "title": "Implement src/commands/pulse.ts",
           "description": "Implement changes for src/commands/pulse.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T026-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.682Z",
           "classification": "greenfield"
         },
         {
           "id": "T027",
           "title": "Implement src/commands/effort.ts",
           "description": "Implement changes for src/commands/effort.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T027-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.691Z",
           "classification": "greenfield"
         },
         {
           "id": "T028",
           "title": "Implement src/commands/compression.ts",
           "description": "Implement changes for src/commands/compression.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T028-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.701Z",
           "classification": "greenfield"
         },
         {
           "id": "T029",
           "title": "Implement src/engine/pulse.ts",
           "description": "Implement changes for src/engine/pulse.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T029-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.711Z",
           "classification": "greenfield"
         },
         {
           "id": "T030",
           "title": "Implement src/engine/effort.ts",
           "description": "Implement changes for src/engine/effort.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T030-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.719Z",
           "classification": "greenfield"
         },
         {
           "id": "T031",
           "title": "Implement src/engine/compression.ts",
           "description": "Implement changes for src/engine/compression.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T031-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.728Z",
           "classification": "greenfield"
         }
       ],
@@ -337,112 +368,121 @@
     },
     {
       "id": "phase-07",
-      "title": "Init Hardening ✅",
+      "title": "Init Hardening \u2705",
       "tasks": [
         {
           "id": "T032",
           "title": "Implement src/commands/init.ts",
           "description": "Implement changes for src/commands/init.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T032-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.736Z",
           "classification": "greenfield"
         },
         {
           "id": "T033",
           "title": "Implement src/commands/new.ts",
           "description": "Implement changes for src/commands/new.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.743Z",
           "classification": "greenfield"
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
-        "`gwrk init` registers project in `~/.gwrk/gwrk.db` ✅",
-        "`gwrk new test-project` creates dir, initializes git, runs init ✅",
-        "Running `gwrk init` twice is idempotent ✅"
+        "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md \u2705",
+        "`gwrk init` registers project in `~/.gwrk/gwrk.db` \u2705",
+        "`gwrk new test-project` creates dir, initializes git, runs init \u2705",
+        "Running `gwrk init` twice is idempotent \u2705"
       ]
     },
     {
       "id": "phase-08",
-      "title": "E2E Surface Hardening ✅",
+      "title": "E2E Surface Hardening \u2705",
       "tasks": [
         {
           "id": "T034",
           "title": "Implement src/commands/run.ts",
           "description": "Implement changes for src/commands/run.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T034-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.750Z",
           "classification": "greenfield"
         },
         {
           "id": "T035",
           "title": "Implement src/commands/metrics.ts",
           "description": "Implement changes for src/commands/metrics.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T035-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:21.756Z",
           "classification": "greenfield"
         },
         {
           "id": "T036",
           "title": "Implement src/cli.e2e.test.ts",
           "description": "Implement changes for src/cli.e2e.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T036-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.265Z",
           "classification": "greenfield"
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "All dead files removed ✅",
-        "`pnpm test` — all passing (verified CLI core tests) ✅",
-        "`gwrk --help` output matches spec US-018 acceptance criteria exactly ✅"
+        "All dead files removed \u2705",
+        "`pnpm test` \u2014 all passing (verified CLI core tests) \u2705",
+        "`gwrk --help` output matches spec US-018 acceptance criteria exactly \u2705"
       ]
     },
     {
       "id": "phase-09",
-      "title": "State Contract — Execution Manifests & Merge Safety",
+      "title": "State Contract \u2014 Execution Manifests & Merge Safety",
       "tasks": [
         {
           "id": "T037",
           "title": "Implement src/utils/manifest.ts",
           "description": "NEW",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T037-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.278Z",
           "classification": "greenfield"
         },
         {
           "id": "T038",
           "title": "Implement src/commands/tasks.ts",
           "description": "MODIFY",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T038-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.288Z",
           "classification": "greenfield"
         },
         {
           "id": "T039",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T039-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.297Z",
           "classification": "greenfield"
         },
         {
           "id": "T040",
           "title": "Implement src/commands/define.ts",
           "description": "MODIFY",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T040-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.305Z",
           "classification": "greenfield"
         }
       ],
@@ -456,13 +496,13 @@
     },
     {
       "id": "phase-10",
-      "title": "Workstation Setup — `gwrk setup`",
+      "title": "Workstation Setup \u2014 `gwrk setup`",
       "tasks": [
         {
           "id": "T041",
           "title": "Implement src/commands/setup.ts",
-          "description": "NEW",
-          "status": "open",
+          "description": "NEW [DEFERRED: setup merged into init per daily-driver audit]",
+          "status": "deferred",
           "gateScript": "gates/T041-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -471,16 +511,17 @@
           "id": "T042",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.318Z",
           "classification": "greenfield"
         },
         {
           "id": "T043",
           "title": "Implement src/utils/setup-state.ts",
-          "description": "NEW",
-          "status": "open",
+          "description": "NEW [DEFERRED: setup merged into init per daily-driver audit]",
+          "status": "deferred",
           "gateScript": "gates/T043-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -498,114 +539,126 @@
     },
     {
       "id": "phase-11",
-      "title": "CLI UX Polish ✅",
+      "title": "CLI UX Polish \u2705",
       "tasks": [
         {
           "id": "T044",
           "title": "Implement src/commands/ship.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY \u2014 Add Examples to help text",
+          "status": "completed",
           "gateScript": "gates/T044-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.332Z",
           "classification": "greenfield"
         },
         {
           "id": "T045",
           "title": "Implement src/commands/define.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY \u2014 Add Examples to help text",
+          "status": "completed",
           "gateScript": "gates/T045-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.340Z",
           "classification": "greenfield"
         },
         {
           "id": "T046",
           "title": "Implement src/commands/tasks.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY \u2014 Add Examples to help text",
+          "status": "completed",
           "gateScript": "gates/T046-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.348Z",
           "classification": "greenfield"
         },
         {
           "id": "T047",
           "title": "Implement src/commands/measure.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY \u2014 Add Examples to help text",
+          "status": "completed",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.355Z",
           "classification": "greenfield"
         },
         {
           "id": "T048",
           "title": "Implement src/commands/db.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY \u2014 Add Examples to help text",
+          "status": "completed",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.363Z",
           "classification": "greenfield"
         },
         {
           "id": "T049",
           "title": "Implement src/commands/test.ts",
-          "description": "MODIFY — Add Examples to help text",
-          "status": "open",
+          "description": "MODIFY \u2014 Add Examples to help text",
+          "status": "completed",
           "gateScript": "gates/T049-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.371Z",
           "classification": "greenfield"
         },
         {
           "id": "T050",
           "title": "Implement src/commands/define-plan.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "open",
+          "description": "MODIFY \u2014 Add resolveFeature for prefix aliasing",
+          "status": "completed",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.380Z",
           "classification": "greenfield"
         },
         {
           "id": "T051",
           "title": "Implement src/commands/tests-generate.ts",
-          "description": "MODIFY — Add resolveFeature + relax output contract",
-          "status": "open",
+          "description": "MODIFY \u2014 Add resolveFeature + relax output contract",
+          "status": "completed",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.388Z",
           "classification": "greenfield"
         },
         {
           "id": "T052",
           "title": "Implement src/commands/runs.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "open",
+          "description": "MODIFY \u2014 Add resolveFeature for prefix aliasing",
+          "status": "completed",
           "gateScript": "gates/T052-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.397Z",
           "classification": "greenfield"
         },
         {
           "id": "T053",
           "title": "Implement src/commands/harvest.ts",
-          "description": "MODIFY — Add resolveFeature for prefix aliasing",
-          "status": "open",
+          "description": "MODIFY \u2014 Add resolveFeature for prefix aliasing",
+          "status": "completed",
           "gateScript": "gates/T053-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.406Z",
           "classification": "greenfield"
         },
         {
           "id": "T054",
           "title": "Implement src/commands/gate.ts",
-          "description": "✅ Already done — Examples added 2026-05-07",
-          "status": "open",
+          "description": "\u2705 Already done \u2014 Examples added 2026-05-07",
+          "status": "completed",
           "gateScript": "gates/T054-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.414Z",
           "classification": "greenfield"
         },
         {
           "id": "T055",
           "title": "Implement docs/governance/cli-grammar.md",
-          "description": "NEW — Canonical CLI grammar standard",
-          "status": "open",
+          "description": "NEW \u2014 Canonical CLI grammar standard",
+          "status": "completed",
           "gateScript": "gates/T055-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T22:37:24.422Z",
           "classification": "greenfield"
         }
       ],
@@ -617,7 +670,7 @@
         "`gwrk db runs 001` resolves to `001-cli-core` (prefix aliasing works)",
         "`gwrk define tests` no longer fails when agent produces test files instead of gap-matrix.md",
         "`docs/governance/cli-grammar.md` exists with canonical grammar, rules, and command inventory",
-        "`project gates` remains removed (✅ verified)",
+        "`project gates` remains removed (\u2705 verified)",
         "`pnpm build` compiles clean, `pnpm test` all passing"
       ]
     },
@@ -628,62 +681,62 @@
         {
           "id": "T056",
           "title": "Implement src/commands/tests-generate.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/tests-generate.ts:126-132\n  EXPECTED: runtime.executeWorkflow(\"gwrk-define-tests\", input, { agent: backend, projectRoot, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T071-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "completed",
           "gateScript": "gates/T056-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T12:53:50.778Z",
+          "completedAt": "2026-05-14T22:37:24.431Z",
           "classification": "greenfield"
         },
         {
           "id": "T057",
           "title": "Implement src/commands/specify.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/specify.ts\n  EXPECTED: runtime.executeWorkflow(\"gwrk-specify\", effectivePrompt, { agent: backend, projectRoot: cwd, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T072-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "completed",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T12:53:50.782Z",
+          "completedAt": "2026-05-14T22:37:24.439Z",
           "classification": "greenfield"
         },
         {
           "id": "T058",
           "title": "Implement src/commands/define-plan.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/define-plan.ts\n  EXPECTED: runtime.executeWorkflow(\"gwrk-plan\", input, { agent: backend, projectRoot, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T073-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "completed",
           "gateScript": "gates/T058-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T12:53:50.788Z",
+          "completedAt": "2026-05-14T22:37:24.447Z",
           "classification": "greenfield"
         },
         {
           "id": "T059",
           "title": "Implement src/commands/tasks-generate.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/tasks-generate.ts:435-442\n  EXPECTED: runtime.executeWorkflow(\"gwrk-author-gates\", input, { agent: backend, projectRoot, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T074-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "completed",
           "gateScript": "gates/T059-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T12:53:50.800Z",
+          "completedAt": "2026-05-14T22:37:24.454Z",
           "classification": "greenfield"
         },
         {
           "id": "T060",
           "title": "Implement src/plugins/workflow-runtime.ts",
-          "description": "MODIFY: Make `extractJsonFromOutput(\n\nREVIEW FAIL (code): missing tolerant parsing — FR-029.\n  WHERE: src/plugins/workflow-runtime.ts\n  EXPECTED: extractJsonFromOutput should be tolerant and executeWorkflow should handle prose-only success with committed artifacts.\n  ACTUAL: extractJsonFromOutput throws on missing JSON; executeWorkflow does not check for committed artifacts.\n  FIX: Update extractJsonFromOutput to return undefined instead of throwing when JSON is not found. Update executeWorkflow to check for native work (files changed) when JSON parsing fails.\n  GATE: gates/T075-gate.sh, gates/T076-gate.sh assertion #1 (vitest FR-029)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
-          "status": "open",
+          "description": "MODIFY: Make `extractJsonFromOutput(",
+          "status": "completed",
           "gateScript": "gates/T060-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T12:53:50.831Z",
+          "completedAt": "2026-05-14T22:37:24.462Z",
           "classification": "greenfield"
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`gwrk define tests 003 --force` runs with quiet spinner output (no agent narration in terminal) ✅",
-        "Agent that commits tests natively but returns prose → exit 0 (not exit 1) ✅",
-        "Full agent output in `.runs/` log file for debugging ✅",
-        "`gwrk define spec 001` runs with quiet spinner output ✅",
-        "`gwrk define plan 001` runs with quiet spinner output ✅",
-        "`pnpm build` compiles clean, `pnpm test` all passing ✅"
+        "`gwrk define tests 003 --force` runs with quiet spinner output (no agent narration in terminal)",
+        "Agent that commits tests natively but returns prose \u2192 exit 0 (not exit 1)",
+        "Full agent output in `.runs/` log file for debugging",
+        "`gwrk define spec 001` runs with quiet spinner output",
+        "`gwrk define plan 001` runs with quiet spinner output",
+        "`pnpm build` compiles clean, `pnpm test` all passing"
       ]
     }
   ]

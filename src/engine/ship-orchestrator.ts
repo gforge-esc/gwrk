@@ -27,6 +27,8 @@ import {
   type ShipState,
   type StageResult,
 } from "./ship-types.js";
+import { harvestFeature } from "./harvest.js";
+import type { HarvestRecord } from "./types.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -192,6 +194,24 @@ export class ShipOrchestrator extends EventEmitter {
 
       this.emit("plan:ship:complete", eventData);
       this.emit("ship:complete", eventData);
+
+      // Close the loop: harvest finalizes logs, DB, gates, tasks, compression, Slack
+      try {
+        const record: HarvestRecord = {
+          featureId: this.config.featureId,
+          phaseId: this.config.phaseId,
+          prNumber: 0,
+          prUrl: "",
+          mergeCommitSha: "local-ship",
+          mergedAt: new Date().toISOString(),
+          mergedBy: "gwrk-ship",
+          status: "merged",
+        };
+        await harvestFeature(this.config.cwd, record);
+      } catch (err) {
+        console.warn(`Harvest failed (non-fatal): ${err}`);
+      }
+
       return 0;
     }
 

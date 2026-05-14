@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T050 — Implement src/commands/db.ts (Phase 11 update)
+# Gate: T050 — Implement src/commands/define-plan.ts (resolveFeature)
 
-test -f src/commands/db.ts \
-  || { echo "FAIL: T050 — file not found: src/commands/db.ts" >&2; exit 1; }
+test -f src/commands/define-plan.ts \
+  || { echo "FAIL: T050 — file not found: src/commands/define-plan.ts" >&2; exit 1; }
 
-grep -q 'statsCommand' src/commands/db.ts \
-  || { echo "FAIL: T050 — src/commands/db.ts missing 'statsCommand'" >&2; exit 1; }
+grep -q "resolveFeature" src/commands/define-plan.ts \
+  || { echo "FAIL: T050 — src/commands/define-plan.ts missing 'resolveFeature'" >&2; exit 1; }
 
-echo "PASS: T050 — Implement src/commands/db.ts (stats)"
+echo "PASS: T050 — Implement src/commands/define-plan.ts (resolveFeature)"

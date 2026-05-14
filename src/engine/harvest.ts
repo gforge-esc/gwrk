@@ -6,6 +6,7 @@ import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { parsePlan } from "../utils/parser.js";
 import { computeCompression, gatherDeliveryActuals } from "./compression.js";
+import { reconcileGates } from "./reconcile-gates.js";
 import { resolveRoleMultipliers } from "./roles.js";
 import type {
   CompressionReport,
@@ -134,6 +135,20 @@ export async function harvestFeature(
     console.warn(
       `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}`,
     );
+  }
+
+  // 2.5 Gate Reconciliation — run gates, persist evidence, update tasks.json
+  if (phaseId) {
+    try {
+      const result = await reconcileGates(projectPath, featureId, phaseId);
+      console.log(
+        `Gate reconciliation: ${result.passed}/${result.total} passed` +
+          (result.deferred > 0 ? ` (${result.deferred} deferred)` : ""),
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`Gate reconciliation failed (non-fatal): ${msg}`);
+    }
   }
 
   let report: CompressionReport | undefined;
