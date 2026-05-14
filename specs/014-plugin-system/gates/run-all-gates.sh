@@ -19,7 +19,7 @@ echo "────────────────────────�
 for gate in $GATES; do
     TOTAL=$((TOTAL + 1))
     echo -n "▸ $(basename "$gate")... "
-    if "$gate" > /dev/null 2>&1; then
+    if bash "$gate" > /dev/null 2>&1; then
         echo "✅ PASS"; PASSED=$((PASSED + 1))
     else
         echo "❌ FAIL"; FAILED=$((FAILED + 1))

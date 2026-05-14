@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// Module does not exist yet (RED) — Phase 9: tasks verify implementation pending
 import { tasksCommand } from "./tasks.js";
 import { writeManifest } from "../utils/manifest.js";
 import { CommandError } from "../utils/signal.js";

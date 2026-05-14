@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appendHistory } from "./history.js";
+// Module does not exist yet (RED) — Phase 9: history.jsonl deprecation pending
 import { recordHistory } from "../db/runs.js";
 
 vi.mock("../db/runs.js", () => ({

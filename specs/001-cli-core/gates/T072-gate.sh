@@ -8,6 +8,6 @@ set -euo pipefail
 pnpm build \
   || { echo "FAIL: T072 — pnpm build failed. Fix TypeScript compilation errors." >&2; exit 1; }
 
-pnpm vitest run src/commands/specify.test.ts --grep "FR-028" --reporter=verbose
+pnpm vitest run src/commands/specify.test.ts -t "FR-028" --reporter=verbose
 
 echo "PASS: T072 — vitest verification complete"
