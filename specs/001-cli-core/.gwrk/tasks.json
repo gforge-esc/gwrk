@@ -499,15 +499,6 @@
       "title": "Workstation Setup \u2014 `gwrk setup`",
       "tasks": [
         {
-          "id": "T041",
-          "title": "Implement src/commands/setup.ts",
-          "description": "NEW [DEFERRED: setup merged into init per daily-driver audit]",
-          "status": "deferred",
-          "gateScript": "gates/T041-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
           "id": "T042",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY",
@@ -515,15 +506,6 @@
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-14T22:37:24.318Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T043",
-          "title": "Implement src/utils/setup-state.ts",
-          "description": "NEW [DEFERRED: setup merged into init per daily-driver audit]",
-          "status": "deferred",
-          "gateScript": "gates/T043-gate.sh",
-          "sp": 0,
           "classification": "greenfield"
         }
       ],

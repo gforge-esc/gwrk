@@ -6,7 +6,6 @@ import { type TaskState, loadTaskState, saveTaskState } from "../utils/state.js"
 export interface ReconcileResult {
   passed: number;
   failed: number;
-  deferred: number;
   total: number;
 }
 
@@ -29,7 +28,7 @@ export async function reconcileGates(
     taskState = loadTaskState(featureDir);
   } catch {
     // No tasks.json — nothing to reconcile
-    return { passed: 0, failed: 0, deferred: 0, total: 0 };
+    return { passed: 0, failed: 0, total: 0 };
   }
 
   const targetPhases = phaseId
@@ -38,14 +37,12 @@ export async function reconcileGates(
 
   let passed = 0;
   let failed = 0;
-  let deferred = 0;
   let total = 0;
 
   for (const phase of targetPhases) {
     for (const task of phase.tasks) {
-      // Skip deferred/cancelled tasks — they're intentionally excluded
-      if (task.status === "deferred" || task.status === "cancelled") {
-        deferred++;
+      // Skip cancelled tasks
+      if (task.status === "cancelled") {
         total++;
         continue;
       }
@@ -83,5 +80,5 @@ export async function reconcileGates(
   // Save updated task state
   saveTaskState(featureDir, taskState);
 
-  return { passed, failed, deferred, total };
+  return { passed, failed, total };
 }

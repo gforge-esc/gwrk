@@ -61,7 +61,6 @@ export const implementAction = async (
       for (const task of phaseData.tasks) {
         if (task.status === "completed") continue;
         if (task.status === "cancelled") continue;
-        if (task.status === "deferred") continue;
 
         const gatePath = path.join(specDir, "gates", `${task.id}-gate.sh`);
 

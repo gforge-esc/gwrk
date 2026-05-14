@@ -388,8 +388,8 @@ Examples:
           const phaseResults: GateCheckResult[] = [];
 
           for (const task of phase.tasks) {
-            // Skip deferred/cancelled tasks — they're intentionally excluded
-            if (task.status === "deferred" || task.status === "cancelled") {
+            // Skip cancelled tasks
+            if (task.status === "cancelled") {
               if (!out.isJson) {
                 console.log(
                   `  ${color.DIM}▸${color.RESET} ${task.id}... ${color.YELLOW}⊘ SKIP (${task.status})${color.RESET}`,

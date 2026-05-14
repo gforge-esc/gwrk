@@ -7,7 +7,6 @@ const TaskStatusSchema = z.enum([
   "open",
   "in_progress",
   "completed",
-  "deferred",
   "cancelled",
 ]);
 
