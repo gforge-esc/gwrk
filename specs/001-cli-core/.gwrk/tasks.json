@@ -628,46 +628,51 @@
         {
           "id": "T056",
           "title": "Implement src/commands/tests-generate.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/tests-generate.ts:126-132\n  EXPECTED: runtime.executeWorkflow(\"gwrk-define-tests\", input, { agent: backend, projectRoot, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T071-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
+          "status": "completed",
           "gateScript": "gates/T056-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T00:12:36.340Z",
           "classification": "greenfield"
         },
         {
           "id": "T057",
           "title": "Implement src/commands/specify.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/specify.ts\n  EXPECTED: runtime.executeWorkflow(\"gwrk-specify\", effectivePrompt, { agent: backend, projectRoot: cwd, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T072-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
+          "status": "completed",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T00:12:36.345Z",
           "classification": "greenfield"
         },
         {
           "id": "T058",
           "title": "Implement src/commands/define-plan.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/define-plan.ts\n  EXPECTED: runtime.executeWorkflow(\"gwrk-plan\", input, { agent: backend, projectRoot, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T073-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
+          "status": "completed",
           "gateScript": "gates/T058-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T00:12:36.348Z",
           "classification": "greenfield"
         },
         {
           "id": "T059",
           "title": "Implement src/commands/tasks-generate.ts",
-          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
-          "status": "open",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(\n\nREVIEW FAIL (code): missing quiet: true — FR-028.\n  WHERE: src/commands/tasks-generate.ts:435-442\n  EXPECTED: runtime.executeWorkflow(\"gwrk-author-gates\", input, { agent: backend, projectRoot, quiet: true })\n  ACTUAL: quiet: true is missing from options object.\n  FIX: Add quiet: true to the executeWorkflow options.\n  GATE: gates/T074-gate.sh assertion #1 (vitest FR-028)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
+          "status": "completed",
           "gateScript": "gates/T059-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T00:12:36.352Z",
           "classification": "greenfield"
         },
         {
           "id": "T060",
           "title": "Implement src/plugins/workflow-runtime.ts",
-          "description": "MODIFY: Make `extractJsonFromOutput(",
-          "status": "open",
+          "description": "MODIFY: Make `extractJsonFromOutput(\n\nREVIEW FAIL (code): missing tolerant parsing — FR-029.\n  WHERE: src/plugins/workflow-runtime.ts\n  EXPECTED: extractJsonFromOutput should be tolerant and executeWorkflow should handle prose-only success with committed artifacts.\n  ACTUAL: extractJsonFromOutput throws on missing JSON; executeWorkflow does not check for committed artifacts.\n  FIX: Update extractJsonFromOutput to return undefined instead of throwing when JSON is not found. Update executeWorkflow to check for native work (files changed) when JSON parsing fails.\n  GATE: gates/T075-gate.sh, gates/T076-gate.sh assertion #1 (vitest FR-029)\n  REF: plan.md Phase 12 > Define Pillar Output Parity",
+          "status": "completed",
           "gateScript": "gates/T060-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-14T00:12:36.356Z",
           "classification": "greenfield"
         }
       ],
