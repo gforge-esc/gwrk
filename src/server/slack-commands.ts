@@ -682,14 +682,70 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: ":warning: Feature ID is required. Usage: `/gwrk define <featureId>`",
+              text: ":warning: Feature ID is required. Usage: `/gwrk define <featureId> [spec|plan|tasks|tests]`\nExample: `/gwrk define 003 spec`",
             },
           },
         ],
       };
     }
 
-    throw new Error("Not implemented: define command");
+    // args[1] is optional subcommand: spec|plan|tasks|tests (default: spec)
+    const subcommand = args[1] || "spec";
+    const validSubs = ["spec", "plan", "tasks", "tests"];
+    if (!validSubs.includes(subcommand)) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:warning: Invalid define subcommand: \`${subcommand}\`. Use: spec, plan, tasks, tests`,
+            },
+          },
+        ],
+      };
+    }
+
+    try {
+      const resolved = resolveFeature(featureId, context.projectRoot);
+
+      // Spawn gwrk define <sub> <feature> as background process
+      const child = spawn("gwrk", ["define", subcommand, resolved], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      return {
+        response_type: "in_channel",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `📋 Dispatching *define ${subcommand}* for *${resolved}*... Progress will be posted here.`,
+            },
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:warning: Error: ${errorMessage}`,
+            },
+          },
+        ],
+      };
+    }
   },
 };
 
@@ -707,7 +763,7 @@ export async function handleSlashCommand(
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "Available commands: `status`, `dispatch`, `approve`, `reject`, `pause`, `pulse`, `effort`, `logs`, `ship`",
+            text: "Available commands: `status`, `dispatch`, `approve`, `reject`, `pause`, `pulse`, `effort`, `logs`, `ship`, `define`",
           },
         },
       ],
