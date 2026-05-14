@@ -81,6 +81,7 @@ Examples:
         const result = await runtime.executeWorkflow("gwrk-plan", input, {
           agent: backend,
           projectRoot,
+          quiet: true,
         });
 
         const durationS = Math.round((Date.now() - startTime) / 1000);

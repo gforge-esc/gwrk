@@ -423,6 +423,7 @@ Examples:
                   {
                     agent: backend,
                     projectRoot,
+                    quiet: true,
                   },
                 );
 

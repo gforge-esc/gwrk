@@ -106,6 +106,7 @@ Examples:
             {
               agent: backend,
               projectRoot: cwd,
+              quiet: true,
             },
           );
 

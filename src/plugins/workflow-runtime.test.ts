@@ -192,7 +192,7 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
       );
     });
 
-    it("FR-L25-001: SHOULD validate agent output against the workflow's outputSchema", async () => {
+    it("FR-L25-001/FR-029: SHOULD return synthetic success when agent exits 0 with prose (tolerant mode)", async () => {
       (
         dispatchToAgent as unknown as ReturnType<typeof vi.fn>
       ).mockResolvedValue({
@@ -202,9 +202,10 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
         durationS: 1,
       });
 
-      await expect(
-        runtime.executeWorkflow("gwrk-specify", "invalid-output"),
-      ).rejects.toThrow(/Workflow output failed schema constraint/);
+      // FR-029: exitCode 0 + prose = tolerant mode → synthetic success
+      const result = await runtime.executeWorkflow("gwrk-specify", "invalid-output");
+      expect(result.summary).toContain("completed successfully");
+      expect(result.intents).toEqual([]);
     });
 
     it("FR-L25-001: SHOULD reject output missing required properties from outputSchema", async () => {

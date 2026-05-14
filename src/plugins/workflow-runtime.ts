@@ -252,6 +252,19 @@ export class WorkflowRuntime {
     try {
       parsedOutput = extractJsonFromOutput(result.stdout);
     } catch (e) {
+      // FR-029: Tolerate agents that do native work and return prose.
+      // If the agent exited 0, treat prose output as synthetic success.
+      if (result.exitCode === 0) {
+        const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
+        console.warn(
+          `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,
+        );
+        return {
+          summary: `Agent completed successfully (native execution, no JSON intents)`,
+          intents: [],
+          summaries: [],
+        };
+      }
       // Truncate raw output in error — full output is in the log file
       const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
       throw new Error(
