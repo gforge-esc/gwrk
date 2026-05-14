@@ -1,10 +1,10 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-05-13T20:49:08.226Z",
+  "createdAt": "2026-05-13T23:59:17.709Z",
   "generatedFrom": {
     "plan": {
-      "hash": "4626ad1288d2bdc75c4eda2d439b50eea8f3879cbc6e09e273750ca555e49906",
-      "modifiedAt": "2026-05-13T15:45:17.626Z"
+      "hash": "829512fc456f09fab9d0c15938c3506b60dfa49541e0aed9feaa55e04b5ccabb",
+      "modifiedAt": "2026-05-13T22:30:40.756Z"
     }
   },
   "phases": [
@@ -618,6 +618,66 @@
         "`gwrk define tests` no longer fails when agent produces test files instead of gap-matrix.md",
         "`docs/governance/cli-grammar.md` exists with canonical grammar, rules, and command inventory",
         "`project gates` remains removed (✅ verified)",
+        "`pnpm build` compiles clean, `pnpm test` all passing"
+      ]
+    },
+    {
+      "id": "phase-12",
+      "title": "Define Pillar Output Parity",
+      "tasks": [
+        {
+          "id": "T056",
+          "title": "Implement src/commands/tests-generate.ts",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "open",
+          "gateScript": "gates/T056-gate.sh",
+          "sp": 0,
+          "classification": "greenfield"
+        },
+        {
+          "id": "T057",
+          "title": "Implement src/commands/specify.ts",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "open",
+          "gateScript": "gates/T057-gate.sh",
+          "sp": 0,
+          "classification": "greenfield"
+        },
+        {
+          "id": "T058",
+          "title": "Implement src/commands/define-plan.ts",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "open",
+          "gateScript": "gates/T058-gate.sh",
+          "sp": 0,
+          "classification": "greenfield"
+        },
+        {
+          "id": "T059",
+          "title": "Implement src/commands/tasks-generate.ts",
+          "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+          "status": "open",
+          "gateScript": "gates/T059-gate.sh",
+          "sp": 0,
+          "classification": "greenfield"
+        },
+        {
+          "id": "T060",
+          "title": "Implement src/plugins/workflow-runtime.ts",
+          "description": "MODIFY: Make `extractJsonFromOutput(",
+          "status": "open",
+          "gateScript": "gates/T060-gate.sh",
+          "sp": 0,
+          "classification": "greenfield"
+        }
+      ],
+      "sp_estimate": 0,
+      "doneWhen": [
+        "`gwrk define tests 003 --force` runs with quiet spinner output (no agent narration in terminal)",
+        "Agent that commits tests natively but returns prose → exit 0 (not exit 1)",
+        "Full agent output in `.runs/` log file for debugging",
+        "`gwrk define spec 001` runs with quiet spinner output",
+        "`gwrk define plan 001` runs with quiet spinner output",
         "`pnpm build` compiles clean, `pnpm test` all passing"
       ]
     }

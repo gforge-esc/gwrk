@@ -565,6 +565,68 @@
       "identifiers": [],
       "doneWhenCommands": [],
       "contractRefs": []
+    },
+    {
+      "taskId": "T056",
+      "title": "Implement src/commands/tests-generate.ts",
+      "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+      "primaryFile": "src/commands/tests-generate.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "executeWorkflow"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T057",
+      "title": "Implement src/commands/specify.ts",
+      "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+      "primaryFile": "src/commands/specify.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "executeWorkflow"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T058",
+      "title": "Implement src/commands/define-plan.ts",
+      "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+      "primaryFile": "src/commands/define-plan.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "executeWorkflow"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T059",
+      "title": "Implement src/commands/tasks-generate.ts",
+      "description": "MODIFY: Pass `quiet: true` to `runtime.executeWorkflow(",
+      "primaryFile": "src/commands/tasks-generate.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "executeWorkflow"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/tasks.md"
+      ]
+    },
+    {
+      "taskId": "T060",
+      "title": "Implement src/plugins/workflow-runtime.ts",
+      "description": "MODIFY: Make `extractJsonFromOutput(",
+      "primaryFile": "src/plugins/workflow-runtime.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "extractJsonFromOutput"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
     }
   ]
 }
