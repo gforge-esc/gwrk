@@ -148,10 +148,11 @@ describe("slack-commands", () => {
     const { spawn } = await import("node:child_process");
     const response = await handleSlashCommand("define 003-slack", context);
     expect(response.response_type).toBe("in_channel");
-    expect(response.blocks[0].text.text).toContain("Defining *003-slack*");
+    expect(response.blocks[0].text.text).toContain("define spec");
+    expect(response.blocks[0].text.text).toContain("003-slack");
     expect(spawn).toHaveBeenCalledWith(
       "gwrk",
-      ["define", "003-slack"],
+      ["define", "spec", "003-slack"],
       expect.objectContaining({ cwd: "/tmp", detached: true }),
     );
   });
@@ -170,14 +171,17 @@ describe("slack-commands", () => {
 
   it("returns help for empty command — includes ship", async () => {
     const response = await handleSlashCommand("", context);
-    expect(response.blocks[0].text.text).toContain("ship");
-    expect(response.blocks[0].text.text).toContain("Available commands");
+    expect(response.blocks[0].text.text).toContain("gwrk");
+    const helpText = response.blocks[1].text.text;
+    expect(helpText).toContain("ship");
+    expect(helpText).toContain("define");
+    expect(helpText).toContain("status");
   });
 
   it("returns error for unknown command", async () => {
     const response = await handleSlashCommand("unknown", context);
     expect(response.blocks[0].text.text).toContain(
-      "Unknown subcommand: `unknown`",
+      "Unknown command: `unknown`",
     );
   });
 });
