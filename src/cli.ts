@@ -11,6 +11,7 @@ import { planCommand } from "./commands/plan.js";
 import { pluginCommand } from "./commands/plugin.js";
 import { projectCommand } from "./commands/project.js";
 import { serverCommand } from "./commands/server.js";
+import { setupCommand } from "./commands/setup.js";
 import { setupSlackCommand } from "./commands/setup-slack.js";
 import { shipCommand } from "./commands/ship.js";
 import { skillCommand } from "./commands/skill.js";
@@ -28,9 +29,7 @@ export const program = new Command();
 program.exitOverride();
 program.enablePositionalOptions();
 
-const setupCommand = new Command("setup")
-  .description("Configure gwrk integrations")
-  .addCommand(setupSlackCommand);
+setupCommand.addCommand(setupSlackCommand);
 
 program
   .name("gwrk")
@@ -105,8 +104,6 @@ program
       return out;
     },
   });
-
-// ... (existing imports)
 
 program.addCommand(initCommand);
 program.addCommand(projectCommand);
