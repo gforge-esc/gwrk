@@ -90,13 +90,17 @@ Assertion patterns by file type (all use `|| { echo "FAIL: ..." >&2; exit 1; }` 
   pnpm vitest run {file} --reporter=verbose \
     || { echo "FAIL: {taskId} — vitest failed for {file}" >&2; exit 1; }
   ```
-- **typescript** (`*.ts`):
+- **typescript** (`*.ts`) — MUST use behavioral verification from gap-matrix:
   ```bash
-  test -f {file} \
-    || { echo "FAIL: {taskId} — file not found: {file}" >&2; exit 1; }
-  grep -q '{identifier}' {file} \
-    || { echo "FAIL: {taskId} — {file} missing '{identifier}'" >&2; exit 1; }
+  # Find the test file mapped in gap-matrix.md for this source file
+  # e.g., src/utils/manifest.ts → src/utils/manifest.test.ts
+  pnpm vitest run {testFile} --reporter=verbose \
+    || { echo "FAIL: {taskId} — vitest failed for {testFile}" >&2; exit 1; }
+  pnpm biome check {file} --no-errors-on-unmatched \
+    || { echo "FAIL: {taskId} — lint errors in {file}" >&2; exit 1; }
   ```
+  > **WARNING**: `test -f` + `grep` is PROHIBITED for typescript gates. File-existence
+  > checks produce hollow gates that pass against stubs. Use vitest + biome.
 - **shell** (`*.sh`):
   ```bash
   test -f {file} \
@@ -136,8 +140,9 @@ If a task genuinely cannot be gated (no file, no identifiers, no contract), the 
 - This is honest failure, not a stub.
 
 `test -f` alone is NEVER acceptable as a sole assertion.
+`test -f` + `grep` is NEVER acceptable for TypeScript source files — use vitest + biome.
 
-Grep assertion safety rules:
+Grep assertion safety rules (for shell, markdown, json, config gates ONLY):
 - NEVER grep for content that spans multiple lines — find a distinctive single-line substring instead
 - NEVER use regex metacharacters unless required — prefer `grep -q` over `grep -qE`
 - For functions that take arguments, grep for the function NAME only: `grep -q 'emit_event'`, NOT `grep -q 'emit_event "CIRCUIT_BREAK: ..."'`
@@ -147,25 +152,23 @@ Grep assertion safety rules:
 - If a grep fails when you test it, fix the pattern — do not write a gate you haven't verified
 </gate_rules>
 
-### 5. Self-verify each gate
+### 5. Self-verify each gate (syntax only)
 
-After writing all gate scripts, run each one and fix any that fail:
+After writing all gate scripts, verify they have correct bash syntax:
 // turbo
 ```bash
 for gate in {feature_dir}/gates/T*-gate.sh; do
-  if ! bash "$gate" > /dev/null 2>&1; then
-    echo "FAILED: $(basename $gate)"
+  if ! bash -n "$gate" 2>&1; then
+    echo "SYNTAX ERROR: $(basename $gate)"
   fi
 done
 ```
 
-For each FAILED gate:
-1. Run `bash -x {gate}` to identify the exact failing assertion line
-2. Re-read the source file the assertion targets
-3. Fix the grep/test pattern to match the actual source content
-4. Re-run the gate to confirm it passes
-
-Repeat until all gates pass. A gate that fails self-verification is a defective gate — it MUST be fixed before proceeding.
+> [!CAUTION]
+> Do NOT run gates and "fix them until they pass." That produces born-green gates
+> that verify nothing. Gates for unimplemented features SHOULD fail. A failing gate
+> is honest — it means the work isn't done. Only fix syntax errors, never fix
+> assertions to match existing (possibly incomplete) code.
 
 ### 6. Preserve existing authored gates
 // turbo

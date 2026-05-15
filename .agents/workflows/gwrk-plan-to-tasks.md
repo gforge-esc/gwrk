@@ -134,16 +134,19 @@ Gates MUST exit 0 on pass, non-zero on fail. Also generate `gates/run-all-gates.
 
 <gate_generation_rules>
 For each task:
-1. Identify the contract method(s) it implements.
-2. Generate a `grep -q` or `jq -e` assertion against the implementation file.
-3. Assert the EXACT type signature, not just that a function exists.
-4. For each `## Files to Modify` entry:
-   - Assert the **Target state** is present (not just that the file exists)
+1. Check the gap-matrix.md for the test file(s) mapped to this task's FR/US/TR.
+2. Generate a composite gate that runs:
+   - `pnpm vitest run <test-file> --grep "<AC>" --reporter=verbose` for behavioral verification
+   - `pnpm biome check <source-file> --no-errors-on-unmatched` for lint hygiene
+3. For non-TypeScript tasks (shell, markdown, config), use the appropriate assertion pattern from `gwrk-author-gates.md`.
+4. **PROHIBITED**: `test -f` + `grep` as the sole assertion for TypeScript files. This produces hollow gates that pass against stubs.
 5. **Number every assertion sequentially** with a comment `# Assertion #1`, `# Assertion #2`, etc.
    This is MANDATORY so `/review-code` can reference SPECIFIC failures in its GATE field:
    `gates/T012-gate.sh assertion #3`
 6. **Generate `gates/run-all-gates.sh`** — a runner that executes all `T*-gate.sh` scripts
    in order and reports pass/fail counts. `/review-code` Step 5 depends on this file existing.
+7. Gates for unimplemented work SHOULD fail (RED). Do NOT weaken assertions to make gates pass.
+   A failing gate is honest signal — it means the work isn't done yet.
 </gate_generation_rules>
 
 ### 8. Make Gates Executable

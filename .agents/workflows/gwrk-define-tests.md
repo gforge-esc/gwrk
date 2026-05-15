@@ -187,7 +187,7 @@ Format:
 Rules:
 - One row per FR-###, US-###, or TR-### in this phase
 - Test Exists = ✅ if the test file was created, ❌ if deferred
-- Gate column left empty (filled by `define tasks`)
+- Gate column: leave empty — `define tasks` auto-populates it by matching test files to task primary files via `generateVitestGates()`
 - Every row with ❌ must have a comment explaining why it was deferred
 
 > [!CAUTION]

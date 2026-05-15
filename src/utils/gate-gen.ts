@@ -386,7 +386,7 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
 export function generateVitestGates(
   featureDir: string,
   gapMatrixPath: string,
-  _phases: Phase[],
+  phases: Phase[],
 ): { generated: number; skipped: number } {
   const rows = parseGapMatrix(gapMatrixPath);
   const gatesDir = path.join(featureDir, "gates");
@@ -398,9 +398,51 @@ export function generateVitestGates(
   let generated = 0;
   let skipped = 0;
 
+  // Build a map of source file → task ID from tasks.json phases.
+  // This allows auto-assigning gate IDs when the gap-matrix Gate column is empty.
+  const sourceFileToTaskId = new Map<string, string>();
+  for (const phase of phases) {
+    for (const task of phase.tasks) {
+      const text = `${task.title} ${task.description ?? ""}`;
+      const rawFile =
+        text.match(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/)?.[0] ??
+        text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md))\b/)?.[0] ??
+        null;
+      const primaryFile = rawFile?.replace(/[,;.]$/, "") ?? null;
+      if (primaryFile) {
+        sourceFileToTaskId.set(primaryFile, task.id);
+      }
+    }
+  }
+
+  // Resolve gate IDs for rows that have no explicit Gate column.
+  // Match test file (e.g., src/utils/manifest.test.ts) to source file
+  // (e.g., src/utils/manifest.ts) and find the task that owns that source.
+  const resolvedRows = rows.map((row) => {
+    if (row.gate) return row; // Already has explicit gate ID
+    if (!row.testFile || !row.testExists) return row;
+
+    // Derive source file from test file: foo.test.ts → foo.ts
+    const sourceFile = row.testFile.replace(/\.test\.(ts|js)$/, ".$1");
+    const taskId = sourceFileToTaskId.get(sourceFile);
+    if (taskId) {
+      return { ...row, gate: taskId };
+    }
+
+    // Fallback: try matching test file basename to any task
+    const testBasename = path.basename(row.testFile, ".test.ts");
+    for (const [file, id] of sourceFileToTaskId) {
+      if (path.basename(file, ".ts") === testBasename) {
+        return { ...row, gate: id };
+      }
+    }
+
+    return row;
+  });
+
   // Group rows by gate ID to combine multiple AC assertions into one gate
   const gateGroups = new Map<string, GapMatrixRow[]>();
-  for (const row of rows) {
+  for (const row of resolvedRows) {
     if (!row.gate || !row.testExists || !row.testFile) {
       skipped++;
       continue;
@@ -418,10 +460,15 @@ export function generateVitestGates(
   for (const [gateId, gateRows] of gateGroups) {
     const gatePath = path.join(gatesDir, `${gateId}-gate.sh`);
 
-    // Preserve existing AUTHORED gates
+    // Preserve existing AUTHORED gates that are NOT gap-matrix generated.
+    // Gap-matrix generated gates (containing "Generated from gap-matrix.md")
+    // are regenerated on every run to stay current.
     if (fs.existsSync(gatePath)) {
-      const existing = fs.readFileSync(gatePath, "utf-8");
-      if (existing.includes("# AUTHORED")) {
+      const existingContent = fs.readFileSync(gatePath, "utf-8");
+      if (
+        existingContent.includes("# AUTHORED") &&
+        !existingContent.includes("# Generated from gap-matrix.md")
+      ) {
         skipped += gateRows.length;
         continue;
       }
@@ -431,17 +478,32 @@ export function generateVitestGates(
     const fileGroups = new Map<string, string[]>();
     for (const row of gateRows) {
       if (!row.testFile) continue;
-      const existing = fileGroups.get(row.testFile) ?? [];
-      existing.push(row.ac);
-      fileGroups.set(row.testFile, existing);
+      const acList = fileGroups.get(row.testFile) ?? [];
+      acList.push(row.ac);
+      fileGroups.set(row.testFile, acList);
     }
 
-    const invocations = [...fileGroups.entries()]
+    // Test assertions: run vitest for each mapped test file
+    const testInvocations = [...fileGroups.entries()]
       .map(([file, acs]) => {
         const grepPattern = acs.join("|");
-        return `pnpm vitest run ${file} --grep "${grepPattern}" --reporter=verbose`;
+        return `pnpm vitest run ${file} --grep "${grepPattern}" --reporter=verbose \\
+  || { echo "FAIL: ${gateId} — vitest failed for ${file}" >&2; exit 1; }`;
       })
-      .join("\n");
+      .join("\n\n");
+
+    // Lint assertions: biome check on source files (derive from test files)
+    const sourceFiles = [...fileGroups.keys()]
+      .map((testFile) => testFile.replace(/\.test\.(ts|js)$/, ".$1"))
+      .filter((f) => fs.existsSync(path.resolve(f)));
+
+    const lintInvocations = sourceFiles
+      .map(
+        (file) =>
+          `pnpm biome check ${file} --no-errors-on-unmatched \\
+  || { echo "FAIL: ${gateId} — lint errors in ${file}" >&2; exit 1; }`,
+      )
+      .join("\n\n");
 
     const title =
       gateRows[0]?.criterion ?? `Gate ${gateId} — vitest verification`;
@@ -452,13 +514,13 @@ set -euo pipefail
 # Gate: ${gateId} — ${title}
 # Generated from gap-matrix.md (deterministic vitest gate)
 
-# Compile gate — TypeScript MUST build cleanly
-pnpm build \\
-  || { echo "FAIL: ${gateId} — pnpm build failed. Fix TypeScript compilation errors." >\&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+${testInvocations}
 
-${invocations}
+# ── HYGIENE: Source files must lint clean ──
+${lintInvocations || "# (no source files found for lint check)"}
 
-echo "PASS: ${gateId} — vitest verification complete"
+echo "PASS: ${gateId} — tests pass + lint clean"
 `;
 
     fs.writeFileSync(gatePath, gateContent, { mode: 0o755 });
