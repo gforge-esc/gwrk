@@ -94,11 +94,55 @@ describe("slack-actions", () => {
     );
   });
 
-  // TODO: Implement approve_spec action handler in slack-actions.ts (currently throws "Not implemented")
-  it.todo("handles approve_spec action — spawns background define plan (FR-015)");
+  it("handles approve_spec action — RED (Not implemented)", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [{ value: JSON.stringify({ featureId: "002-build-server" }) }],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
 
-  // TODO: Implement approve_plan action handler in slack-actions.ts (currently throws "Not implemented")
-  it.todo("handles approve_plan action — spawns background tasks and updates state (FR-015)");
+    await actionHandlers.approve_spec({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(client.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Approved spec"),
+      }),
+    );
+  });
+
+  it("handles approve_plan action — RED (Not implemented)", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [{ value: JSON.stringify({ featureId: "002-build-server" }) }],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
+
+    await actionHandlers.approve_plan({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(client.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Approved plan"),
+      }),
+    );
+  });
 
   it("handles merge_pr action — calls gh pr merge with PR from runs table", async () => {
     const { execSync } = await import("node:child_process");

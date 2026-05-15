@@ -21,8 +21,15 @@ See `.agents/rules/operating-model.md` for Foxtrot Charlie principles and RAGB d
 
 ## Specification Workflow
 - **Spec-First**: No implementation proceeds without an approved `spec.md` and `plan.md`.
+- **Define Pipeline** (strict order — each step requires the previous):
+    1. `gwrk define spec <feature>` → `spec.md`
+    2. `gwrk define plan <feature>` → `plan.md`
+    3. `gwrk define tests <feature>` → RED test files + `gap-matrix.md`
+    4. `gwrk define tasks <feature>` → `tasks.json` + gate scripts (requires `gap-matrix.md`)
+    5. `gwrk ship <feature> <phase>` → implementation that turns RED tests GREEN
+- **Tests Before Tasks**: `define tasks` will refuse to run without `gap-matrix.md` from `define tests`. Tests define what done looks like. Tasks define the work to get there. Never skip or reorder.
 - **Checklist Gating**: Implementation is BLOCKED until all checklists in `FEATURE_DIR/checklists/` pass.
-- **Tasks (tasks.json)**: Execution state is tracked via `.gwrk/tasks.json`. Markdown task lists are the static design; `tasks.json` is the dynamic source of truth.
+- **Tasks (tasks.json)**: Execution state is tracked via `specs/<feature>/tasks.json`. Markdown task lists are the static design; `tasks.json` is the dynamic source of truth.
 - **RAGB Governance**:
     - 🔴 RED: At risk. Stop and flag.
     - 🟡 AMBER: In progress. Standard operating risk.
