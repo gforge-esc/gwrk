@@ -128,7 +128,7 @@ export function registerMentionHandler(
           elements: [
             {
               type: "mrkdwn",
-              text: "Commands: `@gwrk status <feature>` · `@gwrk ship <feature> <phase>` · `@gwrk define spec <feature>` · `@gwrk pulse`",
+              text: "*Ship:* `@gwrk ship <feature> <phase>` · `@gwrk define spec <feature>` · *Observe:* `@gwrk status <feature>` · `@gwrk pulse` · `@gwrk logs` · *Review:* `@gwrk approve <feature>`",
             },
           ],
         },

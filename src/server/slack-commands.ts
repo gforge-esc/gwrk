@@ -760,10 +760,37 @@ export async function handleSlashCommand(
       response_type: "ephemeral",
       blocks: [
         {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: "🦩 gwrk — Slack Commands",
+          },
+        },
+        {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "Available commands: `status`, `dispatch`, `approve`, `reject`, `pause`, `pulse`, `effort`, `logs`, `ship`, `define`",
+            text: [
+              "*Ship & Build*",
+              "  `/gwrk ship <feature> <phase>` — ship a phase (branch → implement → review → PR)",
+              "  `/gwrk define <feature> [spec|plan|tasks|tests]` — define a feature artifact",
+              "  `/gwrk dispatch <feature> <phase>` — enqueue a dispatch",
+              "",
+              "*Observe*",
+              "  `/gwrk status [feature]` — system + feature status",
+              "  `/gwrk pulse` — git velocity dashboard",
+              "  `/gwrk effort <feature>` — effort estimation",
+              "  `/gwrk logs [feature]` — latest run logs",
+              "",
+              "*Review*",
+              "  `/gwrk approve <feature>` — approve a pending review",
+              "  `/gwrk reject <feature>` — reject a pending review",
+              "  `/gwrk pause` — pause the dispatch queue",
+              "",
+              "*Mentions*",
+              "  `@gwrk <command>` — same commands, in-channel with threaded replies",
+              "  `@gwrk what's the status?` — freeform → project summary",
+            ].join("\n"),
           },
         },
       ],
@@ -779,7 +806,7 @@ export async function handleSlashCommand(
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `:warning: Unknown subcommand: \`${subcommand}\``,
+            text: `:warning: Unknown command: \`${subcommand}\`\nRun \`/gwrk\` with no arguments to see all available commands.`,
           },
         },
       ],
