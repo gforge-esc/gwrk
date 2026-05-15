@@ -240,6 +240,8 @@ serverCommand
         fs.mkdirSync(GWRK_DIR, { recursive: true });
       }
 
+      // launchd KeepAlive restarts the process if it dies during sleep.
+      // lifecycle.ts detects wake via heartbeat drift and reconnects Slack.
       const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -310,9 +312,8 @@ serverCommand
 
       execSync(`launchctl load ${PLIST_PATH}`);
       console.log("LaunchAgent loaded. Server will:");
-      console.log("  • Start on login");
-      console.log("  • Restart if it crashes");
-      console.log("  • Survive sleep/wake (macOS manages the process)");
+      console.log("  • Start on login (RunAtLoad)");
+      console.log("  • Restart on crash or wake (KeepAlive)");
       console.log(`  • Log to ${LOG_FILE}`);
       console.log("");
       console.log("Use 'gwrk server status' to verify.");
