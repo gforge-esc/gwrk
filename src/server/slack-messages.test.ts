@@ -71,9 +71,28 @@ describe("MessageBuilder", () => {
     expect(JSON.stringify(msg.blocks)).toContain("feat-2");
   });
 
-  // TODO: Implement specReady in MessageBuilder (currently throws "Not implemented")
-  it.todo("should build specReady message with buttons (FR-016)");
+  it("should build specReady message with buttons (FR-016)", () => {
+    const msg = MessageBuilder.specReady("003-slack", "specs/003-slack/spec.md");
+    expect(msg.text).toContain("Spec Ready");
+    expect(msg.text).toContain("003-slack");
+    const actions = msg.blocks.find(
+      (b) => b.type === "actions",
+    ) as ActionsBlock;
+    expect(actions.elements).toHaveLength(2);
+    expect((actions.elements[0] as any).action_id).toBe("approve_spec");
+    expect((actions.elements[1] as any).action_id).toBe("revise_spec");
+  });
 
-  // TODO: Implement planReady in MessageBuilder (currently throws "Not implemented")
-  it.todo("should build planReady message with buttons (FR-016)");
+  it("should build planReady message with buttons (FR-016)", () => {
+    const msg = MessageBuilder.planReady("003-slack", "specs/003-slack/plan.md", 5);
+    expect(msg.text).toContain("Plan Ready");
+    expect(msg.text).toContain("003-slack");
+    expect(msg.text).toContain("5 phases");
+    const actions = msg.blocks.find(
+      (b) => b.type === "actions",
+    ) as ActionsBlock;
+    expect(actions.elements).toHaveLength(2);
+    expect((actions.elements[0] as any).action_id).toBe("approve_plan");
+    expect((actions.elements[1] as any).action_id).toBe("revise_plan");
+  });
 });
