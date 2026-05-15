@@ -123,3 +123,42 @@ serverCommand
       console.log("Server force killed.");
     });
   });
+
+serverCommand
+  .command("status")
+  .description("Check if the gwrk build server is running")
+  .action(async () => {
+    await withSignal("server status", async () => {
+      const projectRoot = process.cwd();
+      const config = loadConfig(projectRoot);
+      const pid = readPid();
+
+      if (!pid || !isPidRunning(pid)) {
+        console.log("Server: not running");
+        process.exitCode = 1;
+        return;
+      }
+
+      const url = `http://${config.server.host}:${config.server.port}`;
+      console.log(`Server: running (pid: ${pid})`);
+      console.log(`Listen: ${url}`);
+
+      // Health check
+      try {
+        const resp = await fetch(`${url}/health`);
+        const data = (await resp.json()) as {
+          status?: string;
+          components?: Record<string, { status: string }>;
+        };
+        console.log(`Health: ${data.status || "unknown"}`);
+        if (data.components) {
+          for (const [name, info] of Object.entries(data.components)) {
+            const icon = info.status === "ok" ? "✓" : "✗";
+            console.log(`  ${icon} ${name}: ${info.status}`);
+          }
+        }
+      } catch {
+        console.log("Health: unreachable (port bound but not responding)");
+      }
+    });
+  });
