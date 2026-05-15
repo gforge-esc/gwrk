@@ -755,7 +755,8 @@ export async function handleSlashCommand(
 ): Promise<SlackBlockKit> {
   const [subcommand, ...args] = commandText.trim().split(/\s+/);
 
-  if (!subcommand) {
+  // "help" returns the same rich help as no subcommand
+  if (!subcommand || subcommand === "help") {
     return {
       response_type: "ephemeral",
       blocks: [

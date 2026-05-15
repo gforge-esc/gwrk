@@ -94,9 +94,11 @@ export function registerMentionHandler(
     const verb = firstWord.toLowerCase();
 
     // Route known command verbs through the existing slash command handler
-    if (COMMAND_VERBS.includes(verb)) {
+    // "help" routes as empty string to trigger the full help text
+    if (COMMAND_VERBS.includes(verb) || verb === "help") {
       try {
-        const response = await handleSlashCommand(text, context);
+        const commandText = verb === "help" ? "" : text;
+        const response = await handleSlashCommand(commandText, context);
         await say({
           thread_ts: event.ts,
           blocks: response.blocks,
