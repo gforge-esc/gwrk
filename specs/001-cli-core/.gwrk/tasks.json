@@ -1,6 +1,6 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-05-13T23:59:17.709Z",
+  "createdAt": "2026-05-15T21:51:03.838Z",
   "generatedFrom": {
     "plan": {
       "hash": "829512fc456f09fab9d0c15938c3506b60dfa49541e0aed9feaa55e04b5ccabb",
@@ -10,7 +10,7 @@
   "phases": [
     {
       "id": "phase-01",
-      "title": "Project Bootstrap & Config \u2705",
+      "title": "Project Bootstrap & Config ✅",
       "tasks": [
         {
           "id": "T001",
@@ -19,7 +19,7 @@
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.427Z",
+          "completedAt": "2026-05-15T21:54:46.799Z",
           "classification": "change"
         },
         {
@@ -29,7 +29,7 @@
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.441Z",
+          "completedAt": "2026-05-15T21:54:46.814Z",
           "classification": "change"
         },
         {
@@ -39,7 +39,7 @@
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.452Z",
+          "completedAt": "2026-05-15T21:54:46.843Z",
           "classification": "greenfield"
         },
         {
@@ -49,7 +49,7 @@
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.463Z",
+          "completedAt": "2026-05-15T21:54:46.862Z",
           "classification": "greenfield"
         },
         {
@@ -59,7 +59,7 @@
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.473Z",
+          "completedAt": "2026-05-15T21:54:46.875Z",
           "classification": "greenfield"
         },
         {
@@ -69,7 +69,7 @@
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.484Z",
+          "completedAt": "2026-05-15T21:54:46.886Z",
           "classification": "greenfield"
         }
       ],
@@ -78,7 +78,7 @@
     },
     {
       "id": "phase-02",
-      "title": "SQLite Execution Ledger \u2705",
+      "title": "SQLite Execution Ledger ✅",
       "tasks": [
         {
           "id": "T007",
@@ -87,7 +87,7 @@
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.494Z",
+          "completedAt": "2026-05-15T21:54:46.897Z",
           "classification": "greenfield"
         },
         {
@@ -97,7 +97,7 @@
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.503Z",
+          "completedAt": "2026-05-15T21:54:46.908Z",
           "classification": "greenfield"
         },
         {
@@ -107,7 +107,7 @@
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.515Z",
+          "completedAt": "2026-05-15T21:54:46.918Z",
           "classification": "greenfield"
         },
         {
@@ -117,7 +117,7 @@
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.526Z",
+          "completedAt": "2026-05-15T21:54:46.929Z",
           "classification": "greenfield"
         }
       ],
@@ -126,7 +126,7 @@
     },
     {
       "id": "phase-03",
-      "title": "Clarity Pillar \u2014 Define \u2705",
+      "title": "Clarity Pillar — Define ✅",
       "tasks": [
         {
           "id": "T011",
@@ -135,7 +135,7 @@
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.538Z",
+          "completedAt": "2026-05-15T21:54:46.939Z",
           "classification": "greenfield"
         },
         {
@@ -145,7 +145,7 @@
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.548Z",
+          "completedAt": "2026-05-15T21:54:46.949Z",
           "classification": "greenfield"
         },
         {
@@ -155,7 +155,7 @@
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.558Z",
+          "completedAt": "2026-05-15T21:54:46.959Z",
           "classification": "greenfield"
         },
         {
@@ -165,7 +165,7 @@
           "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.565Z",
+          "completedAt": "2026-05-15T21:54:46.966Z",
           "classification": "greenfield"
         },
         {
@@ -175,7 +175,7 @@
           "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.574Z",
+          "completedAt": "2026-05-15T21:54:46.975Z",
           "classification": "greenfield"
         },
         {
@@ -185,7 +185,7 @@
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.584Z",
+          "completedAt": "2026-05-15T21:54:46.986Z",
           "classification": "greenfield"
         },
         {
@@ -195,7 +195,7 @@
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.593Z",
+          "completedAt": "2026-05-15T21:54:46.995Z",
           "classification": "greenfield"
         },
         {
@@ -205,7 +205,7 @@
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.602Z",
+          "completedAt": "2026-05-15T21:54:47.004Z",
           "classification": "greenfield"
         }
       ],
@@ -214,7 +214,7 @@
     },
     {
       "id": "phase-04",
-      "title": "Throughput Pillar \u2014 Ship \u2705",
+      "title": "Throughput Pillar — Ship ✅",
       "tasks": [
         {
           "id": "T019",
@@ -223,7 +223,7 @@
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.612Z",
+          "completedAt": "2026-05-15T21:54:47.015Z",
           "classification": "greenfield"
         },
         {
@@ -233,7 +233,7 @@
           "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.623Z",
+          "completedAt": "2026-05-15T21:54:47.024Z",
           "classification": "greenfield"
         }
       ],
@@ -242,7 +242,7 @@
     },
     {
       "id": "phase-05",
-      "title": "Task Engine \u2014 State, Gates & History \u2705",
+      "title": "Task Engine — State, Gates & History ✅",
       "tasks": [
         {
           "id": "T021",
@@ -251,7 +251,7 @@
           "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.633Z",
+          "completedAt": "2026-05-15T21:54:47.034Z",
           "classification": "greenfield"
         },
         {
@@ -261,7 +261,7 @@
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.643Z",
+          "completedAt": "2026-05-15T21:54:47.044Z",
           "classification": "greenfield"
         },
         {
@@ -271,7 +271,7 @@
           "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.652Z",
+          "completedAt": "2026-05-15T21:54:47.054Z",
           "classification": "greenfield"
         },
         {
@@ -281,7 +281,7 @@
           "status": "completed",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.662Z",
+          "completedAt": "2026-05-15T21:54:47.065Z",
           "classification": "greenfield"
         }
       ],
@@ -290,7 +290,7 @@
     },
     {
       "id": "phase-06",
-      "title": "Value Pillar \u2014 Measure \u2705",
+      "title": "Value Pillar — Measure ✅",
       "tasks": [
         {
           "id": "T025",
@@ -299,7 +299,7 @@
           "status": "completed",
           "gateScript": "gates/T025-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.672Z",
+          "completedAt": "2026-05-15T21:54:47.075Z",
           "classification": "greenfield"
         },
         {
@@ -309,7 +309,7 @@
           "status": "completed",
           "gateScript": "gates/T026-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.682Z",
+          "completedAt": "2026-05-15T21:54:47.085Z",
           "classification": "greenfield"
         },
         {
@@ -319,7 +319,7 @@
           "status": "completed",
           "gateScript": "gates/T027-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.691Z",
+          "completedAt": "2026-05-15T21:54:47.095Z",
           "classification": "greenfield"
         },
         {
@@ -329,7 +329,7 @@
           "status": "completed",
           "gateScript": "gates/T028-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.701Z",
+          "completedAt": "2026-05-15T21:54:47.105Z",
           "classification": "greenfield"
         },
         {
@@ -339,7 +339,7 @@
           "status": "completed",
           "gateScript": "gates/T029-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.711Z",
+          "completedAt": "2026-05-15T21:54:47.115Z",
           "classification": "greenfield"
         },
         {
@@ -349,7 +349,7 @@
           "status": "completed",
           "gateScript": "gates/T030-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.719Z",
+          "completedAt": "2026-05-15T21:54:47.122Z",
           "classification": "greenfield"
         },
         {
@@ -359,7 +359,7 @@
           "status": "completed",
           "gateScript": "gates/T031-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.728Z",
+          "completedAt": "2026-05-15T21:54:47.132Z",
           "classification": "greenfield"
         }
       ],
@@ -368,7 +368,7 @@
     },
     {
       "id": "phase-07",
-      "title": "Init Hardening \u2705",
+      "title": "Init Hardening ✅",
       "tasks": [
         {
           "id": "T032",
@@ -377,7 +377,7 @@
           "status": "completed",
           "gateScript": "gates/T032-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.736Z",
+          "completedAt": "2026-05-15T21:54:47.140Z",
           "classification": "greenfield"
         },
         {
@@ -387,21 +387,21 @@
           "status": "completed",
           "gateScript": "gates/T033-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.743Z",
+          "completedAt": "2026-05-15T21:54:47.146Z",
           "classification": "greenfield"
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md \u2705",
-        "`gwrk init` registers project in `~/.gwrk/gwrk.db` \u2705",
-        "`gwrk new test-project` creates dir, initializes git, runs init \u2705",
-        "Running `gwrk init` twice is idempotent \u2705"
+        "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
+        "`gwrk init` registers project in `~/.gwrk/gwrk.db` ✅",
+        "`gwrk new test-project` creates dir, initializes git, runs init ✅",
+        "Running `gwrk init` twice is idempotent ✅"
       ]
     },
     {
       "id": "phase-08",
-      "title": "E2E Surface Hardening \u2705",
+      "title": "E2E Surface Hardening ✅",
       "tasks": [
         {
           "id": "T034",
@@ -410,7 +410,7 @@
           "status": "completed",
           "gateScript": "gates/T034-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.750Z",
+          "completedAt": "2026-05-15T21:54:47.152Z",
           "classification": "greenfield"
         },
         {
@@ -420,7 +420,7 @@
           "status": "completed",
           "gateScript": "gates/T035-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:21.756Z",
+          "completedAt": "2026-05-15T21:54:47.158Z",
           "classification": "greenfield"
         },
         {
@@ -430,20 +430,20 @@
           "status": "completed",
           "gateScript": "gates/T036-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.265Z",
+          "completedAt": "2026-05-15T21:54:49.594Z",
           "classification": "greenfield"
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "All dead files removed \u2705",
-        "`pnpm test` \u2014 all passing (verified CLI core tests) \u2705",
-        "`gwrk --help` output matches spec US-018 acceptance criteria exactly \u2705"
+        "All dead files removed ✅",
+        "`pnpm test` — all passing (verified CLI core tests) ✅",
+        "`gwrk --help` output matches spec US-018 acceptance criteria exactly ✅"
       ]
     },
     {
       "id": "phase-09",
-      "title": "State Contract \u2014 Execution Manifests & Merge Safety",
+      "title": "State Contract — Execution Manifests & Merge Safety",
       "tasks": [
         {
           "id": "T037",
@@ -452,7 +452,7 @@
           "status": "completed",
           "gateScript": "gates/T037-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.278Z",
+          "completedAt": "2026-05-15T21:54:49.608Z",
           "classification": "greenfield"
         },
         {
@@ -462,7 +462,7 @@
           "status": "completed",
           "gateScript": "gates/T038-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.288Z",
+          "completedAt": "2026-05-15T21:54:49.619Z",
           "classification": "greenfield"
         },
         {
@@ -472,7 +472,7 @@
           "status": "completed",
           "gateScript": "gates/T039-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.297Z",
+          "completedAt": "2026-05-15T21:54:49.629Z",
           "classification": "greenfield"
         },
         {
@@ -482,7 +482,7 @@
           "status": "completed",
           "gateScript": "gates/T040-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.305Z",
+          "completedAt": "2026-05-15T21:54:49.638Z",
           "classification": "greenfield"
         }
       ],
@@ -496,8 +496,18 @@
     },
     {
       "id": "phase-10",
-      "title": "Workstation Setup \u2014 `gwrk setup`",
+      "title": "Workstation Setup — `gwrk setup`",
       "tasks": [
+        {
+          "id": "T041",
+          "title": "Implement src/commands/setup.ts",
+          "description": "NEW",
+          "status": "completed",
+          "gateScript": "gates/T041-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T21:54:49.647Z",
+          "classification": "greenfield"
+        },
         {
           "id": "T042",
           "title": "Implement src/commands/ship.ts",
@@ -505,7 +515,17 @@
           "status": "completed",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.318Z",
+          "completedAt": "2026-05-15T21:54:49.655Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T043",
+          "title": "Implement src/utils/setup-state.ts",
+          "description": "NEW",
+          "status": "completed",
+          "gateScript": "gates/T043-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T21:54:49.668Z",
           "classification": "greenfield"
         }
       ],
@@ -521,126 +541,126 @@
     },
     {
       "id": "phase-11",
-      "title": "CLI UX Polish \u2705",
+      "title": "CLI UX Polish ✅",
       "tasks": [
         {
           "id": "T044",
           "title": "Implement src/commands/ship.ts",
-          "description": "MODIFY \u2014 Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text",
           "status": "completed",
           "gateScript": "gates/T044-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.332Z",
+          "completedAt": "2026-05-15T21:54:49.676Z",
           "classification": "greenfield"
         },
         {
           "id": "T045",
           "title": "Implement src/commands/define.ts",
-          "description": "MODIFY \u2014 Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text",
           "status": "completed",
           "gateScript": "gates/T045-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.340Z",
+          "completedAt": "2026-05-15T21:54:49.684Z",
           "classification": "greenfield"
         },
         {
           "id": "T046",
           "title": "Implement src/commands/tasks.ts",
-          "description": "MODIFY \u2014 Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text",
           "status": "completed",
           "gateScript": "gates/T046-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.348Z",
+          "completedAt": "2026-05-15T21:54:49.693Z",
           "classification": "greenfield"
         },
         {
           "id": "T047",
           "title": "Implement src/commands/measure.ts",
-          "description": "MODIFY \u2014 Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text",
           "status": "completed",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.355Z",
+          "completedAt": "2026-05-15T21:54:49.701Z",
           "classification": "greenfield"
         },
         {
           "id": "T048",
           "title": "Implement src/commands/db.ts",
-          "description": "MODIFY \u2014 Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text",
           "status": "completed",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.363Z",
+          "completedAt": "2026-05-15T21:54:49.708Z",
           "classification": "greenfield"
         },
         {
           "id": "T049",
           "title": "Implement src/commands/test.ts",
-          "description": "MODIFY \u2014 Add Examples to help text",
+          "description": "MODIFY — Add Examples to help text",
           "status": "completed",
           "gateScript": "gates/T049-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.371Z",
+          "completedAt": "2026-05-15T21:54:49.719Z",
           "classification": "greenfield"
         },
         {
           "id": "T050",
           "title": "Implement src/commands/define-plan.ts",
-          "description": "MODIFY \u2014 Add resolveFeature for prefix aliasing",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing",
           "status": "completed",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.380Z",
+          "completedAt": "2026-05-15T21:54:49.727Z",
           "classification": "greenfield"
         },
         {
           "id": "T051",
           "title": "Implement src/commands/tests-generate.ts",
-          "description": "MODIFY \u2014 Add resolveFeature + relax output contract",
+          "description": "MODIFY — Add resolveFeature + relax output contract",
           "status": "completed",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.388Z",
+          "completedAt": "2026-05-15T21:54:49.735Z",
           "classification": "greenfield"
         },
         {
           "id": "T052",
           "title": "Implement src/commands/runs.ts",
-          "description": "MODIFY \u2014 Add resolveFeature for prefix aliasing",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing",
           "status": "completed",
           "gateScript": "gates/T052-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.397Z",
+          "completedAt": "2026-05-15T21:54:49.743Z",
           "classification": "greenfield"
         },
         {
           "id": "T053",
           "title": "Implement src/commands/harvest.ts",
-          "description": "MODIFY \u2014 Add resolveFeature for prefix aliasing",
+          "description": "MODIFY — Add resolveFeature for prefix aliasing",
           "status": "completed",
           "gateScript": "gates/T053-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.406Z",
+          "completedAt": "2026-05-15T21:54:49.750Z",
           "classification": "greenfield"
         },
         {
           "id": "T054",
           "title": "Implement src/commands/gate.ts",
-          "description": "\u2705 Already done \u2014 Examples added 2026-05-07",
+          "description": "✅ Already done — Examples added 2026-05-07",
           "status": "completed",
           "gateScript": "gates/T054-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.414Z",
+          "completedAt": "2026-05-15T21:54:49.759Z",
           "classification": "greenfield"
         },
         {
           "id": "T055",
           "title": "Implement docs/governance/cli-grammar.md",
-          "description": "NEW \u2014 Canonical CLI grammar standard",
+          "description": "NEW — Canonical CLI grammar standard",
           "status": "completed",
           "gateScript": "gates/T055-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.422Z",
+          "completedAt": "2026-05-15T21:54:49.767Z",
           "classification": "greenfield"
         }
       ],
@@ -652,7 +672,7 @@
         "`gwrk db runs 001` resolves to `001-cli-core` (prefix aliasing works)",
         "`gwrk define tests` no longer fails when agent produces test files instead of gap-matrix.md",
         "`docs/governance/cli-grammar.md` exists with canonical grammar, rules, and command inventory",
-        "`project gates` remains removed (\u2705 verified)",
+        "`project gates` remains removed (✅ verified)",
         "`pnpm build` compiles clean, `pnpm test` all passing"
       ]
     },
@@ -667,7 +687,7 @@
           "status": "completed",
           "gateScript": "gates/T056-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.431Z",
+          "completedAt": "2026-05-15T21:54:49.778Z",
           "classification": "greenfield"
         },
         {
@@ -677,7 +697,7 @@
           "status": "completed",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.439Z",
+          "completedAt": "2026-05-15T21:54:49.786Z",
           "classification": "greenfield"
         },
         {
@@ -687,7 +707,7 @@
           "status": "completed",
           "gateScript": "gates/T058-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.447Z",
+          "completedAt": "2026-05-15T21:54:49.794Z",
           "classification": "greenfield"
         },
         {
@@ -697,7 +717,7 @@
           "status": "completed",
           "gateScript": "gates/T059-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.454Z",
+          "completedAt": "2026-05-15T21:54:49.801Z",
           "classification": "greenfield"
         },
         {
@@ -707,14 +727,14 @@
           "status": "completed",
           "gateScript": "gates/T060-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-14T22:37:24.462Z",
+          "completedAt": "2026-05-15T21:54:49.810Z",
           "classification": "greenfield"
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
         "`gwrk define tests 003 --force` runs with quiet spinner output (no agent narration in terminal)",
-        "Agent that commits tests natively but returns prose \u2192 exit 0 (not exit 1)",
+        "Agent that commits tests natively but returns prose → exit 0 (not exit 1)",
         "Full agent output in `.runs/` log file for debugging",
         "`gwrk define spec 001` runs with quiet spinner output",
         "`gwrk define plan 001` runs with quiet spinner output",

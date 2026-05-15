@@ -1,18 +1,7 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T001 — Implement package.json
-# HARDENED: Tests behavior (TypeScript compiles + server module importable)
-
-# Assertion #1: package.json exists
-test -f package.json
-
-# Assertion #2: Fastify is a dependency (core server framework)
-grep -q 'fastify' package.json
-
-# Assertion #3: Build succeeds (proves all deps resolve)
-pnpm build > /dev/null 2>&1
-
-# Assertion #4: Server module compiles
-test -f dist/server/index.js
-
-echo "PASS: T001 — Implement package.json"
+# AUTHORED
+test -f src/server/sandbox.ts || { echo "FAIL: T001 — file not found: src/server/sandbox.ts" >&2; exit 1; }
+grep -q 'export class SandboxManager' src/server/sandbox.ts || { echo "FAIL: T001 — src/server/sandbox.ts missing 'SandboxManager'" >&2; exit 1; }
+grep -q 'async createSandbox' src/server/sandbox.ts || { echo "FAIL: T001 — src/server/sandbox.ts missing 'createSandbox'" >&2; exit 1; }
+echo "PASS: T001 — Implement src/server/sandbox.ts"

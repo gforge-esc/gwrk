@@ -1,8 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T011 — Implement src/commands/status.ts
-# Asserts: Derived from task description
-
-test -f src/commands/status.ts
-
-echo "PASS: T011 — Implement src/commands/status.ts"
+# AUTHORED
+test -f src/server/index.ts || { echo "FAIL: T011 — file not found: src/server/index.ts" >&2; exit 1; }
+grep -q 'startSlackApp' src/server/index.ts || { echo "FAIL: T011 — src/server/index.ts missing 'startSlackApp'" >&2; exit 1; }
+echo "PASS: T011 — Implement src/server/index.ts"

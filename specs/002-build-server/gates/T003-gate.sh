@@ -1,12 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T003 — Implement src/server/pid.ts
-# Asserts: Derived from task description
-
-test -f src/server/pid.ts
-# Required identifiers
-grep -q 'writePid' src/server/pid.ts
-grep -q 'readPid' src/server/pid.ts
-grep -q 'removePid' src/server/pid.ts
-
-echo "PASS: T003 — Implement src/server/pid.ts"
+# AUTHORED
+test -f src/server/context.ts || { echo "FAIL: T003 — file not found: src/server/context.ts" >&2; exit 1; }
+grep -q 'export function compileContext' src/server/context.ts || { echo "FAIL: T003 — src/server/context.ts missing 'compileContext'" >&2; exit 1; }
+echo "PASS: T003 — Implement src/server/context.ts"

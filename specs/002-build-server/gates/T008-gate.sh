@@ -1,10 +1,7 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T008 — Implement test strategy for Phase 1
-# Asserts: Derived from task description
-
-
-# Phase Acceptance Criteria
-gwrk server start && test -f .gwrk/server.pid && gwrk server stop && test ! -f .gwrk/server.pid
-
-echo "PASS: T008 — Implement test strategy for Phase 1"
+# AUTHORED
+test -f src/engine/ship-orchestrator.ts || { echo "FAIL: T008 — file not found: src/engine/ship-orchestrator.ts" >&2; exit 1; }
+grep -q 'ship:start' src/engine/ship-orchestrator.ts || { echo "FAIL: T008 — src/engine/ship-orchestrator.ts missing 'ship:start' event" >&2; exit 1; }
+grep -q 'ship:complete' src/engine/ship-orchestrator.ts || { echo "FAIL: T008 — src/engine/ship-orchestrator.ts missing 'ship:complete' event" >&2; exit 1; }
+echo "PASS: T008 — Implement src/engine/ship-orchestrator.ts"

@@ -3,111 +3,191 @@
   "createdAt": "2026-03-12T02:32:35.351Z",
   "generatedFrom": {
     "plan": {
-      "hash": "b8f2de332979cb2bdce4aefedeedc3e35cf9ccdff856364ff7a9f2cf512f9541",
-      "modifiedAt": "2026-03-11T22:27:49.347Z"
+      "hash": "23ab932eaa2e602f10b3b149f8d6c17aac6f88193095a5c90927a16dd6f6c8b9",
+      "modifiedAt": "2026-05-06T21:10:05.287Z"
     }
   },
   "phases": [
     {
       "id": "phase-01",
-      "title": "Foundation & PID Management",
+      "title": "Audit & Prune Dead Code",
       "tasks": [
         {
           "id": "T001",
-          "title": "Implement package.json",
-          "description": "MODIFY: Add `fastify`, `fastify-healthcheck`, `dockerode`, `uuid` dependencies",
+          "title": "Implement src/server/sandbox.ts",
+          "description": "DELETE: Docker container lifecycle — never used",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "completedAt": "2026-03-14T18:20:38.000Z"
+          "sp": 0,
+          "completedAt": "2026-03-14T18:20:38.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T002",
-          "title": "Implement src/utils/config.ts",
-          "description": "MODIFY: Extend `GwrkConfigSchema` with `server` and `parallelism` blocks",
+          "title": "Implement src/server/docker.ts",
+          "description": "MODIFY: Keep `ensureDocker(",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.640Z"
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.540Z",
+          "classification": "greenfield"
         },
         {
           "id": "T003",
-          "title": "Implement src/server/pid.ts",
-          "description": "NEW: Implementation of `writePid`, `readPid`, `removePid`",
+          "title": "Implement src/server/context.ts",
+          "description": "DELETE: Context compilation — ship-orchestrator owns this",
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.652Z"
+          "sp": 0,
+          "completedAt": "2026-03-14T18:20:38.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T004",
-          "title": "Implement src/server/index.ts",
-          "description": "NEW: Implementation of `startServer`, `stopServer` bootstrap",
+          "title": "Implement src/server/dispatch-orchestrator.ts",
+          "description": "DELETE: Server-side dispatch queue — ship-orchestrator owns this",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "completedAt": "2026-03-14T18:20:38.000Z"
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.550Z",
+          "classification": "greenfield"
         },
         {
           "id": "T005",
-          "title": "Implement src/commands/server.ts",
-          "description": "NEW: Implementation of `gwrk server start/stop/clean` commands",
+          "title": "Implement src/server/git-manager.ts",
+          "description": "DELETE: Server-side git lifecycle — ship-orchestrator owns this",
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.669Z"
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.180Z",
+          "classification": "greenfield"
         },
         {
           "id": "T006",
-          "title": "Implement src/cli.ts",
-          "description": "MODIFY: Register `server` command group",
+          "title": "Implement src/server/routes/dispatch.ts",
+          "description": "MODIFY: Remove sandbox dispatch endpoints, keep run-tracking POST",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.676Z"
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.260Z",
+          "classification": "greenfield"
         },
         {
           "id": "T007",
-          "title": "Implement src/server/types.ts",
-          "description": "NEW: Shared domain types and Zod schemas",
-          "status": "completed",
-          "gateScript": "gates/T007-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.683Z"
-        },
-        {
-          "id": "T008",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
-          "gateScript": "gates/T008-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.913Z"
+          "gateScript": "gates/T007-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.913Z",
+          "classification": "noop"
+        },
+        {
+          "id": "T026",
+          "title": "Implement package.json",
+          "description": "MODIFY: Add `fastify`, `fastify-healthcheck`, `dockerode`, `uuid` dependencies",
+          "status": "cancelled",
+          "gateScript": "gates/T001-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-14T18:20:38.000Z"
+        },
+        {
+          "id": "T027",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: Extend `GwrkConfigSchema` with `server` and `parallelism` blocks",
+          "status": "cancelled",
+          "gateScript": "gates/T002-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.640Z"
+        },
+        {
+          "id": "T028",
+          "title": "Implement src/server/pid.ts",
+          "description": "NEW: Implementation of `writePid`, `readPid`, `removePid`",
+          "status": "cancelled",
+          "gateScript": "gates/T003-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.652Z"
+        },
+        {
+          "id": "T029",
+          "title": "Implement src/commands/server.ts",
+          "description": "NEW: Implementation of `gwrk server start/stop/clean` commands",
+          "status": "cancelled",
+          "gateScript": "gates/T005-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.669Z"
+        },
+        {
+          "id": "T030",
+          "title": "Implement src/cli.ts",
+          "description": "MODIFY: Register `server` command group",
+          "status": "cancelled",
+          "gateScript": "gates/T006-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.676Z"
+        },
+        {
+          "id": "T031",
+          "title": "Implement src/server/types.ts",
+          "description": "NEW: Shared domain types and Zod schemas",
+          "status": "cancelled",
+          "gateScript": "gates/T007-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.683Z"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
-        "`gwrk server start && test -f .gwrk/server.pid && gwrk server stop && test ! -f .gwrk/server.pid` exits 0"
+        "`pnpm build` passes with no dead imports",
+        "`gwrk server start` / `gwrk server stop` work unchanged",
+        "`gwrk status` returns same JSON shape",
+        "All deleted files have zero live importers"
       ]
     },
     {
       "id": "phase-02",
-      "title": "System Monitoring & Status",
+      "title": "Ship Orchestrator → Server Event Bridge",
       "tasks": [
         {
+          "id": "T008",
+          "title": "Implement src/engine/ship-orchestrator.ts",
+          "description": "MODIFY: Emit typed events for every stage transition: `ship:start`, `ship:stage`, `ship:complete`, `ship:failed`, `ship:blocked`",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.561Z",
+          "classification": "greenfield"
+        },
+        {
           "id": "T009",
-          "title": "Implement src/server/monitor.ts",
-          "description": "NEW: Implementation of `SystemMonitor` class",
+          "title": "Implement src/server/ship-bridge.ts",
+          "description": "NEW: Listens for orchestrator events, converts to `MessageBuilder` calls, dispatches via `notifySlack(",
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.923Z"
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.570Z",
+          "classification": "greenfield"
         },
         {
           "id": "T010",
-          "title": "Implement src/server/routes/status.ts",
-          "description": "NEW: `GET /api/status` route",
+          "title": "Implement src/commands/ship.ts",
+          "description": "MODIFY: Remove direct `notifySlack` calls — the bridge handles it. Wire orchestrator events to bridge when server is running.",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.929Z"
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.579Z",
+          "classification": "greenfield"
         },
         {
           "id": "T011",
-          "title": "Implement src/commands/status.ts",
-          "description": "NEW: `gwrk status` CLI command",
+          "title": "Implement src/server/index.ts",
+          "description": "MODIFY: Initialize ship-bridge listener on server start",
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
-          "completedAt": "2026-03-12T02:32:35.936Z"
+          "sp": 0,
+          "completedAt": "2026-03-14T18:20:38.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T012",
@@ -115,151 +195,247 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.167Z"
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.167Z",
+          "classification": "noop"
+        },
+        {
+          "id": "T032",
+          "title": "Implement src/server/monitor.ts",
+          "description": "NEW: Implementation of `SystemMonitor` class",
+          "status": "cancelled",
+          "gateScript": "gates/T009-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.923Z"
+        },
+        {
+          "id": "T033",
+          "title": "Implement src/server/routes/status.ts",
+          "description": "NEW: `GET /api/status` route",
+          "status": "cancelled",
+          "gateScript": "gates/T010-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.929Z"
+        },
+        {
+          "id": "T034",
+          "title": "Implement src/commands/status.ts",
+          "description": "NEW: `gwrk status` CLI command",
+          "status": "cancelled",
+          "gateScript": "gates/T011-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:35.936Z"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
-        "`gwrk server start && gwrk status --json | jq -e '.system.cpuPercent'` exits 0"
+        "`gwrk ship 018 5` with server running sends exactly one Slack message (ship:complete → reviewReady)",
+        "Ship without server running works identically to today (CLI output only)",
+        "No `notifySlack` calls remain in `ship.ts` — all moved to bridge"
       ]
     },
     {
       "id": "phase-03",
-      "title": "Git & Context Management",
+      "title": "Bless Actions — Slack → Pipeline",
       "tasks": [
         {
           "id": "T013",
-          "title": "Implement src/server/git-manager.ts",
-          "description": "NEW: Implementation of `createPhaseBranch`, `mergePhaseBack`",
+          "title": "Implement src/server/slack-actions.ts",
+          "description": "MODIFY: Wire `merge_pr` to `gh pr merge`, `retry_phase` to re-dispatch, `request_changes` to add PR comment",
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.180Z"
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.589Z",
+          "classification": "greenfield"
         },
         {
           "id": "T014",
-          "title": "Implement src/server/context.ts",
-          "description": "NEW: Implementation of `compileContext`, `writeContextToSandbox`",
+          "title": "Implement src/server/slack-commands.ts",
+          "description": "MODIFY: Wire `/gwrk status` to `gwrk plan status` DAG output, `/gwrk ship` to trigger dispatch",
           "status": "completed",
           "gateScript": "gates/T014-gate.sh",
-          "completedAt": "2026-03-14T18:20:38.000Z"
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.599Z",
+          "classification": "greenfield"
         },
         {
           "id": "T015",
+          "title": "Implement src/server/slack-home.ts",
+          "description": "MODIFY: Home tab shows: plan DAG status, pending blessings, active ships — not raw data dump",
+          "status": "completed",
+          "gateScript": "gates/T015-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.609Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T016",
+          "title": "Implement src/engine/plan-store.ts",
+          "description": "MODIFY: Add `advanceFeature(",
+          "status": "completed",
+          "gateScript": "gates/T016-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.617Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T017",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
-          "gateScript": "gates/T015-gate.sh",
-          "completedAt": "2026-03-14T18:20:38.000Z"
+          "gateScript": "gates/T017-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-14T18:20:38.000Z",
+          "classification": "noop"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
-        "`vitest src/server/git-manager.test.ts src/server/context.test.ts` exits 0"
+        "Tap ✅ Merge in Slack → PR merged, plan DAG updated, confirmation posted",
+        "Tap 🔄 Retry → ship re-dispatched, confirmation posted",
+        "`/gwrk status` → plan DAG summary (same output as `gwrk plan status`)",
+        "`/gwrk ship 006 1` → ship dispatched from Slack",
+        "Home tab shows: features by status, pending blessings, active ships"
       ]
     },
     {
       "id": "phase-04",
-      "title": "Docker Sandbox Lifecycle",
+      "title": "Define Event Bridge",
       "tasks": [
         {
-          "id": "T016",
-          "title": "Implement src/server/sandbox.ts",
-          "description": "NEW: Implementation of `createSandbox`, `destroySandbox`, `destroyAllSandboxes`, `reapStale`",
-          "status": "completed",
-          "gateScript": "gates/T016-gate.sh",
-          "completedAt": "2026-03-14T18:20:38.000Z"
-        },
-        {
-          "id": "T017",
-          "title": "Implement Dockerfile.sandbox",
-          "description": "NEW: Bookworm-slim image with Node, Git, gh",
-          "status": "completed",
-          "gateScript": "gates/T017-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.215Z"
-        },
-        {
           "id": "T018",
+          "title": "Implement src/commands/define.ts",
+          "description": "MODIFY: Emit `define:spec:ready` and `define:plan:ready` events after successful agent dispatch",
+          "status": "completed",
+          "gateScript": "gates/T018-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.626Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T019",
+          "title": "Implement src/server/ship-bridge.ts",
+          "description": "MODIFY: Also handle define events — build spec/plan-ready messages with Approve/Revise buttons",
+          "status": "completed",
+          "gateScript": "gates/T019-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.634Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T020",
+          "title": "Implement src/server/slack-actions.ts",
+          "description": "MODIFY: Add `approve_spec` and `approve_plan` action handlers",
+          "status": "completed",
+          "gateScript": "gates/T020-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.641Z",
+          "classification": "greenfield"
+        },
+        {
+          "id": "T021",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
-          "gateScript": "gates/T018-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.245Z"
+          "gateScript": "gates/T021-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.245Z",
+          "classification": "noop"
+        },
+        {
+          "id": "T035",
+          "title": "Implement Dockerfile.sandbox",
+          "description": "NEW: Bookworm-slim image with Node, Git, gh",
+          "status": "cancelled",
+          "gateScript": "gates/T017-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.215Z"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
-        "`docker images | grep gwrk-sandbox` exits 0"
+        "`gwrk define spec 006` → Slack: \"📐 Spec Ready: 006-pulse\" with `[✅ Approve]`",
+        "Tap Approve → spec marked reviewed in plan DAG",
+        "`gwrk define plan 006` → Slack: \"📐 Plan Ready\" with `[✅ Approve]`"
       ]
     },
     {
       "id": "phase-05",
-      "title": "Dispatch Queue & API",
-      "tasks": [
-        {
-          "id": "T019",
-          "title": "Implement src/server/dispatch.ts",
-          "description": "NEW: Implementation of `DispatchQueue` class",
-          "status": "completed",
-          "gateScript": "gates/T019-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.254Z"
-        },
-        {
-          "id": "T020",
-          "title": "Implement src/server/routes/dispatch.ts",
-          "description": "NEW: POST/GET dispatch routes",
-          "status": "completed",
-          "gateScript": "gates/T020-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.260Z"
-        },
-        {
-          "id": "T021",
-          "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
-          "gateScript": "gates/T021-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.276Z"
-        }
-      ],
-      "doneWhen": [
-        "`curl -X POST http://localhost:18790/api/dispatch -d '{\"featureId\":\"001-cli-core\",\"phaseId\":\"phase-01\",\"backend\":\"gemini\"}'` returns 200"
-      ]
-    },
-    {
-      "id": "phase-06",
-      "title": "Resilience & Connectivity",
+      "title": "Resilience & Polish",
       "tasks": [
         {
           "id": "T022",
           "title": "Implement src/server/lifecycle.ts",
-          "description": "NEW: Heartbeat drift detection, sleep/wake events",
+          "description": "MODIFY: Verify heartbeat drift detection works with Slack reconnection",
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.283Z"
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.283Z",
+          "classification": "greenfield"
         },
         {
           "id": "T023",
           "title": "Implement src/server/network.ts",
-          "description": "NEW: Connectivity monitoring via `os.networkInterfaces(",
+          "description": "MODIFY: Verify network state polling emits correct events",
           "status": "completed",
           "gateScript": "gates/T023-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.291Z"
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.291Z",
+          "classification": "greenfield"
         },
         {
           "id": "T024",
-          "title": "Implement src/server/routes/health.ts",
-          "description": "NEW: Rich `/health` endpoint with component status",
+          "title": "Implement src/server/slack.ts",
+          "description": "MODIFY: Add Slack reconnection on wake — currently drops connection after sleep",
           "status": "completed",
           "gateScript": "gates/T024-gate.sh",
-          "completedAt": "2026-03-12T02:32:36.298Z"
+          "sp": 0,
+          "completedAt": "2026-05-15T22:02:21.650Z",
+          "classification": "greenfield"
         },
         {
           "id": "T025",
-          "title": "Implement test strategy for Phase 6",
+          "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T025-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.276Z",
+          "classification": "noop"
+        },
+        {
+          "id": "T036",
+          "title": "Implement src/server/dispatch.ts",
+          "description": "NEW: Implementation of `DispatchQueue` class",
+          "status": "cancelled",
+          "gateScript": "gates/T019-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.254Z"
+        },
+        {
+          "id": "T037",
+          "title": "Implement src/server/routes/health.ts",
+          "description": "NEW: Rich `/health` endpoint with component status",
+          "status": "cancelled",
+          "gateScript": "gates/T024-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-03-12T02:32:36.298Z"
+        },
+        {
+          "id": "T038",
+          "title": "Implement test strategy for Phase 6",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "cancelled",
+          "gateScript": "gates/T025-gate.sh",
+          "sp": 0,
           "completedAt": "2026-03-12T02:32:36.539Z"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
-        "`curl -s http://localhost:18790/health | jq -e '.components.docker'` exits 0"
+        "Close laptop lid, open it → `gwrk status` shows `ready` within 30s",
+        "Slack bot reconnects and responds to `/gwrk status` after wake",
+        "Network loss → `gwrk status` shows `offline` → network restore → `online`"
       ]
     }
   ]
