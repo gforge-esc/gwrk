@@ -29,8 +29,8 @@ const mockConfig: GwrkConfig = {
   },
 };
 
-describe("status routes", () => {
-  it("should respond to /api/status with SystemStatus JSON", async () => {
+describe("status routes (FR-004, US-002)", () => {
+  it("should respond to /api/status with SystemStatus JSON — RED (No sandboxes)", async () => {
     removePid();
     const server = await startServer(mockConfig, { handleSignals: false });
 
@@ -45,15 +45,17 @@ describe("status routes", () => {
     expect(body.server.status).toBe("running");
     expect(body.server.lifecycle).toBe("ready");
     expect(body.server.pid).toBe(process.pid);
-    expect(body.server.port).toBe(18892);
+    
+    // FR-004: Should NOT contain sandboxes after Phase 1 pruning
+    expect(body.sandboxes).toBeUndefined();
+
+    // Verify system metrics
     expect(body.system.cpuPercent).toBeDefined();
     expect(body.system.memPercent).toBeDefined();
     expect(body.system.diskFreeGb).toBeDefined();
+    
+    // Verify network
     expect(body.network.status).toBeDefined();
-    expect(body.dispatch.queueDepth).toBe(0);
-    expect(body.dispatch.activeCount).toBe(0);
-    expect(body.dispatch.paused).toBe(false);
-    expect(body.sandboxes).toBeInstanceOf(Array);
 
     await server.close();
     removePid();

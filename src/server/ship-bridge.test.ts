@@ -1,6 +1,3 @@
-/**
- * Module does not exist yet (RED)
- */
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ShipBridge } from "./ship-bridge.js";
@@ -15,7 +12,8 @@ vi.mock("./slack-messages.js", () => ({
   MessageBuilder: {
     reviewReady: vi.fn().mockReturnValue({ text: "Review Ready" }),
     phaseFail: vi.fn().mockReturnValue({ text: "Phase Fail" }),
-    specReady: vi.fn().mockReturnValue({ text: "Spec Ready" }), // Not implemented yet
+    specReady: vi.fn().mockReturnValue({ text: "Spec Ready" }),
+    planReady: vi.fn().mockReturnValue({ text: "Plan Ready" }),
   },
 }));
 
@@ -58,23 +56,41 @@ describe("ShipBridge (FR-005, FR-006)", () => {
     );
   });
 
-  it("FR-005: maps define:spec:ready to specReady Slack message (RED - Not implemented)", () => {
-    // This event is not yet handled in ship-bridge.ts
+  it("FR-005: maps define:spec:ready to specReady Slack message (RED)", () => {
     mockOrchestrator.emit("define:spec:ready", {
       featureId: "002-build-server",
       specPath: "specs/002-build-server/spec.md",
     });
 
-    expect(MessageBuilder.specReady).toHaveBeenCalled();
+    expect(MessageBuilder.specReady).toHaveBeenCalledWith(
+      "002-build-server",
+      "specs/002-build-server/spec.md"
+    );
     expect(notifySlack).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Spec Ready" }),
       expect.objectContaining({ type: "spec_ready" })
     );
   });
 
-  it("FR-006: ensures every message has exactly one primary CTA (RED - Assertion)", () => {
-    // This is a policy check. We'd need to inspect the Block Kit blocks.
-    // For now, we'll assert that the MessageBuilder was called.
+  it("FR-005: maps define:plan:ready to planReady Slack message (RED)", () => {
+    mockOrchestrator.emit("define:plan:ready", {
+      featureId: "002-build-server",
+      planPath: "specs/002-build-server/plan.md",
+      phaseCount: 5,
+    });
+
+    expect(MessageBuilder.planReady).toHaveBeenCalledWith(
+      "002-build-server",
+      "specs/002-build-server/plan.md",
+      5
+    );
+    expect(notifySlack).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Plan Ready" }),
+      expect.objectContaining({ type: "plan_ready" })
+    );
+  });
+
+  it("FR-006: ensures every message has exactly one primary CTA (RED)", () => {
     mockOrchestrator.emit("ship:complete", {
       runId: "run-123",
       featureId: "002-build-server",
@@ -84,7 +100,6 @@ describe("ShipBridge (FR-005, FR-006)", () => {
     const call = vi.mocked(notifySlack).mock.calls[0];
     const message = call[0] as any;
     
-    // Policy: All messages must have blocks with at least one button (CTA)
     expect(message.blocks).toBeDefined();
     const buttons = message.blocks.flatMap((b: any) => b.elements || []).filter((e: any) => e.type === 'button');
     expect(buttons.length).toBe(1);
