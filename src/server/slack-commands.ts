@@ -4,7 +4,6 @@ import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
 import { findOpenPr } from "../db/runs.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
-import { loadTaskState } from "../utils/state.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
@@ -92,34 +91,9 @@ const handlers: Record<string, SlashCommandHandler> = {
         // DB not available — fall back to queue-only
       }
 
-      // Task state from tasks.json
-      try {
-        const resolved = resolveFeature(featureId, context.projectRoot);
-        const featureDir = path.join(context.projectRoot, "specs", resolved);
-        const taskState = loadTaskState(featureDir);
-        const lines: string[] = [`*${resolved} — Task Status:*`];
-        for (const phase of taskState.phases) {
-          const tasks = phase.tasks;
-          const completed = tasks.filter((t) => t.status === "completed").length;
-          const cancelled = tasks.filter((t) => t.status === "cancelled").length;
-          const active = tasks.length - cancelled;
-          const pct = active > 0 ? Math.round((completed / active) * 100) : 0;
-          const icon = pct === 100 ? "✅" : pct > 0 ? "🟡" : "⬜";
-          lines.push(`${icon} ${phase.id} (${phase.title}): ${completed}/${active} tasks (${pct}%)`);
-        }
-        const allTasks = taskState.phases.flatMap((p) => p.tasks);
-        const allCompleted = allTasks.filter((t) => t.status === "completed").length;
-        const allCancelled = allTasks.filter((t) => t.status === "cancelled").length;
-        const allActive = allTasks.length - allCancelled;
-        const totalPct = allActive > 0 ? Math.round((allCompleted / allActive) * 100) : 0;
-        lines.push(`\n*Total: ${allCompleted}/${allActive} tasks (${totalPct}%)*`);
-        blocks.push({
-          type: "section",
-          text: { type: "mrkdwn", text: lines.join("\n") },
-        });
-      } catch {
-        // No tasks.json for this feature
-      }
+      // TODO: Task state should be queried from SQLite via harvest.
+      // When harvest persists task completion to the execution ledger,
+      // add a query here: SELECT phase, completed, total FROM task_state WHERE feature_id = ?
 
       // Also check for spec-local ship runs
       const runsDir = path.join(
