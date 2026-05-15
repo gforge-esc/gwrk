@@ -2,29 +2,44 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appendHistory } from "./history.js";
-// Module does not exist yet (RED) — Phase 9: history.jsonl deprecation pending
 import { recordHistory } from "../db/runs.js";
 
 vi.mock("../db/runs.js", () => ({
   recordHistory: vi.fn()
 }));
 
-describe("History Utility", () => {
-  const tempDir = path.join(process.cwd(), "temp-test-history");
-
+describe("History Utility (Phase 9)", () => {
   beforeEach(() => {
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-    fs.mkdirSync(tempDir, { recursive: true });
+    vi.clearAllMocks();
+    vi.spyOn(fs, "appendFileSync").mockImplementation(() => {});
+    vi.spyOn(fs, "mkdirSync").mockImplementation(() => {});
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
   });
 
   afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
-  // FR-021: history.jsonl deprecation — appendHistory still writes to JSONL
-  // TODO: Migrate appendHistory to SQLite-only, then restore this test
-  it.todo("should NOT write to legacy history.jsonl and ONLY write to SQLite");
+  it("FR-021: appendHistory SHOULD ONLY write to SQLite and NOT to legacy history.jsonl (RED)", () => {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      featureId: "test-feature",
+      taskId: "T001",
+      fromStatus: "open" as const,
+      toStatus: "completed" as const,
+    };
+
+    appendHistory(entry);
+
+    // 1. Verify SQLite recordHistory was called
+    expect(recordHistory).toHaveBeenCalled();
+
+    // 2. Verify legacy history.jsonl was NOT appended to
+    // In RED state, this fails because current implementation still calls appendFileSync for history.jsonl
+    expect(fs.appendFileSync).not.toHaveBeenCalledWith(
+      expect.stringContaining("history.jsonl"),
+      expect.any(String),
+      expect.any(String)
+    );
+  });
 });

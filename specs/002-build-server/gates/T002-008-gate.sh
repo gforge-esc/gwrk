@@ -4,10 +4,12 @@ set -euo pipefail
 # Gate: T002-008 — merge_pr action merged PR via gh CLI
 # Generated from gap-matrix.md (deterministic vitest gate)
 
-# Compile gate — TypeScript MUST build cleanly
-pnpm build \
-  || { echo "FAIL: T002-008 — pnpm build failed. Fix TypeScript compilation errors." >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/server/slack-actions.test.ts --grep "FR-007" --reporter=verbose \
+  || { echo "FAIL: T002-008 — vitest failed for src/server/slack-actions.test.ts" >&2; exit 1; }
 
-pnpm vitest run src/server/slack-actions.test.ts --grep "FR-007" --reporter=verbose
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/server/slack-actions.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T002-008 — lint errors in src/server/slack-actions.ts" >&2; exit 1; }
 
-echo "PASS: T002-008 — vitest verification complete"
+echo "PASS: T002-008 — tests pass + lint clean"

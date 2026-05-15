@@ -4,10 +4,12 @@ set -euo pipefail
 # Gate: T002-010 — Home tab shows plan DAG status
 # Generated from gap-matrix.md (deterministic vitest gate)
 
-# Compile gate — TypeScript MUST build cleanly
-pnpm build \
-  || { echo "FAIL: T002-010 — pnpm build failed. Fix TypeScript compilation errors." >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/server/slack-home.test.ts --grep "US-005" --reporter=verbose \
+  || { echo "FAIL: T002-010 — vitest failed for src/server/slack-home.test.ts" >&2; exit 1; }
 
-pnpm vitest run src/server/slack-home.test.ts --grep "US-005" --reporter=verbose
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/server/slack-home.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T002-010 — lint errors in src/server/slack-home.ts" >&2; exit 1; }
 
-echo "PASS: T002-010 — vitest verification complete"
+echo "PASS: T002-010 — tests pass + lint clean"

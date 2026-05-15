@@ -93,90 +93,6 @@
       "contractRefs": []
     },
     {
-      "taskId": "T026",
-      "title": "Implement package.json",
-      "description": "MODIFY: Add `fastify`, `fastify-healthcheck`, `dockerode`, `uuid` dependencies",
-      "primaryFile": "package.json",
-      "fileType": "json",
-      "identifiers": [
-        "fastify",
-        "dockerode",
-        "uuid"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T027",
-      "title": "Implement src/utils/config.ts",
-      "description": "MODIFY: Extend `GwrkConfigSchema` with `server` and `parallelism` blocks",
-      "primaryFile": "src/utils/config.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "GwrkConfigSchema",
-        "server",
-        "parallelism"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T028",
-      "title": "Implement src/server/pid.ts",
-      "description": "NEW: Implementation of `writePid`, `readPid`, `removePid`",
-      "primaryFile": "src/server/pid.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "writePid",
-        "readPid",
-        "removePid"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T029",
-      "title": "Implement src/commands/server.ts",
-      "description": "NEW: Implementation of `gwrk server start/stop/clean` commands",
-      "primaryFile": "src/commands/server.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T030",
-      "title": "Implement src/cli.ts",
-      "description": "MODIFY: Register `server` command group",
-      "primaryFile": "src/cli.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "server"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T031",
-      "title": "Implement src/server/types.ts",
-      "description": "NEW: Shared domain types and Zod schemas",
-      "primaryFile": "src/server/types.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
       "taskId": "T008",
       "title": "Implement src/engine/ship-orchestrator.ts",
       "description": "MODIFY: Emit typed events for every stage transition: `ship:start`, `ship:stage`, `ship:complete`, `ship:failed`, `ship:blocked`",
@@ -234,43 +150,6 @@
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,
       "fileType": "unknown",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T032",
-      "title": "Implement src/server/monitor.ts",
-      "description": "NEW: Implementation of `SystemMonitor` class",
-      "primaryFile": "src/server/monitor.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "SystemMonitor"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/monitor.md",
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T033",
-      "title": "Implement src/server/routes/status.ts",
-      "description": "NEW: `GET /api/status` route",
-      "primaryFile": "src/server/routes/status.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T034",
-      "title": "Implement src/commands/status.ts",
-      "description": "NEW: `gwrk status` CLI command",
-      "primaryFile": "src/commands/status.ts",
-      "fileType": "typescript",
       "identifiers": [],
       "doneWhenCommands": [],
       "contractRefs": []
@@ -389,18 +268,6 @@
       "contractRefs": []
     },
     {
-      "taskId": "T035",
-      "title": "Implement Dockerfile.sandbox",
-      "description": "NEW: Bookworm-slim image with Node, Git, gh",
-      "primaryFile": null,
-      "fileType": "unknown",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/sandbox.md"
-      ]
-    },
-    {
       "taskId": "T022",
       "title": "Implement src/server/lifecycle.ts",
       "description": "MODIFY: Verify heartbeat drift detection works with Slack reconnection",
@@ -439,43 +306,6 @@
     {
       "taskId": "T025",
       "title": "Implement test strategy for Phase 5",
-      "description": "Implement all unit and integration tests defined in the phase test strategy.",
-      "primaryFile": null,
-      "fileType": "unknown",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T036",
-      "title": "Implement src/server/dispatch.ts",
-      "description": "NEW: Implementation of `DispatchQueue` class",
-      "primaryFile": "src/server/dispatch.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "DispatchQueue"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/dispatch.md",
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T037",
-      "title": "Implement src/server/routes/health.ts",
-      "description": "NEW: Rich `/health` endpoint with component status",
-      "primaryFile": "src/server/routes/health.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T038",
-      "title": "Implement test strategy for Phase 6",
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,
       "fileType": "unknown",

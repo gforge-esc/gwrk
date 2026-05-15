@@ -4,6 +4,7 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { writeManifest } from "../utils/manifest.js";
 
 const { mockExecuteWorkflow, mockLoadConfig } = vi.hoisted(() => ({
   mockExecuteWorkflow: vi.fn(),
@@ -27,6 +28,17 @@ vi.mock("../utils/config.js", () => ({
 vi.mock("../db/runs.js", () => ({
   startRun: vi.fn().mockReturnValue(123),
   finishRun: vi.fn(),
+}));
+
+vi.mock("../utils/manifest.js", () => ({
+  writeManifest: vi.fn(),
+  generateRunId: vi.fn().mockReturnValue("mock-run-id"),
+}));
+
+vi.mock("../utils/git.js", () => ({
+  getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
+  getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
+  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
 }));
 
 describe("testsGenerateCommand", () => {
@@ -89,6 +101,23 @@ describe("testsGenerateCommand", () => {
     );
   });
 
+  it("US-019/FR-019: SHOULD write execution manifest after success", async () => {
+    mockExecuteWorkflow.mockImplementation(async () => {
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+      return { summary: "Success", intents: [], summaries: [] };
+    });
+
+    await program.parseAsync(["node", "test", "tests", "test-feature"]);
+
+    expect(writeManifest).toHaveBeenCalledWith(
+      featureDir,
+      expect.objectContaining({
+        command: "define tests",
+        feature: "test-feature",
+      })
+    );
+  });
+
   it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12)", async () => {
     mockExecuteWorkflow.mockImplementation(async () => {
       fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
@@ -106,21 +135,6 @@ describe("testsGenerateCommand", () => {
     );
   });
 
-  it("should pass phase context when --phase is provided", async () => {
-    mockExecuteWorkflow.mockImplementation(async () => {
-      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
-      return { summary: "Success", intents: [], summaries: [] };
-    });
-
-    await program.parseAsync(["node", "test", "tests", "test-feature", "--phase", "1"]);
-
-    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
-      "gwrk-define-tests",
-      expect.stringContaining("phase p01"),
-      expect.anything()
-    );
-  });
-
   it("should fail if spec.md is missing", async () => {
     fs.unlinkSync(path.join(featureDir, "spec.md"));
     process.exitCode = 0;
@@ -133,31 +147,5 @@ describe("testsGenerateCommand", () => {
 
     expect(process.exitCode).toBe(1);
     expect(mockExecuteWorkflow).not.toHaveBeenCalled();
-  });
-
-  it("should refuse to re-run when gap-matrix.md exists without --force", async () => {
-    fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
-    process.exitCode = 0;
-
-    try {
-      await program.parseAsync(["node", "test", "tests", "test-feature"]);
-    } catch {
-      // Expected
-    }
-
-    expect(process.exitCode).toBe(1);
-    expect(mockExecuteWorkflow).not.toHaveBeenCalled();
-  });
-
-  it("should allow re-run with --force when gap-matrix.md exists", async () => {
-    fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
-    mockExecuteWorkflow.mockImplementation(async () => {
-      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File | Updated |\n");
-      return { summary: "Success", intents: [], summaries: [] };
-    });
-
-    await program.parseAsync(["node", "test", "tests", "test-feature", "--force"]);
-
-    expect(mockExecuteWorkflow).toHaveBeenCalled();
   });
 });

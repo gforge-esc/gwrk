@@ -1,6 +1,6 @@
 {
   "featureId": "003-slack",
-  "createdAt": "2026-05-13T22:20:18.714Z",
+  "createdAt": "2026-05-15T22:28:40.263Z",
   "generatedFrom": {
     "plan": {
       "hash": "a5bc0a751e598efc13da8439e9dd0152f681b277848c898ecef9977bc07e5a06",
@@ -16,40 +16,36 @@
           "id": "T001",
           "title": "Implement src/server/slack-commands.ts",
           "description": "MODIFY: Add `define` subcommand handler",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:15.363Z",
           "classification": "greenfield"
         },
         {
           "id": "T002",
           "title": "Implement src/server/slack-messages.ts",
           "description": "MODIFY: Add `specReady` and `planReady` Block Kit builders",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:15.380Z",
           "classification": "greenfield"
         },
         {
           "id": "T003",
           "title": "Implement src/server/slack-actions.ts",
           "description": "MODIFY: Add `approve_spec`, `approve_plan`, `revise_spec` handlers",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:15.395Z",
           "classification": "greenfield"
         },
         {
           "id": "T004",
           "title": "Implement src/server/routes/notify.ts",
           "description": "MODIFY: Handle `define_spec_ready` and `define_plan_ready` event types",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:15.409Z",
           "classification": "greenfield"
         },
         {
@@ -76,40 +72,36 @@
           "id": "T006",
           "title": "Implement src/server/slack-agent.ts",
           "description": "NEW: Handle app mentions and threaded context",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:15.426Z",
           "classification": "greenfield"
         },
         {
           "id": "T007",
           "title": "Implement src/server/slack.ts",
           "description": "MODIFY: Register `app_mention` and `message.channels` handlers",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:16.865Z",
           "classification": "greenfield"
         },
         {
           "id": "T008",
           "title": "Implement src/utils/agent-context.ts",
           "description": "NEW: Utility to build project context for the agent from local files and SQLite",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:17.904Z",
           "classification": "greenfield"
         },
         {
           "id": "T009",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:19.165Z",
           "classification": "noop"
         }
       ],
@@ -127,40 +119,36 @@
           "id": "T010",
           "title": "Implement src/utils/slack-webhook.ts",
           "description": "NEW: Extracted webhook logic for use in ship loop without Fastify",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:20.517Z",
           "classification": "greenfield"
         },
         {
           "id": "T011",
           "title": "Implement src/server/slack-notify.ts",
           "description": "MODIFY: Refine routing logic to respect `opsChannelId`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:21.305Z",
           "classification": "greenfield"
         },
         {
           "id": "T012",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY: Ensure ship loop uses `SLACK_WEBHOOK_URL` directly if set",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:22.548Z",
           "classification": "greenfield"
         },
         {
           "id": "T013",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-15T21:59:23.755Z",
           "classification": "noop"
         }
       ],

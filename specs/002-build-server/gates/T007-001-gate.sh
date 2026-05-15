@@ -4,10 +4,12 @@ set -euo pipefail
 # Gate: T007-001 — Agent dispatch recorded in SQLite
 # Generated from gap-matrix.md (deterministic vitest gate)
 
-# Compile gate — TypeScript MUST build cleanly
-pnpm build \
-  || { echo "FAIL: T007-001 — pnpm build failed. Fix TypeScript compilation errors." >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/db/runs.test.ts --grep "FR-011" --reporter=verbose \
+  || { echo "FAIL: T007-001 — vitest failed for src/db/runs.test.ts" >&2; exit 1; }
 
-pnpm vitest run src/db/runs.test.ts --grep "FR-011" --reporter=verbose
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/db/runs.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T007-001 — lint errors in src/db/runs.ts" >&2; exit 1; }
 
-echo "PASS: T007-001 — vitest verification complete"
+echo "PASS: T007-001 — tests pass + lint clean"

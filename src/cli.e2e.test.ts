@@ -124,12 +124,13 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     expect(stdout).not.toMatch(/^\s+record\b/m);
   });
 
-  it("gwrk tasks --help shows settled hierarchy (US-005, US-006)", async () => {
+  it("gwrk tasks --help shows settled hierarchy (US-005, US-006, US-020)", async () => {
     const { stdout, exitCode } = await runCli("tasks --help");
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^\s+list\b/m);
     expect(stdout).toMatch(/^\s+next\b/m);
     expect(stdout).toMatch(/^\s+done\b/m);
+    expect(stdout).toMatch(/^\s+verify\b/m);
   });
 
   it("fails gracefully with correct error when spec is missing", async () => {
