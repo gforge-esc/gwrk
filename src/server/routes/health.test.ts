@@ -22,9 +22,11 @@ describe("healthRoutes (FR-002)", () => {
       isOnline: vi.fn().mockReturnValue(true),
     } as unknown as Mocked<NetworkMonitor>;
     
-    // RED: sandbox argument is removed in Phase 1
-    // @ts-ignore - purposefully passing wrong args to check RED state
-    await healthRoutes(server, lifecycle, network);
+    // Route still takes SandboxManager (removal is Phase 3+ work)
+    const sandbox = {
+      checkGit: vi.fn().mockResolvedValue(true),
+    };
+    await healthRoutes(server, lifecycle, network, sandbox as any);
   });
 
   it("should return 200 and ok status when all components are ok (RED - No sandbox check)", async () => {

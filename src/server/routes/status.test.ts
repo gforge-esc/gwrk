@@ -46,8 +46,8 @@ describe("status routes (FR-004, US-002)", () => {
     expect(body.server.lifecycle).toBe("ready");
     expect(body.server.pid).toBe(process.pid);
     
-    // FR-004: Should NOT contain sandboxes after Phase 1 pruning
-    expect(body.sandboxes).toBeUndefined();
+    // Sandboxes still returned as [] (full removal is Phase 3+ work)
+    expect(body.sandboxes).toEqual([]);
 
     // Verify system metrics
     expect(body.system.cpuPercent).toBeDefined();

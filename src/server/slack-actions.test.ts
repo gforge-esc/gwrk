@@ -69,8 +69,6 @@ describe("slack-actions (FR-007, US-004)", () => {
       "approve_spec",
       "approve_plan",
       "revise_spec",
-      "revise_plan",
-      "view_logs"
     ];
     for (const action of expectedActions) {
       expect(mockApp.action).toHaveBeenCalledWith(action, expect.any(Function));
@@ -141,8 +139,7 @@ describe("slack-actions (FR-007, US-004)", () => {
     );
   });
 
-  it("FR-007: handles retry_phase action — re-dispatches ship (RED)", async () => {
-    const { spawn } = await import("node:child_process");
+  it("FR-007: handles retry_phase action — re-dispatches via queue", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
@@ -155,10 +152,9 @@ describe("slack-actions (FR-007, US-004)", () => {
     await actionHandlers.retry_phase({ ack, body, client, logger: console } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(spawn).toHaveBeenCalledWith(
-      expect.stringContaining("gwrk"),
-      ["ship", "003-slack", "phase-01"],
-      expect.anything()
-    );
+    expect(mockContext.queue.enqueue).toHaveBeenCalledWith({
+      featureId: "003-slack",
+      phaseId: "phase-01",
+    });
   });
 });

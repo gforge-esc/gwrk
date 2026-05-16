@@ -1,0 +1,324 @@
+{
+  "feature": "011-harvest",
+  "projectType": "gwrk-typescript",
+  "tasks": [
+    {
+      "taskId": "T001",
+      "title": "Implement src/server/github.ts",
+      "description": "Modify: Add `/webhook/github` endpoint, verify signature, filter PR events, track phase completion, and call `harvestFeature`",
+      "primaryFile": "src/server/github.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "harvestFeature"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md",
+        "contracts/webhook.md"
+      ]
+    },
+    {
+      "taskId": "T002",
+      "title": "Implement src/engine/harvest.ts",
+      "description": "Modify: Update `harvestFeature` with idempotency guard against duplicate runs",
+      "primaryFile": "src/engine/harvest.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "harvestFeature"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md"
+      ]
+    },
+    {
+      "taskId": "T003",
+      "title": "Implement test strategy for Phase 1",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T020",
+      "title": "Implement src/db/migrations/005-compression.sql",
+      "description": "VERIFY: Schema already merged during F014",
+      "primaryFile": "src/db/migrations/005-compression.sql",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T021",
+      "title": "Implement src/engine/types.ts",
+      "description": "MODIFY: Ensure all harvest and compression types are present",
+      "primaryFile": "src/engine/types.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md"
+      ]
+    },
+    {
+      "taskId": "T004",
+      "title": "Implement src/engine/harvest.ts",
+      "description": "Modify: Implement `finalizeLogs` and `cleanupBranch`",
+      "primaryFile": "src/engine/harvest.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "finalizeLogs",
+        "cleanupBranch"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md"
+      ]
+    },
+    {
+      "taskId": "T005",
+      "title": "Implement src/db/runs.ts",
+      "description": "Modify: Implement `finishRun` to finalize SQLite record with merge commit sha and status",
+      "primaryFile": "src/db/runs.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "finishRun"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T006",
+      "title": "Implement src/cli.ts",
+      "description": "Modify: No CLI changes needed, keeping within 10 file limit",
+      "primaryFile": "src/cli.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T007",
+      "title": "Implement test strategy for Phase 2",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T022",
+      "title": "Implement src/utils/git.ts",
+      "description": "MODIFY: Add `commitFiles(",
+      "primaryFile": "src/utils/git.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "commitFiles"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T008",
+      "title": "Implement src/engine/compression.ts",
+      "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`",
+      "primaryFile": "src/engine/compression.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "computeCompression",
+        "CommitCluster"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T009",
+      "title": "Implement src/db/compression.ts",
+      "description": "Modify: Expose method to insert a new compression record",
+      "primaryFile": "src/db/compression.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T010",
+      "title": "Implement src/engine/harvest.ts",
+      "description": "Modify: Wire in `computeCompression` inside `harvestFeature`",
+      "primaryFile": "src/engine/harvest.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "computeCompression",
+        "harvestFeature"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md"
+      ]
+    },
+    {
+      "taskId": "T011",
+      "title": "Implement test strategy for Phase 3",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T023",
+      "title": "Implement src/server/index.ts",
+      "description": "MODIFY: Register the github webhook plugin",
+      "primaryFile": "src/server/index.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/webhook.md"
+      ]
+    },
+    {
+      "taskId": "T024",
+      "title": "Implement src/utils/config.ts",
+      "description": "MODIFY: Add `GITHUB_WEBHOOK_SECRET` to Zod schema",
+      "primaryFile": "src/utils/config.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "GITHUB_WEBHOOK_SECRET"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/webhook.md"
+      ]
+    },
+    {
+      "taskId": "T012",
+      "title": "Implement src/engine/harvest.ts",
+      "description": "Modify: Wire `notifyDoneDone` to format and post the summary to the `003-slack` module API",
+      "primaryFile": "src/engine/harvest.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "notifyDoneDone"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md"
+      ]
+    },
+    {
+      "taskId": "T013",
+      "title": "Implement src/server/github.ts",
+      "description": "Modify: Ensure no slack notification is dispatched directly from the webhook to satisfy FR-H11",
+      "primaryFile": "src/server/github.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/webhook.md"
+      ]
+    },
+    {
+      "taskId": "T014",
+      "title": "Implement test strategy for Phase 4",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T015",
+      "title": "Implement src/server/github.ts",
+      "description": "Modify: Add support for GitHub `issues` events opened/closed/labeled and feature association logic",
+      "primaryFile": "src/server/github.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "issues"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T016",
+      "title": "Implement src/db/migrations/008-issues.sql",
+      "description": "New: Table for post-ship issues",
+      "primaryFile": "src/db/migrations/008-issues.sql",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T017",
+      "title": "Implement src/db/issues.ts",
+      "description": "New: DB access layer for saving/updating issues",
+      "primaryFile": "src/db/issues.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T018",
+      "title": "Implement src/engine/issues.ts",
+      "description": "New: Logic to format and trigger Slack notifications via `003-slack`",
+      "primaryFile": "src/engine/issues.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T019",
+      "title": "Implement test strategy for Phase 5",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T025",
+      "title": "Implement src/commands/harvest.ts",
+      "description": "NEW: `gwrk harvest` CLI command",
+      "primaryFile": "src/commands/harvest.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md"
+      ]
+    },
+    {
+      "taskId": "T026",
+      "title": "Implement src/engine/harvest.test.ts",
+      "description": "MODIFY: Implement the 3 `it.todo(",
+      "primaryFile": "src/engine/harvest.test.ts",
+      "fileType": "test",
+      "identifiers": [
+        "todo"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/harvest.md"
+      ]
+    },
+    {
+      "taskId": "T027",
+      "title": "Implement test strategy for Phase 6",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    }
+  ]
+}
