@@ -298,7 +298,7 @@ async function shipPhase(
         await run(
           "git",
           ["commit", "-m", `chore(${feature}): add execution manifest`],
-          { cwd },
+          { cwd, env: { ...process.env, GWRK_SHIP: "1" } },
         );
         await run("git", ["push"], { cwd });
       }
