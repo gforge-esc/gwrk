@@ -1,5 +1,5 @@
 import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
-import { QuotaProber, type QuotaReading } from "./quota-prober.js";
+import type { QuotaProber, QuotaReading } from "./quota-prober.js";
 import { ModelSelector } from "./model-selector.js";
 import { classifyTask, TaskClassification } from "./task-classifier.js";
 import { recordDecision } from "./routing-decisions.js";
@@ -56,7 +56,7 @@ export class BackendSelector {
     }
 
     // 2. Filter available backends (quota > 0%)
-    let availableBackends = backends.filter(b => {
+    const availableBackends = backends.filter(b => {
       const reading = readings.get(b.name);
       return reading && reading.percent > 0;
     });
@@ -84,7 +84,7 @@ export class BackendSelector {
     });
 
     // 4. Provider Fallback Chain (FR-004 Level 2)
-    let attempts = 0;
+    const attempts = 0;
     const maxAttempts = Math.min(3, availableBackends.length);
     let lastError = "";
 
