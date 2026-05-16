@@ -75,8 +75,8 @@
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T21:35:08.996Z"
+          "completedAt": "2026-05-16T21:35:08.996Z",
+          "classification": "greenfield"
         },
         {
           "id": "T007",
@@ -85,8 +85,8 @@
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T21:35:09.003Z"
+          "completedAt": "2026-05-16T21:35:09.003Z",
+          "classification": "greenfield"
         },
         {
           "id": "T008",
@@ -95,8 +95,8 @@
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T21:35:09.008Z"
+          "completedAt": "2026-05-16T21:35:09.008Z",
+          "classification": "greenfield"
         },
         {
           "id": "T009",
@@ -105,8 +105,8 @@
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-05-16T21:35:10.123Z"
+          "completedAt": "2026-05-16T21:35:10.123Z",
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
@@ -123,37 +123,41 @@
           "id": "T010",
           "title": "Implement src/utils/slack-webhook.ts",
           "description": "NEW: Extracted webhook logic for use in ship loop without Fastify",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-16T21:39:30.534Z"
         },
         {
           "id": "T011",
           "title": "Implement src/server/slack-notify.ts",
           "description": "MODIFY: Refine routing logic to respect `opsChannelId`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-16T21:39:30.543Z"
         },
         {
           "id": "T012",
           "title": "Implement src/commands/ship.ts",
           "description": "MODIFY: Ensure ship loop uses `SLACK_WEBHOOK_URL` directly if set",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-16T21:39:30.550Z"
         },
         {
           "id": "T013",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-05-16T21:39:31.629Z"
         }
       ],
       "sp_estimate": 0,
