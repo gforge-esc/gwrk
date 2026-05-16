@@ -46,9 +46,7 @@ function assembleProjectContext(projectRoot: string): string {
       const featureDir = path.join(specsDir, feature);
       const taskState = loadTaskState(featureDir);
       const allTasks = taskState.phases.flatMap((p) => p.tasks);
-      const completed = allTasks.filter(
-        (t) => t.status === "completed",
-      ).length;
+      const completed = allTasks.filter((t) => t.status === "completed").length;
       const total = allTasks.length;
       const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
       const icon = pct === 100 ? "✅" : pct > 0 ? "🟡" : "⬜";

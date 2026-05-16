@@ -156,7 +156,7 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     console.error("");
     console.error(`  ${CYAN}Next Step${RESET}  Enable Incoming Webhooks`);
     console.error("");
-    console.error(`  Each project tracked by gwrk needs its own webhook URL.`);
+    console.error("  Each project tracked by gwrk needs its own webhook URL.");
     console.error(`  Go to your app's ${BOLD}Incoming Webhooks${RESET} page:`);
     console.error("");
     console.error(
@@ -170,7 +170,7 @@ async function interactiveSetup(): Promise<SlackSetupResult> {
     console.error(
       `  3. Select the channel for your project (e.g. ${MAGENTA}gwrk-ops${RESET})`,
     );
-    console.error(`  4. Copy the webhook URL and run:`);
+    console.error("  4. Copy the webhook URL and run:");
     console.error("");
     console.error(`    ${GREEN}gwrk init --webhook <paste-url-here>${RESET}`);
     console.error("");

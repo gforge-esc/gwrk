@@ -1,9 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { recordDecision, type RoutingDecisionRecord } from "./routing-decisions.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb, getTestDb } from "../db/index.js";
+import {
+  type RoutingDecisionRecord,
+  recordDecision,
+} from "./routing-decisions.js";
 
 vi.mock("../db/index.js", async () => {
-  const actual = await vi.importActual("../db/index.js") as any;
+  const actual = (await vi.importActual("../db/index.js")) as any;
   return {
     ...actual,
     getDb: vi.fn(),
@@ -31,13 +34,15 @@ describe("routing-decisions", () => {
       probeStatus: "fresh",
       taskSp: 5,
       fallbackUsed: false,
-      modelFailoverUsed: true
+      modelFailoverUsed: true,
     };
 
     recordDecision(decision);
 
-    const row = db.prepare("SELECT * FROM routing_decisions WHERE run_id = ?").get("run-456") as any;
-    
+    const row = db
+      .prepare("SELECT * FROM routing_decisions WHERE run_id = ?")
+      .get("run-456") as any;
+
     expect(row).toBeDefined();
     expect(row.selected_backend).toBe("gemini");
     expect(row.selected_model).toBe("gemini-pro");

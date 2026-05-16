@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ShipBridge } from "./ship-bridge.js";
-import { notifySlack } from "./slack-notify.js";
 import { MessageBuilder } from "./slack-messages.js";
+import { notifySlack } from "./slack-notify.js";
 
 vi.mock("./slack-notify.js", () => ({
   notifySlack: vi.fn(),
@@ -17,9 +17,21 @@ vi.mock("./slack-messages.js", () => ({
         {
           type: "actions",
           elements: [
-            { type: "button", text: { type: "plain_text", text: "Merge" }, action_id: "merge_pr" },
-            { type: "button", text: { type: "plain_text", text: "Reject" }, action_id: "reject" },
-            { type: "button", text: { type: "plain_text", text: "View" }, action_id: "view" },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Merge" },
+              action_id: "merge_pr",
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Reject" },
+              action_id: "reject",
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "View" },
+              action_id: "view",
+            },
           ],
         },
       ],
@@ -50,7 +62,7 @@ describe("ShipBridge (FR-005, FR-006)", () => {
     expect(MessageBuilder.reviewReady).toHaveBeenCalled();
     expect(notifySlack).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Review Ready" }),
-      expect.objectContaining({ type: "review_ready" })
+      expect.objectContaining({ type: "review_ready" }),
     );
   });
 
@@ -65,7 +77,7 @@ describe("ShipBridge (FR-005, FR-006)", () => {
     expect(MessageBuilder.phaseFail).toHaveBeenCalled();
     expect(notifySlack).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Phase Fail" }),
-      expect.objectContaining({ type: "phase_fail" })
+      expect.objectContaining({ type: "phase_fail" }),
     );
   });
 
@@ -77,11 +89,11 @@ describe("ShipBridge (FR-005, FR-006)", () => {
 
     expect(MessageBuilder.specReady).toHaveBeenCalledWith(
       "002-build-server",
-      "specs/002-build-server/spec.md"
+      "specs/002-build-server/spec.md",
     );
     expect(notifySlack).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Spec Ready" }),
-      expect.objectContaining({ type: "spec_ready" })
+      expect.objectContaining({ type: "spec_ready" }),
     );
   });
 
@@ -95,11 +107,11 @@ describe("ShipBridge (FR-005, FR-006)", () => {
     expect(MessageBuilder.planReady).toHaveBeenCalledWith(
       "002-build-server",
       "specs/002-build-server/plan.md",
-      5
+      5,
     );
     expect(notifySlack).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Plan Ready" }),
-      expect.objectContaining({ type: "plan_ready" })
+      expect.objectContaining({ type: "plan_ready" }),
     );
   });
 
@@ -109,12 +121,14 @@ describe("ShipBridge (FR-005, FR-006)", () => {
       featureId: "002-build-server",
       phaseId: "2",
     });
-    
+
     const call = vi.mocked(notifySlack).mock.calls[0];
     const message = call[0] as any;
-    
+
     expect(message.blocks).toBeDefined();
-    const buttons = message.blocks.flatMap((b: any) => b.elements || []).filter((e: any) => e.type === 'button');
+    const buttons = message.blocks
+      .flatMap((b: any) => b.elements || [])
+      .filter((e: any) => e.type === "button");
     expect(buttons.length).toBe(3);
   });
 });

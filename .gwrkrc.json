@@ -38,9 +38,7 @@
           "cacheTTLMinutes": 5
         },
         "maxConcurrent": 1,
-        "models": [
-          { "name": "claude-sonnet-4", "tier": "thinking" }
-        ],
+        "models": [{ "name": "claude-sonnet-4", "tier": "thinking" }],
         "fallback": "gemini"
       }
     },

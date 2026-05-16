@@ -6,7 +6,7 @@ import * as https from "node:https";
  */
 export async function sendSlackWebhook(
   webhookUrl: string,
-  payload: any
+  payload: any,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(payload);

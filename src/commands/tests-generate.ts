@@ -5,8 +5,8 @@ import { finishRun, startRun } from "../db/runs.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
-import { loadTaskState } from "../utils/state.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { loadTaskState } from "../utils/state.js";
 
 import {
   getCurrentBranch,
@@ -42,7 +42,10 @@ Examples:
     "Overwrite existing test artifacts (gap-matrix.md, test files)",
   )
   .action(
-    async (featureArg: string, options: { phase?: string; force?: boolean }) => {
+    async (
+      featureArg: string,
+      options: { phase?: string; force?: boolean },
+    ) => {
       await withSignal(`define tests ${featureArg}`, async () => {
         const projectRoot = process.cwd();
         // Resolve prefix: "001" → "001-cli-core"
@@ -71,7 +74,9 @@ Examples:
             const allFiles = fs.readdirSync(srcDir);
             // Look for tests that match the feature ID or are generally feature tests
             return allFiles.some(
-              (f) => (f.includes(feature) || f.endsWith(".test.ts")) && !f.startsWith("cli.e2e"),
+              (f) =>
+                (f.includes(feature) || f.endsWith(".test.ts")) &&
+                !f.startsWith("cli.e2e"),
             );
           } catch {
             return false;
@@ -173,9 +178,7 @@ Examples:
             try {
               const srcDir = path.join(projectRoot, "src");
               if (!fs.existsSync(srcDir)) return false;
-              return fs.readdirSync(srcDir).some(
-                (f) => f.endsWith(".test.ts"),
-              );
+              return fs.readdirSync(srcDir).some((f) => f.endsWith(".test.ts"));
             } catch {
               return false;
             }

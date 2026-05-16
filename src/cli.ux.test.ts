@@ -42,7 +42,10 @@ describe("CLI UX: Help Text Examples (Phase 11)", () => {
     it(`gwrk ${cmd} --help shows 'Examples:' section (US-022)`, async () => {
       const { stdout, exitCode } = await runCli(`${cmd} --help`);
       expect(exitCode).toBe(0);
-      expect(stdout, `Command 'gwrk ${cmd}' is missing 'Examples:' section in help`).toMatch(/Examples:/i);
+      expect(
+        stdout,
+        `Command 'gwrk ${cmd}' is missing 'Examples:' section in help`,
+      ).toMatch(/Examples:/i);
     });
   }
 });

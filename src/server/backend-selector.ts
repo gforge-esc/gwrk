@@ -1,9 +1,9 @@
-import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
-import type { QuotaProber, QuotaReading } from "./quota-prober.js";
-import { ModelSelector } from "./model-selector.js";
-import { classifyTask, TaskClassification } from "./task-classifier.js";
-import { recordDecision } from "./routing-decisions.js";
 import { getDb } from "../db/index.js";
+import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
+import { ModelSelector } from "./model-selector.js";
+import type { QuotaProber, QuotaReading } from "./quota-prober.js";
+import { recordDecision } from "./routing-decisions.js";
+import { TaskClassification, classifyTask } from "./task-classifier.js";
 
 export interface TaskContext {
   runId: string;
@@ -52,11 +52,14 @@ export class BackendSelector {
     // 1. Probe all backends
     const readings: Map<string, QuotaReading> = new Map();
     for (const backend of backends) {
-      readings.set(backend.name, await this.prober.probeQuota(backend, this.registry.backends));
+      readings.set(
+        backend.name,
+        await this.prober.probeQuota(backend, this.registry.backends),
+      );
     }
 
     // 2. Filter available backends (quota > 0%)
-    const availableBackends = backends.filter(b => {
+    const availableBackends = backends.filter((b) => {
       const reading = readings.get(b.name);
       return reading && reading.percent > 0;
     });
@@ -70,7 +73,7 @@ export class BackendSelector {
     availableBackends.sort((a, b) => {
       const qA = readings.get(a.name)!.percent;
       const qB = readings.get(b.name)!.percent;
-      
+
       // If within 20%, use tiebreaker
       if (Math.abs(qA - qB) <= 20) {
         const successA = this.getSuccessRate(a.name);
@@ -79,7 +82,7 @@ export class BackendSelector {
           return successB - successA;
         }
       }
-      
+
       return qB - qA;
     });
 
@@ -97,11 +100,14 @@ export class BackendSelector {
         backend,
         classification,
         context.taskType,
-        this.prober
+        this.prober,
       );
 
       if (model) {
-        const command = this.modelSelector.renderCommand(backend.command, model);
+        const command = this.modelSelector.renderCommand(
+          backend.command,
+          model,
+        );
         const selection: BackendSelection = {
           backend: backend.name,
           model: model.name,
@@ -111,7 +117,7 @@ export class BackendSelector {
           quotaPercent: reading.percent,
           probeStatus: reading.status,
           fallbackUsed: i > 0,
-          modelFailoverUsed
+          modelFailoverUsed,
         };
 
         // Record decision
@@ -127,7 +133,7 @@ export class BackendSelector {
           probeStatus: selection.probeStatus,
           taskSp: context.taskSP,
           fallbackUsed: selection.fallbackUsed,
-          modelFailoverUsed: selection.modelFailoverUsed
+          modelFailoverUsed: selection.modelFailoverUsed,
         });
 
         return selection;
@@ -137,7 +143,9 @@ export class BackendSelector {
       lastError = `All models for '${backend.name}' in cooldown — provider failover`;
     }
 
-    console.error(`Fallback chain exhausted after ${maxAttempts} attempts. ${lastError}`);
+    console.error(
+      `Fallback chain exhausted after ${maxAttempts} attempts. ${lastError}`,
+    );
     process.exit(1);
   }
 
@@ -148,13 +156,15 @@ export class BackendSelector {
   private getSuccessRate(backendName: string): number {
     try {
       const db = getDb();
-      const result = db.prepare(`
+      const result = db
+        .prepare(`
         SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) as successes
         FROM runs 
         WHERE agent_backend = ?
-      `).get(backendName) as { total: number, successes: number } | undefined;
+      `)
+        .get(backendName) as { total: number; successes: number } | undefined;
 
       if (!result || result.total === 0) return 0;
       return result.successes / result.total;

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadRegistry } from "./agent-registry";
 
 vi.mock("node:fs");
@@ -31,16 +31,16 @@ describe("agent-registry", () => {
               command: "codex",
               sendKeys: "/status",
               parseRegex: "(\\d+)% left",
-              cacheTTLMinutes: 5
+              cacheTTLMinutes: 5,
             },
             maxConcurrent: 1,
             models: [
-              { name: "gpt-5.4", tier: "thinking", modelFlag: "gpt-5.4" }
-            ]
-          }
+              { name: "gpt-5.4", tier: "thinking", modelFlag: "gpt-5.4" },
+            ],
+          },
         },
-        fallbackOrder: ["codex"]
-      }
+        fallbackOrder: ["codex"],
+      },
     };
 
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
@@ -64,16 +64,14 @@ describe("agent-registry", () => {
             command: "gemini --model {{model}}",
             quotaProbe: {
               method: "optimistic",
-              cacheTTLMinutes: 60
+              cacheTTLMinutes: 60,
             },
             maxConcurrent: 2,
-            models: [
-              { name: "gemini-pro", tier: "thinking" }
-            ]
-          }
+            models: [{ name: "gemini-pro", tier: "thinking" }],
+          },
         },
-        fallbackOrder: ["gemini"]
-      }
+        fallbackOrder: ["gemini"],
+      },
     };
 
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
@@ -92,7 +90,9 @@ describe("agent-registry", () => {
 
     loadRegistry(projectRoot);
     expect(process.exit).toHaveBeenCalledWith(1);
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Missing required config: agents.registry"));
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Missing required config: agents.registry"),
+    );
   });
 
   it("TR-003: fails fast on invalid JSON", () => {
@@ -101,7 +101,9 @@ describe("agent-registry", () => {
 
     loadRegistry(projectRoot);
     expect(process.exit).toHaveBeenCalledWith(1);
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Configuration error: invalid JSON"));
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Configuration error: invalid JSON"),
+    );
   });
 
   it("TR-003: fails fast on missing agents.registry or fallbackOrder", () => {
@@ -111,7 +113,11 @@ describe("agent-registry", () => {
 
     loadRegistry(projectRoot);
     expect(process.exit).toHaveBeenCalledWith(1);
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Missing required config: agents.registry or agents.fallbackOrder"));
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Missing required config: agents.registry or agents.fallbackOrder",
+      ),
+    );
   });
 
   it("TR-003: fails fast on invalid registry schema", () => {
@@ -123,17 +129,19 @@ describe("agent-registry", () => {
             command: "codex exec",
             quotaProbe: { method: "invalid-method" },
             maxConcurrent: 0,
-            models: []
-          }
+            models: [],
+          },
         },
-        fallbackOrder: ["codex"]
-      }
+        fallbackOrder: ["codex"],
+      },
     };
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
     vi.spyOn(fs, "readFileSync").mockReturnValue(JSON.stringify(invalidConfig));
 
     loadRegistry(projectRoot);
     expect(process.exit).toHaveBeenCalledWith(1);
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Invalid agent registry entry"));
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid agent registry entry"),
+    );
   });
 });

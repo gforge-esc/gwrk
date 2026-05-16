@@ -45,7 +45,7 @@ export class QuotaProber {
   async probeQuota(
     backend: AgentBackendConfig,
     allBackends: Record<string, AgentBackendConfig>,
-    visited: Set<string> = new Set()
+    visited: Set<string> = new Set(),
   ): Promise<QuotaReading> {
     const config = backend.quotaProbe;
     const cached = this.cache[backend.name];
@@ -74,7 +74,6 @@ export class QuotaProber {
         case "shared-pool":
           reading = await this.probeSharedPool(config, allBackends, visited);
           break;
-        case "optimistic":
         default:
           reading = this.getOptimisticReading("fresh");
           break;
@@ -90,29 +89,45 @@ export class QuotaProber {
 
   private async scrapeInteractive(
     backendName: string,
-    config: Extract<QuotaProbe, { method: "interactive-scrape" }>
+    config: Extract<QuotaProbe, { method: "interactive-scrape" }>,
   ): Promise<QuotaReading> {
     const sessionId = `gwrk-probe-${backendName}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const probeTask = (async (): Promise<QuotaReading> => {
       try {
         // 1. Start tmux session with the command
-        await execCommand("tmux", ["new-session", "-d", "-s", sessionId, config.command]);
+        await execCommand("tmux", [
+          "new-session",
+          "-d",
+          "-s",
+          sessionId,
+          config.command,
+        ]);
 
         // Wait a bit for the app to start
         await new Promise((r) => setTimeout(r, 1000));
 
         // 2. Send keys
-        await execCommand("tmux", ["send-keys", "-t", sessionId, config.sendKeys, "C-m"]);
+        await execCommand("tmux", [
+          "send-keys",
+          "-t",
+          sessionId,
+          config.sendKeys,
+          "C-m",
+        ]);
 
         // Wait for response
         await new Promise((r) => setTimeout(r, 1500));
 
         // 3. Capture pane
-        const result = await execCommand("tmux", ["capture-pane", "-pt", sessionId]);
+        const result = await execCommand("tmux", [
+          "capture-pane",
+          "-pt",
+          sessionId,
+        ]);
 
         const match = result.stdout.match(new RegExp(config.parseRegex));
-        if (match && match[1]) {
+        if (match?.[1]) {
           let percent = Number.parseFloat(match[1]);
           if (config.invertPercent) {
             percent = 100 - percent;
@@ -127,7 +142,9 @@ export class QuotaProber {
         return this.getOptimisticReading("timeout-assumed-available");
       } finally {
         // 4. Kill session (always cleanup)
-        await execCommand("tmux", ["kill-session", "-t", sessionId]).catch(() => {});
+        await execCommand("tmux", ["kill-session", "-t", sessionId]).catch(
+          () => {},
+        );
       }
     })();
 
@@ -143,7 +160,7 @@ export class QuotaProber {
   private async probeSharedPool(
     config: Extract<QuotaProbe, { method: "shared-pool" }>,
     allBackends: Record<string, AgentBackendConfig>,
-    visited: Set<string>
+    visited: Set<string>,
   ): Promise<QuotaReading> {
     const sharedBackend = allBackends[config.sharedWith];
     if (!sharedBackend || visited.has(config.sharedWith)) {
@@ -159,13 +176,16 @@ export class QuotaProber {
       percent: 100,
       resetsIn: "unknown",
       probedAt: new Date().toISOString(),
-      status
+      status,
     };
   }
 
   // Model Cooldown Tracking (FR-010)
   markModelFailure(backendName: string, modelName: string, cooldownMs = 60000) {
-    this.modelCooldowns.set(`${backendName}:${modelName}`, Date.now() + cooldownMs);
+    this.modelCooldowns.set(
+      `${backendName}:${modelName}`,
+      Date.now() + cooldownMs,
+    );
   }
 
   isModelInCooldown(backendName: string, modelName: string): boolean {

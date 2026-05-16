@@ -45,7 +45,7 @@ describe("status routes (FR-004, US-002)", () => {
     expect(body.server.status).toBe("running");
     expect(body.server.lifecycle).toBe("ready");
     expect(body.server.pid).toBe(process.pid);
-    
+
     // Sandboxes still returned as [] (full removal is Phase 3+ work)
     expect(body.sandboxes).toEqual([]);
 
@@ -53,7 +53,7 @@ describe("status routes (FR-004, US-002)", () => {
     expect(body.system.cpuPercent).toBeDefined();
     expect(body.system.memPercent).toBeDefined();
     expect(body.system.diskFreeGb).toBeDefined();
-    
+
     // Verify network
     expect(body.network.status).toBeDefined();
 

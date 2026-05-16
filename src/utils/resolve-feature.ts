@@ -40,7 +40,7 @@ export function resolveFeature(
     // For pure numeric input, also match against the feature's numeric prefix
     if (isNumericInput) {
       const entryNumeric = entry.match(/^(\d+)/);
-      if (entryNumeric && entryNumeric[1].startsWith(featureInput)) {
+      if (entryNumeric?.[1].startsWith(featureInput)) {
         return true;
       }
     }

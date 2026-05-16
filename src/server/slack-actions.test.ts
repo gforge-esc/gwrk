@@ -93,13 +93,25 @@ describe("slack-actions (FR-007, US-004)", () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
-      actions: [{ value: JSON.stringify({ featureId: "003-slack", specPath: "specs/003-slack/spec.md" }) }],
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+            specPath: "specs/003-slack/spec.md",
+          }),
+        },
+      ],
       channel: { id: "C123" },
       user: { id: "U123" },
     };
     const client = { chat: { postMessage: vi.fn() } };
 
-    await actionHandlers.approve_spec({ ack, body, client, logger: console } as any);
+    await actionHandlers.approve_spec({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
 
     expect(ack).toHaveBeenCalled();
     expect(mockSpawn).toHaveBeenCalledWith(
@@ -118,16 +130,31 @@ describe("slack-actions (FR-007, US-004)", () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
-      actions: [{ value: JSON.stringify({ featureId: "003-slack", planPath: "specs/003-slack/plan.md" }) }],
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+            planPath: "specs/003-slack/plan.md",
+          }),
+        },
+      ],
       channel: { id: "C123" },
       user: { id: "U123" },
     };
     const client = { chat: { postMessage: vi.fn() } };
 
-    await actionHandlers.approve_plan({ ack, body, client, logger: console } as any);
+    await actionHandlers.approve_plan({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(mockHandleDefineComplete).toHaveBeenCalledWith({ featureId: "003-slack", status: "DEFINED" });
+    expect(mockHandleDefineComplete).toHaveBeenCalledWith({
+      featureId: "003-slack",
+      status: "DEFINED",
+    });
     expect(client.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Approved plan"),
@@ -143,13 +170,25 @@ describe("slack-actions (FR-007, US-004)", () => {
     const ack = vi.fn();
     const postMessage = vi.fn();
     const body = {
-      actions: [{ value: JSON.stringify({ featureId: "003-slack", phaseId: "phase-01" }) }],
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+            phaseId: "phase-01",
+          }),
+        },
+      ],
       channel: { id: "C123" },
       user: { id: "U123" },
     };
     const client = { chat: { postMessage } };
 
-    await actionHandlers.merge_pr({ ack, body, client, logger: console } as any);
+    await actionHandlers.merge_pr({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
 
     expect(ack).toHaveBeenCalled();
     expect(findOpenPr).toHaveBeenCalledWith("003-slack", "phase-01");
@@ -163,13 +202,25 @@ describe("slack-actions (FR-007, US-004)", () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
-      actions: [{ value: JSON.stringify({ featureId: "003-slack", phaseId: "phase-01" }) }],
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+            phaseId: "phase-01",
+          }),
+        },
+      ],
       channel: { id: "C123" },
       user: { id: "U123" },
     };
     const client = { chat: { postMessage: vi.fn() } };
 
-    await actionHandlers.retry_phase({ ack, body, client, logger: console } as any);
+    await actionHandlers.retry_phase({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
 
     expect(ack).toHaveBeenCalled();
     expect(mockContext.queue.enqueue).toHaveBeenCalledWith({

@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getDb, getTestDb } from "../db/index.js";
+import type { AgentRegistry } from "./agent-registry.js";
 import { BackendSelector, type TaskContext } from "./backend-selector.js";
 import { TaskClassification, TaskType } from "./task-classifier.js";
-import type { AgentRegistry } from "./agent-registry.js";
-import { getDb, getTestDb } from "../db/index.js";
 
 // Mock recordDecision to avoid DB side effects in non-db tests
 vi.mock("./routing-decisions.js", () => ({
@@ -10,7 +10,7 @@ vi.mock("./routing-decisions.js", () => ({
 }));
 
 vi.mock("../db/index.js", async () => {
-  const actual = await vi.importActual("../db/index.js") as any;
+  const actual = (await vi.importActual("../db/index.js")) as any;
   return {
     ...actual,
     getDb: vi.fn(),
@@ -44,7 +44,13 @@ describe("BackendSelector", () => {
           command: "codex --model {{model}}",
           maxConcurrent: 1,
           quotaProbe: { method: "optimistic", cacheTTLMinutes: 5 },
-          models: [{ name: "gpt-5", tier: TaskClassification.THINKING, modelFlag: "gpt-5" }],
+          models: [
+            {
+              name: "gpt-5",
+              tier: TaskClassification.THINKING,
+              modelFlag: "gpt-5",
+            },
+          ],
         },
         gemini: {
           name: "gemini",
@@ -52,7 +58,13 @@ describe("BackendSelector", () => {
           command: "gemini --model {{model}}",
           maxConcurrent: 1,
           quotaProbe: { method: "optimistic", cacheTTLMinutes: 5 },
-          models: [{ name: "gemini-pro", tier: TaskClassification.THINKING, modelFlag: "gemini-pro" }],
+          models: [
+            {
+              name: "gemini-pro",
+              tier: TaskClassification.THINKING,
+              modelFlag: "gemini-pro",
+            },
+          ],
         },
         claude: {
           name: "claude",
@@ -60,7 +72,13 @@ describe("BackendSelector", () => {
           command: "claude --model {{model}}",
           maxConcurrent: 1,
           quotaProbe: { method: "optimistic", cacheTTLMinutes: 5 },
-          models: [{ name: "claude-3", tier: TaskClassification.THINKING, modelFlag: "claude-3" }],
+          models: [
+            {
+              name: "claude-3",
+              tier: TaskClassification.THINKING,
+              modelFlag: "claude-3",
+            },
+          ],
         },
       },
       fallbackOrder: ["codex", "gemini", "claude"],
@@ -68,7 +86,12 @@ describe("BackendSelector", () => {
 
     mockProber = {
       probeQuota: vi.fn().mockImplementation(async (backend) => {
-        return { percent: 100, status: "fresh", probedAt: new Date().toISOString(), resetsIn: "unknown" };
+        return {
+          percent: 100,
+          status: "fresh",
+          probedAt: new Date().toISOString(),
+          resetsIn: "unknown",
+        };
       }),
       isModelInCooldown: vi.fn().mockReturnValue(false),
     };
@@ -109,9 +132,15 @@ describe("BackendSelector", () => {
     });
 
     // Seed history: codex has 100% success, gemini has 0%
-    db.prepare("INSERT INTO projects (id, name, path) VALUES ('p1', 'p1', '/tmp')").run();
-    db.prepare("INSERT INTO runs (feature_id, agent_backend, exit_code, command) VALUES ('f1', 'codex', 0, 'cmd')").run();
-    db.prepare("INSERT INTO runs (feature_id, agent_backend, exit_code, command) VALUES ('f1', 'gemini', 1, 'cmd')").run();
+    db.prepare(
+      "INSERT INTO projects (id, name, path) VALUES ('p1', 'p1', '/tmp')",
+    ).run();
+    db.prepare(
+      "INSERT INTO runs (feature_id, agent_backend, exit_code, command) VALUES ('f1', 'codex', 0, 'cmd')",
+    ).run();
+    db.prepare(
+      "INSERT INTO runs (feature_id, agent_backend, exit_code, command) VALUES ('f1', 'gemini', 1, 'cmd')",
+    ).run();
 
     const selection = await selector.selectBackend(context);
     expect(selection.backend).toBe("codex"); // Codex preferred due to better history
@@ -119,10 +148,18 @@ describe("BackendSelector", () => {
 
   it("handles model failover within provider (TR-009)", async () => {
     mockRegistry.backends.gemini.models = [
-      { name: "gemini-flash", tier: TaskClassification.FAST, modelFlag: "flash" },
-      { name: "gemini-pro", tier: TaskClassification.THINKING, modelFlag: "pro" },
+      {
+        name: "gemini-flash",
+        tier: TaskClassification.FAST,
+        modelFlag: "flash",
+      },
+      {
+        name: "gemini-pro",
+        tier: TaskClassification.THINKING,
+        modelFlag: "pro",
+      },
     ];
-    
+
     mockProber.probeQuota.mockImplementation(async (backend) => {
       if (backend.name === "gemini") return { percent: 100, status: "fresh" };
       return { percent: 0 };
@@ -133,7 +170,10 @@ describe("BackendSelector", () => {
       return model === "gemini-flash";
     });
 
-    const selection = await selector.selectBackend({ ...context, taskType: TaskType.TEST });
+    const selection = await selector.selectBackend({
+      ...context,
+      taskType: TaskType.TEST,
+    });
     expect(selection.backend).toBe("gemini");
     expect(selection.model).toBe("gemini-pro");
     expect(selection.modelFailoverUsed).toBe(true);
@@ -141,8 +181,10 @@ describe("BackendSelector", () => {
 
   it("exits if no backends have quota", async () => {
     mockProber.probeQuota.mockReturnValue(Promise.resolve({ percent: 0 }));
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("exit"); });
-    
+    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("exit");
+    });
+
     await expect(selector.selectBackend(context)).rejects.toThrow("exit");
     expect(mockExit).toHaveBeenCalledWith(1);
   });

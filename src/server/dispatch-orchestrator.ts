@@ -7,7 +7,12 @@ import type { TaskRecord } from "./types.js";
 export interface DispatchPhaseOptions {
   featureId: string;
   phaseId: string;
-  tasks: Array<{ id: string; prompt?: string; backend?: AgentBackend; model?: string }>;
+  tasks: Array<{
+    id: string;
+    prompt?: string;
+    backend?: AgentBackend;
+    model?: string;
+  }>;
   backend?: AgentBackend;
   model?: string;
   concurrency?: number;

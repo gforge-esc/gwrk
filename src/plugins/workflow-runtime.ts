@@ -28,9 +28,7 @@ export function extractJsonFromOutput(stdout: string): unknown {
         if (typeof parsed === "object" && parsed !== null) {
           return parsed;
         }
-      } catch {
-        continue;
-      }
+      } catch {}
     }
   }
 
@@ -260,7 +258,8 @@ export class WorkflowRuntime {
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,
         );
         return {
-          summary: `Agent completed successfully (native execution, no JSON intents)`,
+          summary:
+            "Agent completed successfully (native execution, no JSON intents)",
           intents: [],
           summaries: [],
         };
