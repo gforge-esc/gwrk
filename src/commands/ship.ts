@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -289,7 +290,6 @@ async function shipPhase(
     try {
       const manifestDir = path.join(featureDir, ".gwrk", "runs");
       await run("git", ["add", manifestDir], { cwd });
-      const { execSync } = await import("node:child_process");
       const porcelain = execSync("git status --porcelain", {
         cwd,
         encoding: "utf-8",
@@ -537,6 +537,12 @@ Examples:
               t.status = "open";
             }
             saveTaskState(specDir, taskState);
+            // Commit the reset so the orchestrator sees a clean working tree
+            execSync(`git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`, {
+              cwd,
+              env: { ...process.env, GWRK_SHIP: "1" },
+              stdio: "pipe",
+            });
             console.log(`${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`);
           }
           phases = [phase];
@@ -560,6 +566,12 @@ Examples:
                   t.status = "open";
                 }
                 saveTaskState(specDir, taskState);
+                // Commit the reset so the orchestrator sees a clean working tree
+                execSync(`git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`, {
+                  cwd,
+                  env: { ...process.env, GWRK_SHIP: "1" },
+                  stdio: "pipe",
+                });
                 console.log(`${YELLOW}⚠${RESET} Force mode: resetting Phase ${phaseNum} tasks to open`);
                 return true;
               }
