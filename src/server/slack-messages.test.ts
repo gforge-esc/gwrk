@@ -79,8 +79,15 @@ describe("MessageBuilder", () => {
       (b) => b.type === "actions",
     ) as ActionsBlock;
     expect(actions.elements).toHaveLength(2);
-    expect((actions.elements[0] as any).action_id).toBe("approve_spec");
-    expect((actions.elements[1] as any).action_id).toBe("revise_spec");
+
+    const approveBtn = actions.elements[0] as any;
+    expect(approveBtn.action_id).toBe("approve_spec");
+    const approveValue = JSON.parse(approveBtn.value);
+    expect(approveValue.featureId).toBe("003-slack");
+    expect(approveValue.specPath).toBe("specs/003-slack/spec.md");
+
+    const reviseBtn = actions.elements[1] as any;
+    expect(reviseBtn.action_id).toBe("revise_spec");
   });
 
   it("should build planReady message with buttons (FR-016)", () => {
@@ -92,7 +99,14 @@ describe("MessageBuilder", () => {
       (b) => b.type === "actions",
     ) as ActionsBlock;
     expect(actions.elements).toHaveLength(2);
-    expect((actions.elements[0] as any).action_id).toBe("approve_plan");
-    expect((actions.elements[1] as any).action_id).toBe("revise_plan");
+
+    const approveBtn = actions.elements[0] as any;
+    expect(approveBtn.action_id).toBe("approve_plan");
+    const approveValue = JSON.parse(approveBtn.value);
+    expect(approveValue.featureId).toBe("003-slack");
+    expect(approveValue.planPath).toBe("specs/003-slack/plan.md");
+
+    const reviseBtn = actions.elements[1] as any;
+    expect(reviseBtn.action_id).toBe("revise_plan");
   });
 });

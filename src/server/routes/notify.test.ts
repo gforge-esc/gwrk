@@ -124,9 +124,52 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
     }
   });
 
-  // TODO: Implement MessageBuilder.specReady() (currently throws "Not implemented")
-  it.todo("FR-016: should handle define_spec_ready notification");
+  it("FR-016: should handle define_spec_ready notification", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
 
-  // TODO: Implement MessageBuilder.planReady() (currently throws "Not implemented")
-  it.todo("FR-016: should handle define_plan_ready notification");
+      await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        payload: {
+          type: "define_spec_ready",
+          feature: "003-slack",
+          specPath: "specs/003-slack/spec.md",
+        },
+      });
+
+      expect(spy).toHaveBeenCalled();
+      const callArgs = spy.mock.calls[0];
+      expect(callArgs[0].text).toContain("Spec Ready");
+      expect(callArgs[0].text).toContain("003-slack");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("FR-016: should handle define_plan_ready notification", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        payload: {
+          type: "define_plan_ready",
+          feature: "003-slack",
+          planPath: "specs/003-slack/plan.md",
+          phaseCount: 5,
+        },
+      });
+
+      expect(spy).toHaveBeenCalled();
+      const callArgs = spy.mock.calls[0];
+      expect(callArgs[0].text).toContain("Plan Ready");
+      expect(callArgs[0].text).toContain("5 phases");
+    } finally {
+      await server.close();
+    }
+  });
 });
