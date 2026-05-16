@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-16T20:27:34.109Z_ship_p03",
+  "feature": "002-build-server",
+  "phase": "phase-03",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "gemini-3-flash-preview",
+  "startedAt": "2026-05-16T20:27:34.109Z",
+  "finishedAt": "2026-05-16T20:27:36.430Z",
+  "durationS": 2,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 24,
+  "linesDeleted": 6,
+  "gitCommit": "61cd1a26af97860f472116be94ed9b2a503afaff",
+  "gitBranch": "develop",
+  "digest": []
+}
