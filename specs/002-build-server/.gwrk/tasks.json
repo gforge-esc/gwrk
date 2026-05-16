@@ -270,20 +270,20 @@
           "id": "T017",
           "title": "Implement src/server/slack-notify.ts",
           "description": "New: Event listener mapped to Foxtrot Charlie message blocks\n\nREVIEW FAIL (code): Missing requirement — FR-006.\n  WHERE: src/server/slack-messages.ts (used by slack-notify.ts)\n  EXPECTED: Support 'Escalate' button in phase failure / review ready messages.\n  ACTUAL: Button is missing.\n  FIX: Add 'Escalate' button to MessageBuilder blocks.\n  REF: plan.md Phase 3 > slack-notify.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T20:45:41.199Z",
+          "completedAt": "2026-05-16T20:47:55.566Z",
           "classification": "greenfield"
         },
         {
           "id": "T018",
           "title": "Implement src/server/slack-actions.ts",
           "description": "New: Block Kit interactive handlers for Merge, Retry, Escalate\n\nREVIEW FAIL (code): Unimplemented handlers — FR-007.\n  WHERE: src/server/slack-actions.ts:86-98\n  EXPECTED: Implement handlers for approve_spec, approve_plan, revise_spec.\n  ACTUAL: throw new Error(\"Not implemented: ...\")\n  FIX: Implement the missing action handlers.\n  REF: plan.md Phase 3 > slack-actions.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T20:45:41.209Z",
+          "completedAt": "2026-05-16T20:47:55.572Z",
           "classification": "greenfield"
         },
         {
@@ -300,10 +300,10 @@
           "id": "T020",
           "title": "Implement src/server/slack-actions.test.ts",
           "description": "New: Test button tap -> CLI command dispatch\n\nREVIEW FAIL (test): Unit tests failing — TR-007.\n  WHERE: src/server/slack-actions.test.ts\n  EXPECTED: Tests should pass.\n  ACTUAL: 2 failed tests.\n  FIX: Fix the failing tests (partially caused by T018 being unimplemented).\n  REF: plan.md Phase 3 > slack-actions.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T20:45:41.221Z",
+          "completedAt": "2026-05-16T20:47:55.577Z",
           "classification": "greenfield"
         },
         {
@@ -329,19 +329,19 @@
           "id": "T035",
           "title": "Implement src/server/slack-home.ts",
           "description": "MODIFY: Home tab shows: plan DAG status, pending blessings, active ships — not raw data dump\n\nREVIEW FAIL (code): Test failure / String mismatch — US-003.\n  WHERE: src/server/slack-home.ts\n  EXPECTED: Home tab content should match test expectations (or update tests).\n  ACTUAL: Test 'builds the home tab with all expected sections' fails.\n  FIX: Align slack-home.ts content with slack-home.test.ts.\n  REF: plan.md Phase 3 > slack-home.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T20:45:41.241Z"
+          "completedAt": "2026-05-16T20:47:55.584Z"
         },
         {
           "id": "T036",
           "title": "Implement src/engine/plan-store.ts",
           "description": "MODIFY: Add `advanceFeature(\n\nREVIEW FAIL (code): NOT IMPLEMENTED — T036.\n  WHERE: src/engine/plan-store.ts\n  EXPECTED: Method advanceFeature(featureId) should be implemented.\n  ACTUAL: Method is missing.\n  FIX: Implement advanceFeature(featureId) to calculate next phase from current state.\n  REF: tasks.json T036",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T20:45:41.247Z"
+          "completedAt": "2026-05-16T20:47:55.588Z"
         }
       ],
       "sp_estimate": 0,
