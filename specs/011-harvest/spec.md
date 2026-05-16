@@ -2,9 +2,9 @@
 
 **Feature Branch**: `feat/011-harvest`
 **Created**: 2026-03-14
-**Updated**: 2026-03-19 (R001/R002 cross-references)
+**Updated**: 2026-05-15 (v2 — add GitHub Issues as post-ship feedback source)
 **Status**: Specified
-**Input**: Post-merge lifecycle for shipped work. Harvest is triggered by GitHub webhook when a Ship Loop PR is merged. It rehomes logs, finalizes DB records, calculates compression ratios, and posts the "🏆 Done, Done!" notification to Slack.
+**Input**: Post-merge lifecycle for shipped work. Harvest is triggered by GitHub webhook when a Ship Loop PR is merged. It rehomes logs, finalizes DB records, calculates compression ratios, and posts the "🏆 Done, Done!" notification to Slack. Also monitors GitHub Issues for post-ship feedback that routes back into the define pipeline.
 
 > **Architectural anchors**: [architecture.md §6.3](file:///Users/gonzo/Code/gwrk/docs/architecture.md) (Harvest), [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [004-ship-loop Loop-Closing Contract](file:///Users/gonzo/Code/gwrk/specs/004-ship-loop/spec.md) (handoff), [PRD §16](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md) (Compression), [parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md) (R001 — Harvest boundary), [agent-backend-plugin-design.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md) (R002 — TaskResult)
 
@@ -85,6 +85,22 @@ As the build server, I want phase branches cleaned up after successful merge.
 1. **Given** a merged PR from `phase/004-ship-loop-phase-01`, **When** harvest completes, **Then**:
    - The phase branch is deleted from remote
 
+### US-H07 - Post-Ship Issue Capture (Priority: P1)
+As a Principal Engineer, I want to create a GitHub Issue describing what needs to be fixed after a ship completes, and have gwrk associate it with the feature automatically, so that I can report problems without talking to the agent directly.
+
+**Implements**: FR-H12, FR-H13, FR-H14
+
+**Acceptance Scenarios**:
+1. **Given** a GitHub Issue is opened with label `gwrk:002-build-server`, **When** the webhook fires, **Then**:
+   - Issue is associated with feature `002-build-server` in the execution ledger
+   - `gwrk status 002` shows the open issue count
+2. **Given** a GitHub Issue is opened with title containing `[002]` or `002-build-server`, **When** the webhook fires, **Then**:
+   - Feature association is resolved from the title (label takes priority)
+3. **Given** a post-ship issue exists for feature `002`, **When** the issue is closed on GitHub, **Then**:
+   - The issue record in the ledger is marked resolved
+4. **Given** a post-ship issue is opened, **When** Slack is configured, **Then**:
+   - A notification is posted: "📌 Issue opened for {feature}: {title}" with link to the issue
+
 ---
 
 ## 3. Functional Requirements
@@ -123,6 +139,12 @@ As the build server, I want phase branches cleaned up after successful merge.
 
 - **FR-H11**: *(Remediation — Gap Analysis 2026-04-14)* The Slack "🏆 Done, Done!" notification MUST be sent exactly once per harvest. The webhook handler (`src/server/github.ts`) MUST NOT duplicate the notification that `harvestFeature()` already sends internally via `notifyDoneDone()`. (Implements: US-H05, FR-H07)
 
+### Post-Ship Issue Capture
+- **FR-H12**: Build server MUST register a GitHub webhook handler for `issues` events (`action: "opened"`, `action: "closed"`, `action: "labeled"`). Webhook secret reuses the existing `GITHUB_WEBHOOK_SECRET` from FR-H01. (Implements: US-H07)
+- **FR-H13**: Issue-to-feature association MUST be resolved in priority order: (1) label matching `gwrk:<feature-id>` (e.g., `gwrk:002-build-server`), (2) title containing `[<feature-number>]` (e.g., `[002]`), (3) title containing the feature slug (e.g., `002-build-server`). If no feature is resolved, the issue is logged but not associated. (Implements: US-H07)
+- **FR-H14**: Associated issues MUST be recorded in the SQLite execution ledger (`issues` table) with: issue_number, feature_id, title, body, state (open/closed), created_at, closed_at, author. On `issues.closed`, update the record. (Implements: US-H07)
+- **FR-H15**: When a post-ship issue is opened and associated with a feature, a Slack notification MUST be posted to the project channel: "📌 Issue #{N} opened for {feature}: {title}" with a link to the GitHub Issue. (Implements: US-H07)
+
 ---
 
 ## 4. Dependencies
@@ -143,6 +165,7 @@ As the build server, I want phase branches cleaned up after successful merge.
 - **TC-H02**: Idempotent — Running harvest twice for the same merge MUST NOT create duplicate records. Implemented via FR-H10: compression table lookup before processing.
 - **TC-H03**: Fail-fast config — `GITHUB_WEBHOOK_SECRET` required; missing → `process.exit(1)`.
 - **TC-H04**: Compression timestamps from Git only — no OS file dates (unreliable across environments).
+- **TC-H05**: Issue association is best-effort — unassociated issues are logged but do not fail the webhook handler.
 
 ---
 
@@ -177,6 +200,7 @@ As the build server, I want phase branches cleaned up after successful merge.
 - **SC-H03**: Slack "🏆 Done, Done!" message posted with compression ratios.
 - **SC-H04**: Harvest is idempotent — safe to re-run.
 - **SC-H05**: `gwrk compression <feature>` shows calculated ratios after harvest.
+- **SC-H06**: GitHub Issues opened with feature labels are associated and surfaced in `gwrk status`.
 
 ---
 
