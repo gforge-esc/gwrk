@@ -83,7 +83,7 @@ export async function startSlackApp(deps: {
     // Register actions and events
     await registerSlackActions(slackApp, context);
 
-    // Register @gwrk mention handler
+    // Register @gwrk mention handler (listens for app_mention events)
     registerMentionHandler(slackApp, context);
 
     // Register App Home handler

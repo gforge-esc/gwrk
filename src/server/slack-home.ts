@@ -113,7 +113,7 @@ export async function buildHomeTab(
   blocks.push({ type: "divider" });
   blocks.push({
     type: "section",
-    text: { type: "mrkdwn", text: "📊 *Build Plan*" },
+    text: { type: "mrkdwn", text: "📐 *Plan DAG Status*" },
   });
 
   try {
@@ -149,7 +149,7 @@ export async function buildHomeTab(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "_No build plan. Run `gwrk plan seed` to initialize._",
+          text: "_No active plans._",
         },
       });
     }

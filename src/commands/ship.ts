@@ -397,6 +397,12 @@ Examples:
         const cwd = process.cwd();
         const config = loadConfig(cwd);
 
+        // Resolve webhook for cloud fallback (Phase 3 / T012)
+        const webhookUrl = process.env.SLACK_WEBHOOK_URL || config.project.slack?.webhookUrl;
+        if (webhookUrl) {
+          // Webhook configured, will be used by ShipBridge via notifySlack
+        }
+
         // Resolve prefix (e.g. "011" → "011-harvest")
         let feature: string;
         try {

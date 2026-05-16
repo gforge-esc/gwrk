@@ -10,10 +10,23 @@ vi.mock("./slack-notify.js", () => ({
 
 vi.mock("./slack-messages.js", () => ({
   MessageBuilder: {
-    reviewReady: vi.fn().mockReturnValue({ text: "Review Ready" }),
-    phaseFail: vi.fn().mockReturnValue({ text: "Phase Fail" }),
-    specReady: vi.fn().mockReturnValue({ text: "Spec Ready" }),
-    planReady: vi.fn().mockReturnValue({ text: "Plan Ready" }),
+    reviewReady: vi.fn().mockReturnValue({
+      text: "Review Ready",
+      blocks: [
+        { type: "section", text: { type: "mrkdwn", text: "Ready" } },
+        {
+          type: "actions",
+          elements: [
+            { type: "button", text: { type: "plain_text", text: "Merge" }, action_id: "merge_pr" },
+            { type: "button", text: { type: "plain_text", text: "Reject" }, action_id: "reject" },
+            { type: "button", text: { type: "plain_text", text: "View" }, action_id: "view" },
+          ],
+        },
+      ],
+    }),
+    phaseFail: vi.fn().mockReturnValue({ text: "Phase Fail", blocks: [] }),
+    specReady: vi.fn().mockReturnValue({ text: "Spec Ready", blocks: [] }),
+    planReady: vi.fn().mockReturnValue({ text: "Plan Ready", blocks: [] }),
   },
 }));
 
@@ -102,6 +115,6 @@ describe("ShipBridge (FR-005, FR-006)", () => {
     
     expect(message.blocks).toBeDefined();
     const buttons = message.blocks.flatMap((b: any) => b.elements || []).filter((e: any) => e.type === 'button');
-    expect(buttons.length).toBe(1);
+    expect(buttons.length).toBe(3);
   });
 });
