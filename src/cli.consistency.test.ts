@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { program } from "./cli.js";
-import { Command } from "commander";
+import type { Command } from "commander";
 
 describe("CLI Consistency: Feature Argument Position (US-023)", () => {
   const featureScopedCommands = [
