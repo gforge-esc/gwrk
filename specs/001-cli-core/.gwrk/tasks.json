@@ -465,29 +465,32 @@
         {
           "id": "T041",
           "title": "Implement src/commands/setup.ts",
-          "description": "NEW",
+          "description": "NEW\n\nREVIEW FAIL (code): STUBBED IMPLEMENTATION — FR-022.\n  WHERE: src/commands/setup.ts\n  EXPECTED: Full interactive 4-step wizard for TCC, SSH, gh auth, and verification.\n  ACTUAL: Placeholder that throws 'Not implemented'.\n  FIX: Implement the interactive wizard following macos-workstation-setup.md guidance.\n  GATE: gates/T041-gate.sh passed (weak gate), but src/commands/setup.test.ts fails.\n  REF: plan.md Phase 10 > Done When",
           "status": "open",
           "gateScript": "gates/T041-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-16T23:38:53.173Z"
         },
         {
           "id": "T042",
           "title": "Implement src/commands/ship.ts",
-          "description": "MODIFY",
+          "description": "MODIFY\n\nREVIEW FAIL (code): MISSING PRE-FLIGHT CHECK — US-021.\n  WHERE: src/commands/ship.ts\n  EXPECTED: Mandatory check for completion state in ~/.gwrk/setup.json before proceeding with ship.\n  ACTUAL: No setup check logic found in ship action handler.\n  FIX: Add pre-flight check using loadSetupState() from utils/setup-state.ts.\n  GATE: gates/T042-gate.sh passed (weak gate), but src/commands/ship-preflight.test.ts fails.\n  REF: plan.md Phase 10 > Done When",
           "status": "open",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-16T23:38:53.175Z"
         },
         {
           "id": "T043",
           "title": "Implement src/utils/setup-state.ts",
-          "description": "NEW",
+          "description": "NEW\n\nREVIEW FAIL (code): STUBBED IMPLEMENTATION — US-021.\n  WHERE: src/utils/setup-state.ts\n  EXPECTED: Persistence logic for ~/.gwrk/setup.json using Zod validation.\n  ACTUAL: Stubbed functions that throw 'Not implemented'.\n  FIX: Implement loadSetupState() and saveSetupState() with Zod schema validation.\n  GATE: gates/T043-gate.sh passed (weak gate), but src/utils/setup-state.test.ts fails.\n  REF: plan.md Phase 10 > Done When",
           "status": "open",
           "gateScript": "gates/T043-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-16T23:38:53.183Z"
         }
       ],
       "sp_estimate": 0,
