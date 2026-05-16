@@ -24,8 +24,8 @@
         {
           "id": "T002",
           "title": "Implement src/server/slack-messages.ts",
-          "description": "MODIFY: Add `specReady` and `planReady` Block Kit builders\n\nREVIEW FAIL (code): Implementation — FR-016.\n  WHERE: src/server/slack-messages.ts:338-348\n  EXPECTED: Functional Block Kit builders for specReady and planReady.\n  ACTUAL: throw new Error(\"Not implemented: ...\")\n  FIX: Implement the builders returning SlackMessage with Approve/Revise buttons and correct payloads as per spec.\n  GATE: specs/003-slack/gates/T002-gate.sh assertion #1 (Weak gate, only greps)\n  REF: plan.md Phase 1 > src/server/slack-messages.ts",
-          "status": "open",
+          "description": "MODIFY: Add `specReady` and `planReady` Block Kit builders",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -33,8 +33,8 @@
         {
           "id": "T003",
           "title": "Implement src/server/slack-actions.ts",
-          "description": "MODIFY: Add `approve_spec`, `approve_plan`, `revise_spec` handlers\n\nREVIEW FAIL (code): Implementation — FR-005.\n  WHERE: src/server/slack-actions.ts:86-98\n  EXPECTED: Action handlers for approve_spec, approve_plan, revise_spec.\n  ACTUAL: throw new Error(\"Not implemented: ...\")\n  FIX: Implement handlers. approve_spec should trigger plan generation; approve_plan should update PlanStore to DEFINED; revise_spec should re-enqueue definition.\n  GATE: specs/003-slack/gates/T003-gate.sh assertion #1 (Weak gate, only greps)\n  REF: plan.md Phase 1 > src/server/slack-actions.ts",
-          "status": "open",
+          "description": "MODIFY: Add `approve_spec`, `approve_plan`, `revise_spec` handlers",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -42,8 +42,8 @@
         {
           "id": "T004",
           "title": "Implement src/server/routes/notify.ts",
-          "description": "MODIFY: Handle `define_spec_ready` and `define_plan_ready` event types\n\nREVIEW FAIL (code): Integration — FR-016.\n  WHERE: src/server/routes/notify.ts:74-94\n  EXPECTED: Functional event handlers for define_spec_ready and define_plan_ready.\n  ACTUAL: Calls unimplemented MessageBuilder.specReady/planReady.\n  FIX: Ensure handlers correctly process specPath/planPath and call the (to be implemented) message builders.\n  GATE: specs/003-slack/gates/T004-gate.sh assertion #1 (Weak gate, only greps)\n  REF: plan.md Phase 1 > src/server/routes/notify.ts",
-          "status": "open",
+          "description": "MODIFY: Handle `define_spec_ready` and `define_plan_ready` event types",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -51,8 +51,8 @@
         {
           "id": "T005",
           "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Test Verification — Phase 1 Test Strategy.\n  WHERE: src/server/slack-commands.test.ts, src/server/slack-messages.test.ts, src/server/slack-actions.test.ts\n  EXPECTED: All phase-relevant tests passing.\n  ACTUAL: 4 tests failed with \"Not implemented\" errors.\n  FIX: Fix the implementation so that the tests pass.\n  GATE: specs/003-slack/gates/T005-gate.sh assertion #1\n  REF: plan.md Phase 1 > Test Strategy",
-          "status": "open",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
           "classification": "noop"
