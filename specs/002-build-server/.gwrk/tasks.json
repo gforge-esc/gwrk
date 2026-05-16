@@ -358,71 +358,76 @@
           "id": "T022",
           "title": "Implement src/db/migrations/0001_runs.sql",
           "description": "New: Table schema for `runs`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:34:42.765Z",
+          "completedAt": "2026-05-16T20:56:41.313Z",
           "classification": "greenfield"
         },
         {
           "id": "T023",
           "title": "Implement src/db/index.ts",
           "description": "Modify: Add query and insert wrappers for `runs`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:34:42.775Z",
+          "completedAt": "2026-05-16T20:56:41.322Z",
           "classification": "greenfield"
         },
         {
           "id": "T024",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:34:42.783Z",
+          "completedAt": "2026-05-16T20:56:41.327Z",
           "classification": "noop"
         },
         {
           "id": "T037",
           "title": "Implement src/commands/define.ts",
           "description": "MODIFY: Emit `define:spec:ready` and `define:plan:ready` events after successful agent dispatch",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-16T20:56:41.332Z"
         },
         {
           "id": "T038",
           "title": "Implement src/server/ship-bridge.ts",
           "description": "MODIFY: Also handle define events — build spec/plan-ready messages with Approve/Revise buttons",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-16T20:56:41.337Z"
         },
         {
           "id": "T039",
           "title": "Implement src/server/slack-actions.ts",
           "description": "MODIFY: Add `approve_spec` and `approve_plan` action handlers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T020-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-16T20:56:41.342Z"
         },
         {
           "id": "T040",
           "title": "Implement src/server/slack.ts",
           "description": "MODIFY: Add Slack reconnection on wake — currently drops connection after sleep",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T024-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-16T20:56:41.346Z"
         },
         {
           "id": "T041",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-16T20:56:41.348Z"
         }
       ],
       "sp_estimate": 0,
