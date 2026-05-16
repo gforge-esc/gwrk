@@ -416,16 +416,17 @@
           "status": "completed",
           "gateScript": "gates/T037-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:47:50.979Z",
+          "completedAt": "2026-05-16T22:29:00.299Z",
           "classification": "greenfield"
         },
         {
           "id": "T038",
           "title": "Implement src/commands/tasks.ts",
           "description": "MODIFY\n\nREVIEW FAIL (code): STUBBED IMPLEMENTATION — FR-020.\n  WHERE: src/commands/tasks.ts:184-189\n  EXPECTED: Full implementation of 'verify' command that validates execution manifests against tasks.json and checks for orphans/missing manifests. Also, FR-021 (history.jsonl deprecation) must be implemented by updating src/utils/history.ts to stop writing to the legacy file.\n  ACTUAL: Stubbed 'verify' implementation with 'const valid = true;'. src/utils/history.ts still writes to history.jsonl.\n  FIX: Implement manifest validation logic in 'verify' command. Update src/utils/history.ts to remove legacy file writes.\n  GATE: gates/T038-gate.sh passed (weak gate), but src/commands/tasks-verify.test.ts fails.\n  REF: plan.md Phase 9 > Done When",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T038-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-16T22:29:00.557Z",
           "classification": "greenfield"
         },
         {
@@ -435,16 +436,17 @@
           "status": "completed",
           "gateScript": "gates/T039-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:47:50.995Z",
+          "completedAt": "2026-05-16T22:29:00.805Z",
           "classification": "greenfield"
         },
         {
           "id": "T040",
           "title": "Implement src/commands/define.ts",
           "description": "MODIFY\n\nREVIEW FAIL (code): MISSING EXECUTION MANIFESTS — FR-019.\n  WHERE: src/commands/specify.ts, src/commands/define-plan.ts, src/commands/tasks-generate.ts, src/commands/tests-generate.ts\n  EXPECTED: Each 'define' subcommand that dispatches an agent run must write an ExecutionManifest to .gwrk/runs/ upon completion. Currently only the top-level 'define' orchestrator and 'ship' command do this.\n  ACTUAL: Subcommands like 'spec', 'plan', 'tasks', and 'tests' skip manifest writing.\n  FIX: Update these subcommand action handlers to call 'writeManifest' and 'recordHistory' after run completion, following the pattern in src/commands/define.ts.\n  GATE: gates/T040-gate.sh\n  REF: plan.md Phase 9 > Done When",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T040-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-16T22:29:01.049Z",
           "classification": "greenfield"
         }
       ],
