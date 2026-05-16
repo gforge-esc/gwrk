@@ -358,7 +358,7 @@
           "id": "T022",
           "title": "Implement src/db/migrations/0001_runs.sql",
           "description": "New: Table schema for `runs`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-16T19:34:42.765Z",
@@ -368,7 +368,7 @@
           "id": "T023",
           "title": "Implement src/db/index.ts",
           "description": "Modify: Add query and insert wrappers for `runs`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T023-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-16T19:34:42.775Z",
@@ -378,7 +378,7 @@
           "id": "T024",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-16T19:34:42.783Z",
@@ -388,7 +388,7 @@
           "id": "T037",
           "title": "Implement src/commands/define.ts",
           "description": "MODIFY: Emit `define:spec:ready` and `define:plan:ready` events after successful agent dispatch",
-          "status": "cancelled",
+          "status": "open",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0
         },
@@ -396,7 +396,7 @@
           "id": "T038",
           "title": "Implement src/server/ship-bridge.ts",
           "description": "MODIFY: Also handle define events — build spec/plan-ready messages with Approve/Revise buttons",
-          "status": "cancelled",
+          "status": "open",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0
         },
@@ -404,7 +404,7 @@
           "id": "T039",
           "title": "Implement src/server/slack-actions.ts",
           "description": "MODIFY: Add `approve_spec` and `approve_plan` action handlers",
-          "status": "cancelled",
+          "status": "open",
           "gateScript": "gates/T020-gate.sh",
           "sp": 0
         },
@@ -412,7 +412,7 @@
           "id": "T040",
           "title": "Implement src/server/slack.ts",
           "description": "MODIFY: Add Slack reconnection on wake — currently drops connection after sleep",
-          "status": "cancelled",
+          "status": "open",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0
         },
@@ -420,7 +420,7 @@
           "id": "T041",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "cancelled",
+          "status": "open",
           "gateScript": "gates/T025-gate.sh",
           "sp": 0
         }
