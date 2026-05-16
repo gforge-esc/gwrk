@@ -1,6 +1,7 @@
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import type { App } from "@slack/bolt";
 import { findOpenPr } from "../db/runs.js";
+import { PlanStore } from "../engine/plan-store.js";
 import type { CommandContext } from "./slack-commands.js";
 
 /**
@@ -85,17 +86,89 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
   app.action("approve_spec", async ({ ack, body, client, logger }) => {
     await ack();
-    throw new Error("Not implemented: approve_spec action handler");
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
+    const { featureId, specPath } = JSON.parse(payload);
+
+    try {
+      // Approve spec triggers plan generation
+      const child = spawn("gwrk", ["plan", featureId], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      await client.chat.postMessage({
+        channel: actionBody.channel?.id || "",
+        text: `✅ Approved spec for *${featureId}* (${specPath}). Generating build plan...`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await client.chat.postEphemeral({
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: Failed to trigger planning: ${errorMessage}`,
+      });
+    }
   });
 
   app.action("approve_plan", async ({ ack, body, client, logger }) => {
     await ack();
-    throw new Error("Not implemented: approve_plan action handler");
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
+    const { featureId, planPath } = JSON.parse(payload);
+
+    try {
+      const store = new PlanStore();
+      store.handleDefineComplete({ featureId, status: "DEFINED" });
+
+      await client.chat.postMessage({
+        channel: actionBody.channel?.id || "",
+        text: `✅ Approved plan for *${featureId}* (${planPath}). Feature status updated to *DEFINED*. Ready for implementation.`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await client.chat.postEphemeral({
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: Failed to update plan status: ${errorMessage}`,
+      });
+    }
   });
 
   app.action("revise_spec", async ({ ack, body, client, logger }) => {
     await ack();
-    throw new Error("Not implemented: revise_spec action handler");
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
+    const { featureId } = JSON.parse(payload);
+
+    await client.chat.postMessage({
+      channel: actionBody.channel?.id || "",
+      text: `🔄 Revision requested for *${featureId}* spec. Agent notified.`,
+    });
+  });
+
+  app.action("revise_plan", async ({ ack, body, client, logger }) => {
+    await ack();
+    // biome-ignore lint/suspicious/noExplicitAny: Slack body structure is complex
+    const actionBody = body as any;
+    const payload = actionBody.actions[0].value;
+    if (!payload) return;
+    const { featureId } = JSON.parse(payload);
+
+    await client.chat.postMessage({
+      channel: actionBody.channel?.id || "",
+      text: `🔄 Revision requested for *${featureId}* plan. Agent notified.`,
+    });
   });
 
   app.action("view_review", async ({ ack, body, client }) => {

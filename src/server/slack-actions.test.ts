@@ -14,9 +14,9 @@ vi.mock("../db/runs.js", () => ({
   }),
 }));
 
-const { mockSpawn, mockUpdateStatus } = vi.hoisted(() => ({
+const { mockSpawn, mockHandleDefineComplete } = vi.hoisted(() => ({
   mockSpawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
-  mockUpdateStatus: vi.fn(),
+  mockHandleDefineComplete: vi.fn(),
 }));
 
 // Mock execSync for gh pr merge
@@ -28,7 +28,7 @@ vi.mock("node:child_process", () => ({
 // Mock PlanStore
 vi.mock("../engine/plan-store.js", () => ({
   PlanStore: vi.fn().mockImplementation(() => ({
-    updateStatus: mockUpdateStatus,
+    handleDefineComplete: mockHandleDefineComplete,
   })),
 }));
 
@@ -82,6 +82,7 @@ describe("slack-actions (FR-007, US-004)", () => {
       "approve_spec",
       "approve_plan",
       "revise_spec",
+      "revise_plan",
     ];
     for (const action of expectedActions) {
       expect(mockApp.action).toHaveBeenCalledWith(action, expect.any(Function));
@@ -126,7 +127,7 @@ describe("slack-actions (FR-007, US-004)", () => {
     await actionHandlers.approve_plan({ ack, body, client, logger: console } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(mockUpdateStatus).toHaveBeenCalledWith("003-slack", "DEFINED");
+    expect(mockHandleDefineComplete).toHaveBeenCalledWith({ featureId: "003-slack", status: "DEFINED" });
     expect(client.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Approved plan"),
