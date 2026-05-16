@@ -14,10 +14,22 @@ vi.mock("../db/runs.js", () => ({
   }),
 }));
 
+const { mockSpawn, mockHandleDefineComplete } = vi.hoisted(() => ({
+  mockSpawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
+  mockHandleDefineComplete: vi.fn(),
+}));
+
 // Mock execSync for gh pr merge
 vi.mock("node:child_process", () => ({
   execSync: vi.fn().mockReturnValue("Merged PR #42"),
-  spawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
+  spawn: mockSpawn,
+}));
+
+// Mock PlanStore
+vi.mock("../engine/plan-store.js", () => ({
+  PlanStore: vi.fn().mockImplementation(() => ({
+    handleDefineComplete: mockHandleDefineComplete,
+  })),
 }));
 
 // biome-ignore lint/suspicious/noExplicitAny: complex mock args
@@ -33,6 +45,7 @@ describe("slack-actions (FR-007, US-004)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSpawn.mockReturnValue({ unref: vi.fn() });
     actionHandlers = {};
     eventHandlers = {};
     mockApp = {
@@ -69,17 +82,18 @@ describe("slack-actions (FR-007, US-004)", () => {
       "approve_spec",
       "approve_plan",
       "revise_spec",
+      "revise_plan",
     ];
     for (const action of expectedActions) {
       expect(mockApp.action).toHaveBeenCalledWith(action, expect.any(Function));
     }
   });
 
-  it("US-004: handles approve_spec action (RED)", async () => {
+  it("US-004: handles approve_spec action — triggers plan generation (TR-015)", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
-      actions: [{ value: JSON.stringify({ featureId: "002-build-server" }) }],
+      actions: [{ value: JSON.stringify({ featureId: "003-slack", specPath: "specs/003-slack/spec.md" }) }],
       channel: { id: "C123" },
       user: { id: "U123" },
     };
@@ -88,6 +102,11 @@ describe("slack-actions (FR-007, US-004)", () => {
     await actionHandlers.approve_spec({ ack, body, client, logger: console } as any);
 
     expect(ack).toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["plan", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
     expect(client.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Approved spec"),
@@ -95,11 +114,11 @@ describe("slack-actions (FR-007, US-004)", () => {
     );
   });
 
-  it("US-004: handles approve_plan action (RED)", async () => {
+  it("US-004: handles approve_plan action — updates PlanStore to DEFINED (TR-015)", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const body = {
-      actions: [{ value: JSON.stringify({ featureId: "002-build-server" }) }],
+      actions: [{ value: JSON.stringify({ featureId: "003-slack", planPath: "specs/003-slack/plan.md" }) }],
       channel: { id: "C123" },
       user: { id: "U123" },
     };
@@ -108,6 +127,7 @@ describe("slack-actions (FR-007, US-004)", () => {
     await actionHandlers.approve_plan({ ack, body, client, logger: console } as any);
 
     expect(ack).toHaveBeenCalled();
+    expect(mockHandleDefineComplete).toHaveBeenCalledWith({ featureId: "003-slack", status: "DEFINED" });
     expect(client.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Approved plan"),

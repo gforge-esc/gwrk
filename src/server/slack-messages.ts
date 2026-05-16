@@ -336,7 +336,46 @@ export const MessageBuilder = {
   },
 
   specReady(featureId: string, specPath: string): SlackMessage {
-    throw new Error("Not implemented: specReady message builder");
+    const text = `📄 Spec Ready for ${featureId}`;
+    const value = JSON.stringify({ featureId, specPath });
+
+    return {
+      text,
+      blocks: [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `📄 Spec Ready: ${featureId}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `The specification for *${featureId}* is ready for your review at \`${specPath}\`.`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "✅ Approve & Plan" },
+              style: "primary",
+              action_id: "approve_spec",
+              value,
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "🔄 Revise Spec" },
+              action_id: "revise_spec",
+              value,
+            },
+          ],
+        },
+      ],
+    };
   },
 
   planReady(
@@ -344,6 +383,44 @@ export const MessageBuilder = {
     planPath: string,
     phaseCount: number,
   ): SlackMessage {
-    throw new Error("Not implemented: planReady message builder");
+    const text = `🗺️ Plan Ready for ${featureId} (${phaseCount} phases)`;
+    const value = JSON.stringify({ featureId, planPath });
+
+    const blocks: KnownBlock[] = [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `🗺️ Plan Ready: ${featureId}`,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `The build plan for *${featureId}* is ready with *${phaseCount}* phases. Review it at \`${planPath}\`.`,
+        },
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "✅ Approve & Implement" },
+            style: "primary",
+            action_id: "approve_plan",
+            value,
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "🔄 Revise Plan" },
+            action_id: "revise_plan",
+            value,
+          },
+        ],
+      },
+    ];
+
+    return { text, blocks };
   },
 };

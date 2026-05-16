@@ -5,10 +5,22 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { sendSlackWebhook } from "./slack-webhook.js";
 
 vi.mock("node:https", () => ({
-  request: vi.fn().mockReturnValue({
-    on: vi.fn(),
-    write: vi.fn(),
-    end: vi.fn(),
+  request: vi.fn((url, options, callback) => {
+    if (callback) {
+      // Simulate successful response
+      const res = {
+        statusCode: 200,
+        on: vi.fn((event, cb) => {
+          if (event === "end") setTimeout(cb, 0);
+        }),
+      };
+      setTimeout(() => callback(res), 0);
+    }
+    return {
+      on: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+    };
   }),
 }));
 

@@ -88,5 +88,30 @@ export class ShipBridge {
         },
       );
     });
+
+    orchestrator.on("define:spec:ready", (event) => {
+      notifySlack(MessageBuilder.specReady(event.featureId, event.specPath), {
+        type: "spec_ready",
+        feature: event.featureId,
+        payload: event as any,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    orchestrator.on("define:plan:ready", (event) => {
+      notifySlack(
+        MessageBuilder.planReady(
+          event.featureId,
+          event.planPath,
+          event.phaseCount,
+        ),
+        {
+          type: "plan_ready",
+          feature: event.featureId,
+          payload: event as any,
+          timestamp: new Date().toISOString(),
+        },
+      );
+    });
   }
 }

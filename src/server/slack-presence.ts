@@ -12,7 +12,9 @@ export interface SlackEvent {
     | "review_ready"
     | "done_done"
     | "define_spec_ready"
-    | "define_plan_ready";
+    | "define_plan_ready"
+    | "spec_ready"
+    | "plan_ready";
   feature: string;
   phase?: string;
   opsOnly?: boolean;

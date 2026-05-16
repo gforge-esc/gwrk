@@ -36,6 +36,27 @@ vi.mock("node:fs", () => ({
   ),
 }));
 
+const { mockGetPlanStatus, mockIsEmpty } = vi.hoisted(() => ({
+  mockGetPlanStatus: vi.fn().mockReturnValue({
+    features: [
+      {
+        id: "001-cli-core",
+        status: "DEFINED",
+        phases: [{ id: "phase-01", status: "DEFINED" }],
+      },
+    ],
+    edges: [],
+  }),
+  mockIsEmpty: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("../engine/plan-store.js", () => ({
+  PlanStore: vi.fn().mockImplementation(() => ({
+    getPlanStatus: mockGetPlanStatus,
+    isEmpty: mockIsEmpty,
+  })),
+}));
+
 describe("slack-home", () => {
   const mockStatus: SystemStatus = {
     server: {
@@ -146,9 +167,8 @@ describe("slack-home", () => {
   });
 
   it("handles empty plan dag", async () => {
-    // In v3, we look at the plan store, not sandboxes
+    mockIsEmpty.mockReturnValue(true);
     const homeView = await buildHomeTab(mockStatus, mockConfig, "/tmp");
-    // This will be RED if buildHomeTab still looks for sandboxes
     expect(
       homeView.blocks.some(
         (b) =>
