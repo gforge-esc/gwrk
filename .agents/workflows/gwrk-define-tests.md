@@ -13,6 +13,18 @@ description: Generate red test files from spec, plan, and contracts before imple
 - Output goes to the standard test locations in the monorepo.
 - Do NOT run `/implement`. This workflow ends with committed red tests.
 - A separate agent runs `/implement` to turn them green.
+
+**FILE WRITE GUARDRAIL — ABSOLUTE RULE:**
+- You MAY create or modify: `*.test.ts` files, `gap-matrix.md`, files in `contracts/`
+- You MUST NOT modify any production source file (`*.ts` without `.test.`). This includes:
+  - `src/db/index.ts`, `src/server/*.ts`, `src/commands/*.ts`, `src/engine/*.ts`, `src/utils/*.ts`
+  - ANY file that is not a test file, gap-matrix, or contract
+- If a test needs a type or function that doesn't exist yet, import it anyway and let it fail to compile.
+  A compilation error IS the RED signal — that's honest. Replacing the production file with a stub is DESTRUCTIVE.
+- If you need shared test helpers (mocks, factories), create them in a `__test-support__/` directory
+  alongside the test file, NEVER by modifying the production module.
+
+**VIOLATION OF THIS RULE IS A FIRING OFFENSE.** It destroys production code that took weeks to build.
 </scope_constraints>
 
 ## Purpose
