@@ -176,4 +176,91 @@ describe("TR-H01: GitHub Webhook Handler", () => {
     expect(harvestFeature).toHaveBeenCalled();
     expect(notifySlack).not.toHaveBeenCalled();
   });
+
+  it("FR-H09: should ignore PRs targeting non-trunk branches", async () => {
+    const server = fastify();
+    await githubWebhookPlugin(server, {
+      config: { server: {} } as never,
+      projectRoot,
+    });
+
+    const payload = {
+      action: "closed",
+      pull_request: {
+        merged: true,
+        base: { ref: "feature-branch" }, // Not develop or main
+        head: { ref: "feat/some-subtask" }
+      },
+    };
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/webhook/github",
+      headers: { "x-github-event": "pull_request" },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).status).toBe("ignored");
+    expect(JSON.parse(response.body).reason).toBe("not_trunk_target");
+  });
+
+  describe("FR-H12: GitHub Issues Webhook", () => {
+    it("US-H07: should handle issues.opened event", async () => {
+      const server = fastify();
+      await githubWebhookPlugin(server, {
+        config: { server: {} } as never,
+        projectRoot,
+      });
+
+      const payload = {
+        action: "opened",
+        issue: {
+          number: 123,
+          title: "[011] Something wrong",
+          body: "Description",
+          user: { login: "tester" },
+          labels: [{ name: "bug" }]
+        }
+      };
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: { "x-github-event": "issues" },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body).status).toBe("accepted");
+      expect(JSON.parse(response.body).featureId).toBe("011-harvest");
+    });
+
+    it("should handle issues.closed event", async () => {
+      const server = fastify();
+      await githubWebhookPlugin(server, {
+        config: { server: {} } as never,
+        projectRoot,
+      });
+
+      const payload = {
+        action: "closed",
+        issue: {
+          number: 123,
+          title: "[011] Something wrong",
+          state: "closed"
+        }
+      };
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/webhook/github",
+        headers: { "x-github-event": "issues" },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body).status).toBe("accepted");
+    });
+  });
 });
