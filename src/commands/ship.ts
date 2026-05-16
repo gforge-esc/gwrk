@@ -522,17 +522,22 @@ Examples:
         if (phase) {
           const phaseId = `phase-${phase.padStart(2, "0")}`;
           const phaseData = taskState.phases.find((p) => p.id === phaseId);
+
+          // --force: always clear stale orchestrator state, regardless of task status
+          if (opts.force) {
+            const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
+            if (fs.existsSync(statePath)) {
+              fs.unlinkSync(statePath);
+            }
+          }
+
           if (phaseData && isPhaseComplete(phaseData)) {
             if (!opts.force) {
               console.error(`${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`);
               process.exitCode = 1;
               return;
             }
-            // If forcing, clear orchestrator state and reopen tasks
-            const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
-            if (fs.existsSync(statePath)) {
-              fs.unlinkSync(statePath);
-            }
+            // Reopen tasks
             for (const t of phaseData.tasks) {
               t.status = "open";
             }
