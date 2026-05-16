@@ -469,8 +469,8 @@
           "status": "open",
           "gateScript": "gates/T041-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T23:38:53.173Z"
+          "completedAt": "2026-05-16T23:40:20.377Z",
+          "classification": "greenfield"
         },
         {
           "id": "T042",
@@ -479,8 +479,8 @@
           "status": "open",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T23:38:53.175Z"
+          "completedAt": "2026-05-16T23:40:20.380Z",
+          "classification": "greenfield"
         },
         {
           "id": "T043",
@@ -489,8 +489,8 @@
           "status": "open",
           "gateScript": "gates/T043-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T23:38:53.183Z"
+          "completedAt": "2026-05-16T23:40:20.391Z",
+          "classification": "greenfield"
         }
       ],
       "sp_estimate": 0,
