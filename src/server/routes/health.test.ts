@@ -21,7 +21,7 @@ describe("healthRoutes (FR-002)", () => {
     network = {
       isOnline: vi.fn().mockReturnValue(true),
     } as unknown as Mocked<NetworkMonitor>;
-    
+
     // Route still takes SandboxManager (removal is Phase 3+ work)
     const sandbox = {
       checkGit: vi.fn().mockResolvedValue(true),
@@ -40,10 +40,10 @@ describe("healthRoutes (FR-002)", () => {
     expect(payload.status).toBe("ok");
     expect(payload.components.server.status).toBe("ok");
     expect(payload.components.network.status).toBe("ok");
-    
+
     // RED: Git component check should be direct or via orchestrator, not sandbox
     expect(payload.components.git).toBeDefined();
-    
+
     // Ensure sandbox is NOT present in components
     expect(payload.components.sandbox).toBeUndefined();
   });

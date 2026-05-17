@@ -90,8 +90,7 @@ serverCommand
   .description("Internal command to run the server")
   .action(async () => {
     await withSignal("server _run", async () => {
-      const projectRoot =
-        process.env.GWRK_PROJECT_ROOT || process.cwd();
+      const projectRoot = process.env.GWRK_PROJECT_ROOT || process.cwd();
       const config = loadConfig(projectRoot);
       await startServer(config, { handleSignals: true });
     });
@@ -218,7 +217,9 @@ serverCommand
 
 serverCommand
   .command("install")
-  .description("Install gwrk server as a macOS LaunchAgent (starts on login, restarts on crash)")
+  .description(
+    "Install gwrk server as a macOS LaunchAgent (starts on login, restarts on crash)",
+  )
   .action(async () => {
     await withSignal("server install", async () => {
       if (process.platform !== "darwin") {

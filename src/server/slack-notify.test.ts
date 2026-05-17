@@ -1,9 +1,9 @@
 /**
  * Module does not exist yet (RED)
  */
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { notifySlack } from "./slack-notify.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageBuilder } from "./slack-messages.js";
+import { notifySlack } from "./slack-notify.js";
 
 vi.mock("../utils/config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
@@ -11,9 +11,9 @@ vi.mock("../utils/config.js", () => ({
       slack: {
         channelId: "C_PROJECT",
         opsChannelId: "C_OPS",
-      }
-    }
-  })
+      },
+    },
+  }),
 }));
 
 vi.mock("./slack-messages.js", () => ({
@@ -21,7 +21,7 @@ vi.mock("./slack-messages.js", () => ({
     phaseStart: vi.fn().mockReturnValue({ text: "started" }),
     doneDone: vi.fn().mockReturnValue({ text: "done" }),
     pulseSummary: vi.fn().mockReturnValue({ text: "pulse" }),
-  }
+  },
 }));
 
 vi.mock("./slack.js", () => ({
@@ -29,9 +29,9 @@ vi.mock("./slack.js", () => ({
     client: {
       chat: {
         postMessage: vi.fn().mockResolvedValue({ ok: true }),
-      }
-    }
-  })
+      },
+    },
+  }),
 }));
 
 describe("slack-notify (Phase 3)", () => {
@@ -45,26 +45,31 @@ describe("slack-notify (Phase 3)", () => {
         slack: {
           channelId: "C_PROJECT",
           opsChannelId: "C_OPS",
-        }
-      }
+        },
+      },
     };
-    
+
     // In reality, config is loaded from disk, so we might need to mock loadConfig
     // But for this RED test, we'll just test that it calls postMessage
-    await notifySlack({ text: "test", blocks: [] }, { type: "phase_start", feature: "003-slack" } as any);
-    
+    await notifySlack({ text: "test", blocks: [] }, {
+      type: "phase_start",
+      feature: "003-slack",
+    } as any);
+
     const { getSlackApp } = await import("./slack.js");
     const app = getSlackApp();
     expect(app?.client.chat.postMessage).toHaveBeenCalled();
   });
 
   it("should route Pulse and Done Done to ops channel if configured (US-013, FR-013)", async () => {
-    await notifySlack({ text: "pulse", blocks: [] }, undefined, { opsOnly: true });
-    
+    await notifySlack({ text: "pulse", blocks: [] }, undefined, {
+      opsOnly: true,
+    });
+
     const { getSlackApp } = await import("./slack.js");
     const app = getSlackApp();
     expect(app?.client.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ channel: expect.stringContaining("C_OPS") })
+      expect.objectContaining({ channel: expect.stringContaining("C_OPS") }),
     );
   });
 });

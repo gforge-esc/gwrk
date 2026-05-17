@@ -1,7 +1,11 @@
 import path from "node:path";
 import { recordGateResult } from "../db/gates.js";
 import { runGate } from "../utils/gate-runner.js";
-import { type TaskState, loadTaskState, saveTaskState } from "../utils/state.js";
+import {
+  type TaskState,
+  loadTaskState,
+  saveTaskState,
+} from "../utils/state.js";
 
 export interface ReconcileResult {
   passed: number;

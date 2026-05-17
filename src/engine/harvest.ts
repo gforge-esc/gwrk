@@ -142,8 +142,7 @@ export async function harvestFeature(
     try {
       const result = await reconcileGates(projectPath, featureId, phaseId);
       console.log(
-        `Gate reconciliation: ${result.passed}/${result.total} passed` +
-          (result.failed > 0 ? ` (${result.failed} failed)` : ""),
+        `Gate reconciliation: ${result.passed}/${result.total} passed${result.failed > 0 ? ` (${result.failed} failed)` : ""}`,
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

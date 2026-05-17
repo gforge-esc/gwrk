@@ -93,4 +93,3 @@ applyMeta(specsCmd, {
     1: "Error",
   },
 });
-

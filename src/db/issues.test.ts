@@ -1,7 +1,12 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import { getTestDb } from "./index.js";
-import { saveIssue, updateIssue, listIssues, type IssueRecord } from "./issues.js";
 import type Database from "better-sqlite3";
+import { beforeEach, describe, expect, it } from "vitest";
+import { getTestDb } from "./index.js";
+import {
+  type IssueRecord,
+  listIssues,
+  saveIssue,
+  updateIssue,
+} from "./issues.js";
 
 describe("FR-H14: Issues Ledger", () => {
   let db: Database.Database;
@@ -18,7 +23,7 @@ describe("FR-H14: Issues Ledger", () => {
       body: "Found a bug after shipping",
       state: "open",
       created_at: new Date().toISOString(),
-      author: "tester"
+      author: "tester",
     };
 
     const id = saveIssue(issue, db);
@@ -37,11 +42,15 @@ describe("FR-H14: Issues Ledger", () => {
       body: "...",
       state: "open",
       created_at: new Date().toISOString(),
-      author: "tester"
+      author: "tester",
     };
 
     saveIssue(issue, db);
-    updateIssue(102, { state: "closed", closed_at: new Date().toISOString() }, db);
+    updateIssue(
+      102,
+      { state: "closed", closed_at: new Date().toISOString() },
+      db,
+    );
 
     const issues = listIssues("011-harvest", db);
     expect(issues[0].state).toBe("closed");

@@ -72,7 +72,10 @@ describe("MessageBuilder", () => {
   });
 
   it("should build specReady message with buttons (FR-016)", () => {
-    const msg = MessageBuilder.specReady("003-slack", "specs/003-slack/spec.md");
+    const msg = MessageBuilder.specReady(
+      "003-slack",
+      "specs/003-slack/spec.md",
+    );
     expect(msg.text).toContain("Spec Ready");
     expect(msg.text).toContain("003-slack");
     const actions = msg.blocks.find(
@@ -91,7 +94,11 @@ describe("MessageBuilder", () => {
   });
 
   it("should build planReady message with buttons (FR-016)", () => {
-    const msg = MessageBuilder.planReady("003-slack", "specs/003-slack/plan.md", 5);
+    const msg = MessageBuilder.planReady(
+      "003-slack",
+      "specs/003-slack/plan.md",
+      5,
+    );
     expect(msg.text).toContain("Plan Ready");
     expect(msg.text).toContain("003-slack");
     expect(msg.text).toContain("5 phases");

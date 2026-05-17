@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { classifyTask, TaskType, TaskClassification } from "./task-classifier";
+import { describe, expect, it } from "vitest";
+import { TaskClassification, TaskType, classifyTask } from "./task-classifier";
 
 describe("task-classifier", () => {
   it("TR-010: classifies 'implement' as 'fast'", () => {

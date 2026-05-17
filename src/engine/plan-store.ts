@@ -131,7 +131,7 @@ export class PlanStore {
       if (feature) {
         const phases = db.listPhases(existing.feature_id);
         const allCompleted = phases.every(
-          (p) => p.status === "DONE" || p.status === "SHIPPED"
+          (p) => p.status === "DONE" || p.status === "SHIPPED",
         );
         if (allCompleted) {
           db.insertFeature({
@@ -183,7 +183,7 @@ export class PlanStore {
       if (feature) {
         const phases = db.listPhases(event.featureId);
         const allCompleted = phases.every(
-          (p) => p.status === "DONE" || p.status === "SHIPPED"
+          (p) => p.status === "DONE" || p.status === "SHIPPED",
         );
         if (allCompleted) {
           db.insertFeature({

@@ -183,7 +183,9 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
         durationS: 1,
       });
 
-      await runtime.executeWorkflow("gwrk-specify", "Quiet please", { quiet: true });
+      await runtime.executeWorkflow("gwrk-specify", "Quiet please", {
+        quiet: true,
+      });
 
       expect(dispatchToAgent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -203,7 +205,10 @@ describe("WorkflowRuntime (FR-L25-001, FR-L25-006, FR-L25-007)", () => {
       });
 
       // FR-029: exitCode 0 + prose = tolerant mode → synthetic success
-      const result = await runtime.executeWorkflow("gwrk-specify", "invalid-output");
+      const result = await runtime.executeWorkflow(
+        "gwrk-specify",
+        "invalid-output",
+      );
       expect(result.summary).toContain("completed successfully");
       expect(result.intents).toEqual([]);
     });

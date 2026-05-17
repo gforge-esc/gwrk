@@ -1,6 +1,6 @@
-import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { z } from "zod";
 import { TaskClassification } from "./task-classifier.js";
 
 export const ModelEntrySchema = z.object({
@@ -64,11 +64,15 @@ export type AgentRegistry = z.infer<typeof AgentRegistrySchema>;
  * Loads the agent registry from .gwrkrc.json.
  * Fail-fast on invalid or missing registry.
  */
-export function loadRegistry(projectRoot: string = process.cwd()): AgentRegistry {
+export function loadRegistry(
+  projectRoot: string = process.cwd(),
+): AgentRegistry {
   const configPath = path.join(projectRoot, ".gwrkrc.json");
 
   if (!fs.existsSync(configPath)) {
-    console.error(`Missing required config: agents.registry (file .gwrkrc.json not found at ${configPath})`);
+    console.error(
+      `Missing required config: agents.registry (file .gwrkrc.json not found at ${configPath})`,
+    );
     process.exit(1);
     return {} as AgentRegistry;
   }
@@ -82,8 +86,15 @@ export function loadRegistry(projectRoot: string = process.cwd()): AgentRegistry
     return {} as AgentRegistry;
   }
 
-  if (!raw || !raw.agents || !raw.agents.registry || !raw.agents.fallbackOrder) {
-    console.error("Missing required config: agents.registry or agents.fallbackOrder");
+  if (
+    !raw ||
+    !raw.agents ||
+    !raw.agents.registry ||
+    !raw.agents.fallbackOrder
+  ) {
+    console.error(
+      "Missing required config: agents.registry or agents.fallbackOrder",
+    );
     process.exit(1);
     return {} as AgentRegistry;
   }

@@ -189,7 +189,7 @@ describe("TR-H01: GitHub Webhook Handler", () => {
       pull_request: {
         merged: true,
         base: { ref: "feature-branch" }, // Not develop or main
-        head: { ref: "feat/some-subtask" }
+        head: { ref: "feat/some-subtask" },
       },
     };
 
@@ -220,8 +220,8 @@ describe("TR-H01: GitHub Webhook Handler", () => {
           title: "[011] Something wrong",
           body: "Description",
           user: { login: "tester" },
-          labels: [{ name: "bug" }]
-        }
+          labels: [{ name: "bug" }],
+        },
       };
 
       const response = await server.inject({
@@ -248,8 +248,8 @@ describe("TR-H01: GitHub Webhook Handler", () => {
         issue: {
           number: 123,
           title: "[011] Something wrong",
-          state: "closed"
-        }
+          state: "closed",
+        },
       };
 
       const response = await server.inject({

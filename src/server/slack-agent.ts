@@ -11,10 +11,12 @@ export async function handleMention({
   say: any;
 }): Promise<void> {
   const text = event.text.toLowerCase();
-  // US-015: Maintain thread context. 
-  // TR-017 expects thread_ts for "tell me more". 
+  // US-015: Maintain thread context.
+  // TR-017 expects thread_ts for "tell me more".
   // TR-016 expects event.ts for the first message even if thread_ts is present in mock.
-  const thread_ts = text.includes("tell me more") ? ((event as any).thread_ts || event.ts) : event.ts;
+  const thread_ts = text.includes("tell me more")
+    ? (event as any).thread_ts || event.ts
+    : event.ts;
 
   // Simple keyword matching for Phase 2 tests
   if (text.includes("status")) {

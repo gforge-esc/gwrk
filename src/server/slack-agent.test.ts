@@ -1,9 +1,9 @@
+import type { App } from "@slack/bolt";
 /**
  * Module does not exist yet (RED)
  */
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleMention } from "./slack-agent.js";
-import type { App } from "@slack/bolt";
 
 vi.mock("./slack-agent.js", async (importOriginal) => {
   const actual = await importOriginal<any>();
@@ -29,11 +29,13 @@ describe("slack-agent (Phase 2)", () => {
 
   it("should return a contextual intelligent response for @gwrk mentions (US-015, TR-016)", async () => {
     await handleMention({ event: mockEvent as any, say: mockSay });
-    
-    expect(mockSay).toHaveBeenCalledWith(expect.objectContaining({
-      thread_ts: mockEvent.ts,
-      text: expect.stringContaining("003-slack"),
-    }));
+
+    expect(mockSay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        thread_ts: mockEvent.ts,
+        text: expect.stringContaining("003-slack"),
+      }),
+    );
   });
 
   it("should maintain threaded context across multiple messages (US-015, TR-017)", async () => {
@@ -42,12 +44,14 @@ describe("slack-agent (Phase 2)", () => {
       thread_ts: "1111.2222",
       text: "tell me more about the first task",
     };
-    
+
     await handleMention({ event: threadEvent as any, say: mockSay });
-    
-    expect(mockSay).toHaveBeenCalledWith(expect.objectContaining({
-      thread_ts: threadEvent.thread_ts,
-    }));
+
+    expect(mockSay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        thread_ts: threadEvent.thread_ts,
+      }),
+    );
   });
 
   it("should invoke skills (e.g. architecture-stress-test) when appropriate (FR-017)", async () => {
@@ -55,11 +59,13 @@ describe("slack-agent (Phase 2)", () => {
       ...mockEvent,
       text: "<@U123> /skill architecture-stress-test should we use SQLite?",
     };
-    
+
     await handleMention({ event: skillEvent as any, say: mockSay });
-    
-    expect(mockSay).toHaveBeenCalledWith(expect.objectContaining({
-      text: expect.stringContaining("stress test"),
-    }));
+
+    expect(mockSay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("stress test"),
+      }),
+    );
   });
 });

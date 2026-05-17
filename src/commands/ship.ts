@@ -398,7 +398,8 @@ Examples:
         const config = loadConfig(cwd);
 
         // Resolve webhook for cloud fallback (Phase 3 / T012)
-        const webhookUrl = process.env.SLACK_WEBHOOK_URL || config.project.slack?.webhookUrl;
+        const webhookUrl =
+          process.env.SLACK_WEBHOOK_URL || config.project.slack?.webhookUrl;
         if (webhookUrl) {
           // Webhook configured, will be used by ShipBridge via notifySlack
         }
@@ -456,7 +457,7 @@ Examples:
             );
             if (openTasks.length === 0) continue;
 
-            let backend = (opts.agent as string) as AgentBackend;
+            let backend = opts.agent as string as AgentBackend;
             let selectedModel: string | undefined;
             if (!backend) {
               const selector = getBackendSelector(cwd);
@@ -531,7 +532,11 @@ Examples:
 
           // --force: always clear stale orchestrator state, regardless of task status
           if (opts.force) {
-            const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
+            const statePath = path.join(
+              cwd,
+              ".runs",
+              `${feature}_${phaseId}.state`,
+            );
             if (fs.existsSync(statePath)) {
               fs.unlinkSync(statePath);
             }
@@ -539,7 +544,9 @@ Examples:
 
           if (phaseData && isPhaseComplete(phaseData)) {
             if (!opts.force) {
-              console.error(`${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`);
+              console.error(
+                `${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`,
+              );
               process.exitCode = 1;
               return;
             }
@@ -549,12 +556,17 @@ Examples:
             }
             saveTaskState(specDir, taskState);
             // Commit the reset so the orchestrator sees a clean working tree
-            execSync(`git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`, {
-              cwd,
-              env: { ...process.env, GWRK_SHIP: "1" },
-              stdio: "pipe",
-            });
-            console.log(`${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`);
+            execSync(
+              `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
+              {
+                cwd,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: "pipe",
+              },
+            );
+            console.log(
+              `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`,
+            );
           }
           phases = [phase];
         } else {
@@ -569,7 +581,11 @@ Examples:
             if (!phaseData) return true;
             if (isPhaseComplete(phaseData)) {
               if (opts.force) {
-                const statePath = path.join(cwd, ".runs", `${feature}_${phaseId}.state`);
+                const statePath = path.join(
+                  cwd,
+                  ".runs",
+                  `${feature}_${phaseId}.state`,
+                );
                 if (fs.existsSync(statePath)) {
                   fs.unlinkSync(statePath);
                 }
@@ -578,12 +594,17 @@ Examples:
                 }
                 saveTaskState(specDir, taskState);
                 // Commit the reset so the orchestrator sees a clean working tree
-                execSync(`git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`, {
-                  cwd,
-                  env: { ...process.env, GWRK_SHIP: "1" },
-                  stdio: "pipe",
-                });
-                console.log(`${YELLOW}⚠${RESET} Force mode: resetting Phase ${phaseNum} tasks to open`);
+                execSync(
+                  `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
+                  {
+                    cwd,
+                    env: { ...process.env, GWRK_SHIP: "1" },
+                    stdio: "pipe",
+                  },
+                );
+                console.log(
+                  `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phaseNum} tasks to open`,
+                );
                 return true;
               }
               console.log(
@@ -618,7 +639,7 @@ Examples:
         const shipStartTime = Date.now();
         let finalExitCode = 0;
         for (const p of phases) {
-          let currentBackend = (opts.agent as string) as AgentBackend;
+          let currentBackend = opts.agent as string as AgentBackend;
           let selectedModel: string | undefined;
           let selectedCommand: string | undefined;
 
@@ -640,7 +661,15 @@ Examples:
             );
           }
 
-          const exitCode = await shipPhase(feature, p, currentBackend, opts, cwd, selectedModel, selectedCommand);
+          const exitCode = await shipPhase(
+            feature,
+            p,
+            currentBackend,
+            opts,
+            cwd,
+            selectedModel,
+            selectedCommand,
+          );
           if (exitCode !== 0) {
             finalExitCode = exitCode;
             break;
