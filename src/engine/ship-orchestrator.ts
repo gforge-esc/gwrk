@@ -468,8 +468,42 @@ export class ShipOrchestrator extends EventEmitter {
           console.warn(
             `    ⚠ Could not commit implementation: ${commitErr instanceof Error ? commitErr.message : commitErr}`,
           );
-          // Non-fatal: proceed to code review with uncommitted changes
+        // Non-fatal: proceed to code review with uncommitted changes
         }
+
+        // POST-FLIGHT GATE VERIFICATION
+        // The implement agent (or pre-flight) may have marked tasks "completed"
+        // but gates must pass AFTER implementation, not just before.
+        // This is the mechanical enforcement — agents cannot self-certify.
+        const postFlightState = loadTaskState(featureDir);
+        const postFlightPhase = postFlightState.phases.find(
+          (p: Phase) => p.id === this.config.phaseId,
+        );
+        if (postFlightPhase) {
+          let reopenedCount = 0;
+          for (const task of postFlightPhase.tasks) {
+            if (task.status !== "completed" || !task.gateScript) continue;
+            const gatePath = path.join(featureDir, task.gateScript);
+            if (!fs.existsSync(gatePath)) continue;
+            const gateResult = await runGate(gatePath);
+            if (!gateResult.passed) {
+              task.status = "open";
+              delete task.completedAt;
+              reopenedCount++;
+              console.log(`  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`);
+              // Append gate failure to description for next implement attempt
+              const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
+              task.description = (task.description || "") + failNote;
+            } else {
+              console.log(`  ✓ post-flight PASS: ${task.id}`);
+            }
+          }
+          if (reopenedCount > 0) {
+            saveTaskState(featureDir, postFlightState);
+            console.log(`  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`);
+          }
+        }
+
         return { success: true, exitCode: 0 };
       }
       return {
