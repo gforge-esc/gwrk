@@ -191,11 +191,12 @@
         {
           "id": "T012",
           "title": "Implement src/engine/harvest.ts",
-          "description": "Modify: Wire `notifyDoneDone` to format and post the summary to Slack.\n\nIMPLEMENTATION INSTRUCTIONS:\n1. In `notifyDoneDone()` (src/engine/harvest.ts:253), replace `payload as any` with proper `NotifyPayload` typing from `../server/types.js`.\n2. The function already has the correct two-tier approach: try /api/notify first, fall back to dispatchNotification.\n3. The `dispatchNotification` import from `../server/slack-notify.js` may throw \"Not implemented\" if 003-slack is not yet shipped. This is expected \u2014 the fetch() fallback to /api/notify is the primary path.\n\nTESTING INSTRUCTIONS:\n- Tests are in `src/engine/harvest.test.ts` (the gate runs this file).\n- Mock `dispatchNotification` using `vi.mock(\"../server/slack-notify.js\")` to prevent \"Not implemented\" throws.\n- Mock `fetch` (globalThis.fetch) to verify the /api/notify call is made with the correct payload.\n- Do NOT depend on 003-slack being implemented. All Slack interactions must be mocked.\n\nGATE: specs/011-harvest/gates/T012-gate.sh (runs harvest.test.ts + biome check)",
-          "status": "open",
+          "description": "Modify: Wire `notifyDoneDone` to format and post the summary to Slack.\n\nIMPLEMENTATION INSTRUCTIONS:\n1. In `notifyDoneDone()` (src/engine/harvest.ts:253), replace `payload as any` with proper `NotifyPayload` typing from `../server/types.js`.\n2. The function already has the correct two-tier approach: try /api/notify first, fall back to dispatchNotification.\n3. The `dispatchNotification` import from `../server/slack-notify.js` may throw \"Not implemented\" if 003-slack is not yet shipped. This is expected — the fetch() fallback to /api/notify is the primary path.\n\nTESTING INSTRUCTIONS:\n- Tests are in `src/engine/harvest.test.ts` (the gate runs this file).\n- Mock `dispatchNotification` using `vi.mock(\"../server/slack-notify.js\")` to prevent \"Not implemented\" throws.\n- Mock `fetch` (globalThis.fetch) to verify the /api/notify call is made with the correct payload.\n- Do NOT depend on 003-slack being implemented. All Slack interactions must be mocked.\n\nGATE: specs/011-harvest/gates/T012-gate.sh (runs harvest.test.ts + biome check)",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-17T01:34:37.118Z"
         },
         {
           "id": "T013",
