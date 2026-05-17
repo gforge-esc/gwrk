@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-16T19:28:04.648Z_define_all",
+  "feature": "011-harvest",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-16T19:28:04.648Z",
+  "finishedAt": "2026-05-16T19:30:29.921Z",
+  "durationS": 145,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 7,
+  "linesAdded": 259,
+  "linesDeleted": 7,
+  "gitCommit": "5b4fb5aead1ce73b03a304a5ba503647f0de220b",
+  "gitBranch": "develop",
+  "digest": []
+}

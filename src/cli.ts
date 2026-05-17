@@ -12,6 +12,7 @@ import { pluginCommand } from "./commands/plugin.js";
 import { projectCommand } from "./commands/project.js";
 import { serverCommand } from "./commands/server.js";
 import { setupSlackCommand } from "./commands/setup-slack.js";
+import { setupCommand } from "./commands/setup.js";
 import { shipCommand } from "./commands/ship.js";
 import { skillCommand } from "./commands/skill.js";
 import { statusCommand } from "./commands/status.js";
@@ -26,10 +27,9 @@ const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 export const program = new Command();
 
 program.exitOverride();
+program.enablePositionalOptions();
 
-const setupCommand = new Command("setup")
-  .description("Configure gwrk integrations")
-  .addCommand(setupSlackCommand);
+setupCommand.addCommand(setupSlackCommand);
 
 program
   .name("gwrk")

@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { Command } from "commander";
 import { discoverProject } from "../engine/discover.js";
 import { type CommandMeta, applyMeta } from "../utils/help.js";
@@ -90,103 +88,6 @@ applyMeta(specsCmd, {
   type: "query",
   supportsJson: true,
   outputs: "SpecSummary[]",
-  exitCodes: {
-    0: "Success",
-    1: "Error",
-  },
-});
-
-const gatesCmd = projectCommand
-  .command("gates")
-  .option("--run", "Execute each gate and report results (default: list only)")
-  .description("List or run gate scripts grouped by feature")
-  .action(async (options, command) => {
-    await withSignal("project gates", async () => {
-      const out = resolveFormat(command);
-      const localOpts = command.opts();
-      const shouldRun = localOpts.run === true;
-
-      const results: Array<{
-        taskId: string;
-        feature: string;
-        gatePath: string;
-        exists: boolean;
-        result?: "PASS" | "FAIL";
-        durationMs?: number;
-      }> = [];
-
-      for (const spec of (await discoverProject(process.cwd())).specs) {
-        const gatesDir = path.join(process.cwd(), spec.dirPath, "gates");
-        if (!fs.existsSync(gatesDir)) continue;
-
-        const gateFiles = fs
-          .readdirSync(gatesDir)
-          .filter((f) => f.endsWith("-gate.sh"));
-        for (const file of gateFiles) {
-          const taskId = file.replace("-gate.sh", "");
-          const gatePath = path.join(spec.dirPath, "gates", file);
-          const entry: (typeof results)[0] = {
-            taskId,
-            feature: spec.id,
-            gatePath,
-            exists: true,
-          };
-
-          if (shouldRun) {
-            const start = Date.now();
-            try {
-              const { execCommand } = await import("../utils/exec.js");
-              const res = await execCommand(
-                "bash",
-                [path.join(process.cwd(), gatePath)],
-                undefined,
-                { cwd: process.cwd() },
-              );
-              entry.result = res.exitCode === 0 ? "PASS" : "FAIL";
-            } catch {
-              entry.result = "FAIL";
-            }
-            entry.durationMs = Date.now() - start;
-          }
-
-          results.push(entry);
-        }
-      }
-
-      if (out.isJson) {
-        out.write(results);
-      } else if (shouldRun) {
-        out.write("Task | Feature         | Result | Duration\n");
-        out.write("-----|-----------------|--------|----------\n");
-        for (const res of results) {
-          const dur = res.durationMs ? `${res.durationMs}ms` : "-";
-          const icon = res.result === "PASS" ? "✅" : "❌";
-          out.write(
-            `${res.taskId.padEnd(4)} | ${res.feature.padEnd(15)} | ${icon} ${(res.result ?? "-").padEnd(4)} | ${dur}\n`,
-          );
-        }
-        const passing = results.filter((r) => r.result === "PASS").length;
-        const failing = results.filter((r) => r.result === "FAIL").length;
-        out.write(
-          `\n${results.length} gates: ${passing} passing, ${failing} failing\n`,
-        );
-      } else {
-        out.write("Task | Feature         | Gate Path\n");
-        out.write("-----|-----------------|----------\n");
-        for (const res of results) {
-          out.write(
-            `${res.taskId.padEnd(4)} | ${res.feature.padEnd(15)} | ${res.gatePath}\n`,
-          );
-        }
-        out.write(`\nRun 'gwrk project gates --run' to execute all gates.\n`);
-      }
-    });
-  });
-
-applyMeta(gatesCmd, {
-  type: "verifier",
-  supportsJson: true,
-  outputs: "GateCheckResult[]",
   exitCodes: {
     0: "Success",
     1: "Error",

@@ -12,7 +12,7 @@ Endpoint for external tools (like `agent-run.sh` or CI scripts) to trigger Slack
 
 ```typescript
 interface NotifyPayload {
-  type: "phase_start" | "phase_complete" | "phase_fail" | "ci_result" | "review_ready" | "done_done";
+  type: "phase_start" | "phase_complete" | "phase_fail" | "ci_result" | "review_ready" | "done_done" | "define_spec_ready" | "define_plan_ready";
   feature: string;            // Feature ID (e.g., 001-cli-core)
   phase?: string;              // Phase ID (e.g., phase-01)
   backend?: string;            // Agent backend used
@@ -22,6 +22,9 @@ interface NotifyPayload {
   prUrl?: string;              // Pull Request URL
   prNumber?: number;           // Pull Request number
   opsOnly?: boolean;           // If true, route only to the OPS/Master channel
+  specPath?: string;           // For define_spec_ready
+  planPath?: string;           // For define_plan_ready
+  phaseCount?: number;         // For define_plan_ready
 }
 ```
 

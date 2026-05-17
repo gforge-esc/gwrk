@@ -17,6 +17,26 @@ import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
 import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
 
+import { loadRegistry } from "./agent-registry.js";
+import { BackendSelector } from "./backend-selector.js";
+import { QuotaProber } from "./quota-prober.js";
+
+export { BackendSelector } from "./backend-selector.js";
+export { QuotaProber } from "./quota-prober.js";
+export { loadRegistry } from "./agent-registry.js";
+
+let backendSelector: BackendSelector | undefined;
+export function getBackendSelector(
+  projectRoot: string = process.cwd(),
+): BackendSelector {
+  if (!backendSelector) {
+    const registry = loadRegistry(projectRoot);
+    const prober = new QuotaProber(projectRoot);
+    backendSelector = new BackendSelector(registry, prober);
+  }
+  return backendSelector;
+}
+
 export async function startServer(
   config: GwrkConfig,
   options: { handleSignals?: boolean } = { handleSignals: true },

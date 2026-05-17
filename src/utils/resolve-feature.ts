@@ -21,10 +21,7 @@ export function resolveFeature(
 
   // Exact match first
   const exactPath = path.join(specsDir, featureInput);
-  if (
-    fs.existsSync(exactPath) &&
-    fs.statSync(exactPath).isDirectory()
-  ) {
+  if (fs.existsSync(exactPath) && fs.statSync(exactPath).isDirectory()) {
     return featureInput;
   }
 
@@ -43,7 +40,7 @@ export function resolveFeature(
     // For pure numeric input, also match against the feature's numeric prefix
     if (isNumericInput) {
       const entryNumeric = entry.match(/^(\d+)/);
-      if (entryNumeric && entryNumeric[1].startsWith(featureInput)) {
+      if (entryNumeric?.[1].startsWith(featureInput)) {
         return true;
       }
     }

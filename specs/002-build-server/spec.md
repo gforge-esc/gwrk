@@ -1,15 +1,15 @@
 ---
 type: specification
 feature: 002-build-server
-last_modified: "2026-05-05T16:30:00Z"
-revision: 3
+last_modified: "2026-05-15T18:16:00Z"
+revision: 4
 ---
 
 # Feature Specification: 002 Build Server
 
 **Feature Branch**: `feat/002-build-server`
 **Created**: 2026-02-27
-**Revised**: 2026-05-05 (v3 — daily-driver respec, remove Docker sandboxes, add Slack event bridge)
+**Revised**: 2026-05-15 (v4 — add launchd LaunchAgent service management, PID authority amendment)
 **Status**: Revised
 **Input**: Local persistent Fastify daemon that serves as the gwrk control plane — agent dispatch tracking, Slack event bridge, system resource monitoring, sleep/wake resilience, and SQLite execution ledger.
 
@@ -20,7 +20,8 @@ revision: 3
 ## 1. Architecture Summary
 
 The build server is a **background daemon** that provides:
-1. **Daemon lifecycle** — start/stop/status via CLI
+1. **Daemon lifecycle** — start/stop/status/install/uninstall via CLI
+2. **Persistent service** — macOS LaunchAgent for always-on operation across reboots
 2. **Dispatch tracking** — record every agent dispatch in the execution ledger
 3. **Slack event bridge** — convert ShipOrchestrator events into actionable Slack messages
 4. **System resilience** — sleep/wake detection, network awareness, graceful degradation
@@ -45,6 +46,28 @@ As a Principal Engineer, I want `gwrk server start` to launch a background daemo
    - Port released, PID file removed
 3. **Given** daemon is running, **When** `gwrk server start` again, **Then**:
    - Exits 1 with "Server already running"
+
+### US-008 - Persistent Service Management (Priority: P0)
+As a Principal Engineer, I want `gwrk server install` to register the daemon as a macOS LaunchAgent so it starts automatically on login and survives reboots, and `gwrk server uninstall` to remove it.
+
+**Implements**: FR-012, FR-013, FR-014, FR-015
+
+**Acceptance Scenarios**:
+1. **Given** no LaunchAgent is registered, **When** `gwrk server install`, **Then**:
+   - A plist file is written to `~/Library/LaunchAgents/com.gwrk.server.plist`
+   - `launchctl load` registers the agent
+   - Daemon starts via launchd
+   - `gwrk server status` reports running
+2. **Given** LaunchAgent is registered, **When** `gwrk server uninstall`, **Then**:
+   - `launchctl unload` deregisters the agent
+   - Plist file is removed
+   - Daemon stops
+3. **Given** LaunchAgent is registered, **When** system reboots and user logs in, **Then**:
+   - Daemon starts automatically
+4. **Given** daemon is running via LaunchAgent, **When** `gwrk server logs`, **Then**:
+   - stdout/stderr logs stream from `~/.gwrk/logs/server.log`
+5. **Given** daemon is running via LaunchAgent, **When** `gwrk server status`, **Then**:
+   - PID is resolved from `launchctl list` (not from PID file)
 
 ### US-002 - System Status (Priority: P0)
 As a Principal Engineer, I want `gwrk status` to show server health, active ships, and system resources, so I can check operational state from any terminal.
@@ -155,6 +178,12 @@ As a Principal Engineer, I want every agent dispatch recorded in SQLite with dur
 ### Execution Ledger
 - **FR-011**: Every agent dispatch MUST be recorded in SQLite `runs` table with: feature_id, phase_id, agent_backend, started_at, finished_at, exit_code, log_file, duration_s.
 
+### LaunchAgent Service Management
+- **FR-012**: `gwrk server install` MUST write a macOS LaunchAgent plist to `~/Library/LaunchAgents/com.gwrk.server.plist` with `RunAtLoad: true`, `KeepAlive: true`, stdout/stderr redirected to `~/.gwrk/logs/server.log`.
+- **FR-013**: `gwrk server uninstall` MUST unload the LaunchAgent via `launchctl unload` and remove the plist file. If the agent is not loaded, the command MUST succeed silently.
+- **FR-014**: `gwrk server logs` MUST stream the LaunchAgent log file (`~/.gwrk/logs/server.log`) with `--follow` for real-time tailing (default: last 50 lines).
+- **FR-015**: `gwrk server status` MUST resolve PID from `launchctl list com.gwrk.server` when the LaunchAgent is registered. The PID file (`.gwrk/server.pid`) is the fallback for non-LaunchAgent usage. PID authority order: launchctl > PID file. Stale PID files MUST NOT cause false "running" reports.
+
 ---
 
 ## 4. What Was Removed (v3 Cuts)
@@ -176,7 +205,7 @@ These may return in 005-parallel-dispatch if/when parallel agent execution is ne
 ## 5. Technical Constraints
 
 - **TC-001**: Localhost only — daemon binds to `127.0.0.1`
-- **TC-002**: PID file at `.gwrk/server.pid`
+- **TC-002**: PID authority: `launchctl list com.gwrk.server` when LaunchAgent is installed; `.gwrk/server.pid` file as fallback. launchctl is always authoritative when the LaunchAgent is registered.
 - **TC-003**: No in-process agent execution — agents run via child_process
 - **TC-004**: Sleep detection via pure JS heartbeat drift (no native addons)
 - **TC-005**: Network detection via `os.networkInterfaces()` polling
@@ -193,6 +222,7 @@ These may return in 005-parallel-dispatch if/when parallel agent execution is ne
 - **TR-005**: `src/server/network.test.ts` — network state detection
 - **TR-006**: `src/server/slack-notify.test.ts` — event bridge, message dispatch
 - **TR-007**: `src/server/slack-actions.test.ts` — button handlers, bless actions
+- **TR-008**: `src/commands/server-install.test.ts` — install/uninstall plist management, PID authority, logs streaming
 
 ---
 
@@ -202,3 +232,5 @@ These may return in 005-parallel-dispatch if/when parallel agent execution is ne
 - **SC-002**: Every ship event produces exactly one Slack message with one clear CTA
 - **SC-003**: Every agent dispatch is recorded in the execution ledger
 - **SC-004**: `gwrk status` reflects real operational state
+- **SC-005**: `gwrk server install/uninstall` manages LaunchAgent lifecycle
+- **SC-006**: `gwrk server status` resolves PID from launchctl when installed

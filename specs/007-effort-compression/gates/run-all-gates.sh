@@ -18,7 +18,7 @@ for gate in $GATES; do
     GATE_NAME=$(basename "$gate")
     
     echo -n "▸ Running $GATE_NAME... "
-    if "$gate" > /dev/null 2>&1; then
+    if bash "$gate" > /dev/null 2>&1; then
         echo "✅ PASS"
         PASSED=$((PASSED + 1))
     else

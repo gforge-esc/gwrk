@@ -3,19 +3,19 @@
   "createdAt": "2026-03-20T00:15:41.563Z",
   "generatedFrom": {
     "plan": {
-      "hash": "2042ad4f7fce61ff1e582647c38b195681e893ddb3da794b27330ca8efff3748",
-      "modifiedAt": "2026-04-15T02:05:50.267Z"
+      "hash": "fd6c267ad4085d016fea1bf723c7c1d1bdd14a3bacf8c88501fda8ade4c6b7c0",
+      "modifiedAt": "2026-05-16T18:34:17.919Z"
     }
   },
   "phases": [
     {
       "id": "phase-01",
-      "title": "Persistence & Schema (F011-P1)",
+      "title": "Webhook Infrastructure & Orchestration",
       "tasks": [
         {
           "id": "T001",
-          "title": "Implement src/db/migrations/005-compression.sql",
-          "description": "VERIFY: Schema already merged during F014",
+          "title": "Implement src/server/github.ts",
+          "description": "Modify: Add `/webhook/github` endpoint, verify signature, filter PR events, track phase completion, and call `harvestFeature`",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
@@ -23,8 +23,8 @@
         },
         {
           "id": "T002",
-          "title": "Implement src/db/runs.ts",
-          "description": "MODIFY: Update `RunRecord` type and `finishRun(",
+          "title": "Implement src/engine/harvest.ts",
+          "description": "Modify: Update `harvestFeature` with idempotency guard against duplicate runs",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
@@ -32,17 +32,44 @@
         },
         {
           "id": "T003",
-          "title": "Implement src/db/compression.ts",
-          "description": "NEW: DB access for the `compression` table",
+          "title": "Implement test strategy for Phase 1",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "noop"
         },
         {
-          "id": "T004",
+          "id": "T020",
+          "title": "Implement src/db/migrations/005-compression.sql",
+          "description": "VERIFY: Schema already merged during F014",
+          "status": "cancelled",
+          "gateScript": "gates/T001-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T021",
           "title": "Implement src/engine/types.ts",
           "description": "MODIFY: Ensure all harvest and compression types are present",
+          "status": "cancelled",
+          "gateScript": "gates/T004-gate.sh",
+          "sp": 0
+        }
+      ],
+      "sp_estimate": 0,
+      "doneWhen": [
+        "`pnpm vitest run tests/server-github.test.ts --grep \"Webhook ignores unmerged PRs\"` exits 0",
+        "`pnpm vitest run src/engine/harvest.test.ts --grep \"Idempotency check\"` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Finalization & Cleanup",
+      "tasks": [
+        {
+          "id": "T004",
+          "title": "Implement src/engine/harvest.ts",
+          "description": "Modify: Implement `finalizeLogs` and `cleanupBranch`",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
@@ -50,27 +77,17 @@
         },
         {
           "id": "T005",
-          "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "title": "Implement src/db/runs.ts",
+          "description": "Modify: Implement `finishRun` to finalize SQLite record with merge commit sha and status",
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
-          "classification": "noop"
-        }
-      ],
-      "sp_estimate": 0,
-      "doneWhen": [
-        "`pnpm vitest run src/db/` exits 0"
-      ]
-    },
-    {
-      "id": "phase-02",
-      "title": "Log Management & Finalization (F011-P2)",
-      "tasks": [
+          "classification": "greenfield"
+        },
         {
           "id": "T006",
-          "title": "Implement src/engine/harvest.ts",
-          "description": "NEW: Implement `finalizeLogs(",
+          "title": "Implement src/cli.ts",
+          "description": "Modify: No CLI changes needed, keeping within 10 file limit",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
@@ -78,36 +95,47 @@
         },
         {
           "id": "T007",
-          "title": "Implement src/utils/git.ts",
-          "description": "MODIFY: Add `commitFiles(",
-          "status": "completed",
-          "gateScript": "gates/T007-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T008",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
-          "gateScript": "gates/T008-gate.sh",
+          "gateScript": "gates/T007-gate.sh",
           "sp": 0,
           "classification": "noop"
+        },
+        {
+          "id": "T022",
+          "title": "Implement src/utils/git.ts",
+          "description": "MODIFY: Add `commitFiles(",
+          "status": "cancelled",
+          "gateScript": "gates/T007-gate.sh",
+          "sp": 0
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`pnpm vitest run src/engine/harvest.test.ts` exits 0"
+        "`pnpm vitest run src/db/runs.test.ts --grep \"finishRun\"` exits 0",
+        "`pnpm vitest run src/engine/harvest.test.ts --grep \"finalizeLogs\"` exits 0",
+        "`gwrk db runs 004-ship-loop --json | jq '.[0].status'` returns `\"merged\"` (Mocked check)"
       ]
     },
     {
       "id": "phase-03",
-      "title": "Webhook Handler & Branch Parsing (F011-P3)",
+      "title": "Compression Calculation",
       "tasks": [
         {
+          "id": "T008",
+          "title": "Implement src/engine/compression.ts",
+          "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-16T19:38:05.742Z",
+          "classification": "greenfield"
+        },
+        {
           "id": "T009",
-          "title": "Implement src/server/github.ts",
-          "description": "NEW: Fastify plugin for GitHub webhooks with signature verification",
+          "title": "Implement src/db/compression.ts",
+          "description": "Modify: Expose method to insert a new compression record",
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
@@ -115,48 +143,69 @@
         },
         {
           "id": "T010",
-          "title": "Implement src/server/index.ts",
-          "description": "MODIFY: Register the github webhook plugin",
+          "title": "Implement src/engine/harvest.ts",
+          "description": "Modify: Wire in `computeCompression` inside `harvestFeature`",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-06T20:25:15.126Z",
           "classification": "greenfield"
         },
         {
           "id": "T011",
-          "title": "Implement src/utils/config.ts",
-          "description": "MODIFY: Add `GITHUB_WEBHOOK_SECRET` to Zod schema",
-          "status": "completed",
-          "gateScript": "gates/T011-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T012",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
-          "gateScript": "gates/T012-gate.sh",
+          "gateScript": "gates/T011-gate.sh",
           "sp": 0,
           "classification": "noop"
+        },
+        {
+          "id": "T023",
+          "title": "Implement src/server/index.ts",
+          "description": "MODIFY: Register the github webhook plugin",
+          "status": "cancelled",
+          "gateScript": "gates/T010-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T024",
+          "title": "Implement src/utils/config.ts",
+          "description": "MODIFY: Add `GITHUB_WEBHOOK_SECRET` to Zod schema",
+          "status": "cancelled",
+          "gateScript": "gates/T011-gate.sh",
+          "sp": 0
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`pnpm vitest run tests/server-github.test.ts` exits 0"
+        "`pnpm vitest run src/engine/compression.test.ts --grep \"Point Compression\"` exits 0",
+        "`pnpm vitest run src/engine/compression.test.ts --grep \"Total Compression\"` exits 0",
+        "`gwrk compression <mock-feature>` output includes valid ratios"
       ]
     },
     {
       "id": "phase-04",
-      "title": "Harvest Orchestration & Compression (F011-P4)",
+      "title": "Done, Done! Notification",
       "tasks": [
         {
-          "id": "T013",
+          "id": "T012",
           "title": "Implement src/engine/harvest.ts",
-          "description": "MODIFY: Implement `harvestFeature(",
+          "description": "Modify: Wire `notifyDoneDone` to format and post the summary to Slack.\n\nIMPLEMENTATION INSTRUCTIONS:\n1. In `notifyDoneDone()` (src/engine/harvest.ts:253), replace `payload as any` with proper `NotifyPayload` typing from `../server/types.js`.\n2. The function already has the correct two-tier approach: try /api/notify first, fall back to dispatchNotification.\n3. The `dispatchNotification` import from `../server/slack-notify.js` may throw \"Not implemented\" if 003-slack is not yet shipped. This is expected — the fetch() fallback to /api/notify is the primary path.\n\nTESTING INSTRUCTIONS:\n- Tests are in `src/engine/harvest.test.ts` (the gate runs this file).\n- Mock `dispatchNotification` using `vi.mock(\"../server/slack-notify.js\")` to prevent \"Not implemented\" throws.\n- Mock `fetch` (globalThis.fetch) to verify the /api/notify call is made with the correct payload.\n- Do NOT depend on 003-slack being implemented. All Slack interactions must be mocked.\n\nGATE: specs/011-harvest/gates/T012-gate.sh (runs harvest.test.ts + biome check)",
+          "status": "completed",
+          "gateScript": "gates/T012-gate.sh",
+          "sp": 0,
+          "classification": "greenfield",
+          "completedAt": "2026-05-17T01:34:37.118Z"
+        },
+        {
+          "id": "T013",
+          "title": "Implement src/server/github.ts",
+          "description": "Modify: Ensure no slack notification is dispatched directly from the webhook to satisfy FR-H11",
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-06T20:25:15.332Z",
           "classification": "greenfield"
         },
         {
@@ -171,96 +220,93 @@
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`pnpm vitest run src/engine/harvest.test.ts` exits 0"
+        "`pnpm vitest run tests/harvest-e2e.test.ts --grep \"Done Done notification sent exactly once\"` exits 0"
       ]
     },
     {
       "id": "phase-05",
-      "title": "Notification, Cleanup & CLI (F011-P5)",
+      "title": "Post-Ship Issue Tracking",
       "tasks": [
         {
           "id": "T015",
-          "title": "Implement src/commands/harvest.ts",
-          "description": "NEW: `gwrk harvest` CLI command",
+          "title": "Implement src/server/github.ts",
+          "description": "Modify: Add support for GitHub `issues` events opened/closed/labeled and feature association logic",
           "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-16T19:38:06.683Z",
           "classification": "greenfield"
         },
         {
           "id": "T016",
-          "title": "Implement src/cli.ts",
-          "description": "MODIFY: Register `harvest` command",
+          "title": "Implement src/db/migrations/008-issues.sql",
+          "description": "New: Table for post-ship issues",
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-16T19:38:06.694Z",
           "classification": "greenfield"
         },
         {
           "id": "T017",
-          "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "title": "Implement src/db/issues.ts",
+          "description": "New: DB access layer for saving/updating issues",
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
-          "classification": "noop"
-        }
-      ],
-      "sp_estimate": 0,
-      "doneWhen": [
-        "`gwrk harvest --help` exits 0",
-        "`pnpm vitest run tests/harvest-e2e.test.ts` exits 0"
-      ]
-    },
-    {
-      "id": "phase-06",
-      "title": "Remediation — Idempotency, Dedup, Test Coverage (F011-P6)",
-      "tasks": [
+          "completedAt": "2026-05-16T19:38:07.656Z",
+          "classification": "greenfield"
+        },
         {
           "id": "T018",
-          "title": "Implement src/engine/harvest.ts",
-          "description": "MODIFY: Add idempotency guard at top of `harvestFeature(",
+          "title": "Implement src/engine/issues.ts",
+          "description": "New: Logic to format and trigger Slack notifications via `003-slack`",
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-06T20:25:15.126Z"
+          "completedAt": "2026-05-16T19:38:07.669Z",
+          "classification": "greenfield"
         },
         {
           "id": "T019",
-          "title": "Implement src/server/github.ts",
-          "description": "MODIFY: Remove duplicate Slack notification after `harvestFeature(",
+          "title": "Implement test strategy for Phase 5",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-06T20:25:15.332Z"
+          "classification": "noop"
         },
         {
-          "id": "T020",
+          "id": "T025",
+          "title": "Implement src/commands/harvest.ts",
+          "description": "NEW: `gwrk harvest` CLI command",
+          "status": "cancelled",
+          "gateScript": "gates/T015-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T026",
           "title": "Implement src/engine/harvest.test.ts",
           "description": "MODIFY: Implement the 3 `it.todo(",
-          "status": "completed",
+          "status": "cancelled",
           "gateScript": "gates/T020-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
           "completedAt": "2026-05-06T20:25:15.534Z"
         },
         {
-          "id": "T021",
+          "id": "T027",
           "title": "Implement test strategy for Phase 6",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "cancelled",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
-          "completedAt": "2026-04-15T02:34:21.295Z",
-          "classification": "noop"
+          "completedAt": "2026-04-15T02:34:21.295Z"
         }
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`pnpm vitest run src/engine/harvest.test.ts` exits 0 with zero `it.todo()` stubs",
-        "`pnpm vitest run tests/server-github.test.ts` exits 0"
+        "`sqlite3 ~/.gwrk/gwrk.db \"SELECT count(*) FROM issues;\"` executes successfully",
+        "`pnpm vitest run tests/server-github.test.ts --grep \"Issue to feature association\"` exits 0"
       ]
     }
   ]

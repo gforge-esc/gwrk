@@ -14,7 +14,7 @@ export class ShipBridge {
 
   constructor(orchestrator: ShipOrchestrator, cwd: string) {
     const startedAt = new Date().toISOString();
-    
+
     // Initialize with partial data, will be fully populated on ship:start
     this.record = {
       id: "pending",
@@ -84,6 +84,31 @@ export class ShipBridge {
           feature: event.featureId,
           phase: event.phaseId,
           payload: { ...this.record, error: event.reason } as any,
+          timestamp: new Date().toISOString(),
+        },
+      );
+    });
+
+    orchestrator.on("define:spec:ready", (event) => {
+      notifySlack(MessageBuilder.specReady(event.featureId, event.specPath), {
+        type: "spec_ready",
+        feature: event.featureId,
+        payload: event as any,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    orchestrator.on("define:plan:ready", (event) => {
+      notifySlack(
+        MessageBuilder.planReady(
+          event.featureId,
+          event.planPath,
+          event.phaseCount,
+        ),
+        {
+          type: "plan_ready",
+          feature: event.featureId,
+          payload: event as any,
           timestamp: new Date().toISOString(),
         },
       );

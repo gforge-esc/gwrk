@@ -1,17 +1,19 @@
 ---
 type: specification
 feature: 003-slack
-last_modified: "2026-03-12T09:00:00Z"
-revision: 2
+last_modified: "2026-05-13T22:00:00Z"
+revision: 3
 ---
 
 # Feature Specification: 003 Slack
 
 **Feature Branch**: `feat/003-slack`
 **Created**: 2026-03-05
-**Revised**: 2026-03-12 (v2 — gap fill, Slack-as-hub vision)
+**Revised**: 2026-05-13 (v3 — Definition pillar in Slack, broken button remediation)
 **Status**: Revised
-**Input**: Slack as primary gwrk hub — socket mode, channel-per-project, slash commands, interactive review decisions, App Home Tab dashboard, build server notify bridge, `/gwrk ship` from Slack, multi-channel topology, presence-aware delivery
+**Input**: Slack as primary gwrk hub — socket mode, channel-per-project, slash commands, interactive review decisions, App Home Tab dashboard, build server notify bridge, `/gwrk ship` from Slack, `/gwrk define` from Slack, multi-channel topology, presence-aware delivery
+
+> **Revision Note (v3):** v2 wired shipping (P3) to Slack but left the entire Definition pillar (P2) disconnected. The PE's primary workflow is `define → ship → measure`, and without `/gwrk define` in Slack, the tool cannot serve as a daily driver across projects. This revision adds US-014 (Define from Slack), FR-015 (define slash command), FR-016 (define event bridge), and hardens US-005 with missing button acceptance scenarios (Request Changes, View Logs).
 
 > **Revision Note (v2):** Original spec built the scaffolding (message builders, presence routing, handlers) but missed the integration contract between the ship loop and Slack. Core audit finding: `notifySlack()` and `MessageBuilder` are never called anywhere in the codebase. This revision adds the missing wiring (US-010 through US-013) and corrects broken assumptions in existing stories.
 
@@ -100,7 +102,7 @@ As a Principal Engineer, I want to use `/gwrk` slash commands to query and contr
 
 ---
 
-### US-005 - Interactive Review Decisions (Priority: P0)
+### US-005 - Interactive Review Decisions (Priority: P0) ⭐ **REVISED**
 As a Principal Engineer, I want to approve or reject reviews by tapping buttons on Slack messages — or reacting with ✅ — so that I never need to open a laptop, terminal, or IDE to unblock the pipeline.
 
 **Implements**: FR-005
@@ -116,6 +118,11 @@ As a Principal Engineer, I want to approve or reject reviews by tapping buttons 
 3. **Given** a `phaseFail` message with `[🔄 Retry]`, **When** user taps Retry, **Then**:
    - New dispatch enqueued for the same feature/phase
    - Confirmation posted: `Retrying <feature> phase-<N>...`
+4. **Given** a `reviewReady` message, **When** user taps `[🔄 Request Changes]`, **Then**:
+   - New dispatch enqueued for the same feature/phase (agent wakes up to pull PR comments)
+   - Confirmation posted: `Changes requested for <feature> phase-<N>. Agent notified.`
+5. **Given** a `phaseFail` message, **When** user taps `[📋 View Logs]`, **Then**:
+   - Ephemeral message posted containing formatted exit code, duration, and gate results parsed from the latest `.gwrk/runs/` local JSON file.
 
 ---
 
@@ -246,6 +253,63 @@ As a Principal Engineer, I want a `gwrk-ops` master channel for cross-project su
 
 ---
 
+### US-014 - Define from Slack (Priority: P0) ⭐ **NEW (v3)**
+As a Principal Engineer, I want to type `/gwrk define <feature>` in Slack to start the full definition loop (spec → plan → tasks) as a background job, posting progress and approval CTAs back to the channel, so that I can kick off and approve definitional work from my phone across all my projects.
+
+**Implements**: FR-015, FR-016
+
+**Independent Test**: Type `/gwrk define 001` in Slack with server running; verify acknowledgment posted and definition loop starts; verify `specReady` and `planReady` messages appear with Approve buttons.
+
+**Acceptance Scenarios**:
+1. **Given** server running and feature exists, **When** typing `/gwrk define 001`, **Then**:
+   - Ephemeral acknowledgment immediately: `📐 Defining 001-cli-core...`
+   - Within 60 seconds, `DefineOrchestrator` begins spec generation
+2. **Given** spec generation completes for `001`, **When** the define loop finishes spec stage, **Then**:
+   - Block Kit message appears: `📐 Spec Ready: 001-cli-core` with `[✅ Approve]` and `[✏️ Revise]` buttons
+3. **Given** user taps `[✅ Approve]` on spec, **When** button is processed, **Then**:
+   - Plan generation begins automatically for the same feature
+   - Confirmation posted: `Spec approved. Generating plan...`
+4. **Given** plan generation completes for `001`, **When** the define loop finishes plan stage, **Then**:
+   - Block Kit message appears: `📐 Plan Ready: 001-cli-core — 5 phases` with `[✅ Approve]` and `[✏️ Revise]` buttons
+5. **Given** user taps `[✅ Approve]` on plan, **When** button is processed, **Then**:
+   - Tasks generated automatically, feature status updated to DEFINED in plan DAG
+   - Confirmation posted: `Plan approved. Tasks generated. 001-cli-core is DEFINED.`
+6. **Given** user taps `[✏️ Revise]` on spec or plan, **When** button is processed, **Then**:
+   - `gwrk define spec <feature>` re-enqueued as background process
+   - Confirmation posted: `Revision requested. Re-running definition...`
+7. **Given** invalid feature name, **When** typing `/gwrk define bad-feature`, **Then**:
+   - Ephemeral error: `Feature bad-feature not found`
+
+---
+
+### US-015 - Conversational Agent Surface (Priority: P0) ⭐ **NEW (v3)**
+As a Principal Engineer, I want to `@gwrk` or send free-form messages in a project channel and have the agent respond with contextual, intelligent answers — using thinking modes, skills, and proactive questions — so that I can do ad-hoc research, architectural thinking, and project interrogation from my phone without opening a laptop or IDE.
+
+> **Design Note:** This is NOT a chatbot. This is the same agent intelligence available in the IDE, surfaced through Slack. ~40% of IDE agent sessions are investigatory ("tell me about...", "what's the state of...", "help me think through...") and do not require a terminal. These sessions should be accessible from Slack.
+
+**Implements**: FR-006 (un-deferred), FR-017
+
+**Independent Test**: In a project channel, type `@gwrk what features are in progress?` and verify the agent responds with contextual project information within 10 seconds.
+
+**Acceptance Scenarios**:
+1. **Given** a project channel with gwrk configured, **When** the user types `@gwrk what's going on with this project?`, **Then**:
+   - Agent responds with a contextual summary: plan DAG status, active ships, recent runs, pending definitions
+   - Response uses real data from SQLite, PlanStore, and local project files
+2. **Given** a project channel, **When** the user types `@gwrk tell me about feature 003`, **Then**:
+   - Agent reads the spec, plan, and task state for 003 and responds with a coherent summary
+   - Response includes current status, what's shipped, what's blocking
+3. **Given** a project channel, **When** the user types `@gwrk help me think through the architecture for the plugin system`, **Then**:
+   - Agent engages using a thinking mode (e.g., architecture-stress-test skill)
+   - Agent proffers follow-up questions to deepen the conversation
+   - Conversation continues in a Slack thread
+4. **Given** an ongoing thread, **When** the user replies with follow-up context, **Then**:
+   - Agent maintains thread context and builds on previous responses
+5. **Given** a project channel, **When** the user types `@gwrk` with an ambiguous or underspecified request, **Then**:
+   - Agent asks clarifying questions before proceeding
+   - Questions are relevant and draw on project context (specs, plan DAG, recent activity)
+
+---
+
 ## 3. Roles, Scopes & Permissions
 
 _Leverages shared RBAC. No feature-specific roles. See RP-000._
@@ -270,17 +334,20 @@ The Slack app requires these OAuth scopes:
 - **FR-001**: System MUST provide `gwrk setup slack` that writes tokens to `~/.gwrk/.env` and verifies the connection. Idempotent. (Implements: US-001, US-008)
 - **FR-002**: System MUST provision a Slack channel (create or join) via `gwrk init --slack <channel>` for existing projects and `gwrk new` for new projects. Store `channelId` + `channelName` in `.gwrkrc.json`. (Implements: US-002)
 - **FR-003**: System MUST post Block Kit-formatted status messages to the project channel for: phase start, phase completion, phase failure, CI result, review readiness (with interactive buttons + PR URL), Pulse daily summary, and Done Done! celebration. (Implements: US-003)
-- **FR-004**: System MUST register and handle these slash commands with real data from SQLite and the running server: `/gwrk status [feature]`, `/gwrk dispatch <feature> <phase>`, `/gwrk approve <feature> <phase>`, `/gwrk reject <feature> <phase> <reason>`, `/gwrk pause <feature>`, `/gwrk pulse`, `/gwrk effort <feature>`, `/gwrk logs <feature> <phase>`, `/gwrk ship <feature> <phase>`. (Implements: US-004, US-012)
-- **FR-005**: System MUST render interactive buttons on review messages (`Merge`, `Request Changes`, `View Full Review`) and handle button taps and ✅ reactions as real pipeline actions (PR merge via `gh pr merge #N`, re-dispatch, log view). (Implements: US-005)
-- **FR-006**: DEFERRED to 009-agent-dut.
+- **FR-004**: System MUST register and handle these slash commands with real data from SQLite and the running server: `/gwrk status [feature]`, `/gwrk dispatch <feature> <phase>`, `/gwrk approve <feature> <phase>`, `/gwrk reject <feature> <phase> <reason>`, `/gwrk pause <feature>`, `/gwrk pulse`, `/gwrk effort <feature>`, `/gwrk logs <feature> <phase>`, `/gwrk ship <feature> <phase>`, `/gwrk define <feature>`. (Implements: US-004, US-012, US-014)
+- **FR-005**: System MUST render interactive buttons on review messages (`Merge`, `Request Changes`, `View Full Review`) and handle button taps and ✅ reactions as real pipeline actions (PR merge via `gh pr merge #N`, re-dispatch, log view). System MUST also render interactive buttons on definition messages (`Approve`, `Revise`) and handle them as pipeline actions (approve triggers next stage, revise re-enqueues definition). (Implements: US-005, US-014)
+- **FR-006**: ⭐ **UN-DEFERRED (v3)** System MUST handle `@gwrk` mentions and free-form messages in project channels as conversational agent queries. The agent MUST have access to project context (PlanStore DAG, SQLite runs, local spec/plan files, `.gwrkrc.json`) and respond with contextual, intelligent answers. Conversations MUST be threaded. The agent MUST be able to proffer follow-up questions. (Implements: US-015)
+- **FR-017**: ⭐ **NEW (v3)** System MUST integrate thinking modes and skills into conversational Slack responses. When a user's query maps to a registered skill (e.g., `architecture-stress-test`, `decision-forge`, `truth-extract`), the agent SHOULD invoke the appropriate reasoning mode. The agent MUST support both free-form natural language input and structured skill invocation (e.g., `@gwrk /skill decision-forge should we use SQLite or Postgres?`). (Implements: US-015)
 - **FR-007**: System MUST observe Slack user presence and throttle notifications: active → immediate, away → batch and deliver summary on return to active. (Implements: US-006)
 - **FR-008**: System MUST render an App Home Tab dashboard with: Active Agents, Dispatch Queue, System Resources, Feature Progress (with RAGB per feature), Pulse summary. Refreshes on `app_home_opened`. (Implements: US-007)
 - **FR-009**: System MUST provide `gwrk setup slack --verify` that tests token validity, Socket Mode connection, and sends a test message reporting `Bot Token: OK/FAIL`, `App Token: OK/FAIL`, `Socket Mode: OK/FAIL`, `Test Message: OK/FAIL`. (Implements: US-008)
-- **FR-010**: System MUST provide a `POST /api/notify` HTTP endpoint on the build server that accepts a lifecycle event payload and posts the corresponding Block Kit message to the project Slack channel. When the build server is available, ship loop scripts SHOULD prefer this endpoint (adds presence-awareness and batching). Failure to reach the endpoint MUST be non-fatal (logged, ship continues). (Implements: US-010)
+- **FR-010**: System MUST provide a `POST /api/notify` HTTP endpoint on the build server that accepts a lifecycle event payload and posts the corresponding Block Kit message to the project Slack channel. When `type` is `review_ready` and `prNumber` is provided, the endpoint MUST update the SQLite `runs` table for the corresponding feature/phase with the `pr_number`. Failure to reach the endpoint MUST be non-fatal (logged, ship continues). (Implements: US-010)
 - **FR-014**: ⭐ **NEW (2026-03-14)** System MUST support **Slack Incoming Webhook** as the primary notification path for ship loop events. The webhook URL is provisioned during `gwrk setup slack` and `gwrk init --slack <channel>`, stored in `~/.gwrk/.env` as `SLACK_WEBHOOK_URL` and in `.gwrkrc.json` as `slack.webhookUrl`. Ship loop scripts MUST use the webhook when `SLACK_WEBHOOK_URL` is set, falling back to `/api/notify` only when both are available. Webhook notification is a single `curl -X POST "$SLACK_WEBHOOK_URL" -H 'Content-type: application/json' -d '{"blocks":[...]}'`. This enables notification from Codex Cloud, local clones, and any environment where the build server is unreachable. `gwrk configure slack.webhookUrl <url>` MUST allow manual override for cloud provisioning. (Implements: US-010)
 - **FR-011**: System MUST implement PR lookup for approval actions: query SQLite `runs` table for the most recent open PR number for a given `featureId + phaseId`, then call `gh pr merge --merge --delete-branch <N>`. Approve button and `/gwrk approve` slash command MUST use this lookup. (Implements: US-011)
 - **FR-012**: System MUST handle `/gwrk ship <feature> <phase>` by spawning `gwrk ship` as a background subprocess, acknowledging immediately to Slack, and posting phaseStart + subsequent lifecycle events to the channel. (Implements: US-012)
 - **FR-013**: System MUST support a two-tier channel topology: `opsChannelId` in `.gwrkrc.json` for cross-project events (Pulse summary, Done Done!), and `channelId` for per-project events (phase lifecycle, review messages). Configured via `gwrk init --slack-ops <channel>`. (Implements: US-013)
+- **FR-015**: ⭐ **NEW (v3)** System MUST handle `/gwrk define <feature>` by spawning `gwrk define` as a background subprocess, acknowledging immediately to Slack, and posting `specReady` + `planReady` lifecycle events with approval CTAs to the channel. (Implements: US-014)
+- **FR-016**: ⭐ **NEW (v3)** System MUST emit `define_spec_ready` and `define_plan_ready` events from the `DefineOrchestrator` to the notification system (via `/api/notify` or webhook). These events MUST include the feature ID and the path to the generated spec/plan file. The build server's `/api/notify` endpoint MUST handle these event types by posting `specReady` / `planReady` Block Kit messages with approval buttons. (Implements: US-014)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -402,7 +469,7 @@ interface BatchedNotification {
 }
 
 interface SlackEvent {
-  type: 'phase_start' | 'phase_complete' | 'phase_fail' | 'ci_result' | 'review_ready' | 'done_done';
+  type: 'phase_start' | 'phase_complete' | 'phase_fail' | 'ci_result' | 'review_ready' | 'done_done' | 'define_spec_ready' | 'define_plan_ready';
   feature: string;
   phase?: string;
   payload: Record<string, unknown>;
@@ -418,11 +485,14 @@ interface NotifyPayload {
   feature: string;
   phase?: string;
   prUrl?: string;       // For review_ready — linked from `runs` table
-  prNumber?: number;    // For approval lookup
+  prNumber?: number;    // For approval lookup. MUST be updated in SQLite runs table upon receipt.
   gateResults?: string; // Summary of gate pass/fail for review_ready
   error?: string;       // For phase_fail
   branch?: string;
   backend?: string;
+  specPath?: string;    // For define_spec_ready — relative path to generated spec.md
+  planPath?: string;    // For define_plan_ready — relative path to generated plan.md
+  phaseCount?: number;  // For define_plan_ready — number of phases in plan
 }
 ```
 
@@ -488,6 +558,9 @@ interface SlackProjectConfig {
 - **TR-010**: `src/server/slack-integration.test.ts` — Mock Bolt app: send simulated slash command, verify response format. Vitest. (FR-004)
 - **TR-011**: `src/server/routes/notify.test.ts` — Unit test `POST /api/notify` endpoint: valid payload → correct `notifySlack()` call, invalid payload → 400, server missing channel → 200 with warn. Vitest. (FR-010)
 - **TR-012**: `src/server/slack-actions.test.ts` — PR lookup test: mock SQLite `runs.pr_number`, verify approval resolves correct PR number, verify "no PR found" ephemeral when `runs` has no entry. Vitest. (FR-011)
+- **TR-013**: ⭐ **NEW (v3)** `src/server/slack-commands.test.ts` — Define slash command: verify `/gwrk define 001` spawns background subprocess, verify acknowledgment format, verify feature-not-found error. Vitest. (FR-015)
+- **TR-014**: ⭐ **NEW (v3)** `src/server/slack-messages.test.ts` — Definition message builders: verify `specReady` Block Kit has Approve/Revise buttons with feature payload, verify `planReady` Block Kit includes phase count. Vitest. (FR-016)
+- **TR-015**: ⭐ **NEW (v3)** `src/server/slack-actions.test.ts` — Definition approval handlers: verify `approve_spec` triggers plan generation, verify `approve_plan` updates plan DAG to DEFINED, verify `revise_spec` re-enqueues definition. Vitest. (FR-005, FR-015)
 
 ---
 
@@ -497,11 +570,14 @@ interface SlackProjectConfig {
 - **SC-002**: Phase lifecycle events (start, complete, fail) appear in Slack within 5 seconds of the event in the ship loop, with no manual action required.
 - **SC-003**: All 9 slash commands return responses within 3 seconds with real, non-hardcoded data.
 - **SC-004**: Tapping `[✅ Merge]` or reacting with ✅ merges the correct PR (by number, from SQLite) and posts confirmation.
-- **SC-005**: DEFERRED to 009-agent-dut.
+- **SC-005**: ⭐ **UN-DEFERRED (v3)** `@gwrk what's going on?` in a project channel returns a contextual, intelligent summary using real project data — not a formatted status dump.
+- **SC-012**: ⭐ **NEW (v3)** Free-form conversational queries in Slack threads maintain context across multiple exchanges and proffer relevant follow-up questions.
 - **SC-006**: Away → Active presence transition delivers a single batched summary of all queued events.
 - **SC-007**: App Home Tab renders live dashboard with RAGB per feature; `Server: Offline` rendered gracefully when daemon is down.
 - **SC-008**: `/gwrk ship <feature> <phase>` from Slack starts a real ship loop and posts progress to the channel.
 - **SC-009**: Cross-project summaries (Pulse, Done Done!) route to `#gwrk-ops`; per-project events route to project channels.
+- **SC-010**: ⭐ **NEW (v3)** `/gwrk define <feature>` from Slack starts the definition loop and posts `specReady` / `planReady` messages with Approve/Revise buttons.
+- **SC-011**: ⭐ **NEW (v3)** Tapping `[✅ Approve]` on a spec message triggers plan generation; tapping Approve on a plan message triggers task generation and updates feature status to DEFINED.
 
 ---
 
@@ -515,6 +591,8 @@ interface SlackProjectConfig {
 - **VR-006**: E2E: `/gwrk approve <feature> <phase>` → verify correct PR merged (PR number from SQLite `runs`).
 - **VR-007**: Resiliency: run `gwrk ship` with server stopped → verify ship completes, logs `notify skipped`, no crash.
 - **VR-008**: E2E: `/gwrk ship <feature> <phase>` in Slack → verify phaseStart posted within 10 seconds.
+- **VR-009**: ⭐ **NEW (v3)** E2E: `/gwrk define <feature>` in Slack → verify `specReady` message with Approve button appears after definition completes.
+- **VR-010**: ⭐ **NEW (v3)** E2E: Tap Approve on `specReady` → verify plan generation begins and `planReady` message appears.
 
 ---
 
@@ -525,8 +603,8 @@ interface SlackProjectConfig {
 | US-001 | FR-001, FR-009 | FR-001 | US-001, US-008 | TR-001, TR-002 |
 | US-002 | FR-002 | FR-002 | US-002 | TR-009 |
 | US-003 | FR-003, FR-010 | FR-003 | US-003 | TR-005 |
-| US-004 | FR-004, FR-011 | FR-004 | US-004 | TR-003, TR-010 |
-| US-005 | FR-005, FR-011 | FR-005 | US-005 | TR-004, TR-012 |
+| US-004 | FR-004, FR-011 | FR-004 | US-004, US-014 | TR-003, TR-010, TR-013 |
+| US-005 | FR-005, FR-011 | FR-005 | US-005, US-014 | TR-004, TR-012, TR-015 |
 | US-006 | FR-007 | FR-007 | US-006 | TR-006 |
 | US-007 | FR-008 | FR-008 | US-007 | TR-007 |
 | US-008 | FR-001, FR-009 | FR-009 | US-008 | TR-001 |
@@ -534,4 +612,7 @@ interface SlackProjectConfig {
 | US-011 | FR-011 | FR-011 | US-011 | TR-012 |
 | US-012 | FR-012 | FR-012 | US-012 | TR-003 |
 | US-013 | FR-013 | FR-013 | US-013 | TR-005, TR-011 |
-| — | FR-006 | FR-006 | DEFERRED → 009 | DEFERRED → 009 |
+| US-014 | FR-015, FR-016 | FR-015 | US-014 | TR-013 |
+| US-014 | FR-015, FR-016 | FR-016 | US-014 | TR-014, TR-015 |
+| US-015 | FR-006, FR-017 | FR-006 | US-015 | TR-016 |
+| US-015 | FR-006, FR-017 | FR-017 | US-015 | TR-016 |

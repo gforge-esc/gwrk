@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-07T16:39:28.655Z_ship_p03",
+  "feature": "006-pulse",
+  "phase": "phase-03",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-07T16:39:28.655Z",
+  "finishedAt": "2026-05-07T17:23:51.374Z",
+  "durationS": 2663,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 9,
+  "linesAdded": 263,
+  "linesDeleted": 95,
+  "gitCommit": "579fc3ab93fc1d4de2f54a0aab4e7cc6331ced89",
+  "gitBranch": "feat/006-pulse",
+  "digest": []
+}

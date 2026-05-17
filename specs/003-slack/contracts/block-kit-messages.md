@@ -13,6 +13,8 @@ Each pipeline event maps to a Block Kit message shape.
 | Pulse Summary | project channel | Header, LOC table, Trends | — | FR-003 |
 | Done Done! | project channel | Header 🏆, Feature summary, Stats | — | FR-003 |
 | Batched Summary | project channel | Header, Event list (collapsed) | — | FR-007 |
+| Spec Ready | project channel | Header, Spec path, AC summary | `[✅ Approve]` `[✏️ Revise]` | FR-016 |
+| Plan Ready | project channel | Header, Plan path, Phase count | `[✅ Approve]` `[✏️ Revise]` | FR-016 |
 
 ## Builder Interface
 
@@ -25,8 +27,10 @@ interface MessageBuilder {
   pulseSummary(pulse: PulseSnapshot): SlackMessage;
   doneDone(feature: string, stats: FeatureStats): SlackMessage;
   batchedSummary(events: SlackEvent[]): SlackMessage;
+  specReady(feature: string, specPath: string): SlackMessage;
+  planReady(feature: string, planPath: string, phaseCount: number): SlackMessage;
 }
-
+```
 interface SlackMessage {
   channel: string;
   blocks: Block[];

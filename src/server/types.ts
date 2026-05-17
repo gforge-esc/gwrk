@@ -46,6 +46,7 @@ export interface TaskRecord {
   status: "pending" | "running" | "completed" | "failed";
   sandboxDir: string; // Path to git worktree: .runs/sandboxes/<feature>-<task>-<uuid>
   backend: AgentBackend;
+  model?: string;
   startedAt?: string;
   completedAt?: string;
   exitCode?: number;
@@ -113,7 +114,9 @@ export interface NotifyPayload {
     | "phase_fail"
     | "ci_result"
     | "review_ready"
-    | "done_done";
+    | "done_done"
+    | "define_spec_ready"
+    | "define_plan_ready";
   feature: string;
   phase?: string;
   prUrl?: string;
@@ -123,4 +126,7 @@ export interface NotifyPayload {
   branch?: string;
   backend?: string;
   opsOnly?: boolean;
+  specPath?: string;
+  planPath?: string;
+  phaseCount?: number;
 }

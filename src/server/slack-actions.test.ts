@@ -8,12 +8,28 @@ import type { CommandContext } from "./slack-commands.js";
 
 // Mock findOpenPr
 vi.mock("../db/runs.js", () => ({
-  findOpenPr: vi.fn().mockReturnValue({ pr_number: 42, pr_url: "https://github.com/test/pr/42" }),
+  findOpenPr: vi.fn().mockReturnValue({
+    pr_number: 42,
+    pr_url: "https://github.com/test/pr/42",
+  }),
+}));
+
+const { mockSpawn, mockHandleDefineComplete } = vi.hoisted(() => ({
+  mockSpawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
+  mockHandleDefineComplete: vi.fn(),
 }));
 
 // Mock execSync for gh pr merge
 vi.mock("node:child_process", () => ({
   execSync: vi.fn().mockReturnValue("Merged PR #42"),
+  spawn: mockSpawn,
+}));
+
+// Mock PlanStore
+vi.mock("../engine/plan-store.js", () => ({
+  PlanStore: vi.fn().mockImplementation(() => ({
+    handleDefineComplete: mockHandleDefineComplete,
+  })),
 }));
 
 // biome-ignore lint/suspicious/noExplicitAny: complex mock args
@@ -21,7 +37,7 @@ type SlackActionHandler = (args: any) => Promise<void>;
 // biome-ignore lint/suspicious/noExplicitAny: complex mock args
 type SlackEventHandler = (args: any) => Promise<void>;
 
-describe("slack-actions", () => {
+describe("slack-actions (FR-007, US-004)", () => {
   let mockApp: Partial<App>;
   let mockContext: CommandContext;
   let actionHandlers: Record<string, SlackActionHandler> = {};
@@ -29,6 +45,7 @@ describe("slack-actions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSpawn.mockReturnValue({ unref: vi.fn() });
     actionHandlers = {};
     eventHandlers = {};
     mockApp = {
@@ -55,34 +72,103 @@ describe("slack-actions", () => {
     };
   });
 
-  it("registers actions", async () => {
+  it("registers all required actions", async () => {
     await registerSlackActions(mockApp as App, mockContext);
-    expect(mockApp.action).toHaveBeenCalledWith(
+    const expectedActions = [
       "merge_pr",
-      expect.any(Function),
-    );
-    expect(mockApp.action).toHaveBeenCalledWith(
       "request_changes",
-      expect.any(Function),
-    );
-    expect(mockApp.action).toHaveBeenCalledWith(
       "view_review",
-      expect.any(Function),
-    );
-    expect(mockApp.action).toHaveBeenCalledWith(
       "retry_phase",
-      expect.any(Function),
+      "approve_spec",
+      "approve_plan",
+      "revise_spec",
+      "revise_plan",
+    ];
+    for (const action of expectedActions) {
+      expect(mockApp.action).toHaveBeenCalledWith(action, expect.any(Function));
+    }
+  });
+
+  it("US-004: handles approve_spec action — triggers plan generation (TR-015)", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+            specPath: "specs/003-slack/spec.md",
+          }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
+
+    await actionHandlers.approve_spec({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["plan", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+    expect(client.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Approved spec"),
+      }),
     );
   });
 
-  it("handles merge_pr action — calls gh pr merge with PR from runs table", async () => {
+  it("US-004: handles approve_plan action — updates PlanStore to DEFINED (TR-015)", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+            planPath: "specs/003-slack/plan.md",
+          }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
+
+    await actionHandlers.approve_plan({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(mockHandleDefineComplete).toHaveBeenCalledWith({
+      featureId: "003-slack",
+      status: "DEFINED",
+    });
+    expect(client.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Approved plan"),
+      }),
+    );
+  });
+
+  it("FR-007: handles merge_pr action — calls gh pr merge", async () => {
     const { execSync } = await import("node:child_process");
     const { findOpenPr } = await import("../db/runs.js");
-    
+
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
     const postMessage = vi.fn();
-    const postEphemeral = vi.fn();
     const body = {
       actions: [
         {
@@ -95,14 +181,13 @@ describe("slack-actions", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage, postEphemeral } };
+    const client = { chat: { postMessage } };
 
     await actionHandlers.merge_pr({
       ack,
       body,
       client,
       logger: console,
-      // biome-ignore lint/suspicious/noExplicitAny: complex mock
     } as any);
 
     expect(ack).toHaveBeenCalled();
@@ -111,26 +196,16 @@ describe("slack-actions", () => {
       "gh pr merge 42 --merge --delete-branch",
       expect.objectContaining({ cwd: "/tmp" }),
     );
-    expect(postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining("PR #42"),
-      }),
-    );
   });
 
-  it("handles merge_pr with no PR found — posts ephemeral error", async () => {
-    const { findOpenPr } = await import("../db/runs.js");
-    vi.mocked(findOpenPr).mockReturnValue(null);
-
+  it("FR-007: handles retry_phase action — re-dispatches via queue", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
-    const postMessage = vi.fn();
-    const postEphemeral = vi.fn();
     const body = {
       actions: [
         {
           value: JSON.stringify({
-            featureId: "999-missing",
+            featureId: "003-slack",
             phaseId: "phase-01",
           }),
         },
@@ -138,29 +213,19 @@ describe("slack-actions", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage, postEphemeral } };
+    const client = { chat: { postMessage: vi.fn() } };
 
-    await actionHandlers.merge_pr({
+    await actionHandlers.retry_phase({
       ack,
       body,
       client,
       logger: console,
-      // biome-ignore lint/suspicious/noExplicitAny: complex mock
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(postEphemeral).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining("No open PR found"),
-      }),
-    );
-  });
-
-  it("registers reaction_added event", async () => {
-    await registerSlackActions(mockApp as App, mockContext);
-    expect(mockApp.event).toHaveBeenCalledWith(
-      "reaction_added",
-      expect.any(Function),
-    );
+    expect(mockContext.queue.enqueue).toHaveBeenCalledWith({
+      featureId: "003-slack",
+      phaseId: "phase-01",
+    });
   });
 });

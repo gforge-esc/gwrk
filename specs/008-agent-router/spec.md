@@ -2,14 +2,14 @@
 
 **Feature Branch**: `008-agent-router`
 **Created**: 2026-03-10
-**Revised**: 2026-03-10
+**Revised**: 2026-05-07
 **Status**: Settled
 **Input**: Agent router, backend selection based on quota remaining, fallback chain, quota probing, SQLite-backed learning, agent registry schema.
 
 ---
 
 > [!IMPORTANT]
-> **Routing is about QUOTA, not context.** All target backends (Codex 1M, Gemini 1M, Claude 200K) have sufficient context windows for gwrk's reduced-context tasks (spec + plan + contracts + gate). The real routing problem is: *which backend has enough quota remaining to complete this task?* The router farms work to where capacity exists.
+> **Routing operates on two dimensions.** Dimension 1 (provider): which provider has capacity? Dimension 2 (model): which model within that provider fits this task? The router farms work to where capacity exists AND selects the right model class (thinking vs fast) based on task classification. All target backends have sufficient context windows — the real problems are quota remaining and transient capacity exhaustion (429s).
 
 ## 2. User Scenarios & Testing
 
@@ -94,6 +94,44 @@ As a Principal Engineer, I want every routing decision logged to SQLite with the
 1. **Given** a completed routing decision, **Then**:
    - `sqlite3 ~/.gwrk/gwrk.db "SELECT count(*) FROM routing_decisions WHERE quota_percent IS NOT NULL"` outputs `>= 1`
 
+### US-008 - Model Selection Within Provider (Priority: P0)
+As a Principal Engineer, I want the router to select the appropriate model within a provider based on the task type — thinking models for implementation/remediation, fast models for tests/reviews — so I get the right capability without manual `--model` flags.
+
+**Implements**: FR-009, FR-011
+
+**Independent Test**: Given a gemini backend with models `["gemini-3.1-pro-preview", "gemini-3-flash-preview"]`, route an `implement` task. Verify it selects `gemini-3.1-pro-preview`.
+
+**Acceptance Scenarios**:
+1. **Given** gemini with two models and task type `implement`, **When** the router selects, **Then**:
+   - `jq -r '.selectedModel' .runs/latest_selection.json` outputs `gemini-3.1-pro-preview`
+   - `jq -r '.reason' .runs/latest_selection.json | grep -q 'thinking'` exits 0
+2. **Given** gemini with two models and task type `test`, **When** the router selects, **Then**:
+   - `jq -r '.selectedModel' .runs/latest_selection.json` outputs `gemini-3-flash-preview`
+
+### US-009 - Transient 429 Model Failover (Priority: P0)
+As the ship engine, I want the router to distinguish between quota depletion (0% remaining) and transient capacity exhaustion (429 on a specific model), so it tries another model within the same provider before failing over to a different provider entirely.
+
+**Implements**: FR-010
+
+**Independent Test**: Mock `gemini-3-flash-preview` returning 429 `MODEL_CAPACITY_EXHAUSTED`. Verify the router tries `gemini-3.1-pro-preview` before falling to claude.
+
+**Acceptance Scenarios**:
+1. **Given** gemini-flash returns 429 and gemini-pro is available, **When** the router selects, **Then**:
+   - `jq -r '.backend' .runs/latest_selection.json` outputs `gemini`
+   - `jq -r '.selectedModel' .runs/latest_selection.json` outputs `gemini-3.1-pro-preview`
+   - `jq -r '.reason' .runs/latest_selection.json | grep -q 'model-failover'` exits 0
+
+### US-010 - Task Classification (Priority: P1)
+As the router, I want a formalized task classification that maps task types to model capability tiers (thinking, fast, high-context), so model selection is deterministic and auditable.
+
+**Implements**: FR-011
+
+**Independent Test**: Classify task types `implement`, `test`, `review`, `define`, `remediation`. Verify each maps to expected tier.
+
+**Acceptance Scenarios**:
+1. **Given** task type `implement`, **When** classified, **Then** tier is `thinking`
+2. **Given** task type `test`, **When** classified, **Then** tier is `fast`
+
 ---
 
 ## 3. Roles, Scopes & Permissions
@@ -104,14 +142,17 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 ## 4. Functional Requirements
 
-- **FR-001**: System MUST provide a `BackendSelector` that accepts a `TaskContext` (feature, phase, language, taskSP) and returns a `BackendSelection` (backend, model, reason, quotaPercent, fallback). The primary selection criterion is **quota remaining**, with historical success rate as tiebreaker. (Implements: US-001)
+- **FR-001**: System MUST provide a `BackendSelector` that accepts a `TaskContext` (feature, phase, taskType, language, taskSP) and returns a `BackendSelection` (backend, model, reason, quotaPercent, fallback). Selection operates on two dimensions: (1) provider selection based on quota remaining, (2) model selection within provider based on task classification. Historical success rate is tiebreaker. (Implements: US-001, US-008)
 - **FR-002**: System MUST implement a `QuotaProber` per backend type. Probing strategies, in order of preference: (a) cached reading from last probe within TTL (default 5 min), (b) headless interactive session scraping (tmux-based, inspired by ccquota pattern), (c) shared-pool lookup (e.g. `codex-cloud` reads the `codex` local probe — they share the same 5h window), (d) optimistic assumption (100%). The probe MUST return `{ percent: number, resetsIn: string, probeStatus: "fresh" | "cached" | "shared-pool" | "timeout-assumed-available" }`. (Implements: US-001, US-003)
 - **FR-003**: System MUST check backend availability before selection. A backend is available if: (a) configured in registry, (b) quota > 0% (or probe assumed available), (c) not in cooldown from a recent failure. (Implements: US-001)
-- **FR-004**: System MUST implement a fallback chain. If the selected backend has 0% quota, fails, or times out, the router MUST select the next backend from `agents.fallbackOrder`. Max 3 fallback attempts. (Implements: US-002)
-- **FR-005**: System MUST load the agent registry from `.gwrkrc.json` under `agents.registry`. The schema MUST be Zod-validated with fail-fast on invalid config. Registry schema per backend: `{ name, type: "local-cli" | "cloud", command, quotaProbe: { command, parseFormat }, maxConcurrent, models, fallback? }`. (Implements: US-004)
-- **FR-006**: System MUST query the SQLite `runs` table to calculate per-backend success rates. Used as tiebreaker when multiple backends have similar quota (within 20% of each other). (Implements: US-005)
+- **FR-004**: System MUST implement a two-level fallback chain. Level 1 (model failover): if the selected model within a provider returns a transient 429, try the next model in the same provider's `models[]` array. Level 2 (provider failover): if all models within a provider are exhausted or quota is 0%, select the next provider from `agents.fallbackOrder`. Max 3 provider-level fallback attempts. (Implements: US-002, US-009)
+- **FR-005**: System MUST load the agent registry from `.gwrkrc.json` under `agents.registry`. The schema MUST be Zod-validated with fail-fast on invalid config. Registry schema per backend: `{ name, type: "local-cli" | "cloud", command, docs?: { models, routing?, configuration? }, quotaProbe, maxConcurrent, models: [{ name, tier, modelFlag?, effort?, lastVerified? }], discoveryMethod?: "manual" | "cli-scrape", reviewModel?: string, fallback? }`. Each model entry specifies its capability `tier` ("thinking" | "fast" | "high-context"), optional `modelFlag` for CLI injection, optional `effort` for CLI-native effort flags (e.g. Claude's `--effort`), and optional `lastVerified` ISO date for staleness tracking. The `docs` object provides documentation URLs per provider for human and agent reference. `discoveryMethod` defaults to `"manual"`. Provider-level `reviewModel` is optional — when present, the router uses it for `review`/`test` tasks instead of the primary model (aligns with Codex's native `review_model` config). (Implements: US-004, US-008)
+- **FR-006**: System MUST query the SQLite `runs` table to calculate per-backend AND per-model success rates. Used as tiebreaker when multiple backends have similar quota (within 20% of each other). (Implements: US-005)
 - **FR-007**: System MUST handle probe failures gracefully. If a quota probe times out (> 5s) or returns unparseable output, the backend MUST be assumed available (100%) with `probeStatus: "timeout-assumed-available"`. The router MUST NOT block on a broken probe. (Implements: US-006)
-- **FR-008**: System MUST record every routing decision in a `routing_decisions` SQLite table with columns: `id`, `run_id`, `feature`, `phase`, `selected_backend`, `selected_model`, `reason`, `quota_percent`, `probe_status`, `task_sp`, `fallback_used`, `created_at`. (Implements: US-007)
+- **FR-008**: System MUST record every routing decision in a `routing_decisions` SQLite table with columns: `id`, `run_id`, `feature`, `phase`, `selected_backend`, `selected_model`, `task_classification`, `reason`, `quota_percent`, `probe_status`, `task_sp`, `fallback_used`, `model_failover_used`, `created_at`. (Implements: US-007)
+- **FR-009**: System MUST implement a `ModelSelector` that picks from a provider's `models[]` based on `TaskClassification`. The selector matches task tier to model tier. **Array order defines priority** — the first model matching the requested tier is preferred; subsequent models of the same tier serve as intra-tier failovers. If the preferred-tier model is unavailable (cooldown from 429), it falls to the next model in the array regardless of tier. (Implements: US-008)
+- **FR-010**: System MUST distinguish between quota depletion (provider-level, 0% remaining in rate window) and transient capacity exhaustion (model-level, 429 `MODEL_CAPACITY_EXHAUSTED`). Quota depletion triggers provider failover (FR-004 Level 2). Transient 429 triggers model failover (FR-004 Level 1) with per-model cooldown (default 60s). (Implements: US-009)
+- **FR-011**: System MUST define a `TaskClassification` enum: `implement` → `thinking`, `test` → `fast`, `review` → `thinking`, `define` → `high-context`, `remediation` → `thinking`. Classification is derived from `TaskContext.taskType`. The command string MUST support `{{model}}` template substitution so the selected model's `modelFlag` is injected at invocation time. If the selected model has an `effort` value, the command MUST also inject `--effort <value>`. If the provider has a `reviewModel` configured and the task is `review` or `test`, the `reviewModel` flag overrides the primary model selection. (Implements: US-010)
 
 #### FR-001 Error States
 | Condition | stderr contains | Exit code |
@@ -130,6 +171,17 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 | Registry missing from config | `Missing required config: agents.registry` | 1 |
 | Invalid backend schema | `Invalid agent registry entry` | 1 |
 
+#### FR-009 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| No models matching tier | `No model with tier 'thinking' in backend 'gemini'` | _(falls to next model, not fatal)_ |
+| All models in cooldown | `All models for 'gemini' in cooldown — provider failover` | _(triggers FR-004 Level 2)_ |
+
+#### FR-010 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| All models 429 + all providers exhausted | `All backends and models exhausted — retry after cooldown` | 1 |
+
 ---
 
 ## 5. Data Model Requirements
@@ -143,7 +195,12 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
     "registry": {
       "codex": {
         "type": "local-cli",
-        "command": "codex exec --full-auto",
+        "command": "codex exec --full-auto --model {{model}}",
+        "docs": {
+          "models": "https://github.com/openai/codex",
+          "configuration": "https://github.com/openai/codex#configuration"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "interactive-scrape",
           "command": "codex",
@@ -152,11 +209,22 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
           "cacheTTLMinutes": 5
         },
         "maxConcurrent": 1,
-        "models": ["gpt-5.3-codex", "gpt-5.1-codex-mini"]
+        "models": [
+          { "name": "gpt-5.4", "tier": "thinking", "modelFlag": "gpt-5.4", "lastVerified": "2026-05-07" },
+          { "name": "gpt-5.3-codex", "tier": "thinking", "modelFlag": "gpt-5.3-codex", "lastVerified": "2026-05-07" },
+          { "name": "gpt-5.1-codex-mini", "tier": "fast", "modelFlag": "gpt-5.1-codex-mini", "lastVerified": "2026-05-07" }
+        ],
+        "reviewModel": "gpt-5.1-codex-max"
       },
       "gemini": {
         "type": "local-cli",
-        "command": "gemini -p --output-format json",
+        "command": "gemini -p --model {{model}}",
+        "docs": {
+          "models": "https://geminicli.com/docs/cli/model/",
+          "routing": "https://geminicli.com/docs/cli/model-routing/",
+          "configuration": "https://geminicli.com/docs/reference/configuration/"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "interactive-scrape",
           "command": "gemini",
@@ -165,11 +233,20 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
           "cacheTTLMinutes": 5
         },
         "maxConcurrent": 2,
-        "models": ["gemini-3.1-pro-preview", "gemini-3-flash-preview"]
+        "models": [
+          { "name": "gemini-3.1-pro-preview", "tier": "thinking", "modelFlag": "gemini-3.1-pro-preview", "lastVerified": "2026-05-07" },
+          { "name": "gemini-3-flash-preview", "tier": "fast", "modelFlag": "gemini-3-flash-preview", "lastVerified": "2026-05-07" },
+          { "name": "gemini-2.5-flash-lite", "tier": "fast", "modelFlag": "gemini-2.5-flash-lite", "lastVerified": "2026-05-07" }
+        ]
       },
       "claude": {
         "type": "local-cli",
-        "command": "claude -p --output-format json --effort high",
+        "command": "claude -p --model {{model}} --output-format json",
+        "docs": {
+          "models": "https://docs.anthropic.com/en/docs/claude-code/cli-usage",
+          "configuration": "https://docs.anthropic.com/en/docs/claude-code/settings"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "interactive-scrape",
           "command": "claude",
@@ -179,18 +256,27 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
           "cacheTTLMinutes": 5
         },
         "maxConcurrent": 2,
-        "models": ["claude-sonnet-4.6"]
+        "models": [
+          { "name": "claude-sonnet-4.6", "tier": "thinking", "modelFlag": "claude-sonnet-4.6", "effort": "max", "lastVerified": "2026-05-07" },
+          { "name": "claude-haiku-4.5", "tier": "fast", "modelFlag": "haiku", "effort": "high", "lastVerified": "2026-05-07" }
+        ]
       },
       "codex-cloud": {
         "type": "cloud",
         "command": "@codex",
+        "docs": {
+          "models": "https://github.com/openai/codex"
+        },
+        "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "shared-pool",
           "sharedWith": "codex",
           "cacheTTLMinutes": 0
         },
         "maxConcurrent": 3,
-        "models": ["gpt-5.3-codex"]
+        "models": [
+          { "name": "gpt-5.3-codex", "tier": "thinking", "modelFlag": "gpt-5.3-codex", "lastVerified": "2026-05-07" }
+        ]
       }
     },
     "fallbackOrder": ["codex", "gemini", "claude", "codex-cloud"]
@@ -208,11 +294,13 @@ CREATE TABLE IF NOT EXISTS routing_decisions (
   phase TEXT NOT NULL,
   selected_backend TEXT NOT NULL,
   selected_model TEXT,
+  task_classification TEXT,
   reason TEXT NOT NULL,
   quota_percent INTEGER,
   probe_status TEXT NOT NULL,
   task_sp REAL,
   fallback_used BOOLEAN DEFAULT FALSE,
+  model_failover_used BOOLEAN DEFAULT FALSE,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
@@ -244,11 +332,14 @@ CREATE TABLE IF NOT EXISTS routing_decisions (
 
 - **TR-001**: `src/server/backend-selector.test.ts` — Verify selection logic: given 3 backends with different quota percentages, assert the highest-quota backend is selected. Vitest. (FR-001, FR-003)
 - **TR-002**: `src/server/backend-selector.test.ts` — Verify fallback chain: mock primary at 0% quota, assert fallback is selected, assert max 3 attempts. Vitest. (FR-004)
-- **TR-003**: `src/server/agent-registry.test.ts` — Verify Zod schema validation of `.gwrkrc.json` registry including `quotaProbe` config. Assert fail-fast on missing fields. Vitest. (FR-005)
+- **TR-003**: `src/server/agent-registry.test.ts` — Verify Zod schema validation of `.gwrkrc.json` registry including `quotaProbe` config and `models[]` with tier/modelFlag. Assert fail-fast on missing fields. Vitest. (FR-005)
 - **TR-004**: `src/server/backend-selector.test.ts` — Verify SQLite tiebreaker: given two backends with equal quota, assert the one with higher historical success rate is preferred. Vitest. (FR-006)
 - **TR-005**: `src/server/quota-prober.test.ts` — Verify probe timeout handling: mock a probe that hangs for 10s, assert router assumes 100% and returns within 6s. Vitest. (FR-002, FR-007)
-- **TR-006**: `src/server/routing-decisions.test.ts` — Verify every selection is recorded in `routing_decisions` table with `quota_percent` and `probe_status` columns. Vitest. (FR-008)
+- **TR-006**: `src/server/routing-decisions.test.ts` — Verify every selection is recorded in `routing_decisions` table with `quota_percent`, `probe_status`, `selected_model`, `task_classification`, and `model_failover_used` columns. Vitest. (FR-008)
 - **TR-007**: `src/server/quota-prober.test.ts` — Verify cache: probe once, check cache hit on second call within TTL, verify re-probe after TTL expires. Vitest. (FR-002)
+- **TR-008**: `src/server/model-selector.test.ts` — Verify model selection: given gemini with `[thinking, fast]` models and task type `implement`, assert `gemini-3.1-pro-preview` selected. Given task type `test`, assert `gemini-3-flash-preview` selected. Vitest. (FR-009, FR-011)
+- **TR-009**: `src/server/backend-selector.test.ts` — Verify model failover: mock `gemini-3-flash-preview` in cooldown (429), assert `gemini-3.1-pro-preview` selected before provider failover. Vitest. (FR-010)
+- **TR-010**: `src/server/model-selector.test.ts` — Verify command template injection: given command `gemini -p --model {{model}}` and selected model `gemini-3.1-pro-preview`, assert rendered command is `gemini -p --model gemini-3.1-pro-preview`. Vitest. (FR-011)
 
 ---
 
@@ -273,11 +364,14 @@ CREATE TABLE IF NOT EXISTS routing_decisions (
 
 | US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
 |--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001, FR-002, FR-003 | FR-001 | US-001 | TR-001 |
+| US-001 | FR-001, FR-002, FR-003 | FR-001 | US-001, US-008 | TR-001 |
 | US-002 | FR-004 | FR-002 | US-001, US-003 | TR-005, TR-007 |
 | US-003 | FR-002 | FR-003 | US-001 | TR-001 |
-| US-004 | FR-005 | FR-004 | US-002 | TR-002 |
+| US-004 | FR-005 | FR-004 | US-002, US-009 | TR-002, TR-009 |
 | US-005 | FR-006 | FR-005 | US-004 | TR-003 |
 | US-006 | FR-007 | FR-006 | US-005 | TR-004 |
 | US-007 | FR-008 | FR-007 | US-006 | TR-005 |
-| | | FR-008 | US-007 | TR-006 |
+| US-008 | FR-009, FR-011 | FR-008 | US-007 | TR-006 |
+| US-009 | FR-010 | FR-009 | US-008 | TR-008 |
+| US-010 | FR-011 | FR-010 | US-009 | TR-009 |
+| | | FR-011 | US-010 | TR-008, TR-010 |

@@ -21,12 +21,14 @@ import {
   loadTaskState,
   saveTaskState,
 } from "../utils/state.js";
+import { harvestFeature } from "./harvest.js";
 import {
   type ShipRunConfig,
   ShipStage,
   type ShipState,
   type StageResult,
 } from "./ship-types.js";
+import type { HarvestRecord } from "./types.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -67,7 +69,6 @@ export class ShipOrchestrator extends EventEmitter {
   private config: ShipRunConfig;
   private state: ShipState;
 
-
   constructor(config: ShipRunConfig, state?: ShipState) {
     super();
     this.config = config;
@@ -76,7 +77,6 @@ export class ShipOrchestrator extends EventEmitter {
     } else {
       this.state = this.initializeState();
     }
-
   }
 
   private initializeState(): ShipState {
@@ -194,6 +194,24 @@ export class ShipOrchestrator extends EventEmitter {
 
       this.emit("plan:ship:complete", eventData);
       this.emit("ship:complete", eventData);
+
+      // Close the loop: harvest finalizes logs, DB, gates, tasks, compression, Slack
+      try {
+        const record: HarvestRecord = {
+          featureId: this.config.featureId,
+          phaseId: this.config.phaseId,
+          prNumber: 0,
+          prUrl: "",
+          mergeCommitSha: "local-ship",
+          mergedAt: new Date().toISOString(),
+          mergedBy: "gwrk-ship",
+          status: "merged",
+        };
+        await harvestFeature(this.config.cwd, record);
+      } catch (err) {
+        console.warn(`Harvest failed (non-fatal): ${err}`);
+      }
+
       return 0;
     }
 
@@ -265,6 +283,14 @@ export class ShipOrchestrator extends EventEmitter {
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
+
+      // 5. Discard review agent's source file mutations.
+      //    Review agents in YOLO mode can modify source files (fixing imports,
+      //    reformatting, etc.). These edits are often incomplete and can break
+      //    the build (e.g., removing non-null assertions without adding guards).
+      //    The review's value is the verdict + task feedback, not code edits.
+      //    We preserve tasks.json (carries verdict state) but restore everything else.
+      this.revertSourceMutations();
 
       if (verdict === "GO") {
         return { success: true, exitCode: 0 };
@@ -415,6 +441,35 @@ export class ShipOrchestrator extends EventEmitter {
       });
 
       if (result.exitCode === 0) {
+        // Checkpoint: commit implementation work BEFORE code review.
+        // revertSourceMutations() does `git checkout -- .` to undo review
+        // agent edits. Without this commit, it wipes the implementation too.
+        try {
+          const porcelain = execSync("git status --porcelain", {
+            cwd: this.config.cwd,
+            encoding: "utf-8",
+          }).trim();
+          if (porcelain) {
+            const phaseNum = this.config.phaseId
+              .replace("phase-", "")
+              .replace(/^0+/, "");
+            execSync("git add -A", { cwd: this.config.cwd });
+            execSync(
+              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "feat(${this.config.featureId}): implement Phase ${phaseNum}"`,
+              {
+                cwd: this.config.cwd,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: ["ignore", "pipe", "pipe"],
+              },
+            );
+            console.log("    ✓ implementation committed");
+          }
+        } catch (commitErr: unknown) {
+          console.warn(
+            `    ⚠ Could not commit implementation: ${commitErr instanceof Error ? commitErr.message : commitErr}`,
+          );
+          // Non-fatal: proceed to code review with uncommitted changes
+        }
         return { success: true, exitCode: 0 };
       }
       return {
@@ -499,6 +554,59 @@ export class ShipOrchestrator extends EventEmitter {
       return "NO-GO";
     }
     return "GO";
+  }
+
+  /**
+   * Discard source file mutations left by review agents.
+   *
+   * Review agents in YOLO mode can modify source files during review
+   * (fixing imports, reformatting, removing non-null assertions, etc.).
+   * These edits are often incomplete and can break the build.
+   *
+   * Strategy: `git checkout -- .` restores all tracked files to HEAD,
+   * then re-apply tasks.json from disk (it was already saved by
+   * validatePhaseScope and carries the verdict state we need).
+   */
+  private revertSourceMutations(): void {
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const tasksJsonPath = path.join(featureDir, ".gwrk", "tasks.json");
+
+    // Snapshot tasks.json — this carries the review verdict and must be preserved
+    let tasksJsonContent: string | null = null;
+    try {
+      tasksJsonContent = fs.readFileSync(tasksJsonPath, "utf-8");
+    } catch {
+      // No tasks.json to preserve — proceed with full restore
+    }
+
+    try {
+      // Restore all tracked files to HEAD state
+      execSync("git checkout -- .", {
+        cwd: this.config.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      // Remove any untracked files the review agent created
+      execSync("git clean -fd --exclude=.runs/", {
+        cwd: this.config.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      // Non-fatal: if git restore fails, the pre-commit hook will catch issues
+      console.warn(
+        `    ⚠ Could not revert review mutations: ${err instanceof Error ? err.message : err}`,
+      );
+      return;
+    }
+
+    // Restore tasks.json with review verdict state
+    if (tasksJsonContent) {
+      fs.writeFileSync(tasksJsonPath, tasksJsonContent, "utf-8");
+    }
   }
 
   private async stagePrCi(): Promise<StageResult> {
@@ -602,12 +710,41 @@ _Generated by gwrk ship_`;
         const prBodyPath = path.join("/tmp", `gwrk-pr-body-${Date.now()}.md`);
         fs.writeFileSync(prBodyPath, prBody, "utf-8");
 
-        const createOutput = withSpinner("creating PR", () =>
-          execSync(
-            `gh pr create --title "feat(${formattedSpec}): Phase ${phaseNum}" --body-file "${prBodyPath}" --base develop`,
-            { cwd: this.config.cwd, encoding: "utf-8" },
-          ),
-        );
+        let createOutput: string;
+        try {
+          createOutput = withSpinner("creating PR", () =>
+            execSync(
+              `gh pr create --title "feat(${formattedSpec}): Phase ${phaseNum}" --body-file "${prBodyPath}" --base develop`,
+              { cwd: this.config.cwd, encoding: "utf-8" },
+            ),
+          );
+        } catch (createErr: unknown) {
+          const createMsg =
+            createErr instanceof Error ? createErr.message : String(createErr);
+          if (
+            createMsg.includes("No commits between") ||
+            createMsg.includes("same as base branch")
+          ) {
+            // Code is already on develop — nothing to PR. This is success.
+            console.log(
+              "    ✓ No diff between branches — code already on develop. Merging branch.",
+            );
+            try {
+              execSync(
+                `git checkout develop && git merge ${branchName} && git push`,
+                {
+                  cwd: this.config.cwd,
+                  env: { ...process.env, GWRK_SHIP: "1" },
+                  stdio: ["ignore", "pipe", "pipe"],
+                },
+              );
+            } catch {
+              /* best-effort merge */
+            }
+            return { success: true, exitCode: 0, nextStage: ShipStage.DONE };
+          }
+          throw createErr;
+        }
 
         const match = createOutput.match(/pull\/(\d+)/);
         if (match) {
@@ -738,45 +875,42 @@ _Generated by gwrk ship_`;
   }
 
   /**
-   * Dispatch with graceful model failback (stopgap until F005/F008).
-   * Tries primary model, then falls back through the chain on non-zero exit.
-   * Only applies when backend is "gemini" and failbackModels are configured.
+   * Dispatch with graceful model failback.
+   * If a selected model/command is provided in config, use it.
+   * Otherwise, fall back to gemini-specific failback logic (legacy).
    */
   private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
-    const isGemini = this.config.backend === "gemini";
-    const primaryModel = this.config.geminiModel;
-    const failbackModels = this.config.geminiFailbackModels ?? [];
+    const env: Record<string, string> = { ...task.env };
+    const model = this.config.selectedModel;
 
-    // Build the model chain: [primary, ...failbacks]
-    const modelChain: (string | undefined)[] = isGemini
-      ? [primaryModel, ...failbackModels]
-      : [undefined]; // Non-gemini backends: single attempt, no model override
+    // 1. Use Router-selected model if available (FR-008/009)
+    if (model) {
+      if (this.config.backend === "gemini") env.GEMINI_MODEL = model;
+      if (this.config.backend === "claude") env.CLAUDE_MODEL = model;
+      if (this.config.backend === "codex") env.CODEX_MODEL = model;
+      console.log(`    🤖 Router model: ${model}`);
+    }
 
-    let lastResult: TaskResult | undefined;
+    // 2. Dispatch
+    const result = await dispatchToAgent({ ...task, model, env });
 
-    for (const model of modelChain) {
-      const env: Record<string, string> = { ...task.env };
-      if (model) {
-        env.GEMINI_MODEL = model;
-        console.log(`  ▸ Dispatching with model: ${model}`);
-      }
-
-      lastResult = await dispatchToAgent({ ...task, env });
-
-      if (lastResult.exitCode === 0) {
-        return lastResult;
-      }
-
-      // Only failback if there are more models to try
-      const currentIndex = modelChain.indexOf(model);
-      if (currentIndex < modelChain.length - 1) {
-        const nextModel = modelChain[currentIndex + 1];
+    // 3. Legacy Gemini-specific failback if router didn't provide a selection
+    //    and the primary attempt failed.
+    if (result.exitCode !== 0 && this.config.backend === "gemini" && !model) {
+      const failbackModels = this.config.geminiFailbackModels ?? [];
+      for (const fbModel of failbackModels) {
         console.log(
-          `  ⚠ Model ${model ?? "default"} failed (exit ${lastResult.exitCode}), failing back to ${nextModel}`,
+          `    ⚠ Primary model failed (exit ${result.exitCode}), failing back to ${fbModel}`,
         );
+        const fbResult = await dispatchToAgent({
+          ...task,
+          model: fbModel,
+          env: { ...env, GEMINI_MODEL: fbModel },
+        });
+        if (fbResult.exitCode === 0) return fbResult;
       }
     }
 
-    return lastResult as TaskResult;
+    return result;
   }
 }

@@ -1,9 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T017 — Implement Dockerfile.sandbox
-# Asserts: Derived from task description
-
-# No specific assertions found in task description
-true
-
-echo "PASS: T017 — Implement Dockerfile.sandbox"
+# AUTHORED
+# T017 — Implement test strategy for Phase 3
+test -d src/server || { echo "FAIL: T017 — src/server directory not found" >&2; exit 1; }
+echo "PASS: T017 — Implement test strategy for Phase 3"

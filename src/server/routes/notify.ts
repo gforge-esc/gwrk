@@ -62,6 +62,28 @@ export async function notifyRoutes(server: FastifyInstance) {
         case "done_done":
           message = MessageBuilder.doneDone(payload.feature);
           break;
+        case "define_spec_ready":
+          if (!payload.specPath) {
+            return reply.status(400).send({
+              ok: false,
+              error: "Missing required field: specPath",
+            });
+          }
+          message = MessageBuilder.specReady(payload.feature, payload.specPath);
+          break;
+        case "define_plan_ready":
+          if (!payload.planPath || !payload.phaseCount) {
+            return reply.status(400).send({
+              ok: false,
+              error: "Missing required fields: planPath and phaseCount",
+            });
+          }
+          message = MessageBuilder.planReady(
+            payload.feature,
+            payload.planPath,
+            payload.phaseCount,
+          );
+          break;
         default:
           return reply.status(400).send({
             ok: false,

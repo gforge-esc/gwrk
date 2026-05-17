@@ -83,22 +83,17 @@ const handlers: Record<string, SlashCommandHandler> = {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `*Feature ${featureId}:* No runs found.`,
+              text: `*Feature ${featureId}:* No dispatch runs found.`,
             },
           });
         }
       } catch {
         // DB not available — fall back to queue-only
-        if (!featureDispatch) {
-          blocks.push({
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `*Feature ${featureId}:* Not active or queued.`,
-            },
-          });
-        }
       }
+
+      // TODO: Task state should be queried from SQLite via harvest.
+      // When harvest persists task completion to the execution ledger,
+      // add a query here: SELECT phase, completed, total FROM task_state WHERE feature_id = ?
 
       // Also check for spec-local ship runs
       const runsDir = path.join(
@@ -147,9 +142,8 @@ const handlers: Record<string, SlashCommandHandler> = {
           for (const f of planStatus.features) {
             const emoji = statusEmoji[f.status] || "⬜";
             const phaseCount = f.phases?.length || 0;
-            const shippedCount = f.phases?.filter(
-              (p) => p.status === "SHIPPED",
-            ).length || 0;
+            const shippedCount =
+              f.phases?.filter((p) => p.status === "SHIPPED").length || 0;
             dagText += `\n${emoji} *${f.id}* — ${f.status} (${shippedCount}/${phaseCount} phases)`;
           }
 
@@ -304,10 +298,11 @@ const handlers: Record<string, SlashCommandHandler> = {
         };
       }
 
-      execSync(
-        `gh pr merge ${pr.pr_number} --merge --delete-branch`,
-        { cwd: context.projectRoot, encoding: "utf-8", timeout: 30_000 },
-      );
+      execSync(`gh pr merge ${pr.pr_number} --merge --delete-branch`, {
+        cwd: context.projectRoot,
+        encoding: "utf-8",
+        timeout: 30_000,
+      });
 
       return {
         response_type: "in_channel",
@@ -635,15 +630,11 @@ const handlers: Record<string, SlashCommandHandler> = {
       const resolved = resolveFeature(featureArg, context.projectRoot);
 
       // Spawn gwrk ship as background process
-      const child = spawn(
-        "gwrk",
-        ["ship", resolved, phaseArg],
-        {
-          cwd: context.projectRoot,
-          detached: true,
-          stdio: "ignore",
-        },
-      );
+      const child = spawn("gwrk", ["ship", resolved, phaseArg], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
       child.unref();
 
       return {
@@ -675,6 +666,82 @@ const handlers: Record<string, SlashCommandHandler> = {
       };
     }
   },
+
+  define: async (args, context) => {
+    const featureId = args[0];
+    if (!featureId) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: ":warning: Feature ID is required. Usage: `/gwrk define <featureId> [spec|plan|tasks|tests]`\nExample: `/gwrk define 003 spec`",
+            },
+          },
+        ],
+      };
+    }
+
+    // args[1] is optional subcommand: spec|plan|tasks|tests (default: spec)
+    const subcommand = args[1] || "spec";
+    const validSubs = ["spec", "plan", "tasks", "tests"];
+    if (!validSubs.includes(subcommand)) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:warning: Invalid define subcommand: \`${subcommand}\`. Use: spec, plan, tasks, tests`,
+            },
+          },
+        ],
+      };
+    }
+
+    try {
+      const resolved = resolveFeature(featureId, context.projectRoot);
+
+      // Spawn gwrk define <sub> <feature> as background process
+      const child = spawn("gwrk", ["define", subcommand, resolved], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      return {
+        response_type: "in_channel",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `📋 Dispatching *define ${subcommand}* for *${resolved}*... Progress will be posted here.`,
+            },
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `:warning: Error: ${errorMessage}`,
+            },
+          },
+        ],
+      };
+    }
+  },
 };
 
 export async function handleSlashCommand(
@@ -683,15 +750,43 @@ export async function handleSlashCommand(
 ): Promise<SlackBlockKit> {
   const [subcommand, ...args] = commandText.trim().split(/\s+/);
 
-  if (!subcommand) {
+  // "help" returns the same rich help as no subcommand
+  if (!subcommand || subcommand === "help") {
     return {
       response_type: "ephemeral",
       blocks: [
         {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: "🦩 gwrk — Slack Commands",
+          },
+        },
+        {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "Available commands: `status`, `dispatch`, `approve`, `reject`, `pause`, `pulse`, `effort`, `logs`, `ship`",
+            text: [
+              "*Ship & Build*",
+              "  `/gwrk ship <feature> <phase>` — ship a phase (branch → implement → review → PR)",
+              "  `/gwrk define <feature> [spec|plan|tasks|tests]` — define a feature artifact",
+              "  `/gwrk dispatch <feature> <phase>` — enqueue a dispatch",
+              "",
+              "*Observe*",
+              "  `/gwrk status [feature]` — system + feature status",
+              "  `/gwrk pulse` — git velocity dashboard",
+              "  `/gwrk effort <feature>` — effort estimation",
+              "  `/gwrk logs [feature]` — latest run logs",
+              "",
+              "*Review*",
+              "  `/gwrk approve <feature>` — approve a pending review",
+              "  `/gwrk reject <feature>` — reject a pending review",
+              "  `/gwrk pause` — pause the dispatch queue",
+              "",
+              "*Mentions*",
+              "  `@gwrk <command>` — same commands, in-channel with threaded replies",
+              "  `@gwrk what's the status?` — freeform → project summary",
+            ].join("\n"),
           },
         },
       ],
@@ -707,7 +802,7 @@ export async function handleSlashCommand(
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `:warning: Unknown subcommand: \`${subcommand}\``,
+            text: `:warning: Unknown command: \`${subcommand}\`\nRun \`/gwrk\` with no arguments to see all available commands.`,
           },
         },
       ],

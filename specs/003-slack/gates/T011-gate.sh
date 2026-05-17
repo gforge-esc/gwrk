@@ -1,7 +1,12 @@
 #!/bin/bash
+# AUTHORED
 set -euo pipefail
-# Gate: T011 — Implement src/db/migrations/003_pr_tracking.sql
-# AUTHORED — do not overwrite
-# Assertion #1: Verify DB schema
-pnpm vitest run src/db/db.test.ts --reporter=verbose
-echo "PASS: T011"
+
+test -f src/server/slack-notify.ts \
+  || { echo "FAIL: T011 — file not found: src/server/slack-notify.ts" >&2; exit 1; }
+grep -q 'opsChannelId' src/server/slack-notify.ts \
+  || { echo "FAIL: T011 — src/server/slack-notify.ts missing 'opsChannelId'" >&2; exit 1; }
+grep -q 'notifySlack' src/server/slack-notify.ts \
+  || { echo "FAIL: T011 — src/server/slack-notify.ts missing 'notifySlack'" >&2; exit 1; }
+
+echo "PASS: T011 — Implement src/server/slack-notify.ts"

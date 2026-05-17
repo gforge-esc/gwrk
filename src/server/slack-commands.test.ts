@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
@@ -6,7 +9,10 @@ import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
 
 // Mock findOpenPr for approve command
 vi.mock("../db/runs.js", () => ({
-  findOpenPr: vi.fn().mockReturnValue({ pr_number: 42, pr_url: "https://github.com/test/pr/42" }),
+  findOpenPr: vi.fn().mockReturnValue({
+    pr_number: 42,
+    pr_url: "https://github.com/test/pr/42",
+  }),
   listRuns: vi.fn().mockReturnValue([]),
   getStats: vi.fn().mockReturnValue([]),
 }));
@@ -138,6 +144,19 @@ describe("slack-commands", () => {
     );
   });
 
+  it("handles define command — spawns background process (FR-015)", async () => {
+    const { spawn } = await import("node:child_process");
+    const response = await handleSlashCommand("define 003-slack", context);
+    expect(response.response_type).toBe("in_channel");
+    expect(response.blocks[0].text.text).toContain("define spec");
+    expect(response.blocks[0].text.text).toContain("003-slack");
+    expect(spawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "spec", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+  });
+
   it("handles ship without args — returns usage", async () => {
     const response = await handleSlashCommand("ship 003-slack", context);
     expect(response.response_type).toBe("ephemeral");
@@ -152,14 +171,17 @@ describe("slack-commands", () => {
 
   it("returns help for empty command — includes ship", async () => {
     const response = await handleSlashCommand("", context);
-    expect(response.blocks[0].text.text).toContain("ship");
-    expect(response.blocks[0].text.text).toContain("Available commands");
+    expect(response.blocks[0].text.text).toContain("gwrk");
+    const helpText = response.blocks[1].text.text;
+    expect(helpText).toContain("ship");
+    expect(helpText).toContain("define");
+    expect(helpText).toContain("status");
   });
 
   it("returns error for unknown command", async () => {
     const response = await handleSlashCommand("unknown", context);
     expect(response.blocks[0].text.text).toContain(
-      "Unknown subcommand: `unknown`",
+      "Unknown command: `unknown`",
     );
   });
 });

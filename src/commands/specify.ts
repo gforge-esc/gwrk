@@ -8,24 +8,33 @@ import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const specifyCommand = new Command("spec")
   .description("Create or refine a feature specification")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define spec 001 "Add a new CLI command"
+  gwrk define spec 001-cli-core --refs docs/reference/new-feature.md
+  echo "Refine the authentication section" | gwrk define spec 001
+`,
+  )
   .argument("<feature>", "Feature ID (e.g. 014-plugin-system)")
   .argument("[prompt]", "Rework instructions or new feature description")
   .option("--refs <path>", "Path to additional reference docs")
   .action(
     async (
-      feature: string,
+      featureArg: string,
       prompt: string | undefined,
       opts: { refs?: string },
     ) => {
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
         // Resolve prefix: "003" → "003-slack"
-        feature = resolveFeature(feature, cwd);
+        const feature = resolveFeature(featureArg, cwd);
         const config = loadConfig(cwd);
         const backend = config.agents.define;
         const runtime = new WorkflowRuntime();
@@ -97,6 +106,7 @@ export const specifyCommand = new Command("spec")
             {
               agent: backend,
               projectRoot: cwd,
+              quiet: true,
             },
           );
 

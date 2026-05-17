@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import type { HeaderBlock, SectionBlock } from "@slack/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../utils/config.js";
@@ -31,6 +34,27 @@ vi.mock("node:fs", () => ({
       createdAt: new Date().toISOString(),
     }),
   ),
+}));
+
+const { mockGetPlanStatus, mockIsEmpty } = vi.hoisted(() => ({
+  mockGetPlanStatus: vi.fn().mockReturnValue({
+    features: [
+      {
+        id: "001-cli-core",
+        status: "DEFINED",
+        phases: [{ id: "phase-01", status: "DEFINED" }],
+      },
+    ],
+    edges: [],
+  }),
+  mockIsEmpty: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("../engine/plan-store.js", () => ({
+  PlanStore: vi.fn().mockImplementation(() => ({
+    getPlanStatus: mockGetPlanStatus,
+    isEmpty: mockIsEmpty,
+  })),
 }));
 
 describe("slack-home", () => {
@@ -97,14 +121,14 @@ describe("slack-home", () => {
     expect(serverStatusBlock.text?.text).toContain("🟢 Online");
     expect(serverStatusBlock.text?.text).toContain("🌐 Online");
 
-    // Check Active Agents section
-    const activeAgentsIdx = blocks.findIndex(
+    // Check Plan DAG Status section
+    const planDagIdx = blocks.findIndex(
       (b) =>
         b.type === "section" &&
-        (b as SectionBlock).text?.text === "👷 *Active Agents*",
+        (b as SectionBlock).text?.text === "📐 *Plan DAG Status*",
     );
-    expect(activeAgentsIdx).toBeGreaterThan(-1);
-    expect((blocks[activeAgentsIdx + 1] as SectionBlock).text?.text).toContain(
+    expect(planDagIdx).toBeGreaterThan(-1);
+    expect((blocks[planDagIdx + 1] as SectionBlock).text?.text).toContain(
       "001-cli-core",
     );
 
@@ -142,17 +166,14 @@ describe("slack-home", () => {
     );
   });
 
-  it("handles empty active agents", async () => {
-    const statusEmpty: SystemStatus = {
-      ...mockStatus,
-      sandboxes: [],
-    };
-    const homeView = await buildHomeTab(statusEmpty, mockConfig, "/tmp");
+  it("handles empty plan dag", async () => {
+    mockIsEmpty.mockReturnValue(true);
+    const homeView = await buildHomeTab(mockStatus, mockConfig, "/tmp");
     expect(
       homeView.blocks.some(
         (b) =>
           b.type === "section" &&
-          (b as SectionBlock).text?.text === "_No active agents._",
+          (b as SectionBlock).text?.text === "_No active plans._",
       ),
     ).toBe(true);
   });

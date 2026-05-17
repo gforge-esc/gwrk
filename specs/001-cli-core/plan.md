@@ -1,7 +1,7 @@
 ---
 type: implementation_plan
 feature: 001-cli-core
-last_modified: "2026-03-08T14:22:00Z"
+last_modified: "2026-05-13T22:00:00Z"
 ---
 
 # Implementation Plan: 001 CLI Core
@@ -12,7 +12,7 @@ last_modified: "2026-03-08T14:22:00Z"
 
 The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), project scaffolding (`init`), agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
 
-> **Status**: Phases 1–8 are **implemented and tested** (191 tests, 38 files, all passing). Phase 9 (State Contract) is next.
+> **Status**: Phases 1–11 are **implemented and tested** (646 tests, all passing). Phase 12 open: define pillar output parity. Phases 9-10 remain for state contracts and workstation setup.
 
 ---
 
@@ -239,6 +239,76 @@ Interactive workstation provisioning for unattended agent execution. Detects TCC
 
 ---
 
+### Phase 11: CLI UX Polish ✅
+
+Consolidate CLI usability fixes: help text examples, resolveFeature aliasing, define tests contract fix, CLI grammar governance doc.
+
+**Files (12):**
+- `src/commands/ship.ts` (MODIFY — Add Examples to help text)
+- `src/commands/define.ts` (MODIFY — Add Examples to help text)
+- `src/commands/tasks.ts` (MODIFY — Add Examples to help text)
+- `src/commands/measure.ts` (MODIFY — Add Examples to help text)
+- `src/commands/db.ts` (MODIFY — Add Examples to help text)
+- `src/commands/test.ts` (MODIFY — Add Examples to help text)
+- `src/commands/define-plan.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/tests-generate.ts` (MODIFY — Add resolveFeature + relax output contract)
+- `src/commands/runs.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/harvest.ts` (MODIFY — Add resolveFeature for prefix aliasing)
+- `src/commands/gate.ts` (✅ Already done — Examples added 2026-05-07)
+- `docs/governance/cli-grammar.md` (NEW — Canonical CLI grammar standard)
+
+**Requirements Addressed:** FR-023, FR-024, FR-025, FR-026, FR-027, US-022, US-023, US-024, US-025
+
+**Tests:**
+- `src/cli.ux.test.ts` — TR-022: Assert Examples in help output
+- `src/cli.consistency.test.ts` — TR-023: Feature-arg position + resolveFeature check
+- `tests/governance.test.ts` — TR-025: Grammar doc existence and content check
+- `src/commands/tests-generate-contract.test.ts` — TR-027: Accept test file output
+
+#### Done When
+- `gwrk <any-command-with-args> --help` shows an `Examples:` section
+- `gwrk define plan 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk define tests 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk db runs 001` resolves to `001-cli-core` (prefix aliasing works)
+- `gwrk define tests` no longer fails when agent produces test files instead of gap-matrix.md
+- `docs/governance/cli-grammar.md` exists with canonical grammar, rules, and command inventory
+- `project gates` remains removed (✅ verified)
+- `pnpm build` compiles clean, `pnpm test` all passing
+
+---
+
+### Phase 12: Define Pillar Output Parity
+
+Bring all `define` subcommands (`define`, `define spec`, `define plan`, `define tasks`, `define tests`) into alignment with `ship`'s quiet/logged output pattern. Currently, `define tests` (and other workflow-dispatched commands) dump raw agent narration to stdout and fail with a JSON schema error even when the agent succeeds.
+
+**Root Cause:**
+1. `tests-generate.ts` calls `WorkflowRuntime.executeWorkflow()` without `quiet: true`, so agent narration streams to the terminal instead of logging to `.runs/`.
+2. `WorkflowRuntime.extractJsonFromOutput()` expects the agent to return a JSON intent payload, but modern agents (Gemini CLI) do work natively (commit directly) and return prose. The parser throws "Expected JSON object in agent output" even though the agent succeeded.
+3. `define.ts`, `specify.ts`, and `define-plan.ts` use `dispatchAgent()` directly but don't pass `quiet: true` either.
+
+**Files (5):**
+- `src/commands/tests-generate.ts` (MODIFY: Pass `quiet: true` to `runtime.executeWorkflow()`. Detect agent-native success by checking for committed test files even when JSON parsing fails.)
+- `src/commands/specify.ts` (MODIFY: Pass `quiet: true` to `runtime.executeWorkflow()`.)
+- `src/commands/define-plan.ts` (MODIFY: Pass `quiet: true` to `runtime.executeWorkflow()`.)
+- `src/commands/tasks-generate.ts` (MODIFY: Pass `quiet: true` to `runtime.executeWorkflow()` for gate authoring dispatch.)
+- `src/plugins/workflow-runtime.ts` (MODIFY: Make `extractJsonFromOutput()` failure non-fatal when the agent committed artifacts. Add `tolerant` mode that returns a synthetic success result when the agent did native work.)
+
+**Requirements Addressed:** TC-008 (updated), US-026, FR-028, FR-029
+
+**Tests:**
+- `src/plugins/workflow-runtime.test.ts` (MODIFY: Add test for tolerant JSON extraction — prose-only output with committed artifacts returns success)
+- `src/commands/tests-generate-contract.test.ts` (MODIFY: Add test for quiet mode, add test for prose-only output + committed test files = success)
+
+#### Done When
+- `gwrk define tests 003 --force` runs with quiet spinner output (no agent narration in terminal)
+- Agent that commits tests natively but returns prose → exit 0 (not exit 1)
+- Full agent output in `.runs/` log file for debugging
+- `gwrk define spec 001` runs with quiet spinner output
+- `gwrk define plan 001` runs with quiet spinner output
+- `pnpm build` compiles clean, `pnpm test` all passing
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -284,6 +354,18 @@ Interactive workstation provisioning for unattended agent execution. Detects TCC
 | FR-021 | 9 | ☐ Open |
 | US-021 | 10 | ☐ Open |
 | FR-022 | 10 | ☐ Open |
+| US-022 | 11 | ✅ Done |
+| US-023 | 11 | ✅ Done |
+| US-024 | 11 | ✅ Done |
+| US-025 | 11 | ✅ Done |
+| FR-023 | 11 | ✅ Done |
+| FR-024 | 11 | ✅ Done |
+| FR-025 | 11 | ✅ Done |
+| FR-026 | 11 | ✅ Done |
+| FR-027 | 11 | ✅ Done |
+| US-026 | 12 | ☐ Open |
+| FR-028 | 12 | ☐ Open |
+| FR-029 | 12 | ☐ Open |
 
 ## Deferred Items
 

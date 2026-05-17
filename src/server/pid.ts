@@ -1,7 +1,9 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-const PID_FILE = ".gwrk/server.pid";
+const GWRK_DIR = path.join(os.homedir(), ".gwrk");
+const PID_FILE = path.join(GWRK_DIR, "server.pid");
 
 export function writePid(pid: number): void {
   const dir = path.dirname(PID_FILE);

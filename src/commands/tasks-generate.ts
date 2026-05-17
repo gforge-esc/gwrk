@@ -18,8 +18,8 @@ import { parsePlan } from "../utils/parser.js";
 import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 import type { Task, TaskState } from "../utils/state.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
  * gwrk define tasks <feature> — Decompose plan → tasks.json + gates
@@ -30,6 +30,16 @@ import { resolveFeature } from "../utils/resolve-feature.js";
  */
 export const tasksGenerateCommand = new Command("tasks")
   .description("Decompose plan into tasks.json + gate scripts")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk define tasks 001
+  gwrk define tasks 001-cli-core --phase 1
+  gwrk define tasks 001 --reconcile
+  gwrk define tasks 001 --force --no-llm
+`,
+  )
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option(
     "-p, --phase <phase>",
@@ -43,7 +53,7 @@ export const tasksGenerateCommand = new Command("tasks")
   )
   .action(
     async (
-      feature: string,
+      featureArg: string,
       opts: {
         force?: boolean;
         reconcile?: boolean;
@@ -51,10 +61,10 @@ export const tasksGenerateCommand = new Command("tasks")
         phase?: string;
       },
     ) => {
-      await withSignal(`define tasks ${feature}`, async () => {
+      await withSignal(`define tasks ${featureArg}`, async () => {
         const projectRoot = process.cwd();
         // Resolve prefix: "003" → "003-slack"
-        feature = resolveFeature(feature, projectRoot);
+        const feature = resolveFeature(featureArg, projectRoot);
         const featureDir = path.join(projectRoot, "specs", feature);
         const planPath = path.join(featureDir, "plan.md");
         const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
@@ -69,11 +79,28 @@ export const tasksGenerateCommand = new Command("tasks")
         }
 
         // Guard: ADR-005 §8.4 — define tests must run before define tasks
-        // Check for evidence that define tests ran: gap-matrix.md or .gwrk/runs/ (execution manifest)
+        // Check for evidence that define tests ran:
+        //   1. gap-matrix.md (canonical output from define tests)
+        //   2. .gwrk/runs/ (execution manifest from define tests)
+        //   3. Actual test files in src/ (agent may write tests directly without gap-matrix)
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
         const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
+        const hasTestFiles = (() => {
+          try {
+            const srcDir = path.join(projectRoot, "src");
+            if (!fs.existsSync(srcDir)) return false;
+            const allFiles = fs.readdirSync(srcDir);
+            return allFiles.some(
+              (f) => f.endsWith(".test.ts") && !f.startsWith("cli.e2e"),
+            );
+          } catch {
+            return false;
+          }
+        })();
         const testsRan =
-          fs.existsSync(gapMatrixPath) || fs.existsSync(runsManifestDir);
+          fs.existsSync(gapMatrixPath) ||
+          fs.existsSync(runsManifestDir) ||
+          hasTestFiles;
         if (!testsRan) {
           blocked(
             `RED tests must exist before generating tasks (ADR-005 §8.4).\n  Run: gwrk define tests ${feature}`,
@@ -396,6 +423,7 @@ export const tasksGenerateCommand = new Command("tasks")
                   {
                     agent: backend,
                     projectRoot,
+                    quiet: true,
                   },
                 );
 

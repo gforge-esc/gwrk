@@ -290,6 +290,8 @@ export interface TaskDispatch {
   type?: string;
   prompt?: string;
   agent?: ConfigAgentBackend | string;
+  model?: string;
+  commandOverride?: string;
   workDir?: string;
   stdin?: string;
   env?: Record<string, string>;

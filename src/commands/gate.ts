@@ -173,7 +173,7 @@ export async function runGateCheck(
 
   if (!fs.existsSync(absoluteGatePath)) {
     throw new CommandError(
-      `Gate script not found: ${gatePath}. Run 'gwrk project gates' to list available gates.`,
+      `Gate script not found: ${gatePath}. Run 'gwrk gate <feature>' to check gates.`,
       1,
     );
   }
@@ -272,6 +272,12 @@ Exit codes:
   0: PASS (All checked gates passed)
   1: FAIL (One or more gates failed, or script not found)
   2: Usage error
+
+Examples:
+  gwrk gate 006              Run all gates for feature 006
+  gwrk gate 008 -p 03        Run gates for phase 03 only
+  gwrk gate -t T011          Run a single gate (auto-detects feature)
+  gwrk gate 008 -t T011 -v   Run single gate with verbose output
 `,
   )
   .action(
@@ -382,6 +388,28 @@ Exit codes:
           const phaseResults: GateCheckResult[] = [];
 
           for (const task of phase.tasks) {
+            // Skip cancelled tasks
+            if (task.status === "cancelled") {
+              if (!out.isJson) {
+                console.log(
+                  `  ${color.DIM}▸${color.RESET} ${task.id}... ${color.YELLOW}⊘ SKIP (${task.status})${color.RESET}`,
+                );
+              }
+              const skipResult: GateCheckResult = {
+                taskId: task.id,
+                feature: normalizedFeature,
+                gatePath: "",
+                result: "SKIPPED",
+                exitCode: 0,
+                stdout: "",
+                stderr: "",
+                durationMs: 0,
+              };
+              results.push(skipResult);
+              phaseResults.push(skipResult);
+              continue;
+            }
+
             if (!out.isJson) {
               process.stdout.write(
                 `  ${color.DIM}▸${color.RESET} ${task.id}... `,

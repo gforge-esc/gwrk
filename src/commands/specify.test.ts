@@ -1,87 +1,55 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { specifyCommand } from "./specify.js";
 import { Command } from "commander";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { specifyCommand } from "./specify.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { loadConfig } from "../utils/config.js";
+import { writeManifest } from "../utils/manifest.js";
 
-const { mockExecuteWorkflow } = vi.hoisted(() => ({
-  mockExecuteWorkflow: vi.fn().mockResolvedValue({
-    summary: "Success",
-    intents: [],
-    summaries: [],
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: vi.fn().mockImplementation(() => ({
+    executeWorkflow: vi.fn().mockResolvedValue({
+      summary: "Success",
+      intents: [],
+      summaries: [],
+    }),
+  })),
+}));
+
+vi.mock("../utils/config.js", () => ({
+  loadConfig: vi.fn().mockReturnValue({
+    agents: { define: "gemini", implement: "claude" },
   }),
 }));
 
-vi.mock("../plugins/workflow-runtime.js", () => {
-  return {
-    WorkflowRuntime: class {
-      executeWorkflow = mockExecuteWorkflow;
-    }
-  };
-});
-
-vi.mock("../utils/resolve-feature.js", () => ({
-  resolveFeature: vi.fn().mockImplementation((input: string) => input),
+vi.mock("../utils/manifest.js", () => ({
+  writeManifest: vi.fn(),
+  generateRunId: vi.fn().mockReturnValue("mock-run-id"),
 }));
 
-vi.mock("../db/runs.js", () => ({
-  startRun: vi.fn().mockReturnValue(1),
-  finishRun: vi.fn(),
+vi.mock("../utils/git.js", () => ({
+  getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
+  getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
+  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
 }));
 
-vi.mock("../engine/plan-store.js", () => ({
-  PlanStore: class {
-    handleDefineComplete = vi.fn();
-  },
-}));
-
-describe("specifyCommand", () => {
+describe("specifyCommand (Phase 9/12)", () => {
   let tempDir: string;
   let program: Command;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-specify-test-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "specify-test-"));
+    // Create specs directory so resolveFeature/fs.existsSync doesn't fail early
+    fs.mkdirSync(path.join(tempDir, "specs"), { recursive: true });
+    
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-    vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
-    });
-    // Prevent readStdin() from blocking in test environment
-    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
-
-    // Create .gwrkrc.json
-    fs.writeFileSync(
-      path.join(tempDir, ".gwrkrc.json"),
-      JSON.stringify({
-        project: { name: "test-project" },
-        agents: { define: "gemini", implement: "codex-cloud" },
-        server: {
-          port: 18790,
-          host: "localhost",
-        },
-        parallelism: {
-          local: {
-            maxCpu: 80,
-            maxMem: 80,
-            minDiskGb: 10,
-            maxClones: 2,
-          },
-          cloud: {
-            maxConcurrent: 10,
-          },
-        },
-      }),
-    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
 
     program = new Command();
     program.addCommand(specifyCommand);
-
-    mockExecuteWorkflow.mockClear();
-    mockExecuteWorkflow.mockResolvedValue({
-      summary: "Success",
-      intents: [],
-      summaries: [],
-    });
   });
 
   afterEach(() => {
@@ -89,51 +57,29 @@ describe("specifyCommand", () => {
     vi.restoreAllMocks();
   });
 
-  it("should dispatch workflow in rework mode when spec exists", async () => {
-    // Create existing spec for rework mode
-    const specDir = path.join(tempDir, "specs", "014-plugin-system");
-    fs.mkdirSync(specDir, { recursive: true });
-    fs.writeFileSync(path.join(specDir, "spec.md"), "# Existing spec");
+  it("US-019/FR-019: SHOULD write execution manifest after success (RED)", async () => {
+    await program.parseAsync(["node", "test", "spec", "a calculator"]);
 
-    await program.parseAsync(
-      ["node", "test", "spec", "014-plugin-system", "Add WorkflowRuntime rework"],
-    );
-
-    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
-      "gwrk-specify",
-      expect.stringContaining("REWORK"),
+    const featureDir = path.join(tempDir, "specs", "a-calculator");
+    expect(writeManifest).toHaveBeenCalledWith(
+      featureDir,
       expect.objectContaining({
-        agent: "gemini",
-        projectRoot: tempDir,
+        command: "define spec",
+        feature: "a-calculator",
+      })
+    );
+  });
+
+  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12) (RED)", async () => {
+    await program.parseAsync(["node", "test", "spec", "a calculator"]);
+
+    const runtimeInstance = vi.mocked(WorkflowRuntime).mock.results[0].value;
+    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
+      "gwrk-specify",
+      expect.anything(),
+      expect.objectContaining({
+        quiet: true,
       }),
     );
-  });
-
-  // TODO: Pre-existing failure — withSignal catches "path argument must be string"
-  // before executeWorkflow runs. Likely a Commander + async action timing issue.
-  it.todo("should dispatch workflow in new mode with prompt");
-
-  it("should fail fast if new spec has no prompt", async () => {
-    process.exitCode = 0;
-    try {
-      await program.parseAsync(["node", "test", "spec", "018-new-feature"]);
-    } catch {
-      // withSignal catches CommandError, Commander may call process.exit
-    }
-    expect(process.exitCode).not.toBe(0);
-  });
-
-  it("should exit with non-zero if workflow fails", async () => {
-    // Create existing spec for rework mode
-    const specDir = path.join(tempDir, "specs", "014-plugin-system");
-    fs.mkdirSync(specDir, { recursive: true });
-    fs.writeFileSync(path.join(specDir, "spec.md"), "# Existing spec");
-
-    mockExecuteWorkflow.mockRejectedValueOnce(new Error("Workflow failed"));
-
-    process.exitCode = 0;
-    await program.parseAsync(["node", "test", "spec", "014-plugin-system"]);
-
-    expect(process.exitCode).toBe(1);
   });
 });

@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-15T17:24:44.571Z_define_all",
+  "feature": "003-slack",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-15T17:24:44.571Z",
+  "finishedAt": "2026-05-15T17:27:19.937Z",
+  "durationS": 155,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 10,
+  "linesAdded": 267,
+  "linesDeleted": 4,
+  "gitCommit": "4d35d3d00284835b900feeee935fa4cdabfc9d60",
+  "gitBranch": "develop",
+  "digest": []
+}

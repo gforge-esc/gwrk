@@ -1,10 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T018 — Implement test strategy for Phase 4
-# Asserts: Derived from task description
-
-
-# Phase Acceptance Criteria
-docker images | grep gwrk-sandbox
-
-echo "PASS: T018 — Implement test strategy for Phase 4"
+# AUTHORED
+test -f src/commands/define.ts || { echo "FAIL: T018 — file not found: src/commands/define.ts" >&2; exit 1; }
+grep -q 'export const defineCommand' src/commands/define.ts || { echo "FAIL: T018 — src/commands/define.ts missing 'defineCommand'" >&2; exit 1; }
+echo "PASS: T018 — Implement src/commands/define.ts"

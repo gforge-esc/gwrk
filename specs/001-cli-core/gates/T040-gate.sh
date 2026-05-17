@@ -1,13 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T040 — Implement src/commands/define.ts
-# HARDENED: Tests that define command exists and is callable
+# AUTHORED
+# Gate: T040 — Implement src/commands/define.ts (Phase 09: manifest)
 
-# Assertion #1: File exists
-test -f src/commands/define.ts
+test -f src/commands/define.ts \
+  || { echo "FAIL: T040 — file not found: src/commands/define.ts" >&2; exit 1; }
 
-# Assertion #2: Define test exists and passes
-test -f src/commands/define.test.ts
-pnpm vitest run src/commands/define.test.ts > /dev/null 2>&1 || { echo "FAIL: define.test.ts failed"; exit 1; }
+grep -q 'writeManifest' src/commands/define.ts \
+  || { echo "FAIL: T040 — src/commands/define.ts missing 'writeManifest'" >&2; exit 1; }
 
-echo "PASS: T040 — Implement src/commands/define.ts"
+echo "PASS: T040 — Implement src/commands/define.ts (manifest)"

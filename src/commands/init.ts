@@ -91,7 +91,7 @@ export const initCommand = new Command("init")
           existing.project.slack = existing.project.slack || {};
           existing.project.slack.webhookUrl = options.webhook;
           fs.writeFileSync(rcPath, JSON.stringify(existing, null, 2));
-          console.log(`Webhook URL saved to .gwrkrc.json`);
+          console.log("Webhook URL saved to .gwrkrc.json");
           didWork = true;
         }
 
@@ -226,7 +226,7 @@ export const initCommand = new Command("init")
         };
         config.project.slack = slack;
         slack.webhookUrl = options.webhook;
-        console.log(`Webhook URL saved to .gwrkrc.json`);
+        console.log("Webhook URL saved to .gwrkrc.json");
       }
 
       fs.writeFileSync(

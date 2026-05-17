@@ -7,8 +7,14 @@ import type { TaskRecord } from "./types.js";
 export interface DispatchPhaseOptions {
   featureId: string;
   phaseId: string;
-  tasks: Array<{ id: string; prompt?: string; backend?: AgentBackend }>;
+  tasks: Array<{
+    id: string;
+    prompt?: string;
+    backend?: AgentBackend;
+    model?: string;
+  }>;
   backend?: AgentBackend;
+  model?: string;
   concurrency?: number;
 }
 
@@ -81,6 +87,7 @@ export class DispatchOrchestrator {
       status: "pending",
       sandboxDir: "",
       backend: t.backend || topBackend || this.config.agents.implement,
+      model: t.model || options.model,
     }));
 
     const startTime = Date.now();
@@ -135,6 +142,7 @@ export class DispatchOrchestrator {
                 featureId,
                 phaseId,
                 backend: taskRecord.backend,
+                model: taskRecord.model,
                 workDir: sandboxDir,
                 prompt: tasks.find((t) => t.id === taskRecord.id)?.prompt,
               });

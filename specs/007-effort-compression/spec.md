@@ -139,7 +139,7 @@ As a Principal Engineer, I want compression results recorded in the SQLite execu
    - `gwrk db runs <feature>` shows the compression command.
    - `echo "SELECT count(*) FROM compression WHERE feature_id='<feature>';" | sqlite3 ~/.gwrk/gwrk.db` returns 1.
 
-### US-010 - Leading Compression Indicators (Priority: P1)
+### US-010 - Leading Compression Indicators (DEFERRED: Phase 4)
 As an Architect, I want to see leading indicators (convergence, density, spec quality) alongside compression ratios so that I can diagnose the root cause of low compression (e.g., poor spec quality leading to many retries).
 
 **Implements**: FR-014, FR-015
@@ -166,7 +166,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-002**: System MUST compute hours for each role using the formula: `Role Hours = SP × Hours/SP rate` then apply a 1.25× overhead factor to the total. Role rates default to: RE=6, TS=4, PM=2, PE=1.5, DE=5. (Implements: US-001)
 - **FR-003**: System MUST generate a markdown report at `docs/assessments/effort-<feature>-YYYY-MM-DD.md` containing: executive summary, role breakdown table, per-story breakdown, and methodology section. (Implements: US-001)
 - **FR-004**: System MUST exit with code 1 and a clear stderr message when `spec.md` is missing or contains no parseable user stories. (Implements: US-002)
-- **FR-005**: System MUST collect timestamps from multiple sources: OS `createdAt` on `spec.md`, Git commit timestamps (first/last impl commit), PR merge time via `gh pr view`, and `.gwrk/history.jsonl` entries. (Implements: US-003)
+- **FR-005**: System MUST collect timestamps from multiple sources: OS `createdAt` on `spec.md`, Git commit timestamps (first/last impl commit), and PR merge time via `gh pr view`. (Implements: US-003)
 - **FR-006**: System MUST detect active coding time by clustering Git commits with a configurable gap threshold (default: 30 minutes). Gaps larger than the threshold define session boundaries. Active coding time = sum of session durations. (Implements: US-003, US-004)
 - **FR-007**: System MUST compute Point Compression = Estimated Coding Hours ÷ Actual Coding Time (from commit clustering). (Implements: US-003)
 - **FR-008**: System MUST compute Total Compression = Estimated Elapsed Days ÷ Actual Elapsed Days (first impl commit → merge). (Implements: US-003)
@@ -175,11 +175,11 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-011**: System MUST support `--json` flag on both `gwrk measure effort` and `gwrk measure compression` commands, outputting structured JSON to stdout. (Implements: US-007)
 - **FR-012**: System MUST read role multiplier overrides from `.gwrkrc.json` at key `effort.roles.<CODE>.hoursPerSP`. If the key is absent, canonical defaults are used. (Implements: US-008)
 - **FR-013**: System MUST record compression results in the global SQLite `compression` table. Records are keyed by `(feature_id, project_id)`. (Implements: US-009)
-- **FR-014**: System MUST compute leading indicators from the `runs` table and filesystem:
+- **FR-014**: (DEFERRED: Phase 4) System MUST compute leading indicators from the `runs` table and filesystem:
   - **Convergence**: First-pass rate (count of T0xx tasks with attempt=1 / total tasks) and Avg attempts per task.
   - **Density**: Lines/SP, Files/SP, Tool Calls/SP.
   - **Spec Quality**: Contract count and Gate count. (Implements: US-010)
-- **FR-015**: System MUST include leading indicators in the CLI output and JSON payload of the compression report. (Implements: US-010)
+- **FR-015**: (DEFERRED: Phase 4) System MUST include leading indicators in the CLI output and JSON payload of the compression report. (Implements: US-010)
 
 #### FR-004 Error States
 | Condition | stderr contains | Exit code |
@@ -243,7 +243,7 @@ interface CompressionReport {
   forecast: EffortForecast;
   actuals: DeliveryActuals;
   compression: CompressionRatios;
-  indicators: LeadingIndicators;
+  indicators?: LeadingIndicators;   // DEFERRED: Phase 4
 }
 
 interface EffortForecast {

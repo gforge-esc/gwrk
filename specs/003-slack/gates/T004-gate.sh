@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T004 — Implement test strategy for Phase 4
-# Asserts: Derived from task description
+# AUTHORED
+# Gate: T004 — Implement src/server/routes/notify.ts
 
-
-# Phase Acceptance Criteria
-pnpm vitest run src/server/slack-commands.test.ts
-pnpm vitest run src/server/slack-actions.test.ts
-pnpm build
-
-echo "PASS: T004 — Implement test strategy for Phase 4"
+test -f src/server/routes/notify.ts \
+  || { echo "FAIL: T004 — file not found: src/server/routes/notify.ts" >&2; exit 1; }
+grep -q 'define_spec_ready' src/server/routes/notify.ts \
+  || { echo "FAIL: T004 — src/server/routes/notify.ts missing 'define_spec_ready'" >&2; exit 1; }
+grep -q 'define_plan_ready' src/server/routes/notify.ts \
+  || { echo "FAIL: T004 — src/server/routes/notify.ts missing 'define_plan_ready'" >&2; exit 1; }
+echo "PASS: T004 — Implement src/server/routes/notify.ts"

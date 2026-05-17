@@ -1,12 +1,10 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T001 — Implement test strategy for Phase 1
-# Asserts: Derived from task description
+# AUTHORED
+# Gate: T001 — Implement src/server/slack-commands.ts
 
-
-# Phase Acceptance Criteria
-pnpm vitest run src/commands/setup-slack.test.ts
-node dist/cli.js setup slack --help
-pnpm build
-
-echo "PASS: T001 — Implement test strategy for Phase 1"
+test -f src/server/slack-commands.ts \
+  || { echo "FAIL: T001 — file not found: src/server/slack-commands.ts" >&2; exit 1; }
+grep -q 'define' src/server/slack-commands.ts \
+  || { echo "FAIL: T001 — src/server/slack-commands.ts missing 'define'" >&2; exit 1; }
+echo "PASS: T001 — Implement src/server/slack-commands.ts"

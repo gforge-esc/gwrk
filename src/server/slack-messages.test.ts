@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import type { ActionsBlock, HeaderBlock, SectionBlock } from "@slack/types";
 import { describe, expect, it } from "vitest";
 import { MessageBuilder } from "./slack-messages.js";
@@ -66,5 +69,51 @@ describe("MessageBuilder", () => {
     expect(msg.text).toContain("Batched Notification Summary");
     expect(JSON.stringify(msg.blocks)).toContain("feat-1");
     expect(JSON.stringify(msg.blocks)).toContain("feat-2");
+  });
+
+  it("should build specReady message with buttons (FR-016)", () => {
+    const msg = MessageBuilder.specReady(
+      "003-slack",
+      "specs/003-slack/spec.md",
+    );
+    expect(msg.text).toContain("Spec Ready");
+    expect(msg.text).toContain("003-slack");
+    const actions = msg.blocks.find(
+      (b) => b.type === "actions",
+    ) as ActionsBlock;
+    expect(actions.elements).toHaveLength(2);
+
+    const approveBtn = actions.elements[0] as any;
+    expect(approveBtn.action_id).toBe("approve_spec");
+    const approveValue = JSON.parse(approveBtn.value);
+    expect(approveValue.featureId).toBe("003-slack");
+    expect(approveValue.specPath).toBe("specs/003-slack/spec.md");
+
+    const reviseBtn = actions.elements[1] as any;
+    expect(reviseBtn.action_id).toBe("revise_spec");
+  });
+
+  it("should build planReady message with buttons (FR-016)", () => {
+    const msg = MessageBuilder.planReady(
+      "003-slack",
+      "specs/003-slack/plan.md",
+      5,
+    );
+    expect(msg.text).toContain("Plan Ready");
+    expect(msg.text).toContain("003-slack");
+    expect(msg.text).toContain("5 phases");
+    const actions = msg.blocks.find(
+      (b) => b.type === "actions",
+    ) as ActionsBlock;
+    expect(actions.elements).toHaveLength(2);
+
+    const approveBtn = actions.elements[0] as any;
+    expect(approveBtn.action_id).toBe("approve_plan");
+    const approveValue = JSON.parse(approveBtn.value);
+    expect(approveValue.featureId).toBe("003-slack");
+    expect(approveValue.planPath).toBe("specs/003-slack/plan.md");
+
+    const reviseBtn = actions.elements[1] as any;
+    expect(reviseBtn.action_id).toBe("revise_plan");
   });
 });

@@ -10,6 +10,7 @@ import type { SandboxManager } from "./sandbox.js";
 import { registerSlackActions } from "./slack-actions.js";
 import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
 import { registerSlackHomeHandler } from "./slack-home.js";
+import { registerMentionHandler } from "./slack-mentions.js";
 import { presenceManager } from "./slack-presence.js";
 
 let app: App | null = null;
@@ -81,6 +82,9 @@ export async function startSlackApp(deps: {
 
     // Register actions and events
     await registerSlackActions(slackApp, context);
+
+    // Register @gwrk mention handler (listens for app_mention events)
+    registerMentionHandler(slackApp, context);
 
     // Register App Home handler
     await registerSlackHomeHandler(slackApp, deps);

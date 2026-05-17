@@ -25,18 +25,27 @@ function getEffortReport(
   return report;
 }
 
-import { CommandError, withSignal } from "../utils/signal.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const compressionCommand = new Command("compression")
   .description("Calculate development compression ratios")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  gwrk measure compression 001
+  gwrk measure compression 001-cli-core --json
+  gwrk measure compression --all
+`,
+  )
   .argument(
     "[feature]",
     "The feature directory under specs/ to calculate. Omit if --all flag is used.",
   )
   .option("--all", "Generate summary for all shipped features under specs/")
   .option("--json", "Output structured JSON to stdout")
-  .action(async (feature, options) => {
+  .action(async (featureArg, options) => {
     await withSignal("compression", async () => {
       const projectRoot = process.cwd();
 
@@ -130,14 +139,14 @@ export const compressionCommand = new Command("compression")
           }
         }
       } else {
-        if (!feature) {
+        if (!featureArg) {
           throw new CommandError(
             "Must specify a feature OR use --all. Run 'gwrk project specs' to list features.",
             2,
           );
         }
 
-        feature = resolveFeature(feature, projectRoot);
+        const feature = resolveFeature(featureArg, projectRoot);
         const featureDir = path.join(projectRoot, "specs", feature);
         if (!fs.existsSync(featureDir)) {
           throw new CommandError(

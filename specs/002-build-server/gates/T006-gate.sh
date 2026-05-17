@@ -1,10 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T006 — Implement src/cli.ts
-# Asserts: Derived from task description
-
-test -f src/cli.ts
-# Required identifiers
-grep -q 'server' src/cli.ts
-
-echo "PASS: T006 — Implement src/cli.ts"
+# AUTHORED
+test -f src/server/routes/dispatch.ts || { echo "FAIL: T006 — file not found: src/server/routes/dispatch.ts" >&2; exit 1; }
+grep -q 'export async function dispatchRoutes' src/server/routes/dispatch.ts || { echo "FAIL: T006 — src/server/routes/dispatch.ts missing 'dispatchRoutes'" >&2; exit 1; }
+echo "PASS: T006 — Implement src/server/routes/dispatch.ts"

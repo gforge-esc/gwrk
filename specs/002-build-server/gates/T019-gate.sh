@@ -1,10 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# Gate: T019 — Implement src/server/dispatch.ts
-# Asserts: Derived from task description
-
-test -f src/server/dispatch.ts
-# Required identifiers
-grep -q 'DispatchQueue' src/server/dispatch.ts
-
-echo "PASS: T019 — Implement src/server/dispatch.ts"
+# AUTHORED
+test -f src/server/ship-bridge.ts || { echo "FAIL: T019 — file not found: src/server/ship-bridge.ts" >&2; exit 1; }
+grep -q 'export class ShipBridge' src/server/ship-bridge.ts || { echo "FAIL: T019 — src/server/ship-bridge.ts missing 'ShipBridge'" >&2; exit 1; }
+echo "PASS: T019 — Implement src/server/ship-bridge.ts"

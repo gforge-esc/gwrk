@@ -242,7 +242,7 @@ describe("shipCommand", () => {
 
   it("FR-008, US-008: should exit 1 with BLOCKED message if no test files found for phase", async () => {
     // Modify loadTaskState mock to return a task with a source file but no tests
-    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce({
+    const mockState = {
       featureId: "004-ship-loop",
       createdAt: new Date().toISOString(),
       generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
@@ -262,7 +262,8 @@ describe("shipCommand", () => {
           doneWhen: [],
         },
       ],
-    });
+    };
+    vi.mocked(stateModule.loadTaskState).mockReturnValueOnce(mockState as any).mockReturnValueOnce(mockState as any);
 
     // Ensure fs.existsSync returns false for the corresponding test file but true for others
     const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
@@ -338,6 +339,67 @@ describe("shipCommand", () => {
   });
 
 
+});
+
+vi.mock("../server/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../server/index.js")>();
+  return {
+    ...actual,
+    getBackendSelector: vi.fn().mockReturnValue({
+      selectBackend: vi.fn().mockResolvedValue({
+        backend: "router-selected-agent",
+        model: "router-selected-model",
+        reason: "highest quota",
+        quotaPercent: 99,
+        probeStatus: "fresh",
+        fallbackUsed: false,
+        modelFailoverUsed: false,
+      }),
+    }),
+  };
+});
+
+describe("BackendSelector Integration", () => {
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("should use selectBackend() when no --agent override is provided", async () => {
+    const { getBackendSelector } = await import("../server/index.js");
+    const mockSelector = getBackendSelector() as any;
+    
+    // Legacy ship to keep it simple for this test
+    vi.mocked(execModule.run).mockResolvedValue(undefined);
+
+    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--legacy"]);
+
+    expect(mockSelector.selectBackend).toHaveBeenCalled();
+    
+    const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("router-selected-agent");
+    expect(wudCalls[0][2].env.GEMINI_MODEL).toBe("router-selected-model");
+  });
+
+  it("should skip selectBackend() when --agent override IS provided", async () => {
+    const { getBackendSelector } = await import("../server/index.js");
+    const mockSelector = getBackendSelector() as any;
+    
+    vi.mocked(execModule.run).mockResolvedValue(undefined);
+
+    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--agent", "forced-agent", "--legacy"]);
+
+    expect(mockSelector.selectBackend).not.toHaveBeenCalled();
+    
+    const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
+    expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("forced-agent");
+  });
 });
 
 describe("FR-014: Phase Skip", () => {

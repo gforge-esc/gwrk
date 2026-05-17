@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -8,9 +9,9 @@ import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
 import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { SandboxManager } from "../server/sandbox.js";
+import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
 import { type AgentBackend, loadConfig } from "../utils/config.js";
-import { ShipBridge } from "../server/ship-bridge.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -36,8 +37,9 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-import { CommandError, withSignal } from "../utils/signal.js";
+import { getBackendSelector } from "../server/index.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
@@ -51,6 +53,8 @@ async function shipPhase(
   backend: AgentBackend,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
+  selectedModel?: string,
+  selectedCommand?: string,
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
   const feature = resolveFeature(featureInput, cwd);
@@ -61,9 +65,6 @@ async function shipPhase(
   const featureDir = path.join(cwd, "specs", feature);
 
   // CRITICAL: Validate feature exists before ANY side effects.
-  // Without this, writeManifest() creates bogus dirs via mkdir -p
-  // which can lead to accidental deletion of other spec dirs when
-  // agents commit with broad git staging. (ref: 001-cli-core clobber)
   const specFile = path.join(featureDir, "spec.md");
   if (!fs.existsSync(specFile)) {
     const specsDir = path.join(cwd, "specs");
@@ -149,6 +150,7 @@ async function shipPhase(
     Feature: feature,
     Phase: phase,
     Agent: backend,
+    Model: selectedModel || "default",
     "Max Iter": opts.maxIterations as string,
     "CI Timeout": `${opts.ciTimeout}m`,
     "Run ID": `${runId}`,
@@ -168,6 +170,7 @@ async function shipPhase(
           MAX_ITERATIONS: opts.maxIterations as string,
           CI_TIMEOUT: opts.ciTimeout as string,
           AGENT_BACKEND: backend,
+          GEMINI_MODEL: selectedModel || process.env.GEMINI_MODEL,
         },
         stdio: "inherit",
       });
@@ -199,6 +202,8 @@ async function shipPhase(
           ciTimeout: Number.parseInt(opts.ciTimeout as string),
           cwd,
           dryRun: !!opts.dryRun,
+          selectedModel,
+          selectedCommand,
           geminiModel: gwrkConfig.agents.gemini?.model,
           geminiFailbackModels: gwrkConfig.agents.gemini?.failbackModels,
         },
@@ -257,7 +262,7 @@ async function shipPhase(
       phase: phaseId,
       command: "ship",
       agent: backend,
-      model: "unknown",
+      model: selectedModel || "unknown",
       startedAt,
       finishedAt,
       durationS,
@@ -282,12 +287,9 @@ async function shipPhase(
     });
 
     // Post-manifest commit: ensure working tree is clean before returning.
-    // Without this, the manifest JSON is left as a dirty file. The user
-    // cannot safely amend because WUD already pushed the branch.
     try {
       const manifestDir = path.join(featureDir, ".gwrk", "runs");
       await run("git", ["add", manifestDir], { cwd });
-      const { execSync } = await import("node:child_process");
       const porcelain = execSync("git status --porcelain", {
         cwd,
         encoding: "utf-8",
@@ -296,7 +298,7 @@ async function shipPhase(
         await run(
           "git",
           ["commit", "-m", `chore(${feature}): add execution manifest`],
-          { cwd },
+          { cwd, env: { ...process.env, GWRK_SHIP: "1" } },
         );
         await run("git", ["push"], { cwd });
       }
@@ -360,6 +362,11 @@ Exit codes:
   0: All phases shipped successfully
   1: Phase failed or feature not found
   2: Usage error
+
+Examples:
+  gwrk ship 001 1
+  gwrk ship 001-cli-core --dry-run
+  gwrk ship 001 --parallel --concurrency 4
 `,
   )
   .argument("<feature>", "Feature ID")
@@ -379,9 +386,10 @@ Exit codes:
     "--resume-from <stage>",
     "Resume from a specific stage (BRANCH_SETUP, IMPLEMENT, etc.)",
   )
+  .option("--force", "Force ship even if phase is already complete")
   .action(
     async (
-      feature: string,
+      featureArg: string,
       phase: string | undefined,
       opts: Record<string, string | boolean | undefined>,
     ) => {
@@ -389,18 +397,24 @@ Exit codes:
         const cwd = process.cwd();
         const config = loadConfig(cwd);
 
+        // Resolve webhook for cloud fallback (Phase 3 / T012)
+        const webhookUrl =
+          process.env.SLACK_WEBHOOK_URL || config.project.slack?.webhookUrl;
+        if (webhookUrl) {
+          // Webhook configured, will be used by ShipBridge via notifySlack
+        }
+
         // Resolve prefix (e.g. "011" → "011-harvest")
-        let resolvedFeature: string;
+        let feature: string;
         try {
-          resolvedFeature = resolveFeature(feature, cwd);
+          feature = resolveFeature(featureArg, cwd);
         } catch {
-          console.error(`Feature not found: specs/${feature}`);
+          console.error(`Feature not found: specs/${featureArg}`);
           throw new CommandError(
-            `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
+            `Feature not found: specs/${featureArg}. Run 'gwrk project specs' to list available features.`,
             1,
           );
         }
-        feature = resolvedFeature;
 
         // Validate feature exists before any work
         const featureSpecDir = path.join(cwd, "specs", feature);
@@ -443,8 +457,25 @@ Exit codes:
             );
             if (openTasks.length === 0) continue;
 
-            const backend = ((opts.agent as string) ||
-              config.agents.implement) as AgentBackend;
+            let backend = opts.agent as string as AgentBackend;
+            let selectedModel: string | undefined;
+            if (!backend) {
+              const selector = getBackendSelector(cwd);
+              const selection = await selector.selectBackend({
+                runId: `ship-${feature}-${Date.now()}`,
+                feature,
+                phase: phaseId,
+                taskType: "implement",
+                language: "typescript",
+                taskSP: openTasks.reduce((sum, t) => sum + (t.sp || 0), 0),
+              });
+              backend = selection.backend as AgentBackend;
+              selectedModel = selection.model;
+              console.log(
+                `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
+              );
+            }
+
             console.log(
               `\n${GREEN}Phase ${phaseId}${RESET}: Dispatching ${openTasks.length} tasks in parallel...`,
             );
@@ -457,6 +488,7 @@ Exit codes:
                 prompt: `${t.title}\n\n${t.description}`,
               })),
               backend,
+              model: selectedModel,
               concurrency: opts.concurrency
                 ? Number.parseInt(opts.concurrency as string)
                 : undefined,
@@ -489,34 +521,92 @@ Exit codes:
           return;
         }
 
-        // FR-009/T010: Fail-fast if agents.implement is missing
-        if (!opts.agent && !config.agents?.implement) {
-          console.error("Missing required config: agents.implement");
-          process.exitCode = 1;
-          return;
-        }
-
-        const backend = ((opts.agent as string) ||
-          config.agents.implement) as AgentBackend;
-
         // Determine which phases to ship
         let phases: string[];
+        const specDir = path.join(cwd, "specs", feature);
+        const taskState = loadTaskState(specDir);
+
         if (phase) {
+          const phaseId = `phase-${phase.padStart(2, "0")}`;
+          const phaseData = taskState.phases.find((p) => p.id === phaseId);
+
+          // --force: always clear stale orchestrator state, regardless of task status
+          if (opts.force) {
+            const statePath = path.join(
+              cwd,
+              ".runs",
+              `${feature}_${phaseId}.state`,
+            );
+            if (fs.existsSync(statePath)) {
+              fs.unlinkSync(statePath);
+            }
+          }
+
+          if (phaseData && isPhaseComplete(phaseData)) {
+            if (!opts.force) {
+              console.error(
+                `${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`,
+              );
+              process.exitCode = 1;
+              return;
+            }
+            // Reopen tasks
+            for (const t of phaseData.tasks) {
+              t.status = "open";
+            }
+            saveTaskState(specDir, taskState);
+            // Commit the reset so the orchestrator sees a clean working tree
+            execSync(
+              `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
+              {
+                cwd,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: "pipe",
+              },
+            );
+            console.log(
+              `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`,
+            );
+          }
           phases = [phase];
         } else {
-          const specDir = path.join(cwd, "specs", feature);
-          const taskState = loadTaskState(specDir);
           const allPhases = taskState.phases.map((p) =>
             p.id.replace("phase-", ""),
           );
 
           // FR-014: Skip phases where all tasks are terminal (completed or cancelled)
           phases = allPhases.filter((phaseNum) => {
-            const phaseData = taskState.phases.find(
-              (p) => p.id === `phase-${phaseNum.padStart(2, "0")}`,
-            );
+            const phaseId = `phase-${phaseNum.padStart(2, "0")}`;
+            const phaseData = taskState.phases.find((p) => p.id === phaseId);
             if (!phaseData) return true;
             if (isPhaseComplete(phaseData)) {
+              if (opts.force) {
+                const statePath = path.join(
+                  cwd,
+                  ".runs",
+                  `${feature}_${phaseId}.state`,
+                );
+                if (fs.existsSync(statePath)) {
+                  fs.unlinkSync(statePath);
+                }
+                for (const t of phaseData.tasks) {
+                  t.status = "open";
+                }
+                saveTaskState(specDir, taskState);
+                // Commit the reset so the orchestrator sees a clean working tree
+                execSync(
+                  `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
+                  {
+                    cwd,
+                    env: { ...process.env, GWRK_SHIP: "1" },
+                    stdio: "pipe",
+                  },
+                );
+                console.log(
+                  `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phaseNum} tasks to open`,
+                );
+                return true;
+              }
               console.log(
                 `  ⏭  Phase ${phaseNum}: all tasks complete — skipping`,
               );
@@ -549,7 +639,37 @@ Exit codes:
         const shipStartTime = Date.now();
         let finalExitCode = 0;
         for (const p of phases) {
-          const exitCode = await shipPhase(feature, p, backend, opts, cwd);
+          let currentBackend = opts.agent as string as AgentBackend;
+          let selectedModel: string | undefined;
+          let selectedCommand: string | undefined;
+
+          if (!currentBackend) {
+            const selector = getBackendSelector(cwd);
+            const selection = await selector.selectBackend({
+              runId: `ship-${feature}-${Date.now()}`,
+              feature,
+              phase: `phase-${p.padStart(2, "0")}`,
+              taskType: "implement",
+              language: "typescript",
+              taskSP: 1, // Default for orchestrator
+            });
+            currentBackend = selection.backend as AgentBackend;
+            selectedModel = selection.model;
+            selectedCommand = selection.command;
+            console.log(
+              `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
+            );
+          }
+
+          const exitCode = await shipPhase(
+            feature,
+            p,
+            currentBackend,
+            opts,
+            cwd,
+            selectedModel,
+            selectedCommand,
+          );
           if (exitCode !== 0) {
             finalExitCode = exitCode;
             break;

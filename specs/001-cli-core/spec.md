@@ -1,7 +1,7 @@
 ---
 type: specification
 feature: 001-cli-core
-last_modified: "2026-03-08T14:22:00Z"
+last_modified: "2026-05-13T22:00:00Z"
 ---
 
 # Feature Specification: 001 CLI Core
@@ -35,7 +35,7 @@ The CLI uses a **Foxtrot Charlie pillar-based hierarchy** to organize commands b
 2. **Git-native task state.** `tasks.json` lives in `specs/<feature>/.gwrk/tasks.json` alongside the spec. Branch checkouts carry isolated state.
 3. **SQLite is the analytical ledger.** `~/.gwrk/gwrk.db` records execution history for compression tracking and agent routing. It is NOT the source of truth for task state.
 4. **Fail-fast config.** Zod validation with no `.default()` calls. Missing config → `process.exit(1)`.
-5. **Streaming output.** All agent dispatch uses `spawn` with `stdio: 'inherit'`. No buffering.
+5. **Quiet agent output.** All agent dispatch uses `spawn` with piped stdio, timestamped progress lines, and full output logged to `.runs/`. Agent narration MUST NOT dump raw to the terminal. Callers use `quiet: true` for spinner-only mode.
 6. **Private by default.** All local data (SQLite, tasks) and upstream integrations (GitHub visibility) default to private.
 
 ---
@@ -250,6 +250,70 @@ As a PE, I want `gwrk setup` to interactively configure my macOS workstation for
 5. `gwrk ship` pre-flight checks `~/.gwrk/setup.json` — missing or incomplete → `Run gwrk setup first`, exit 1.
 6. Running `gwrk setup` again detects existing setup and only re-runs failing checks (idempotent).
 
+### US-022 - Help Text Examples (P1)
+As a developer, I want every command with arguments to show concrete `Examples:` in `--help` output so I can discover the correct syntax without guessing.
+
+**Implements**: FR-023
+
+**Acceptance**:
+1. `gwrk ship --help` shows at least 3 examples.
+2. `gwrk define spec --help` shows at least 2 examples.
+3. `gwrk define plan --help` shows at least 2 examples.
+4. `gwrk define tasks --help` shows at least 2 examples.
+5. `gwrk tasks list --help` shows at least 2 examples.
+6. `gwrk tasks done --help` shows at least 2 examples.
+7. `gwrk tasks next --help` shows at least 2 examples.
+8. `gwrk measure pulse --help` shows at least 2 examples.
+9. `gwrk measure effort --help` shows at least 2 examples.
+10. `gwrk measure compression --help` shows at least 2 examples.
+11. `gwrk db runs --help` shows at least 2 examples.
+12. `gwrk test --help` shows at least 2 examples.
+
+### US-023 - Feature-Arg Consistency (P1)
+As a developer, I want all feature-scoped commands to accept feature as the first positional argument after the verb so the CLI feels predictable.
+
+**Implements**: FR-024
+
+**Acceptance**:
+1. Every command accepting `<feature>` has it as positional arg 1 (after the subcommand verb if applicable).
+2. No command requires feature as a flag or in a non-standard position.
+3. Every command accepting `<feature>` calls `resolveFeature()` to resolve prefix aliases (e.g., `001` → `001-cli-core`). Specifically: `define plan`, `define tests`, `db runs`, and `harvest` are currently missing this.
+4. `gwrk define plan 001` resolves to `001-cli-core` and succeeds.
+5. `gwrk define tests 001` resolves to `001-cli-core` and succeeds.
+6. `gwrk db runs 001` resolves to `001-cli-core` and succeeds.
+
+### US-024 - No Duplicate Surfaces (P1)
+As a developer, I want each capability exposed through exactly one command path so I'm never confused by overlapping commands with different interfaces.
+
+**Implements**: FR-025
+
+**Acceptance**:
+1. `gwrk project gates` is removed. ✅ (Done — 2026-05-07)
+2. No two commands provide the same functionality with different argument syntax.
+
+### US-025 - CLI Grammar Governance (P1)
+As a maintainer, I want a documented CLI grammar standard so new commands are consistent by default.
+
+**Implements**: FR-026
+
+**Acceptance**:
+1. `docs/governance/cli-grammar.md` exists.
+2. Documents the canonical grammar: `gwrk <verb> [subverb] <feature> [phase] [--options]`.
+3. Lists all current commands with their argument patterns.
+4. Defines the rules for adding new commands.
+
+### US-026 - Define Pillar Output Parity (P0) ⭐ **NEW (2026-05-13)**
+As a PE, I want all `define` subcommands (`define spec`, `define plan`, `define tasks`, `define tests`) to have the same quiet, logged output as `ship` — no raw agent narration in the terminal, progress via spinner or timestamped summary lines, full output in `.runs/` log files — so that the CLI presents a consistent, professional UX across all Foxtrot Charlie pillars.
+
+**Implements**: FR-028, FR-029
+
+**Acceptance**:
+1. `gwrk define spec 001` shows a spinner or timestamped summary lines, not raw agent narration.
+2. `gwrk define tests 003 --force` shows a spinner, not hundreds of lines of agent thinking.
+3. Agent output is written to `.runs/` log file for debugging.
+4. When an agent commits work natively but returns prose instead of JSON, the command exits 0 (not 1).
+5. `gwrk define plan 001` and `gwrk define tasks 001` follow the same pattern.
+
 ---
 
 ## 3. Functional Requirements
@@ -275,6 +339,13 @@ As a PE, I want `gwrk setup` to interactively configure my macOS workstation for
 - **FR-020**: `gwrk tasks verify <feature>` — post-merge schema + orphan + regression check. (US-020)
 - **FR-021**: `history.jsonl` deprecation. Reads still supported; writes redirected to `gwrk.db history` + manifest. Removal deferred until `gwrk harvest` is operational.
 - **FR-022**: `gwrk setup` — Interactive workstation provisioning. Detects TCC, SSH, gh auth. Generates dedicated SSH key by default. Writes `~/.gwrk/setup.json`. Ship pre-flight checks setup state. (US-021)
+- **FR-023**: Every command with arguments MUST include an `Examples:` section in `--help` output. (US-022)
+- **FR-024**: Feature-arg consistency. All feature-scoped commands accept feature as first positional argument AND call `resolveFeature()` for prefix resolution. (US-023)
+- **FR-025**: No duplicate command surfaces. Each capability has exactly one CLI path. (US-024)
+- **FR-026**: CLI grammar governance doc at `docs/governance/cli-grammar.md`. (US-025)
+- **FR-027**: `gwrk define tests` output contract fix. Agent test file output must not require `gap-matrix.md` when the workflow produces test files directly. The command must accept either `gap-matrix.md` OR test files in `src/` as valid output. (US-022)
+- **FR-028**: ⭐ **NEW (2026-05-13)** All `define` subcommands (`define spec`, `define plan`, `define tasks`, `define tests`) MUST pass `quiet: true` to `WorkflowRuntime.executeWorkflow()` or `dispatchToAgent()` so that agent narration is logged to `.runs/` and NOT displayed on stdout. Terminal output MUST be limited to: banner, spinner/progress, and success/fail box. (US-026)
+- **FR-029**: ⭐ **NEW (2026-05-13)** `WorkflowRuntime.executeWorkflow()` MUST tolerate agents that do work natively and return prose instead of JSON. When `extractJsonFromOutput()` fails, the runtime MUST check whether the agent committed artifacts (test files, spec, plan). If artifacts exist, the runtime MUST return a synthetic success result with empty intents. The JSON parse failure MUST be logged as a warning, not thrown as an error. (US-026)
 
 ### Error States
 
@@ -381,7 +452,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **TC-005**: TypeScript only. No `.js` in `src/`.
 - **TC-006**: ESM (ES2022).
 - **TC-007**: Branch-scoped state. `tasks.json` lives with the spec.
-- **TC-008**: Streaming output. `spawn` with `stdio: 'inherit'` for all agent dispatch.
+- **TC-008**: Quiet agent output. `spawn` with piped stdio, timestamped progress lines to terminal, full output to `.runs/` log file. No raw agent narration on stdout.
 
 ---
 
@@ -398,7 +469,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **TR-009**: `src/commands/analyze.test.ts` — agent dispatch + stub rejection (FR-009)
 - **TR-010**: `src/commands/effort.test.ts` — effort report generation (FR-010)
 - **TR-011**: `src/commands/define.test.ts` — shell passthrough + SQLite recording (FR-011)
-- **TR-012**: `src/utils/agent.test.ts` — streaming dispatch with `stdio: 'inherit'` (FR-002, FR-003, FR-009)
+- **TR-012**: `src/utils/agent.test.ts` — piped dispatch with log file output, quiet mode, 429 squelch (FR-002, FR-003, FR-009)
 - **TR-013**: `src/db/db.test.ts` — SQLite schema, startRun, finishRun, listRuns (FR-014, FR-015)
 - **TR-014**: `src/commands/runs.test.ts` — execution history query (FR-014)
 - **TR-015**: `src/commands/stats.test.ts` — aggregate statistics (FR-015)
@@ -407,6 +478,11 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **TR-018**: `src/cli.test.ts` — command registration hierarchy (FR-018)
 - **TR-019**: `src/cli.e2e.test.ts` — compiled binary E2E: `--help` output, stub rejection (FR-018, FR-003)
 - **TR-021**: `src/commands/setup.test.ts` — SSH key gen mock, config write, idempotency, pre-flight check (FR-022)
+- **TR-022**: Help text examples audit — every command file with arguments includes `Examples:` in addHelpText (FR-023)
+- **TR-023**: Feature-arg consistency audit — programmatic check of Commander argument positions (FR-024)
+- **TR-024**: No duplicate surfaces audit — no two commands share overlapping functionality (FR-025)
+- **TR-025**: CLI grammar doc exists and contains required sections (FR-026)
+- **TR-026**: ⭐ **NEW (2026-05-13)** `src/plugins/workflow-runtime.test.ts` — tolerant JSON extraction: prose-only output with committed artifacts returns synthetic success, not error. `src/commands/tests-generate-contract.test.ts` — quiet mode passes through to executeWorkflow. (FR-028, FR-029)
 
 ---
 
@@ -421,6 +497,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **SC-007**: Every `ship`/`define` run produces a manifest in `.gwrk/runs/` that survives git push.
 - **SC-008**: `gwrk tasks verify <feature>` detects and reports post-merge state corruption.
 - **SC-009**: `gwrk setup` completes all 4 steps, `gwrk ship` pre-flight passes without prompts.
+- **SC-010**: ⭐ **NEW (2026-05-13)** All `define` subcommands produce the same quiet, logged output as `ship`. No raw agent narration in terminal. Agent that does native work and returns prose exits 0.
 
 ---
 
@@ -459,3 +536,9 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 | US-019 | FR-019 | TR-020 |
 | US-020 | FR-020 | TR-021 |
 | US-021 | FR-022 | TR-021 |
+| US-022 | FR-023 | TR-022 |
+| US-023 | FR-024 | TR-023 |
+| US-024 | FR-025 | TR-024 |
+| US-025 | FR-026 | TR-025 |
+| US-026 | FR-028 | TR-026 |
+| US-026 | FR-029 | TR-026 |
