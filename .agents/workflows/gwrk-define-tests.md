@@ -110,36 +110,6 @@ For each US-### with a user-facing flow in this phase:
 - Assert visible text, element existence, navigation outcomes
 - Include error state tests from the spec
 
-### 6. Reconcile Existing Tests (Test Lifecycle — MANDATORY)
-
-Before writing new tests, detect and handle orphaned tests from previous phases or refactors:
-
-```bash
-# Find tests referencing files/scripts that no longer exist
-for tf in $(find src/ -name '*.test.ts' -not -path '*/node_modules/*'); do
-  # Extract file references from import/require/path.join patterns
-  refs=$(grep -oE '(scripts|src)/[^"'\''\)\s,]+' "$tf" 2>/dev/null | sort -u)
-  for ref in $refs; do
-    if [[ ! -f "$ref" && ! -d "$(dirname "$ref")" ]]; then
-      echo "ORPHAN: $tf references missing: $ref"
-    fi
-  done
-done
-
-# Find tests marked .skip or .todo without a tracking reason
-grep -rn '\.skip\|\.todo' src/**/*.test.ts 2>/dev/null | grep -v 'DEPRECATED\|TODO:' || true
-```
-
-For each orphaned test:
-1. **If replacement coverage exists** in a new test file for the same FR-### → **DELETE** the orphan
-2. **If no replacement coverage exists** → **FLAG** as coverage gap in gap-matrix.md
-3. **If the test targets deprecated infrastructure** → **DELETE** with `git rm` and record the reason
-
-> [!CAUTION]
-> Tests that reference deleted files are **ghost tests** — they can't pass, they can't fail
-> meaningfully, and they silently poison the suite. Ghost tests MUST be retired, not `.skip`'d.
-> A `.skip` is a temporary bridge (max 1 sprint). Permanent skips are coverage lies.
-
 <async_test_guidance>
 ### Async State Machine Testing
 
@@ -183,7 +153,7 @@ pnpm test --run 2>&1 | tail -20
 - If tests compile but fail assertions → ideal RED state.
 </red_validation_rules>
 
-### 7. Write Gap Matrix
+### 6. Write Gap Matrix
 
 **MANDATORY OUTPUT.** Write `{feature_dir}/gap-matrix.md` — a coverage matrix mapping every requirement to its test file.
 
@@ -206,18 +176,11 @@ Rules:
 > If this file is not written, `define tests` will fail with exit code 2.
 > `define tasks` will refuse to run without it.
 
-### 8. Commit RED Tests
-
-```bash
-git add -A
-git commit -m "test: red tests for Phase {phase_number} — {N} unit, {M} integration, {K} e2e"
-```
-
-### 9. Report
+### 7. Report
 
 Report via notify_user:
 ```
-Red tests committed for Phase {phase_number}:
+Red tests generated for Phase {phase_number}:
   Unit:        {N} test files ({X} test cases)
   Integration: {M} test files ({Y} test cases)
   E2E:         {K} test files ({Z} test cases)
@@ -228,7 +191,7 @@ Coverage:
   TR-### mapped: {count}/{total}
 
 Status: RED (all tests expected to fail pre-implementation)
-Next: /implement {feature_dir} {phase_number}
+Next: Orchestrator will commit changes. Then run /implement {feature_dir} {phase_number}
 ```
 
 <quality_gate>

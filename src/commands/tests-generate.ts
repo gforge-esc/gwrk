@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -190,6 +191,49 @@ Examples:
             throw new CommandError(
               "Agent exited 0 but produced no test artifacts (gap-matrix.md or *.test.ts files).",
               2,
+            );
+          }
+
+          // Mechanical Enforcement: Prevent production source modification
+          const diffOutput = execSync("git status --porcelain", {
+            cwd: projectRoot,
+            encoding: "utf-8",
+          }).trim();
+
+          if (diffOutput) {
+            const rogueModifications = diffOutput.split("\n").filter((line) => {
+              const file = line.slice(3);
+              return (
+                file.startsWith("src/") &&
+                file.endsWith(".ts") &&
+                !file.endsWith(".test.ts")
+              );
+            });
+
+            if (rogueModifications.length > 0) {
+              execSync("git restore src/", {
+                cwd: projectRoot,
+                stdio: "ignore",
+              });
+              finishRun(runId, { exit_code: 2, duration_s: durationS });
+              fail("define tests", 2, durationS, runId);
+              throw new CommandError(
+                `Agent violated guardrails and modified production code:\n${rogueModifications.join(
+                  "\n",
+                )}\nChanges to src/ reverted.`,
+                2,
+              );
+            }
+
+            // If valid, orchestrator commits the tests
+            execSync("git add -A", { cwd: projectRoot });
+            execSync(
+              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "test(${feature}): red tests for phase ${manifestPhase}"`,
+              {
+                cwd: projectRoot,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: "ignore",
+              },
             );
           }
 
