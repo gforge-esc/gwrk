@@ -304,7 +304,7 @@ export function lintAllGates(gatesDir: string): Map<string, string[]> {
 export interface GapMatrixRow {
   ac: string; // e.g., "FR-001"
   criterion: string; // human-readable description
-  testType: "unit" | "functional" | "e2e" | "structural";
+  testType: "unit" | "functional" | "integration" | "e2e" | "structural";
   testFile: string | null; // relative path or null if "—"
   testExists: boolean; // ✅ = true, ❌ = false
   gate: string | null; // e.g., "T001" or null if "—"
@@ -349,7 +349,7 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
         cells;
 
       const testType = testTypeRaw as GapMatrixRow["testType"];
-      if (!["unit", "functional", "e2e", "structural"].includes(testType)) {
+      if (!["unit", "functional", "integration", "e2e", "structural"].includes(testType)) {
         return null;
       }
 
@@ -487,7 +487,7 @@ export function generateVitestGates(
     const testInvocations = [...fileGroups.entries()]
       .map(([file, acs]) => {
         const grepPattern = acs.join("|");
-        return `pnpm vitest run ${file} --grep "${grepPattern}" --reporter=verbose \\
+        return `pnpm vitest run ${file} -t "${grepPattern}" --reporter=verbose \\
   || { echo "FAIL: ${gateId} — vitest failed for ${file}" >&2; exit 1; }`;
       })
       .join("\n\n");

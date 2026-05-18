@@ -33,3 +33,5 @@
 | TR-H09 | issues.opened maps via label | integration | tests/server-github.test.ts | ✅ | |
 | TR-H10 | issues.opened resolves via title | integration | tests/server-github.test.ts | ✅ | |
 | TR-H11 | Issue transitions open to closed | unit | src/db/issues.test.ts | ✅ | |
+| FR-H12 | GitHub webhook handler | integration | tests/server-github.test.ts | ✅ | T015 |
+| FR-H14 | SQLite issues table persistence | integration | tests/server-github.test.ts | ✅ | T016 |

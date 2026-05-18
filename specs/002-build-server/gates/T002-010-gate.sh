@@ -5,7 +5,7 @@ set -euo pipefail
 # Generated from gap-matrix.md (deterministic vitest gate)
 
 # ── BEHAVIORAL: Tests must pass ──
-pnpm vitest run src/server/slack-home.test.ts --grep "US-005" --reporter=verbose \
+pnpm vitest run src/server/slack-home.test.ts -t "US-005" --reporter=verbose \
   || { echo "FAIL: T002-010 — vitest failed for src/server/slack-home.test.ts" >&2; exit 1; }
 
 # ── HYGIENE: Source files must lint clean ──

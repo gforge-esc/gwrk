@@ -5,10 +5,10 @@ set -euo pipefail
 # Generated from gap-matrix.md (deterministic vitest gate)
 
 # ── BEHAVIORAL: Tests must pass ──
-pnpm vitest run src/server/slack-actions.test.ts --grep "FR-007|US-004" --reporter=verbose \
+pnpm vitest run src/server/slack-actions.test.ts -t "FR-007|US-004" --reporter=verbose \
   || { echo "FAIL: TR-007 — vitest failed for src/server/slack-actions.test.ts" >&2; exit 1; }
 
-pnpm vitest run src/db/runs.test.ts --grep "FR-011|US-007" --reporter=verbose \
+pnpm vitest run src/db/runs.test.ts -t "FR-011|US-007" --reporter=verbose \
   || { echo "FAIL: TR-007 — vitest failed for src/db/runs.test.ts" >&2; exit 1; }
 
 # ── HYGIENE: Source files must lint clean ──
