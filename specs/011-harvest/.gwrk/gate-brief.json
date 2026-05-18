@@ -42,28 +42,6 @@
       "contractRefs": []
     },
     {
-      "taskId": "T020",
-      "title": "Implement src/db/migrations/005-compression.sql",
-      "description": "VERIFY: Schema already merged during F014",
-      "primaryFile": "src/db/migrations/005-compression.sql",
-      "fileType": "unknown",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T021",
-      "title": "Implement src/engine/types.ts",
-      "description": "MODIFY: Ensure all harvest and compression types are present",
-      "primaryFile": "src/engine/types.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/harvest.md"
-      ]
-    },
-    {
       "taskId": "T004",
       "title": "Implement src/engine/harvest.ts",
       "description": "Modify: Implement `finalizeLogs` and `cleanupBranch`",
@@ -107,18 +85,6 @@
       "primaryFile": null,
       "fileType": "unknown",
       "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T022",
-      "title": "Implement src/utils/git.ts",
-      "description": "MODIFY: Add `commitFiles(",
-      "primaryFile": "src/utils/git.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "commitFiles"
-      ],
       "doneWhenCommands": [],
       "contractRefs": []
     },
@@ -169,32 +135,6 @@
       "identifiers": [],
       "doneWhenCommands": [],
       "contractRefs": []
-    },
-    {
-      "taskId": "T023",
-      "title": "Implement src/server/index.ts",
-      "description": "MODIFY: Register the github webhook plugin",
-      "primaryFile": "src/server/index.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/webhook.md"
-      ]
-    },
-    {
-      "taskId": "T024",
-      "title": "Implement src/utils/config.ts",
-      "description": "MODIFY: Add `GITHUB_WEBHOOK_SECRET` to Zod schema",
-      "primaryFile": "src/utils/config.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "GITHUB_WEBHOOK_SECRET"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/webhook.md"
-      ]
     },
     {
       "taskId": "T012",
@@ -277,42 +217,6 @@
     {
       "taskId": "T019",
       "title": "Implement test strategy for Phase 5",
-      "description": "Implement all unit and integration tests defined in the phase test strategy.",
-      "primaryFile": null,
-      "fileType": "unknown",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T025",
-      "title": "Implement src/commands/harvest.ts",
-      "description": "NEW: `gwrk harvest` CLI command",
-      "primaryFile": "src/commands/harvest.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/harvest.md"
-      ]
-    },
-    {
-      "taskId": "T026",
-      "title": "Implement src/engine/harvest.test.ts",
-      "description": "MODIFY: Implement the 3 `it.todo(",
-      "primaryFile": "src/engine/harvest.test.ts",
-      "fileType": "test",
-      "identifiers": [
-        "todo"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/harvest.md"
-      ]
-    },
-    {
-      "taskId": "T027",
-      "title": "Implement test strategy for Phase 6",
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,
       "fileType": "unknown",

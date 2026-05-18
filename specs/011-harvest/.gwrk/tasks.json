@@ -16,27 +16,30 @@
           "id": "T001",
           "title": "Implement src/server/github.ts",
           "description": "Modify: Add `/webhook/github` endpoint, verify signature, filter PR events, track phase completion, and call `harvestFeature`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.781Z",
           "classification": "greenfield"
         },
         {
           "id": "T002",
           "title": "Implement src/engine/harvest.ts",
           "description": "Modify: Update `harvestFeature` with idempotency guard against duplicate runs",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.802Z",
           "classification": "greenfield"
         },
         {
           "id": "T003",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.822Z",
           "classification": "noop"
         }
       ],
@@ -54,9 +57,10 @@
           "id": "T004",
           "title": "Implement src/engine/harvest.ts",
           "description": "Modify: Implement `finalizeLogs` and `cleanupBranch`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.837Z",
           "classification": "greenfield"
         },
         {
@@ -72,18 +76,20 @@
           "id": "T006",
           "title": "Implement src/cli.ts",
           "description": "Modify: No CLI changes needed, keeping within 10 file limit",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:38.931Z",
           "classification": "greenfield"
         },
         {
           "id": "T007",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:38.942Z",
           "classification": "noop"
         }
       ],
@@ -111,27 +117,30 @@
           "id": "T009",
           "title": "Implement src/db/compression.ts",
           "description": "Modify: Expose method to insert a new compression record",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:39.858Z",
           "classification": "greenfield"
         },
         {
           "id": "T010",
           "title": "Implement src/engine/harvest.ts",
           "description": "Modify: Wire in `computeCompression` inside `harvestFeature`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:39.869Z",
           "classification": "greenfield"
         },
         {
           "id": "T011",
           "title": "Implement test strategy for Phase 3",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:39.880Z",
           "classification": "noop"
         }
       ],
@@ -159,9 +168,10 @@
           "id": "T013",
           "title": "Implement src/server/github.ts",
           "description": "Modify: Ensure no slack notification is dispatched directly from the webhook to satisfy FR-H11",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:40.852Z",
           "classification": "greenfield"
         },
         {
@@ -214,18 +224,20 @@
           "id": "T018",
           "title": "Implement src/engine/issues.ts",
           "description": "New: Logic to format and trigger Slack notifications via `003-slack`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:44.435Z",
           "classification": "greenfield"
         },
         {
           "id": "T019",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:44.447Z",
           "classification": "noop"
         }
       ],
