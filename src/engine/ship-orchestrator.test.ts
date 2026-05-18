@@ -158,8 +158,8 @@ describe("ShipOrchestrator", () => {
         phases: [{ 
           id: "phase-01", 
           title: "Phase 1", 
-          // 5th+ call is when we retry the review! Before that it's open.
-          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 5 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
+          // After enough calls (implement + post-flight + code review scope), tasks become completed
+          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 7 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
         }]
       };
     });
@@ -167,11 +167,9 @@ describe("ShipOrchestrator", () => {
     vi.mocked(agent.dispatchToAgent)
       .mockResolvedValue({ exitCode: 0, stdout: "Success", stderr: "", durationS: 10 });
 
-    vi.mocked(gateRunner.runGate).mockResolvedValue({
-      passed: false,
-      exitCode: 1,
-      output: "Fail"
-    });
+    vi.mocked(gateRunner.runGate)
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // pre-flight iter 1
+      .mockResolvedValue({ passed: true, exitCode: 0, output: "Pass" });      // post-flight + subsequent
 
     const orchestrator = new ShipOrchestrator(config);
     const exitCode = await orchestrator.run();
