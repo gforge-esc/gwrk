@@ -197,10 +197,11 @@
           "id": "T015",
           "title": "Implement src/server/github.ts",
           "description": "Modify: Add support for GitHub `issues` events opened/closed/labeled and feature association logic\n\nREVIEW FAIL (code): Type Safety violation — ADR-003.\n  WHERE: src/server/github.ts:46-47\n  EXPECTED: Use proper types for GitHub webhook payload instead of 'any'.\n  ACTUAL: const payload = request.body as any;\n  FIX: Define a 'GitHubWebhookPayload' type (or use existing one if available) and cast to it.\n  GATE: gates/T015-gate.sh assertion #1\n  REF: plan.md Phase 5 > Type Dependency Graph",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-18T04:47:11.631Z"
         },
         {
           "id": "T016",
@@ -224,20 +225,20 @@
           "id": "T018",
           "title": "Implement src/engine/issues.ts",
           "description": "New: Logic to format and trigger Slack notifications via `003-slack`\n\nREVIEW FAIL (code): Misconfigured gate script — T018.\n  WHERE: specs/011-harvest/gates/T018-gate.sh:1-15\n  EXPECTED: Gate should verify src/engine/issues.ts implementation.\n  ACTUAL: Gate checks src/engine/harvest.ts for Phase 2 logic (getCompressionRecord).\n  FIX: Update gate script to verify association logic and slack notification formatting.\n  GATE: gates/T018-gate.sh assertion #1\n  REF: tasks.json Phase 5 > T018",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T04:13:44.435Z",
+          "completedAt": "2026-05-18T04:47:11.640Z",
           "classification": "greenfield"
         },
         {
           "id": "T019",
           "title": "Implement test strategy for Phase 5",
           "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Misconfigured gate script — T019.\n  WHERE: specs/011-harvest/gates/T019-gate.sh:1-15\n  EXPECTED: Gate should verify Phase 5 test strategy (integration/unit tests).\n  ACTUAL: Gate checks src/server/github.ts for Phase 4 logic (duplicate slack notification).\n  FIX: Update gate script to run the relevant tests for Phase 5.\n  GATE: gates/T019-gate.sh assertion #1\n  REF: tasks.json Phase 5 > T019",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T04:13:44.447Z",
+          "completedAt": "2026-05-18T04:47:11.644Z",
           "classification": "noop"
         }
       ],
