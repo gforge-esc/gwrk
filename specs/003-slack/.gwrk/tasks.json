@@ -4,7 +4,7 @@
   "generatedFrom": {
     "plan": {
       "hash": "a5bc0a751e598efc13da8439e9dd0152f681b277848c898ecef9977bc07e5a06",
-      "modifiedAt": "2026-05-14T00:10:01.931Z"
+      "modifiedAt": "2026-05-17T01:45:18.063Z"
     }
   },
   "phases": [
@@ -126,8 +126,8 @@
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T21:39:30.534Z"
+          "completedAt": "2026-05-16T21:39:30.534Z",
+          "classification": "greenfield"
         },
         {
           "id": "T011",
@@ -136,8 +136,8 @@
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T21:39:30.543Z"
+          "completedAt": "2026-05-16T21:39:30.543Z",
+          "classification": "greenfield"
         },
         {
           "id": "T012",
@@ -146,8 +146,8 @@
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-16T21:39:30.550Z"
+          "completedAt": "2026-05-16T21:39:30.550Z",
+          "classification": "greenfield"
         },
         {
           "id": "T013",
@@ -156,8 +156,8 @@
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-05-16T21:39:31.629Z"
+          "completedAt": "2026-05-16T21:39:31.629Z",
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
