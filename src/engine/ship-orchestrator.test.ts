@@ -160,8 +160,8 @@ describe("ShipOrchestrator", () => {
         phases: [{ 
           id: "phase-01", 
           title: "Phase 1", 
-          // 4th+ call is when we retry the review! Before that it's open.
-          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 4 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
+          // 5th+ call is when we retry the review! Before that it's open.
+          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 5 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
         }]
       };
     });
