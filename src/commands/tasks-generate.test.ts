@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { Command } from "commander";
-import { writeManifest } from "../utils/manifest.js";
 
-const { mockExecuteWorkflow } = vi.hoisted(() => ({
+const { mockExecuteWorkflow, mockWriteManifest } = vi.hoisted(() => ({
   mockExecuteWorkflow: vi.fn(),
+  mockWriteManifest: vi.fn(),
 }));
 
 vi.mock("../plugins/workflow-runtime.js", () => ({
@@ -17,7 +17,7 @@ vi.mock("../plugins/workflow-runtime.js", () => ({
 }));
 
 vi.mock("../utils/manifest.js", () => ({
-  writeManifest: vi.fn(),
+  writeManifest: mockWriteManifest,
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
 }));
 
@@ -78,6 +78,7 @@ Implement test strategy for Phase 1
       intents: [],
       summaries: [],
     });
+    mockWriteManifest.mockReset();
   });
 
   afterEach(() => {
@@ -91,8 +92,7 @@ Implement test strategy for Phase 1
     await program.parseAsync(["node", "test", "tasks", "test-feature", "--force", "--no-llm"]);
     
     const featureDir = path.join(tempDir, "specs", "test-feature");
-    // In RED state, this fails because tasks-generate.ts does NOT call writeManifest yet
-    expect(writeManifest).toHaveBeenCalledWith(
+    expect(mockWriteManifest).toHaveBeenCalledWith(
       featureDir,
       expect.objectContaining({
         command: "define tasks",

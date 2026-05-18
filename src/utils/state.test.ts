@@ -123,12 +123,14 @@ describe("Task Engine State", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  it("should append history correctly", () => {
+  it("should append history correctly (Phase 9)", () => {
     // Change directory to tempDir for history test
     const originalCwd = process.cwd();
     process.chdir(tempDir);
 
     try {
+      // We don't need to mock recordHistory here as it's tested in history.test.ts
+      // and we just want to ensure it doesn't crash and doesn't write to history.jsonl
       appendHistory({
         timestamp: new Date().toISOString(),
         featureId: "test-feature",
@@ -137,12 +139,9 @@ describe("Task Engine State", () => {
         toStatus: "completed",
       });
 
+      // FR-021: history.jsonl is deprecated and NOT written
       const historyPath = path.join(".gwrk", "history.jsonl");
-      expect(fs.existsSync(historyPath)).toBe(true);
-      const content = fs.readFileSync(historyPath, "utf-8");
-      const entry = JSON.parse(content.trim());
-      expect(entry.taskId).toBe("T001");
-      expect(entry.toStatus).toBe("completed");
+      expect(fs.existsSync(historyPath)).toBe(false);
     } finally {
       process.chdir(originalCwd);
     }

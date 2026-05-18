@@ -15,22 +15,8 @@ export const HistoryEntrySchema = z.object({
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;
 
 export function appendHistory(entry: HistoryEntry): void {
-  const historyPath = path.join(".gwrk", "history.jsonl");
-  const gwrkDir = path.dirname(historyPath);
-
-  if (!fs.existsSync(gwrkDir)) {
-    fs.mkdirSync(gwrkDir, { recursive: true });
-  }
-
-  const result = HistoryEntrySchema.safeParse(entry);
-  if (!result.success) {
-    console.error(`Invalid history entry: ${result.error.message}`);
-    process.exit(1);
-  }
-
-  // Write to legacy JSONL
-  const line = `${JSON.stringify(entry)}\n`;
-  fs.appendFileSync(historyPath, line, "utf-8");
+  // FR-021: history.jsonl is deprecated.
+  // Writes are redirected to SQLite DB + Execution Manifests (handled by commands).
 
   // Write to SQLite DB
   try {

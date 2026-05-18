@@ -10,6 +10,12 @@ import { readStdin } from "../utils/output.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import {
+  getCurrentBranch,
+  getCurrentCommit,
+  getDiffStats,
+} from "../utils/git.js";
+import { generateRunId, writeManifest } from "../utils/manifest.js";
 
 export const planCommand = new Command("plan")
   .description("Create an implementation plan for a feature")
@@ -75,6 +81,7 @@ Examples:
       });
 
       const startTime = Date.now();
+      const startedAt = new Date().toISOString();
 
       try {
         const input = `Plan implementation for feature ${feature}${contextContent ? `\n\nContext:\n${contextContent}` : ""}${opts.refs ? `\n\nReference: ${opts.refs}` : ""}`;
@@ -88,8 +95,45 @@ Examples:
         finishRun(runId, { exit_code: 0, duration_s: durationS });
         success("define plan", durationS, runId);
 
-        const planStore = new PlanStore();
-        planStore.handleDefineComplete({
+        // Write Execution Manifest (ADR-003)
+        try {
+          const finishedAt = new Date().toISOString();
+          const gitCommit = getCurrentCommit(projectRoot);
+          const gitBranch = getCurrentBranch(projectRoot);
+          const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+            projectRoot,
+            `${gitCommit}~1`,
+          );
+
+          const manifestId = generateRunId(startedAt, "define", "p00");
+          const featureDir = path.join(projectRoot, "specs", feature);
+
+          writeManifest(featureDir, {
+            runId: manifestId,
+            feature,
+            phase: "p00",
+            command: "define plan",
+            agent: backend,
+            model: "unknown",
+            startedAt,
+            finishedAt,
+            durationS,
+            exitCode: 0,
+            attempt: 1,
+            filesChanged,
+            linesAdded,
+            linesDeleted,
+            gitCommit,
+            gitBranch,
+            digest: [],
+          });
+        } catch (manifestError) {
+          console.warn(
+            `Warning: Could not write execution manifest: ${manifestError}`,
+          );
+        }
+
+        const planStore = new PlanStore();        planStore.handleDefineComplete({
           featureId: feature,
           status: "DEFINED",
         });
