@@ -131,7 +131,7 @@
           "status": "open",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T22:06:09.132Z",
+          "completedAt": "2026-05-18T22:09:13.668Z",
           "classification": "greenfield"
         },
         {
@@ -141,7 +141,7 @@
           "status": "open",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T22:06:09.138Z",
+          "completedAt": "2026-05-18T22:09:13.675Z",
           "classification": "greenfield"
         },
         {
