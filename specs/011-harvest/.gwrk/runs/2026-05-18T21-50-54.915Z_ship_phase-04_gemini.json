@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-18T21:50:54.915Z_ship_p04",
+  "feature": "011-harvest",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "gemini-3-flash-preview",
+  "startedAt": "2026-05-18T21:50:54.915Z",
+  "finishedAt": "2026-05-18T21:57:22.271Z",
+  "durationS": 387,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 8,
+  "linesDeleted": 6,
+  "gitCommit": "80f23b6bd6ac9e798721b8e0451b114162bfe8df",
+  "gitBranch": "feat/011-harvest",
+  "digest": []
+}
