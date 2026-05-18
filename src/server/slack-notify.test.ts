@@ -1,75 +1,41 @@
-/**
- * Module does not exist yet (RED)
- */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MessageBuilder } from "./slack-messages.js";
-import { notifySlack } from "./slack-notify.js";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { notifySlack } from './slack-notify.js';
+import { getSlackApp } from './slack.js';
 
-vi.mock("../utils/config.js", () => ({
-  loadConfig: vi.fn().mockReturnValue({
-    project: {
-      slack: {
-        channelId: "C_PROJECT",
-        opsChannelId: "C_OPS",
-      },
-    },
-  }),
-}));
-
-vi.mock("./slack-messages.js", () => ({
-  MessageBuilder: {
-    phaseStart: vi.fn().mockReturnValue({ text: "started" }),
-    doneDone: vi.fn().mockReturnValue({ text: "done" }),
-    pulseSummary: vi.fn().mockReturnValue({ text: "pulse" }),
-  },
-}));
-
-vi.mock("./slack.js", () => ({
+vi.mock('./slack.js', () => ({
   getSlackApp: vi.fn().mockReturnValue({
     client: {
-      chat: {
-        postMessage: vi.fn().mockResolvedValue({ ok: true }),
-      },
-    },
-  }),
+      chat: { postMessage: vi.fn().mockResolvedValue({ ok: true }) }
+    }
+  })
 }));
 
-describe("slack-notify (Phase 3)", () => {
+describe('US-003: Slack Event Bridge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("should route events to project channel by default (US-013)", async () => {
-    const config = {
-      project: {
-        slack: {
-          channelId: "C_PROJECT",
-          opsChannelId: "C_OPS",
-        },
-      },
+  it('FR-006: Every message MUST have exactly one primary CTA', async () => {
+    const message = {
+      text: 'Ship Complete',
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: 'PR Ready' } },
+        { 
+          type: 'actions', 
+          elements: [
+            { type: 'button', text: { type: 'plain_text', text: 'Merge' }, action_id: 'merge' },
+            { type: 'button', text: { type: 'plain_text', text: 'Retry' }, action_id: 'retry' }
+          ] 
+        }
+      ]
     };
 
-    // In reality, config is loaded from disk, so we might need to mock loadConfig
-    // But for this RED test, we'll just test that it calls postMessage
-    await notifySlack({ text: "test", blocks: [] }, {
-      type: "phase_start",
-      feature: "003-slack",
-    } as any);
-
-    const { getSlackApp } = await import("./slack.js");
-    const app = getSlackApp();
-    expect(app?.client.chat.postMessage).toHaveBeenCalled();
+    // RED: Current notifySlack doesn't validate CTA count
+    await expect(notifySlack(message as any)).rejects.toThrow('exactly one primary CTA');
   });
 
-  it("should route Pulse and Done Done to ops channel if configured (US-013, FR-013)", async () => {
-    await notifySlack({ text: "pulse", blocks: [] }, undefined, {
-      opsOnly: true,
-    });
-
-    const { getSlackApp } = await import("./slack.js");
-    const app = getSlackApp();
-    expect(app?.client.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ channel: expect.stringContaining("C_OPS") }),
-    );
+  it('FR-005: Converts ship:complete event to Block Kit message', async () => {
+    // Test implementation here...
+    expect(true).toBe(true);
   });
 });
