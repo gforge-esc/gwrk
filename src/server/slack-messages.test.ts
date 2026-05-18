@@ -116,4 +116,41 @@ describe("MessageBuilder", () => {
     const reviseBtn = actions.elements[1] as any;
     expect(reviseBtn.action_id).toBe("revise_plan");
   });
+
+  it("should build pulseSummary message (TR-005)", () => {
+    const report = {
+      generatedAt: new Date().toISOString(),
+      repositories: [
+        {
+          repoName: "gwrk",
+          mainLoc: 1000,
+          draftLoc: 200,
+          weeklyBuckets: [1, 2, 3],
+        },
+      ],
+    };
+    const msg = MessageBuilder.pulseSummary(report as any);
+    expect(msg.text).toContain("Pulse Daily Summary");
+    expect(JSON.stringify(msg.blocks)).toContain("gwrk");
+    expect(JSON.stringify(msg.blocks)).toContain("1000");
+  });
+
+  it("should build doneDone message (TR-005)", () => {
+    const report = {
+      compression: {
+        pointCompression: 2.5,
+        totalCompression: 3.1,
+      },
+      actuals: {
+        activeCodingMinutes: 120,
+        deliveryWindowHours: 48,
+        dormancyDays: 1,
+      },
+    };
+    const msg = MessageBuilder.doneDone("003-slack", report as any);
+    expect(msg.text).toContain("Done Done");
+    expect(msg.text).toContain("003-slack");
+    expect(JSON.stringify(msg.blocks)).toContain("2.5x");
+    expect(JSON.stringify(msg.blocks)).toContain("2.0h"); // 120 min = 2h
+  });
 });

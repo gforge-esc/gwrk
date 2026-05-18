@@ -10,28 +10,47 @@ vi.mock('./slack.js', () => ({
   })
 }));
 
+vi.mock('../utils/config.js', () => ({
+  loadConfig: vi.fn().mockReturnValue({
+    project: {
+      slack: {
+        webhookUrl: 'https://hooks.slack.com/services/T123/B456/XYZ'
+      }
+    }
+  })
+}));
+
 describe('US-003: Slack Event Bridge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/T123/B456/XYZ';
   });
 
-  it('FR-006: Every message MUST have exactly one primary CTA', async () => {
+  it('FR-014: should fallback to webhook when Socket Mode app is not available (TR-011)', async () => {
+    // Mock getSlackApp to return null (simulating server without Socket Mode)
+    const { getSlackApp } = await import('./slack.js');
+    vi.mocked(getSlackApp).mockReturnValue(null);
+
+    // Mock global.fetch
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    global.fetch = mockFetch;
+
     const message = {
-      text: 'Ship Complete',
+      text: 'Webhook Fallback Test',
       blocks: [
-        { type: 'section', text: { type: 'mrkdwn', text: 'PR Ready' } },
-        { 
-          type: 'actions', 
-          elements: [
-            { type: 'button', text: { type: 'plain_text', text: 'Merge' }, action_id: 'merge' },
-            { type: 'button', text: { type: 'plain_text', text: 'Retry' }, action_id: 'retry' }
-          ] 
-        }
+        { type: 'section', text: { type: 'mrkdwn', text: 'Hello Webhook' } }
       ]
     };
 
-    // RED: Current notifySlack doesn't validate CTA count
-    await expect(notifySlack(message as any)).rejects.toThrow('exactly one primary CTA');
+    await notifySlack(message as any);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://hooks.slack.com/services/T123/B456/XYZ',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('Hello Webhook')
+      })
+    );
   });
 
   it('FR-005: Converts ship:complete event to Block Kit message', async () => {

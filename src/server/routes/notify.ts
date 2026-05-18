@@ -60,7 +60,19 @@ export async function notifyRoutes(server: FastifyInstance) {
           message = MessageBuilder.reviewReady(dispatch);
           break;
         case "done_done":
-          message = MessageBuilder.doneDone(payload.feature);
+          message = MessageBuilder.doneDone(
+            payload.feature,
+            payload.compressionReport,
+          );
+          break;
+        case "pulse":
+          if (!payload.pulseReport) {
+            return reply.status(400).send({
+              ok: false,
+              error: "Missing required field: pulseReport",
+            });
+          }
+          message = MessageBuilder.pulseSummary(payload.pulseReport);
           break;
         case "define_spec_ready":
           if (!payload.specPath) {
@@ -92,7 +104,10 @@ export async function notifyRoutes(server: FastifyInstance) {
       }
 
       // Route to ops if requested or for specific cross-project types
-      const isOps = payload.opsOnly || payload.type === "done_done";
+      const isOps =
+        payload.opsOnly ||
+        payload.type === "done_done" ||
+        payload.type === "pulse";
 
       try {
         await notifySlack(

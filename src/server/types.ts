@@ -116,7 +116,8 @@ export interface NotifyPayload {
     | "review_ready"
     | "done_done"
     | "define_spec_ready"
-    | "define_plan_ready";
+    | "define_plan_ready"
+    | "pulse";
   feature: string;
   phase?: string;
   prUrl?: string;
@@ -129,4 +130,6 @@ export interface NotifyPayload {
   specPath?: string;
   planPath?: string;
   phaseCount?: number;
+  pulseReport?: any; // PulseReport
+  compressionReport?: any; // CompressionReport
 }
