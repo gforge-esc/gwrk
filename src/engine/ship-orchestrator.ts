@@ -371,6 +371,51 @@ export class ShipOrchestrator extends EventEmitter {
     }
   }
 
+  /**
+   * Post-flight gate verification. Re-runs gates for all completed tasks
+   * in the current phase. If any fail, re-opens the task and returns a
+   * failure result. Returns null if all gates pass.
+   */
+  private async runPostFlightGates(featureDir: string): Promise<StageResult | null> {
+    const postFlightState = loadTaskState(featureDir);
+    const postFlightPhase = postFlightState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    if (!postFlightPhase) return null;
+
+    let reopenedCount = 0;
+    for (const task of postFlightPhase.tasks) {
+      if (task.status !== "completed" || !task.gateScript) continue;
+      const gatePath = path.join(featureDir, task.gateScript);
+      if (!fs.existsSync(gatePath)) continue;
+      const gateResult = await runGate(gatePath);
+      if (!gateResult.passed) {
+        task.status = "open";
+        delete task.completedAt;
+        reopenedCount++;
+        console.log(
+          `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
+        );
+        const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
+        task.description = (task.description || "") + failNote;
+      } else {
+        console.log(`  ✓ post-flight PASS: ${task.id}`);
+      }
+    }
+    if (reopenedCount > 0) {
+      saveTaskState(featureDir, postFlightState);
+      console.log(
+        `  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`,
+      );
+      return {
+        success: false,
+        exitCode: 1,
+        error: `Post-flight gate verification failed: ${reopenedCount} task(s) re-opened`,
+      };
+    }
+    return null;
+  }
+
   private async stageImplement(): Promise<StageResult> {
     // FR-003: Pre-flight gate check
     const featureDir = path.join(
@@ -417,6 +462,13 @@ export class ShipOrchestrator extends EventEmitter {
 
     if (tasksToDispatch.length === 0) {
       saveTaskState(featureDir, taskState);
+
+      // POST-FLIGHT on pre-flight auto-complete path.
+      // Pre-flight gates may be hollow (test -f) and auto-complete tasks
+      // that haven't been implemented. Re-verify with full gate execution.
+      const postFlightResult = await this.runPostFlightGates(featureDir);
+      if (postFlightResult) return postFlightResult;
+
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
 
@@ -472,49 +524,8 @@ export class ShipOrchestrator extends EventEmitter {
         }
 
         // POST-FLIGHT GATE VERIFICATION
-        // The implement agent (or pre-flight) may have marked tasks "completed"
-        // but gates must pass AFTER implementation, not just before.
-        // This is the mechanical enforcement — agents cannot self-certify.
-        const postFlightState = loadTaskState(featureDir);
-        const postFlightPhase = postFlightState.phases.find(
-          (p: Phase) => p.id === this.config.phaseId,
-        );
-        if (postFlightPhase) {
-          let reopenedCount = 0;
-          for (const task of postFlightPhase.tasks) {
-            if (task.status !== "completed" || !task.gateScript) continue;
-            const gatePath = path.join(featureDir, task.gateScript);
-            if (!fs.existsSync(gatePath)) continue;
-            const gateResult = await runGate(gatePath);
-            if (!gateResult.passed) {
-              task.status = "open";
-              delete task.completedAt;
-              reopenedCount++;
-              console.log(
-                `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
-              );
-              // Append gate failure to description for next implement attempt
-              const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
-              task.description = (task.description || "") + failNote;
-            } else {
-              console.log(`  ✓ post-flight PASS: ${task.id}`);
-            }
-          }
-          if (reopenedCount > 0) {
-            saveTaskState(featureDir, postFlightState);
-            console.log(
-              `  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`,
-            );
-            // CRITICAL: Do NOT return success when gates fail.
-            // Returning success here was the root cause of hollow shipments —
-            // the orchestrator advanced to CODE_REVIEW with failing tests.
-            return {
-              success: false,
-              exitCode: 1,
-              error: `Post-flight gate verification failed: ${reopenedCount} task(s) re-opened`,
-            };
-          }
-        }
+        const postFlightResult = await this.runPostFlightGates(featureDir);
+        if (postFlightResult) return postFlightResult;
 
         return { success: true, exitCode: 0 };
       }
