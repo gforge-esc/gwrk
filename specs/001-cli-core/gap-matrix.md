@@ -4,7 +4,7 @@
 | US-021 | setup.json state persistence | unit | src/utils/setup-state.test.ts | ✅ | T062 |
 | FR-022 | Ship pre-flight setup check | integration | src/commands/ship-setup.test.ts | ✅ | T063 |
 | FR-028 | define subcommands pass quiet: true | unit | src/commands/tests-generate-contract-phase12.test.ts | ✅ | T056 |
-| FR-029 | Tolerant mode requires artifacts | unit | src/plugins/workflow-runtime-phase12.test.ts | ✅ | T064 |
+| FR-029 | Tolerant JSON extraction for native agent work | unit | src/plugins/workflow-runtime-phase12.test.ts | ✅ | T064 |
 | US-019 | Execution Manifest generation | unit | src/utils/manifest.test.ts | ✅ | T037 |
 | US-020 | Task state verification | unit | src/commands/tasks-verify.test.ts | ✅ | T038 |
 | US-026 | Quiet output parity (specify) | unit | src/commands/specify.test.ts | ✅ | T057 |

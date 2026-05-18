@@ -23,7 +23,7 @@ describe("ship pre-flight setup check (Phase 10) (RED)", () => {
     fs.mkdirSync(featureDir, { recursive: true });
     fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
     fs.writeFileSync(path.join(featureDir, "plan.md"), "# Plan");
-    
+
     // Create a mock .gwrkrc.json
     fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({
       project: { name: "test-project" },
@@ -52,15 +52,9 @@ describe("ship pre-flight setup check (Phase 10) (RED)", () => {
     const { loadSetupState } = await import("../utils/setup-state.js");
     (loadSetupState as any).mockReturnValue(null);
 
-    // Current ship.ts doesn't have the pre-flight check, so it will proceed to run the script.
-    // We expect it to FAIL (exit 1) because it SHOULD have blocked it.
-    // Since it DOES NOT block it now, it might exit 0 (if script succeeds) or 1 (if script fails).
-    // To make it hard red, we assert it returns exit 1 WITH a specific error message.
-    
     await program.parseAsync(["node", "test", "ship", "test-feature", "1"]);
     
-    // If it didn't block, exitCode will likely be 0 (because we mocked enough)
-    // or 1 if something else fails. We want it to be 1 due to SETUP MISSING.
+    // In RED state, ship proceeds because check is not implemented
     expect(process.exitCode).toBe(1);
   });
 
