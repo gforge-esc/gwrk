@@ -19,7 +19,7 @@
           "status": "open",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.309Z",
+          "completedAt": "2026-05-18T21:08:30.632Z",
           "classification": "greenfield"
         },
         {
@@ -29,7 +29,7 @@
           "status": "open",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.314Z",
+          "completedAt": "2026-05-18T21:08:30.637Z",
           "classification": "greenfield"
         },
         {
@@ -39,7 +39,7 @@
           "status": "open",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.319Z",
+          "completedAt": "2026-05-18T21:08:30.642Z",
           "classification": "greenfield"
         },
         {
@@ -49,7 +49,7 @@
           "status": "open",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.324Z",
+          "completedAt": "2026-05-18T21:08:30.647Z",
           "classification": "greenfield"
         },
         {
@@ -59,7 +59,7 @@
           "status": "open",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.337Z",
+          "completedAt": "2026-05-18T21:08:30.652Z",
           "classification": "greenfield"
         },
         {
@@ -69,7 +69,7 @@
           "status": "open",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.346Z",
+          "completedAt": "2026-05-18T21:08:30.656Z",
           "classification": "greenfield"
         },
         {
@@ -79,7 +79,7 @@
           "status": "open",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.349Z",
+          "completedAt": "2026-05-18T21:08:30.659Z",
           "classification": "greenfield"
         },
         {
@@ -89,7 +89,7 @@
           "status": "open",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.360Z",
+          "completedAt": "2026-05-18T21:08:30.667Z",
           "classification": "greenfield"
         },
         {
@@ -99,7 +99,7 @@
           "status": "open",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.372Z",
+          "completedAt": "2026-05-18T21:08:30.673Z",
           "classification": "noop"
         },
         {
@@ -109,7 +109,7 @@
           "status": "open",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.382Z"
+          "completedAt": "2026-05-18T21:08:30.680Z"
         },
         {
           "id": "T026",
@@ -118,7 +118,7 @@
           "status": "open",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.387Z"
+          "completedAt": "2026-05-18T21:08:30.684Z"
         },
         {
           "id": "T027",
@@ -127,7 +127,7 @@
           "status": "open",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.391Z"
+          "completedAt": "2026-05-18T21:08:30.689Z"
         },
         {
           "id": "T028",
@@ -136,7 +136,7 @@
           "status": "open",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.396Z"
+          "completedAt": "2026-05-18T21:08:30.692Z"
         },
         {
           "id": "T029",
@@ -145,7 +145,7 @@
           "status": "open",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.400Z"
+          "completedAt": "2026-05-18T21:08:30.697Z"
         },
         {
           "id": "T030",
@@ -154,7 +154,7 @@
           "status": "open",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T20:26:36.405Z"
+          "completedAt": "2026-05-18T21:08:30.704Z"
         }
       ],
       "sp_estimate": 0,
