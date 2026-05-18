@@ -100,11 +100,9 @@ describe("ShipOrchestrator", () => {
       stderr: "",
       durationS: 10
     });
-    vi.mocked(gateRunner.runGate).mockResolvedValue({
-      passed: false,
-      exitCode: 1,
-      output: "Fail"
-    });
+    vi.mocked(gateRunner.runGate)
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // pre-flight: triggers implement
+      .mockResolvedValue({ passed: true, exitCode: 0, output: "Pass" });      // post-flight + reviews: gates pass
 
     const orchestrator = new ShipOrchestrator(config);
     const exitCode = await orchestrator.run();
