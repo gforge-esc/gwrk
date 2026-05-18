@@ -283,4 +283,35 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
       expect.objectContaining({ cwd: "/tmp", detached: true }),
     );
   });
+
+  it("FR-015: handles revise_plan action — triggers define plan re-run [RED]", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+          }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
+
+    await actionHandlers.revise_plan({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "plan", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+  });
 });
