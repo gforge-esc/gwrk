@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Implement src/server/slack-commands.ts",
           "description": "MODIFY: Add `define` subcommand handler",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -25,7 +25,7 @@
           "id": "T002",
           "title": "Implement src/server/slack-messages.ts",
           "description": "MODIFY: Add `specReady` and `planReady` Block Kit builders",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -34,7 +34,7 @@
           "id": "T003",
           "title": "Implement src/server/slack-actions.ts",
           "description": "MODIFY: Add `approve_spec`, `approve_plan`, `revise_spec` handlers",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -43,7 +43,7 @@
           "id": "T004",
           "title": "Implement src/server/routes/notify.ts",
           "description": "MODIFY: Handle `define_spec_ready` and `define_plan_ready` event types",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -52,7 +52,7 @@
           "id": "T005",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
           "classification": "noop"
