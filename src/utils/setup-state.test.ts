@@ -1,43 +1,25 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-// Module does not exist yet (RED) — Phase 10: setup state implementation pending
-import { loadSetupState, saveSetupState, type SetupState } from "./setup-state.js";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { loadSetupState, saveSetupState } from "./setup-state.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-describe("Setup State Utility (Phase 10)", () => {
-  let tempDir: string;
-  let homeDir: string;
-
-  beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "setup-state-test-"));
-    homeDir = path.join(tempDir, "home");
-    fs.mkdirSync(homeDir, { recursive: true });
-    vi.stubEnv("HOME", homeDir);
-  });
-
-  afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    vi.unstubAllEnvs();
-  });
-
-  it("US-021: SHOULD save and load setup state", () => {
-    const state: SetupState = {
+describe("setup-state utility (Phase 10) (RED)", () => {
+  it("SHOULD save and load setup state (RED)", () => {
+    const state = {
       completedAt: new Date().toISOString(),
-      steps: {
-        tcc: true,
-        ssh: true,
-        gh: true,
-        verification: true,
-      },
+      steps: { tcc: true, ssh: true, gh: true, verification: true }
     };
-
+    
+    // This will fail because saveSetupState throws "Not implemented"
     saveSetupState(state);
+    
     const loaded = loadSetupState();
     expect(loaded).toEqual(state);
   });
 
-  it("US-021: SHOULD return null if setup state is missing", () => {
+  it("SHOULD return null if setup.json does not exist (RED)", () => {
+    // This will fail because loadSetupState throws "Not implemented"
     const loaded = loadSetupState();
     expect(loaded).toBeNull();
   });
