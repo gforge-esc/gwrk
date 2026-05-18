@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { saveIssue, updateIssue, type IssueRecord } from "../db/issues.js";
 import { harvestFeature } from "../engine/harvest.js";
+import {
+  associateIssueWithFeature,
+  notifyIssueOpened,
+} from "../engine/issues.js";
 import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
 
@@ -18,7 +23,7 @@ export async function githubWebhookPlugin(
       return reply.status(400).send({ error: "Missing X-GitHub-Event" });
     }
 
-    // 1. Signature Verification (FR-H01, TC-H03)
+    // 1. Signature Verification (FR-H01, TC-H03, FR-H12)
     if (config.server.githubWebhookSecret) {
       if (!signature) {
         return reply.status(401).send({ error: "Missing signature" });
@@ -41,15 +46,69 @@ export async function githubWebhookPlugin(
       }
     }
 
+    // biome-ignore lint/suspicious/noExplicitAny: Fastify request body parsing
+    const payload = request.body as any;
+
+    // Handle Issues events (FR-H12)
+    if (event === "issues") {
+      const issue = payload.issue;
+      const action = payload.action;
+
+      if (action === "opened" || action === "labeled" || action === "closed") {
+        // FR-H13: Issue-to-feature association
+        const featureId = associateIssueWithFeature({
+          title: issue.title,
+          labels: issue.labels?.map((l: any) => l.name) || [],
+        });
+
+        if (!featureId) {
+          return reply
+            .status(200)
+            .send({ status: "ignored", reason: "no_feature_associated" });
+        }
+
+        const record: IssueRecord = {
+          issue_number: issue.number,
+          feature_id: featureId,
+          title: issue.title,
+          body: issue.body,
+          state: issue.state,
+          html_url: issue.html_url,
+          created_at: issue.created_at,
+          closed_at: issue.closed_at,
+          author: issue.user?.login || "unknown",
+        };
+
+        // FR-H14: Record in issues table
+        if (action === "opened" || action === "labeled") {
+          saveIssue(record);
+          // FR-H15: Slack notification
+          if (action === "opened") {
+            await notifyIssueOpened(record);
+          }
+        } else if (action === "closed") {
+          updateIssue(issue.number, {
+            state: "closed",
+            closed_at: issue.closed_at,
+          });
+        }
+
+        return reply
+          .status(200)
+          .send({ status: "accepted", featureId, issueNumber: issue.number });
+      }
+
+      return reply
+        .status(200)
+        .send({ status: "ignored", reason: "unsupported_issue_action" });
+    }
+
     // Only process pull_request events
     if (event !== "pull_request") {
       return reply
         .status(200)
-        .send({ status: "ignored", reason: "not_pr_event" });
+        .send({ status: "ignored", reason: "unsupported_event" });
     }
-
-    // biome-ignore lint/suspicious/noExplicitAny: Fastify request body parsing
-    const payload = request.body as any;
 
     // 2. Filter Actions (FR-H01)
     if (payload.action !== "closed" || !payload.pull_request?.merged) {

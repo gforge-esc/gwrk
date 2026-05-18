@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS issues (
   title TEXT NOT NULL,
   body TEXT,
   state TEXT NOT NULL DEFAULT 'open',
+  html_url TEXT,
   created_at DATETIME NOT NULL,
   closed_at DATETIME,
   author TEXT NOT NULL,
