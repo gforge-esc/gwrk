@@ -197,7 +197,7 @@
           "id": "T015",
           "title": "Implement src/server/github.ts",
           "description": "Modify: Add support for GitHub `issues` events opened/closed/labeled and feature association logic",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -206,7 +206,7 @@
           "id": "T016",
           "title": "Implement src/db/migrations/008-issues.sql",
           "description": "New: Table for post-ship issues",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
           "classification": "greenfield"
@@ -214,7 +214,7 @@
         {
           "id": "T017",
           "title": "Implement src/db/issues.ts",
-          "description": "New: DB access layer for saving/updating issues",
+          "description": "New: DB access layer for saving/updating issues\nREVIEW FAIL (code): Misconfigured gate script — TR-H11.\n  WHERE: specs/011-harvest/gates/T017-gate.sh:1-13\n  EXPECTED: Gate should run src/db/issues.test.ts to verify DB persistence.\n  ACTUAL: Gate runs tests/harvest-e2e.test.ts which is unimplemented.\n  FIX: Update gate script to run pnpm vitest run src/db/issues.test.ts.\n  GATE: gates/T017-gate.sh assertion #2\n  REF: plan.md Phase 5 > Test Strategy",
           "status": "open",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
