@@ -8,14 +8,14 @@ import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
-import { resolveFeature } from "../utils/resolve-feature.js";
-import { CommandError, withSignal } from "../utils/signal.js";
 import {
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const planCommand = new Command("plan")
   .description("Create an implementation plan for a feature")
@@ -133,7 +133,8 @@ Examples:
           );
         }
 
-        const planStore = new PlanStore();        planStore.handleDefineComplete({
+        const planStore = new PlanStore();
+        planStore.handleDefineComplete({
           featureId: feature,
           status: "DEFINED",
         });

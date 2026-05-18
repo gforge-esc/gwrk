@@ -156,7 +156,10 @@ describe("slack-commands (FR-015, US-004)", () => {
   });
 
   it("handles define with invalid subcommand — returns usage", async () => {
-    const response = await handleSlashCommand("define 003-slack unknown", context);
+    const response = await handleSlashCommand(
+      "define 003-slack unknown",
+      context,
+    );
     expect(response.response_type).toBe("ephemeral");
     expect(response.blocks[0].text.text).toContain("Invalid define subcommand");
   });

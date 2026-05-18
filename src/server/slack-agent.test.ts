@@ -3,12 +3,14 @@
  */
 import type { App } from "@slack/bolt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { handleMention } from "./slack-agent.js";
 import { buildProjectContext } from "../utils/agent-context.js";
+import { handleMention } from "./slack-agent.js";
 
 // Mock agent-context to verify it is called
 vi.mock("../utils/agent-context.js", () => ({
-  buildProjectContext: vi.fn().mockResolvedValue("Mocked Project Context: 5 features found."),
+  buildProjectContext: vi
+    .fn()
+    .mockResolvedValue("Mocked Project Context: 5 features found."),
 }));
 
 describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
@@ -61,7 +63,7 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
 
     // EXPECTATION: The agent should call buildProjectContext to get real data
     expect(buildProjectContext).toHaveBeenCalled();
-    
+
     // EXPECTATION: The response should contain data from the context
     expect(mockSay).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -75,7 +77,7 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
 
     expect(mockSay).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringMatching(/\?$/), 
+        text: expect.stringMatching(/\?$/),
       }),
     );
   });
@@ -95,7 +97,9 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
     );
     expect(mockSay).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining("Invoking architecture-stress test skill"),
+        text: expect.stringContaining(
+          "Invoking architecture-stress test skill",
+        ),
       }),
     );
   });
