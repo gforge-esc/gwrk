@@ -19,8 +19,8 @@
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-18T21:38:08.338Z"
+          "completedAt": "2026-05-18T21:38:08.338Z",
+          "classification": "greenfield"
         },
         {
           "id": "T002",
@@ -29,8 +29,8 @@
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-18T21:38:08.345Z"
+          "completedAt": "2026-05-18T21:38:08.345Z",
+          "classification": "greenfield"
         },
         {
           "id": "T003",
@@ -39,8 +39,8 @@
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-18T21:38:08.353Z"
+          "completedAt": "2026-05-18T21:38:08.353Z",
+          "classification": "greenfield"
         },
         {
           "id": "T004",
@@ -49,8 +49,8 @@
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-18T21:38:08.360Z"
+          "completedAt": "2026-05-18T21:38:08.360Z",
+          "classification": "greenfield"
         },
         {
           "id": "T005",
@@ -59,8 +59,8 @@
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-05-18T21:38:09.386Z"
+          "completedAt": "2026-05-18T21:38:09.386Z",
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
@@ -77,7 +77,7 @@
           "id": "T006",
           "title": "Implement src/server/slack-agent.ts",
           "description": "NEW: Handle app mentions and threaded context",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-16T21:35:08.996Z",
@@ -87,7 +87,7 @@
           "id": "T007",
           "title": "Implement src/server/slack.ts",
           "description": "MODIFY: Register `app_mention` and `message.channels` handlers",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-16T21:35:09.003Z",
@@ -97,7 +97,7 @@
           "id": "T008",
           "title": "Implement src/utils/agent-context.ts",
           "description": "NEW: Utility to build project context for the agent from local files and SQLite",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-16T21:35:09.008Z",
@@ -107,7 +107,7 @@
           "id": "T009",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-16T21:35:10.123Z",
