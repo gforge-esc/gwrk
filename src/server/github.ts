@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { saveIssue, updateIssue, type IssueRecord } from "../db/issues.js";
+import { type IssueRecord, saveIssue, updateIssue } from "../db/issues.js";
 import { harvestFeature } from "../engine/harvest.js";
 import {
   associateIssueWithFeature,

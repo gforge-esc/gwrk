@@ -40,7 +40,10 @@ describe("GitHub Webhook Plugin", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     app = fastify();
-    await app.register(githubWebhookPlugin, { config, projectRoot: "/test" } as any);
+    await app.register(githubWebhookPlugin, {
+      config,
+      projectRoot: "/test",
+    } as any);
   });
 
   it("FR-H01: Webhook ignores unmerged PRs and non-trunk targets (TR-011)", async () => {
