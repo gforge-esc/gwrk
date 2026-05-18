@@ -505,6 +505,14 @@ export class ShipOrchestrator extends EventEmitter {
             console.log(
               `  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`,
             );
+            // CRITICAL: Do NOT return success when gates fail.
+            // Returning success here was the root cause of hollow shipments —
+            // the orchestrator advanced to CODE_REVIEW with failing tests.
+            return {
+              success: false,
+              exitCode: 1,
+              error: `Post-flight gate verification failed: ${reopenedCount} task(s) re-opened`,
+            };
           }
         }
 
