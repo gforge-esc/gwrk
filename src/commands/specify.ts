@@ -8,14 +8,14 @@ import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
-import { resolveFeature } from "../utils/resolve-feature.js";
-import { CommandError, withSignal } from "../utils/signal.js";
 import {
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const specifyCommand = new Command("spec")
   .description("Create or refine a feature specification")

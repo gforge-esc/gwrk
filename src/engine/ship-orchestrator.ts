@@ -537,8 +537,34 @@ export class ShipOrchestrator extends EventEmitter {
   private async stageCodeReview(): Promise<StageResult> {
     console.log("  ▸ CODE_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
-    const prompt = `Phase ${this.config.phaseId} Code Review`;
-    return this.executeReviewWorkflow(plugin.codeReviewWorkflow, prompt);
+
+    // Scope code review to THIS phase's tasks only.
+    // Without this, the review agent evaluates ALL code in the feature,
+    // re-opens completed tasks from earlier phases, and creates an infinite
+    // loop: pre-flight passes → no implement → review re-opens → circuit break.
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    const phaseTasks = phase?.tasks.map((t: Task) => `${t.id}: ${t.title} [${t.status}]`).join("\n- ") || "No tasks";
+
+    const scopedPrompt = [
+      `Phase ${this.config.phaseId} Code Review`,
+      "",
+      "SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks.",
+      "Do NOT re-open tasks from earlier phases that are already completed.",
+      "If a completed task's implementation has issues, note them in your summary but do NOT change its status.",
+      "",
+      "Phase tasks:",
+      `- ${phaseTasks}`,
+    ].join("\n");
+
+    return this.executeReviewWorkflow(plugin.codeReviewWorkflow, scopedPrompt);
   }
 
   private async stageUatReview(): Promise<StageResult> {

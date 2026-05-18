@@ -554,7 +554,11 @@ Examples:
             );
 
             const manifestPhase = paddedPhase || "all";
-            const manifestId = generateRunId(startedAt, "define", manifestPhase);
+            const manifestId = generateRunId(
+              startedAt,
+              "define",
+              manifestPhase,
+            );
 
             const config = loadConfig(projectRoot);
             const backend = config.agents.define;

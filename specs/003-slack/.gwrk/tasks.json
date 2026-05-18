@@ -127,21 +127,21 @@
         {
           "id": "T010",
           "title": "Implement src/utils/slack-webhook.ts",
-          "description": "NEW: Extracted webhook logic for use in ship loop without Fastify",
-          "status": "completed",
+          "description": "NEW: Extracted webhook logic for use in ship loop without Fastify\n\nREVIEW FAIL (code): Type Safety — ADR-004.\n  WHERE: src/utils/slack-webhook.ts:9\n  EXPECTED: payload: Record<string, any> or specific type\n  ACTUAL: payload: any\n  FIX: Replace 'any' with a more specific type or 'Record<string, unknown>'. Also, refactor src/server/slack-notify.ts to use this extracted utility for consistency.\n  REF: plan.md Phase 3 > Files > src/utils/slack-webhook.ts",
+          "status": "open",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:39:30.534Z",
+          "completedAt": "2026-05-18T22:09:13.668Z",
           "classification": "greenfield"
         },
         {
           "id": "T011",
           "title": "Implement src/server/slack-notify.ts",
-          "description": "MODIFY: Refine routing logic to respect `opsChannelId`",
-          "status": "completed",
+          "description": "MODIFY: Refine routing logic to respect `opsChannelId`\n\nREVIEW FAIL (code): Build Error — FR-013.\n  WHERE: src/server/slack-presence.ts:7-18\n  EXPECTED: type: | ... | \"pulse\"\n  ACTUAL: Missing \"pulse\" in SlackEvent type union\n  FIX: Add \"pulse\" to the SlackEvent.type union in src/server/slack-presence.ts to allow pulse notifications in notify.ts.\n  GATE: run-all-gates.sh (pnpm build)\n  REF: plan.md Phase 3 > Webhook Hardening & Topology (P1)",
+          "status": "open",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:39:30.543Z",
+          "completedAt": "2026-05-18T22:09:13.675Z",
           "classification": "greenfield"
         },
         {
@@ -151,7 +151,7 @@
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:39:30.550Z",
+          "completedAt": "2026-05-18T22:06:09.142Z",
           "classification": "greenfield"
         },
         {
@@ -161,7 +161,7 @@
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:39:31.629Z",
+          "completedAt": "2026-05-18T22:05:00.000Z",
           "classification": "noop"
         }
       ],

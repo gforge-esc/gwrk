@@ -14,7 +14,8 @@ export interface SlackEvent {
     | "define_spec_ready"
     | "define_plan_ready"
     | "spec_ready"
-    | "plan_ready";
+    | "plan_ready"
+    | "pulse";
   feature: string;
   phase?: string;
   opsOnly?: boolean;
