@@ -9,7 +9,7 @@ description: Generate red test files from spec, plan, and contracts before imple
 
 <scope_constraints>
 - Generate ONLY test files. Do not implement production code.
-- Tests MUST compile but MUST fail (RED). If a test passes before implementation, it is trivial — flag it.
+- Tests MUST fail (RED). A compilation/import error for missing functions is a perfectly valid RED state. If a test passes before implementation, it is trivial — flag it.
 - Output goes to the standard test locations in the monorepo.
 - Do NOT run `/implement`. This workflow ends with committed red tests.
 - A separate agent runs `/implement` to turn them green.
@@ -142,7 +142,7 @@ expect(record.status).toBe("retrying"); // ← deterministic
 After generating all test files:
 
 ```bash
-# Tests should compile but FAIL
+# Tests should fail (compilation errors are expected and acceptable)
 pnpm test --run 2>&1 | tail -20
 # Expected: test failures (imports that don't resolve, assertions that fail)
 # If ALL tests pass: CRITICAL — tests are trivial, flag and revise
