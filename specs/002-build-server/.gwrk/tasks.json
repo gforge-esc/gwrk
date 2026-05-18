@@ -16,139 +16,145 @@
           "id": "T001",
           "title": "Implement src/commands/server.ts",
           "description": "Modify: Implement `start` and `stop` actions with `[exit:N | Xs]`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.018Z",
+          "completedAt": "2026-05-18T20:26:36.309Z",
           "classification": "greenfield"
         },
         {
           "id": "T002",
           "title": "Implement src/commands/server-install.ts",
           "description": "New: Implement `install`, `uninstall`, and `logs` actions",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.029Z",
+          "completedAt": "2026-05-18T20:26:36.314Z",
           "classification": "greenfield"
         },
         {
           "id": "T003",
           "title": "Implement src/server/index.ts",
           "description": "New: Fastify bootstrap and graceful shutdown",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.039Z",
+          "completedAt": "2026-05-18T20:26:36.319Z",
           "classification": "greenfield"
         },
         {
           "id": "T004",
           "title": "Implement src/server/pid.ts",
           "description": "New: PID resolution prioritizing `launchctl` over `.gwrk/server.pid`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.050Z",
+          "completedAt": "2026-05-18T20:26:36.324Z",
           "classification": "greenfield"
         },
         {
           "id": "T005",
           "title": "Implement src/server/routes/health.ts",
           "description": "New: `/health` endpoint returning component status",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.060Z",
+          "completedAt": "2026-05-18T20:26:36.337Z",
           "classification": "greenfield"
         },
         {
           "id": "T006",
           "title": "Implement src/commands/server.test.ts",
           "description": "New: Unit tests for daemon start/stop and PID logic",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.070Z",
+          "completedAt": "2026-05-18T20:26:36.346Z",
           "classification": "greenfield"
         },
         {
           "id": "T007",
           "title": "Implement src/commands/server-install.test.ts",
           "description": "New: Unit tests for macOS LaunchAgent plist management",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.076Z",
+          "completedAt": "2026-05-18T20:26:36.349Z",
           "classification": "greenfield"
         },
         {
           "id": "T008",
           "title": "Implement src/server/routes/health.test.ts",
           "description": "New: Unit tests for health route",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.087Z",
+          "completedAt": "2026-05-18T20:26:36.360Z",
           "classification": "greenfield"
         },
         {
           "id": "T009",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T19:20:13.097Z",
+          "completedAt": "2026-05-18T20:26:36.372Z",
           "classification": "noop"
         },
         {
           "id": "T025",
           "title": "Implement src/server/sandbox.ts",
           "description": "DELETE: Docker container lifecycle — never used",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-18T20:26:36.382Z"
         },
         {
           "id": "T026",
           "title": "Implement src/server/docker.ts",
           "description": "MODIFY: Keep `ensureDocker(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-18T20:26:36.387Z"
         },
         {
           "id": "T027",
           "title": "Implement src/server/context.ts",
           "description": "DELETE: Context compilation — ship-orchestrator owns this",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-18T20:26:36.391Z"
         },
         {
           "id": "T028",
           "title": "Implement src/server/dispatch-orchestrator.ts",
           "description": "DELETE: Server-side dispatch queue — ship-orchestrator owns this",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-18T20:26:36.396Z"
         },
         {
           "id": "T029",
           "title": "Implement src/server/git-manager.ts",
           "description": "DELETE: Server-side git lifecycle — ship-orchestrator owns this",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-18T20:26:36.400Z"
         },
         {
           "id": "T030",
           "title": "Implement src/server/routes/dispatch.ts",
           "description": "MODIFY: Remove sandbox dispatch endpoints, keep run-tracking POST",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-18T20:26:36.405Z"
         }
       ],
       "sp_estimate": 0,
