@@ -18,6 +18,12 @@ import { parsePlan } from "../utils/parser.js";
 import { contentHash, loadTaskState, saveTaskState } from "../utils/state.js";
 import type { Task, TaskState } from "../utils/state.js";
 
+import {
+  getCurrentBranch,
+  getCurrentCommit,
+  getDiffStats,
+} from "../utils/git.js";
+import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -116,6 +122,7 @@ Examples:
           Phase: paddedPhase || "All",
         });
         const startTime = Date.now();
+        const startedAt = new Date().toISOString();
 
         // Guard: refuse to overwrite without --force or --reconcile
         if (fs.existsSync(tasksPath) && !opts.force && !opts.reconcile) {
@@ -535,6 +542,47 @@ Examples:
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           success("define tasks", durationS);
+
+          // Write Execution Manifest (ADR-003)
+          try {
+            const finishedAt = new Date().toISOString();
+            const gitCommit = getCurrentCommit(projectRoot);
+            const gitBranch = getCurrentBranch(projectRoot);
+            const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+              projectRoot,
+              `${gitCommit}~1`,
+            );
+
+            const manifestPhase = paddedPhase || "all";
+            const manifestId = generateRunId(startedAt, "define", manifestPhase);
+
+            const config = loadConfig(projectRoot);
+            const backend = config.agents.define;
+
+            writeManifest(featureDir, {
+              runId: manifestId,
+              feature,
+              phase: manifestPhase,
+              command: "define tasks",
+              agent: backend,
+              model: "unknown",
+              startedAt,
+              finishedAt,
+              durationS,
+              exitCode: 0,
+              attempt: 1,
+              filesChanged,
+              linesAdded,
+              linesDeleted,
+              gitCommit,
+              gitBranch,
+              digest: [],
+            });
+          } catch (manifestError) {
+            console.warn(
+              `Warning: Could not write execution manifest: ${manifestError}`,
+            );
+          }
 
           const planStore = new PlanStore();
           planStore.handleDefineComplete({

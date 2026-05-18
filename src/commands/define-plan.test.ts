@@ -3,37 +3,49 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { planCommand } from "./define-plan.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
-import { loadConfig } from "../utils/config.js";
-import { writeManifest } from "../utils/manifest.js";
+
+const { mockExecuteWorkflow, mockLoadConfig, mockWriteManifest, mockGetDiffStats } = vi.hoisted(() => ({
+  mockExecuteWorkflow: vi.fn().mockResolvedValue({
+    summary: "Success",
+    intents: [],
+    summaries: [],
+  }),
+  mockLoadConfig: vi.fn().mockReturnValue({
+    agents: {
+      define: "gemini",
+      implement: "claude",
+    },
+  }),
+  mockWriteManifest: vi.fn(),
+  mockGetDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+}));
 
 vi.mock("../plugins/workflow-runtime.js", () => ({
-  WorkflowRuntime: vi.fn().mockImplementation(() => ({
-    executeWorkflow: vi.fn().mockResolvedValue({
-      summary: "Success",
-      intents: [],
-      summaries: [],
-    }),
-  })),
+  WorkflowRuntime: class {
+    executeWorkflow = mockExecuteWorkflow;
+  },
 }));
 
 vi.mock("../utils/config.js", () => ({
-  loadConfig: vi.fn().mockReturnValue({
-    agents: { define: "gemini", implement: "claude" },
-  }),
+  loadConfig: mockLoadConfig,
 }));
 
 vi.mock("../utils/manifest.js", () => ({
-  writeManifest: vi.fn(),
+  writeManifest: mockWriteManifest,
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
 }));
 
 vi.mock("../utils/git.js", () => ({
   getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
   getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
-  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+  getDiffStats: mockGetDiffStats,
 }));
+
+vi.mock("../utils/output.js", () => ({
+  readStdin: vi.fn().mockResolvedValue(""),
+}));
+
+import { planCommand } from "./define-plan.js";
 
 describe("define-plan (Phase 9/12)", () => {
   let tempDir: string;
@@ -46,12 +58,27 @@ describe("define-plan (Phase 9/12)", () => {
     fs.mkdirSync(specDir, { recursive: true });
     fs.writeFileSync(path.join(specDir, "spec.md"), "# Spec");
 
+    // Create a mock .gwrkrc.json
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({
+      project: { name: "test-project" },
+      agents: { define: "gemini", implement: "claude" }
+    }));
+
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     program = new Command();
     program.addCommand(planCommand);
+    
+    mockExecuteWorkflow.mockClear();
+    mockWriteManifest.mockClear();
+    mockLoadConfig.mockClear().mockReturnValue({
+      agents: {
+        define: "gemini",
+        implement: "claude",
+      },
+    });
   });
 
   afterEach(() => {
@@ -63,7 +90,7 @@ describe("define-plan (Phase 9/12)", () => {
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
 
     const featureDir = path.join(tempDir, "specs", "test-feature");
-    expect(writeManifest).toHaveBeenCalledWith(
+    expect(mockWriteManifest).toHaveBeenCalledWith(
       featureDir,
       expect.objectContaining({
         command: "define plan",
@@ -75,9 +102,8 @@ describe("define-plan (Phase 9/12)", () => {
   it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12) (RED)", async () => {
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
 
-    const runtimeInstance = vi.mocked(WorkflowRuntime).mock.results[0].value;
-    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
-      "gwrk-define-plan",
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan",
       expect.anything(),
       expect.objectContaining({
         quiet: true,
