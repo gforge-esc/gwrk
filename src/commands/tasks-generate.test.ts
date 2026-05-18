@@ -51,13 +51,17 @@ describe("tasks-generate (Phase 9)", () => {
     // Create a mock config
     fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "test-feature" }, agents: { define: "gemini", implement: "gemini" } }));
 
-    // Create a plan.md
+    // Create a plan.md that parsePlan can understand
     fs.writeFileSync(path.join(specDir, "plan.md"), `
 # Plan: test-feature
 
 ### Phase 1: Core
-#### Tasks
-- Task 1: Create file1.ts
+**Files (1):**
+- \`file1.ts\` (Description)
+
+#### Test Strategy
+Implement test strategy for Phase 1
+
 #### Done When
 - \`test -f file1.ts\`
 `);
