@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, expect } from 'vitest';
 
-describe("FR-H11: Prevent double notification", () => {
-  it("US-H05: Verify the slack webhook mock is called exactly once with compression metrics (TR-H08)", async () => {
-    throw new Error("Not implemented");
+describe('FR-H08: Branch Cleanup', () => {
+  it('TR-H05: Verify branch deletion command is invoked', async () => {
+    throw new Error('Not implemented');
   });
 });
 
-describe("FR-H08: Delete phase branch E2E", () => {
-  it("US-H06: Verify branch deletion command is invoked (TR-H05)", async () => {
-    throw new Error("Not implemented");
+describe('FR-H07, FR-H11: Done, Done! Notification', () => {
+  it('TR-H08: Verify the slack webhook mock is called exactly once with compression metrics', async () => {
+    throw new Error('Not implemented');
   });
 });

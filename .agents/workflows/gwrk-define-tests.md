@@ -14,17 +14,55 @@ description: Generate red test files from spec, plan, and contracts before imple
 - Do NOT run `/implement`. This workflow ends with committed red tests.
 - A separate agent runs `/implement` to turn them green.
 
-**FILE WRITE GUARDRAIL — ABSOLUTE RULE:**
-- You MAY create or modify: `*.test.ts` files, `gap-matrix.md`, files in `contracts/`
-- You MUST NOT modify any production source file (`*.ts` without `.test.`). This includes:
-  - `src/db/index.ts`, `src/server/*.ts`, `src/commands/*.ts`, `src/engine/*.ts`, `src/utils/*.ts`
-  - ANY file that is not a test file, gap-matrix, or contract
-- If a test needs a type or function that doesn't exist yet, import it anyway and let it fail to compile.
-  A compilation error IS the RED signal — that's honest. Replacing the production file with a stub is DESTRUCTIVE.
-- If you need shared test helpers (mocks, factories), create them in a `__test-support__/` directory
-  alongside the test file, NEVER by modifying the production module.
+<file_write_guardrail>
+**FILE WRITE GUARDRAIL — ABSOLUTE RULE**
 
-**VIOLATION OF THIS RULE IS A FIRING OFFENSE.** It destroys production code that took weeks to build.
+There are TWO categories of actions, with different safety levels:
+
+**SAFE actions (proceed without hesitation):**
+- CREATE a new `*.test.ts` file that does not yet exist
+- CREATE or UPDATE `gap-matrix.md`
+- CREATE or UPDATE files in `contracts/`
+- ADD new `describe`/`it` blocks to an EXISTING test file that ONLY contains RED stubs (`throw new Error('Not implemented')`)
+
+**UNSAFE actions (PROHIBITED — will destroy production work):**
+- OVERWRITE an existing `*.test.ts` file that contains working test implementations (mocks, assertions, setup/teardown logic beyond `throw new Error`)
+- DELETE or REPLACE existing `describe`/`it` blocks that have real assertion logic
+- MODIFY any production source file (`*.ts` without `.test.`) — this includes `src/db/*.ts`, `src/server/*.ts`, `src/commands/*.ts`, `src/engine/*.ts`, `src/utils/*.ts`
+
+**MANDATORY PRE-WRITE CHECK — Execute this BEFORE writing any test file:**
+```bash
+# Step 1: Check if the file exists
+if [ -f "$TEST_FILE" ]; then
+  # Step 2: Count lines that are NOT imports, describes, or throw stubs
+  IMPL_LINES=$(grep -cvE '^(import |describe|it\(|throw new Error|expect\(.*\)\.toBeDefined|\s*\}|\s*\)|\s*$)' "$TEST_FILE")
+  if [ "$IMPL_LINES" -gt 5 ]; then
+    echo "BLOCKED: $TEST_FILE has $IMPL_LINES lines of implementation. APPEND ONLY."
+    # DO NOT OVERWRITE. Only APPEND new describe/it blocks for missing FRs.
+  fi
+fi
+```
+
+If the file exists and has working implementations:
+1. READ the existing file first
+2. IDENTIFY which FR-###/US-### are already covered
+3. APPEND only the MISSING test cases as new `describe`/`it` blocks
+4. Do NOT reorganize, rename, or restructure existing blocks
+
+<compliant_example>
+**COMPLIANT**: File `src/db/runs.test.ts` exists with 179 lines of working tests covering FR-014, FR-015.
+Phase 5 needs tests for FR-H03. Agent APPENDS a new `describe('FR-H03: ...')` block at the end.
+Existing 179 lines are untouched.
+
+**NON-COMPLIANT**: Agent replaces the entire file with 13 lines of `throw new Error('Not implemented')` stubs.
+This destroys 179 lines of working tests. This is a FIRING OFFENSE.
+</compliant_example>
+
+If a test needs a type or function that doesn't exist yet, import it anyway and let it fail to compile.
+A compilation error IS the RED signal — that's honest. Replacing the production file with a stub is DESTRUCTIVE.
+If you need shared test helpers (mocks, factories), create them in a `__test-support__/` directory
+alongside the test file, NEVER by modifying the production module.
+</file_write_guardrail>
 </scope_constraints>
 
 ## Purpose
@@ -216,9 +254,19 @@ Before reporting, verify:
 - ❌ Leaving ghost tests (`.skip` with no plan to delete or migrate)
 - ❌ Writing async tests that rely on `setTimeout` instead of `vi.waitFor()`
 - ❌ Testing self-scheduling systems without controlling the scheduler
+- ❌ **OVERWRITING existing test files that have working implementations** — APPEND new blocks only
+- ❌ **Replacing 100+ lines of working test code with stub `throw new Error` blocks** — this is destruction, not definition
 
 ## Next Step
 
 After red tests are committed:
 - Run `/implement {feature_dir} {phase_number}` to turn them green
 - `/review-code` will verify both gate results AND test results
+
+<critical_instruction_repeat>
+**REMINDER — HIGHEST PRIORITY RULE (repeated for long-context adherence):**
+NEVER overwrite an existing test file that contains working implementations.
+If a test file exists and has real mocks, assertions, setup/teardown logic:
+→ READ it first, IDENTIFY missing coverage, APPEND new blocks only.
+Violation of this rule destroys production-tested code and is treated as a critical failure.
+</critical_instruction_repeat>
