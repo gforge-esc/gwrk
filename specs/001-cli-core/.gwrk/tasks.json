@@ -459,9 +459,10 @@
           "id": "T038",
           "title": "Implement src/commands/tasks.ts",
           "description": "MODIFY",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T038-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:12:18.400Z",
           "classification": "greenfield"
         },
         {
