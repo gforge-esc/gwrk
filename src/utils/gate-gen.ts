@@ -349,7 +349,11 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
         cells;
 
       const testType = testTypeRaw as GapMatrixRow["testType"];
-      if (!["unit", "functional", "integration", "e2e", "structural"].includes(testType)) {
+      if (
+        !["unit", "functional", "integration", "e2e", "structural"].includes(
+          testType,
+        )
+      ) {
         return null;
       }
 

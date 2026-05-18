@@ -490,7 +490,9 @@ export class ShipOrchestrator extends EventEmitter {
               task.status = "open";
               delete task.completedAt;
               reopenedCount++;
-              console.log(`  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`);
+              console.log(
+                `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
+              );
               // Append gate failure to description for next implement attempt
               const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
               task.description = (task.description || "") + failNote;
@@ -500,7 +502,9 @@ export class ShipOrchestrator extends EventEmitter {
           }
           if (reopenedCount > 0) {
             saveTaskState(featureDir, postFlightState);
-            console.log(`  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`);
+            console.log(
+              `  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`,
+            );
           }
         }
 

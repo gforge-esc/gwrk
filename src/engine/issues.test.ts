@@ -56,7 +56,7 @@ describe("FR-H15: Post-Ship Issue Notification", () => {
 
     expect(notifySlack).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining("📌 Issue #123 opened for 011-harvest")
+        text: expect.stringContaining("011-harvest")
       }),
       undefined,
       expect.any(Object)

@@ -22,7 +22,9 @@ function buildAcToFeatureMap(): Record<string, string> {
   if (!fs.existsSync(SPECS_DIR)) return map;
 
   const features = fs.readdirSync(SPECS_DIR).filter((f) => {
-    return fs.statSync(path.join(SPECS_DIR, f)).isDirectory() && /^\d{3}-/.test(f);
+    return (
+      fs.statSync(path.join(SPECS_DIR, f)).isDirectory() && /^\d{3}-/.test(f)
+    );
   });
 
   for (const feature of features) {
@@ -33,7 +35,11 @@ function buildAcToFeatureMap(): Record<string, string> {
     const lines = content.split("\n");
 
     for (const line of lines) {
-      if (line.trim().startsWith("|") && !line.includes("| AC |") && !line.includes("|----|")) {
+      if (
+        line.trim().startsWith("|") &&
+        !line.includes("| AC |") &&
+        !line.includes("|----|")
+      ) {
         const cells = line.split("|").map((c) => c.trim());
         if (cells.length > 2) {
           const ac = cells[1];
@@ -47,12 +53,20 @@ function buildAcToFeatureMap(): Record<string, string> {
   return map;
 }
 
-function runVitest(): { successes: number; failures: TestFailure[]; total: number } {
+function runVitest(): {
+  successes: number;
+  failures: TestFailure[];
+  total: number;
+} {
   console.log("Running pnpm vitest run --reporter json...");
   const tmpFile = path.join(os.tmpdir(), `vitest-report-${Date.now()}.json`);
-  
+
   try {
-    execSync(`pnpm vitest run --reporter json --outputFile ${tmpFile}`, { encoding: "utf-8", maxBuffer: 1024 * 1024 * 10, stdio: "ignore" });
+    execSync(`pnpm vitest run --reporter json --outputFile ${tmpFile}`, {
+      encoding: "utf-8",
+      maxBuffer: 1024 * 1024 * 10,
+      stdio: "ignore",
+    });
   } catch (error: any) {
     // vitest exits with 1 when tests fail, which is expected
   }
@@ -141,7 +155,9 @@ function main() {
   }
 
   console.log("\n==================================================");
-  console.log(`❌ TEST FAILURES BY FEATURE (${failures.length} failed / ${total} total)`);
+  console.log(
+    `❌ TEST FAILURES BY FEATURE (${failures.length} failed / ${total} total)`,
+  );
   console.log("==================================================\n");
 
   const sortedFeatures = Object.keys(grouped).sort((a, b) => {
