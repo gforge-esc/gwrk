@@ -125,86 +125,6 @@
       "contractRefs": []
     },
     {
-      "taskId": "T025",
-      "title": "Implement src/server/sandbox.ts",
-      "description": "DELETE: Docker container lifecycle — never used",
-      "primaryFile": "src/server/sandbox.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/sandbox.md",
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T026",
-      "title": "Implement src/server/docker.ts",
-      "description": "MODIFY: Keep `ensureDocker(",
-      "primaryFile": "src/server/docker.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "ensureDocker"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T027",
-      "title": "Implement src/server/context.ts",
-      "description": "DELETE: Context compilation — ship-orchestrator owns this",
-      "primaryFile": "src/server/context.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/context.md",
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T028",
-      "title": "Implement src/server/dispatch-orchestrator.ts",
-      "description": "DELETE: Server-side dispatch queue — ship-orchestrator owns this",
-      "primaryFile": "src/server/dispatch-orchestrator.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/dispatch.md",
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T029",
-      "title": "Implement src/server/git-manager.ts",
-      "description": "DELETE: Server-side git lifecycle — ship-orchestrator owns this",
-      "primaryFile": "src/server/git-manager.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/git-manager.md",
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T030",
-      "title": "Implement src/server/routes/dispatch.ts",
-      "description": "MODIFY: Remove sandbox dispatch endpoints, keep run-tracking POST",
-      "primaryFile": "src/server/routes/dispatch.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/dispatch.md",
-        "contracts/sandbox.md",
-        "contracts/server.md"
-      ]
-    },
-    {
       "taskId": "T010",
       "title": "Implement src/server/lifecycle.ts",
       "description": "New: Heartbeat drift monitor for sleep/wake detection",
@@ -359,45 +279,6 @@
       "contractRefs": []
     },
     {
-      "taskId": "T031",
-      "title": "Implement src/server/slack-commands.ts",
-      "description": "MODIFY: Wire `/gwrk status` to `gwrk plan status` DAG output, `/gwrk ship` to trigger dispatch",
-      "primaryFile": "src/server/slack-commands.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/dispatch.md",
-        "contracts/server.md",
-        "contracts/status.md"
-      ]
-    },
-    {
-      "taskId": "T032",
-      "title": "Implement src/server/slack-home.ts",
-      "description": "MODIFY: Home tab shows: plan DAG status, pending blessings, active ships — not raw data dump\n\nREVIEW FAIL (code): Test failure / String mismatch — US-003.\n  WHERE: src/server/slack-home.ts\n  EXPECTED: Home tab content should match test expectations (or update tests).\n  ACTUAL: Test 'builds the home tab with all expected sections' fails.\n  FIX: Align slack-home.ts content with slack-home.test.ts.\n  REF: plan.md Phase 3 > slack-home.ts",
-      "primaryFile": "src/server/slack-home.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md",
-        "contracts/status.md"
-      ]
-    },
-    {
-      "taskId": "T033",
-      "title": "Implement src/engine/plan-store.ts",
-      "description": "MODIFY: Add `advanceFeature(\n\nREVIEW FAIL (code): NOT IMPLEMENTED — T036.\n  WHERE: src/engine/plan-store.ts\n  EXPECTED: Method advanceFeature(featureId) should be implemented.\n  ACTUAL: Method is missing.\n  FIX: Implement advanceFeature(featureId) to calculate next phase from current state.\n  REF: tasks.json T036",
-      "primaryFile": "src/engine/plan-store.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "advanceFeature"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
       "taskId": "T022",
       "title": "Implement src/db/migrations/0001_runs.sql",
       "description": "New: Table schema for `runs`",
@@ -424,67 +305,6 @@
     {
       "taskId": "T024",
       "title": "Implement test strategy for Phase 4",
-      "description": "Implement all unit and integration tests defined in the phase test strategy.",
-      "primaryFile": null,
-      "fileType": "unknown",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T034",
-      "title": "Implement src/commands/define.ts",
-      "description": "MODIFY: Emit `define:spec:ready` and `define:plan:ready` events after successful agent dispatch",
-      "primaryFile": "src/commands/define.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/dispatch.md"
-      ]
-    },
-    {
-      "taskId": "T035",
-      "title": "Implement src/server/ship-bridge.ts",
-      "description": "MODIFY: Also handle define events — build spec/plan-ready messages with Approve/Revise buttons",
-      "primaryFile": "src/server/ship-bridge.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T036",
-      "title": "Implement src/server/slack-actions.ts",
-      "description": "MODIFY: Add `approve_spec` and `approve_plan` action handlers",
-      "primaryFile": "src/server/slack-actions.ts",
-      "fileType": "typescript",
-      "identifiers": [
-        "approve_spec",
-        "approve_plan"
-      ],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T037",
-      "title": "Implement src/server/slack.ts",
-      "description": "MODIFY: Add Slack reconnection on wake — currently drops connection after sleep",
-      "primaryFile": "src/server/slack.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": [
-        "contracts/server.md"
-      ]
-    },
-    {
-      "taskId": "T038",
-      "title": "Implement test strategy for Phase 5",
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,
       "fileType": "unknown",
