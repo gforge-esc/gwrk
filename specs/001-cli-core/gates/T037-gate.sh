@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T037 — Execution Manifest Utility
+# Gate: T037 — Execution Manifest generation
 # Generated from gap-matrix.md (deterministic vitest gate)
 
 # ── BEHAVIORAL: Tests must pass ──
-pnpm vitest run src/utils/manifest.test.ts -t "Execution Manifest Utility" --reporter=verbose \
+pnpm vitest run src/utils/manifest.test.ts -t "US-019" --reporter=verbose \
   || { echo "FAIL: T037 — vitest failed for src/utils/manifest.test.ts" >&2; exit 1; }
 
 # ── HYGIENE: Source files must lint clean ──
