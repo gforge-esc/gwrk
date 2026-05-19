@@ -103,6 +103,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     vi.mocked(DefineOrchestrator).mockImplementation((config) => ({
       run: vi.fn().mockResolvedValue(0),
       runLoop: vi.fn().mockResolvedValue(0),
+      on: vi.fn(),
     }) as unknown as DefineOrchestrator);
 
     await defineCommand.parseAsync([

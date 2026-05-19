@@ -136,6 +136,7 @@ export class DefineOrchestrator extends EventEmitter {
         {
           agent: this.config.backend,
           projectRoot: this.config.cwd,
+          quiet: true,
         },
       );
 
@@ -154,6 +155,7 @@ export class DefineOrchestrator extends EventEmitter {
       const result = await this.runtime.executeWorkflow("gwrk-analyze", input, {
         agent: this.config.backend,
         projectRoot: this.config.cwd,
+        quiet: true,
       });
 
       console.log(`  ${result.summary}`);
@@ -193,6 +195,7 @@ export class DefineOrchestrator extends EventEmitter {
           {
             agent: this.config.backend,
             projectRoot: this.config.cwd,
+            quiet: true,
           },
         );
       }
