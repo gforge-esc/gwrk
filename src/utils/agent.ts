@@ -242,7 +242,7 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
     }
 
     // ── Stall protection: exit+timeout fallback + overall timeout ──
-    const AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+    const AGENT_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour (matches config.agents.timeoutMs default)
     const CLOSE_GRACE_MS = 5_000; // 5s after exit for close to fire
 
     let resolved = false;
