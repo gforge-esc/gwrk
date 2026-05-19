@@ -42,7 +42,9 @@ vi.mock("../utils/git.js", () => ({
 }));
 
 vi.mock("../utils/output.js", () => ({
-  readStdin: vi.fn().mockResolvedValue(""),
+  readStdin: vi.fn(async () => ""),
+  resolveFormat: vi.fn(),
+  createOutput: vi.fn(),
 }));
 
 import { specifyCommand } from "./specify.js";
@@ -71,6 +73,13 @@ describe("specifyCommand (Phase 9/12)", () => {
 
     program = new Command();
     program.addCommand(specifyCommand);
+
+    mockLoadConfig.mockClear().mockReturnValue({
+      agents: {
+        define: "gemini",
+        implement: "claude",
+      },
+    });
   });
 
   afterEach(() => {

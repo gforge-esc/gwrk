@@ -40,6 +40,10 @@ vi.mock("../utils/manifest.js", () => ({
   writeManifest: vi.fn(),
 }));
 
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn().mockReturnValue(""),
+}));
+
 describe("testsGenerateCommand: Output Contract Fix (Phase 11/12)", () => {
   let tempDir: string;
   let featureDir: string;

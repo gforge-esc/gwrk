@@ -42,7 +42,9 @@ vi.mock("../utils/git.js", () => ({
 }));
 
 vi.mock("../utils/output.js", () => ({
-  readStdin: vi.fn().mockResolvedValue(""),
+  readStdin: vi.fn(async () => ""),
+  resolveFormat: vi.fn(),
+  createOutput: vi.fn(),
 }));
 
 import { planCommand } from "./define-plan.js";
