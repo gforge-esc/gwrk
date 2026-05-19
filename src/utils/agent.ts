@@ -67,30 +67,33 @@ export async function buildCommand(
   };
 }
 
+/** Format elapsed stamp: "HH:MM:SS +MM:SS" */
+function formatStamp(startEpoch: number): string {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
+  const eMin = Math.floor(elapsed / 60);
+  const eSec = elapsed % 60;
+  return `${hh}:${mm}:${ss} +${String(eMin).padStart(2, "0")}:${String(eSec).padStart(2, "0")}`;
+}
+
 /**
  * Prefixes each output line with "HH:MM:SS +MM:SS" (wall clock + elapsed).
- * Also writes raw (un-timestamped) line to the log file.
+ * Writes timestamped output to both terminal and log file.
  */
 function stampLine(
   line: string,
   startEpoch: number,
   logStream?: fs.WriteStream,
 ): void {
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
-
-  const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
-  const eMin = Math.floor(elapsed / 60);
-  const eSec = elapsed % 60;
-  const stamp = `${hh}:${mm}:${ss} +${String(eMin).padStart(2, "0")}:${String(eSec).padStart(2, "0")}`;
-
+  const stamp = formatStamp(startEpoch);
   process.stdout.write(`${DIM}${stamp}${RESET}  ${line}\n`);
 
-  // Tee raw output to log file
+  // Tee timestamped output to log file (plain text, no ANSI)
   if (logStream) {
-    logStream.write(`${line}\n`);
+    logStream.write(`[${stamp}] ${line}\n`);
   }
 }
 
@@ -209,10 +212,10 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
         return;
       }
 
-      // Quiet mode: write to log only, skip stdout
+      // Quiet mode: write timestamped line to log only, skip stdout
       if (opts.quiet) {
         if (logStream) {
-          logStream.write(`${line}\n`);
+          logStream.write(`[${formatStamp(startEpoch)}] ${line}\n`);
         }
         return;
       }
@@ -238,21 +241,31 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       rlErr.on("line", (line) => processLine(line, "stderr"));
     }
 
-    child.on("close", (code) => {
+    // ── Stall protection: exit+timeout fallback + overall timeout ──
+    const AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+    const CLOSE_GRACE_MS = 5_000; // 5s after exit for close to fire
+
+    let resolved = false;
+    const finish = (code: number, reason?: string) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(overallTimeout);
+
       if (spinnerInterval) {
         clearInterval(spinnerInterval);
-        process.stdout.write("\r\x1b[K"); // Clear spinner line
+        process.stdout.write("\r\x1b[K");
       }
       const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
       const mins = Math.floor(elapsed / 60);
       const secs = elapsed % 60;
       logStream.write(`\n# [END] ${new Date().toISOString()}\n`);
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
-      logStream.write(`# Exit Code : ${code ?? 1}\n`);
+      logStream.write(`# Exit Code : ${code}\n`);
+      if (reason) logStream.write(`# Resolved  : ${reason}\n`);
       logStream.end();
 
       if (opts.quiet) {
-        const status = (code ?? 1) === 0 ? "✓" : "✗";
+        const status = code === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
         process.stdout.write(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
@@ -260,22 +273,53 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       }
 
       resolve({
-        exitCode: code ?? 1,
+        exitCode: code,
         logPath,
         stdout: stdoutLines.join("\n"),
         stderr: stderrLines.join("\n"),
       });
+    };
+
+    // Primary: resolve on close (normal path — all stdio drained)
+    child.on("close", (code) => {
+      finish(code ?? 1, "close");
     });
+
+    // Fallback: if exit fires but close doesn't within grace period,
+    // force-drain stdio and resolve. This prevents the FM-5 hang where
+    // readline holds FDs open after the process has already exited.
+    child.on("exit", (code) => {
+      setTimeout(() => {
+        if (!resolved) {
+          logStream.write(
+            "# [STALL] close event did not fire after exit — forcing resolution\n",
+          );
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(code ?? 1, "exit+timeout");
+        }
+      }, CLOSE_GRACE_MS);
+    });
+
+    // Overall timeout: kill the agent if it exceeds the limit
+    const overallTimeout = setTimeout(() => {
+      if (!resolved) {
+        logStream.write(
+          `\n# [TIMEOUT] Agent exceeded ${AGENT_TIMEOUT_MS / 1000}s limit — killing\n`,
+        );
+        child.kill("SIGTERM");
+        setTimeout(() => {
+          if (!resolved) {
+            child.kill("SIGKILL");
+            finish(124, "timeout"); // 124 = GNU timeout convention
+          }
+        }, 5000);
+      }
+    }, AGENT_TIMEOUT_MS);
 
     child.on("error", () => {
       logStream.write("\n# [ERROR] Agent process failed to start\n");
-      logStream.end();
-      resolve({
-        exitCode: 1,
-        logPath,
-        stdout: stdoutLines.join("\n"),
-        stderr: stderrLines.join("\n"),
-      });
+      finish(1, "error");
     });
   });
 }
