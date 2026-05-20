@@ -30,3 +30,5 @@ lint-report.txt
 # R004: Personal shell scripts — not part of gwrk distribution
 scripts/dev/
 .gwrk/dispatches.jsonl
+
+.antigravitycli/
