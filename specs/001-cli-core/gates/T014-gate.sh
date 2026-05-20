@@ -1,16 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T014 — Implement src/commands/analyze.ts
 
-# NOTE: Phase 3 says analyze is an internal stage, possibly merged into define.ts.
-# However, task T014 specifically targets src/commands/analyze.ts.
+test -f "src/commands/analyze.ts" || { echo "FAIL: T014 — file not found: src/commands/analyze.ts" >&2; exit 1; }
+grep -q "import" "src/commands/analyze.ts" || grep -q "export" "src/commands/analyze.ts" || { echo "FAIL: T014 — src/commands/analyze.ts missing import/export" >&2; exit 1; }
 
-# Gate passes if the file is NOT present, verifying surface hardening (Phase 08).
-
-if [ -f src/commands/analyze.ts ]; then
-  echo "FAIL: T014 — src/commands/analyze.ts still exists (should be removed for surface hardening)" >&2
-  exit 1
-fi
-
-echo "PASS: T014 — src/commands/analyze.ts is removed (Surface Hardened)"
+echo "PASS: T014 — Implement src/commands/analyze.ts"

@@ -1,12 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T059 — Implement src/commands/tasks-generate.ts (quiet: true)
+# Gate: T059 — Quiet output parity (tasks)
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/commands/tasks-generate.ts \
-  || { echo "FAIL: T059 — file not found: src/commands/tasks-generate.ts" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/tasks-generate.test.ts -t "US-026" --reporter=verbose \
+  || { echo "FAIL: T059 — vitest failed for src/commands/tasks-generate.test.ts" >&2; exit 1; }
 
-grep -q 'runtime.executeWorkflow' src/commands/tasks-generate.ts \
-  || { echo "FAIL: T059 — src/commands/tasks-generate.ts missing 'runtime.executeWorkflow'" >&2; exit 1; }
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/tasks-generate.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T059 — lint errors in src/commands/tasks-generate.ts" >&2; exit 1; }
 
-echo "PASS: T059 — Implement src/commands/tasks-generate.ts"
+echo "PASS: T059 — tests pass + lint clean"

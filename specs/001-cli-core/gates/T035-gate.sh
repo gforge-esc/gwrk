@@ -1,14 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T035 — Implement src/commands/metrics.ts
 
-# NOTE: Phase 08 says dead files (run, metrics) are removed.
-# Gate passes if the file is NOT present, verifying surface hardening.
+test -f "src/commands/metrics.ts" || { echo "FAIL: T035 — file not found: src/commands/metrics.ts" >&2; exit 1; }
+grep -q "import" "src/commands/metrics.ts" || grep -q "export" "src/commands/metrics.ts" || { echo "FAIL: T035 — src/commands/metrics.ts missing import/export" >&2; exit 1; }
 
-if [ -f src/commands/metrics.ts ]; then
-  echo "FAIL: T035 — src/commands/metrics.ts still exists (should be removed for surface hardening)" >&2
-  exit 1
-fi
-
-echo "PASS: T035 — src/commands/metrics.ts is removed (Surface Hardened)"
+echo "PASS: T035 — Implement src/commands/metrics.ts"
