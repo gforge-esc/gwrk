@@ -529,7 +529,10 @@ export class ShipOrchestrator extends EventEmitter {
 
         // POST-FLIGHT GATE VERIFICATION
         const postFlightResult = await this.runPostFlightGates(featureDir);
-        if (postFlightResult) return postFlightResult;
+        if (postFlightResult) {
+          // Post-flight failure → retry via same path as review NO-GO
+          return this.handleNoGo("IMPLEMENT");
+        }
 
         return { success: true, exitCode: 0 };
       }
