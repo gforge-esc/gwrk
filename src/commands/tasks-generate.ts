@@ -154,33 +154,18 @@ Examples:
             }
           }
 
-          // If --force, wipe existing gates (except AUTHORED ones)
+          // If --force, wipe ALL existing gates (including AUTHORED)
+          // --force means full regeneration; --reconcile preserves existing
           if (opts.force && fs.existsSync(gatesDir)) {
             const existing = fs
               .readdirSync(gatesDir)
               .filter((f) => f.match(/^T\d+-gate\.sh$/));
 
-            let removed = 0;
-            let preserved = 0;
-
-            for (const f of existing) {
-              const gatePath = path.join(gatesDir, f);
-              const content = fs.readFileSync(gatePath, "utf-8");
-              if (content.includes("# AUTHORED")) {
-                preserved++;
-                continue;
+            if (existing.length > 0) {
+              for (const f of existing) {
+                fs.unlinkSync(path.join(gatesDir, f));
               }
-              fs.unlinkSync(gatePath);
-              removed++;
-            }
-
-            if (removed > 0) {
-              console.log(`  Removing ${removed} old gate scripts...`);
-            }
-            if (preserved > 0) {
-              console.log(
-                `  Preserving ${preserved} # AUTHORED gate scripts...`,
-              );
+              console.log(`  Removing ${existing.length} gate scripts (--force)...`);
             }
           }
 

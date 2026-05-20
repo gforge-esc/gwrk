@@ -241,16 +241,7 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       rlErr.on("line", (line) => processLine(line, "stderr"));
     }
 
-    // ── Stall protection: exit+timeout fallback + overall timeout ──
-    const AGENT_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour (matches config.agents.timeoutMs default)
-    const CLOSE_GRACE_MS = 5_000; // 5s after exit for close to fire
-
-    let resolved = false;
-    const finish = (code: number, reason?: string) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(overallTimeout);
-
+    child.on("close", (code) => {
       if (spinnerInterval) {
         clearInterval(spinnerInterval);
         process.stdout.write("\r\x1b[K");
@@ -260,12 +251,11 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       const secs = elapsed % 60;
       logStream.write(`\n# [END] ${new Date().toISOString()}\n`);
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
-      logStream.write(`# Exit Code : ${code}\n`);
-      if (reason) logStream.write(`# Resolved  : ${reason}\n`);
+      logStream.write(`# Exit Code : ${code ?? 1}\n`);
       logStream.end();
 
       if (opts.quiet) {
-        const status = code === 0 ? "✓" : "✗";
+        const status = (code ?? 1) === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
         process.stdout.write(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
@@ -273,53 +263,22 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       }
 
       resolve({
-        exitCode: code,
+        exitCode: code ?? 1,
         logPath,
         stdout: stdoutLines.join("\n"),
         stderr: stderrLines.join("\n"),
       });
-    };
-
-    // Primary: resolve on close (normal path — all stdio drained)
-    child.on("close", (code) => {
-      finish(code ?? 1, "close");
     });
-
-    // Fallback: if exit fires but close doesn't within grace period,
-    // force-drain stdio and resolve. This prevents the FM-5 hang where
-    // readline holds FDs open after the process has already exited.
-    child.on("exit", (code) => {
-      setTimeout(() => {
-        if (!resolved) {
-          logStream.write(
-            "# [STALL] close event did not fire after exit — forcing resolution\n",
-          );
-          child.stdout?.destroy();
-          child.stderr?.destroy();
-          finish(code ?? 1, "exit+timeout");
-        }
-      }, CLOSE_GRACE_MS);
-    });
-
-    // Overall timeout: kill the agent if it exceeds the limit
-    const overallTimeout = setTimeout(() => {
-      if (!resolved) {
-        logStream.write(
-          `\n# [TIMEOUT] Agent exceeded ${AGENT_TIMEOUT_MS / 1000}s limit — killing\n`,
-        );
-        child.kill("SIGTERM");
-        setTimeout(() => {
-          if (!resolved) {
-            child.kill("SIGKILL");
-            finish(124, "timeout"); // 124 = GNU timeout convention
-          }
-        }, 5000);
-      }
-    }, AGENT_TIMEOUT_MS);
 
     child.on("error", () => {
       logStream.write("\n# [ERROR] Agent process failed to start\n");
-      finish(1, "error");
+      logStream.end();
+      resolve({
+        exitCode: 1,
+        logPath,
+        stdout: stdoutLines.join("\n"),
+        stderr: stderrLines.join("\n"),
+      });
     });
   });
 }
