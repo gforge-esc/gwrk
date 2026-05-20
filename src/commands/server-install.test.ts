@@ -13,7 +13,6 @@ describe('US-008: Persistent Service Management', () => {
 
   describe('FR-012: Install Server', () => {
     it('writes LaunchAgent plist and loads via launchctl', async () => {
-      // This should fail because implementation throws Not implemented
       await expect(installServer()).resolves.not.toThrow();
       
       expect(fs.writeFileSync).toHaveBeenCalledWith(
@@ -21,14 +20,21 @@ describe('US-008: Persistent Service Management', () => {
         expect.stringContaining('RunAtLoad'),
         'utf8'
       );
-      expect(execSync).toHaveBeenCalledWith(expect.stringContaining('launchctl load'));
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining('launchctl load'),
+        expect.any(Object)
+      );
     });
   });
 
   describe('FR-013: Uninstall Server', () => {
     it('unloads via launchctl and removes plist', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
       await expect(uninstallServer()).resolves.not.toThrow();
-      expect(execSync).toHaveBeenCalledWith(expect.stringContaining('launchctl unload'));
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining('launchctl unload'),
+        expect.any(Object)
+      );
       expect(fs.unlinkSync).toHaveBeenCalledWith(expect.stringContaining('com.gwrk.server.plist'));
     });
 
@@ -39,16 +45,30 @@ describe('US-008: Persistent Service Management', () => {
   });
 
   describe('FR-014: Server Logs', () => {
-    it('streams log file with --follow', async () => {
-      // Should fail (Not implemented)
-      await expect(getLogs({ follow: true })).resolves.not.toThrow();
+    it('shows message if log file missing', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+      const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      await getLogs();
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('No log file found'));
+      spy.mockRestore();
     });
-  });
 
-  describe('FR-015: PID Authority', () => {
-    it('resolves PID from launchctl when installed', async () => {
-      // This is partially tested here but primarily in src/server/pid.test.ts
-      expect(true).toBe(true);
+    it('streams log file with --follow', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      await expect(getLogs({ follow: true })).resolves.not.toThrow();
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining('tail -f'),
+        expect.any(Object)
+      );
+    });
+
+    it('cats log file without follow', async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      await expect(getLogs()).resolves.not.toThrow();
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining('cat '),
+        expect.any(Object)
+      );
     });
   });
 });
