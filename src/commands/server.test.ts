@@ -8,6 +8,14 @@ import * as pidUtils from "../server/pid.js";
 import * as configUtils from "../utils/config.js";
 import { serverCommand } from "./server.js";
 
+vi.mock("../server/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../server/index.js")>();
+  return {
+    ...actual,
+    startServer: vi.fn(),
+  };
+});
+
 vi.mock("node:child_process", async () => {
   const actual =
     await vi.importActual<typeof import("node:child_process")>(
@@ -41,9 +49,8 @@ describe("serverCommand", () => {
       },
     });
 
-    vi.spyOn(server, "startServer").mockResolvedValue(
-      {} as unknown as Awaited<ReturnType<typeof server.startServer>>,
-    );
+    vi.spyOn(pidUtils, "readPid").mockReturnValue(undefined);
+    vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -54,7 +61,7 @@ describe("serverCommand", () => {
   describe("start", () => {
     it("should start the server in foreground if -f is provided", async () => {
       await serverCommand.parseAsync(["start", "-f"], { from: "user" });
-      expect(server.startServer).toHaveBeenCalled();
+      expect(vi.mocked(server.startServer)).toHaveBeenCalled();
     });
 
     it("should fail if server is already running", async () => {

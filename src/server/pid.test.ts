@@ -25,6 +25,7 @@ describe("FR-015: PID Authority", () => {
     expect(pid).toBe(99999);
     expect(execSync).toHaveBeenCalledWith(
       expect.stringContaining("launchctl list com.gwrk.server"),
+      expect.any(Object)
     );
   });
 
