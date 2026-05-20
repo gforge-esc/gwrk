@@ -1,8 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T050 — Feature-arg consistency
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/commands/define-plan.ts" || { echo "FAIL: T050 — file not found: src/commands/define-plan.ts" >&2; exit 1; }
-grep -q "import" "src/commands/define-plan.ts" || grep -q "export" "src/commands/define-plan.ts" || { echo "FAIL: T050 — src/commands/define-plan.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/cli.consistency.test.ts -t "US-023|FR-024" --reporter=verbose \
+  || { echo "FAIL: T050 — vitest failed for src/cli.consistency.test.ts" >&2; exit 1; }
 
-echo "PASS: T050 — Implement src/commands/define-plan.ts"
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
+
+echo "PASS: T050 — tests pass + lint clean"

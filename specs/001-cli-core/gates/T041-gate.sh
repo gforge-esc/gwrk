@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T041 — Workstation setup wizard (4 steps)
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/commands/setup.ts" || { echo "FAIL: T041 — file not found: src/commands/setup.ts" >&2; exit 1; }
-grep -q "import" "src/commands/setup.ts" || grep -q "export" "src/commands/setup.ts" || { echo "FAIL: T041 — src/commands/setup.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/setup.test.ts -t "US-021" --reporter=verbose \
+  || { echo "FAIL: T041 — vitest failed for src/commands/setup.test.ts" >&2; exit 1; }
 
-echo "PASS: T041 — Implement src/commands/setup.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/setup.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T041 — lint errors in src/commands/setup.ts" >&2; exit 1; }
+
+echo "PASS: T041 — tests pass + lint clean"

@@ -1,8 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T055 — CLI grammar governance
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "docs/governance/cli-grammar.md" || { echo "FAIL: T055 — file not found: docs/governance/cli-grammar.md" >&2; exit 1; }
-grep -q "#" "docs/governance/cli-grammar.md" || { echo "FAIL: T055 — docs/governance/cli-grammar.md missing header" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run tests/governance.test.ts -t "US-025|FR-026" --reporter=verbose \
+  || { echo "FAIL: T055 — vitest failed for tests/governance.test.ts" >&2; exit 1; }
 
-echo "PASS: T055 — Implement docs/governance/cli-grammar.md"
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
+
+echo "PASS: T055 — tests pass + lint clean"

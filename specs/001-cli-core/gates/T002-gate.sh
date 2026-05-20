@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T002 — Agent Specification
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "tsconfig.json" || { echo "FAIL: T002 — file not found: tsconfig.json" >&2; exit 1; }
-jq . "tsconfig.json" > /dev/null || { echo "FAIL: T002 — invalid JSON in tsconfig.json" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/specify.test.ts -t "US-002" --reporter=verbose \
+  || { echo "FAIL: T002 — vitest failed for src/commands/specify.test.ts" >&2; exit 1; }
 
-echo "PASS: T002 — Implement tsconfig.json"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/specify.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T002 — lint errors in src/commands/specify.ts" >&2; exit 1; }
+
+echo "PASS: T002 — tests pass + lint clean"

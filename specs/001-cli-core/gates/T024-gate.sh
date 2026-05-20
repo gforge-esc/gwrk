@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T024 — history.jsonl deprecation
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/utils/history.ts" || { echo "FAIL: T024 — file not found: src/utils/history.ts" >&2; exit 1; }
-grep -q "import" "src/utils/history.ts" || grep -q "export" "src/utils/history.ts" || { echo "FAIL: T024 — src/utils/history.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/utils/history.test.ts -t "FR-021" --reporter=verbose \
+  || { echo "FAIL: T024 — vitest failed for src/utils/history.test.ts" >&2; exit 1; }
 
-echo "PASS: T024 — Implement src/utils/history.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/utils/history.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T024 — lint errors in src/utils/history.ts" >&2; exit 1; }
+
+echo "PASS: T024 — tests pass + lint clean"

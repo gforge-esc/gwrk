@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T007 — Status Transition History
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/db/index.ts" || { echo "FAIL: T007 — file not found: src/db/index.ts" >&2; exit 1; }
-grep -q "import" "src/db/index.ts" || grep -q "export" "src/db/index.ts" || { echo "FAIL: T007 — src/db/index.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/utils/state.test.ts -t "US-007" --reporter=verbose \
+  || { echo "FAIL: T007 — vitest failed for src/utils/state.test.ts" >&2; exit 1; }
 
-echo "PASS: T007 — Implement src/db/index.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/utils/state.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T007 — lint errors in src/utils/state.ts" >&2; exit 1; }
+
+echo "PASS: T007 — tests pass + lint clean"

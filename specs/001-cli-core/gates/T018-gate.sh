@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T018 — CLI Surface Verification
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/utils/exec.ts" || { echo "FAIL: T018 — file not found: src/utils/exec.ts" >&2; exit 1; }
-grep -q "import" "src/utils/exec.ts" || grep -q "export" "src/utils/exec.ts" || { echo "FAIL: T018 — src/utils/exec.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/cli.test.ts -t "US-018" --reporter=verbose \
+  || { echo "FAIL: T018 — vitest failed for src/cli.test.ts" >&2; exit 1; }
 
-echo "PASS: T018 — Implement src/utils/exec.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/cli.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T018 — lint errors in src/cli.ts" >&2; exit 1; }
+
+echo "PASS: T018 — tests pass + lint clean"

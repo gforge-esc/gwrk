@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T012 — Ship Pillar (Agent implementation)
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/commands/specify.ts" || { echo "FAIL: T012 — file not found: src/commands/specify.ts" >&2; exit 1; }
-grep -q "import" "src/commands/specify.ts" || grep -q "export" "src/commands/specify.ts" || { echo "FAIL: T012 — src/commands/specify.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/implement.test.ts -t "US-012" --reporter=verbose \
+  || { echo "FAIL: T012 — vitest failed for src/commands/implement.test.ts" >&2; exit 1; }
 
-echo "PASS: T012 — Implement src/commands/specify.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/implement.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T012 — lint errors in src/commands/implement.ts" >&2; exit 1; }
+
+echo "PASS: T012 — tests pass + lint clean"

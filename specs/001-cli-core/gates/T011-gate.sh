@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T011 — Define Pillar (DUS loop)
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/commands/define.ts" || { echo "FAIL: T011 — file not found: src/commands/define.ts" >&2; exit 1; }
-grep -q "import" "src/commands/define.ts" || grep -q "export" "src/commands/define.ts" || { echo "FAIL: T011 — src/commands/define.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/define.test.ts -t "US-011" --reporter=verbose \
+  || { echo "FAIL: T011 — vitest failed for src/commands/define.test.ts" >&2; exit 1; }
 
-echo "PASS: T011 — Implement src/commands/define.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/define.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T011 — lint errors in src/commands/define.ts" >&2; exit 1; }
+
+echo "PASS: T011 — tests pass + lint clean"

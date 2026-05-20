@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T017 — Pulse Dashboard
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/utils/parser.ts" || { echo "FAIL: T017 — file not found: src/utils/parser.ts" >&2; exit 1; }
-grep -q "import" "src/utils/parser.ts" || grep -q "export" "src/utils/parser.ts" || { echo "FAIL: T017 — src/utils/parser.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/pulse.test.ts -t "US-017" --reporter=verbose \
+  || { echo "FAIL: T017 — vitest failed for src/commands/pulse.test.ts" >&2; exit 1; }
 
-echo "PASS: T017 — Implement src/utils/parser.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/pulse.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T017 — lint errors in src/commands/pulse.ts" >&2; exit 1; }
+
+echo "PASS: T017 — tests pass + lint clean"

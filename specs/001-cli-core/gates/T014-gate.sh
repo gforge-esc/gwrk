@@ -1,8 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T014 — Execution History Query
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/commands/analyze.ts" || { echo "FAIL: T014 — file not found: src/commands/analyze.ts" >&2; exit 1; }
-grep -q "import" "src/commands/analyze.ts" || grep -q "export" "src/commands/analyze.ts" || { echo "FAIL: T014 — src/commands/analyze.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/db/db.test.ts -t "US-014" --reporter=verbose \
+  || { echo "FAIL: T014 — vitest failed for src/db/db.test.ts" >&2; exit 1; }
 
-echo "PASS: T014 — Implement src/commands/analyze.ts"
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
+
+echo "PASS: T014 — tests pass + lint clean"

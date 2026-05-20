@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T010 — Effort Estimation
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/commands/db.ts" || { echo "FAIL: T010 — file not found: src/commands/db.ts" >&2; exit 1; }
-grep -q "import" "src/commands/db.ts" || grep -q "export" "src/commands/db.ts" || { echo "FAIL: T010 — src/commands/db.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/effort.test.ts -t "US-010" --reporter=verbose \
+  || { echo "FAIL: T010 — vitest failed for src/commands/effort.test.ts" >&2; exit 1; }
 
-echo "PASS: T010 — Implement src/commands/db.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/effort.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T010 — lint errors in src/commands/effort.ts" >&2; exit 1; }
+
+echo "PASS: T010 — tests pass + lint clean"

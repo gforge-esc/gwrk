@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T056 — define subcommands pass quiet: true
+# Gate: T056 — Quiet output parity (tests)
 # Generated from gap-matrix.md (deterministic vitest gate)
 
 # ── BEHAVIORAL: Tests must pass ──
-pnpm vitest run src/commands/tests-generate-contract-phase12.test.ts -t "FR-028" --reporter=verbose \
+pnpm vitest run src/commands/tests-generate-contract-phase12.test.ts -t "US-026" --reporter=verbose \
   || { echo "FAIL: T056 — vitest failed for src/commands/tests-generate-contract-phase12.test.ts" >&2; exit 1; }
 
 # ── HYGIENE: Source files must lint clean ──

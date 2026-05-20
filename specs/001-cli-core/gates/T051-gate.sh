@@ -1,8 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
+# Gate: T051 — define tests contract fix
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f "src/commands/tests-generate.ts" || { echo "FAIL: T051 — file not found: src/commands/tests-generate.ts" >&2; exit 1; }
-grep -q "import" "src/commands/tests-generate.ts" || grep -q "export" "src/commands/tests-generate.ts" || { echo "FAIL: T051 — src/commands/tests-generate.ts missing import/export" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/tests-generate-contract.test.ts -t "FR-027" --reporter=verbose \
+  || { echo "FAIL: T051 — vitest failed for src/commands/tests-generate-contract.test.ts" >&2; exit 1; }
 
-echo "PASS: T051 — Implement src/commands/tests-generate.ts"
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
+
+echo "PASS: T051 — tests pass + lint clean"
