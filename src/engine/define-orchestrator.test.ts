@@ -52,9 +52,18 @@ describe('DefineOrchestrator (FR-L25-003, FR-L25-004, US-013, TR-010)', () => {
       const exitCode = await orchestrator.run();
       
       expect(exitCode).toBe(0);
-      expect(mockExecuteWorkflow).toHaveBeenCalledWith("gwrk-plan-to-tasks", expect.anything(), expect.anything());
-      expect(mockExecuteWorkflow).toHaveBeenCalledWith("gwrk-analyze", expect.anything(), expect.anything());
-      expect(mockExecuteWorkflow).toHaveBeenCalledWith("gwrk-define-tests", expect.anything(), expect.anything());
+      expect(mockExecuteWorkflow).toHaveBeenCalledWith("gwrk-plan-to-tasks", expect.anything(), expect.objectContaining({ quiet: true }));
+      expect(mockExecuteWorkflow).toHaveBeenCalledWith("gwrk-analyze", expect.anything(), expect.objectContaining({ quiet: true }));
+      expect(mockExecuteWorkflow).toHaveBeenCalledWith("gwrk-define-tests", expect.anything(), expect.objectContaining({ quiet: true }));
+    });
+
+    it('US-026/FR-028: SHOULD pass quiet: true to all workflows (Phase 12) (RED)', async () => {
+      await orchestrator.run();
+      
+      const calls = mockExecuteWorkflow.mock.calls;
+      for (const call of calls) {
+        expect(call[2]).toEqual(expect.objectContaining({ quiet: true }));
+      }
     });
 
     it('FR-L25-003: SHOULD use WorkflowRuntime for all stage transitions', async () => {

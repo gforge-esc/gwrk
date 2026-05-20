@@ -100,4 +100,22 @@ Implement test strategy for Phase 1
       })
     );
   });
+
+  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime for gate authoring (Phase 12) (RED)", async () => {
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    
+    // Ensure we trigger LLM by NOT providing a gap-matrix that covers everything
+    // Actually our beforeEach already creates a plan with 2 done whens and gap-matrix with 0
+    
+    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force"]);
+
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-author-gates",
+      expect.anything(),
+      expect.objectContaining({
+        quiet: true,
+      }),
+    );
+  });
 });
