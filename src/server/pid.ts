@@ -87,3 +87,5 @@ export function resolvePid(): number | undefined {
 
   return undefined;
 }
+// Re-export for backward compat
+export const readPid = resolvePid;
