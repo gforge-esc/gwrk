@@ -16,82 +16,91 @@
           "id": "T001",
           "title": "Implement src/commands/server.ts",
           "description": "Modify: Implement `start` and `stop` actions with `[exit:N | Xs]`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:06:44.042Z"
         },
         {
           "id": "T002",
           "title": "Implement src/commands/server-install.ts",
           "description": "New: Implement `install`, `uninstall`, and `logs` actions",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:06:46.858Z"
         },
         {
           "id": "T003",
           "title": "Implement src/server/index.ts",
           "description": "New: Fastify bootstrap and graceful shutdown",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:06:49.671Z"
         },
         {
           "id": "T004",
           "title": "Implement src/server/pid.ts",
           "description": "New: PID resolution prioritizing `launchctl` over `.gwrk/server.pid`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:06:52.459Z"
         },
         {
           "id": "T005",
           "title": "Implement src/server/routes/health.ts",
           "description": "New: `/health` endpoint returning component status",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:06:55.296Z"
         },
         {
           "id": "T006",
           "title": "Implement src/commands/server.test.ts",
           "description": "New: Unit tests for daemon start/stop and PID logic",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:06:58.113Z"
         },
         {
           "id": "T007",
           "title": "Implement src/commands/server-install.test.ts",
           "description": "New: Unit tests for macOS LaunchAgent plist management",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:07:00.927Z"
         },
         {
           "id": "T008",
           "title": "Implement src/server/routes/health.test.ts",
           "description": "New: Unit tests for health route",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-20T17:07:03.741Z"
         },
         {
           "id": "T009",
           "title": "Implement test strategy for Phase 1",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-05-20T17:07:06.558Z"
         }
       ],
       "sp_estimate": 0,
