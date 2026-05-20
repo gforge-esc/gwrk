@@ -1,51 +1,73 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readPid } from "./pid.js";
+import { isPidRunning, resolvePid, writePid } from "./pid.js";
 
-vi.mock("node:child_process");
-vi.mock("node:fs");
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn(),
+}));
 
-describe("FR-015: PID Authority", () => {
+describe("PID Management (FR-015)", () => {
+  let tempDir: string;
+  let pidFile: string;
+
   beforeEach(() => {
-    vi.clearAllMocks();
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-pid-test-"));
+    pidFile = path.join(os.homedir(), ".gwrk", "server.pid");
+    vi.spyOn(process, "kill").mockImplementation(() => true);
+    
+    // Default to non-darwin for some tests, then override
+    Object.defineProperty(process, "platform", { value: "linux" });
   });
 
-  it("prioritizes launchctl over PID file", () => {
-    // Mock launchctl returning a PID
-    vi.mocked(execSync).mockReturnValue(Buffer.from("99999\n"));
-
-    // Mock PID file existing with different PID
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue("12345");
-
-    const pid = readPid();
-
-    // RED: Current implementation doesn't check launchctl, so it will return 12345
-    expect(pid).toBe(99999);
-    expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining("launchctl list com.gwrk.server"),
-    );
+  afterEach(() => {
+    if (fs.existsSync(pidFile)) {
+      fs.unlinkSync(pidFile);
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
   });
 
-  it("falls back to PID file if launchctl fails", () => {
+  it("should write and read PID file", () => {
+    writePid(12345);
+    expect(fs.existsSync(pidFile)).toBe(true);
+    expect(fs.readFileSync(pidFile, "utf8")).toBe("12345");
+  });
+
+  it("should resolve PID from file if not on darwin", () => {
+    writePid(12345);
+    expect(resolvePid()).toBe(12345);
+  });
+
+  it("should prioritize launchctl on darwin", () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    writePid(12345); // File PID
+    
+    // Mock launchctl list returning a different PID
+    vi.mocked(execSync).mockReturnValue(Buffer.from('"PID" = 54321;'));
+
+    expect(resolvePid()).toBe(54321);
+  });
+
+  it("should fallback to PID file on darwin if launchctl fails", () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    writePid(12345); // File PID
+    
     vi.mocked(execSync).mockImplementation(() => {
-      throw new Error("Not found");
+      throw new Error("Could not find service");
     });
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue("12345");
 
-    const pid = readPid();
-    expect(pid).toBe(12345);
+    expect(resolvePid()).toBe(12345);
   });
 
-  it("returns undefined if both fail", () => {
-    vi.mocked(execSync).mockImplementation(() => {
-      throw new Error("Not found");
+  it("should return undefined if PID is not running", () => {
+    writePid(12345);
+    vi.spyOn(process, "kill").mockImplementation(() => {
+      throw new Error("ESRCH");
     });
-    vi.mocked(fs.existsSync).mockReturnValue(false);
 
-    const pid = readPid();
-    expect(pid).toBeUndefined();
+    expect(resolvePid()).toBe(undefined);
   });
 });
