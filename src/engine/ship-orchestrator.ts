@@ -757,10 +757,9 @@ export class ShipOrchestrator extends EventEmitter {
         );
       }
 
-      // Always push — use --force-with-lease to handle stale remote branches
-      // from previous failed ship attempts (non-fast-forward rejection fix)
+      // Always push — branch may not be on remote yet, or have unpushed commits
       withSpinner(`pushing ${branchName}`, () =>
-        execSync(`git push --force-with-lease -u origin ${branchName}`, {
+        execSync(`git push -u origin ${branchName}`, {
           cwd: this.config.cwd,
           stdio: ["ignore", "pipe", "pipe"],
         }),
