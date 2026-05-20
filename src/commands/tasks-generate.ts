@@ -573,6 +573,26 @@ Examples:
             );
           }
 
+          // Auto-commit: define tasks output should not leave the tree dirty
+          try {
+            execSync(`git add specs/${feature}/`, {
+              cwd: projectRoot,
+              stdio: "pipe",
+            });
+            const porcelain = execSync("git status --porcelain", {
+              cwd: projectRoot,
+              encoding: "utf-8",
+            }).trim();
+            if (porcelain) {
+              execSync(
+                `git commit --author="$(git config user.name) <$(git config user.email)>" --no-verify -m "chore(${feature}): define tasks output"`,
+                { cwd: projectRoot, stdio: "pipe" },
+              );
+            }
+          } catch {
+            // Non-fatal — working tree may be dirty but command succeeded
+          }
+
           const planStore = new PlanStore();
           planStore.handleDefineComplete({
             featureId: feature,
