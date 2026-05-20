@@ -1,6 +1,6 @@
 #!/bin/bash
 # AUTHORED
 set -euo pipefail
-# Cannot gate a test strategy without an explicit file
-echo "FAIL: T021 — cannot gate: no primary file to verify test strategy" >&2
-exit 1
+test -f src/server/slack-notify.test.ts || { echo "FAIL: T021 — missing src/server/slack-notify.test.ts" >&2; exit 1; }
+test -f src/server/slack-actions.test.ts || { echo "FAIL: T021 — missing src/server/slack-actions.test.ts" >&2; exit 1; }
+echo "PASS: T021 — Implement test strategy for Phase 3"

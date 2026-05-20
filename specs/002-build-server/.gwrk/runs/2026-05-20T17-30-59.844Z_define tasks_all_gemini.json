@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-20T17:30:59.844Z_define_all",
+  "feature": "002-build-server",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-20T17:30:59.844Z",
+  "finishedAt": "2026-05-20T17:33:31.743Z",
+  "durationS": 152,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 29,
+  "linesAdded": 169,
+  "linesDeleted": 121,
+  "gitCommit": "7cac61c9c6c33c69eb6aa4a9feb778fcea76630b",
+  "gitBranch": "develop",
+  "digest": []
+}

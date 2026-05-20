@@ -1,6 +1,5 @@
 #!/bin/bash
 # AUTHORED
 set -euo pipefail
-# Cannot gate a test strategy without an explicit file
-echo "FAIL: T024 — cannot gate: no primary file to verify test strategy" >&2
-exit 1
+test -f src/db/runs.test.ts || { echo "FAIL: T024 — missing src/db/runs.test.ts" >&2; exit 1; }
+echo "PASS: T024 — Implement test strategy for Phase 4"

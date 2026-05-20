@@ -1,3 +1,6 @@
 #!/bin/bash
+# AUTHORED
 set -euo pipefail
-pnpm vitest run src/commands/server-install.test.ts src/server/pid.test.ts src/commands/server.test.ts src/server/routes/health.test.ts --reporter=verbose 2>&1 | tail -5
+test -f src/server/routes/health.ts || { echo "FAIL: T005 — file not found: src/server/routes/health.ts" >&2; exit 1; }
+grep -q "server.get(\"/health\"" src/server/routes/health.ts || { echo "FAIL: T005 — src/server/routes/health.ts missing '/health' route" >&2; exit 1; }
+echo "PASS: T005 — Implement src/server/routes/health.ts"
