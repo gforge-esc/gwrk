@@ -241,7 +241,11 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       rlErr.on("line", (line) => processLine(line, "stderr"));
     }
 
-    child.on("close", (code) => {
+    let resolved = false;
+    const finish = (code: number) => {
+      if (resolved) return;
+      resolved = true;
+
       if (spinnerInterval) {
         clearInterval(spinnerInterval);
         process.stdout.write("\r\x1b[K");
@@ -251,11 +255,11 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       const secs = elapsed % 60;
       logStream.write(`\n# [END] ${new Date().toISOString()}\n`);
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
-      logStream.write(`# Exit Code : ${code ?? 1}\n`);
+      logStream.write(`# Exit Code : ${code}\n`);
       logStream.end();
 
       if (opts.quiet) {
-        const status = (code ?? 1) === 0 ? "✓" : "✗";
+        const status = code === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
         process.stdout.write(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
@@ -263,22 +267,35 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       }
 
       resolve({
-        exitCode: code ?? 1,
+        exitCode: code,
         logPath,
         stdout: stdoutLines.join("\n"),
         stderr: stderrLines.join("\n"),
       });
+    };
+
+    // Primary: close fires when all stdio FDs are drained (normal path)
+    child.on("close", (code) => finish(code ?? 1));
+
+    // Fallback: Node 25 readline holds FDs open after process exit.
+    // If close hasn't fired within 30s of exit, force-resolve.
+    // No overall timeout — agents can run as long as needed.
+    child.on("exit", (code) => {
+      setTimeout(() => {
+        if (!resolved) {
+          logStream.write(
+            "# [FM-5] close did not fire 30s after exit — forcing resolution\n",
+          );
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(code ?? 1);
+        }
+      }, 30_000);
     });
 
     child.on("error", () => {
       logStream.write("\n# [ERROR] Agent process failed to start\n");
-      logStream.end();
-      resolve({
-        exitCode: 1,
-        logPath,
-        stdout: stdoutLines.join("\n"),
-        stderr: stderrLines.join("\n"),
-      });
+      finish(1);
     });
   });
 }
