@@ -7,6 +7,7 @@ import * as agent from "../utils/agent";
 import * as gateRunner from "../utils/gate-runner";
 import * as state from "../utils/state";
 import * as reviewPlugin from "../plugins/review-plugin";
+import * as dbRuns from "../db/runs";
 
 
 vi.mock("node:fs");
@@ -30,6 +31,15 @@ vi.mock("../plugins/review-plugin");
 
 vi.mock("../utils/manifest", () => ({
   assembleDigest: vi.fn().mockReturnValue(["mock digest"]),
+}));
+
+vi.mock("../db/runs", () => ({
+  startRun: vi.fn().mockReturnValue(42),
+  finishRun: vi.fn(),
+}));
+
+vi.mock("./harvest", () => ({
+  harvestFeature: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("ShipOrchestrator", () => {
@@ -249,6 +259,67 @@ describe("ShipOrchestrator", () => {
         featureId: config.featureId,
         phaseId: config.phaseId,
         sp_actual: 5,
+      }),
+    );
+  });
+
+  it("FR-H03: should call startRun/finishRun for DB wiring", async () => {
+    // Setup: gates pass, review passes, full green path
+    vi.mocked(git.createBranch).mockResolvedValue();
+    vi.mocked(git.syncBranch).mockResolvedValue();
+    vi.mocked(gateRunner.runGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "Pass",
+    });
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Success",
+      stderr: "",
+      durationS: 10,
+    });
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          sp_estimate: 5,
+          tasks: [
+            {
+              id: "T001",
+              title: "Task 1",
+              description: "Desc 1",
+              status: "completed",
+              gateScript: "gates/T001-gate.sh",
+              sp: 3,
+            },
+          ],
+        },
+      ],
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    await orchestrator.run();
+
+    // Verify startRun was called at ship start
+    expect(dbRuns.startRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feature_id: "004-ship-loop",
+        phase_id: "phase-01",
+        command: "ship",
+        agent_backend: "gemini",
+        workflow: "gwrk-ship",
+      }),
+    );
+
+    // Verify finishRun was called on completion
+    expect(dbRuns.finishRun).toHaveBeenCalledWith(
+      42, // the mock runId
+      expect.objectContaining({
+        exit_code: 0,
+        status: "completed",
       }),
     );
   });

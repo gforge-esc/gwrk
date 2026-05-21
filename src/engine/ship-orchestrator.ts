@@ -21,6 +21,7 @@ import {
   loadTaskState,
   saveTaskState,
 } from "../utils/state.js";
+import { finishRun, startRun } from "../db/runs.js";
 import { harvestFeature } from "./harvest.js";
 import {
   type ShipRunConfig,
@@ -68,6 +69,7 @@ function withSpinner<T>(label: string, fn: () => T): T {
 export class ShipOrchestrator extends EventEmitter {
   private config: ShipRunConfig;
   private state: ShipState;
+  private dbRunId: number | null = null;
 
   constructor(config: ShipRunConfig, state?: ShipState) {
     super();
@@ -124,6 +126,20 @@ export class ShipOrchestrator extends EventEmitter {
       backend: this.config.backend,
     });
 
+    // FR-H03: Create execution ledger record at ship start
+    try {
+      this.dbRunId = startRun({
+        feature_id: this.config.featureId,
+        phase_id: this.config.phaseId,
+        command: "ship",
+        agent_backend: this.config.backend,
+        workflow: "gwrk-ship",
+      });
+    } catch {
+      // DB write failure is non-fatal — ship must proceed
+      this.dbRunId = null;
+    }
+
     while (
       this.state.stage !== ShipStage.DONE &&
       this.state.stage !== ShipStage.CIRCUIT_BREAK
@@ -170,6 +186,19 @@ export class ShipOrchestrator extends EventEmitter {
           stage: this.state.stage,
           error: result.error,
         });
+
+        // FR-H03: Finalize DB record on failure
+        if (this.dbRunId !== null) {
+          try {
+            const duration_s = Math.floor((Date.now() - new Date(this.state.startedAt).getTime()) / 1000);
+            finishRun(this.dbRunId, {
+              exit_code: result.exitCode,
+              duration_s,
+              status: "failed",
+            });
+          } catch { /* non-fatal */ }
+        }
+
         return result.exitCode;
       }
 
@@ -186,6 +215,17 @@ export class ShipOrchestrator extends EventEmitter {
     if (this.state.stage === ShipStage.DONE) {
       const sp_actual = this.calculateSpActual();
       const duration_ms = Date.now() - new Date(this.state.startedAt).getTime();
+
+      // FR-H03: Finalize DB record on success
+      if (this.dbRunId !== null) {
+        try {
+          finishRun(this.dbRunId, {
+            exit_code: 0,
+            duration_s: Math.floor(duration_ms / 1000),
+            status: "completed",
+          });
+        } catch { /* non-fatal */ }
+      }
 
       const eventData = {
         featureId: this.config.featureId,
