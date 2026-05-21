@@ -4,11 +4,33 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execSync } from "node:child_process";
+
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn((cmd) => {
+    if (cmd.includes("ssh -T")) return "successfully authenticated";
+    return "";
+  }),
+}));
 
 vi.mock("../utils/setup-state.js", () => ({
   saveSetupState: vi.fn(),
   loadSetupState: vi.fn().mockReturnValue(null),
+  isSetupComplete: vi.fn().mockReturnValue(true),
 }));
+
+vi.mock("node:readline", () => {
+  const rl = {
+    question: vi.fn((q, cb) => cb("y")),
+    close: vi.fn(),
+  };
+  return {
+    createInterface: vi.fn().mockReturnValue(rl),
+    default: {
+      createInterface: vi.fn().mockReturnValue(rl),
+    },
+  };
+});
 
 describe("gwrk setup (Phase 10) (RED)", () => {
   let tempDir: string;
@@ -21,6 +43,8 @@ describe("gwrk setup (Phase 10) (RED)", () => {
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
+    // @ts-ignore
+    process.stdin.isTTY = true;
   });
 
   afterEach(() => {

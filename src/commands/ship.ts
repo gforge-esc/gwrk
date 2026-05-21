@@ -39,6 +39,10 @@ import {
 
 import { getBackendSelector } from "../server/index.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import {
+  loadSetupState,
+  isSetupComplete,
+} from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
@@ -427,6 +431,13 @@ Examples:
             `Feature not found: specs/${feature}. Run 'gwrk project specs' to list available features.`,
             1,
           );
+        }
+
+        // FR-022: Workstation setup pre-flight check
+        const setupState = loadSetupState();
+        if (!isSetupComplete(setupState)) {
+          blocked("Workstation setup is incomplete. Run 'gwrk setup' first.");
+          throw new CommandError("Workstation setup is incomplete", 1);
         }
 
         if (opts.parallel) {

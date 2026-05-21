@@ -7,6 +7,15 @@ import os from "node:os";
 
 vi.mock("../utils/setup-state.js", () => ({
   loadSetupState: vi.fn(),
+  isSetupComplete: vi.fn((state) => {
+    if (!state) return false;
+    return (
+      state.steps.tcc &&
+      state.steps.ssh &&
+      state.steps.gh &&
+      state.steps.verification
+    );
+  }),
 }));
 
 describe("ship pre-flight setup check (Phase 10) (RED)", () => {
