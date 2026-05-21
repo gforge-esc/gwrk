@@ -85,6 +85,7 @@ export async function selectBackend(
   const fallbackOrder = config.agents.fallbackOrder || [
     "claude",
     "gemini",
+    "agy",
     "codex",
   ];
   for (const name of fallbackOrder) {
@@ -96,7 +97,7 @@ export async function selectBackend(
   }
 
   // 4. Last resort: any available built-in
-  const builtins = ["claude", "gemini", "codex"];
+  const builtins = ["claude", "gemini", "agy", "codex"];
   for (const name of builtins) {
     try {
       const backend = await registry.getAgentBackend(name);
