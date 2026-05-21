@@ -436,8 +436,8 @@ Examples:
         // FR-022: Workstation setup pre-flight check
         const setupState = loadSetupState();
         if (!isSetupComplete(setupState)) {
-          blocked("Workstation setup is incomplete. Run 'gwrk setup' first.");
-          throw new CommandError("Workstation setup is incomplete", 1);
+          blocked("Run gwrk setup first");
+          throw new CommandError("Run gwrk setup first", 1);
         }
 
         if (opts.parallel) {

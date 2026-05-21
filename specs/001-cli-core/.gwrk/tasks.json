@@ -495,11 +495,10 @@
         {
           "id": "T041",
           "title": "Implement src/commands/setup.ts",
-          "description": "NEW",
-          "status": "completed",
+          "description": "NEW\n\nPOST-FLIGHT GATE FAIL: gates/T041-gate.sh exited non-zero.\n  OUTPUT: RUN  v3.2.4 /Users/gonzo/Code/gwrk\n\n ✓ src/commands/setup.test.ts > gwrk setup (Phase 10) (RED) > US-021: SHOULD run the 4-step wizard and write setup.json (RED) 15ms\n ↓ src/commands/setup.test.ts > g",
+          "status": "open",
           "gateScript": "gates/T041-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-21T10:25:00.000Z",
           "classification": "greenfield"
         },
         {

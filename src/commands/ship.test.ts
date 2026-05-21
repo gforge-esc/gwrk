@@ -335,7 +335,7 @@ describe("shipCommand", () => {
 
     expect(process.exitCode).toBe(1);
     expect(blockedSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Workstation setup is incomplete"),
+      expect.stringContaining("Run gwrk setup first"),
     );
   });
 

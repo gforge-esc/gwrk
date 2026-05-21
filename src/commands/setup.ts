@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import * as readline from "node:readline";
+import { createInterface, type Interface } from "node:readline";
 import { Command } from "commander";
 import { banner, color, fail, success } from "../utils/format.js";
 import {
@@ -13,7 +13,7 @@ import { CommandError, withSignal } from "../utils/signal.js";
 
 const { BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET } = color;
 
-function ask(rl: readline.Interface, question: string): Promise<string> {
+function ask(rl: Interface, question: string): Promise<string> {
   return new Promise((resolve) => {
     rl.question(question, (answer) => resolve(answer.trim()));
   });
@@ -35,7 +35,7 @@ export const setupCommand = new Command("setup")
         );
       }
 
-      const rl = readline.createInterface({
+      const rl = createInterface({
         input: process.stdin,
         output: process.stdout,
       });
@@ -79,44 +79,71 @@ export const setupCommand = new Command("setup")
           console.log(
             `\n  ${CYAN}Step 2: Dedicated SSH Key (Bypass 1Password)${RESET}`,
           );
-          const sshDir = path.join(os.homedir(), ".ssh");
-          const keyPath = path.join(sshDir, "gwrk-agent");
-          const configPath = path.join(sshDir, "config");
-
-          if (!fs.existsSync(sshDir)) {
-            fs.mkdirSync(sshDir, { mode: 0o700 });
-          }
-
-          if (!fs.existsSync(keyPath)) {
-            console.log(`  Generating dedicated key: ${DIM}${keyPath}${RESET}`);
-            execSync(
-              `ssh-keygen -t ed25519 -f "${keyPath}" -N "" -C "gwrk-agent@$(hostname)"`,
-              { stdio: "inherit" },
-            );
-          }
-
-          const sshConfig = fs.existsSync(configPath)
-            ? fs.readFileSync(configPath, "utf-8")
-            : "";
-          if (
-            !sshConfig.includes("Host github.com") ||
-            !sshConfig.includes("IdentityFile ~/.ssh/gwrk-agent")
-          ) {
-            console.log(`  Updating ${DIM}~/.ssh/config${RESET}...`);
-            const entry = `\n# gwrk agent key — bypasses 1Password for GitHub\nHost github.com\n  IdentityFile ~/.ssh/gwrk-agent\n  IdentityAgent none\n`;
-            fs.appendFileSync(configPath, entry);
-          }
-
-          console.log("  Please add this public key to your GitHub account:");
+          console.log("  How would you like to configure SSH?");
+          console.log(`  ${BOLD}A)${RESET} Use 1Password (SSH_AUTH_SOCK)`);
           console.log(
-            `  ${BOLD}gh ssh-key add "${keyPath}.pub" --title "gwrk-agent-$(hostname)"${RESET}`,
+            `  ${BOLD}B)${RESET} Dedicated key (~/.ssh/gwrk-agent, no passphrase) ${DIM}[DEFAULT]${RESET}`,
           );
+          console.log(`  ${BOLD}S)${RESET} Skip (Already configured)`);
 
-          const done = await ask(
-            rl,
-            `  Have you added the key to GitHub? ${DIM}(y/N)${RESET} `,
-          );
-          if (done.toLowerCase() === "y") {
+          const choice = (await ask(rl, `  Choice? ${DIM}(a/B/s)${RESET} `)) || "b";
+
+          if (choice.toLowerCase() === "a") {
+            console.log("  Configuring to use 1Password...");
+            const sshDir = path.join(os.homedir(), ".ssh");
+            const configPath = path.join(sshDir, "config");
+            if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { mode: 0o700 });
+            
+            const entry = `\n# gwrk agent — use 1Password\nHost github.com\n  IdentityAgent "~/Library/Group Containers/2BU85C4YRE.com.1password/t/agent.sock"\n`;
+            fs.appendFileSync(configPath, entry);
+            state.steps.ssh = true;
+            saveSetupState(state);
+          } else if (choice.toLowerCase() === "b") {
+            const sshDir = path.join(os.homedir(), ".ssh");
+            const keyPath = path.join(sshDir, "gwrk-agent");
+            const configPath = path.join(sshDir, "config");
+
+            if (!fs.existsSync(sshDir)) {
+              fs.mkdirSync(sshDir, { mode: 0o700 });
+            }
+
+            if (!fs.existsSync(keyPath)) {
+              console.log(
+                `  Generating dedicated key: ${DIM}${keyPath}${RESET}`,
+              );
+              execSync(
+                `ssh-keygen -t ed25519 -f "${keyPath}" -N "" -C "gwrk-agent@$(hostname)"`,
+                { stdio: "inherit" },
+              );
+            }
+
+            const sshConfig = fs.existsSync(configPath)
+              ? fs.readFileSync(configPath, "utf-8")
+              : "";
+            if (
+              !sshConfig.includes("Host github.com") ||
+              !sshConfig.includes("IdentityFile ~/.ssh/gwrk-agent")
+            ) {
+              console.log(`  Updating ${DIM}~/.ssh/config${RESET}...`);
+              const entry = `\n# gwrk agent key — bypasses 1Password for GitHub\nHost github.com\n  IdentityFile ~/.ssh/gwrk-agent\n  IdentityAgent none\n`;
+              fs.appendFileSync(configPath, entry);
+            }
+
+            console.log("  Please add this public key to your GitHub account:");
+            console.log(
+              `  ${BOLD}gh ssh-key add "${keyPath}.pub" --title "gwrk-agent-$(hostname)"${RESET}`,
+            );
+
+            const done = await ask(
+              rl,
+              `  Have you added the key to GitHub? ${DIM}(y/N)${RESET} `,
+            );
+            if (done.toLowerCase() === "y") {
+              state.steps.ssh = true;
+              saveSetupState(state);
+            }
+          } else if (choice.toLowerCase() === "s") {
+            console.log("  Skipping SSH configuration.");
             state.steps.ssh = true;
             saveSetupState(state);
           }
@@ -216,7 +243,8 @@ export const setupCommand = new Command("setup")
           );
         }
       } finally {
-        rl.close();
+        if (rl) rl.close();
       }
     });
   });
+
