@@ -5,6 +5,20 @@ import path from "node:path";
 import os from "node:os";
 
 describe("setup-state utility (Phase 10) (RED)", () => {
+  const SETUP_FILE = path.join(os.homedir(), ".gwrk", "setup.json");
+
+  beforeEach(() => {
+    if (fs.existsSync(SETUP_FILE)) {
+      fs.unlinkSync(SETUP_FILE);
+    }
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(SETUP_FILE)) {
+      fs.unlinkSync(SETUP_FILE);
+    }
+  });
+
   it("SHOULD save and load setup state (RED)", () => {
     const state = {
       completedAt: new Date().toISOString(),

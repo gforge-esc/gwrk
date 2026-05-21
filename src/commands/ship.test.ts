@@ -6,12 +6,21 @@ import * as runsModule from "../db/runs.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
 import * as stateModule from "../utils/state.js";
+import {
+  loadSetupState,
+  isSetupComplete,
+} from "../utils/setup-state.js";
 import { shipCommand } from "./ship.js";
 
 // Mock dependencies
 vi.mock("../utils/exec.js", () => ({
   run: vi.fn(),
   runGate: vi.fn(),
+}));
+
+vi.mock("../utils/setup-state.js", () => ({
+  loadSetupState: vi.fn(),
+  isSetupComplete: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock("../server/slack-notify.js", () => ({
@@ -315,6 +324,19 @@ describe("shipCommand", () => {
 
     existsSpy.mockRestore();
     readdirSpy.mockRestore();
+  });
+
+  it("FR-022: should exit 1 with BLOCKED message if workstation setup is incomplete", async () => {
+    vi.mocked(isSetupComplete).mockReturnValueOnce(false);
+    const blockedSpy = vi.mocked(uiModule.blocked);
+
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1"]);
+
+    expect(process.exitCode).toBe(1);
+    expect(blockedSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Run gwrk setup first"),
+    );
   });
 
   it("FR-009/T009: Agent config hierarchy: --agent override takes precedence", async () => {
