@@ -504,11 +504,10 @@
         {
           "id": "T042",
           "title": "Implement src/commands/ship.ts",
-          "description": "MODIFY",
-          "status": "completed",
+          "description": "MODIFY\n\nPOST-FLIGHT GATE FAIL: gates/T042-gate.sh exited non-zero.\n  OUTPUT: ",
+          "status": "open",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-20T22:17:53.975Z",
           "classification": "greenfield"
         },
         {
