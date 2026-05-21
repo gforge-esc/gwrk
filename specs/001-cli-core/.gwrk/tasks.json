@@ -496,15 +496,16 @@
           "id": "T041",
           "title": "Implement src/commands/setup.ts",
           "description": "NEW",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T041-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-21T10:25:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T042",
           "title": "Implement src/commands/ship.ts",
-          "description": "MODIFY\n\nPOST-FLIGHT GATE FAIL: gates/T042-gate.sh exited non-zero.\n  OUTPUT: ",
+          "description": "MODIFY",
           "status": "open",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
