@@ -8,6 +8,7 @@ import type { SystemMonitor } from "./monitor.js";
 import type { NetworkMonitor } from "./network.js";
 import type { SandboxManager } from "./sandbox.js";
 import { registerSlackActions } from "./slack-actions.js";
+import { handleMention } from "./slack-agent.js";
 import { type CommandContext, handleSlashCommand } from "./slack-commands.js";
 import { registerSlackHomeHandler } from "./slack-home.js";
 import { registerMentionHandler } from "./slack-mentions.js";
@@ -84,7 +85,22 @@ export async function startSlackApp(deps: {
     await registerSlackActions(slackApp, context);
 
     // Register @gwrk mention handler (listens for app_mention events)
-    registerMentionHandler(slackApp, context);
+    slackApp.event("app_mention", async ({ event, say }) => {
+      await handleMention({ event, say, projectRoot: deps.projectRoot });
+    });
+
+    // Handle threaded messages in channels (Phase 2 - US-015)
+    slackApp.event("message", async ({ event, say }) => {
+      // Only respond to threaded messages that aren't already handled by app_mention
+      if ("thread_ts" in event && !("subtype" in event)) {
+        // Here we could implement more sophisticated logic to see if the user is 
+        // talking to the agent in a thread without explicitly mentioning it.
+        // For Phase 2, we just ensure we have the infrastructure.
+      }
+    });
+
+    // Register legacy @gwrk mention handler if needed, or replace it
+    // registerMentionHandler(slackApp, context);
 
     // Register App Home handler
     await registerSlackHomeHandler(slackApp, deps);

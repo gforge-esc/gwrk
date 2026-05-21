@@ -28,7 +28,11 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
   });
 
   it("should return a contextual intelligent response for @gwrk mentions (US-015, TR-016)", async () => {
-    await handleMention({ event: mockEvent as any, say: mockSay });
+    await handleMention({
+      event: mockEvent as any,
+      say: mockSay,
+      projectRoot: "/test",
+    });
 
     expect(mockSay).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -45,7 +49,11 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
       text: "tell me more about the first task",
     };
 
-    await handleMention({ event: threadEvent as any, say: mockSay });
+    await handleMention({
+      event: threadEvent as any,
+      say: mockSay,
+      projectRoot: "/test",
+    });
 
     expect(mockSay).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -59,7 +67,11 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
       ...mockEvent,
       text: "<@U123> what is the status of the project?",
     };
-    await handleMention({ event: statusEvent as any, say: mockSay });
+    await handleMention({
+      event: statusEvent as any,
+      say: mockSay,
+      projectRoot: "/test",
+    });
 
     // EXPECTATION: The agent should call buildProjectContext to get real data
     expect(buildProjectContext).toHaveBeenCalled();
@@ -73,11 +85,39 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
   });
 
   it("should proffer follow-up questions to deepen the conversation (US-015) [RED]", async () => {
-    await handleMention({ event: mockEvent as any, say: mockSay });
+    await handleMention({
+      event: mockEvent as any,
+      say: mockSay,
+      projectRoot: "/test",
+    });
 
     expect(mockSay).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringMatching(/\?$/),
+      }),
+    );
+  });
+
+  it("should recognize file paths in mentions and provide contextual summaries (TR-016)", async () => {
+    const fileEvent = {
+      ...mockEvent,
+      text: "<@U123> tell me about .agents/workflows/gwrk-analyze.md",
+    };
+
+    await handleMention({
+      event: fileEvent as any,
+      say: mockSay,
+      projectRoot: "/test",
+    });
+
+    expect(mockSay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("gwrk-analyze.md"),
+      }),
+    );
+    expect(mockSay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("cross-artifact consistency"),
       }),
     );
   });
@@ -88,7 +128,11 @@ describe("slack-agent (Phase 2 - US-015, FR-006, FR-017)", () => {
       text: "<@U123> /skill architecture-stress-test should we use SQLite?",
     };
 
-    await handleMention({ event: skillEvent as any, say: mockSay });
+    await handleMention({
+      event: skillEvent as any,
+      say: mockSay,
+      projectRoot: "/test",
+    });
 
     expect(mockSay).toHaveBeenCalledWith(
       expect.objectContaining({
