@@ -1,6 +1,6 @@
 # Implementation Plan: 014 Plugin System (F014-R Rework)
 
-**Branch**: `develop` | **Date**: 2026-03-31 | **Spec**: [spec.md](./spec.md)
+**Branch**: `develop` | **Date**: 2026-05-21 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
@@ -121,6 +121,54 @@ Implement the normalized `AgentBackend` interface. This replaces hardcoded CLI d
 
 #### Done When
 - `gwrk plugin sync-context` generates context files with boundary markers
+
+---
+
+### Phase 3A: Antigravity (agy) Adapter
+
+Add the Antigravity CLI (`agy`) as a fourth built-in agent backend. `agy` is the successor to `gemini-cli` (same Gemini models, Go-based CLI). Deadline: `gemini-cli` Google One tier ends June 18, 2026.
+
+**Files (4):**
+- `src/plugins/builtins/agents/agy/adapter.ts` (NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`)
+- `src/plugins/builtins/agents/agy/adapter.test.ts` (NEW: Unit tests for dispatch, parseResult, syncGovernance, isAvailable)
+- `src/plugins/builtins/agents/index.ts` (MODIFY: Register `AgyAdapter` in `BUILTIN_AGENTS`)
+- `src/engine/router.ts` (MODIFY: Add `agy` to fallback chain after `gemini`)
+
+**Requirements Addressed:** FR-L1-001, FR-L1-002, FR-L1-003, FR-L1-004, FR-L1-010
+
+**Dependencies:** Phase 1
+
+**Contract Mapping:**
+- `contracts/agent-backend.md` → `dispatch(task)` → `src/plugins/builtins/agents/agy/adapter.ts`
+- `contracts/agent-backend.md` → `syncGovernance(root, gov)` → `src/plugins/builtins/agents/agy/adapter.ts`
+
+#### Flag Mapping (agy ↔ gemini)
+| gwrk Concept | gemini CLI | agy CLI |
+|-------------|-----------|---------|
+| Non-interactive | `-p "<prompt>"` | `--print "<prompt>"` |
+| Skip approvals | `--approval-mode yolo` | `--dangerously-skip-permissions` |
+| Model selection | `--model <model>` | N/A (env var `AGY_MODEL`) |
+| Sandbox off | `--sandbox false` | Not sandboxed by default |
+| Context file | `GEMINI.md` | `AGENTS.md` |
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-006 | Stdin context delivery is REQUIRED |
+| ADR-006 | Exit code normalization: Go-style (0/1/2) preserved, >2 → 1 |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-3A-001 | Unit | `AgyAdapter.dispatch()` | Returns `agy --print <prompt> --dangerously-skip-permissions` |
+| TR-3A-002 | Unit | `AgyAdapter.parseResult()` | Normalizes exit codes >2 to 1 (agent_error), preserves 127 |
+| TR-3A-003 | Unit | `AgyAdapter.syncGovernance()` | Writes `AGENTS.md` with gwrk boundary markers, preserves external content |
+| TR-3A-004 | Unit | `AgyAdapter.isAvailable()` | Checks `which agy` |
+
+#### Done When
+- `pnpm vitest run src/plugins/builtins/agents/agy/adapter.test.ts` exits 0
+- `pnpm biome check src/plugins/builtins/agents/agy/adapter.ts` exits 0
 
 ---
 
@@ -351,16 +399,16 @@ _No mockups exist for this feature._
 | FR-011 | 6 | Planned |
 | FR-012 | 6 | Planned |
 | FR-013 | 1 | Planned |
-| FR-L1-001 | 3 | Planned |
-| FR-L1-002 | 3 | Planned |
-| FR-L1-003 | 3 | Planned |
-| FR-L1-004 | 3 | Planned |
+| FR-L1-001 | 3, 3A | Planned |
+| FR-L1-002 | 3, 3A | Planned |
+| FR-L1-003 | 3, 3A | Planned |
+| FR-L1-004 | 3, 3A | Planned |
 | FR-L1-005 | 3, 7 | Planned |
 | FR-L1-006 | 3 | Planned |
 | FR-L1-007 | Deferred | Deferred |
 | FR-L1-008 | 6 | Planned |
 | FR-L1-009 | 3 | Planned |
-| FR-L1-010 | 3 | Planned |
+| FR-L1-010 | 3, 3A | Planned |
 | FR-L1-011 | 1 | Planned |
 | FR-L1-012 | 1 | Planned |
 | FR-L1-013 | 1 | Planned |
