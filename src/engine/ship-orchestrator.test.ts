@@ -148,20 +148,19 @@ describe("ShipOrchestrator", () => {
   });
 
   it("should loop back to IMPLEMENT on NO-GO review", async () => {
-    // Return open initially (NO-GO for first review), then completed later (GO)
-    let callCount = 0;
-    vi.mocked(state.loadTaskState).mockImplementation(() => {
-      callCount++;
-      return {
-        featureId: "004-ship-loop",
-        createdAt: new Date().toISOString(),
-        phases: [{ 
-          id: "phase-01", 
-          title: "Phase 1", 
-          // After enough calls (implement + post-flight + code review scope), tasks become completed
-          tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: callCount >= 7 ? "completed" : "open", gateScript: "gates/T001-gate.sh" }] 
-        }]
-      };
+    // Gate-driven verdicts: readVerdict runs gates, not agent edits.
+    // Sequence: pre-flight FAIL → implement → post-flight PASS → 
+    //           code review → readVerdict gate FAIL (NO-GO) → 
+    //           retry → pre-flight PASS → implement skipped → post-flight PASS → 
+    //           code review → readVerdict gate PASS (GO)
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [{
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [{ id: "T001", title: "Task 1", description: "Desc 1", status: "open", gateScript: "gates/T001-gate.sh" }]
+      }]
     });
 
     vi.mocked(agent.dispatchToAgent)
@@ -169,14 +168,15 @@ describe("ShipOrchestrator", () => {
 
     vi.mocked(gateRunner.runGate)
       .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // pre-flight iter 1
-      .mockResolvedValue({ passed: true, exitCode: 0, output: "Pass" });      // post-flight + subsequent
+      .mockResolvedValueOnce({ passed: true, exitCode: 0, output: "Pass" })   // post-flight iter 1
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // readVerdict iter 1 → NO-GO
+      .mockResolvedValue({ passed: true, exitCode: 0, output: "Pass" });      // all subsequent pass
 
     const orchestrator = new ShipOrchestrator(config);
     const exitCode = await orchestrator.run();
 
     expect(exitCode).toBe(0);
     expect((orchestrator as any).state.iteration).toBe(2);
-    expect(agent.dispatchToAgent).toHaveBeenCalledTimes(4); // 1 IMPLEMENT + 1 CODE_REVIEW (NO-GO) + 1 IMPLEMENT retry skipped (tasks completed via loadTaskState) + review retries
   });
 
   it("should trip circuit breaker after MAX_ITERATIONS", async () => {

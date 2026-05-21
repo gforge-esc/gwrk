@@ -281,8 +281,8 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // 4. Determine verdict from task state diff
-      const verdict = this.readVerdict();
+      // 4. Determine verdict from gates (not agent edits)
+      const verdict = await this.readVerdict();
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
@@ -646,7 +646,7 @@ export class ShipOrchestrator extends EventEmitter {
    * If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
    * Otherwise → GO.
    */
-  private readVerdict(): "GO" | "NO-GO" {
+  private async readVerdict(): Promise<"GO" | "NO-GO"> {
     const featureDir = path.join(
       this.config.cwd,
       "specs",
@@ -657,12 +657,36 @@ export class ShipOrchestrator extends EventEmitter {
       (p: Phase) => p.id === this.config.phaseId,
     );
     if (!phase) return "NO-GO";
-    const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
-    if (openTasks.length > 0) {
+
+    // Gate-driven verdict: run gates directly, don't trust agent edits.
+    // "Gates are truth, tasks.json status is bookkeeping." (gwrk-review-code.md L59)
+    let failedCount = 0;
+    for (const task of phase.tasks) {
+      if (!task.gateScript) continue;
+      const gatePath = path.join(featureDir, task.gateScript);
+      if (!fs.existsSync(gatePath)) continue;
+
+      const gateResult = await runGate(gatePath);
+      if (gateResult.passed) {
+        if (task.status !== "completed") {
+          task.status = "completed";
+          task.completedAt = new Date().toISOString();
+        }
+      } else {
+        task.status = "open";
+        delete task.completedAt;
+        failedCount++;
+      }
+    }
+
+    // Persist reconciled state
+    saveTaskState(featureDir, taskState);
+
+    if (failedCount > 0) {
+      const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
       console.log(
         `    ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
       );
-      // Show review feedback summary for each re-opened task
       for (const task of openTasks) {
         if (task.description) {
           const firstLine = task.description.split("\n")[0].trim();
