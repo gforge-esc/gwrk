@@ -2,13 +2,10 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createInterface, type Interface } from "node:readline";
+import { type Interface, createInterface } from "node:readline";
 import { Command } from "commander";
 import { banner, color, fail, success } from "../utils/format.js";
-import {
-  loadSetupState,
-  saveSetupState,
-} from "../utils/setup-state.js";
+import { loadSetupState, saveSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { BOLD, DIM, GREEN, YELLOW, RED, CYAN, RESET } = color;
@@ -86,14 +83,15 @@ export const setupCommand = new Command("setup")
           );
           console.log(`  ${BOLD}S)${RESET} Skip (Already configured)`);
 
-          const choice = (await ask(rl, `  Choice? ${DIM}(a/B/s)${RESET} `)) || "b";
+          const choice =
+            (await ask(rl, `  Choice? ${DIM}(a/B/s)${RESET} `)) || "b";
 
           if (choice.toLowerCase() === "a") {
             console.log("  Configuring to use 1Password...");
             const sshDir = path.join(os.homedir(), ".ssh");
             const configPath = path.join(sshDir, "config");
             if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { mode: 0o700 });
-            
+
             const entry = `\n# gwrk agent — use 1Password\nHost github.com\n  IdentityAgent "~/Library/Group Containers/2BU85C4YRE.com.1password/t/agent.sock"\n`;
             fs.appendFileSync(configPath, entry);
             state.steps.ssh = true;
@@ -125,7 +123,8 @@ export const setupCommand = new Command("setup")
               !sshConfig.includes("IdentityFile ~/.ssh/gwrk-agent")
             ) {
               console.log(`  Updating ${DIM}~/.ssh/config${RESET}...`);
-              const entry = `\n# gwrk agent key — bypasses 1Password for GitHub\nHost github.com\n  IdentityFile ~/.ssh/gwrk-agent\n  IdentityAgent none\n`;
+              const entry =
+                "\n# gwrk agent key — bypasses 1Password for GitHub\nHost github.com\n  IdentityFile ~/.ssh/gwrk-agent\n  IdentityAgent none\n";
               fs.appendFileSync(configPath, entry);
             }
 
@@ -148,7 +147,9 @@ export const setupCommand = new Command("setup")
             saveSetupState(state);
           }
         } else {
-          console.log(`  ${GREEN}✓${RESET} Step 2: SSH Key already configured.`);
+          console.log(
+            `  ${GREEN}✓${RESET} Step 2: SSH Key already configured.`,
+          );
         }
 
         // Step 3: GH Auth
@@ -205,8 +206,9 @@ export const setupCommand = new Command("setup")
             console.log(`  ${RED}✗${RESET} SSH: FAILED`);
             allOk = false;
           }
-        } catch (err: any) {
-          const out = (err.stdout || "") + (err.stderr || "");
+        } catch (err: unknown) {
+          const e = err as { stdout?: string; stderr?: string };
+          const out = (e.stdout || "") + (e.stderr || "");
           if (out.includes("successfully authenticated")) {
             console.log(`  ${GREEN}✓${RESET} SSH: OK`);
           } else {
@@ -247,4 +249,3 @@ export const setupCommand = new Command("setup")
       }
     });
   });
-
