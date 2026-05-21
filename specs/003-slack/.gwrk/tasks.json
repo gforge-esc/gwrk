@@ -77,40 +77,40 @@
           "id": "T006",
           "title": "Implement src/server/slack-agent.ts",
           "description": "NEW: Handle app mentions and threaded context",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:35:08.996Z",
+          "completedAt": "2026-05-21T20:51:21.172Z",
           "classification": "greenfield"
         },
         {
           "id": "T007",
           "title": "Implement src/server/slack.ts",
           "description": "MODIFY: Register `app_mention` and `message.channels` handlers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:35:09.003Z",
+          "completedAt": "2026-05-21T20:51:21.185Z",
           "classification": "greenfield"
         },
         {
           "id": "T008",
           "title": "Implement src/utils/agent-context.ts",
           "description": "NEW: Utility to build project context for the agent from local files and SQLite",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:35:09.008Z",
+          "completedAt": "2026-05-21T20:51:21.194Z",
           "classification": "greenfield"
         },
         {
           "id": "T009",
           "title": "Implement test strategy for Phase 2",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T21:35:10.123Z",
+          "completedAt": "2026-05-21T20:51:22.098Z",
           "classification": "noop"
         }
       ],
