@@ -1,0 +1,579 @@
+{
+  "feature": "014-plugin-system",
+  "projectType": "gwrk-typescript",
+  "tasks": [
+    {
+      "taskId": "T001",
+      "title": "Implement src/plugins/manifest.ts",
+      "description": "NEW: Zod schemas for Skill, Agent, and Workflow manifests",
+      "primaryFile": "src/plugins/manifest.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T002",
+      "title": "Implement src/plugins/loader.ts",
+      "description": "NEW: Plugin scanner, registry, and resolution engine",
+      "primaryFile": "src/plugins/loader.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T003",
+      "title": "Implement src/commands/plugin.ts",
+      "description": "NEW: `gwrk plugin list/install/remove/disable/enable` handlers",
+      "primaryFile": "src/commands/plugin.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T004",
+      "title": "Implement src/utils/config.ts",
+      "description": "MODIFY: Add support for reading `~/.gwrk/plugins/` paths",
+      "primaryFile": "src/utils/config.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T005",
+      "title": "Implement src/plugins/manifest.test.ts",
+      "description": "NEW: Unit tests for manifest validation",
+      "primaryFile": "src/plugins/manifest.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T006",
+      "title": "Implement src/plugins/loader.test.ts",
+      "description": "NEW: Unit tests for resolution order",
+      "primaryFile": "src/plugins/loader.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [
+        "pnpm vitest run src/plugins/loader.test.ts"
+      ],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T007",
+      "title": "Implement src/commands/plugin.test.ts",
+      "description": "NEW: Integration tests for plugin CLI",
+      "primaryFile": "src/commands/plugin.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T008",
+      "title": "Implement test strategy for Phase 1",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T009",
+      "title": "Implement src/plugins/skill-runtime.ts",
+      "description": "NEW: Atomic/Compound assembly and execution logic",
+      "primaryFile": "src/plugins/skill-runtime.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/skill-runtime.md"
+      ]
+    },
+    {
+      "taskId": "T010",
+      "title": "Implement src/commands/skill.ts",
+      "description": "NEW: `gwrk skill <name>` command handler",
+      "primaryFile": "src/commands/skill.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T011",
+      "title": "Implement src/utils/agent-layer.ts",
+      "description": "MODIFY: Support ANSI stripping and binary guards for skill output",
+      "primaryFile": "src/utils/agent-layer.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T012",
+      "title": "Implement src/plugins/skill-runtime.test.ts",
+      "description": "NEW: Unit tests for prompt assembly",
+      "primaryFile": "src/plugins/skill-runtime.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/skill-runtime.md"
+      ]
+    },
+    {
+      "taskId": "T013",
+      "title": "Implement src/commands/skill.test.ts",
+      "description": "NEW: Integration tests for skill piping",
+      "primaryFile": "src/commands/skill.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T014",
+      "title": "Implement test strategy for Phase 2",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T015",
+      "title": "Implement src/plugins/builtins/agents/index.ts",
+      "description": "NEW: Static registry of built-in adapters",
+      "primaryFile": "src/plugins/builtins/agents/index.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T016",
+      "title": "Implement src/plugins/builtins/agents/claude/adapter.ts`, `gemini/adapter.ts`, `codex/adapter.ts",
+      "description": "NEW: Adapters",
+      "primaryFile": "src/plugins/builtins/agents/claude/adapter.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T017",
+      "title": "Implement src/utils/agent.ts",
+      "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(",
+      "primaryFile": "src/utils/agent.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "dispatch"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T018",
+      "title": "Implement src/commands/sync-context.ts",
+      "description": "NEW: `gwrk plugin sync-context` handler",
+      "primaryFile": "src/commands/sync-context.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T019",
+      "title": "Implement src/db/migrations/003-agent-context.sql",
+      "description": "NEW: Track sync state in SQLite",
+      "primaryFile": "src/db/migrations/003-agent-context.sql",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T020",
+      "title": "Implement src/plugins/agent-adapter.test.ts",
+      "description": "NEW: Verify exit normalization",
+      "primaryFile": "src/plugins/agent-adapter.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T021",
+      "title": "Implement test strategy for Phase 3",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T022",
+      "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
+      "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+      "primaryFile": "src/plugins/builtins/agents/agy/adapter.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "AgyAdapter",
+        "AgentBackend"
+      ],
+      "doneWhenCommands": [
+        "pnpm biome check src/plugins/builtins/agents/agy/adapter.ts"
+      ],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T023",
+      "title": "Implement src/plugins/builtins/agents/agy/adapter.test.ts",
+      "description": "NEW: Unit tests for dispatch, parseResult, syncGovernance, isAvailable",
+      "primaryFile": "src/plugins/builtins/agents/agy/adapter.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [
+        "pnpm vitest run src/plugins/builtins/agents/agy/adapter.test.ts"
+      ],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T024",
+      "title": "Implement src/plugins/builtins/agents/index.ts",
+      "description": "MODIFY: Register `AgyAdapter` in `BUILTIN_AGENTS`",
+      "primaryFile": "src/plugins/builtins/agents/index.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "AgyAdapter",
+        "BUILTIN_AGENTS"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T025",
+      "title": "Implement src/engine/router.ts",
+      "description": "MODIFY: Add `agy` to fallback chain after `gemini`",
+      "primaryFile": "src/engine/router.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "agy",
+        "gemini"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/router.md"
+      ]
+    },
+    {
+      "taskId": "T026",
+      "title": "Implement test strategy for Phase 4",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T027",
+      "title": "Implement src/plugins/workflow-runtime.ts",
+      "description": "NEW: Resolve and execute workflows via agents",
+      "primaryFile": "src/plugins/workflow-runtime.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/workflow-runtime.md"
+      ]
+    },
+    {
+      "taskId": "T028",
+      "title": "Implement src/engine/intent-engine.ts",
+      "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
+      "primaryFile": "src/engine/intent-engine.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "WRITE_FILE",
+        "CREATE_DIR",
+        "RUN_COMMAND"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T029",
+      "title": "Implement src/plugins/builtins/workflows/",
+      "description": "NEW: 10 core workflows as built-in plugins",
+      "primaryFile": "src/plugins/builtins/workflows/",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T030",
+      "title": "Implement src/plugins/workflow-runtime.test.ts",
+      "description": "NEW: Verify JSON intent parsing and validation",
+      "primaryFile": "src/plugins/workflow-runtime.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/workflow-runtime.md"
+      ]
+    },
+    {
+      "taskId": "T031",
+      "title": "Implement src/engine/intent-engine.test.ts",
+      "description": "NEW: Verify FS path containment and execution",
+      "primaryFile": "src/engine/intent-engine.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T032",
+      "title": "Implement test strategy for Phase 5",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T033",
+      "title": "Implement src/engine/define-orchestrator.ts",
+      "description": "NEW: TS state machine for spec->plan->tasks loop",
+      "primaryFile": "src/engine/define-orchestrator.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T034",
+      "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
+      "description": "MODIFY: Rewire to `WorkflowRuntime`",
+      "primaryFile": "src/commands/specify.ts`",
+      "fileType": "unknown",
+      "identifiers": [
+        "WorkflowRuntime"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T035",
+      "title": "Implement src/engine/define-orchestrator.test.ts",
+      "description": "NEW: Verify state transitions",
+      "primaryFile": "src/engine/define-orchestrator.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T036",
+      "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
+      "description": "MODIFY: E2E verification",
+      "primaryFile": "src/commands/specify.test.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T037",
+      "title": "Implement test strategy for Phase 6",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T038",
+      "title": "Implement src/commands/init.ts",
+      "description": "MODIFY: Provision `~/.gwrk/plugins/` with built-ins",
+      "primaryFile": "src/commands/init.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T039",
+      "title": "Implement src/plugins/migrate.ts",
+      "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration",
+      "primaryFile": "src/plugins/migrate.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T040",
+      "title": "Implement src/plugins/seed.ts",
+      "description": "NEW: Taxonomy to atomic skills seeding",
+      "primaryFile": "src/plugins/seed.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T041",
+      "title": "Implement src/commands/init.test.ts",
+      "description": "Implement changes for src/commands/init.test.ts",
+      "primaryFile": "src/commands/init.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T042",
+      "title": "Implement test strategy for Phase 7",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T043",
+      "title": "Implement src/engine/router.ts",
+      "description": "NEW: `selectBackend(",
+      "primaryFile": "src/engine/router.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "selectBackend"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/router.md"
+      ]
+    },
+    {
+      "taskId": "T044",
+      "title": "Implement src/engine/quota.ts",
+      "description": "NEW: Quota probing per adapter",
+      "primaryFile": "src/engine/quota.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T045",
+      "title": "Implement src/db/migrations/004-routing-history.sql",
+      "description": "NEW: `routing_decisions` table",
+      "primaryFile": "src/db/migrations/004-routing-history.sql",
+      "fileType": "unknown",
+      "identifiers": [
+        "routing_decisions"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T046",
+      "title": "Implement src/engine/router.test.ts",
+      "description": "NEW: Verify fallback chains and historical learning",
+      "primaryFile": "src/engine/router.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/router.md"
+      ]
+    },
+    {
+      "taskId": "T047",
+      "title": "Implement src/commands/status.ts",
+      "description": "MODIFY: Include backend availability in status",
+      "primaryFile": "src/commands/status.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T048",
+      "title": "Implement test strategy for Phase 8",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T050",
+      "title": "Implement src/plugins/review-plugin.ts",
+      "description": "NEW: ReviewPlugin interface, ReviewStep schema, resolveReviewPlugin(), project-type detection",
+      "primaryFile": "src/plugins/review-plugin.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "resolveReviewPlugin"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T051",
+      "title": "Implement built-in review plugins (4 plugins)",
+      "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
+      "primaryFile": "manifest.yaml",
+      "fileType": "config",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T052",
+      "title": "Modify src/engine/ship-orchestrator.ts for plugin dispatch",
+      "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).",
+      "primaryFile": "src/engine/ship-orchestrator.ts",
+      "fileType": "typescript",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T053",
+      "title": "Implement src/plugins/review-plugin.test.ts",
+      "description": "NEW: Unit tests for resolveReviewPlugin, phase-scope validation, step template schema",
+      "primaryFile": "src/plugins/review-plugin.test.ts",
+      "fileType": "test",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T049",
+      "title": "Implement test strategy for Phase 9",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    }
+  ]
+}
