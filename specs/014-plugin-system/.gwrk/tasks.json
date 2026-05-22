@@ -240,7 +240,7 @@
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-22T00:15:02.005Z",
+          "completedAt": "2026-05-22T00:42:09.364Z",
           "classification": "greenfield"
         },
         {
@@ -250,7 +250,7 @@
           "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-22T00:15:02.024Z",
+          "completedAt": "2026-05-22T00:42:09.376Z",
           "classification": "greenfield"
         },
         {
@@ -260,7 +260,7 @@
           "status": "completed",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-22T00:15:02.039Z",
+          "completedAt": "2026-05-22T00:42:09.384Z",
           "classification": "greenfield"
         },
         {
@@ -270,6 +270,7 @@
           "status": "completed",
           "gateScript": "gates/T025-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-22T00:42:10.224Z",
           "classification": "greenfield"
         },
         {
@@ -279,7 +280,7 @@
           "status": "completed",
           "gateScript": "gates/T026-gate.sh",
           "sp": 0,
-          "completedAt": "2026-04-02T04:15:46.862Z",
+          "completedAt": "2026-05-22T00:42:11.015Z",
           "classification": "noop"
         }
       ],
