@@ -485,8 +485,8 @@
         {
           "id": "T043",
           "title": "Implement src/engine/router.ts",
-          "description": "NEW: `selectBackend(",
-          "status": "completed",
+          "description": "NEW: `selectBackend(\n\nREVIEW FAIL (code): FR-P4-001 — Hardcoded skill preference.\n  WHERE: src/engine/router.ts:31-38\n  EXPECTED: Load skill manifest via PluginLoader and check preferredAgent field.\n  ACTUAL: Hardcoded check for \"narrative\" skill.\n  FIX: Inject PluginLoader and use it to resolve the skill manifest.\n  GATE: gates/T043-gate.sh\n  REF: plan.md Phase 7 > src/engine/router.ts",
+          "status": "open",
           "gateScript": "gates/T043-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-22T00:15:02.879Z",
@@ -523,7 +523,7 @@
           "id": "T047",
           "title": "Implement src/commands/status.ts",
           "description": "MODIFY: Include backend availability in status\\n\\nREVIEW FAIL (lint): noExplicitAny — FR-014.\\n  WHERE: src/commands/status.ts:48\\n  EXPECTED: Explicit type for statusData (e.g., interface or Record<string, unknown>)\\n  ACTUAL: const statusData: any = {\\n  FIX: Replace any with a proper interface or Record<string, unknown>\\n  GATE: biome lint\\n  REF: plan.md Phase 7 > src/commands/status.ts",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
           "classification": "greenfield",
@@ -533,7 +533,7 @@
           "id": "T048",
           "title": "Implement test strategy for Phase 8",
           "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nPOST-FLIGHT GATE FAIL: gates/T048-gate.sh exited non-zero.\n  OUTPUT: FAIL: T048 — cannot gate: no primary file or test commands provided in the task brief\\n\\nREVIEW FAIL (gate): gate script failed — TR-012.\\n  WHERE: specs/014-plugin-system/gates/T048-gate.sh\\n  EXPECTED: Gate script should verify Phase 8 tests\\n  ACTUAL: Hardcoded failure: \"cannot gate: no primary file...\"\\n  FIX: Update gate script to run pnpm vitest for Phase 8 test files (router, review-plugin, ship-orchestrator)\\n  GATE: gates/T048-gate.sh\\n  REF: plan.md Phase 7 > Test Strategy",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
           "classification": "noop"
@@ -560,7 +560,7 @@
           "id": "T052",
           "title": "Ship orchestrator stageCodeReview/stageUatReview dispatch through WorkflowRuntime",
           "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).\\n\\nREVIEW FAIL (lint): noDelete — F004.\\n  WHERE: src/engine/ship-orchestrator.ts:406, 704\\n  EXPECTED: Use undefined assignment instead of delete operator\\n  ACTUAL: delete task.completedAt;\\n  FIX: Replace \"delete task.completedAt\" with \"task.completedAt = undefined\"\\n  GATE: biome lint\\n  REF: plan.md Phase 8 > src/engine/ship-orchestrator.ts",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-22T23:24:37.484Z"
