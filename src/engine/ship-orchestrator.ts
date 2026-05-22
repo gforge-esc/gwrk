@@ -605,7 +605,15 @@ export class ShipOrchestrator extends EventEmitter {
     const phase = taskState.phases.find(
       (p: Phase) => p.id === this.config.phaseId,
     );
-    const phaseTasks = phase?.tasks.map((t: Task) => `${t.id}: ${t.title} [${t.status}]`).join("\n- ") || "No tasks";
+    const phaseTasks =
+      phase?.tasks
+        .map((t: Task) => `${t.id}: ${t.title} [${t.status}]`)
+        .join("\n- ") || "No tasks";
+
+    const steps = plugin.steps.code
+      .filter((s) => !s.skip)
+      .map((s) => `- ${s.title}: ${s.description}`)
+      .join("\n");
 
     const scopedPrompt = [
       `Phase ${this.config.phaseId} Code Review`,
@@ -613,6 +621,9 @@ export class ShipOrchestrator extends EventEmitter {
       "SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks.",
       "Do NOT re-open tasks from earlier phases that are already completed.",
       "If a completed task's implementation has issues, note them in your summary but do NOT change its status.",
+      "",
+      "Review Steps:",
+      steps,
       "",
       "Phase tasks:",
       `- ${phaseTasks}`,
@@ -637,10 +648,18 @@ export class ShipOrchestrator extends EventEmitter {
     );
     const doneWhen = phase?.doneWhen?.join("\n- ") || "All tasks pass gates";
 
+    const steps = plugin.steps.uat
+      .filter((s) => !s.skip)
+      .map((s) => `- ${s.title}: ${s.description}`)
+      .join("\n");
+
     const scopedPrompt = [
       `Phase ${this.config.phaseId} UAT Review`,
       "",
       "SCOPE CONSTRAINT: Only evaluate user stories and requirements addressed by THIS phase.",
+      "",
+      "Review Steps:",
+      steps,
       "",
       "Done When:",
       `- ${doneWhen}`,
