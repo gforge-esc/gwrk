@@ -6,6 +6,7 @@ import {
   resolveReviewPlugin,
   validatePhaseScope,
 } from "../plugins/review-plugin.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 
 import {
   type TaskDispatch,
@@ -253,27 +254,34 @@ export class ShipOrchestrator extends EventEmitter {
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // 2. Dispatch the review agent directly.
-      //    The review agent modifies tasks.json via tool calls (re-opening
-      //    failed tasks). We don't need its JSON output — readVerdict()
-      //    determines GO/NO-GO by diffing tasks.json.
-      const result = await this.dispatchWithFailback({
-        prompt,
-        featureDir: `specs/${this.config.featureId}`,
-        agent: this.config.backend,
-        env: {},
-        quiet: true,
-      });
-
-      if (result.exitCode !== 0) {
+      // ADR-007: Dispatch review through WorkflowRuntime (Layer 2.5).
+      // This ensures the agent receives the full PROMPT.md + outputSchema,
+      // not just the inline scope constraint. Same path as DefineOrchestrator.
+      const runtime = new WorkflowRuntime();
+      try {
+        await runtime.executeWorkflow(workflowName, prompt, {
+          projectRoot: this.config.cwd,
+          agent: this.config.backend,
+          quiet: true,
+        });
+      } catch (runtimeErr: unknown) {
+        // WorkflowRuntime throws on non-zero exit, missing schema, etc.
+        // Treat as review dispatch failure.
+        const errMsg =
+          runtimeErr instanceof Error
+            ? runtimeErr.message
+            : String(runtimeErr);
+        console.warn(
+          `    ⚠ ${workflowName} runtime error: ${errMsg.substring(0, 200)}`,
+        );
         return {
           success: false,
-          exitCode: result.exitCode,
-          error: `${workflowName} agent exited ${result.exitCode}`,
+          exitCode: 1,
+          error: `${workflowName} dispatch failed: ${errMsg.substring(0, 200)}`,
         };
       }
 
-      // 3. Post-dispatch validation (Snapshot-Diff-Revert)
+      // 2. Post-dispatch validation (Snapshot-Diff-Revert)
       validatePhaseScope(
         this.config.cwd,
         this.config.featureId,
@@ -281,17 +289,17 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // 4. Determine verdict from gates (not agent edits)
+      // 3. Determine verdict from gates (not agent edits).
+      //    Gates are truth, agent verdict is advisory. (ADR-007)
       const verdict = await this.readVerdict();
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
 
-      // 5. Discard review agent's source file mutations.
+      // 4. Discard review agent's source file mutations.
       //    Review agents in YOLO mode can modify source files (fixing imports,
       //    reformatting, etc.). These edits are often incomplete and can break
-      //    the build (e.g., removing non-null assertions without adding guards).
-      //    The review's value is the verdict + task feedback, not code edits.
+      //    the build. The review's value is the verdict + task feedback, not code edits.
       //    We preserve tasks.json (carries verdict state) but restore everything else.
       this.revertSourceMutations();
 
