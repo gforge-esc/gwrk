@@ -523,10 +523,11 @@
           "id": "T047",
           "title": "Implement src/commands/status.ts",
           "description": "MODIFY: Include backend availability in status\\n\\nREVIEW FAIL (lint): noExplicitAny — FR-014.\\n  WHERE: src/commands/status.ts:48\\n  EXPECTED: Explicit type for statusData (e.g., interface or Record<string, unknown>)\\n  ACTUAL: const statusData: any = {\\n  FIX: Replace any with a proper interface or Record<string, unknown>\\n  GATE: biome lint\\n  REF: plan.md Phase 7 > src/commands/status.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-22T23:24:37.467Z"
         },
         {
           "id": "T048",
@@ -559,10 +560,10 @@
           "id": "T052",
           "title": "Ship orchestrator stageCodeReview/stageUatReview dispatch through WorkflowRuntime",
           "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).\\n\\nREVIEW FAIL (lint): noDelete — F004.\\n  WHERE: src/engine/ship-orchestrator.ts:406, 704\\n  EXPECTED: Use undefined assignment instead of delete operator\\n  ACTUAL: delete task.completedAt;\\n  FIX: Replace \"delete task.completedAt\" with \"task.completedAt = undefined\"\\n  GATE: biome lint\\n  REF: plan.md Phase 8 > src/engine/ship-orchestrator.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-22T22:07:01.037Z"
+          "completedAt": "2026-05-22T23:24:37.484Z"
         },
         {
           "id": "T053",
