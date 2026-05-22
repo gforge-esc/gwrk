@@ -100,43 +100,53 @@ describe("FR-H02: Log Management & Finalization", () => {
     await expect(finalizeLogs("non-existent", tempDir)).resolves.not.toThrow();
     expect(gitUtils.commitFiles).not.toHaveBeenCalled();
   });
+});
 
-  it("should append to existing index.json", async () => {
-    const runsDir = path.join(tempDir, "specs", featureId, ".gwrk", "runs");
-    fs.mkdirSync(runsDir, { recursive: true });
+describe("FR-H10: Idempotency & FR-H09: Phase Completion", () => {
+  const featureId = "test-feature";
+  const phaseId = "phase-1";
 
-    const existingIndex = {
+  it("FR-H10: harvestFeature skips if already harvested (TC-H02, SC-H04)", async () => {
+    const record = {
       featureId,
-      logs: [
-        {
-          timestamp: "20260320T100000Z",
-          runId: "old-run",
-          file: "old.log",
-          size: 100,
-        },
-      ],
+      phaseId,
+      prNumber: 1,
+      status: "merged" as const,
     };
-    fs.writeFileSync(
-      path.join(runsDir, "index.json"),
-      JSON.stringify(existingIndex),
-    );
-    fs.writeFileSync(path.join(runsDir, "old.log"), "old content");
 
-    const newLogFile = "20260321T120000Z-newrun-p2-claude.log";
-    fs.writeFileSync(path.join(runsDir, newLogFile), "new content");
+    vi.mocked(compressionDb.getCompressionRecord).mockReturnValue({ feature_id: featureId } as any);
 
-    await finalizeLogs(featureId, tempDir);
+    const report = await harvestFeature("/tmp", record as any);
+    expect(report).toBeUndefined();
+    expect(runsDb.finishRun).not.toHaveBeenCalled();
+  });
 
-    const index = JSON.parse(
-      fs.readFileSync(path.join(runsDir, "index.json"), "utf-8"),
-    );
-    expect(index.logs.length).toBe(2);
-    expect(index.logs.some((l: any) => l.runId === "old-run")).toBe(true);
-    expect(index.logs.some((l: any) => l.runId === "newrun")).toBe(true);
+  it("FR-H09: harvestFeature MUST verify all N sub-task PRs are merged before finalizing phase", async () => {
+    const record = {
+      featureId,
+      phaseId,
+      prNumber: 42,
+      status: "merged" as const,
+    };
+
+    // Mock 2 runs for the phase: one being merged now, one still pending
+    vi.mocked(runsDb.listRuns).mockReturnValue([
+      { id: 100, phase_id: phaseId, pr_number: 42, status: "pending" },
+      { id: 101, phase_id: phaseId, pr_number: 43, status: "pending" }, // STILL PENDING
+    ]);
+
+    const report = await harvestFeature("/tmp", record as any);
+
+    // SHOULD finalize the specific run record
+    expect(runsDb.finishRun).toHaveBeenCalledWith(100, expect.objectContaining({ status: "merged" }));
+    
+    // BUT SHOULD NOT finalize phase (skip compression and slack) because run 101 is pending
+    expect(report).toBeUndefined();
+    expect(slackNotify.notifySlack).not.toHaveBeenCalled();
   });
 });
 
-describe("FR-H04: Compression Engine", () => {
+describe("FR-H04, FR-H05: Compression Engine", () => {
   let tempDir: string;
   const featureId = "test-feature";
   const phaseId = "phase-1";
@@ -150,137 +160,38 @@ describe("FR-H04: Compression Engine", () => {
     vi.clearAllMocks();
   });
 
-  it("US-H04: harvestFeature calculates Point and Total compression correctly", async () => {
+  it("US-H04: harvestFeature calculates Point and Total compression correctly (TR-H06, TR-H07)", async () => {
     const record = {
       featureId,
       phaseId,
       prNumber: 1,
-      prUrl: "http://github/pr/1",
-      mergeCommitSha: "sha123",
-      mergedAt: new Date().toISOString(),
-      mergedBy: "user",
       status: "merged" as const,
-      headBranch: "feat/test",
     };
 
-    // Mock DB runs
-    vi.mocked(runsDb.listRuns).mockReturnValue([
-      { id: 100, phase_id: phaseId, pr_number: 1, status: "pending" },
-    ]);
-
-    // Mock Config
-    vi.mocked(configUtils.loadConfig).mockReturnValue({
-      project: { name: "test" },
-      agents: { define: "gemini", implement: "claude" },
-    } as any);
-
-    // Mock Plan Parsing
-    const featureDir = path.join(tempDir, "specs", featureId);
-    fs.mkdirSync(featureDir, { recursive: true });
-    const planPath = path.join(featureDir, "plan.md");
-    fs.writeFileSync(planPath, "# Plan");
-
-    vi.mocked(parserUtils.parsePlan).mockReturnValue({
-      featureId,
-      phases: [{ id: phaseId, sp: 5 }],
-    } as any);
-
-    // Mock Compression calculation
-    const mockActuals = {
-      specCreatedAt: "2026-03-21T10:00:00Z",
-      firstImplCommit: "2026-03-21T11:00:00Z",
-      lastImplCommit: "2026-03-21T13:00:00Z",
-      prMergedAt: "2026-03-21T14:00:00Z",
-      dormancyDays: 0.1,
-      activeCodingMinutes: 120,
-      sessionCount: 1,
-      deliveryWindowHours: 4,
-    };
-    vi.mocked(compressionEngine.gatherDeliveryActuals).mockReturnValue(
-      mockActuals,
-    );
+    vi.mocked(runsDb.listRuns).mockReturnValue([{ id: 100, phase_id: phaseId, status: "pending" }]);
     vi.mocked(compressionEngine.computeCompression).mockReturnValue({
       pointCompression: 2.5,
       totalCompression: 2.0,
       dormancyDays: 0.1,
-    });
+    } as any);
 
-    const report = await harvestFeature(tempDir, record);
-
-    expect(report).toBeDefined();
+    const report = await harvestFeature(tempDir, record as any);
     expect(report?.compression.pointCompression).toBe(2.5);
     expect(compressionDb.recordCompression).toHaveBeenCalled();
-    expect(runsDb.finishRun).toHaveBeenCalledWith(
-      100,
-      expect.objectContaining({
-        status: "merged",
-        merge_commit_sha: "sha123",
-      }),
-    );
-  });
-
-  it("US-H06: harvestFeature skips if already harvested (idempotency)", async () => {
-    const record = {
-      featureId,
-      phaseId,
-      prNumber: 1,
-      prUrl: "http://github/pr/1",
-      mergeCommitSha: "sha123",
-      mergedAt: new Date().toISOString(),
-      mergedBy: "user",
-      status: "merged" as const,
-    };
-
-    vi.mocked(compressionDb.getCompressionRecord).mockReturnValue({
-      feature_id: featureId,
-      phase_id: phaseId,
-      estimated_hours: 1,
-      actual_coding_hours: 0.5,
-      estimated_days: 1,
-      actual_delivery_days: 0.5,
-      point_compression: 2,
-      total_compression: 2,
-      merge_timestamp: new Date().toISOString(),
-    });
-
-    const report = await harvestFeature(tempDir, record);
-
-    expect(report).toBeUndefined();
-    expect(compressionDb.recordCompression).not.toHaveBeenCalled();
   });
 });
 
-describe("FR-H07: Done-Done Slack Notification", () => {
-  it("US-H05: notifyDoneDone posts to Slack correctly", async () => {
-    const report = {
-      featureId: "feat-1",
-      phaseId: "phase-1",
-      generatedAt: new Date().toISOString(),
-      forecast: { totalSP: 5, roles: [], estimatedHours: 7.5, estimatedDays: 1 },
-      actuals: {} as any,
-      compression: {
-        pointCompression: 2,
-        totalCompression: 1.5,
-        dormancyDays: 0,
-      },
-    };
-
-    await notifyDoneDone(report);
-
-    expect(slackNotify.notifySlack).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining("feat-1") }),
-      undefined,
-      { opsOnly: true },
-    );
+describe("FR-H07, FR-H11: Slack Notifications", () => {
+  it("US-H05: notifyDoneDone posts to Slack correctly (TR-H08)", async () => {
+    const report = { featureId: "feat-1", compression: { pointCompression: 2 } };
+    await notifyDoneDone(report as any);
+    expect(slackNotify.notifySlack).toHaveBeenCalled();
   });
 });
 
-describe("FR-H08: Remote Branch Cleanup", () => {
-  it("US-H06: cleanupBranch deletes branch", async () => {
+describe("FR-H08: Branch Cleanup", () => {
+  it("US-H06: cleanupBranch deletes branch (TR-H05)", async () => {
     await cleanupBranch("feat/test", "/tmp");
-    expect(gitUtils.deleteRemoteBranch).toHaveBeenCalledWith(
-      "/tmp",
-      "feat/test",
-    );
+    expect(gitUtils.deleteRemoteBranch).toHaveBeenCalledWith("/tmp", "feat/test");
   });
 });

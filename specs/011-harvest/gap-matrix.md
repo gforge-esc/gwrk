@@ -12,17 +12,17 @@
 | FR-H03 | Finalize SQLite run record | unit | src/db/runs.test.ts | ✅ | |
 | FR-H04 | Point Compression | unit | src/engine/compression.test.ts | ✅ | |
 | FR-H05 | Total Compression | unit | src/engine/compression.test.ts | ✅ | |
-| FR-H06 | Compression DB insertion | unit | src/engine/compression.test.ts | ✅ | |
+| FR-H06 | Compression DB insertion | unit | src/db/compression.test.ts | ✅ | |
 | FR-H07 | Slack Done-Done message | e2e | tests/harvest-e2e.test.ts | ✅ | |
 | FR-H08 | Delete phase branch | e2e | tests/harvest-e2e.test.ts | ✅ | |
-| FR-H09 | Phase completion tracking | integration | tests/server-github.test.ts | ✅ | |
+| FR-H09 | Phase completion tracking | integration | src/engine/harvest.test.ts | ✅ | |
 | FR-H10 | Harvest idempotency check | integration | src/engine/harvest.test.ts | ✅ | |
-| FR-H11 | Prevent double notification | e2e | tests/harvest-e2e.test.ts | ✅ | |
+| FR-H11 | Prevent double notification | integration | tests/server-github.test.ts | ✅ | |
 | FR-H12 | Post-Ship GitHub webhook handler | integration | tests/server-github.test.ts | ✅ | |
 | FR-H13 | Issue-to-feature mapping logic | integration | tests/server-github.test.ts | ✅ | |
-| FR-H14 | SQLite issues table persistence | integration | tests/server-github.test.ts | ✅ | |
+| FR-H14 | SQLite issues table persistence | unit | src/db/issues.test.ts | ✅ | |
 | FR-H15 | Slack notification for issues | integration | tests/server-github.test.ts | ✅ | |
-| TR-H01 | Webhook ignores unmerged PRs | integration | tests/server-github.test.ts | ✅ | |
+| TR-H01 | Webhook ignores non-trunk targets | integration | tests/server-github.test.ts | ✅ | |
 | TR-H02 | Harvest idempotency guard test | integration | src/engine/harvest.test.ts | ✅ | |
 | TR-H03 | finishRun updates DB correctly | unit | src/db/runs.test.ts | ✅ | |
 | TR-H04 | Logs moved and index generated | integration | src/engine/harvest.test.ts | ✅ | |
@@ -33,5 +33,3 @@
 | TR-H09 | issues.opened maps via label | integration | tests/server-github.test.ts | ✅ | |
 | TR-H10 | issues.opened resolves via title | integration | tests/server-github.test.ts | ✅ | |
 | TR-H11 | Issue transitions open to closed | unit | src/db/issues.test.ts | ✅ | |
-| FR-H12 | GitHub webhook handler | integration | tests/server-github.test.ts | ✅ | T015 |
-| FR-H14 | SQLite issues table persistence | integration | tests/server-github.test.ts | ✅ | T016 |
