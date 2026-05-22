@@ -236,7 +236,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -531,44 +531,47 @@
         {
           "id": "T048",
           "title": "Implement test strategy for Phase 8",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nPOST-FLIGHT GATE FAIL: gates/T048-gate.sh exited non-zero.\n  OUTPUT: FAIL: T048 — cannot gate: no primary file or test commands provided in the task brief",
+          "status": "open",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
-          "completedAt": "2026-04-08T14:48:00.000Z",
           "classification": "noop"
         },
         {
           "id": "T050",
-          "title": "Remove hardcoded fallback in resolveReviewPlugin() \u2014 fail fast",
+          "title": "Remove hardcoded fallback in resolveReviewPlugin() — fail fast",
           "description": "NEW: ReviewPlugin interface, ReviewStep schema, resolveReviewPlugin(), project-type detection",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T049-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-22T22:07:01.024Z"
         },
         {
           "id": "T051",
           "title": "Promote review-code-cli/PROMPT.md from 41-line skeleton to full 269-line production prompt",
-          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp \u2014 manifest.yaml + workflow .md each",
-          "status": "open",
+          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
+          "status": "completed",
           "gateScript": "gates/T050-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-22T22:07:01.027Z"
         },
         {
           "id": "T052",
           "title": "Ship orchestrator stageCodeReview/stageUatReview dispatch through WorkflowRuntime",
           "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T051-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-22T22:07:01.037Z"
         },
         {
           "id": "T053",
           "title": "Tests: review dispatch via WorkflowRuntime, fail-fast resolution, full prompt verification",
           "description": "NEW: Unit tests for resolveReviewPlugin, phase-scope validation, step template schema",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T052-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-22T22:07:01.899Z"
         }
       ],
       "sp_estimate": 0,
@@ -578,7 +581,7 @@
     },
     {
       "id": "phase-09",
-      "title": "Review Plugin Layer (Layer 3 \u2014 First Extension)",
+      "title": "Review Plugin Layer (Layer 3 — First Extension)",
       "tasks": [
         {
           "id": "T049",
@@ -593,7 +596,7 @@
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`ShipOrchestrator` no longer hardcodes workflow paths \u2014 resolves via `ReviewPlugin`",
+        "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
         "Post-dispatch validation reverts any cross-phase task re-opens",
         "`.gwrkrc.json` `review` field selects active review strategy"
       ]
