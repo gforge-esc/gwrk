@@ -6,7 +6,6 @@ import {
   resolveReviewPlugin,
   validatePhaseScope,
 } from "../plugins/review-plugin.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 
 import {
   type TaskDispatch,
@@ -254,30 +253,42 @@ export class ShipOrchestrator extends EventEmitter {
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // ADR-007: Dispatch review through WorkflowRuntime (Layer 2.5).
-      // This ensures the agent receives the full PROMPT.md + outputSchema,
-      // not just the inline scope constraint. Same path as DefineOrchestrator.
-      const runtime = new WorkflowRuntime();
+      // ADR-007: Resolve review prompt from plugin system (PROMPT.md),
+      // then dispatch with raw tool access. Review agents need native
+      // tool access (pnpm build, pnpm lint, gate scripts, jq, git)
+      // which WorkflowRuntime's WRITE_FILE guard blocks. The plugin
+      // system provides the full prompt; raw dispatch provides tool access.
+      let reviewPrompt = prompt;
       try {
-        await runtime.executeWorkflow(workflowName, prompt, {
-          projectRoot: this.config.cwd,
-          agent: this.config.backend,
-          quiet: true,
-        });
-      } catch (runtimeErr: unknown) {
-        // WorkflowRuntime throws on non-zero exit, missing schema, etc.
-        // Treat as review dispatch failure.
-        const errMsg =
-          runtimeErr instanceof Error
-            ? runtimeErr.message
-            : String(runtimeErr);
+        const { PluginLoader } = await import("../plugins/loader.js");
+        const loader = new PluginLoader({ projectDir: this.config.cwd });
+        const plugin = await loader.resolvePlugin(workflowName);
+        const promptPath = path.join(plugin.path, "PROMPT.md");
+        if (fs.existsSync(promptPath)) {
+          const basePrompt = fs.readFileSync(promptPath, "utf-8");
+          reviewPrompt = `${basePrompt}\n\n---\n\n## Scope Context\n\n${prompt}`;
+        }
+      } catch {
+        // Plugin resolution failed — fall through with the inline prompt.
+        // This is not fatal: the inline scope context is still useful.
         console.warn(
-          `    ⚠ ${workflowName} runtime error: ${errMsg.substring(0, 200)}`,
+          `    ⚠ Could not resolve PROMPT.md for ${workflowName}, using inline prompt`,
         );
+      }
+
+      const result = await this.dispatchWithFailback({
+        prompt: reviewPrompt,
+        featureDir: `specs/${this.config.featureId}`,
+        agent: this.config.backend,
+        env: {},
+        quiet: true,
+      });
+
+      if (result.exitCode !== 0) {
         return {
           success: false,
-          exitCode: 1,
-          error: `${workflowName} dispatch failed: ${errMsg.substring(0, 200)}`,
+          exitCode: result.exitCode,
+          error: `${workflowName} agent exited ${result.exitCode}`,
         };
       }
 

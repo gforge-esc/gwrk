@@ -66,37 +66,39 @@ describe("T053: Review Dispatch Architecture (ADR-007)", () => {
     });
   });
 
-  describe("WorkflowRuntime dispatch", () => {
-    it("ship-orchestrator.ts imports WorkflowRuntime", () => {
+  describe("Plugin-resolved prompt dispatch", () => {
+    it("ship-orchestrator.ts imports PluginLoader for review prompt resolution", () => {
       const orchPath = path.join(
         import.meta.dirname,
         "engine/ship-orchestrator.ts",
       );
       const content = fs.readFileSync(orchPath, "utf-8");
 
-      expect(content).toContain(
-        'import { WorkflowRuntime } from "../plugins/workflow-runtime.js"',
-      );
+      // Must dynamically import PluginLoader in executeReviewWorkflow
+      expect(content).toContain("../plugins/loader.js");
     });
 
-    it("ship-orchestrator.ts uses WorkflowRuntime for review dispatch", () => {
+    it("ship-orchestrator.ts resolves PROMPT.md from plugin system", () => {
       const orchPath = path.join(
         import.meta.dirname,
         "engine/ship-orchestrator.ts",
       );
       const content = fs.readFileSync(orchPath, "utf-8");
 
-      // Must use WorkflowRuntime in executeReviewWorkflow
-      expect(content).toContain("new WorkflowRuntime()");
-      expect(content).toContain("runtime.executeWorkflow(");
+      // Must resolve plugin and load PROMPT.md
+      expect(content).toContain("loader.resolvePlugin(workflowName)");
+      expect(content).toContain("PROMPT.md");
 
-      // Must NOT use dispatchWithFailback for reviews
-      // (dispatchWithFailback should still exist for IMPLEMENT stage)
+      // Must use raw dispatch (not WorkflowRuntime) for native tool access
       const reviewMethod = content.slice(
         content.indexOf("executeReviewWorkflow"),
         content.indexOf("private getNextStage"),
       );
-      expect(reviewMethod).not.toContain("this.dispatchWithFailback");
+      expect(reviewMethod).toContain("this.dispatchWithFailback");
+      // Must NOT use WorkflowRuntime (intent guards block review agents)
+      expect(content).not.toContain(
+        'import { WorkflowRuntime } from "../plugins/workflow-runtime.js"',
+      );
     });
   });
 });
