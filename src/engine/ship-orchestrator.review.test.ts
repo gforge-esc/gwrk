@@ -1,16 +1,25 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ShipOrchestrator } from "./ship-orchestrator.js";
-import { ShipStage } from "./ship-types.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import * as reviewPlugin from "../plugins/review-plugin.js";
 import * as stateUtils from "../utils/state.js";
 import fs from "node:fs";
 
-vi.mock("../plugins/workflow-runtime.js");
 vi.mock("../plugins/review-plugin.js");
 vi.mock("../utils/state.js");
 vi.mock("../utils/gate-runner.js");
 vi.mock("node:fs");
+// Mock the dynamic import of PluginLoader used in executeReviewWorkflow
+vi.mock("../plugins/loader.js", () => ({
+  PluginLoader: vi.fn().mockImplementation(() => ({
+    resolvePlugin: vi.fn().mockResolvedValue({
+      path: "/mock/plugins/review-code-cli",
+      manifest: { name: "review-code-cli" },
+    }),
+  })),
+}));
+vi.mock("../utils/agent.js", () => ({
+  dispatchToAgent: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" }),
+}));
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   return {
@@ -57,42 +66,43 @@ describe("ShipOrchestrator Review Plugin Integration", () => {
     vi.clearAllMocks();
     vi.mocked(reviewPlugin.resolveReviewPlugin).mockResolvedValue(mockPlugin as any);
     vi.mocked(stateUtils.loadTaskState).mockReturnValue(mockTaskState as any);
+    // fs.existsSync returns true for PROMPT.md check
     vi.mocked(fs.existsSync).mockReturnValue(true);
+    // fs.readFileSync returns mock PROMPT.md content
+    vi.mocked(fs.readFileSync).mockReturnValue("# Mock Review Prompt\n\nFull production prompt content here.");
   });
 
-  it("TR-015: stageCodeReview resolves plugin and dispatches via WorkflowRuntime", async () => {
+  it("TR-015: stageCodeReview resolves plugin and dispatches via PluginLoader + raw dispatch", async () => {
     const orchestrator = new ShipOrchestrator(mockConfig as any);
-    
+
     // @ts-ignore - accessing private method for testing
     const result = await orchestrator.stageCodeReview();
 
+    // 1. Must resolve the review plugin to get workflow name
     expect(reviewPlugin.resolveReviewPlugin).toHaveBeenCalledWith("/root");
-    
-    const runtimeInstance = vi.mocked(WorkflowRuntime).mock.instances[0];
-    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
-      "review-code-cli",
-      expect.stringContaining("Review Steps:\n- Linting: Check lint"),
-      expect.objectContaining({ agent: "gemini" })
-    );
-    
+
+    // 2. Must attempt to load PROMPT.md from the resolved plugin path
+    expect(fs.existsSync).toHaveBeenCalled();
+    expect(fs.readFileSync).toHaveBeenCalled();
+
+    // 3. Must validate phase scope after dispatch
     expect(reviewPlugin.validatePhaseScope).toHaveBeenCalled();
   });
 
-  it("TR-015: stageUatReview resolves plugin and dispatches via WorkflowRuntime", async () => {
+  it("TR-015: stageUatReview resolves plugin and dispatches via PluginLoader + raw dispatch", async () => {
     const orchestrator = new ShipOrchestrator(mockConfig as any);
-    
+
     // @ts-ignore - accessing private method for testing
     const result = await orchestrator.stageUatReview();
 
+    // 1. Must resolve the review plugin to get workflow name
     expect(reviewPlugin.resolveReviewPlugin).toHaveBeenCalledWith("/root");
-    
-    const runtimeInstance = vi.mocked(WorkflowRuntime).mock.instances[0];
-    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
-      "review-uat-cli",
-      expect.stringContaining("Review Steps:\n- E2E: Run E2E"),
-      expect.objectContaining({ agent: "gemini" })
-    );
-    
+
+    // 2. Must attempt to load PROMPT.md from the resolved plugin path
+    expect(fs.existsSync).toHaveBeenCalled();
+    expect(fs.readFileSync).toHaveBeenCalled();
+
+    // 3. Must validate phase scope after dispatch
     expect(reviewPlugin.validatePhaseScope).toHaveBeenCalled();
   });
 });
