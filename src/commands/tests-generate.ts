@@ -6,6 +6,11 @@ import { finishRun, startRun } from "../db/runs.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
+import {
+  extractPhaseRequirements,
+  extractPhaseSection,
+  extractSpecSections,
+} from "../utils/parser.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { loadTaskState } from "../utils/state.js";
 
@@ -128,7 +133,44 @@ Examples:
 
         let exitCode = 0;
         try {
-          const input = `Generate tests for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}`;
+          // Build structured input with phase-scoped context when --phase is provided.
+          // Without this, the agent reads the full 500+ line plan and goes rogue.
+          let input: string;
+          if (paddedPhase) {
+            const phaseNum = Number.parseInt(
+              paddedPhase.replace(/^p0*/, ""),
+              10,
+            );
+            const phaseSection = extractPhaseSection(planPath, phaseNum);
+            const reqIds = phaseSection
+              ? extractPhaseRequirements(phaseSection)
+              : [];
+            const specContext = extractSpecSections(specPath, reqIds);
+
+            input = [
+              `Generate RED tests for feature ${feature} phase ${paddedPhase}`,
+              "",
+              "SCOPE CONSTRAINT: Generate tests ONLY for the phase below.",
+              "Do NOT read the full plan.md or spec.md — all relevant context is provided here.",
+              "Do NOT modify any production source files (src/**/*.ts excluding *.test.ts).",
+              "",
+              "## Plan Section (Phase Only)",
+              "",
+              phaseSection || "(Phase not found in plan.md)",
+              "",
+              reqIds.length > 0
+                ? [
+                    "## Relevant Spec Requirements",
+                    "",
+                    specContext || "(No matching spec sections found)",
+                  ].join("\n")
+                : "",
+            ]
+              .filter(Boolean)
+              .join("\n");
+          } else {
+            input = `Generate tests for feature ${feature}`;
+          }
           const result = await runtime.executeWorkflow(
             "gwrk-define-tests",
             input,
