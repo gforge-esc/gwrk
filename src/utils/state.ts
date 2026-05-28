@@ -71,6 +71,63 @@ export type Task = z.infer<typeof TaskSchema>;
 export type Phase = z.infer<typeof PhaseSchema>;
 export type TaskState = z.infer<typeof TaskStateSchema>;
 
+/**
+ * Common LLM status hallucinations → valid Zod enum values.
+ * Review/UAT agents frequently write non-schema status values.
+ * Rather than crash, we coerce and warn.
+ */
+const STATUS_COERCION_MAP: Record<string, string> = {
+  todo: "open",
+  pending: "open",
+  not_started: "open",
+  blocked: "open",
+  wip: "in_progress",
+  working: "in_progress",
+  active: "in_progress",
+  done: "completed",
+  finished: "completed",
+  complete: "completed",
+  passed: "completed",
+  skipped: "cancelled",
+  removed: "cancelled",
+};
+
+const VALID_STATUSES = new Set(["open", "in_progress", "completed", "cancelled"]);
+
+/**
+ * Sanitize task statuses in raw JSON before Zod validation.
+ * Coerces common LLM hallucinations to valid enum values.
+ * Returns the number of coercions performed.
+ */
+function sanitizeTaskStatuses(raw: Record<string, unknown>): number {
+  let coerced = 0;
+  const phases = raw.phases;
+  if (!Array.isArray(phases)) return 0;
+
+  for (const phase of phases) {
+    if (!phase || typeof phase !== "object") continue;
+    const tasks = (phase as Record<string, unknown>).tasks;
+    if (!Array.isArray(tasks)) continue;
+
+    for (const task of tasks) {
+      if (!task || typeof task !== "object") continue;
+      const t = task as Record<string, unknown>;
+      const status = t.status;
+      if (typeof status !== "string") continue;
+
+      if (!VALID_STATUSES.has(status)) {
+        const coercedStatus = STATUS_COERCION_MAP[status.toLowerCase()] ?? "open";
+        console.warn(
+          `  ⚠ task ${t.id ?? "?"}: coerced invalid status "${status}" → "${coercedStatus}"`,
+        );
+        t.status = coercedStatus;
+        coerced++;
+      }
+    }
+  }
+  return coerced;
+}
+
 export function loadTaskState(featureDir: string): TaskState {
   const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
 
@@ -84,6 +141,18 @@ export function loadTaskState(featureDir: string): TaskState {
   } catch (error) {
     console.error(`Task state error in ${tasksPath}: invalid JSON`);
     process.exit(1);
+  }
+
+  // Sanitize LLM-hallucinated status values before Zod validation
+  const coerced = sanitizeTaskStatuses(raw as Record<string, unknown>);
+  if (coerced > 0) {
+    console.warn(
+      `  ⚠ ${coerced} invalid task status(es) coerced in ${tasksPath}`,
+    );
+    // Write the sanitized version back to prevent re-coercion on next load
+    const tempPath = `${tasksPath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(raw, null, 2), "utf-8");
+    fs.renameSync(tempPath, tasksPath);
   }
 
   const result = TaskStateSchema.safeParse(raw);
