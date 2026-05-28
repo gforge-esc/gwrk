@@ -609,11 +609,10 @@
         {
           "id": "T050",
           "title": "Implement test strategy for Phase 10",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): TR-P10-002 — FR-L25-003.\n  WHERE: src/plugins/builtins/workflows\n  EXPECTED: 15 gwrk-* workflows (inc. gwrk-analyze, gwrk-effort, etc.)\n  ACTUAL: 10 workflows found\n  FIX: Implement missing 5 builtin workflows from .agents/workflows/\n\nREVIEW FAIL (code): TR-P10-003 — ADR-007.\n  WHERE: src/plugins/skill-runtime.ts:125\n  EXPECTED: No hardcoded .agents/ paths\n  ACTUAL: workflow: `.agents/skills/${name}/manifest.yaml`\n  FIX: Remove legacy symbolic log path reference\n\nREVIEW FAIL (code): TR-P10-001 — FR-L25-005.\n  WHERE: src/commands/init.ts\n  EXPECTED: gwrk init seeds .gwrk/rules/ from builtins\n  ACTUAL: operating-model.md and workspace.md not seeded\n  FIX: Implement rules seeding logic in init.ts\n\nREVIEW FAIL (code): SC-010 — ADR-007.\n  WHERE: .agents/scripts/parser/\n  EXPECTED: Directory deleted\n  ACTUAL: parser-scaffold.sh still exists\n  FIX: Perform dead code removal of legacy scripts and workflows",
           "status": "open",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-28T14:35:03.371Z",
           "classification": "noop"
         }
       ],
@@ -633,11 +632,10 @@
         {
           "id": "T051",
           "title": "Implement test strategy for Phase 11",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Phase 11 depends on Phase 10 cleanup which failed. .agents/ directory still exists in repo.",
+          "status": "open",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-28T14:25:57.825Z",
           "classification": "noop"
         }
       ],
