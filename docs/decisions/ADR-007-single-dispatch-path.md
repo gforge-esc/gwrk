@@ -168,15 +168,13 @@ This is content migration, not architectural change. The PROMPT.md format and ma
                         ┌─────────────────────────┐
                         │    WorkflowRuntime       │
                         │  (Layer 2.5 — F014)      │
+                        │  JSON intent parsing     │
+                        │  WRITE_FILE guard        │
                         └─────────┬───────────────┘
                                   │
-              ┌───────────────────┼───────────────────┐
-              │                   │                   │
-     DefineOrchestrator    ShipOrchestrator     CLI Commands
-     (specify, plan,       (code review,       (gwrk define spec,
-      tasks, analyze)       uat review)         gwrk define plan)
-              │                   │                   │
-              └───────────────────┼───────────────────┘
+                         DefineOrchestrator
+                         (specify, plan,
+                          tasks, analyze)
                                   │
                          PluginLoader.resolvePlugin()
                                   │
@@ -186,7 +184,16 @@ This is content migration, not architectural change. The PROMPT.md format and ma
            (deployed at init)          (compiled source of truth)
 
 
-    ShipOrchestrator (IMPLEMENT stage only):
+    ShipOrchestrator (REVIEW stages):
+              │
+       PluginLoader.resolvePlugin()  ← Resolves PROMPT.md (full prompt)
+              │
+       dispatchWithFailback()  ← Raw dispatch. Agent has native tool access.
+                                  Runs gates, tests, modifies tasks.json.
+                                  Verdict comes from gate diff, not JSON.
+
+
+    ShipOrchestrator (IMPLEMENT stage):
               │
        dispatchWithFailback()
               │

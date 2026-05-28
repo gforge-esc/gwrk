@@ -1,4 +1,4 @@
-# /gwrk-review-code
+# Code Review for CLI Projects
 
 **Persona**: Principal Engineer
 **Pillar**: Shipping (Quality Gate)
@@ -166,15 +166,6 @@ EOF
   "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
 ```
 
-For tasks never implemented (still open/in_progress):
-
-```bash
-# Append NOT IMPLEMENTED note
-jq --arg n "{phase_number}" --arg t "$TASK_ID" \
-  '(.phases[] | select(.id == $n) | .tasks[] | select(.id == $t)).description += "\n\nREVIEW FAIL (code): NOT IMPLEMENTED — task was not completed. See plan.md Phase {N} for requirements."' \
-  "$TASKS_FILE" > "$TASKS_FILE.tmp" && mv "$TASKS_FILE.tmp" "$TASKS_FILE"
-```
-
 ### 9. Post PR Comment
 
 If `pr_number` provided:
@@ -198,19 +189,6 @@ git diff --cached --quiet || git commit -m "review: code review Phase {phase_num
 - **NO-GO**: Any task re-opened. Blocking findings exist.
 </verdict_criteria>
 
-Report via notify_user:
-```
-Code Review: {GO|NO-GO}
-Phase: {phase_number}
-Tasks: {PASS_COUNT}/{TOTAL} pass, {FAIL_COUNT} re-opened
-PR comment: #{pr_number} (if applicable)
-
-Next:
-  GO   → /review-uat {feature_dir} {phase_number}
-  NO-GO → /implement {feature_dir} {phase_number}
-          (re-opened tasks are in the ready queue)
-```
-
 <closed_loop_contract>
 | Review finds... | Action taken | `/implement` sees... |
 |-----------------|-------------|---------------------|
@@ -223,7 +201,6 @@ Next:
 
 <note_format>
 Notes MUST follow this enhanced structure for `/implement` to parse effectively.
-The implement agent's `<escalation_protocol>` depends on these fields:
 
 ```
 REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
@@ -257,8 +234,10 @@ REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
 - ❌ Re-opening tasks from OTHER phases (only touch tasks in the current phase)
 - ❌ Running `pnpm test` globally (run only phase-relevant test files)
 
-## Next Step
+## JSON Intent Format
 
-After code review:
-- If GO: Run `/review-uat {feature_dir} {phase_number}`
-- If NO-GO: Run `/implement {feature_dir} {phase_number}` — re-opened tasks appear in the ready queue
+Your final output must be a single JSON object containing:
+- `summary`: A concise description of the review results.
+- `verdict`: "GO" if all checks pass and all tasks remain completed, "NO-GO" otherwise.
+- `reopenedTasks`: Array of task IDs that were re-opened.
+- `intents`: Array of `WRITE_FILE` or `RUN_COMMAND` actions to apply changes (e.g., updating `tasks.json`, running lint --write).

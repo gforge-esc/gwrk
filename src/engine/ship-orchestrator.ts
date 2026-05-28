@@ -253,12 +253,31 @@ export class ShipOrchestrator extends EventEmitter {
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // 2. Dispatch the review agent directly.
-      //    The review agent modifies tasks.json via tool calls (re-opening
-      //    failed tasks). We don't need its JSON output — readVerdict()
-      //    determines GO/NO-GO by diffing tasks.json.
+      // ADR-007: Resolve review prompt from plugin system (PROMPT.md),
+      // then dispatch with raw tool access. Review agents need native
+      // tool access (pnpm build, pnpm lint, gate scripts, jq, git)
+      // which WorkflowRuntime's WRITE_FILE guard blocks. The plugin
+      // system provides the full prompt; raw dispatch provides tool access.
+      let reviewPrompt = prompt;
+      try {
+        const { PluginLoader } = await import("../plugins/loader.js");
+        const loader = new PluginLoader({ projectDir: this.config.cwd });
+        const plugin = await loader.resolvePlugin(workflowName);
+        const promptPath = path.join(plugin.path, "PROMPT.md");
+        if (fs.existsSync(promptPath)) {
+          const basePrompt = fs.readFileSync(promptPath, "utf-8");
+          reviewPrompt = `${basePrompt}\n\n---\n\n## Scope Context\n\n${prompt}`;
+        }
+      } catch {
+        // Plugin resolution failed — fall through with the inline prompt.
+        // This is not fatal: the inline scope context is still useful.
+        console.warn(
+          `    ⚠ Could not resolve PROMPT.md for ${workflowName}, using inline prompt`,
+        );
+      }
+
       const result = await this.dispatchWithFailback({
-        prompt,
+        prompt: reviewPrompt,
         featureDir: `specs/${this.config.featureId}`,
         agent: this.config.backend,
         env: {},
@@ -273,7 +292,7 @@ export class ShipOrchestrator extends EventEmitter {
         };
       }
 
-      // 3. Post-dispatch validation (Snapshot-Diff-Revert)
+      // 2. Post-dispatch validation (Snapshot-Diff-Revert)
       validatePhaseScope(
         this.config.cwd,
         this.config.featureId,
@@ -281,17 +300,17 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // 4. Determine verdict from gates (not agent edits)
+      // 3. Determine verdict from gates (not agent edits).
+      //    Gates are truth, agent verdict is advisory. (ADR-007)
       const verdict = await this.readVerdict();
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
 
-      // 5. Discard review agent's source file mutations.
+      // 4. Discard review agent's source file mutations.
       //    Review agents in YOLO mode can modify source files (fixing imports,
       //    reformatting, etc.). These edits are often incomplete and can break
-      //    the build (e.g., removing non-null assertions without adding guards).
-      //    The review's value is the verdict + task feedback, not code edits.
+      //    the build. The review's value is the verdict + task feedback, not code edits.
       //    We preserve tasks.json (carries verdict state) but restore everything else.
       this.revertSourceMutations();
 
@@ -597,7 +616,15 @@ export class ShipOrchestrator extends EventEmitter {
     const phase = taskState.phases.find(
       (p: Phase) => p.id === this.config.phaseId,
     );
-    const phaseTasks = phase?.tasks.map((t: Task) => `${t.id}: ${t.title} [${t.status}]`).join("\n- ") || "No tasks";
+    const phaseTasks =
+      phase?.tasks
+        .map((t: Task) => `${t.id}: ${t.title} [${t.status}]`)
+        .join("\n- ") || "No tasks";
+
+    const steps = plugin.steps.code
+      .filter((s) => !s.skip)
+      .map((s) => `- ${s.title}: ${s.description}`)
+      .join("\n");
 
     const scopedPrompt = [
       `Phase ${this.config.phaseId} Code Review`,
@@ -605,6 +632,9 @@ export class ShipOrchestrator extends EventEmitter {
       "SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks.",
       "Do NOT re-open tasks from earlier phases that are already completed.",
       "If a completed task's implementation has issues, note them in your summary but do NOT change its status.",
+      "",
+      "Review Steps:",
+      steps,
       "",
       "Phase tasks:",
       `- ${phaseTasks}`,
@@ -629,10 +659,18 @@ export class ShipOrchestrator extends EventEmitter {
     );
     const doneWhen = phase?.doneWhen?.join("\n- ") || "All tasks pass gates";
 
+    const steps = plugin.steps.uat
+      .filter((s) => !s.skip)
+      .map((s) => `- ${s.title}: ${s.description}`)
+      .join("\n");
+
     const scopedPrompt = [
       `Phase ${this.config.phaseId} UAT Review`,
       "",
       "SCOPE CONSTRAINT: Only evaluate user stories and requirements addressed by THIS phase.",
+      "",
+      "Review Steps:",
+      steps,
       "",
       "Done When:",
       `- ${doneWhen}`,

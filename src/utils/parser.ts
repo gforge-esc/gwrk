@@ -107,3 +107,119 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
 
   return { phases };
 }
+
+/**
+ * Extract the raw markdown section for a specific phase from plan.md.
+ * Returns the full text between the phase header and the next phase header (or EOF).
+ * Used to provide focused context to agents during phase-scoped define operations.
+ *
+ * @param planPath - Path to plan.md
+ * @param phaseNumber - Phase number (e.g. 10). Matches "### Phase 10:" headers.
+ * @returns Raw markdown string for the phase section, or null if not found.
+ */
+export function extractPhaseSection(
+  planPath: string,
+  phaseNumber: number,
+): string | null {
+  if (!fs.existsSync(planPath)) {
+    return null;
+  }
+
+  const content = fs.readFileSync(planPath, "utf-8");
+
+  // Match "## Phase N" or "### Phase N" with any title after
+  const phasePattern = new RegExp(
+    `^(#{2,3})\\s+Phase\\s+${phaseNumber}[^\\d]`,
+    "m",
+  );
+  const match = phasePattern.exec(content);
+  if (!match) {
+    return null;
+  }
+
+  const startIdx = match.index;
+  const headerLevel = match[1].length; // 2 or 3
+
+  // Find the next header at the same or higher level
+  const rest = content.slice(startIdx + match[0].length);
+  const nextHeaderPattern = new RegExp(`^#{2,${headerLevel}}\\s+`, "m");
+  const nextMatch = nextHeaderPattern.exec(rest);
+
+  const endIdx = nextMatch
+    ? startIdx + match[0].length + nextMatch.index
+    : content.length;
+
+  return content.slice(startIdx, endIdx).trim();
+}
+
+/**
+ * Extract spec requirements referenced in a phase section's "Requirements Addressed" line.
+ * Parses patterns like "FR-L25-003", "TC-011", "US-011", "ADR-007".
+ *
+ * @param phaseSection - Raw markdown from extractPhaseSection
+ * @returns Array of requirement IDs (e.g. ["FR-L25-003", "TC-011", "US-011"])
+ */
+export function extractPhaseRequirements(phaseSection: string): string[] {
+  const reqLine = phaseSection.match(
+    /\*\*Requirements Addressed:\*\*\s*(.*)/,
+  );
+  if (!reqLine) return [];
+
+  const ids: string[] = [];
+  const pattern = /\b(FR-[\w-]+|TC-\d+|US-\d+|TR-[\w-]+|ADR-\d+)\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(reqLine[1])) !== null) {
+    ids.push(m[1]);
+  }
+  return ids;
+}
+
+/**
+ * Extract relevant sections from spec.md that match a list of requirement IDs.
+ * Returns only the spec sections that contain the referenced requirements.
+ *
+ * @param specPath - Path to spec.md
+ * @param reqIds - Requirement IDs to match (e.g. ["FR-L25-003", "TC-011"])
+ * @returns Filtered spec content, or the full spec if no IDs provided
+ */
+export function extractSpecSections(
+  specPath: string,
+  reqIds: string[],
+): string {
+  if (!fs.existsSync(specPath) || reqIds.length === 0) {
+    return "";
+  }
+
+  const content = fs.readFileSync(specPath, "utf-8");
+  const lines = content.split("\n");
+  const relevant: string[] = [];
+  let capturing = false;
+  let headerLevel = 0;
+
+  for (const line of lines) {
+    // Check if this line contains any of our requirement IDs
+    const containsReq = reqIds.some((id) => line.includes(id));
+
+    if (containsReq) {
+      capturing = true;
+      // Find the section header above this line
+      const headerMatch = line.match(/^(#{1,4})\s/);
+      if (headerMatch) {
+        headerLevel = headerMatch[1].length;
+      }
+      relevant.push(line);
+      continue;
+    }
+
+    if (capturing) {
+      const headerMatch = line.match(/^(#{1,4})\s/);
+      if (headerMatch && headerMatch[1].length <= headerLevel) {
+        capturing = false;
+        continue;
+      }
+      relevant.push(line);
+    }
+  }
+
+  return relevant.join("\n").trim();
+}

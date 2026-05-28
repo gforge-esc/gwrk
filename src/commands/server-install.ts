@@ -8,8 +8,40 @@ const PLIST_PATH = path.join(os.homedir(), "Library/LaunchAgents", PLIST_NAME);
 const LOG_DIR = path.join(os.homedir(), ".gwrk");
 const LOG_PATH = path.join(LOG_DIR, "server.log");
 
+/**
+ * Resolve the Node.js binary path for the LaunchAgent plist.
+ *
+ * process.execPath returns the Cellar path (e.g. /opt/homebrew/Cellar/node/25.9.0_1/bin/node)
+ * which breaks after `brew upgrade node` because the old binary's dyld references
+ * (like libllhttp) point to library versions that get replaced. Using the stable
+ * Homebrew symlink (/opt/homebrew/bin/node) ensures the plist always launches
+ * whatever Node version is currently installed.
+ */
+function resolveStableNodePath(): string {
+  const execPath = process.execPath;
+
+  // Check common symlink locations that survive brew upgrades
+  const candidates = ["/opt/homebrew/bin/node", "/usr/local/bin/node"];
+  for (const candidate of candidates) {
+    try {
+      // Verify the symlink resolves to the same binary we're running
+      if (
+        fs.existsSync(candidate) &&
+        fs.realpathSync(candidate) === fs.realpathSync(execPath)
+      ) {
+        return candidate;
+      }
+    } catch {
+      // Skip broken symlinks
+    }
+  }
+
+  // Fallback: use the raw execPath (fnm, nvm, or non-Homebrew installs)
+  return execPath;
+}
+
 export const installServer = async (): Promise<void> => {
-  const nodePath = process.execPath;
+  const nodePath = resolveStableNodePath();
   const scriptPath = process.argv[1];
 
   const plistContent = `<?xml version="1.0" encoding="UTF-8"?>

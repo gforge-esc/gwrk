@@ -47,16 +47,18 @@ describe("CLI Consistency: Feature Argument Position (US-023)", () => {
         ).toMatch(/feature/i);
 
         // compression feature arg is optional because of --all flag
-        if (cmd.name() !== "compression") {
-          expect(
-            firstArg.required,
-            `Command 'gwrk ${cmdPath.join(" ")}' first argument should be required`,
-          ).toBe(true);
-        } else {
+        // define spec feature arg is optional because of creation mode
+        const optionalFeatureCommands = ["compression", "spec"];
+        if (optionalFeatureCommands.includes(cmd.name())) {
           expect(
             firstArg.required,
             `Command 'gwrk ${cmdPath.join(" ")}' first argument should be optional`,
           ).toBe(false);
+        } else {
+          expect(
+            firstArg.required,
+            `Command 'gwrk ${cmdPath.join(" ")}' first argument should be required`,
+          ).toBe(true);
         }
       }
     });

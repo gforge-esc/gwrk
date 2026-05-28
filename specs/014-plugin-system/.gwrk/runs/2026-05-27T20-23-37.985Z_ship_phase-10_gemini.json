@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-27T20:23:37.985Z_ship_p10",
+  "feature": "014-plugin-system",
+  "phase": "phase-10",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "gemini-3-flash-preview",
+  "startedAt": "2026-05-27T20:23:37.985Z",
+  "finishedAt": "2026-05-27T20:23:39.853Z",
+  "durationS": 2,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 8,
+  "linesDeleted": 8,
+  "gitCommit": "3377112e11ca0111bf7e345f7c720f70e26d32e5",
+  "gitBranch": "feat/014-plugin-system",
+  "digest": []
+}
