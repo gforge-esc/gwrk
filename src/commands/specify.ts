@@ -15,6 +15,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { scaffoldFeature } from "../utils/scaffold-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const specifyCommand = new Command("spec")
@@ -23,34 +24,31 @@ export const specifyCommand = new Command("spec")
     "after",
     `
 Examples:
-  gwrk define spec 001 "Add a new CLI command"
+  gwrk define spec "Add OAuth2 integration"                  # New feature, auto-numbered
+  gwrk define spec 014 "Refine the plugin section"           # Rework existing
+  gwrk define spec 047-ontology "Ontology Integration"       # New with explicit slug
   gwrk define spec 001-cli-core --refs docs/reference/new-feature.md
   echo "Refine the authentication section" | gwrk define spec 001
 `,
   )
-  .argument("<feature>", "Feature ID (e.g. 014-plugin-system)")
-  .argument("[prompt]", "Rework instructions or new feature description")
+  .argument("[feature]", "Feature ID (e.g. 014-plugin-system). Omit to create new.")
+  .argument("[prompt]", "Feature description (new) or rework instructions (existing)")
   .option("--refs <path>", "Path to additional reference docs")
   .action(
     async (
-      featureArg: string,
+      featureArg: string | undefined,
       prompt: string | undefined,
       opts: { refs?: string },
     ) => {
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
-        // Resolve prefix: "003" → "003-slack"
-        const feature = resolveFeature(featureArg, cwd);
         const config = loadConfig(cwd);
         const backend = config.agents.define;
         const runtime = new WorkflowRuntime();
+        const specsDir = path.join(cwd, "specs");
 
-        // Detect mode: rework (spec exists) vs new (spec doesn't exist)
-        const specDir = path.join(cwd, "specs", feature);
-        const specFile = path.join(specDir, "spec.md");
-        const isRework = fs.existsSync(specFile);
-
-        // If no prompt arg, try stdin
+        // Read prompt/stdin BEFORE resolution — we need the prompt to decide
+        // whether a missing feature is an error or a creation intent.
         let effectiveInput = prompt;
         if (!effectiveInput && !process.stdin.isTTY) {
           const stdinContent = await readStdin();
@@ -58,6 +56,55 @@ Examples:
             effectiveInput = stdinContent.trim();
           }
         }
+
+        // --- Resolve or scaffold the feature ---
+        let feature: string;
+
+        if (!featureArg) {
+          // No feature arg → creation mode. Prompt is the description.
+          if (!effectiveInput) {
+            throw new CommandError(
+              `Feature description required.\n\nTo create a new feature:\n  gwrk define spec "Description of the feature"`,
+              2,
+            );
+          }
+          const result = scaffoldFeature(specsDir, effectiveInput);
+          feature = result.featureId;
+          console.log(`Created: ${feature}`);
+        } else {
+          // Feature arg provided → try to resolve
+          try {
+            feature = resolveFeature(featureArg, cwd);
+          } catch {
+            // Not found. If prompt exists → scaffold with explicit slug.
+            if (effectiveInput) {
+              const result = scaffoldFeature(specsDir, effectiveInput, {
+                shortName: featureArg.replace(/^\d+-/, "").length > 0
+                  ? featureArg
+                  : undefined,
+                number: /^\d+$/.test(featureArg)
+                  ? undefined // auto-number, featureArg is just a bare number with no slug
+                  : undefined,
+              });
+              feature = result.featureId;
+              console.log(`Created: ${feature}`);
+            } else {
+              throw new CommandError(
+                `Feature "${featureArg}" not found.\n\nTo create a new feature:\n  gwrk define spec "${featureArg}" "Description of the feature"\n  gwrk define spec "Description of the feature"\n\nTo list available features:\n  gwrk project specs`,
+                1,
+              );
+            }
+          }
+        }
+
+        // Detect mode: rework (spec.md already has content) vs new
+        const specDir = path.join(cwd, "specs", feature);
+        const specFile = path.join(specDir, "spec.md");
+        const specExists = fs.existsSync(specFile);
+        const specHasContent = specExists && fs.readFileSync(specFile, "utf-8").trim().length > 0;
+        // Template-only files don't count as "rework" — only files that have been
+        // through at least one spec generation pass.
+        const isRework = specHasContent && !fs.readFileSync(specFile, "utf-8").includes("{{FEATURE_NUMBER}}");
 
         // Build the effective prompt
         let effectivePrompt: string;
