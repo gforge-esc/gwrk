@@ -3,8 +3,8 @@
   "createdAt": "2026-03-20T14:59:54.847Z",
   "generatedFrom": {
     "plan": {
-      "hash": "ebddd448e3eef4cbb771a7a91b2ce82dad7c7c8d958a12e00a3aa3657564ddc2",
-      "modifiedAt": "2026-05-21T22:27:32.253Z"
+      "hash": "9f1045b3a90e61fa1e8cf6d760b2a5b6b4b0b87fcb502448c514dfc501973cd4",
+      "modifiedAt": "2026-05-27T20:34:04.350Z"
     }
   },
   "phases": [
@@ -236,7 +236,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -485,7 +485,7 @@
         {
           "id": "T043",
           "title": "Implement src/engine/router.ts",
-          "description": "NEW: `selectBackend(\n\nREVIEW FAIL (code): FR-P4-001 \u2014 Hardcoded skill preference.\n  WHERE: src/engine/router.ts:31-38\n  EXPECTED: Load skill manifest via PluginLoader and check preferredAgent field.\n  ACTUAL: Hardcoded check for \"narrative\" skill.\n  FIX: Inject PluginLoader and use it to resolve the skill manifest.\n  GATE: gates/T043-gate.sh\n  REF: plan.md Phase 7 > src/engine/router.ts",
+          "description": "NEW: `selectBackend(",
           "status": "completed",
           "gateScript": "gates/T043-gate.sh",
           "sp": 0,
@@ -522,7 +522,7 @@
         {
           "id": "T047",
           "title": "Implement src/commands/status.ts",
-          "description": "MODIFY: Include backend availability in status\\n\\nREVIEW FAIL (lint): noExplicitAny \u2014 FR-014.\\n  WHERE: src/commands/status.ts:48\\n  EXPECTED: Explicit type for statusData (e.g., interface or Record<string, unknown>)\\n  ACTUAL: const statusData: any = {\\n  FIX: Replace any with a proper interface or Record<string, unknown>\\n  GATE: biome lint\\n  REF: plan.md Phase 7 > src/commands/status.ts",
+          "description": "MODIFY: Include backend availability in status",
           "status": "completed",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
@@ -532,44 +532,44 @@
         {
           "id": "T048",
           "title": "Implement test strategy for Phase 8",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nPOST-FLIGHT GATE FAIL: gates/T048-gate.sh exited non-zero.\n  OUTPUT: FAIL: T048 \u2014 cannot gate: no primary file or test commands provided in the task brief\\n\\nREVIEW FAIL (gate): gate script failed \u2014 TR-012.\\n  WHERE: specs/014-plugin-system/gates/T048-gate.sh\\n  EXPECTED: Gate script should verify Phase 8 tests\\n  ACTUAL: Hardcoded failure: \"cannot gate: no primary file...\"\\n  FIX: Update gate script to run pnpm vitest for Phase 8 test files (router, review-plugin, ship-orchestrator)\\n  GATE: gates/T048-gate.sh\\n  REF: plan.md Phase 7 > Test Strategy",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
           "classification": "noop"
         },
         {
-          "id": "T050",
-          "title": "Remove hardcoded fallback in resolveReviewPlugin() \u2014 fail fast",
+          "id": "T052",
+          "title": "Remove hardcoded fallback in resolveReviewPlugin() — fail fast",
           "description": "NEW: ReviewPlugin interface, ReviewStep schema, resolveReviewPlugin(), project-type detection",
-          "status": "completed",
+          "status": "cancelled",
           "gateScript": "gates/T049-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-22T22:07:01.024Z"
         },
         {
-          "id": "T051",
+          "id": "T053",
           "title": "Promote review-code-cli/PROMPT.md from 41-line skeleton to full 269-line production prompt",
-          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp \u2014 manifest.yaml + workflow .md each",
-          "status": "completed",
+          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
+          "status": "cancelled",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-22T22:07:01.027Z"
         },
         {
-          "id": "T052",
+          "id": "T054",
           "title": "Ship orchestrator stageCodeReview/stageUatReview dispatch through WorkflowRuntime",
-          "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).\\n\\nREVIEW FAIL (lint): noDelete \u2014 F004.\\n  WHERE: src/engine/ship-orchestrator.ts:406, 704\\n  EXPECTED: Use undefined assignment instead of delete operator\\n  ACTUAL: delete task.completedAt;\\n  FIX: Replace \"delete task.completedAt\" with \"task.completedAt = undefined\"\\n  GATE: biome lint\\n  REF: plan.md Phase 8 > src/engine/ship-orchestrator.ts",
-          "status": "completed",
+          "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).\\n\\nREVIEW FAIL (lint): noDelete — F004.\\n  WHERE: src/engine/ship-orchestrator.ts:406, 704\\n  EXPECTED: Use undefined assignment instead of delete operator\\n  ACTUAL: delete task.completedAt;\\n  FIX: Replace \"delete task.completedAt\" with \"task.completedAt = undefined\"\\n  GATE: biome lint\\n  REF: plan.md Phase 8 > src/engine/ship-orchestrator.ts",
+          "status": "cancelled",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-22T23:28:20.511Z"
         },
         {
-          "id": "T053",
+          "id": "T055",
           "title": "Tests: review dispatch via WorkflowRuntime, fail-fast resolution, full prompt verification",
           "description": "NEW: Unit tests for resolveReviewPlugin, phase-scope validation, step template schema",
-          "status": "completed",
+          "status": "cancelled",
           "gateScript": "gates/T052-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-22T22:07:01.899Z"
@@ -582,7 +582,7 @@
     },
     {
       "id": "phase-09",
-      "title": "Review Plugin Layer (Layer 3 \u2014 First Extension)",
+      "title": "Review Plugin Layer (Layer 3 — First Extension)",
       "tasks": [
         {
           "id": "T049",
@@ -597,9 +597,58 @@
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`ShipOrchestrator` no longer hardcodes workflow paths \u2014 resolves via `ReviewPlugin`",
+        "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
         "Post-dispatch validation reverts any cross-phase task re-opens",
         "`.gwrkrc.json` `review` field selects active review strategy"
+      ]
+    },
+    {
+      "id": "phase-10",
+      "title": ".agents/ Decoupling (ADR-007)",
+      "tasks": [
+        {
+          "id": "T050",
+          "title": "Implement test strategy for Phase 10",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T050-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-28T14:25:57.803Z",
+          "classification": "noop"
+        }
+      ],
+      "sp_estimate": 0,
+      "doneWhen": [
+        "`gwrk init` creates `.gwrk/rules/` with `operating-model.md` and `workspace.md`",
+        "All 15 `gwrk-*` workflows resolve from `builtins/workflows/` (verified by TR-P10-002)",
+        "No runtime source file contains a hardcoded `.agents/` filesystem path",
+        "`pnpm build` passes",
+        "`pnpm test` passes"
+      ]
+    },
+    {
+      "id": "phase-11",
+      "title": ".agents/ Deletion & Verification (ADR-007)",
+      "tasks": [
+        {
+          "id": "T051",
+          "title": "Implement test strategy for Phase 11",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "status": "completed",
+          "gateScript": "gates/T051-gate.sh",
+          "sp": 0,
+          "completedAt": "2026-05-28T14:25:57.825Z",
+          "classification": "noop"
+        }
+      ],
+      "sp_estimate": 0,
+      "doneWhen": [
+        "`.agents/` directory does not exist in the repository",
+        "`git ls-files .agents/` returns empty",
+        "`grep -rn '\\.agents/' src/ --include='*.ts'` returns zero results (excluding `config.agents` property access)",
+        "`pnpm build` passes",
+        "`pnpm test` passes",
+        "`gwrk define spec --help` resolves workflow from builtins"
       ]
     }
   ]

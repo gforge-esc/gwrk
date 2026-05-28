@@ -524,11 +524,11 @@
       "contractRefs": []
     },
     {
-      "taskId": "T050",
-      "title": "Implement src/plugins/review-plugin.ts",
+      "taskId": "T052",
+      "title": "Remove hardcoded fallback in resolveReviewPlugin() — fail fast",
       "description": "NEW: ReviewPlugin interface, ReviewStep schema, resolveReviewPlugin(), project-type detection",
-      "primaryFile": "src/plugins/review-plugin.ts",
-      "fileType": "typescript",
+      "primaryFile": null,
+      "fileType": "unknown",
       "identifiers": [
         "resolveReviewPlugin"
       ],
@@ -536,31 +536,31 @@
       "contractRefs": []
     },
     {
-      "taskId": "T051",
-      "title": "Implement built-in review plugins (4 plugins)",
-      "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
-      "primaryFile": "manifest.yaml",
-      "fileType": "config",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
-      "taskId": "T052",
-      "title": "Modify src/engine/ship-orchestrator.ts for plugin dispatch",
-      "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).",
-      "primaryFile": "src/engine/ship-orchestrator.ts",
-      "fileType": "typescript",
-      "identifiers": [],
-      "doneWhenCommands": [],
-      "contractRefs": []
-    },
-    {
       "taskId": "T053",
-      "title": "Implement src/plugins/review-plugin.test.ts",
+      "title": "Promote review-code-cli/PROMPT.md from 41-line skeleton to full 269-line production prompt",
+      "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
+      "primaryFile": "review-code-cli/PROMPT.md",
+      "fileType": "markdown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T054",
+      "title": "Ship orchestrator stageCodeReview/stageUatReview dispatch through WorkflowRuntime",
+      "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).\\n\\nREVIEW FAIL (lint): noDelete — F004.\\n  WHERE: src/engine/ship-orchestrator.ts:406, 704\\n  EXPECTED: Use undefined assignment instead of delete operator\\n  ACTUAL: delete task.completedAt;\\n  FIX: Replace \"delete task.completedAt\" with \"task.completedAt = undefined\"\\n  GATE: biome lint\\n  REF: plan.md Phase 8 > src/engine/ship-orchestrator.ts",
+      "primaryFile": "src/engine/ship-orchestrator.ts:406",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T055",
+      "title": "Tests: review dispatch via WorkflowRuntime, fail-fast resolution, full prompt verification",
       "description": "NEW: Unit tests for resolveReviewPlugin, phase-scope validation, step template schema",
-      "primaryFile": "src/plugins/review-plugin.test.ts",
-      "fileType": "test",
+      "primaryFile": null,
+      "fileType": "unknown",
       "identifiers": [],
       "doneWhenCommands": [],
       "contractRefs": []
@@ -568,6 +568,26 @@
     {
       "taskId": "T049",
       "title": "Implement test strategy for Phase 9",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T050",
+      "title": "Implement test strategy for Phase 10",
+      "description": "Implement all unit and integration tests defined in the phase test strategy.",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T051",
+      "title": "Implement test strategy for Phase 11",
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,
       "fileType": "unknown",
