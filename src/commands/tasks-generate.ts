@@ -41,12 +41,13 @@ export const tasksGenerateCommand = new Command("tasks")
     `
 Examples:
   gwrk define tasks 001
-  gwrk define tasks 001-cli-core --phase 1
+  gwrk define tasks 001 10
   gwrk define tasks 001 --reconcile
   gwrk define tasks 001 --force --no-llm
 `,
   )
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
+  .argument("[phase]", "Phase number (e.g. 10)")
   .option(
     "-p, --phase <phase>",
     "Specific phase string or number to generate tasks for (e.g. p01 or 1)",
@@ -60,6 +61,7 @@ Examples:
   .action(
     async (
       featureArg: string,
+      phaseArg: string | undefined,
       opts: {
         force?: boolean;
         reconcile?: boolean;
@@ -76,12 +78,13 @@ Examples:
         const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
         const gatesDir = path.join(featureDir, "gates");
 
-        // Format phase uniformly to p0X if it's just a number
+        // Format phase uniformly to p0X if it's just a number (positional takes precedence)
+        const rawPhase = phaseArg || opts.phase;
         let paddedPhase: string | undefined = undefined;
-        if (opts.phase) {
-          paddedPhase = opts.phase.match(/^\d+$/)
-            ? `p${opts.phase.padStart(2, "0")}`
-            : opts.phase;
+        if (rawPhase) {
+          paddedPhase = rawPhase.match(/^\d+$/)
+            ? `p${rawPhase.padStart(2, "0")}`
+            : rawPhase;
         }
 
         // Guard: ADR-005 §8.4 — define tests must run before define tasks

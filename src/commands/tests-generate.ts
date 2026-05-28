@@ -34,11 +34,12 @@ export const testsGenerateCommand = new Command("tests")
     `
 Examples:
   gwrk define tests 001
-  gwrk define tests 001-cli-core --phase 1
-  gwrk define tests 001 --force
+  gwrk define tests 001 10
+  gwrk define tests 001 --phase 10 --force
 `,
   )
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
+  .argument("[phase]", "Phase number (e.g. 10)")
   .option(
     "-p, --phase <phase>",
     "Specific phase string or number to generate tests for (e.g. p01 or 1)",
@@ -50,6 +51,7 @@ Examples:
   .action(
     async (
       featureArg: string,
+      phaseArg: string | undefined,
       options: { phase?: string; force?: boolean },
     ) => {
       await withSignal(`define tests ${featureArg}`, async () => {
@@ -104,12 +106,13 @@ Examples:
           );
         }
 
-        // Format phase uniformly if provided
+        // Format phase uniformly if provided (positional takes precedence over --phase)
+        const rawPhase = phaseArg || options.phase;
         let paddedPhase: string | undefined = undefined;
-        if (options.phase) {
-          paddedPhase = options.phase.match(/^\d+$/)
-            ? `p${options.phase.padStart(2, "0")}`
-            : options.phase;
+        if (rawPhase) {
+          paddedPhase = rawPhase.match(/^\d+$/)
+            ? `p${rawPhase.padStart(2, "0")}`
+            : rawPhase;
         }
 
         const config = loadConfig(projectRoot);
