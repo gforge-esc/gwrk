@@ -236,7 +236,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -540,7 +540,7 @@
         },
         {
           "id": "T052",
-          "title": "Remove hardcoded fallback in resolveReviewPlugin() — fail fast",
+          "title": "Remove hardcoded fallback in resolveReviewPlugin() \u2014 fail fast",
           "description": "NEW: ReviewPlugin interface, ReviewStep schema, resolveReviewPlugin(), project-type detection",
           "status": "cancelled",
           "gateScript": "gates/T049-gate.sh",
@@ -550,7 +550,7 @@
         {
           "id": "T053",
           "title": "Promote review-code-cli/PROMPT.md from 41-line skeleton to full 269-line production prompt",
-          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp — manifest.yaml + workflow .md each",
+          "description": "NEW: review-code-cli, review-uat-cli, review-code-webapp, review-uat-webapp \u2014 manifest.yaml + workflow .md each",
           "status": "cancelled",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
@@ -559,7 +559,7 @@
         {
           "id": "T054",
           "title": "Ship orchestrator stageCodeReview/stageUatReview dispatch through WorkflowRuntime",
-          "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).\\n\\nREVIEW FAIL (lint): noDelete — F004.\\n  WHERE: src/engine/ship-orchestrator.ts:406, 704\\n  EXPECTED: Use undefined assignment instead of delete operator\\n  ACTUAL: delete task.completedAt;\\n  FIX: Replace \"delete task.completedAt\" with \"task.completedAt = undefined\"\\n  GATE: biome lint\\n  REF: plan.md Phase 8 > src/engine/ship-orchestrator.ts",
+          "description": "MODIFY: stageCodeReview and stageUatReview resolve via ReviewPlugin registry. Add post-dispatch phase-scope validation (snapshot + diff + revert).\\n\\nREVIEW FAIL (lint): noDelete \u2014 F004.\\n  WHERE: src/engine/ship-orchestrator.ts:406, 704\\n  EXPECTED: Use undefined assignment instead of delete operator\\n  ACTUAL: delete task.completedAt;\\n  FIX: Replace \"delete task.completedAt\" with \"task.completedAt = undefined\"\\n  GATE: biome lint\\n  REF: plan.md Phase 8 > src/engine/ship-orchestrator.ts",
           "status": "cancelled",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
@@ -582,7 +582,7 @@
     },
     {
       "id": "phase-09",
-      "title": "Review Plugin Layer (Layer 3 — First Extension)",
+      "title": "Review Plugin Layer (Layer 3 \u2014 First Extension)",
       "tasks": [
         {
           "id": "T049",
@@ -597,7 +597,7 @@
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
+        "`ShipOrchestrator` no longer hardcodes workflow paths \u2014 resolves via `ReviewPlugin`",
         "Post-dispatch validation reverts any cross-phase task re-opens",
         "`.gwrkrc.json` `review` field selects active review strategy"
       ]
@@ -609,12 +609,11 @@
         {
           "id": "T050",
           "title": "Implement test strategy for Phase 10",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (UAT): Phase 10 is INCOMPLETE.\n  - Rules Seeding: gwrk init fails to seed .gwrk/rules/ from builtins (TR-P10-001).\n  - Workflow Resolution: Only 10/15 gwrk-* workflows found. Missing: gwrk-analyze, gwrk-cascade-sync, gwrk-checklist, gwrk-constitution, gwrk-effort (TR-P10-002).\n  - Hardcoded Paths: Legacy .agents/ paths found in src/plugins/skill-runtime.ts and src/server/slack-agent.ts (TR-P10-003, TR-P10-004).\n  - Dead Code: Legacy parser scripts and workflows still exist in .agents/ (SC-010).",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREMEDIATION:\n  - Rules Seeding: gwrk init fails to seed .gwrk/rules/ from builtins (TR-P10-001).\n  - Workflow Resolution: Only 10/15 gwrk-* workflows found. Missing: gwrk-analyze, gwrk-cascade-sync, gwrk-checklist, gwrk-constitution, gwrk-effort (TR-P10-002).\n  - Hardcoded Paths: Legacy .agents/ paths found in src/plugins/skill-runtime.ts and src/server/slack-agent.ts (TR-P10-003, TR-P10-004).\n  - Dead Code: Legacy parser scripts and workflows still exist in .agents/ (SC-010).",
+          "status": "open",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-05-28T18:52:31.264Z"
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
@@ -633,7 +632,7 @@
         {
           "id": "T051",
           "title": "Implement test strategy for Phase 11",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (code): Phase 11 depends on Phase 10 cleanup which failed. .agents/ directory still exists in repo.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREMEDIATION:\n  - .agents/ directory still exists in the repository (git ls-files .agents/ is not empty).\n  - Many legacy .agents/ references still exist in src/.\n  - 16 tests are failing, mostly related to .agents/ decoupling and missing workflows.\n  - Phase 11 depends on Phase 10 cleanup which is incomplete.",
           "status": "open",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
