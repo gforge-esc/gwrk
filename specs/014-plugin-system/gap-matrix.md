@@ -1,12 +1,8 @@
-# Gap Matrix: Phase 10 — .agents/ Decoupling
-
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
-| FR-L25-003 | Core workflows independent of `.agents/` | Integration | src/plugins/loader.p10.red.test.ts | ✅ | TR-P10-002 |
-| US-011 | Execute workflows without `.agents/` | Integration | src/plugins/loader.p10.red.test.ts | ✅ | TR-P10-002 |
-| ADR-007 | No runtime dependency on `.agents/` | Unit | src/plugins/skill-runtime.p10.red.test.ts | ✅ | TR-P10-003 |
-| ADR-007 | No `.agents/workflows/` check in Slack | Unit | src/server/slack-agent.p10.red.test.ts | ✅ | TR-P10-004 |
-| TC-011 | Rules seeded from builtins during init | Unit | src/commands/init.p10.red.test.ts | ✅ | TR-P10-001 |
-| FR-L25-005 | gwrk init provisions global plugin home | Unit | src/commands/init.p10.red.test.ts | ✅ | TR-P10-001 |
-| SC-010 | Dead code removal: parser scripts | Unit | src/plugins/loader.p10.red.test.ts | ✅ | TR-P10-001 |
-| SC-010 | Dead code removal: legacy workflows | Unit | src/plugins/loader.p10.red.test.ts | ✅ | TR-P10-001 |
+| US-011 | No .agents/ directory in root by default | E2E | e2e/014-plugin-system-phase-11.spec.ts | ✅ | |
+| TC-011 | Zero-Dependency Workflows (no .agents/ reliance) | E2E | e2e/014-plugin-system-phase-11.spec.ts | ✅ | |
+| TR-P11-001 | gwrk define spec --help resolves without .agents/ | E2E | e2e/014-plugin-system-phase-11.spec.ts | ✅ | |
+| TR-P11-002 | Review dispatch sends full PROMPT.md | E2E | e2e/014-plugin-system-phase-11.spec.ts | ✅ | |
+| TR-P11-003 | migrate.ts warns on .agents/ existence | unit | src/plugins/migrate.test.ts | ✅ | |
+| TR-P11-004 | drift-detector.ts removes .agents/ checks | unit | src/engine/drift-detector.test.ts | ✅ | |
