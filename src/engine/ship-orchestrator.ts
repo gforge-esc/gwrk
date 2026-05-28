@@ -149,6 +149,9 @@ export class ShipOrchestrator extends EventEmitter {
         case ShipStage.BUILD_CHECK:
           result = await this.stageBuildCheck();
           break;
+        case ShipStage.TEST_GATE:
+          result = await this.stageTestGate();
+          break;
         case ShipStage.CODE_REVIEW:
           result = await this.stageCodeReview();
           break;
@@ -335,6 +338,7 @@ export class ShipOrchestrator extends EventEmitter {
       ShipStage.BRANCH_SETUP,
       ShipStage.IMPLEMENT,
       ShipStage.BUILD_CHECK,
+      ShipStage.TEST_GATE,
       ShipStage.CODE_REVIEW,
       ShipStage.UAT_REVIEW,
       ShipStage.PR_CI,
@@ -573,7 +577,7 @@ export class ShipOrchestrator extends EventEmitter {
 
   /**
    * BUILD_CHECK: Hard gate that verifies TypeScript compilation.
-   * Runs after IMPLEMENT and before CODE_REVIEW. If `pnpm build` fails,
+   * Runs after IMPLEMENT and before TEST_GATE. If `pnpm build` fails,
    * the iteration retries — preventing broken builds from reaching review.
    */
   private async stageBuildCheck(): Promise<StageResult> {
@@ -585,7 +589,7 @@ export class ShipOrchestrator extends EventEmitter {
         timeout: 60_000, // 60s — build should never take longer
       });
       console.log("  ✓ build passed");
-      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+      return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
     } catch (err: unknown) {
       const stderr =
         (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
@@ -596,6 +600,63 @@ export class ShipOrchestrator extends EventEmitter {
         exitCode: 1,
         error: `TypeScript build failed:\n${lastLines}`,
       };
+    }
+  }
+
+  /**
+   * TEST_GATE: Mechanical test verification.
+   * Runs after BUILD_CHECK and before CODE_REVIEW. If `pnpm test` fails,
+   * the iteration retries via handleNoGo — feeding test failure output
+   * back to the implement agent as retry context.
+   *
+   * This is the verification that prevents ship from closing ✅
+   * when tests are RED. Without this, the only checks are:
+   * - pnpm build (types compile ≠ tests pass)
+   * - LLM review agents (unreliable, can 429)
+   */
+  private async stageTestGate(): Promise<StageResult> {
+    console.log("  ▸ TEST_GATE");
+    try {
+      execSync("pnpm test", {
+        cwd: this.config.cwd,
+        stdio: "pipe",
+        timeout: 120_000, // 2min — test suite is ~14s today, generous buffer
+      });
+      console.log("  ✓ tests passed");
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+    } catch (err: unknown) {
+      const stdout =
+        (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
+      const stderr =
+        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const combined = `${stdout}\n${stderr}`.trim();
+      const lastLines = combined.split("\n").slice(-20).join("\n");
+      console.log(`  ✗ tests FAILED:\n${lastLines}`);
+
+      // Feed failure back to implement via NO-GO retry loop.
+      // Re-open tasks so the implement agent sees what needs fixing.
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
+      if (phase) {
+        for (const task of phase.tasks) {
+          if (task.status === "completed") {
+            task.status = "open";
+            delete task.completedAt;
+            task.description =
+              `${task.description || ""}\n\nTEST_GATE FAILURE:\n${lastLines}`.trim();
+          }
+        }
+        saveTaskState(featureDir, taskState);
+      }
+
+      return this.handleNoGo("TEST_GATE");
     }
   }
 

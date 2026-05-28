@@ -464,9 +464,9 @@ export function generateVitestGates(
   for (const [gateId, gateRows] of gateGroups) {
     const gatePath = path.join(gatesDir, `${gateId}-gate.sh`);
 
-    // Preserve existing AUTHORED gates that are NOT gap-matrix generated.
-    // Gap-matrix generated gates (containing "Generated from gap-matrix.md")
-    // are regenerated on every run to stay current.
+    // Preserve PE-authored gates (# AUTHORED without gap-matrix marker).
+    // LLM-authored gates (# GENERATED) are overwritable by deterministic vitest gates.
+    // Gap-matrix generated gates (# Generated from gap-matrix.md) are always regenerated.
     if (fs.existsSync(gatePath)) {
       const existingContent = fs.readFileSync(gatePath, "utf-8");
       if (
