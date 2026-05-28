@@ -598,7 +598,7 @@
           "id": "T051",
           "title": "Implement test strategy for Phase 11",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-28T19:44:41.260Z",
