@@ -35,7 +35,7 @@ vi.mock("../utils/format.js", () => ({
   success: vi.fn(),
 }));
 
-describe("tasks-generate (Phase 9)", () => {
+describe("tasks-generate (Phase 6 Rewire)", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -51,25 +51,10 @@ describe("tasks-generate (Phase 9)", () => {
     // Create a mock config
     fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "test-feature" }, agents: { define: "gemini", implement: "gemini" } }));
 
-    // Create a plan.md that parsePlan can understand
-    fs.writeFileSync(path.join(specDir, "plan.md"), `
-# Plan: test-feature
-
-### Phase 1: Core
-**Files (1):**
-- \`file1.ts\` (Description)
-
-#### Test Strategy
-Implement test strategy for Phase 1
-
-#### Done When
-- \`test -f file1.ts\`
-`);
+    // Create a plan.md
+    fs.writeFileSync(path.join(specDir, "plan.md"), `# Plan: test-feature`);
     
-    // Create a contract to pass the guard
-    fs.writeFileSync(path.join(specDir, "contracts", "file1.md"), "# Contract: file1");
-    
-    // Create gap-matrix.md
+    // Create gap-matrix.md to satisfy the guard
     fs.writeFileSync(path.join(specDir, "gap-matrix.md"), "| AC | Test File |\n|----|-----------|\n");
 
     mockExecuteWorkflow.mockReset();
@@ -86,10 +71,10 @@ Implement test strategy for Phase 1
     vi.restoreAllMocks();
   });
 
-  it("US-019/FR-019: SHOULD write execution manifest after success (RED)", async () => {
+  it("should write execution manifest after success", async () => {
     const program = new Command();
     program.addCommand(tasksGenerateCommand);
-    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force", "--no-llm"]);
+    await program.parseAsync(["node", "test", "tasks", "test-feature"]);
     
     const featureDir = path.join(tempDir, "specs", "test-feature");
     expect(mockWriteManifest).toHaveBeenCalledWith(
@@ -101,21 +86,23 @@ Implement test strategy for Phase 1
     );
   });
 
-  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime for gate authoring (Phase 12) (RED)", async () => {
+  it("should use gwrk-plan-to-tasks workflow and pass quiet: true", async () => {
     const program = new Command();
     program.addCommand(tasksGenerateCommand);
     
-    // Ensure we trigger LLM by NOT providing a gap-matrix that covers everything
-    // Actually our beforeEach already creates a plan with 2 done whens and gap-matrix with 0
-    
-    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force"]);
+    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force", "--reconcile"]);
 
     expect(mockExecuteWorkflow).toHaveBeenCalledWith(
-      "gwrk-author-gates",
-      expect.anything(),
+      "gwrk-plan-to-tasks",
+      expect.stringContaining("--force"),
       expect.objectContaining({
         quiet: true,
       }),
+    );
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan-to-tasks",
+      expect.stringContaining("--reconcile"),
+      expect.anything()
     );
   });
 });
