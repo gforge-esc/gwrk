@@ -341,7 +341,60 @@ Implement the routing engine that selects the optimal backend based on task type
 
 ---
 
-### Phase 10: .agents/ Decoupling (ADR-007)
+### Phase 9: Enforcement Skills (FR-014 / US-016)
+
+Ship builtin enforcement skills that teach implementing agents gwrk's operational vocabulary and coding standards. Enforcement skills are auto-loaded by SkillRuntime at dispatch time and injected into agent context for all write workflows (implement, review-code, review-uat).
+
+**Design Decisions (ADR-006 §2.2, ADR-007 §2.2):**
+- **Loading**: SkillRuntime auto-injection at dispatch time (ADR-006 Dual-Layer Context — enforcement sits at Layer 1/2 boundary)
+- **Resolution**: `tier: enforcement` follows workflow resolution order (builtins → global → project-local), not global-only. This is a semantic exception to TC-004 per US-016 AC 3.
+- **Naming**: Two separate builtins — `gwrk-conventions` (platform vocabulary) + `typescript-standards` (language/toolchain)
+
+**Files (8):**
+- `src/plugins/builtins/skills/gwrk-conventions/SKILL.md` (NEW: valid task statuses, tasks.json Zod schema, commit identity rules, `.agents/` is legacy, file naming)
+- `src/plugins/builtins/skills/gwrk-conventions/manifest.yaml` (NEW: `type: skill`, `tier: enforcement`, `scope: implementation`)
+- `src/plugins/builtins/skills/typescript-standards/SKILL.md` (NEW: strict typing, no `any`, lint compliance, no `.js`/`.jsx` in `src/`, ESM conventions)
+- `src/plugins/builtins/skills/typescript-standards/manifest.yaml` (NEW: `type: skill`, `tier: enforcement`, `scope: implementation`)
+- `src/plugins/skill-runtime.ts` (MODIFY: add `resolveEnforcementSkills(projectRoot)` — scans builtins, global, and project-local for `tier: enforcement` manifests, returns SKILL.md content)
+- `src/plugins/manifest.ts` (MODIFY: add `tier: enforcement` to `SkillManifestSchema`, add `scope` field)
+- `src/utils/agent.ts` (MODIFY: call `resolveEnforcementSkills()` during dispatch context assembly, inject into `<code_quality>` section)
+- `src/plugins/builtins/workflows/gwrk-implement/PROMPT.md` (MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime)
+
+**Requirements Addressed:** FR-014, US-016, FR-013 (enforcement tier), FR-010 (help listing)
+
+**Dependencies:** Phase 1 (manifest schema), Phase 2 (skill runtime), Phase 8 (review dispatch)
+
+**Contract Mapping:**
+- `contracts/skill-runtime.md` → `resolveEnforcementSkills(root)` → `src/plugins/skill-runtime.ts`
+- `contracts/plugin-registry.md` → `tier: enforcement` manifest → `src/plugins/manifest.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-005 | Gates MUST verify enforcement skill content is injected into dispatch prompts |
+| ADR-006 §2.2 | Enforcement skills are Layer 1 (Durable Governance) content — project-level, not per-task |
+| ADR-007 §2.2 | Resolution follows builtins → global → project-local hierarchy |
+| compile-gate | Always |
+
+#### Test Strategy
+| ID | Type | Subject | Assertion |
+|---|---|---|---|
+| TR-P9-001 | Unit | `skill-runtime.ts` | `resolveEnforcementSkills()` returns builtin SKILL.md content |
+| TR-P9-002 | Unit | `skill-runtime.ts` | Project-local `.gwrk/plugins/skills/typescript-standards/` overrides builtin |
+| TR-P9-003 | Unit | `manifest.ts` | `tier: enforcement` validates in SkillManifestSchema; `scope: implementation` accepted |
+| TR-P9-004 | Integration | `gwrk plugin list` | Shows enforcement skills with `tier: enforcement` grouping |
+| TR-P9-005 | Integration | Dispatch context | `dispatchToAgent()` stdin includes enforcement skill content in `<code_quality>` section |
+| TR-P9-006 | Unit | `gwrk-conventions` SKILL.md | Contains valid task status enum: `open \| in_progress \| completed \| cancelled` |
+
+#### Done When
+- `gwrk plugin list --type skills | grep typescript-standards` exits 0 with `tier: enforcement`
+- `gwrk plugin list --type skills | grep gwrk-conventions` exits 0 with `tier: enforcement`
+- Implementing agent's dispatch prompt includes enforcement skill content (verified by TR-P9-005)
+- Local `.gwrk/plugins/skills/typescript-standards/` overrides builtin (verified by TR-P9-002)
+- `pnpm build` passes
+- `pnpm test` passes
+
+---
 
 > Eliminate gwrk's runtime dependency on the `.agents/` directory by migrating all content into the builtin plugin architecture. After this phase, `.agents/` is inert — nothing reads from it at runtime.
 
@@ -495,6 +548,7 @@ _No mockups exist for this feature._
 | US-013 | 5 | Planned |
 | US-014 | 6 | Planned |
 | US-015 | 4 | Planned |
+| US-016 | 9 | Planned |
 | FR-001 | 1 | Planned |
 | FR-002 | 1 | Planned |
 | FR-003 | 1 | Planned |
@@ -507,7 +561,8 @@ _No mockups exist for this feature._
 | FR-010 | 2 | Planned |
 | FR-011 | 6 | Planned |
 | FR-012 | 6 | Planned |
-| FR-013 | 1 | Planned |
+| FR-013 | 1, 9 | Planned |
+| FR-014 | 9 | Planned |
 | FR-L1-001 | 3, 3A | Planned |
 | FR-L1-002 | 3, 3A | Planned |
 | FR-L1-003 | 3, 3A | Planned |
@@ -534,4 +589,5 @@ _No mockups exist for this feature._
 | TR-001 to TR-012 | All | Planned |
 | TR-P10-001 to TR-P10-004 | 10 | Planned |
 | TR-P11-001 to TR-P11-004 | 11 | Planned |
+| TR-P9-001 to TR-P9-006 | 9 | Planned |
 | VR-011 to VR-016 | All | Planned |
