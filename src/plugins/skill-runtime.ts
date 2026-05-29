@@ -148,30 +148,36 @@ export async function executeSkill(
 /**
  * FR-014: Resolves all enforcement skills applicable to the project.
  * Returns combined SKILL.md content.
- * Follows resolution order: project-local -> global -> builtins (standard loader order)
+ * Resolution order in string: builtins -> global -> project-local.
+ * Precedence: project-local overrides global, global overrides builtins.
  */
 export async function resolveEnforcementSkills(
   projectRoot: string,
   scope: "implementation" | "review" | "all" = "all",
 ): Promise<string> {
   const loader = new PluginLoader({ projectDir: projectRoot });
-  const allPlugins = await loader.listPlugins();
-  const enforcementSkills = allPlugins.filter((p) => p.tier === "enforcement");
+  const allPlugins = await loader.listPlugins({ tier: "enforcement" });
 
-  const resolvedContents: string[] = [];
+  // loader.listPlugins returns [project, global, builtins].
+  // We want to process them such that we find the highest-precedence version of each skill,
+  // but keep the final string order as [builtins, global, project].
   const visitedNames = new Set<string>();
+  const skillMap = new Map<string, string>();
 
-  for (const summary of enforcementSkills) {
+  // Reverse to get [builtins, global, project] order for the final string
+  const orderedSummaries = [...allPlugins].reverse();
+
+  for (const summary of orderedSummaries) {
     if (visitedNames.has(summary.name)) continue;
 
     try {
+      // loader.resolvePlugin always returns the highest precedence version
       const loaded = await loader.resolvePlugin(summary.name);
       const manifest = loaded.manifest as EnforcementSkillManifest;
 
       // Filter by scope
       if (
         scope !== "all" &&
-        manifest.scope &&
         manifest.scope !== "all" &&
         manifest.scope !== scope
       ) {
@@ -180,12 +186,13 @@ export async function resolveEnforcementSkills(
 
       const skillMdPath = path.join(loaded.path, "SKILL.md");
       const content = await fs.readFile(skillMdPath, "utf-8");
-      resolvedContents.push(`<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
+      
+      skillMap.set(summary.name, `<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
       visitedNames.add(summary.name);
     } catch (e) {
       // Skip invalid/failed plugins
     }
   }
 
-  return resolvedContents.reverse().join("\n\n---\n\n");
+  return Array.from(skillMap.values()).join("\n\n---\n\n");
 }

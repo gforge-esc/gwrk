@@ -116,7 +116,7 @@ export const CompoundSkillManifestSchema = PluginBaseSchema.extend({
 export const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   type: z.literal("skill"),
   tier: z.literal("enforcement"),
-  scope: z.enum(["implementation", "review", "all"]).optional(),
+  scope: z.enum(["implementation", "review", "all"]),
   tags: z.array(z.string()).optional(),
 });
 

@@ -544,7 +544,7 @@
         {
           "id": "T057",
           "title": "Add tier: enforcement to SkillManifestSchema",
-          "description": "Modify src/plugins/manifest.ts: add EnforcementSkillManifest variant to the SkillManifestSchema discriminated union with tier: 'enforcement' and optional scope: 'implementation' field. Update AnyManifestSchema. TR-P9-003.",
+          "description": "Modify src/plugins/manifest.ts: add EnforcementSkillManifest variant to the SkillManifestSchema discriminated union with tier: 'enforcement' and optional scope: 'implementation' field. Update AnyManifestSchema. TR-P9-003.\n\nREVIEW FAIL (code): TR-P9-003 — Schema allows missing scope.\n  WHERE: src/plugins/manifest.ts:120-125\n  EXPECTED: scope field MUST be required for enforcement tier per TR-P9-003\n  ACTUAL: scope: z.enum([\"implementation\", \"review\", \"all\"]).optional()\n  FIX: Remove .optional() from the scope field in EnforcementSkillManifestSchema.",
           "status": "open",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0
