@@ -636,6 +636,56 @@
     },
     {
       "taskId": "T059",
+      "title": "Implement AnyManifest",
+      "description": "`src/plugins/manifest.ts`",
+      "primaryFile": "src/plugins/manifest.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T060",
+      "title": "Implement JsonIntent",
+      "description": "`src/plugins/manifest.ts`",
+      "primaryFile": "src/plugins/manifest.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T061",
+      "title": "Implement TaskDispatch",
+      "description": "`src/utils/agent.ts`",
+      "primaryFile": "src/utils/agent.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T062",
+      "title": "Implement TaskResult",
+      "description": "`src/utils/agent.ts`",
+      "primaryFile": "src/utils/agent.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T063",
+      "title": "Implement .agents/skills/",
+      "description": "Skill migration via `gwrk plugin migrate`",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T064",
       "title": "Implement test strategy for Phase 11",
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,
