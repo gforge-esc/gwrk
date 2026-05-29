@@ -335,10 +335,14 @@ export function commitFiles(
   } catch (e) {
     // If there's nothing to commit, git commit will exit with non-zero
     // but that's not necessarily an error we want to fail on.
-    const err = e as { stderr?: string };
+    const err = e as { stderr?: Buffer | string; stdout?: Buffer | string };
+    const stderr = err.stderr?.toString() || "";
+    const stdout = err.stdout?.toString() || "";
+    const combined = `${stderr} ${stdout}`;
     if (
-      err.stderr?.includes("nothing to commit") ||
-      err.stderr?.includes("no changes added to commit")
+      combined.includes("nothing to commit") ||
+      combined.includes("no changes added to commit") ||
+      combined.includes("working tree clean")
     ) {
       return;
     }
