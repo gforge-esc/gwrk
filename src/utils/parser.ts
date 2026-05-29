@@ -73,9 +73,32 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
       }
     }
 
-    // Extract tests as a task: "#### Test Strategy"
+    // Fallback: Table-based file listings (| File | Change | format)
+    // Matches rows like: | `path/to/file.ts` | [NEW] Description |
+    if (tasks.length === 0) {
+      const tableRows = section.matchAll(
+        /^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|/gm,
+      );
+      for (const row of tableRows) {
+        const filePath = row[1];
+        let description = row[2].trim();
+        // Strip [NEW] / [MODIFY] / [DELETE] tags for cleaner description
+        const changeTag = description.match(/^\[(NEW|MODIFY|DELETE)]\s*/);
+        if (changeTag) {
+          description = description.replace(changeTag[0], "").trim();
+        }
+        if (description && !filePath.includes("---")) {
+          tasks.push({
+            title: `Implement ${filePath}`,
+            description: description || `Implement changes for ${filePath}`,
+          });
+        }
+      }
+    }
+
+    // Extract tests as a task: "#### Test Strategy" or "**Test Strategy:**" / "**Test Strategy**:"
     const testStrategyMatch = section.match(
-      /#### Test Strategy\n([\s\S]*?)(?:\n####|$)/,
+      /(?:####\s+Test Strategy|^\*\*Test Strategy:?\*\*:?\s*$)/m,
     );
     if (testStrategyMatch) {
       tasks.push({
@@ -93,6 +116,17 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
       for (const line of lines) {
         const m = line.match(/- (.*)/);
         if (m) doneWhen.push(m[1].trim());
+      }
+    }
+
+    // Fallback: **Done When:** followed by ```bash code block
+    if (doneWhen.length === 0) {
+      const codeBlockMatch = section.match(
+        /\*\*Done When\*\*:?\n```(?:bash|sh)?\n([\s\S]*?)```/,
+      );
+      if (codeBlockMatch) {
+        const cmd = codeBlockMatch[1].trim();
+        if (cmd) doneWhen.push(cmd);
       }
     }
 
