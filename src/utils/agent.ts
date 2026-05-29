@@ -430,9 +430,13 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   // FR-014: Inject enforcement skills
   if (dispatch.stdin.includes("{{enforcement}}")) {
+    const scope =
+      task.workflow?.includes("review") || task.type?.includes("review")
+        ? "review"
+        : "implementation";
     const enforcement = await resolveEnforcementSkills(
       task.workDir || projectRoot,
-      "implementation",
+      scope as "implementation" | "review",
     );
     dispatch.stdin = dispatch.stdin.replace("{{enforcement}}", enforcement);
   }

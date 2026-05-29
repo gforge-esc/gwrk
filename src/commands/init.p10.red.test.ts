@@ -42,19 +42,25 @@ describe("initCommand (Phase 10 RED)", () => {
   });
 
   it("should fail to initialize if required builtin rules are missing (Negative Path)", async () => {
-    // This assumes we implement a check for builtin rules existence
-    // For now, this is a placeholder for a failing negative path
-    // We can simulate missing builtins if we knew where they are read from in init.ts
-    // For RED test, we just want it to fail or show a specific behavior.
-    
-    // If we mock fs.readFileSync for the builtin path to throw
-    vi.spyOn(fs, "readFileSync").mockImplementation((p: any) => {
-      if (typeof p === 'string' && p.includes("builtins/rules")) {
-        throw new Error("Builtin rules missing");
+    // SC-010: Negative Path
+    // Use the actual fs for non-mocked paths
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p: any) => {
+      const pathStr = String(p);
+      if (pathStr.includes("builtins/rules")) {
+        return false;
       }
-      return vi.importActual("node:fs").then((m: any) => m.readFileSync(p));
+      if (pathStr.includes(".gwrk")) {
+        return false;
+      }
+      return realFs.existsSync(p);
     });
 
-    await expect(initCommand.parseAsync([], { from: "user" })).rejects.toThrow("Builtin rules missing");
+    await initCommand.parseAsync([], { from: "user" });
+
+    // In withSignal, CommandError sets process.exitCode
+    expect(process.exitCode).toBe(1);
+
+    existsSpy.mockRestore();
   });
 });

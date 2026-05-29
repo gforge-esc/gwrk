@@ -125,18 +125,30 @@ export const initCommand = new Command("init")
         import.meta.dirname,
         "../plugins/builtins/rules",
       );
+
+      if (!fs.existsSync(builtInRulesDir)) {
+        throw new CommandError(
+          `Builtin rules directory missing: ${builtInRulesDir}`,
+          1,
+        );
+      }
+
       try {
-        if (fs.existsSync(builtInRulesDir)) {
-          const rules = fs.readdirSync(builtInRulesDir);
-          for (const rule of rules) {
-            fs.copyFileSync(
-              path.join(builtInRulesDir, rule),
-              path.join(gwrkRulesDir, rule),
-            );
-          }
+        const rules = fs.readdirSync(builtInRulesDir);
+        if (rules.length === 0) {
+          throw new Error("No rules found in builtin directory");
+        }
+        for (const rule of rules) {
+          fs.copyFileSync(
+            path.join(builtInRulesDir, rule),
+            path.join(gwrkRulesDir, rule),
+          );
         }
       } catch (e) {
-        console.warn(`Warning: Could not seed rules: ${(e as Error).message}`);
+        throw new CommandError(
+          `Could not seed rules: ${(e as Error).message}`,
+          1,
+        );
       }
 
       // Seed Workflows (FR-L25-005)

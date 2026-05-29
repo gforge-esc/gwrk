@@ -1,6 +1,6 @@
 type: skill
 name: typescript-standards
 version: 1.0.0
-description: TypeScript coding standards for gwrk projects
+description: TypeScript coding standards and toolchain compliance
 tier: enforcement
 scope: implementation

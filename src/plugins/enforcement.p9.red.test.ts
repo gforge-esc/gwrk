@@ -34,7 +34,6 @@ describe("FR-013 / TR-P9-003: SkillManifestSchema enforcement tier", () => {
       tags: [],
     };
 
-    // RED: SkillManifestSchema doesn't accept tier: 'enforcement' yet
     const result = SkillManifestSchema.safeParse(manifest);
     expect(result.success).toBe(true);
     if (result.success) {
@@ -52,7 +51,6 @@ describe("FR-013 / TR-P9-003: SkillManifestSchema enforcement tier", () => {
       tags: [],
     };
 
-    // RED: enforcement tier doesn't exist yet, so this also fails parse
     const result = SkillManifestSchema.safeParse(manifest);
     expect(result.success).toBe(false);
   });
@@ -67,11 +65,10 @@ describe("FR-013 / TR-P9-003: SkillManifestSchema enforcement tier", () => {
 describe("FR-014 / TR-P9-001: resolveEnforcementSkills()", () => {
   it("returns builtin enforcement skill content", async () => {
     // Dynamic import to avoid compile-time failure on missing export.
-    // RED: resolveEnforcementSkills is not exported from skill-runtime.ts yet.
     const mod = await import("./skill-runtime.js");
     expect(typeof mod.resolveEnforcementSkills).toBe("function");
 
-    const content = mod.resolveEnforcementSkills(process.cwd());
+    const content = await mod.resolveEnforcementSkills(process.cwd());
     expect(content).toContain("typescript-standards");
     expect(content).toContain("gwrk-conventions");
     expect(content.length).toBeGreaterThan(100);
@@ -86,10 +83,7 @@ describe("FR-014 / TR-P9-002: enforcement skill resolution order", () => {
     const mod = await import("./skill-runtime.js");
     expect(typeof mod.resolveEnforcementSkills).toBe("function");
 
-    // RED: function doesn't exist yet, and builtin skills don't exist yet.
-    // When implemented, this test needs a temp dir with a local override.
-    // For now, just verify the function exists and accepts projectRoot.
-    const content = mod.resolveEnforcementSkills(process.cwd());
+    const content = await mod.resolveEnforcementSkills(process.cwd());
     expect(typeof content).toBe("string");
   });
 });
@@ -107,12 +101,10 @@ describe("US-016 / TR-P9-006: gwrk-conventions content", () => {
   );
 
   it("SKILL.md exists at builtin path", () => {
-    // RED: directory doesn't exist yet
     expect(fs.existsSync(skillPath)).toBe(true);
   });
 
   it("contains valid task status enum values", () => {
-    // RED: file doesn't exist yet
     const content = fs.existsSync(skillPath)
       ? fs.readFileSync(skillPath, "utf-8")
       : "";
@@ -141,9 +133,8 @@ describe("FR-010 / TR-P9-004: enforcement skills in plugin listing", () => {
   it("PluginLoader includes enforcement skills from builtins", async () => {
     const { PluginLoader } = await import("./loader.js");
     const loader = new PluginLoader();
-    const plugins = loader.listPlugins();
+    const plugins = await loader.listPlugins();
 
-    // RED: no enforcement skills exist in builtins yet
     const enforcementSkills = plugins.filter(
       (p: { tier?: string }) => p.tier === "enforcement",
     );
@@ -159,14 +150,11 @@ describe("FR-010 / TR-P9-004: enforcement skills in plugin listing", () => {
  */
 describe("FR-014 / TR-P9-005: dispatch context assembly", () => {
   it("enforcement skill content appears in assembled dispatch context", async () => {
-    // RED: resolveEnforcementSkills doesn't exist, and dispatch doesn't call it yet
     const mod = await import("./skill-runtime.js");
     expect(typeof mod.resolveEnforcementSkills).toBe("function");
 
-    const content = mod.resolveEnforcementSkills(process.cwd());
+    const content = await mod.resolveEnforcementSkills(process.cwd());
     // The dispatch assembler should wrap this in <code_quality> tags
-    // For this RED test, just verify the content is non-empty and contains
-    // at least one enforcement skill name
     expect(content).toMatch(/typescript-standards|gwrk-conventions/);
   });
 });
