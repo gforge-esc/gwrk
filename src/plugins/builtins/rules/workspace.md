@@ -17,7 +17,7 @@ See `docs/architecture.md` for the authoritative gwrk architecture specification
 - **Creds Access**: Never hallucinate credentials. Use `cat .env` (ignored by git but accessible via shell) or refer to `.env.example` for standard values.
 
 ## Operating Model
-See `.agents/rules/operating-model.md` for Foxtrot Charlie principles and RAGB definitions.
+See `.gwrk/rules/operating-model.md` for Foxtrot Charlie principles and RAGB definitions.
 
 ## Specification Workflow
 - **Spec-First**: No implementation proceeds without an approved `spec.md` and `plan.md`.
@@ -46,7 +46,7 @@ See `.agents/rules/operating-model.md` for Foxtrot Charlie principles and RAGB d
 - `scripts/dev/`: Shell orchestrators (agent-run.sh, work-until-done.sh, etc.).
 - `specs/`: Feature specifications (Foxtrot Charlie).
 - `docs/`: Architecture, PRD, ADRs, reference docs.
-- `.agents/`: Governance (rules, workflows, personas, scripts).
+- `.gwrk/`: Local governance (rules) and execution history.
 - `.specify/`: Specify CLI (scripts, templates).
 
 ## Commands
