@@ -528,7 +528,7 @@
         {
           "id": "T049",
           "title": "Implement test strategy for Phase 9",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (infrastructure): Gate misalignment.\n  WHERE: specs/014-plugin-system/gates/T049-gate.sh\n  EXPECTED: Gate should execute TR-013 (src/plugins/review-plugin.test.ts) and TR-015 (src/engine/ship-orchestrator.review.test.ts).\n  ACTUAL: Gate executes TR-P9-001 to TR-P9-006 (Enforcement Skills tests).\n  FIX: Update T049-gate.sh to point to the correct Review Plugin tests and ensure TR-013/014/015 gate scripts are generated.",
           "status": "open",
           "gateScript": "gates/T049-gate.sh",
           "sp": 0,
