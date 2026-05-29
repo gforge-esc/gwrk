@@ -234,7 +234,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -355,46 +355,51 @@
           "id": "T033",
           "title": "Implement src/engine/define-orchestrator.ts",
           "description": "NEW: TS state machine for spec->plan->tasks loop",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T033-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-29T23:35:06.000Z"
         },
         {
           "id": "T034",
           "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
-          "description": "MODIFY: Rewire to `WorkflowRuntime`",
-          "status": "open",
+          "description": "MODIFY: Rewire to `WorkflowRuntime` (REWIRED via DefineOrchestrator)",
+          "status": "completed",
           "gateScript": "gates/T034-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-29T23:35:06.000Z"
         },
         {
           "id": "T035",
           "title": "Implement src/engine/define-orchestrator.test.ts",
           "description": "NEW: Verify state transitions",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T035-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-29T23:35:06.000Z"
         },
         {
           "id": "T036",
           "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
-          "description": "MODIFY: E2E verification",
-          "status": "open",
+          "description": "MODIFY: E2E verification (Renamed plan.test.ts to define-plan.test.ts)",
+          "status": "completed",
           "gateScript": "gates/T036-gate.sh",
           "sp": 0,
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-29T23:35:06.000Z"
         },
         {
           "id": "T037",
           "title": "Implement test strategy for Phase 6",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T037-gate.sh",
           "sp": 0,
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-05-29T23:35:06.000Z"
         }
       ],
       "sp_estimate": 0,
@@ -523,7 +528,7 @@
     },
     {
       "id": "phase-09",
-      "title": "A: Review Plugin Layer (Layer 3 — First Extension) ✅ SHIPPED",
+      "title": "A: Review Plugin Layer (Layer 3 \u2014 First Extension) \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T049",
@@ -537,7 +542,7 @@
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
+        "`ShipOrchestrator` no longer hardcodes workflow paths \u2014 resolves via `ReviewPlugin`",
         "Post-dispatch validation reverts any cross-phase task re-opens",
         "`.gwrkrc.json` `review` field selects active review strategy"
       ]
@@ -612,7 +617,7 @@
         {
           "id": "T057",
           "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
-          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
+          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker \u2014 resolved by SkillRuntime",
           "status": "open",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
