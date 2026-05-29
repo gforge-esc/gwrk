@@ -111,4 +111,77 @@ describe("specifyCommand (Phase 9/12)", () => {
       }),
     );
   });
+
+  describe("--refs handling", () => {
+    it("SHOULD prepend refs content with XML tags before the prompt", async () => {
+      const refsDir = path.join(tempDir, "specs", "a-calculator", "refs");
+      fs.mkdirSync(refsDir, { recursive: true });
+      const refsFile = path.join(refsDir, "requirements.md");
+      fs.writeFileSync(refsFile, "# Requirements\n\nScreen: Survey Home\nRole: Domain Architect");
+
+      await program.parseAsync([
+        "node", "test", "spec", "a-calculator", "Create a new feature",
+        "--refs", refsFile,
+      ]);
+
+      const prompt = mockExecuteWorkflow.mock.calls[0][1] as string;
+
+      // Refs should appear BEFORE the task description (Anthropic position 3)
+      expect(prompt).toMatch(/^<reference_document/);
+      expect(prompt).toContain("Screen: Survey Home");
+      expect(prompt).toContain("Role: Domain Architect");
+      expect(prompt).toContain("</reference_document>");
+
+      // Task description should come AFTER refs
+      const refsEnd = prompt.indexOf("</reference_document>");
+      const taskStart = prompt.indexOf("Create a NEW spec");
+      expect(taskStart).toBeGreaterThan(refsEnd);
+
+      // Critical reminder should appear at the END (Anthropic position 11)
+      expect(prompt).toContain("CRITICAL REMINDER:");
+      const reminderPos = prompt.indexOf("CRITICAL REMINDER:");
+      expect(reminderPos).toBeGreaterThan(taskStart);
+    });
+
+    it("SHOULD include authority attribute and source path in XML tag", async () => {
+      const refsFile = path.join(tempDir, "refs.md");
+      fs.writeFileSync(refsFile, "ref content");
+
+      await program.parseAsync([
+        "node", "test", "spec", "a-calculator", "Create a new feature",
+        "--refs", refsFile,
+      ]);
+
+      const prompt = mockExecuteWorkflow.mock.calls[0][1] as string;
+      expect(prompt).toContain(`source="${refsFile}"`);
+      expect(prompt).toContain('authority="primary"');
+    });
+
+    it("SHOULD fail with corrective message when refs file does not exist", async () => {
+      mockExecuteWorkflow.mockClear();
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+      await program.parseAsync([
+        "node", "test", "spec", "a-calculator", "Create a new feature",
+        "--refs", "/nonexistent/path/refs.md",
+      ]);
+
+      // The CommandError should short-circuit before dispatching to agent
+      expect(mockExecuteWorkflow).not.toHaveBeenCalled();
+
+      // withSignal writes error to stderr
+      const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+      expect(stderrOutput).toContain("Reference file not found");
+
+      stderrSpy.mockRestore();
+    });
+
+    it("SHOULD NOT include reference_document tags when no --refs provided", async () => {
+      await program.parseAsync(["node", "test", "spec", "a-calculator", "Create a new feature"]);
+
+      const prompt = mockExecuteWorkflow.mock.calls[0][1] as string;
+      expect(prompt).not.toContain("<reference_document");
+      expect(prompt).not.toContain("CRITICAL REMINDER:");
+    });
+  });
 });

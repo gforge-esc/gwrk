@@ -122,10 +122,28 @@ Examples:
           effectivePrompt = `Create a NEW spec for feature ${feature}.\n\nDescription: ${effectiveInput}`;
         }
 
-        // Append refs context if provided
-        if (opts.refs && fs.existsSync(opts.refs)) {
-          const refsContent = fs.readFileSync(opts.refs, "utf-8");
-          effectivePrompt += `\n\nReference document (${opts.refs}):\n${refsContent}`;
+        // Inject refs as authoritative source material.
+        // Per Anthropic prompt structure: dynamic content goes BEFORE instructions,
+        // wrapped in XML tags for clear content boundaries.
+        // Per GPT-5.2 guide: repeated critical instructions at the end for long prompts.
+        if (opts.refs) {
+          const resolvedRefs = path.resolve(opts.refs);
+          if (!fs.existsSync(resolvedRefs)) {
+            throw new CommandError(
+              `Reference file not found: ${opts.refs}\nResolved to: ${resolvedRefs}`,
+              1,
+            );
+          }
+          const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
+          effectivePrompt = [
+            `<reference_document source="${opts.refs}" authority="primary">`,
+            refsContent,
+            `</reference_document>`,
+            ``,
+            effectivePrompt,
+            ``,
+            `CRITICAL REMINDER: The <reference_document> above is the AUTHORITATIVE source of requirements. Every screen name, role, data source, acceptance criterion, and technical constraint from the reference document MUST appear verbatim in the spec. Do NOT substitute generic defaults for specific names defined in the reference document.`,
+          ].join("\n");
         }
 
         const mode = isRework ? "rework" : "new";
