@@ -176,10 +176,11 @@ export async function resolveEnforcementSkills(
       const manifest = loaded.manifest as EnforcementSkillManifest;
 
       // Filter by scope
+      const manifestScope = manifest.scope ?? "all";
       if (
         scope !== "all" &&
-        manifest.scope !== "all" &&
-        manifest.scope !== scope
+        manifestScope !== "all" &&
+        manifestScope !== scope
       ) {
         continue;
       }

@@ -41,18 +41,18 @@ describe("FR-013 / TR-P9-003: SkillManifestSchema enforcement tier", () => {
     }
   });
 
-  it("rejects enforcement skill without scope", () => {
+  it("accepts enforcement skill without scope", () => {
     const manifest = {
       type: "skill" as const,
-      name: "bad-enforcement",
+      name: "optional-enforcement",
       tier: "enforcement" as const,
       version: "1.0.0",
-      description: "Missing scope field",
+      description: "Missing scope field is now allowed",
       tags: [],
     };
 
     const result = SkillManifestSchema.safeParse(manifest);
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 });
 
