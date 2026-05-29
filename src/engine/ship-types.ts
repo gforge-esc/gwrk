@@ -47,6 +47,7 @@ export interface ShipState {
   backend: string;
   failureContext: FailureContext | null;
   branchName?: string;
+  testBaseline?: number;
 }
 
 /**

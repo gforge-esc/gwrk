@@ -338,9 +338,7 @@ export class ShipOrchestrator extends EventEmitter {
       ShipStage.BRANCH_SETUP,
       ShipStage.IMPLEMENT,
       ShipStage.BUILD_CHECK,
-      // TEST_GATE disabled — baseline comparison not loading into running binary.
-      // Re-enable when debugged. See feat/ship-hardening for the implementation.
-      // ShipStage.TEST_GATE,
+      ShipStage.TEST_GATE,
       ShipStage.CODE_REVIEW,
       ShipStage.UAT_REVIEW,
       ShipStage.PR_CI,
@@ -365,6 +363,7 @@ export class ShipOrchestrator extends EventEmitter {
     try {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
+      if (this.state.iteration === 1) this.captureTestBaseline();
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       // Branch already exists — just check it out and sync with develop
@@ -380,6 +379,7 @@ export class ShipOrchestrator extends EventEmitter {
           await syncBranch(this.config.cwd, "develop");
           this.state.branchName = branchName;
           console.log(`  Branch ${branchName} exists — checked out and synced`);
+          if (this.state.iteration === 1) this.captureTestBaseline();
           return { success: true, exitCode: 0 };
         } catch (syncErr: unknown) {
           const syncMsg =
@@ -591,7 +591,7 @@ export class ShipOrchestrator extends EventEmitter {
         timeout: 60_000, // 60s — build should never take longer
       });
       console.log("  ✓ build passed");
-      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+      return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
     } catch (err: unknown) {
       const stderr =
         (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
@@ -606,60 +606,68 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
-   * TEST_GATE: Mechanical test verification.
-   * Runs after BUILD_CHECK and before CODE_REVIEW. If `pnpm test` fails,
-   * the iteration retries via handleNoGo — feeding test failure output
-   * back to the implement agent as retry context.
-   *
-   * This is the verification that prevents ship from closing ✅
-   * when tests are RED. Without this, the only checks are:
-   * - pnpm build (types compile ≠ tests pass)
-   * - LLM review agents (unreliable, can 429)
+   * TEST_GATE: Baseline comparison test verification.
+   * Only triggers NO-GO if tests got WORSE than the baseline captured
+   * at BRANCH_SETUP. Pre-existing RED tests don't block unrelated work.
    */
   private async stageTestGate(): Promise<StageResult> {
     console.log("  ▸ TEST_GATE");
+    const { failCount, output } = this.runTestSuite();
+    const baseline = this.state.testBaseline ?? 0;
+
+    if (failCount === 0) {
+      console.log("  ✓ tests passed (0 failures)");
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+    }
+    if (failCount <= baseline) {
+      console.log(`  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`);
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+    }
+
+    const regressionCount = failCount - baseline;
+    const lastLines = output.split("\n").slice(-20).join("\n");
+    console.log(`  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`);
+
+    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    if (phase) {
+      for (const task of phase.tasks) {
+        if (task.status === "completed") {
+          task.status = "open";
+          delete task.completedAt;
+          task.description = `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
+        }
+      }
+      saveTaskState(featureDir, taskState);
+    }
+    return this.handleNoGo("TEST_GATE");
+  }
+
+  /** Run test suite, return failure count and output. */
+  private runTestSuite(): { failCount: number; output: string } {
     try {
-      execSync("pnpm test", {
+      const result = execSync("pnpm test", {
         cwd: this.config.cwd,
         stdio: "pipe",
-        timeout: 120_000, // 2min — test suite is ~14s today, generous buffer
+        timeout: 120_000,
       });
-      console.log("  ✓ tests passed");
-      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+      return { failCount: 0, output: result.toString() };
     } catch (err: unknown) {
-      const stdout =
-        (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
-      const stderr =
-        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const stdout = (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
+      const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
       const combined = `${stdout}\n${stderr}`.trim();
-      const lastLines = combined.split("\n").slice(-20).join("\n");
-      console.log(`  ✗ tests FAILED:\n${lastLines}`);
-
-      // Feed failure back to implement via NO-GO retry loop.
-      // Re-open tasks so the implement agent sees what needs fixing.
-      const featureDir = path.join(
-        this.config.cwd,
-        "specs",
-        this.config.featureId,
-      );
-      const taskState = loadTaskState(featureDir);
-      const phase = taskState.phases.find(
-        (p: Phase) => p.id === this.config.phaseId,
-      );
-      if (phase) {
-        for (const task of phase.tasks) {
-          if (task.status === "completed") {
-            task.status = "open";
-            delete task.completedAt;
-            task.description =
-              `${task.description || ""}\n\nTEST_GATE FAILURE:\n${lastLines}`.trim();
-          }
-        }
-        saveTaskState(featureDir, taskState);
-      }
-
-      return this.handleNoGo("TEST_GATE");
+      const failMatch = combined.match(/(\d+)\s+failed/);
+      return { failCount: failMatch ? parseInt(failMatch[1], 10) : 1, output: combined };
     }
+  }
+
+  /** Snapshot test failure count before IMPLEMENT touches anything. */
+  private captureTestBaseline(): void {
+    console.log("  ▸ capturing test baseline...");
+    const { failCount } = this.runTestSuite();
+    this.state.testBaseline = failCount;
+    console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
   }
 
   private async stageCodeReview(): Promise<StageResult> {
