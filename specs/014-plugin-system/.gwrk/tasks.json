@@ -234,7 +234,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -529,41 +529,46 @@
           "id": "T055",
           "title": "Create gwrk-conventions enforcement skill builtin",
           "description": "Create src/plugins/builtins/skills/gwrk-conventions/manifest.yaml (type: skill, tier: enforcement, scope: implementation) and SKILL.md containing: valid task statuses (open|in_progress|completed|cancelled), tasks.json Zod schema reference, commit identity rules (never Gemini CLI), file naming (no .js/.jsx in src/), .agents/ is legacy. FR-014, US-016.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T055-gate.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-05-29T15:29:21.811823+00:00"
         },
         {
           "id": "T056",
           "title": "Create typescript-standards enforcement skill builtin",
           "description": "Create src/plugins/builtins/skills/typescript-standards/manifest.yaml (type: skill, tier: enforcement, scope: implementation) and SKILL.md containing: strict typing, no any, lint compliance (biome), no .js/.jsx in src/, ESM conventions, ES2022 target. FR-014, US-016.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T056-gate.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-05-29T15:29:21.811823+00:00"
         },
         {
           "id": "T057",
           "title": "Add tier: enforcement to SkillManifestSchema",
-          "description": "Modify src/plugins/manifest.ts: add EnforcementSkillManifest variant to the SkillManifestSchema discriminated union with tier: 'enforcement' and optional scope: 'implementation' field. Update AnyManifestSchema. TR-P9-003.\n\nREVIEW FAIL (code): TR-P9-003 — Schema allows missing scope.\n  WHERE: src/plugins/manifest.ts:120-125\n  EXPECTED: scope field MUST be required for enforcement tier per TR-P9-003\n  ACTUAL: scope: z.enum([\"implementation\", \"review\", \"all\"]).optional()\n  FIX: Remove .optional() from the scope field in EnforcementSkillManifestSchema.",
-          "status": "open",
+          "description": "Modify src/plugins/manifest.ts: add EnforcementSkillManifest variant to the SkillManifestSchema discriminated union with tier: 'enforcement' and optional scope: 'implementation' field. Update AnyManifestSchema. TR-P9-003.\n\nREVIEW FAIL (code): TR-P9-003 \u2014 Schema allows missing scope.\n  WHERE: src/plugins/manifest.ts:120-125\n  EXPECTED: scope field MUST be required for enforcement tier per TR-P9-003\n  ACTUAL: scope: z.enum([\"implementation\", \"review\", \"all\"]).optional()\n  FIX: Remove .optional() from the scope field in EnforcementSkillManifestSchema.",
+          "status": "completed",
           "gateScript": "gates/T057-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-29T15:29:21.811823+00:00"
         },
         {
           "id": "T058",
           "title": "Implement resolveEnforcementSkills() in skill-runtime.ts",
           "description": "Add resolveEnforcementSkills(projectRoot: string): string to src/plugins/skill-runtime.ts. Scans builtins (src/plugins/builtins/skills/), global (~/.gwrk/plugins/skills/), and project-local (.gwrk/plugins/skills/) for tier: enforcement manifests. Returns concatenated SKILL.md content. Resolution order: builtins -> global -> project-local (project-local overrides). TR-P9-001, TR-P9-002.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T058-gate.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-05-29T15:29:21.811823+00:00"
         },
         {
           "id": "T059",
           "title": "Inject enforcement skills into dispatch context",
           "description": "Modify src/utils/agent.ts: call resolveEnforcementSkills() during dispatch context assembly and inject the returned content into the <code_quality> section of the agent prompt. TR-P9-005.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T059-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-05-29T15:29:21.811823+00:00"
         }
       ],
       "sp_estimate": 3,
@@ -646,7 +651,7 @@
         {
           "id": "T057",
           "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
-          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
+          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker \u2014 resolved by SkillRuntime",
           "status": "open",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,

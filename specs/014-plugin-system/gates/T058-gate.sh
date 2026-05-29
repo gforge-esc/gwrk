@@ -13,9 +13,13 @@ grep -q "export.*resolveEnforcementSkills" src/plugins/skill-runtime.ts || {
   exit 1
 }
 
-pnpm vitest run src/plugins/enforcement.p9.red.test.ts -t "TR-P9-001" --reporter=verbose 2>&1 | grep -q "pass" || {
-  echo "FAIL: T058 — TR-P9-001 resolveEnforcementSkills test not passing" >&2
-  exit 1
-}
+OUTPUT=$(pnpm vitest run src/plugins/enforcement.p9.red.test.ts -t "TR-P9-001" --reporter=verbose 2>&1) || true
 
-echo "PASS: T058 — resolveEnforcementSkills() implemented and tested"
+if echo "$OUTPUT" | grep -q "passed"; then
+  echo "PASS: T058 — resolveEnforcementSkills() implemented and tested"
+  exit 0
+else
+  echo "FAIL: T058 — TR-P9-001 resolveEnforcementSkills test not passing" >&2
+  echo "$OUTPUT" | tail -10 >&2
+  exit 1
+fi
