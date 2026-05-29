@@ -636,7 +636,7 @@
           "status": "open",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-29T05:11:54.047Z",
+          "completedAt": "2026-05-29T06:05:57.506Z",
           "classification": "noop"
         }
       ],
