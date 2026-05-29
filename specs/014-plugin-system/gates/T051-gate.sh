@@ -2,11 +2,19 @@
 # AUTHORED
 set -euo pipefail
 
-# T051: ShipOrchestrator uses ReviewPlugin, not hardcoded paths
-! grep -q '".agents/workflows/gwrk-review-code.md"' src/engine/ship-orchestrator.ts || { echo "FAIL: stageCodeReview still hardcodes workflow path"; exit 1; }
-! grep -q '".agents/workflows/gwrk-review-uat.md"' src/engine/ship-orchestrator.ts || { echo "FAIL: stageUatReview still hardcodes workflow path"; exit 1; }
+# T051: Implement src/plugins/builtins/skills/gwrk-conventions/manifest.yaml
+FILE="src/plugins/builtins/skills/gwrk-conventions/manifest.yaml"
 
-# Must use resolveReviewPlugin
-grep -q "resolveReviewPlugin" src/engine/ship-orchestrator.ts
+test -f "$FILE" \
+  || { echo "FAIL: T051 — file not found: $FILE" >&2; exit 1; }
 
-echo "PASS: T051 — ShipOrchestrator plugin dispatch"
+grep -q "type: skill" "$FILE" \
+  || { echo "FAIL: T051 — $FILE missing 'type: skill'" >&2; exit 1; }
+
+grep -q "tier: enforcement" "$FILE" \
+  || { echo "FAIL: T051 — $FILE missing 'tier: enforcement'" >&2; exit 1; }
+
+grep -q "scope: implementation" "$FILE" \
+  || { echo "FAIL: T051 — $FILE missing 'scope: implementation'" >&2; exit 1; }
+
+echo "PASS: T051 — src/plugins/builtins/skills/gwrk-conventions/manifest.yaml exists and is correct"

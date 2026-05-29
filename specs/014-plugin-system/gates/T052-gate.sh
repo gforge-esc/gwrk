@@ -2,8 +2,16 @@
 # AUTHORED
 set -euo pipefail
 
-# T052: Unit tests for ReviewPlugin
-test -f src/plugins/review-plugin.test.ts
-pnpm vitest run src/plugins/review-plugin.test.ts --reporter=verbose
+# T052: Implement src/plugins/builtins/skills/typescript-standards/SKILL.md
+FILE="src/plugins/builtins/skills/typescript-standards/SKILL.md"
 
-echo "PASS: T052 — Implement src/plugins/review-plugin.test.ts"
+test -f "$FILE" \
+  || { echo "FAIL: T052 — file not found: $FILE" >&2; exit 1; }
+
+grep -q "any" "$FILE" \
+  || { echo "FAIL: T052 — $FILE missing 'any' restriction" >&2; exit 1; }
+
+grep -q "ESM" "$FILE" \
+  || { echo "FAIL: T052 — $FILE missing 'ESM' conventions" >&2; exit 1; }
+
+echo "PASS: T052 — src/plugins/builtins/skills/typescript-standards/SKILL.md exists and contains standards"

@@ -2,11 +2,13 @@
 # AUTHORED
 set -euo pipefail
 
-# T056: src/utils/agent.ts (MODIFY: call resolveEnforcementSkills)
-test -f src/utils/agent.ts \
-  || { echo "FAIL: T056 — file not found: src/utils/agent.ts" >&2; exit 1; }
+# T056: Implement src/utils/agent.ts (call resolveEnforcementSkills)
+FILE="src/utils/agent.ts"
 
-grep -q "resolveEnforcementSkills" src/utils/agent.ts \
-  || { echo "FAIL: T056 — src/utils/agent.ts missing call to 'resolveEnforcementSkills'" >&2; exit 1; }
+test -f "$FILE" \
+  || { echo "FAIL: T056 — file not found: $FILE" >&2; exit 1; }
 
-echo "PASS: T056 — Implement src/utils/agent.ts"
+grep -q "resolveEnforcementSkills" "$FILE" \
+  || { echo "FAIL: T056 — $FILE missing 'resolveEnforcementSkills' call" >&2; exit 1; }
+
+echo "PASS: T056 — src/utils/agent.ts calls resolveEnforcementSkills"

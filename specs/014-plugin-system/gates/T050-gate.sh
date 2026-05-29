@@ -2,16 +2,16 @@
 # AUTHORED
 set -euo pipefail
 
-# T050: 4 built-in review plugins
-test -d src/plugins/builtins/reviews/review-code-cli
-test -d src/plugins/builtins/reviews/review-uat-cli
-test -d src/plugins/builtins/reviews/review-code-webapp
-test -d src/plugins/builtins/reviews/review-uat-webapp
+# T050: Implement src/plugins/builtins/skills/gwrk-conventions/SKILL.md
+FILE="src/plugins/builtins/skills/gwrk-conventions/SKILL.md"
 
-# Each must have a manifest.yaml
-test -f src/plugins/builtins/reviews/review-code-cli/manifest.yaml
-test -f src/plugins/builtins/reviews/review-uat-cli/manifest.yaml
-test -f src/plugins/builtins/reviews/review-code-webapp/manifest.yaml
-test -f src/plugins/builtins/reviews/review-uat-webapp/manifest.yaml
+test -f "$FILE" \
+  || { echo "FAIL: T050 — file not found: $FILE" >&2; exit 1; }
 
-echo "PASS: T050 — Implement built-in review plugins"
+grep -q "completed" "$FILE" \
+  || { echo "FAIL: T050 — $FILE missing 'completed' status" >&2; exit 1; }
+
+grep -q "tasks.json" "$FILE" \
+  || { echo "FAIL: T050 — $FILE missing 'tasks.json' reference" >&2; exit 1; }
+
+echo "PASS: T050 — src/plugins/builtins/skills/gwrk-conventions/SKILL.md exists and contains conventions"

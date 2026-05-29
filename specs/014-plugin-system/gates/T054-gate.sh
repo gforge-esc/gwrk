@@ -2,11 +2,13 @@
 # AUTHORED
 set -euo pipefail
 
-# T054: src/plugins/skill-runtime.ts (MODIFY: add resolveEnforcementSkills)
-test -f src/plugins/skill-runtime.ts \
-  || { echo "FAIL: T054 — file not found: src/plugins/skill-runtime.ts" >&2; exit 1; }
+# T054: Implement src/plugins/skill-runtime.ts (resolveEnforcementSkills)
+FILE="src/plugins/skill-runtime.ts"
 
-grep -q "resolveEnforcementSkills" src/plugins/skill-runtime.ts \
-  || { echo "FAIL: T054 — src/plugins/skill-runtime.ts missing 'resolveEnforcementSkills'" >&2; exit 1; }
+test -f "$FILE" \
+  || { echo "FAIL: T054 — file not found: $FILE" >&2; exit 1; }
 
-echo "PASS: T054 — Implement src/plugins/skill-runtime.ts"
+grep -q "resolveEnforcementSkills" "$FILE" \
+  || { echo "FAIL: T054 — $FILE missing 'resolveEnforcementSkills'" >&2; exit 1; }
+
+echo "PASS: T054 — src/plugins/skill-runtime.ts implements resolveEnforcementSkills"

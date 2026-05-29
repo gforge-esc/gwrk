@@ -2,11 +2,19 @@
 # AUTHORED
 set -euo pipefail
 
-# T053: Integration test — ship loop dispatches via review plugin
-test -f src/plugins/review-plugin.test.ts
-test -f src/engine/ship-orchestrator.test.ts
+# T053: Implement src/plugins/builtins/skills/typescript-standards/manifest.yaml
+FILE="src/plugins/builtins/skills/typescript-standards/manifest.yaml"
 
-# Run both test files
-pnpm vitest run src/plugins/review-plugin.test.ts src/engine/ship-orchestrator.test.ts --reporter=verbose
+test -f "$FILE" \
+  || { echo "FAIL: T053 — file not found: $FILE" >&2; exit 1; }
 
-echo "PASS: T053 — Implement test strategy for Phase 8"
+grep -q "type: skill" "$FILE" \
+  || { echo "FAIL: T053 — $FILE missing 'type: skill'" >&2; exit 1; }
+
+grep -q "tier: enforcement" "$FILE" \
+  || { echo "FAIL: T053 — $FILE missing 'tier: enforcement'" >&2; exit 1; }
+
+grep -q "scope: implementation" "$FILE" \
+  || { echo "FAIL: T053 — $FILE missing 'scope: implementation'" >&2; exit 1; }
+
+echo "PASS: T053 — src/plugins/builtins/skills/typescript-standards/manifest.yaml exists and is correct"
