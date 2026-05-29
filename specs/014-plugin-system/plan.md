@@ -124,7 +124,7 @@ Implement the normalized `AgentBackend` interface. This replaces hardcoded CLI d
 
 ---
 
-### Phase 3A: Antigravity (agy) Adapter
+### Phase 4: Antigravity (agy) Adapter
 
 Add the Antigravity CLI (`agy`) as a fourth built-in agent backend. `agy` is the successor to `gemini-cli` (same Gemini models, Go-based CLI). Deadline: `gemini-cli` Google One tier ends June 18, 2026.
 
@@ -172,7 +172,7 @@ Add the Antigravity CLI (`agy`) as a fourth built-in agent backend. `agy` is the
 
 ---
 
-### Phase 4: WorkflowRuntime (Layer 2.5 - F014-R)
+### Phase 5: WorkflowRuntime (Layer 2.5 - F014-R)
 
 Implement the `WorkflowRuntime` engine and the `IntentEngine` for native filesystem mutation. This is the core of the F014-R rework.
 
@@ -209,7 +209,7 @@ Implement the `WorkflowRuntime` engine and the `IntentEngine` for native filesys
 
 ---
 
-### Phase 5: DefineOrchestrator & CLI Rewiring
+### Phase 6: DefineOrchestrator & CLI Rewiring
 
 Implement the `DefineOrchestrator` state machine and rewire existing commands to use the `WorkflowRuntime`. This eradicates the dependency on `define-until-solid.sh`.
 
@@ -243,7 +243,7 @@ Implement the `DefineOrchestrator` state machine and rewire existing commands to
 
 ---
 
-### Phase 6: Provisioning & Migration
+### Phase 7: Provisioning & Migration
 
 Overhaul `gwrk init` to provision the global home and provide migration/seeding tools.
 
@@ -274,7 +274,7 @@ Overhaul `gwrk init` to provision the global home and provide migration/seeding 
 
 ---
 
-### Phase 7: Routing & Intelligence (ex-F008)
+### Phase 8: Routing & Intelligence (ex-F008)
 
 Implement the routing engine that selects the optimal backend based on task type, quota, and historical success.
 
@@ -308,10 +308,12 @@ Implement the routing engine that selects the optimal backend based on task type
 - `gwrk status` correctly identifies unavailable backends via quota probing
 ---
 
-### Phase 8: Review Plugin Layer (Layer 3 — First Extension)
+### Phase 8A: Review Plugin Layer (Layer 3 — First Extension) ✅ SHIPPED
+
+> **Absorbed into Phase 10/11 shipment.** ReviewPlugin, review-code-cli, review-uat-cli are live in `src/plugins/`. No tasks.json phase — work was completed prior to task tracking.
 
 **Requirements Addressed:** F014 Layer 3 (partial), F004 ship orchestrator decoupling
-**Dependencies:** Phase 1 (loader/registry), Phase 4 (WorkflowRuntime)
+**Dependencies:** Phase 1 (loader/registry), Phase 5 (WorkflowRuntime)
 
 #### Files
 - `src/plugins/review-plugin.ts` (NEW: `ReviewPlugin` interface, `ReviewStep` schema, resolution)
@@ -362,7 +364,7 @@ Ship builtin enforcement skills that teach implementing agents gwrk's operationa
 
 **Requirements Addressed:** FR-014, US-016, FR-013 (enforcement tier), FR-010 (help listing)
 
-**Dependencies:** Phase 1 (manifest schema), Phase 2 (skill runtime), Phase 8 (review dispatch)
+**Dependencies:** Phase 1 (manifest schema), Phase 2 (skill runtime), Phase 8A (review dispatch)
 
 **Contract Mapping:**
 - `contracts/skill-runtime.md` → `resolveEnforcementSkills(root)` → `src/plugins/skill-runtime.ts`
@@ -541,13 +543,13 @@ _No mockups exist for this feature._
 | US-006 | 2 | Planned |
 | US-007 | 2 | Planned |
 | US-008 | 2 | Planned |
-| US-009 | 6 | Planned |
-| US-010 | 6 | Planned |
-| US-011 | 4, 5 | Planned |
-| US-012 | 4 | Planned |
-| US-013 | 5 | Planned |
-| US-014 | 6 | Planned |
-| US-015 | 4 | Planned |
+| US-009 | 7 | Planned |
+| US-010 | 7 | Planned |
+| US-011 | 5, 6 | Planned |
+| US-012 | 5 | Planned |
+| US-013 | 6 | Planned |
+| US-014 | 7 | Planned |
+| US-015 | 5 | Planned |
 | US-016 | 9 | Planned |
 | FR-001 | 1 | Planned |
 | FR-002 | 1 | Planned |
@@ -559,30 +561,30 @@ _No mockups exist for this feature._
 | FR-008 | 2 | Planned |
 | FR-009 | 2 | Planned |
 | FR-010 | 2 | Planned |
-| FR-011 | 6 | Planned |
-| FR-012 | 6 | Planned |
+| FR-011 | 7 | Planned |
+| FR-012 | 7 | Planned |
 | FR-013 | 1, 9 | Planned |
 | FR-014 | 9 | Planned |
-| FR-L1-001 | 3, 3A | Planned |
-| FR-L1-002 | 3, 3A | Planned |
-| FR-L1-003 | 3, 3A | Planned |
-| FR-L1-004 | 3, 3A | Planned |
-| FR-L1-005 | 3, 7 | Planned |
+| FR-L1-001 | 3, 4 | Planned |
+| FR-L1-002 | 3, 4 | Planned |
+| FR-L1-003 | 3, 4 | Planned |
+| FR-L1-004 | 3, 4 | Planned |
+| FR-L1-005 | 3, 8 | Planned |
 | FR-L1-006 | 3 | Planned |
 | FR-L1-007 | Deferred | Deferred |
-| FR-L1-008 | 6 | Planned |
+| FR-L1-008 | 7 | Planned |
 | FR-L1-009 | 3 | Planned |
-| FR-L1-010 | 3, 3A | Planned |
+| FR-L1-010 | 3, 4 | Planned |
 | FR-L1-011 | 1 | Planned |
 | FR-L1-012 | 1 | Planned |
 | FR-L1-013 | 1 | Planned |
-| FR-L25-001 | 4 | Planned |
-| FR-L25-002 | 4 | Planned |
-| FR-L25-003 | 5, 10 | Planned |
-| FR-L25-004 | 5 | Planned |
-| FR-L25-005 | 6 | Planned |
-| FR-L25-006 | 4 | Planned |
-| FR-L25-007 | 4 | Planned |
+| FR-L25-001 | 5 | Planned |
+| FR-L25-002 | 5 | Planned |
+| FR-L25-003 | 6, 10 | Planned |
+| FR-L25-004 | 6 | Planned |
+| FR-L25-005 | 7 | Planned |
+| FR-L25-006 | 5 | Planned |
+| FR-L25-007 | 5 | Planned |
 | DM-001 to DM-007 | 1 | Planned |
 | TC-006 | 10, 11 | Planned |
 | TC-011 | 10, 11 | Planned |
