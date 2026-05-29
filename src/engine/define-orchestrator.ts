@@ -96,11 +96,29 @@ export class DefineOrchestrator extends EventEmitter {
     fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2), "utf-8");
   }
 
+  private getNextStage(stage: DefineStage): DefineStage {
+    const stages = [
+      DefineStage.SPECIFY,
+      DefineStage.PLAN,
+      DefineStage.DEFINE_TESTS,
+      DefineStage.PLAN_TO_TASKS,
+      DefineStage.ANALYZE,
+      DefineStage.DONE,
+    ];
+    const currentIndex = stages.indexOf(stage);
+    if (currentIndex === -1) return DefineStage.DONE;
+    return stages[currentIndex + 1] || DefineStage.DONE;
+  }
+
   /**
    * Primary entry point for the orchestrator (WorkflowRuntime contract).
+   * @param initialInput - Optional input for the starting stage (e.g. rework instructions)
+   * @param options - Execution options
    */
-  public async runLoop(featureId?: string): Promise<number> {
+  public async runLoop(initialInput?: string, options: { stopAfterOne?: boolean } = {}): Promise<number> {
     console.log(`Starting Define Loop for ${this.config.featureId} at stage: ${this.state.stage}`);
+
+    let currentInput = initialInput;
 
     while (this.state.stage !== DefineStage.DONE) {
       this.persistState();
@@ -108,44 +126,54 @@ export class DefineOrchestrator extends EventEmitter {
 
       switch (this.state.stage) {
         case DefineStage.SPECIFY:
-          result = await this.stageSpecify();
+          result = await this.stageSpecify(currentInput);
           break;
         case DefineStage.PLAN:
-          result = await this.stagePlan();
+          result = await this.stagePlan(currentInput);
+          break;
+        case DefineStage.DEFINE_TESTS:
+          result = await this.stageDefineTests(currentInput);
           break;
         case DefineStage.PLAN_TO_TASKS:
-          result = await this.stagePlanToTasks();
+          result = await this.stagePlanToTasks(currentInput);
           break;
         case DefineStage.ANALYZE:
           result = await this.stageAnalyze();
-          break;
-        case DefineStage.DEFINE_TESTS:
-          result = await this.stageDefineTests();
           break;
         default:
           this.state.stage = DefineStage.DONE;
           continue;
       }
 
+      // Input is only consumed by the first stage it hits
+      currentInput = undefined;
+
       if (!result.success) {
         console.error(`Stage ${this.state.stage} failed: ${result.error}`);
         return result.exitCode;
       }
 
-      this.state.stage =
-        result.nextStage || this.getNextStage(this.state.stage);
+      const next = result.nextStage || this.getNextStage(this.state.stage);
+      console.log(`Transitioning: ${this.state.stage} -> ${next}`);
+      this.state.stage = next;
+
+      if (options.stopAfterOne) {
+        break;
+      }
     }
 
     this.persistState();
-    // Clean up state on success
-    if (fs.existsSync(this.getStatePath())) {
+    // Clean up state on success if we reached DONE
+    if (this.state.stage === DefineStage.DONE && fs.existsSync(this.getStatePath())) {
       fs.unlinkSync(this.getStatePath());
     }
 
-    this.emit("plan:define:complete", {
-      featureId: this.config.featureId,
-      status: "DEFINED",
-    });
+    if (this.state.stage === DefineStage.DONE) {
+      this.emit("plan:define:complete", {
+        featureId: this.config.featureId,
+        status: "DEFINED",
+      });
+    }
 
     return 0;
   }
@@ -155,25 +183,34 @@ export class DefineOrchestrator extends EventEmitter {
     return this.runLoop();
   }
 
-  private getNextStage(stage: DefineStage): DefineStage {
-    const stages = [
-      DefineStage.SPECIFY,
-      DefineStage.PLAN,
-      DefineStage.PLAN_TO_TASKS,
-      DefineStage.ANALYZE,
-      DefineStage.DEFINE_TESTS,
-      DefineStage.DONE,
-    ];
-    const currentIndex = stages.indexOf(stage);
-    if (currentIndex === -1) return DefineStage.DONE;
-    return stages[currentIndex + 1] || DefineStage.DONE;
+  private getRefsContext(): string {
+    if (!this.config.refs) return "";
+    const resolvedRefs = path.resolve(this.config.refs);
+    if (!fs.existsSync(resolvedRefs)) return "";
+
+    try {
+      const content = fs.readFileSync(resolvedRefs, "utf-8");
+      return [
+        `<reference_document source="${this.config.refs}" authority="primary">`,
+        content,
+        `</reference_document>`,
+        "",
+        "CRITICAL: Use the reference document above as the authoritative source.",
+      ].join("\n");
+    } catch (err) {
+      console.warn(`Warning: Could not read refs file ${resolvedRefs}: ${err}`);
+      return "";
+    }
   }
 
-  private async stageSpecify(): Promise<StageResult> {
+  private async stageSpecify(input?: string): Promise<StageResult> {
     console.log("Stage: SPECIFY");
     try {
-      const input = `Create a NEW spec for feature ${this.config.featureId}`;
-      const result = await this.runtime.executeWorkflow("gwrk-specify", input, {
+      const refs = this.getRefsContext();
+      const prompt = input || `Create a NEW spec for feature ${this.config.featureId}`;
+      const effectiveInput = refs ? `${refs}\n\n${prompt}` : prompt;
+
+      const result = await this.runtime.executeWorkflow("gwrk-specify", effectiveInput, {
         agent: this.config.backend,
         projectRoot: this.config.cwd,
         quiet: true,
@@ -187,11 +224,14 @@ export class DefineOrchestrator extends EventEmitter {
     }
   }
 
-  private async stagePlan(): Promise<StageResult> {
+  private async stagePlan(input?: string): Promise<StageResult> {
     console.log("Stage: PLAN");
     try {
-      const input = `Plan implementation for feature ${this.config.featureId}`;
-      const result = await this.runtime.executeWorkflow("gwrk-plan", input, {
+      const refs = this.getRefsContext();
+      const prompt = input || `Plan implementation for feature ${this.config.featureId}`;
+      const effectiveInput = refs ? `${refs}\n\n${prompt}` : prompt;
+
+      const result = await this.runtime.executeWorkflow("gwrk-plan", effectiveInput, {
         agent: this.config.backend,
         projectRoot: this.config.cwd,
         quiet: true,
@@ -205,13 +245,34 @@ export class DefineOrchestrator extends EventEmitter {
     }
   }
 
-  private async stagePlanToTasks(): Promise<StageResult> {
+  private async stageDefineTests(input?: string): Promise<StageResult> {
+    console.log("Stage: DEFINE_TESTS");
+    try {
+      const refs = this.getRefsContext();
+      const prompt = input || `Generate tests for feature ${this.config.featureId}`;
+      const effectiveInput = refs ? `${refs}\n\n${prompt}` : prompt;
+
+      const result = await this.runtime.executeWorkflow("gwrk-define-tests", effectiveInput, {
+        agent: this.config.backend,
+        projectRoot: this.config.cwd,
+        quiet: true,
+      });
+
+      console.log(`  ${result.summary}`);
+      return { success: true, exitCode: 0 };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, exitCode: 1, error: msg };
+    }
+  }
+
+  private async stagePlanToTasks(input?: string): Promise<StageResult> {
     console.log("Stage: PLAN_TO_TASKS");
     try {
-      const input = `Decompose plan for feature ${this.config.featureId}`;
+      const prompt = input || `Decompose plan for feature ${this.config.featureId}`;
       const result = await this.runtime.executeWorkflow(
         "gwrk-plan-to-tasks",
-        input,
+        prompt,
         {
           agent: this.config.backend,
           projectRoot: this.config.cwd,
@@ -230,59 +291,18 @@ export class DefineOrchestrator extends EventEmitter {
   private async stageAnalyze(): Promise<StageResult> {
     console.log("Stage: ANALYZE");
     try {
-      const input = `Analyze consistency for feature ${this.config.featureId}`;
-      const result = await this.runtime.executeWorkflow("gwrk-analyze", input, {
+      const result = await this.runtime.executeWorkflow("gwrk-analyze", `Analyze consistency for feature ${this.config.featureId}`, {
         agent: this.config.backend,
         projectRoot: this.config.cwd,
         quiet: true,
       });
 
       console.log(`  ${result.summary}`);
-
-      if (result.summary.includes("Verdict: READY")) {
-        return { success: true, exitCode: 0 };
-      }
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`  Warning: ANALYZE stage skipped or failed: ${msg}`);
       return { success: true, exitCode: 0 };
-    }
-  }
-
-  private async stageDefineTests(): Promise<StageResult> {
-    console.log("Stage: DEFINE_TESTS");
-    try {
-      const featureDir = path.join(
-        this.config.cwd,
-        "specs",
-        this.config.featureId,
-      );
-      const taskState = loadTaskState(featureDir);
-
-      if (!taskState.phases || taskState.phases.length === 0) {
-        console.log("  No phases found to define tests for.");
-        return { success: true, exitCode: 0 };
-      }
-
-      for (const phase of taskState.phases) {
-        const phaseId = phase.id.replace("phase-", "");
-        console.log(`  Defining tests for Phase ${phaseId}...`);
-        await this.runtime.executeWorkflow(
-          "gwrk-define-tests",
-          `Phase ${phaseId}`,
-          {
-            agent: this.config.backend,
-            projectRoot: this.config.cwd,
-            quiet: true,
-          },
-        );
-      }
-
-      return { success: true, exitCode: 0 };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, exitCode: 1, error: msg };
     }
   }
 }

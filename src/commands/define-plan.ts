@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
@@ -55,7 +56,6 @@ Examples:
 
       const config = loadConfig(projectRoot);
       const backend = config.agents.define;
-      const runtime = new WorkflowRuntime();
 
       // TC-007: Read stdin if piped (discovery JSON)
       let contextContent: string | undefined;
@@ -85,11 +85,25 @@ Examples:
 
       try {
         const input = `Plan implementation for feature ${feature}${contextContent ? `\n\nContext:\n${contextContent}` : ""}${opts.refs ? `\n\nReference: ${opts.refs}` : ""}`;
-        const result = await runtime.executeWorkflow("gwrk-plan", input, {
-          agent: backend,
-          projectRoot,
-          quiet: true,
+        
+        const orchestrator = new DefineOrchestrator({
+          featureId: feature,
+          backend,
+          cwd: projectRoot,
+          refs: opts.refs,
+        }, {
+          stage: DefineStage.PLAN,
+          featureId: feature,
+          startedAt,
+          runId: `define-plan-${feature}-${Date.now()}`,
+          backend,
         });
+
+        const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
+
+        if (exitCode !== 0) {
+          throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+        }
 
         const durationS = Math.round((Date.now() - startTime) / 1000);
         finishRun(runId, { exit_code: 0, duration_s: durationS });

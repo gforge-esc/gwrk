@@ -83,11 +83,6 @@ describe("DefineOrchestrator (Integration)", () => {
   });
 
   it("should transition through full lifecycle and persist state", async () => {
-    // We'll use a real WorkflowRuntime but it will look for plugins in our tempDir
-    // Since PluginLoader by default looks in ~/.gwrk and builtins, we might need 
-    // to mock the loader resolution or ensure it finds our temp plugins.
-    // For this test, let's mock resolvePlugin to return our temp paths.
-    
     const orchestrator = new DefineOrchestrator(config);
     
     // Track calls to dispatchToAgent to verify transitions
@@ -95,6 +90,7 @@ describe("DefineOrchestrator (Integration)", () => {
 
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-specify" }));
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan" }));
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-define-tests" }));
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan-to-tasks" }));
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-analyze" }));
     
@@ -117,9 +113,11 @@ describe("DefineOrchestrator (Integration)", () => {
 
     await orchestrator.runLoop();
     
-    // Should NOT have called specify or plan
+    // Should NOT have called specify, plan, or define-tests
     expect(agent.dispatchToAgent).not.toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-specify" }));
     expect(agent.dispatchToAgent).not.toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan" }));
+    expect(agent.dispatchToAgent).not.toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-define-tests" }));
+    
     // SHOULD have called plan-to-tasks and analyze
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan-to-tasks" }));
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-analyze" }));

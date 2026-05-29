@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
@@ -111,7 +112,6 @@ Examples:
 
         const config = loadConfig(projectRoot);
         const backend = config.agents.define;
-        const runtime = new WorkflowRuntime();
 
         const runId = startRun({
           feature_id: feature,
@@ -119,19 +119,26 @@ Examples:
           agent_backend: backend,
           workflow: "plan-to-tasks",
         });
+try {
+  const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
 
-        try {
-          const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
-          
-          const result = await runtime.executeWorkflow(
-            "gwrk-plan-to-tasks",
-            input,
-            {
-              agent: backend,
-              projectRoot,
-              quiet: true,
-            },
-          );
+  const orchestrator = new DefineOrchestrator({
+    featureId: feature,
+    backend,
+    cwd: projectRoot,
+  }, {
+    stage: DefineStage.PLAN_TO_TASKS,
+    featureId: feature,
+    startedAt,
+    runId: `define-tasks-${feature}-${Date.now()}`,
+    backend,
+  });
+
+  const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
+
+  if (exitCode !== 0) {
+    throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+  }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });

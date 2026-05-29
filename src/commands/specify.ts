@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
@@ -44,7 +45,6 @@ Examples:
         const cwd = process.cwd();
         const config = loadConfig(cwd);
         const backend = config.agents.define;
-        const runtime = new WorkflowRuntime();
         const specsDir = path.join(cwd, "specs");
 
         // Read prompt/stdin BEFORE resolution — we need the prompt to decide
@@ -172,15 +172,24 @@ Examples:
         const startedAt = new Date().toISOString();
 
         try {
-          const result = await runtime.executeWorkflow(
-            "gwrk-specify",
-            effectivePrompt,
-            {
-              agent: backend,
-              projectRoot: cwd,
-              quiet: true,
-            },
-          );
+          const orchestrator = new DefineOrchestrator({
+            featureId: feature,
+            backend,
+            cwd,
+            refs: opts.refs,
+          }, {
+            stage: DefineStage.SPECIFY,
+            featureId: feature,
+            startedAt,
+            runId: `define-spec-${feature}-${Date.now()}`,
+            backend,
+          });
+
+          const exitCode = await orchestrator.runLoop(effectivePrompt, { stopAfterOne: true });
+
+          if (exitCode !== 0) {
+            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+          }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });
