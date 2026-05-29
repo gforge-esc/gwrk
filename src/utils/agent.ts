@@ -6,6 +6,7 @@ import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
+import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import {
   type AgentBackend as ConfigAgentBackend,
   loadConfig,
@@ -426,6 +427,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const startTime = Date.now();
   const dispatch = await adapter.dispatch(task);
+
+  // FR-014: Inject enforcement skills
+  if (dispatch.stdin.includes("{{enforcement}}")) {
+    const enforcement = await resolveEnforcementSkills(
+      task.workDir || projectRoot,
+      "implementation",
+    );
+    dispatch.stdin = dispatch.stdin.replace("{{enforcement}}", enforcement);
+  }
 
   const opts: DispatchOptions = {
     backend: agentName as ConfigAgentBackend,

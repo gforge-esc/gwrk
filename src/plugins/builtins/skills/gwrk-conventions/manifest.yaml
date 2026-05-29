@@ -1,0 +1,6 @@
+type: skill
+name: gwrk-conventions
+version: 1.0.0
+description: Platform vocabulary and operational conventions for gwrk projects
+tier: enforcement
+scope: implementation

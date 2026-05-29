@@ -71,7 +71,7 @@ describe("FR-014 / TR-P9-001: resolveEnforcementSkills()", () => {
     const mod = await import("./skill-runtime.js");
     expect(typeof mod.resolveEnforcementSkills).toBe("function");
 
-    const content = mod.resolveEnforcementSkills(process.cwd());
+    const content = await mod.resolveEnforcementSkills(process.cwd());
     expect(content).toContain("typescript-standards");
     expect(content).toContain("gwrk-conventions");
     expect(content.length).toBeGreaterThan(100);
@@ -89,7 +89,7 @@ describe("FR-014 / TR-P9-002: enforcement skill resolution order", () => {
     // RED: function doesn't exist yet, and builtin skills don't exist yet.
     // When implemented, this test needs a temp dir with a local override.
     // For now, just verify the function exists and accepts projectRoot.
-    const content = mod.resolveEnforcementSkills(process.cwd());
+    const content = await mod.resolveEnforcementSkills(process.cwd());
     expect(typeof content).toBe("string");
   });
 });
@@ -141,7 +141,7 @@ describe("FR-010 / TR-P9-004: enforcement skills in plugin listing", () => {
   it("PluginLoader includes enforcement skills from builtins", async () => {
     const { PluginLoader } = await import("./loader.js");
     const loader = new PluginLoader();
-    const plugins = loader.listPlugins();
+    const plugins = await loader.listPlugins();
 
     // RED: no enforcement skills exist in builtins yet
     const enforcementSkills = plugins.filter(
@@ -149,24 +149,25 @@ describe("FR-010 / TR-P9-004: enforcement skills in plugin listing", () => {
     );
     expect(enforcementSkills.length).toBeGreaterThanOrEqual(2);
   });
-});
+  });
 
-/**
- * TR-P9-005: dispatch context includes enforcement skill content
- *
- * When dispatchToAgent assembles the stdin context for an implement workflow,
- * it must include enforcement skill content in a <code_quality> section.
- */
-describe("FR-014 / TR-P9-005: dispatch context assembly", () => {
+  /**
+  * TR-P9-005: dispatch context assembly
+  *
+  * When dispatchToAgent assembles the stdin context for an implement workflow,
+  * it must include enforcement skill content in a <code_quality> section.
+  */
+  describe("FR-014 / TR-P9-005: dispatch context assembly", () => {
   it("enforcement skill content appears in assembled dispatch context", async () => {
     // RED: resolveEnforcementSkills doesn't exist, and dispatch doesn't call it yet
     const mod = await import("./skill-runtime.js");
     expect(typeof mod.resolveEnforcementSkills).toBe("function");
 
-    const content = mod.resolveEnforcementSkills(process.cwd());
+    const content = await mod.resolveEnforcementSkills(process.cwd());
     // The dispatch assembler should wrap this in <code_quality> tags
     // For this RED test, just verify the content is non-empty and contains
     // at least one enforcement skill name
     expect(content).toMatch(/typescript-standards|gwrk-conventions/);
   });
-});
+  });
+

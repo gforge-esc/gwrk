@@ -166,6 +166,12 @@ export class PluginLoader {
       }
     };
 
+    // Scan project-local .gwrk/plugins/ directory (FR-L25-006)
+    if (this.projectDir) {
+      const projectPluginBase = path.join(this.projectDir, ".gwrk", "plugins");
+      await scanDir(projectPluginBase);
+    }
+
     // Scan user global dir first (to allow overrides)
     await scanDir(this.globalDir);
 

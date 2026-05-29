@@ -111,11 +111,22 @@ export const CompoundSkillManifestSchema = PluginBaseSchema.extend({
 });
 
 /**
+ * Enforcement Skill Manifest
+ */
+export const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
+  type: z.literal("skill"),
+  tier: z.literal("enforcement"),
+  scope: z.enum(["implementation", "review", "all"]),
+  tags: z.array(z.string()).optional(),
+});
+
+/**
  * Unified Skill Manifest (Discriminated Union on 'tier')
  */
 export const SkillManifestSchema = z.discriminatedUnion("tier", [
   AtomicSkillManifestSchema,
   CompoundSkillManifestSchema,
+  EnforcementSkillManifestSchema,
 ]);
 
 /**
@@ -208,6 +219,7 @@ export const AnyManifestSchema = z.union([
 
 export type AtomicSkillManifest = z.infer<typeof AtomicSkillManifestSchema>;
 export type CompoundSkillManifest = z.infer<typeof CompoundSkillManifestSchema>;
+export type EnforcementSkillManifest = z.infer<typeof EnforcementSkillManifestSchema>;
 export type SkillManifest = z.infer<typeof SkillManifestSchema>;
 export type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type WorkflowManifest = z.infer<typeof WorkflowManifestSchema>;

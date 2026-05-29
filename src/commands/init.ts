@@ -117,6 +117,28 @@ export const initCommand = new Command("init")
       // Seed Skills (FR-012)
       await seedSkills();
 
+      // Seed Rules (ADR-007)
+      const gwrkRulesDir = path.join(projectRoot, ".gwrk", "rules");
+      fs.mkdirSync(gwrkRulesDir, { recursive: true });
+      // @ts-ignore
+      const builtInRulesDir = path.join(
+        import.meta.dirname,
+        "../plugins/builtins/rules",
+      );
+      try {
+        if (fs.existsSync(builtInRulesDir)) {
+          const rules = fs.readdirSync(builtInRulesDir);
+          for (const rule of rules) {
+            fs.copyFileSync(
+              path.join(builtInRulesDir, rule),
+              path.join(gwrkRulesDir, rule),
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(`Warning: Could not seed rules: ${(e as Error).message}`);
+      }
+
       // Seed Workflows (FR-L25-005)
       // @ts-ignore
       const builtInWorkflowsDir = path.join(

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import { selectBackend } from "../engine/router.js";
 import { processForAgent } from "../utils/agent-layer.js";
 import { dispatchToAgent } from "../utils/agent.js";
@@ -8,6 +9,7 @@ import { PluginLoader } from "./loader.js";
 import type {
   AtomicSkillManifest,
   CompoundSkillManifest,
+  EnforcementSkillManifest,
   SkillManifest,
 } from "./manifest.js";
 
@@ -37,6 +39,10 @@ export async function assemblePrompt(
 ): Promise<string> {
   if (manifest.tier === "atomic") {
     return `${manifest.prompt}\n\nInput:\n${input}`;
+  }
+
+  if (manifest.tier === "enforcement") {
+    return `Enforcement Skill: ${manifest.description}\n\nInput:\n${input}`;
   }
 
   // Compound skill: assemble all passes
@@ -122,7 +128,7 @@ export async function executeSkill(
     prompt,
     agent: backend.name,
     stdin: prompt,
-    workflow: `.agents/skills/${name}/manifest.yaml`, // Symbolic path for logging
+    workflow: `skill/${name}`, // Symbolic path for logging
     workDir: projectRoot,
   });
 
@@ -137,4 +143,49 @@ export async function executeSkill(
     exitCode: taskResult.exitCode,
     durationS: taskResult.durationS,
   };
+}
+
+/**
+ * FR-014: Resolves all enforcement skills applicable to the project.
+ * Returns combined SKILL.md content.
+ * Follows resolution order: project-local -> global -> builtins (standard loader order)
+ */
+export async function resolveEnforcementSkills(
+  projectRoot: string,
+  scope: "implementation" | "review" | "all" = "all",
+): Promise<string> {
+  const loader = new PluginLoader({ projectDir: projectRoot });
+  const allPlugins = await loader.listPlugins();
+  const enforcementSkills = allPlugins.filter((p) => p.tier === "enforcement");
+
+  const resolvedContents: string[] = [];
+  const visitedNames = new Set<string>();
+
+  for (const summary of enforcementSkills) {
+    if (visitedNames.has(summary.name)) continue;
+
+    try {
+      const loaded = await loader.resolvePlugin(summary.name);
+      const manifest = loaded.manifest as EnforcementSkillManifest;
+
+      // Filter by scope
+      if (
+        scope !== "all" &&
+        manifest.scope &&
+        manifest.scope !== "all" &&
+        manifest.scope !== scope
+      ) {
+        continue;
+      }
+
+      const skillMdPath = path.join(loaded.path, "SKILL.md");
+      const content = await fs.readFile(skillMdPath, "utf-8");
+      resolvedContents.push(content);
+      visitedNames.add(summary.name);
+    } catch (e) {
+      // Skip invalid/failed plugins
+    }
+  }
+
+  return resolvedContents.join("\n\n---\n\n");
 }
