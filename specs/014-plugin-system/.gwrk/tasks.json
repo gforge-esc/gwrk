@@ -234,7 +234,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -646,7 +646,7 @@
         {
           "id": "T057",
           "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
-          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker \u2014 resolved by SkillRuntime",
+          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
           "status": "open",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,

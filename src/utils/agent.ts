@@ -429,7 +429,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const dispatch = await adapter.dispatch(task);
 
   // FR-014: Inject enforcement skills
-  if (dispatch.stdin.includes("{{enforcement}}")) {
+  const hasEnforcementPlaceholder = dispatch.stdin.includes("{{enforcement}}");
+  const hasCodeQualitySection = dispatch.stdin.includes("<code_quality>");
+
+  if (hasEnforcementPlaceholder || hasCodeQualitySection) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
@@ -438,7 +441,16 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       task.workDir || projectRoot,
       scope as "implementation" | "review",
     );
-    dispatch.stdin = dispatch.stdin.replace("{{enforcement}}", enforcement);
+
+    if (hasEnforcementPlaceholder) {
+      dispatch.stdin = dispatch.stdin.replace("{{enforcement}}", enforcement);
+    } else if (hasCodeQualitySection) {
+      // Inject into the section if no placeholder but tag exists
+      dispatch.stdin = dispatch.stdin.replace(
+        /<code_quality>([\s\S]*?)<\/code_quality>/,
+        `<code_quality>\n${enforcement}\n</code_quality>`,
+      );
+    }
   }
 
   const opts: DispatchOptions = {
