@@ -22,9 +22,9 @@ vi.mock("../utils/manifest.js", () => ({
 }));
 
 vi.mock("../utils/git.js", () => ({
-  getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
-  getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
-  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+  getCurrentCommit: vi.fn(() => "mock-commit"),
+  getCurrentBranch: vi.fn(() => "mock-branch"),
+  getDiffStats: vi.fn(() => ({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 })),
 }));
 
 // Mock format.js to avoid messy output

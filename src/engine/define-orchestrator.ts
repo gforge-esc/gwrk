@@ -23,11 +23,27 @@ export class DefineOrchestrator extends EventEmitter {
     super();
     this.config = config;
     this.runtime = runtime || new WorkflowRuntime();
+    
+    // Attempt to load existing state if not provided
     if (state) {
       this.state = state;
     } else {
-      this.state = this.initializeState();
+      const persisted = this.loadPersistedState();
+      this.state = persisted || this.initializeState();
     }
+  }
+
+  private loadPersistedState(): DefineState | undefined {
+    const statePath = this.getStatePath();
+    if (fs.existsSync(statePath)) {
+      try {
+        const content = fs.readFileSync(statePath, "utf-8");
+        return JSON.parse(content) as DefineState;
+      } catch (err) {
+        console.warn(`Warning: Could not load persisted state from ${statePath}: ${err}`);
+      }
+    }
+    return undefined;
   }
 
   private initializeState(): DefineState {
@@ -38,9 +54,14 @@ export class DefineOrchestrator extends EventEmitter {
 
     let initialStage = DefineStage.SPECIFY;
 
+    // Progression: Spec -> Plan -> Tasks -> Analyze -> Tests -> Done
     if (fs.existsSync(specPath)) {
       initialStage = DefineStage.PLAN;
-      if (fs.existsSync(planPath)) {
+      // Check if spec has content (not just a stub)
+      const specContent = fs.readFileSync(specPath, "utf-8");
+      if (specContent.includes("{{FEATURE_NUMBER}}") || specContent.length < 100) {
+        initialStage = DefineStage.SPECIFY;
+      } else if (fs.existsSync(planPath)) {
         initialStage = DefineStage.PLAN_TO_TASKS;
         if (fs.existsSync(tasksPath)) {
           initialStage = DefineStage.ANALYZE;
@@ -75,8 +96,11 @@ export class DefineOrchestrator extends EventEmitter {
     fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2), "utf-8");
   }
 
-  public async run(): Promise<number> {
-    console.log(`Starting Define Loop: ${this.state.stage}`);
+  /**
+   * Primary entry point for the orchestrator (WorkflowRuntime contract).
+   */
+  public async runLoop(featureId?: string): Promise<number> {
+    console.log(`Starting Define Loop for ${this.config.featureId} at stage: ${this.state.stage}`);
 
     while (this.state.stage !== DefineStage.DONE) {
       this.persistState();
@@ -99,7 +123,8 @@ export class DefineOrchestrator extends EventEmitter {
           result = await this.stageDefineTests();
           break;
         default:
-          return 0;
+          this.state.stage = DefineStage.DONE;
+          continue;
       }
 
       if (!result.success) {
@@ -125,11 +150,9 @@ export class DefineOrchestrator extends EventEmitter {
     return 0;
   }
 
-  /**
-   * Alias for run() to satisfy the test expectation in define-orchestrator.test.ts
-   */
-  public async runLoop(featurePath: string): Promise<number> {
-    return this.run();
+  /** Legacy run() for compatibility */
+  public async run(): Promise<number> {
+    return this.runLoop();
   }
 
   private getNextStage(stage: DefineStage): DefineStage {

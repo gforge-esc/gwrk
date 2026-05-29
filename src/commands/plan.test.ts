@@ -3,13 +3,9 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import * as agent from "../utils/agent.js";
 
-const { mockExecuteWorkflow, mockLoadConfig, mockWriteManifest, mockGetDiffStats } = vi.hoisted(() => ({
-  mockExecuteWorkflow: vi.fn().mockResolvedValue({
-    summary: "Success",
-    intents: [],
-    summaries: [],
-  }),
+const { mockLoadConfig, mockWriteManifest } = vi.hoisted(() => ({
   mockLoadConfig: vi.fn().mockReturnValue({
     agents: {
       define: "gemini",
@@ -17,14 +13,15 @@ const { mockExecuteWorkflow, mockLoadConfig, mockWriteManifest, mockGetDiffStats
     },
   }),
   mockWriteManifest: vi.fn(),
-  mockGetDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
 }));
 
-vi.mock("../plugins/workflow-runtime.js", () => ({
-  WorkflowRuntime: class {
-    executeWorkflow = mockExecuteWorkflow;
-  },
-}));
+vi.mock("../utils/agent.js", async () => {
+  const actual = await vi.importActual<any>("../utils/agent.js");
+  return {
+    ...actual,
+    dispatchToAgent: vi.fn(),
+  };
+});
 
 vi.mock("../utils/config.js", () => ({
   loadConfig: mockLoadConfig,
@@ -36,9 +33,9 @@ vi.mock("../utils/manifest.js", () => ({
 }));
 
 vi.mock("../utils/git.js", () => ({
-  getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
-  getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
-  getDiffStats: mockGetDiffStats,
+  getCurrentCommit: vi.fn(() => "mock-commit"),
+  getCurrentBranch: vi.fn(() => "mock-branch"),
+  getDiffStats: vi.fn(() => ({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 })),
 }));
 
 vi.mock("../utils/output.js", () => ({
@@ -49,16 +46,31 @@ vi.mock("../utils/output.js", () => ({
 
 import { planCommand } from "./define-plan.js";
 
-describe("define-plan (Phase 9/12)", () => {
+describe("planCommand (Phase 6 E2E)", () => {
   let tempDir: string;
   let program: Command;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "define-plan-test-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-test-"));
     const specsDir = path.join(tempDir, "specs");
     const specDir = path.join(specsDir, "test-feature");
     fs.mkdirSync(specDir, { recursive: true });
-    fs.writeFileSync(path.join(specDir, "spec.md"), "# Spec");
+    fs.writeFileSync(path.join(specDir, "spec.md"), "# Spec\n\nFull spec content.");
+
+    // Set up mock workflow in project-local plugins
+    const workflowDir = path.join(tempDir, ".gwrk", "plugins", "workflows", "gwrk-plan");
+    fs.mkdirSync(workflowDir, { recursive: true });
+    fs.writeFileSync(path.join(workflowDir, "manifest.yaml"), `
+name: gwrk-plan
+type: workflow
+outputSchema:
+  type: object
+  required: [summary, intents]
+  properties:
+    summary: { type: string }
+    intents: { type: array }
+`);
+    fs.writeFileSync(path.join(workflowDir, "PROMPT.md"), "Plan workflow prompt");
 
     // Create a mock .gwrkrc.json
     fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({
@@ -73,13 +85,22 @@ describe("define-plan (Phase 9/12)", () => {
     program = new Command();
     program.addCommand(planCommand);
     
-    mockExecuteWorkflow.mockClear();
-    mockWriteManifest.mockClear();
     mockLoadConfig.mockClear().mockReturnValue({
       agents: {
         define: "gemini",
         implement: "claude",
       },
+    });
+
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        summary: "Plan generated successfully",
+        intents: []
+      }),
+      stderr: "",
+      durationS: 1,
+      logPath: "mock.log"
     });
   });
 
@@ -88,8 +109,13 @@ describe("define-plan (Phase 9/12)", () => {
     vi.restoreAllMocks();
   });
 
-  it("US-019/FR-019: SHOULD write execution manifest after success (RED)", async () => {
+  it("should successfully execute plan workflow E2E", async () => {
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
+
+    // Verify dispatchToAgent was called with correct workflow
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      workflow: "gwrk-plan"
+    }));
 
     const featureDir = path.join(tempDir, "specs", "test-feature");
     expect(mockWriteManifest).toHaveBeenCalledWith(
@@ -101,12 +127,10 @@ describe("define-plan (Phase 9/12)", () => {
     );
   });
 
-  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12) (RED)", async () => {
+  it("should pass quiet: true to WorkflowRuntime", async () => {
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
 
-    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
-      "gwrk-plan",
-      expect.anything(),
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         quiet: true,
       }),
