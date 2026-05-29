@@ -420,7 +420,7 @@ export class ShipOrchestrator extends EventEmitter {
       const gateResult = await runGate(gatePath);
       if (!gateResult.passed) {
         task.status = "open";
-        delete task.completedAt;
+        task.completedAt = undefined;
         reopenedCount++;
         console.log(
           `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
@@ -635,7 +635,7 @@ export class ShipOrchestrator extends EventEmitter {
       for (const task of phase.tasks) {
         if (task.status === "completed") {
           task.status = "open";
-          delete task.completedAt;
+          task.completedAt = undefined;
           task.description = `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
         }
       }
@@ -783,7 +783,7 @@ export class ShipOrchestrator extends EventEmitter {
         }
       } else {
         task.status = "open";
-        delete task.completedAt;
+        task.completedAt = undefined;
         failedCount++;
       }
     }

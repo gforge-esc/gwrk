@@ -2,16 +2,10 @@
 # AUTHORED
 set -euo pipefail
 
-# T057: Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md (replace placeholder)
-FILE="src/plugins/builtins/workflows/gwrk-implement/PROMPT.md"
+# T057: Add tier: enforcement to SkillManifestSchema
+pnpm vitest run src/plugins/enforcement.p9.red.test.ts -t "TR-P9-003" --reporter=verbose 2>&1 | grep -q "pass" || {
+  echo "FAIL: T057 — TR-P9-003 enforcement tier schema test not passing" >&2
+  exit 1
+}
 
-test -f "$FILE" \
-  || { echo "FAIL: T057 — file not found: $FILE" >&2; exit 1; }
-
-grep -q "{{enforcement}}" "$FILE" \
-  || { echo "FAIL: T057 — $FILE missing '{{enforcement}}' marker" >&2; exit 1; }
-
-grep -v -q "<code_quality>" "$FILE" \
-  || { echo "FAIL: T057 — $FILE still contains legacy '<code_quality>' placeholder" >&2; exit 1; }
-
-echo "PASS: T057 — src/plugins/builtins/workflows/gwrk-implement/PROMPT.md uses {{enforcement}} marker"
+echo "PASS: T057 — SkillManifestSchema accepts tier: enforcement"
