@@ -532,7 +532,7 @@
           "status": "completed",
           "gateScript": "gates/T055-gate.sh",
           "sp": 1,
-          "completedAt": "2026-05-29T15:29:21.811823+00:00"
+          "completedAt": "2026-05-29T15:29:21.811Z"
         },
         {
           "id": "T056",
@@ -541,7 +541,7 @@
           "status": "completed",
           "gateScript": "gates/T056-gate.sh",
           "sp": 1,
-          "completedAt": "2026-05-29T15:29:21.811823+00:00"
+          "completedAt": "2026-05-29T15:29:21.811Z"
         },
         {
           "id": "T057",
@@ -550,7 +550,7 @@
           "status": "completed",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-29T15:29:21.811823+00:00"
+          "completedAt": "2026-05-29T15:29:21.811Z"
         },
         {
           "id": "T058",
@@ -559,7 +559,7 @@
           "status": "completed",
           "gateScript": "gates/T058-gate.sh",
           "sp": 1,
-          "completedAt": "2026-05-29T15:29:21.811823+00:00"
+          "completedAt": "2026-05-29T15:29:21.811Z"
         },
         {
           "id": "T059",
@@ -568,7 +568,7 @@
           "status": "completed",
           "gateScript": "gates/T059-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-29T15:29:21.811823+00:00"
+          "completedAt": "2026-05-29T15:29:21.811Z"
         }
       ],
       "sp_estimate": 3,
