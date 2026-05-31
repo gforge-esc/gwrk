@@ -46,7 +46,14 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
       title = title.replace(spMatch[0], "").trim();
     }
 
-    const phaseId = `phase-${(index + 1).toString().padStart(2, "0")}`;
+    // Extract phase number from header line (e.g., "6: Title" → 6)
+    // This is the authoritative number, NOT the positional index in the array.
+    const headerNumberMatch = headerLine.match(/^(\d+)/);
+    const phaseNumber = headerNumberMatch
+      ? Number.parseInt(headerNumberMatch[1], 10)
+      : index + 1; // fallback to positional only if header has no number
+
+    const phaseId = `phase-${phaseNumber.toString().padStart(2, "0")}`;
     const tasks: ParsedTask[] = [];
 
     // Extract files as tasks: "**Files (N):**" followed by bullet points
@@ -102,7 +109,7 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
     );
     if (testStrategyMatch) {
       tasks.push({
-        title: `Implement test strategy for Phase ${index + 1}`,
+        title: `Implement test strategy for Phase ${phaseNumber}`,
         description:
           "Implement all unit and integration tests defined in the phase test strategy.",
       });

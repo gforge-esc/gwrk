@@ -8,6 +8,11 @@ import { PlanStore } from "../engine/plan-store.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
+  generateFilesystemGates,
+  generateRunner,
+  generateVitestGates,
+} from "../utils/gate-gen.js";
+import {
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
@@ -15,6 +20,7 @@ import {
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { loadTaskState } from "../utils/state.js";
 
 /**
  * gwrk define tasks <feature> — Decompose plan → tasks.json + gates
@@ -138,6 +144,33 @@ try {
 
   if (exitCode !== 0) {
     throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+  }
+
+  // ── Deterministic gate generation (Block 0C) ──
+  // After tasks.json is written by the agent, generate vitest gates
+  // deterministically. This replaces LLM gate authoring entirely.
+  try {
+    const state = loadTaskState(featureDir);
+    const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+
+    let gateResult: { generated: number; skipped: number };
+    if (fs.existsSync(gapMatrixPath)) {
+      console.error("  ▸ generating vitest gates from gap-matrix.md");
+      gateResult = generateVitestGates(featureDir, gapMatrixPath, state.phases);
+    } else {
+      console.error("  ▸ generating vitest gates from filesystem convention");
+      gateResult = generateFilesystemGates(featureDir, state.phases);
+    }
+
+    // Regenerate the run-all-gates.sh runner
+    const gatesDir = path.join(featureDir, "gates");
+    if (fs.existsSync(gatesDir)) {
+      generateRunner(gatesDir);
+    }
+
+    console.error(`  ✓ gates: ${gateResult.generated} generated, ${gateResult.skipped} skipped`);
+  } catch (gateError) {
+    console.warn(`  ⚠ gate generation failed (non-fatal): ${gateError}`);
   }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);

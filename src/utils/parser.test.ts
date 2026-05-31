@@ -177,4 +177,36 @@ test -f main.ts && node main.ts
     expect(result.phases[0].doneWhen).toHaveLength(1);
     expect(result.phases[0].doneWhen[0]).toContain("test -f main.ts");
   });
+
+  it("should derive phase ID from header number, not positional index (FM-5)", () => {
+    const planPath = writePlan(`# Plan
+
+## Phase 6: Provisioning
+
+| File | Change |
+|------|--------|
+| \`src/commands/init.ts\` | [MODIFY] Add provisioning |
+
+#### Test Strategy
+Test provisioning
+
+## Phase 7: Migration
+
+| File | Change |
+|------|--------|
+| \`src/plugins/migrate.ts\` | [NEW] Migration utility |
+`);
+
+    const result = parsePlan(planPath);
+    expect(result.phases).toHaveLength(2);
+    // Phase 6 must be phase-06, NOT phase-01 (positional)
+    expect(result.phases[0].id).toBe("phase-06");
+    expect(result.phases[0].title).toBe("Provisioning");
+    // Test strategy task must reference Phase 6, not Phase 1
+    const testTask = result.phases[0].tasks.find(t => t.title.includes("test strategy"));
+    expect(testTask?.title).toBe("Implement test strategy for Phase 6");
+    // Phase 7 must be phase-07, NOT phase-02
+    expect(result.phases[1].id).toBe("phase-07");
+    expect(result.phases[1].title).toBe("Migration");
+  });
 });
