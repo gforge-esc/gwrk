@@ -84,4 +84,28 @@ Test content`;
     expect(manifest.description).toBe("A test workflow");
     expect(manifest.type).toBe("workflow");
   });
+
+  it("TR-P11-003: warns when .agents/ exists in target project", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    
+    vi.mocked(fs.stat).mockImplementation(async (p) => {
+      if (p === path.join(mockCwd, ".agents")) {
+        return { isDirectory: () => true } as any;
+      }
+      throw new Error("Not found");
+    });
+    
+    vi.mocked(fs.readdir).mockResolvedValue([]);
+
+    await migratePlugins();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[DEPRECATED] Legacy '.agents/' directory detected"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Please run 'gwrk init'"),
+    );
+
+    warnSpy.mockRestore();
+  });
 });
