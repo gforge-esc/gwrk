@@ -112,3 +112,11 @@ export class DriftDetector {
     return results;
   }
 }
+
+/**
+ * TR-P11-004: Returns a list of directory names considered tracked artifacts
+ * for drift detection. Legacy agent directory is intentionally omitted.
+ */
+export function getDriftArtifacts(): string[] {
+  return ["specs", "ROADMAP.md", ".gwrkrc.json", "package.json"];
+}

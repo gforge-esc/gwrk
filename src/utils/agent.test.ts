@@ -1,24 +1,57 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { dispatchToAgent } from './agent.js';
 import * as skillRuntime from '../plugins/skill-runtime.js';
+import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
 vi.mock('../plugins/skill-runtime.js');
+vi.mock('node:child_process');
+vi.mock('./config.js', () => ({
+  loadConfig: vi.fn().mockReturnValue({
+    agents: {
+      throttleMs: 0,
+      define: 'gemini',
+      implement: 'gemini'
+    }
+  })
+}));
 
 describe('US-016: Enforcement Skills Dispatch Injection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('TR-P9-005: injects enforcement skills into <code_quality> section', async () => {
     vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
     
-    // We need to capture the prompt passed to the agent backend
-    // This is a high-level test assuming dispatchToAgent assembles the context
-    const result = await dispatchToAgent({
-      workflow: 'gwrk-implement',
-      projectRoot: '/fake/root',
-      payload: { task: 'fix bug' }
+    let capturedStdin = '';
+    vi.mocked(spawn).mockImplementation(() => {
+      const mockChild = new EventEmitter() as any;
+      const stdin = new PassThrough();
+      stdin.on('data', (chunk) => { capturedStdin += chunk.toString(); });
+      mockChild.stdin = stdin;
+      mockChild.stdout = new PassThrough();
+      mockChild.stderr = new PassThrough();
+
+      // End process after a short delay to allow listeners to attach
+      setTimeout(() => {
+        mockChild.stdout.end();
+        mockChild.stderr.end();
+        mockChild.emit('close', 0);
+      }, 50);
+
+      return mockChild;
     });
 
-    // Implementation detail: check if the final prompt string contains the skill
-    // Assuming result or a mock capture shows the prompt
-    // For RED state, we expect this to fail if not implemented
-    expect(skillRuntime.resolveEnforcementSkills).toHaveBeenCalledWith('/fake/root');
+    await dispatchToAgent({
+      workflow: 'gwrk-implement',
+      workDir: '/fake/root',
+      agent: 'gemini',
+      stdin: '<code_quality></code_quality>'
+    });
+
+    expect(skillRuntime.resolveEnforcementSkills).toHaveBeenCalledWith('/fake/root', 'implementation');
+    expect(capturedStdin).toContain('# Strict Typing Rule');
   });
 });

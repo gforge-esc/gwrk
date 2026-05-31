@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - Testing future export and behavior
 import { getDriftArtifacts } from './drift-detector.js';
 
 describe('FR-P11-004: drift-detector.ts', () => {

@@ -172,8 +172,11 @@ describe("Phase 9: Enforcement Skills", () => {
    */
   describe("TR-P9-005: dispatch context assembly", () => {
     it("enforcement skill content appears in assembled dispatch context", async () => {
+      const skillRuntime = await import("./skill-runtime.js");
       const { dispatchToAgent } = await import("../utils/agent.js");
       const { spawn } = await import("node:child_process");
+
+      vi.spyOn(skillRuntime, "resolveEnforcementSkills").mockResolvedValue("# MOCK ENFORCEMENT CONTENT");
       
       const mockChild = new EventEmitter() as any;
       const mockStdinWrite = vi.fn();
@@ -185,6 +188,8 @@ describe("Phase 9: Enforcement Skills", () => {
 
       // Trigger the end of the process after a short delay
       setTimeout(() => {
+        mockChild.stdout.end();
+        mockChild.stderr.end();
         mockChild.emit("close", 0);
       }, 50);
 
@@ -198,8 +203,7 @@ describe("Phase 9: Enforcement Skills", () => {
 
       expect(mockStdinWrite).toHaveBeenCalled();
       const finalStdin = mockStdinWrite.mock.calls[0][0];
-      expect(finalStdin).toContain("typescript-standards");
-      expect(finalStdin).toContain("gwrk-conventions");
+      expect(finalStdin).toContain("MOCK ENFORCEMENT CONTENT");
       expect(finalStdin).not.toContain("{{enforcement}}");
     });
   });
