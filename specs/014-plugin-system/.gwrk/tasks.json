@@ -564,8 +564,8 @@
           "status": "completed",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-31T09:55:00.000Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-31T16:10:10.536Z"
         },
         {
           "id": "T051",
@@ -624,8 +624,8 @@
           "status": "completed",
           "gateScript": "gates/T056-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-31T09:55:00.000Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-31T16:10:10.610Z"
         },
         {
           "id": "T057",

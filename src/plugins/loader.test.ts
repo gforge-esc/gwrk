@@ -8,7 +8,8 @@ import fs from "node:fs";
  */
 describe("PluginLoader (Phase 10)", () => {
   it("FR-L25-003: should resolve all 15 core gwrk-* workflows (TR-P10-002)", async () => {
-    const loader = new PluginLoader();
+    // Ensure we don't pick up global state by using a non-existent global dir
+    const loader = new PluginLoader({ globalDir: "/tmp/gwrk-empty-global-" + Math.random() });
     const workflows = [
       "gwrk-specify",
       "gwrk-plan",
@@ -33,6 +34,8 @@ describe("PluginLoader (Phase 10)", () => {
       expect(plugin.manifest.type).toBe("workflow");
       // TC-011: Verify it's not loading from .agents/
       expect(plugin.path).not.toContain(".agents/workflows/");
+      // TR-P10-002: Verify it's loading from builtins (since we blocked global)
+      expect(plugin.path).toContain("src/plugins/builtins/workflows/");
     }
   });
 
