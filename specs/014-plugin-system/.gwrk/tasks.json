@@ -665,7 +665,7 @@
         {
           "id": "T059",
           "title": "Implement AnyManifest",
-          "description": "`src/plugins/manifest.ts`",
+          "description": "`src/plugins/manifest.ts`\n\nREVIEW FAIL (gate): gates/T059-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T059-gate.sh\n  EXPECTED: Gate script must exist to verify AnyManifest implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
           "status": "open",
           "gateScript": "gates/T059-gate.sh",
           "sp": 0,
@@ -674,7 +674,7 @@
         {
           "id": "T060",
           "title": "Implement JsonIntent",
-          "description": "`src/plugins/manifest.ts`",
+          "description": "`src/plugins/manifest.ts`\n\nREVIEW FAIL (gate): gates/T060-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T060-gate.sh\n  EXPECTED: Gate script must exist to verify JsonIntent implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
           "status": "open",
           "gateScript": "gates/T060-gate.sh",
           "sp": 0,
@@ -683,7 +683,7 @@
         {
           "id": "T061",
           "title": "Implement TaskDispatch",
-          "description": "`src/utils/agent.ts`",
+          "description": "`src/utils/agent.ts`\n\nREVIEW FAIL (gate): gates/T061-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T061-gate.sh\n  EXPECTED: Gate script must exist to verify TaskDispatch implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
           "status": "open",
           "gateScript": "gates/T061-gate.sh",
           "sp": 0,
@@ -692,7 +692,7 @@
         {
           "id": "T062",
           "title": "Implement TaskResult",
-          "description": "`src/utils/agent.ts`",
+          "description": "`src/utils/agent.ts`\n\nREVIEW FAIL (gate): gates/T062-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T062-gate.sh\n  EXPECTED: Gate script must exist to verify TaskResult implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
           "status": "open",
           "gateScript": "gates/T062-gate.sh",
           "sp": 0,
@@ -701,7 +701,7 @@
         {
           "id": "T063",
           "title": "Implement .agents/skills/",
-          "description": "Skill migration via `gwrk plugin migrate`",
+          "description": "Skill migration via `gwrk plugin migrate`\n\nREVIEW FAIL (gate): gates/T063-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T063-gate.sh\n  EXPECTED: Gate script must exist to verify skill migration logic.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
           "status": "open",
           "gateScript": "gates/T063-gate.sh",
           "sp": 0,
@@ -710,7 +710,7 @@
         {
           "id": "T064",
           "title": "Implement test strategy for Phase 11",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (test): e2e/014-plugin-system-phase-11.spec.ts — TR-P11-002 FAIL.\n  WHERE: e2e/014-plugin-system-phase-11.spec.ts:23\n  EXPECTED: expect(reviewPayloadType).toBe(\"full-prompt-md\")\n  ACTUAL: expect(\"skeleton\").toBe(\"full-prompt-md\")\n  FIX: Update test to verify actual PROMPT.md content delivery. Also install missing @playwright/test dependency.\n\nUAT FAIL (2026-05-31): e2e/014-plugin-system-phase-11.spec.ts is hardcoded to fail TR-P11-002. Total pnpm test failures (6) also indicate regressions in harvest and unfinished Phase 12 work.",
           "status": "open",
           "gateScript": "gates/T064-gate.sh",
           "sp": 0,
