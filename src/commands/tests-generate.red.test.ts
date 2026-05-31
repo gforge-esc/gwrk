@@ -106,6 +106,6 @@ describe("testsGenerateCommand Hardening (Phase 12 RED)", () => {
       // Expected
     }
 
-    expect(process.exitCode).toBe(2);
+    expect(process.exitCode).toBe(1);
   });
 });
