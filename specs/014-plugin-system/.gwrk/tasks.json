@@ -234,7 +234,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -474,7 +474,7 @@
         {
           "id": "T043",
           "title": "Implement src/engine/router.ts",
-          "description": "NEW: `selectBackend(",
+          "description": "NEW: `selectBackend(`\n\nREVIEW FAIL (code): biome lint — lint/suspicious/noExplicitAny.\n  WHERE: src/engine/router.ts:84\n  EXPECTED: Specific type or Record<string, unknown>\n  ACTUAL: as any\n  FIX: Replace 'as any' with a proper type cast to Record<string, unknown> or update GwrkConfigSchema.\n\nREMEDIATION (UAT): `agy` adapter is implemented but not registered in `BUILTIN_AGENTS`. Router should support all built-in backends.\nMISSING GATE: gates/T043-gate.sh not found.",
           "status": "open",
           "gateScript": "gates/T043-gate.sh",
           "sp": 0,
@@ -483,7 +483,7 @@
         {
           "id": "T044",
           "title": "Implement src/engine/quota.ts",
-          "description": "NEW: Quota probing per adapter",
+          "description": "NEW: Quota probing per adapter\n\nREMEDIATION (UAT): `quotaProbe` is currently a stub for `rate-limited` and `exhausted` states. None of the built-in adapters implement the optional `checkQuota()` method required for non-binary status detection.\nMISSING GATE: gates/T044-gate.sh not found.",
           "status": "open",
           "gateScript": "gates/T044-gate.sh",
           "sp": 0,
@@ -492,7 +492,7 @@
         {
           "id": "T045",
           "title": "Implement src/db/migrations/004-routing-history.sql",
-          "description": "NEW: `routing_decisions` table",
+          "description": "NEW: `routing_decisions` table\n\nREMEDIATION (UAT): Migration exists but verification gate is missing.\nMISSING GATE: gates/T045-gate.sh not found.",
           "status": "open",
           "gateScript": "gates/T045-gate.sh",
           "sp": 0,
@@ -501,7 +501,7 @@
         {
           "id": "T046",
           "title": "Implement src/engine/router.test.ts",
-          "description": "NEW: Verify fallback chains and historical learning",
+          "description": "NEW: Verify fallback chains and historical learning\n\nREMEDIATION (UAT): Unit tests pass but cover mocked quota behavior. Real-world verification with backend adapters is missing.\nMISSING GATE: gates/T046-gate.sh not found.",
           "status": "open",
           "gateScript": "gates/T046-gate.sh",
           "sp": 0,
@@ -510,7 +510,7 @@
         {
           "id": "T047",
           "title": "Implement src/commands/status.ts",
-          "description": "MODIFY: Include backend availability in status",
+          "description": "MODIFY: Include backend availability in status\n\nREVIEW FAIL (code): biome lint — lint/suspicious/noExplicitAny.\n  WHERE: src/commands/status.ts:48\n  EXPECTED: Specific interface for status data\n  ACTUAL: const statusData: any\n  FIX: Define a proper interface for status data and use it instead of 'any'.\n\nREMEDIATION (UAT): Manpages for `gwrk status` (gwrk-status.1) are missing from the build output as required by the UAT scope.\nMISSING GATE: gates/T047-gate.sh not found.",
           "status": "open",
           "gateScript": "gates/T047-gate.sh",
           "sp": 0,
@@ -519,7 +519,7 @@
         {
           "id": "T048",
           "title": "Implement test strategy for Phase 8",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREMEDIATION (UAT): Overall phase test coverage is incomplete regarding real-world quota probing and manpage verification.\nMISSING GATE: gates/T048-gate.sh not found.",
           "status": "open",
           "gateScript": "gates/T048-gate.sh",
           "sp": 0,
@@ -533,7 +533,7 @@
     },
     {
       "id": "phase-09",
-      "title": "A: Review Plugin Layer (Layer 3 \u2014 First Extension) \u2705 SHIPPED",
+      "title": "A: Review Plugin Layer (Layer 3 — First Extension) ✅ SHIPPED",
       "tasks": [
         {
           "id": "T049",
@@ -548,7 +548,7 @@
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`ShipOrchestrator` no longer hardcodes workflow paths \u2014 resolves via `ReviewPlugin`",
+        "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
         "Post-dispatch validation reverts any cross-phase task re-opens",
         "`.gwrkrc.json` `review` field selects active review strategy"
       ]
@@ -630,7 +630,7 @@
         {
           "id": "T057",
           "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
-          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker \u2014 resolved by SkillRuntime",
+          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
           "status": "completed",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
@@ -640,12 +640,12 @@
         {
           "id": "T058",
           "title": "Implement test strategy for Phase 10",
+          "description": "Phase 10 test strategy — all 8 enforcement tests pass (TR-P9-001 through TR-P9-006). UAT scope leak caused CIRCUIT_BREAK (FM-2).",
           "status": "completed",
           "gateScript": "gates/T058-gate.sh",
           "sp": 0,
-          "classification": "noop",
           "completedAt": "2026-05-31T16:28:00.000Z",
-          "description": "Phase 10 test strategy \u2014 all 8 enforcement tests pass (TR-P9-001 through TR-P9-006). UAT scope leak caused CIRCUIT_BREAK (FM-2)."
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
