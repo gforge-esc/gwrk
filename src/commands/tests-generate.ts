@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { DefineStage } from "../engine/define-types.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
@@ -117,7 +118,6 @@ Examples:
 
         const config = loadConfig(projectRoot);
         const backend = config.agents.define;
-        const runtime = new WorkflowRuntime();
 
         const startedAt = new Date().toISOString();
         const runId = startRun({
@@ -174,15 +174,23 @@ Examples:
           } else {
             input = `Generate tests for feature ${feature}`;
           }
-          const result = await runtime.executeWorkflow(
-            "gwrk-define-tests",
-            input,
-            {
-              agent: backend,
-              projectRoot,
-              quiet: true,
-            },
-          );
+          const orchestrator = new DefineOrchestrator({
+            featureId: feature,
+            backend,
+            cwd: projectRoot,
+          }, {
+            stage: DefineStage.DEFINE_TESTS,
+            featureId: feature,
+            startedAt,
+            runId: `define-tests-${feature}-${Date.now()}`,
+            backend,
+          });
+
+          const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
+
+          if (exitCode !== 0) {
+            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+          }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
 

@@ -1,7 +1,8 @@
 ---
 type: specification
 feature: 001-cli-core
-last_modified: "2026-05-13T22:00:00Z"
+last_modified: "2026-05-30T00:18:00Z"
+revision: 3
 ---
 
 # Feature Specification: 001 CLI Core
@@ -9,8 +10,8 @@ last_modified: "2026-05-13T22:00:00Z"
 **Feature Branch**: `001-cli-core`
 **Created**: 2026-02-26
 **Revised**: 2026-03-06
-**Status**: Active (Rewrite v2)
-**Input**: gwrk CLI — the TypeScript entry point, hierarchical command routing, flat-file task tracking with Hard Gate enforcement, agent dispatch wrappers, SQLite execution ledger, and shell-script orchestration passthroughs.
+**Status**: Active (Rewrite v3)
+**Input**: gwrk CLI — the TypeScript entry point, hierarchical command routing, flat-file task tracking with Hard Gate enforcement, agent dispatch wrappers, SQLite execution ledger, shell-script orchestration passthroughs, project-aware prompt conditioning, and unified interactive onboarding.
 
 ---
 
@@ -27,7 +28,8 @@ The CLI uses a **Foxtrot Charlie pillar-based hierarchy** to organize commands b
 | **Value** | **Measure**| `measure pulse`, `measure effort`, `measure compression` | Productivity, estimation, and ratio reporting |
 | **-** | **Task Engine** | `tasks list`, `tasks next`, `tasks done` | Task state management with Hard Gate enforcement |
 | **-** | **Data** | `db runs`, `db stats` | SQLite execution ledger queries |
-| **-** | **Scaffolding**| `init` | Project setup |
+| **-** | **Scaffolding**| `init` | Project onboarding (profile, workstation, Slack, agents) |
+| **-** | **Diagnostics** | `project info` | Project profile introspection |
 
 ### Architecture Principles
 
@@ -42,15 +44,26 @@ The CLI uses a **Foxtrot Charlie pillar-based hierarchy** to organize commands b
 
 ## 2. User Scenarios & Acceptance Criteria
 
-### US-001 - Project Initialization (P0)
-As a developer, I want to run `gwrk init` to scaffold a gwrk project.
+### US-001 - Project Initialization (P0) ⭐ **REWRITE (2026-05-30 R3)**
+As a PE, I want `gwrk init` to be a comprehensive interactive wizard that provisions everything gwrk needs to operate on this project — project profile, workstation config, Slack channel, agent detection — so that one command gets me fully operational whether this is a new project or an existing one.
 
-**Implements**: FR-001
+**Implements**: FR-001, FR-022, FR-030, FR-031, FR-032
 
 **Acceptance**:
-1. `gwrk init` in an empty directory creates `.agent/workflows/`, `.agent/rules/`, `.specify/templates/`, `specs/`, `.gwrkrc.json`.
-2. `gwrk init` does NOT create a `.gwrk/` directory. Per-feature `.gwrk/` dirs are created by `gwrk define tasks`. The global ledger lives at `~/.gwrk/gwrk.db`.
-3. Running `gwrk init` again prints `gwrk already initialized` and exits 0 (idempotent).
+1. `gwrk init` auto-detects project type from filesystem signals and presents for confirmation: "Detected: pnpm-monorepo (typescript). Correct? [Y/n]"
+2. Walks through profile sections interactively: stack (language, framework, build, test, package manager), source layout, architecture docs, conventions.
+3. Detects installed agent CLIs (`which gemini`, `which claude`, `which codex`) and configures `agents` block.
+4. Runs workstation provisioning steps (TCC guidance, SSH key gen, gh auth check) — absorbs former `gwrk setup` behavior.
+5. Provisions Slack channel if tokens available: "Slack channel name? [project-name]" → creates via API.
+6. Writes complete `.gwrkrc.json` with full project profile.
+7. Scaffolds directories: `.gwrk/`, `.gwrk/rules/`, `.specify/templates/`, `specs/`, `~/.gwrk/plugins/{skills,agents,workflows}/`.
+8. Seeds skills, workflows, rules, and git hooks from builtins.
+9. Registers project in `~/.gwrk/gwrk.db`.
+10. Running `gwrk init` again shows current config and offers to update (idempotent).
+11. `--non-interactive` flag uses auto-detection for all fields with zero prompts (CI/scripting path).
+12. Final output: summary of everything provisioned.
+
+> **Note**: This absorbs former US-021 (`gwrk setup`). The `setup` command is removed. Workstation provisioning steps (TCC, SSH, gh) are integrated as steps within `init`.
 
 ### US-002 - Agent Specification (P0)
 As a PE, I want `gwrk define spec <feature> [--refs <path>]` to dispatch the `/specify` workflow.
@@ -237,18 +250,12 @@ As a PE, I want `gwrk tasks verify <feature>` to validate task state integrity a
 3. Reports orphaned tasks (manifest exists but task is not `completed`) or regressed tasks (was `completed`, now `open`).
 4. Exit 0 if clean, exit 1 with report if issues found.
 
-### US-021 - Workstation Setup (P1)
-As a PE, I want `gwrk setup` to interactively configure my macOS workstation for unattended agent execution: TCC permissions, SSH key for GitHub, and gh CLI auth.
+### US-021 - Workstation Setup (P1) ⭐ **ABSORBED into US-001 (R3)**
+_This user story is fully absorbed into US-001 (Project Initialization). The `gwrk setup` command is removed. Workstation provisioning (TCC, SSH, gh) is integrated as interactive steps within `gwrk init`. See US-001 acceptance criteria 4._
 
-**Implements**: FR-022
+**Implements**: FR-022 (now delivered via FR-001)
 
-**Acceptance**:
-1. `gwrk setup` runs an interactive 4-step wizard (TCC, SSH, gh, verification).
-2. SSH step defaults to Option B (dedicated `~/.ssh/gwrk-agent` key, no passphrase). Option A (1Password) and Skip are available.
-3. On Option B: generates key, adds to GitHub via `gh ssh-key add`, updates `~/.ssh/config` above any 1Password wildcard.
-4. Writes `~/.gwrk/setup.json` with completion state.
-5. `gwrk ship` pre-flight checks `~/.gwrk/setup.json` — missing or incomplete → `Run gwrk setup first`, exit 1.
-6. Running `gwrk setup` again detects existing setup and only re-runs failing checks (idempotent).
+**Acceptance**: See US-001.
 
 ### US-022 - Help Text Examples (P1)
 As a developer, I want every command with arguments to show concrete `Examples:` in `--help` output so I can discover the correct syntax without guessing.
@@ -314,11 +321,46 @@ As a PE, I want all `define` subcommands (`define spec`, `define plan`, `define 
 4. When an agent commits work natively but returns prose instead of JSON, the command exits 0 (not 1).
 5. `gwrk define plan 001` and `gwrk define tasks 001` follow the same pattern.
 
+### US-027 - Project Profile Auto-Detection (P0) ⭐ **NEW (2026-05-30 R3)**
+As a PE, I want gwrk to auto-detect my project's tech stack, source layout, and build system from filesystem signals, so that workflows produce correct artifacts without manual configuration.
+
+**Implements**: FR-030, FR-031
+
+**Acceptance**:
+1. **Given** a project with `package.json` containing `"workspaces"` and `pnpm-workspace.yaml`, **When** auto-detection runs, **Then** profile resolves: `type: "pnpm-monorepo"`, `stack.packageManager: "pnpm"`, `stack.testFramework` from devDependencies.
+2. **Given** a project with `Cargo.toml`, **When** auto-detection runs, **Then** profile resolves: `type: "rust-workspace"` or `"rust-binary"`, `stack.language: "rust"`, `stack.buildSystem: "cargo"`.
+3. **Given** a project with `pyproject.toml`, **When** auto-detection runs, **Then** profile resolves: `type: "python-package"`, `stack.language: "python"`, `stack.testFramework` from `[tool.pytest]` or `[tool.tox]`.
+4. **Given** a project with `docs/architecture.md` (gwrk-specific), **When** auto-detection runs, **Then** profile resolves: `type: "gwrk-native"`.
+5. **Given** an empty directory, **When** auto-detection runs, **Then** profile resolves: `type: "unknown"`. No error.
+6. **Given** explicit profile in `.gwrkrc.json` AND auto-detection results, **When** profile resolves, **Then** explicit config wins on every field; auto-detected fields fill gaps.
+7. Auto-detection runs on every workflow invocation as a fallback when `.gwrkrc.json` profile fields are missing.
+
+### US-028 - Project-Aware Prompt Conditioning (P0) ⭐ **NEW (2026-05-30 R3)**
+As a PE, I want the resolved project profile injected into every workflow prompt, so that `define plan`, `ship`, and `review` produce artifacts grounded in my project's actual architecture — not gwrk's.
+
+**Implements**: FR-033, FR-034
+
+**Acceptance**:
+1. **Given** a pnpm monorepo profile, **When** `gwrk define plan` runs, **Then** the prompt contains a `<project_profile>` XML block with detected type, stack, and layout. Plan references `apps/` and `packages/` — NOT `src/commands/`.
+2. **Given** a `gwrk-native` profile, **When** any workflow runs, **Then** all current gwrk-native prompt sections are included verbatim. No behavioral regression.
+3. **Given** a non-gwrk project, **When** `gwrk ship` UAT runs, **Then** review evaluates the project's commands — NOT gwrk CLI commands. No ADR-004, no `[exit:N|Xs]` checks.
+4. **Given** a non-gwrk project, **When** `gwrk ship` author-gates runs, **Then** gate patterns match the project's test framework (jest, pytest, cargo test) — NOT vitest-only.
+5. All 15 PROMPT.md files are refactored: gwrk-native sections gated behind `type: "gwrk-native"`, generic sections for everything else.
+
+### US-029 - Project Profile Introspection (P1) ⭐ **NEW (2026-05-30 R3)**
+As a PE, I want `gwrk project info` to show me what gwrk thinks my project is, so that I can debug prompt contamination when it happens.
+
+**Implements**: FR-035
+
+**Acceptance**:
+1. `gwrk project info` shows: type, stack (all fields), layout, architecture docs found/missing, conditioning mode (gwrk-native vs generic), source of each field (auto-detected vs explicit).
+2. `--format json` returns valid JSON matching `ProjectProfileSchema`. Pipeable to jq.
+
 ---
 
 ## 3. Functional Requirements
 
-- **FR-001**: `gwrk init` — scaffold project. Idempotent. (US-001)
+- **FR-001**: ⭐ **REWRITE (R3)** `gwrk init` — Comprehensive interactive onboarding wizard. Auto-detects project profile, provisions workstation (TCC, SSH, gh), configures agents, provisions Slack, scaffolds directories, seeds plugins. Absorbs former `gwrk setup`. Idempotent. Supports `--non-interactive` for CI. (US-001, US-021)
 - **FR-002**: `gwrk define spec <feature>` — dispatch `/specify` workflow. Streaming. (US-002)
 - **FR-003**: `gwrk define plan <feature>` — dispatch `/plan` workflow. Validate spec exists and is not a Stub. (US-003)
 - **FR-004**: `gwrk define tasks <feature>` — parse plan.md → tasks.json + gate scripts. (US-004)
@@ -338,20 +380,28 @@ As a PE, I want all `define` subcommands (`define spec`, `define plan`, `define 
 - **FR-019**: Execution manifest writer. Every `ship`/`define` run → `.gwrk/runs/*.json`. (US-019)
 - **FR-020**: `gwrk tasks verify <feature>` — post-merge schema + orphan + regression check. (US-020)
 - **FR-021**: `history.jsonl` deprecation. Reads still supported; writes redirected to `gwrk.db history` + manifest. Removal deferred until `gwrk harvest` is operational.
-- **FR-022**: `gwrk setup` — Interactive workstation provisioning. Detects TCC, SSH, gh auth. Generates dedicated SSH key by default. Writes `~/.gwrk/setup.json`. Ship pre-flight checks setup state. (US-021)
+- **FR-022**: ⭐ **ABSORBED into FR-001 (R3)** Workstation provisioning (TCC, SSH, gh auth, `setup.json`) is now delivered as interactive steps within `gwrk init`. The standalone `gwrk setup` command is removed. Ship pre-flight still checks `~/.gwrk/setup.json`. (US-001)
 - **FR-023**: Every command with arguments MUST include an `Examples:` section in `--help` output. (US-022)
 - **FR-024**: Feature-arg consistency. All feature-scoped commands accept feature as first positional argument AND call `resolveFeature()` for prefix resolution. (US-023)
 - **FR-025**: No duplicate command surfaces. Each capability has exactly one CLI path. (US-024)
 - **FR-026**: CLI grammar governance doc at `docs/governance/cli-grammar.md`. (US-025)
 - **FR-027**: `gwrk define tests` output contract fix. Agent test file output must not require `gap-matrix.md` when the workflow produces test files directly. The command must accept either `gap-matrix.md` OR test files in `src/` as valid output. (US-022)
-- **FR-028**: ⭐ **NEW (2026-05-13)** All `define` subcommands (`define spec`, `define plan`, `define tasks`, `define tests`) MUST pass `quiet: true` to `WorkflowRuntime.executeWorkflow()` or `dispatchToAgent()` so that agent narration is logged to `.runs/` and NOT displayed on stdout. Terminal output MUST be limited to: banner, spinner/progress, and success/fail box. (US-026)
-- **FR-029**: ⭐ **NEW (2026-05-13)** `WorkflowRuntime.executeWorkflow()` MUST tolerate agents that do work natively and return prose instead of JSON. When `extractJsonFromOutput()` fails, the runtime MUST check whether the agent committed artifacts (test files, spec, plan). If artifacts exist, the runtime MUST return a synthetic success result with empty intents. The JSON parse failure MUST be logged as a warning, not thrown as an error. (US-026)
+- **FR-028**: ⭐ **NEW (2026-05-13)** All `define` subcommands MUST pass `quiet: true` to `WorkflowRuntime.executeWorkflow()`. Terminal output limited to: banner, spinner/progress, success/fail box. (US-026)
+- **FR-029**: ⭐ **NEW (2026-05-13)** `WorkflowRuntime.executeWorkflow()` MUST tolerate agents that do work natively and return prose instead of JSON. When `extractJsonFromOutput()` fails, check for committed artifacts. If present, return synthetic success. (US-026)
+- **FR-030**: ⭐ **NEW (2026-05-30 R3)** Auto-detect project type from filesystem signals. Detection rules (priority order): 1) `Cargo.toml` → rust, 2) `pyproject.toml` → python, 3) `pnpm-workspace.yaml` → pnpm-monorepo, 4) `package.json` with workspaces → npm/yarn-monorepo, 5) `package.json` without → node-package, 6) `go.mod` → go-module, 7) `docs/architecture.md` → gwrk-native, 8) none → unknown. (US-027)
+- **FR-031**: ⭐ **NEW (2026-05-30 R3)** Extract tech stack details: language (from manifests), package manager (from lockfiles), test framework (from devDependencies or config files), build system (from scripts/Makefile/turbo.json), source layout (from workspace globs/tsconfig). (US-027)
+- **FR-032**: ⭐ **NEW (2026-05-30 R3)** Extend `GwrkConfigSchema` with optional `project.type`, `project.stack`, `project.layout`, `project.architecture`, `project.conventions`. All optional. Existing `.gwrkrc.json` files MUST continue to parse without error. Explicit config overrides auto-detection field-by-field. (US-027)
+- **FR-033**: ⭐ **NEW (2026-05-30 R3)** Inject `<project_profile>` XML block into every workflow prompt at `WorkflowRuntime.executeWorkflow()`, BEFORE the prompt is sent to the agent. Single integration point for all workflows. (US-028)
+- **FR-034**: ⭐ **NEW (2026-05-30 R3)** Refactor all 15 PROMPT.md files: architecture references, source layouts, build/test commands, and protocol references (ADR-004, agent-native) MUST be gated behind `type: "gwrk-native"`. Non-gwrk profiles get generic "detect from project" language. (US-028)
+- **FR-035**: ⭐ **NEW (2026-05-30 R3)** `gwrk project info` — display resolved profile with: type, stack, layout, architecture, conventions, conditioning mode (gwrk-native vs generic), source of each field (auto vs explicit). Supports `--format json`. (US-029)
 
 ### Error States
 
 | FR | Condition | stderr contains | Exit code |
 |---|---|---|---|
-| FR-001 | Already initialized | `gwrk already initialized` | 0 |
+| FR-001 | Already initialized (no flags) | `gwrk already initialized. Run with --non-interactive to update.` | 0 |
+| FR-001 | Not in a git repo | `Not a git repository. Run git init first.` | 1 |
+| FR-001 | Not interactive terminal + no --non-interactive | `Must be run in an interactive terminal, or use --non-interactive.` | 1 |
 | FR-003 | spec.md missing | `spec.md not found` | 1 |
 | FR-003 | spec.md is Stub | `[BLOCKED] Spec ... is marked as a Stub` | 1 |
 | FR-006 | Gate fails | `Gate failed for <taskId>` | 1 |
@@ -359,9 +409,12 @@ As a PE, I want all `define` subcommands (`define spec`, `define plan`, `define 
 | FR-006 | Already completed | `Task <taskId> already completed` | 1 |
 | FR-008 | Config missing | `Configuration file .gwrkrc.json not found` | 1 |
 | FR-008 | Config invalid | `Configuration error: <zod message>` | 1 |
-| FR-022 | gh CLI not authenticated | `gh auth status failed — run gwrk setup` | 1 |
-| FR-022 | SSH key generation fails | `Failed to generate SSH key` | 1 |
-| FR-022 | Setup incomplete (pre-flight) | `Run gwrk setup first` | 1 |
+| FR-001 | gh CLI not authenticated | `gh auth status failed — re-run gwrk init` | 1 |
+| FR-001 | SSH key generation fails | `Failed to generate SSH key` | 1 |
+| FR-001 | Workstation setup incomplete (ship pre-flight) | `Run gwrk init first` | 1 |
+| FR-030 | Detection returns unknown | (no error — graceful degradation) | 0 |
+| FR-032 | Invalid project.stack schema | `Configuration error in .gwrkrc.json: project.stack.language must be a string` | 1 |
+| FR-035 | Not a gwrk-managed directory | `Not a gwrk project. Run gwrk init to set up this project.` | 1 |
 
 ---
 
@@ -423,19 +476,57 @@ interface ExecutionManifest {
 }
 ```
 
-### DM-003: Configuration (`.gwrkrc.json`)
+### DM-003: Configuration (`.gwrkrc.json`) ⭐ **EXTENDED (R3)**
 
-Validated by Zod at startup. No defaults.
+Validated by Zod at startup. No defaults. Extended with optional project profile fields.
 
 ```typescript
 interface GwrkConfig {
-  project: { name: string };
+  project: {
+    name: string;
+    githubRepo?: string;
+    slack?: {
+      channelId?: string;
+      channelName?: string;
+      opsChannelId?: string;
+      opsChannelName?: string;
+      webhookUrl?: string;
+    };
+    // R3: Project Profile (all optional — auto-detected if missing)
+    type?: string;             // e.g., "pnpm-monorepo", "gwrk-native", "python-package", "unknown"
+    stack?: {
+      language?: string;       // e.g., "typescript", "python", "rust"
+      framework?: string;      // e.g., "next.js", "fastify", "django"
+      buildSystem?: string;    // e.g., "turbo", "tsc", "cargo"
+      testFramework?: string;  // e.g., "vitest", "jest", "pytest"
+      packageManager?: string; // e.g., "pnpm", "npm", "yarn", "cargo", "pip"
+    };
+    layout?: {
+      sourceRoot?: string;     // e.g., "src/", "apps/", "lib/"
+      apps?: string;           // e.g., "apps/"
+      packages?: string;       // e.g., "packages/"
+      specs?: string;          // e.g., "specs/"
+      docs?: string;           // e.g., "docs/"
+    };
+    architecture?: {
+      doc?: string;            // e.g., "docs/architecture.md", "ARCHITECTURE.md"
+      decisions?: string;      // e.g., "docs/decisions/", "docs/adr/"
+    };
+    conventions?: {
+      branchPrefix?: string;   // e.g., "feat/", "feature/"
+      testPattern?: string;    // e.g., "*.test.ts", "test_*.py", "*_test.go"
+    };
+  };
   agents: {
     define: "gemini" | "claude" | "codex";
     implement: "gemini" | "claude" | "codex" | "codex-cloud";
   };
+  server?: { ... };
+  parallelism?: { ... };
 }
 ```
+
+All `project.type`, `project.stack`, `project.layout`, `project.architecture`, `project.conventions` fields are optional. Missing → auto-detected at runtime. Explicit → overrides auto-detection.
 
 ### DM-004: SQLite Execution Ledger (`~/.gwrk/gwrk.db`)
 
@@ -453,6 +544,9 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **TC-006**: ESM (ES2022).
 - **TC-007**: Branch-scoped state. `tasks.json` lives with the spec.
 - **TC-008**: Quiet agent output. `spawn` with piped stdio, timestamped progress lines to terminal, full output to `.runs/` log file. No raw agent narration on stdout.
+- **TC-009**: ⭐ **NEW (R3)** Single prompt integration point. Profile injection happens in `WorkflowRuntime.executeWorkflow()` and `ship-orchestrator.ts` review dispatch. No workflow-by-workflow injection logic.
+- **TC-010**: ⭐ **NEW (R3)** Backward compatibility. gwrk operating on its own codebase MUST produce identical prompt assembly to pre-R3 behavior. Hard regression gate.
+- **TC-011**: ⭐ **NEW (R3)** Schema extension backward compat. `GwrkConfigSchema` with new optional fields MUST parse existing `.gwrkrc.json` files without error.
 
 ---
 
@@ -477,12 +571,20 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **TR-017**: `src/commands/pulse.test.ts` — git log scanning (FR-017)
 - **TR-018**: `src/cli.test.ts` — command registration hierarchy (FR-018)
 - **TR-019**: `src/cli.e2e.test.ts` — compiled binary E2E: `--help` output, stub rejection (FR-018, FR-003)
-- **TR-021**: `src/commands/setup.test.ts` — SSH key gen mock, config write, idempotency, pre-flight check (FR-022)
+- **TR-021**: `src/commands/init.test.ts` — ⭐ **UPDATED (R3)** Init test now covers: interactive profile wizard, workstation provisioning (SSH key gen mock, config write), `setup.json` write, idempotency, ship pre-flight rejection, `--non-interactive` mode. (FR-001, FR-022)
 - **TR-022**: Help text examples audit — every command file with arguments includes `Examples:` in addHelpText (FR-023)
 - **TR-023**: Feature-arg consistency audit — programmatic check of Commander argument positions (FR-024)
 - **TR-024**: No duplicate surfaces audit — no two commands share overlapping functionality (FR-025)
 - **TR-025**: CLI grammar doc exists and contains required sections (FR-026)
-- **TR-026**: ⭐ **NEW (2026-05-13)** `src/plugins/workflow-runtime.test.ts` — tolerant JSON extraction: prose-only output with committed artifacts returns synthetic success, not error. `src/commands/tests-generate-contract.test.ts` — quiet mode passes through to executeWorkflow. (FR-028, FR-029)
+- **TR-026**: ⭐ **NEW (2026-05-13)** `src/plugins/workflow-runtime.test.ts` — tolerant JSON extraction. (FR-028, FR-029)
+- **TR-027**: ⭐ **NEW (R3)** `src/engine/profile-detector.test.ts` — Unit test auto-detection: temp dirs with `package.json`, `Cargo.toml`, `pyproject.toml`, `pnpm-workspace.yaml` → verify correct type/stack/layout resolution. (FR-030, FR-031)
+- **TR-028**: ⭐ **NEW (R3)** `src/engine/profile-detector.test.ts` — Test explicit config override: `.gwrkrc.json` with partial profile, verify auto-detected fields fill gaps. (FR-032)
+- **TR-029**: ⭐ **NEW (R3)** `src/engine/profile-detector.test.ts` — Test gwrk-native detection: project with `docs/architecture.md` resolves as `gwrk-native`. (FR-030)
+- **TR-030**: ⭐ **NEW (R3)** `src/engine/profile-detector.test.ts` — Test unknown project: empty directory resolves as `type: "unknown"` without error. (FR-030)
+- **TR-031**: ⭐ **NEW (R3)** `src/engine/prompt-conditioner.test.ts` — Unit test prompt conditioning: given a profile, verify `<project_profile>` XML block generated and injected. Verify gwrk-native profile preserves ADR-004/Commander.js sections. Verify non-gwrk profile omits them. (FR-033, FR-034)
+- **TR-032**: ⭐ **NEW (R3)** `src/commands/project-info.test.ts` — Unit test `gwrk project info`: verify JSON output matches `ProjectProfileSchema`. (FR-035)
+- **TR-033**: ⭐ **NEW (R3)** `src/utils/config.test.ts` — Verify `GwrkConfigSchema` accepts old-format (no profile) and new-format (with profile) `.gwrkrc.json`. (TC-011)
+- **TR-034**: ⭐ **NEW (R3)** Regression test — gwrk-native prompt snapshot: run prompt assembly on gwrk codebase pre-R3 vs post-R3, diff must be empty. Vitest snapshot. (TC-010)
 
 ---
 
@@ -496,8 +598,12 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **SC-006**: `pnpm run build` compiles clean with zero TypeScript errors.
 - **SC-007**: Every `ship`/`define` run produces a manifest in `.gwrk/runs/` that survives git push.
 - **SC-008**: `gwrk tasks verify <feature>` detects and reports post-merge state corruption.
-- **SC-009**: `gwrk setup` completes all 4 steps, `gwrk ship` pre-flight passes without prompts.
-- **SC-010**: ⭐ **NEW (2026-05-13)** All `define` subcommands produce the same quiet, logged output as `ship`. No raw agent narration in terminal. Agent that does native work and returns prose exits 0.
+- **SC-009**: ⭐ **UPDATED (R3)** `gwrk init` provisions profile + workstation + agents + Slack in one interactive flow. `gwrk ship` pre-flight passes. `gwrk setup` is removed.
+- **SC-010**: ⭐ **NEW (2026-05-13)** All `define` subcommands produce the same quiet, logged output as `ship`. No raw agent narration in terminal.
+- **SC-011**: ⭐ **NEW (R3)** `gwrk define plan` in skills-connection produces a plan with `apps/companion/` paths — not `src/commands/`.
+- **SC-012**: ⭐ **NEW (R3)** `gwrk define plan` in the gwrk repo produces identical prompt structure to pre-R3 behavior.
+- **SC-013**: ⭐ **NEW (R3)** `gwrk project info --format json` returns a valid `ProjectProfile` in any gwrk-managed project.
+- **SC-014**: ⭐ **NEW (R3)** All 15 PROMPT.md files refactored with conditional profile sections. `grep -r` for ungated gwrk-native references returns zero.
 
 ---
 
@@ -508,6 +614,11 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **VR-003**: Config: remove required field → any gwrk command crashes with Zod error.
 - **VR-004**: E2E: `gwrk --help` output matches FR-018 exactly.
 - **VR-005**: E2E: `gwrk run plan` with stub spec → `[BLOCKED]` error, exit 1.
+- **VR-006**: ⭐ **NEW (R3)** E2E: `gwrk init --non-interactive` in a pnpm monorepo → `.gwrkrc.json` contains auto-detected profile.
+- **VR-007**: ⭐ **NEW (R3)** E2E: `gwrk define plan` in skills-connection → plan.md has no gwrk-native references.
+- **VR-008**: ⭐ **NEW (R3)** E2E: `gwrk project info` in skills-connection → type: "pnpm-monorepo".
+- **VR-009**: ⭐ **NEW (R3)** Snapshot: Pre-R3 gwrk plan prompt matches post-R3 when profile is gwrk-native.
+- **VR-010**: ⭐ **NEW (R3)** Audit: `grep -r "src/commands\\|src/engine\\|ADR-004\\|Commander.js\\|better-sqlite3" src/plugins/builtins/workflows/*/PROMPT.md` returns ZERO ungated matches.
 
 ---
 
@@ -515,7 +626,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 
 | US | FR | TR |
 |---|---|---|
-| US-001 | FR-001 | TR-001 |
+| US-001 | FR-001, FR-022, FR-030, FR-031, FR-032 | TR-001, TR-021, TR-027, TR-028, TR-033 |
 | US-002 | FR-002 | TR-002, TR-012 |
 | US-003 | FR-003 | TR-003, TR-012, TR-019 |
 | US-004 | FR-004 | TR-004 |
@@ -535,10 +646,12 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 | US-018 | FR-018 | TR-018, TR-019 |
 | US-019 | FR-019 | TR-020 |
 | US-020 | FR-020 | TR-021 |
-| US-021 | FR-022 | TR-021 |
+| US-021 | FR-001 (absorbed) | TR-021 |
 | US-022 | FR-023 | TR-022 |
 | US-023 | FR-024 | TR-023 |
 | US-024 | FR-025 | TR-024 |
 | US-025 | FR-026 | TR-025 |
-| US-026 | FR-028 | TR-026 |
-| US-026 | FR-029 | TR-026 |
+| US-026 | FR-028, FR-029 | TR-026 |
+| US-027 | FR-030, FR-031, FR-032 | TR-027, TR-028, TR-029, TR-030, TR-033 |
+| US-028 | FR-033, FR-034 | TR-031, TR-034 |
+| US-029 | FR-035 | TR-032 |

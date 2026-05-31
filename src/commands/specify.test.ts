@@ -3,13 +3,9 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import * as agent from "../utils/agent.js";
 
-const { mockExecuteWorkflow, mockLoadConfig, mockWriteManifest, mockGetDiffStats } = vi.hoisted(() => ({
-  mockExecuteWorkflow: vi.fn().mockResolvedValue({
-    summary: "Success",
-    intents: [],
-    summaries: [],
-  }),
+const { mockLoadConfig, mockWriteManifest } = vi.hoisted(() => ({
   mockLoadConfig: vi.fn().mockReturnValue({
     agents: {
       define: "gemini",
@@ -17,14 +13,15 @@ const { mockExecuteWorkflow, mockLoadConfig, mockWriteManifest, mockGetDiffStats
     },
   }),
   mockWriteManifest: vi.fn(),
-  mockGetDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
 }));
 
-vi.mock("../plugins/workflow-runtime.js", () => ({
-  WorkflowRuntime: class {
-    executeWorkflow = mockExecuteWorkflow;
-  },
-}));
+vi.mock("../utils/agent.js", async () => {
+  const actual = await vi.importActual<any>("../utils/agent.js");
+  return {
+    ...actual,
+    dispatchToAgent: vi.fn(),
+  };
+});
 
 vi.mock("../utils/config.js", () => ({
   loadConfig: mockLoadConfig,
@@ -36,9 +33,9 @@ vi.mock("../utils/manifest.js", () => ({
 }));
 
 vi.mock("../utils/git.js", () => ({
-  getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
-  getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
-  getDiffStats: mockGetDiffStats,
+  getCurrentCommit: vi.fn(() => "mock-commit"),
+  getCurrentBranch: vi.fn(() => "mock-branch"),
+  getDiffStats: vi.fn(() => ({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 })),
 }));
 
 vi.mock("../utils/output.js", () => ({
@@ -48,10 +45,8 @@ vi.mock("../utils/output.js", () => ({
 }));
 
 import { specifyCommand } from "./specify.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
-import { writeManifest } from "../utils/manifest.js";
 
-describe("specifyCommand (Phase 9/12)", () => {
+describe("specifyCommand (Phase 6 E2E)", () => {
   let tempDir: string;
   let program: Command;
 
@@ -61,6 +56,21 @@ describe("specifyCommand (Phase 9/12)", () => {
     const featureDir = path.join(tempDir, "specs", "a-calculator");
     fs.mkdirSync(featureDir, { recursive: true });
     
+    // Set up mock workflow in project-local plugins
+    const workflowDir = path.join(tempDir, ".gwrk", "plugins", "workflows", "gwrk-specify");
+    fs.mkdirSync(workflowDir, { recursive: true });
+    fs.writeFileSync(path.join(workflowDir, "manifest.yaml"), `
+name: gwrk-specify
+type: workflow
+outputSchema:
+  type: object
+  required: [summary, intents]
+  properties:
+    summary: { type: string }
+    intents: { type: array }
+`);
+    fs.writeFileSync(path.join(workflowDir, "PROMPT.md"), "Specify workflow prompt");
+
     // Create a mock .gwrkrc.json
     fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({
       project: { name: "test-project" },
@@ -80,6 +90,17 @@ describe("specifyCommand (Phase 9/12)", () => {
         implement: "claude",
       },
     });
+
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        summary: "Spec generated successfully",
+        intents: []
+      }),
+      stderr: "",
+      durationS: 1,
+      logPath: "mock.log"
+    });
   });
 
   afterEach(() => {
@@ -87,8 +108,13 @@ describe("specifyCommand (Phase 9/12)", () => {
     vi.restoreAllMocks();
   });
 
-  it("US-019/FR-019: SHOULD write execution manifest after success (RED)", async () => {
+  it("should successfully execute specify workflow E2E", async () => {
     await program.parseAsync(["node", "test", "spec", "a-calculator", "Create a new feature"]);
+
+    // Verify dispatchToAgent was called with correct workflow
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      workflow: "gwrk-specify"
+    }));
 
     const featureDir = path.join(tempDir, "specs", "a-calculator");
     expect(mockWriteManifest).toHaveBeenCalledWith(
@@ -100,15 +126,32 @@ describe("specifyCommand (Phase 9/12)", () => {
     );
   });
 
-  it("US-026/FR-028: SHOULD pass quiet: true to WorkflowRuntime (Phase 12) (RED)", async () => {
+  it("should pass quiet: true to WorkflowRuntime", async () => {
     await program.parseAsync(["node", "test", "spec", "a-calculator", "Create a new feature"]);
 
-    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
-      "gwrk-specify",
-      expect.anything(),
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         quiet: true,
       }),
     );
+  });
+
+  describe("--refs handling", () => {
+    it("should prepend refs content in dispatch prompt", async () => {
+      const refsFile = path.join(tempDir, "refs.md");
+      fs.writeFileSync(refsFile, "Reference content");
+
+      await program.parseAsync([
+        "node", "test", "spec", "a-calculator", "Create a new feature",
+        "--refs", refsFile,
+      ]);
+
+      const dispatchCall = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
+      const prompt = dispatchCall.prompt as string;
+
+      expect(prompt).toContain("<reference_document");
+      expect(prompt).toContain("Reference content");
+      expect(prompt).toContain("CRITICAL REMINDER:");
+    });
   });
 });

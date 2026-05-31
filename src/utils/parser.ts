@@ -46,7 +46,14 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
       title = title.replace(spMatch[0], "").trim();
     }
 
-    const phaseId = `phase-${(index + 1).toString().padStart(2, "0")}`;
+    // Extract phase number from header line (e.g., "6: Title" → 6)
+    // This is the authoritative number, NOT the positional index in the array.
+    const headerNumberMatch = headerLine.match(/^(\d+)/);
+    const phaseNumber = headerNumberMatch
+      ? Number.parseInt(headerNumberMatch[1], 10)
+      : index + 1; // fallback to positional only if header has no number
+
+    const phaseId = `phase-${phaseNumber.toString().padStart(2, "0")}`;
     const tasks: ParsedTask[] = [];
 
     // Extract files as tasks: "**Files (N):**" followed by bullet points
@@ -73,13 +80,36 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
       }
     }
 
-    // Extract tests as a task: "#### Test Strategy"
+    // Fallback: Table-based file listings (| File | Change | format)
+    // Matches rows like: | `path/to/file.ts` | [NEW] Description |
+    if (tasks.length === 0) {
+      const tableRows = section.matchAll(
+        /^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|/gm,
+      );
+      for (const row of tableRows) {
+        const filePath = row[1];
+        let description = row[2].trim();
+        // Strip [NEW] / [MODIFY] / [DELETE] tags for cleaner description
+        const changeTag = description.match(/^\[(NEW|MODIFY|DELETE)]\s*/);
+        if (changeTag) {
+          description = description.replace(changeTag[0], "").trim();
+        }
+        if (description && !filePath.includes("---")) {
+          tasks.push({
+            title: `Implement ${filePath}`,
+            description: description || `Implement changes for ${filePath}`,
+          });
+        }
+      }
+    }
+
+    // Extract tests as a task: "#### Test Strategy" or "**Test Strategy:**" / "**Test Strategy**:"
     const testStrategyMatch = section.match(
-      /#### Test Strategy\n([\s\S]*?)(?:\n####|$)/,
+      /(?:####\s+Test Strategy|^\*\*Test Strategy:?\*\*:?\s*$)/m,
     );
     if (testStrategyMatch) {
       tasks.push({
-        title: `Implement test strategy for Phase ${index + 1}`,
+        title: `Implement test strategy for Phase ${phaseNumber}`,
         description:
           "Implement all unit and integration tests defined in the phase test strategy.",
       });
@@ -93,6 +123,17 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
       for (const line of lines) {
         const m = line.match(/- (.*)/);
         if (m) doneWhen.push(m[1].trim());
+      }
+    }
+
+    // Fallback: **Done When:** followed by ```bash code block
+    if (doneWhen.length === 0) {
+      const codeBlockMatch = section.match(
+        /\*\*Done When\*\*:?\n```(?:bash|sh)?\n([\s\S]*?)```/,
+      );
+      if (codeBlockMatch) {
+        const cmd = codeBlockMatch[1].trim();
+        if (cmd) doneWhen.push(cmd);
       }
     }
 

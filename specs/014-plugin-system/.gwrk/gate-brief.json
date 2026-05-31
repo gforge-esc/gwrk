@@ -535,6 +535,97 @@
     },
     {
       "taskId": "T050",
+      "title": "Implement src/plugins/builtins/skills/gwrk-conventions/SKILL.md",
+      "description": "NEW: valid task statuses, tasks.json Zod schema, commit identity rules, `.agents/` is legacy, file naming",
+      "primaryFile": "src/plugins/builtins/skills/gwrk-conventions/SKILL.md",
+      "fileType": "markdown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T051",
+      "title": "Implement src/plugins/builtins/skills/gwrk-conventions/manifest.yaml",
+      "description": "NEW: `type: skill`, `tier: enforcement`, `scope: implementation`",
+      "primaryFile": "src/plugins/builtins/skills/gwrk-conventions/manifest.yaml",
+      "fileType": "config",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T052",
+      "title": "Implement src/plugins/builtins/skills/typescript-standards/SKILL.md",
+      "description": "NEW: strict typing, no `any`, lint compliance, no `.js`/`.jsx` in `src/`, ESM conventions",
+      "primaryFile": "src/plugins/builtins/skills/typescript-standards/SKILL.md",
+      "fileType": "markdown",
+      "identifiers": [
+        "any"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T053",
+      "title": "Implement src/plugins/builtins/skills/typescript-standards/manifest.yaml",
+      "description": "NEW: `type: skill`, `tier: enforcement`, `scope: implementation`",
+      "primaryFile": "src/plugins/builtins/skills/typescript-standards/manifest.yaml",
+      "fileType": "config",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T054",
+      "title": "Implement src/plugins/skill-runtime.ts",
+      "description": "MODIFY: add `resolveEnforcementSkills(projectRoot",
+      "primaryFile": "src/plugins/skill-runtime.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "resolveEnforcementSkills"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": [
+        "contracts/skill-runtime.md"
+      ]
+    },
+    {
+      "taskId": "T055",
+      "title": "Implement src/plugins/manifest.ts",
+      "description": "MODIFY: add `tier: enforcement` to `SkillManifestSchema`, add `scope` field",
+      "primaryFile": "src/plugins/manifest.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "SkillManifestSchema",
+        "scope"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T056",
+      "title": "Implement src/utils/agent.ts",
+      "description": "MODIFY: call `resolveEnforcementSkills(",
+      "primaryFile": "src/utils/agent.ts",
+      "fileType": "typescript",
+      "identifiers": [
+        "resolveEnforcementSkills"
+      ],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T057",
+      "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
+      "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
+      "primaryFile": "src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
+      "fileType": "markdown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T058",
       "title": "Implement test strategy for Phase 10",
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,
@@ -544,7 +635,57 @@
       "contractRefs": []
     },
     {
-      "taskId": "T051",
+      "taskId": "T059",
+      "title": "Implement AnyManifest",
+      "description": "`src/plugins/manifest.ts`",
+      "primaryFile": "src/plugins/manifest.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T060",
+      "title": "Implement JsonIntent",
+      "description": "`src/plugins/manifest.ts`",
+      "primaryFile": "src/plugins/manifest.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T061",
+      "title": "Implement TaskDispatch",
+      "description": "`src/utils/agent.ts`",
+      "primaryFile": "src/utils/agent.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T062",
+      "title": "Implement TaskResult",
+      "description": "`src/utils/agent.ts`",
+      "primaryFile": "src/utils/agent.ts`",
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T063",
+      "title": "Implement .agents/skills/",
+      "description": "Skill migration via `gwrk plugin migrate`",
+      "primaryFile": null,
+      "fileType": "unknown",
+      "identifiers": [],
+      "doneWhenCommands": [],
+      "contractRefs": []
+    },
+    {
+      "taskId": "T064",
       "title": "Implement test strategy for Phase 11",
       "description": "Implement all unit and integration tests defined in the phase test strategy.",
       "primaryFile": null,

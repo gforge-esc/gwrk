@@ -47,7 +47,7 @@ export interface ShipState {
   backend: string;
   failureContext: FailureContext | null;
   branchName?: string;
-  testBaseline?: number; // Pre-existing test failure count (captured at BRANCH_SETUP)
+  testBaseline?: number;
 }
 
 /**

@@ -1,10 +1,8 @@
 #!/bin/bash
-# AUTHORED
 set -euo pipefail
-
-test -f src/commands/init.test.ts \
-  || { echo "FAIL: T036 — file not found: src/commands/init.test.ts" >&2; exit 1; }
-grep -q 'should provision GEMINI.md, CLAUDE.md, and .gwrk/agent-context.md if CLIs are detected (FR-L1-008)' src/commands/init.test.ts \
-  || { echo "FAIL: T036 — src/commands/init.test.ts missing FR-L1-008 test case" >&2; exit 1; }
-
-echo "PASS: T036 — Implement src/commands/init.test.ts"
+# AUTHORED
+test -f src/commands/specify.test.ts || { echo "FAIL: T036 — file not found: src/commands/specify.test.ts" >&2; exit 1; }
+pnpm vitest run src/commands/specify.test.ts --reporter=verbose || { echo "FAIL: T036 — vitest failed for src/commands/specify.test.ts" >&2; exit 1; }
+test -f src/commands/plan.test.ts || { echo "FAIL: T036 — file not found: src/commands/plan.test.ts" >&2; exit 1; }
+pnpm vitest run src/commands/plan.test.ts --reporter=verbose || { echo "FAIL: T036 — vitest failed for src/commands/plan.test.ts" >&2; exit 1; }
+echo "PASS: T036 — specify.test.ts and plan.test.ts passing"

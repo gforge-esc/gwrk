@@ -1,10 +1,6 @@
 #!/bin/bash
-# AUTHORED
 set -euo pipefail
-
-test -f src/plugins/seed.ts \
-  || { echo "FAIL: T035 — file not found: src/plugins/seed.ts" >&2; exit 1; }
-grep -q 'export async function seedSkills' src/plugins/seed.ts \
-  || { echo "FAIL: T035 — src/plugins/seed.ts missing 'export async function seedSkills'" >&2; exit 1; }
-
-echo "PASS: T035 — Implement src/plugins/seed.ts"
+# GENERATED
+test -f src/engine/define-orchestrator.test.ts || { echo "FAIL: T035 — file not found: src/engine/define-orchestrator.test.ts" >&2; exit 1; }
+pnpm vitest run src/engine/define-orchestrator.test.ts --reporter=verbose || { echo "FAIL: T035 — vitest failed for src/engine/define-orchestrator.test.ts" >&2; exit 1; }
+echo "PASS: T035 — Implement src/engine/define-orchestrator.test.ts"

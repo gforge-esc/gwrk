@@ -9,23 +9,32 @@ export interface QuotaStatus {
 
 /**
  * Probes the current quota status of a backend.
- * Uses the backend's native checkQuota if available, otherwise infers from recent errors.
+ * Uses the backend's native checkQuota if available, otherwise infers from recent errors or isAvailable().
  */
 export async function quotaProbe(backend: AgentBackend): Promise<QuotaStatus> {
-  // If the backend has a native checkQuota method, use it.
+  // 1. Native checkQuota if implemented by the adapter
   const backendWithQuota = backend as unknown as {
     checkQuota?: () => Promise<QuotaStatus>;
   };
+
   if (typeof backendWithQuota.checkQuota === "function") {
-    return await backendWithQuota.checkQuota();
+    try {
+      return await backendWithQuota.checkQuota();
+    } catch (err) {
+      // If native check fails, fall back to basic availability
+    }
   }
 
-  // Fallback to availability check
-  const available = await backend.isAvailable();
-  if (!available) {
+  // 2. Fallback to basic isAvailable() check
+  try {
+    const available = await backend.isAvailable();
+    if (!available) {
+      return { status: "unavailable" };
+    }
+  } catch (err) {
     return { status: "unavailable" };
   }
 
-  // Generic available status if no other info
+  // 3. Default to available
   return { status: "available" };
 }

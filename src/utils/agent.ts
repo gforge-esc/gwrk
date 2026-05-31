@@ -6,6 +6,7 @@ import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
+import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import {
   type AgentBackend as ConfigAgentBackend,
   loadConfig,
@@ -426,6 +427,31 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const startTime = Date.now();
   const dispatch = await adapter.dispatch(task);
+
+  // FR-014: Inject enforcement skills
+  const hasEnforcementPlaceholder = dispatch.stdin.includes("{{enforcement}}");
+  const hasCodeQualitySection = dispatch.stdin.includes("<code_quality>");
+
+  if (hasEnforcementPlaceholder || hasCodeQualitySection) {
+    const scope =
+      task.workflow?.includes("review") || task.type?.includes("review")
+        ? "review"
+        : "implementation";
+    const enforcement = await resolveEnforcementSkills(
+      task.workDir || projectRoot,
+      scope as "implementation" | "review",
+    );
+
+    if (hasEnforcementPlaceholder) {
+      dispatch.stdin = dispatch.stdin.replace("{{enforcement}}", enforcement);
+    } else if (hasCodeQualitySection) {
+      // Inject into the section if no placeholder but tag exists
+      dispatch.stdin = dispatch.stdin.replace(
+        /<code_quality>([\s\S]*?)<\/code_quality>/,
+        `<code_quality>\n${enforcement}\n</code_quality>`,
+      );
+    }
+  }
 
   const opts: DispatchOptions = {
     backend: agentName as ConfigAgentBackend,

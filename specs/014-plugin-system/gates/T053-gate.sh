@@ -1,12 +1,14 @@
 #!/bin/bash
-# AUTHORED
-set -euo pipefail
+set -e
 
-# T053: Integration test — ship loop dispatches via review plugin
-test -f src/plugins/review-plugin.test.ts
-test -f src/engine/ship-orchestrator.test.ts
+# T053-gate: Verify typescript-standards manifest.yaml
+# Assertion #1: File exists
+ls src/plugins/builtins/skills/typescript-standards/manifest.yaml > /dev/null
 
-# Run both test files
-pnpm vitest run src/plugins/review-plugin.test.ts src/engine/ship-orchestrator.test.ts --reporter=verbose
+# Assertion #2: tier is enforcement
+grep -q "tier: enforcement" src/plugins/builtins/skills/typescript-standards/manifest.yaml
 
-echo "PASS: T053 — Implement test strategy for Phase 8"
+# Assertion #3: scope is implementation
+grep -q "scope: implementation" src/plugins/builtins/skills/typescript-standards/manifest.yaml
+
+echo "✓ T053-gate passed"

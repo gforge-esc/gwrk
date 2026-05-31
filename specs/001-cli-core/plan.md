@@ -1,20 +1,67 @@
 ---
 type: implementation_plan
 feature: 001-cli-core
-last_modified: "2026-05-13T22:00:00Z"
+last_modified: "2026-05-30T00:22:00Z"
+revision: 3
 ---
 
 # Implementation Plan: 001 CLI Core
 
-**Branch**: `develop` | **Revised**: 2026-03-06 | **Spec**: [spec.md](./spec.md)
+**Branch**: `develop` | **Revised**: 2026-05-30 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
-The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), project scaffolding (`init`), agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
+The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), comprehensive interactive onboarding (`init`), project-aware prompt conditioning, agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
 
-> **Status**: Phases 1–11 are **implemented and tested** (646 tests, all passing). Phase 12 open: define pillar output parity. Phases 9-10 remain for state contracts and workstation setup.
+> **Status**: Phases 1–8, 11 are **implemented and tested**. Phase 9 (state contracts), Phase 10 (unified init — R3 rewrite), Phase 12 (define output parity), and Phase 13 (project awareness — R3 new) are open.
 
 ---
+
+## R3 Revision History (2026-05-30)
+
+**Trigger**: `gwrk define plan/spec` in external projects (`skills-connection`) produced gwrk-native artifacts — Commander.js references, `src/commands/` paths, ADR-004 protocol in projects that have none of these. Root cause: hardcoded gwrk assumptions in all 15 PROMPT.md files, zero project awareness in `init`, fragmented onboarding (`init` + `setup` as separate commands).
+
+**Spec changes** (spec.md R3):
+- US-001 rewritten: comprehensive interactive wizard (12 acceptance criteria)
+- US-021 absorbed into US-001: `gwrk setup` removed, workstation steps folded into `init`
+- US-027 added: project profile auto-detection (7 Given/When/Then criteria)
+- US-028 added: project-aware prompt conditioning (5 criteria)
+- US-029 added: `gwrk project info` diagnostic
+- FR-001 rewritten, FR-022 absorbed, FR-030–035 added
+- DM-003 extended: `project.type/stack/layout/architecture/conventions` schema
+- TC-009–011, TR-027–034, SC-011–014, VR-006–010 added
+- Error states updated for init absorption
+
+**Plan changes** (this file):
+- Phase 10 rewritten: unified init replaces init + setup split
+- Phase 13 added: prompt conditioning, PROMPT.md refactoring, `gwrk project info`
+- Phase Execution Order table added with specific `gwrk ship` commands
+- Coverage matrix updated with R3 items
+
+**Reference**: [prompt-contamination-audit.md](./refs/prompt-contamination-audit.md)
+
+### Define Pipeline (per-phase)
+
+Each open phase must run the define pipeline independently:
+
+```bash
+# Phase 10: Unified Init
+gwrk define tests 001 --phase 10
+gwrk define tasks 001 --phase 10
+gwrk ship 001 10
+
+# Phase 12: Define Output Parity
+gwrk define tests 001 --phase 12
+gwrk define tasks 001 --phase 12
+gwrk ship 001 12
+
+# Phase 13: Project Awareness
+gwrk define tests 001 --phase 13
+gwrk define tasks 001 --phase 13
+gwrk ship 001 13
+```
+
+
 
 ## Phases and File Structure
 
@@ -215,27 +262,39 @@ Implement the two-tier state architecture ([ADR-003](file:///Users/gonzo/Code/gw
 
 ---
 
-### Phase 10: Workstation Setup — `gwrk setup`
+### Phase 10: Unified Init — Project Onboarding ⭐ **REWRITE (R3)**
 
-Interactive workstation provisioning for unattended agent execution. Detects TCC permissions, configures SSH key for GitHub, verifies gh CLI auth, writes setup state. See [macos-workstation-setup.md](file:///Users/gonzo/Code/gwrk/docs/references/macos-workstation-setup.md).
+Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, and directory scaffolding.
 
-**Files (3):**
-- `src/commands/setup.ts` (NEW) — Interactive 4-step wizard: TCC guidance, SSH key gen, gh auth check, verification
-- `src/commands/ship.ts` (MODIFY) — Add pre-flight check: read `~/.gwrk/setup.json`, reject if incomplete
-- `src/utils/setup-state.ts` (NEW) — Read/write `~/.gwrk/setup.json` schema (Zod validated)
+**Files (5):**
+- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag)
+- `src/commands/setup.ts` (DELETE: Absorbed into init)
+- `src/commands/setup-slack.ts` (MODIFY: Refactor to be callable from init flow, not standalone)
+- `src/engine/profile-detector.ts` (NEW: Auto-detect project type, stack, layout from filesystem signals)
+- `src/utils/config.ts` (MODIFY: Extend `GwrkConfigSchema` with optional `project.type`, `project.stack`, `project.layout`, `project.architecture`, `project.conventions`)
 
-**Requirements Addressed:** FR-022, US-021, SC-009
+**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, US-001 (R3), US-021 (absorbed), US-027, TC-011
 
 **Tests:**
-- `src/commands/setup.test.ts` (NEW) — TR-021: SSH key gen mock, `~/.ssh/config` update, `setup.json` write, idempotency, ship pre-flight rejection
+- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, profile auto-detection) — TR-001, TR-021
+- `src/engine/profile-detector.test.ts` (NEW: Detection for pnpm-monorepo, rust, python, gwrk-native, unknown) — TR-027, TR-028, TR-029, TR-030
+- `src/utils/config.test.ts` (MODIFY: Schema backward compat with old + new formats) — TR-033
+- `src/commands/setup.test.ts` (DELETE or refactor into init.test.ts)
+
+**gwrk command to implement:**
+```
+gwrk ship 001 10
+```
 
 #### Done When
-- `gwrk setup` runs 4-step wizard, defaults to dedicated SSH key (Option B)
-- SSH key generated, added to GitHub, `~/.ssh/config` updated
-- `~/.gwrk/setup.json` written with completion state
-- `gwrk ship` pre-flight rejects if `setup.json` missing or incomplete
-- Running `gwrk setup` again skips already-passing checks (idempotent)
-- All tests pass
+- `gwrk init` runs interactive profile wizard: detects project type, confirms with user, walks through stack/layout/architecture/conventions
+- `gwrk init` runs workstation provisioning (TCC, SSH, gh) — former `gwrk setup` behavior
+- `gwrk init` detects agent CLIs and configures agents block
+- `gwrk init` provisions Slack channel if tokens available
+- `gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently
+- `gwrk setup` is removed from CLI surface
+- `pnpm build` compiles clean, `pnpm test` all passing
+- Schema backward compat: existing `.gwrkrc.json` files parse without error
 
 ---
 
@@ -309,11 +368,62 @@ Bring all `define` subcommands (`define`, `define spec`, `define plan`, `define 
 
 ---
 
+### Phase 13: Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)**
+
+Inject the resolved project profile into every workflow prompt. Refactor all 15 PROMPT.md files to use conditional profile sections. Add `gwrk project info` diagnostic command. This phase depends on Phase 10 (profile must exist in config schema before it can be injected into prompts).
+
+**Ref:** [prompt-contamination-audit.md](./refs/prompt-contamination-audit.md)
+
+**Files (19):**
+- `src/engine/prompt-conditioner.ts` (NEW: Generate `<project_profile>` XML from resolved profile, serialize for prompt injection)
+- `src/plugins/workflow-runtime.ts` (MODIFY: Call prompt-conditioner before dispatching, inject XML block into prompt)
+- `src/server/ship-orchestrator.ts` (MODIFY: Inject profile into review dispatch)
+- `src/commands/project-info.ts` (NEW: `gwrk project info` with `--format json`)
+- `src/commands/project.ts` (NEW: `gwrk project` parent command)
+- `src/cli.ts` (MODIFY: Register `project` command group)
+- **PROMPT.md refactoring (13 files):**
+  - `src/plugins/builtins/workflows/gwrk-plan/PROMPT.md` (MODIFY: 🔴 Critical — gate architecture_reference, source layout, ADR-004, agent-native)
+  - `src/plugins/builtins/workflows/gwrk-review-uat/PROMPT.md` (MODIFY: 🔴 Critical — gate project description, CLI taxonomy, build command)
+  - `src/plugins/builtins/workflows/gwrk-author-gates/PROMPT.md` (MODIFY: 🔴 Critical — gate projectType, assertion patterns per test framework)
+  - `src/plugins/builtins/workflows/gwrk-review-code/PROMPT.md` (MODIFY: 🟡 Medium — gate gwrk-specific review patterns)
+  - `src/plugins/builtins/workflows/gwrk-implement/PROMPT.md` (MODIFY: 🟡 Medium — gate pnpm build assumption)
+  - `src/plugins/builtins/workflows/gwrk-define-tests/PROMPT.md` (MODIFY: 🟡 Medium — gate test framework assumptions)
+  - `src/plugins/builtins/workflows/gwrk-plan-to-tasks/PROMPT.md` (MODIFY: 🟡 Medium — gate task structure assumptions)
+  - `src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md` (MODIFY: 🟢 Low)
+  - `src/plugins/builtins/workflows/gwrk-cascade-sync/PROMPT.md` (MODIFY: 🟢 Low)
+  - `src/plugins/builtins/workflows/gwrk-build-plan/PROMPT.md` (MODIFY: 🟢 Low)
+  - `src/plugins/builtins/workflows/gwrk-checklist/PROMPT.md` (MODIFY: 🟢 Low)
+  - `src/plugins/builtins/workflows/gwrk-effort/PROMPT.md` (MODIFY: 🟢 Low)
+  - `src/plugins/builtins/workflows/gwrk-research/PROMPT.md` (MODIFY: 🟢 Low)
+  - (`gwrk-specify/PROMPT.md` already has conditional guards — verify only)
+
+**Requirements Addressed:** FR-033, FR-034, FR-035, US-028, US-029, TC-009, TC-010, SC-011, SC-012, SC-013, SC-014
+
+**Tests:**
+- `src/engine/prompt-conditioner.test.ts` (NEW: XML generation, gwrk-native preservation, generic profile omission) — TR-031
+- `src/commands/project-info.test.ts` (NEW: JSON output, profile rendering) — TR-032
+- `src/engine/profile-detector.test.ts` (MODIFY: Add regression snapshot for gwrk-native) — TR-034
+
+**gwrk command to implement:**
+```
+gwrk ship 001 13
+```
+
+#### Done When
+- `<project_profile>` XML block injected into every workflow prompt at runtime
+- All 15 PROMPT.md files refactored with conditional `gwrk-native` guards
+- `gwrk project info --format json` returns resolved profile
+- `grep -r "src/commands\|src/engine\|ADR-004\|Commander.js\|better-sqlite3" src/plugins/builtins/workflows/*/PROMPT.md` returns ZERO ungated matches
+- gwrk-native prompt assembly is byte-identical to pre-R3 (regression snapshot passes)
+- `pnpm build` compiles clean, `pnpm test` all passing
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| US-001 | 1, 7 | ✅ Done |
+| US-001 | 1, 7, 10 | ⭐ R3 rewrite in Phase 10 |
 | US-002 | 3 | ✅ Done |
 | US-003 | 3 | ✅ Done |
 | US-004 | 3 | ✅ Done |
@@ -332,7 +442,16 @@ Bring all `define` subcommands (`define`, `define spec`, `define plan`, `define 
 | US-018 | 8 | ✅ Done |
 | US-019 | 9 | ☐ Open |
 | US-020 | 9 | ☐ Open |
-| FR-001 | 1, 7 | ✅ Done |
+| US-021 | 10 (absorbed into US-001) | ☐ Open |
+| US-022 | 11 | ✅ Done |
+| US-023 | 11 | ✅ Done |
+| US-024 | 11 | ✅ Done |
+| US-025 | 11 | ✅ Done |
+| US-026 | 12 | ☐ Open |
+| US-027 | 10 | ☐ Open (R3) |
+| US-028 | 13 | ☐ Open (R3) |
+| US-029 | 13 | ☐ Open (R3) |
+| FR-001 | 1, 7, 10 | ⭐ R3 rewrite in Phase 10 |
 | FR-002 | 3 | ✅ Done |
 | FR-003 | 3 | ✅ Done |
 | FR-004 | 3 | ✅ Done |
@@ -352,20 +471,33 @@ Bring all `define` subcommands (`define`, `define spec`, `define plan`, `define 
 | FR-019 | 9 | ☐ Open |
 | FR-020 | 9 | ☐ Open |
 | FR-021 | 9 | ☐ Open |
-| US-021 | 10 | ☐ Open |
-| FR-022 | 10 | ☐ Open |
-| US-022 | 11 | ✅ Done |
-| US-023 | 11 | ✅ Done |
-| US-024 | 11 | ✅ Done |
-| US-025 | 11 | ✅ Done |
+| FR-022 | 10 (absorbed into FR-001) | ☐ Open |
 | FR-023 | 11 | ✅ Done |
 | FR-024 | 11 | ✅ Done |
 | FR-025 | 11 | ✅ Done |
 | FR-026 | 11 | ✅ Done |
 | FR-027 | 11 | ✅ Done |
-| US-026 | 12 | ☐ Open |
 | FR-028 | 12 | ☐ Open |
 | FR-029 | 12 | ☐ Open |
+| FR-030 | 10 | ☐ Open (R3) |
+| FR-031 | 10 | ☐ Open (R3) |
+| FR-032 | 10 | ☐ Open (R3) |
+| FR-033 | 13 | ☐ Open (R3) |
+| FR-034 | 13 | ☐ Open (R3) |
+| FR-035 | 13 | ☐ Open (R3) |
+
+## Phase Execution Order
+
+Open phases should be implemented sequentially:
+
+| Order | Phase | Scope | gwrk command |
+|-------|-------|-------|-------------|
+| 1 | Phase 10 | Unified init + profile detection + schema extension | `gwrk ship 001 10` |
+| 2 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` |
+| 3 | Phase 13 | Prompt conditioning + PROMPT.md refactoring + `project info` | `gwrk ship 001 13` |
+| 4 | Phase 9 | State contracts + execution manifests (deferred, lower priority) | `gwrk ship 001 9` |
+
+> Phase 13 depends on Phase 10 (profile schema must exist before injection). Phase 12 is independent and can run before or after 13, but before is preferred (cleaner runtime before prompt refactoring).
 
 ## Deferred Items
 

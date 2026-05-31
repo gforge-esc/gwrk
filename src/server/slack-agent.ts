@@ -23,8 +23,8 @@ export async function handleMention({
     : event.ts;
 
   // TR-016: Check for specific file mentions (e.g. workflows or specs)
-  if (text.includes(".agents/workflows/")) {
-    const workflowMatch = event.text.match(/\.?agents\/workflows\/[\w-]+\.md/);
+  if (text.includes("workflows/")) {
+    const workflowMatch = event.text.match(/(?:\.gwrk\/|plugins\/)?workflows\/[\w-]+\.md/);
     const workflow = workflowMatch ? workflowMatch[0] : "the workflow";
     await say({
       thread_ts,

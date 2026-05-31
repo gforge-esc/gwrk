@@ -363,10 +363,7 @@ export class ShipOrchestrator extends EventEmitter {
     try {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
-      // Capture test baseline on first iteration before implement touches anything
-      if (this.state.iteration === 1) {
-        this.captureTestBaseline();
-      }
+      if (this.state.iteration === 1) this.captureTestBaseline();
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       // Branch already exists — just check it out and sync with develop
@@ -382,10 +379,7 @@ export class ShipOrchestrator extends EventEmitter {
           await syncBranch(this.config.cwd, "develop");
           this.state.branchName = branchName;
           console.log(`  Branch ${branchName} exists — checked out and synced`);
-          // Capture test baseline on first iteration before implement touches anything
-          if (this.state.iteration === 1) {
-            this.captureTestBaseline();
-          }
+          if (this.state.iteration === 1) this.captureTestBaseline();
           return { success: true, exitCode: 0 };
         } catch (syncErr: unknown) {
           const syncMsg =
@@ -426,7 +420,7 @@ export class ShipOrchestrator extends EventEmitter {
       const gateResult = await runGate(gatePath);
       if (!gateResult.passed) {
         task.status = "open";
-        delete task.completedAt;
+        task.completedAt = undefined;
         reopenedCount++;
         console.log(
           `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
@@ -612,20 +606,12 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
-   * TEST_GATE: Mechanical test verification with baseline comparison.
-   * Runs after BUILD_CHECK and before CODE_REVIEW.
-   *
-   * Design: Snapshots test failure count from the baseline (captured at
-   * BRANCH_SETUP before IMPLEMENT runs). Only triggers NO-GO if the
-   * implement agent made things WORSE. Pre-existing RED tests from other
-   * features/phases don't block unrelated work.
-   *
-   * Without this baseline approach, any pre-existing RED test blocks
-   * every ship, even when the implement agent can't fix it.
+   * TEST_GATE: Baseline comparison test verification.
+   * Only triggers NO-GO if tests got WORSE than the baseline captured
+   * at BRANCH_SETUP. Pre-existing RED tests don't block unrelated work.
    */
   private async stageTestGate(): Promise<StageResult> {
     console.log("  ▸ TEST_GATE");
-
     const { failCount, output } = this.runTestSuite();
     const baseline = this.state.testBaseline ?? 0;
 
@@ -633,50 +619,32 @@ export class ShipOrchestrator extends EventEmitter {
       console.log("  ✓ tests passed (0 failures)");
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
-
     if (failCount <= baseline) {
-      console.log(
-        `  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`,
-      );
+      console.log(`  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`);
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
 
-    // Regression: more failures than baseline
     const regressionCount = failCount - baseline;
     const lastLines = output.split("\n").slice(-20).join("\n");
-    console.log(
-      `  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`,
-    );
+    console.log(`  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`);
 
-    // Feed failure back to implement via NO-GO retry loop.
-    const featureDir = path.join(
-      this.config.cwd,
-      "specs",
-      this.config.featureId,
-    );
+    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find(
-      (p: Phase) => p.id === this.config.phaseId,
-    );
+    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
     if (phase) {
       for (const task of phase.tasks) {
         if (task.status === "completed") {
           task.status = "open";
-          delete task.completedAt;
-          task.description =
-            `${task.description || ""}\n\nTEST_GATE FAILURE (${regressionCount} new):\n${lastLines}`.trim();
+          task.completedAt = undefined;
+          task.description = `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
         }
       }
       saveTaskState(featureDir, taskState);
     }
-
     return this.handleNoGo("TEST_GATE");
   }
 
-  /**
-   * Run test suite and extract failure count.
-   * Returns { failCount, output } regardless of exit code.
-   */
+  /** Run test suite, return failure count and output. */
   private runTestSuite(): { failCount: number; output: string } {
     try {
       const result = execSync("pnpm test", {
@@ -686,25 +654,15 @@ export class ShipOrchestrator extends EventEmitter {
       });
       return { failCount: 0, output: result.toString() };
     } catch (err: unknown) {
-      const stdout =
-        (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
-      const stderr =
-        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const stdout = (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
+      const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
       const combined = `${stdout}\n${stderr}`.trim();
-
-      // Parse vitest output: "Tests  N failed | M passed"
       const failMatch = combined.match(/(\d+)\s+failed/);
-      const failCount = failMatch ? parseInt(failMatch[1], 10) : 1;
-
-      return { failCount, output: combined };
+      return { failCount: failMatch ? parseInt(failMatch[1], 10) : 1, output: combined };
     }
   }
 
-  /**
-   * Capture test baseline before IMPLEMENT runs.
-   * Called from stageBranchSetup so we know the failure count
-   * before the agent touches anything.
-   */
+  /** Snapshot test failure count before IMPLEMENT touches anything. */
   private captureTestBaseline(): void {
     console.log("  ▸ capturing test baseline...");
     const { failCount } = this.runTestSuite();
@@ -825,7 +783,7 @@ export class ShipOrchestrator extends EventEmitter {
         }
       } else {
         task.status = "open";
-        delete task.completedAt;
+        task.completedAt = undefined;
         failedCount++;
       }
     }

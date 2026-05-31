@@ -46,7 +46,11 @@ See `.gwrk/rules/operating-model.md` for Foxtrot Charlie principles and RAGB def
 - `scripts/dev/`: Shell orchestrators (agent-run.sh, work-until-done.sh, etc.).
 - `specs/`: Feature specifications (Foxtrot Charlie).
 - `docs/`: Architecture, PRD, ADRs, reference docs.
+<<<<<<<< HEAD:src/plugins/builtins/rules/workspace.md
+- `.gwrk/`: Local governance (rules) and execution history.
+========
 - `.gwrk/`: Local project config (rules, settings).
+>>>>>>>> develop:.agents/rules/workspace.md
 - `.specify/`: Specify CLI (scripts, templates).
 
 ## Commands

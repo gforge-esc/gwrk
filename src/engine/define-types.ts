@@ -4,9 +4,9 @@
 export enum DefineStage {
   SPECIFY = "SPECIFY",
   PLAN = "PLAN",
+  DEFINE_TESTS = "DEFINE_TESTS",
   PLAN_TO_TASKS = "PLAN_TO_TASKS",
   ANALYZE = "ANALYZE",
-  DEFINE_TESTS = "DEFINE_TESTS",
   DONE = "DONE",
 }
 

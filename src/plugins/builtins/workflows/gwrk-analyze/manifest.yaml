@@ -1,0 +1,27 @@
+type: workflow
+name: gwrk-analyze
+version: 1.0.0
+description: Analyze codebase and generate insights
+outputSchema:
+  type: object
+  properties:
+    summary:
+      type: string
+    intents:
+      type: array
+      items:
+        type: object
+        properties:
+          action:
+            type: string
+            enum: [WRITE_FILE, CREATE_DIR, RUN_COMMAND]
+          filePath:
+            type: string
+          content:
+            type: string
+          dirPath:
+            type: string
+          command:
+            type: string
+        required: [action]
+  required: [summary, intents]

@@ -38,41 +38,7 @@ Executes ALL TASKS in a phase greedily via the tasks.json ready queue. Each task
 ### 0. Code Quality Rules (MANDATORY)
 
 <code_quality>
-These rules are BINDING for all code written during implementation.
-Violations cause review failures. No exceptions.
-
-**Strict Typing**:
-- NEVER use `any`. Use `unknown` + type narrowing, or define a proper type/interface.
-- NEVER use `@ts-ignore` in production code.
-- NEVER use non-null assertions (`!`) when `?.` or `??` would suffice.
-- All exported functions MUST have explicit return types.
-- All function parameters MUST have explicit types.
-
-**Lint Compliance**:
-- Code MUST pass `pnpm lint` (Biome) before task completion.
-- Auto-fixable: run `pnpm exec biome lint --write .` and commit.
-- Non-auto-fixable: fix manually. Do NOT add suppression comments.
-
-**Error Handling**:
-- Use `CommandError` for CLI-facing errors (exit code + message).
-- NEVER swallow errors silently. Handle, re-throw, or log with context.
-- Error messages MUST be actionable: what went wrong AND what to do.
-
-**Imports & Files**:
-- `.js` extension on all relative imports (ESM).
-- `node:` prefix for Node.js built-ins.
-- `import type` for type-only imports.
-- Source files: `.ts` only. NEVER `.js` in `src/`.
-
-**No Placeholders**:
-- NEVER use hardcoded placeholder values (e.g., `"TODO"`, `"C_GWRK_CHANNEL"`, `"PLACEHOLDER"`).
-- If a value should come from config, READ the config schema (`config.ts`) and wire it.
-- If a feature requires a system call (e.g., opening a browser), IMPLEMENT the call.
-- Comments like `// In a real CLI, we'd...` or `// TODO: get from config` are FAILURES.
-  Implement it or mark the task as blocked with a specific reason — never stub.
-
-**Project-specific overrides**: If `.gwrk/rules/` exists, read those files too.
-They extend (not replace) these baseline rules.
+{{enforcement}}
 </code_quality>
 
 ### 1. Dev Environment

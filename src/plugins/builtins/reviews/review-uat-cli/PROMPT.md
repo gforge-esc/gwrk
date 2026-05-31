@@ -26,7 +26,13 @@
 
 ## Algorithm
 
-### 0. Build (MANDATORY)
+### 0. Code Quality Rules (MANDATORY)
+
+<code_quality>
+{{enforcement}}
+</code_quality>
+
+### 1. Build (MANDATORY)
 
 gwrk is a CLI tool. No Docker, no web server.
 
