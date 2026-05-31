@@ -103,6 +103,31 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
           const backend = await selectBackend(task, process.cwd(), registry);
           expect(backend.name).toBe('claude');
     });
+
+    it("uses task-specific mapping from config if available", async () => {
+        vi.spyOn(configModule, 'loadConfig').mockReturnValue({
+            agents: {
+              'custom-task': 'gemini',
+              fallbackOrder: ['claude']
+            }
+          } as any);
+
+          const mockClaude = { name: 'claude', isAvailable: vi.fn().mockResolvedValue(true) };
+          const mockGemini = { name: 'gemini', isAvailable: vi.fn().mockResolvedValue(true) };
+    
+          const registry = new AgentBackendRegistry();
+          vi.spyOn(registry, 'getAgentBackend').mockImplementation(async (name) => {
+            if (name === 'claude') return mockClaude as any;
+            if (name === 'gemini') return mockGemini as any;
+            throw new Error('Not found');
+          });
+
+          vi.spyOn(quotaModule, 'quotaProbe').mockResolvedValue({ status: 'available' });
+
+          const task = { type: 'custom-task' };
+          const backend = await selectBackend(task, process.cwd(), registry);
+          expect(backend.name).toBe('gemini');
+    });
   });
 
   describe("quotaProbe() (FR-P4-002)", () => {
