@@ -234,7 +234,7 @@
         {
           "id": "T022",
           "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` \u2014 `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
           "status": "open",
           "gateScript": "gates/T022-gate.sh",
           "sp": 0,
@@ -358,8 +358,8 @@
           "status": "completed",
           "gateScript": "gates/T033-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-29T23:35:06.000Z"
+          "completedAt": "2026-05-29T23:35:06.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T034",
@@ -368,8 +368,8 @@
           "status": "completed",
           "gateScript": "gates/T034-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-29T23:35:06.000Z"
+          "completedAt": "2026-05-29T23:35:06.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T035",
@@ -378,8 +378,8 @@
           "status": "completed",
           "gateScript": "gates/T035-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-29T23:35:06.000Z"
+          "completedAt": "2026-05-29T23:35:06.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T036",
@@ -388,8 +388,8 @@
           "status": "completed",
           "gateScript": "gates/T036-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-29T23:35:06.000Z"
+          "completedAt": "2026-05-29T23:35:06.000Z",
+          "classification": "greenfield"
         },
         {
           "id": "T037",
@@ -398,8 +398,8 @@
           "status": "completed",
           "gateScript": "gates/T037-gate.sh",
           "sp": 0,
-          "classification": "noop",
-          "completedAt": "2026-05-29T23:35:06.000Z"
+          "completedAt": "2026-05-29T23:35:06.000Z",
+          "classification": "noop"
         }
       ],
       "sp_estimate": 0,
@@ -415,45 +415,50 @@
           "id": "T038",
           "title": "Implement src/commands/init.ts",
           "description": "MODIFY: Provision `~/.gwrk/plugins/` with built-ins",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T038-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:45:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T039",
           "title": "Implement src/plugins/migrate.ts",
           "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T039-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:45:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T040",
           "title": "Implement src/plugins/seed.ts",
           "description": "NEW: Taxonomy to atomic skills seeding",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T040-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:45:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T041",
           "title": "Implement src/commands/init.test.ts",
           "description": "Implement changes for src/commands/init.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T041-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:45:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T042",
           "title": "Implement test strategy for Phase 7",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:45:00.000Z",
           "classification": "noop"
         }
       ],
@@ -528,7 +533,7 @@
     },
     {
       "id": "phase-09",
-      "title": "A: Review Plugin Layer (Layer 3 \u2014 First Extension) \u2705 SHIPPED",
+      "title": "A: Review Plugin Layer (Layer 3 — First Extension) ✅ SHIPPED",
       "tasks": [
         {
           "id": "T049",
@@ -542,7 +547,7 @@
       ],
       "sp_estimate": 0,
       "doneWhen": [
-        "`ShipOrchestrator` no longer hardcodes workflow paths \u2014 resolves via `ReviewPlugin`",
+        "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
         "Post-dispatch validation reverts any cross-phase task re-opens",
         "`.gwrkrc.json` `review` field selects active review strategy"
       ]
@@ -617,7 +622,7 @@
         {
           "id": "T057",
           "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
-          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker \u2014 resolved by SkillRuntime",
+          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
           "status": "open",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
