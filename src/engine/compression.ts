@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  CommitCluster,
   CompressionRatios,
   CompressionReport,
   CompressionSummary,
@@ -9,7 +10,60 @@ import type {
   EffortForecast,
 } from "./types.js";
 
-/** ... existing exports ... */
+/**
+ * Clusters timestamps into work sessions.
+ * (FR-H05)
+ */
+export function clusterCommits(
+  timestamps: number[],
+  gapMinutes: number,
+): CommitCluster[] {
+  if (timestamps.length === 0) return [];
+
+  const sorted = [...timestamps].sort((a, b) => a - b);
+  const gapMs = gapMinutes * 60 * 1000;
+  const clusters: CommitCluster[] = [];
+
+  let currentStart = sorted[0] as number;
+  let currentEnd = sorted[0] as number;
+  let commitCount = 1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const ts = sorted[i] as number;
+    if (ts - currentEnd > gapMs) {
+      // Close current cluster
+      const durationMinutes = Math.max((currentEnd - currentStart) / 60000, 5);
+      clusters.push({
+        id: `session-${clusters.length + 1}`,
+        start: new Date(currentStart).toISOString(),
+        end: new Date(currentEnd).toISOString(),
+        durationMinutes,
+        commitCount,
+      });
+
+      // Start new cluster
+      currentStart = ts;
+      currentEnd = ts;
+      commitCount = 1;
+    } else {
+      currentEnd = ts;
+      commitCount++;
+    }
+  }
+
+  // Final cluster
+  const durationMinutes = Math.max((currentEnd - currentStart) / 60000, 5);
+  clusters.push({
+    id: `session-${clusters.length + 1}`,
+    start: new Date(currentStart).toISOString(),
+    end: new Date(currentEnd).toISOString(),
+    durationMinutes,
+    commitCount,
+  });
+
+  return clusters;
+}
+
 export function computeCompression(
   forecast: EffortForecast,
   actuals: DeliveryActuals,
@@ -180,46 +234,13 @@ export function gatherDeliveryActuals(
   const firstImplCommit = new Date(firstTimestamp).toISOString();
   const lastImplCommit = new Date(lastTimestamp).toISOString();
 
-  // Clustering
-  let sessionCount = 0;
-  let activeCodingMinutes = 0;
-  const gapMs = sessionGapMinutes * 60 * 1000;
-
-  if (timestamps.length === 1) {
-    sessionCount = 1;
-    // single commit heuristics: count as minimum 5 minutes
-    activeCodingMinutes = 5;
-  } else {
-    let currentSessionStart = firstTimestamp;
-    let currentSessionEnd = firstTimestamp;
-    sessionCount = 1;
-
-    for (let i = 1; i < timestamps.length; i++) {
-      const ts = timestamps[i] as number;
-      const diff = ts - currentSessionEnd;
-
-      if (diff > gapMs) {
-        // Gap exceeded. Close current session.
-        const sessionDuration =
-          (currentSessionEnd - currentSessionStart) / (1000 * 60);
-        // Minimum session duration of 5 minutes for single-isolated commits ending a session immediately
-        activeCodingMinutes += Math.max(sessionDuration, 5);
-
-        // Start new session
-        sessionCount++;
-        currentSessionStart = ts;
-        currentSessionEnd = ts;
-      } else {
-        // Extend current session
-        currentSessionEnd = ts;
-      }
-    }
-
-    // Close final session
-    const finalSessionDuration =
-      (currentSessionEnd - currentSessionStart) / (1000 * 60);
-    activeCodingMinutes += Math.max(finalSessionDuration, 5);
-  }
+  // Clustering using the new utility
+  const clusters = clusterCommits(timestamps, sessionGapMinutes);
+  const sessionCount = clusters.length;
+  const activeCodingMinutes = clusters.reduce(
+    (sum, c) => sum + c.durationMinutes,
+    0,
+  );
 
   const specCreatedTime = new Date(specCreatedAtStr).getTime();
   const firstImplTime = firstTimestamp;
@@ -263,5 +284,6 @@ export function gatherDeliveryActuals(
     activeCodingMinutes,
     sessionCount,
     deliveryWindowHours,
+    clusters,
   };
 }

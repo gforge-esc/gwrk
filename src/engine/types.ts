@@ -74,6 +74,14 @@ export interface EffortReport {
   totalDays: number;
 }
 
+export interface CommitCluster {
+  id: string;
+  start: string; // ISO timestamp
+  end: string; // ISO timestamp
+  durationMinutes: number;
+  commitCount: number;
+}
+
 // --- Compression Engine Types ---
 
 export interface DeliveryActuals {
@@ -85,6 +93,7 @@ export interface DeliveryActuals {
   activeCodingMinutes: number;
   sessionCount: number;
   deliveryWindowHours: number;
+  clusters?: CommitCluster[];
 }
 
 export interface CompressionRatios {
