@@ -539,9 +539,10 @@
           "id": "T049",
           "title": "Implement test strategy for Phase 9",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T049-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:50:51.000Z",
           "classification": "noop"
         }
       ],
@@ -560,72 +561,80 @@
           "id": "T050",
           "title": "Implement src/plugins/builtins/skills/gwrk-conventions/SKILL.md",
           "description": "NEW: valid task statuses, tasks.json Zod schema, commit identity rules, `.agents/` is legacy, file naming",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T050-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T051",
           "title": "Implement src/plugins/builtins/skills/gwrk-conventions/manifest.yaml",
           "description": "NEW: `type: skill`, `tier: enforcement`, `scope: implementation`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T051-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "change"
         },
         {
           "id": "T052",
           "title": "Implement src/plugins/builtins/skills/typescript-standards/SKILL.md",
           "description": "NEW: strict typing, no `any`, lint compliance, no `.js`/`.jsx` in `src/`, ESM conventions",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T052-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T053",
           "title": "Implement src/plugins/builtins/skills/typescript-standards/manifest.yaml",
           "description": "NEW: `type: skill`, `tier: enforcement`, `scope: implementation`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T053-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "change"
         },
         {
           "id": "T054",
           "title": "Implement src/plugins/skill-runtime.ts",
           "description": "MODIFY: add `resolveEnforcementSkills(projectRoot",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T054-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T055",
           "title": "Implement src/plugins/manifest.ts",
           "description": "MODIFY: add `tier: enforcement` to `SkillManifestSchema`, add `scope` field",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T055-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T056",
           "title": "Implement src/utils/agent.ts",
           "description": "MODIFY: call `resolveEnforcementSkills(",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T056-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "greenfield"
         },
         {
           "id": "T057",
           "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
           "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T057-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T09:55:00.000Z",
           "classification": "greenfield"
         },
         {
