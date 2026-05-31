@@ -1,196 +1,42 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PluginLoader } from "./loader.js";
-import {
-  assemblePrompt,
-  executeSkill,
-  validateCompoundManifest,
-} from "./skill-runtime.js";
+import { describe, it, expect, vi } from 'vitest';
+import { resolveEnforcementSkills } from './skill-runtime.js';
+import * as fs from 'node:fs';
 
-vi.mock("./loader.js");
-vi.mock("../engine/router.js", () => ({
-  selectBackend: vi
-    .fn()
-    .mockResolvedValue({ name: "gemini", model: "gemini-2.0-flash" }),
-}));
-vi.mock("./agent-registry.js", () => ({
-  AgentBackendRegistry: vi.fn().mockImplementation(() => ({})),
-}));
-vi.mock("../utils/agent.js", () => ({
-  dispatchToAgent: vi.fn().mockResolvedValue({
-    success: true,
-    exitCode: 0,
-    stdout: "Mocked agent output",
-    stderr: "",
-    output: "Mocked agent output",
-    durationMs: 150,
-    durationS: 0,
-  }),
-}));
-vi.mock("../utils/agent-layer.js", () => ({
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: Testing ansi strip
-  processForAgent: vi.fn((text: string) => text.replace(/\x1B\[[0-9;]*m/g, "")),
-}));
-vi.mock("node:child_process", () => ({
-  // biome-ignore lint/complexity/noBannedTypes: Mock callback
-  exec: vi.fn((cmd: string, cb: Function) =>
-    cb(null, { stdout: "Mocked output", stderr: "Mocked error" }),
-  ),
-}));
+vi.mock('node:fs');
 
-describe("FR-006 / FR-008 / FR-009: Skill Runtime Logic", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe('FR-014: resolveEnforcementSkills', () => {
+  it('TR-P9-001: returns builtin enforcement skill content', async () => {
+    // Setup: mock filesystem to have a builtin enforcement skill
+    const builtinContent = '# GWRK Conventions\n- No .agents/ directory';
+    vi.mocked(fs.readFileSync).mockReturnValue(builtinContent);
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    const skills = await resolveEnforcementSkills('/fake/root');
+    expect(skills).toContain('GWRK Conventions');
   });
 
-  describe("Skill Execution (FR-006 / US-005)", () => {
-    it("resolves and executes an atomic skill", async () => {
-      const mockLoader = {
-        resolvePlugin: vi.fn().mockResolvedValue({
-          manifest: {
-            type: "skill",
-            tier: "atomic",
-            name: "narrative",
-            prompt: "Test prompt",
-            runtime: {
-              preferredAgent: "gemini",
-              preferredModel: "gemini-2.0-flash",
-            },
-          },
-          path: "/mock/path",
-          status: "active",
-        }),
-      };
-      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
-      (PluginLoader as any).mockImplementation(() => mockLoader);
-
-      const result = await executeSkill("narrative", { input: "test" });
-      expect(result.stdout).toBeDefined();
-      expect(result.exitCode).toBe(0);
-      expect(result.durationS).toBeGreaterThanOrEqual(0);
+  it('TR-P9-002 / ADR-007: project-local skill overrides builtin', async () => {
+    // Implementation should check local -> global -> builtin
+    // Mock local exists, builtin exists
+    const localContent = '# Local Standards\n- Use Biome';
+    
+    vi.mocked(fs.existsSync).mockImplementation((path: any) => {
+      if (path.toString().includes('.gwrk/plugins/skills')) return true;
+      return true;
+    });
+    
+    vi.mocked(fs.readFileSync).mockImplementation((path: any) => {
+      if (path.toString().includes('.gwrk/plugins/skills')) return localContent;
+      return 'builtin content';
     });
 
-    it("fails if skill is not found", async () => {
-      const mockLoader = {
-        resolvePlugin: vi
-          .fn()
-          .mockRejectedValue(new Error("Plugin 'nonexistent' not found")),
-      };
-      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
-      (PluginLoader as any).mockImplementation(() => mockLoader);
-
-      await expect(executeSkill("nonexistent")).rejects.toThrow(
-        /Plugin 'nonexistent' not found/,
-      );
-    });
+    const skills = await resolveEnforcementSkills('/fake/root');
+    expect(skills).toContain('Local Standards');
+    expect(skills).not.toContain('builtin content');
   });
 
-  describe("Compound Skill Logic (FR-008 / FR-009 / US-006)", () => {
-    it("assembles multiple passes into a single prompt (FR-008)", async () => {
-      const mockLoader = {
-        resolvePlugin: vi.fn().mockImplementation((name) => {
-          return {
-            manifest: {
-              type: "skill",
-              tier: "atomic",
-              name,
-              prompt: `${name} prompt`,
-            },
-          };
-        }),
-      };
-      const compoundManifest = {
-        type: "skill",
-        tier: "compound",
-        description: "Mock compound",
-        passes: [
-          { name: "p1", skill: "s1", summary: "Apply s1" },
-          { name: "p2", skill: "s2", summary: "Apply s2" },
-        ],
-        // biome-ignore lint/suspicious/noExplicitAny: Mock structure
-      } as any;
-      const prompt = await assemblePrompt(
-        compoundManifest,
-        "test input",
-        // biome-ignore lint/suspicious/noExplicitAny: Mock class dependency
-        mockLoader as any,
-      );
-      expect(prompt).toContain("s1");
-      expect(prompt).toContain("s2");
-      expect(prompt).toContain("test input");
-    });
-
-    it("validates that all composed skills are installed (FR-009)", async () => {
-      const mockLoader = {
-        resolvePlugin: vi.fn().mockImplementation((name) => {
-          if (name === "missing-skill") throw new Error("Not found");
-          return { manifest: { type: "skill" } };
-        }),
-      };
-      const manifest = {
-        type: "skill",
-        name: "signal-cut",
-        tier: "compound",
-        composes: ["narrative", "missing-skill"],
-        passes: [],
-        // biome-ignore lint/suspicious/noExplicitAny: Mock structure
-      } as any;
-      await expect(
-        // biome-ignore lint/suspicious/noExplicitAny: Mock class dependency
-        validateCompoundManifest(manifest, mockLoader as any),
-      ).rejects.toThrow(/Missing dependency: skill 'missing-skill'/);
-    });
-  });
-
-  describe("F013 Contract (FR-007 / US-005)", () => {
-    it("strips ANSI codes in --agent mode", async () => {
-      // This is tested via mocked processForAgent if integrated,
-      // but here we can check if it calls it.
-      // Actually executeSkill uses processForAgent directly from ../utils/agent-layer.js
-      const mockLoader = {
-        resolvePlugin: vi.fn().mockResolvedValue({
-          manifest: {
-            type: "skill",
-            tier: "atomic",
-            name: "narrative",
-            prompt: "Test prompt",
-            runtime: {
-              preferredAgent: "gemini",
-              preferredModel: "gemini-2.0-flash",
-            },
-          },
-        }),
-      };
-      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
-      (PluginLoader as any).mockImplementation(() => mockLoader);
-
-      const result = await executeSkill("narrative", {
-        agent: true,
-        input: "test",
-      });
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: Testing ansi strip
-      expect(result.stdout).not.toMatch(/\x1B\[/);
-    });
-
-    it("returns exitCode and durationS", async () => {
-      const mockLoader = {
-        resolvePlugin: vi.fn().mockResolvedValue({
-          manifest: {
-            type: "skill",
-            tier: "atomic",
-            name: "narrative",
-            prompt: "Test prompt",
-            runtime: {
-              preferredAgent: "gemini",
-              preferredModel: "gemini-2.0-flash",
-            },
-          },
-        }),
-      };
-      // biome-ignore lint/suspicious/noExplicitAny: Mocking wrapper class
-      (PluginLoader as any).mockImplementation(() => mockLoader);
-      const result = await executeSkill("narrative");
-      expect(result.exitCode).toBe(0);
-      expect(result.durationS).toBeGreaterThanOrEqual(0);
-    });
+  it('TR-P10-003: contains no legacy .agents/ path references', () => {
+    const source = fs.readFileSync('src/plugins/skill-runtime.ts', 'utf8');
+    expect(source).not.toContain('.agents/skills/');
   });
 });

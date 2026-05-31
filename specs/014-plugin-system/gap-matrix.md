@@ -1,10 +1,15 @@
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
-| FR-011 | Plugin migrate (copy, manifest, preserve) | unit | src/plugins/migrate.test.ts | ✅ | |
-| US-009 | migrate --dry-run support | unit | src/plugins/migrate.test.ts | ✅ | |
-| TC-006 | Skill preservation (no delete originals) | unit | src/plugins/migrate.test.ts | ✅ | |
-| FR-012 | Plugin seed (parse taxonomy, atomic skills) | unit | src/plugins/seed.test.ts | ✅ | |
-| US-010 | seed --dry-run support | unit | src/plugins/seed.test.ts | ✅ | |
-| FR-L25-005 | gwrk init (provision 10 core workflows) | unit | src/commands/init.test.ts | ✅ | |
-| US-014 | Sync default governance rules | unit | src/commands/init.test.ts | ✅ | |
-| US-014 | No .agents/ in project root by default | unit | src/commands/init.test.ts | ✅ | |
+| FR-014 | Enforcement skills auto-loading | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| US-016 | Enforcement skills tier/scope | unit | src/plugins/manifest.test.ts | ✅ | |
+| FR-013 | Enforcement tier in manifest | unit | src/plugins/manifest.test.ts | ✅ | |
+| FR-010 | Help listing grouped by tier | unit | src/commands/plugin.test.ts | ✅ | |
+| US-011 | Execute built-in workflow | unit | src/plugins/loader.test.ts | ✅ | |
+| US-016 AC 2 | Dispatch includes enforcement | unit | src/utils/agent.test.ts | ✅ | |
+| US-016 AC 3 | Local override precedence | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| FR-L25-003 | Rules seeded on init | unit | src/commands/init.test.ts | ✅ | |
+| TC-011 | Zero-dependency workflows | unit | src/plugins/loader.test.ts | ✅ | |
+| ADR-007 | Resolution hierarchy | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| TR-P9-006 | Conventions enum check | unit | src/plugins/builtins/skills/gwrk-conventions/SKILL.test.ts | ✅ | |
+| FR-L25-003 | No .agents/ path in runtime | unit | src/plugins/skill-runtime.test.ts | ✅ | |
+| FR-L25-003 | No .agents/ in slack-agent | unit | src/server/slack-agent.test.ts | ✅ | |

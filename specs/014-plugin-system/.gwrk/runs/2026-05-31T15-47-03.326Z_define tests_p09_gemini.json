@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-31T15:47:03.326Z_define_p09",
+  "feature": "014-plugin-system",
+  "phase": "p09",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-31T15:47:03.326Z",
+  "finishedAt": "2026-05-31T15:47:37.101Z",
+  "durationS": 34,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 17,
+  "linesAdded": 584,
+  "linesDeleted": 1684,
+  "gitCommit": "d9cfc23ccf9358fd2d6085c5a364d4052fe42f52",
+  "gitBranch": "feat/014-plugin-system",
+  "digest": []
+}
