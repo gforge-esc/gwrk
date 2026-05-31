@@ -643,7 +643,7 @@
           "status": "completed",
           "gateScript": "gates/T058-gate.sh",
           "sp": 0,
-          "classification": "manual-reconciliation",
+          "classification": "noop",
           "completedAt": "2026-05-31T16:28:00.000Z",
           "description": "Phase 10 test strategy \u2014 all 8 enforcement tests pass (TR-P9-001 through TR-P9-006). UAT scope leak caused CIRCUIT_BREAK (FM-2)."
         }
