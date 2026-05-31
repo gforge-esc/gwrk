@@ -64,11 +64,18 @@ export function clusterCommits(
   return clusters;
 }
 
+/**
+ * Computes compression ratios for a feature phase.
+ * Point Compression: How much faster agents ship per story point vs human baseline.
+ * Total Compression: How much faster the feature is delivered vs human schedule.
+ * (FR-H04, FR-H05)
+ */
 export function computeCompression(
   forecast: EffortForecast,
   actuals: DeliveryActuals,
 ): CompressionRatios {
   // Point Compression = Estimated Coding Hours / Actual Coding Time (hours)
+  // Actual coding time is derived from commit clustering (FR-H04)
   const actualHours = actuals.activeCodingMinutes / 60;
   const pointCompression =
     actualHours > 0
@@ -76,6 +83,7 @@ export function computeCompression(
       : Number.POSITIVE_INFINITY;
 
   // Total Compression = Estimated Elapsed Days / Actual Elapsed Days
+  // Actual days is delivery window: first commit -> merge (FR-H05)
   const actualDays = actuals.deliveryWindowHours / 24;
   const totalCompression =
     actualDays > 0
@@ -172,6 +180,7 @@ export function generateSummary(
 export function gatherDeliveryActuals(
   featureDir: string,
   sessionGapMinutes = 30,
+  prNumber?: number,
 ): DeliveryActuals {
   const specPath = path.join(featureDir, "spec.md");
   if (!fs.existsSync(featureDir)) {
@@ -252,14 +261,15 @@ export function gatherDeliveryActuals(
   let prMergedAtStr = lastImplCommit;
   try {
     const parentDir = path.dirname(featureDir);
-    const ghOut = execFileSync(
-      "gh",
-      ["pr", "view", "--json", "mergedAt", "--jq", ".mergedAt"],
-      {
-        cwd: parentDir,
-        encoding: "utf-8",
-      },
-    )
+    const args = ["pr", "view", "--json", "mergedAt", "--jq", ".mergedAt"];
+    if (prNumber) {
+      args.splice(2, 0, String(prNumber));
+    }
+
+    const ghOut = execFileSync("gh", args, {
+      cwd: parentDir,
+      encoding: "utf-8",
+    })
       .toString()
       .trim();
     if (ghOut && ghOut !== "null") {

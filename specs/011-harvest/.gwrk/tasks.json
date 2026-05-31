@@ -108,7 +108,7 @@
         {
           "id": "T008",
           "title": "Implement src/engine/compression.ts",
-          "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`",
+          "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`.\nREVIEW FAIL (gate): T008-gate.sh failed.\n  WHERE: src/engine/compression.ts\n  EXPECTED: Compression logic fully implemented and passing tests.\n  ACTUAL: Task remains in open state and gate fails due to dependent test failures.\n  FIX: Complete implementation of computeCompression and associated logic.",
           "status": "open",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
@@ -127,22 +127,22 @@
         {
           "id": "T010",
           "title": "Implement src/engine/harvest.ts",
-          "description": "Modify: Wire in `computeCompression` inside `harvestFeature`",
+          "description": "Modify: Wire in `computeCompression` inside `harvestFeature`.\nREVIEW FAIL (code): Implementation Gap (FR-H09) & Test Failures.\n  WHERE: src/engine/harvest.ts:130-160\n  EXPECTED: harvestFeature must verify all pending runs for a phase are merged before finalizing.\n  ACTUAL: Logic proceeds to compression calculation even if other runs are pending.\n  FIX: Implement a check to ensure all phase runs are merged before finalizing.",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T04:13:39.869Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "completedAt": "2026-05-31T19:33:32.138Z"
         },
         {
           "id": "T011",
           "title": "Implement test strategy for Phase 3",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
+          "description": "Implement all unit and integration tests defined in the phase test strategy.\nREVIEW FAIL (test): Phase 3 Unit Test Failures.\n  WHERE: src/engine/harvest.test.ts\n  EXPECTED: All harvest engine tests pass.\n  ACTUAL: 3 failures (FR-H09 missing logic, undefined compression values, Slack notification crash).\n  FIX: Fix harvest.ts implementation and ensure complete test data in mocks.",
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T04:13:39.880Z",
-          "classification": "noop"
+          "classification": "noop",
+          "completedAt": "2026-05-31T19:33:32.143Z"
         }
       ],
       "sp_estimate": 0,
