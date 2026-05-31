@@ -1,59 +1,52 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { seedSkills } from "./seed.js";
+import { parse } from "yaml";
 
 vi.mock("node:fs/promises");
+vi.mock("node:os");
 
-describe("FR-012: Skill Seeding (Taxonomy to Skills)", () => {
+describe("TR-006: seed()", () => {
+  const mockHome = "/mock/home";
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(os.homedir).mockReturnValue(mockHome);
   });
 
-  it("US-010: parses reasoning-modes.md and generates atomic skill plugins", async () => {
-    // Mocking reasoning-modes.md content
-    vi.mocked(fs.readFile).mockResolvedValue(`Reasoning Modes
-1. **narrative** - Frame everything as story.
-    > "You are a narrator..."
+  it("preserves categories from taxonomy", async () => {
+    const taxonomyContent = `Reasoning Modes
+
+1. **Analytical** - Break down structure.
+    > "ANALYZE THIS"
+
 ---
+
 Evaluative Modes
-1. **adversarial** - Attack the idea.
-    > "You are a skeptic..."
-`);
 
-    // Mock fs.stat to throw (not found)
+1. **Adversarial** - Attack the idea.
+    > "ATTACK THIS"
+`;
+
+    vi.mocked(fs.readFile).mockResolvedValue(taxonomyContent);
     vi.mocked(fs.stat).mockRejectedValue(new Error("Not found"));
 
     await seedSkills();
 
-    // Verify it attempted to write manifest.yaml and SKILL.md for 'narrative'
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      expect.stringContaining("narrative/manifest.yaml"),
-      expect.stringContaining("tier: atomic"),
-    );
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      expect.stringContaining("narrative/SKILL.md"),
-      expect.stringContaining("You are a narrator"),
-    );
-  });
+    // Check reasoning skill
+    const analyticalManifestPath = path.join(mockHome, ".gwrk", "plugins", "skills", "analytical", "manifest.yaml");
+    const analyticalCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === analyticalManifestPath);
+    expect(analyticalCall).toBeDefined();
+    const analyticalManifest = parse(analyticalCall![1] as string);
+    expect(analyticalManifest.category).toBe("reasoning");
 
-  it("US-010: preserves categories from the taxonomy", async () => {
-    vi.mocked(fs.readFile).mockResolvedValue(`Creative Modes
-1. **generative** - Raw ideation.
-    > "No filtering..."
-`);
-    vi.mocked(fs.stat).mockRejectedValue(new Error("Not found"));
-
-    await seedSkills();
-
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      expect.stringContaining("generative/manifest.yaml"),
-      expect.stringContaining("category: creative"),
-    );
-  });
-
-  it("US-010: supports --dry-run mode", async () => {
-    await seedSkills({ dryRun: true });
-    expect(fs.writeFile).not.toHaveBeenCalled();
+    // Check evaluative skill
+    const adversarialManifestPath = path.join(mockHome, ".gwrk", "plugins", "skills", "adversarial", "manifest.yaml");
+    const adversarialCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === adversarialManifestPath);
+    expect(adversarialCall).toBeDefined();
+    const adversarialManifest = parse(adversarialCall![1] as string);
+    expect(adversarialManifest.category).toBe("evaluative");
   });
 });

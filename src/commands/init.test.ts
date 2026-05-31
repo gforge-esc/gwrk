@@ -8,6 +8,7 @@ import * as exec from "../utils/exec.js";
 import * as slackClient from "../utils/slack-client.js";
 import * as slackChannel from "../server/slack-channel.js";
 import * as seed from "../plugins/seed.js";
+import * as migrate from "../plugins/migrate.js";
 import { initCommand } from "./init.js";
 
 vi.mock("../utils/slack-client.js", () => ({
@@ -21,6 +22,10 @@ vi.mock("../server/slack-channel.js", () => ({
 
 vi.mock("../plugins/seed.js", () => ({
   seedSkills: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../plugins/migrate.js", () => ({
+  migratePlugins: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../db/plugins.js", () => ({
@@ -81,6 +86,7 @@ describe("initCommand", () => {
     expect(fs.existsSync(wfDir)).toBe(true);
     expect(fs.existsSync(path.join(wfDir, "manifest.yaml"))).toBe(true);
     expect(seed.seedSkills).toHaveBeenCalled();
+    expect(migrate.migratePlugins).toHaveBeenCalled();
 
     const config = JSON.parse(
       fs.readFileSync(path.join(tempDir, ".gwrkrc.json"), "utf-8"),

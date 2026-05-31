@@ -8,6 +8,7 @@ import type { GwrkConfig } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 
 import { seedSkills } from "../plugins/seed.js";
+import { migratePlugins } from "../plugins/migrate.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const initCommand = new Command("init")
@@ -116,6 +117,9 @@ export const initCommand = new Command("init")
 
       // Seed Skills (FR-012)
       await seedSkills();
+
+      // Migrate legacy .agents (FR-011)
+      await migratePlugins();
 
       // Seed Rules (ADR-007)
       const gwrkRulesDir = path.join(projectRoot, ".gwrk", "rules");
