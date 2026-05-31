@@ -49,7 +49,7 @@ describe("Server E2E Integration", () => {
     process.chdir(tempDir);
 
     // Initialize mock workspace
-    fs.mkdirSync(".agents/rules", { recursive: true });
+    fs.mkdirSync(".gwrk/rules", { recursive: true });
     fs.mkdirSync("specs/feat-1/.gwrk", { recursive: true });
     fs.writeFileSync("specs/feat-1/spec.md", "# Spec 1");
     fs.writeFileSync("specs/feat-1/plan.md", "# Plan 1");

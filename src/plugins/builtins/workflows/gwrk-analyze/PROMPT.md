@@ -113,7 +113,7 @@ When `/plan-to-tasks` has already generated gate scripts, analyze their quality:
 
 #### F. Governance Alignment
 
-Reference applicable governance rules from `.agent/rules/`:
+Reference applicable governance rules from `.gwrk/rules/`:
 - Config hygiene if config/env changes
 - Seeding governance if fixture changes
 
