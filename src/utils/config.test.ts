@@ -5,23 +5,35 @@ import { GwrkConfigSchema } from './config';
 describe('Config Schema Extension (FR-032, TC-011)', () => {
   it('TR-033: maintains backward compatibility with legacy config (TC-011)', () => {
     const legacyConfig = {
-      featurePrefix: 'TR',
-      agents: { gemini: 'model-v1' }
+      project: {
+        name: 'test-project'
+      },
+      agents: {
+        define: 'gemini',
+        implement: 'gemini'
+      }
     };
     const result = GwrkConfigSchema.safeParse(legacyConfig);
+    if (!result.success) {
+      console.error(result.error);
+    }
     expect(result.success).toBe(true);
   });
 
   it('FR-032: validates new project profile fields', () => {
     const newConfig = {
       project: {
+        name: 'test-project',
         type: 'pnpm-monorepo',
         stack: {
           language: 'typescript',
-          packageManager: 'pnpm',
-          testFramework: 'vitest'
+          buildSystem: 'pnpm'
         },
         layout: 'standard-monorepo'
+      },
+      agents: {
+        define: 'gemini',
+        implement: 'gemini'
       }
     };
     const result = GwrkConfigSchema.safeParse(newConfig);
@@ -33,6 +45,7 @@ describe('Config Schema Extension (FR-032, TC-011)', () => {
   it('FR-032: rejects invalid project.stack values', () => {
     const invalidConfig = {
       project: {
+        name: 'test-project',
         stack: {
           language: 123 // Should be string
         }

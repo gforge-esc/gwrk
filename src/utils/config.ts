@@ -17,6 +17,17 @@ export const GwrkConfigSchema = z.object({
   project: z.object({
     name: z.string().min(1),
     githubRepo: z.string().optional(),
+    type: z.string().optional(),
+    stack: z
+      .object({
+        language: z.string().optional(),
+        framework: z.string().optional(),
+        buildSystem: z.string().optional(),
+      })
+      .optional(),
+    layout: z.string().optional(),
+    architecture: z.string().optional(),
+    conventions: z.string().optional(),
     slack: z
       .object({
         channelId: z.string(),

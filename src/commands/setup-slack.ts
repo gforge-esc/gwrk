@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import { Command } from "commander";
 import { banner, color, fail, success } from "../utils/format.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 import {
   type SlackSetupResult,
   getEnvPath,
@@ -289,13 +290,3 @@ export async function setupSlack(opts: {
   return interactiveSetup();
 }
 
-import { CommandError, withSignal } from "../utils/signal.js";
-
-export const setupSlackCommand = new Command("slack")
-  .description("Setup Slack integration")
-  .option("--verify", "Verify existing Slack configuration")
-  .action(async (options) => {
-    await withSignal("setup slack", async () => {
-      await setupSlack(options);
-    });
-  });
