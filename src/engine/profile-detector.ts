@@ -14,7 +14,9 @@ export interface ProjectProfile {
 /**
  * Auto-detect project type, stack, and layout from filesystem signals
  */
-export async function detectProfile(projectRoot: string): Promise<ProjectProfile> {
+export async function detectProfile(
+  projectRoot: string,
+): Promise<ProjectProfile> {
   const profile: ProjectProfile = {
     type: "unknown",
     stack: {},
@@ -24,7 +26,10 @@ export async function detectProfile(projectRoot: string): Promise<ProjectProfile
   const files = fs.readdirSync(projectRoot);
 
   // 1. Detect Type & Stack
-  if (files.includes("pnpm-workspace.yaml") || files.includes("pnpm-lock.yaml")) {
+  if (
+    files.includes("pnpm-workspace.yaml") ||
+    files.includes("pnpm-lock.yaml")
+  ) {
     profile.type = "pnpm-monorepo";
     profile.stack.language = "TypeScript";
     profile.stack.buildSystem = "pnpm";
@@ -33,9 +38,11 @@ export async function detectProfile(projectRoot: string): Promise<ProjectProfile
     profile.type = "nodejs";
     profile.stack.language = "JavaScript";
     profile.stack.buildSystem = "npm";
-    
+
     try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
+      const pkg = JSON.parse(
+        fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
+      );
       if (pkg.devDependencies?.typescript || pkg.dependencies?.typescript) {
         profile.stack.language = "TypeScript";
       }
@@ -49,20 +56,34 @@ export async function detectProfile(projectRoot: string): Promise<ProjectProfile
     profile.type = "rust";
     profile.stack.language = "Rust";
     profile.stack.buildSystem = "cargo";
-  } else if (files.includes("pyproject.toml") || files.includes("requirements.txt") || files.includes("setup.py")) {
+  } else if (
+    files.includes("pyproject.toml") ||
+    files.includes("requirements.txt") ||
+    files.includes("setup.py")
+  ) {
     profile.type = "python";
     profile.stack.language = "Python";
     if (files.includes("poetry.lock")) profile.stack.buildSystem = "Poetry";
-    else if (files.includes("requirements.txt")) profile.stack.buildSystem = "pip";
-  } else if (files.includes("GEMINI.md") || fs.existsSync(path.join(projectRoot, ".gwrk"))) {
+    else if (files.includes("requirements.txt"))
+      profile.stack.buildSystem = "pip";
+  } else if (
+    files.includes("GEMINI.md") ||
+    fs.existsSync(path.join(projectRoot, ".gwrk"))
+  ) {
     profile.type = "gwrk-native";
   }
 
   // 2. Refine Layout
   if (profile.layout !== "monorepo") {
-    if (files.includes("src") && fs.statSync(path.join(projectRoot, "src")).isDirectory()) {
+    if (
+      files.includes("src") &&
+      fs.statSync(path.join(projectRoot, "src")).isDirectory()
+    ) {
       profile.layout = "src-nested";
-    } else if (files.includes("lib") && fs.statSync(path.join(projectRoot, "lib")).isDirectory()) {
+    } else if (
+      files.includes("lib") &&
+      fs.statSync(path.join(projectRoot, "lib")).isDirectory()
+    ) {
       profile.layout = "lib-nested";
     } else {
       profile.layout = "flat";

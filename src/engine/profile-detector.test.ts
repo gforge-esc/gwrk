@@ -15,7 +15,7 @@ describe("profile-detector", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should detect pnpm monorepo", async () => {
+  it("detects project type via core detection logic for pnpm monorepo", async () => {
     fs.writeFileSync(path.join(tmpDir, "pnpm-workspace.yaml"), "");
     fs.mkdirSync(path.join(tmpDir, "packages"));
     
@@ -25,7 +25,7 @@ describe("profile-detector", () => {
     expect(profile.layout).toBe("monorepo");
   });
 
-  it("should detect rust project", async () => {
+  it("detects project type via core detection logic for rust project", async () => {
     fs.writeFileSync(path.join(tmpDir, "Cargo.toml"), "");
     fs.mkdirSync(path.join(tmpDir, "src"));
     
@@ -35,7 +35,7 @@ describe("profile-detector", () => {
     expect(profile.layout).toBe("src-nested");
   });
 
-  it("should detect python project", async () => {
+  it("should perform tech stack and layout extraction for python project", async () => {
     fs.writeFileSync(path.join(tmpDir, "requirements.txt"), "");
     
     const profile = await detectProfile(tmpDir);
@@ -44,7 +44,7 @@ describe("profile-detector", () => {
     expect(profile.stack.buildSystem).toBe("pip");
   });
 
-  it("should detect nodejs project with framework", async () => {
+  it("should perform tech stack and layout extraction for nodejs project with framework", async () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({
       dependencies: {
         express: "^4.18.2"

@@ -9,10 +9,10 @@ import type { GwrkConfig } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 
 import { detectProfile } from "../engine/profile-detector.js";
-import { seedSkills } from "../plugins/seed.js";
 import { migratePlugins } from "../plugins/migrate.js";
-import { CommandError, withSignal } from "../utils/signal.js";
+import { seedSkills } from "../plugins/seed.js";
 import { banner, color, success } from "../utils/format.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 const { BOLD, DIM, GREEN, CYAN, YELLOW, RESET } = color;
 

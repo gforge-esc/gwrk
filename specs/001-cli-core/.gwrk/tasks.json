@@ -400,56 +400,50 @@
         {
           "id": "T042",
           "title": "Implement detectProfile core logic and project type detection",
-          "description": "Implement core detection logic for project type (cargo, python, pnpm, etc.) in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts",
-          "status": "completed",
+          "description": "Implement core detection logic for project type (cargo, python, pnpm, etc.) in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts\n\nPOST-FLIGHT GATE FAIL: gates/T042-gate.sh exited non-zero.\n  OUTPUT: RUN  v3.2.4 /Users/gonzo/Code/gwrk\n\n ↓ src/engine/profile-detector.test.ts > profile-detector > should detect pnpm monorepo\n ↓ src/engine/profile-detector.test.ts > profile-detector > should detect ru",
+          "status": "open",
           "gateScript": "gates/T042-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:00.240Z"
+          "sp": 0
         },
         {
           "id": "T043",
           "title": "Implement tech stack and layout extraction in detectProfile",
-          "description": "Implement extraction of language, framework, build system, and source layout in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts",
-          "status": "completed",
+          "description": "Implement extraction of language, framework, build system, and source layout in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts\n\nPOST-FLIGHT GATE FAIL: gates/T043-gate.sh exited non-zero.\n  OUTPUT: RUN  v3.2.4 /Users/gonzo/Code/gwrk\n\n ↓ src/engine/profile-detector.test.ts > profile-detector > should detect pnpm monorepo\n ↓ src/engine/profile-detector.test.ts > profile-detector > should detect ru",
+          "status": "open",
           "gateScript": "gates/T043-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:01.264Z"
+          "sp": 0
         },
         {
           "id": "T044",
           "title": "Refactor setup-slack.ts for internal callability",
-          "description": "Refactor Slack setup logic to be easily callable from the interactive init flow. Tests: src/commands/setup-slack.test.ts",
-          "status": "completed",
+          "description": "Refactor Slack setup logic to be easily callable from the interactive init flow. Tests: src/commands/setup-slack.test.ts\n\nPOST-FLIGHT GATE FAIL: gates/T044-gate.sh exited non-zero.\n  OUTPUT: RUN  v3.2.4 /Users/gonzo/Code/gwrk\n\n ✓ src/commands/setup-slack.test.ts > setupSlack > should detect already configured slack 2ms\n ✓ src/commands/setup-slack.test.ts > setupSlack > should setup slack ",
+          "status": "open",
           "gateScript": "gates/T044-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:02.384Z"
+          "sp": 0
         },
         {
           "id": "T045",
           "title": "Implement gwrk init interactive wizard skeleton and welcome",
-          "description": "Setup interactive prompt framework in src/commands/init.ts and implement the initial welcome and detection display. Tests: src/commands/init.test.ts",
-          "status": "completed",
+          "description": "Setup interactive prompt framework in src/commands/init.ts and implement the initial welcome and detection display. Tests: src/commands/init.test.ts\n\nPOST-FLIGHT GATE FAIL: gates/T045-gate.sh exited non-zero.\n  OUTPUT: RUN  v3.2.4 /Users/gonzo/Code/gwrk\n\n ↓ src/commands/init.test.ts > init command > should initialize a new project non-interactively\n ↓ src/commands/init.test.ts > init command > should update an exist",
+          "status": "open",
           "gateScript": "gates/T045-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:03.421Z"
+          "sp": 0
         },
         {
           "id": "T046",
           "title": "Implement profile confirmation and editing in init wizard",
-          "description": "Allow user to confirm or manually override detected profile fields (type, stack, layout) in src/commands/init.ts. Tests: src/commands/init.test.ts",
-          "status": "completed",
+          "description": "Allow user to confirm or manually override detected profile fields (type, stack, layout) in src/commands/init.ts. Tests: src/commands/init.test.ts\n\nPOST-FLIGHT GATE FAIL: gates/T046-gate.sh exited non-zero.\n  OUTPUT: RUN  v3.2.4 /Users/gonzo/Code/gwrk\n\n ↓ src/commands/init.test.ts > init command > should initialize a new project non-interactively\n ↓ src/commands/init.test.ts > init command > should update an exist",
+          "status": "open",
           "gateScript": "gates/T046-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:04.457Z"
+          "sp": 0
         },
         {
           "id": "T047",
           "title": "Absorb macOS TCC guidance into init flow",
-          "description": "Integrate TCC Full Disk Access check and guidance from setup.ts into the unified init flow. Tests: src/commands/init.test.ts",
-          "status": "completed",
+          "description": "Integrate TCC Full Disk Access check and guidance from setup.ts into the unified init flow. Tests: src/commands/init.test.ts\n\nPOST-FLIGHT GATE FAIL: gates/T047-gate.sh exited non-zero.\n  OUTPUT: RUN  v3.2.4 /Users/gonzo/Code/gwrk\n\nstdout | src/commands/init.test.ts > init command > should initialize a new project non-interactively\n\n\u001b[2m──────────────────────────────────────────────────\u001b[0m\n\u001b[",
+          "status": "open",
           "gateScript": "gates/T047-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:05.547Z"
+          "sp": 0
         },
         {
           "id": "T048",

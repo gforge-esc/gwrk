@@ -170,7 +170,8 @@ export function loadConfig(projectRoot: string): GwrkConfig {
   if (raw.agents?.registry) {
     for (const [name, config] of Object.entries(raw.agents.registry)) {
       if (typeof config === "object" && config !== null) {
-        (config as any).name = (config as any).name ?? name;
+        const c = config as Record<string, unknown>;
+        c.name = c.name ?? name;
       }
     }
   }

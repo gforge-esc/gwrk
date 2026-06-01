@@ -289,4 +289,3 @@ export async function setupSlack(opts: {
   // No config, no env vars — interactive setup
   return interactiveSetup();
 }
-
