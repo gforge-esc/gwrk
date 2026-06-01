@@ -1,65 +1,62 @@
-# Gap Analysis: 001 CLI Core - Phase 10 (Unified Init R3)
+# Gap Analysis: 001-cli-core Phase 13 (Project Awareness)
 
+**Feature**: 001-cli-core
+**Phase**: 13
 **Date**: 2026-06-01
-**Revision**: R3 Audit
 
-## Overview
+## 1. Context Audit
 
-Phase 10 (Unified Init) is the cornerstone of the R3 "Project Awareness" initiative. The goal is to move from a fragmented, hardcoded onboarding flow to a project-aware interactive wizard. Current implementation is essentially a non-interactive directory scafolder with a separate `setup` command for workstation configuration.
+- **Spec**: `spec.md` R3 defines US-028 (Prompt Conditioning) and US-029 (Project Info).
+- **Plan**: `plan.md` R3 outlines Phase 13 implementation.
+- **Contracts**:
+    - `agent.md`: Defines `dispatchAgent`, but doesn't mention prompt conditioning.
+    - `config.md`: Defines `loadConfig`, which now returns a profile (from Phase 10).
+- **Actual Code**:
+    - `src/engine/prompt-conditioner.ts`: **STUB**. Throws "Not implemented".
+    - `src/commands/project-info.ts`: **STUB**. Throws "Not implemented".
+    - `src/engine/prompt-conditioner.test.ts`: **RED**. Exists but failing.
+    - `src/commands/project-info.test.ts`: **RED**. Exists but failing.
+    - `src/plugins/workflow-runtime.ts`: **MISSING** integration with prompt-conditioner.
+    - `src/engine/ship-orchestrator.ts`: **MISSING** integration with prompt-conditioner.
+    - `PROMPT.md` (15 files): **WRONG**. Contain ungated gwrk-native references.
 
-## Findings
+## 2. Findings
 
-### 1. Unified Onboarding (US-001 R3)
-- **Status**: `wrong`
-- **Details**: 
-    - `src/commands/init.ts` is non-interactive. It uses flags (`--github`, `--slack`) instead of an interactive prompt.
-    - It lacks the discovery phase (profile detection).
-    - It does not integrate workstation setup (TCC, SSH, GitHub auth).
-    - No `--non-interactive` flag exists to support CI/CD or power-user flows.
+| Item | Status | Finding |
+|---|---|---|
+| `prompt-conditioner.ts` | `greenfield` | Core logic for XML injection and guard resolution missing. |
+| `project-info.ts` | `greenfield` | Logic to display resolved profile and support JSON output missing. |
+| `workflow-runtime.ts` | `missing` | Workflow dispatch needs to call `conditionPrompt`. |
+| `ship-orchestrator.ts` | `missing` | Review dispatch needs to call `conditionPrompt`. |
+| `PROMPT.md` files | `wrong` | All PROMPT.md files assume gwrk-native project structure. |
 
-### 2. Profile Auto-Detection (US-027)
-- **Status**: `greenfield`
-- **Details**:
-    - `src/engine/profile-detector.ts` exists but is an empty stub.
-    - Needs implementation of logic to detect `package.json` (pnpm/npm/yarn), `Cargo.toml` (rust), `requirements.txt/pyproject.toml` (python), `go.mod` (go), etc.
-    - Needs to extract "stack" (React, Express, FastAPI) and "layout" (src vs lib, monorepo vs polyrepo).
+## 3. Gap Details
 
-### 3. Config Schema Extension (FR-032)
-- **Status**: `missing`
-- **Details**:
-    - `src/utils/config.ts`'s `GwrkConfigSchema` lacks the `project.profile` object (`type`, `stack`, `layout`, `architecture`, `conventions`).
+### G-01: Prompt Conditioning Logic
+The `conditionPrompt` function must:
+1. Serialize the project profile into an XML block `<project_profile>...</project_profile>`.
+2. Resolve `[type: gwrk-native]...[/type]` tags based on `profile.type === 'gwrk-native'`.
+3. Be idempotent if called multiple times (though it should only be called once).
 
-### 4. Code Cleanup & Refactoring (FR-001 R3, FR-022)
-- **Status**: `wrong`
-- **Details**:
-    - `src/commands/setup.ts` contains the logic that needs to be absorbed into `init`.
-    - `src/commands/setup-slack.ts` is a standalone command; it should be refactored into a reusable utility that `init` can call.
+### G-02: Integration Points
+Prompt conditioning must happen as late as possible before the prompt is sent to the agent.
+- `WorkflowRuntime.executeWorkflow` is the central point for all `define` commands.
+- `ShipOrchestrator` handles review dispatch which also needs conditioning.
 
-### 5. Task & Gate Precision
-- **Status**: `wrong`
-- **Details**:
-    - Existing tasks T045 and T046 are too broad (violating Halving Rule). T046 covers TCC, SSH, and GH Auth in one task.
-    - Gate scripts in `gates/` for Phase 10 are incorrectly mapped to old tests.
+### G-03: Project Info UX
+`gwrk project info` should show:
+- Project Type
+- Tech Stack (Language, Framework, etc.)
+- Layout (Source root, apps, packages)
+- Conditioning Mode (Gwrk-native vs Generic)
+- Source of truth for each field (Auto-detected vs Explicit)
 
-## Gap Classification
+### G-04: PROMPT.md Refactoring
+Every workflow's `PROMPT.md` must be audited for gwrk-specific assumptions (e.g., `src/commands/`, `Commander.js`, `ADR-004`) and wrapped in `[type: gwrk-native]` guards.
 
-- `src/engine/profile-detector.ts` → `greenfield`
-- `src/utils/config.ts` → `missing` (schema)
-- `src/commands/init.ts` → `wrong` (needs interactive rewrite)
-- `src/commands/setup.ts` → `missing` (to be deleted after absorption)
-- `src/commands/setup-slack.ts` → `wrong` (refactor for library use)
+## 4. Recommendations
 
-## Decomposition Strategy (Halving Rule)
-
-To ensure precision, Phase 10 will be decomposed into 10 focused tasks (T041-T050), splitting the broad "wizard" and "workstation" tasks into independently verifiable units.
-
-1. Schema Extension (Config)
-2. Profile Detection (Core/Types)
-3. Profile Detection (Stack/Layout)
-4. Slack Refactor
-5. Wizard Skeleton & Welcome
-6. Profile Confirmation Loop
-7. Workstation: macOS TCC
-8. Workstation: SSH & GH Auth
-9. Non-interactive Mode & Final Scaffolding
-10. Cleanup & Surface Verification
+1. Implement `prompt-conditioner.ts` first to make tests GREEN.
+2. Integrate into `WorkflowRuntime` and verify with existing workflow tests.
+3. Implement `project info` command.
+4. Batch refactor `PROMPT.md` files by priority (Critical → Medium → Low).
