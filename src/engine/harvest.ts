@@ -137,6 +137,25 @@ export async function harvestFeature(
     );
   }
 
+  // 2.2 Phase Completion Check (FR-H09)
+  // If this phase has multiple runs (e.g. parallel dispatch), only proceed if ALL are merged.
+  if (phaseId) {
+    const pendingRuns = runs.filter(
+      (r) =>
+        r.phase_id === phaseId &&
+        r.id !== targetRun?.id && // skip the one we just finished
+        r.status !== "merged" &&
+        r.status !== "closed",
+    );
+
+    if (pendingRuns.length > 0) {
+      console.log(
+        `Phase ${phaseId} has ${pendingRuns.length} pending runs, skipping phase finalization.`,
+      );
+      return;
+    }
+  }
+
   // 2.5 Gate Reconciliation — run gates, persist evidence, update tasks.json
   if (phaseId) {
     try {
@@ -182,7 +201,7 @@ export async function harvestFeature(
             estimatedDays,
           };
 
-          const actuals = gatherDeliveryActuals(featureDir);
+          const actuals = gatherDeliveryActuals(featureDir, 30, prNumber);
           const compression = computeCompression(forecast, actuals);
 
           report = {

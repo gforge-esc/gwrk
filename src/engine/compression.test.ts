@@ -49,6 +49,14 @@ describe("FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit cluster
     expect(actuals.activeCodingMinutes).toBe(15);
     expect(actuals.dormancyDays).toBe(1); // 2026-01-01 to 2026-01-02
 
+    // Check clusters
+    expect(actuals.clusters).toBeDefined();
+    expect(actuals.clusters).toHaveLength(2);
+    expect(actuals.clusters?.[0].durationMinutes).toBe(10);
+    expect(actuals.clusters?.[0].commitCount).toBe(3);
+    expect(actuals.clusters?.[1].durationMinutes).toBe(5);
+    expect(actuals.clusters?.[1].commitCount).toBe(2);
+
     vi.resetAllMocks();
   });
 

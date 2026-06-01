@@ -108,10 +108,11 @@
         {
           "id": "T008",
           "title": "Implement src/engine/compression.ts",
-          "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`",
-          "status": "open",
+          "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`.",
+          "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T19:41:49.737Z",
           "classification": "greenfield"
         },
         {
@@ -127,11 +128,11 @@
         {
           "id": "T010",
           "title": "Implement src/engine/harvest.ts",
-          "description": "Modify: Wire in `computeCompression` inside `harvestFeature`",
+          "description": "Modify: Wire in `computeCompression` inside `harvestFeature`.",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T04:13:39.869Z",
+          "completedAt": "2026-05-31T19:41:49.754Z",
           "classification": "greenfield"
         },
         {
@@ -141,7 +142,7 @@
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-18T04:13:39.880Z",
+          "completedAt": "2026-05-31T19:33:32.143Z",
           "classification": "noop"
         }
       ],
@@ -160,9 +161,10 @@
           "id": "T012",
           "title": "Implement src/engine/harvest.ts",
           "description": "Modify: Wire `notifyDoneDone` to format and post the summary to the `003-slack` module API",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
+          "completedAt": "2026-06-01T01:47:49.305Z",
           "classification": "greenfield"
         },
         {
@@ -179,9 +181,10 @@
           "id": "T014",
           "title": "Implement test strategy for Phase 4",
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "sp": 0,
+          "completedAt": "2026-06-01T01:47:50.194Z",
           "classification": "noop"
         }
       ],

@@ -114,7 +114,7 @@ describe("FR-H10: Idempotency & FR-H09: Phase Completion", () => {
       status: "merged" as const,
     };
 
-    vi.mocked(compressionDb.getCompressionRecord).mockReturnValue({ feature_id: featureId } as any);
+    vi.mocked(compressionDb.getCompressionRecord).mockReturnValueOnce({ feature_id: featureId } as any);
 
     const report = await harvestFeature("/tmp", record as any);
     expect(report).toBeUndefined();
@@ -168,7 +168,17 @@ describe("FR-H04, FR-H05: Compression Engine", () => {
       status: "merged" as const,
     };
 
+    // Create plan.md so fs.existsSync passes
+    const featureDir = path.join(tempDir, "specs", featureId);
+    fs.mkdirSync(featureDir, { recursive: true });
+    fs.writeFileSync(path.join(featureDir, "plan.md"), "# Plan");
+
+    vi.mocked(configUtils.loadConfig).mockReturnValue({} as any);
     vi.mocked(runsDb.listRuns).mockReturnValue([{ id: 100, phase_id: phaseId, status: "pending" }]);
+    vi.mocked(parserUtils.parsePlan).mockReturnValue({
+      phases: [{ id: phaseId, sp: 5 }]
+    } as any);
+    vi.mocked(compressionEngine.gatherDeliveryActuals).mockReturnValue({} as any);
     vi.mocked(compressionEngine.computeCompression).mockReturnValue({
       pointCompression: 2.5,
       totalCompression: 2.0,
@@ -183,7 +193,17 @@ describe("FR-H04, FR-H05: Compression Engine", () => {
 
 describe("FR-H07, FR-H11: Slack Notifications", () => {
   it("US-H05: notifyDoneDone posts to Slack correctly (TR-H08)", async () => {
-    const report = { featureId: "feat-1", compression: { pointCompression: 2 } };
+    const report = { 
+      featureId: "feat-1", 
+      actuals: {
+        activeCodingMinutes: 60,
+        deliveryWindowHours: 24,
+      },
+      compression: { 
+        pointCompression: 2,
+        totalCompression: 1.5
+      } 
+    };
     await notifyDoneDone(report as any);
     expect(slackNotify.notifySlack).toHaveBeenCalled();
   });
