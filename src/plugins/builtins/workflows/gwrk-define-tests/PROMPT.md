@@ -107,15 +107,13 @@ pnpm test --run 2>&1 | tail -20
 - If tests pass → they're hollow. **Revise with stronger assertions.**
 - If tests compile but fail assertions → ideal RED state.
 
-### 6. Write RED implementation stubs
+### 6. Verify RED State
 
-**MANDATORY FOR TYPESCRIPT**: If you write `.test.ts` files, `tsc` compilation will fail ("Cannot find module") unless the target source module exists. You MUST also generate minimal source file stubs (classes/functions throwing `Not implemented`).
+Tests MUST import the target modules (even if they don't exist yet). This is the intended RED state — missing imports cause test failures, which is exactly what we want. The implementing agent creates the real source files.
 
-<stub_generation_rules>
-- Provide minimal signatures so tests compile.
-- **NEVER hallucinate import paths for shared types**. If a stub requires a type from `plan.md` (e.g., `PlanFeature`), do NOT guess the import path `import type { PlanFeature } from "./types.js"`.
-- Instead, **inline dummy types directly in the stub** (e.g., `export type PlanFeature = any;`). The implementing agent will resolve the actual import path when writing the real logic. This prevents the TS build from failing due to broken imports.
-</stub_generation_rules>
+> [!CAUTION]
+> Do NOT create source file stubs in `src/`. The `define tests` guardrail reverts ANY non-test
+> modifications to `src/`. Only `*.test.ts` files are allowed. Missing imports = correct RED state.
 
 ### 7. Write Gap Matrix
 
@@ -178,7 +176,8 @@ Before reporting, verify:
 
 ## Anti-Patterns
 
-- ❌ Writing production code (only test files)
+- ❌ Writing production code (only test files — the guardrail WILL revert src/ changes)
+- ❌ Creating source file stubs (even "Not implemented" stubs — that's the implementer's job)
 - ❌ Tests that assert `true` or check only status codes
 - ❌ Tests without spec traceability (every `describe`/`it` maps to FR/US/TR)
 - ❌ Skipping negative paths (error states, invalid input, missing config)

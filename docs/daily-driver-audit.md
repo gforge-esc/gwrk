@@ -1,0 +1,370 @@
+# Daily Driver Gap Audit — 2026-06-01
+
+> **Test**: `gwrk init` on fresh project `~/Code/EnergyWork`. Result: silent success, no wizard, no Slack, no profile detection, dead `.specify/` directory created. **FAIL.**
+>
+> **Conclusion**: gwrk cannot be used as a daily driver on non-gwrk projects. The init wizard, prompt decontamination, stale code removal, and **project-scoped DB isolation** must ship before the "daily driver" label is honest.
+
+---
+
+## Gap Categories
+
+### A. Specs That Need Updates
+
+| Feature | File | What's wrong | Action |
+|---|---|---|---|
+| **F001** | `specs/001-cli-core/spec.md` | R3 rewrite (2026-05-30) is complete. No further spec changes needed. | ✅ Spec is current |
+| **F004** | `specs/004-ship-loop/spec.md` | Coverage matrix shows 🔲/⚠️ for 26 of 38 items despite code existing. Spec doesn't reflect what DispatchOrchestrator actually delivers. | **Update spec**: Reconcile coverage matrix with reality. Mark shipped items. Identify true gaps vs stale tracking. |
+| **F011** | `specs/011-harvest/spec.md` | Coverage matrix all "Planned" despite Phases 3-4 being shipped (PR #65). Spec still describes inbound webhook trigger. | **Update spec**: Mark P3/P4 as SHIPPED. Add architectural note: trigger mechanism changed from inbound webhook to server-initiated/Slack relay. |
+| **F002** | `specs/002-build-server/spec.md` | Coverage matrix all "Planned" despite Phase 1 shipped (PR #66). | **Update spec**: Mark P1 as SHIPPED. |
+| **F003** | `specs/003-slack/spec.md` | Coverage matrix all "PLANNED" despite Slack being fully operational (Socket Mode, slash commands, app home, PR merge from Slack). | **Update spec**: Mark shipped items. |
+| **F014** | `specs/014-plugin-system/spec.md` | All phases shipped (PR #64). Coverage matrix may be stale. | **Verify**: All items should be ✅. |
+
+### B. Plans That Must Be Regenerated or Fixed
+
+| Feature | File | Problem | Action |
+|---|---|---|---|
+| **F001** | `specs/001-cli-core/plan.md` | Phase 10/12/13 are correctly documented but **not shipped**. Status line on L16 accurately shows them as open. Plan is correct. | **No plan changes** — ship the code. |
+| **F004** | `specs/004-ship-loop/plan.md` | Phase 5 (DispatchOrchestrator) is the current ship loop but the plan's coverage matrix (L298-L367) shows most items as 🔲/⚠️. Either: (a) the code exists but tests don't, or (b) tracking is stale. | **Regenerate**: `gwrk define plan 004 --force` or manually reconcile Phase 5 with actual `ship-orchestrator.ts` implementation. |
+| **F011** | `specs/011-harvest/plan.md` | Coverage matrix (L212+) all "Planned". Phases 3-4 shipped. Plan describes inbound webhook architecture that was rejected. | **Regenerate**: Update coverage matrix. Add Phase 6: Server-initiated harvest (outbound polling or Slack relay). |
+| **F002** | `specs/002-build-server/plan.md` | Coverage matrix (L184+) all "Planned". Phase 1 shipped. | **Update**: Mark P1 items as Done. |
+| **F003** | `specs/003-slack/plan.md` | Coverage matrix all "PLANNED". Slack is operational. | **Update**: Mark shipped items. |
+| **ROADMAP.md** | `ROADMAP.md` | "Daily-Driver" section (L41-L56) lists items that are either done or wrong. "Shareable" section lists init wizard as Phase 3 but it's actually the daily driver gate. Test counts stale (646 → 744). | **Rewrite**: Align with this audit. |
+
+### C. Defined But Not Implemented
+
+These have specs and plans but the code doesn't exist or doesn't work:
+
+| Gap | Feature | Spec Reference | Plan Reference | What's Missing |
+|---|---|---|---|---|
+| **Init Wizard** | F001 P10 | US-001 (R3), FR-001 (R3), FR-030, FR-031, FR-032 | [plan.md P10](specs/001-cli-core/plan.md#L265) | Interactive profile wizard, project type detection (`profile-detector.ts`), setup absorption, `--non-interactive`, git repo check. Current `init.ts` L105 creates dead `.specify/templates` directory. |
+| **Prompt Decontamination** | F001 P13 | US-028, FR-033, FR-034, FR-035 | [plan.md P13](specs/001-cli-core/plan.md#L371) | `prompt-conditioner.ts`, `project info` command, 13 PROMPT.md files refactored. 84 gwrk-native refs cause wrong output on non-gwrk projects. [Contamination audit](specs/001-cli-core/refs/prompt-contamination-audit.md) documents all 84 refs. |
+| **Define Output Parity** | F001 P12 | US-026, FR-028, FR-029 | [plan.md P12](specs/001-cli-core/plan.md#L339) | `quiet: true` not passed in `tests-generate.ts`, `specify.ts`, `define-plan.ts`. Agent narration dumps to stdout. Tolerant JSON mode partially implemented but not wired to all define commands. |
+| **State Contracts** | F001 P9 | US-019, US-020, FR-019, FR-020, FR-021 | [plan.md P9](specs/001-cli-core/plan.md#L241) | `manifest.ts` write after ship/define, `tasks verify` subcommand, `.gitattributes` merge protection. Lower priority — deferred per plan execution order. |
+| **Ship Loop Hardening** | F004 | FM-4 (stale dist), FM-5 (UAT stall), FM-6 (stale branches) | [ship-failure-diagnosis.md](specs/004-ship-loop/refs/ship-failure-diagnosis.md) | Timeout fallback in `dispatchAgent()`, `--force-with-lease` in branch setup, dist freshness check. No spec changes needed — these are implementation fixes. |
+| **LaunchAgent** | F002 P1 | FR-012, FR-013, FR-014, FR-015 | [plan.md P1](specs/002-build-server/plan.md#L13) | `installServer()` exists but LaunchAgent not installed on workstation. `gwrk server install` works in tests but hasn't been run e2e. |
+| **Harvest Trigger** | F011 | FR-H01, FR-H09, FR-H10 | [plan.md P1](specs/011-harvest/plan.md#L13) | `github.ts` is dead code (inbound webhook). Server-initiated harvest via outbound polling or Slack relay is not specced as a phase. Harvest engine itself works (P3/P4 shipped). |
+
+### D. Not Well Defined (No Spec or Incomplete Spec)
+
+| Gap | Current State | What's Needed |
+|---|---|---|
+| **Obsidian Integration** | Zero code. Not specced. No feature number. Discussed in [conversation 41fe3db1](https://github.com/gforge-esc/gwrk/issues) as backlog. | Feature number assignment (e.g., F020). `gwrk define spec 020 "Obsidian Integration"`. Scope: vault = project root, `.obsidian/` git strategy, canvas for build-plan, definitional surfaces only. |
+| **Server-Initiated Harvest** | `github.ts` handler exists but trigger mechanism (inbound webhook) was rejected. No spec for outbound alternative. | Amend F011 spec: Add Phase 6 for server-initiated harvest. Options: (a) GitHub API polling on interval, (b) Slack relay (GitHub → Slack notification → Socket Mode → gwrk), (c) `gh` CLI poll in heartbeat loop. |
+| **Dead `.specify/` Code** | `init.ts:105` creates `.specify/templates`. `scaffold-feature.ts:216` references `.specify`. Both are from legacy pipeline. | Remove: Delete `.specify` references from `init.ts` and `scaffold-feature.ts`. No spec change needed — this is dead code cleanup. |
+| **`gwrk setup` Absorption** | `setup.ts` (8974 bytes) and `setup-slack.ts` (10013 bytes) exist as standalone commands. Spec says absorb into `init`. | Deliver as part of F001 P10. `setup.ts` → absorbed into `init.ts` interactive flow. `setup-slack.ts` → callable from `init` but not standalone on CLI surface. |
+| **`agy` Agent Adapter** | `src/plugins/builtins/agents/agy/adapter.ts` — all 3 methods throw "Not implemented". | Either implement or delete. This is dead scaffolding. No spec references it. |
+| **F005 Parallel Dispatch** | Spec and plan exist (`specs/005-parallel-dispatch/`). Not implemented. `--parallel` flag on ship exists but doesn't do parallel dispatch. | Spec exists, plan exists. Not blocking daily driver. Defer. |
+| **F012 Knowledge Work** | Directory exists (`specs/012-knowledge-work/`). No spec.md, no plan.md. | Not blocking daily driver. Defer. |
+| **F013 Agent-Native Interface** | Spec and plan exist. Partially delivered via ADR-004. | Audit overlap with shipped ADR-004 compliance. May be fully delivered. |
+
+### E. Build Plan Integrity (`gwrk plan status` lies)
+
+The SQLite `plan_features` table (source of truth for `gwrk plan status`) is **completely wrong**:
+
+#### Duplicate Feature Entries
+
+Two parallel tracking systems exist and disagree:
+
+| Spec-based ID | Status (DB) | Legacy F-ID | Status (DB) | Reality |
+|---|---|---|---|---|
+| `001-cli-core` | DEFINED | `F001` | SHIPPED | **Partially shipped** — P1-8,11 done; P9,10,12,13 open |
+| `002-build-server` | DEFINED | `F002` | SHIPPED | **P1 shipped** (PR #66); P2-4 open |
+| `003-slack` | DEFINED | `F003` | SHIPPED | **Operational** — Socket Mode, slash, app home |
+| `004-ship-loop` | SHIPPED | `F004` | DONE | **Partially shipped** — orchestrator works, 26/38 spec items untested |
+| `006-pulse` | SHIPPED | `F006` | PLANNED | **Shipped** (PR #34) — DB contradicts itself |
+| `008-agent-router` | DEFINED | — | — | **P1-4 shipped** (PR #35) |
+| `011-harvest` | DEFINED | `F011` | PLANNED | **P3-4 shipped** (PR #65); P1-2,5 open |
+| `014-plugin-system` | DEFINED | `F014` | DONE | **All phases shipped** (PR #64) |
+| `018-build-plan-orchestrator` | DEFINED | `F018` | SPECIFIED | **Operational** — this command runs it! |
+
+#### Foreign Project Entries
+
+These features leaked from `skills-connection` into the gwrk global DB:
+
+| ID | Name | Action |
+|---|---|---|
+| `047-ontology-integration` | "integrate the constructed ontology into the RFI app replacing the typology" | **DELETE** — wrong project |
+| `049-companion-guidance` | "Word-based manual pilot with Jane and Adam" | **DELETE** — wrong project |
+
+#### Phantom Features
+
+| ID | Status | Reality |
+|---|---|---|
+| `F009 Agent-DUT` | PLANNED | No spec, no code. Ghost entry. |
+| `F010 GForge Integration` | PLANNED | No spec, no code. Ghost entry. |
+| `F014-R WorkflowRuntime Rework` | DONE | Absorbed into F014. Redundant. |
+| `F015 Event Bus` | PLANNED | No spec. Aspirational. |
+| `F016 Domain Packs` | PLANNED | No spec. Aspirational. |
+| `F017 Channel Abstraction` | PLANNED | No spec. Aspirational. |
+| `F999-missing` | PLANNED | Placeholder. Delete. |
+
+#### Required Fix
+
+1. **Delete foreign entries** (047, 049)
+2. **Delete phantom entries** (F009, F010, F014-R, F015-F017, F999)
+3. **Consolidate duplicates** — decide on ONE ID scheme (spec-based `001-cli-core` or legacy `F001`). Recommend spec-based.
+4. **Update statuses** to match reality per the table above
+5. **Update `plan_phases` table** for all features with shipped phases
+
+This is a P0 daily driver item. `gwrk plan status` is the product's self-awareness. If it lies, the tool is broken.
+
+### F. Global DB Has No Project Scoping (Root Cause of E.2)
+
+The foreign project leak (Section E, "047-ontology-integration") wasn't a one-time data accident — it's a **structural architectural gap**. The global SQLite database at `~/.gwrk/gwrk.db` stores data from all projects in one unscoped bucket. The `projects` table exists and `gwrk init` registers projects into it, but **no downstream query filters by `project_id`**.
+
+#### Unscoped Tables
+
+| Table | Has `project_id`? | Impact |
+|---|---|---|
+| `plan_features` | ❌ **No** | `gwrk plan status` shows features from ALL projects. Root cause of 047/049 leak. |
+| `plan_phases` | ❌ **No** | Phase data from different projects collides. |
+| `plan_edges` | ❌ **No** | Dependency edges cross-pollinate across projects. |
+| `plan_proposals` | ❌ **No** | Agent proposals leak across projects. |
+| `gate_results` | ❌ **No** | Gate evidence from one project shows up in another. |
+| `compression` | ❌ **No** | Compression metrics are unscoped. |
+| `issues` | ❌ **No** | Issue tracking is unscoped. |
+| `routing_history` | ❌ **No** | Agent routing decisions are unscoped. |
+| `runs` | ⚠️ Optional | Column exists but is **nullable and rarely populated**. `listRuns()` queries by `feature_id` only — no project filter. |
+| `history` | ⚠️ Optional | Column exists but queries don't filter by it. |
+| `projects` | ✅ (it IS the registry) | Registration exists but nothing uses it for scoping. |
+
+#### Unscoped Queries (TypeScript)
+
+| File | Function | Problem |
+|---|---|---|
+| `src/db/plan.ts` | `listFeatures()` | `SELECT * FROM plan_features` — returns global soup |
+| `src/db/plan.ts` | `isPlanEmpty()` | Counts ALL features, not current project |
+| `src/db/plan.ts` | `listAllEdges()` | Returns edges from all projects |
+| `src/db/plan.ts` | `listProposals()` | Returns proposals from all projects |
+| `src/db/runs.ts` | `listRuns()` | Filters by `feature_id` only, no `project_id` |
+| `src/db/runs.ts` | `getStats()` | Aggregates ALL runs globally |
+| `src/db/gates.ts` | `getGateResults()` | Unscoped |
+| `src/db/compression.ts` | `listCompressionRecords()` | Unscoped |
+| `src/db/issues.ts` | `listIssues()` | Unscoped |
+| `src/db/plugins.ts` | `getRoutingHistory()` | Unscoped |
+
+#### Unscoped Engine/Commands
+
+| File | Problem |
+|---|---|
+| `src/engine/plan-store.ts` | `PlanStore` class has no concept of "current project". Every method calls `db.listFeatures()` globally. |
+| `src/engine/drift-detector.ts` | Reads global plan state for drift checks. |
+| `src/commands/plan.ts` | All 12 subcommands instantiate `PlanStore()` without project context. |
+| `src/commands/stats.ts` | `getStats()` shows all runs globally. |
+| `src/commands/runs.ts` | `listRuns(feature)` — no project filter. |
+
+#### Required Fix
+
+1. **New migration** (`009-project-scoping.sql`): Add `project_id TEXT` to all 8 unscoped tables, create indexes
+2. **`resolveProjectId(cwd)` utility**: Canonical MD5(projectRoot) derivation matching `init.ts` registration
+3. **DB access layer**: All query functions accept and filter by `projectId`
+4. **Engine layer**: `PlanStore` constructor accepts `projectId`
+5. **Command layer**: All commands derive `projectId` from `process.cwd()` and pass it through
+6. **Backfill**: Existing rows get `project_id` populated from `gwrk init` context on next run
+
+This is a P0 daily driver item. Without project scoping, running `gwrk init` on EnergyWork will pollute gwrk's own `plan status`, and gwrk's features will show up in EnergyWork's dashboard. The 047/049 leak will repeat every time gwrk is used on a second project.
+
+---
+
+## Stale Code Inventory
+
+| File | Problem | Action |
+|---|---|---|
+| `src/commands/init.ts:105` | Creates `.specify/templates` — dead pipeline | Remove `.specify` from dirs array |
+| `src/utils/scaffold-feature.ts:216` | References `.specify` for template discovery | Remove or replace with `specs/` |
+| `src/utils/scaffold-feature.ts:6,180` | Comments reference `.specify/scripts/bash/create-new-feature.sh` | Update comments |
+| `src/plugins/builtins/agents/agy/adapter.ts` | All methods throw "Not implemented" | Delete or implement |
+| `src/server/github.ts` | Inbound webhook handler — architecture rejected | Keep handler logic, change trigger to outbound |
+
+---
+
+## ADR Cross-Reference
+
+| ADR | File | Relevance to Daily Driver |
+|---|---|---|
+| [ADR-001](docs/decisions/ADR-001-task-tracking.md) | Task tracking | ✅ Implemented. Tasks work. |
+| [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md) | SQLite ledger | ✅ Implemented. Runs recorded. |
+| [ADR-003](docs/decisions/ADR-003-state-contract.md) | State contract | ⚠️ Partially implemented. Manifests write but `tasks verify` missing (F001 P9). |
+| [ADR-004](docs/decisions/ADR-004-agent-native-output.md) | Agent-native output | ⚠️ Protocol exists but hardcoded in PROMPT.md files for gwrk-only. F001 P13 fixes this. |
+| [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md) | TDD gate architecture | ✅ Implemented. Deterministic vitest gates from gap-matrix. |
+| [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md) | Plugin agent backends | ✅ Implemented. WorkflowRuntime, PluginLoader, manifest validation. |
+| [ADR-007](docs/decisions/ADR-007-single-dispatch-path.md) | Single dispatch path | ✅ Implemented. All agent dispatch through `dispatchToAgent()`. |
+
+---
+
+## Execution Order for Real Daily Driver
+
+| Priority | What | Feature | Ship Command | Blocks Daily Driver? |
+|---|---|---|---|---|
+| **P0** | Remove dead `.specify/` code + `agy` adapter | F001 cleanup | Manual commit | YES (init creates garbage) |
+| **P0** | Fix `plan_features` DB — delete foreign/phantom entries, consolidate duplicates, update statuses | F018 | SQL + `gwrk plan seed --force` | **YES** (tool can't self-report) |
+| **P0** | Reconcile coverage matrices in all spec/plan files | F001-F014 | Manual plan edits | **YES** (specs lie about what's done) |
+| **P0** | Init wizard + setup absorption + profile detection | F001 Phase 10 | `gwrk ship 001 10` | **YES** |
+| **P0** | Prompt decontamination (84 refs in 13 PROMPT.md) | F001 Phase 13 | `gwrk ship 001 13` | **YES** |
+| **P0** | Project-scoped DB isolation (8 tables, 10+ queries) | F001 (new phase) | `gwrk ship 001 <TBD>` | **YES** (cross-project pollution) |
+| **P1** | Define output parity (quiet mode) | F001 Phase 12 | `gwrk ship 001 12` | No — quality |
+| **P1** | ROADMAP.md rewrite | Docs | Manual | No — documentation |
+| **P2** | Ship loop hardening (FM-4/5/6) | F004 | Manual | No — quality-of-life |
+| **P2** | LaunchAgent e2e verification | F002 | `gwrk server install` | No — server optional |
+| **P3** | Obsidian integration spec | F020 (new) | `gwrk define spec 020` | No — backlog |
+| **P3** | Server-initiated harvest | F011 P6 (new) | Spec amendment first | No — architectural |
+| **P3** | State contracts | F001 Phase 9 | `gwrk ship 001 9` | No — deferred |
+
+### Critical Path — Revised 2026-06-01T16:30
+
+> [!WARNING]
+> **The `gwrk define tests` → `gwrk ship` pipeline is currently broken for Phase 10.**
+> Three consecutive runs have failed (runs #6818, #6819, #6820). Root cause: a **prompt/guardrail contradiction**.
+>
+> - `gwrk-define-tests/PROMPT.md` Section 6 (L110-118) tells the agent: *"MANDATORY FOR TYPESCRIPT: You MUST also generate minimal source file stubs"*
+> - `tests-generate.ts` L250-279 reverts ANY `src/*.ts` modification that isn't `*.test.ts`
+>
+> The agent follows the prompt, writes stubs in `src/`, and the guardrail correctly reverts all changes. This will fail 100% of the time until either the prompt or the guardrail is fixed.
+
+#### Pre-Requisite: Fix the define-tests contradiction
+
+**Two options (pick one):**
+
+| Option | Change | Risk |
+|---|---|---|
+| A. Relax guardrail | `tests-generate.ts`: Allow new `src/` files but block modifications to existing ones. Stubs are new files; the agent shouldn't be editing existing production code. | Agent could create garbage stubs that conflict with real implementation |
+| B. Remove stub mandate from prompt | `gwrk-define-tests/PROMPT.md` L110-118: Delete Section 6 entirely. Tests import non-existent modules and `tsc` fails — that's the intended RED state. | Tests won't compile until implementation starts. Acceptable — that IS the red state. |
+
+**Recommend Option B**: The whole point of RED tests is that they don't compile. The stub mandate was added to make `tsc` happy during the define phase, but that's a false constraint — `pnpm test` runs fine with missing imports (vitest resolves lazily). The guardrail is correct; the prompt is wrong.
+
+#### Revised Build Sequence
+
+```
+PHASE 0: Fix the pipeline (10 min, manual)
+  ├── Fix 1: Remove PROMPT.md Section 6 (stub mandate)           ← prompt is wrong
+  ├── Fix 2: Verify guardrail still catches real rogue edits     ← dry run test
+  └── Commit: "fix(define): remove stub mandate conflicting with src/ guardrail"
+
+PHASE 1: Define + Ship P10 — Init Wizard
+  ├── gwrk define tests 001 --phase 10 --force    ← now succeeds (no stubs)
+  ├── gwrk define tasks 001 --phase 10
+  └── gwrk ship 001 10                             ← HUMAN runs this
+
+PHASE 2: Define + Ship P13 — Prompt Decontamination
+  ├── gwrk define tests 001 --phase 13
+  ├── gwrk define tasks 001 --phase 13
+  └── gwrk ship 001 13                             ← HUMAN runs this
+
+PHASE 3: Define + Ship P14 — Project-Scoped DB
+  ├── Update F001 spec: add US/FR for project scoping
+  ├── gwrk define tests 001 --phase 14
+  ├── gwrk define tasks 001 --phase 14
+  └── gwrk ship 001 14                             ← HUMAN runs this
+
+VERIFY:
+  ├── gwrk init on ~/Code/EnergyWork → wizard works
+  ├── gwrk plan status on EnergyWork → ONLY EnergyWork features
+  ├── gwrk plan status on gwrk → ONLY gwrk features
+  └── gwrk define plan on EnergyWork → references EnergyWork stack
+```
+
+#### Fallback: If `gwrk define` stays broken (API quota / model quality)
+
+The define pipeline dispatches to Gemini CLI which has been hitting 429s and guardrail violations all day. If it doesn't stabilize:
+
+1. **Write tests manually** for P10/P13/P14 — the spec has all the TR-### requirements mapped
+2. **Ship with `gwrk ship 001 10 --skip-define`** or implement directly on branch
+3. This is pragmatic, not ideal. The pipeline is the product — but the product needs to work on other projects before the pipeline can be perfected
+
+> [!IMPORTANT]
+> **The sequential dependency is real**: P10 (init wizard) MUST ship before P13 (prompt decontamination) because `prompt-conditioner.ts` depends on project profile data that `init` creates. P14 (DB scoping) depends on P10 because scoping needs `projects` table registration from `init`. P13 and P14 are independent of each other and could ship in parallel after P10.
+
+---
+
+## Test Baseline
+
+```
+Test Files:  147 passed | 3 skipped (150)
+Tests:       744 passed | 1 skipped | 8 todo (753)
+Duration:    14.24s
+Build:       pnpm build — clean (tsc, no errors)
+Branch:      develop (up to date with origin)
+```
+
+This baseline MUST NOT regress during daily driver work.
+
+---
+
+## Revision Log
+
+| Date | Change |
+|---|---|
+| 2026-06-01 | Initial audit |
+| 2026-06-01 | Added Section F (project-scoped DB isolation). Elevated to P0. Updated critical path with completed items and new Phase 14. Removed duplicated KI appendix. |
+
+## P0 — Blocks Daily Driver (6 items)
+
+### 1. Dead Code Cleanup ✅
+- ~~Remove `.specify/templates` from `init.ts:105`~~
+- ~~Remove `.specify` refs from `scaffold-feature.ts`~~
+- ~~Delete `src/plugins/builtins/agents/agy/adapter.ts`~~
+
+### 2. Build Plan DB Reconciliation ✅
+- ~~Delete foreign entries (047, 049)~~
+- ~~Delete phantom entries (F009, F010, F014-R, F015-F017, F999-missing)~~
+- ~~Consolidate to spec-based IDs~~
+- ~~Update statuses to match reality~~
+
+### 3. Coverage Matrix Reconciliation ✅
+- ~~F004, F011, F002, F003, F014 coverage matrices updated~~
+
+### 4. F001 Phase 10: Init Wizard ([plan.md L265](specs/001-cli-core/plan.md))
+- `profile-detector.ts` NEW — project type auto-detection
+- `init.ts` REWRITE — interactive wizard, absorb `setup.ts`
+- `config.ts` MODIFY — extend schema with project profile
+- `setup.ts` DELETE
+- Spec: US-001 (R3), FR-001 (R3), FR-030–032
+
+### 5. F001 Phase 13: Prompt Decontamination ([plan.md L371](specs/001-cli-core/plan.md))
+- `prompt-conditioner.ts` NEW
+- 13 PROMPT.md files refactored (84 gwrk-native refs)
+- `project-info.ts` NEW
+- Spec: US-028, FR-033–035
+- Depends on Phase 10
+
+### 6. F001 Phase 14 (NEW): Project-Scoped DB Isolation
+
+**Root cause**: The `047-ontology-integration` leak wasn't a data accident — it's a structural gap. The global DB has no project scoping. See [Section F](#f-global-db-has-no-project-scoping-root-cause-of-e2) for full evidence.
+
+**Deliverables**:
+- `src/utils/project-id.ts` NEW — `resolveProjectId(cwd)` canonical utility
+- `src/db/migrations/009-project-scoping.sql` NEW — add `project_id TEXT` + indexes to 8 tables
+- `src/db/index.ts` MODIFY — `safeAddColumn` safety net for all 8 tables
+- `src/db/plan.ts` MODIFY — all query functions accept and filter by `projectId`
+- `src/db/runs.ts` MODIFY — `listRuns()`, `getStats()` filter by project
+- `src/db/gates.ts` MODIFY — scope gate results to project
+- `src/db/compression.ts` MODIFY — scope compression metrics
+- `src/db/issues.ts` MODIFY — scope issues
+- `src/db/plugins.ts` MODIFY — scope routing history
+- `src/engine/plan-store.ts` MODIFY — `PlanStore` constructor accepts `projectId`
+- `src/engine/drift-detector.ts` MODIFY — project-scoped drift checks
+- `src/commands/plan.ts` MODIFY — all subcommands derive and pass `projectId`
+- `src/commands/stats.ts` MODIFY — project-scoped stats
+- `src/commands/runs.ts` MODIFY — project-scoped run history
+- Spec: needs US/FR additions to `specs/001-cli-core/spec.md`
+- Depends on Phase 10 (init must register projects before scoping works)
+
+## P1 — Quality
+
+- **F001 Phase 12**: Define output parity (quiet mode)
+- **ROADMAP.md**: Rewrite to match reality
+
+## P2/P3 — Backlog
+
+- Ship loop hardening (FM-4/5/6)
+- LaunchAgent e2e
+- Obsidian integration (needs spec — F020)
+- Server-initiated harvest (needs F011 spec amendment)
+- State contracts (F001 P9)
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **Phase 14 scope**: Should project scoping ship before or after prompt decontamination (Phase 13)? Recommend after — init wizard (P10) must register projects first, but prompt decontamination doesn't depend on DB scoping.
+> 2. **ROADMAP.md**: Should the audit rewrite this or is it a separate PR?
+
