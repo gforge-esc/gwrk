@@ -1,22 +1,28 @@
 /**
- * FR-030, FR-031, US-027: Auto-detect project type and tech stack from filesystem signals.
+ * FR-030, FR-031: Project Profile Detection
  */
 
-export type ProjectType = "pnpm-monorepo" | "rust-workspace" | "rust-binary" | "python-package" | "gwrk-native" | "unknown";
-
 export interface ProjectProfile {
-  type: ProjectType;
+  type: 'pnpm-monorepo' | 'rust-workspace' | 'rust-binary' | 'python-package' | 'gwrk-native' | 'node-package' | 'go-module' | 'unknown';
   stack: {
     language?: string;
     packageManager?: string;
     testFramework?: string;
     buildSystem?: string;
   };
-  layout?: Record<string, string>;
-  architecture?: string;
-  conventions?: string;
+  layout?: {
+    src?: string;
+    tests?: string;
+    specs?: string;
+  };
 }
 
-export const detectProfile = async (dir: string): Promise<ProjectProfile> => {
-  throw new Error("Not implemented");
-};
+export async function detectProfile(_cwd: string): Promise<ProjectProfile> {
+  // To be implemented by /implement
+  throw new Error('Not implemented');
+}
+
+export async function resolveProfile(_cwd: string, _explicitConfig?: Partial<ProjectProfile>): Promise<ProjectProfile> {
+  // FR-032: Explicit config overrides auto-detection
+  throw new Error('Not implemented');
+}

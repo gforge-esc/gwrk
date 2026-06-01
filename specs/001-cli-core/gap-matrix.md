@@ -1,17 +1,30 @@
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
-| US-026 | Quiet output parity (specify) | unit | src/commands/specify.test.ts | ✅ | |
-| US-026 | Quiet output parity (plan) | unit | src/commands/define-plan.test.ts | ✅ | |
-| US-026 | Quiet output parity (tasks) | unit | src/commands/tasks-generate.test.ts | ✅ | |
-| US-026 | Quiet output parity (tests) | unit | src/commands/tests-generate.red.test.ts | ✅ | |
-| FR-028 | define subcommands pass quiet: true | unit | src/commands/tests-generate.red.test.ts | ✅ | |
-| FR-029 | Tolerant JSON extraction (Strict mode) | unit | src/plugins/workflow-runtime.red.test.ts | ✅ | |
-| TC-008 | Quiet agent output policy | unit | src/utils/agent.test.ts | ✅ | |
-| US-028 | Project-Aware Prompt Conditioning | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
-| US-029 | Project Profile Introspection | unit | src/commands/project-info.test.ts | ✅ | |
-| FR-033 | Inject <project_profile> XML block | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
-| FR-034 | Refactor PROMPT.md with guards | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
-| FR-035 | Display resolved profile | unit | src/commands/project-info.test.ts | ✅ | |
-| TC-009 | Single prompt integration point | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
-| TC-010 | Backward compatibility (snapshot) | unit | src/engine/profile-detector.test.ts | ✅ | |
-| TC-011 | Schema extension backward compat | unit | src/utils/config.test.ts | ✅ | |
+| US-001.1 | Auto-detect project type and confirm | integration | src/commands/init.test.ts | ✅ | |
+| US-001.2 | Walk through profile sections | integration | src/commands/init.test.ts | ✅ | |
+| US-001.3 | Detect agent CLIs | integration | src/commands/init.test.ts | ✅ | |
+| US-001.4 | Workstation provisioning (SSH, gh) | integration | src/commands/init.test.ts | ✅ | |
+| US-001.5 | Provision Slack channel | integration | src/commands/init.test.ts | ✅ | |
+| US-001.7 | Scaffold directories (.gwrk, specs) | integration | src/commands/init.test.ts | ✅ | |
+| US-001.9 | Register project in gwrk.db | integration | src/commands/init.test.ts | ✅ | |
+| US-001.10 | Idempotency / update offer | integration | src/commands/init.test.ts | ✅ | |
+| US-001.11 | --non-interactive mode | integration | src/commands/init.test.ts | ✅ | |
+| US-027.1 | pnpm-monorepo detection | unit | src/engine/profile-detector.test.ts | ✅ | |
+| US-027.2 | rust project detection | unit | src/engine/profile-detector.test.ts | ✅ | |
+| US-027.3 | python project detection | unit | src/engine/profile-detector.test.ts | ✅ | |
+| US-027.4 | gwrk-native detection | unit | src/engine/profile-detector.test.ts | ✅ | |
+| US-027.5 | unknown project detection | unit | src/engine/profile-detector.test.ts | ✅ | |
+| US-027.6 | explicit config override | unit | src/engine/profile-detector.test.ts | ✅ | |
+| FR-001 | gwrk init wizard | integration | src/commands/init.test.ts | ✅ | |
+| FR-022 | workstation provisioning | integration | src/commands/init.test.ts | ✅ | |
+| FR-030 | Auto-detect project type rules | unit | src/engine/profile-detector.test.ts | ✅ | |
+| FR-031 | Extract tech stack details | unit | src/engine/profile-detector.test.ts | ✅ | |
+| FR-032 | GwrkConfigSchema extensions | unit | src/utils/config.test.ts | ✅ | |
+| TC-011 | Schema backward compatibility | unit | src/utils/config.test.ts | ✅ | |
+| TR-001 | Init scaffold + idempotency | integration | src/commands/init.test.ts | ✅ | |
+| TR-021 | Init wizard + workstation + setup.json | integration | src/commands/init.test.ts | ✅ | |
+| TR-027 | Auto-detection logic | unit | src/engine/profile-detector.test.ts | ✅ | |
+| TR-028 | Explicit config override | unit | src/engine/profile-detector.test.ts | ✅ | |
+| TR-029 | Gwrk-native detection | unit | src/engine/profile-detector.test.ts | ✅ | |
+| TR-030 | Unknown project detection | unit | src/engine/profile-detector.test.ts | ✅ | |
+| TR-033 | Config schema backward compat | unit | src/utils/config.test.ts | ✅ | |

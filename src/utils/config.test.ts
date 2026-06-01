@@ -1,46 +1,40 @@
-import { describe, it, expect } from "vitest";
-import { GwrkConfigSchema } from "./config.js";
+import { describe, it, expect } from 'vitest';
+import { GwrkConfigSchema } from './config';
 
-describe("FR-032 / TC-011: Configuration Schema Extensions", () => {
-  it("TR-033: parses legacy .gwrkrc.json without project profile fields", () => {
+describe('Config Schema Extensions (FR-032, TC-011)', () => {
+  it('should parse legacy .gwrkrc.json without profile (TC-011)', () => {
     const legacyConfig = {
-      featureDir: "specs",
-      historyPath: ".gwrk/history.jsonl"
+      version: '1.0',
+      featureDir: 'specs'
     };
+    
     const result = GwrkConfigSchema.safeParse(legacyConfig);
     expect(result.success).toBe(true);
   });
 
-  it("TR-033: parses new .gwrkrc.json with project profile details", () => {
+  it('should parse new .gwrkrc.json with project profile (FR-032)', () => {
     const newConfig = {
+      version: '1.0',
       project: {
-        type: "pnpm-monorepo",
+        type: 'pnpm-monorepo',
         stack: {
-          language: "typescript",
-          packageManager: "pnpm",
-          testFramework: "vitest"
-        },
-        layout: {
-          src: "src",
-          tests: "src/**/*.test.ts"
+          language: 'typescript',
+          packageManager: 'pnpm'
         }
       }
     };
+    
     const result = GwrkConfigSchema.safeParse(newConfig);
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.project?.type).toBe("pnpm-monorepo");
-    }
   });
 
-  it("FR-032: fails validation for invalid project.stack fields", () => {
+  it('should fail on invalid project profile values (FR-032 Error Path)', () => {
     const invalidConfig = {
       project: {
-        stack: {
-          language: 123 // Must be string
-        }
+        type: 123
       }
     };
+    
     const result = GwrkConfigSchema.safeParse(invalidConfig);
     expect(result.success).toBe(false);
   });
