@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-01T18:55:18.001Z_define_p10",
+  "feature": "001-cli-core",
+  "phase": "p10",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-01T18:55:18.001Z",
+  "finishedAt": "2026-06-01T18:56:29.416Z",
+  "durationS": 71,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 15,
+  "linesAdded": 330,
+  "linesDeleted": 298,
+  "gitCommit": "b569afb478b01b42370617dd34e1cef73cad74a1",
+  "gitBranch": "feature/p0-daily-driver",
+  "digest": []
+}

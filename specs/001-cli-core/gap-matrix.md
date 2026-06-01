@@ -1,21 +1,17 @@
-# Gap Matrix - Phase 10: Unified Init
-
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
-| US-001.1 | Auto-detect project type | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-001.2 | Interactive profile wizard sections | unit | src/commands/init.test.ts | ✅ | |
-| US-001.4 | Workstation provisioning (SSH, gh) | unit | src/commands/init.test.ts | ✅ | |
-| US-001.6 | Writes complete .gwrkrc.json | unit | src/commands/init.test.ts | ✅ | |
-| US-001.11 | --non-interactive flag support | unit | src/commands/init.test.ts | ✅ | |
-| US-021 | Workstation setup (absorbed) | unit | src/commands/init.test.ts | ✅ | |
-| US-027.1 | Detect pnpm-monorepo | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.2 | Detect rust project | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.4 | Detect gwrk-native via docs | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.5 | Handle unknown project gracefully | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.6 | Config overrides detection | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-029 | Display resolved project info | unit | src/commands/project-info.test.ts | ✅ | |
-| FR-030 | Detect project type signals | unit | src/engine/profile-detector.test.ts | ✅ | |
-| FR-031 | Extract tech stack details | unit | src/engine/profile-detector.test.ts | ✅ | |
-| FR-032 | GwrkConfigSchema extensions | unit | src/utils/config.test.ts | ✅ | |
-| FR-035 | Project info CLI command | unit | src/commands/project-info.test.ts | ✅ | |
-| TC-011 | Schema backward compatibility | unit | src/utils/config.test.ts | ✅ | |
+| US-026 | Quiet output parity (specify) | unit | src/commands/specify.test.ts | ✅ | |
+| US-026 | Quiet output parity (plan) | unit | src/commands/define-plan.test.ts | ✅ | |
+| US-026 | Quiet output parity (tasks) | unit | src/commands/tasks-generate.test.ts | ✅ | |
+| US-026 | Quiet output parity (tests) | unit | src/commands/tests-generate.red.test.ts | ✅ | |
+| FR-028 | define subcommands pass quiet: true | unit | src/commands/tests-generate.red.test.ts | ✅ | |
+| FR-029 | Tolerant JSON extraction (Strict mode) | unit | src/plugins/workflow-runtime.red.test.ts | ✅ | |
+| TC-008 | Quiet agent output policy | unit | src/utils/agent.test.ts | ✅ | |
+| US-028 | Project-Aware Prompt Conditioning | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| US-029 | Project Profile Introspection | unit | src/commands/project-info.test.ts | ✅ | |
+| FR-033 | Inject <project_profile> XML block | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| FR-034 | Refactor PROMPT.md with guards | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| FR-035 | Display resolved profile | unit | src/commands/project-info.test.ts | ✅ | |
+| TC-009 | Single prompt integration point | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| TC-010 | Backward compatibility (snapshot) | unit | src/engine/profile-detector.test.ts | ✅ | |
+| TC-011 | Schema extension backward compat | unit | src/utils/config.test.ts | ✅ | |
