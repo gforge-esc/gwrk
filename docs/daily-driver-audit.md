@@ -227,7 +227,7 @@ gwrk define tests 001 --phase 10 --force  # run #6821
 gwrk define tasks 001 --phase 10           # run #6822
 ```
 
-### Step 6: Ship P10 — Init Wizard ⏳ NEXT
+### Step 6: Ship P10 — Init Wizard  ✅ DONE
 ```bash
 gwrk ship 001 10
 ```
