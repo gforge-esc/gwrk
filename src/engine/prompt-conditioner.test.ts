@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { conditionPrompt } from "./prompt-conditioner.js";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * TR-031: Unit test prompt conditioning
@@ -53,5 +55,32 @@ describe("FR-033: Project-Aware Prompt Conditioning", () => {
     const conditioned = conditionPrompt(prompt, { type: "unknown" });
     expect(conditioned).not.toContain("<project_profile>");
     expect(conditioned).toBe("Test prompt");
+  });
+});
+
+describe("FR-034: PROMPT.md Refactoring Guards", () => {
+  it("should have zero ungated gwrk-specific terms in PROMPT.md files", () => {
+    // This is a "meta-test" that verifies the refactoring requirement.
+    // It should fail until the PROMPT.md files are refactored.
+    const workflowDirs = fs.readdirSync("src/plugins/builtins/workflows");
+    const ungatedTerms = ["src/commands", "src/engine", "ADR-004", "Commander.js", "better-sqlite3"];
+    
+    let totalUngatedMatches = 0;
+    for (const dir of workflowDirs) {
+      const promptPath = path.join("src/plugins/builtins/workflows", dir, "PROMPT.md");
+      if (fs.existsSync(promptPath)) {
+        const content = fs.readFileSync(promptPath, "utf-8");
+        for (const term of ungatedTerms) {
+          // Check if term exists and is NOT wrapped in [type: gwrk-native]
+          const regex = new RegExp(`(?<!\\[type: gwrk-native\\])${term.replace(".", "\\.")}`, "g");
+          const matches = content.match(regex);
+          if (matches) {
+            totalUngatedMatches += matches.length;
+          }
+        }
+      }
+    }
+    
+    expect(totalUngatedMatches, "Ungated gwrk-specific terms found in PROMPT.md files").toBe(0);
   });
 });

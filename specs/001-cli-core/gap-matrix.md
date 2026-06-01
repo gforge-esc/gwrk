@@ -16,3 +16,10 @@
 | US-027.6 | Config override detection | unit | src/engine/profile-detector.test.ts | ✅ | |
 | FR-032 | Schema extension | unit | src/utils/config.test.ts | ✅ | |
 | TC-011 | Backward compatibility | unit | src/utils/config.test.ts | ✅ | |
+| FR-033 | Inject <project_profile> XML block | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| FR-034 | Refactor 15 PROMPT.md files | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| FR-035 | gwrk project info command | unit | src/commands/project-info.test.ts | ✅ | |
+| US-028 | Project-Aware Prompt Conditioning | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| US-029 | Project Profile Introspection | unit | src/commands/project-info.test.ts | ✅ | |
+| TC-009 | Single prompt integration point | unit | src/engine/prompt-conditioner.test.ts | ✅ | |
+| TC-010 | Backward compatibility (Regression snapshot) | unit | src/engine/profile-detector.test.ts | ✅ | |
