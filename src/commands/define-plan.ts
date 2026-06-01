@@ -85,24 +85,31 @@ Examples:
 
       try {
         const input = `Plan implementation for feature ${feature}${contextContent ? `\n\nContext:\n${contextContent}` : ""}${opts.refs ? `\n\nReference: ${opts.refs}` : ""}`;
-        
-        const orchestrator = new DefineOrchestrator({
-          featureId: feature,
-          backend,
-          cwd: projectRoot,
-          refs: opts.refs,
-        }, {
-          stage: DefineStage.PLAN,
-          featureId: feature,
-          startedAt,
-          runId: `define-plan-${feature}-${Date.now()}`,
-          backend,
+
+        const orchestrator = new DefineOrchestrator(
+          {
+            featureId: feature,
+            backend,
+            cwd: projectRoot,
+            refs: opts.refs,
+          },
+          {
+            stage: DefineStage.PLAN,
+            featureId: feature,
+            startedAt,
+            runId: `define-plan-${feature}-${Date.now()}`,
+            backend,
+          },
+        );
+
+        const exitCode = await orchestrator.runLoop(input, {
+          stopAfterOne: true,
         });
 
-        const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
-
         if (exitCode !== 0) {
-          throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+          throw new Error(
+            `Workflow execution failed with exit code ${exitCode}`,
+          );
         }
 
         const durationS = Math.round((Date.now() - startTime) / 1000);

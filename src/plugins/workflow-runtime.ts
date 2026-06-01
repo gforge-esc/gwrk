@@ -1,12 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import {
-  IntentEngine,
-  type IntentSummary,
-} from "../engine/intent-engine.js";
+import { IntentEngine, type IntentSummary } from "../engine/intent-engine.js";
 import { type TaskDispatch, dispatchToAgent } from "../utils/agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
-import type { WorkflowManifest, JsonIntent } from "./manifest.js";
+import type { JsonIntent, WorkflowManifest } from "./manifest.js";
 
 /**
  * Extract a JSON object from raw agent output.

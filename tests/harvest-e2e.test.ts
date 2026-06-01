@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanupBranch, notifyDoneDone } from "../src/engine/harvest.js";
 
 vi.mock("../src/utils/git.js", () => ({
@@ -24,7 +24,10 @@ describe("FR-H08: Branch Cleanup", () => {
   it("TR-H05: Verify branch deletion command is invoked", async () => {
     const { deleteRemoteBranch } = await import("../src/utils/git.js");
     await cleanupBranch("feat/004-ship-loop", "/project");
-    expect(deleteRemoteBranch).toHaveBeenCalledWith("/project", "feat/004-ship-loop");
+    expect(deleteRemoteBranch).toHaveBeenCalledWith(
+      "/project",
+      "feat/004-ship-loop",
+    );
   });
 });
 

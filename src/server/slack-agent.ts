@@ -14,17 +14,22 @@ export async function handleMention({
   projectRoot: string;
 }): Promise<void> {
   const text = event.text.toLowerCase();
-  
+
   // US-015: Maintain thread context.
   // TR-017: If it's a continuation message, use the existing thread_ts.
   // TR-016: For a fresh mention, start a thread using its own ts.
-  const thread_ts = text.includes("tell me more") || text.includes("plugin system") || text.includes("stress test")
-    ? (event as any).thread_ts || event.ts
-    : event.ts;
+  const thread_ts =
+    text.includes("tell me more") ||
+    text.includes("plugin system") ||
+    text.includes("stress test")
+      ? (event as any).thread_ts || event.ts
+      : event.ts;
 
   // TR-016: Check for specific file mentions (e.g. workflows or specs)
   if (text.includes("workflows/")) {
-    const workflowMatch = event.text.match(/(?:\.gwrk\/|plugins\/)?workflows\/[\w-]+\.md/);
+    const workflowMatch = event.text.match(
+      /(?:\.gwrk\/|plugins\/)?workflows\/[\w-]+\.md/,
+    );
     const workflow = workflowMatch ? workflowMatch[0] : "the workflow";
     await say({
       thread_ts,
@@ -55,12 +60,16 @@ export async function handleMention({
   }
 
   // FR-017: Invoke skills with thinking mode
-  if (text.includes("/skill") || text.includes("stress test") || text.includes("plugin system")) {
+  if (
+    text.includes("/skill") ||
+    text.includes("stress test") ||
+    text.includes("plugin system")
+  ) {
     await say({
       thread_ts,
       text: "🧠 Invoking architecture-stress test skill... this might take a moment.",
     });
-    
+
     // Simulate thinking/processing
     await say({
       thread_ts,

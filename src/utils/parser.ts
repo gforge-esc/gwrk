@@ -83,9 +83,7 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
     // Fallback: Table-based file listings (| File | Change | format)
     // Matches rows like: | `path/to/file.ts` | [NEW] Description |
     if (tasks.length === 0) {
-      const tableRows = section.matchAll(
-        /^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|/gm,
-      );
+      const tableRows = section.matchAll(/^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|/gm);
       for (const row of tableRows) {
         const filePath = row[1];
         let description = row[2].trim();
@@ -201,9 +199,7 @@ export function extractPhaseSection(
  * @returns Array of requirement IDs (e.g. ["FR-L25-003", "TC-011", "US-011"])
  */
 export function extractPhaseRequirements(phaseSection: string): string[] {
-  const reqLine = phaseSection.match(
-    /\*\*Requirements Addressed:\*\*\s*(.*)/,
-  );
+  const reqLine = phaseSection.match(/\*\*Requirements Addressed:\*\*\s*(.*)/);
   if (!reqLine) return [];
 
   const ids: string[] = [];

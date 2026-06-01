@@ -262,9 +262,15 @@ export const pluginCommand = new Command("plugin")
       .description("List installed plugins")
       .option("--format <type>", "Output format (json)")
       .option("--project", "Show resolution for current project")
-      .option("--type <type>", "Filter by plugin type (agent, skill, workflow, review)")
+      .option(
+        "--type <type>",
+        "Filter by plugin type (agent, skill, workflow, review)",
+      )
       .option("--tier <tier>", "Filter by tier (atomic, compound, enforcement)")
-      .option("--category <cat>", "Filter by category (reasoning, evaluative, etc.)")
+      .option(
+        "--category <cat>",
+        "Filter by category (reasoning, evaluative, etc.)",
+      )
       .action(async (options) => {
         await withSignal("plugin list", async () => {
           const output = await listPlugins(options);

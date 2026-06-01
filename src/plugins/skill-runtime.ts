@@ -187,8 +187,11 @@ export async function resolveEnforcementSkills(
 
       const skillMdPath = path.join(loaded.path, "SKILL.md");
       const content = await fs.readFile(skillMdPath, "utf-8");
-      
-      skillMap.set(summary.name, `<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
+
+      skillMap.set(
+        summary.name,
+        `<!-- enforcement-skill: ${manifest.name} -->\n${content}`,
+      );
       visitedNames.add(summary.name);
     } catch (e) {
       // Skip invalid/failed plugins

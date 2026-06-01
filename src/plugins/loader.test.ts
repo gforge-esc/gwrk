@@ -1,6 +1,6 @@
+import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PluginLoader } from "./loader.js";
-import fs from "node:fs";
 
 /**
  * Phase 10: .agents/ Decoupling
@@ -9,7 +9,9 @@ import fs from "node:fs";
 describe("PluginLoader (Phase 10)", () => {
   it("FR-L25-003: should resolve all 15 core gwrk-* workflows (TR-P10-002)", async () => {
     // Ensure we don't pick up global state by using a non-existent global dir
-    const loader = new PluginLoader({ globalDir: "/tmp/gwrk-empty-global-" + Math.random() });
+    const loader = new PluginLoader({
+      globalDir: "/tmp/gwrk-empty-global-" + Math.random(),
+    });
     const workflows = [
       "gwrk-specify",
       "gwrk-plan",
@@ -25,7 +27,7 @@ describe("PluginLoader (Phase 10)", () => {
       "gwrk-cascade-sync",
       "gwrk-checklist",
       "gwrk-constitution",
-      "gwrk-effort"
+      "gwrk-effort",
     ];
 
     for (const name of workflows) {
@@ -41,14 +43,20 @@ describe("PluginLoader (Phase 10)", () => {
 
   it("should throw PluginNotFoundError for unknown workflows (Negative Path)", async () => {
     const loader = new PluginLoader();
-    await expect(loader.resolvePlugin("gwrk-non-existent")).rejects.toThrow("Plugin 'gwrk-non-existent' not found.");
+    await expect(loader.resolvePlugin("gwrk-non-existent")).rejects.toThrow(
+      "Plugin 'gwrk-non-existent' not found.",
+    );
   });
 
   describe("SC-010: Dead Code Removal (Global Cleanup)", () => {
     it("should have removed legacy parser scripts", () => {
       // These should be deleted in this phase
-      expect(fs.existsSync(".agents/scripts/parser/parser-scaffold.sh")).toBe(false);
-      expect(fs.existsSync(".agents/scripts/parser/parser-validate.sh")).toBe(false);
+      expect(fs.existsSync(".agents/scripts/parser/parser-scaffold.sh")).toBe(
+        false,
+      );
+      expect(fs.existsSync(".agents/scripts/parser/parser-validate.sh")).toBe(
+        false,
+      );
     });
 
     it("should have removed legacy workflow files", () => {

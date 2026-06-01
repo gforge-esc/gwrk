@@ -405,7 +405,9 @@ export class ShipOrchestrator extends EventEmitter {
    * in the current phase. If any fail, re-opens the task and returns a
    * failure result. Returns null if all gates pass.
    */
-  private async runPostFlightGates(featureDir: string): Promise<StageResult | null> {
+  private async runPostFlightGates(
+    featureDir: string,
+  ): Promise<StageResult | null> {
     const postFlightState = loadTaskState(featureDir);
     const postFlightPhase = postFlightState.phases.find(
       (p: Phase) => p.id === this.config.phaseId,
@@ -620,23 +622,34 @@ export class ShipOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
     if (failCount <= baseline) {
-      console.log(`  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`);
+      console.log(
+        `  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`,
+      );
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
 
     const regressionCount = failCount - baseline;
     const lastLines = output.split("\n").slice(-20).join("\n");
-    console.log(`  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`);
+    console.log(
+      `  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`,
+    );
 
-    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
     if (phase) {
       for (const task of phase.tasks) {
         if (task.status === "completed") {
           task.status = "open";
           task.completedAt = undefined;
-          task.description = `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
+          task.description =
+            `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
         }
       }
       saveTaskState(featureDir, taskState);
@@ -654,11 +667,16 @@ export class ShipOrchestrator extends EventEmitter {
       });
       return { failCount: 0, output: result.toString() };
     } catch (err: unknown) {
-      const stdout = (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
-      const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const stdout =
+        (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
+      const stderr =
+        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
       const combined = `${stdout}\n${stderr}`.trim();
       const failMatch = combined.match(/(\d+)\s+failed/);
-      return { failCount: failMatch ? parseInt(failMatch[1], 10) : 1, output: combined };
+      return {
+        failCount: failMatch ? Number.parseInt(failMatch[1], 10) : 1,
+        output: combined,
+      };
     }
   }
 

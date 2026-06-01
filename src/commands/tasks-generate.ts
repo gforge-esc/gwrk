@@ -125,53 +125,70 @@ Examples:
           agent_backend: backend,
           workflow: "plan-to-tasks",
         });
-try {
-  const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
+        try {
+          const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
 
-  const orchestrator = new DefineOrchestrator({
-    featureId: feature,
-    backend,
-    cwd: projectRoot,
-  }, {
-    stage: DefineStage.PLAN_TO_TASKS,
-    featureId: feature,
-    startedAt,
-    runId: `define-tasks-${feature}-${Date.now()}`,
-    backend,
-  });
+          const orchestrator = new DefineOrchestrator(
+            {
+              featureId: feature,
+              backend,
+              cwd: projectRoot,
+            },
+            {
+              stage: DefineStage.PLAN_TO_TASKS,
+              featureId: feature,
+              startedAt,
+              runId: `define-tasks-${feature}-${Date.now()}`,
+              backend,
+            },
+          );
 
-  const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
+          const exitCode = await orchestrator.runLoop(input, {
+            stopAfterOne: true,
+          });
 
-  if (exitCode !== 0) {
-    throw new Error(`Workflow execution failed with exit code ${exitCode}`);
-  }
+          if (exitCode !== 0) {
+            throw new Error(
+              `Workflow execution failed with exit code ${exitCode}`,
+            );
+          }
 
-  // ── Deterministic gate generation (Block 0C) ──
-  // After tasks.json is written by the agent, generate vitest gates
-  // deterministically. This replaces LLM gate authoring entirely.
-  try {
-    const state = loadTaskState(featureDir);
-    const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+          // ── Deterministic gate generation (Block 0C) ──
+          // After tasks.json is written by the agent, generate vitest gates
+          // deterministically. This replaces LLM gate authoring entirely.
+          try {
+            const state = loadTaskState(featureDir);
+            const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
 
-    let gateResult: { generated: number; skipped: number };
-    if (fs.existsSync(gapMatrixPath)) {
-      console.error("  ▸ generating vitest gates from gap-matrix.md");
-      gateResult = generateVitestGates(featureDir, gapMatrixPath, state.phases);
-    } else {
-      console.error("  ▸ generating vitest gates from filesystem convention");
-      gateResult = generateFilesystemGates(featureDir, state.phases);
-    }
+            let gateResult: { generated: number; skipped: number };
+            if (fs.existsSync(gapMatrixPath)) {
+              console.error("  ▸ generating vitest gates from gap-matrix.md");
+              gateResult = generateVitestGates(
+                featureDir,
+                gapMatrixPath,
+                state.phases,
+              );
+            } else {
+              console.error(
+                "  ▸ generating vitest gates from filesystem convention",
+              );
+              gateResult = generateFilesystemGates(featureDir, state.phases);
+            }
 
-    // Regenerate the run-all-gates.sh runner
-    const gatesDir = path.join(featureDir, "gates");
-    if (fs.existsSync(gatesDir)) {
-      generateRunner(gatesDir);
-    }
+            // Regenerate the run-all-gates.sh runner
+            const gatesDir = path.join(featureDir, "gates");
+            if (fs.existsSync(gatesDir)) {
+              generateRunner(gatesDir);
+            }
 
-    console.error(`  ✓ gates: ${gateResult.generated} generated, ${gateResult.skipped} skipped`);
-  } catch (gateError) {
-    console.warn(`  ⚠ gate generation failed (non-fatal): ${gateError}`);
-  }
+            console.error(
+              `  ✓ gates: ${gateResult.generated} generated, ${gateResult.skipped} skipped`,
+            );
+          } catch (gateError) {
+            console.warn(
+              `  ⚠ gate generation failed (non-fatal): ${gateError}`,
+            );
+          }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });

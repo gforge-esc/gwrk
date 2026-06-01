@@ -39,10 +39,7 @@ import {
 
 import { getBackendSelector } from "../server/index.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
-import {
-  loadSetupState,
-  isSetupComplete,
-} from "../utils/setup-state.js";
+import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;

@@ -174,22 +174,29 @@ Examples:
           } else {
             input = `Generate tests for feature ${feature}`;
           }
-          const orchestrator = new DefineOrchestrator({
-            featureId: feature,
-            backend,
-            cwd: projectRoot,
-          }, {
-            stage: DefineStage.DEFINE_TESTS,
-            featureId: feature,
-            startedAt,
-            runId: `define-tests-${feature}-${Date.now()}`,
-            backend,
+          const orchestrator = new DefineOrchestrator(
+            {
+              featureId: feature,
+              backend,
+              cwd: projectRoot,
+            },
+            {
+              stage: DefineStage.DEFINE_TESTS,
+              featureId: feature,
+              startedAt,
+              runId: `define-tests-${feature}-${Date.now()}`,
+              backend,
+            },
+          );
+
+          const exitCode = await orchestrator.runLoop(input, {
+            stopAfterOne: true,
           });
 
-          const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
-
           if (exitCode !== 0) {
-            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+            throw new Error(
+              `Workflow execution failed with exit code ${exitCode}`,
+            );
           }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);

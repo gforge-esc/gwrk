@@ -87,7 +87,9 @@ export const installServer = async (): Promise<void> => {
   try {
     execSync(`launchctl load ${PLIST_PATH}`, { stdio: "ignore" });
   } catch (error) {
-    throw new Error(`Failed to load LaunchAgent: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to load LaunchAgent: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 };
 
@@ -103,7 +105,9 @@ export const uninstallServer = async (): Promise<void> => {
   }
 };
 
-export const getLogs = async (options: { follow?: boolean } = {}): Promise<void> => {
+export const getLogs = async (
+  options: { follow?: boolean } = {},
+): Promise<void> => {
   if (!fs.existsSync(LOG_PATH)) {
     console.log("No log file found.");
     return;

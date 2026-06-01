@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { describe, expect, it } from "vitest";
 
 function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
   const files = fs.readdirSync(dirPath);
@@ -24,7 +24,7 @@ describe("Phase 10: .agents/ Runtime Decoupling", () => {
   it("should not contain any hardcoded .agents/ filesystem paths in src/", () => {
     const srcDir = path.join(process.cwd(), "src");
     const allFiles = getAllFiles(srcDir);
-    const files = allFiles.filter(f => f.endsWith(".ts"));
+    const files = allFiles.filter((f) => f.endsWith(".ts"));
 
     const forbiddenPattern = /\.agents\//;
     const violations: string[] = [];
@@ -40,6 +40,9 @@ describe("Phase 10: .agents/ Runtime Decoupling", () => {
       }
     }
 
-    expect(violations, `Found hardcoded .agents/ paths in: ${violations.join(", ")}`).toHaveLength(0);
+    expect(
+      violations,
+      `Found hardcoded .agents/ paths in: ${violations.join(", ")}`,
+    ).toHaveLength(0);
   });
 });

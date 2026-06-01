@@ -32,8 +32,14 @@ Examples:
   echo "Refine the authentication section" | gwrk define spec 001
 `,
   )
-  .argument("[feature]", "Feature ID (e.g. 014-plugin-system). Omit to create new.")
-  .argument("[prompt]", "Feature description (new) or rework instructions (existing)")
+  .argument(
+    "[feature]",
+    "Feature ID (e.g. 014-plugin-system). Omit to create new.",
+  )
+  .argument(
+    "[prompt]",
+    "Feature description (new) or rework instructions (existing)",
+  )
   .option("--refs <path>", "Path to additional reference docs")
   .action(
     async (
@@ -79,9 +85,10 @@ Examples:
             // Not found. If prompt exists → scaffold with explicit slug.
             if (effectiveInput) {
               const result = scaffoldFeature(specsDir, effectiveInput, {
-                shortName: featureArg.replace(/^\d+-/, "").length > 0
-                  ? featureArg
-                  : undefined,
+                shortName:
+                  featureArg.replace(/^\d+-/, "").length > 0
+                    ? featureArg
+                    : undefined,
                 number: /^\d+$/.test(featureArg)
                   ? undefined // auto-number, featureArg is just a bare number with no slug
                   : undefined,
@@ -101,10 +108,13 @@ Examples:
         const specDir = path.join(cwd, "specs", feature);
         const specFile = path.join(specDir, "spec.md");
         const specExists = fs.existsSync(specFile);
-        const specHasContent = specExists && fs.readFileSync(specFile, "utf-8").trim().length > 0;
+        const specHasContent =
+          specExists && fs.readFileSync(specFile, "utf-8").trim().length > 0;
         // Template-only files don't count as "rework" — only files that have been
         // through at least one spec generation pass.
-        const isRework = specHasContent && !fs.readFileSync(specFile, "utf-8").includes("{{FEATURE_NUMBER}}");
+        const isRework =
+          specHasContent &&
+          !fs.readFileSync(specFile, "utf-8").includes("{{FEATURE_NUMBER}}");
 
         // Build the effective prompt
         let effectivePrompt: string;
@@ -172,23 +182,30 @@ Examples:
         const startedAt = new Date().toISOString();
 
         try {
-          const orchestrator = new DefineOrchestrator({
-            featureId: feature,
-            backend,
-            cwd,
-            refs: opts.refs,
-          }, {
-            stage: DefineStage.SPECIFY,
-            featureId: feature,
-            startedAt,
-            runId: `define-spec-${feature}-${Date.now()}`,
-            backend,
+          const orchestrator = new DefineOrchestrator(
+            {
+              featureId: feature,
+              backend,
+              cwd,
+              refs: opts.refs,
+            },
+            {
+              stage: DefineStage.SPECIFY,
+              featureId: feature,
+              startedAt,
+              runId: `define-spec-${feature}-${Date.now()}`,
+              backend,
+            },
+          );
+
+          const exitCode = await orchestrator.runLoop(effectivePrompt, {
+            stopAfterOne: true,
           });
 
-          const exitCode = await orchestrator.runLoop(effectivePrompt, { stopAfterOne: true });
-
           if (exitCode !== 0) {
-            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+            throw new Error(
+              `Workflow execution failed with exit code ${exitCode}`,
+            );
           }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);

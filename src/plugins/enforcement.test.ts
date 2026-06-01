@@ -1,17 +1,17 @@
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveEnforcementSkills } from "./skill-runtime.js";
-import { SkillManifestSchema } from "./manifest.js";
 import { PluginLoader } from "./loader.js";
+import { SkillManifestSchema } from "./manifest.js";
+import { resolveEnforcementSkills } from "./skill-runtime.js";
 
 // Mock child_process for TR-P9-005
 vi.mock("node:child_process", () => {
   return {
-    spawn: vi.fn()
+    spawn: vi.fn(),
   };
 });
 
@@ -21,17 +21,17 @@ vi.mock("../utils/config.js", () => ({
     agents: {
       throttleMs: 0,
       define: "gemini",
-      implement: "gemini"
+      implement: "gemini",
     },
     project: { name: "test" },
     server: { port: 18790, host: "localhost" },
-    parallelism: { local: {}, cloud: {} }
-  })
+    parallelism: { local: {}, cloud: {} },
+  }),
 }));
 
 // Mock DB to avoid side effects
 vi.mock("../db/plugins.js", () => ({
-  recordRoutingDecision: vi.fn()
+  recordRoutingDecision: vi.fn(),
 }));
 
 describe("Phase 9: Enforcement Skills", () => {
@@ -103,23 +103,37 @@ describe("Phase 9: Enforcement Skills", () => {
    */
   describe("TR-P9-002: enforcement skill resolution order", () => {
     it("prefers project-local .gwrk/plugins/skills/ over builtin", async () => {
-      const projectPluginDir = path.join(tmpDir, ".gwrk", "plugins", "skills", "typescript-standards");
+      const projectPluginDir = path.join(
+        tmpDir,
+        ".gwrk",
+        "plugins",
+        "skills",
+        "typescript-standards",
+      );
       await fs.mkdir(projectPluginDir, { recursive: true });
-      
+
       const manifest = {
         type: "skill",
         name: "typescript-standards",
         version: "2.0.0",
         description: "Local override",
         tier: "enforcement",
-        scope: "implementation"
+        scope: "implementation",
       };
-      await fs.writeFile(path.join(projectPluginDir, "manifest.yaml"), JSON.stringify(manifest));
-      await fs.writeFile(path.join(projectPluginDir, "SKILL.md"), "# LOCAL OVERRIDE CONTENT");
+      await fs.writeFile(
+        path.join(projectPluginDir, "manifest.yaml"),
+        JSON.stringify(manifest),
+      );
+      await fs.writeFile(
+        path.join(projectPluginDir, "SKILL.md"),
+        "# LOCAL OVERRIDE CONTENT",
+      );
 
       const content = await resolveEnforcementSkills(tmpDir);
       expect(content).toContain("LOCAL OVERRIDE CONTENT");
-      expect(content).not.toContain("Strict adherence to these standards is required");
+      expect(content).not.toContain(
+        "Strict adherence to these standards is required",
+      );
     });
   });
 
@@ -128,9 +142,19 @@ describe("Phase 9: Enforcement Skills", () => {
    */
   describe("TR-P9-006: gwrk-conventions content", () => {
     it("contains valid task status enum values and commit identity rules", async () => {
-      const builtInBase = path.join(process.cwd(), "src", "plugins", "builtins");
-      const skillPath = path.join(builtInBase, "skills", "gwrk-conventions", "SKILL.md");
-      
+      const builtInBase = path.join(
+        process.cwd(),
+        "src",
+        "plugins",
+        "builtins",
+      );
+      const skillPath = path.join(
+        builtInBase,
+        "skills",
+        "gwrk-conventions",
+        "SKILL.md",
+      );
+
       const content = await fs.readFile(skillPath, "utf-8");
       expect(content).toContain("open");
       expect(content).toContain("in_progress");
@@ -148,18 +172,20 @@ describe("Phase 9: Enforcement Skills", () => {
       const loader = new PluginLoader();
       const plugins = await loader.listPlugins();
 
-      const enforcementSkills = plugins.filter(
-        (p) => p.tier === "enforcement",
-      );
+      const enforcementSkills = plugins.filter((p) => p.tier === "enforcement");
       expect(enforcementSkills.length).toBeGreaterThanOrEqual(2);
-      expect(enforcementSkills.some(p => p.name === "typescript-standards")).toBe(true);
-      expect(enforcementSkills.some(p => p.name === "gwrk-conventions")).toBe(true);
+      expect(
+        enforcementSkills.some((p) => p.name === "typescript-standards"),
+      ).toBe(true);
+      expect(enforcementSkills.some((p) => p.name === "gwrk-conventions")).toBe(
+        true,
+      );
     });
 
     it("gwrk plugin list command output contains enforcement skills with tier", async () => {
       const { listPlugins } = await import("../commands/plugin.js");
       const output = await listPlugins();
-      
+
       // We expect the name and the tier to be present
       expect(output).toContain("typescript-standards");
       expect(output).toContain("gwrk-conventions");
@@ -176,14 +202,16 @@ describe("Phase 9: Enforcement Skills", () => {
       const { dispatchToAgent } = await import("../utils/agent.js");
       const { spawn } = await import("node:child_process");
 
-      vi.spyOn(skillRuntime, "resolveEnforcementSkills").mockResolvedValue("# MOCK ENFORCEMENT CONTENT");
-      
+      vi.spyOn(skillRuntime, "resolveEnforcementSkills").mockResolvedValue(
+        "# MOCK ENFORCEMENT CONTENT",
+      );
+
       const mockChild = new EventEmitter() as any;
       const mockStdinWrite = vi.fn();
       mockChild.stdin = { write: mockStdinWrite, end: vi.fn() };
       mockChild.stdout = new PassThrough();
       mockChild.stderr = new PassThrough();
-      
+
       (spawn as any).mockReturnValue(mockChild);
 
       // Trigger the end of the process after a short delay
@@ -198,7 +226,7 @@ describe("Phase 9: Enforcement Skills", () => {
         type: "implement",
         prompt: "test",
         agent: "gemini",
-        stdin: "Rules:\n{{enforcement}}"
+        stdin: "Rules:\n{{enforcement}}",
       });
 
       expect(mockStdinWrite).toHaveBeenCalled();

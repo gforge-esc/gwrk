@@ -23,7 +23,9 @@ export async function migratePlugins(
       console.warn(
         "\n[DEPRECATED] Legacy '.agents/' directory detected. This directory is no longer supported.",
       );
-      console.warn("Please run 'gwrk init' to seed builtin plugins to ~/.gwrk/ and delete '.agents/'.\n");
+      console.warn(
+        "Please run 'gwrk init' to seed builtin plugins to ~/.gwrk/ and delete '.agents/'.\n",
+      );
     }
   } catch {
     // .agents/ missing, this is the desired state for new projects

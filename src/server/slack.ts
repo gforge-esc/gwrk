@@ -93,7 +93,7 @@ export async function startSlackApp(deps: {
     slackApp.event("message", async ({ event, say }) => {
       // Only respond to threaded messages that aren't already handled by app_mention
       if ("thread_ts" in event && !("subtype" in event)) {
-        // Here we could implement more sophisticated logic to see if the user is 
+        // Here we could implement more sophisticated logic to see if the user is
         // talking to the agent in a thread without explicitly mentioning it.
         // For Phase 2, we just ensure we have the infrastructure.
       }

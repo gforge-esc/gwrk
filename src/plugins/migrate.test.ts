@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { migratePlugins } from "./migrate.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
+import { migratePlugins } from "./migrate.js";
 
 vi.mock("node:fs/promises");
 vi.mock("node:os");
@@ -42,9 +42,18 @@ Test content`;
 
     await migratePlugins();
 
-    const manifestPath = path.join(mockHome, ".gwrk", "plugins", "skills", "test-skill", "manifest.yaml");
-    const manifestCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === manifestPath);
-    
+    const manifestPath = path.join(
+      mockHome,
+      ".gwrk",
+      "plugins",
+      "skills",
+      "test-skill",
+      "manifest.yaml",
+    );
+    const manifestCall = vi
+      .mocked(fs.writeFile)
+      .mock.calls.find((call) => call[0] === manifestPath);
+
     expect(manifestCall).toBeDefined();
     const manifest = parse(manifestCall![1] as string);
     expect(manifest.name).toBe("test-skill");
@@ -65,7 +74,13 @@ Test content`;
         return [] as any;
       }
       if (dir === path.join(mockCwd, ".agents", "workflows")) {
-        return [{ name: "test-workflow.md", isFile: () => true, isDirectory: () => false }] as any;
+        return [
+          {
+            name: "test-workflow.md",
+            isFile: () => true,
+            isDirectory: () => false,
+          },
+        ] as any;
       }
       return [];
     });
@@ -75,9 +90,18 @@ Test content`;
 
     await migratePlugins();
 
-    const manifestPath = path.join(mockHome, ".gwrk", "plugins", "workflows", "test-workflow", "manifest.yaml");
-    const manifestCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === manifestPath);
-    
+    const manifestPath = path.join(
+      mockHome,
+      ".gwrk",
+      "plugins",
+      "workflows",
+      "test-workflow",
+      "manifest.yaml",
+    );
+    const manifestCall = vi
+      .mocked(fs.writeFile)
+      .mock.calls.find((call) => call[0] === manifestPath);
+
     expect(manifestCall).toBeDefined();
     const manifest = parse(manifestCall![1] as string);
     expect(manifest.name).toBe("test-workflow");
@@ -87,20 +111,22 @@ Test content`;
 
   it("TR-P11-003: warns when .agents/ exists in target project", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    
+
     vi.mocked(fs.stat).mockImplementation(async (p) => {
       if (p === path.join(mockCwd, ".agents")) {
         return { isDirectory: () => true } as any;
       }
       throw new Error("Not found");
     });
-    
+
     vi.mocked(fs.readdir).mockResolvedValue([]);
 
     await migratePlugins();
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[DEPRECATED] Legacy '.agents/' directory detected"),
+      expect.stringContaining(
+        "[DEPRECATED] Legacy '.agents/' directory detected",
+      ),
     );
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("Please run 'gwrk init'"),

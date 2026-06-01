@@ -19,7 +19,9 @@ export function readPid(): number | undefined {
   // 1. Try launchctl first (authority on macOS)
   try {
     const cmd = `launchctl list ${SERVICE_NAME} | grep PID | awk '{print $3}' | sed 's/;//'`;
-    const output = execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    const output = execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
     if (output) {
       const pid = Number.parseInt(output, 10);
       if (!Number.isNaN(pid)) {
