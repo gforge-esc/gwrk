@@ -144,24 +144,24 @@ _No mockups exist for this feature._
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| US-014 (Define from Slack) | 1 | PLANNED |
-| FR-015 (define slash command) | 1 | PLANNED |
-| FR-016 (define event bridge) | 1 | PLANNED |
-| US-015 (Conversational Agent) | 2 | PLANNED |
-| FR-006 (Mentions) | 2 | PLANNED |
-| FR-017 (Skills in Slack) | 2 | PLANNED |
-| US-010 (Ship loop notify bridge) | 3 | PLANNED |
-| FR-014 (Webhook-first) | 3 | PLANNED |
-| US-013 (Multi-channel topology) | 3 | PLANNED |
-| FR-013 (opsChannelId) | 3 | PLANNED |
-| DM-004 (Notify Payload) | 1, 3 | PLANNED |
-| TR-013 (Define slash test) | 1 | PLANNED |
-| TR-014 (Define message test) | 1 | PLANNED |
-| TR-015 (Define action test) | 1 | PLANNED |
-| TR-016 (Agent mention test) | 2 | PLANNED |
-| TR-017 (Thread context test) | 2 | PLANNED |
-| SC-010 (Define from Slack SC) | 1 | PLANNED |
-| SC-011 (Approve spec/plan SC) | 1 | PLANNED |
-| SC-012 (Conversational SC) | 2 | PLANNED |
-| VR-009 (E2E Define) | 1 | PLANNED |
-| VR-010 (E2E Approve spec) | 1 | PLANNED |
+| US-014 (Define from Slack) | 1 | ✅ Done |
+| FR-015 (define slash command) | 1 | ✅ Done |
+| FR-016 (define event bridge) | 1 | ✅ Done |
+| US-015 (Conversational Agent) | 2 | ✅ Done |
+| FR-006 (Mentions) | 2 | ✅ Done |
+| FR-017 (Skills in Slack) | 2 | ✅ Done |
+| US-010 (Ship loop notify bridge) | 3 | ✅ Done |
+| FR-014 (Webhook-first) | 3 | ✅ Done |
+| US-013 (Multi-channel topology) | 3 | ✅ Done |
+| FR-013 (opsChannelId) | 3 | ✅ Done |
+| DM-004 (Notify Payload) | 1, 3 | ✅ Done |
+| TR-013 (Define slash test) | 1 | ✅ Done |
+| TR-014 (Define message test) | 1 | ✅ Done |
+| TR-015 (Define action test) | 1 | ✅ Done |
+| TR-016 (Agent mention test) | 2 | ✅ Done |
+| TR-017 (Thread context test) | 2 | ✅ Done |
+| SC-010 (Define from Slack SC) | 1 | ✅ Done |
+| SC-011 (Approve spec/plan SC) | 1 | ✅ Done |
+| SC-012 (Conversational SC) | 2 | ✅ Done |
+| VR-009 (E2E Define) | 1 | ✅ Done |
+| VR-010 (E2E Approve spec) | 1 | ✅ Done |

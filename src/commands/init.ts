@@ -102,7 +102,7 @@ export const initCommand = new Command("init")
         return;
       }
 
-      const dirs = [".specify/templates", "specs"];
+      const dirs = ["specs"];
 
       for (const dir of dirs) {
         fs.mkdirSync(path.join(projectRoot, dir), { recursive: true });

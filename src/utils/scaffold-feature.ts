@@ -3,7 +3,7 @@ import path from "node:path";
 
 /**
  * Stop words filtered from descriptions when generating feature slugs.
- * Ported verbatim from .specify/scripts/bash/create-new-feature.sh
+ * Ported verbatim from legacy bash script create-new-feature.sh
  */
 const STOP_WORDS = new Set([
 	"i",
@@ -177,7 +177,7 @@ async function registerFeatureInDb(featureId: string, name: string): Promise<voi
 /**
  * Scaffold a new feature directory with auto-numbering and slug generation.
  *
- * This is the TypeScript port of .specify/scripts/bash/create-new-feature.sh.
+ * This is the TypeScript port of legacy bash script create-new-feature.sh.
  * It implements the Jira mental model: provide a description, get a numbered
  * feature ID back.
  */
@@ -213,8 +213,7 @@ export function scaffoldFeature(
 	const projectRoot = path.dirname(specsDir);
 	const templatePath = path.join(
 		projectRoot,
-		".specify",
-		"templates",
+		"specs",
 		"spec-template.md",
 	);
 	const specFile = path.join(featureDir, "spec.md");

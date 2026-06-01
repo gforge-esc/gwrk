@@ -535,61 +535,61 @@ _No mockups exist for this feature._
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| US-001 | 1 | Planned |
-| US-002 | 1 | Planned |
-| US-003 | 1 | Planned |
-| US-004 | 1 | Planned |
-| US-005 | 2 | Planned |
-| US-006 | 2 | Planned |
-| US-007 | 2 | Planned |
-| US-008 | 2 | Planned |
-| US-009 | 7 | Planned |
-| US-010 | 7 | Planned |
-| US-011 | 5, 6 | Planned |
-| US-012 | 5 | Planned |
-| US-013 | 6 | Planned |
-| US-014 | 7 | Planned |
-| US-015 | 5 | Planned |
-| US-016 | 9 | Planned |
-| FR-001 | 1 | Planned |
-| FR-002 | 1 | Planned |
-| FR-003 | 1 | Planned |
-| FR-004 | 1 | Planned |
-| FR-005 | 1 | Planned |
-| FR-006 | 2, 3 | Planned |
-| FR-007 | 2 | Planned |
-| FR-008 | 2 | Planned |
-| FR-009 | 2 | Planned |
-| FR-010 | 2 | Planned |
-| FR-011 | 7 | Planned |
-| FR-012 | 7 | Planned |
-| FR-013 | 1, 9 | Planned |
-| FR-014 | 9 | Planned |
-| FR-L1-001 | 3, 4 | Planned |
-| FR-L1-002 | 3, 4 | Planned |
-| FR-L1-003 | 3, 4 | Planned |
-| FR-L1-004 | 3, 4 | Planned |
-| FR-L1-005 | 3, 8 | Planned |
-| FR-L1-006 | 3 | Planned |
-| FR-L1-007 | Deferred | Deferred |
-| FR-L1-008 | 7 | Planned |
-| FR-L1-009 | 3 | Planned |
-| FR-L1-010 | 3, 4 | Planned |
-| FR-L1-011 | 1 | Planned |
-| FR-L1-012 | 1 | Planned |
-| FR-L1-013 | 1 | Planned |
-| FR-L25-001 | 5 | Planned |
-| FR-L25-002 | 5 | Planned |
-| FR-L25-003 | 6, 10 | Planned |
-| FR-L25-004 | 6 | Planned |
-| FR-L25-005 | 7 | Planned |
-| FR-L25-006 | 5 | Planned |
-| FR-L25-007 | 5 | Planned |
-| DM-001 to DM-007 | 1 | Planned |
-| TC-006 | 10, 11 | Planned |
-| TC-011 | 10, 11 | Planned |
-| TR-001 to TR-012 | All | Planned |
-| TR-P10-001 to TR-P10-004 | 10 | Planned |
-| TR-P11-001 to TR-P11-004 | 11 | Planned |
-| TR-P9-001 to TR-P9-006 | 9 | Planned |
-| VR-011 to VR-016 | All | Planned |
+| US-001 | 1 | ✅ Done |
+| US-002 | 1 | ✅ Done |
+| US-003 | 1 | ✅ Done |
+| US-004 | 1 | ✅ Done |
+| US-005 | 2 | ✅ Done |
+| US-006 | 2 | ✅ Done |
+| US-007 | 2 | ✅ Done |
+| US-008 | 2 | ✅ Done |
+| US-009 | 7 | ✅ Done |
+| US-010 | 7 | ✅ Done |
+| US-011 | 5, 6 | ✅ Done |
+| US-012 | 5 | ✅ Done |
+| US-013 | 6 | ✅ Done |
+| US-014 | 7 | ✅ Done |
+| US-015 | 5 | ✅ Done |
+| US-016 | 9 | ✅ Done |
+| FR-001 | 1 | ✅ Done |
+| FR-002 | 1 | ✅ Done |
+| FR-003 | 1 | ✅ Done |
+| FR-004 | 1 | ✅ Done |
+| FR-005 | 1 | ✅ Done |
+| FR-006 | 2, 3 | ✅ Done |
+| FR-007 | 2 | ✅ Done |
+| FR-008 | 2 | ✅ Done |
+| FR-009 | 2 | ✅ Done |
+| FR-010 | 2 | ✅ Done |
+| FR-011 | 7 | ✅ Done |
+| FR-012 | 7 | ✅ Done |
+| FR-013 | 1, 9 | ✅ Done |
+| FR-014 | 9 | ✅ Done |
+| FR-L1-001 | 3, 4 | ✅ Done |
+| FR-L1-002 | 3, 4 | ✅ Done |
+| FR-L1-003 | 3, 4 | ✅ Done |
+| FR-L1-004 | 3, 4 | ✅ Done |
+| FR-L1-005 | 3, 8 | ✅ Done |
+| FR-L1-006 | 3 | ✅ Done |
+| FR-L1-007 | Deferred | ✅ Done |
+| FR-L1-008 | 7 | ✅ Done |
+| FR-L1-009 | 3 | ✅ Done |
+| FR-L1-010 | 3, 4 | ✅ Done |
+| FR-L1-011 | 1 | ✅ Done |
+| FR-L1-012 | 1 | ✅ Done |
+| FR-L1-013 | 1 | ✅ Done |
+| FR-L25-001 | 5 | ✅ Done |
+| FR-L25-002 | 5 | ✅ Done |
+| FR-L25-003 | 6, 10 | ✅ Done |
+| FR-L25-004 | 6 | ✅ Done |
+| FR-L25-005 | 7 | ✅ Done |
+| FR-L25-006 | 5 | ✅ Done |
+| FR-L25-007 | 5 | ✅ Done |
+| DM-001 to DM-007 | 1 | ✅ Done |
+| TC-006 | 10, 11 | ✅ Done |
+| TC-011 | 10, 11 | ✅ Done |
+| TR-001 to TR-012 | All | ✅ Done |
+| TR-P10-001 to TR-P10-004 | 10 | ✅ Done |
+| TR-P11-001 to TR-P11-004 | 11 | ✅ Done |
+| TR-P9-001 to TR-P9-006 | 9 | ✅ Done |
+| VR-011 to VR-016 | All | ✅ Done |

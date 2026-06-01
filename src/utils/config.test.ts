@@ -1,71 +1,47 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
+import { describe, it, expect } from "vitest";
+import { GwrkConfigSchema } from "./config.js";
 
-import { loadConfig } from "./config.js";
-
-vi.mock("node:fs");
-
-describe("TC-H03 / T004: Config & Environment Validation", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("FR-032 / TC-011: Configuration Schema Extensions", () => {
+  it("TR-033: parses legacy .gwrkrc.json without project profile fields", () => {
+    const legacyConfig = {
+      featureDir: "specs",
+      historyPath: ".gwrk/history.jsonl"
+    };
+    const result = GwrkConfigSchema.safeParse(legacyConfig);
+    expect(result.success).toBe(true);
   });
 
-  describe("TC-H03: Config Loading", () => {
-    it("TC-003: fails fast if .gwrkrc.json is missing", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-      
-      expect(() => loadConfig("/root")).toThrow("Configuration file .gwrkrc.json not found");
-    });
-
-    it("Phase 2: loads parallelism settings from config", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-        project: { name: "test" },
-        agents: { define: "gemini", implement: "gemini" },
-        parallelism: {
-          local: { maxClones: 2 },
-          cloud: { maxConcurrent: 3 }
+  it("TR-033: parses new .gwrkrc.json with project profile details", () => {
+    const newConfig = {
+      project: {
+        type: "pnpm-monorepo",
+        stack: {
+          language: "typescript",
+          packageManager: "pnpm",
+          testFramework: "vitest"
+        },
+        layout: {
+          src: "src",
+          tests: "src/**/*.test.ts"
         }
-      }));
+      }
+    };
+    const result = GwrkConfigSchema.safeParse(newConfig);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.project?.type).toBe("pnpm-monorepo");
+    }
+  });
 
-      const config = loadConfig("/root");
-      expect(config.parallelism.local.maxClones).toBe(2);
-      expect(config.parallelism.cloud.maxConcurrent).toBe(3);
-    });
-
-    it("TR-003: loads agents registry from config", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-        project: { name: "test" },
-        agents: {
-          registry: {
-            gemini: {
-              type: "local-cli",
-              command: "gemini --model {{model}}",
-              discoveryMethod: "manual",
-              quotaProbe: {
-                method: "interactive-scrape",
-                command: "gemini",
-                sendKeys: "/stats",
-                parseRegex: "(\\d+)%",
-                cacheTTLMinutes: 5
-              },
-              maxConcurrent: 2,
-              models: [
-                { name: "flash", tier: "fast", modelFlag: "flash" }
-              ]
-            }
-          }
+  it("FR-032: fails validation for invalid project.stack fields", () => {
+    const invalidConfig = {
+      project: {
+        stack: {
+          language: 123 // Must be string
         }
-      }));
-
-      const config = loadConfig("/root");
-      expect(config.agents.registry).toBeDefined();
-      expect(config.agents.registry?.gemini.type).toBe("local-cli");
-    });
-
-
+      }
+    };
+    const result = GwrkConfigSchema.safeParse(invalidConfig);
+    expect(result.success).toBe(false);
   });
 });

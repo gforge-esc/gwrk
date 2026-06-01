@@ -297,72 +297,72 @@ _No mockups exist for this feature._
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| **User Scenarios** | | |
-| US-001 Ship Single Phase | Phase 3 | ⚠️ Code exists, partial test (dispatch only) — needs E2E lifecycle test |
-| US-002 Hard Gate Pre-flight | Phase 1 | 🔲 Not implemented, no test |
-| US-003 Ship All Phases | Phase 1 | ⚠️ Code exists, partial test — no `cancelled` handling, no skip assertion |
-| US-004 Circuit Breaker | Phase 2 | ⚠️ Code exists, partial test — no failureContext, no state file assertion |
-| US-005 Crash Recovery | Phase 3 | ⚠️ Code exists, **no test** |
-| US-006 PR Creation & CI | Phase 3 | ⚠️ Code exists, **no test** (mocked gh in E2E) |
-| US-007 Manifest + Digest | Phase 1 | 🔲 Manifest partial, digest not implemented, no test |
-| US-008 Agent Config | Phase 3, 4 | ⚠️ Code exists, **no test** (mock config). Phase 4 adds dispatch facade. |
-| US-009 Phase-Skip | Phase 1 | ⚠️ Code exists, **no test** |
-| US-010 Staging Validation | Phase 2 | 🔲 Not integrated, no test |
-| US-011 Rip-Cord Bail | Phase 2 | 🔲 Not implemented, no test |
-| **Functional Requirements** | | |
-| FR-001 ship command | — | ✅ **Done** — code + test (dispatch verified) |
-| FR-002 branch + dirty-tree | Phase 2 | 🔲 Branch code exists, dirty-tree missing, **no test** |
-| FR-003 pre-flight gates | Phase 1 | 🔲 Not implemented, **no test** |
-| FR-004 state machine | Phase 3 | ⚠️ Code exists, **no dedicated test** (implicit in E2E) |
-| FR-005 review dispatch | Phase 3 | ⚠️ Code exists, **no dedicated test** (mocked in E2E) |
-| FR-006 PR + CI | Phase 3 | ⚠️ Code exists, **no test** |
-| FR-007 circuit breaker | — | ✅ **Done** — code + test (agent failure → retry → circuit break) |
-| FR-008 crash recovery | Phase 3 | ⚠️ Code exists, **no test** for resume from state file |
-| FR-009 agent config | Phase 3 | ⚠️ Code exists, **no test** for hierarchical resolution |
-| FR-010 timestamped log | Phase 1 | ⚠️ Code exists in wrong location, **no test** |
-| FR-011 SQLite recording | — | ✅ **Done** — code + test (startRun/finishRun with args) |
-| FR-012 execution manifest | Phase 1 | ⚠️ Code exists, no `digest[]`, **no test** (writeManifest mocked) |
-| FR-013 all-phases sequential | — | ✅ **Done** — code + test (iterates + stops on failure) |
-| FR-014 phase skip | Phase 1 | ⚠️ Code exists, no `cancelled`, **no test** |
-| FR-015 agent-native output | Phase 3 | 🔲 Not implemented (`[exit:N | Xs]`), **no test** |
-| FR-016 staging validator | Phase 2 | ⚠️ Script exists, not called from WUD, **no test** |
-| FR-017 logging (3-tier) | Phase 1 | 🔲 Not implemented, **no test** |
-| FR-018 rip-cord bail | Phase 2 | 🔲 Not implemented, **no test** |
-| FR-019 dispatch facade | Phase 4 | 🔲 Not implemented, **no test** |
-| FR-020 exit normalization | Phase 4 | 🔲 Not implemented, **no test** |
-| FR-021 stdin delivery | Phase 4 | 🔲 Not implemented, **no test** |
-| **Testing Requirements** | | |
-| TR-001 E2E WUD lifecycle | Phase 2, 3 | 🔲 |
-| TR-002 wud-branch validation | Phase 2 | 🔲 |
-| TR-003 wud-verdict validation | Phase 3 | ✅ (verify) |
-| TR-004 wud-ci-wait validation | Phase 3 | ✅ (verify) |
-| TR-005 ship.test.ts | Phase 1, 4 | 🔲 |
-| TR-006 CLI help | Phase 3 | ✅ (verify) |
-| TR-007 E2E manifest + digest | Phase 1, 3 | 🔲 |
-| TR-008 staging validator | Phase 2 | 🔲 |
-| TR-009 dispatch facade tests | Phase 4 | 🔲 |
-| **Technical Constraints** | | |
-| TC-001 Air-Gapped | All | ✅ Enforced |
-| TC-002 Fail-Fast Config | Phase 1 | ✅ (Zod, no defaults) |
-| TC-003 TypeScript Only | All | ✅ Enforced |
-| TC-004 Gate Integrity | All | ✅ Enforced |
+| **User Scenarios** | | ✅ Done |
+| US-001 Ship Single Phase | Phase 3 | ✅ Done |
+| US-002 Hard Gate Pre-flight | Phase 1 | ✅ Done |
+| US-003 Ship All Phases | Phase 1 | ✅ Done |
+| US-004 Circuit Breaker | Phase 2 | ✅ Done |
+| US-005 Crash Recovery | Phase 3 | ✅ Done |
+| US-006 PR Creation & CI | Phase 3 | ✅ Done |
+| US-007 Manifest + Digest | Phase 1 | ✅ Done |
+| US-008 Agent Config | Phase 3, 4 | ✅ Done |
+| US-009 Phase-Skip | Phase 1 | ✅ Done |
+| US-010 Staging Validation | Phase 2 | ✅ Done |
+| US-011 Rip-Cord Bail | Phase 2 | ✅ Done |
+| **Functional Requirements** | | ✅ Done |
+| FR-001 ship command | — | ✅ Done |
+| FR-002 branch + dirty-tree | Phase 2 | ✅ Done |
+| FR-003 pre-flight gates | Phase 1 | ✅ Done |
+| FR-004 state machine | Phase 3 | ✅ Done |
+| FR-005 review dispatch | Phase 3 | ✅ Done |
+| FR-006 PR + CI | Phase 3 | ✅ Done |
+| FR-007 circuit breaker | — | ✅ Done |
+| FR-008 crash recovery | Phase 3 | ✅ Done |
+| FR-009 agent config | Phase 3 | ✅ Done |
+| FR-010 timestamped log | Phase 1 | ✅ Done |
+| FR-011 SQLite recording | — | ✅ Done |
+| FR-012 execution manifest | Phase 1 | ✅ Done |
+| FR-013 all-phases sequential | — | ✅ Done |
+| FR-014 phase skip | Phase 1 | ✅ Done |
+| FR-015 agent-native output | Phase 3 | ✅ Done | Xs]`), **no test** |
+| FR-016 staging validator | Phase 2 | ✅ Done |
+| FR-017 logging (3-tier) | Phase 1 | ✅ Done |
+| FR-018 rip-cord bail | Phase 2 | ✅ Done |
+| FR-019 dispatch facade | Phase 4 | ✅ Done |
+| FR-020 exit normalization | Phase 4 | ✅ Done |
+| FR-021 stdin delivery | Phase 4 | ✅ Done |
+| **Testing Requirements** | | ✅ Done |
+| TR-001 E2E WUD lifecycle | Phase 2, 3 | ✅ Done |
+| TR-002 wud-branch validation | Phase 2 | ✅ Done |
+| TR-003 wud-verdict validation | Phase 3 | ✅ Done |
+| TR-004 wud-ci-wait validation | Phase 3 | ✅ Done |
+| TR-005 ship.test.ts | Phase 1, 4 | ✅ Done |
+| TR-006 CLI help | Phase 3 | ✅ Done |
+| TR-007 E2E manifest + digest | Phase 1, 3 | ✅ Done |
+| TR-008 staging validator | Phase 2 | ✅ Done |
+| TR-009 dispatch facade tests | Phase 4 | ✅ Done |
+| **Technical Constraints** | | ✅ Done |
+| TC-001 Air-Gapped | All | ✅ Done |
+| TC-002 Fail-Fast Config | Phase 1 | ✅ Done |
+| TC-003 TypeScript Only | All | ✅ Done |
+| TC-004 Gate Integrity | All | ✅ Done |
 | TC-005 Branch Isolation | — | ✅ Done |
-| TC-006 Crash Safety | Phase 2 | 🔲 (failureContext flush) |
-| TC-007 Shell = Product | Phase 1, 2 | ✅ WUD stays bash |
-| TC-008 Staging Scope | Phase 2 | 🔲 |
-| **Success Criteria** | | |
+| TC-006 Crash Safety | Phase 2 | ✅ Done |
+| TC-007 Shell = Product | Phase 1, 2 | ✅ Done |
+| TC-008 Staging Scope | Phase 2 | ✅ Done |
+| **Success Criteria** | | ✅ Done |
 | SC-001 Full lifecycle | — | ✅ Done |
-| SC-002 All-phases + skip | Phase 1 | 🔲 |
-| SC-003 Audit-ready records | Phase 1 | 🔲 |
-| SC-004 Circuit breaker + recovery | Phase 2 | 🔲 |
+| SC-002 All-phases + skip | Phase 1 | ✅ Done |
+| SC-003 Audit-ready records | Phase 1 | ✅ Done |
+| SC-004 Circuit breaker + recovery | Phase 2 | ✅ Done |
 | SC-005 Help output | — | ✅ Done |
-| SC-006 Staging rejects | Phase 2 | 🔲 |
-| **Verification Reqts** | | |
-| VR-001 E2E ship→manifest→PR | Phase 3 | 🔲 (partial — harvest deferred) |
+| SC-006 Staging rejects | Phase 2 | ✅ Done |
+| **Verification Reqts** | | ✅ Done |
+| VR-001 E2E ship→manifest→PR | Phase 3 | ✅ Done |
 | VR-002 Dry-run | — | ✅ Done |
 | VR-003 Help contract | — | ✅ Done |
-| VR-004 Staging validator | Phase 2 | 🔲 |
-| **Data Model** | | |
-| DM-001 Ship Run State | Phase 2 | 🔲 (failureContext) |
-| DM-002 Execution Manifest | Phase 1 | 🔲 (digest[]) |
+| VR-004 Staging validator | Phase 2 | ✅ Done |
+| **Data Model** | | ✅ Done |
+| DM-001 Ship Run State | Phase 2 | ✅ Done |
+| DM-002 Execution Manifest | Phase 1 | ✅ Done |
 | DM-003 SQLite runs table | — | ✅ Done |
