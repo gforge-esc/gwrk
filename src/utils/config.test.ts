@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-// @ts-ignore - GwrkConfigSchema might not have the new fields yet
 import { GwrkConfigSchema } from './config';
 
 describe('Config Schema Extension (FR-032, TC-011)', () => {
@@ -27,9 +26,21 @@ describe('Config Schema Extension (FR-032, TC-011)', () => {
         type: 'pnpm-monorepo',
         stack: {
           language: 'typescript',
-          buildSystem: 'pnpm'
+          buildSystem: 'pnpm',
+          testFramework: 'vitest',
+          packageManager: 'pnpm'
         },
-        layout: 'standard-monorepo'
+        layout: {
+          sourceRoot: 'src/',
+          apps: 'apps/',
+          packages: 'packages/'
+        },
+        architecture: {
+          doc: 'docs/architecture.md'
+        },
+        conventions: {
+          branchPrefix: 'feat/'
+        }
       },
       agents: {
         define: 'gemini',
@@ -38,8 +49,11 @@ describe('Config Schema Extension (FR-032, TC-011)', () => {
     };
     const result = GwrkConfigSchema.safeParse(newConfig);
     expect(result.success).toBe(true);
-    // @ts-ignore
-    expect(result.data.project?.type).toBe('pnpm-monorepo');
+    if (result.success) {
+      expect(result.data.project?.type).toBe('pnpm-monorepo');
+      expect(result.data.project?.stack?.testFramework).toBe('vitest');
+      expect(result.data.project?.layout?.sourceRoot).toBe('src/');
+    }
   });
 
   it('FR-032: rejects invalid project.stack values', () => {

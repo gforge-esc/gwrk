@@ -23,11 +23,31 @@ export const GwrkConfigSchema = z.object({
         language: z.string().optional(),
         framework: z.string().optional(),
         buildSystem: z.string().optional(),
+        testFramework: z.string().optional(),
+        packageManager: z.string().optional(),
       })
       .optional(),
-    layout: z.string().optional(),
-    architecture: z.string().optional(),
-    conventions: z.string().optional(),
+    layout: z
+      .object({
+        sourceRoot: z.string().optional(),
+        apps: z.string().optional(),
+        packages: z.string().optional(),
+        specs: z.string().optional(),
+        docs: z.string().optional(),
+      })
+      .optional(),
+    architecture: z
+      .object({
+        doc: z.string().optional(),
+        decisions: z.string().optional(),
+      })
+      .optional(),
+    conventions: z
+      .object({
+        branchPrefix: z.string().optional(),
+        testPattern: z.string().optional(),
+      })
+      .optional(),
     slack: z
       .object({
         channelId: z.string(),
