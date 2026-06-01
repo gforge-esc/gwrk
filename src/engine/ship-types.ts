@@ -4,6 +4,8 @@
 export enum ShipStage {
   BRANCH_SETUP = "BRANCH_SETUP",
   IMPLEMENT = "IMPLEMENT",
+  BUILD_CHECK = "BUILD_CHECK",
+  TEST_GATE = "TEST_GATE",
   CODE_REVIEW = "CODE_REVIEW",
   UAT_REVIEW = "UAT_REVIEW",
   PR_CI = "PR_CI",
@@ -45,6 +47,7 @@ export interface ShipState {
   backend: string;
   failureContext: FailureContext | null;
   branchName?: string;
+  testBaseline?: number;
 }
 
 /**

@@ -1,44 +1,53 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-// Module does not exist yet (RED) — Phase 10: setup state implementation pending
-import { loadSetupState, saveSetupState, type SetupState } from "./setup-state.js";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-describe("Setup State Utility (Phase 10)", () => {
-  let tempDir: string;
-  let homeDir: string;
+// Temp dir created once — vi.mock runs before module evaluation
+const TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-setup-test-"));
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return {
+    ...actual,
+    default: { ...actual, homedir: () => TEST_HOME },
+    homedir: () => TEST_HOME,
+  };
+});
+
+describe("setup-state utility (Phase 10)", () => {
+  const setupFile = path.join(TEST_HOME, ".gwrk", "setup.json");
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "setup-state-test-"));
-    homeDir = path.join(tempDir, "home");
-    fs.mkdirSync(homeDir, { recursive: true });
-    vi.stubEnv("HOME", homeDir);
+    // Clean between tests
+    if (fs.existsSync(setupFile)) {
+      fs.unlinkSync(setupFile);
+    }
   });
 
   afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    vi.unstubAllEnvs();
+    if (fs.existsSync(setupFile)) {
+      fs.unlinkSync(setupFile);
+    }
   });
 
-  it("US-021: SHOULD save and load setup state", () => {
-    const state: SetupState = {
+  it("SHOULD save and load setup state", async () => {
+    const { saveSetupState, loadSetupState } = await import("./setup-state.js");
+    const state = {
       completedAt: new Date().toISOString(),
-      steps: {
-        tcc: true,
-        ssh: true,
-        gh: true,
-        verification: true,
-      },
+      steps: { tcc: true, ssh: true, gh: true, verification: true }
     };
-
+    
     saveSetupState(state);
+    
     const loaded = loadSetupState();
     expect(loaded).toEqual(state);
   });
 
-  it("US-021: SHOULD return null if setup state is missing", () => {
+  it("SHOULD return null if setup.json does not exist", async () => {
+    const { loadSetupState } = await import("./setup-state.js");
     const loaded = loadSetupState();
     expect(loaded).toBeNull();
   });
 });
+

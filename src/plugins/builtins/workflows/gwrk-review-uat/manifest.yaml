@@ -7,6 +7,13 @@ outputSchema:
   properties:
     summary:
       type: string
+    verdict:
+      type: string
+      enum: [GO, NO-GO]
+    reopenedTasks:
+      type: array
+      items:
+        type: string
     intents:
       type: array
       items:
@@ -24,4 +31,4 @@ outputSchema:
           command:
             type: string
         required: [action]
-  required: [summary, intents]
+  required: [summary, verdict, reopenedTasks, intents]

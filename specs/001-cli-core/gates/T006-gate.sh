@@ -1,15 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T006 — Implement src/utils/format.ts
+# Gate: T006 — Hard Gate Enforcement
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/utils/format.ts \
-  || { echo "FAIL: T006 — file not found: src/utils/format.ts" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/tasks-done.test.ts -t "US-006" --reporter=verbose \
+  || { echo "FAIL: T006 — vitest failed for src/commands/tasks-done.test.ts" >&2; exit 1; }
 
-grep -q 'export function banner' src/utils/format.ts \
-  || { echo "FAIL: T006 — src/utils/format.ts missing 'banner'" >&2; exit 1; }
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
 
-grep -q 'export function success' src/utils/format.ts \
-  || { echo "FAIL: T006 — src/utils/format.ts missing 'success'" >&2; exit 1; }
-
-echo "PASS: T006 — Implement src/utils/format.ts"
+echo "PASS: T006 — tests pass + lint clean"

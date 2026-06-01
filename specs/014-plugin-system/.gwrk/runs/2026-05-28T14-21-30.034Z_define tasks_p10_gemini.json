@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-28T14:21:30.034Z_define_p10",
+  "feature": "014-plugin-system",
+  "phase": "p10",
+  "command": "define tasks",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-28T14:21:30.034Z",
+  "finishedAt": "2026-05-28T14:25:57.827Z",
+  "durationS": 268,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 157,
+  "linesDeleted": 37,
+  "gitCommit": "1f4b5d65f7a869dc361a9387ba566d4539542187",
+  "gitBranch": "feat/014-plugin-system",
+  "digest": []
+}

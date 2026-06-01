@@ -2,13 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
+import { DefineOrchestrator } from "../engine/define-orchestrator.js";
+import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
+import {
+  getCurrentBranch,
+  getCurrentCommit,
+  getDiffStats,
+} from "../utils/git.js";
+import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { scaffoldFeature } from "../utils/scaffold-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const specifyCommand = new Command("spec")
@@ -17,34 +25,30 @@ export const specifyCommand = new Command("spec")
     "after",
     `
 Examples:
-  gwrk define spec 001 "Add a new CLI command"
+  gwrk define spec "Add OAuth2 integration"                  # New feature, auto-numbered
+  gwrk define spec 014 "Refine the plugin section"           # Rework existing
+  gwrk define spec 047-ontology "Ontology Integration"       # New with explicit slug
   gwrk define spec 001-cli-core --refs docs/reference/new-feature.md
   echo "Refine the authentication section" | gwrk define spec 001
 `,
   )
-  .argument("<feature>", "Feature ID (e.g. 014-plugin-system)")
-  .argument("[prompt]", "Rework instructions or new feature description")
+  .argument("[feature]", "Feature ID (e.g. 014-plugin-system). Omit to create new.")
+  .argument("[prompt]", "Feature description (new) or rework instructions (existing)")
   .option("--refs <path>", "Path to additional reference docs")
   .action(
     async (
-      featureArg: string,
+      featureArg: string | undefined,
       prompt: string | undefined,
       opts: { refs?: string },
     ) => {
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
-        // Resolve prefix: "003" → "003-slack"
-        const feature = resolveFeature(featureArg, cwd);
         const config = loadConfig(cwd);
         const backend = config.agents.define;
-        const runtime = new WorkflowRuntime();
+        const specsDir = path.join(cwd, "specs");
 
-        // Detect mode: rework (spec exists) vs new (spec doesn't exist)
-        const specDir = path.join(cwd, "specs", feature);
-        const specFile = path.join(specDir, "spec.md");
-        const isRework = fs.existsSync(specFile);
-
-        // If no prompt arg, try stdin
+        // Read prompt/stdin BEFORE resolution — we need the prompt to decide
+        // whether a missing feature is an error or a creation intent.
         let effectiveInput = prompt;
         if (!effectiveInput && !process.stdin.isTTY) {
           const stdinContent = await readStdin();
@@ -52,6 +56,55 @@ Examples:
             effectiveInput = stdinContent.trim();
           }
         }
+
+        // --- Resolve or scaffold the feature ---
+        let feature: string;
+
+        if (!featureArg) {
+          // No feature arg → creation mode. Prompt is the description.
+          if (!effectiveInput) {
+            throw new CommandError(
+              `Feature description required.\n\nTo create a new feature:\n  gwrk define spec "Description of the feature"`,
+              2,
+            );
+          }
+          const result = scaffoldFeature(specsDir, effectiveInput);
+          feature = result.featureId;
+          console.log(`Created: ${feature}`);
+        } else {
+          // Feature arg provided → try to resolve
+          try {
+            feature = resolveFeature(featureArg, cwd);
+          } catch {
+            // Not found. If prompt exists → scaffold with explicit slug.
+            if (effectiveInput) {
+              const result = scaffoldFeature(specsDir, effectiveInput, {
+                shortName: featureArg.replace(/^\d+-/, "").length > 0
+                  ? featureArg
+                  : undefined,
+                number: /^\d+$/.test(featureArg)
+                  ? undefined // auto-number, featureArg is just a bare number with no slug
+                  : undefined,
+              });
+              feature = result.featureId;
+              console.log(`Created: ${feature}`);
+            } else {
+              throw new CommandError(
+                `Feature "${featureArg}" not found.\n\nTo create a new feature:\n  gwrk define spec "${featureArg}" "Description of the feature"\n  gwrk define spec "Description of the feature"\n\nTo list available features:\n  gwrk project specs`,
+                1,
+              );
+            }
+          }
+        }
+
+        // Detect mode: rework (spec.md already has content) vs new
+        const specDir = path.join(cwd, "specs", feature);
+        const specFile = path.join(specDir, "spec.md");
+        const specExists = fs.existsSync(specFile);
+        const specHasContent = specExists && fs.readFileSync(specFile, "utf-8").trim().length > 0;
+        // Template-only files don't count as "rework" — only files that have been
+        // through at least one spec generation pass.
+        const isRework = specHasContent && !fs.readFileSync(specFile, "utf-8").includes("{{FEATURE_NUMBER}}");
 
         // Build the effective prompt
         let effectivePrompt: string;
@@ -69,10 +122,28 @@ Examples:
           effectivePrompt = `Create a NEW spec for feature ${feature}.\n\nDescription: ${effectiveInput}`;
         }
 
-        // Append refs context if provided
-        if (opts.refs && fs.existsSync(opts.refs)) {
-          const refsContent = fs.readFileSync(opts.refs, "utf-8");
-          effectivePrompt += `\n\nReference document (${opts.refs}):\n${refsContent}`;
+        // Inject refs as authoritative source material.
+        // Per Anthropic prompt structure: dynamic content goes BEFORE instructions,
+        // wrapped in XML tags for clear content boundaries.
+        // Per GPT-5.2 guide: repeated critical instructions at the end for long prompts.
+        if (opts.refs) {
+          const resolvedRefs = path.resolve(opts.refs);
+          if (!fs.existsSync(resolvedRefs)) {
+            throw new CommandError(
+              `Reference file not found: ${opts.refs}\nResolved to: ${resolvedRefs}`,
+              1,
+            );
+          }
+          const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
+          effectivePrompt = [
+            `<reference_document source="${opts.refs}" authority="primary">`,
+            refsContent,
+            `</reference_document>`,
+            ``,
+            effectivePrompt,
+            ``,
+            `CRITICAL REMINDER: The <reference_document> above is the AUTHORITATIVE source of requirements. Every screen name, role, data source, acceptance criterion, and technical constraint from the reference document MUST appear verbatim in the spec. Do NOT substitute generic defaults for specific names defined in the reference document.`,
+          ].join("\n");
         }
 
         const mode = isRework ? "rework" : "new";
@@ -98,21 +169,69 @@ Examples:
         });
 
         const startTime = Date.now();
+        const startedAt = new Date().toISOString();
 
         try {
-          const result = await runtime.executeWorkflow(
-            "gwrk-specify",
-            effectivePrompt,
-            {
-              agent: backend,
-              projectRoot: cwd,
-              quiet: true,
-            },
-          );
+          const orchestrator = new DefineOrchestrator({
+            featureId: feature,
+            backend,
+            cwd,
+            refs: opts.refs,
+          }, {
+            stage: DefineStage.SPECIFY,
+            featureId: feature,
+            startedAt,
+            runId: `define-spec-${feature}-${Date.now()}`,
+            backend,
+          });
+
+          const exitCode = await orchestrator.runLoop(effectivePrompt, { stopAfterOne: true });
+
+          if (exitCode !== 0) {
+            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+          }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });
           success("define spec", durationS, runId);
+
+          // Write Execution Manifest (ADR-003)
+          try {
+            const finishedAt = new Date().toISOString();
+            const gitCommit = getCurrentCommit(cwd);
+            const gitBranch = getCurrentBranch(cwd);
+            const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+              cwd,
+              `${gitCommit}~1`,
+            );
+
+            const manifestId = generateRunId(startedAt, "define", "p00");
+            const featureDir = path.join(cwd, "specs", feature);
+
+            writeManifest(featureDir, {
+              runId: manifestId,
+              feature,
+              phase: "p00",
+              command: "define spec",
+              agent: backend,
+              model: "unknown",
+              startedAt,
+              finishedAt,
+              durationS,
+              exitCode: 0,
+              attempt: 1,
+              filesChanged,
+              linesAdded,
+              linesDeleted,
+              gitCommit,
+              gitBranch,
+              digest: [],
+            });
+          } catch (manifestError) {
+            console.warn(
+              `Warning: Could not write execution manifest: ${manifestError}`,
+            );
+          }
 
           const planStore = new PlanStore();
           planStore.handleDefineComplete({

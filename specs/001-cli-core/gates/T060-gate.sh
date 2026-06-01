@@ -1,12 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T060 — Implement src/plugins/workflow-runtime.ts (extractJsonFromOutput)
+# Gate: T060 — define subcommands pass quiet: true
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/plugins/workflow-runtime.ts \
-  || { echo "FAIL: T060 — file not found: src/plugins/workflow-runtime.ts" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/cli-core-phase12.test.ts -t "FR-028" --reporter=verbose \
+  || { echo "FAIL: T060 — vitest failed for src/commands/cli-core-phase12.test.ts" >&2; exit 1; }
 
-grep -q 'extractJsonFromOutput' src/plugins/workflow-runtime.ts \
-  || { echo "FAIL: T060 — src/plugins/workflow-runtime.ts missing 'extractJsonFromOutput'" >&2; exit 1; }
+pnpm vitest run src/plugins/workflow-runtime-phase12.test.ts -t "FR-029" --reporter=verbose \
+  || { echo "FAIL: T060 — vitest failed for src/plugins/workflow-runtime-phase12.test.ts" >&2; exit 1; }
 
-echo "PASS: T060 — Implement src/plugins/workflow-runtime.ts"
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
+
+echo "PASS: T060 — tests pass + lint clean"

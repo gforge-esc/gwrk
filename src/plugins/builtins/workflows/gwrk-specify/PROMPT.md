@@ -21,23 +21,28 @@
 
 ## Architecture Reference
 
-Before specifying, load these files for context:
-- `docs/architecture.md` — Project structure (§2), tech stack (§4), Foxtrot Charlie pillars.
-- `specs/000-build-plan.md` — Dependency graph, phase register, critical path. Understand where this spec fits in the overall build.
-- `docs/reference/agent-native-cli.md` — Agent-native design imperatives: operational signals, Layer 2, project discovery, error-as-navigation.
-- `docs/decisions/ADR-004-agent-native-output.md` — Output protocol contract: `[exit:N | Xs]`, `--format json`, `--agent`, exit code standards.
+Before specifying, check if these files exist and load them for context. If they do not exist, this is a non-gwrk project — skip all gwrk-specific defaults and derive constraints solely from the reference document and description.
+- `docs/architecture.md` — Project structure, tech stack (if it exists)
+- `specs/000-build-plan.md` — Dependency graph, critical path (if it exists)
+- `docs/reference/agent-native-cli.md` — Agent-native design imperatives (if it exists)
+- `docs/decisions/ADR-004-agent-native-output.md` — Output protocol contract (if it exists)
 
 ## gwrk Design Imperatives
 
-When specifying features, ensure the spec honors these principles:
+<gwrk_design_imperatives>
+The following principles apply ONLY to gwrk projects (projects where `docs/architecture.md` exists). For non-gwrk projects, skip this section entirely and derive technical constraints from the reference document or description.
+
+When specifying features for gwrk, ensure the spec honors these principles:
 - **Fail-Fast Config**: No graceful defaults. Missing config → `process.exit(1)` with corrective message.
 - **Air-Gapped by Default**: No runtime CDN fetches, no telemetry, no analytics.
 - **Agent-Native Output**: New commands MUST specify exit codes, error navigation messages, and `--format json` support. Every acceptance scenario `Then` clause should be a shell assertion.
 - **DB Access Constraint**: Discovery commands MUST work from a bare git clone (no SQLite, no build server). Commands requiring server/DB access MUST fail fast if unavailable.
+</gwrk_design_imperatives>
 
 ## Inputs
 
 - `feature_description`: Natural language description of the feature.
+- `reference_document` (optional): If the input contains a `<reference_document>` block, this is the **authoritative source of requirements**. It takes precedence over all default templates, design imperatives, and architecture references. Every specific name, role, screen, data source, acceptance criterion, and constraint from the reference document MUST appear in the output spec. Do NOT substitute generic defaults.
 
 ## Steps
 
@@ -100,10 +105,9 @@ When specifying features, ensure the spec honors these principles:
    - Every `TR-###` MUST be **feature-specific**: name the target file/module and what to assert. If a test type doesn't apply, mark `DEFERRED` with rationale.
    - Every FR with failure modes MUST have an `Error States` table (condition, stderr, exit code).
    - Technical Constraints:
-     - **TC-001**: Air-Gapped — No external network calls at runtime.
-     - **TC-002**: Fail-Fast Config — Zod validation, no `.default()`. Missing var → `process.exit(1)`.
-     - **TC-003**: TypeScript Only — No `.js` or `.jsx` in `src/`. ESM modules, ES2022 target.
-     - Add feature-specific TCs as needed (e.g., DB access constraint, pipe safety).
+     - If this is a gwrk project (has `docs/architecture.md`): Include TC-001 (Air-Gapped), TC-002 (Fail-Fast), TC-003 (TypeScript Only).
+     - If this is a non-gwrk project: Derive technical constraints from the reference document. Do NOT apply gwrk defaults.
+     - Add feature-specific TCs as needed.
    - Coverage matrix MUST include the `Tested by TR` column. Every FR MUST map to ≥1 TR (or `no test — rationale`).
    - **Agent-Native compliance**: If the spec introduces new CLI commands, each MUST specify: command type (query/generator/verifier/mutator), exit codes, error-as-navigation messages, and `--format json` support where applicable.
    </output_rules>
@@ -132,3 +136,9 @@ Before reporting, verify the spec passes ALL checks:
 
 If any check fails, fix the spec before reporting. Do NOT defer to `/checklist`.
 </quality_gate>
+
+<critical_reminders>
+- If a `<reference_document>` was provided in the input, it is the AUTHORITATIVE source. Use its exact screen names, role names, data sources, and acceptance criteria. Do NOT invent generic alternatives.
+- If architecture reference files do not exist on disk, this is a non-gwrk project. Do NOT apply gwrk defaults (Air-Gapped, Agent-Native, TypeScript-only).
+- The scaffold script (`.specify/scripts/...`) may not exist in non-gwrk projects. If it fails, proceed without it — the feature directory already exists.
+</critical_reminders>

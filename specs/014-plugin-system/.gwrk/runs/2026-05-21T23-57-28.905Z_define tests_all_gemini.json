@@ -1,0 +1,19 @@
+{
+  "runId": "2026-05-21T23:57:28.905Z_define_all",
+  "feature": "014-plugin-system",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-05-21T23:57:28.905Z",
+  "finishedAt": "2026-05-22T00:00:47.378Z",
+  "durationS": 198,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 20,
+  "linesAdded": 154,
+  "linesDeleted": 3287,
+  "gitCommit": "2c05559d6d1ed8335d43789c27761c3bfe4b3e14",
+  "gitBranch": "develop",
+  "digest": []
+}

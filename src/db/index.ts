@@ -92,6 +92,7 @@ function runMigrations(db: Database.Database): void {
   // SQLite lacks ALTER TABLE ... ADD COLUMN IF NOT EXISTS, so we check first.
   safeAddColumn(db, "runs", "status", "TEXT");
   safeAddColumn(db, "runs", "merge_commit_sha", "TEXT");
+  safeAddColumn(db, "issues", "html_url", "TEXT");
 }
 
 /**
@@ -104,6 +105,12 @@ function safeAddColumn(
   column: string,
   type: string,
 ): void {
+  // Check if table exists
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+    .get(table);
+  if (!tableExists) return;
+
   const cols = db
     .prepare("SELECT name FROM pragma_table_info(?)")
     .all(table) as { name: string }[];

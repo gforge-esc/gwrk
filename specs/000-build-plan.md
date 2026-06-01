@@ -1,8 +1,8 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-05-01
+> **Status:** Authoritative · **Date:** 2026-05-29
 > **Anchored to:** [architecture.md](docs/architecture.md), [GWRK-PRD-PRFAQ.md](docs/GWRK-PRD-PRFAQ.md)
-> **Decisions:** [ADR-001](docs/decisions/ADR-001-task-tracking.md), [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003](docs/decisions/ADR-003-state-contract.md), [ADR-004](docs/decisions/ADR-004-agent-native-output.md), [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md)
+> **Decisions:** [ADR-001](docs/decisions/ADR-001-task-tracking.md), [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003](docs/decisions/ADR-003-state-contract.md), [ADR-004](docs/decisions/ADR-004-agent-native-output.md), [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md), [ADR-007](docs/decisions/ADR-007-single-dispatch-path.md)
 
 ---
 
@@ -86,9 +86,13 @@ gantt
 
 ## Features
 
-### Feature 001-cli-core — 001-cli-core 🟡
+### Feature 001-cli-core — CLI Core ✅
 
-**Status:** DEFINED
+**Status:** SHIPPED + TDD-HARDENED (spec rewrite v3)
+
+> Shipped pre-TDD. Subsequently hardened via F013 phases 9, 12 (gap analysis, test backfill).
+> Spec rewritten to TDD standard (revision 3, 2026-05-30).
+> Artifacts: `specs/001-cli-core/refs/`
 
 ### Feature 002-build-server — 002-build-server 🟡
 
@@ -98,9 +102,14 @@ gantt
 
 **Status:** DEFINED
 
-### Feature 004-ship-loop — 004-ship-loop 🟡
+### Feature 004-ship-loop — Ship Loop ✅🔧
 
-**Status:** DEFINED
+**Status:** DONE — active rework: gate pipeline redesign (ADR-005 amendment)
+
+> Ship orchestrator functional. Gate verdict pipeline identified 5 failure modes
+> (LLM gate hallucination, SIGPIPE, define-tests MODIFY isolation, parser phase numbering).
+> Redesign documented in `specs/004-ship-loop/refs/gate-pipeline-redesign.md`.
+> Root cause: `specs/004-ship-loop/refs/ship-failure-diagnosis.md`.
 
 ### Feature 005-parallel-dispatch — 005-parallel-dispatch 🟡
 
@@ -148,8 +157,7 @@ gantt
 
 ### Feature 001 — CLI Core ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED + TDD-HARDENED (consolidated with 001-cli-core above)
 
 ### Feature 002 — Build Server ✅
 
@@ -161,9 +169,9 @@ gantt
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
 
-### Feature 004 — Ship Loop ✅
+### Feature 004 — Ship Loop ✅🔧
 
-**Status:** DONE
+**Status:** DONE — rework pending (consolidated with 004-ship-loop above)
 
 ### Feature 005 — Parallel Dispatch ⚪
 
@@ -276,11 +284,11 @@ gantt
 
 | Feature | SP | Status |
 |---|---|---|
-| 001-cli-core | 0 | DEFINED |
-| 002-build-server | 0 | DEFINED |
-| 003-slack | 0 | DEFINED |
-| 004-ship-loop | 0 | DEFINED |
-| 005-parallel-dispatch | 0 | DEFINED |
+| 001-cli-core | 0 | SHIPPED ✅ |
+| 002-build-server | 0 | SHIPPED ✅ |
+| 003-slack | 0 | SHIPPED ✅ |
+| 004-ship-loop | 0 | DONE 🔧 |
+| 005-parallel-dispatch | 0 | PLANNED |
 | 006-pulse | 0 | DEFINED |
 | 007-effort-compression | 0 | DEFINED |
 | 008-agent-router | 0 | DEFINED |
@@ -291,10 +299,10 @@ gantt
 | 018-build-plan-orchestrator | 0 | DEFINED |
 | F000 | 0 | DONE |
 | F000-TDD | 0 | DONE |
-| F001 | 0 | SHIPPED |
-| F002 | 0 | SHIPPED |
-| F003 | 0 | SHIPPED |
-| F004 | 0 | DONE |
+| F001 | 0 | SHIPPED ✅ |
+| F002 | 0 | SHIPPED ✅ |
+| F003 | 0 | SHIPPED ✅ |
+| F004 | 0 | DONE 🔧 |
 | F005 | 0 | PLANNED |
 | F006 | 0 | PLANNED |
 | F007 | 0 | PLANNED |
@@ -323,4 +331,5 @@ gantt
 
 ## Changelog
 
+- **2026-05-29:** F001 consolidated — TDD-hardened via F013 phases 9/12. F004 updated with gate pipeline redesign (5 failure modes diagnosed, 2 solutions proposed). ADR-007 added to decisions.
 - **2026-05-01:** Regenerated from graph state via `gwrk plan render`.

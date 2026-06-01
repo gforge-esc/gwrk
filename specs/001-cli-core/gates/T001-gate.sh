@@ -1,18 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T001 — Implement package.json
+# Gate: T001 — Project Initialization
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f package.json \
-  || { echo "FAIL: T001 — file not found: package.json" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/init.test.ts -t "US-001|FR-001" --reporter=verbose \
+  || { echo "FAIL: T001 — vitest failed for src/commands/init.test.ts" >&2; exit 1; }
 
-grep -q '"name": "@gwrk/cli"' package.json \
-  || { echo "FAIL: T001 — package.json missing name '@gwrk/cli'" >&2; exit 1; }
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/init.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T001 — lint errors in src/commands/init.ts" >&2; exit 1; }
 
-grep -q '"type": "module"' package.json \
-  || { echo "FAIL: T001 — package.json missing type 'module'" >&2; exit 1; }
-
-jq . package.json > /dev/null \
-  || { echo "FAIL: T001 — invalid JSON in package.json" >&2; exit 1; }
-
-echo "PASS: T001 — Implement package.json"
+echo "PASS: T001 — tests pass + lint clean"

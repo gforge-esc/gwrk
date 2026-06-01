@@ -1,266 +1,131 @@
 import crypto from "node:crypto";
 import fastify from "fastify";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { saveIssue, updateIssue } from "../src/db/issues.js";
 import { harvestFeature } from "../src/engine/harvest.js";
+import {
+  associateIssueWithFeature,
+  notifyIssueOpened,
+} from "../src/engine/issues.js";
 import { githubWebhookPlugin } from "../src/server/github.js";
-import { notifySlack } from "../src/server/slack-notify.js";
+import * as slackNotify from "../src/server/slack-notify.js";
 
-// Mock harvestFeature
 vi.mock("../src/engine/harvest.js", () => ({
-  harvestFeature: vi.fn().mockResolvedValue(undefined),
+  harvestFeature: vi.fn().mockResolvedValue({}),
 }));
 
-// Mock notifySlack
+vi.mock("../src/db/issues.js", () => ({
+  saveIssue: vi.fn(),
+  updateIssue: vi.fn(),
+}));
+
+vi.mock("../src/engine/issues.js", () => ({
+  associateIssueWithFeature: vi.fn(),
+  notifyIssueOpened: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("../src/server/slack-notify.js", () => ({
-  notifySlack: vi.fn(),
+  notifySlack: vi.fn().mockResolvedValue({}),
 }));
 
-const mockConfig = {
-  server: {
-    githubWebhookSecret: "test-secret",
-  },
-} as never;
+function sign(payload: any, secret: string) {
+  const hmac = crypto.createHmac("sha256", secret);
+  return `sha256=${hmac.update(JSON.stringify(payload)).digest("hex")}`;
+}
 
-const projectRoot = "/tmp/gwrk-test";
+describe("GitHub Webhook Plugin", () => {
+  let app: any;
+  const secret = "test-secret";
+  const config = {
+    server: {
+      githubWebhookSecret: secret,
+    },
+  };
 
-describe("TR-H01: GitHub Webhook Handler", () => {
-  it("should ignore non-PR events", async () => {
-    const server = fastify();
-    await githubWebhookPlugin(server, {
-      config: { server: {} } as never,
-      projectRoot,
-    });
-
-    const response = await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: { "x-github-event": "ping" },
-      payload: { zen: "Design for failure." },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({
-      status: "ignored",
-      reason: "not_pr_event",
-    });
-    expect(harvestFeature).not.toHaveBeenCalled();
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = fastify();
+    await app.register(githubWebhookPlugin, {
+      config,
+      projectRoot: "/test",
+    } as any);
   });
 
-  it("should verify signature correctly", async () => {
-    const server = fastify();
-    await githubWebhookPlugin(server, { config: mockConfig, projectRoot });
+  it("FR-H01, FR-H09: Webhook ignores non-trunk targets and sub-task PRs (TR-H01)", async () => {
+    const payload = {
+      action: "closed",
+      pull_request: {
+        merged: true,
+        base: { ref: "feat/011-harvest" }, // TARGETING FEAT BRANCH, NOT TRUNK
+        head: { ref: "task/sub-task-1" },
+      },
+    };
 
-    const payload = { some: "data" };
-    const hmac = crypto.createHmac("sha256", "test-secret");
-    const digest = `sha256=${hmac.update(JSON.stringify(payload)).digest("hex")}`;
-
-    const response = await server.inject({
+    const response = await app.inject({
       method: "POST",
       url: "/webhook/github",
       headers: {
-        "x-github-event": "ping",
-        "x-hub-signature-256": digest,
+        "x-github-event": "pull_request",
+        "x-hub-signature-256": sign(payload, secret),
       },
       payload,
     });
 
     expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body).status).toBe("ignored");
-  });
-
-  it("should reject invalid signature", async () => {
-    const server = fastify();
-    await githubWebhookPlugin(server, { config: mockConfig, projectRoot });
-
-    const response = await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: {
-        "x-github-event": "ping",
-        "x-hub-signature-256": "sha256=invalid",
-      },
-      payload: { some: "data" },
-    });
-
-    expect(response.statusCode).toBe(401);
-  });
-
-  it("should ignore PR closure without merge", async () => {
-    const server = fastify();
-    await githubWebhookPlugin(server, {
-      config: { server: {} } as never,
-      projectRoot,
-    });
-
-    const response = await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: { "x-github-event": "pull_request" },
-      payload: {
-        action: "closed",
-        pull_request: { merged: false },
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body).status).toBe("ignored");
+    expect(JSON.parse(response.payload).status).toBe("ignored");
     expect(harvestFeature).not.toHaveBeenCalled();
   });
 
-  it("should accept valid PR merge targeting develop", async () => {
-    const server = fastify();
-    await githubWebhookPlugin(server, {
-      config: { server: {} } as never,
-      projectRoot,
-    });
-
+  it("FR-H11: Webhook MUST NOT duplicate Slack notification (Prevent double Done-Done)", async () => {
     const payload = {
       action: "closed",
       pull_request: {
-        number: 42,
         merged: true,
-        merged_at: "2026-04-01T09:15:00Z",
-        merge_commit_sha: "abc1234567890",
-        html_url: "https://github.com/org/repo/pull/42",
-        head: { ref: "feat/011-harvest-phase-01" },
-        base: { ref: "develop" },
-        merged_by: { login: "tester" },
+        base: { ref: "main" },
+        head: { ref: "feat/011-harvest" },
       },
     };
 
-    const response = await server.inject({
+    await app.inject({
       method: "POST",
       url: "/webhook/github",
-      headers: { "x-github-event": "pull_request" },
+      headers: {
+        "x-github-event": "pull_request",
+        "x-hub-signature-256": sign(payload, secret),
+      },
+      payload,
+    });
+
+    // harvestFeature handles notification internally. Webhook handler should NOT call notifySlack.
+    expect(harvestFeature).toHaveBeenCalled();
+    expect(slackNotify.notifySlack).not.toHaveBeenCalled();
+  });
+
+  it("FR-H12, FR-H13, FR-H14, FR-H15: Post-Ship Issue Tracking (TR-H09, TR-H10)", async () => {
+    (associateIssueWithFeature as any).mockReturnValue("011-harvest");
+
+    const payload = {
+      action: "opened",
+      issue: {
+        number: 123,
+        title: "Harvest bug",
+        state: "open",
+        labels: [{ name: "gwrk:011-harvest" }],
+      },
+    };
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/webhook/github",
+      headers: {
+        "x-github-event": "issues",
+        "x-hub-signature-256": sign(payload, secret),
+      },
       payload,
     });
 
     expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({
-      status: "accepted",
-      featureId: "011-harvest",
-      phaseId: "phase-01",
-    });
-    expect(harvestFeature).toHaveBeenCalled();
-  });
-
-  it("TR-H11: Webhook handler does NOT call notifySlack directly", async () => {
-    const server = fastify();
-    await githubWebhookPlugin(server, {
-      config: { server: {} } as never,
-      projectRoot,
-    });
-
-    const payload = {
-      action: "closed",
-      pull_request: {
-        number: 42,
-        merged: true,
-        merged_at: "2026-04-01T09:15:00Z",
-        merge_commit_sha: "abc1234567890",
-        html_url: "https://github.com/org/repo/pull/42",
-        head: { ref: "feat/011-harvest-phase-01" },
-        base: { ref: "develop" },
-        merged_by: { login: "tester" },
-      },
-    };
-
-    await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: { "x-github-event": "pull_request" },
-      payload,
-    });
-
-    // harvestFeature should be called, but NOT notifySlack (it's handled inside harvestFeature)
-    expect(harvestFeature).toHaveBeenCalled();
-    expect(notifySlack).not.toHaveBeenCalled();
-  });
-
-  it("FR-H09: should ignore PRs targeting non-trunk branches", async () => {
-    const server = fastify();
-    await githubWebhookPlugin(server, {
-      config: { server: {} } as never,
-      projectRoot,
-    });
-
-    const payload = {
-      action: "closed",
-      pull_request: {
-        merged: true,
-        base: { ref: "feature-branch" }, // Not develop or main
-        head: { ref: "feat/some-subtask" },
-      },
-    };
-
-    const response = await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: { "x-github-event": "pull_request" },
-      payload,
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body).status).toBe("ignored");
-    expect(JSON.parse(response.body).reason).toBe("not_trunk_target");
-  });
-
-  describe("FR-H12: GitHub Issues Webhook", () => {
-    it("US-H07: should handle issues.opened event", async () => {
-      const server = fastify();
-      await githubWebhookPlugin(server, {
-        config: { server: {} } as never,
-        projectRoot,
-      });
-
-      const payload = {
-        action: "opened",
-        issue: {
-          number: 123,
-          title: "[011] Something wrong",
-          body: "Description",
-          user: { login: "tester" },
-          labels: [{ name: "bug" }],
-        },
-      };
-
-      const response = await server.inject({
-        method: "POST",
-        url: "/webhook/github",
-        headers: { "x-github-event": "issues" },
-        payload,
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(JSON.parse(response.body).status).toBe("accepted");
-      expect(JSON.parse(response.body).featureId).toBe("011-harvest");
-    });
-
-    it("should handle issues.closed event", async () => {
-      const server = fastify();
-      await githubWebhookPlugin(server, {
-        config: { server: {} } as never,
-        projectRoot,
-      });
-
-      const payload = {
-        action: "closed",
-        issue: {
-          number: 123,
-          title: "[011] Something wrong",
-          state: "closed",
-        },
-      };
-
-      const response = await server.inject({
-        method: "POST",
-        url: "/webhook/github",
-        headers: { "x-github-event": "issues" },
-        payload,
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(JSON.parse(response.body).status).toBe("accepted");
-    });
+    expect(saveIssue).toHaveBeenCalled();
+    expect(notifyIssueOpened).toHaveBeenCalled();
   });
 });

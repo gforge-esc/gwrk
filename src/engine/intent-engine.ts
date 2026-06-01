@@ -5,15 +5,7 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-export type IntentAction = "WRITE_FILE" | "CREATE_DIR" | "RUN_COMMAND";
-
-export interface JsonIntent {
-  action: IntentAction;
-  filePath?: string;
-  content?: string;
-  dirPath?: string;
-  command?: string;
-}
+import type { IntentAction, JsonIntent } from "../plugins/manifest.js";
 
 export interface IntentSummary {
   action: IntentAction;

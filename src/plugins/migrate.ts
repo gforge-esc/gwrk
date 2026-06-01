@@ -15,6 +15,20 @@ export async function migratePlugins(
   const projectRoot = process.cwd();
   const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
 
+  // ADR-007: Check for legacy directory and warn
+  const agentsDir = path.join(projectRoot, ".agents");
+  try {
+    const stats = await fs.stat(agentsDir);
+    if (stats.isDirectory()) {
+      console.warn(
+        "\n[DEPRECATED] Legacy '.agents/' directory detected. This directory is no longer supported.",
+      );
+      console.warn("Please run 'gwrk init' to seed builtin plugins to ~/.gwrk/ and delete '.agents/'.\n");
+    }
+  } catch {
+    // .agents/ missing, this is the desired state for new projects
+  }
+
   // Migrate skills from .agents/skills/
   const skillsDir = path.join(projectRoot, ".agents", "skills");
   try {

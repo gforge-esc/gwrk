@@ -1,17 +1,18 @@
 #!/bin/bash
-# AUTHORED
-set -euo pipefail
+set -e
 
-# T050: 4 built-in review plugins
-test -d src/plugins/builtins/reviews/review-code-cli
-test -d src/plugins/builtins/reviews/review-uat-cli
-test -d src/plugins/builtins/reviews/review-code-webapp
-test -d src/plugins/builtins/reviews/review-uat-webapp
+# T050-gate: Verify gwrk-conventions SKILL.md
+# Assertion #1: File exists
+ls src/plugins/builtins/skills/gwrk-conventions/SKILL.md > /dev/null
 
-# Each must have a manifest.yaml
-test -f src/plugins/builtins/reviews/review-code-cli/manifest.yaml
-test -f src/plugins/builtins/reviews/review-uat-cli/manifest.yaml
-test -f src/plugins/builtins/reviews/review-code-webapp/manifest.yaml
-test -f src/plugins/builtins/reviews/review-uat-webapp/manifest.yaml
+# Assertion #2: Contains valid task statuses
+grep -q "open" src/plugins/builtins/skills/gwrk-conventions/SKILL.md
+grep -q "in_progress" src/plugins/builtins/skills/gwrk-conventions/SKILL.md
+grep -q "completed" src/plugins/builtins/skills/gwrk-conventions/SKILL.md
+grep -q "cancelled" src/plugins/builtins/skills/gwrk-conventions/SKILL.md
 
-echo "PASS: T050 — Implement built-in review plugins"
+# Assertion #3: Mentions .agents/ is legacy
+grep -q ".agents/" src/plugins/builtins/skills/gwrk-conventions/SKILL.md
+grep -q "legacy" src/plugins/builtins/skills/gwrk-conventions/SKILL.md
+
+echo "✓ T050-gate passed"

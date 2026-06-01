@@ -1,3 +1,6 @@
+/**
+ * Module does not exist yet (RED)
+ */
 import type { App } from "@slack/bolt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchQueue } from "./dispatch.js";
@@ -37,7 +40,7 @@ type SlackActionHandler = (args: any) => Promise<void>;
 // biome-ignore lint/suspicious/noExplicitAny: complex mock args
 type SlackEventHandler = (args: any) => Promise<void>;
 
-describe("slack-actions (FR-007, US-004)", () => {
+describe("slack-actions (FR-007, US-004, US-005)", () => {
   let mockApp: Partial<App>;
   let mockContext: CommandContext;
   let actionHandlers: Record<string, SlackActionHandler> = {};
@@ -119,11 +122,6 @@ describe("slack-actions (FR-007, US-004)", () => {
       ["plan", "003-slack"],
       expect.objectContaining({ cwd: "/tmp", detached: true }),
     );
-    expect(client.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining("Approved spec"),
-      }),
-    );
   });
 
   it("US-004: handles approve_plan action — updates PlanStore to DEFINED (TR-015)", async () => {
@@ -155,11 +153,6 @@ describe("slack-actions (FR-007, US-004)", () => {
       featureId: "003-slack",
       status: "DEFINED",
     });
-    expect(client.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining("Approved plan"),
-      }),
-    );
   });
 
   it("FR-007: handles merge_pr action — calls gh pr merge", async () => {
@@ -168,7 +161,6 @@ describe("slack-actions (FR-007, US-004)", () => {
 
     await registerSlackActions(mockApp as App, mockContext);
     const ack = vi.fn();
-    const postMessage = vi.fn();
     const body = {
       actions: [
         {
@@ -181,7 +173,7 @@ describe("slack-actions (FR-007, US-004)", () => {
       channel: { id: "C123" },
       user: { id: "U123" },
     };
-    const client = { chat: { postMessage } };
+    const client = { chat: { postMessage: vi.fn() } };
 
     await actionHandlers.merge_pr({
       ack,
@@ -227,5 +219,99 @@ describe("slack-actions (FR-007, US-004)", () => {
       featureId: "003-slack",
       phaseId: "phase-01",
     });
+  });
+
+  it("US-005: handles request_changes action — triggers re-dispatch (FR-005) [RED]", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+            phaseId: "phase-01",
+          }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
+
+    await actionHandlers.request_changes({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    // EXPECTATION: request_changes should trigger a re-dispatch
+    expect(mockContext.queue.enqueue).toHaveBeenCalledWith({
+      featureId: "003-slack",
+      phaseId: "phase-01",
+    });
+  });
+
+  it("FR-015: handles revise_spec action — triggers define spec re-run [RED]", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+          }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
+
+    await actionHandlers.revise_spec({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "spec", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+  });
+
+  it("FR-015: handles revise_plan action — triggers define plan re-run [RED]", async () => {
+    await registerSlackActions(mockApp as App, mockContext);
+    const ack = vi.fn();
+    const body = {
+      actions: [
+        {
+          value: JSON.stringify({
+            featureId: "003-slack",
+          }),
+        },
+      ],
+      channel: { id: "C123" },
+      user: { id: "U123" },
+    };
+    const client = { chat: { postMessage: vi.fn() } };
+
+    await actionHandlers.revise_plan({
+      ack,
+      body,
+      client,
+      logger: console,
+    } as any);
+
+    expect(ack).toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "plan", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
   });
 });

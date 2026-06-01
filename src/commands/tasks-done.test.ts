@@ -86,8 +86,13 @@ describe("gwrk tasks done", () => {
       const tasks = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
       expect(tasks.phases[0].tasks[0].status).toBe("completed");
 
-      const historyPath = path.join(".gwrk", "history.jsonl");
-      expect(fs.existsSync(historyPath)).toBe(true);
+      // FR-021: history.jsonl is deprecated.
+      // US-019: Should write execution manifest instead.
+      const runsDir = path.join("specs", "test-feature", ".gwrk", "runs");
+      expect(fs.existsSync(runsDir)).toBe(true);
+      const manifests = fs.readdirSync(runsDir);
+      expect(manifests.length).toBeGreaterThan(0);
+      expect(manifests[0]).toContain("tasks-done");
     } finally {
       process.chdir(originalCwd);
     }

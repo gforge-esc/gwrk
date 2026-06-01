@@ -1,7 +1,6 @@
 #!/bin/bash
-set -euo pipefail
 # AUTHORED
-test -f src/server/network.ts || { echo "FAIL: T023 — file not found: src/server/network.ts" >&2; exit 1; }
-grep -q 'export class NetworkMonitor' src/server/network.ts || { echo "FAIL: T023 — src/server/network.ts missing 'NetworkMonitor'" >&2; exit 1; }
-grep -q 'network:up' src/server/network.ts || { echo "FAIL: T023 — src/server/network.ts missing 'network:up' event" >&2; exit 1; }
-echo "PASS: T023 — Implement src/server/network.ts"
+set -euo pipefail
+test -f src/db/index.ts || { echo "FAIL: T023 — file not found: src/db/index.ts" >&2; exit 1; }
+grep -q "runs" src/db/index.ts || { echo "FAIL: T023 — src/db/index.ts missing 'runs' table reference" >&2; exit 1; }
+echo "PASS: T023 — Implement src/db/index.ts"

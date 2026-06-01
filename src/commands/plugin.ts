@@ -129,13 +129,22 @@ export async function removePlugin(
  * FR-003: List installed plugins.
  */
 export async function listPlugins(
-  options: { format?: string; project?: boolean } = {},
+  options: {
+    format?: string;
+    project?: boolean;
+    type?: string;
+    tier?: string;
+    category?: string;
+  } = {},
 ) {
   const loader = new PluginLoader({
     projectDir: options.project ? process.cwd() : undefined,
   });
   const plugins = await loader.listPlugins({
     includeDisabled: options.project,
+    type: options.type,
+    tier: options.tier,
+    category: options.category,
   });
 
   if (options.format === "json") {
@@ -253,6 +262,9 @@ export const pluginCommand = new Command("plugin")
       .description("List installed plugins")
       .option("--format <type>", "Output format (json)")
       .option("--project", "Show resolution for current project")
+      .option("--type <type>", "Filter by plugin type (agent, skill, workflow, review)")
+      .option("--tier <tier>", "Filter by tier (atomic, compound, enforcement)")
+      .option("--category <cat>", "Filter by category (reasoning, evaluative, etc.)")
       .action(async (options) => {
         await withSignal("plugin list", async () => {
           const output = await listPlugins(options);

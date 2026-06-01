@@ -1,12 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T054 — Implement src/commands/gate.ts (Examples)
+# Gate: T054 — No duplicate surfaces
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/commands/gate.ts \
-  || { echo "FAIL: T054 — file not found: src/commands/gate.ts" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/cli.consistency.test.ts -t "US-024|FR-025" --reporter=verbose \
+  || { echo "FAIL: T054 — vitest failed for src/cli.consistency.test.ts" >&2; exit 1; }
 
-grep -q "Examples:" src/commands/gate.ts \
-  || { echo "FAIL: T054 — src/commands/gate.ts missing 'Examples:'" >&2; exit 1; }
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
 
-echo "PASS: T054 — Implement src/commands/gate.ts (Examples)"
+echo "PASS: T054 — tests pass + lint clean"

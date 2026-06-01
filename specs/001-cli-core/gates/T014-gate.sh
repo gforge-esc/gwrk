@@ -1,16 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T014 — Implement src/commands/analyze.ts
+# Gate: T014 — Execution History Query
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-# NOTE: Phase 3 says analyze is an internal stage, possibly merged into define.ts.
-# However, task T014 specifically targets src/commands/analyze.ts.
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/db/db.test.ts -t "US-014" --reporter=verbose \
+  || { echo "FAIL: T014 — vitest failed for src/db/db.test.ts" >&2; exit 1; }
 
-# Gate passes if the file is NOT present, verifying surface hardening (Phase 08).
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
 
-if [ -f src/commands/analyze.ts ]; then
-  echo "FAIL: T014 — src/commands/analyze.ts still exists (should be removed for surface hardening)" >&2
-  exit 1
-fi
-
-echo "PASS: T014 — src/commands/analyze.ts is removed (Surface Hardened)"
+echo "PASS: T014 — tests pass + lint clean"

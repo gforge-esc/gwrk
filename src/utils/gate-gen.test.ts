@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { generateGateBrief, parseGapMatrix, generateVitestGates } from "./gate-gen.js";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { generateGateBrief, parseGapMatrix, generateVitestGates, discoverTestFile, generateFilesystemGates } from "./gate-gen.js";
 import type { GateBrief } from "./gate-gen.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -390,5 +390,180 @@ describe("generateVitestGates (TR-011, FR-012)", () => {
     expect(result.skipped).toBe(0);
 
     fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+});
+
+// ─── Filesystem Gate Tests (FM-1/2/3) ────────────────────────────────────────
+
+describe("discoverTestFile (FM-1)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "discover-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("should find conventional test file (foo.ts → foo.test.ts)", () => {
+    const srcFile = path.join(tempDir, "foo.ts");
+    const testFile = path.join(tempDir, "foo.test.ts");
+    fs.writeFileSync(srcFile, "export const foo = 1;");
+    fs.writeFileSync(testFile, "test('foo', () => {});");
+
+    expect(discoverTestFile(srcFile)).toBe(testFile);
+  });
+
+  it("should return null when no test file exists", () => {
+    const srcFile = path.join(tempDir, "bar.ts");
+    fs.writeFileSync(srcFile, "export const bar = 1;");
+
+    expect(discoverTestFile(srcFile)).toBeNull();
+  });
+
+  it("should return the file itself if it IS a test file", () => {
+    const testFile = path.join(tempDir, "baz.test.ts");
+    fs.writeFileSync(testFile, "test('baz', () => {});");
+
+    expect(discoverTestFile(testFile)).toBe(testFile);
+  });
+
+  it("should return null for empty string", () => {
+    expect(discoverTestFile("")).toBeNull();
+  });
+});
+
+describe("generateFilesystemGates (FM-1/2/3)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fs-gates-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("should generate vitest gate when test file exists", () => {
+    // Create source + test files
+    const srcDir = path.join(tempDir, "src", "utils");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, "foo.ts"), "export const foo = 1;");
+    fs.writeFileSync(path.join(srcDir, "foo.test.ts"), "test('foo', () => {});");
+
+    // Change to tempDir so relative paths resolve
+    const origCwd = process.cwd();
+    process.chdir(tempDir);
+
+    try {
+      const phases = [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            {
+              id: "T001",
+              title: "Implement src/utils/foo.ts",
+              description: "Add foo utility",
+              status: "open" as const,
+              gateScript: "gates/T001-gate.sh",
+            },
+          ],
+        },
+      ];
+
+      const result = generateFilesystemGates(tempDir, phases);
+
+      expect(result.generated).toBe(1);
+      const gatePath = path.join(tempDir, "gates", "T001-gate.sh");
+      expect(fs.existsSync(gatePath)).toBe(true);
+
+      const content = fs.readFileSync(gatePath, "utf-8");
+      expect(content).toContain("pnpm vitest run");
+      expect(content).toContain("src/utils/foo.test.ts");
+      expect(content).toContain("# Generated from filesystem convention");
+    } finally {
+      process.chdir(origCwd);
+    }
+  });
+
+  it("should generate file-existence gate when no test file found", () => {
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T002",
+            title: "Implement src/config.ts",
+            description: "Config module (no tests)",
+            status: "open" as const,
+            gateScript: "gates/T002-gate.sh",
+          },
+        ],
+      },
+    ];
+
+    const result = generateFilesystemGates(tempDir, phases);
+
+    expect(result.generated).toBe(1);
+    const gatePath = path.join(tempDir, "gates", "T002-gate.sh");
+    const content = fs.readFileSync(gatePath, "utf-8");
+    expect(content).toContain("test -f src/config.ts");
+    expect(content).toContain("no test file found");
+  });
+
+  it("should preserve PE-authored gates (no filesystem convention marker)", () => {
+    const gatesDir = path.join(tempDir, "gates");
+    fs.mkdirSync(gatesDir, { recursive: true });
+    const customContent = "#!/bin/bash\n# AUTHORED\npnpm vitest run custom.test.ts\n";
+    fs.writeFileSync(path.join(gatesDir, "T003-gate.sh"), customContent);
+
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T003",
+            title: "Implement src/custom.ts",
+            description: "Custom module",
+            status: "open" as const,
+            gateScript: "gates/T003-gate.sh",
+          },
+        ],
+      },
+    ];
+
+    const result = generateFilesystemGates(tempDir, phases);
+
+    expect(result.skipped).toBe(1);
+    expect(result.generated).toBe(0);
+    // Content must be unchanged
+    const content = fs.readFileSync(path.join(gatesDir, "T003-gate.sh"), "utf-8");
+    expect(content).toBe(customContent);
+  });
+
+  it("should skip tasks with no extractable file path", () => {
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T004",
+            title: "Update documentation",
+            description: "General docs update",
+            status: "open" as const,
+            gateScript: "gates/T004-gate.sh",
+          },
+        ],
+      },
+    ];
+
+    const result = generateFilesystemGates(tempDir, phases);
+    expect(result.skipped).toBe(1);
+    expect(result.generated).toBe(0);
   });
 });

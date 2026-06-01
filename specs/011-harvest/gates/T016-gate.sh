@@ -1,8 +1,14 @@
 #!/bin/bash
-# AUTHORED
 set -euo pipefail
+# AUTHORED
+# Gate: T016 — SQLite issues table persistence
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-# Assertion #1: Verify harvest command registration in cli.ts
-grep -q "harvest" src/cli.ts
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run tests/server-github.test.ts -t "FR-H14" --reporter=verbose \
+  || { echo "FAIL: T016 — vitest failed for tests/server-github.test.ts" >&2; exit 1; }
 
-echo "PASS: T016 — Implement src/cli.ts (MODIFY: register harvest command)"
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
+
+echo "PASS: T016 — tests pass + lint clean"

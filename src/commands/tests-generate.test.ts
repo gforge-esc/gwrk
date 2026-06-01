@@ -4,15 +4,16 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { writeManifest } from "../utils/manifest.js";
 
-const { mockExecuteWorkflow, mockLoadConfig } = vi.hoisted(() => ({
+const { mockExecuteWorkflow, mockLoadConfig, mockWriteManifest, mockGetDiffStats } = vi.hoisted(() => ({
   mockExecuteWorkflow: vi.fn(),
   mockLoadConfig: vi.fn().mockReturnValue({
     agents: {
       define: "mock-agent",
     },
   }),
+  mockWriteManifest: vi.fn(),
+  mockGetDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
 }));
 
 vi.mock("../plugins/workflow-runtime.js", () => ({
@@ -31,14 +32,26 @@ vi.mock("../db/runs.js", () => ({
 }));
 
 vi.mock("../utils/manifest.js", () => ({
-  writeManifest: vi.fn(),
+  writeManifest: mockWriteManifest,
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
 }));
 
 vi.mock("../utils/git.js", () => ({
   getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
   getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
-  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+  getDiffStats: mockGetDiffStats,
+}));
+
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn().mockReturnValue(""),
+}));
+
+// Mock format.js to avoid messy output
+vi.mock("../utils/format.js", () => ({
+  banner: vi.fn(),
+  blocked: vi.fn(),
+  fail: vi.fn(),
+  success: vi.fn(),
 }));
 
 describe("testsGenerateCommand", () => {
@@ -47,7 +60,6 @@ describe("testsGenerateCommand", () => {
   let program: Command;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tests-gen-test-"));
     featureDir = path.join(tempDir, "specs", "test-feature");
     fs.mkdirSync(featureDir, { recursive: true });
@@ -70,11 +82,14 @@ describe("testsGenerateCommand", () => {
       summaries: [],
     });
     
-    mockLoadConfig.mockReturnValue({
+    mockLoadConfig.mockClear().mockReturnValue({
       agents: {
         define: "mock-agent",
       },
     });
+    
+    mockWriteManifest.mockReset();
+    mockGetDiffStats.mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 });
   });
 
   afterEach(() => {
@@ -109,7 +124,7 @@ describe("testsGenerateCommand", () => {
 
     await program.parseAsync(["node", "test", "tests", "test-feature"]);
 
-    expect(writeManifest).toHaveBeenCalledWith(
+    expect(mockWriteManifest).toHaveBeenCalledWith(
       featureDir,
       expect.objectContaining({
         command: "define tests",

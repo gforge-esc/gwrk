@@ -146,6 +146,12 @@ export class ShipOrchestrator extends EventEmitter {
         case ShipStage.IMPLEMENT:
           result = await this.stageImplement();
           break;
+        case ShipStage.BUILD_CHECK:
+          result = await this.stageBuildCheck();
+          break;
+        case ShipStage.TEST_GATE:
+          result = await this.stageTestGate();
+          break;
         case ShipStage.CODE_REVIEW:
           result = await this.stageCodeReview();
           break;
@@ -250,12 +256,31 @@ export class ShipOrchestrator extends EventEmitter {
     const beforeState = loadTaskState(featureDir);
 
     try {
-      // 2. Dispatch the review agent directly.
-      //    The review agent modifies tasks.json via tool calls (re-opening
-      //    failed tasks). We don't need its JSON output — readVerdict()
-      //    determines GO/NO-GO by diffing tasks.json.
+      // ADR-007: Resolve review prompt from plugin system (PROMPT.md),
+      // then dispatch with raw tool access. Review agents need native
+      // tool access (pnpm build, pnpm lint, gate scripts, jq, git)
+      // which WorkflowRuntime's WRITE_FILE guard blocks. The plugin
+      // system provides the full prompt; raw dispatch provides tool access.
+      let reviewPrompt = prompt;
+      try {
+        const { PluginLoader } = await import("../plugins/loader.js");
+        const loader = new PluginLoader({ projectDir: this.config.cwd });
+        const plugin = await loader.resolvePlugin(workflowName);
+        const promptPath = path.join(plugin.path, "PROMPT.md");
+        if (fs.existsSync(promptPath)) {
+          const basePrompt = fs.readFileSync(promptPath, "utf-8");
+          reviewPrompt = `${basePrompt}\n\n---\n\n## Scope Context\n\n${prompt}`;
+        }
+      } catch {
+        // Plugin resolution failed — fall through with the inline prompt.
+        // This is not fatal: the inline scope context is still useful.
+        console.warn(
+          `    ⚠ Could not resolve PROMPT.md for ${workflowName}, using inline prompt`,
+        );
+      }
+
       const result = await this.dispatchWithFailback({
-        prompt,
+        prompt: reviewPrompt,
         featureDir: `specs/${this.config.featureId}`,
         agent: this.config.backend,
         env: {},
@@ -270,7 +295,7 @@ export class ShipOrchestrator extends EventEmitter {
         };
       }
 
-      // 3. Post-dispatch validation (Snapshot-Diff-Revert)
+      // 2. Post-dispatch validation (Snapshot-Diff-Revert)
       validatePhaseScope(
         this.config.cwd,
         this.config.featureId,
@@ -278,17 +303,17 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // 4. Determine verdict from task state diff
-      const verdict = this.readVerdict();
+      // 3. Determine verdict from gates (not agent edits).
+      //    Gates are truth, agent verdict is advisory. (ADR-007)
+      const verdict = await this.readVerdict();
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
 
-      // 5. Discard review agent's source file mutations.
+      // 4. Discard review agent's source file mutations.
       //    Review agents in YOLO mode can modify source files (fixing imports,
       //    reformatting, etc.). These edits are often incomplete and can break
-      //    the build (e.g., removing non-null assertions without adding guards).
-      //    The review's value is the verdict + task feedback, not code edits.
+      //    the build. The review's value is the verdict + task feedback, not code edits.
       //    We preserve tasks.json (carries verdict state) but restore everything else.
       this.revertSourceMutations();
 
@@ -312,6 +337,8 @@ export class ShipOrchestrator extends EventEmitter {
     const stages = [
       ShipStage.BRANCH_SETUP,
       ShipStage.IMPLEMENT,
+      ShipStage.BUILD_CHECK,
+      ShipStage.TEST_GATE,
       ShipStage.CODE_REVIEW,
       ShipStage.UAT_REVIEW,
       ShipStage.PR_CI,
@@ -336,6 +363,7 @@ export class ShipOrchestrator extends EventEmitter {
     try {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
+      if (this.state.iteration === 1) this.captureTestBaseline();
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       // Branch already exists — just check it out and sync with develop
@@ -351,6 +379,7 @@ export class ShipOrchestrator extends EventEmitter {
           await syncBranch(this.config.cwd, "develop");
           this.state.branchName = branchName;
           console.log(`  Branch ${branchName} exists — checked out and synced`);
+          if (this.state.iteration === 1) this.captureTestBaseline();
           return { success: true, exitCode: 0 };
         } catch (syncErr: unknown) {
           const syncMsg =
@@ -369,6 +398,51 @@ export class ShipOrchestrator extends EventEmitter {
         error: `Failed to create feature branch: ${msg}`,
       };
     }
+  }
+
+  /**
+   * Post-flight gate verification. Re-runs gates for all completed tasks
+   * in the current phase. If any fail, re-opens the task and returns a
+   * failure result. Returns null if all gates pass.
+   */
+  private async runPostFlightGates(featureDir: string): Promise<StageResult | null> {
+    const postFlightState = loadTaskState(featureDir);
+    const postFlightPhase = postFlightState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    if (!postFlightPhase) return null;
+
+    let reopenedCount = 0;
+    for (const task of postFlightPhase.tasks) {
+      if (task.status !== "completed" || !task.gateScript) continue;
+      const gatePath = path.join(featureDir, task.gateScript);
+      if (!fs.existsSync(gatePath)) continue;
+      const gateResult = await runGate(gatePath);
+      if (!gateResult.passed) {
+        task.status = "open";
+        task.completedAt = undefined;
+        reopenedCount++;
+        console.log(
+          `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
+        );
+        const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
+        task.description = (task.description || "") + failNote;
+      } else {
+        console.log(`  ✓ post-flight PASS: ${task.id}`);
+      }
+    }
+    if (reopenedCount > 0) {
+      saveTaskState(featureDir, postFlightState);
+      console.log(
+        `  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`,
+      );
+      return {
+        success: false,
+        exitCode: 1,
+        error: `Post-flight gate verification failed: ${reopenedCount} task(s) re-opened`,
+      };
+    }
+    return null;
   }
 
   private async stageImplement(): Promise<StageResult> {
@@ -393,7 +467,7 @@ export class ShipOrchestrator extends EventEmitter {
 
     const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
     if (openTasks.length === 0) {
-      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+      return { success: true, exitCode: 0, nextStage: ShipStage.BUILD_CHECK };
     }
 
     // Check pre-flight gates
@@ -417,7 +491,14 @@ export class ShipOrchestrator extends EventEmitter {
 
     if (tasksToDispatch.length === 0) {
       saveTaskState(featureDir, taskState);
-      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+
+      // POST-FLIGHT on pre-flight auto-complete path.
+      // Pre-flight gates may be hollow (test -f) and auto-complete tasks
+      // that haven't been implemented. Re-verify with full gate execution.
+      const postFlightResult = await this.runPostFlightGates(featureDir);
+      if (postFlightResult) return postFlightResult;
+
+      return { success: true, exitCode: 0, nextStage: ShipStage.BUILD_CHECK };
     }
 
     // FR-019: dispatchToAgent
@@ -468,40 +549,14 @@ export class ShipOrchestrator extends EventEmitter {
           console.warn(
             `    ⚠ Could not commit implementation: ${commitErr instanceof Error ? commitErr.message : commitErr}`,
           );
-        // Non-fatal: proceed to code review with uncommitted changes
+          // Non-fatal: proceed to code review with uncommitted changes
         }
 
         // POST-FLIGHT GATE VERIFICATION
-        // The implement agent (or pre-flight) may have marked tasks "completed"
-        // but gates must pass AFTER implementation, not just before.
-        // This is the mechanical enforcement — agents cannot self-certify.
-        const postFlightState = loadTaskState(featureDir);
-        const postFlightPhase = postFlightState.phases.find(
-          (p: Phase) => p.id === this.config.phaseId,
-        );
-        if (postFlightPhase) {
-          let reopenedCount = 0;
-          for (const task of postFlightPhase.tasks) {
-            if (task.status !== "completed" || !task.gateScript) continue;
-            const gatePath = path.join(featureDir, task.gateScript);
-            if (!fs.existsSync(gatePath)) continue;
-            const gateResult = await runGate(gatePath);
-            if (!gateResult.passed) {
-              task.status = "open";
-              delete task.completedAt;
-              reopenedCount++;
-              console.log(`  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`);
-              // Append gate failure to description for next implement attempt
-              const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
-              task.description = (task.description || "") + failNote;
-            } else {
-              console.log(`  ✓ post-flight PASS: ${task.id}`);
-            }
-          }
-          if (reopenedCount > 0) {
-            saveTaskState(featureDir, postFlightState);
-            console.log(`  ⚠ ${reopenedCount} task(s) failed post-flight gates — will retry`);
-          }
+        const postFlightResult = await this.runPostFlightGates(featureDir);
+        if (postFlightResult) {
+          // Post-flight failure → retry via same path as review NO-GO
+          return this.handleNoGo("IMPLEMENT");
         }
 
         return { success: true, exitCode: 0 };
@@ -522,11 +577,141 @@ export class ShipOrchestrator extends EventEmitter {
     }
   }
 
+  /**
+   * BUILD_CHECK: Hard gate that verifies TypeScript compilation.
+   * Runs after IMPLEMENT and before TEST_GATE. If `pnpm build` fails,
+   * the iteration retries — preventing broken builds from reaching review.
+   */
+  private async stageBuildCheck(): Promise<StageResult> {
+    console.log("  ▸ BUILD_CHECK");
+    try {
+      execSync("pnpm build", {
+        cwd: this.config.cwd,
+        stdio: "pipe",
+        timeout: 60_000, // 60s — build should never take longer
+      });
+      console.log("  ✓ build passed");
+      return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
+    } catch (err: unknown) {
+      const stderr =
+        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const lastLines = stderr.split("\n").slice(-10).join("\n");
+      console.log(`  ✗ build FAILED:\n${lastLines}`);
+      return {
+        success: false,
+        exitCode: 1,
+        error: `TypeScript build failed:\n${lastLines}`,
+      };
+    }
+  }
+
+  /**
+   * TEST_GATE: Baseline comparison test verification.
+   * Only triggers NO-GO if tests got WORSE than the baseline captured
+   * at BRANCH_SETUP. Pre-existing RED tests don't block unrelated work.
+   */
+  private async stageTestGate(): Promise<StageResult> {
+    console.log("  ▸ TEST_GATE");
+    const { failCount, output } = this.runTestSuite();
+    const baseline = this.state.testBaseline ?? 0;
+
+    if (failCount === 0) {
+      console.log("  ✓ tests passed (0 failures)");
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+    }
+    if (failCount <= baseline) {
+      console.log(`  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`);
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+    }
+
+    const regressionCount = failCount - baseline;
+    const lastLines = output.split("\n").slice(-20).join("\n");
+    console.log(`  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`);
+
+    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    if (phase) {
+      for (const task of phase.tasks) {
+        if (task.status === "completed") {
+          task.status = "open";
+          task.completedAt = undefined;
+          task.description = `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
+        }
+      }
+      saveTaskState(featureDir, taskState);
+    }
+    return this.handleNoGo("TEST_GATE");
+  }
+
+  /** Run test suite, return failure count and output. */
+  private runTestSuite(): { failCount: number; output: string } {
+    try {
+      const result = execSync("pnpm test", {
+        cwd: this.config.cwd,
+        stdio: "pipe",
+        timeout: 120_000,
+      });
+      return { failCount: 0, output: result.toString() };
+    } catch (err: unknown) {
+      const stdout = (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
+      const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const combined = `${stdout}\n${stderr}`.trim();
+      const failMatch = combined.match(/(\d+)\s+failed/);
+      return { failCount: failMatch ? parseInt(failMatch[1], 10) : 1, output: combined };
+    }
+  }
+
+  /** Snapshot test failure count before IMPLEMENT touches anything. */
+  private captureTestBaseline(): void {
+    console.log("  ▸ capturing test baseline...");
+    const { failCount } = this.runTestSuite();
+    this.state.testBaseline = failCount;
+    console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
+  }
+
   private async stageCodeReview(): Promise<StageResult> {
     console.log("  ▸ CODE_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
-    const prompt = `Phase ${this.config.phaseId} Code Review`;
-    return this.executeReviewWorkflow(plugin.codeReviewWorkflow, prompt);
+
+    // Scope code review to THIS phase's tasks only.
+    // Without this, the review agent evaluates ALL code in the feature,
+    // re-opens completed tasks from earlier phases, and creates an infinite
+    // loop: pre-flight passes → no implement → review re-opens → circuit break.
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    const phaseTasks =
+      phase?.tasks
+        .map((t: Task) => `${t.id}: ${t.title} [${t.status}]`)
+        .join("\n- ") || "No tasks";
+
+    const steps = plugin.steps.code
+      .filter((s) => !s.skip)
+      .map((s) => `- ${s.title}: ${s.description}`)
+      .join("\n");
+
+    const scopedPrompt = [
+      `Phase ${this.config.phaseId} Code Review`,
+      "",
+      "SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks.",
+      "Do NOT re-open tasks from earlier phases that are already completed.",
+      "If a completed task's implementation has issues, note them in your summary but do NOT change its status.",
+      "",
+      "Review Steps:",
+      steps,
+      "",
+      "Phase tasks:",
+      `- ${phaseTasks}`,
+    ].join("\n");
+
+    return this.executeReviewWorkflow(plugin.codeReviewWorkflow, scopedPrompt);
   }
 
   private async stageUatReview(): Promise<StageResult> {
@@ -545,10 +730,18 @@ export class ShipOrchestrator extends EventEmitter {
     );
     const doneWhen = phase?.doneWhen?.join("\n- ") || "All tasks pass gates";
 
+    const steps = plugin.steps.uat
+      .filter((s) => !s.skip)
+      .map((s) => `- ${s.title}: ${s.description}`)
+      .join("\n");
+
     const scopedPrompt = [
       `Phase ${this.config.phaseId} UAT Review`,
       "",
       "SCOPE CONSTRAINT: Only evaluate user stories and requirements addressed by THIS phase.",
+      "",
+      "Review Steps:",
+      steps,
       "",
       "Done When:",
       `- ${doneWhen}`,
@@ -562,7 +755,7 @@ export class ShipOrchestrator extends EventEmitter {
    * If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
    * Otherwise → GO.
    */
-  private readVerdict(): "GO" | "NO-GO" {
+  private async readVerdict(): Promise<"GO" | "NO-GO"> {
     const featureDir = path.join(
       this.config.cwd,
       "specs",
@@ -573,12 +766,36 @@ export class ShipOrchestrator extends EventEmitter {
       (p: Phase) => p.id === this.config.phaseId,
     );
     if (!phase) return "NO-GO";
-    const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
-    if (openTasks.length > 0) {
+
+    // Gate-driven verdict: run gates directly, don't trust agent edits.
+    // "Gates are truth, tasks.json status is bookkeeping." (gwrk-review-code.md L59)
+    let failedCount = 0;
+    for (const task of phase.tasks) {
+      if (!task.gateScript) continue;
+      const gatePath = path.join(featureDir, task.gateScript);
+      if (!fs.existsSync(gatePath)) continue;
+
+      const gateResult = await runGate(gatePath);
+      if (gateResult.passed) {
+        if (task.status !== "completed") {
+          task.status = "completed";
+          task.completedAt = new Date().toISOString();
+        }
+      } else {
+        task.status = "open";
+        task.completedAt = undefined;
+        failedCount++;
+      }
+    }
+
+    // Persist reconciled state
+    saveTaskState(featureDir, taskState);
+
+    if (failedCount > 0) {
+      const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
       console.log(
         `    ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
       );
-      // Show review feedback summary for each re-opened task
       for (const task of openTasks) {
         if (task.description) {
           const firstLine = task.description.split("\n")[0].trim();
@@ -831,7 +1048,52 @@ _Generated by gwrk ship_`;
    * Build the prompt for a first-attempt implementation.
    */
   private buildInitialPrompt(tasks: Task[]): string {
-    return `Phase ${this.config.phaseId} Implementation\n\nTasks:\n${tasks.map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`).join("\n")}`;
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
+    const planPath = path.join(featureDir, "plan.md");
+    let planContext = "";
+
+    if (fs.existsSync(planPath)) {
+      try {
+        const plan = fs.readFileSync(planPath, "utf-8");
+        if (plan) {
+          const phaseNum = this.config.phaseId
+            .replace("phase-", "")
+            .replace(/^0+/, "");
+          const phaseRegex = new RegExp(
+            `### Phase ${phaseNum}[:\\s].*?(?=### Phase|$)`,
+            "s",
+          );
+          const phaseSection = plan.match(phaseRegex)?.[0] || "";
+          if (phaseSection) {
+            planContext = `\n\nIMPLEMENTATION PLAN (from plan.md):\n${phaseSection}`;
+          }
+        }
+      } catch {
+        // plan.md unreadable — proceed without plan context
+      }
+    }
+
+    const taskList = tasks
+      .map((t) => `- ${t.id}: ${t.title}\n  ${t.description}`)
+      .join("\n");
+
+    return [
+      `Phase ${this.config.phaseId} Implementation`,
+      "",
+      "CRITICAL CONSTRAINTS:",
+      "1. ONLY modify files explicitly listed in the plan below as (Modify) or (New).",
+      "2. For (Modify) files: ADD to the existing code. Do NOT delete or rewrite existing exports, functions, or imports.",
+      "3. For (New) files: Create the file from scratch.",
+      "4. After ALL changes, run `pnpm build` and fix any TypeScript compilation errors.",
+      "5. Run `pnpm vitest run` on the relevant test files to verify your changes.",
+      "",
+      `Tasks:\n${taskList}`,
+      planContext,
+    ].join("\n");
   }
 
   /**

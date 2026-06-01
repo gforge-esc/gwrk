@@ -7,7 +7,7 @@ set -euo pipefail
 # But since we shouldn't run them now, we just author it.
 # gwrk harvest --help
 
-# Assertion #2: Run harvest E2E tests
-pnpm vitest run tests/harvest-e2e.test.ts
+# Assertion #2: Run DB persistence tests
+pnpm vitest run src/db/issues.test.ts
 
 echo "PASS: T017 — Implement test strategy for Phase 5 (noop)"

@@ -1,10 +1,10 @@
 {
   "featureId": "011-harvest",
-  "createdAt": "2026-03-20T00:15:41.563Z",
+  "createdAt": "2026-05-18T04:04:47.606Z",
   "generatedFrom": {
     "plan": {
       "hash": "fd6c267ad4085d016fea1bf723c7c1d1bdd14a3bacf8c88501fda8ade4c6b7c0",
-      "modifiedAt": "2026-05-16T18:34:17.919Z"
+      "modifiedAt": "2026-05-17T01:45:18.071Z"
     }
   },
   "phases": [
@@ -19,6 +19,7 @@
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.781Z",
           "classification": "greenfield"
         },
         {
@@ -28,6 +29,7 @@
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.802Z",
           "classification": "greenfield"
         },
         {
@@ -37,23 +39,8 @@
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.822Z",
           "classification": "noop"
-        },
-        {
-          "id": "T020",
-          "title": "Implement src/db/migrations/005-compression.sql",
-          "description": "VERIFY: Schema already merged during F014",
-          "status": "cancelled",
-          "gateScript": "gates/T001-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T021",
-          "title": "Implement src/engine/types.ts",
-          "description": "MODIFY: Ensure all harvest and compression types are present",
-          "status": "cancelled",
-          "gateScript": "gates/T004-gate.sh",
-          "sp": 0
         }
       ],
       "sp_estimate": 0,
@@ -73,6 +60,7 @@
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:37.837Z",
           "classification": "greenfield"
         },
         {
@@ -82,6 +70,7 @@
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-22T13:53:57.417Z",
           "classification": "greenfield"
         },
         {
@@ -91,6 +80,7 @@
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:38.931Z",
           "classification": "greenfield"
         },
         {
@@ -100,15 +90,8 @@
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:38.942Z",
           "classification": "noop"
-        },
-        {
-          "id": "T022",
-          "title": "Implement src/utils/git.ts",
-          "description": "MODIFY: Add `commitFiles(",
-          "status": "cancelled",
-          "gateScript": "gates/T007-gate.sh",
-          "sp": 0
         }
       ],
       "sp_estimate": 0,
@@ -125,11 +108,11 @@
         {
           "id": "T008",
           "title": "Implement src/engine/compression.ts",
-          "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`",
+          "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`.",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:38:05.742Z",
+          "completedAt": "2026-05-31T19:41:49.737Z",
           "classification": "greenfield"
         },
         {
@@ -139,16 +122,17 @@
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:13:39.858Z",
           "classification": "greenfield"
         },
         {
           "id": "T010",
           "title": "Implement src/engine/harvest.ts",
-          "description": "Modify: Wire in `computeCompression` inside `harvestFeature`",
+          "description": "Modify: Wire in `computeCompression` inside `harvestFeature`.",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-06T20:25:15.126Z",
+          "completedAt": "2026-05-31T19:41:49.754Z",
           "classification": "greenfield"
         },
         {
@@ -158,23 +142,8 @@
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-31T19:33:32.143Z",
           "classification": "noop"
-        },
-        {
-          "id": "T023",
-          "title": "Implement src/server/index.ts",
-          "description": "MODIFY: Register the github webhook plugin",
-          "status": "cancelled",
-          "gateScript": "gates/T010-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T024",
-          "title": "Implement src/utils/config.ts",
-          "description": "MODIFY: Add `GITHUB_WEBHOOK_SECRET` to Zod schema",
-          "status": "cancelled",
-          "gateScript": "gates/T011-gate.sh",
-          "sp": 0
         }
       ],
       "sp_estimate": 0,
@@ -191,12 +160,12 @@
         {
           "id": "T012",
           "title": "Implement src/engine/harvest.ts",
-          "description": "Modify: Wire `notifyDoneDone` to format and post the summary to Slack.\n\nIMPLEMENTATION INSTRUCTIONS:\n1. In `notifyDoneDone()` (src/engine/harvest.ts:253), replace `payload as any` with proper `NotifyPayload` typing from `../server/types.js`.\n2. The function already has the correct two-tier approach: try /api/notify first, fall back to dispatchNotification.\n3. The `dispatchNotification` import from `../server/slack-notify.js` may throw \"Not implemented\" if 003-slack is not yet shipped. This is expected — the fetch() fallback to /api/notify is the primary path.\n\nTESTING INSTRUCTIONS:\n- Tests are in `src/engine/harvest.test.ts` (the gate runs this file).\n- Mock `dispatchNotification` using `vi.mock(\"../server/slack-notify.js\")` to prevent \"Not implemented\" throws.\n- Mock `fetch` (globalThis.fetch) to verify the /api/notify call is made with the correct payload.\n- Do NOT depend on 003-slack being implemented. All Slack interactions must be mocked.\n\nGATE: specs/011-harvest/gates/T012-gate.sh (runs harvest.test.ts + biome check)",
+          "description": "Modify: Wire `notifyDoneDone` to format and post the summary to the `003-slack` module API",
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "sp": 0,
-          "classification": "greenfield",
-          "completedAt": "2026-05-17T01:34:37.118Z"
+          "completedAt": "2026-06-01T01:47:49.305Z",
+          "classification": "greenfield"
         },
         {
           "id": "T013",
@@ -205,7 +174,7 @@
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-06T20:25:15.332Z",
+          "completedAt": "2026-05-22T13:53:59.113Z",
           "classification": "greenfield"
         },
         {
@@ -215,6 +184,7 @@
           "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "sp": 0,
+          "completedAt": "2026-06-01T01:47:50.194Z",
           "classification": "noop"
         }
       ],
@@ -234,7 +204,7 @@
           "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:38:06.683Z",
+          "completedAt": "2026-05-18T04:47:11.631Z",
           "classification": "greenfield"
         },
         {
@@ -244,7 +214,6 @@
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:38:06.694Z",
           "classification": "greenfield"
         },
         {
@@ -254,7 +223,6 @@
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:38:07.656Z",
           "classification": "greenfield"
         },
         {
@@ -264,7 +232,7 @@
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-16T19:38:07.669Z",
+          "completedAt": "2026-05-18T04:47:11.640Z",
           "classification": "greenfield"
         },
         {
@@ -274,33 +242,8 @@
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
+          "completedAt": "2026-05-18T04:47:11.644Z",
           "classification": "noop"
-        },
-        {
-          "id": "T025",
-          "title": "Implement src/commands/harvest.ts",
-          "description": "NEW: `gwrk harvest` CLI command",
-          "status": "cancelled",
-          "gateScript": "gates/T015-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T026",
-          "title": "Implement src/engine/harvest.test.ts",
-          "description": "MODIFY: Implement the 3 `it.todo(",
-          "status": "cancelled",
-          "gateScript": "gates/T020-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-06T20:25:15.534Z"
-        },
-        {
-          "id": "T027",
-          "title": "Implement test strategy for Phase 6",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "cancelled",
-          "gateScript": "gates/T021-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-04-15T02:34:21.295Z"
         }
       ],
       "sp_estimate": 0,

@@ -11,12 +11,13 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
+    "test:report": "tsx scripts/dev/test-report.ts",
     "lint": "biome check",
     "format": "biome format --write"
   },
   "dependencies": {
     "@slack/bolt": "^4.6.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.10.0",
     "commander": "^13.1.0",
     "dockerode": "^4.0.9",
     "fastify": "^5.8.1",

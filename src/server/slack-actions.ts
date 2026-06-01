@@ -76,12 +76,22 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!payload) return;
     const { featureId, phaseId } = JSON.parse(payload);
 
-    await client.chat.postMessage({
-      channel: actionBody.channel?.id || "",
-      text: `🔄 Changes requested for *${featureId}* phase *${phaseId}* by <@${actionBody.user.id}>. Agent notified.`,
-    });
+    try {
+      context.queue.enqueue({ featureId, phaseId });
 
-    // TODO: trigger a re-dispatch or update task status
+      await client.chat.postMessage({
+        channel: actionBody.channel?.id || "",
+        text: `🔄 Changes requested for *${featureId}* phase *${phaseId}* by <@${actionBody.user.id}>. Agent notified and re-dispatching.`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await client.chat.postEphemeral({
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: Failed to re-dispatch: ${errorMessage}`,
+      });
+    }
   });
 
   app.action("approve_spec", async ({ ack, body, client, logger }) => {
@@ -151,10 +161,27 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!payload) return;
     const { featureId } = JSON.parse(payload);
 
-    await client.chat.postMessage({
-      channel: actionBody.channel?.id || "",
-      text: `🔄 Revision requested for *${featureId}* spec. Agent notified.`,
-    });
+    try {
+      const child = spawn("gwrk", ["define", "spec", featureId], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      await client.chat.postMessage({
+        channel: actionBody.channel?.id || "",
+        text: `🔄 Revision requested for *${featureId}* spec. Agent notified and re-generating spec...`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await client.chat.postEphemeral({
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: Failed to trigger spec revision: ${errorMessage}`,
+      });
+    }
   });
 
   app.action("revise_plan", async ({ ack, body, client, logger }) => {
@@ -165,10 +192,27 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     if (!payload) return;
     const { featureId } = JSON.parse(payload);
 
-    await client.chat.postMessage({
-      channel: actionBody.channel?.id || "",
-      text: `🔄 Revision requested for *${featureId}* plan. Agent notified.`,
-    });
+    try {
+      const child = spawn("gwrk", ["define", "plan", featureId], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      await client.chat.postMessage({
+        channel: actionBody.channel?.id || "",
+        text: `🔄 Revision requested for *${featureId}* plan. Agent notified and re-generating plan...`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      await client.chat.postEphemeral({
+        channel: actionBody.channel?.id || "",
+        user: actionBody.user.id,
+        text: `:warning: Failed to trigger plan revision: ${errorMessage}`,
+      });
+    }
   });
 
   app.action("view_review", async ({ ack, body, client }) => {

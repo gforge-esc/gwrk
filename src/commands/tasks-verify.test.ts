@@ -51,7 +51,24 @@ describe("gwrk tasks verify (Phase 9)", () => {
   });
 
   it("FR-020: SHOULD pass when all completed tasks have manifests", async () => {
-    // Create manifest for T001
+    // Update T002 to be completed too, so the 'ship' manifest covers the whole phase
+    const state = {
+      featureId: "test-feature",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "Desc 1", status: "completed", gateScript: "gates/T001-gate.sh" },
+            { id: "T002", title: "Task 2", description: "Desc 2", status: "completed", gateScript: "gates/T002-gate.sh" }
+          ]
+        }
+      ]
+    };
+    fs.writeFileSync(path.join(featureDir, ".gwrk", "tasks.json"), JSON.stringify(state));
+
+    // Create manifest for phase-01
     const manifest = {
       runId: "run1",
       feature: "test-feature",
@@ -69,7 +86,7 @@ describe("gwrk tasks verify (Phase 9)", () => {
       filesChanged: 0,
       linesAdded: 0,
       linesDeleted: 0,
-      digest: ["T001: PASS"] 
+      digest: ["T001: PASS", "T002: PASS"] 
     };
     writeManifest(featureDir, manifest);
 

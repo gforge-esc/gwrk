@@ -304,7 +304,7 @@ export function lintAllGates(gatesDir: string): Map<string, string[]> {
 export interface GapMatrixRow {
   ac: string; // e.g., "FR-001"
   criterion: string; // human-readable description
-  testType: "unit" | "functional" | "e2e" | "structural";
+  testType: "unit" | "functional" | "integration" | "e2e" | "structural";
   testFile: string | null; // relative path or null if "—"
   testExists: boolean; // ✅ = true, ❌ = false
   gate: string | null; // e.g., "T001" or null if "—"
@@ -349,7 +349,11 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
         cells;
 
       const testType = testTypeRaw as GapMatrixRow["testType"];
-      if (!["unit", "functional", "e2e", "structural"].includes(testType)) {
+      if (
+        !["unit", "functional", "integration", "e2e", "structural"].includes(
+          testType,
+        )
+      ) {
         return null;
       }
 
@@ -460,9 +464,9 @@ export function generateVitestGates(
   for (const [gateId, gateRows] of gateGroups) {
     const gatePath = path.join(gatesDir, `${gateId}-gate.sh`);
 
-    // Preserve existing AUTHORED gates that are NOT gap-matrix generated.
-    // Gap-matrix generated gates (containing "Generated from gap-matrix.md")
-    // are regenerated on every run to stay current.
+    // Preserve PE-authored gates (# AUTHORED without gap-matrix marker).
+    // LLM-authored gates (# GENERATED) are overwritable by deterministic vitest gates.
+    // Gap-matrix generated gates (# Generated from gap-matrix.md) are always regenerated.
     if (fs.existsSync(gatePath)) {
       const existingContent = fs.readFileSync(gatePath, "utf-8");
       if (
@@ -487,7 +491,7 @@ export function generateVitestGates(
     const testInvocations = [...fileGroups.entries()]
       .map(([file, acs]) => {
         const grepPattern = acs.join("|");
-        return `pnpm vitest run ${file} --grep "${grepPattern}" --reporter=verbose \\
+        return `pnpm vitest run ${file} -t "${grepPattern}" --reporter=verbose \\
   || { echo "FAIL: ${gateId} — vitest failed for ${file}" >&2; exit 1; }`;
       })
       .join("\n\n");
@@ -525,6 +529,184 @@ echo "PASS: ${gateId} — tests pass + lint clean"
 
     fs.writeFileSync(gatePath, gateContent, { mode: 0o755 });
     generated += gateRows.length;
+  }
+
+  return { generated, skipped };
+}
+
+// ─── Filesystem-convention gate generation (FM-1/2/3 fallback) ───────────────
+
+/**
+ * discoverTestFile — given a source file path, check if a conventional
+ * test file exists (foo.ts → foo.test.ts).
+ *
+ * Returns the test file path if found, null otherwise.
+ */
+export function discoverTestFile(sourceFile: string): string | null {
+  if (!sourceFile) return null;
+
+  // If the file IS a test file, return it directly
+  if (sourceFile.endsWith(".test.ts") || sourceFile.endsWith(".test.js")) {
+    return fs.existsSync(sourceFile) ? sourceFile : null;
+  }
+
+  // Convention: foo.ts → foo.test.ts
+  const testFile = sourceFile.replace(/\.(ts|js)$/, ".test.$1");
+  if (fs.existsSync(testFile)) {
+    return testFile;
+  }
+
+  return null;
+}
+
+/**
+ * generateFilesystemGates — produce deterministic vitest gate scripts
+ * from task descriptions WITHOUT requiring a gap matrix.
+ *
+ * For each task, extracts the primary file from the title/description,
+ * checks if a corresponding .test.ts file exists, and generates a
+ * vitest gate script.
+ *
+ * This is the fallback path when gap-matrix.md is unavailable (FM-1/2/3).
+ * Respects # AUTHORED preservation — existing gates are never overwritten.
+ *
+ * Returns counts of generated and skipped gates.
+ */
+export function generateFilesystemGates(
+  featureDir: string,
+  phases: Phase[],
+): { generated: number; skipped: number } {
+  const gatesDir = path.join(featureDir, "gates");
+
+  if (!fs.existsSync(gatesDir)) {
+    fs.mkdirSync(gatesDir, { recursive: true });
+  }
+
+  let generated = 0;
+  let skipped = 0;
+
+  for (const phase of phases) {
+    // Collect test files for this phase (for the test strategy gate)
+    const phaseTestFiles: string[] = [];
+
+    for (const task of phase.tasks) {
+      const gatePath = path.join(gatesDir, `${task.id}-gate.sh`);
+
+      // Preserve PE-authored gates
+      if (fs.existsSync(gatePath)) {
+        const existingContent = fs.readFileSync(gatePath, "utf-8");
+        if (
+          existingContent.includes("# AUTHORED") &&
+          !existingContent.includes("# Generated from filesystem convention")
+        ) {
+          skipped++;
+          continue;
+        }
+      }
+
+      const text = `${task.title} ${task.description ?? ""}`;
+
+      // Skip "test strategy" meta-tasks — handled separately below
+      if (text.toLowerCase().includes("test strategy")) {
+        continue;
+      }
+
+      // Extract primary file from task title/description
+      const rawFile =
+        text.match(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/)?.[0] ??
+        text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md))\b/)?.[0] ??
+        null;
+      const primaryFile = rawFile?.replace(/[,;.]$/, "") ?? null;
+
+      if (!primaryFile) {
+        skipped++;
+        continue;
+      }
+
+      // Discover corresponding test file
+      const testFile = discoverTestFile(primaryFile);
+      if (!testFile) {
+        // No test file found — generate a file-existence gate as minimum
+        const gateContent = `#!/bin/bash
+set -euo pipefail
+# AUTHORED
+# Gate: ${task.id} — ${task.title}
+# Generated from filesystem convention (no test file found)
+
+test -f ${primaryFile} || { echo "FAIL: ${task.id} — file not found: ${primaryFile}" >&2; exit 1; }
+
+echo "PASS: ${task.id} — ${task.title}"
+`;
+        fs.writeFileSync(gatePath, gateContent, { mode: 0o755 });
+        generated++;
+        continue;
+      }
+
+      // Track for phase test strategy gate
+      if (!phaseTestFiles.includes(testFile)) {
+        phaseTestFiles.push(testFile);
+      }
+
+      const gateContent = `#!/bin/bash
+set -euo pipefail
+# AUTHORED
+# Gate: ${task.id} — ${task.title}
+# Generated from filesystem convention (deterministic vitest gate)
+
+test -f ${primaryFile} || { echo "FAIL: ${task.id} — file not found: ${primaryFile}" >&2; exit 1; }
+
+pnpm vitest run ${testFile} --reporter=verbose \\
+  || { echo "FAIL: ${task.id} — vitest failed for ${testFile}" >&2; exit 1; }
+
+echo "PASS: ${task.id} — ${task.title}"
+`;
+      fs.writeFileSync(gatePath, gateContent, { mode: 0o755 });
+      generated++;
+    }
+
+    // Generate test strategy gate (if phase has a test strategy task)
+    const testStrategyTask = phase.tasks.find((t) =>
+      t.title.toLowerCase().includes("test strategy"),
+    );
+    if (testStrategyTask && phaseTestFiles.length > 0) {
+      const strategyGatePath = path.join(
+        gatesDir,
+        `${testStrategyTask.id}-gate.sh`,
+      );
+
+      // Preserve PE-authored gates
+      if (fs.existsSync(strategyGatePath)) {
+        const existingContent = fs.readFileSync(strategyGatePath, "utf-8");
+        if (
+          existingContent.includes("# AUTHORED") &&
+          !existingContent.includes("# Generated from filesystem convention")
+        ) {
+          skipped++;
+          continue;
+        }
+      }
+
+      const testInvocations = phaseTestFiles
+        .map(
+          (f) =>
+            `pnpm vitest run ${f} --reporter=verbose \\
+  || { echo "FAIL: ${testStrategyTask.id} — ${f} failed" >&2; exit 1; }`,
+        )
+        .join("\n\n");
+
+      const gateContent = `#!/bin/bash
+set -euo pipefail
+# AUTHORED
+# Gate: ${testStrategyTask.id} — ${testStrategyTask.title}
+# Generated from filesystem convention (deterministic vitest gate)
+
+${testInvocations}
+
+echo "PASS: ${testStrategyTask.id} — ${testStrategyTask.title}"
+`;
+      fs.writeFileSync(strategyGatePath, gateContent, { mode: 0o755 });
+      generated++;
+    }
   }
 
   return { generated, skipped };

@@ -8,6 +8,7 @@ import type { GwrkConfig } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 
 import { seedSkills } from "../plugins/seed.js";
+import { migratePlugins } from "../plugins/migrate.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const initCommand = new Command("init")
@@ -116,6 +117,43 @@ export const initCommand = new Command("init")
 
       // Seed Skills (FR-012)
       await seedSkills();
+
+      // Migrate legacy .agents (FR-011)
+      await migratePlugins();
+
+      // Seed Rules (ADR-007)
+      const gwrkRulesDir = path.join(projectRoot, ".gwrk", "rules");
+      fs.mkdirSync(gwrkRulesDir, { recursive: true });
+      // @ts-ignore
+      const builtInRulesDir = path.join(
+        import.meta.dirname,
+        "../plugins/builtins/rules",
+      );
+
+      if (!fs.existsSync(builtInRulesDir)) {
+        throw new CommandError(
+          `Builtin rules directory missing: ${builtInRulesDir}`,
+          1,
+        );
+      }
+
+      try {
+        const rules = fs.readdirSync(builtInRulesDir);
+        if (rules.length === 0) {
+          throw new Error("No rules found in builtin directory");
+        }
+        for (const rule of rules) {
+          fs.copyFileSync(
+            path.join(builtInRulesDir, rule),
+            path.join(gwrkRulesDir, rule),
+          );
+        }
+      } catch (e) {
+        throw new CommandError(
+          `Could not seed rules: ${(e as Error).message}`,
+          1,
+        );
+      }
 
       // Seed Workflows (FR-L25-005)
       // @ts-ignore

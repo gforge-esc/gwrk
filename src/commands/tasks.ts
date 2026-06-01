@@ -4,8 +4,17 @@ import { Command } from "commander";
 import { recordHistory } from "../db/runs.js";
 import { runGate } from "../utils/exec.js";
 import { color, fail, success } from "../utils/format.js";
+import {
+  getCurrentBranch,
+  getCurrentCommit,
+  getDiffStats,
+} from "../utils/git.js";
 import { appendHistory } from "../utils/history.js";
-import { loadManifests } from "../utils/manifest.js";
+import {
+  generateRunId,
+  loadManifests,
+  writeManifest,
+} from "../utils/manifest.js";
 import {
   contentHash,
   listTasks,
@@ -55,6 +64,8 @@ Examples:
   )
   .action(async (featureInput: string, taskId: string) => {
     await withSignal("tasks done", async () => {
+      const startedAt = new Date().toISOString();
+      const startTime = Date.now();
       const projectRoot = process.cwd();
       const feature = resolveFeature(featureInput, projectRoot);
       const featureDir = path.join(projectRoot, "specs", feature);
@@ -78,6 +89,13 @@ Examples:
           `Task ${taskId} not found in tasks.json. Run 'gwrk tasks list ${feature}' to list available tasks.`,
           1,
         );
+      }
+
+      const phase = state.phases.find((p) =>
+        p.tasks.some((t) => t.id === taskId),
+      );
+      if (!phase) {
+        throw new CommandError(`Phase for task ${taskId} not found`, 1);
       }
 
       if (task.status === "completed") {
@@ -146,6 +164,44 @@ Examples:
           toStatus: "completed",
         });
 
+        // Write Execution Manifest (ADR-003) to satisfy 'tasks verify'
+        try {
+          const finishedAt = new Date().toISOString();
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          const gitCommit = getCurrentCommit(projectRoot);
+          const gitBranch = getCurrentBranch(projectRoot);
+          const { filesChanged, linesAdded, linesDeleted } = getDiffStats(
+            projectRoot,
+            gitCommit === "unknown" ? "HEAD" : `${gitCommit}`,
+          );
+
+          const manifestId = `${startedAt}_tasks-done_${taskId}`;
+
+          writeManifest(featureDir, {
+            runId: manifestId,
+            feature,
+            phase: phase.id,
+            command: "tasks-done",
+            agent: "manual",
+            model: "none",
+            startedAt,
+            finishedAt,
+            durationS,
+            exitCode: 0,
+            attempt: 1,
+            filesChanged,
+            linesAdded,
+            linesDeleted,
+            gitCommit,
+            gitBranch,
+            digest: [],
+          });
+        } catch (manifestError) {
+          console.warn(
+            `Warning: Could not write execution manifest: ${manifestError}`,
+          );
+        }
+
         console.log(`Task ${taskId} marked as completed`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -178,21 +234,86 @@ Examples:
         );
       }
 
+      let state: TaskState;
+      try {
+        state = loadTaskState(featureDir);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new CommandError(`Task state invalid: ${message}`, 1);
+      }
+
       const manifests = loadManifests(featureDir);
-      const state = loadTaskState(featureDir);
       const allTasks = listTasks(state);
       const completedTasks = allTasks.filter((t) => t.status === "completed");
 
-      console.log(`Verifying ${feature}...`);
+      const { GREEN, RED, RESET, BOLD, YELLOW, DIM } = color;
+      console.log(`Verifying ${BOLD}${feature}${RESET}...`);
+
+      const issues: string[] = [];
+      const successfulShipPhases = new Set(
+        manifests
+          .filter((m) => m.exitCode === 0 && m.command === "ship")
+          .map((m) => m.phase),
+      );
+
+      const successfulTasksDone = new Set(
+        manifests
+          .filter((m) => m.exitCode === 0 && m.command === "tasks-done")
+          .map((m) => {
+            const parts = m.runId.split("_tasks-done_");
+            return parts.length > 1 ? parts[1] : null;
+          })
+          .filter(Boolean),
+      );
+
+      // Check 1: Every completed task has a corresponding execution manifest
+      for (const task of completedTasks) {
+        const phase = state.phases.find((p) =>
+          p.tasks.some((t) => t.id === task.id),
+        );
+        if (
+          phase &&
+          !successfulShipPhases.has(phase.id) &&
+          !successfulTasksDone.has(task.id)
+        ) {
+          issues.push(
+            `Task ${BOLD}${task.id}${RESET} is ${GREEN}completed${RESET} but no successful manifest found (ship phase or tasks-done)`,
+          );
+        }
+      }
+
+      // Check 2: Orphaned/Regressed tasks (ship manifest exists but task is not completed)
+      for (const phase of state.phases) {
+        if (successfulShipPhases.has(phase.id)) {
+          const openTasks = phase.tasks.filter(
+            (t) => t.status === "open" || t.status === "in_progress",
+          );
+          if (openTasks.length > 0) {
+            for (const task of openTasks) {
+              issues.push(
+                `Task ${BOLD}${task.id}${RESET} is ${YELLOW}${task.status}${RESET} but ${phase.id} has a successful ship manifest (Regressed/Orphaned)`,
+              );
+            }
+          }
+        }
+      }
+
       console.log(`  Found ${manifests.length} manifests`);
       console.log(`  Found ${completedTasks.length} completed tasks`);
 
-      const valid = true;
-      if (valid) {
+      if (issues.length === 0) {
         success("verify", 0, 0);
       } else {
+        console.log("");
+        for (const issue of issues) {
+          console.log(`  ${RED}✗${RESET} ${issue}`);
+        }
+        console.log("");
         fail("verify", 1, 0, 0);
-        throw new CommandError("Verification failed", 1);
+        throw new CommandError(
+          `Verification failed with ${issues.length} issues`,
+          1,
+        );
       }
     });
   });

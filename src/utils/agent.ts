@@ -6,6 +6,7 @@ import { recordRoutingDecision } from "../db/plugins.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
+import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import {
   type AgentBackend as ConfigAgentBackend,
   loadConfig,
@@ -67,30 +68,33 @@ export async function buildCommand(
   };
 }
 
+/** Format elapsed stamp: "HH:MM:SS +MM:SS" */
+function formatStamp(startEpoch: number): string {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
+  const eMin = Math.floor(elapsed / 60);
+  const eSec = elapsed % 60;
+  return `${hh}:${mm}:${ss} +${String(eMin).padStart(2, "0")}:${String(eSec).padStart(2, "0")}`;
+}
+
 /**
  * Prefixes each output line with "HH:MM:SS +MM:SS" (wall clock + elapsed).
- * Also writes raw (un-timestamped) line to the log file.
+ * Writes timestamped output to both terminal and log file.
  */
 function stampLine(
   line: string,
   startEpoch: number,
   logStream?: fs.WriteStream,
 ): void {
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
-
-  const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
-  const eMin = Math.floor(elapsed / 60);
-  const eSec = elapsed % 60;
-  const stamp = `${hh}:${mm}:${ss} +${String(eMin).padStart(2, "0")}:${String(eSec).padStart(2, "0")}`;
-
+  const stamp = formatStamp(startEpoch);
   process.stdout.write(`${DIM}${stamp}${RESET}  ${line}\n`);
 
-  // Tee raw output to log file
+  // Tee timestamped output to log file (plain text, no ANSI)
   if (logStream) {
-    logStream.write(`${line}\n`);
+    logStream.write(`[${stamp}] ${line}\n`);
   }
 }
 
@@ -209,10 +213,10 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
         return;
       }
 
-      // Quiet mode: write to log only, skip stdout
+      // Quiet mode: write timestamped line to log only, skip stdout
       if (opts.quiet) {
         if (logStream) {
-          logStream.write(`${line}\n`);
+          logStream.write(`[${formatStamp(startEpoch)}] ${line}\n`);
         }
         return;
       }
@@ -238,21 +242,25 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       rlErr.on("line", (line) => processLine(line, "stderr"));
     }
 
-    child.on("close", (code) => {
+    let resolved = false;
+    const finish = (code: number) => {
+      if (resolved) return;
+      resolved = true;
+
       if (spinnerInterval) {
         clearInterval(spinnerInterval);
-        process.stdout.write("\r\x1b[K"); // Clear spinner line
+        process.stdout.write("\r\x1b[K");
       }
       const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
       const mins = Math.floor(elapsed / 60);
       const secs = elapsed % 60;
       logStream.write(`\n# [END] ${new Date().toISOString()}\n`);
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
-      logStream.write(`# Exit Code : ${code ?? 1}\n`);
+      logStream.write(`# Exit Code : ${code}\n`);
       logStream.end();
 
       if (opts.quiet) {
-        const status = (code ?? 1) === 0 ? "✓" : "✗";
+        const status = code === 0 ? "✓" : "✗";
         const relLogPath = path.relative(process.cwd(), logPath);
         process.stdout.write(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
@@ -260,22 +268,35 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
       }
 
       resolve({
-        exitCode: code ?? 1,
+        exitCode: code,
         logPath,
         stdout: stdoutLines.join("\n"),
         stderr: stderrLines.join("\n"),
       });
+    };
+
+    // Primary: close fires when all stdio FDs are drained (normal path)
+    child.on("close", (code) => finish(code ?? 1));
+
+    // Fallback: Node 25 readline holds FDs open after process exit.
+    // If close hasn't fired within 30s of exit, force-resolve.
+    // No overall timeout — agents can run as long as needed.
+    child.on("exit", (code) => {
+      setTimeout(() => {
+        if (!resolved) {
+          logStream.write(
+            "# [FM-5] close did not fire 30s after exit — forcing resolution\n",
+          );
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          finish(code ?? 1);
+        }
+      }, 30_000);
     });
 
     child.on("error", () => {
       logStream.write("\n# [ERROR] Agent process failed to start\n");
-      logStream.end();
-      resolve({
-        exitCode: 1,
-        logPath,
-        stdout: stdoutLines.join("\n"),
-        stderr: stderrLines.join("\n"),
-      });
+      finish(1);
     });
   });
 }
@@ -406,6 +427,31 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   const startTime = Date.now();
   const dispatch = await adapter.dispatch(task);
+
+  // FR-014: Inject enforcement skills
+  const hasEnforcementPlaceholder = dispatch.stdin.includes("{{enforcement}}");
+  const hasCodeQualitySection = dispatch.stdin.includes("<code_quality>");
+
+  if (hasEnforcementPlaceholder || hasCodeQualitySection) {
+    const scope =
+      task.workflow?.includes("review") || task.type?.includes("review")
+        ? "review"
+        : "implementation";
+    const enforcement = await resolveEnforcementSkills(
+      task.workDir || projectRoot,
+      scope as "implementation" | "review",
+    );
+
+    if (hasEnforcementPlaceholder) {
+      dispatch.stdin = dispatch.stdin.replace("{{enforcement}}", enforcement);
+    } else if (hasCodeQualitySection) {
+      // Inject into the section if no placeholder but tag exists
+      dispatch.stdin = dispatch.stdin.replace(
+        /<code_quality>([\s\S]*?)<\/code_quality>/,
+        `<code_quality>\n${enforcement}\n</code_quality>`,
+      );
+    }
+  }
 
   const opts: DispatchOptions = {
     backend: agentName as ConfigAgentBackend,

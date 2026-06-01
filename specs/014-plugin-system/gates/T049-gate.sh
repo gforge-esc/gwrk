@@ -1,11 +1,11 @@
 #!/bin/bash
-# AUTHORED
-set -euo pipefail
+set -e
 
-# T049: ReviewPlugin interface + resolution
-test -f src/plugins/review-plugin.ts
-grep -q "ReviewPlugin" src/plugins/review-plugin.ts
-grep -q "ReviewStep" src/plugins/review-plugin.ts
-grep -q "resolveReviewPlugin" src/plugins/review-plugin.ts
+# T049-gate: Verify Review Plugin Layer tests
+# Assertion #1: resolveReviewPlugin tests pass
+pnpm vitest run src/plugins/review-plugin.test.ts
 
-echo "PASS: T049 — Implement src/plugins/review-plugin.ts"
+# Assertion #2: Ship orchestrator integration tests pass
+pnpm vitest run src/engine/ship-orchestrator.review.test.ts
+
+echo "✓ T049-gate passed"

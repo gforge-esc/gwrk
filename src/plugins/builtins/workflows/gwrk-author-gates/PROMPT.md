@@ -73,7 +73,7 @@ For each task in the brief, create `{feature_dir}/gates/{taskId}-gate.sh`.
 <gate_rules>
 Every gate script MUST:
 1. Start with `#!/bin/bash` + `set -euo pipefail`
-2. Have `# AUTHORED` on line 2
+2. Have `# GENERATED` on line 2 (LLM-authored gates use this marker; `# AUTHORED` is reserved for PE-written gates only)
 3. Have at least ONE assertion that invokes a real tool (pnpm, grep, bash -n, jq, test)
 4. End with `echo "PASS: {taskId} — {title}"`
 5. NOT contain `GATE_STUB`
@@ -181,8 +181,8 @@ After writing, verify each gate has the required markers:
 // turbo
 ```bash
 for gate in {feature_dir}/gates/T*-gate.sh; do
-  if ! head -3 "$gate" | grep -q "# AUTHORED"; then
-    echo "ERROR: $(basename $gate) missing # AUTHORED marker"
+  if ! head -3 "$gate" | grep -qE "# GENERATED|# AUTHORED"; then
+    echo "ERROR: $(basename $gate) missing gate marker"
   fi
 done
 ```

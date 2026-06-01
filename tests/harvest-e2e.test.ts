@@ -1,49 +1,51 @@
-import { execSync } from "node:child_process";
-import fastify from "fastify";
-import { describe, expect, it } from "vitest";
-import { githubWebhookPlugin } from "../src/server/github.js";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { cleanupBranch, notifyDoneDone } from "../src/engine/harvest.js";
 
-describe("TR-H07: Full Harvest E2E Loop", () => {
-  it.todo("SC-H02: Comprehensive harvest verification", async () => {
-    // 1. Setup mock environment (mock .runs/, mock git worktree, mock DB)
+vi.mock("../src/utils/git.js", () => ({
+  deleteRemoteBranch: vi.fn(),
+  commitFiles: vi.fn(),
+}));
 
-    // 2. Trigger webhook
-    const server = fastify();
-    await githubWebhookPlugin(server, {
-      config: { server: {} } as never,
-      projectRoot: process.cwd(),
-    });
+vi.mock("../src/server/slack-messages.js", () => ({
+  MessageBuilder: {
+    doneDone: vi.fn().mockReturnValue({ text: "🏆 Done, Done!" }),
+  },
+}));
 
-    const payload = {
-      action: "closed",
-      pull_request: {
-        number: 42,
-        merged: true,
-        merged_at: new Date().toISOString(),
-        merge_commit_sha: "abc1234567890",
-        head: { ref: "feat/011-harvest" },
-        base: { ref: "develop" },
-      },
+vi.mock("../src/server/slack-notify.js", () => ({
+  notifySlack: vi.fn().mockResolvedValue(undefined),
+}));
+
+describe("FR-H08: Branch Cleanup", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("TR-H05: Verify branch deletion command is invoked", async () => {
+    const { deleteRemoteBranch } = await import("../src/utils/git.js");
+    await cleanupBranch("feat/004-ship-loop", "/project");
+    expect(deleteRemoteBranch).toHaveBeenCalledWith("/project", "feat/004-ship-loop");
+  });
+});
+
+describe("FR-H07, FR-H11: Done, Done! Notification", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("TR-H08: Verify the slack webhook mock is called exactly once with compression metrics", async () => {
+    const { notifySlack } = await import("../src/server/slack-notify.js");
+    const report = {
+      featureId: "004-ship-loop",
+      phaseId: "phase-01",
+      sp_estimated: 5,
+      sp_actual: 2,
+      compression_ratio: 2.5,
+      total_compression: 3.0,
+      duration_ms: 120000,
+      evidence: "test",
     };
-
-    // @ts-ignore
-    const response = await server.inject({
-      method: "POST",
-      url: "/webhook/github",
-      headers: { "x-github-event": "pull_request" },
-      payload,
-    });
-
-    expect(response.statusCode).toBe(200);
-
-    // 3. Verify side effects
-    // - Check logs moved to specs/011-harvest/.gwrk/runs/
-    // - Check index.json updated
-    // - Check DB runs table has status: merged
-    // - Check DB compression table has entry
-    // - Check Slack call was made (via mock/spy)
-    // - Check branch deletion call (via mock/spy)
-
-    expect(true).toBe(false); // RED
+    await notifyDoneDone(report as any);
+    expect(notifySlack).toHaveBeenCalledTimes(1);
   });
 });

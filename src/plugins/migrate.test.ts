@@ -1,48 +1,111 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { migrateSkills } from "./migrate.js";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { migratePlugins } from "./migrate.js";
+import { parse } from "yaml";
 
 vi.mock("node:fs/promises");
+vi.mock("node:os");
 
-describe("FR-011: Skill Migration", () => {
+describe("TR-005: migrate()", () => {
+  const mockHome = "/mock/home";
+  const mockCwd = "/mock/project";
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(os.homedir).mockReturnValue(mockHome);
+    vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
   });
 
-  it("US-009: generates valid manifest.yaml from SKILL.md frontmatter", async () => {
-    // Mock readdir to return truth-extract
-    vi.mocked(fs.readdir).mockResolvedValue([
-      // biome-ignore lint/suspicious/noExplicitAny: mock test dirent
-      { name: "truth-extract", isDirectory: () => true } as any,
-      // biome-ignore lint/suspicious/noExplicitAny: mock test dirent array
-    ] as any[]);
+  it("generates valid manifest.yaml from frontmatter in skills", async () => {
+    const skillContent = `---
+name: test-skill
+description: A test skill
+category: reasoning
+---
+# Test Skill
+Test content`;
 
-    // Mock fs.stat to throw (not found)
+    vi.mocked(fs.readdir).mockImplementation(async (dir) => {
+      if (dir === path.join(mockCwd, ".agents", "skills")) {
+        return [{ name: "test-skill", isDirectory: () => true }] as any;
+      }
+      if (dir === path.join(mockCwd, ".agents", "workflows")) {
+        return [] as any;
+      }
+      return [];
+    });
+
+    vi.mocked(fs.readFile).mockResolvedValue(skillContent);
     vi.mocked(fs.stat).mockRejectedValue(new Error("Not found"));
 
-    // Mock existence of .agents/skills/truth-extract/SKILL.md
-    vi.mocked(fs.readFile).mockResolvedValue(`---
-name: truth-extract
-category: reasoning
-description: Forensic analysis
----
-# Truth Extract`);
+    await migratePlugins();
 
-    await migrateSkills();
-
-    // Verify it attempted to write manifest.yaml at destination
-    expect(fs.writeFile).toHaveBeenCalledWith(
-      expect.stringContaining("manifest.yaml"),
-      expect.stringContaining("type: skill"),
-    );
+    const manifestPath = path.join(mockHome, ".gwrk", "plugins", "skills", "test-skill", "manifest.yaml");
+    const manifestCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === manifestPath);
+    
+    expect(manifestCall).toBeDefined();
+    const manifest = parse(manifestCall![1] as string);
+    expect(manifest.name).toBe("test-skill");
+    expect(manifest.description).toBe("A test skill");
+    expect(manifest.category).toBe("reasoning");
+    expect(manifest.type).toBe("skill");
   });
 
-  it("US-009: skips migration if plugin already exists at destination", async () => {
-    vi.mocked(fs.stat).mockResolvedValue({
-      isDirectory: () => true,
-    } as unknown as import("node:fs").Stats);
-    await migrateSkills();
-    expect(fs.writeFile).not.toHaveBeenCalled();
+  it("migrates workflows and generates manifest.yaml", async () => {
+    const workflowContent = `---
+description: A test workflow
+---
+# Test Workflow
+Test content`;
+
+    vi.mocked(fs.readdir).mockImplementation(async (dir) => {
+      if (dir === path.join(mockCwd, ".agents", "skills")) {
+        return [] as any;
+      }
+      if (dir === path.join(mockCwd, ".agents", "workflows")) {
+        return [{ name: "test-workflow.md", isFile: () => true, isDirectory: () => false }] as any;
+      }
+      return [];
+    });
+
+    vi.mocked(fs.readFile).mockResolvedValue(workflowContent);
+    vi.mocked(fs.stat).mockRejectedValue(new Error("Not found"));
+
+    await migratePlugins();
+
+    const manifestPath = path.join(mockHome, ".gwrk", "plugins", "workflows", "test-workflow", "manifest.yaml");
+    const manifestCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === manifestPath);
+    
+    expect(manifestCall).toBeDefined();
+    const manifest = parse(manifestCall![1] as string);
+    expect(manifest.name).toBe("test-workflow");
+    expect(manifest.description).toBe("A test workflow");
+    expect(manifest.type).toBe("workflow");
+  });
+
+  it("TR-P11-003: warns when .agents/ exists in target project", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    
+    vi.mocked(fs.stat).mockImplementation(async (p) => {
+      if (p === path.join(mockCwd, ".agents")) {
+        return { isDirectory: () => true } as any;
+      }
+      throw new Error("Not found");
+    });
+    
+    vi.mocked(fs.readdir).mockResolvedValue([]);
+
+    await migratePlugins();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[DEPRECATED] Legacy '.agents/' directory detected"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Please run 'gwrk init'"),
+    );
+
+    warnSpy.mockRestore();
   });
 });

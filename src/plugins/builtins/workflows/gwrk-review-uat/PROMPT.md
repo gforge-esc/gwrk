@@ -1,4 +1,4 @@
-# /gwrk-review-uat
+# UAT Review for CLI Projects
 
 **Persona**: Product Manager
 **Pillar**: Delivery (Value Verification)
@@ -26,7 +26,13 @@
 
 ## Algorithm
 
-### 0. Build (MANDATORY)
+### 0. Code Quality Rules (MANDATORY)
+
+<code_quality>
+{{enforcement}}
+</code_quality>
+
+### 1. Build (MANDATORY)
 
 gwrk is a CLI tool. No Docker, no web server.
 
@@ -130,18 +136,6 @@ git diff --cached --quiet || git commit -m "review: UAT Phase {phase_number} - {
 - **NO-GO**: Any in-scope story fails. Only re-open tasks for in-scope failures.
 </verdict_criteria>
 
-Report via notify_user:
-```
-UAT: {GO|NO-GO}
-Phase: {phase_number}
-Stories: {PASS_COUNT}/{TOTAL} pass, {FAIL_COUNT} re-opened
-
-Next:
-  GO   → Ready for merge. PM may set 🟢 GREEN.
-  NO-GO → /implement {feature_dir} {phase_number}
-          (re-opened tasks are in the ready queue)
-```
-
 <closed_loop_contract>
 | UAT finds... | Action taken | `/implement` sees... |
 |--------------|-------------|---------------------|
@@ -167,10 +161,13 @@ REVIEW FAIL (uat): {story_name} — Expected: {what_user_expects}. Actual: {what
 - ❌ Evaluate code quality (that's `/review-code`'s job)
 - ❌ Write vague notes ("looks wrong" — always include expected vs actual)
 - ❌ Test stories from other phases (stick to "Requirements in scope")
+- ❌ Use `make up` or Docker for CLI-only features
 - ❌ Use `gwrk specify` (correct command is `gwrk define spec`)
 
-## Next Step
+## JSON Intent Format
 
-After UAT:
-- If GO: Feature/phase ready for merge. PM sets 🟢 GREEN.
-- If NO-GO: Run `/implement {feature_dir} {phase_number}` — re-opened tasks appear in the ready queue
+Your final output must be a single JSON object containing:
+- `summary`: A concise description of the UAT results.
+- `verdict`: "GO" if all in-scope stories pass, "NO-GO" otherwise.
+- `reopenedTasks`: Array of task IDs that were re-opened.
+- `intents`: Array of `WRITE_FILE` or `RUN_COMMAND` actions to apply changes.

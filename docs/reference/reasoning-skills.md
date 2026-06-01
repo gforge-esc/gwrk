@@ -19,6 +19,8 @@ A single reasoning mode applied to every problem is the same mistake as using on
 | Marketing-speak | Technical audience disengages at first whiff of sell | Narrative → Subversive → Practitioner |
 | Feature-listing | Complex product described as a list, not a position | Reductive → Comparative → Aesthetic |
 | Audience projection | Assuming they care about what excites you | Modeling → Interviewer → Forensic |
+| Undefined terms | Spec uses words nobody has agreed on | Analytical → Interviewer → Audit |
+| Structural debt | Domain model silently diverged from reality | Forensic → Comparative → Stress-Testing |
 
 ---
 
@@ -170,9 +172,44 @@ A single reasoning mode applied to every problem is the same mistake as using on
 
 ---
 
+## Ontology Skills
+
+### 10. domain-map
+
+**Modes**: Analytical + Interviewer + Audit
+**Fires on**: Entering a new domain, building glossaries, defining taxonomies, onboarding into unfamiliar business models
+**Domain**: Domain modeling / pre-specification
+
+| Pass | Mode | Action |
+|---|---|---|
+| 1 | **Analytical** | Decompose into five ontological primitives: classes, properties, relations, individuals, axioms |
+| 2 | **Interviewer** | Surface undefined terms, unnamed relations, and implicit constraints. ≤7 domain clarification questions |
+| 3 | **Audit** | Map every assumption the model depends on. Assumptions rated ≤5 escalate as blockers |
+
+**Output**: Domain Map with glossary, class hierarchy, relation map, axioms, validation instances, and assumption register.
+
+---
+
+### 11. ontology-validate
+
+**Modes**: Forensic + Comparative + Stress-Testing
+**Fires on**: Reviewing domain maps, auditing glossaries, checking schema-to-ontology alignment, validating taxonomies
+**Domain**: Domain validation / structural review
+
+| Pass | Mode | Action |
+|---|---|---|
+| 1 | **Forensic** | Work backward from anomalies (overloaded classes, orphan instances, phantom relations) to structural defects |
+| 2 | **Comparative** | Compare model against source material, implementation (schema/code), and standard ontologies |
+| 3 | **Stress-Testing** | Scale test, edge case injection, temporal test, cross-domain boundary test, axiom negation |
+
+**Output**: Validation Report with anomaly register, traceability matrix, stress test results, and SOUND/NEEDS REVISION/STRUCTURALLY BROKEN verdict.
+
+---
+
 ## Mode Reference
 
-All 45 raw modes are catalogued in [reasoning-modes.md](reasoning-modes.md) across 7 categories:
+All 45 raw modes are catalogued in [reasoning-modes.md](reasoning-modes.md) across 7 categories.
+Domain ontology primitives and methodology are documented in [domain-ontology.md](domain-ontology.md).
 
 | Category | Modes | Purpose |
 |---|---|---|

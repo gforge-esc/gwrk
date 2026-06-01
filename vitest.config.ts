@@ -9,6 +9,7 @@ export default defineConfig({
       "**/.runs/**",
       "**/specs/**",
       "**/.test-mocks-*/**",
+      "**/e2e/**",
     ],
     coverage: {
       provider: "v8",

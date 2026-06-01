@@ -1,8 +1,8 @@
 ---
 type: specification
 feature: 014-plugin-system
-last_modified: "2026-03-19T14:45:00Z"
-revision: 2
+last_modified: "2026-05-21T22:25:00Z"
+revision: 3
 ---
 
 # Feature Specification: 014 Plugin System
@@ -48,7 +48,7 @@ The F013 agent-native interface proved that CLI-native contracts (stdin/stdout, 
 The F014-R rework internalizes workflows into the gwrk product, ending the reliance on personal `.agents/` directories and hardcoded shell scripts. This introduces **Layer 2.5: WorkflowRuntime**, a strict execution engine that decouples LLM reasoning from filesystem mutation.
 
 ### Architectural Layer Model (Updated)
-- **Layer 1: Agent Backend Plugins** (Claude, Codex, Gemini adapters) - *SHIPPED*
+- **Layer 1: Agent Backend Plugins** (Claude, Codex, Gemini, Antigravity adapters) - *SHIPPED*
 - **Layer 2: Skill Plugins** (Atomic reasoning, compound compositions) - *SHIPPED*
 - **Layer 2.5: WorkflowRuntime** (JSON intent execution, built-in workflows) - **F014-R**
 - **Layer 3: Extension Plugins** (Domain Packs, Channel Adapters) - *FUTURE*
@@ -376,13 +376,13 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-L1-001**: Agent manifest (`manifest.yaml`) MUST declare: `type: agent`, `name`, `version`, `description`, `dispatchMode` (`local-cli` | `github-integration`), `contextFileName`, `invocation` block (command, headless, yolo, model, structuredOutput, costCap, workingDir), `capabilities`, `models`, `exitCodeMap`, and `managedConfig`. Validated by `AgentManifestSchema` (Zod). (Implements: US-L1-001)
 - **FR-L1-002**: `AgentBackend.dispatch(task)` MUST return `{ command, args, stdin, env, streamable }`. gwrk core pipes stdin to the CLI process. The adapter decides HOW to invoke — gwrk core only knows WHAT to dispatch. (Implements: US-L1-001)
 - **FR-L1-003**: `AgentBackend.parseResult(stdout, stderr, rawExitCode)` MUST normalize proprietary CLI exit codes to `TaskResult { exitCode: 0|1|2|127, errorType?, stdout, stderr, durationS }`. Mapping defined in manifest `exitCodeMap`. (Implements: US-L1-001)
-- **FR-L1-004**: `AgentBackend.syncGovernance(projectRoot, governance)` MUST generate the CLI-specific context file (e.g., `GEMINI.md`) from `.gwrk/agent-context.md` using `<!-- gwrk:begin -->` / `<!-- gwrk:end -->` boundary markers. Content outside markers MUST be preserved. (Implements: US-L1-002)
+- **FR-L1-004**: `AgentBackend.syncGovernance(projectRoot, governance)` MUST generate the CLI-specific context file (e.g., `GEMINI.md`, `AGENTS.md`) from `.gwrk/agent-context.md` using `<!-- gwrk:begin -->` / `<!-- gwrk:end -->` boundary markers. Content outside markers MUST be preserved. (Implements: US-L1-002)
 - **FR-L1-005**: Agent manifests MUST declare `managedConfig` — an array of `{ path, keys }` describing which config files and keys the adapter owns. System MUST detect conflicts when two adapters claim the same key. Detection at install time and dispatch time. (Implements: US-L1-001)
 - **FR-L1-006**: System MUST provide `gwrk plugin sync-context` that regenerates all CLI-specific context files from `.gwrk/agent-context.md` for all active agent backends. (Implements: US-L1-002)
 - **FR-L1-007**: F014 Phase 1 MUST only support `dispatchMode: local-cli`. The `github-integration` mode (Codex Cloud) is a separate feature and MUST NOT block Phase 1. (Implements: US-L1-001)
-- **FR-L1-008**: `gwrk init` MUST detect installed CLIs (`which gemini`, `which claude`, `which codex`), activate corresponding built-in adapters, generate `.gwrk/agent-context.md`, and call `syncGovernance()` for each detected backend. (Implements: US-L1-002)
+- **FR-L1-008**: `gwrk init` MUST detect installed CLIs (`which gemini`, `which claude`, `which codex`, `which agy`), activate corresponding built-in adapters, generate `.gwrk/agent-context.md`, and call `syncGovernance()` for each detected backend. (Implements: US-L1-002)
 - **FR-L1-009**: System MUST provide `gwrk plugin create agent <name>` that generates a scaffold plugin directory with `manifest.yaml` template and optional `adapter.ts` (when `--dispatch-mode github-integration`). Supports `--git` for init. Future: `gwrk plugin create skill <name>`. (Implements: US-L1-003)
-- **FR-L1-010**: System MUST ship built-in adapters (claude, codex, gemini) in `src/plugins/builtins/agents/`. Adapter TypeScript compiles with `pnpm build`. Manifest YAML read at runtime via `import.meta.dirname`. Built-ins MUST be available without `gwrk plugin install`. (Implements: US-L1-001)
+- **FR-L1-010**: System MUST ship built-in adapters (claude, codex, gemini, agy) in `src/plugins/builtins/agents/`. Adapter TypeScript compiles with `pnpm build`. Manifest YAML read at runtime via `import.meta.dirname`. Built-ins MUST be available without `gwrk plugin install`. The `agy` adapter (Antigravity CLI) uses `--print` for headless mode, `--dangerously-skip-permissions` for unattended execution, and writes `AGENTS.md` as its governance context file. The router fallback chain MUST include `agy` after `gemini` (same Gemini models, different CLI). (Implements: US-L1-001)
 - **FR-L1-011**: `gwrk plugin install <url>` MUST support git URLs with optional `#<ref>` for version pinning. On install: clone repo, validate manifest, copy to `~/.gwrk/plugins/agents/<name>/`, write `.gwrk-source.json` with `{ url, ref, commitSha, installedAt }`. (Implements: US-L1-003)
 - **FR-L1-012**: User-installed plugins at `~/.gwrk/plugins/agents/<name>/` MUST take precedence over built-in adapters with the same name. Resolution: built-in → user-installed (Map.set overwrites). (Implements: US-L1-001)
 - **FR-L1-013**: System MUST provide `gwrk plugin update <name>` that re-clones from the stored source URL in `.gwrk-source.json`. Supports `--all` to update all git-sourced plugins. (Implements: US-L1-003)

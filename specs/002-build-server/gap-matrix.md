@@ -10,18 +10,18 @@
 | FR-008 | Detect sleep via drift | unit | src/server/lifecycle.test.ts | ✅ | |
 | FR-009 | Verify net/Slack on wake | unit | src/server/lifecycle.test.ts | ✅ | |
 | FR-010 | Network detection | unit | src/server/network.test.ts | ✅ | |
-| FR-011 | Execution Ledger | unit | src/db/index.test.ts | ✅ | |
+| FR-011 | Execution Ledger | unit | src/db/runs.test.ts | ✅ | |
 | FR-012 | Install LaunchAgent | unit | src/commands/server-install.test.ts | ✅ | |
 | FR-013 | Uninstall LaunchAgent | unit | src/commands/server-install.test.ts | ✅ | |
 | FR-014 | Server logs | unit | src/commands/server-install.test.ts | ✅ | |
-| FR-015 | launchctl PID authority | unit | src/commands/server-install.test.ts | ✅ | |
+| FR-015 | launchctl PID authority | unit | src/server/pid.test.ts | ✅ | |
 | US-001 | Start/Stop Build Server | unit | src/commands/server.test.ts | ✅ | |
 | US-002 | System Status | unit | src/server/routes/status.test.ts | ✅ | |
 | US-003 | Slack Event Bridge | unit | src/server/slack-notify.test.ts | ✅ | |
 | US-004 | Slack Bless Actions | unit | src/server/slack-actions.test.ts | ✅ | |
 | US-005 | Sleep/Wake Resilience | unit | src/server/lifecycle.test.ts | ✅ | |
 | US-006 | Network Awareness | unit | src/server/network.test.ts | ✅ | |
-| US-007 | Execution Ledger | unit | src/db/index.test.ts | ✅ | |
+| US-007 | Execution Ledger | unit | src/db/runs.test.ts | ✅ | |
 | US-008 | Persistent Service Management | unit | src/commands/server-install.test.ts | ✅ | |
 | TR-001 | start/stop, PID management | unit | src/commands/server.test.ts | ✅ | |
 | TR-002 | status endpoint shape | unit | src/server/routes/status.test.ts | ✅ | |

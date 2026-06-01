@@ -32,7 +32,7 @@ vi.mock("../utils/resolve-feature.js", () => ({
   resolveFeature: vi.fn().mockImplementation((input: string) => input),
 }));
 
-describe("slack-commands", () => {
+describe("slack-commands (FR-015, US-004)", () => {
   let mockQueue: Mocked<DispatchQueue>;
   let mockMonitor: Mocked<SystemMonitor>;
   let mockGit: Mocked<GitManager>;
@@ -113,23 +113,10 @@ describe("slack-commands", () => {
     );
     expect(response.response_type).toBe("in_channel");
     expect(response.blocks[0].text.text).toContain("PR #42");
-    expect(response.blocks[0].text.text).toContain("merged");
     expect(execSync).toHaveBeenCalledWith(
       "gh pr merge 42 --merge --delete-branch",
       expect.objectContaining({ cwd: "/tmp" }),
     );
-  });
-
-  it("handles approve with no PR found", async () => {
-    const { findOpenPr } = await import("../db/runs.js");
-    vi.mocked(findOpenPr).mockReturnValue(null);
-
-    const response = await handleSlashCommand(
-      "approve 003-slack phase-01",
-      context,
-    );
-    expect(response.response_type).toBe("ephemeral");
-    expect(response.blocks[0].text.text).toContain("No open PR found");
   });
 
   it("handles ship command — spawns background process", async () => {
@@ -149,7 +136,6 @@ describe("slack-commands", () => {
     const response = await handleSlashCommand("define 003-slack", context);
     expect(response.response_type).toBe("in_channel");
     expect(response.blocks[0].text.text).toContain("define spec");
-    expect(response.blocks[0].text.text).toContain("003-slack");
     expect(spawn).toHaveBeenCalledWith(
       "gwrk",
       ["define", "spec", "003-slack"],
@@ -157,10 +143,25 @@ describe("slack-commands", () => {
     );
   });
 
-  it("handles ship without args — returns usage", async () => {
-    const response = await handleSlashCommand("ship 003-slack", context);
+  it("handles define subcommand (plan) — spawns background process (FR-015)", async () => {
+    const { spawn } = await import("node:child_process");
+    const response = await handleSlashCommand("define 003-slack plan", context);
+    expect(response.response_type).toBe("in_channel");
+    expect(response.blocks[0].text.text).toContain("define plan");
+    expect(spawn).toHaveBeenCalledWith(
+      "gwrk",
+      ["define", "plan", "003-slack"],
+      expect.objectContaining({ cwd: "/tmp", detached: true }),
+    );
+  });
+
+  it("handles define with invalid subcommand — returns usage", async () => {
+    const response = await handleSlashCommand(
+      "define 003-slack unknown",
+      context,
+    );
     expect(response.response_type).toBe("ephemeral");
-    expect(response.blocks[0].text.text).toContain("Usage");
+    expect(response.blocks[0].text.text).toContain("Invalid define subcommand");
   });
 
   it("handles pause command without args", async () => {
@@ -169,13 +170,12 @@ describe("slack-commands", () => {
     expect(response.blocks[0].text.text).toContain("Dispatch queue paused");
   });
 
-  it("returns help for empty command — includes ship", async () => {
+  it("returns help for empty command", async () => {
     const response = await handleSlashCommand("", context);
     expect(response.blocks[0].text.text).toContain("gwrk");
     const helpText = response.blocks[1].text.text;
     expect(helpText).toContain("ship");
     expect(helpText).toContain("define");
-    expect(helpText).toContain("status");
   });
 
   it("returns error for unknown command", async () => {

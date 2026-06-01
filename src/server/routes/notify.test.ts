@@ -172,4 +172,53 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
       await server.close();
     }
   });
+
+  it("TR-005: should route done_done to ops channel", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        payload: {
+          type: "done_done",
+          feature: "003-slack",
+        },
+      });
+
+      expect(spy).toHaveBeenCalled();
+      const options = spy.mock.calls[0][2];
+      expect(options?.opsOnly).toBe(true);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("TR-005: should route pulse to ops channel", async () => {
+    const server = await startServer(mockConfig, { handleSignals: false });
+    try {
+      const spy = vi.spyOn(slackNotify, "notifySlack");
+
+      await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        payload: {
+          type: "pulse",
+          feature: "003-slack",
+          pulseReport: {
+            generatedAt: new Date().toISOString(),
+            repositories: [],
+            specProgress: { totalSpecs: 10, totalPlans: 5 },
+          },
+        },
+      });
+
+      expect(spy).toHaveBeenCalled();
+      const options = spy.mock.calls[0][2];
+      expect(options?.opsOnly).toBe(true);
+    } finally {
+      await server.close();
+    }
+  });
 });

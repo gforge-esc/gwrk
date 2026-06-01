@@ -21,47 +21,14 @@ export class DriftDetector {
    * Detect drift between the plan graph state and the actual workspace.
    *
    * Checks:
-   * 1. SHIPPED phases that still have .agents/ artifacts (stale workflow state)
-   * 2. Features in specs/ that are missing from the graph
-   * 3. Features in the graph that are missing from specs/
-   * 4. Phase status mismatches (graph says SHIPPED but tasks.json says otherwise)
+   * 1. Features in specs/ that are missing from the graph
+   * 2. Features in the graph that are missing from specs/
+   * 3. Phase status mismatches (graph says SHIPPED but tasks.json says otherwise)
    */
   verify(projectRoot: string): DriftResult[] {
     const results: DriftResult[] = [];
 
-    // 1. Check SHIPPED phases for stale .agents/ artifacts
-    for (const phase of this.plan.phases) {
-      if (phase.status === "DONE" || phase.status === "SHIPPED") {
-        const feature = this.plan.features.find(
-          (f) => f.id === phase.feature_id,
-        );
-        if (!feature) continue;
-
-        // Look for .agents/ workflow artifacts for this feature
-        const agentsDir = path.join(
-          projectRoot,
-          "specs",
-          feature.id,
-          ".agents",
-        );
-        if (fs.existsSync(agentsDir)) {
-          results.push({
-            featureId: feature.id,
-            phaseId: phase.id,
-            status: "DRIFTED",
-            reason: `SHIPPED phase still has .agents/ artifacts at ${agentsDir}`,
-          });
-        } else {
-          results.push({
-            featureId: feature.id,
-            phaseId: phase.id,
-            status: "CLEAN",
-          });
-        }
-      }
-    }
-
-    // 2. Check specs/ directory for features missing from graph
+    // 1. Check specs/ directory for features missing from graph
     const specsDir = path.join(projectRoot, "specs");
     if (fs.existsSync(specsDir)) {
       const specEntries = fs.readdirSync(specsDir, { withFileTypes: true });
@@ -144,4 +111,12 @@ export class DriftDetector {
 
     return results;
   }
+}
+
+/**
+ * TR-P11-004: Returns a list of directory names considered tracked artifacts
+ * for drift detection. Legacy agent directory is intentionally omitted.
+ */
+export function getDriftArtifacts(): string[] {
+  return ["specs", "ROADMAP.md", ".gwrkrc.json", "package.json"];
 }

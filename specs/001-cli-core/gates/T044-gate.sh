@@ -1,12 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T044 — Implement src/commands/ship.ts (Examples)
+# Gate: T044 — Help text examples audit
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/commands/ship.ts \
-  || { echo "FAIL: T044 — file not found: src/commands/ship.ts" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/cli.ux.test.ts -t "US-022|FR-023" --reporter=verbose \
+  || { echo "FAIL: T044 — vitest failed for src/cli.ux.test.ts" >&2; exit 1; }
 
-grep -q "Examples:" src/commands/ship.ts \
-  || { echo "FAIL: T044 — src/commands/ship.ts missing 'Examples:'" >&2; exit 1; }
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
 
-echo "PASS: T044 — Implement src/commands/ship.ts (Examples)"
+echo "PASS: T044 — tests pass + lint clean"

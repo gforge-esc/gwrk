@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { Command } from "commander";
-import { writeManifest } from "../utils/manifest.js";
 
-const { mockExecuteWorkflow } = vi.hoisted(() => ({
+const { mockExecuteWorkflow, mockWriteManifest } = vi.hoisted(() => ({
   mockExecuteWorkflow: vi.fn(),
+  mockWriteManifest: vi.fn(),
 }));
 
 vi.mock("../plugins/workflow-runtime.js", () => ({
@@ -17,14 +17,14 @@ vi.mock("../plugins/workflow-runtime.js", () => ({
 }));
 
 vi.mock("../utils/manifest.js", () => ({
-  writeManifest: vi.fn(),
+  writeManifest: mockWriteManifest,
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
 }));
 
 vi.mock("../utils/git.js", () => ({
-  getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
-  getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
-  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+  getCurrentCommit: vi.fn(() => "mock-commit"),
+  getCurrentBranch: vi.fn(() => "mock-branch"),
+  getDiffStats: vi.fn(() => ({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 })),
 }));
 
 // Mock format.js to avoid messy output
@@ -35,7 +35,7 @@ vi.mock("../utils/format.js", () => ({
   success: vi.fn(),
 }));
 
-describe("tasks-generate (Phase 9)", () => {
+describe("tasks-generate (Phase 6 Rewire)", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -52,20 +52,9 @@ describe("tasks-generate (Phase 9)", () => {
     fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "test-feature" }, agents: { define: "gemini", implement: "gemini" } }));
 
     // Create a plan.md
-    fs.writeFileSync(path.join(specDir, "plan.md"), `
-# Plan: test-feature
-
-### Phase 1: Core
-#### Tasks
-- Task 1: Create file1.ts
-#### Done When
-- \`test -f file1.ts\`
-`);
+    fs.writeFileSync(path.join(specDir, "plan.md"), `# Plan: test-feature`);
     
-    // Create a contract to pass the guard
-    fs.writeFileSync(path.join(specDir, "contracts", "file1.md"), "# Contract: file1");
-    
-    // Create gap-matrix.md
+    // Create gap-matrix.md to satisfy the guard
     fs.writeFileSync(path.join(specDir, "gap-matrix.md"), "| AC | Test File |\n|----|-----------|\n");
 
     mockExecuteWorkflow.mockReset();
@@ -74,6 +63,7 @@ describe("tasks-generate (Phase 9)", () => {
       intents: [],
       summaries: [],
     });
+    mockWriteManifest.mockReset();
   });
 
   afterEach(() => {
@@ -81,19 +71,38 @@ describe("tasks-generate (Phase 9)", () => {
     vi.restoreAllMocks();
   });
 
-  it("US-019/FR-019: SHOULD write execution manifest after success (RED)", async () => {
+  it("should write execution manifest after success", async () => {
     const program = new Command();
     program.addCommand(tasksGenerateCommand);
-    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force", "--no-llm"]);
+    await program.parseAsync(["node", "test", "tasks", "test-feature"]);
     
     const featureDir = path.join(tempDir, "specs", "test-feature");
-    // In RED state, this fails because tasks-generate.ts does NOT call writeManifest yet
-    expect(writeManifest).toHaveBeenCalledWith(
+    expect(mockWriteManifest).toHaveBeenCalledWith(
       featureDir,
       expect.objectContaining({
         command: "define tasks",
         feature: "test-feature",
       })
+    );
+  });
+
+  it("should use gwrk-plan-to-tasks workflow and pass quiet: true", async () => {
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    
+    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force", "--reconcile"]);
+
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan-to-tasks",
+      expect.stringContaining("--force"),
+      expect.objectContaining({
+        quiet: true,
+      }),
+    );
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan-to-tasks",
+      expect.stringContaining("--reconcile"),
+      expect.anything()
     );
   });
 });

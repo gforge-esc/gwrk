@@ -1,15 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T005 — Implement src/utils/config.ts
+# Gate: T005 — Task State Query
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/utils/config.ts \
-  || { echo "FAIL: T005 — file not found: src/utils/config.ts" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/tasks-query.test.ts -t "US-005" --reporter=verbose \
+  || { echo "FAIL: T005 — vitest failed for src/commands/tasks-query.test.ts" >&2; exit 1; }
 
-grep -q 'GwrkConfigSchema' src/utils/config.ts \
-  || { echo "FAIL: T005 — src/utils/config.ts missing 'GwrkConfigSchema'" >&2; exit 1; }
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
 
-grep -q 'export function loadConfig' src/utils/config.ts \
-  || { echo "FAIL: T005 — src/utils/config.ts missing 'loadConfig'" >&2; exit 1; }
-
-echo "PASS: T005 — Implement src/utils/config.ts"
+echo "PASS: T005 — tests pass + lint clean"

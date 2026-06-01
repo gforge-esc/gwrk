@@ -1,15 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 # AUTHORED
-# Gate: T056 — Implement src/commands/tests-generate.ts (quiet: true)
+# Gate: T056 — Quiet output parity (tests)
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/commands/tests-generate.ts \
-  || { echo "FAIL: T056 — file not found: src/commands/tests-generate.ts" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/tests-generate-contract-phase12.test.ts -t "US-026" --reporter=verbose \
+  || { echo "FAIL: T056 — vitest failed for src/commands/tests-generate-contract-phase12.test.ts" >&2; exit 1; }
 
-grep -q 'runtime.executeWorkflow' src/commands/tests-generate.ts \
-  || { echo "FAIL: T056 — src/commands/tests-generate.ts missing 'runtime.executeWorkflow'" >&2; exit 1; }
+# ── HYGIENE: Source files must lint clean ──
+# (no source files found for lint check)
 
-grep -q 'resolveFeature' src/commands/tests-generate.ts \
-  || { echo "FAIL: T056 — src/commands/tests-generate.ts missing 'resolveFeature'" >&2; exit 1; }
-
-echo "PASS: T056 — Implement src/commands/tests-generate.ts"
+echo "PASS: T056 — tests pass + lint clean"

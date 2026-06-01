@@ -1,12 +1,17 @@
 #!/bin/bash
-# AUTHORED
-set -euo pipefail
+set -e
 
-# T051: ShipOrchestrator uses ReviewPlugin, not hardcoded paths
-! grep -q '".agents/workflows/gwrk-review-code.md"' src/engine/ship-orchestrator.ts || { echo "FAIL: stageCodeReview still hardcodes workflow path"; exit 1; }
-! grep -q '".agents/workflows/gwrk-review-uat.md"' src/engine/ship-orchestrator.ts || { echo "FAIL: stageUatReview still hardcodes workflow path"; exit 1; }
+# T051-gate: Verify gwrk-conventions manifest.yaml
+# Assertion #1: File exists
+ls src/plugins/builtins/skills/gwrk-conventions/manifest.yaml > /dev/null
 
-# Must use resolveReviewPlugin
-grep -q "resolveReviewPlugin" src/engine/ship-orchestrator.ts
+# Assertion #2: tier is enforcement
+grep -q "tier: enforcement" src/plugins/builtins/skills/gwrk-conventions/manifest.yaml
 
-echo "PASS: T051 — ShipOrchestrator plugin dispatch"
+# Assertion #3: type is skill
+grep -q "type: skill" src/plugins/builtins/skills/gwrk-conventions/manifest.yaml
+
+# Assertion #4: scope is implementation
+grep -q "scope: implementation" src/plugins/builtins/skills/gwrk-conventions/manifest.yaml
+
+echo "✓ T051-gate passed"

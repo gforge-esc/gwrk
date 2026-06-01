@@ -1,7 +1,7 @@
 #!/bin/bash
-set -euo pipefail
 # AUTHORED
-test -f src/server/sandbox.ts || { echo "FAIL: T001 — file not found: src/server/sandbox.ts" >&2; exit 1; }
-grep -q 'export class SandboxManager' src/server/sandbox.ts || { echo "FAIL: T001 — src/server/sandbox.ts missing 'SandboxManager'" >&2; exit 1; }
-grep -q 'async createSandbox' src/server/sandbox.ts || { echo "FAIL: T001 — src/server/sandbox.ts missing 'createSandbox'" >&2; exit 1; }
-echo "PASS: T001 — Implement src/server/sandbox.ts"
+set -euo pipefail
+test -f src/commands/server.ts || { echo "FAIL: T001 — file not found: src/commands/server.ts" >&2; exit 1; }
+grep -q "command(\"start\")" src/commands/server.ts || { echo "FAIL: T001 — src/commands/server.ts missing 'start' command" >&2; exit 1; }
+grep -q "command(\"stop\")" src/commands/server.ts || { echo "FAIL: T001 — src/commands/server.ts missing 'stop' command" >&2; exit 1; }
+echo "PASS: T001 — Implement src/commands/server.ts"
