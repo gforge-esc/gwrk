@@ -1,108 +1,65 @@
----
-type: gap_analysis
-feature: 001-cli-core
-last_modified: "2026-03-05T23:42:33Z"
----
+# Gap Analysis: 001 CLI Core - Phase 10 (Unified Init R3)
 
-# Gap Analysis: 001 CLI Core (Updated)
+**Date**: 2026-06-01
+**Revision**: R3 Audit
 
-**Date**: 2026-03-05
-**Status**: Partial Gap Identified
+## Overview
 
----
+Phase 10 (Unified Init) is the cornerstone of the R3 "Project Awareness" initiative. The goal is to move from a fragmented, hardcoded onboarding flow to a project-aware interactive wizard. Current implementation is essentially a non-interactive directory scafolder with a separate `setup` command for workstation configuration.
 
-## Phase 1: Project Bootstrap & Config
+## Findings
 
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `package.json` | — | ✅ tested | Commander, Zod, Vitest, Biome, Tsx present |
-| `tsconfig.json` | — | ✅ tested | ES2022, ESM, NodeNext present |
-| `biome.json` | — | ✅ tested | Lint + format config present |
-| `src/cli.ts` | — | ✅ tested | Entry point with hierarchical routing |
-| `src/utils/config.ts` | `loadConfig()`, `GwrkConfigSchema` | ✅ tested | Zod schema and fail-fast loader |
-| `src/utils/exec.ts` | `run()` | ✅ tested | execFile wrapper for commands |
-| `src/utils/format.ts` | `banner()`, `success()`, `fail()` | ✅ tested | Unified CLI output formatting |
-| `src/commands/init.ts` | — | ✅ tested | `gwrk init` scaffolding |
+### 1. Unified Onboarding (US-001 R3)
+- **Status**: `wrong`
+- **Details**: 
+    - `src/commands/init.ts` is non-interactive. It uses flags (`--github`, `--slack`) instead of an interactive prompt.
+    - It lacks the discovery phase (profile detection).
+    - It does not integrate workstation setup (TCC, SSH, GitHub auth).
+    - No `--non-interactive` flag exists to support CI/CD or power-user flows.
 
-## Phase 2: Execution Ledger (SQLite)
+### 2. Profile Auto-Detection (US-027)
+- **Status**: `greenfield`
+- **Details**:
+    - `src/engine/profile-detector.ts` exists but is an empty stub.
+    - Needs implementation of logic to detect `package.json` (pnpm/npm/yarn), `Cargo.toml` (rust), `requirements.txt/pyproject.toml` (python), `go.mod` (go), etc.
+    - Needs to extract "stack" (React, Express, FastAPI) and "layout" (src vs lib, monorepo vs polyrepo).
 
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `src/db/index.ts` | `getDb()` | ✅ tested | better-sqlite3 connection, WAL mode |
-| `src/db/migrations/001-initial.sql` | — | ✅ tested | Initial schema for projects, runs, etc. |
-| `src/db/runs.ts` | `startRun()`, `finishRun()` | ✅ tested | Run recording persistence |
-| `src/commands/db.ts` | — | ✅ tested | `gwrk db runs/stats` routing |
-| `src/commands/runs.ts` | — | ✅ tested | `gwrk db runs` implementation |
-| `src/commands/stats.ts` | — | ✅ tested | `gwrk db stats` implementation |
+### 3. Config Schema Extension (FR-032)
+- **Status**: `missing`
+- **Details**:
+    - `src/utils/config.ts`'s `GwrkConfigSchema` lacks the `project.profile` object (`type`, `stack`, `layout`, `architecture`, `conventions`).
 
-## Phase 3: Agent Dispatch
+### 4. Code Cleanup & Refactoring (FR-001 R3, FR-022)
+- **Status**: `wrong`
+- **Details**:
+    - `src/commands/setup.ts` contains the logic that needs to be absorbed into `init`.
+    - `src/commands/setup-slack.ts` is a standalone command; it should be refactored into a reusable utility that `init` can call.
 
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `src/utils/agent.ts` | `dispatchAgent()` | ⚠️ wrong | **Contract mismatch**: Contract requires `Promise<{ exitCode: number; stdout: string; stderr: string }>`. Implementation only returns `Promise<{ exitCode: number }>`. Output is streamed and logged but not returned to caller. |
-| `src/commands/run.ts` | — | ✅ tested | `gwrk run` group routing |
-| `src/commands/specify.ts` | — | ✅ tested | `gwrk run specify` wrapper |
-| `src/commands/plan.ts` | — | ✅ tested | `gwrk run plan` wrapper |
-| `src/commands/analyze.ts` | — | ✅ tested | `gwrk run analyze` wrapper |
+### 5. Task & Gate Precision
+- **Status**: `wrong`
+- **Details**:
+    - Existing tasks T045 and T046 are too broad (violating Halving Rule). T046 covers TCC, SSH, and GH Auth in one task.
+    - Gate scripts in `gates/` for Phase 10 are incorrectly mapped to old tests.
 
-## Phase 4: Task Engine — Generation
+## Gap Classification
 
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `src/utils/parser.ts` | `parsePlan()` | ✅ tested | Markdown parser for `plan.md` |
-| `src/utils/gate-gen.ts` | `generateGates()` | ⚠️ missing | **Weak Implementation**: Current implementation uses simple regex heuristics on task description instead of generating assertions FROM contracts/data models. Rule mandate: "Gates MUST be generated FROM contracts, not from task description prose." |
-| `src/utils/state.ts` | `loadTaskState()`, `saveTaskState()` | ✅ tested | Zod-validated state management |
-| `src/commands/tasks.ts` | — | ✅ tested | `gwrk tasks generate` implementation |
+- `src/engine/profile-detector.ts` → `greenfield`
+- `src/utils/config.ts` → `missing` (schema)
+- `src/commands/init.ts` → `wrong` (needs interactive rewrite)
+- `src/commands/setup.ts` → `missing` (to be deleted after absorption)
+- `src/commands/setup-slack.ts` → `wrong` (refactor for library use)
 
-## Phase 5: Task Engine — Lifecycle & Gates
+## Decomposition Strategy (Halving Rule)
 
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `src/commands/tasks.ts` | — | ✅ tested | `list`, `next`, `done` subcommands |
-| `src/utils/history.ts` | `appendHistory()` | ✅ tested | JSONL history logging |
-| `src/utils/state.ts` | `markTaskComplete()` | ✅ tested | Immutable state update logic |
+To ensure precision, Phase 10 will be decomposed into 10 focused tasks (T041-T050), splitting the broad "wizard" and "workstation" tasks into independently verifiable units.
 
-## Phase 6: Orchestration Wrappers
-
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `src/commands/define.ts` | — | ✅ tested | Wraps `define-until-solid.sh` |
-| `src/commands/implement.ts` | — | ✅ tested | Wraps `agent-run.sh` |
-| `src/commands/wud.ts` | — | ✅ tested | Wraps `work-until-done.sh` |
-
-## Phase 7: Productivity & Metrics Dashboard
-
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `src/engine/pulse.ts` | `generatePulseReport()` | ✅ tested | Git log scanner and report generator |
-| `src/commands/pulse.ts` | — | ✅ tested | `gwrk pulse` dashboard |
-| `src/engine/effort.ts` | `computeEffort()` | ✅ tested | SP-driven effort estimation |
-| `src/commands/effort.ts` | — | ✅ tested | `gwrk metrics effort` assessment report |
-| `src/engine/compression.ts` | `computeCompression()` | ✅ tested | Compression ratio calculation |
-| `src/commands/compression.ts` | — | ✅ tested | `gwrk metrics compression` dashboard |
-| `src/commands/metrics.ts` | — | ✅ tested | metrics group container |
-
-## Phase 8: E2E Verification & Hardening
-
-| File | Contract Method | Status | Notes |
-|---|---|---|---|
-| `src/cli.test.ts` | — | ✅ tested | Command hierarchy validation |
-| `src/cli.e2e.test.ts` | — | ✅ tested | Compiled binary E2E lifecycle |
-| `src/utils/agent.test.ts` | — | ✅ tested | Streaming output verification |
-| `src/db/db.test.ts` | — | ✅ tested | SQLite persistence tests |
-
----
-
-## Hard Gates Audit
-
-- **Current Gates**: `specs/001-cli-core/gates/*.sh` exist but are mostly **WEAK**.
-- **Issue**: Most gates only assert `test -f <file>`. They fail to assert the existence of specific methods, schemas, or type signatures defined in contracts.
-- **Action**: Regenerate gates using an improved `gate-gen.ts` (or a more rigorous manual template) that pulls from `contracts/` and `data-model.md`.
-
----
-
-## Summary
-
-- **Contract Gaps**: `dispatchAgent` return type.
-- **Enforcement Gaps**: `generateGates` is heuristic-based and weak.
-- **Consistency**: Most files match the plan structure.
+1. Schema Extension (Config)
+2. Profile Detection (Core/Types)
+3. Profile Detection (Stack/Layout)
+4. Slack Refactor
+5. Wizard Skeleton & Welcome
+6. Profile Confirmation Loop
+7. Workstation: macOS TCC
+8. Workstation: SSH & GH Auth
+9. Non-interactive Mode & Final Scaffolding
+10. Cleanup & Surface Verification

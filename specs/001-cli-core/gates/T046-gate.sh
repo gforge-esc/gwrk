@@ -1,10 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-# AUTHORED
+# Gate: T046 — Integrate agent CLI detection and workstation setup into init flow
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/commands/tasks.ts \
-  || { echo "FAIL: T046 — file not found: src/commands/tasks.ts" >&2; exit 1; }
-grep -q 'tasksCommand' src/commands/tasks.ts \
-  || { echo "FAIL: T046 — src/commands/tasks.ts missing 'tasksCommand'" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/init.test.ts -t "agent CLI detection|workstation provisioning" --reporter=verbose \
+  || { echo "FAIL: T046 — vitest failed for src/commands/init.test.ts" >&2; exit 1; }
 
-echo "PASS: T046 — Implement src/commands/tasks.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/init.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T046 — lint errors in src/commands/init.ts" >&2; exit 1; }
+
+echo "PASS: T046 — tests pass + lint clean"

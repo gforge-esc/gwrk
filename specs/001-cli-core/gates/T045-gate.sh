@@ -1,10 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-# AUTHORED
+# Gate: T045 — Implement gwrk init interactive wizard skeleton and profile confirmation
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/commands/define.ts \
-  || { echo "FAIL: T045 — file not found: src/commands/define.ts" >&2; exit 1; }
-grep -q 'defineCommand' src/commands/define.ts \
-  || { echo "FAIL: T045 — src/commands/define.ts missing 'defineCommand'" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/init.test.ts -t "interactive profile wizard" --reporter=verbose \
+  || { echo "FAIL: T045 — vitest failed for src/commands/init.test.ts" >&2; exit 1; }
 
-echo "PASS: T045 — Implement src/commands/define.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/init.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T045 — lint errors in src/commands/init.ts" >&2; exit 1; }
+
+echo "PASS: T045 — tests pass + lint clean"

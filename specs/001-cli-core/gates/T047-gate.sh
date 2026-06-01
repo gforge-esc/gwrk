@@ -1,10 +1,14 @@
 #!/bin/bash
 set -euo pipefail
-# AUTHORED
+# Gate: T047 — Implement --non-interactive flag, project registration, and final scaffolding
+# Generated from gap-matrix.md (deterministic vitest gate)
 
-test -f src/commands/measure.ts \
-  || { echo "FAIL: T047 — file not found: src/commands/measure.ts" >&2; exit 1; }
-grep -q 'measureCommand' src/commands/measure.ts \
-  || { echo "FAIL: T047 — src/commands/measure.ts missing 'measureCommand'" >&2; exit 1; }
+# ── BEHAVIORAL: Tests must pass ──
+pnpm vitest run src/commands/init.test.ts -t "non-interactive|idempotent|registration" --reporter=verbose \
+  || { echo "FAIL: T047 — vitest failed for src/commands/init.test.ts" >&2; exit 1; }
 
-echo "PASS: T047 — Implement src/commands/measure.ts"
+# ── HYGIENE: Source files must lint clean ──
+pnpm biome check src/commands/init.ts --no-errors-on-unmatched \
+  || { echo "FAIL: T047 — lint errors in src/commands/init.ts" >&2; exit 1; }
+
+echo "PASS: T047 — tests pass + lint clean"

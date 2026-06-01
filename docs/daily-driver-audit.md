@@ -203,7 +203,8 @@ This is a P0 daily driver item. Without project scoping, running `gwrk init` on 
 | **P0** | Prompt decontamination (84 refs in 13 PROMPT.md) | F001 Phase 13 | `gwrk ship 001 13` | **YES** |
 | **P0** | Project-scoped DB isolation (8 tables, 10+ queries) | F001 (new phase) | `gwrk ship 001 <TBD>` | **YES** (cross-project pollution) |
 | **P1** | Define output parity (quiet mode) | F001 Phase 12 | `gwrk ship 001 12` | No — quality |
-| **P1** | ROADMAP.md rewrite | Docs | Manual | No — documentation |
+| **P1** | Feature lifecycle status command (`gwrk plan status 001 --phases`) | New feature | TBD | No — but daily driver wants it |
+| **P1** | Project-agnostic doc rewrite (`architecture.md`, `README.md`, `WHAT_IS_GWRK.md`, CLI help) | Docs | Manual | No — blocks "shareable" |
 | **P2** | Ship loop hardening (FM-4/5/6) | F004 | Manual | No — quality-of-life |
 | **P2** | LaunchAgent e2e verification | F002 | `gwrk server install` | No — server optional |
 | **P3** | Obsidian integration spec | F020 (new) | `gwrk define spec 020` | No — backlog |
@@ -349,10 +350,26 @@ This baseline MUST NOT regress during daily driver work.
 - Spec: needs US/FR additions to `specs/001-cli-core/spec.md`
 - Depends on Phase 10 (init must register projects before scoping works)
 
-## P1 — Quality
+## P1 — Quality & Shareability
 
 - **F001 Phase 12**: Define output parity (quiet mode)
-- **ROADMAP.md**: Rewrite to match reality
+
+- **Feature Lifecycle Status**: No single command answers "where is 001 P10?" The artifact lifecycle (spec → plan → tests → tasks → ship) is invisible. `gwrk plan status` shows the DAG but not whether spec predates plan, whether tests exist, or whether tasks.json is populated. Desired output:
+  ```
+  001-cli-core / Phase 10: Unified Init
+    spec.md    updated 2026-05-30   ✅
+    plan.md    updated 2026-05-30   ✅ (after spec)
+    tests      defined 2026-06-01   ✅ (gap-matrix.md exists)
+    tasks      defined 2026-06-01   ✅ (tasks.json exists)
+    shipped    —                    ⏳ ready to ship
+  ```
+
+- **Project-Agnostic Doc Rewrite**: Same contamination as the PROMPTs but in human-facing docs. These files reference gwrk-specific tooling (vitest, Commander.js, SQLite, `src/` layout) that screams "this tool only works on itself":
+  - `docs/architecture.md` — hardcodes gwrk's stack as THE architecture
+  - `docs/WHAT_IS_GWRK.md` — presents gwrk as self-referential
+  - `docs/README.md` — setup instructions assume gwrk's own toolchain
+  - CLI help text — `setup` still listed as standalone command (absorbed by P10)
+  - `ROADMAP.md` — stale (test counts wrong, daily driver section lies)
 
 ## P2/P3 — Backlog
 
