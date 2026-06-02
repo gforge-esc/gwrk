@@ -92,9 +92,19 @@ Examples:
           }
         })();
 
+        const hasTestRunManifest = (() => {
+          try {
+            if (!fs.existsSync(runsManifestDir)) return false;
+            const files = fs.readdirSync(runsManifestDir);
+            return files.some((f) => f.includes("define tests") || f.includes("define_tests"));
+          } catch {
+            return false;
+          }
+        })();
+
         const testsExist =
           fs.existsSync(gapMatrixPath) ||
-          fs.existsSync(runsManifestDir) ||
+          hasTestRunManifest ||
           (hasTestFiles && !options.force);
 
         if (testsExist && !options.force) {
