@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-02T04:35:20.173Z_define_all",
+  "feature": "019-agy-agent-migration",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-02T04:35:20.173Z",
+  "finishedAt": "2026-06-02T04:42:59.829Z",
+  "durationS": 460,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 7,
+  "linesAdded": 290,
+  "linesDeleted": 2,
+  "gitCommit": "a94b80eb2f0b3ca043a238d3600bbf19c59fa6f2",
+  "gitBranch": "develop",
+  "digest": []
+}
