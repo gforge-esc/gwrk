@@ -57,7 +57,7 @@ When specifying features for gwrk, ensure the spec honors these principles:
 
 2. Find highest feature number in `specs/` and increment.
    ```bash
-   ls specs/ | grep -E '^[0-9]+' | sort -n | tail -1
+   ls specs/ | grep -E '^[0-9]+' | sort -n | tail -n 1 || echo "000"
    ```
 
 3. **Clarify ambiguities** (if needed):

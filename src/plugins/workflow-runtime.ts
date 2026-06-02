@@ -231,7 +231,8 @@ export class WorkflowRuntime {
     const conditionedPrompt = conditionPrompt(basePrompt, profile);
 
     // Inject the outputSchema and input into the final prompt
-    const fullPrompt = `${conditionedPrompt}\n\nCRITICAL: Your output MUST be a single JSON object matching this schema:\n${JSON.stringify(manifest.outputSchema, null, 2)}\n\nInput:\n${input}`;
+    // Input is wrapped in XML tags to prevent prompt injection from user content
+    const fullPrompt = `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(manifest.outputSchema, null, 2)}\n</output_contract>\n\n<user_input>\n${input}\n</user_input>`;
 
     const task: TaskDispatch = {
       type: "workflow",

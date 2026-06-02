@@ -105,7 +105,7 @@ After generating all test files:
 
 ```bash
 # Tests should compile but FAIL
-pnpm test --run 2>&1 | tail -20
+pnpm test --run 2>&1
 # Expected: test failures (imports that don't resolve, assertions that fail)
 # If ALL tests pass: CRITICAL — tests are trivial, flag and revise
 ```

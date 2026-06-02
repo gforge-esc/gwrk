@@ -4,7 +4,7 @@
 **Pillar**: Definition (Clarity)
 
 <scope_constraints>
-- Create ONLY plan.md (and optionally data-model.md, contracts/).
+- Create plan.md. If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
 - Do not create tasks.json (that's `gwrk define tasks`).
 - Do not implement any code.
 - Reference existing project structure from `docs/architecture.md`.
