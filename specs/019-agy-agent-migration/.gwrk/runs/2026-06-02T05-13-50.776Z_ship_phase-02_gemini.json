@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-02T05:13:50.776Z_ship_p02",
+  "feature": "019-agy-agent-migration",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "gemini-3-flash-preview",
+  "startedAt": "2026-06-02T05:13:50.776Z",
+  "finishedAt": "2026-06-02T05:21:23.090Z",
+  "durationS": 452,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "2e13a93f48d96bfd228cdd72ba81a695e07503bb",
+  "gitBranch": "feat/019-agy-agent-migration",
+  "digest": []
+}
