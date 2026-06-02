@@ -643,23 +643,16 @@ define tests (fails for MODIFY phases)
 
 ---
 
-### L. ROADMAP.md Rewrite
+### L. ~~ROADMAP.md Rewrite~~ ✅ RESOLVED
 
-> **Current state**: [ROADMAP.md](ROADMAP.md) (162 lines) is **comprehensively stale**:
-> - Test count says "646 tests" → actual: 772
-> - Phase 2 says "in progress" → most items are shipped
-> - "Shipped But Not Started" lists F007/F008 → F008 is shipped (PR #35)
-> - "What NOT to Build" lists F005, F012, F013 → F013 is largely delivered via ADR-004
-> - Open Questions are resolved (Pulse repos, shareable target)
-
-#### TO-BE
-
-Rewrite from scratch. Three sections:
-1. **What Works** — honest inventory (this audit's data)
-2. **What's Next** — pull from this audit's P1/P2/P3 breakdown
-3. **Shipping Log** — keep the historical entries, add F019
-
-**Effort**: 30 minutes. This is a manual doc rewrite using this audit as source material.
+> [!NOTE]
+> **Deleted.** `ROADMAP.md` was 163 lines of stale prose (wrong test counts, wrong feature statuses, wrong "What NOT to Build" recommendations). Replaced by `gwrk plan`, which produces live, DB-backed output:
+>
+> - `gwrk plan status` — per-feature, per-phase status
+> - `gwrk plan render --stdout` — full 306-line build plan with Mermaid dependency graph, critical path Gantt, wave strategy, effort estimates
+> - `gwrk plan waves` / `gwrk plan critical` / `gwrk plan next` — computed from DAG, not handwritten
+>
+> Static roadmaps lie. `gwrk plan` is the roadmap.
 
 ---
 
