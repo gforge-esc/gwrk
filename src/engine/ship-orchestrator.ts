@@ -13,7 +13,7 @@ import {
   dispatchToAgent,
 } from "../utils/agent.js";
 import { runGate } from "../utils/gate-runner.js";
-import { createBranch, isDirty, syncBranch } from "../utils/git.js";
+import { createBranch, getCurrentBranch, isDirty, syncBranch } from "../utils/git.js";
 import { assembleDigest } from "../utils/manifest.js";
 import {
   type Phase,
@@ -366,13 +366,24 @@ export class ShipOrchestrator extends EventEmitter {
     }
 
     const branchName = `feat/${this.config.featureId}`;
+    const currentBranch = getCurrentBranch(this.config.cwd);
+
+    // Already on the correct feature branch — no checkout or merge needed.
+    // The develop merge happens at PR merge time, not during ship.
+    if (currentBranch === branchName) {
+      console.log(`  Branch ${branchName} — already checked out`);
+      this.state.branchName = branchName;
+      if (this.state.iteration === 1) this.captureTestBaseline();
+      return { success: true, exitCode: 0 };
+    }
+
     try {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
       if (this.state.iteration === 1) this.captureTestBaseline();
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
-      // Branch already exists — just check it out and sync with develop
+      // Branch already exists — just check it out (no develop merge)
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("already exists")) {
         try {
@@ -381,19 +392,17 @@ export class ShipOrchestrator extends EventEmitter {
             cwd: this.config.cwd,
             stdio: ["ignore", "ignore", "pipe"],
           });
-          // Sync with latest develop
-          await syncBranch(this.config.cwd, "develop");
           this.state.branchName = branchName;
-          console.log(`  Branch ${branchName} exists — checked out and synced`);
+          console.log(`  Branch ${branchName} exists — checked out`);
           if (this.state.iteration === 1) this.captureTestBaseline();
           return { success: true, exitCode: 0 };
-        } catch (syncErr: unknown) {
-          const syncMsg =
-            syncErr instanceof Error ? syncErr.message : String(syncErr);
+        } catch (checkoutErr: unknown) {
+          const checkoutMsg =
+            checkoutErr instanceof Error ? checkoutErr.message : String(checkoutErr);
           return {
             success: false,
             exitCode: 1,
-            error: `Failed to checkout existing branch: ${syncMsg}`,
+            error: `Failed to checkout existing branch: ${checkoutMsg}`,
           };
         }
       }
