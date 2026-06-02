@@ -666,6 +666,28 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 | `docs/product/WHAT_IS_GWRK.md` | Self-referential (describes gwrk as a tool that builds gwrk) — needs rewrite as user-facing product doc | Roadmap item |
 | CLI help text | `setup` still listed as standalone command (absorbed by P10) | Roadmap item |
 
+#### Workflow Audit (2026-06-02)
+
+15 builtin workflows → 9 active. 6 archived to `docs/archive/workflows/`.
+
+| Workflow | Disposition | Reason |
+|----------|------------|--------|
+| `gwrk-specify` | ✅ Active | `define-orchestrator.ts` |
+| `gwrk-plan` | ✅ Active | `define-orchestrator.ts` |
+| `gwrk-analyze` | ✅ Active | `define-orchestrator.ts` |
+| `gwrk-define-tests` | ✅ Active | `tests-generate.ts` |
+| `gwrk-plan-to-tasks` | ✅ Active | `tasks-generate.ts` |
+| `gwrk-implement` | ✅ Active | `ship-orchestrator.ts` |
+| `gwrk-review-code` | ✅ Active | `ship-orchestrator.ts` via `review-plugin.ts` |
+| `gwrk-review-uat` | ✅ Active | `ship-orchestrator.ts` via `review-plugin.ts` |
+| `gwrk-research` | ⏳ Kept (no CLI) | Future: `gwrk define research <feature>` — feeds `--refs` for `gwrk define spec` |
+| `gwrk-author-gates` | 🗑️ Archived | Replaced by deterministic `generateVitestGates()`/`generateFilesystemGates()` |
+| `gwrk-build-plan` | 🗑️ Archived | Replaced by `gwrk plan seed` + `gwrk plan render` + DAG engine |
+| `gwrk-effort` | 🗑️ Archived | Replaced by deterministic `gwrk measure effort` (`computeEffort()`) |
+| `gwrk-cascade-sync` | 🗑️ Archived | Vestige of old build-plan model; DAG engine supersedes |
+| `gwrk-checklist` | 🗑️ Archived | Subsumed by `gwrk-analyze` (cross-artifact consistency) |
+| `gwrk-constitution` | 🗑️ Archived | Replaced by `.gwrk/rules/` + builtins/rules governance |
+
 ---
 
 ## Analysis: P2 — Infrastructure Hardening

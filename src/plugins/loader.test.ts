@@ -7,7 +7,7 @@ import fs from "node:fs";
  * TR-P10-002: Builtin workflow resolution
  */
 describe("PluginLoader (Phase 10)", () => {
-  it("FR-L25-003: should resolve all 15 core gwrk-* workflows (TR-P10-002)", async () => {
+  it("FR-L25-003: should resolve all 9 active gwrk-* workflows (TR-P10-002)", async () => {
     // Ensure we don't pick up global state by using a non-existent global dir
     const loader = new PluginLoader({ globalDir: "/tmp/gwrk-empty-global-" + Math.random() });
     const workflows = [
@@ -15,17 +15,11 @@ describe("PluginLoader (Phase 10)", () => {
       "gwrk-plan",
       "gwrk-implement",
       "gwrk-define-tests",
-      "gwrk-author-gates",
       "gwrk-plan-to-tasks",
       "gwrk-review-code",
       "gwrk-review-uat",
       "gwrk-research",
-      "gwrk-build-plan",
       "gwrk-analyze",
-      "gwrk-cascade-sync",
-      "gwrk-checklist",
-      "gwrk-constitution",
-      "gwrk-effort"
     ];
 
     for (const name of workflows) {
