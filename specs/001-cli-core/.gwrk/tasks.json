@@ -639,7 +639,7 @@
         {
           "id": "T068",
           "title": "Implement prompt-conditioner logic",
-          "description": "Implement conditionPrompt in src/engine/prompt-conditioner.ts to inject <project_profile> XML and resolve [type: gwrk-native] guards. Tests: src/engine/prompt-conditioner.test.ts",
+          "description": "Implement conditionPrompt in src/engine/prompt-conditioner.ts to inject <project_profile> XML and resolve [type: gwrk-native] guards. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T068-gate.sh]",
           "status": "open",
           "gateScript": "gates/T068-gate.sh",
           "sp": 0
@@ -647,7 +647,7 @@
         {
           "id": "T069",
           "title": "Integrate prompt-conditioner into WorkflowRuntime",
-          "description": "Update WorkflowRuntime.executeWorkflow() in src/plugins/workflow-runtime.ts to call conditionPrompt before dispatching to agents. Tests: src/plugins/workflow-runtime.test.ts",
+          "description": "Update WorkflowRuntime.executeWorkflow() in src/plugins/workflow-runtime.ts to call conditionPrompt before dispatching to agents. Tests: src/plugins/workflow-runtime.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T069-gate.sh]",
           "status": "open",
           "gateScript": "gates/T069-gate.sh",
           "sp": 0
@@ -655,7 +655,7 @@
         {
           "id": "T070",
           "title": "Integrate prompt-conditioner into ShipOrchestrator review",
-          "description": "Update review dispatch in src/engine/ship-orchestrator.ts to call conditionPrompt. Tests: src/engine/ship-orchestrator.test.ts",
+          "description": "Update review dispatch in src/engine/ship-orchestrator.ts to call conditionPrompt. Tests: src/engine/ship-orchestrator.test.ts [REVIEW FAIL (test): Regression in ShipOrchestrator.test.ts (5 failures). FIX: Mock detectProfile in src/engine/ship-orchestrator.test.ts. Also implement missing gates/T070-gate.sh]",
           "status": "open",
           "gateScript": "gates/T070-gate.sh",
           "sp": 0
@@ -663,7 +663,7 @@
         {
           "id": "T071",
           "title": "Implement gwrk project info command",
-          "description": "Implement the project info action in src/commands/project-info.ts to display the resolved profile. Support --format json. Tests: src/commands/project-info.test.ts",
+          "description": "Implement the project info action in src/commands/project-info.ts to display the resolved profile. Support --format json. Tests: src/commands/project-info.test.ts [REVIEW FAIL (code): Destructive implementation in src/commands/project.ts (deleted 'discover' and 'specs' subcommands). FIX: Restore subcommands and add 'info' alongside them. Also implement missing gates/T071-gate.sh]",
           "status": "open",
           "gateScript": "gates/T071-gate.sh",
           "sp": 0
@@ -671,7 +671,7 @@
         {
           "id": "T072",
           "title": "Refactor critical PROMPT.md files (plan, review-uat, author-gates)",
-          "description": "Add [type: gwrk-native] guards to gwrk-plan, gwrk-review-uat, and gwrk-author-gates PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts",
+          "description": "Add [type: gwrk-native] guards to gwrk-plan, gwrk-review-uat, and gwrk-author-gates PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T072-gate.sh]",
           "status": "open",
           "gateScript": "gates/T072-gate.sh",
           "sp": 0
@@ -679,7 +679,7 @@
         {
           "id": "T073",
           "title": "Refactor medium PROMPT.md files (implement, define-tests, plan-to-tasks, review-code)",
-          "description": "Add [type: gwrk-native] guards to gwrk-implement, gwrk-define-tests, gwrk-plan-to-tasks, and gwrk-review-code PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts",
+          "description": "Add [type: gwrk-native] guards to gwrk-implement, gwrk-define-tests, gwrk-plan-to-tasks, and gwrk-review-code PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T073-gate.sh]",
           "status": "open",
           "gateScript": "gates/T073-gate.sh",
           "sp": 0
@@ -687,7 +687,7 @@
         {
           "id": "T074",
           "title": "Refactor remaining low PROMPT.md files",
-          "description": "Add [type: gwrk-native] guards to gwrk-analyze, gwrk-cascade-sync, gwrk-build-plan, gwrk-checklist, gwrk-effort, and gwrk-research PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts",
+          "description": "Add [type: gwrk-native] guards to gwrk-analyze, gwrk-cascade-sync, gwrk-build-plan, gwrk-checklist, gwrk-effort, and gwrk-research PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T074-gate.sh]",
           "status": "open",
           "gateScript": "gates/T074-gate.sh",
           "sp": 0
