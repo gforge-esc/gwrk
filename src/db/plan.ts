@@ -92,6 +92,41 @@ export function listFeatures(
     .all(projectId) as PlanFeature[];
 }
 
+/**
+ * Update a feature's status without triggering ON DELETE CASCADE.
+ * IMPORTANT: Do NOT use insertFeature() to update status — INSERT OR REPLACE
+ * deletes the old row first, cascading to plan_phases.
+ */
+export function updateFeatureStatus(
+  id: string,
+  status: string,
+  projectId: string,
+  db?: Database.Database,
+): void {
+  const conn = db ?? getDb();
+  conn
+    .prepare(
+      "UPDATE plan_features SET status = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
+    )
+    .run(status, id, projectId);
+}
+
+/**
+ * Update a feature's name without triggering ON DELETE CASCADE.
+ */
+export function updateFeatureName(
+  id: string,
+  name: string,
+  projectId: string,
+  db?: Database.Database,
+): void {
+  const conn = db ?? getDb();
+  conn
+    .prepare(
+      "UPDATE plan_features SET name = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
+    )
+    .run(name, id, projectId);
+}
 
 /**
  * Insert or replace a phase.

@@ -142,11 +142,16 @@ planCommand
         return;
       }
 
-      const { added, skipped, phasesInserted } = store.initFromSpecs(specsDir);
+      const { added, skipped, phasesInserted, pruned, reconciled } = store.initFromSpecs(specsDir);
       console.log(
         `Initialized build plan graph. Added: ${added.length}, Skipped (existing): ${skipped.length}, Phases: ${phasesInserted}`,
       );
       if (added.length > 0) console.log(`  Added: ${added.join(", ")}`);
+      if (pruned.length > 0) console.log(`  Pruned (no specs/ dir): ${pruned.join(", ")}`);
+      if (reconciled.length > 0) {
+        console.log(`  Reconciled status:`);
+        for (const r of reconciled) console.log(`    ${r}`);
+      }
     });
   });
 

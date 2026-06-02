@@ -60,20 +60,46 @@ export class PlanStore {
   /**
    * Initialize the plan from the specs/ directory without clobbering existing features.
    * Inserts phases from plan.md and enriches status from ship runs.
+   * Prunes ghost features (DB entries with no specs/ directory).
+   * Reconciles feature status from phase data.
    */
-  initFromSpecs(specsDir: string): { added: string[]; skipped: string[]; phasesInserted: number } {
+  initFromSpecs(specsDir: string): {
+    added: string[];
+    skipped: string[];
+    phasesInserted: number;
+    pruned: string[];
+    reconciled: string[];
+  } {
     const readiness = this.scanReadiness(specsDir);
     const added: string[] = [];
     const skipped: string[] = [];
+    const reconciled: string[] = [];
     let phasesInserted = 0;
 
     // Get shipped phases for status enrichment
     const shippedPhases = db.getShippedPhases(this.projectId);
 
+    // Build set of feature IDs that exist on disk
+    const diskFeatureIds = new Set(readiness.map((r) => r.featureId));
+
+    // Prune ghost features (exist in DB but not on disk)
+    const pruned: string[] = [];
+    const existingFeatures = db.listFeatures(this.projectId);
+    for (const feature of existingFeatures) {
+      if (!diskFeatureIds.has(feature.id)) {
+        db.deleteFeature(feature.id, this.projectId);
+        pruned.push(feature.id);
+      }
+    }
+
     for (const res of readiness) {
       const existing = db.getFeature(res.featureId, this.projectId);
       if (existing) {
         skipped.push(res.featureId);
+        // Reconcile name if it was seeded with wrong name (e.g., from plan seed YAML)
+        if (existing.name !== res.featureId && existing.name !== res.featureId) {
+          db.updateFeatureName(res.featureId, res.featureId, this.projectId);
+        }
       } else {
         db.insertFeature(
           {
@@ -112,8 +138,38 @@ export class PlanStore {
         );
         phasesInserted++;
       }
+
+      // Reconcile feature status from phases
+      const feature = db.getFeature(res.featureId, this.projectId);
+      if (feature) {
+        const phases = db.listPhases(res.featureId, this.projectId);
+        if (phases.length > 0) {
+          const allShipped = phases.every(
+            (p) => p.status === "DONE" || p.status === "SHIPPED",
+          );
+          const anyShipped = phases.some(
+            (p) => p.status === "DONE" || p.status === "SHIPPED",
+          );
+
+          let newStatus = feature.status;
+          if (allShipped) {
+            newStatus = "SHIPPED";
+          } else if (anyShipped && feature.status !== "SHIPPED") {
+            newStatus = "IN_PROGRESS";
+          }
+
+          if (newStatus !== feature.status) {
+            db.updateFeatureStatus(
+              res.featureId,
+              newStatus,
+              this.projectId,
+            );
+            reconciled.push(`${res.featureId}: ${feature.status} → ${newStatus}`);
+          }
+        }
+      }
     }
-    return { added, skipped, phasesInserted };
+    return { added, skipped, phasesInserted, pruned, reconciled };
   }
 
   /**

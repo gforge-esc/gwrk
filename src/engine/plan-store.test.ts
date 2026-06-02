@@ -8,8 +8,11 @@ vi.mock('../db/plan.js', () => ({
   insertEdge: vi.fn(),
   getFeature: vi.fn(),
   getPhase: vi.fn(),
+  deleteFeature: vi.fn(),
   deletePhase: vi.fn(),
   deleteEdge: vi.fn(),
+  updateFeatureStatus: vi.fn(),
+  updateFeatureName: vi.fn(),
   listFeatures: vi.fn(() => []),
   listPhases: vi.fn(() => []),
   listAllEdges: vi.fn(() => []),
@@ -131,6 +134,76 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     expect(db.insertPhase).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'feat-c/phase-02', name: 'New Phase' }),
       "test-project",
+    );
+  });
+
+  it('FR-017: should prune ghost features with no specs/ directory', () => {
+    vi.spyOn(store, 'scanReadiness').mockReturnValue([
+      { featureId: 'feat-real', level: 1, status: 'SPECIFIED', hasSpec: true, hasPlan: false, hasTasks: false, spTotal: 0, phases: [] }
+    ]);
+
+    // DB has a ghost feature that no longer exists on disk
+    vi.mocked(db.listFeatures).mockReturnValue([
+      { id: 'feat-real', name: 'Real', status: 'SPECIFIED', sp_total: 0 },
+      { id: 'ghost-099', name: 'Ghost', status: 'SPECIFIED', sp_total: 0 },
+      { id: 'F000', name: 'Extraction', status: 'DONE', sp_total: 0 },
+    ]);
+    vi.mocked(db.getFeature).mockReturnValue({ id: 'feat-real', name: 'Real', status: 'SPECIFIED', sp_total: 0 });
+
+    const report = store.initFromSpecs('/mock/specs');
+    expect(report.pruned).toContain('ghost-099');
+    expect(report.pruned).toContain('F000');
+    expect(report.pruned).not.toContain('feat-real');
+    expect(db.deleteFeature).toHaveBeenCalledWith('ghost-099', 'test-project');
+    expect(db.deleteFeature).toHaveBeenCalledWith('F000', 'test-project');
+  });
+
+  it('FR-017: should reconcile feature status when all phases are shipped', () => {
+    vi.spyOn(store, 'scanReadiness').mockReturnValue([
+      {
+        featureId: 'feat-done', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
+        phases: [{ number: 1, title: 'Phase 1' }, { number: 2, title: 'Phase 2' }],
+      }
+    ]);
+
+    // Feature exists with wrong status
+    vi.mocked(db.getFeature).mockReturnValue({ id: 'feat-done', name: 'feat-done', status: 'DEFINED', sp_total: 0 });
+    vi.mocked(db.getPhase).mockReturnValue(undefined);
+    // All phases shipped via runs
+    vi.mocked(db.getShippedPhases).mockReturnValue(new Set(['feat-done:phase-01', 'feat-done:phase-02']));
+    // After insertion, listPhases returns the shipped phases
+    vi.mocked(db.listPhases).mockReturnValue([
+      { id: 'feat-done/phase-01', feature_id: 'feat-done', name: 'Phase 1', status: 'SHIPPED', health: 'CLEAN', sp_estimate: 0, seq: 1 },
+      { id: 'feat-done/phase-02', feature_id: 'feat-done', name: 'Phase 2', status: 'SHIPPED', health: 'CLEAN', sp_estimate: 0, seq: 2 },
+    ]);
+
+    const report = store.initFromSpecs('/mock/specs');
+    expect(report.reconciled).toContainEqual('feat-done: DEFINED → SHIPPED');
+    expect(db.updateFeatureStatus).toHaveBeenCalledWith(
+      'feat-done', 'SHIPPED', 'test-project',
+    );
+  });
+
+  it('FR-017: should set IN_PROGRESS when some phases are shipped', () => {
+    vi.spyOn(store, 'scanReadiness').mockReturnValue([
+      {
+        featureId: 'feat-wip', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
+        phases: [{ number: 1, title: 'Done' }, { number: 2, title: 'Todo' }],
+      }
+    ]);
+
+    vi.mocked(db.getFeature).mockReturnValue({ id: 'feat-wip', name: 'feat-wip', status: 'DEFINED', sp_total: 0 });
+    vi.mocked(db.getPhase).mockReturnValue(undefined);
+    vi.mocked(db.getShippedPhases).mockReturnValue(new Set(['feat-wip:phase-01']));
+    vi.mocked(db.listPhases).mockReturnValue([
+      { id: 'feat-wip/phase-01', feature_id: 'feat-wip', name: 'Done', status: 'SHIPPED', health: 'CLEAN', sp_estimate: 0, seq: 1 },
+      { id: 'feat-wip/phase-02', feature_id: 'feat-wip', name: 'Todo', status: 'PLANNED', health: 'CLEAN', sp_estimate: 0, seq: 2 },
+    ]);
+
+    const report = store.initFromSpecs('/mock/specs');
+    expect(report.reconciled).toContainEqual('feat-wip: DEFINED → IN_PROGRESS');
+    expect(db.updateFeatureStatus).toHaveBeenCalledWith(
+      'feat-wip', 'IN_PROGRESS', 'test-project',
     );
   });
 

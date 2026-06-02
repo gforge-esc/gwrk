@@ -6,10 +6,17 @@ import Database from "better-sqlite3";
 import { PlanStore } from "./plan-store.js";
 import * as planDb from "../db/plan.js";
 
-// We'll dynamically mock getDb to return our in-memory DB
-let testDb: Database.Database;
+// vi.hoisted ensures this runs in the same scope as vi.mock factories
+const { getTestDb, setTestDb } = vi.hoisted(() => {
+  let _db: Database.Database;
+  return {
+    getTestDb: () => _db,
+    setTestDb: (db: Database.Database) => { _db = db; },
+  };
+});
+
 vi.mock("../db/index.js", () => ({
-  getDb: () => testDb,
+  getDb: () => getTestDb(),
   initDb: vi.fn(),
 }));
 
@@ -36,7 +43,7 @@ describe("PlanStore.initFromSpecs Integration (plan_phases population)", () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-init-test-"));
     db = new Database(":memory:");
-    testDb = db; // Wire the mock
+    setTestDb(db); // Wire the mock
     applyMigrations(db);
 
     // Register project
@@ -184,5 +191,75 @@ describe("PlanStore.initFromSpecs Integration (plan_phases population)", () => {
 
     const phases = planDb.listPhases("feat-no-plan", projectId, db);
     expect(phases).toHaveLength(0);
+  });
+
+  it("should prune ghost features that no longer exist on disk", () => {
+    createFeatureDir("feat-real", "# Plan\n\n### Phase 1: Real\n");
+
+    // Manually insert a ghost feature in DB
+    planDb.insertFeature(
+      { id: "ghost-099", name: "Ghost", status: "SPECIFIED", sp_total: 0 },
+      projectId,
+      db,
+    );
+    planDb.insertFeature(
+      { id: "F000", name: "Extraction", status: "DONE", sp_total: 0 },
+      projectId,
+      db,
+    );
+
+    const store = new PlanStore(projectId);
+    const specsDir = path.join(tempDir, "specs");
+    const report = store.initFromSpecs(specsDir);
+
+    expect(report.pruned).toContain("ghost-099");
+    expect(report.pruned).toContain("F000");
+
+    // Ghost should be gone from DB
+    expect(planDb.getFeature("ghost-099", projectId, db)).toBeUndefined();
+    expect(planDb.getFeature("F000", projectId, db)).toBeUndefined();
+    // Real feature should still exist
+    expect(planDb.getFeature("feat-real", projectId, db)).toBeDefined();
+  });
+
+  it("should reconcile feature status to SHIPPED when all phases are shipped", () => {
+    createFeatureDir("feat-reconcile", "# Plan\n\n### Phase 1: Done\n### Phase 2: Also Done\n");
+
+    // Insert ship runs for both phases
+    db.prepare(
+      `INSERT INTO runs (feature_id, phase_id, command, project_id, started_at, finished_at, exit_code)
+       VALUES (?, ?, 'ship', ?, datetime('now'), datetime('now'), 0)`,
+    ).run("feat-reconcile", "phase-01", projectId);
+    db.prepare(
+      `INSERT INTO runs (feature_id, phase_id, command, project_id, started_at, finished_at, exit_code)
+       VALUES (?, ?, 'ship', ?, datetime('now'), datetime('now'), 0)`,
+    ).run("feat-reconcile", "phase-02", projectId);
+
+    const store = new PlanStore(projectId);
+    const specsDir = path.join(tempDir, "specs");
+    const report = store.initFromSpecs(specsDir);
+
+    // Feature should be SHIPPED (reconciled from DEFINED)
+    const feature = planDb.getFeature("feat-reconcile", projectId, db);
+    expect(feature?.status).toBe("SHIPPED");
+    expect(report.reconciled).toContainEqual("feat-reconcile: DEFINED → SHIPPED");
+  });
+
+  it("should reconcile feature status to IN_PROGRESS when some phases are shipped", () => {
+    createFeatureDir("feat-partial", "# Plan\n\n### Phase 1: Done\n### Phase 2: Open\n");
+
+    // Only phase 1 shipped
+    db.prepare(
+      `INSERT INTO runs (feature_id, phase_id, command, project_id, started_at, finished_at, exit_code)
+       VALUES (?, ?, 'ship', ?, datetime('now'), datetime('now'), 0)`,
+    ).run("feat-partial", "phase-01", projectId);
+
+    const store = new PlanStore(projectId);
+    const specsDir = path.join(tempDir, "specs");
+    const report = store.initFromSpecs(specsDir);
+
+    const feature = planDb.getFeature("feat-partial", projectId, db);
+    expect(feature?.status).toBe("IN_PROGRESS");
+    expect(report.reconciled).toContainEqual("feat-partial: DEFINED → IN_PROGRESS");
   });
 });

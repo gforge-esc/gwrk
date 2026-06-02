@@ -551,47 +551,19 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 ---
 
-### I. Feature Lifecycle Status Command
+### I. ~~Feature Lifecycle Status Command~~ ✅ PHASE DATA POPULATED (lifecycle ladder TODO)
 
-> **What**: A single command that answers "where is feature X?" across the entire artifact lifecycle.
-> **Spec reference**: Not specced. Discussed in [ROADMAP.md](ROADMAP.md) and audit Section P1.
-> **ADR dependencies**: None.
-> **Code exists**: No.
+> [!NOTE]
+> **Phase data populated** (commit `6642aae`). `plan_phases` now has 60 phases across 12 features, with 48 marked SHIPPED from runs DB enrichment. `gwrk plan status` now shows per-phase lifecycle detail. `gwrk plan init` parses `### Phase N: Title` headings from each feature's `plan.md`, inserts feature-scoped phase IDs (`{featureId}/phase-{seq}`), and enriches status from ship runs. Idempotent, additive, with 11 new tests (unit + integration).
 
-#### Current State
+**Result**: `SELECT COUNT(*) FROM plan_phases; -- 60 rows (was 0)`
 
-`gwrk plan status` shows the DAG feature-level status (DEFINED/SHIPPED) but has **zero phase data** — the `plan_phases` table is empty. There's no way to answer: "which phases of 001-cli-core are shipped? which have tests? which have tasks?"
+**Remaining**: The per-feature lifecycle ladder command (`gwrk plan status 001 --phases` with artifact timestamps and PR linkage) is still TODO — but the data foundation is now in place.
 
-```sql
-SELECT COUNT(*) FROM plan_phases;  -- 0 rows
-```
-
-#### TO-BE
-
-```
-$ gwrk plan status 001 --phases
-001-cli-core / Phase 10: Unified Init
-  spec.md    updated 2026-05-30   ✅
-  plan.md    updated 2026-05-30   ✅ (after spec)
-  tests      defined 2026-06-01   ✅ (gap-matrix.md exists)
-  tasks      defined 2026-06-01   ✅ (tasks.json has P10 tasks)
-  shipped    PR #67              ✅ merged 2026-06-01
-
-001-cli-core / Phase 9: State Contracts
-  spec.md    updated 2026-05-30   ✅
-  plan.md    updated 2026-05-30   ✅
-  tests      defined 2026-06-01   ✅ (tasks-verify.test.ts exists)
-  tasks      defined              ✅
-  shipped    —                    ⏳ ready to ship
-```
-
-**Implementation**:
-- Parse `plan.md` for `### Phase N:` headings → populate `plan_phases` table
-- For each phase, check filesystem: `specs/<feature>/tests/`, `specs/<feature>/.gwrk/tasks.json`, `specs/<feature>/.gwrk/runs/`
-- Check `runs` DB for ship runs matching feature+phase
-- Render as lifecycle ladder
-
-**Effort**: ~1 day. New command + plan parser. No spec needed — this is a query over existing data.
+**Test coverage**: 
+- `readiness-scanner.test.ts`: 3 new tests (phase parsing)
+- `plan-store.test.ts`: 4 new tests (insert, enrichment, additive, no-clobber)
+- `plan-store-init.test.ts`: 5 new integration tests (real SQLite + filesystem)
 
 ---
 
