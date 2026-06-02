@@ -175,3 +175,17 @@ The current builtins (`gwrk-conventions`, `typescript-standards`) are gwrk-speci
 2. **Profile → enforcement routing spec** — Matching algorithm for skill filtering
 3. **Project init scaffold** — What `gwrk init` should generate for a new project
 4. **Migration path** — How existing `gwrk-conventions` and `typescript-standards` evolve to support non-gwrk projects
+
+
+# Notes from daily-driver-audit.md
+
+### N. Ship Loop Hardening (FM-4/5/6)
+
+> **Spec reference**: [ship-failure-diagnosis.md](specs/004-ship-loop/refs/ship-failure-diagnosis.md)
+> **Code**: [ship-orchestrator.ts](src/engine/ship-orchestrator.ts)
+
+#### FM-4: Stale dist Detection → ~~gwrk-specific~~ → R007
+
+**Disposition**: Not a ship loop concern — this is a project-perspective problem. A TypeScript project needs `dist/` freshness checks; Python doesn't have `dist/`; Go builds differently. This belongs in the project-scoped pre-flight system designed in R007 (enforcement skills).
+
+**Status**: Deferred to R007.
