@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadTaskState } from "../utils/state.js";
+import { planToTasks } from "./plan-to-tasks.js";
 import {
   type DefineRunConfig,
   DefineStage,
@@ -266,33 +267,13 @@ export class DefineOrchestrator extends EventEmitter {
     }
   }
 
-  private async stagePlanToTasks(input?: string): Promise<StageResult> {
+  private async stagePlanToTasks(_input?: string): Promise<StageResult> {
     console.log("Stage: PLAN_TO_TASKS");
     try {
-      const prompt = input || `Decompose plan for feature ${this.config.featureId}`;
-      const result = await this.runtime.executeWorkflow(
-        "gwrk-plan-to-tasks",
-        prompt,
-        {
-          agent: this.config.backend,
-          projectRoot: this.config.cwd,
-          quiet: true,
-        },
-      );
-
-      console.log(`  ${result.summary}`);
-
-      // Post-dispatch gate: tasks.json MUST exist after this stage
       const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
-      const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
-      if (!fs.existsSync(tasksPath)) {
-        return {
-          success: false,
-          exitCode: 1,
-          error: `Agent completed but did not create tasks.json at ${tasksPath}. Re-run with --force.`,
-        };
-      }
-
+      const state = planToTasks(featureDir, this.config.featureId);
+      const taskCount = state.phases.reduce((sum, p) => sum + p.tasks.length, 0);
+      console.log(`  ✓ Generated ${state.phases.length} phase(s), ${taskCount} task(s) from plan.md (deterministic)`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
