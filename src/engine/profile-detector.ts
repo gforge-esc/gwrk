@@ -1,15 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { ProjectProfile } from "./prompt-conditioner.js";
 
-export interface ProjectProfile {
-  type: string;
-  stack: {
-    language?: string;
-    framework?: string;
-    buildSystem?: string;
-  };
-  layout: string;
-}
+export type { ProjectProfile };
 
 /**
  * Auto-detect project type, stack, and layout from filesystem signals
@@ -17,7 +10,7 @@ export interface ProjectProfile {
 export async function detectProfile(
   projectRoot: string,
 ): Promise<ProjectProfile> {
-  const profile: ProjectProfile = {
+  const profile: ProjectProfile & { stack: NonNullable<ProjectProfile["stack"]> } = {
     type: "unknown",
     stack: {},
     layout: "flat",
@@ -25,8 +18,26 @@ export async function detectProfile(
 
   const files = fs.readdirSync(projectRoot);
 
-  // 1. Detect Type & Stack
-  if (
+  // 1. Self-detection: is this the gwrk project itself?
+  //    Check package.json name — most specific signal.
+  let isGwrk = false;
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
+    );
+    if (pkg.name === "@gwrk/cli") {
+      isGwrk = true;
+    }
+  } catch { /* no package.json */ }
+
+  // 2. Detect Type & Stack (most specific first)
+  if (isGwrk) {
+    profile.type = "pnpm-monorepo";
+    profile.stack.language = "TypeScript";
+    profile.stack.buildSystem = "pnpm";
+    profile.layout = "monorepo";
+    profile._isGwrk = true;
+  } else if (
     files.includes("pnpm-workspace.yaml") ||
     files.includes("pnpm-lock.yaml")
   ) {
@@ -49,7 +60,7 @@ export async function detectProfile(
       if (pkg.dependencies?.react) profile.stack.framework = "React";
       if (pkg.dependencies?.next) profile.stack.framework = "Next.js";
       if (pkg.dependencies?.express) profile.stack.framework = "Express";
-    } catch (e) {
+    } catch {
       // Ignore parse errors
     }
   } else if (files.includes("Cargo.toml")) {
@@ -66,11 +77,6 @@ export async function detectProfile(
     if (files.includes("poetry.lock")) profile.stack.buildSystem = "Poetry";
     else if (files.includes("requirements.txt"))
       profile.stack.buildSystem = "pip";
-  } else if (
-    files.includes("GEMINI.md") ||
-    fs.existsSync(path.join(projectRoot, ".gwrk"))
-  ) {
-    profile.type = "gwrk-native";
   }
 
   // 2. Refine Layout

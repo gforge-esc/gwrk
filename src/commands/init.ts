@@ -72,9 +72,9 @@ export const initCommand = new Command("init")
         const profile = {
           type: options.type || detected.type,
           stack: {
-            language: detected.stack.language,
-            framework: detected.stack.framework,
-            buildSystem: detected.stack.buildSystem,
+            language: detected.stack?.language,
+            framework: detected.stack?.framework,
+            buildSystem: detected.stack?.buildSystem,
           },
           layout: options.layout || detected.layout,
           architecture: options.architecture,
