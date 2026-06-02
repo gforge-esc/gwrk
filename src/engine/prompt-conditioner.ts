@@ -29,7 +29,7 @@ export function conditionPrompt(prompt: string, profile: ProjectProfile): string
   let conditioned = prompt.replace(guardRegex, (match, type, content) => {
     const types = type.split(",").map((t: string) => t.trim());
     if (types.includes(profile.type)) {
-      return content.trim();
+      return content;
     }
     return "";
   });
@@ -53,16 +53,15 @@ function generateProfileXml(profile: ProjectProfile): string {
   const stackTag =
     stackAttrs.length > 0 ? `  <stack ${stackAttrs.join(" ")} />\n` : "";
   
-  let layoutContent = "";
-  if (typeof profile.layout === "string") {
-    layoutContent = profile.layout;
+  let layoutTag = "";
+  if (typeof profile.layout === "string" && profile.layout) {
+    layoutTag = `  <layout type="${profile.layout}" />\n`;
   } else if (typeof profile.layout === "object" && profile.layout !== null) {
-    // For XML simplicity, we just serialize keys if it's an object
-    layoutContent = Object.entries(profile.layout)
+    const layoutAttrs = Object.entries(profile.layout)
       .map(([k, v]) => `${k}="${v}"`)
       .join(" ");
+    layoutTag = `  <layout ${layoutAttrs} />\n`;
   }
-  const layoutTag = layoutContent ? `  <layout ${layoutContent} />\n` : "";
 
   return `<project_profile type="${profile.type}">\n${stackTag}${layoutTag}</project_profile>`;
 }

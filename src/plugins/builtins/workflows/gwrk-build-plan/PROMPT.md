@@ -4,7 +4,12 @@
 **Pillar**: Definition (Governance)
 
 <scope_constraints>
+[type: gwrk-native]
 - Modify ONLY `specs/000-build-plan.md`.
+[/type]
+[type: generic]
+- Modify ONLY the project's build plan or roadmap file.
+[/type]
 - Do NOT create specs, plans, tasks, or code.
 - Do NOT modify existing spec.md or plan.md files.
 - Validate dependency graph acyclicity after every change.

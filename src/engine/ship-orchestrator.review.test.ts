@@ -2,8 +2,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ShipOrchestrator } from "./ship-orchestrator.js";
 import * as reviewPlugin from "../plugins/review-plugin.js";
 import * as stateUtils from "../utils/state.js";
+import { conditionPrompt } from "./prompt-conditioner.js";
+import { detectProfile } from "./profile-detector.js";
 import fs from "node:fs";
 
+vi.mock("./prompt-conditioner.js");
+vi.mock("./profile-detector.js");
 vi.mock("../plugins/review-plugin.js");
 vi.mock("../utils/state.js");
 vi.mock("../utils/gate-runner.js");
@@ -66,17 +70,17 @@ describe("ShipOrchestrator Review Plugin Integration", () => {
     vi.clearAllMocks();
     vi.mocked(reviewPlugin.resolveReviewPlugin).mockResolvedValue(mockPlugin as any);
     vi.mocked(stateUtils.loadTaskState).mockReturnValue(mockTaskState as any);
-    // fs.existsSync returns true for PROMPT.md check
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    // fs.readFileSync returns mock PROMPT.md content
     vi.mocked(fs.readFileSync).mockReturnValue("# Mock Review Prompt\n\nFull production prompt content here.");
+    vi.mocked(detectProfile).mockResolvedValue({ type: 'gwrk-native', stack: {}, layout: 'flat' });
+    vi.mocked(conditionPrompt).mockImplementation((p) => `<conditioned>${p}</conditioned>`);
   });
 
   it("TR-015: stageCodeReview resolves plugin and dispatches via PluginLoader + raw dispatch", async () => {
     const orchestrator = new ShipOrchestrator(mockConfig as any);
 
     // @ts-ignore - accessing private method for testing
-    const result = await orchestrator.stageCodeReview();
+    await orchestrator.stageCodeReview();
 
     // 1. Must resolve the review plugin to get workflow name
     expect(reviewPlugin.resolveReviewPlugin).toHaveBeenCalledWith("/root");
@@ -84,6 +88,10 @@ describe("ShipOrchestrator Review Plugin Integration", () => {
     // 2. Must attempt to load PROMPT.md from the resolved plugin path
     expect(fs.existsSync).toHaveBeenCalled();
     expect(fs.readFileSync).toHaveBeenCalled();
+
+    // Phase 13: Must condition the prompt
+    expect(detectProfile).toHaveBeenCalledWith("/root");
+    expect(conditionPrompt).toHaveBeenCalled();
 
     // 3. Must validate phase scope after dispatch
     expect(reviewPlugin.validatePhaseScope).toHaveBeenCalled();
@@ -93,7 +101,7 @@ describe("ShipOrchestrator Review Plugin Integration", () => {
     const orchestrator = new ShipOrchestrator(mockConfig as any);
 
     // @ts-ignore - accessing private method for testing
-    const result = await orchestrator.stageUatReview();
+    await orchestrator.stageUatReview();
 
     // 1. Must resolve the review plugin to get workflow name
     expect(reviewPlugin.resolveReviewPlugin).toHaveBeenCalledWith("/root");
@@ -101,6 +109,10 @@ describe("ShipOrchestrator Review Plugin Integration", () => {
     // 2. Must attempt to load PROMPT.md from the resolved plugin path
     expect(fs.existsSync).toHaveBeenCalled();
     expect(fs.readFileSync).toHaveBeenCalled();
+
+    // Phase 13: Must condition the prompt
+    expect(detectProfile).toHaveBeenCalledWith("/root");
+    expect(conditionPrompt).toHaveBeenCalled();
 
     // 3. Must validate phase scope after dispatch
     expect(reviewPlugin.validatePhaseScope).toHaveBeenCalled();

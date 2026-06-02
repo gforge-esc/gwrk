@@ -4,10 +4,22 @@ description: Create or update the project constitution for governance and princi
 
 # Workflow: Constitution
 
-This workflow creates or updates the project constitution at `.specify/memory/constitution.md`. The constitution defines non-negotiable principles that govern all specifications and implementations.
+This workflow creates or updates the project constitution. The constitution defines non-negotiable principles that govern all specifications and implementations.
+
+[type: gwrk-native]
+Output location: `.specify/memory/constitution.md`.
+[/type]
+[type: generic]
+Output location: Project-specific memory or documentation directory.
+[/type]
 
 <scope_constraints>
+[type: gwrk-native]
 - Create or update ONLY `.specify/memory/constitution.md`.
+[/type]
+[type: generic]
+- Create or update ONLY the project's constitution file.
+[/type]
 - Do not modify spec.md, plan.md, or any other artifact.
 - Every principle MUST be declarative and testable (not aspirational prose).
 - Amendment requires version bump and changelog entry.
@@ -21,12 +33,19 @@ The constitution is a governance document containing:
 
 ## Prerequisites
 - None for creation.
+[type: gwrk-native]
 - For updates: existing `.specify/memory/constitution.md`.
+[/type]
 
 ## Steps
 
 1.  **Load Existing Constitution** (if exists):
+[type: gwrk-native]
     - Read `.specify/memory/constitution.md`
+[/type]
+[type: generic]
+    - Read the current project constitution.
+[/type]
     - Identify placeholder tokens: `[ALL_CAPS_IDENTIFIER]`
 
 2.  **Collect/Derive Values**:
@@ -49,9 +68,14 @@ The constitution is a governance document containing:
     - Governance section: amendment procedure, versioning policy
 
 4.  **Consistency Propagation**:
+[type: gwrk-native]
     - Check `.specify/templates/plan-template.md` for Constitution Check alignment
     - Check `.specify/templates/spec-template.md` for mandatory sections
     - Check `.specify/templates/tasks-template.md` for principle-driven task types
+[/type]
+[type: generic]
+    - Ensure alignment with existing project templates and standards.
+[/type]
 
 5.  **Produce Sync Impact Report** (as HTML comment at top):
     ```markdown
@@ -71,7 +95,13 @@ The constitution is a governance document containing:
     - Dates in ISO format (YYYY-MM-DD)
     - Principles are declarative and testable
 
-7.  **Write Constitution**: Save to `.specify/memory/constitution.md`.
+7.  **Write Constitution**:
+[type: gwrk-native]
+    Save to `.specify/memory/constitution.md`.
+[/type]
+[type: generic]
+    Save to the project's designated constitution file location.
+[/type]
 
 8.  **Report**:
     - New version and bump rationale

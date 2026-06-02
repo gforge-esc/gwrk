@@ -1,37 +1,67 @@
-import { describe, it, expect, vi } from 'vitest';
-import { WorkflowRuntime } from './workflow-runtime.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { WorkflowRuntime, extractJsonFromOutput } from './workflow-runtime.js';
+import * as conditioner from '../engine/prompt-conditioner.js';
+import * as detector from '../engine/profile-detector.js';
+import * as agentUtils from '../utils/agent.js';
+import { PluginLoader } from './loader.js';
+import fs from 'node:fs/promises';
 
-describe('FR-029: WorkflowRuntime tolerant JSON extraction', () => {
-  it('US-026: should return synthetic success if extraction fails but artifacts are committed', async () => {
-    const runtime = new WorkflowRuntime();
-    vi.spyOn(runtime as any, 'extractJsonFromOutput').mockImplementation(() => {
-      throw new Error('Expected JSON object in agent output');
-    });
-    vi.spyOn(runtime as any, 'hasCommittedArtifacts').mockResolvedValue(true);
-    
-    const result = await runtime.executeWorkflow({
-      agent: 'generalist',
-      prompt: 'Do something',
-      quiet: true,
-      tolerant: true
-    });
-    
-    expect(result.success).toBe(true);
-    expect((result as any).synthetic).toBe(true);
+vi.mock('../engine/prompt-conditioner.js');
+vi.mock('../engine/profile-detector.js');
+vi.mock('../utils/agent.js');
+vi.mock('./loader.js');
+vi.mock('node:fs/promises');
+
+describe('WorkflowRuntime Phase 13: Project Awareness', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('US-026: should throw error if extraction fails and no artifacts are committed', async () => {
-    const runtime = new WorkflowRuntime();
-    vi.spyOn(runtime as any, 'extractJsonFromOutput').mockImplementation(() => {
-      throw new Error('Expected JSON object in agent output');
-    });
-    vi.spyOn(runtime as any, 'hasCommittedArtifacts').mockResolvedValue(false);
+  it('TR-033: should call detectProfile and conditionPrompt during executeWorkflow', async () => {
+    const mockManifest = {
+      name: 'test-workflow',
+      type: 'workflow',
+      outputSchema: { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } }
+    };
     
-    await expect(runtime.executeWorkflow({
-      agent: 'generalist',
-      prompt: 'Do something',
-      quiet: true,
-      tolerant: true
-    })).rejects.toThrow('Expected JSON object');
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: mockManifest as any,
+      path: '/mock/plugin/path'
+    });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    
+    const mockProfile = { type: 'gwrk-native', stack: {}, layout: 'flat' };
+    vi.mocked(detector.detectProfile).mockResolvedValue(mockProfile as any);
+    vi.mocked(conditioner.conditionPrompt).mockReturnValue('<conditioned># Test Prompt</conditioned>');
+    
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({ summary: 'Done', intents: [] }),
+      stderr: '',
+      durationS: 1
+    });
+
+    const runtime = new WorkflowRuntime();
+    await runtime.executeWorkflow('test-workflow', 'input data', { projectRoot: '/mock/root' });
+
+    expect(detector.detectProfile).toHaveBeenCalledWith('/mock/root');
+    expect(conditioner.conditionPrompt).toHaveBeenCalledWith('# Test Prompt', mockProfile);
+    expect(agentUtils.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: expect.stringContaining('<conditioned># Test Prompt</conditioned>')
+    }));
+  });
+});
+
+describe('WorkflowRuntime tolerant JSON extraction', () => {
+  it('should extract JSON from fenced blocks', () => {
+    const stdout = 'Some prose\n```json\n{"summary": "test", "intents": []}\n```\nMore prose';
+    const result = extractJsonFromOutput(stdout);
+    expect(result).toEqual({ summary: 'test', intents: [] });
+  });
+
+  it('should extract bare JSON from the end of output', () => {
+    const stdout = 'Prose before\n{"summary": "bare", "intents": []}\nProse after';
+    const result = extractJsonFromOutput(stdout);
+    expect(result).toEqual({ summary: 'bare', intents: [] });
   });
 });

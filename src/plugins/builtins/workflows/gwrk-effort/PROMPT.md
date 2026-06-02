@@ -113,6 +113,7 @@ Days = Hours ÷ 8
 
 If desired, run `cloc` metrics as a sanity check against SP-derived estimates:
 
+[type: gwrk-native]
 ```bash
 # Definition metrics
 cloc specs docs --include-lang=Markdown --json
@@ -123,6 +124,11 @@ cloc apps packages crates \
   --include-lang="TypeScript,TSX,Rust,CSS,HTML" \
   --json
 ```
+[/type]
+
+[type: generic]
+Run LOC metrics on the project's source and documentation directories as a sanity check.
+[/type]
 
 Compare: if LOC-implied hours diverge >30% from SP-implied hours, investigate.
 

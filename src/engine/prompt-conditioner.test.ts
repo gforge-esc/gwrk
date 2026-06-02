@@ -23,20 +23,32 @@ describe("FR-033: Project-Aware Prompt Conditioning", () => {
       },
     };
 
-    const conditioned = conditionPrompt(prompt, profile);
+    const conditioned = conditionPrompt(prompt, profile as any);
     expect(conditioned).toContain("<project_profile");
     expect(conditioned).toContain('type="pnpm-monorepo"');
+    expect(conditioned).toContain('<layout apps="apps" packages="packages" />');
     expect(conditioned).toContain("Act as a software engineer.");
   });
 
-  it("TR-031.2: gwrk-native profile preserves ADR-004/Commander.js sections", () => {
-    const prompt = "Gated section: [type: gwrk-native] ADR-004 logic [/type]";
+  it("TR-031.1c: injects <project_profile> with string layout", () => {
+    const prompt = "Test";
+    const profile = {
+      type: "pnpm-monorepo",
+      layout: "monorepo",
+    };
+
+    const conditioned = conditionPrompt(prompt, profile);
+    expect(conditioned).toContain('<layout type="monorepo" />');
+  });
+
+  it("TR-031.2: gwrk-native profile preserves ADR-004/Commander.js sections with whitespace", () => {
+    const prompt = "Gated section:\n[type: gwrk-native]\nADR-004 logic\n[/type]";
     const profile = {
       type: "gwrk-native",
     };
 
     const conditioned = conditionPrompt(prompt, profile);
-    expect(conditioned).toContain("ADR-004 logic");
+    expect(conditioned).toContain("Gated section:\n\nADR-004 logic");
   });
 
   it("TR-031.3: non-gwrk profile omits gwrk-native sections", () => {

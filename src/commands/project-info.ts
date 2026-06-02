@@ -23,6 +23,6 @@ export const projectInfoCommand = new Command("info")
       process.stdout.write(
         `Build System: ${profile.stack?.buildSystem || "unknown"}\n`,
       );
-      process.stdout.write(`Layout: ${profile.layout}\n`);
+      process.stdout.write(`Layout: ${typeof profile.layout === 'string' ? profile.layout : JSON.stringify(profile.layout)}\n`);
     }
   });
