@@ -34,6 +34,7 @@
 
 ### 1. Build (MANDATORY)
 
+[type: gwrk-native]
 gwrk is a CLI tool. No Docker, no web server.
 
 ```bash
@@ -42,6 +43,11 @@ pnpm build
 
 > [!CAUTION]
 > If `pnpm build` fails, report as **BLOCKING** infrastructure issue. Cannot proceed.
+[/type]
+
+[type: generic]
+Verify the build process using the project's standard build command (e.g., `npm run build`, `make`, `cargo build`).
+[/type]
 
 ### 1. Load Context
 
@@ -64,12 +70,14 @@ CLOSED=$(jq --arg n "{phase_number}" '[.phases[] | select(.id == $n) | .tasks[] 
 
 ### 3. CLI Command Verification
 
+[type: gwrk-native]
 gwrk commands follow this taxonomy:
 - `gwrk define spec <feature>` — create/rework a spec (NOT `gwrk specify`)
 - `gwrk define plan <feature>` — create a plan
 - `gwrk define tasks <feature>` — generate tasks
 - `gwrk ship <feature> <phase>` — ship a phase
 - `gwrk plugin list` — list plugins
+[/type]
 
 For each user story in scope:
 
@@ -161,8 +169,10 @@ REVIEW FAIL (uat): {story_name} — Expected: {what_user_expects}. Actual: {what
 - ❌ Evaluate code quality (that's `/review-code`'s job)
 - ❌ Write vague notes ("looks wrong" — always include expected vs actual)
 - ❌ Test stories from other phases (stick to "Requirements in scope")
+[type: gwrk-native]
 - ❌ Use `make up` or Docker for CLI-only features
 - ❌ Use `gwrk specify` (correct command is `gwrk define spec`)
+[/type]
 
 ## JSON Intent Format
 

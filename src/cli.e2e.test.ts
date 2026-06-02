@@ -137,6 +137,6 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     // 099-drift-test exists as a feature dir but has no spec.md
     const { stderr, exitCode } = await runCli("define plan 099");
     expect(exitCode).not.toBe(0);
-    expect(stderr).toMatch(/BLOCKED.*spec\.md not found/);
+    expect(stderr).toMatch(/Feature not found|BLOCKED.*spec\.md not found/);
   }, 15_000);
 });

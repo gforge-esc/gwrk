@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
 import { findOpenPr } from "../db/runs.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
@@ -35,6 +36,7 @@ const handlers: Record<string, SlashCommandHandler> = {
     const featureId = args[0];
     const resources = context.monitor.getResources();
     const queueInfo = context.queue.getQueue();
+    const projectId = resolveProjectId(context.projectRoot);
 
     const blocks: KnownBlock[] = [
       {
@@ -61,7 +63,7 @@ const handlers: Record<string, SlashCommandHandler> = {
 
       // Always query SQLite for run history
       try {
-        const runs = listRuns(featureId);
+        const runs = listRuns(featureId, projectId);
         if (runs.length > 0) {
           const recent = runs.slice(0, 5);
           let text = `*Recent runs for ${featureId}:*`;
@@ -125,7 +127,7 @@ const handlers: Record<string, SlashCommandHandler> = {
       // 1. Plan DAG summary
       try {
         const { PlanStore } = await import("../engine/plan-store.js");
-        const store = new PlanStore();
+        const store = new PlanStore(projectId);
         if (!store.isEmpty()) {
           const planStatus = store.getPlanStatus();
 
@@ -158,10 +160,9 @@ const handlers: Record<string, SlashCommandHandler> = {
 
       // 2. Pending PRs (awaiting bless)
       try {
-        const { listRuns: listAllRuns } = await import("../db/runs.js");
         // Find features with PRs that haven't been merged
         const { getStats } = await import("../db/runs.js");
-        const stats = getStats();
+        const stats = getStats(projectId);
         if (stats.length > 0) {
           let statsText = "*📈 Run History:*";
           for (const s of stats.slice(0, 5)) {
@@ -281,8 +282,9 @@ const handlers: Record<string, SlashCommandHandler> = {
           ? phaseArg
           : `phase-${phaseArg.padStart(2, "0")}`
         : undefined;
+      const projectId = resolveProjectId(context.projectRoot);
 
-      const pr = findOpenPr(resolved, phaseId);
+      const pr = findOpenPr(resolved, phaseId, projectId);
       if (!pr) {
         return {
           response_type: "ephemeral",

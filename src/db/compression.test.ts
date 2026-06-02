@@ -43,11 +43,11 @@ describe("FR-H06: Compression recording", () => {
       },
     };
 
-    const id = recordCompression(report, db);
+    const id = recordCompression(report, "test-project", db);
     expect(id).toBeDefined();
     expect(typeof id).toBe("number");
 
-    const record = getCompressionRecord("011-harvest", "phase-1", db);
+    const record = getCompressionRecord("011-harvest", "phase-1", "test-project", db);
     expect(record).toBeDefined();
     expect(record?.estimated_hours).toBe(100);
     expect(record?.actual_coding_hours).toBe(2); // 120 minutes / 60
@@ -61,7 +61,7 @@ describe("FR-H06: Compression recording", () => {
 
     expect(() => {
       // @ts-ignore
-      recordCompression(report, db);
+      recordCompression(report, "test-project", db);
     }).toThrow();
   });
 
@@ -88,9 +88,9 @@ describe("FR-H06: Compression recording", () => {
       },
     };
 
-    recordCompression(report, db);
+    recordCompression(report, "test-project", db);
 
-    const records = listCompressionRecords("list-feat", db);
+    const records = listCompressionRecords("list-feat", "test-project", db);
     expect(Array.isArray(records)).toBe(true);
     expect(records.length).toBe(1);
     expect(records[0].feature_id).toBe("list-feat");

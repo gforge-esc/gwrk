@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import { listRuns } from "../db/runs.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
-
-import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveProjectId } from "../utils/project-id.js";
+import { withSignal } from "../utils/signal.js";
 
 /**
  * gwrk runs <feature> — Query execution history from SQLite
@@ -23,7 +23,8 @@ Examples:
     await withSignal("db runs", async () => {
       const projectRoot = process.cwd();
       const feature = resolveFeature(featureArg, projectRoot);
-      const runs = listRuns(feature);
+      const projectId = resolveProjectId(projectRoot);
+      const runs = listRuns(feature, projectId);
 
       if (runs.length === 0) {
         console.log(`No runs found for ${feature}`);

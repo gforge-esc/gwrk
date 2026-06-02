@@ -107,7 +107,12 @@ Structure:
         {
           "id": "T001",
           "title": "Create CLI entrypoint",
+[type: gwrk-native]
           "description": "Initialize src/cli.ts with Commander.js. Tests: src/cli.test.ts",
+[/type]
+[type: generic]
+          "description": "Detailed description of the task requirements and target files.",
+[/type]
           "status": "open"
         }
       ]
@@ -117,7 +122,12 @@ Structure:
 ```
 
 > [!IMPORTANT]
+[type: gwrk-native]
 > The `description` field MUST include the absolute path to the `.test.ts` files (e.g., `Tests: src/cli.test.ts`). This is structurally MANDATORY because the execution runner uses regex on the description field to locate the tests for each task.
+[/type]
+[type: generic]
+> The `description` field should include references to any relevant test files or documentation to aid the implementing agent.
+[/type]
 
 ### 7. Gate Generation (Deterministic — DO NOT author gates manually)
 

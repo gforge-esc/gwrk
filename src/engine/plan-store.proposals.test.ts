@@ -21,7 +21,7 @@ describe("PlanStore Proposals (Phase 5)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    store = new PlanStore();
+    store = new PlanStore("test-project");
   });
 
   it("should add a proposal", () => {
@@ -34,7 +34,7 @@ describe("PlanStore Proposals (Phase 5)", () => {
     };
 
     store.addProposal(proposal);
-    expect(db.insertProposal).toHaveBeenCalledWith(proposal);
+    expect(db.insertProposal).toHaveBeenCalledWith(proposal, "test-project");
   });
 
   it("should list proposals", () => {
@@ -67,13 +67,13 @@ describe("PlanStore Proposals (Phase 5)", () => {
     expect(db.insertPhase).toHaveBeenCalledWith(expect.objectContaining({
       id: "phase-1",
       status: "DONE",
-    }));
+    }), "test-project");
 
     // Should mark proposal as APPROVED
     expect(db.insertProposal).toHaveBeenCalledWith(expect.objectContaining({
       id: "prop-1",
       status: "APPROVED",
-    }));
+    }), "test-project");
   });
 
   it("should reject a proposal", () => {
@@ -90,6 +90,6 @@ describe("PlanStore Proposals (Phase 5)", () => {
     expect(db.insertProposal).toHaveBeenCalledWith(expect.objectContaining({
       id: "prop-1",
       status: "REJECTED",
-    }));
+    }), "test-project");
   });
 });

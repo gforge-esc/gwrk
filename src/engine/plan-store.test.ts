@@ -21,7 +21,7 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
   let store: PlanStore;
 
   beforeEach(() => {
-    store = new PlanStore();
+    store = new PlanStore("test-project");
     vi.clearAllMocks();
   });
 
@@ -36,7 +36,7 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     
     store.seedPlan(payload.features, payload.phases, payload.edges);
     const status = store.getPlanStatus();
-    expect(db.insertFeature).toHaveBeenCalledWith(payload.features[0]);
+    expect(db.insertFeature).toHaveBeenCalledWith(payload.features[0], "test-project");
     expect(status.features).toContainEqual(expect.objectContaining(payload.features[0]));
   });
 
@@ -85,13 +85,13 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     it('should add a feature', () => {
       const feature = { id: 'F2', name: 'Feat 2', status: 'PLANNED', sp_total: 5 };
       store.addFeature(feature);
-      expect(db.insertFeature).toHaveBeenCalledWith(feature);
+      expect(db.insertFeature).toHaveBeenCalledWith(feature, "test-project");
     });
 
     it('should add a phase', () => {
       const phase = { id: 'F2-P1', feature_id: 'F2', name: 'Phase 1', status: 'PLANNED', seq: 1 };
       store.addPhase(phase);
-      expect(db.insertPhase).toHaveBeenCalledWith(phase);
+      expect(db.insertPhase).toHaveBeenCalledWith(phase, "test-project");
     });
 
     it('should update a phase', () => {
@@ -99,23 +99,23 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
       vi.mocked(db.getPhase).mockReturnValue(existing);
       
       store.updatePhase('F2-P1', { status: 'IN_PROGRESS' });
-      expect(db.insertPhase).toHaveBeenCalledWith({ ...existing, status: 'IN_PROGRESS' });
+      expect(db.insertPhase).toHaveBeenCalledWith({ ...existing, status: 'IN_PROGRESS' }, "test-project");
     });
 
     it('should remove a phase', () => {
       store.removePhase('F2-P1');
-      expect(db.deletePhase).toHaveBeenCalledWith('F2-P1');
+      expect(db.deletePhase).toHaveBeenCalledWith('F2-P1', "test-project");
     });
 
     it('should add an edge', () => {
       const edge = { from_id: 'F1', to_id: 'F2', edge_type: 'DEPENDS_ON' };
       store.addEdge(edge);
-      expect(db.insertEdge).toHaveBeenCalledWith(edge);
+      expect(db.insertEdge).toHaveBeenCalledWith(edge, "test-project");
     });
 
     it('should remove an edge', () => {
       store.removeEdge('F1', 'F2', 'DEPENDS_ON');
-      expect(db.deleteEdge).toHaveBeenCalledWith('F1', 'F2', 'DEPENDS_ON');
+      expect(db.deleteEdge).toHaveBeenCalledWith('F1', 'F2', 'DEPENDS_ON', "test-project");
     });
   });
 });

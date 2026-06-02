@@ -194,9 +194,9 @@ This is a P0 daily driver item. Without project scoping, running `gwrk init` on 
 
 ## Runbook
 
-> **Branch**: `feature/p0-daily-driver`
+> **Branch**: `feat/001-cli-core`
 > **Baseline**: 744 tests passing, `pnpm build` clean
-> **Last updated**: 2026-06-01T17:00
+> **Last updated**: 2026-06-01T19:51
 
 ### Step 1: Dead code cleanup ✅ DONE
 ```bash
@@ -227,7 +227,7 @@ gwrk define tests 001 --phase 10 --force  # run #6821
 gwrk define tasks 001 --phase 10           # run #6822
 ```
 
-### Step 6: Ship P10 — Init Wizard ⏳ NEXT
+### Step 6: Ship P10 — Init Wizard  ✅ DONE
 ```bash
 gwrk ship 001 10
 ```
@@ -247,65 +247,74 @@ gwrk ship 001 10
 
 ---
 
-### Step 7: Define P13 — Prompt Decontamination
+### Step 7: Ship P12 — Output Parity ✅ DONE
 ```bash
-gwrk define tests 001 --phase 13
-gwrk define tasks 001 --phase 13
+gwrk ship 001 12
 ```
+Shipped: tolerant flag handling in `WorkflowRuntime`, quiet-mode support across CLI subcommands.
 
-### Step 8: Ship P13 — Prompt Decontamination
+### Step 8: Ship P13 — Prompt Decontamination ✅ DONE
 ```bash
 gwrk ship 001 13
 ```
-**What ships**: `prompt-conditioner.ts`, `project-info.ts`, 13 PROMPT.md files refactored (84 gwrk-native refs removed), `gwrk project info` command.
+Shipped: `prompt-conditioner.ts`, `project-info.ts`, `[type: gwrk-native]` guards on all 15 PROMPT.md files, `gwrk project info` command.
 
-**Depends on**: Step 6 (init creates project profiles that prompt conditioner reads).
+**Post-ship fix** (manual, 2026-06-01): Guard resolver was broken — `conditionPrompt()` never matched `gwrk-native` against `pnpm-monorepo` profile type. Fixed in `4f741e8`: `_isGwrk` flag + `generic` always-include. All 5 contaminated files verified CLEAN after conditioning.
 
-**Done when**:
-- `gwrk define plan` on `~/Code/EnergyWork` → no Commander.js, no `src/commands/`, no ADR-004
-- `grep -r "Commander.js\|better-sqlite3\|ADR-004" src/plugins/builtins/workflows/*/PROMPT.md` → ZERO ungated matches
-- `pnpm build` clean, `pnpm test` passing
-
----
-
-### Step 9: Add Phase 14 to F001 spec and plan
-```bash
-# Add US/FR for project-scoped DB isolation to specs/001-cli-core/spec.md
-# Add Phase 14 section to specs/001-cli-core/plan.md
-# Scaffolding already committed:
-#   src/utils/project-id.ts
-#   src/db/migrations/009-project-scoping.sql
-#   src/db/index.ts safeAddColumn additions
-```
-
-### Step 10: Define P14 — Project-Scoped DB
-```bash
-gwrk define tests 001 --phase 14
-gwrk define tasks 001 --phase 14
-```
-
-### Step 11: Ship P14 — Project-Scoped DB
+### Step 9: Ship P14 — Project-Scoped DB ✅ DONE
 ```bash
 gwrk ship 001 14
 ```
-**What ships**: `project_id` column on 8 tables, all queries scoped, `PlanStore` accepts `projectId`, commands derive project from `cwd`.
+Shipped: `project_id` column on 8 tables, all queries scoped, `PlanStore` accepts `projectId`, commands derive project from `cwd`.
 
-**Depends on**: Step 6 (init registers projects). Independent of Step 8 (P13).
+**Also fixed** (manual, 2026-06-01):
+- `workflow-runtime.ts`: RUN_COMMAND redirect guard changed from throw to warn-and-filter (was breaking `define tasks` 100% of the time)
+- `profile-detector.ts`: imports `ProjectProfile` from `prompt-conditioner.ts`, detects gwrk by package name `@gwrk/cli`
+
+---
+
+### Step 10: Write agy adapter ← **YOU ARE HERE**
+
+> [!CAUTION]
+> **HARD DEADLINE: June 18, 2026.** `gemini` CLI discontinued. See Section G for full analysis.
+
+```bash
+# 1. Write adapter
+# src/plugins/builtins/agents/agy/adapter.ts — implement AgentBackend
+
+# 2. Register in index.ts
+# Add agy to BUILTIN_AGENTS
+
+# 3. Update defaults
+# src/utils/agent.ts L425: "gemini" → "agy"
+# src/engine/router.ts L97: ["agy", "gemini", "claude"]
+
+# 4. Test dispatch
+agy -p "echo hello" --dangerously-skip-permissions  # verify exit code 0
+```
+
+**What ships**: `AgyAdapter` backend, default fallback switch, `AGENTS.md` governance sync.
+
+**Key differences from gemini adapter**:
+- YOLO: `--dangerously-skip-permissions` (not `--approval-mode yolo`)
+- Sandbox: omit flag = no sandbox (not `--sandbox false`)
+- Model: **no `--model` flag** — server-side selection. `task.model` already optional on `TaskDispatch`. Adapter ignores it.
+- Governance: writes `AGENTS.md` (not `GEMINI.md`)
+- Exit codes: unknown — must test
 
 **Done when**:
-- `gwrk init` on `~/Code/EnergyWork` → project registered in DB
-- `gwrk plan status` on EnergyWork → ONLY EnergyWork features
-- `gwrk plan status` on gwrk → ONLY gwrk features
-- No cross-project pollution in `runs`, `stats`, `gates`, `compression`
+- `agy -p "echo hello" --dangerously-skip-permissions` → exit 0
+- `gwrk define plan 001 --phase 10` dispatches to `agy` (visible in router log: `Router selected backend: agy`)
+- `which gemini || true` — gwrk still works without gemini on PATH
 - `pnpm build` clean, `pnpm test` passing
 
 ---
 
-### Step 12: Verify daily driver
+### Step 11: Verify daily driver
 ```bash
 cd ~/Code/EnergyWork
 gwrk init                    # interactive wizard works
-gwrk define plan EnergyWork  # EnergyWork-appropriate output
+gwrk define plan EnergyWork  # EnergyWork-appropriate output (agy backend)
 gwrk plan status             # ONLY EnergyWork features
 cd ~/Code/gwrk
 gwrk plan status             # ONLY gwrk features
@@ -319,10 +328,10 @@ gwrk plan status             # ONLY gwrk features
 
 | Item | What | Work |
 |---|---|---|
-| P12 | Define output parity | `gwrk ship 001 12` — wire `quiet: true` in define commands |
 | Lifecycle status | `gwrk plan status 001 --phases` | New command: spec→plan→tests→tasks→ship readiness per phase |
 | Doc rewrite | `architecture.md`, `WHAT_IS_GWRK.md`, `README.md`, `ROADMAP.md` | Remove gwrk-specific refs. Present gwrk as project-agnostic. |
 | CLI cleanup | Remove `setup` from help | Absorbed by P10 — verify or manual cleanup |
+| Gate authoring | `define tests` → gate scripts | Currently generates tasks.json but NOT gate .sh files. Ship auto-approves missing gates. |
 
 ---
 
@@ -348,4 +357,234 @@ This baseline MUST NOT regress.
 | 2026-06-01 | Added Section F (project-scoped DB isolation). Elevated to P0. |
 | 2026-06-01 | Fixed define-tests prompt/guardrail contradiction. |
 | 2026-06-01 | Rewrote execution section as operational runbook. |
+| 2026-06-01 | Restored full analysis sections below runbook. Audit accumulates; it doesn't delete. |
+| 2026-06-01 | Added Section G: gemini→agy migration. Hard deadline June 18. P0. |
+| 2026-06-01 | Shipped P10, P12, P13, P14. Fixed prompt-conditioner guard resolver, workflow-runtime RUN_COMMAND guard. Updated runbook — agy adapter is sole remaining daily driver blocker. |
+
+---
+
+## Analysis: Priority Breakdown
+
+### Execution Order
+
+| Priority | What | Feature | Ship Command | Blocks Daily Driver? |
+|---|---|---|---|---|
+| **P0** | Remove dead `.specify/` code + `agy` adapter | F001 cleanup | Manual commit | YES (init creates garbage) |
+| **P0** | Fix `plan_features` DB — delete foreign/phantom entries, consolidate duplicates, update statuses | F018 | SQL + `gwrk plan seed --force` | **YES** (tool can't self-report) |
+| **P0** | Reconcile coverage matrices in all spec/plan files | F001-F014 | Manual plan edits | **YES** (specs lie about what's done) |
+| **P0** | Init wizard + setup absorption + profile detection | F001 Phase 10 | `gwrk ship 001 10` | **YES** |
+| **P0** | Prompt decontamination (84 refs in 13 PROMPT.md) | F001 Phase 13 | `gwrk ship 001 13` | **YES** |
+| **P0** | Project-scoped DB isolation (8 tables, 10+ queries) | F001 (new phase) | `gwrk ship 001 <TBD>` | **YES** (cross-project pollution) |
+| **P1** | Define output parity (quiet mode) | F001 Phase 12 | `gwrk ship 001 12` | No — quality |
+| **P1** | Feature lifecycle status command (`gwrk plan status 001 --phases`) | New feature | TBD | No — but daily driver wants it |
+| **P1** | Project-agnostic doc rewrite (`architecture.md`, `README.md`, `WHAT_IS_GWRK.md`, CLI help) | Docs | Manual | No — blocks "shareable" |
+| **P2** | Ship loop hardening (FM-4/5/6) | F004 | Manual | No — quality-of-life |
+| **P2** | LaunchAgent e2e verification | F002 | `gwrk server install` | No — server optional |
+| **P3** | Obsidian integration spec | F020 (new) | `gwrk define spec 020` | No — backlog |
+| **P3** | Server-initiated harvest | F011 P6 (new) | Spec amendment first | No — architectural |
+| **P3** | State contracts | F001 Phase 9 | `gwrk ship 001 9` | No — deferred |
+
+### Define-Tests Prompt/Guardrail Contradiction (Resolved 2026-06-01)
+
+> [!WARNING]
+> **The `gwrk define tests` → `gwrk ship` pipeline was broken for Phase 10.**
+> Three consecutive runs failed (runs #6818, #6819, #6820). Root cause: a **prompt/guardrail contradiction**.
+>
+> - `gwrk-define-tests/PROMPT.md` Section 6 (L110-118) told the agent: *"MANDATORY FOR TYPESCRIPT: You MUST also generate minimal source file stubs"*
+> - `tests-generate.ts` L250-279 reverts ANY `src/*.ts` modification that isn't `*.test.ts`
+>
+> The agent followed the prompt, wrote stubs in `src/`, and the guardrail correctly reverted all changes. Failed 100% of the time.
+
+**Resolution**: Option B chosen — removed Section 6 (stub mandate) from PROMPT.md. The guardrail was correct; the prompt was wrong. RED tests importing non-existent modules IS the intended red state. Committed in `4b89f0b`.
+
+**Options considered:**
+
+| Option | Change | Risk |
+|---|---|---|
+| A. Relax guardrail | `tests-generate.ts`: Allow new `src/` files but block modifications to existing ones. | Agent could create garbage stubs that conflict with real implementation |
+| B. Remove stub mandate from prompt ✅ | `gwrk-define-tests/PROMPT.md` L110-118: Delete Section 6 entirely. | Tests won't compile until implementation starts. Acceptable — that IS the red state. |
+
+### Define-Tasks RUN_COMMAND Violation (Observed 2026-06-01)
+
+`gwrk define tasks 001 --phase 13` (run #6859) failed with:
+```
+⚠ Blocked WRITE_FILE intent targeting tasks.json — agent already applied changes natively.
+Stage PLAN_TO_TASKS failed: Workflow execution violation: Use WRITE_FILE JSON intent only.
+```
+
+**Root cause**: Agent returned JSON with a `RUN_COMMAND` intent containing a shell redirect (`>` or `tee`). Guard at `workflow-runtime.ts` L288-296 catches this. Meanwhile, the agent had already written `tasks.json` natively — the file on disk was correct.
+
+**Workaround**: Commit the natively-written tasks.json directly. The agent's work landed; the runtime threw a false positive.
+
+**Proper fix**: This is P12/T067 — "Tolerant JSON extraction in workflow-runtime.ts". When an agent does native work AND returns intents, the runtime should prefer the native result and drop redundant intents instead of throwing.
+
+### Dependency Analysis
+
+> [!IMPORTANT]
+> **The sequential dependency is real**: P10 (init wizard) MUST ship before P13 (prompt decontamination) because `prompt-conditioner.ts` depends on project profile data that `init` creates. P14 (DB scoping) depends on P10 because scoping needs `projects` table registration from `init`. P13 and P14 are independent of each other and could ship in parallel after P10.
+
+### Fallback: If `gwrk define` stays broken
+
+The define pipeline dispatches to Gemini CLI which has been hitting 429s and guardrail violations. If it doesn't stabilize:
+
+1. **Write tests manually** for P10/P13/P14 — the spec has all the TR-### requirements mapped
+2. **Ship with `gwrk ship 001 10 --skip-define`** or implement directly on branch
+3. This is pragmatic, not ideal. The pipeline is the product — but the product needs to work on other projects before the pipeline can be perfected
+
+---
+
+## Analysis: P0 Items Detail
+
+### 1. Dead Code Cleanup ✅
+- ~~Remove `.specify/templates` from `init.ts:105`~~
+- ~~Remove `.specify` refs from `scaffold-feature.ts`~~
+- ~~Delete `src/plugins/builtins/agents/agy/adapter.ts`~~
+
+### 2. Build Plan DB Reconciliation ✅
+- ~~Delete foreign entries (047, 049)~~
+- ~~Delete phantom entries (F009, F010, F014-R, F015-F017, F999-missing)~~
+- ~~Consolidate to spec-based IDs~~
+- ~~Update statuses to match reality~~
+
+### 3. Coverage Matrix Reconciliation ✅
+- ~~F004, F011, F002, F003, F014 coverage matrices updated~~
+
+### 4. F001 Phase 10: Init Wizard ([plan.md L265](specs/001-cli-core/plan.md))
+- `profile-detector.ts` NEW — project type auto-detection
+- `init.ts` REWRITE — interactive wizard, absorb `setup.ts`
+- `config.ts` MODIFY — extend schema with project profile
+- `setup.ts` DELETE
+- Spec: US-001 (R3), FR-001 (R3), FR-030–032
+
+### 5. F001 Phase 13: Prompt Decontamination ([plan.md L371](specs/001-cli-core/plan.md))
+- `prompt-conditioner.ts` NEW
+- 13 PROMPT.md files refactored (84 gwrk-native refs)
+- `project-info.ts` NEW
+- Spec: US-028, FR-033–035
+- Depends on Phase 10
+
+### 6. F001 Phase 14 (NEW): Project-Scoped DB Isolation
+
+**Root cause**: The `047-ontology-integration` leak wasn't a data accident — it's a structural gap. The global DB has no project scoping. See [Section F](#f-global-db-has-no-project-scoping-root-cause-of-e2) for full evidence.
+
+**Deliverables**:
+- `src/utils/project-id.ts` NEW — `resolveProjectId(cwd)` canonical utility
+- `src/db/migrations/009-project-scoping.sql` NEW — add `project_id TEXT` + indexes to 8 tables
+- `src/db/index.ts` MODIFY — `safeAddColumn` safety net for all 8 tables
+- `src/db/plan.ts` MODIFY — all query functions accept and filter by `projectId`
+- `src/db/runs.ts` MODIFY — `listRuns()`, `getStats()` filter by project
+- `src/db/gates.ts` MODIFY — scope gate results to project
+- `src/db/compression.ts` MODIFY — scope compression metrics
+- `src/db/issues.ts` MODIFY — scope issues
+- `src/db/plugins.ts` MODIFY — scope routing history
+- `src/engine/plan-store.ts` MODIFY — `PlanStore` constructor accepts `projectId`
+- `src/engine/drift-detector.ts` MODIFY — project-scoped drift checks
+- `src/commands/plan.ts` MODIFY — all subcommands derive and pass `projectId`
+- `src/commands/stats.ts` MODIFY — project-scoped stats
+- `src/commands/runs.ts` MODIFY — project-scoped run history
+- Spec: needs US/FR additions to `specs/001-cli-core/spec.md`
+- Depends on Phase 10 (init must register projects before scoping works)
+
+---
+
+## Analysis: P1 — Quality & Shareability
+
+- **F001 Phase 12**: Define output parity (quiet mode)
+
+- **Feature Lifecycle Status**: No single command answers "where is 001 P10?" The artifact lifecycle (spec → plan → tests → tasks → ship) is invisible. `gwrk plan status` shows the DAG but not whether spec predates plan, whether tests exist, or whether tasks.json is populated. Desired output:
+  ```
+  001-cli-core / Phase 10: Unified Init
+    spec.md    updated 2026-05-30   ✅
+    plan.md    updated 2026-05-30   ✅ (after spec)
+    tests      defined 2026-06-01   ✅ (gap-matrix.md exists)
+    tasks      defined 2026-06-01   ✅ (tasks.json exists)
+    shipped    —                    ⏳ ready to ship
+  ```
+
+- **Project-Agnostic Doc Rewrite**: Same contamination as the PROMPTs but in human-facing docs. These files reference gwrk-specific tooling (vitest, Commander.js, SQLite, `src/` layout) that screams "this tool only works on itself":
+  - `docs/architecture.md` — hardcodes gwrk's stack as THE architecture
+  - `docs/WHAT_IS_GWRK.md` — presents gwrk as self-referential
+  - `docs/README.md` — setup instructions assume gwrk's own toolchain
+  - CLI help text — `setup` still listed as standalone command (absorbed by P10)
+  - `ROADMAP.md` — stale (test counts wrong, daily driver section lies)
+
+## G. Agent Backend Migration: gemini → agy (HARD DEADLINE: 2026-06-18)
+
+> [!CAUTION]
+> **Gemini CLI is discontinued June 18, 2026.** It is replaced by `agy` (Antigravity CLI v1.0.3+). Every `gwrk ship`, `gwrk define`, and review dispatch currently shells out to `gemini`. When it stops working, all agentic workflows break. **17-day countdown from audit date.**
+
+### CLI Surface Comparison (researched 2026-06-01)
+
+| Capability | `gemini` | `agy` | Migration Impact |
+|---|---|---|---|
+| Non-interactive (headless) | `-p "prompt"` | `-p "prompt"` / `--print` | ✅ Same flag |
+| YOLO mode | `--approval-mode yolo` | `--dangerously-skip-permissions` | 🔶 Flag rename |
+| Sandbox control | `--sandbox false` | `--sandbox` (flag-on) | ✅ Omitting = no sandbox (gwrk default for write workflows). Only add `--sandbox` for read-only workflows. |
+| Model selection | `--model gemini-3-flash-preview` | ❌ No `--model` flag | ✅ **Server-side only.** `task.model` is already `optional` on `TaskDispatch` (L315). Adapter simply ignores it. Router model tier becomes advisory. |
+| Slash commands | `-p "/plan specs/001"` | `-p "/plan specs/001"` | ✅ Same pattern |
+| Output format | `--output-format json` | ❌ Not exposed | ⚠️ gwrk doesn't use this — N/A |
+| Governance file | `GEMINI.md` | `AGENTS.md` | 🔶 `syncGovernance` targets `AGENTS.md`. Both files exist in gwrk already. |
+| Session resume | `--resume latest` | `--continue` / `--conversation ID` | 🔶 gwrk doesn't use resume — N/A |
+| Exit codes | 53=turn_limit, 42=usage | Unknown — must test | 🔴 Test required |
+| Print timeout | N/A | `--print-timeout 5m0s` (default) | ✅ Useful — extend for long ship runs |
+| Workspace dirs | `--include-directories` | `--add-dir` | 🔶 Flag rename |
+
+### Key Research Findings
+
+1. **`agy` is a Go binary** (Mach-O arm64). Not a Node wrapper like gemini CLI.
+2. **Config paths**:
+   - Settings: `~/.gemini/antigravity-cli/settings.json` (color scheme, permissions, trusted workspaces)
+   - Shared config: `~/.gemini/config/config.json` (userSettings, browserJsExecutionPolicy, `useAiCredits`)
+   - MCP: `~/.gemini/config/mcp_config.json`
+   - Plugins: `~/.gemini/config/plugins/`
+   - Projects cache: `~/.gemini/antigravity-cli/cache/projects.json`
+3. **Governance**: `agy` reads `AGENTS.md` (already exists in gwrk with `<!-- gwrk:begin -->` markers).
+4. **Model selection**: Server-side. No CLI flag needed. This simplifies the adapter — drop the `--model` arg entirely.
+5. **G1 Credits**: `useAiCredits: true` in shared config enables fallback to paid credits when quota runs out.
+6. **Agent discovery**: Binary references `{workspace}/.agents/agents/{agent_name}/agent.json` — potential for richer agent config in future.
+7. **Known env vars**: `AGY_CLI_DISABLE_LATEX`, `AGY_CLI_HIDE_ACCOUNT_INFO`
+
+### Files to Change
+
+| File | Change |
+|---|---|
+| `src/plugins/builtins/agents/agy/adapter.ts` | **[NEW]** `AgyAdapter` implementing `AgentBackend`. ~80 lines — simpler than gemini adapter (no model flag, no sandbox false). |
+| `src/plugins/builtins/agents/index.ts` | Register `agy`. Keep `gemini` for backward compat. |
+| `src/engine/router.ts` L97 | Change fallback: `["agy", "gemini", "claude"]` → then `["agy", "claude"]` after June 16. |
+| `src/utils/agent.ts` L425 | Default backend: `"gemini"` → `"agy"`. |
+| `GeminiAdapter.syncGovernance` | Keep writing `GEMINI.md` — gemini CLI reads it. |
+| `AgyAdapter.syncGovernance` | Write `AGENTS.md` — agy reads it. Same `<!-- gwrk:begin -->` markers. |
+| `src/server/quota-prober.ts` | Probe `agy` availability. Rate limit pattern may differ (429s vs G1 credit fallback). |
+
+### Remaining Open Questions
+
+> [!IMPORTANT]
+> 1. **Exit codes**: What does `agy` return on turn limit? Usage error? Need a test dispatch that exercises these paths.
+> 2. **Rate limits**: Does `agy` share gemini's 429 pattern, or does G1 credit fallback eliminate 429s entirely?
+> 3. **Sandbox default**: Confirmed omitting `--sandbox` = no sandbox. But does `--dangerously-skip-permissions` also disable sandbox, or are they orthogonal?
+
+### Feature Assignment
+
+Standalone **F021-agent-backend-migration** (not F001 — this is cross-cutting, not CLI-core):
+- Phase 1: Write adapter, register, test locally (1-2 days — simpler than gemini adapter)
+- Phase 2: Cutover — change defaults, update fallback chain (June 16, 2-day buffer)
+
+---
+
+## Analysis: P2/P3 — Backlog
+
+- Ship loop hardening (FM-4/5/6)
+- LaunchAgent e2e
+- Obsidian integration (needs spec — F020)
+- Server-initiated harvest (needs F011 spec amendment)
+- State contracts (F001 P9)
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **Phase 14 scope**: Should project scoping ship before or after prompt decontamination (Phase 13)? Recommend after — init wizard (P10) must register projects first, but prompt decontamination doesn't depend on DB scoping.
+> 2. **ROADMAP.md**: Should the audit rewrite this or is it a separate PR?
+
 

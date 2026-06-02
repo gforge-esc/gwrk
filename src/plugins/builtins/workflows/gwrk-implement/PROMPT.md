@@ -43,6 +43,7 @@ Executes ALL TASKS in a phase greedily via the tasks.json ready queue. Each task
 
 ### 1. Dev Environment
 
+[type: gwrk-native]
 ```bash
 # Kill any zombie dev processes from previous sessions
 pkill -f 'pnpm.*dev' || true
@@ -56,6 +57,11 @@ pnpm build
 > in `config.ts`), new fields MUST be `.optional()` OR all existing test mocks MUST be updated
 > in the same commit. Adding required fields without updating all consumers = guaranteed
 > global test regression across 7+ suites. This is a circuit-breaker-level bug.
+[/type]
+
+[type: generic]
+Verify the dev environment and build baseline using the project's standard commands.
+[/type]
 
 ### 1. Preflight
 
@@ -84,6 +90,7 @@ else
 fi
 
 # Verify tasks.json exists and has the phase
+[type: gwrk-native]
 TASKS_FILE="{feature_dir}/.gwrk/tasks.json"
 if [[ ! -f "$TASKS_FILE" ]]; then
   STOP: "tasks.json not found. Run /plan-to-tasks first."
@@ -100,6 +107,11 @@ if [[ "$READY_COUNT" -eq 0 ]]; then
   echo "✓ No open tasks for Phase {phase_number}. Assuming completion."
   exit 0
 fi
+[/type]
+
+[type: generic]
+Verify tasks.json and ensure there are open tasks for the specified phase.
+[/type]
 ```
 
 <stop_criteria>
@@ -227,6 +239,7 @@ git add -A && git commit -m "feat: Phase {phase_number} complete"
 
 ### 4. Create Pull Request
 
+[type: gwrk-native]
 ```bash
 TASKS_SUMMARY=$(jq -r --arg n "{phase_number}" '.phases[] | select(.id == $n) | .tasks[] | "- [x] \(.title)"' "$TASKS_FILE")
 
@@ -243,13 +256,20 @@ $TASKS_SUMMARY
 " \
   --base develop
 ```
+[/type]
+
+[type: generic]
+Create a pull request or merge request following the project's contribution guidelines.
+[/type]
 
 ### 5. Cleanup & Report
 
+[type: gwrk-native]
 ```bash
 # Kill any local dev processes started during session
 pkill -f 'pnpm.*dev' || true
 ```
+[/type]
 
 ```
 Phase {phase_number} COMPLETE.

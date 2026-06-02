@@ -26,10 +26,10 @@ describe("FR-H14: Issues Ledger", () => {
       author: "tester",
     };
 
-    const id = saveIssue(issue, db);
+    const id = saveIssue(issue, "test-project", db);
     expect(id).toBeGreaterThan(0);
 
-    const issues = listIssues("011-harvest", db);
+    const issues = listIssues("011-harvest", "test-project", db);
     expect(issues.length).toBe(1);
     expect(issues[0].issue_number).toBe(101);
   });
@@ -45,14 +45,14 @@ describe("FR-H14: Issues Ledger", () => {
       author: "tester",
     };
 
-    saveIssue(issue, db);
+    saveIssue(issue, "test-project", db);
     updateIssue(
       102,
       { state: "closed", closed_at: new Date().toISOString() },
       db,
     );
 
-    const issues = listIssues("011-harvest", db);
+    const issues = listIssues("011-harvest", "test-project", db);
     expect(issues[0].state).toBe("closed");
     expect(issues[0].closed_at).toBeDefined();
   });

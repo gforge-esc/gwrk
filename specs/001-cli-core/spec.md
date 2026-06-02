@@ -356,6 +356,18 @@ As a PE, I want `gwrk project info` to show me what gwrk thinks my project is, s
 1. `gwrk project info` shows: type, stack (all fields), layout, architecture docs found/missing, conditioning mode (gwrk-native vs generic), source of each field (auto-detected vs explicit).
 2. `--format json` returns valid JSON matching `ProjectProfileSchema`. Pipeable to jq.
 
+### US-030 - Project-Scoped DB Isolation (P0) ⭐ **NEW (2026-06-01)**
+As a PE, I want my project data (plans, runs, stats) to be isolated by project in the global SQLite database, so that using gwrk on multiple projects doesn't lead to cross-project pollution or leaked features.
+
+**Implements**: FR-036, FR-037, FR-038, FR-039, FR-040
+
+**Acceptance**:
+1. `gwrk plan status` on Project A only shows features belonging to Project A.
+2. `gwrk db runs` only shows runs for the current project.
+3. `gwrk db stats` aggregates stats only for the current project.
+4. `gwrk tasks next` correctly identifies the next task for the current project even if multiple projects are being managed in the same workstation.
+5. Project ID is derived canonically using `MD5(projectRoot)`.
+
 ---
 
 ## 3. Functional Requirements
@@ -394,6 +406,11 @@ As a PE, I want `gwrk project info` to show me what gwrk thinks my project is, s
 - **FR-033**: ⭐ **NEW (2026-05-30 R3)** Inject `<project_profile>` XML block into every workflow prompt at `WorkflowRuntime.executeWorkflow()`, BEFORE the prompt is sent to the agent. Single integration point for all workflows. (US-028)
 - **FR-034**: ⭐ **NEW (2026-05-30 R3)** Refactor all 15 PROMPT.md files: architecture references, source layouts, build/test commands, and protocol references (ADR-004, agent-native) MUST be gated behind `type: "gwrk-native"`. Non-gwrk profiles get generic "detect from project" language. (US-028)
 - **FR-035**: ⭐ **NEW (2026-05-30 R3)** `gwrk project info` — display resolved profile with: type, stack, layout, architecture, conventions, conditioning mode (gwrk-native vs generic), source of each field (auto vs explicit). Supports `--format json`. (US-029)
+- **FR-036**: ⭐ **NEW (2026-06-01)** Canonical `resolveProjectId(cwd)` utility using MD5(projectRoot). (US-030)
+- **FR-037**: ⭐ **NEW (2026-06-01)** Migration 009 adds `project_id TEXT` and indexes to 8 tables: `plan_features`, `plan_phases`, `plan_edges`, `plan_proposals`, `gate_results`, `compression`, `issues`, and `routing_history`. (US-030)
+- **FR-038**: ⭐ **NEW (2026-06-01)** DB access layer updates: all query functions for the 8 target tables accept and filter by `projectId`. (US-030)
+- **FR-039**: ⭐ **NEW (2026-06-01)** `PlanStore` refactor to accept `projectId` and scope all internal DB calls. (US-030)
+- **FR-040**: ⭐ **NEW (2026-06-01)** CLI command updates: `plan`, `stats`, and `runs` derive `projectId` from `cwd` and pass it through the engine/DB layers. (US-030)
 
 ### Error States
 

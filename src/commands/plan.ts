@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { PlanStore } from "../engine/plan-store.js";
 import { color } from "../utils/format.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const planCommand = new Command("plan")
@@ -45,7 +46,8 @@ planCommand
   .option("--json", "Output in JSON format")
   .action(async (options, command) => {
     await withSignal("plan status", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
       const out = options.json ? createOutput("json") : resolveFormat(command);
       const status = store.getPlanStatus();
@@ -97,7 +99,8 @@ planCommand
     await withSignal("plan seed", async () => {
       const projectRoot = process.cwd();
       const planPath = path.join(projectRoot, "specs", "000-build-plan.md");
-      const store = new PlanStore();
+      const projectId = resolveProjectId(projectRoot);
+      const store = new PlanStore(projectId);
 
       if (options.dryRun) {
         const { parsePlan } = await import("../utils/parser-plan.js");
@@ -122,7 +125,8 @@ planCommand
     await withSignal("plan init", async () => {
       const projectRoot = process.cwd();
       const specsDir = path.join(projectRoot, "specs");
-      const store = new PlanStore();
+      const projectId = resolveProjectId(projectRoot);
+      const store = new PlanStore(projectId);
 
       if (options.dryRun) {
         const readiness = store.scanReadiness(specsDir);
@@ -147,7 +151,8 @@ planCommand
   .option("--json", "Output in JSON format")
   .action(async (options, command) => {
     await withSignal("plan next", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
       const solver = await store.getSolver();
       const ready = solver.getReadyQueue();
@@ -179,7 +184,8 @@ planCommand
   .option("--json", "Output in JSON format")
   .action(async (options, command) => {
     await withSignal("plan critical", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
       const solver = await store.getSolver();
       const { path, warnings } = solver.getCriticalPath();
@@ -217,7 +223,8 @@ planCommand
   .option("--json", "Output in JSON format")
   .action(async (options, command) => {
     await withSignal("plan waves", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
       const solver = await store.getSolver();
       const waves = solver.getTopologicalWaves();
@@ -249,7 +256,8 @@ planCommand
   .option("--json", "Output in JSON format")
   .action(async (options) => {
     await withSignal("plan verify", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
 
       const { DriftDetector } = await import("../engine/drift-detector.js");
@@ -318,7 +326,8 @@ planCommand
   .option("--stdout", "Print to stdout instead of writing to file")
   .action(async (options) => {
     await withSignal("plan render", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
       const md = await store.render();
 
@@ -344,7 +353,8 @@ planCommand
   .option("--sp <sp>", "SP estimate (for phases)", "0")
   .action(async (type, id, name, options) => {
     await withSignal("plan add", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
 
       if (type === "feature") {
         store.addFeature({
@@ -387,12 +397,13 @@ planCommand
   .option("--type <type>", "Specify 'feature' or 'phase'", "phase")
   .action(async (id, options) => {
     await withSignal("plan remove", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
 
       if (options.type === "feature") {
         const { deleteFeature } = await import("../db/plan.js");
-        deleteFeature(id);
+        deleteFeature(id, projectId);
         console.log(
           `${color.GREEN}✓${color.RESET} Removed feature ${color.BOLD}${id}${color.RESET} and all its phases/edges`,
         );
@@ -411,7 +422,8 @@ planCommand
   .option("--type <edgeType>", "Edge type", "DEPENDS_ON")
   .action(async (action, from, to, options) => {
     await withSignal("plan dep", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
 
       if (action === "add") {
         store.addEdge({
@@ -444,7 +456,8 @@ planCommand
   .option("--health <health>", "Set health (GREEN/YELLOW/RED)")
   .action(async (id, options) => {
     await withSignal("plan set", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
 
       const updates: Record<string, unknown> = {};
@@ -477,7 +490,8 @@ planCommand
   .option("--output <path>", "Write HTML to specific path instead of opening")
   .action(async (options) => {
     await withSignal("plan viz", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       guardEmpty(store);
 
       const status = store.getPlanStatus();
@@ -530,7 +544,8 @@ reviewCommand
   .option("--json", "Output in JSON format")
   .action(async (options) => {
     await withSignal("plan review list", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       const proposals = store.listProposals();
 
       if (options.json) {
@@ -566,7 +581,8 @@ reviewCommand
   .description("Approve a proposal")
   .action(async (id) => {
     await withSignal("plan review approve", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       store.approveProposal(id);
       console.log(
         `${color.GREEN}✓${color.RESET} Approved proposal ${color.BOLD}${id}${color.RESET}`,
@@ -579,7 +595,8 @@ reviewCommand
   .description("Reject a proposal")
   .action(async (id) => {
     await withSignal("plan review reject", async () => {
-      const store = new PlanStore();
+      const projectId = resolveProjectId(process.cwd());
+      const store = new PlanStore(projectId);
       store.rejectProposal(id);
       console.log(
         `${color.RED}✗${color.RESET} Rejected proposal ${color.BOLD}${id}${color.RESET}`,

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { recordRoutingDecision } from "../db/plugins.js";
+import { resolveProjectId } from "./project-id.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
@@ -478,13 +479,17 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // Record routing decision for historical learning
   const taskType =
     task.type || path.basename(task.workflow || "unknown", ".md");
-  recordRoutingDecision({
-    task_type: taskType,
-    selected_backend: agentName,
-    outcome: result.exitCode === 0 ? "success" : "failure",
-    duration_ms: durationS * 1000,
-    error_message: result.errorType ?? undefined,
-  });
+  const projectId = resolveProjectId(projectRoot);
+  recordRoutingDecision(
+    {
+      task_type: taskType,
+      selected_backend: agentName,
+      outcome: result.exitCode === 0 ? "success" : "failure",
+      duration_ms: durationS * 1000,
+      error_message: result.errorType ?? undefined,
+    },
+    projectId,
+  );
 
   return {
     ...result,

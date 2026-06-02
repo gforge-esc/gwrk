@@ -60,7 +60,7 @@ describe("SQLite execution ledger", () => {
       db,
     );
 
-    const runs = listRuns("001-cli-core", db);
+    const runs = listRuns("001-cli-core", undefined, db);
     expect(runs).toHaveLength(1);
     expect(runs[0].exit_code).toBe(0);
     expect(runs[0].duration_s).toBe(42);
@@ -86,7 +86,7 @@ describe("SQLite execution ledger", () => {
       db,
     );
 
-    const runs = listRuns("test-feature", db);
+    const runs = listRuns("test-feature", undefined, db);
     expect(runs).toHaveLength(2);
     // Most recent (higher ID) first
     expect(runs[0].id).toBe(id2);
@@ -94,7 +94,7 @@ describe("SQLite execution ledger", () => {
   });
 
   it("should return empty array for unknown feature", () => {
-    const runs = listRuns("nonexistent", db);
+    const runs = listRuns("nonexistent", undefined, db);
     expect(runs).toHaveLength(0);
   });
 
@@ -184,7 +184,7 @@ describe("SQLite execution ledger", () => {
       db,
     );
 
-    const stats = getStats(db);
+    const stats = getStats(undefined, db);
 
     expect(stats).toHaveLength(2);
 

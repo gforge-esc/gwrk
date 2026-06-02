@@ -75,7 +75,12 @@ For each stage in cascade.md, trace its outputs into the build plan:
 Additionally trace:
 - **Active research** (R00* with status ≠ ✅): Does the build plan reference these as gating dependencies where they affect implementation sequencing?
 - **Implementation order** (cascade Stage 5): Does the build plan's critical path match the cascade's recommended order?
+[type: gwrk-native]
 - **Terminology**: Has the build plan absorbed terminology changes from research (e.g., "worktree" vs "Docker sandbox", "DispatchOrchestrator" vs "bash scripts")?
+[/type]
+[type: generic]
+- **Terminology**: Has the build plan absorbed terminology changes from research?
+[/type]
 - **SP changes**: Have effort estimates been updated to reflect research-informed scope changes?
 
 > LIST EVERY ASSUMPTION THIS DEPENDS ON. FOR EACH ONE, WHAT BREAKS IF IT'S WRONG?
@@ -144,7 +149,12 @@ Before reporting, validate the updated build plan against this rubric. Do not sh
 | **Completeness** | Every feature appears in: dependency graph, features section, wave table, effort table | |
 | **Cascade Coverage** | Every ❌ from the Phase 2 drift matrix is now ✅ | |
 | **Consistency** | SP totals match individual feature SPs | |
+[type: gwrk-native]
 | **Terminology** | No stale terms (Docker sandbox → worktree, bash scripts → DispatchOrchestrator, etc.) | |
+[/type]
+[type: generic]
+| **Terminology** | No stale terms from earlier research or planning phases | |
+[/type]
 | **Critical Path** | Longest dependency chain matches the stated critical path | |
 | **Changelog** | Entry exists with correct version number, date, and summary of changes | |
 

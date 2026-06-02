@@ -39,6 +39,7 @@ import {
 
 import { getBackendSelector } from "../server/index.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import {
   loadSetupState,
   isSetupComplete,
@@ -217,7 +218,7 @@ async function shipPhase(
       // Wire events to bridge for Slack notifications
       new ShipBridge(orchestrator, cwd);
 
-      const planStore = new PlanStore();
+      const planStore = new PlanStore(resolveProjectId(cwd));
       orchestrator.on("plan:ship:complete", (event) => {
         planStore.handleShipComplete(event);
       });

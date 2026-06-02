@@ -50,6 +50,7 @@ export interface RoutingDecision {
   outcome: "success" | "failure" | "rate-limited" | "timeout";
   duration_ms?: number;
   error_message?: string;
+  project_id?: string;
 }
 
 /**
@@ -57,16 +58,18 @@ export interface RoutingDecision {
  */
 export function recordRoutingDecision(
   decision: RoutingDecision,
+  projectId: string,
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
   conn
     .prepare(
-      `INSERT INTO routing_history (task_type, selected_backend, outcome, duration_ms, error_message)
-       VALUES (@task_type, @selected_backend, @outcome, @duration_ms, @error_message)`,
+      `INSERT INTO routing_history (task_type, selected_backend, outcome, duration_ms, error_message, project_id)
+       VALUES (@task_type, @selected_backend, @outcome, @duration_ms, @error_message, @project_id)`,
     )
     .run({
       ...decision,
+      project_id: projectId,
       duration_ms: decision.duration_ms ?? null,
       error_message: decision.error_message ?? null,
     });
@@ -77,13 +80,15 @@ export function recordRoutingDecision(
  */
 export function getRoutingHistory(
   taskType: string,
+  projectId: string,
   limit = 10,
   db?: Database.Database,
 ): RoutingDecision[] {
   const conn = db ?? getDb();
   return conn
     .prepare(
-      "SELECT * FROM routing_history WHERE task_type = ? ORDER BY created_at DESC LIMIT ?",
+      "SELECT * FROM routing_history WHERE task_type = ? AND project_id = ? ORDER BY created_at DESC LIMIT ?",
     )
-    .all(taskType, limit) as RoutingDecision[];
+    .all(taskType, projectId, limit) as RoutingDecision[];
 }
+

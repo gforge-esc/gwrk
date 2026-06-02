@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { detectProfile } from "./profile-detector.js";
+import { conditionPrompt } from "./prompt-conditioner.js";
 
 describe("profile-detector", () => {
   let tmpDir: string;
@@ -61,9 +62,21 @@ describe("profile-detector", () => {
   });
 
   it("should detect gwrk-native", async () => {
-    fs.writeFileSync(path.join(tmpDir, "GEMINI.md"), "");
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({
+      name: "@gwrk/cli",
+      version: "0.1.0",
+    }));
     
     const profile = await detectProfile(tmpDir);
-    expect(profile.type).toBe("gwrk-native");
+    expect(profile._isGwrk).toBe(true);
+  });
+
+  it("TR-034: gwrk-native prompt assembly regression snapshot", async () => {
+    const profile = { type: "gwrk-native" };
+    const prompt = "Gated: [type: gwrk-native]ADR-004[/type]";
+    
+    const result = conditionPrompt(prompt, profile);
+    expect(result).toContain("ADR-004");
+    expect(result).not.toContain("[type: gwrk-native]");
   });
 });

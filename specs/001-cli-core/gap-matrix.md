@@ -1,18 +1,14 @@
+# Gap Matrix for 001-cli-core Phase 14 (Project-Scoped DB Isolation)
+
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
-|----|---------------------|-----------|-----------|-------------|------|
-| US-001.1 | Auto-detects project type | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-001.2 | Interactive wizard walkthrough | unit | src/commands/init.test.ts | ✅ | |
-| US-001.3 | Detects agent CLIs | unit | src/commands/init.test.ts | ✅ | |
-| US-001.4 | Workstation provisioning (TCC/SSH/gh) | unit | src/commands/init.test.ts | ✅ | |
-| US-001.5 | Slack channel provisioning | unit | src/commands/init.test.ts | ✅ | |
-| US-001.6 | Writes .gwrkrc.json | unit | src/commands/init.test.ts | ✅ | |
-| US-001.10 | Idempotency | unit | src/commands/init.test.ts | ✅ | |
-| US-001.11 | --non-interactive flag | unit | src/commands/init.test.ts | ✅ | |
-| US-027.1 | pnpm-monorepo detection | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.2 | rust project detection | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.3 | python project detection | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.4 | gwrk-native detection | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.5 | unknown project detection | unit | src/engine/profile-detector.test.ts | ✅ | |
-| US-027.6 | Config override detection | unit | src/engine/profile-detector.test.ts | ✅ | |
-| FR-032 | Schema extension | unit | src/utils/config.test.ts | ✅ | |
-| TC-011 | Backward compatibility | unit | src/utils/config.test.ts | ✅ | |
+|----|----------------------|-----------|-----------|-------------|------|
+| US-030 | Project-Scoped DB Isolation | integration | src/commands/project-scoped.test.ts | ✅ | |
+| FR-036 | resolveProjectId(cwd) utility | unit | src/utils/project-id.test.ts | ✅ | |
+| FR-037 | Scoped DB migrations for 8 tables | integration | src/db/scoping.test.ts | ✅ | |
+| FR-038 | Scoped DB queries in src/db/*.ts | integration | src/db/scoping.test.ts | ✅ | |
+| FR-039 | PlanStore accepts projectId | unit | src/engine/plan-store-scoping.test.ts | ✅ | |
+| FR-040 | CLI commands derive/pass projectId | integration | src/commands/project-scoped.test.ts | ✅ | |
+| TR-035 | resolveProjectId consistency | unit | src/utils/project-id.test.ts | ✅ | |
+| TR-036 | DB cross-project isolation | integration | src/db/scoping.test.ts | ✅ | |
+| TR-037 | PlanStore filtering by project | unit | src/engine/plan-store-scoping.test.ts | ✅ | |
+| TR-038 | Command derivation of project_id | integration | src/commands/project-scoped.test.ts | ✅ | |

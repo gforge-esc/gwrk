@@ -392,7 +392,7 @@
         {
           "id": "T041",
           "title": "Extend GwrkConfigSchema with project profile fields",
-          "description": "Add optional project profile fields (type, stack, layout, architecture, conventions) to GwrkConfigSchema in src/utils/config.ts. Tests: src/utils/config.test.ts\n\nREVIEW FAIL (code): Schema-Implementation Mismatch — FR-032.\n  WHERE: src/utils/config.ts:241-260\n  EXPECTED: GwrkConfigSchema matching ProjectProfile usage in init.ts.\n  ACTUAL: Schema uses objects for layout/architecture/conventions while init.ts uses strings.\n  FIX: Update GwrkConfigSchema to accept strings OR objects for these fields, or update init.ts to wrap strings in objects.",
+          "description": "Add optional project profile fields (type, stack, layout, architecture, conventions) to GwrkConfigSchema in src/utils/config.ts. Tests: src/utils/config.test.ts",
           "status": "completed",
           "gateScript": "gates/T041-gate.sh",
           "sp": 0,
@@ -401,7 +401,7 @@
         {
           "id": "T042",
           "title": "Implement detectProfile core logic and project type detection",
-          "description": "Implement core detection logic for project type (cargo, python, pnpm, etc.) in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts\n\nREVIEW FAIL (code): Type Mismatch — FR-030.\n  WHERE: src/engine/profile-detector.ts:54-68\n  EXPECTED: ProjectProfile.layout should be an object (or matching schema).\n  ACTUAL: ProjectProfile.layout is a string (\"flat\", \"monorepo\", etc.).\n  FIX: Refactor ProjectProfile and detectProfile to return layout as an object matching GwrkConfigSchema.",
+          "description": "Implement core detection logic for project type (cargo, python, pnpm, etc.) in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts",
           "status": "completed",
           "gateScript": "gates/T042-gate.sh",
           "sp": 0,
@@ -410,7 +410,7 @@
         {
           "id": "T043",
           "title": "Implement tech stack and layout extraction in detectProfile",
-          "description": "Implement extraction of language, framework, build system, and source layout in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts\n\nREVIEW FAIL (code): Type Mismatch — FR-031.\n  WHERE: src/engine/profile-detector.ts:54-68\n  EXPECTED: Layout extraction must produce an object for GwrkConfigSchema.\n  ACTUAL: Layout is extracted as a simple classification string.\n  FIX: Refactor layout extraction to produce structured object or update schema to accept classification string.",
+          "description": "Implement extraction of language, framework, build system, and source layout in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts",
           "status": "completed",
           "gateScript": "gates/T043-gate.sh",
           "sp": 0,
@@ -428,7 +428,7 @@
         {
           "id": "T045",
           "title": "Implement gwrk init interactive wizard skeleton and welcome",
-          "description": "Setup interactive prompt framework in src/commands/init.ts and implement the initial welcome and detection display. Tests: src/commands/init.test.ts\n\nREVIEW FAIL (code): Config Corruption — FR-001.\n  WHERE: src/commands/init.ts:143-262\n  EXPECTED: init wizard must write config that satisfies GwrkConfigSchema.\n  ACTUAL: Wizard writes strings to object fields (layout, architecture, conventions), breaking subsequent commands that call loadConfig().\n  FIX: Ensure wizard wraps profile strings in appropriate objects before writing .gwrkrc.json.",
+          "description": "Setup interactive prompt framework in src/commands/init.ts and implement the initial welcome and detection display. Tests: src/commands/init.test.ts",
           "status": "completed",
           "gateScript": "gates/T045-gate.sh",
           "sp": 0,
@@ -437,7 +437,7 @@
         {
           "id": "T046",
           "title": "Implement profile confirmation and editing in init wizard",
-          "description": "Allow user to confirm or manually override detected profile fields (type, stack, layout) in src/commands/init.ts. Tests: src/commands/init.test.ts\n\nREVIEW FAIL (code): Confirmation Type Mismatch — FR-032.\n  WHERE: src/commands/init.ts:154-185\n  EXPECTED: Overridden fields must match GwrkConfigSchema types.\n  ACTUAL: User input is saved as flat strings instead of structured objects.\n  FIX: Update interactive confirmation to populate objects for layout/architecture/conventions.",
+          "description": "Allow user to confirm or manually override detected profile fields (type, stack, layout) in src/commands/init.ts. Tests: src/commands/init.test.ts",
           "status": "completed",
           "gateScript": "gates/T046-gate.sh",
           "sp": 0,
@@ -591,42 +591,176 @@
       "tasks": [
         {
           "id": "T063",
-          "title": "Quiet mode in tests-generate.ts",
-          "description": "Pass quiet: true to executeWorkflow. Tests: src/commands/tests-generate-contract.test.ts",
+          "title": "Implement tolerant flag in WorkflowRuntime",
+          "description": "Add tolerant?: boolean to WorkflowOptions in src/plugins/workflow-runtime.ts. Update executeWorkflow to only treat prose-as-success when tolerant is true. Tests: src/plugins/workflow-runtime.test.ts [REMEDIATION: Flag is missing from WorkflowOptions; behavior is currently hardcoded to exitCode === 0]",
           "status": "open",
           "gateScript": "gates/T063-gate.sh",
           "sp": 0
         },
         {
           "id": "T064",
-          "title": "Quiet mode in specify.ts",
-          "description": "Pass quiet: true to executeWorkflow. Tests: src/commands/specify.test.ts",
+          "title": "Refactor DefineOrchestrator to pass UX flags",
+          "description": "Add quiet?: boolean and tolerant?: boolean to DefineRunConfig in src/engine/define-types.ts. Update DefineOrchestrator.ts to pass these to WorkflowRuntime. Tests: src/engine/define-orchestrator.test.ts [REMEDIATION: DefineRunConfig missing quiet/tolerant; Orchestrator using hardcoded quiet: true]",
           "status": "open",
           "gateScript": "gates/T064-gate.sh",
           "sp": 0
         },
         {
           "id": "T065",
-          "title": "Quiet mode in define-plan.ts",
-          "description": "Pass quiet: true to executeWorkflow. Tests: src/commands/plan.test.ts",
+          "title": "Implement quiet mode and robust success in tests-generate.ts",
+          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator. Ensure command exits 0 if test artifacts are present, regardless of JSON parsing. Tests: src/commands/tests-generate-contract.test.ts [REMEDIATION: Not passing flags to DefineOrchestrator]",
           "status": "open",
           "gateScript": "gates/T065-gate.sh",
           "sp": 0
         },
         {
           "id": "T066",
-          "title": "Quiet mode in tasks-generate.ts",
-          "description": "Pass quiet: true to executeWorkflow. Tests: src/commands/tasks-generate.test.ts",
+          "title": "Implement quiet mode in specify.ts, plan.ts, and tasks-generate.ts",
+          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator in all define subcommands. Tests: src/commands/specify.test.ts, src/commands/plan.test.ts [REMEDIATION: Not passing flags to DefineOrchestrator]",
           "status": "open",
           "gateScript": "gates/T066-gate.sh",
           "sp": 0
         },
         {
           "id": "T067",
-          "title": "Tolerant JSON extraction in workflow-runtime.ts",
-          "description": "Handle prose output with artifacts. Tests: src/plugins/workflow-runtime.test.ts",
+          "title": "Repair tests-generate-contract.test.ts and verify Phase 12",
+          "description": "Fix broken imports in src/commands/tests-generate-contract.test.ts. Add assertions for quiet: true and tolerant: true across all define commands. Tests: src/commands/tests-generate-contract.test.ts [REMEDIATION: Test file still broken with incorrect imports and outdated API usage]",
           "status": "open",
           "gateScript": "gates/T067-gate.sh",
+          "sp": 0
+        }
+      ],
+      "sp_estimate": 0
+    },
+    {
+      "id": "phase-13",
+      "title": "Phase 13: Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ (R3)",
+      "tasks": [
+        {
+          "id": "T068",
+          "title": "Implement prompt-conditioner logic",
+          "description": "Implement conditionPrompt in src/engine/prompt-conditioner.ts to inject <project_profile> XML and resolve [type: gwrk-native] guards. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T068-gate.sh]",
+          "status": "open",
+          "gateScript": "gates/T068-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T069",
+          "title": "Integrate prompt-conditioner into WorkflowRuntime",
+          "description": "Update WorkflowRuntime.executeWorkflow() in src/plugins/workflow-runtime.ts to call conditionPrompt before dispatching to agents. Tests: src/plugins/workflow-runtime.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T069-gate.sh]",
+          "status": "open",
+          "gateScript": "gates/T069-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T070",
+          "title": "Integrate prompt-conditioner into ShipOrchestrator review",
+          "description": "Update review dispatch in src/engine/ship-orchestrator.ts to call conditionPrompt. Tests: src/engine/ship-orchestrator.test.ts [REVIEW FAIL (test): Regression in ShipOrchestrator.test.ts (5 failures). FIX: Mock detectProfile in src/engine/ship-orchestrator.test.ts. Also implement missing gates/T070-gate.sh]",
+          "status": "open",
+          "gateScript": "gates/T070-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T071",
+          "title": "Implement gwrk project info command",
+          "description": "Implement the project info action in src/commands/project-info.ts to display the resolved profile. Support --format json. Tests: src/commands/project-info.test.ts [REVIEW FAIL (code): Destructive implementation in src/commands/project.ts (deleted 'discover' and 'specs' subcommands). FIX: Restore subcommands and add 'info' alongside them. Also implement missing gates/T071-gate.sh]",
+          "status": "open",
+          "gateScript": "gates/T071-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T072",
+          "title": "Refactor critical PROMPT.md files (plan, review-uat, author-gates)",
+          "description": "Add [type: gwrk-native] guards to gwrk-plan, gwrk-review-uat, and gwrk-author-gates PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T072-gate.sh]",
+          "status": "open",
+          "gateScript": "gates/T072-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T073",
+          "title": "Refactor medium PROMPT.md files (implement, define-tests, plan-to-tasks, review-code)",
+          "description": "Add [type: gwrk-native] guards to gwrk-implement, gwrk-define-tests, gwrk-plan-to-tasks, and gwrk-review-code PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T073-gate.sh]",
+          "status": "open",
+          "gateScript": "gates/T073-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T074",
+          "title": "Refactor remaining low PROMPT.md files",
+          "description": "Add [type: gwrk-native] guards to gwrk-analyze, gwrk-cascade-sync, gwrk-build-plan, gwrk-checklist, gwrk-effort, and gwrk-research PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T074-gate.sh]",
+          "status": "open",
+          "gateScript": "gates/T074-gate.sh",
+          "sp": 0
+        }
+      ],
+      "sp_estimate": 0
+    },
+    {
+      "id": "phase-14",
+      "title": "Phase 14: Project-Scoped DB Isolation",
+      "tasks": [
+        {
+          "id": "T075",
+          "title": "Update DB Safety Net with project_id",
+          "description": "Update safeAddColumn in src/db/index.ts to include project_id for all 8 target tables (plan_features, plan_phases, plan_edges, plan_proposals, gate_results, compression, issues, routing_history). Tests: src/db/db.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T075-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T076",
+          "title": "Scope Plan DB Queries",
+          "description": "Update all query functions in src/db/plan.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T076-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T077",
+          "title": "Scope Run & Gate DB Queries",
+          "description": "Update query functions in src/db/runs.ts and src/db/gates.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T077-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T078",
+          "title": "Scope Analytics & Plugin DB Queries",
+          "description": "Update query functions in src/db/compression.ts, src/db/issues.ts, and src/db/plugins.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T078-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T079",
+          "title": "Update PlanStore Engine for Project Awareness",
+          "description": "Refactor PlanStore in src/engine/plan-store.ts to accept projectId in its constructor and use it for all DB calls. Tests: src/engine/plan-store-scoping.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T079-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T080",
+          "title": "Update Plan Commands with Project Derivation",
+          "description": "Update CLI subcommands in src/commands/plan.ts to derive projectId from cwd and pass it to PlanStore. Tests: src/commands/project-scoped.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T080-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T081",
+          "title": "Update Analytics Commands with Project Derivation",
+          "description": "Update CLI subcommands in src/commands/stats.ts and src/commands/runs.ts to derive projectId and pass it to DB layer. Tests: src/commands/project-scoped.test.ts",
+          "status": "completed",
+          "gateScript": "gates/T081-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T082",
+          "title": "Verify Cross-Project Isolation",
+          "description": "Ensure that operations in one project do not pollute another via E2E verification. Tests: src/commands/project-scoped.test.ts\n\nREVIEW FAIL (code): Verify Cross-Project Isolation — FR-040.\n  WHERE: src/db/collision.test.ts\n  EXPECTED: Features with the same ID in different projects should coexist.\n  ACTUAL: Overwrite occurs because 'id' is the sole PRIMARY KEY in 'plan_features' and other tables.\n  FIX: Migration 009 must be refactored to recreate tables with composite PRIMARY KEY (id, project_id).",
+          "status": "open",
+          "gateScript": "gates/T082-gate.sh",
           "sp": 0
         }
       ],
