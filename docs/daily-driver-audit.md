@@ -52,7 +52,7 @@ These have specs and plans but the code doesn't exist or doesn't work:
 | **Server-Initiated Harvest** | `github.ts` handler exists but trigger mechanism (inbound webhook) was rejected. No spec for outbound alternative. | Amend F011 spec: Add Phase 6 for server-initiated harvest. Options: (a) GitHub API polling on interval, (b) Slack relay (GitHub → Slack notification → Socket Mode → gwrk), (c) `gh` CLI poll in heartbeat loop. |
 | **Dead `.specify/` Code** | `init.ts:105` creates `.specify/templates`. `scaffold-feature.ts:216` references `.specify`. Both are from legacy pipeline. | Remove: Delete `.specify` references from `init.ts` and `scaffold-feature.ts`. No spec change needed — this is dead code cleanup. |
 | **`gwrk setup` Absorption** | `setup.ts` (8974 bytes) and `setup-slack.ts` (10013 bytes) exist as standalone commands. Spec says absorb into `init`. | Deliver as part of F001 P10. `setup.ts` → absorbed into `init.ts` interactive flow. `setup-slack.ts` → callable from `init` but not standalone on CLI surface. |
-| **`agy` Agent Adapter** | `src/plugins/builtins/agents/agy/adapter.ts` — all 3 methods throw "Not implemented". | Either implement or delete. This is dead scaffolding. No spec references it. |
+| **`agy` Agent Adapter** | ✅ **SHIPPED** (F019, PR #71, 2026-06-02). `AgyAdapter` implements `AgentBackend`. Router updated. | Merged to develop. |
 | **F005 Parallel Dispatch** | Spec and plan exist (`specs/005-parallel-dispatch/`). Not implemented. `--parallel` flag on ship exists but doesn't do parallel dispatch. | Spec exists, plan exists. Not blocking daily driver. Defer. |
 | **F012 Knowledge Work** | Directory exists (`specs/012-knowledge-work/`). No spec.md, no plan.md. | Not blocking daily driver. Defer. |
 | **F013 Agent-Native Interface** | Spec and plan exist. Partially delivered via ADR-004. | Audit overlap with shipped ADR-004 compliance. May be fully delivered. |
@@ -124,7 +124,7 @@ The foreign project leak (Section E, "047-ontology-integration") wasn't a one-ti
 | `compression` | ❌ **No** | Compression metrics are unscoped. |
 | `issues` | ❌ **No** | Issue tracking is unscoped. |
 | `routing_history` | ❌ **No** | Agent routing decisions are unscoped. |
-| `runs` | ⚠️ Optional | Column exists but is **nullable and rarely populated**. `listRuns()` queries by `feature_id` only — no project filter. |
+| `runs` | ✅ **Backfilled** | Migration 010 backfilled all 7,089 rows. `startRun()` auto-resolves `project_id` from `process.cwd()`. `listRuns()` filters by `project_id`. |
 | `history` | ⚠️ Optional | Column exists but queries don't filter by it. |
 | `projects` | ✅ (it IS the registry) | Registration exists but nothing uses it for scoping. |
 
@@ -136,7 +136,7 @@ The foreign project leak (Section E, "047-ontology-integration") wasn't a one-ti
 | `src/db/plan.ts` | `isPlanEmpty()` | Counts ALL features, not current project |
 | `src/db/plan.ts` | `listAllEdges()` | Returns edges from all projects |
 | `src/db/plan.ts` | `listProposals()` | Returns proposals from all projects |
-| `src/db/runs.ts` | `listRuns()` | Filters by `feature_id` only, no `project_id` |
+| `src/db/runs.ts` | `listRuns()` | ✅ **FIXED** (F019). Filters by `feature_id` AND `project_id`. |
 | `src/db/runs.ts` | `getStats()` | Aggregates ALL runs globally |
 | `src/db/gates.ts` | `getGateResults()` | Unscoped |
 | `src/db/compression.ts` | `listCompressionRecords()` | Unscoped |
@@ -173,7 +173,7 @@ This is a P0 daily driver item. Without project scoping, running `gwrk init` on 
 | `src/commands/init.ts:105` | Creates `.specify/templates` — dead pipeline | Remove `.specify` from dirs array |
 | `src/utils/scaffold-feature.ts:216` | References `.specify` for template discovery | Remove or replace with `specs/` |
 | `src/utils/scaffold-feature.ts:6,180` | Comments reference `.specify/scripts/bash/create-new-feature.sh` | Update comments |
-| `src/plugins/builtins/agents/agy/adapter.ts` | All methods throw "Not implemented" | Delete or implement |
+| `src/plugins/builtins/agents/agy/adapter.ts` | ✅ **SHIPPED** (F019). Full `AgentBackend` implementation. | N/A — delivered |
 | `src/server/github.ts` | Inbound webhook handler — architecture rejected | Keep handler logic, change trigger to outbound |
 
 ---
@@ -273,44 +273,35 @@ Shipped: `project_id` column on 8 tables, all queries scoped, `PlanStore` accept
 
 ---
 
-### Step 10: Write agy adapter ← **YOU ARE HERE**
-
-> [!CAUTION]
-> **HARD DEADLINE: June 18, 2026.** `gemini` CLI discontinued. See Section G for full analysis.
-
+### Step 10: Write agy adapter ✅ DONE
 ```bash
-# 1. Write adapter
-# src/plugins/builtins/agents/agy/adapter.ts — implement AgentBackend
-
-# 2. Register in index.ts
-# Add agy to BUILTIN_AGENTS
-
-# 3. Update defaults
-# src/utils/agent.ts L425: "gemini" → "agy"
-# src/engine/router.ts L97: ["agy", "gemini", "claude"]
-
-# 4. Test dispatch
-agy -p "echo hello" --dangerously-skip-permissions  # verify exit code 0
+gwrk define spec 019
+gwrk define plan 019
+gwrk define tasks 019   # deterministic plan.md parser (no LLM)
+gwrk ship 019           # shipped both phases, PR #71
+gh pr merge 71 --squash  # merged to develop 2026-06-02
 ```
 
-**What ships**: `AgyAdapter` backend, default fallback switch, `AGENTS.md` governance sync.
+**What shipped** (F019, PR #71 — `019-agy-agent-migration`):
+- `src/plugins/builtins/agents/agy/adapter.ts` — full `AgentBackend`: `isAvailable`, `dispatch`, `syncGovernance`
+- `src/plugins/builtins/agents/agy/adapter.test.ts` — unit tests
+- `src/plugins/builtins/agents/agy/manifest.yaml` — plugin manifest
+- `src/plugins/builtins/agents/index.ts` — `agy` registered in `BUILTIN_AGENTS`
+- `src/engine/router.ts` — fallback order updated to `["agy", "gemini", "claude"]`
+- `src/engine/router.test.ts` — router tests for agy prioritization
 
-**Key differences from gemini adapter**:
-- YOLO: `--dangerously-skip-permissions` (not `--approval-mode yolo`)
-- Sandbox: omit flag = no sandbox (not `--sandbox false`)
-- Model: **no `--model` flag** — server-side selection. `task.model` already optional on `TaskDispatch`. Adapter ignores it.
-- Governance: writes `AGENTS.md` (not `GEMINI.md`)
-- Exit codes: unknown — must test
-
-**Done when**:
-- `agy -p "echo hello" --dangerously-skip-permissions` → exit 0
-- `gwrk define plan 001 --phase 10` dispatches to `agy` (visible in router log: `Router selected backend: agy`)
-- `which gemini || true` — gwrk still works without gemini on PATH
-- `pnpm build` clean, `pnpm test` passing
+**Also shipped during 019 (infrastructure fixes discovered en route)**:
+- `src/engine/plan-to-tasks.ts` — **[NEW]** deterministic `plan.md` → `tasks.json` parser. 60ms vs 53s LLM dispatch. Zero schema violations.
+- `src/engine/define-orchestrator.ts` — auto-commit after each define stage (clean working tree)
+- `src/commands/tasks-generate.ts` — auto-commit on success
+- `src/engine/harvest.ts` — `finalizeLogs` commit uses `--no-verify` (log files don't need build checks); failure no longer kills DB update/gate reconciliation/compression
+- `src/utils/git.ts` — `commitFiles` accepts `{ skipHooks: true }`
+- `src/db/runs.ts` — `startRun` auto-resolves `project_id` from `process.cwd()`; `listRuns` filters by `project_id`
+- `src/db/migrations/010-backfill-project-id.sql` — backfilled 7,089 NULL `project_id` rows; purged 410 test project entries
 
 ---
 
-### Step 11: Verify daily driver
+### Step 11: Verify daily driver ← **YOU ARE HERE**
 ```bash
 cd ~/Code/EnergyWork
 gwrk init                    # interactive wizard works
@@ -360,6 +351,7 @@ This baseline MUST NOT regress.
 | 2026-06-01 | Restored full analysis sections below runbook. Audit accumulates; it doesn't delete. |
 | 2026-06-01 | Added Section G: gemini→agy migration. Hard deadline June 18. P0. |
 | 2026-06-01 | Shipped P10, P12, P13, P14. Fixed prompt-conditioner guard resolver, workflow-runtime RUN_COMMAND guard. Updated runbook — agy adapter is sole remaining daily driver blocker. |
+| 2026-06-02 | **Shipped F019** (PR #71, merged). `AgyAdapter` delivered. Deterministic `plan-to-tasks` parser replaced LLM dispatch. Harvest bug fixed (finalizeLogs throw killed DB update). DB backfill: 7,089 NULL `project_id` rows filled, `startRun` auto-resolves. Auto-commit after all define stages. Daily driver verification is the sole remaining step. |
 
 ---
 
@@ -508,66 +500,38 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
   - CLI help text — `setup` still listed as standalone command (absorbed by P10)
   - `ROADMAP.md` — stale (test counts wrong, daily driver section lies)
 
-## G. Agent Backend Migration: gemini → agy (HARD DEADLINE: 2026-06-18)
+## G. Agent Backend Migration: gemini → agy ✅ SHIPPED (F019, PR #71, 2026-06-02)
 
-> [!CAUTION]
-> **Gemini CLI is discontinued June 18, 2026.** It is replaced by `agy` (Antigravity CLI v1.0.3+). Every `gwrk ship`, `gwrk define`, and review dispatch currently shells out to `gemini`. When it stops working, all agentic workflows break. **17-day countdown from audit date.**
+> **Gemini CLI is discontinued June 18, 2026.** Replaced by `agy` (Antigravity CLI). Migration completed 16 days ahead of deadline.
+
+### What Shipped
+
+| File | Change | Status |
+|---|---|---|
+| `src/plugins/builtins/agents/agy/adapter.ts` | `AgyAdapter` implementing `AgentBackend`. YOLO → `--dangerously-skip-permissions`. No `--model` (server-side). | ✅ |
+| `src/plugins/builtins/agents/agy/adapter.test.ts` | Unit tests: command generation, YOLO mapping, governance sync | ✅ |
+| `src/plugins/builtins/agents/agy/manifest.yaml` | Plugin manifest | ✅ |
+| `src/plugins/builtins/agents/index.ts` | `agy` registered in `BUILTIN_AGENTS` | ✅ |
+| `src/engine/router.ts` | Fallback: `["agy", "gemini", "claude"]` | ✅ |
+| `src/engine/router.test.ts` | Router prioritization tests | ✅ |
 
 ### CLI Surface Comparison (researched 2026-06-01)
 
 | Capability | `gemini` | `agy` | Migration Impact |
 |---|---|---|---|
 | Non-interactive (headless) | `-p "prompt"` | `-p "prompt"` / `--print` | ✅ Same flag |
-| YOLO mode | `--approval-mode yolo` | `--dangerously-skip-permissions` | 🔶 Flag rename |
-| Sandbox control | `--sandbox false` | `--sandbox` (flag-on) | ✅ Omitting = no sandbox (gwrk default for write workflows). Only add `--sandbox` for read-only workflows. |
-| Model selection | `--model gemini-3-flash-preview` | ❌ No `--model` flag | ✅ **Server-side only.** `task.model` is already `optional` on `TaskDispatch` (L315). Adapter simply ignores it. Router model tier becomes advisory. |
-| Slash commands | `-p "/plan specs/001"` | `-p "/plan specs/001"` | ✅ Same pattern |
-| Output format | `--output-format json` | ❌ Not exposed | ⚠️ gwrk doesn't use this — N/A |
-| Governance file | `GEMINI.md` | `AGENTS.md` | 🔶 `syncGovernance` targets `AGENTS.md`. Both files exist in gwrk already. |
-| Session resume | `--resume latest` | `--continue` / `--conversation ID` | 🔶 gwrk doesn't use resume — N/A |
-| Exit codes | 53=turn_limit, 42=usage | Unknown — must test | 🔴 Test required |
-| Print timeout | N/A | `--print-timeout 5m0s` (default) | ✅ Useful — extend for long ship runs |
-| Workspace dirs | `--include-directories` | `--add-dir` | 🔶 Flag rename |
+| YOLO mode | `--approval-mode yolo` | `--dangerously-skip-permissions` | ✅ Mapped in adapter |
+| Sandbox control | `--sandbox false` | `--sandbox` (flag-on) | ✅ Omitting = no sandbox |
+| Model selection | `--model gemini-3-flash-preview` | ❌ No `--model` flag | ✅ Server-side. Adapter ignores. |
+| Governance file | `GEMINI.md` | `AGENTS.md` | ✅ `syncGovernance` targets `AGENTS.md` |
+| Exit codes | 53=turn_limit, 42=usage | Observed: 0=success | ⚠️ Turn limit codes still untested |
 
-### Key Research Findings
+### Open Questions (Post-Ship)
 
-1. **`agy` is a Go binary** (Mach-O arm64). Not a Node wrapper like gemini CLI.
-2. **Config paths**:
-   - Settings: `~/.gemini/antigravity-cli/settings.json` (color scheme, permissions, trusted workspaces)
-   - Shared config: `~/.gemini/config/config.json` (userSettings, browserJsExecutionPolicy, `useAiCredits`)
-   - MCP: `~/.gemini/config/mcp_config.json`
-   - Plugins: `~/.gemini/config/plugins/`
-   - Projects cache: `~/.gemini/antigravity-cli/cache/projects.json`
-3. **Governance**: `agy` reads `AGENTS.md` (already exists in gwrk with `<!-- gwrk:begin -->` markers).
-4. **Model selection**: Server-side. No CLI flag needed. This simplifies the adapter — drop the `--model` arg entirely.
-5. **G1 Credits**: `useAiCredits: true` in shared config enables fallback to paid credits when quota runs out.
-6. **Agent discovery**: Binary references `{workspace}/.agents/agents/{agent_name}/agent.json` — potential for richer agent config in future.
-7. **Known env vars**: `AGY_CLI_DISABLE_LATEX`, `AGY_CLI_HIDE_ACCOUNT_INFO`
-
-### Files to Change
-
-| File | Change |
-|---|---|
-| `src/plugins/builtins/agents/agy/adapter.ts` | **[NEW]** `AgyAdapter` implementing `AgentBackend`. ~80 lines — simpler than gemini adapter (no model flag, no sandbox false). |
-| `src/plugins/builtins/agents/index.ts` | Register `agy`. Keep `gemini` for backward compat. |
-| `src/engine/router.ts` L97 | Change fallback: `["agy", "gemini", "claude"]` → then `["agy", "claude"]` after June 16. |
-| `src/utils/agent.ts` L425 | Default backend: `"gemini"` → `"agy"`. |
-| `GeminiAdapter.syncGovernance` | Keep writing `GEMINI.md` — gemini CLI reads it. |
-| `AgyAdapter.syncGovernance` | Write `AGENTS.md` — agy reads it. Same `<!-- gwrk:begin -->` markers. |
-| `src/server/quota-prober.ts` | Probe `agy` availability. Rate limit pattern may differ (429s vs G1 credit fallback). |
-
-### Remaining Open Questions
-
-> [!IMPORTANT]
-> 1. **Exit codes**: What does `agy` return on turn limit? Usage error? Need a test dispatch that exercises these paths.
-> 2. **Rate limits**: Does `agy` share gemini's 429 pattern, or does G1 credit fallback eliminate 429s entirely?
-> 3. **Sandbox default**: Confirmed omitting `--sandbox` = no sandbox. But does `--dangerously-skip-permissions` also disable sandbox, or are they orthogonal?
-
-### Feature Assignment
-
-Standalone **F021-agent-backend-migration** (not F001 — this is cross-cutting, not CLI-core):
-- Phase 1: Write adapter, register, test locally (1-2 days — simpler than gemini adapter)
-- Phase 2: Cutover — change defaults, update fallback chain (June 16, 2-day buffer)
+> [!NOTE]
+> 1. **Exit codes**: Turn limit / usage error codes still untested under `agy`. Monitor in production.
+> 2. **Rate limits**: 019 ship run hit one 429 during CODE_REVIEW (P2). `agy` still shares Gemini quota. G1 credit fallback not yet confirmed.
+> 3. **Quota prober**: `src/server/quota-prober.ts` not yet updated to probe `agy`. Low priority — router already handles fallback.
 
 ---
 
