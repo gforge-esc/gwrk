@@ -650,8 +650,8 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 > |-----------|------|-------------------|
 > | `decisions/` | ADRs (gwrk's architectural decisions) | ✅ 6 of 7 ADRs referenced by prompts |
 > | `grounding/` | Agent context (architecture, CLI grammar, ontology) | ✅ `architecture.md`, `agent-native-cli.md` |
-> | `research/` | Initiative lifecycle (brief → draft → cascade) | ✅ `gwrk-research`, `gwrk-cascade-sync` |
-> | `assessments/` | Effort estimates (output of `gwrk-effort`) | ✅ `gwrk-effort` |
+> | `research/` | Initiative lifecycle (brief → draft → cascade) | ⚠️ Referenced by `gwrk-research` and `gwrk-cascade-sync` workflows — but neither has a CLI command. Orphan workflows. |
+> | `assessments/` | Effort estimates | ⚠️ Referenced by `gwrk-effort` workflow — but no CLI command wired. Orphan workflow. |
 > | `product/` | Human-facing docs (PRD, README, Foxtrot Charlie) | — (not agent-consumed) |
 > | `branding/` | Visual assets | — |
 > | `archive/` | 38 orphaned files from old `reference/`, `references/`, `changes/`, `discovery/` | — |
