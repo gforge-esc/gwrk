@@ -362,3 +362,21 @@ export function isPlanEmpty(
   return result.count === 0;
 }
 
+/**
+ * Query distinct shipped phases from the runs table.
+ * Returns a Set of "featureId:phaseId" strings for O(1) lookup.
+ */
+export function getShippedPhases(
+  projectId: string,
+  db?: Database.Database,
+): Set<string> {
+  const conn = db ?? getDb();
+  const rows = conn
+    .prepare(
+      `SELECT DISTINCT feature_id, phase_id FROM runs
+       WHERE command = 'ship' AND project_id = ?
+       AND feature_id IS NOT NULL AND phase_id IS NOT NULL`,
+    )
+    .all(projectId) as { feature_id: string; phase_id: string }[];
+  return new Set(rows.map((r) => `${r.feature_id}:${r.phase_id}`));
+}

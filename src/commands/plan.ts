@@ -131,13 +131,20 @@ planCommand
       if (options.dryRun) {
         const readiness = store.scanReadiness(specsDir);
         console.log("Dry Run: Discovered features from specs/");
-        console.log(JSON.stringify(readiness, null, 2));
+        for (const r of readiness) {
+          const phaseInfo = r.phases.length > 0
+            ? ` (${r.phases.length} phases: ${r.phases.map(p => `P${p.number}`).join(", ")})`
+            : "";
+          console.log(`  ${r.featureId}: L${r.level} ${r.status}${phaseInfo}`);
+        }
+        const totalPhases = readiness.reduce((sum, r) => sum + r.phases.length, 0);
+        console.log(`\nTotal: ${readiness.length} features, ${totalPhases} phases`);
         return;
       }
 
-      const { added, skipped } = store.initFromSpecs(specsDir);
+      const { added, skipped, phasesInserted } = store.initFromSpecs(specsDir);
       console.log(
-        `Initialized build plan graph. Added: ${added.length}, Skipped (existing): ${skipped.length}`,
+        `Initialized build plan graph. Added: ${added.length}, Skipped (existing): ${skipped.length}, Phases: ${phasesInserted}`,
       );
       if (added.length > 0) console.log(`  Added: ${added.join(", ")}`);
     });

@@ -59,11 +59,16 @@ export class PlanStore {
 
   /**
    * Initialize the plan from the specs/ directory without clobbering existing features.
+   * Inserts phases from plan.md and enriches status from ship runs.
    */
-  initFromSpecs(specsDir: string): { added: string[]; skipped: string[] } {
+  initFromSpecs(specsDir: string): { added: string[]; skipped: string[]; phasesInserted: number } {
     const readiness = this.scanReadiness(specsDir);
     const added: string[] = [];
     const skipped: string[] = [];
+    let phasesInserted = 0;
+
+    // Get shipped phases for status enrichment
+    const shippedPhases = db.getShippedPhases(this.projectId);
 
     for (const res of readiness) {
       const existing = db.getFeature(res.featureId, this.projectId);
@@ -81,8 +86,34 @@ export class PlanStore {
         );
         added.push(res.featureId);
       }
+
+      // Always populate phases (additive — new phases get inserted, existing stay)
+      for (const phase of res.phases) {
+        const phaseSeq = `phase-${String(phase.number).padStart(2, "0")}`;
+        const phaseId = `${res.featureId}/${phaseSeq}`;
+        const existingPhase = db.getPhase(phaseId, this.projectId);
+        if (existingPhase) continue; // Don't clobber existing phase data
+
+        // Determine status: check if this feature+phase has a ship run
+        const shipKey = `${res.featureId}:${phaseSeq}`;
+        const status = shippedPhases.has(shipKey) ? "SHIPPED" : "PLANNED";
+
+        db.insertPhase(
+          {
+            id: phaseId,
+            feature_id: res.featureId,
+            name: phase.title,
+            status,
+            health: "CLEAN",
+            sp_estimate: 0,
+            seq: phase.number,
+          },
+          this.projectId,
+        );
+        phasesInserted++;
+      }
     }
-    return { added, skipped };
+    return { added, skipped, phasesInserted };
   }
 
   /**

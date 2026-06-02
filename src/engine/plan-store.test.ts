@@ -15,6 +15,7 @@ vi.mock('../db/plan.js', () => ({
   listAllEdges: vi.fn(() => []),
   isPlanEmpty: vi.fn(() => true),
   isPlanEmptyTrue: vi.fn(() => true),
+  getShippedPhases: vi.fn(() => new Set<string>()),
 }));
 
 describe('src/engine/plan-store.ts (FR-013/017)', () => {
@@ -40,9 +41,9 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     expect(status.features).toContainEqual(expect.objectContaining(payload.features[0]));
   });
 
-  it('FR-017: should init from specs directory without clobbering', () => {
+  it('FR-017: should init from specs directory without clobbering existing features', () => {
     vi.spyOn(store, 'scanReadiness').mockReturnValue([
-      { featureId: 'F1', level: 1, status: 'SPECIFIED', hasSpec: true, hasPlan: false, hasTasks: false, spTotal: 0 }
+      { featureId: 'F1', level: 1, status: 'SPECIFIED', hasSpec: true, hasPlan: false, hasTasks: false, spTotal: 0, phases: [] }
     ]);
     
     vi.mocked(db.getFeature).mockReturnValue({ id: 'F1', name: 'Existing', status: 'DONE', sp_total: 0 });
@@ -51,6 +52,86 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     expect(report.added).not.toContain('F1');
     expect(report.skipped).toContain('F1');
     expect(db.insertFeature).not.toHaveBeenCalled();
+  });
+
+  it('FR-017: should insert phases from scanner results during init', () => {
+    vi.spyOn(store, 'scanReadiness').mockReturnValue([
+      {
+        featureId: 'feat-a', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
+        phases: [
+          { number: 1, title: 'Foundation' },
+          { number: 2, title: 'Integration' },
+        ],
+      }
+    ]);
+    
+    vi.mocked(db.getFeature).mockReturnValue(undefined);
+    vi.mocked(db.getPhase).mockReturnValue(undefined);
+    
+    const report = store.initFromSpecs('/mock/specs');
+    expect(report.added).toContain('feat-a');
+    expect(report.phasesInserted).toBe(2);
+    expect(db.insertPhase).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'feat-a/phase-01', feature_id: 'feat-a', name: 'Foundation', status: 'PLANNED', seq: 1 }),
+      "test-project",
+    );
+    expect(db.insertPhase).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'feat-a/phase-02', feature_id: 'feat-a', name: 'Integration', status: 'PLANNED', seq: 2 }),
+      "test-project",
+    );
+  });
+
+  it('FR-017: should enrich phase status from ship runs', () => {
+    vi.spyOn(store, 'scanReadiness').mockReturnValue([
+      {
+        featureId: 'feat-b', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
+        phases: [
+          { number: 1, title: 'Foundation' },
+          { number: 2, title: 'Polish' },
+        ],
+      }
+    ]);
+    
+    vi.mocked(db.getFeature).mockReturnValue(undefined);
+    vi.mocked(db.getPhase).mockReturnValue(undefined);
+    // Phase 1 has been shipped, phase 2 has not
+    vi.mocked(db.getShippedPhases).mockReturnValue(new Set(['feat-b:phase-01']));
+    
+    store.initFromSpecs('/mock/specs');
+    expect(db.insertPhase).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'feat-b/phase-01', status: 'SHIPPED' }),
+      "test-project",
+    );
+    expect(db.insertPhase).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'feat-b/phase-02', status: 'PLANNED' }),
+      "test-project",
+    );
+  });
+
+  it('FR-017: should not clobber existing phases on re-init', () => {
+    vi.spyOn(store, 'scanReadiness').mockReturnValue([
+      {
+        featureId: 'feat-c', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
+        phases: [
+          { number: 1, title: 'Foundation' },
+          { number: 2, title: 'New Phase' },
+        ],
+      }
+    ]);
+    
+    vi.mocked(db.getFeature).mockReturnValue({ id: 'feat-c', name: 'feat-c', status: 'DEFINED', sp_total: 0 });
+    // Phase 1 already exists in DB, phase 2 does not
+    vi.mocked(db.getPhase)
+      .mockReturnValueOnce({ id: 'feat-c/phase-01', feature_id: 'feat-c', name: 'Foundation', status: 'SHIPPED', health: 'CLEAN', sp_estimate: 5, seq: 1 })
+      .mockReturnValueOnce(undefined);
+    
+    const report = store.initFromSpecs('/mock/specs');
+    expect(report.phasesInserted).toBe(1); // Only phase-02
+    expect(db.insertPhase).toHaveBeenCalledTimes(1);
+    expect(db.insertPhase).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'feat-c/phase-02', name: 'New Phase' }),
+      "test-project",
+    );
   });
 
   it('FR-019: should detect empty graph', () => {

@@ -622,7 +622,10 @@ $ gwrk plan status 001 --phases
 > **Spec reference**: [ship-failure-diagnosis.md](specs/004-ship-loop/refs/ship-failure-diagnosis.md)
 > **ADR dependency**: [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md) (TDD Gate Architecture)
 > **Code**: [gate-gen.ts](src/utils/gate-gen.ts) (713 lines)
-
+> **Prompt References**: The following files contain best practices for prompts. 
+ - [GPT 5.5 Prompting Guide](file:///docs/references/gpt-5-5-prompting-guide.md)
+ - [Anthropic Prompting Guild](file:///docs/references/anthropic-prompting-guide.md)
+ 
 #### Current State
 
 The ship failure diagnosis documents **5 failure modes** all traced to LLM-authored gates. The deterministic `generateVitestGates()` path has **zero failures**. The failure cascade:
