@@ -62,10 +62,13 @@ describe("profile-detector", () => {
   });
 
   it("should detect gwrk-native", async () => {
-    fs.writeFileSync(path.join(tmpDir, "GEMINI.md"), "");
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({
+      name: "@gwrk/cli",
+      version: "0.1.0",
+    }));
     
     const profile = await detectProfile(tmpDir);
-    expect(profile.type).toBe("gwrk-native");
+    expect(profile._isGwrk).toBe(true);
   });
 
   it("TR-034: gwrk-native prompt assembly regression snapshot", async () => {

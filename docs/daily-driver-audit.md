@@ -194,9 +194,9 @@ This is a P0 daily driver item. Without project scoping, running `gwrk init` on 
 
 ## Runbook
 
-> **Branch**: `feature/p0-daily-driver`
+> **Branch**: `feat/001-cli-core`
 > **Baseline**: 744 tests passing, `pnpm build` clean
-> **Last updated**: 2026-06-01T17:00
+> **Last updated**: 2026-06-01T19:51
 
 ### Step 1: Dead code cleanup ✅ DONE
 ```bash
@@ -247,73 +247,74 @@ gwrk ship 001 10
 
 ---
 
-### Step 7: Define P13 — Prompt Decontamination
-
-_Optional_: 
-
+### Step 7: Ship P12 — Output Parity ✅ DONE
 ```bash
-gwrk define tests 001 --phase 12
-gwrk define tasks 001 --phase 12
+gwrk ship 001 12
 ```
+Shipped: tolerant flag handling in `WorkflowRuntime`, quiet-mode support across CLI subcommands.
 
-```bash
-gwrk define tests 001 --phase 13
-gwrk define tasks 001 --phase 13
-```
-
-### Step 8: Ship P13 — Prompt Decontamination
+### Step 8: Ship P13 — Prompt Decontamination ✅ DONE
 ```bash
 gwrk ship 001 13
 ```
-**What ships**: `prompt-conditioner.ts`, `project-info.ts`, 13 PROMPT.md files refactored (84 gwrk-native refs removed), `gwrk project info` command.
+Shipped: `prompt-conditioner.ts`, `project-info.ts`, `[type: gwrk-native]` guards on all 15 PROMPT.md files, `gwrk project info` command.
 
-**Depends on**: Step 6 (init creates project profiles that prompt conditioner reads).
+**Post-ship fix** (manual, 2026-06-01): Guard resolver was broken — `conditionPrompt()` never matched `gwrk-native` against `pnpm-monorepo` profile type. Fixed in `4f741e8`: `_isGwrk` flag + `generic` always-include. All 5 contaminated files verified CLEAN after conditioning.
 
-**Done when**:
-- `gwrk define plan` on `~/Code/EnergyWork` → no Commander.js, no `src/commands/`, no ADR-004
-- `grep -r "Commander.js\|better-sqlite3\|ADR-004" src/plugins/builtins/workflows/*/PROMPT.md` → ZERO ungated matches
-- `pnpm build` clean, `pnpm test` passing
-
----
-
-### Step 9: Add Phase 14 to F001 spec and plan
-```bash
-# Add US/FR for project-scoped DB isolation to specs/001-cli-core/spec.md
-# Add Phase 14 section to specs/001-cli-core/plan.md
-# Scaffolding already committed:
-#   src/utils/project-id.ts
-#   src/db/migrations/009-project-scoping.sql
-#   src/db/index.ts safeAddColumn additions
-```
-
-### Step 10: Define P14 — Project-Scoped DB
-```bash
-gwrk define tests 001 --phase 14
-gwrk define tasks 001 --phase 14
-```
-
-### Step 11: Ship P14 — Project-Scoped DB
+### Step 9: Ship P14 — Project-Scoped DB ✅ DONE
 ```bash
 gwrk ship 001 14
 ```
-**What ships**: `project_id` column on 8 tables, all queries scoped, `PlanStore` accepts `projectId`, commands derive project from `cwd`.
+Shipped: `project_id` column on 8 tables, all queries scoped, `PlanStore` accepts `projectId`, commands derive project from `cwd`.
 
-**Depends on**: Step 6 (init registers projects). Independent of Step 8 (P13).
+**Also fixed** (manual, 2026-06-01):
+- `workflow-runtime.ts`: RUN_COMMAND redirect guard changed from throw to warn-and-filter (was breaking `define tasks` 100% of the time)
+- `profile-detector.ts`: imports `ProjectProfile` from `prompt-conditioner.ts`, detects gwrk by package name `@gwrk/cli`
+
+---
+
+### Step 10: Write agy adapter ← **YOU ARE HERE**
+
+> [!CAUTION]
+> **HARD DEADLINE: June 18, 2026.** `gemini` CLI discontinued. See Section G for full analysis.
+
+```bash
+# 1. Write adapter
+# src/plugins/builtins/agents/agy/adapter.ts — implement AgentBackend
+
+# 2. Register in index.ts
+# Add agy to BUILTIN_AGENTS
+
+# 3. Update defaults
+# src/utils/agent.ts L425: "gemini" → "agy"
+# src/engine/router.ts L97: ["agy", "gemini", "claude"]
+
+# 4. Test dispatch
+agy -p "echo hello" --dangerously-skip-permissions  # verify exit code 0
+```
+
+**What ships**: `AgyAdapter` backend, default fallback switch, `AGENTS.md` governance sync.
+
+**Key differences from gemini adapter**:
+- YOLO: `--dangerously-skip-permissions` (not `--approval-mode yolo`)
+- Sandbox: omit flag = no sandbox (not `--sandbox false`)
+- Model: **no `--model` flag** — server-side selection. `task.model` already optional on `TaskDispatch`. Adapter ignores it.
+- Governance: writes `AGENTS.md` (not `GEMINI.md`)
+- Exit codes: unknown — must test
 
 **Done when**:
-- `gwrk init` on `~/Code/EnergyWork` → project registered in DB
-- `gwrk plan status` on EnergyWork → ONLY EnergyWork features
-- `gwrk plan status` on gwrk → ONLY gwrk features
-- No cross-project pollution in `runs`, `stats`, `gates`, `compression`
+- `agy -p "echo hello" --dangerously-skip-permissions` → exit 0
+- `gwrk define plan 001 --phase 10` dispatches to `agy` (visible in router log: `Router selected backend: agy`)
+- `which gemini || true` — gwrk still works without gemini on PATH
 - `pnpm build` clean, `pnpm test` passing
 
 ---
 
-### Step 12: Verify daily driver
+### Step 11: Verify daily driver
 ```bash
 cd ~/Code/EnergyWork
 gwrk init                    # interactive wizard works
-gwrk define plan EnergyWork  # EnergyWork-appropriate output
+gwrk define plan EnergyWork  # EnergyWork-appropriate output (agy backend)
 gwrk plan status             # ONLY EnergyWork features
 cd ~/Code/gwrk
 gwrk plan status             # ONLY gwrk features
@@ -327,10 +328,10 @@ gwrk plan status             # ONLY gwrk features
 
 | Item | What | Work |
 |---|---|---|
-| P12 | Define output parity | `gwrk ship 001 12` — wire `quiet: true` in define commands |
 | Lifecycle status | `gwrk plan status 001 --phases` | New command: spec→plan→tests→tasks→ship readiness per phase |
 | Doc rewrite | `architecture.md`, `WHAT_IS_GWRK.md`, `README.md`, `ROADMAP.md` | Remove gwrk-specific refs. Present gwrk as project-agnostic. |
 | CLI cleanup | Remove `setup` from help | Absorbed by P10 — verify or manual cleanup |
+| Gate authoring | `define tests` → gate scripts | Currently generates tasks.json but NOT gate .sh files. Ship auto-approves missing gates. |
 
 ---
 
@@ -357,6 +358,8 @@ This baseline MUST NOT regress.
 | 2026-06-01 | Fixed define-tests prompt/guardrail contradiction. |
 | 2026-06-01 | Rewrote execution section as operational runbook. |
 | 2026-06-01 | Restored full analysis sections below runbook. Audit accumulates; it doesn't delete. |
+| 2026-06-01 | Added Section G: gemini→agy migration. Hard deadline June 18. P0. |
+| 2026-06-01 | Shipped P10, P12, P13, P14. Fixed prompt-conditioner guard resolver, workflow-runtime RUN_COMMAND guard. Updated runbook — agy adapter is sole remaining daily driver blocker. |
 
 ---
 
@@ -517,7 +520,7 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 | Non-interactive (headless) | `-p "prompt"` | `-p "prompt"` / `--print` | ✅ Same flag |
 | YOLO mode | `--approval-mode yolo` | `--dangerously-skip-permissions` | 🔶 Flag rename |
 | Sandbox control | `--sandbox false` | `--sandbox` (flag-on) | ✅ Omitting = no sandbox (gwrk default for write workflows). Only add `--sandbox` for read-only workflows. |
-| Model selection | `--model gemini-3-flash-preview` | ❌ No `--model` flag | ✅ **Server-side only.** Model selection is handled by the agy backend. Router's `task.model` becomes advisory/ignored. Not a blocker — simplifies the adapter. |
+| Model selection | `--model gemini-3-flash-preview` | ❌ No `--model` flag | ✅ **Server-side only.** `task.model` is already `optional` on `TaskDispatch` (L315). Adapter simply ignores it. Router model tier becomes advisory. |
 | Slash commands | `-p "/plan specs/001"` | `-p "/plan specs/001"` | ✅ Same pattern |
 | Output format | `--output-format json` | ❌ Not exposed | ⚠️ gwrk doesn't use this — N/A |
 | Governance file | `GEMINI.md` | `AGENTS.md` | 🔶 `syncGovernance` targets `AGENTS.md`. Both files exist in gwrk already. |

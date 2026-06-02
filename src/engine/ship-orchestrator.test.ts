@@ -31,6 +31,12 @@ vi.mock("../plugins/review-plugin");
 vi.mock("../utils/manifest", () => ({
   assembleDigest: vi.fn().mockReturnValue(["mock digest"]),
 }));
+vi.mock("./profile-detector", () => ({
+  detectProfile: vi.fn().mockResolvedValue({ type: "nodejs" }),
+}));
+vi.mock("./prompt-conditioner", () => ({
+  conditionPrompt: vi.fn().mockImplementation((prompt: string) => prompt),
+}));
 
 describe("ShipOrchestrator", () => {
   const config = {
