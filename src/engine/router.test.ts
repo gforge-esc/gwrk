@@ -150,6 +150,30 @@ describe("FR-014 / Phase 4: Routing & Intelligence", () => {
         const backend = await selectBackend(task, process.cwd(), registry);
         expect(backend.name).toBe('agy');
     });
+
+    it("defaults to agy for implement tasks even if not in fallbackOrder", async () => {
+        vi.spyOn(configModule, 'loadConfig').mockReturnValue({
+            agents: {
+              fallbackOrder: ['gemini', 'claude']
+            }
+        } as any);
+
+        const mockAgy = { name: 'agy', isAvailable: vi.fn().mockResolvedValue(true) };
+        const mockGemini = { name: 'gemini', isAvailable: vi.fn().mockResolvedValue(true) };
+    
+        const registry = new AgentBackendRegistry();
+        vi.spyOn(registry, 'getAgentBackend').mockImplementation(async (name) => {
+          if (name === 'agy') return mockAgy as any;
+          if (name === 'gemini') return mockGemini as any;
+          throw new Error('Not found');
+        });
+
+        vi.spyOn(quotaModule, 'quotaProbe').mockResolvedValue({ status: 'available' });
+
+        const task = { type: 'implement' };
+        const backend = await selectBackend(task, process.cwd(), registry);
+        expect(backend.name).toBe('agy');
+    });
   });
 
   describe("quotaProbe() (FR-P4-002)", () => {

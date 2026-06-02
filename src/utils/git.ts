@@ -319,6 +319,7 @@ export function commitFiles(
   repoPath: string,
   files: string[],
   message: string,
+  options?: { skipHooks?: boolean },
 ): void {
   try {
     // Stage files
@@ -328,7 +329,11 @@ export function commitFiles(
     });
 
     // Commit
-    execFileSync("git", ["commit", "-m", message], {
+    const commitArgs = ["commit", "-m", message];
+    if (options?.skipHooks) {
+      commitArgs.push("--no-verify");
+    }
+    execFileSync("git", commitArgs, {
       cwd: repoPath,
       stdio: ["ignore", "ignore", "pipe"],
     });

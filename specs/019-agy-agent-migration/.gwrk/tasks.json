@@ -49,7 +49,7 @@
         {
           "id": "T004",
           "title": "Modify router.ts",
-          "description": "MODIFY src/engine/router.ts. Update fallbackOrder and default backend logic. Tests: src/engine/router.test.ts",
+          "description": "MODIFY src/engine/router.ts. Update fallbackOrder and default backend logic. Tests: src/engine/router.test.ts\n\nREVIEW FAIL (code): biome lint — lint/suspicious/noExplicitAny.\n  WHERE: src/engine/router.ts:87\n  EXPECTED: Specific type or Record<string, unknown>\n  ACTUAL: as any\n  FIX: Replace 'as any' with a proper type cast to Record<string, unknown> or update GwrkConfigSchema.",
           "status": "open",
           "gateScript": "pnpm vitest run src/engine/router.test.ts",
           "sp": 1

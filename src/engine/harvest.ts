@@ -89,6 +89,7 @@ export async function finalizeLogs(
     projectPath,
     stagedFiles,
     `harvest: finalize logs for ${featureId}`,
+    { skipHooks: true },
   );
 }
 
@@ -117,7 +118,12 @@ export async function harvestFeature(
   }
 
   // 1. Finalize Logs (FR-H02)
-  await finalizeLogs(featureId, projectPath);
+  try {
+    await finalizeLogs(featureId, projectPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`Log finalization failed (non-fatal): ${msg}`);
+  }
 
   // 2. Finalize DB Run Records (FR-H03)
   const runs = listRuns(featureId, projectId);

@@ -34,19 +34,30 @@ export interface RunRecord {
 export function startRun(
   run: Pick<
     RunRecord,
-    "feature_id" | "phase_id" | "command" | "agent_backend" | "workflow"
+    "feature_id" | "phase_id" | "command" | "agent_backend" | "workflow" | "project_id"
   >,
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
+  // Auto-resolve project_id from cwd if not provided
+  const projectId = run.project_id ?? (() => {
+    try {
+      const crypto = require("node:crypto");
+      return crypto.createHash("md5").update(process.cwd()).digest("hex");
+    } catch {
+      return null;
+    }
+  })();
+
   const result = conn
     .prepare(
-      `INSERT INTO runs (feature_id, phase_id, command, agent_backend, workflow)
-       VALUES (@feature_id, @phase_id, @command, @agent_backend, @workflow)`,
+      `INSERT INTO runs (feature_id, phase_id, project_id, command, agent_backend, workflow)
+       VALUES (@feature_id, @phase_id, @project_id, @command, @agent_backend, @workflow)`,
     )
     .run({
       feature_id: run.feature_id,
       phase_id: run.phase_id ?? null,
+      project_id: projectId,
       command: run.command,
       agent_backend: run.agent_backend ?? null,
       workflow: run.workflow ?? null,
