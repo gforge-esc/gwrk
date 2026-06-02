@@ -10,7 +10,7 @@ You are executing a bounded research initiative. Read every input document liste
 ## Purpose
 
 [type: gwrk-native]
-Produces a draft reference document (`docs/reference/<name>.md`) from a research brief (`docs/research/<initiative>/brief.md`). The output is a synthesis of existing documents plus codebase discovery, designed to inform specification work that follows.
+Produces a draft reference document (`docs/grounding/<name>.md`) from a research brief (`docs/research/<initiative>/brief.md`). The output is a synthesis of existing documents plus codebase discovery, designed to inform specification work that follows.
 [/type]
 [type: generic]
 Produces a research report based on the provided research brief and input documents. The output is a synthesis of existing documents plus codebase discovery, designed to inform the project's development.

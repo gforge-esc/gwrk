@@ -26,7 +26,7 @@ export const planCommand = new Command("plan")
     `
 Examples:
   gwrk define plan 001
-  gwrk define plan 001-cli-core --refs docs/reference/
+  gwrk define plan 001-cli-core --refs docs/grounding/
   cat discovery.json | gwrk define plan 001
 `,
   )

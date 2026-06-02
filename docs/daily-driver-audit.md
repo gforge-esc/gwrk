@@ -638,20 +638,33 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 ---
 
-### M. Doc Decontamination (architecture.md, WHAT_IS_GWRK.md)
+### M. ~~Doc Decontamination~~ → Doc Architecture Restructure ✅ RESTRUCTURED
 
-> **Root cause**: Same as PROMPT.md decontamination (P13) but in human-facing docs.
-> **Reference**: Prompt contamination audit in [specs/001-cli-core/refs/prompt-contamination-audit.md](specs/001-cli-core/refs/prompt-contamination-audit.md)
+> **Root cause**: `docs/` had 6 overlapping directories (`reference/`, `references/`, `research/`, `discovery/`, `changes/`, `governance/`) with no clear hierarchy. 38 of 48 `.md` files were orphaned — referenced by no prompt, source, or rule.
+> **Audit**: [docs_architecture_audit.md](file:///Users/gonzo/.gemini/antigravity-ide/brain/b3189032-f68e-48f9-8b07-59cc9f0e6e9c/docs_architecture_audit.md)
 
-| File | Lines | Problem |
+> [!NOTE]
+> **Restructured 2026-06-02.** New information architecture:
+>
+> | Directory | Role | Prompt-referenced |
+> |-----------|------|-------------------|
+> | `decisions/` | ADRs (gwrk's architectural decisions) | ✅ 6 of 7 ADRs referenced by prompts |
+> | `grounding/` | Agent context (architecture, CLI grammar, ontology) | ✅ `architecture.md`, `agent-native-cli.md` |
+> | `research/` | Initiative lifecycle (brief → draft → cascade) | ✅ `gwrk-research`, `gwrk-cascade-sync` |
+> | `assessments/` | Effort estimates (output of `gwrk-effort`) | ✅ `gwrk-effort` |
+> | `product/` | Human-facing docs (PRD, README, Foxtrot Charlie) | — (not agent-consumed) |
+> | `branding/` | Visual assets | — |
+> | `archive/` | 38 orphaned files from old `reference/`, `references/`, `changes/`, `discovery/` | — |
+>
+> **Principle**: gwrk keeps self-documenting docs — `architecture.md` describes gwrk's own stack for gwrk contributors. The `[type: gwrk-native]` / `[type: generic]` prompt conditioner handles isolation for non-gwrk projects. Stripping gwrk from its own docs is not sound.
+
+#### Remaining (decontamination)
+
+| File | Problem | Status |
 |---|---|---|
-| [architecture.md](docs/architecture.md) | 849 | Hardcodes gwrk's stack (vitest, Commander.js, SQLite) as THE architecture for any project |
-| [WHAT_IS_GWRK.md](docs/WHAT_IS_GWRK.md) | 266 | Self-referential: describes gwrk as a tool that builds gwrk |
-| CLI help text | — | `setup` still listed as standalone command (absorbed by P10) |
-
-**TO-BE**: Rewrite to be project-agnostic. `architecture.md` describes gwrk's architecture for gwrk contributors. `WHAT_IS_GWRK.md` describes gwrk for users of any project.
-
-**Effort**: ~1 hour manual rewrite. Not blocking anything.
+| `docs/grounding/architecture.md` | 849 lines — valid as gwrk self-docs, but conditioner needs `[type:]` guard if this file is ever injected into non-gwrk prompts | Roadmap item |
+| `docs/product/WHAT_IS_GWRK.md` | Self-referential (describes gwrk as a tool that builds gwrk) — needs rewrite as user-facing product doc | Roadmap item |
+| CLI help text | `setup` still listed as standalone command (absorbed by P10) | Roadmap item |
 
 ---
 

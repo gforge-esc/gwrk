@@ -43,7 +43,7 @@ export const defineCommand = new Command("define")
     `
 Examples:
   gwrk define 001
-  gwrk define 001-cli-core --refs docs/reference/
+  gwrk define 001-cli-core --refs docs/grounding/
   gwrk define spec 001
   gwrk define plan 001
   gwrk define tasks 001

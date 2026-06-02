@@ -7,7 +7,7 @@
 - Create plan.md. If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
 - Do not create tasks.json (that's `gwrk define tasks`).
 - Do not implement any code.
-- Reference existing project structure from `docs/architecture.md`.
+- Reference existing project structure from `docs/grounding/architecture.md`.
 </scope_constraints>
 
 ## Branch Discipline
@@ -23,7 +23,7 @@
 
 [type: gwrk-native]
 <architecture_reference>
-The plan MUST be grounded in `docs/architecture.md`:
+The plan MUST be grounded in `docs/grounding/architecture.md`:
 - **Project Structure** (§2): Map features to the correct source directory.
 - **Tech Stack** (§4): TypeScript CLI (Commander.js), Fastify server, SQLite (better-sqlite3), Vitest, Biome.
 - **Foxtrot Charlie Pillars**: Discovery, Definition, Shipping, Delivery — commands align to pillars.
@@ -78,9 +78,9 @@ Reference the project's own architecture documentation and existing directory st
 
 - Read `{feature_dir}/spec.md` (required).
 [type: gwrk-native]
-- Read `docs/architecture.md` (required — for project structure, tech stack).
+- Read `docs/grounding/architecture.md` (required — for project structure, tech stack).
 - Read `specs/000-build-plan.md` §Dependency Graph and §Critical Path — understand upstream/downstream impacts and where this spec fits.
-- Read `docs/reference/agent-native-cli.md` (required — for agent-native design imperatives and command surface).
+- Read `docs/grounding/agent-native-cli.md` (required — for agent-native design imperatives and command surface).
 - Read `docs/decisions/ADR-004-agent-native-output.md` (required — for output protocol contract).
 [/type]
 [type: generic]

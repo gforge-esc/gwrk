@@ -23,9 +23,9 @@
 
 [type: gwrk-native]
 Before specifying, check if these files exist and load them for context:
-- `docs/architecture.md` — Project structure, tech stack
+- `docs/grounding/architecture.md` — Project structure, tech stack
 - `specs/000-build-plan.md` — Dependency graph, critical path
-- `docs/reference/agent-native-cli.md` — Agent-native design imperatives
+- `docs/grounding/agent-native-cli.md` — Agent-native design imperatives
 - `docs/decisions/ADR-004-agent-native-output.md` — Output protocol contract
 [/type]
 

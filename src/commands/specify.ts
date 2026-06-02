@@ -29,7 +29,7 @@ Examples:
   gwrk define spec "Add OAuth2 integration"                  # New feature, auto-numbered
   gwrk define spec 014 "Refine the plugin section"           # Rework existing
   gwrk define spec 047-ontology "Ontology Integration"       # New with explicit slug
-  gwrk define spec 001-cli-core --refs docs/reference/new-feature.md
+  gwrk define spec 001-cli-core --refs docs/grounding/new-feature.md
   echo "Refine the authentication section" | gwrk define spec 001
 `,
   )

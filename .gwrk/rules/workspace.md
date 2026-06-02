@@ -5,7 +5,7 @@ trigger: always_on
 # Workspace Rules
 
 ## Architecture Reference
-See `docs/architecture.md` for the authoritative gwrk architecture specification.
+See `docs/grounding/architecture.md` for the authoritative gwrk architecture specification.
 **Stack**: TypeScript CLI (Commander.js) + Fastify daemon (localhost:18790) + SQLite (better-sqlite3) + Multi-Agent Dispatch.
 
 ## ALWAYS consult governance and framing documentation over current state to inform decision. 

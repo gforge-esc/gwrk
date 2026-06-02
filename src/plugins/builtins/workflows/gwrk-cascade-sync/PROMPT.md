@@ -50,8 +50,8 @@ Goal: Build a complete picture of the current state. Parallelize reads and stop 
 Read in parallel:
 1. `specs/000-build-plan.md` — full document (the target)
 2. `docs/research/cascade.md` — full document (the reconciliation source of truth)
-3. `docs/architecture.md` — sections referenced by cascade Stage 2 amendments
-4. All published research outputs referenced in cascade.md (e.g., `docs/reference/*.md`)
+3. `docs/grounding/architecture.md` — sections referenced by cascade Stage 2 amendments
+4. All published research outputs referenced in cascade.md (e.g., `docs/grounding/*.md`)
 5. All active research briefs (`docs/research/R00*/brief.md`) — for gating dependencies
 
 Early stop: You have enough context when you can list every cascade finding and where (or whether) it appears in the build plan.

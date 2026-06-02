@@ -41,11 +41,11 @@ Read and understand the feature and phase deeply:
 - `{feature_dir}/plan.md` — Phase {N} file paths, type dependency graph, contracts
 - `{feature_dir}/contracts/` — method-level request/response schemas
 - `{feature_dir}/data-model.md` — entity shapes (if exists)
-- `docs/architecture.md` — project structure, tech stack, test conventions
+- `docs/grounding/architecture.md` — project structure, tech stack, test conventions
 
 ### 2. Map Requirements to Test Types
 
-Derive test file locations from `plan.md`'s file structure and `docs/architecture.md`'s project layout.
+Derive test file locations from `plan.md`'s file structure and `docs/grounding/architecture.md`'s project layout.
 Co-locate tests as `<module>.test.ts` adjacent to their source file.
 
 <test_type_mapping>
