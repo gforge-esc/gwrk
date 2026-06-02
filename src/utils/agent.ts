@@ -19,6 +19,38 @@ const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
 /**
+ * ADR-008 Layer 2: Environment variables that mechanically prevent
+ * interactive sub-processes from hanging agent sessions.
+ */
+export const SAFE_AGENT_ENV: Record<string, string> = {
+  GIT_EDITOR: "true",
+  EDITOR: "true",
+  VISUAL: "true",
+  GIT_MERGE_AUTOEDIT: "no",
+  DEBIAN_FRONTEND: "noninteractive",
+  CI: "true",
+  npm_config_yes: "true",
+};
+
+/**
+ * ADR-008 Layer 1: Prompt block injected into every agent-dispatched
+ * workflow. Tells the agent how to handle commands safely.
+ */
+export const COMMAND_SAFETY_BLOCK = `<command_safety>
+RULES FOR EVERY COMMAND YOU RUN:
+1. NEVER run interactive commands. All commands must complete without human input.
+2. NEVER start long-running servers (pnpm dev, npm start, python -m http.server).
+3. ALWAYS use non-interactive flags: --no-edit, --non-interactive, -y, --yes.
+4. ALWAYS set GIT_EDITOR=true and EDITOR=true to prevent editor invocations.
+5. If a command produces no output for 60 seconds, kill it (Ctrl-C) and retry
+   with --non-interactive or equivalent flags.
+6. If git merge output contains "CONFLICT", abort with git merge --abort
+   and report the conflict. Do NOT attempt manual resolution.
+7. Prefer timeout 120 <cmd> for any build or test command.
+8. NEVER run: vim, nano, less, more, man, top, htop, watch, tail -f.
+</command_safety>`;
+
+/**
  * Normalized Exit Code Map (ADR-006)
  */
 export const EXIT_CODE_MAP: Record<number, number> = {
@@ -145,10 +177,12 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
     const stdoutLines: string[] = [];
     const stderrLines: string[] = [];
 
+    // ADR-008 Layer 2: Hardened environment for agent sub-processes
     const child = spawn(command, args, {
       cwd: executionRoot,
       env: {
         ...process.env,
+        ...SAFE_AGENT_ENV,
         ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
@@ -452,6 +486,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         `<code_quality>\n${enforcement}\n</code_quality>`,
       );
     }
+  }
+
+  // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
+  if (dispatch.stdin && !dispatch.stdin.includes("<command_safety>")) {
+    dispatch.stdin = `${COMMAND_SAFETY_BLOCK}\n\n${dispatch.stdin}`;
   }
 
   const opts: DispatchOptions = {
