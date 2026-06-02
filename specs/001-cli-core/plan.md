@@ -419,6 +419,41 @@ gwrk ship 001 13
 
 ---
 
+### Phase 14: Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)**
+
+Implement structural project scoping across the global SQLite database to prevent cross-project data pollution. Every plan feature, run, and statistic must be isolated by `projectId`.
+
+**Files (14):**
+- `src/utils/project-id.ts` (✅ Already done) — Canonical `resolveProjectId` utility
+- `src/db/migrations/009-project-scoping.sql` (✅ Already done) — Add `project_id` to 8 tables
+- `src/db/index.ts` (MODIFY: Add `project_id` to `safeAddColumn` for the 8 target tables)
+- `src/db/plan.ts` (MODIFY: Scope all query functions by `projectId`)
+- `src/db/runs.ts` (MODIFY: Scope `listRuns` and `getStats` by `projectId`)
+- `src/db/gates.ts` (MODIFY: Scope `getGateResults` and `recordGateResult`)
+- `src/db/compression.ts` (MODIFY: Scope `listCompressionRecords`)
+- `src/db/issues.ts` (MODIFY: Scope `listIssues` and `upsertIssue`)
+- `src/db/plugins.ts` (MODIFY: Scope `getRoutingHistory`)
+- `src/engine/plan-store.ts` (MODIFY: Constructor accepts `projectId`, pass to DB layer)
+- `src/engine/drift-detector.ts` (MODIFY: Scope drift checks by `projectId`)
+- `src/commands/plan.ts` (MODIFY: Derive `projectId` and pass to `PlanStore`)
+- `src/commands/stats.ts` (MODIFY: Derive `projectId` and pass to DB layer)
+- `src/commands/runs.ts` (MODIFY: Derive `projectId` and pass to DB layer)
+
+**Requirements Addressed**: US-030, FR-036, FR-037, FR-038, FR-039, FR-040
+
+**Tests:**
+- `src/db/scoping.test.ts` (NEW: Verify column existence and query filtering)
+- `src/engine/plan-store-scoping.test.ts` (NEW: Verify PlanStore isolation)
+- `src/commands/project-scoped.test.ts` (NEW: E2E verify cross-project isolation)
+
+#### Done When
+- `gwrk plan status` on Project A only shows Project A features.
+- `gwrk db runs` only shows runs for the current project.
+- No cross-project pollution in stats, gates, or compression.
+- `pnpm build` compiles clean, `pnpm test` all passing.
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -451,6 +486,7 @@ gwrk ship 001 13
 | US-027 | 10 | ☐ Open (R3) |
 | US-028 | 13 | ☐ Open (R3) |
 | US-029 | 13 | ☐ Open (R3) |
+| US-030 | 14 | ☐ Open |
 | FR-001 | 1, 7, 10 | ⭐ R3 rewrite in Phase 10 |
 | FR-002 | 3 | ✅ Done |
 | FR-003 | 3 | ✅ Done |
@@ -485,6 +521,11 @@ gwrk ship 001 13
 | FR-033 | 13 | ☐ Open (R3) |
 | FR-034 | 13 | ☐ Open (R3) |
 | FR-035 | 13 | ☐ Open (R3) |
+| FR-036 | 14 | ☐ Open |
+| FR-037 | 14 | ☐ Open |
+| FR-038 | 14 | ☐ Open |
+| FR-039 | 14 | ☐ Open |
+| FR-040 | 14 | ☐ Open |
 
 ## Phase Execution Order
 
@@ -495,7 +536,11 @@ Open phases should be implemented sequentially:
 | 1 | Phase 10 | Unified init + profile detection + schema extension | `gwrk ship 001 10` |
 | 2 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` |
 | 3 | Phase 13 | Prompt conditioning + PROMPT.md refactoring + `project info` | `gwrk ship 001 13` |
-| 4 | Phase 9 | State contracts + execution manifests (deferred, lower priority) | `gwrk ship 001 9` |
+| 4 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` |
+| 5 | Phase 9 | State contracts + execution manifests (deferred, lower priority) | `gwrk ship 001 9` |
+
+> Phase 14 depends on Phase 10 (init must register projects before scoping works). P13 and P14 are independent of each other and could ship in parallel after P10.
+
 
 > Phase 13 depends on Phase 10 (profile schema must exist before injection). Phase 12 is independent and can run before or after 13, but before is preferred (cleaner runtime before prompt refactoring).
 
