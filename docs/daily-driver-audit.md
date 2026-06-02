@@ -605,41 +605,23 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 ---
 
-### K. Gate Authoring ReliabiliVjty (Ship Loop Quality)
+### K. ~~Gate Authoring Reliability (Ship Loop Quality)~~ ✅ RESOLVED
 
 > **Spec reference**: [ship-failure-diagnosis.md](specs/004-ship-loop/refs/ship-failure-diagnosis.md)
 > **ADR dependency**: [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md) (TDD Gate Architecture)
-> **Code**: [gate-gen.ts](src/utils/gate-gen.ts) (713 lines)
-> **Prompt References**: The following files contain best practices for prompts. 
- - [GPT 5.5 Prompting Guide](file:///docs/references/gpt-5-5-prompting-guide.md)
- - [Anthropic Prompting Guild](file:///docs/references/anthropic-prompting-guide.md)
- 
-#### Current State
+> **Code**: [gate-gen.ts](src/utils/gate-gen.ts) (722 lines)
+> **Prompt audit**: [prompt_audit.md](file:///Users/gonzo/.gemini/antigravity-ide/brain/b3189032-f68e-48f9-8b07-59cc9f0e6e9c/prompt_audit.md) — full audit of all 15 workflow prompts
 
-The ship failure diagnosis documents **5 failure modes** all traced to LLM-authored gates. The deterministic `generateVitestGates()` path has **zero failures**. The failure cascade:
-
-```
-define tests (fails for MODIFY phases)
-  → no gap-matrix.md
-  → define tasks falls back to LLM gate authoring
-  → LLM gates hallucinate filenames/assertions
-  → ship runs buggy gates → overrides correct agent verdicts
-  → circuit break after 3 iterations (wasted ~3 hours of compute)
-```
-
-| Gate Source | Failures | Notes |
-|---|---|---|
-| `generateVitestGates()` (deterministic) | **0** | Maps test file → vitest command |
-| LLM gate authoring workflow | **5** | Hallucinated filenames, SIGPIPE, wrong assertions |
-| Human manual fix | **0** | All manually written gates work |
-
-#### TO-BE
-
-1. **Eliminate LLM gate path entirely**. When `gap-matrix.md` doesn't exist, generate gates from `tasks.json` task IDs + test file discovery (glob `src/**/*.test.ts` for files matching task description keywords).
-2. **SIGPIPE immunity**: Gates must NOT use `command | grep -q` under `set -euo pipefail`. Use vitest's exit code directly.
-3. **Filename validation**: Gate generator validates `test -f <path>` before emitting gate script. Catches hallucinations at generation time.
-
-**Effort**: ~2 hours. The deterministic path exists. The fix is to remove the LLM fallback, not to improve it.
+> [!NOTE]
+> **All 3 TO-BE items resolved 2026-06-02:**
+>
+> 1. ✅ **LLM gate path eliminated.** `gwrk-author-gates` workflow exists on disk but is never invoked. Runtime falls through to `generateVitestGates()` (gap-matrix path) or `generateFilesystemGates()` (filesystem convention). Confirmed by `tasks-generate-phase12.test.ts` assertion: `expect(source).not.toContain("gwrk-author-gates")`.
+>
+> 2. ✅ **SIGPIPE immunity.** Deterministic gates use `pnpm vitest run ... || { echo "FAIL" >&2; exit 1; }` — no `grep -q` pipes. Prompt SIGPIPE patterns also fixed (`gwrk-define-tests`, `gwrk-specify`).
+>
+> 3. ✅ **Filename validation at generation time.** `generateFilesystemGates()` now checks `fs.existsSync(primaryFile)` before emitting gate scripts. Files extracted from task descriptions that don't exist on disk are skipped, not gated.
+>
+> **Prompt hardening (P2-P6):** User input wrapped in `<user_input>` XML tags in `workflow-runtime.ts`. Hedge words removed from `gwrk-plan`. No credential leaks found across any prompt.
 
 ---
 
