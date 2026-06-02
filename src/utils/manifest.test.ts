@@ -88,6 +88,23 @@ describe("Execution Manifest Utility", () => {
     expect(manifests).toEqual([]);
   });
 
+  it("should skip index.json (log index, not execution manifest)", () => {
+    // Write a valid manifest first
+    writeManifest(tempDir, mockManifest);
+
+    // Write an index.json (harvest log index) — different schema
+    const runsDir = path.join(tempDir, ".gwrk", "runs");
+    fs.writeFileSync(
+      path.join(runsDir, "index.json"),
+      JSON.stringify({ featureId: "test-feature", logs: [] }),
+    );
+
+    // loadManifests should return only the valid manifest, not the index
+    const manifests = loadManifests(tempDir);
+    expect(manifests).toHaveLength(1);
+    expect(manifests[0]?.runId).toBe(mockManifest.runId);
+  });
+
   describe("assembleDigest", () => {
     it("should assemble digest from events sidecar file", () => {
       const eventsFile = path.join(tempDir, "test.events");

@@ -64,7 +64,9 @@ export function loadManifests(featureDir: string): ExecutionManifest[] {
     return [];
   }
 
-  const files = fs.readdirSync(runsDir).filter((f) => f.endsWith(".json"));
+  const files = fs
+    .readdirSync(runsDir)
+    .filter((f) => f.endsWith(".json") && f !== "index.json");
   const manifests: ExecutionManifest[] = [];
 
   for (const file of files) {

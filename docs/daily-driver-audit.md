@@ -975,8 +975,8 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | # | Section | Item | Effort | Notes |
 |---|---------|------|--------|-------|
 | ~~1~~ | ~~H~~ | ~~17 test failures from F019 merge~~ | ~~—~~ | ✅ Resolved. 152 pass, 0 fail. |
-| 2 | DB | **DB hygiene: fix F019 name/status, delete 099-drift-test.** `gwrk plan status` shows wrong data until this is run. | 5 min | Run the SQL in "Backlog DB Hygiene" section. |
-| 3 | Q | **Fix `tasks verify` index.json skip.** Skips valid manifests with "invalid manifest" error because schema doesn't handle `index.json` format. | 30 min | Filter `index.json` before schema validation. |
+| ~~2~~ | ~~DB~~ | ~~**DB hygiene: fix F019 name/status, delete 099-drift-test.**~~ Fixed F019 name → "Agent Backend Migration (gemini→agy)". Fixed all feature names (were just IDs). 099-drift-test already absent. | ~~5 min~~ | ✅ Done |
+| ~~3~~ | ~~Q~~ | ~~**Fix `tasks verify` index.json skip.**~~ `loadManifests()` now filters `index.json` before Zod parsing. Test added. | ~~30 min~~ | ✅ Done |
 
 ### Tier 2: Unblock Daily-Driver Quality
 
@@ -1015,5 +1015,8 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | Section K: Prompt hardening | ✅ XML wrapping, SIGPIPE, hedge words, filename validation at gate-gen. |
 | Section L: ROADMAP vs audit | ✅ Assessed — this audit is the authoritative source. |
 | Section M: Doc restructure | ✅ 6 overlapping dirs → coherent hierarchy. 6 dead workflows archived. `gwrk measure effort` removed. R006/R007 research briefs created. |
+| DB hygiene | ✅ All feature names fixed (were just IDs). F019 → "Agent Backend Migration (gemini→agy)". |
+| Tasks verify: index.json | ✅ `loadManifests()` now skips `index.json` before Zod parsing. Test added. |
 | Open Q #1: Phase 14 scope | ✅ Shipped as P14. |
 | Open Q #4: Test regression | ✅ Resolved — 0 failures. |
+
