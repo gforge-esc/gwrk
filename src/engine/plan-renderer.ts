@@ -89,7 +89,8 @@ export class PlanRenderer {
     else if (f.status === "SPECIFIED" || f.status === "DEFINED") icon = " 🟡";
     else if (f.status === "IN_PROGRESS") icon = " 🔴";
 
-    return `${f.id}["${f.id}: ${f.name}${icon}"]`;
+    const label = f.name !== f.id ? `${f.id}: ${f.name}` : f.id;
+    return `${f.id}["${label}${icon}"]`;
   }
 
   private renderCriticalPath(): string {
@@ -129,7 +130,8 @@ export class PlanRenderer {
       else if (f.status === "SPECIFIED" || f.status === "DEFINED") icon = "🟡";
       else if (f.status === "RETIRED") icon = "⚫";
 
-      md += `### Feature ${f.id.replace(/^F/, "")} — ${f.name} ${icon}\n\n`;
+      const heading = f.name !== f.id ? `${f.id} — ${f.name}` : f.id;
+      md += `### Feature ${heading} ${icon}\n\n`;
 
       if (f.status === "SHIPPED") {
         md +=

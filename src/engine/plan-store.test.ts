@@ -231,7 +231,7 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     expect(md).toContain('# 000 Build Plan — gwrk');
     expect(md).toContain('graph TD');
     expect(md).toContain('F0 --> F1["F1: Feat 1 ✅"]');
-    expect(md).toContain('### Feature 1 — Feat 1 ✅');
+    expect(md).toContain('### Feature F1 — Feat 1 ✅');
     expect(md).toContain('| 1 | P1 | DONE ✅ | 5 |');
   });
 

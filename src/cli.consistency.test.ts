@@ -66,11 +66,15 @@ describe("CLI Consistency: Feature Argument Position (US-023)", () => {
 });
 
 describe("CLI Consistency: No Duplicate Surfaces (US-024)", () => {
-  it("does not have 'project gates' command (removed in Phase 11)", () => {
+  it("'project gates' is summary-only (FR-005), 'gwrk gate' executes (FR-006)", () => {
     const project = program.commands.find((c) => c.name() === "project");
+    const topGate = program.commands.find((c) => c.name() === "gate");
+    // Both should exist: project gates (summary) + top-level gate (execution)
+    expect(project, "project command must exist").toBeDefined();
+    expect(topGate, "top-level gate command must exist").toBeDefined();
     if (project) {
       const gates = project.commands.find((c) => c.name() === "gates");
-      expect(gates, "'project gates' should have been removed").toBeUndefined();
+      expect(gates, "'project gates' provides summary (FR-005)").toBeDefined();
     }
   });
 

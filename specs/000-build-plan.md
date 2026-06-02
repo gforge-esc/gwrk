@@ -20,43 +20,23 @@
 
 ```mermaid
 graph TD
-    F001 --> F013
-    F001 --> F002
-    F001 --> F006
-    F001 --> F007
-    F001 --> F012
-    F001 --> F014
-    F002 --> F003
-    F002 --> F005
-    F002 --> F015
-    F013 --> TDD
-    F013 --> F004
-    TDD --> F004
-    F004 --> F005
-    F004 --> F011
-    F004 --> F004P5
-    F014 --> F014R
-    F014R --> F005
-    F014R --> F004RD
-    F014 --> F012
-    F014 --> F016
-    F014 --> F017
-    F003 --> F009
-    F003 --> F011
-    F002 --> F011
-    F006 --> F010
-    F007 --> F010
-    F015 --> F017
-    F003 --> F017
-    F012 --> F016
-    F005 --> F014P4
-    F018 --> F018P2
-    F018 --> F018P3
-    F018P2 --> F018P4
-    F018P3 --> F018P4
-    F018P4 --> F018P5
-    F018P5 --> F002
-    F018P5 --> F003
+    001-cli-core["001-cli-core ✅"] --> 013-agent-native-interface["013-agent-native-interface ✅"]
+    001-cli-core["001-cli-core ✅"] --> 002-build-server["002-build-server ✅"]
+    001-cli-core["001-cli-core ✅"] --> 006-pulse["006-pulse ✅"]
+    001-cli-core["001-cli-core ✅"] --> 007-effort-compression["007-effort-compression ✅"]
+    001-cli-core["001-cli-core ✅"] --> 012-knowledge-work["012-knowledge-work"]
+    001-cli-core["001-cli-core ✅"] --> 014-plugin-system["014-plugin-system ✅"]
+    002-build-server["002-build-server ✅"] --> 003-slack["003-slack ✅"]
+    002-build-server["002-build-server ✅"] --> 005-parallel-dispatch["005-parallel-dispatch ✅"]
+    013-agent-native-interface["013-agent-native-interface ✅"] --> 000-tdd-infrastructure["000-tdd-infrastructure ✅"]
+    013-agent-native-interface["013-agent-native-interface ✅"] --> 004-ship-loop["004-ship-loop ✅"]
+    000-tdd-infrastructure["000-tdd-infrastructure ✅"] --> 004-ship-loop["004-ship-loop ✅"]
+    004-ship-loop["004-ship-loop ✅"] --> 005-parallel-dispatch["005-parallel-dispatch ✅"]
+    004-ship-loop["004-ship-loop ✅"] --> 011-harvest["011-harvest ✅"]
+    014-plugin-system["014-plugin-system ✅"] --> 012-knowledge-work["012-knowledge-work"]
+    003-slack["003-slack ✅"] --> 011-harvest["011-harvest ✅"]
+    002-build-server["002-build-server ✅"] --> 011-harvest["011-harvest ✅"]
+    style 000-tdd-infrastructure fill:#22cc22,stroke:#118811,color:#fff
     style 001-cli-core fill:#22cc22,stroke:#118811,color:#fff
     style 002-build-server fill:#22cc22,stroke:#118811,color:#fff
     style 003-slack fill:#22cc22,stroke:#118811,color:#fff
@@ -83,13 +63,19 @@ gantt
     axisFormat %s
 
     Agent Mode (Layer 2, stdin, Classify, PhaseSchema) :done, 013_agent_native_interface_phase_03, 0, 11
+    Digest & Phase-Skip       :done, 004_ship_loop_phase_01, after 013_agent_native_interface_phase_03, 1
 ```
 
 ---
 
 ## Features
 
-### Feature 001-cli-core — 001-cli-core ✅
+### Feature 000-tdd-infrastructure ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+### Feature 001-cli-core ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -111,7 +97,7 @@ gantt
 | 13 | Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)** | SHIPPED ✅ | 0 |
 | 14 | Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)** | SHIPPED ✅ | 0 |
 
-### Feature 002-build-server — 002-build-server ✅
+### Feature 002-build-server ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -123,7 +109,7 @@ gantt
 | 3 | Slack Event Bridge & Bless Actions | SHIPPED ✅ | 0 |
 | 4 | Execution Ledger | SHIPPED ✅ | 0 |
 
-### Feature 003-slack — 003-slack ✅
+### Feature 003-slack ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -134,7 +120,7 @@ gantt
 | 2 | Conversational Agent Surface (P1) | SHIPPED ✅ | 0 |
 | 3 | Webhook Hardening & Topology (P1) | SHIPPED ✅ | 0 |
 
-### Feature 004-ship-loop — 004-ship-loop ✅
+### Feature 004-ship-loop ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -147,7 +133,7 @@ gantt
 | 4 | Plugin Dispatch Boundary | SHIPPED ✅ | 0 |
 | 5 | DispatchOrchestrator — TypeScript Ship Loop (F004-R) | SHIPPED ✅ | 0 |
 
-### Feature 005-parallel-dispatch — 005-parallel-dispatch ✅
+### Feature 005-parallel-dispatch ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -157,7 +143,7 @@ gantt
 | 1 | Worktree Sandbox Manager | SHIPPED ✅ | 0 |
 | 2 | Parallel Dispatch Orchestrator | SHIPPED ✅ | 0 |
 
-### Feature 006-pulse — 006-pulse ✅
+### Feature 006-pulse ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -168,7 +154,7 @@ gantt
 | 2 | CLI Commands & Terminal Rendering | SHIPPED ✅ | 0 |
 | 3 | Final Verification & E2E | SHIPPED ✅ | 0 |
 
-### Feature 007-effort-compression — 007-effort-compression ✅
+### Feature 007-effort-compression ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -179,7 +165,7 @@ gantt
 | 2 | Compression Engine | SHIPPED ✅ | 0 |
 | 3 | CLI Commands + Integration | SHIPPED ✅ | 0 |
 
-### Feature 008-agent-router — 008-agent-router ✅
+### Feature 008-agent-router ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -191,7 +177,7 @@ gantt
 | 3 | Backend Selector (Core Logic) | SHIPPED ✅ | 0 |
 | 4 | Integration & Wiring | SHIPPED ✅ | 0 |
 
-### Feature 011-harvest — 011-harvest ✅
+### Feature 011-harvest ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -204,11 +190,11 @@ gantt
 | 4 | Done, Done! Notification | SHIPPED ✅ | 0 |
 | 5 | Post-Ship Issue Tracking | SHIPPED ✅ | 0 |
 
-### Feature 012-knowledge-work — 012-knowledge-work ⚪
+### Feature 012-knowledge-work ⚪
 
 **Status:** PLANNED
 
-### Feature 013-agent-native-interface — 013-agent-native-interface ✅
+### Feature 013-agent-native-interface ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -219,7 +205,7 @@ gantt
 | 2 | Discovery (Discover Engine, Help Rewrite, Error-as-Nav) | SHIPPED ✅ | 10 |
 | 3 | Agent Mode (Layer 2, stdin, Classify, PhaseSchema) | SHIPPED ✅ | 11 |
 
-### Feature 014-plugin-system — 014-plugin-system ✅
+### Feature 014-plugin-system ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -237,7 +223,7 @@ gantt
 | 9 | Enforcement Skills (FR-014 / US-016) | SHIPPED ✅ | 0 |
 | 11 | .agents/ Deletion & Verification (ADR-007) | SHIPPED ✅ | 0 |
 
-### Feature 018-build-plan-orchestrator — 018-build-plan-orchestrator ✅
+### Feature 018-build-plan-orchestrator ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -250,7 +236,7 @@ gantt
 | 4 | Verification & Markdown Rendering | SHIPPED ✅ | 0 |
 | 5 | Visualization & Monitoring | SHIPPED ✅ | 0 |
 
-### Feature 019-agy-agent-migration — 019-agy-agent-migration ✅
+### Feature 019-agy-agent-migration ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
@@ -267,6 +253,7 @@ gantt
 | Wave | Features | Theme |
 |---|---|---|
 | Wave 1 | 001-cli-core, 002-build-server, 003-slack, 004-ship-loop, 005-parallel-dispatch, 006-pulse, 007-effort-compression, 008-agent-router, 011-harvest, 013-agent-native-interface, 014-plugin-system, 018-build-plan-orchestrator, 019-agy-agent-migration | TBD |
+| Wave 2 | 013-agent-native-interface, 002-build-server, 006-pulse, 007-effort-compression, 014-plugin-system, 003-slack, 005-parallel-dispatch, 011-harvest, 004-ship-loop | TBD |
 
 ---
 
@@ -274,6 +261,7 @@ gantt
 
 | Feature | SP | Status |
 |---|---|---|
+| 000-tdd-infrastructure | 0 | SHIPPED |
 | 001-cli-core | 0 | SHIPPED |
 | 002-build-server | 0 | SHIPPED |
 | 003-slack | 0 | SHIPPED |

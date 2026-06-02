@@ -14,12 +14,12 @@ import path from "node:path";
 import { projectCommand } from "./project.js";
 
 describe("FR-004: Project Discovery Command (gwrk project)", () => {
-	it("US-004.1: projectCommand has 'info' subcommand", () => {
-		// Commander.js: subcommands are accessible via .commands
+	it("US-004.1: projectCommand has 'info' and 'discover' subcommands", () => {
 		const subcommandNames = projectCommand.commands.map(
 			(c: { name: () => string }) => c.name(),
 		);
 		expect(subcommandNames).toContain("info");
+		expect(subcommandNames).toContain("discover");
 	});
 
 	// --- Contract: registered in cli.ts ---
@@ -42,20 +42,20 @@ describe("FR-004: Project Discovery Command (gwrk project)", () => {
 });
 
 describe("FR-005: Spec and Gate Subcommands", () => {
-	// --- US-005 Acceptance Scenario 1: specs subcommand (deferred — P1) ---
-	it.skip("US-005.1: projectCommand has 'specs' subcommand", () => {
+	// --- US-005 Acceptance Scenario 1: specs subcommand ---
+	it("US-005.1: projectCommand has 'specs' subcommand", () => {
 		const subcommandNames = projectCommand.commands.map(
 			(c: { name: () => string }) => c.name(),
 		);
 		expect(subcommandNames).toContain("specs");
 	});
 
-	// --- US-005 Acceptance Scenario 2: gates is top-level only (not a project subcommand) ---
-	it("US-005.2: gates moved to top-level 'gwrk gate' (not under project)", () => {
+	// --- US-005 Acceptance Scenario 2: gates summary under project, execution at top-level ---
+	it("US-005.2: projectCommand has 'gates' summary subcommand", () => {
 		const subcommandNames = projectCommand.commands.map(
 			(c: { name: () => string }) => c.name(),
 		);
-		expect(subcommandNames).not.toContain("gates");
+		expect(subcommandNames).toContain("gates");
 	});
 
 	// --- Contract: specs returns SpecSummary[] shape ---

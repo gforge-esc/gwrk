@@ -594,14 +594,14 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 > | FR-001 `withSignal` | ✅ SHIPPED | `signal.ts` exists (2017B), 25/25 command files wrap with `withSignal`, live `[exit:0 \| 63ms]` confirmed |
 > | FR-002 `--format json` | ✅ SHIPPED | `output.ts` (2048B), global `--format` flag in `cli.ts:34`, 10+ commands support JSON |
 > | FR-003 `--agent` Layer 2 | ✅ SHIPPED | `agent-layer.ts` (89 lines), 12 test cases passing, `stripAnsi`/`guardBinary`/`truncateOverflow` all implemented |
-> | FR-004 `project discover` | ⚠️ PARTIAL | `discover.ts` engine exists (212 lines, test passing) but CLI subcommand NOT wired — `gwrk project discover` returns unknown command |
-> | FR-005 `project specs/gates` | ⚠️ PARTIAL | Subcommands not registered; functionality absorbed by `scanReadiness` and `gwrk gate` |
+> | FR-004 `project discover` | ✅ SHIPPED | `discover.ts` engine (212 lines) + `project-discover.ts` CLI wired. `gwrk project discover [--format json]` returns full `ProjectDiscovery` (DM-001). Existing test passing. |
+> | FR-005 `project specs/gates` | ✅ SHIPPED | `project-specs-gates.ts` — `gwrk project specs` lists all specs with status table, `gwrk project gates` shows gate summary. Both support `--format json`. Tests un-skipped + passing. |
 > | FR-006 `gate-check` | ✅ SHIPPED | Implemented as `gwrk gate` (494 lines), `GateCheckResult` DM-002 schema exact match |
 > | FR-007 Error-as-navigation | ✅ SHIPPED | 27 `Run '...'` guidance instances across commands |
 > | FR-008 Help enrichment | ✅ SHIPPED | Exit codes (5 cmds), Type declarations (7 cmds), Examples (23 cmds) |
 > | FR-009 Exit codes | ✅ SHIPPED | `exit(127)` for unknown commands, `exit(2)` for usage errors, standardized across CLI |
 >
-> **Verdict**: 7/9 FRs fully shipped, 2/9 partial (discover/specs subcommands not wired as standalone CLI). Feature status → SHIPPED. Manual phase insert (3 phases, 28 SP).
+> **Verdict**: 9/9 FRs fully shipped. Feature status → SHIPPED. FR-004/FR-005 CLI wiring completed 2026-06-02.
 
 ---
 
