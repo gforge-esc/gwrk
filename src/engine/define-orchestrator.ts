@@ -281,6 +281,18 @@ export class DefineOrchestrator extends EventEmitter {
       );
 
       console.log(`  ${result.summary}`);
+
+      // Post-dispatch gate: tasks.json MUST exist after this stage
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
+      if (!fs.existsSync(tasksPath)) {
+        return {
+          success: false,
+          exitCode: 1,
+          error: `Agent completed but did not create tasks.json at ${tasksPath}. Re-run with --force.`,
+        };
+      }
+
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
