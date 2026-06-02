@@ -29,19 +29,14 @@ describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
     const p1 = "proj-1";
     const p2 = "proj-2";
 
-    // @ts-expect-error - projectId not yet in PlanFeature or insertFeature signature
-    insertFeature({ ...f1, project_id: p1 }, db);
-    // @ts-expect-error
-    insertFeature({ ...f1, id: "F2", project_id: p2 }, db);
+    insertFeature(f1, p1, db);
+    insertFeature({ ...f1, id: "F2" }, p2, db);
 
     // Verify retrieval is scoped
-    // @ts-expect-error - getFeature doesn't accept projectId yet
     const result1 = getFeature("F1", p1, db);
     expect(result1).toBeDefined();
-    // @ts-expect-error
-    expect(result1?.project_id).toBe(p1);
+    expect(result1?.id).toBe("F1");
 
-    // @ts-expect-error
     const result2 = getFeature("F1", p2, db);
     expect(result2).toBeUndefined();
   });
@@ -50,17 +45,13 @@ describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
     const p1 = "proj-1";
     const p2 = "proj-2";
 
-    // @ts-expect-error
-    insertFeature({ id: "F1", name: "F1", status: "open", sp_total: 1, project_id: p1 }, db);
-    // @ts-expect-error
-    insertFeature({ id: "F2", name: "F2", status: "open", sp_total: 1, project_id: p2 }, db);
+    insertFeature({ id: "F1", name: "F1", status: "open", sp_total: 1 }, p1, db);
+    insertFeature({ id: "F2", name: "F2", status: "open", sp_total: 1 }, p2, db);
 
-    // @ts-expect-error
     const list1 = listFeatures(p1, db);
     expect(list1).toHaveLength(1);
     expect(list1[0].id).toBe("F1");
 
-    // @ts-expect-error
     const list2 = listFeatures(p2, db);
     expect(list2).toHaveLength(1);
     expect(list2[0].id).toBe("F2");

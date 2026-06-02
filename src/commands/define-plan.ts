@@ -16,6 +16,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const planCommand = new Command("plan")
@@ -147,7 +148,7 @@ Examples:
           );
         }
 
-        const planStore = new PlanStore();
+        const planStore = new PlanStore(resolveProjectId(projectRoot));
         planStore.handleDefineComplete({
           featureId: feature,
           status: "DEFINED",

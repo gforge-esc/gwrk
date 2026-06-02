@@ -8,6 +8,7 @@ import { parsePlan } from "../utils/parser.js";
 import { computeCompression, gatherDeliveryActuals } from "./compression.js";
 import { reconcileGates } from "./reconcile-gates.js";
 import { resolveRoleMultipliers } from "./roles.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import type {
   CompressionReport,
   EffortForecast,
@@ -102,9 +103,11 @@ export async function harvestFeature(
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
 
+  const projectId = resolveProjectId(projectPath);
+
   // 0. Idempotency Guard (FR-H10)
   if (phaseId) {
-    const existing = getCompressionRecord(featureId, phaseId);
+    const existing = getCompressionRecord(featureId, phaseId, projectId);
     if (existing) {
       console.log(
         `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
@@ -117,13 +120,14 @@ export async function harvestFeature(
   await finalizeLogs(featureId, projectPath);
 
   // 2. Finalize DB Run Records (FR-H03)
-  const runs = listRuns(featureId);
+  const runs = listRuns(featureId, projectId);
   const targetRun = runs.find(
     (r) =>
       r.phase_id === phaseId &&
       (r.pr_number === prNumber || !r.pr_number) &&
       r.status !== "merged",
   );
+
 
   if (targetRun?.id) {
     finishRun(targetRun.id, {
@@ -213,7 +217,7 @@ export async function harvestFeature(
             compression,
           };
 
-          recordCompression(report);
+          recordCompression(report, projectId);
           console.log(
             `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
           );

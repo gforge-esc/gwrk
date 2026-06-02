@@ -9,6 +9,7 @@ export interface IssueRecord {
   body: string | null;
   state: "open" | "closed";
   html_url?: string | null;
+  project_id?: string;
   created_at: string;
   closed_at?: string | null;
   author: string;
@@ -17,15 +18,19 @@ export interface IssueRecord {
 /**
  * Save a new issue record or replace if it already exists (by issue_number).
  */
-export function saveIssue(issue: IssueRecord, db?: Database.Database): number {
+export function saveIssue(
+  issue: IssueRecord,
+  projectId: string,
+  db?: Database.Database,
+): number {
   const conn = db ?? getDb();
   const result = conn
     .prepare(
       `INSERT OR REPLACE INTO issues (
-        issue_number, feature_id, title, body, state, html_url, created_at, closed_at, author
+        issue_number, feature_id, title, body, state, html_url, project_id, created_at, closed_at, author
       )
       VALUES (
-        @issue_number, @feature_id, @title, @body, @state, @html_url, @created_at, @closed_at, @author
+        @issue_number, @feature_id, @title, @body, @state, @html_url, @project_id, @created_at, @closed_at, @author
       )`,
     )
     .run({
@@ -35,12 +40,14 @@ export function saveIssue(issue: IssueRecord, db?: Database.Database): number {
       body: issue.body ?? null,
       state: issue.state,
       html_url: issue.html_url ?? null,
+      project_id: projectId,
       created_at: issue.created_at,
       closed_at: issue.closed_at ?? null,
       author: issue.author,
     });
   return Number(result.lastInsertRowid);
 }
+
 
 /**
  * Update an existing issue by issue_number.
@@ -72,12 +79,14 @@ export function updateIssue(
  */
 export function listIssues(
   featureId: string,
+  projectId: string,
   db?: Database.Database,
 ): IssueRecord[] {
   const conn = db ?? getDb();
   return conn
     .prepare(
-      "SELECT * FROM issues WHERE feature_id = ? ORDER BY created_at DESC",
+      "SELECT * FROM issues WHERE feature_id = ? AND project_id = ? ORDER BY created_at DESC",
     )
-    .all(featureId) as IssueRecord[];
+    .all(featureId, projectId) as IssueRecord[];
 }
+

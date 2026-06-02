@@ -20,6 +20,7 @@ import { tasksGenerateCommand } from "./tasks-generate.js";
 import { testsGenerateCommand } from "./tests-generate.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
@@ -97,7 +98,7 @@ Examples:
             dryRun: opts.dryRun,
           });
 
-          const planStore = new PlanStore();
+          const planStore = new PlanStore(resolveProjectId(cwd));
           orchestrator.on("plan:define:complete", (event) => {
             planStore.handleDefineComplete(event);
           });

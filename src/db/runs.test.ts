@@ -42,7 +42,7 @@ describe("runs db", () => {
       db,
     );
 
-    const runs = listRuns("test-feat", db);
+    const runs = listRuns("test-feat", undefined, db);
     expect(runs.length).toBeGreaterThan(0);
     expect(runs[0].exit_code).toBe(0);
     expect(runs[0].feature_id).toBe("test-feat");
@@ -60,7 +60,7 @@ describe("runs db", () => {
     );
 
     expect(runId).toBeGreaterThan(0);
-    const runs = listRuns("record-feat", db);
+    const runs = listRuns("record-feat", undefined, db);
     expect(runs[0].duration_s).toBe(45);
   });
 
@@ -90,7 +90,7 @@ describe("runs db", () => {
       db,
     );
 
-    const stats = getStats(db);
+    const stats = getStats(undefined, db);
     const stat = stats.find((s) => s.command === "stats-cmd");
     expect(stat).toBeDefined();
     expect(stat?.total_runs).toBeGreaterThan(0);
@@ -132,7 +132,7 @@ describe("runs db", () => {
         db,
       );
 
-      const runs = listRuns("harvest-feat", db);
+      const runs = listRuns("harvest-feat", undefined, db);
       const run = runs.find((r) => r.id === runId);
       expect(run).toBeDefined();
       expect(run?.status).toBe("merged");
@@ -170,7 +170,7 @@ describe("runs db", () => {
         db,
       );
 
-      const runs = listRuns("harvest-partial-feat", db);
+      const runs = listRuns("harvest-partial-feat", undefined, db);
       const run = runs.find((r) => r.id === runId);
       expect(run).toBeDefined();
       expect(run?.status).toBeNull();

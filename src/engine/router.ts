@@ -1,4 +1,5 @@
 import { getRoutingHistory } from "../db/plugins.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { loadConfig } from "../utils/config.js";
@@ -44,7 +45,8 @@ export async function selectBackend(
 
   // 2. Historical Learning
   try {
-    const history = getRoutingHistory(task.type, 50);
+    const projectId = resolveProjectId(projectRoot);
+    const history = getRoutingHistory(task.type, projectId, 50);
     if (history.length >= 5) {
       const stats = history.reduce(
         (acc, d) => {

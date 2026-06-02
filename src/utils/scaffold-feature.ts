@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { resolveProjectId } from "./project-id.js";
 
 /**
  * Stop words filtered from descriptions when generating feature slugs.
@@ -160,15 +161,23 @@ export function generateSlug(description: string): string {
  * Register a new feature in the plan_features DB table.
  * Non-fatal if DB is unavailable.
  */
-async function registerFeatureInDb(featureId: string, name: string): Promise<void> {
+async function registerFeatureInDb(
+	featureId: string,
+	name: string,
+	projectRoot: string,
+): Promise<void> {
 	try {
 		const { insertFeature } = await import("../db/plan.js");
-		insertFeature({
-			id: featureId,
-			name,
-			status: "PLANNED",
-			sp_total: 0,
-		});
+		const projectId = resolveProjectId(projectRoot);
+		insertFeature(
+			{
+				id: featureId,
+				name,
+				status: "PLANNED",
+				sp_total: 0,
+			},
+			projectId,
+		);
 	} catch {
 		// DB not available — non-fatal for scaffolding
 	}
@@ -210,7 +219,7 @@ export function scaffoldFeature(
 	fs.mkdirSync(featureDir, { recursive: true });
 
 	// Copy spec template if available
-	const projectRoot = path.dirname(specsDir);
+	const projectRoot = path.dirname(path.resolve(specsDir));
 	const templatePath = path.join(
 		projectRoot,
 		"specs",
@@ -222,7 +231,7 @@ export function scaffoldFeature(
 	}
 
 	// Register in plan_features DB
-	registerFeatureInDb(featureId, description);
+	registerFeatureInDb(featureId, description, projectRoot);
 
 	return {
 		featureId,

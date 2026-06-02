@@ -1,5 +1,6 @@
 import path from "node:path";
 import { recordGateResult } from "../db/gates.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { runGate } from "../utils/gate-runner.js";
 import {
   type TaskState,
@@ -26,6 +27,7 @@ export async function reconcileGates(
   phaseId?: string,
 ): Promise<ReconcileResult> {
   const featureDir = path.join(projectPath, "specs", featureId);
+  const projectId = resolveProjectId(projectPath);
 
   let taskState: TaskState;
   try {
@@ -57,15 +59,18 @@ export async function reconcileGates(
       const gateResult = await runGate(gatePath);
 
       // Record evidence to SQLite (survives tasks.json regeneration)
-      recordGateResult({
-        feature_id: featureId,
-        phase_id: phase.id,
-        task_id: task.id,
-        gate_script: task.gateScript,
-        passed: gateResult.passed ? 1 : 0,
-        exit_code: gateResult.exitCode,
-        output: gateResult.output.slice(0, 2000), // Truncate for storage
-      });
+      recordGateResult(
+        {
+          feature_id: featureId,
+          phase_id: phase.id,
+          task_id: task.id,
+          gate_script: task.gateScript,
+          passed: gateResult.passed ? 1 : 0,
+          exit_code: gateResult.exitCode,
+          output: gateResult.output.slice(0, 2000), // Truncate for storage
+        },
+        projectId,
+      );
 
       if (gateResult.passed) {
         passed++;

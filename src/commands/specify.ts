@@ -17,6 +17,7 @@ import {
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { scaffoldFeature } from "../utils/scaffold-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const specifyCommand = new Command("spec")
@@ -233,7 +234,7 @@ Examples:
             );
           }
 
-          const planStore = new PlanStore();
+          const planStore = new PlanStore(resolveProjectId(cwd));
           planStore.handleDefineComplete({
             featureId: feature,
             status: "SPECIFIED",
