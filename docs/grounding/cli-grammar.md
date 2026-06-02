@@ -45,8 +45,7 @@ Commands that drive autonomous execution and verification.
 ### Value Pillar (`measure`)
 Commands that prove delivered value and velocity.
 - `gwrk measure pulse`: Git activity and productivity dashboard.
-- `gwrk measure effort <feature>`: Story-point driven estimation report.
-- `gwrk measure compression <feature>`: Effort vs. actual delivery ratio.
+- `gwrk measure compression <feature>`: Effort forecast vs. actual delivery ratio. Runs `computeEffort()` internally — no standalone effort command needed.
 
 ### Operations
 Infrastructure and state management.

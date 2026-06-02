@@ -677,13 +677,13 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 #### Next Steps
 
-| # | Item | Effort | Priority |
-|---|------|--------|----------|
-| 1 | **Remove `gwrk measure effort` CLI command.** The engine function `computeEffort()` stays — compression calls it internally. But the standalone command is redundant: compression already runs effort as a sub-calculation, and `gwrk plan render` shows per-feature effort estimates from the DAG. The command surface shrinks: `gwrk measure` becomes `{pulse, compression}`. | ~30 min | P2 |
-| 2 | **Wire `gwrk define research <feature>`.** The `gwrk-research` workflow takes a `docs/research/R00*/brief.md` and produces a `draft.md` synthesis. This is the upstream feeder to `gwrk define spec --refs` — "gather and synthesize inputs before committing to a spec." Would make the research → spec pipeline a first-class gwrk flow. | ~2 hrs | P3 |
-| 3 | **Project perspective mechanism (F014 enforcement skills).** gwrk's prompt conditioner has two modes: `gwrk-native` and `generic`. There's no way to say "this is a Django + React + Go polyglot, apply these standards." For non-gwrk projects (e.g., EnergyWork), agents need: code-smell conventions, linting rules, stack-specific quality gates, and architecture grounding — all project-scoped. F014 spec already defines this via enforcement skills (`tier: enforcement`, US-016, FR-014) and `.gwrk/plugins.yaml` overrides. `docs/grounding/architecture.md` is the gwrk-specific instance of this pattern — it works because gwrk is the project. The gap is: no equivalent exists for other projects. | ~spec update | P2 |
-| 4 | **Rewrite `docs/product/WHAT_IS_GWRK.md`.** Currently self-referential (describes gwrk building gwrk). Should describe gwrk as a tool for any project — the PE's operating system thesis, not a self-bootstrapping narrative. | ~1 hr | P3 |
-| 5 | **Archive `docs/assessments/`.** Output dir for the now-archived `gwrk-effort` workflow. Contains 2 historical effort reports. Compression subsumes this; move to `docs/archive/assessments/`. | ~5 min | P3 |
+| # | Item | Status |
+|---|------|--------|
+| 1 | ~~**Remove `gwrk measure effort` CLI command.**~~ Deleted `effort.ts`, `effort.test.ts`, `report-writer.ts`. Removed from `measure.ts`, CLI grammar, UX test, consistency test, E2E test. Engine function `computeEffort()` stays — compression calls it internally. `gwrk measure` is now `{pulse, compression}`. | ✅ Done |
+| 2 | **Wire `gwrk define research`.** Needs research first — the research workflow should be pluginable (JTBD, market landscape, building a case are different for every user). This is a plugin system concern, not a CLI wiring task. | Roadmap (F014) |
+| 3 | **Project perspective mechanism (F014 enforcement skills).** The primary use case for project overrides. For non-gwrk projects, agents need project-scoped standards (code-smell, linting, architecture grounding). F014 defines this via enforcement skills and `.gwrk/plugins.yaml`. | Roadmap (F014) |
+| 4 | **Rewrite `docs/product/WHAT_IS_GWRK.md`.** Should describe gwrk as a tool for any project — the PE's operating system thesis, not a self-bootstrapping narrative. | Roadmap |
+| 5 | ~~**Archive `docs/assessments/`.**~~ Moved to `docs/archive/assessments/`. Wrong approach; compression subsumes effort. | ✅ Done |
 
 ---
 

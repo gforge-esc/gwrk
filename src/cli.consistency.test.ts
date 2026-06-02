@@ -11,7 +11,6 @@ describe("CLI Consistency: Feature Argument Position (US-023)", () => {
     ["tasks", "list"],
     ["tasks", "next"],
     ["tasks", "done"],
-    ["measure", "effort"],
     ["measure", "compression"],
     ["db", "runs"],
     ["test"],

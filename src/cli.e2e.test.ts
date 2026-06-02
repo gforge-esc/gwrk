@@ -103,11 +103,10 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     const { stdout, exitCode } = await runCli("measure --help");
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^\s+pulse\b/m);
-    expect(stdout).toMatch(/^\s+effort\b/m);
     expect(stdout).toMatch(/^\s+compression\b/m);
 
     // No other subcommands
-    const hidden = ["metrics", "status", "runs", "stats"];
+    const hidden = ["effort", "metrics", "status", "runs", "stats"];
     for (const cmd of hidden) {
       const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
       expect(stdout).not.toMatch(regex);
