@@ -694,6 +694,77 @@
         }
       ],
       "sp_estimate": 0
+    },
+    {
+      "id": "phase-14",
+      "title": "Phase 14: Project-Scoped DB Isolation",
+      "tasks": [
+        {
+          "id": "T075",
+          "title": "Update DB Safety Net with project_id",
+          "description": "Update safeAddColumn in src/db/index.ts to include project_id for all 8 target tables (plan_features, plan_phases, plan_edges, plan_proposals, gate_results, compression, issues, routing_history). Tests: src/db/db.test.ts",
+          "status": "open",
+          "gateScript": "gates/T075-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T076",
+          "title": "Scope Plan DB Queries",
+          "description": "Update all query functions in src/db/plan.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
+          "status": "open",
+          "gateScript": "gates/T076-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T077",
+          "title": "Scope Run & Gate DB Queries",
+          "description": "Update query functions in src/db/runs.ts and src/db/gates.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
+          "status": "open",
+          "gateScript": "gates/T077-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T078",
+          "title": "Scope Analytics & Plugin DB Queries",
+          "description": "Update query functions in src/db/compression.ts, src/db/issues.ts, and src/db/plugins.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
+          "status": "open",
+          "gateScript": "gates/T078-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T079",
+          "title": "Update PlanStore Engine for Project Awareness",
+          "description": "Refactor PlanStore in src/engine/plan-store.ts to accept projectId in its constructor and use it for all DB calls. Tests: src/engine/plan-store-scoping.test.ts",
+          "status": "open",
+          "gateScript": "gates/T079-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T080",
+          "title": "Update Plan Commands with Project Derivation",
+          "description": "Update CLI subcommands in src/commands/plan.ts to derive projectId from cwd and pass it to PlanStore. Tests: src/commands/project-scoped.test.ts",
+          "status": "open",
+          "gateScript": "gates/T080-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T081",
+          "title": "Update Analytics Commands with Project Derivation",
+          "description": "Update CLI subcommands in src/commands/stats.ts and src/commands/runs.ts to derive projectId and pass it to DB layer. Tests: src/commands/project-scoped.test.ts",
+          "status": "open",
+          "gateScript": "gates/T081-gate.sh",
+          "sp": 0
+        },
+        {
+          "id": "T082",
+          "title": "Verify Cross-Project Isolation",
+          "description": "Ensure that operations in one project do not pollute another via E2E verification. Tests: src/commands/project-scoped.test.ts",
+          "status": "open",
+          "gateScript": "gates/T082-gate.sh",
+          "sp": 0
+        }
+      ],
+      "sp_estimate": 0
     }
   ]
 }
