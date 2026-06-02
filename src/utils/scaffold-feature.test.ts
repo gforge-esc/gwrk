@@ -171,11 +171,9 @@ describe("scaffoldFeature", () => {
 		const specsDir = path.join(tempDir, "specs");
 		fs.mkdirSync(specsDir);
 
-		// Create template
-		const templateDir = path.join(tempDir, ".specify", "templates");
-		fs.mkdirSync(templateDir, { recursive: true });
+		// Create template at current lookup path (specs/spec-template.md)
 		fs.writeFileSync(
-			path.join(templateDir, "spec-template.md"),
+			path.join(specsDir, "spec-template.md"),
 			"# Template",
 		);
 

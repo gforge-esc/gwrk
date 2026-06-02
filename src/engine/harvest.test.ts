@@ -93,6 +93,7 @@ describe("FR-H02: Log Management & Finalization", () => {
         path.join("specs", featureId, ".gwrk", "runs", "index.json"),
       ],
       expect.stringContaining(featureId),
+      { skipHooks: true },
     );
   });
 

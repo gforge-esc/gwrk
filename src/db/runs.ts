@@ -1,3 +1,4 @@
+import path from "node:path";
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
@@ -48,6 +49,19 @@ export function startRun(
       return null;
     }
   })();
+
+  // Ensure project exists in projects table to satisfy FK constraint
+  if (projectId) {
+    conn
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)`,
+      )
+      .run({
+        id: projectId,
+        name: path.basename(process.cwd()),
+        path: process.cwd(),
+      });
+  }
 
   const result = conn
     .prepare(

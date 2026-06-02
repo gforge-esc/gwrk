@@ -48,6 +48,8 @@ export interface ShipState {
   failureContext: FailureContext | null;
   branchName?: string;
   testBaseline?: number;
+  prNumber?: number;
+  prUrl?: string;
 }
 
 /**
