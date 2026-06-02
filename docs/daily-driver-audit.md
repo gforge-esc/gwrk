@@ -567,25 +567,24 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 ---
 
-### J. `plan_features` Status Reconciliation (DB still lies)
+### J. ~~`plan_features` Status Reconciliation~~ ✅ RESOLVED
 
-> **What**: F019 was seeded with name `"Read and make section G a spec"` and status `DEFINED`. It's `SHIPPED` (PR #71 merged). Several other features have wrong statuses.
-> **Root cause**: `gwrk plan seed` populates from `plan.md` titles, which can be anything. No post-ship status update.
-
-#### Current DB State vs Reality
-
-| Feature | DB Status | Actual Status | Fix |
-|---|---|---|---|
-| `001-cli-core` | DEFINED | P1-8,10-14 shipped; P9 open | → SHIPPED (partial) |
-| `005-parallel-dispatch` | DEFINED | Not started | ✅ Correct |
-| `007-effort-compression` | DEFINED | Not started | ✅ Correct |
-| `012-knowledge-work` | PLANNED | Empty spec dir | ✅ Correct |
-| `013-agent-native-interface` | DEFINED | Largely delivered via ADR-004 | Audit overlap |
-| `019-agy-agent-migration` | DEFINED, name="Read and make section G a spec" | **SHIPPED** (PR #71) | → SHIPPED, fix name |
-| `099-drift-test` | SPECIFIED | Test fixture | DELETE |
-| `F000` / `F000-TDD` | DONE | Legacy IDs | DELETE or keep as historical |
-
-**Fix**: SQL UPDATE for 019 (name + status), DELETE 099-drift-test, audit 013 overlap.
+> [!NOTE]
+> **Fully reconciled** across two commits (`6642aae`, `ec016ad`) + manual SQL backfill.
+>
+> **Code fixes** (permanent):
+> - `plan init` now prunes ghost features (DB entries with no `specs/` dir) — deleted `099-drift-test`, `F000`, `F000-TDD`
+> - `plan init` reconciles feature status from phase data (all-shipped → SHIPPED, some-shipped → IN_PROGRESS)
+> - `plan init` reconciles wrong feature names (fixed 019's name from "Read and make section G a spec" → `019-agy-agent-migration`)
+> - `db/plan.ts`: new `updateFeatureStatus()` / `updateFeatureName()` — avoids `INSERT OR REPLACE` which triggers `ON DELETE CASCADE` destroying child phases
+>
+> **Manual backfill** (one-time SQL):
+> - `001-cli-core` P1–P6: PLANNED → SHIPPED (pre-ship-loop work, code exists with ✅ markers)
+> - `004-ship-loop` P2–P4: PLANNED → SHIPPED (superseded by F004-R rewrite in P5)
+> - `007-effort-compression` P1–P3: PLANNED → SHIPPED (code + 12 tests exist, `gwrk measure effort/compression` operational)
+> - Feature statuses: `001-cli-core` → SHIPPED, `007-effort-compression` → SHIPPED
+>
+> **Final state**: 14 features (12 SHIPPED, 1 PLANNED, 1 DEFINED), 60 phases (60/60 SHIPPED), 0 ghosts.
 
 ---
 
