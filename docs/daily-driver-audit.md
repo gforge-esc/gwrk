@@ -352,6 +352,7 @@ This baseline MUST NOT regress.
 | 2026-06-01 | Added Section G: gemini→agy migration. Hard deadline June 18. P0. |
 | 2026-06-01 | Shipped P10, P12, P13, P14. Fixed prompt-conditioner guard resolver, workflow-runtime RUN_COMMAND guard. Updated runbook — agy adapter is sole remaining daily driver blocker. |
 | 2026-06-02 | **Shipped F019** (PR #71, merged). `AgyAdapter` delivered. Deterministic `plan-to-tasks` parser replaced LLM dispatch. Harvest bug fixed (finalizeLogs throw killed DB update). DB backfill: 7,089 NULL `project_id` rows filled, `startRun` auto-resolves. Auto-commit after all define stages. Daily driver verification is the sole remaining step. |
+| 2026-06-02 | **Backlog expansion**: Added Sections H–W. Full research pass on every backlog item: test regression (17 failures from F019), feature lifecycle status command, plan_features DB reconciliation, gate authoring reliability, ROADMAP rewrite, doc decontamination, ship loop hardening (FM-4/5/6), LaunchAgent e2e, server-initiated harvest, state contracts (P9), F013 overlap audit, F005 defer, F007 dependency analysis, F012 ghost, Obsidian/Stitch integration. DB hygiene SQL documented. |
 
 ---
 
@@ -535,20 +536,446 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 ---
 
-## Analysis: P2/P3 — Backlog
+## Analysis: P1 — Post-Daily-Driver (Quality & Completeness)
 
-- Ship loop hardening (FM-4/5/6)
-- LaunchAgent e2e
-- Obsidian integration (needs spec — F020)
-- Server-initiated harvest (needs F011 spec amendment)
-- State contracts (F001 P9)
+### H. Test Regression from F019 Merge (17 failures — FIX FIRST)
+
+> [!CAUTION]
+> The `startRun()` change in F019 (auto-resolve `project_id` from `process.cwd()`) broke 17 tests. The INSERT now includes `project_id` but in-memory test DBs created by `initDb()` may not have the 010 migration applied. These are **not** regressions in behavior — they are test setup gaps.
+
+| Test File | Failure Count | Root Cause |
+|---|---|---|
+| `src/db/db.test.ts` | 3 | `startRun` INSERT has `project_id` column; test's in-memory DB doesn't apply 010 migration |
+| `src/db/runs.test.ts` | 3 | Same |
+| `src/engine/define-orchestrator.test.ts` | 2 | Calls `startRun` indirectly via orchestrator |
+| `src/engine/harvest.test.ts` | 1 | `finalizeLogs` test setup calls `startRun` |
+| `src/commands/plan.test.ts` | 2 | E2E test calls `startRun` via WorkflowRuntime |
+| `src/commands/specify.test.ts` | 2 | E2E test calls `startRun` via WorkflowRuntime |
+| Other (tasks-verify, gate-gen) | 4 | Cascading from DB setup |
+
+**Fix**: Ensure `initDb()` applies all migrations including 010, or update `startRun` test helpers to pass `project_id`. This is a 15-minute fix.
+
+**Current baseline**: 739 passing, 17 failing, 8 skipped, 8 todo (772 total).
+**Target**: 756+ passing, 0 failing.
 
 ---
 
-## Open Questions
+### I. Feature Lifecycle Status Command
+
+> **What**: A single command that answers "where is feature X?" across the entire artifact lifecycle.
+> **Spec reference**: Not specced. Discussed in [ROADMAP.md](ROADMAP.md) and audit Section P1.
+> **ADR dependencies**: None.
+> **Code exists**: No.
+
+#### Current State
+
+`gwrk plan status` shows the DAG feature-level status (DEFINED/SHIPPED) but has **zero phase data** — the `plan_phases` table is empty. There's no way to answer: "which phases of 001-cli-core are shipped? which have tests? which have tasks?"
+
+```sql
+SELECT COUNT(*) FROM plan_phases;  -- 0 rows
+```
+
+#### TO-BE
+
+```
+$ gwrk plan status 001 --phases
+001-cli-core / Phase 10: Unified Init
+  spec.md    updated 2026-05-30   ✅
+  plan.md    updated 2026-05-30   ✅ (after spec)
+  tests      defined 2026-06-01   ✅ (gap-matrix.md exists)
+  tasks      defined 2026-06-01   ✅ (tasks.json has P10 tasks)
+  shipped    PR #67              ✅ merged 2026-06-01
+
+001-cli-core / Phase 9: State Contracts
+  spec.md    updated 2026-05-30   ✅
+  plan.md    updated 2026-05-30   ✅
+  tests      defined 2026-06-01   ✅ (tasks-verify.test.ts exists)
+  tasks      defined              ✅
+  shipped    —                    ⏳ ready to ship
+```
+
+**Implementation**:
+- Parse `plan.md` for `### Phase N:` headings → populate `plan_phases` table
+- For each phase, check filesystem: `specs/<feature>/tests/`, `specs/<feature>/.gwrk/tasks.json`, `specs/<feature>/.gwrk/runs/`
+- Check `runs` DB for ship runs matching feature+phase
+- Render as lifecycle ladder
+
+**Effort**: ~1 day. New command + plan parser. No spec needed — this is a query over existing data.
+
+---
+
+### J. `plan_features` Status Reconciliation (DB still lies)
+
+> **What**: F019 was seeded with name `"Read and make section G a spec"` and status `DEFINED`. It's `SHIPPED` (PR #71 merged). Several other features have wrong statuses.
+> **Root cause**: `gwrk plan seed` populates from `plan.md` titles, which can be anything. No post-ship status update.
+
+#### Current DB State vs Reality
+
+| Feature | DB Status | Actual Status | Fix |
+|---|---|---|---|
+| `001-cli-core` | DEFINED | P1-8,10-14 shipped; P9 open | → SHIPPED (partial) |
+| `005-parallel-dispatch` | DEFINED | Not started | ✅ Correct |
+| `007-effort-compression` | DEFINED | Not started | ✅ Correct |
+| `012-knowledge-work` | PLANNED | Empty spec dir | ✅ Correct |
+| `013-agent-native-interface` | DEFINED | Largely delivered via ADR-004 | Audit overlap |
+| `019-agy-agent-migration` | DEFINED, name="Read and make section G a spec" | **SHIPPED** (PR #71) | → SHIPPED, fix name |
+| `099-drift-test` | SPECIFIED | Test fixture | DELETE |
+| `F000` / `F000-TDD` | DONE | Legacy IDs | DELETE or keep as historical |
+
+**Fix**: SQL UPDATE for 019 (name + status), DELETE 099-drift-test, audit 013 overlap.
+
+---
+
+### K. Gate Authoring Reliability (Ship Loop Quality)
+
+> **Spec reference**: [ship-failure-diagnosis.md](specs/004-ship-loop/refs/ship-failure-diagnosis.md)
+> **ADR dependency**: [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md) (TDD Gate Architecture)
+> **Code**: [gate-gen.ts](src/utils/gate-gen.ts) (713 lines)
+
+#### Current State
+
+The ship failure diagnosis documents **5 failure modes** all traced to LLM-authored gates. The deterministic `generateVitestGates()` path has **zero failures**. The failure cascade:
+
+```
+define tests (fails for MODIFY phases)
+  → no gap-matrix.md
+  → define tasks falls back to LLM gate authoring
+  → LLM gates hallucinate filenames/assertions
+  → ship runs buggy gates → overrides correct agent verdicts
+  → circuit break after 3 iterations (wasted ~3 hours of compute)
+```
+
+| Gate Source | Failures | Notes |
+|---|---|---|
+| `generateVitestGates()` (deterministic) | **0** | Maps test file → vitest command |
+| LLM gate authoring workflow | **5** | Hallucinated filenames, SIGPIPE, wrong assertions |
+| Human manual fix | **0** | All manually written gates work |
+
+#### TO-BE
+
+1. **Eliminate LLM gate path entirely**. When `gap-matrix.md` doesn't exist, generate gates from `tasks.json` task IDs + test file discovery (glob `src/**/*.test.ts` for files matching task description keywords).
+2. **SIGPIPE immunity**: Gates must NOT use `command | grep -q` under `set -euo pipefail`. Use vitest's exit code directly.
+3. **Filename validation**: Gate generator validates `test -f <path>` before emitting gate script. Catches hallucinations at generation time.
+
+**Effort**: ~2 hours. The deterministic path exists. The fix is to remove the LLM fallback, not to improve it.
+
+---
+
+### L. ROADMAP.md Rewrite
+
+> **Current state**: [ROADMAP.md](ROADMAP.md) (162 lines) is **comprehensively stale**:
+> - Test count says "646 tests" → actual: 772
+> - Phase 2 says "in progress" → most items are shipped
+> - "Shipped But Not Started" lists F007/F008 → F008 is shipped (PR #35)
+> - "What NOT to Build" lists F005, F012, F013 → F013 is largely delivered via ADR-004
+> - Open Questions are resolved (Pulse repos, shareable target)
+
+#### TO-BE
+
+Rewrite from scratch. Three sections:
+1. **What Works** — honest inventory (this audit's data)
+2. **What's Next** — pull from this audit's P1/P2/P3 breakdown
+3. **Shipping Log** — keep the historical entries, add F019
+
+**Effort**: 30 minutes. This is a manual doc rewrite using this audit as source material.
+
+---
+
+### M. Doc Decontamination (architecture.md, WHAT_IS_GWRK.md)
+
+> **Root cause**: Same as PROMPT.md decontamination (P13) but in human-facing docs.
+> **Reference**: Prompt contamination audit in [specs/001-cli-core/refs/prompt-contamination-audit.md](specs/001-cli-core/refs/prompt-contamination-audit.md)
+
+| File | Lines | Problem |
+|---|---|---|
+| [architecture.md](docs/architecture.md) | 849 | Hardcodes gwrk's stack (vitest, Commander.js, SQLite) as THE architecture for any project |
+| [WHAT_IS_GWRK.md](docs/WHAT_IS_GWRK.md) | 266 | Self-referential: describes gwrk as a tool that builds gwrk |
+| CLI help text | — | `setup` still listed as standalone command (absorbed by P10) |
+
+**TO-BE**: Rewrite to be project-agnostic. `architecture.md` describes gwrk's architecture for gwrk contributors. `WHAT_IS_GWRK.md` describes gwrk for users of any project.
+
+**Effort**: ~1 hour manual rewrite. Not blocking anything.
+
+---
+
+## Analysis: P2 — Infrastructure Hardening
+
+### N. Ship Loop Hardening (FM-4/5/6)
+
+> **Spec reference**: [ship-failure-diagnosis.md](specs/004-ship-loop/refs/ship-failure-diagnosis.md)
+> **Code**: [ship-orchestrator.ts](src/engine/ship-orchestrator.ts)
+
+#### FM-4: Stale dist Detection
+
+**Current state**: No pre-dispatch `dist/` freshness check. If `pnpm build` hasn't been run after a code change, the agent dispatches against stale compiled output.
+
+**TO-BE**: Before dispatch, check `stat dist/index.js` vs `stat src/index.ts`. If dist is older than src, run `pnpm build` automatically or warn.
+
+**Effort**: ~30 minutes. Add timestamp comparison to `ship-orchestrator.ts` pre-flight.
+
+---
+
+#### FM-5: UAT Stall / Timeout
+
+**Current state**: Build timeout is 60s (L610), test timeout is 120s (L672). No explicit dispatch-level timeout for the `implement` phase. If the agent stalls (turn limit, rate limit, network), the ship loop hangs indefinitely.
+
+**TO-BE**: Add `--print-timeout` to agy adapter dispatch (default: 10 minutes). Add a watchdog timer in `dispatchAgent()` that kills the child process after configurable timeout (default: 15 minutes for implement, 5 minutes for review).
+
+**Effort**: ~1 hour. Timer logic + adapter flag.
+
+---
+
+#### FM-6: Stale Branch Cleanup
+
+**Current state**: No `--force-with-lease` in branch setup. No cleanup of stale feature branches after merge.
+
+**TO-BE**: 
+1. `git push --force-with-lease` instead of `git push` in branch setup
+2. Post-harvest: `git branch -d feat/<feature>` locally after successful harvest
+3. `gwrk cleanup` command that lists/deletes branches for merged features
+
+**Effort**: ~1 hour. Git utility additions.
+
+---
+
+### O. LaunchAgent E2E Verification (F002)
+
+> **Spec reference**: [F002 spec](specs/002-build-server/spec.md) (FR-012–015)
+> **Code**: [server-install.ts](src/commands/server-install.ts), [pid.ts](src/server/pid.ts)
+
+#### Current State
+
+- `installServer()` exists in `server-install.ts` — generates a plist and calls `launchctl load`
+- `uninstallServer()` exists — calls `launchctl unload` and deletes the plist
+- `gwrk server install` CLI command wired up in `server.ts`
+- `pid.ts` checks `launchctl list com.gwrk.server` for PID authority
+- **Never been run e2e on the workstation** — no plist exists at `~/Library/LaunchAgents/com.gwrk.*`
+- The server itself (`gwrk server start`) works — it's the persistent service installation that's untested
+
+#### TO-BE
+
+```bash
+gwrk server install    # writes plist, loads LaunchAgent
+gwrk server status     # shows PID from launchctl
+# reboot
+gwrk server status     # still running (LaunchAgent auto-start)
+gwrk server uninstall  # unloads, deletes plist
+```
+
+**Risks**:
+1. `server-install.ts` L47-74 generates a plist with `process.execPath` (Node binary) + `dist/server/index.js`. If `dist/` path is wrong or Node location differs from what's hardcoded, launchd silently fails.
+2. PID file vs launchctl authority conflict (`pid.ts` L19-30) — untested under real launchctl conditions.
+
+**Effort**: 30 minutes manual test + fix any path issues.
+
+---
+
+### P. Server-Initiated Harvest (F011 Amendment)
+
+> **Spec reference**: [F011 spec](specs/011-harvest/spec.md) — US-H01 assumes inbound GitHub webhook
+> **Code**: [github.ts](src/server/github.ts) (177 lines) — webhook handler, fully implemented but trigger architecture rejected
+> **ADR**: [ADR-003](docs/decisions/ADR-003-state-contract.md) — harvest is Tier 2 (build-server-side SQLite)
+
+#### Current State
+
+The harvest engine ([harvest.ts](src/engine/harvest.ts)) works — F019 just proved it. The problem is the **trigger**: 
+
+- `github.ts` is a Fastify route handler that expects an inbound `POST /webhook/github` from GitHub. This requires a public URL, which the build server doesn't have (runs on localhost:18790 behind NAT).
+- Current trigger: **manual** — `gwrk ship` → merge PR in GitHub/Slack → nothing happens → user manually triggers harvest or it was called inside `ship-orchestrator`.
+
+#### Three Options (from audit)
+
+| Option | Mechanism | Complexity | Reliability |
+|---|---|---|---|
+| A. GitHub API polling | `gh pr list --state merged` on interval (heartbeat loop) | Low | High — no network dependency, no webhook config |
+| B. Slack relay | GitHub → Slack webhook notification → Socket Mode → gwrk | Medium | Medium — depends on Slack uptime + GitHub→Slack integration |
+| C. `gh` CLI in heartbeat | Heartbeat already runs on interval. Add `gh api` call to check merged PRs. | Low | High |
+
+**Recommendation**: Option C. The [heartbeat.ts](src/server/heartbeat.ts) already runs periodic checks (drift, staleness). Add a `checkMergedPRs()` step that calls `gh pr list --repo <repo> --state merged --json number,mergedAt --limit 5` and cross-references with `runs` table for unfinished ship runs.
+
+#### TO-BE
+
+```
+Heartbeat loop (every 5 min):
+  1. Check plan staleness ✅ (exists)
+  2. Check drift           ✅ (exists)
+  3. NEW: Check merged PRs → trigger harvest for any unfinished ship runs
+```
+
+**Effort**: ~2 hours. Add to heartbeat loop + `gh` CLI integration.
+
+---
+
+### Q. F001 P9: State Contracts (Execution Manifests + Tasks Verify)
+
+> **Spec reference**: [spec.md US-019, US-020](specs/001-cli-core/spec.md), [ADR-003](docs/decisions/ADR-003-state-contract.md)
+> **Code that exists**:
+>   - `tasks verify` command: [tasks.ts L225](src/commands/tasks.ts) — wired up and functional
+>   - `tasks-verify.test.ts` — 4 test cases (schema validation, orphan detection, regression check)
+>   - Manifest writer: `tasks.ts L167` — writes execution manifest to `.gwrk/runs/`
+>   - `.gitattributes` merge protection: NOT implemented
+
+#### Current State
+
+`tasks verify` exists and runs but has issues:
+- Skips `index.json` files with "invalid manifest" error (schema expects `runId` but `index.json` is a different format — it's a log index, not a manifest)
+- Manifest writer works — F019 produced valid manifests in `specs/019-agy-agent-migration/.gwrk/runs/`
+- `.gitattributes` merge protection for `tasks.json` NOT implemented
+
+**What's actually missing for P9 completion**:
+
+| Item | Status | Work |
+|---|---|---|
+| Manifest writer | ✅ Ships | In `tasks.ts` L167 |
+| `tasks verify` command | ⚠️ Mostly works | Fix `index.json` skip, verify schema |
+| `.gitattributes` protection | ❌ Missing | Add `specs/**/.gwrk/tasks.json merge=ours` |
+| `history.jsonl` deprecation (FR-021) | ⏳ Deferred | Reads supported; writes go to DB + manifest |
+
+**Effort**: ~1 hour. Fix the `index.json` filter in tasks-verify, add `.gitattributes` template to `gwrk init`.
+
+---
+
+## Analysis: P3 — Backlog (Not Blocking)
+
+### R. F013: Agent-Native Interface (Overlap Audit with ADR-004)
+
+> **Spec**: [013-agent-native-interface/spec.md](specs/013-agent-native-interface/spec.md) — dated 2026-03-13, revision 1
+> **ADR**: [ADR-004](docs/decisions/ADR-004-agent-native-output.md) — decided 2026-03-13 (same day)
+> **Status**: Spec says "Draft". ADR says "Decided".
+
+#### Overlap Analysis
+
+F013 describes the **ideal** agent-native CLI surface. ADR-004 made the **decision** and partially implemented it. The overlap:
+
+| F013 Deliverable | ADR-004 Status | Implementation |
+|---|---|---|
+| Operational signal envelope (`[exit:N | Xms]`) | ✅ Decided | Implemented in `withSignal()` utility |
+| Command cost classification (probe/mutator) | ✅ Decided | `--help` output includes cost hints |
+| Structured error output | ⚠️ Partial | Stack traces still leak in some paths |
+| Binary guard (prevent destructive commands without confirmation) | ❌ Not implemented | Spec describes it, ADR defers |
+| Overflow mode (large output truncation) | ❌ Not implemented | Spec describes it, ADR defers |
+| Project state query surface (`gwrk project info`) | ✅ Shipped | P13 delivered `project-info.ts` |
+
+**Verdict**: F013 is ~60% delivered via ADR-004 + P13. Remaining items (binary guard, overflow mode) are nice-to-have. Recommend closing F013 as "delivered via ADR-004" and tracking binary guard/overflow as future items if needed.
+
+---
+
+### S. F005: Parallel Dispatch
+
+> **Spec**: [005-parallel-dispatch/spec.md](specs/005-parallel-dispatch/spec.md) — "Settled"
+> **Code**: Zero implementation. `--parallel` flag on `gwrk ship` exists but does nothing.
+
+#### Current State
+
+The spec describes concurrent worktree sandboxes where independent tasks within a phase dispatch to separate agents simultaneously. This would require:
+- `git worktree add` for each sandbox
+- Per-backend concurrency limits (Codex: 2, Gemini: 3, Claude: 1)
+- Merge via PR from each worktree back to feature branch
+- Conflict resolution strategy
+
+**Verdict**: This is premature optimization. The user is not bottlenecked on sequential dispatch. Current ship runs complete in 5-15 minutes per phase. Parallel dispatch adds significant complexity (worktree management, merge conflicts, error handling) for marginal time savings.
+
+**Recommendation**: Defer indefinitely. Remove `--parallel` flag from CLI to avoid false promises.
+
+---
+
+### T. F007: Effort Compression
+
+> **Spec**: [007-effort-compression/spec.md](specs/007-effort-compression/spec.md) — 3 phases
+> **Code**: `compression` table exists in DB. `recordCompression()` in harvest.ts. Zero SP data populated.
+
+#### Current State
+
+The spec describes a full SP estimation and compression measurement system:
+- Phase 1: Effort engine — parse spec stories for SP estimates
+- Phase 2: Compression engine — calculate actual vs estimated delivery ratios
+- Phase 3: CLI commands (`gwrk measure effort`, `gwrk measure compression`)
+
+The `compression` table and `recordCompression()` exist from F011 harvest, but no SP data is populated because:
+1. No spec stories have SP values assigned
+2. `plan.md` phases don't have SP estimates
+3. The effort extraction engine doesn't exist
+
+**Verdict**: This is the "make gwrk's value legible" feature — it quantifies how much faster AI-assisted delivery is. Important for the product thesis but not blocking daily use.
+
+**Dependency**: Needs SP values in specs and plans first. Could seed from plan.md phase structure.
+
+---
+
+### U. F012: Knowledge Work (Empty)
+
+> **Spec**: Empty directory at `specs/012-knowledge-work/`. No spec, no plan, no tasks.
+> **DB status**: PLANNED
+
+**Verdict**: Ghost feature. Keep the number reserved. Assign when the discovery pillar needs a formal spec.
+
+---
+
+### V. Obsidian Integration (F020 — Unspecced)
+
+> **Reference**: [new-features.md §Obsidian Integration](docs/reference/new-features.md) — comprehensive design doc (96 lines)
+> **Code**: Zero.
+
+#### Current State
+
+The design doc in `new-features.md` is thorough. Key decisions already made:
+- Vault root = project root (no file movement)
+- `.obsidian/` is config-only (specs stay in `specs/`)
+- Git split: commit `app.json` + `core-plugins.json`, ignore `workspace.json` + `plugins/`
+- Canvas is one-way projection (`plan.md` → `build-plan.canvas`)
+- CLI requires running Obsidian app (never a core dependency)
+
+#### Open Questions (from the design doc)
+
+1. **Wikilinks vs standard Markdown** — recommend standard links (GitHub + Obsidian both support)
+2. **Canvas authoring model** — recommend one-way (plan.md → canvas on `gwrk define plan`)
+3. **Obsidian Sync overlap** — recommend "detect and warn" only
+4. **Agent consumption** — agents read `plan.md`, not `.canvas` (canvas is human visualization)
+
+**Verdict**: Well-designed, not urgent. When needed, `gwrk define spec 020 "Obsidian Integration"` and the design doc becomes the spec input.
+
+---
+
+### W. Google Stitch Integration (Unspecced)
+
+> **Reference**: [new-features.md §Google Stitch](docs/reference/new-features.md) — brief note (L120-129)
+
+#### Current State
+
+Brief note in new-features.md: "define UI and UX artifacts as part of the feature spec... leverage gwrk's existing definitional infrastructure... focus on written definitions but work within a visual development environment."
+
+MCP server available (`StitchMCP`) with tools: `create_project`, `generate_screen_from_text`, `edit_screens`, `generate_variants`, `create_design_system`.
+
+**Verdict**: Exploratory. No blocking dependency. Could integrate into `gwrk define` as a visual artifact generator for UI specs.
+
+---
+
+## Backlog DB Hygiene
+
+> [!WARNING]
+> The following DB entries need cleanup before `gwrk plan status` is trustworthy:
+
+```sql
+-- Fix F019 name and status
+UPDATE plan_features SET name = 'Agent Backend Migration (gemini→agy)', status = 'SHIPPED'
+  WHERE id = '019-agy-agent-migration';
+
+-- Delete test fixture
+DELETE FROM plan_features WHERE id = '099-drift-test';
+
+-- Audit: should these legacy IDs stay?
+-- F000 (Extraction) — DONE — historical
+-- F000-TDD (TDD Infrastructure) — DONE — historical
+-- Decision: keep for historical record, they're not hurting anything
+```
+
+---
+
+## Open Questions (Updated 2026-06-02)
 
 > [!IMPORTANT]
-> 1. **Phase 14 scope**: Should project scoping ship before or after prompt decontamination (Phase 13)? Recommend after — init wizard (P10) must register projects first, but prompt decontamination doesn't depend on DB scoping.
-> 2. **ROADMAP.md**: Should the audit rewrite this or is it a separate PR?
-
-
+> 1. ~~**Phase 14 scope**~~ → RESOLVED. Shipped as P14.
+> 2. **ROADMAP.md**: Rewrite needed. This audit is the authoritative source. ROADMAP should be a short summary pointing here. See Section L.
+> 3. **F013 closure**: Close as "delivered via ADR-004" or keep open for binary guard / overflow mode? Recommend close.
+> 4. **Test regression**: 17 failures from F019 merge. Fix before any new ship runs. See Section H.
+> 5. **plan_phases table**: Empty. `gwrk plan status` can't show phase-level data. Populate during lifecycle status command work (Section I) or as a standalone seed migration.
