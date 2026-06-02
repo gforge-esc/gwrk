@@ -353,6 +353,7 @@ This baseline MUST NOT regress.
 | 2026-06-01 | Shipped P10, P12, P13, P14. Fixed prompt-conditioner guard resolver, workflow-runtime RUN_COMMAND guard. Updated runbook — agy adapter is sole remaining daily driver blocker. |
 | 2026-06-02 | **Shipped F019** (PR #71, merged). `AgyAdapter` delivered. Deterministic `plan-to-tasks` parser replaced LLM dispatch. Harvest bug fixed (finalizeLogs throw killed DB update). DB backfill: 7,089 NULL `project_id` rows filled, `startRun` auto-resolves. Auto-commit after all define stages. Daily driver verification is the sole remaining step. |
 | 2026-06-02 | **Backlog expansion**: Added Sections H–W. Full research pass on every backlog item: test regression (17 failures from F019), feature lifecycle status command, plan_features DB reconciliation, gate authoring reliability, ROADMAP rewrite, doc decontamination, ship loop hardening (FM-4/5/6), LaunchAgent e2e, server-initiated harvest, state contracts (P9), F013 overlap audit, F005 defer, F007 dependency analysis, F012 ghost, Obsidian/Stitch integration. DB hygiene SQL documented. |
+| 2026-06-02 | **Section H resolved** (`90f5fb4`). 17 test failures → 0. Root cause: FK constraint from auto-resolved `project_id`. Fix: `INSERT OR IGNORE INTO projects` before runs INSERT. Also fixed 6 pre-existing failures (tasks-generate, define-orchestrator, harvest, scaffold-feature). Ship harvest `prNumber` plumbing fixed (was hardcoded 0). **756 passing, 0 failing.** |
 
 ---
 
@@ -538,25 +539,15 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 ## Analysis: P1 — Post-Daily-Driver (Quality & Completeness)
 
-### H. Test Regression from F019 Merge (17 failures — FIX FIRST)
+### H. ~~Test Regression from F019 Merge (17 failures — FIX FIRST)~~ ✅ RESOLVED
 
-> [!CAUTION]
-> The `startRun()` change in F019 (auto-resolve `project_id` from `process.cwd()`) broke 17 tests. The INSERT now includes `project_id` but in-memory test DBs created by `initDb()` may not have the 010 migration applied. These are **not** regressions in behavior — they are test setup gaps.
+> [!NOTE]
+> **Resolved** (commit `90f5fb4`). Root cause was `FOREIGN KEY constraint failed` — `startRun()` auto-resolved `project_id` from `process.cwd()` but didn't register the project in the `projects` table. Fix: `INSERT OR IGNORE INTO projects` before the `runs` INSERT. Also fixed 6 pre-existing test failures (not from F019): tasks-generate tests rewritten for deterministic parser, define-orchestrator lifecycle test updated, harvest test assertion updated for `skipHooks`, scaffold-feature template path corrected.
 
-| Test File | Failure Count | Root Cause |
-|---|---|---|
-| `src/db/db.test.ts` | 3 | `startRun` INSERT has `project_id` column; test's in-memory DB doesn't apply 010 migration |
-| `src/db/runs.test.ts` | 3 | Same |
-| `src/engine/define-orchestrator.test.ts` | 2 | Calls `startRun` indirectly via orchestrator |
-| `src/engine/harvest.test.ts` | 1 | `finalizeLogs` test setup calls `startRun` |
-| `src/commands/plan.test.ts` | 2 | E2E test calls `startRun` via WorkflowRuntime |
-| `src/commands/specify.test.ts` | 2 | E2E test calls `startRun` via WorkflowRuntime |
-| Other (tasks-verify, gate-gen) | 4 | Cascading from DB setup |
+**Result**: 756 passing, 0 failing, 8 skipped, 8 todo (772 total).
 
-**Fix**: Ensure `initDb()` applies all migrations including 010, or update `startRun` test helpers to pass `project_id`. This is a 15-minute fix.
+**Ship orchestrator harvest fix** (bonus): `prNumber` was hardcoded `0` in the harvest call — now wired from actual PR creation via `this.state.prNumber`.
 
-**Current baseline**: 739 passing, 17 failing, 8 skipped, 8 todo (772 total).
-**Target**: 756+ passing, 0 failing.
 
 ---
 
