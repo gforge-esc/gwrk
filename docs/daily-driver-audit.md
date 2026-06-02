@@ -505,6 +505,67 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
   - CLI help text — `setup` still listed as standalone command (absorbed by P10)
   - `ROADMAP.md` — stale (test counts wrong, daily driver section lies)
 
+## G. Agent Backend Migration: gemini → agy (HARD DEADLINE: 2026-06-18)
+
+> [!CAUTION]
+> **Gemini CLI is discontinued June 18, 2026.** It is replaced by `agy` (Antigravity CLI v1.0.3+). Every `gwrk ship`, `gwrk define`, and review dispatch currently shells out to `gemini`. When it stops working, all agentic workflows break. **17-day countdown from audit date.**
+
+### CLI Surface Comparison (researched 2026-06-01)
+
+| Capability | `gemini` | `agy` | Migration Impact |
+|---|---|---|---|
+| Non-interactive (headless) | `-p "prompt"` | `-p "prompt"` / `--print` | ✅ Same flag |
+| YOLO mode | `--approval-mode yolo` | `--dangerously-skip-permissions` | 🔶 Flag rename |
+| Sandbox control | `--sandbox false` | `--sandbox` (flag-on) | ✅ Omitting = no sandbox (gwrk default for write workflows). Only add `--sandbox` for read-only workflows. |
+| Model selection | `--model gemini-3-flash-preview` | ❌ No `--model` flag | ✅ **Server-side only.** Model selection is handled by the agy backend. Router's `task.model` becomes advisory/ignored. Not a blocker — simplifies the adapter. |
+| Slash commands | `-p "/plan specs/001"` | `-p "/plan specs/001"` | ✅ Same pattern |
+| Output format | `--output-format json` | ❌ Not exposed | ⚠️ gwrk doesn't use this — N/A |
+| Governance file | `GEMINI.md` | `AGENTS.md` | 🔶 `syncGovernance` targets `AGENTS.md`. Both files exist in gwrk already. |
+| Session resume | `--resume latest` | `--continue` / `--conversation ID` | 🔶 gwrk doesn't use resume — N/A |
+| Exit codes | 53=turn_limit, 42=usage | Unknown — must test | 🔴 Test required |
+| Print timeout | N/A | `--print-timeout 5m0s` (default) | ✅ Useful — extend for long ship runs |
+| Workspace dirs | `--include-directories` | `--add-dir` | 🔶 Flag rename |
+
+### Key Research Findings
+
+1. **`agy` is a Go binary** (Mach-O arm64). Not a Node wrapper like gemini CLI.
+2. **Config paths**:
+   - Settings: `~/.gemini/antigravity-cli/settings.json` (color scheme, permissions, trusted workspaces)
+   - Shared config: `~/.gemini/config/config.json` (userSettings, browserJsExecutionPolicy, `useAiCredits`)
+   - MCP: `~/.gemini/config/mcp_config.json`
+   - Plugins: `~/.gemini/config/plugins/`
+   - Projects cache: `~/.gemini/antigravity-cli/cache/projects.json`
+3. **Governance**: `agy` reads `AGENTS.md` (already exists in gwrk with `<!-- gwrk:begin -->` markers).
+4. **Model selection**: Server-side. No CLI flag needed. This simplifies the adapter — drop the `--model` arg entirely.
+5. **G1 Credits**: `useAiCredits: true` in shared config enables fallback to paid credits when quota runs out.
+6. **Agent discovery**: Binary references `{workspace}/.agents/agents/{agent_name}/agent.json` — potential for richer agent config in future.
+7. **Known env vars**: `AGY_CLI_DISABLE_LATEX`, `AGY_CLI_HIDE_ACCOUNT_INFO`
+
+### Files to Change
+
+| File | Change |
+|---|---|
+| `src/plugins/builtins/agents/agy/adapter.ts` | **[NEW]** `AgyAdapter` implementing `AgentBackend`. ~80 lines — simpler than gemini adapter (no model flag, no sandbox false). |
+| `src/plugins/builtins/agents/index.ts` | Register `agy`. Keep `gemini` for backward compat. |
+| `src/engine/router.ts` L97 | Change fallback: `["agy", "gemini", "claude"]` → then `["agy", "claude"]` after June 16. |
+| `src/utils/agent.ts` L425 | Default backend: `"gemini"` → `"agy"`. |
+| `GeminiAdapter.syncGovernance` | Keep writing `GEMINI.md` — gemini CLI reads it. |
+| `AgyAdapter.syncGovernance` | Write `AGENTS.md` — agy reads it. Same `<!-- gwrk:begin -->` markers. |
+| `src/server/quota-prober.ts` | Probe `agy` availability. Rate limit pattern may differ (429s vs G1 credit fallback). |
+
+### Remaining Open Questions
+
+> [!IMPORTANT]
+> 1. **Exit codes**: What does `agy` return on turn limit? Usage error? Need a test dispatch that exercises these paths.
+> 2. **Rate limits**: Does `agy` share gemini's 429 pattern, or does G1 credit fallback eliminate 429s entirely?
+> 3. **Sandbox default**: Confirmed omitting `--sandbox` = no sandbox. But does `--dangerously-skip-permissions` also disable sandbox, or are they orthogonal?
+
+### Feature Assignment
+
+Standalone **F021-agent-backend-migration** (not F001 — this is cross-cutting, not CLI-core):
+- Phase 1: Write adapter, register, test locally (1-2 days — simpler than gemini adapter)
+- Phase 2: Cutover — change defaults, update fallback chain (June 16, 2-day buffer)
+
 ---
 
 ## Analysis: P2/P3 — Backlog
