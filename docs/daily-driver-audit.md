@@ -638,55 +638,52 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 
 ---
 
-### M. ~~Doc Decontamination~~ → Doc Architecture Restructure ✅ RESTRUCTURED
+### M. ~~Doc Decontamination~~ → Doc & Workflow Architecture Restructure ✅ RESTRUCTURED
 
-> **Root cause**: `docs/` had 6 overlapping directories (`reference/`, `references/`, `research/`, `discovery/`, `changes/`, `governance/`) with no clear hierarchy. 38 of 48 `.md` files were orphaned — referenced by no prompt, source, or rule.
+> **Root cause**: `docs/` had 6 overlapping directories with 38 of 48 files orphaned. 15 builtin workflows existed but only 8 were invoked by any CLI command or engine. The `gwrk-effort` workflow was archived but its CLI command (`gwrk measure effort`) still exists as a vestige.
 > **Audit**: [docs_architecture_audit.md](file:///Users/gonzo/.gemini/antigravity-ide/brain/b3189032-f68e-48f9-8b07-59cc9f0e6e9c/docs_architecture_audit.md)
 
-> [!NOTE]
-> **Restructured 2026-06-02.** New information architecture:
->
-> | Directory | Role | Prompt-referenced |
-> |-----------|------|-------------------|
-> | `decisions/` | ADRs (gwrk's architectural decisions) | ✅ 6 of 7 ADRs referenced by prompts |
-> | `grounding/` | Agent context (architecture, CLI grammar, ontology) | ✅ `architecture.md`, `agent-native-cli.md` |
-> | `research/` | Initiative lifecycle (brief → draft → cascade) | ⚠️ Referenced by `gwrk-research` and `gwrk-cascade-sync` workflows — but neither has a CLI command. Orphan workflows. |
-> | `assessments/` | Effort estimates | ⚠️ Referenced by `gwrk-effort` workflow — but no CLI command wired. Orphan workflow. |
-> | `product/` | Human-facing docs (PRD, README, Foxtrot Charlie) | — (not agent-consumed) |
-> | `branding/` | Visual assets | — |
-> | `archive/` | 38 orphaned files from old `reference/`, `references/`, `changes/`, `discovery/` | — |
->
-> **Principle**: gwrk keeps self-documenting docs — `architecture.md` describes gwrk's own stack for gwrk contributors. The `[type: gwrk-native]` / `[type: generic]` prompt conditioner handles isolation for non-gwrk projects. Stripping gwrk from its own docs is not sound.
+#### Completed (2026-06-02)
 
-#### Remaining (decontamination)
+**Docs restructure** — 6 overlapping dirs → coherent hierarchy:
 
-| File | Problem | Status |
-|---|---|---|
-| `docs/grounding/architecture.md` | 849 lines — valid as gwrk self-docs, but conditioner needs `[type:]` guard if this file is ever injected into non-gwrk prompts | Roadmap item |
-| `docs/product/WHAT_IS_GWRK.md` | Self-referential (describes gwrk as a tool that builds gwrk) — needs rewrite as user-facing product doc | Roadmap item |
-| CLI help text | `setup` still listed as standalone command (absorbed by P10) | Roadmap item |
+| Directory | Role | Status |
+|-----------|------|--------|
+| `decisions/` | ADRs (gwrk's architectural decisions) | ✅ 6 of 7 referenced by prompts |
+| `grounding/` | Agent context (architecture, CLI grammar, ontology) | ✅ Referenced by 7 prompts |
+| `research/` | Initiative lifecycle (brief → draft → cascade) | ⚠️ Output dir for `gwrk-research` (no CLI wired yet) |
+| `assessments/` | Effort estimates | ⚠️ Output dir for archived `gwrk-effort` workflow |
+| `product/` | Human-facing docs (PRD, README, Foxtrot Charlie) | — |
+| `branding/` | Visual assets | — |
+| `archive/` | 38 orphaned docs + 6 dead workflows | — |
 
-#### Workflow Audit (2026-06-02)
+**Principle**: gwrk keeps self-documenting docs. The `[type: gwrk-native]` / `[type: generic]` prompt conditioner handles isolation for non-gwrk projects.
 
-15 builtin workflows → 9 active. 6 archived to `docs/archive/workflows/`.
+**Workflow audit** — 15 builtins → 9 remaining (8 active + 1 future):
 
-| Workflow | Disposition | Reason |
-|----------|------------|--------|
-| `gwrk-specify` | ✅ Active | `define-orchestrator.ts` |
-| `gwrk-plan` | ✅ Active | `define-orchestrator.ts` |
-| `gwrk-analyze` | ✅ Active | `define-orchestrator.ts` |
-| `gwrk-define-tests` | ✅ Active | `tests-generate.ts` |
-| `gwrk-plan-to-tasks` | ✅ Active | `tasks-generate.ts` |
-| `gwrk-implement` | ✅ Active | `ship-orchestrator.ts` |
-| `gwrk-review-code` | ✅ Active | `ship-orchestrator.ts` via `review-plugin.ts` |
-| `gwrk-review-uat` | ✅ Active | `ship-orchestrator.ts` via `review-plugin.ts` |
-| `gwrk-research` | ⏳ Kept (no CLI) | Future: `gwrk define research <feature>` — feeds `--refs` for `gwrk define spec` |
-| `gwrk-author-gates` | 🗑️ Archived | Replaced by deterministic `generateVitestGates()`/`generateFilesystemGates()` |
-| `gwrk-build-plan` | 🗑️ Archived | Replaced by `gwrk plan seed` + `gwrk plan render` + DAG engine |
-| `gwrk-effort` | 🗑️ Archived | Replaced by deterministic `gwrk measure effort` (`computeEffort()`) |
-| `gwrk-cascade-sync` | 🗑️ Archived | Vestige of old build-plan model; DAG engine supersedes |
-| `gwrk-checklist` | 🗑️ Archived | Subsumed by `gwrk-analyze` (cross-artifact consistency) |
-| `gwrk-constitution` | 🗑️ Archived | Replaced by `.gwrk/rules/` + builtins/rules governance |
+| Workflow | Status | Invoked by |
+|----------|--------|-----------|
+| `gwrk-specify` | ✅ | `define-orchestrator.ts` |
+| `gwrk-plan` | ✅ | `define-orchestrator.ts` |
+| `gwrk-analyze` | ✅ | `define-orchestrator.ts` |
+| `gwrk-define-tests` | ✅ | `tests-generate.ts` |
+| `gwrk-plan-to-tasks` | ✅ | `tasks-generate.ts` |
+| `gwrk-implement` | ✅ | `ship-orchestrator.ts` |
+| `gwrk-review-code` | ✅ | `ship-orchestrator.ts` → `review-plugin.ts` |
+| `gwrk-review-uat` | ✅ | `ship-orchestrator.ts` → `review-plugin.ts` |
+| `gwrk-research` | ⏳ Future | No CLI command — see next steps |
+
+6 archived: `gwrk-author-gates`, `gwrk-build-plan`, `gwrk-cascade-sync`, `gwrk-checklist`, `gwrk-constitution`, `gwrk-effort`.
+
+#### Next Steps
+
+| # | Item | Effort | Priority |
+|---|------|--------|----------|
+| 1 | **Remove `gwrk measure effort` CLI command.** The engine function `computeEffort()` stays — compression calls it internally. But the standalone command is redundant: compression already runs effort as a sub-calculation, and `gwrk plan render` shows per-feature effort estimates from the DAG. The command surface shrinks: `gwrk measure` becomes `{pulse, compression}`. | ~30 min | P2 |
+| 2 | **Wire `gwrk define research <feature>`.** The `gwrk-research` workflow takes a `docs/research/R00*/brief.md` and produces a `draft.md` synthesis. This is the upstream feeder to `gwrk define spec --refs` — "gather and synthesize inputs before committing to a spec." Would make the research → spec pipeline a first-class gwrk flow. | ~2 hrs | P3 |
+| 3 | **Decontaminate `docs/grounding/architecture.md`.** 849 lines, valid as gwrk self-docs. Needs `[type:]` guard if ever injected into non-gwrk prompts via the conditioner. | ~1 hr | P3 |
+| 4 | **Rewrite `docs/product/WHAT_IS_GWRK.md`.** Self-referential (describes gwrk as a tool that builds gwrk). Needs rewrite as a user-facing product doc. | ~1 hr | P3 |
+| 5 | **Decide on `docs/assessments/`.** Output dir for the now-archived `gwrk-effort` workflow. Contains 2 historical effort reports. Archive or keep for compression reference? | ~5 min | P3 |
 
 ---
 
