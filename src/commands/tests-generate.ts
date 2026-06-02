@@ -84,8 +84,7 @@ Examples:
             // Look for tests that match the feature ID or are generally feature tests
             return allFiles.some(
               (f) =>
-                (f.includes(feature) || f.endsWith(".test.ts")) &&
-                !f.startsWith("cli.e2e"),
+                f.includes(feature) && f.endsWith(".test.ts"),
             );
           } catch {
             return false;
