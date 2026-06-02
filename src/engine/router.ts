@@ -18,8 +18,9 @@ export interface RoutingTask {
  * 1. preferredAgent from Skill manifest (if type === 'skill')
  * 2. Historical Success (learning): pick backend with best recent record for this task type
  * 3. Task-specific mapping from .gwrkrc.json (e.g. agents.define)
- * 4. fallbackOrder from .gwrkrc.json
- * 5. First available built-in
+ * 4. Task-type default (e.g. 'implement' defaults to 'agy')
+ * 5. fallbackOrder from .gwrkrc.json
+ * 6. First available built-in
  */
 export async function selectBackend(
   task: RoutingTask,
@@ -84,7 +85,13 @@ export async function selectBackend(
 
   // 3. Task-specific mapping from config (e.g. agents.define: "gemini")
   const agentsConfig = config.agents as any;
-  const taskBackendName = agentsConfig?.[task.type];
+  let taskBackendName = agentsConfig?.[task.type];
+
+  // 4. Task-type default (Autonomous implementation defaults to agy)
+  if (!taskBackendName && task.type === "implement") {
+    taskBackendName = "agy";
+  }
+
   if (typeof taskBackendName === "string") {
     try {
       const backend = await registry.getAgentBackend(taskBackendName);
@@ -93,8 +100,12 @@ export async function selectBackend(
     } catch (e) {}
   }
 
-  // 4. Fallback order from config
-  const fallbackOrder = agentsConfig?.fallbackOrder || ["gemini", "claude"];
+  // 5. Fallback order from config
+  const fallbackOrder = agentsConfig?.fallbackOrder || [
+    "agy",
+    "gemini",
+    "claude",
+  ];
   for (const name of fallbackOrder) {
     try {
       const backend = await registry.getAgentBackend(name);
