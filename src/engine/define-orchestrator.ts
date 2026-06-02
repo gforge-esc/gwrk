@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
@@ -155,6 +156,23 @@ export class DefineOrchestrator extends EventEmitter {
       }
 
       const next = result.nextStage || this.getNextStage(this.state.stage);
+
+      // Auto-commit define artifacts after each successful stage
+      try {
+        execSync("git add -A", { cwd: this.config.cwd });
+        const stageName = this.state.stage.toLowerCase().replace(/_/g, "-");
+        execSync(
+          `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${this.config.featureId}): define ${stageName}"`,
+          {
+            cwd: this.config.cwd,
+            env: { ...process.env, GWRK_SHIP: "1" },
+            stdio: "ignore",
+          },
+        );
+      } catch {
+        // Non-fatal — nothing to commit or git not available
+      }
+
       console.log(`Transitioning: ${this.state.stage} -> ${next}`);
       this.state.stage = next;
 

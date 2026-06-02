@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -225,6 +226,21 @@ try {
             featureId: feature,
             status: "DEFINED",
           });
+
+          // Auto-commit define artifacts (clean working tree)
+          try {
+            execSync("git add -A", { cwd: projectRoot });
+            execSync(
+              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): define tasks"`,
+              {
+                cwd: projectRoot,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: "ignore",
+              },
+            );
+          } catch {
+            // Non-fatal — may have nothing to commit
+          }
         } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
           const message =
