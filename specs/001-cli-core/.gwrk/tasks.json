@@ -592,7 +592,7 @@
         {
           "id": "T063",
           "title": "Implement tolerant flag in WorkflowRuntime",
-          "description": "Add tolerant?: boolean to WorkflowOptions in src/plugins/workflow-runtime.ts. Update executeWorkflow to only treat prose-as-success when tolerant is true. Tests: src/plugins/workflow-runtime.test.ts",
+          "description": "Add tolerant?: boolean to WorkflowOptions in src/plugins/workflow-runtime.ts. Update executeWorkflow to only treat prose-as-success when tolerant is true. Tests: src/plugins/workflow-runtime.test.ts [REMEDIATION: Flag is missing from WorkflowOptions; behavior is currently hardcoded to exitCode === 0]",
           "status": "open",
           "gateScript": "gates/T063-gate.sh",
           "sp": 0
@@ -600,7 +600,7 @@
         {
           "id": "T064",
           "title": "Refactor DefineOrchestrator to pass UX flags",
-          "description": "Add quiet?: boolean and tolerant?: boolean to DefineRunConfig in src/engine/define-types.ts. Update DefineOrchestrator.ts to pass these to WorkflowRuntime. Tests: src/engine/define-orchestrator.test.ts",
+          "description": "Add quiet?: boolean and tolerant?: boolean to DefineRunConfig in src/engine/define-types.ts. Update DefineOrchestrator.ts to pass these to WorkflowRuntime. Tests: src/engine/define-orchestrator.test.ts [REMEDIATION: DefineRunConfig missing quiet/tolerant; Orchestrator using hardcoded quiet: true]",
           "status": "open",
           "gateScript": "gates/T064-gate.sh",
           "sp": 0
@@ -608,7 +608,7 @@
         {
           "id": "T065",
           "title": "Implement quiet mode and robust success in tests-generate.ts",
-          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator. Ensure command exits 0 if test artifacts are present, regardless of JSON parsing. Tests: src/commands/tests-generate-contract.test.ts",
+          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator. Ensure command exits 0 if test artifacts are present, regardless of JSON parsing. Tests: src/commands/tests-generate-contract.test.ts [REMEDIATION: Not passing flags to DefineOrchestrator]",
           "status": "open",
           "gateScript": "gates/T065-gate.sh",
           "sp": 0
@@ -616,7 +616,7 @@
         {
           "id": "T066",
           "title": "Implement quiet mode in specify.ts, plan.ts, and tasks-generate.ts",
-          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator in all define subcommands. Tests: src/commands/specify.test.ts, src/commands/plan.test.ts",
+          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator in all define subcommands. Tests: src/commands/specify.test.ts, src/commands/plan.test.ts [REMEDIATION: Not passing flags to DefineOrchestrator]",
           "status": "open",
           "gateScript": "gates/T066-gate.sh",
           "sp": 0
@@ -624,7 +624,7 @@
         {
           "id": "T067",
           "title": "Repair tests-generate-contract.test.ts and verify Phase 12",
-          "description": "Fix broken imports in src/commands/tests-generate-contract.test.ts. Add assertions for quiet: true and tolerant: true across all define commands. Tests: src/commands/tests-generate-contract.test.ts",
+          "description": "Fix broken imports in src/commands/tests-generate-contract.test.ts. Add assertions for quiet: true and tolerant: true across all define commands. Tests: src/commands/tests-generate-contract.test.ts [REMEDIATION: Test file still broken with incorrect imports and outdated API usage]",
           "status": "open",
           "gateScript": "gates/T067-gate.sh",
           "sp": 0
