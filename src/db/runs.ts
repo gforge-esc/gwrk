@@ -166,7 +166,7 @@ export function listRuns(
   if (projectId) {
     return conn
       .prepare(
-        "SELECT * FROM runs WHERE feature_id = ? AND project_id = ? ORDER BY id DESC",
+        "SELECT * FROM runs WHERE feature_id = ? AND (project_id = ? OR project_id IS NULL) ORDER BY id DESC",
       )
       .all(featureId, projectId) as RunRecord[];
   }
