@@ -1,0 +1,34 @@
+type: agent
+name: agy
+version: 1.0.0
+description: "Antigravity CLI backend"
+dispatchMode: local-cli
+contextFileName: AGENTS.md
+
+invocation:
+  command: agy
+  args: []
+  headlessFlag: "-p"
+  yoloFlag: "--dangerously-skip-permissions"
+
+capabilities:
+  - stdin
+  - context-file
+
+models:
+  default: gemini-2.0-flash
+
+exitCodeMap:
+  "0":
+    exitCode: 0
+  "1":
+    exitCode: 1
+  "2":
+    exitCode: 2
+  "127":
+    exitCode: 127
+    errorType: command_not_found
+
+managedConfig:
+  - path: ".gwrkrc.json"
+    keys: ["agents.agy"]
