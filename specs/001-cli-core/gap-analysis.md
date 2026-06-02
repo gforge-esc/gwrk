@@ -1,62 +1,50 @@
-# Gap Analysis: 001-cli-core Phase 13 (Project Awareness)
+# Gap Analysis: 001-cli-core Phase 12 (Define Pillar Output Parity)
 
 **Feature**: 001-cli-core
-**Phase**: 13
+**Phase**: 12
 **Date**: 2026-06-01
 
 ## 1. Context Audit
 
-- **Spec**: `spec.md` R3 defines US-028 (Prompt Conditioning) and US-029 (Project Info).
-- **Plan**: `plan.md` R3 outlines Phase 13 implementation.
+- **Spec**: `spec.md` R3 defines US-026 (Define Pillar Output Parity) and FR-028/FR-029.
+- **Plan**: `plan.md` R3 outlines Phase 12 implementation.
 - **Contracts**:
-    - `agent.md`: Defines `dispatchAgent`, but doesn't mention prompt conditioning.
-    - `config.md`: Defines `loadConfig`, which now returns a profile (from Phase 10).
+    - `agent.md`: Defines `dispatchAgent` with `quiet` support.
 - **Actual Code**:
-    - `src/engine/prompt-conditioner.ts`: **STUB**. Throws "Not implemented".
-    - `src/commands/project-info.ts`: **STUB**. Throws "Not implemented".
-    - `src/engine/prompt-conditioner.test.ts`: **RED**. Exists but failing.
-    - `src/commands/project-info.test.ts`: **RED**. Exists but failing.
-    - `src/plugins/workflow-runtime.ts`: **MISSING** integration with prompt-conditioner.
-    - `src/engine/ship-orchestrator.ts`: **MISSING** integration with prompt-conditioner.
-    - `PROMPT.md` (15 files): **WRONG**. Contain ungated gwrk-native references.
+    - `src/plugins/workflow-runtime.ts`: `extractJsonFromOutput` has tolerant mode (FR-029) but it's hardcoded, not flag-controlled.
+    - `src/engine/define-orchestrator.ts`: Hardcodes `quiet: true` in all stages.
+    - `src/commands/tests-generate.ts`: Uses `DefineOrchestrator`, but lacks direct `WorkflowRuntime` integration for better success detection.
+    - `src/commands/specify.ts`: Same as above.
+    - `src/commands/define-plan.ts`: Same as above.
+    - `src/commands/tasks-generate.ts`: Same as above.
+    - `src/commands/tests-generate-contract.test.ts`: **BROKEN**. Incorrect imports and outdated expectations (expects `tolerant: true` flag).
 
 ## 2. Findings
 
 | Item | Status | Finding |
 |---|---|---|
-| `prompt-conditioner.ts` | `greenfield` | Core logic for XML injection and guard resolution missing. |
-| `project-info.ts` | `greenfield` | Logic to display resolved profile and support JSON output missing. |
-| `workflow-runtime.ts` | `missing` | Workflow dispatch needs to call `conditionPrompt`. |
-| `ship-orchestrator.ts` | `missing` | Review dispatch needs to call `conditionPrompt`. |
-| `PROMPT.md` files | `wrong` | All PROMPT.md files assume gwrk-native project structure. |
+| `workflow-runtime.ts` | `partial` | Tolerant mode exists but is not exposed as a flag in `WorkflowOptions`. |
+| `define-orchestrator.ts`| `wrong` | Hardcodes `quiet: true` instead of allowing the calling command to control UX. |
+| `tests-generate.ts` | `partial` | Success detection exists but relies on `exitCode 0` from orchestrator, which might be too rigid. |
+| Contract Tests | `wrong` | `tests-generate-contract.test.ts` is non-functional due to import errors. |
 
 ## 3. Gap Details
 
-### G-01: Prompt Conditioning Logic
-The `conditionPrompt` function must:
-1. Serialize the project profile into an XML block `<project_profile>...</project_profile>`.
-2. Resolve `[type: gwrk-native]...[/type]` tags based on `profile.type === 'gwrk-native'`.
-3. Be idempotent if called multiple times (though it should only be called once).
+### G-01: Explicit Tolerant Flag
+The `WorkflowRuntime.executeWorkflow` should take an explicit `tolerant?: boolean` flag in `WorkflowOptions`. This ensures that "prose-as-success" is a conscious choice for specific workflows, not a global behavior.
 
-### G-02: Integration Points
-Prompt conditioning must happen as late as possible before the prompt is sent to the agent.
-- `WorkflowRuntime.executeWorkflow` is the central point for all `define` commands.
-- `ShipOrchestrator` handles review dispatch which also needs conditioning.
+### G-02: Orchestrator Pass-through
+`DefineOrchestrator` should accept a `quiet` option in its constructor and pass it to all `executeWorkflow` calls. This allows the CLI commands to stay in control of the UX.
 
-### G-03: Project Info UX
-`gwrk project info` should show:
-- Project Type
-- Tech Stack (Language, Framework, etc.)
-- Layout (Source root, apps, packages)
-- Conditioning Mode (Gwrk-native vs Generic)
-- Source of truth for each field (Auto-detected vs Explicit)
+### G-03: Robust Success Detection in Commands
+`tests-generate.ts` and others should verify artifact production even if the orchestrator returns a non-zero exit code but the agent successfully committed files (using the tolerant mode result).
 
-### G-04: PROMPT.md Refactoring
-Every workflow's `PROMPT.md` must be audited for gwrk-specific assumptions (e.g., `src/commands/`, `Commander.js`, `ADR-004`) and wrapped in `[type: gwrk-native]` guards.
+### G-04: Test Suite Repair
+`tests-generate-contract.test.ts` must be refactored to use the `commander` program parsing approach (like `tests-generate-contract-phase12.test.ts`) and match the actual implementation.
 
 ## 4. Recommendations
 
-1. Implement `prompt-conditioner.ts` first to make tests GREEN.
-2. Integrate into `WorkflowRuntime` and verify with existing workflow tests.
-3. Implement `project info` command.
-4. Batch refactor `PROMPT.md` files by priority (Critical → Medium → Low).
+1. Update `WorkflowRuntime` to support `tolerant: boolean` flag.
+2. Update `DefineOrchestrator` to accept and pass `quiet` flag.
+3. Update `define` subcommands to pass `quiet: true`.
+4. Repair `tests-generate-contract.test.ts` to verify these behaviors.
