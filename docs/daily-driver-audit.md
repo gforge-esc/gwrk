@@ -694,36 +694,41 @@ The define pipeline dispatches to Gemini CLI which has been hitting 429s and gua
 > **Spec reference**: [ship-failure-diagnosis.md](specs/004-ship-loop/refs/ship-failure-diagnosis.md)
 > **Code**: [ship-orchestrator.ts](src/engine/ship-orchestrator.ts)
 
-#### FM-4: Stale dist Detection
+#### FM-4: Stale dist Detection → ~~gwrk-specific~~ → R007
 
-**Current state**: No pre-dispatch `dist/` freshness check. If `pnpm build` hasn't been run after a code change, the agent dispatches against stale compiled output.
+**Disposition**: Not a ship loop concern — this is a project-perspective problem. A TypeScript project needs `dist/` freshness checks; Python doesn't have `dist/`; Go builds differently. This belongs in the project-scoped pre-flight system designed in R007 (enforcement skills).
 
-**TO-BE**: Before dispatch, check `stat dist/index.js` vs `stat src/index.ts`. If dist is older than src, run `pnpm build` automatically or warn.
-
-**Effort**: ~30 minutes. Add timestamp comparison to `ship-orchestrator.ts` pre-flight.
+**Status**: Deferred to R007.
 
 ---
 
-#### FM-5: UAT Stall / Timeout
+#### FM-5: ~~UAT Stall / Timeout~~ → Hung Sub-Commands
 
-**Current state**: Build timeout is 60s (L610), test timeout is 120s (L672). No explicit dispatch-level timeout for the `implement` phase. If the agent stalls (turn limit, rate limit, network), the ship loop hangs indefinitely.
+**Corrected diagnosis**: The agent itself rarely hangs. What actually happens is the agent runs a bash command that hangs — interactive prompts waiting for stdin, merge conflict editors, `pnpm dev` servers, lock contention, commands that don't exit. The agent doesn't know how to recover. It just waits.
 
-**TO-BE**: Add `--print-timeout` to agy adapter dispatch (default: 10 minutes). Add a watchdog timer in `dispatchAgent()` that kills the child process after configurable timeout (default: 15 minutes for implement, 5 minutes for review).
+**The real problem**: The implement prompt (`gwrk-implement/PROMPT.md`) contains bash blocks with no timeout or anti-hang guidance:
+- `pnpm build` (line 52) — can hang on stdin prompts
+- `git merge develop --no-edit` (line 80) — can hang on merge conflicts
+- `pkill -f 'pnpm.*dev'` (line 49) — can hang if matching processes are in uninterruptible states
+- No `timeout` wrapper on any command
+- No "if this command produces no output for 60s, kill it" pattern
+- No guidance telling the agent to use `--non-interactive` flags
 
-**Effort**: ~1 hour. Timer logic + adapter flag.
+**TO-BE**: Add `<command_safety>` block to implement prompt:
+1. All build/test commands should be wrapped in `timeout` or have `--non-interactive` equivalents
+2. Agent guidance: "If a command produces no output for 60 seconds, kill it and retry without interactive flags"
+3. Explicit blacklist: never run `pnpm dev`, `npm start`, or any long-running server process
+4. Merge conflicts: detect `CONFLICT` in git merge output and abort rather than wait for editor
+
+**Effort**: ~1 hour. Prompt engineering + enforcement skill for command safety.
 
 ---
 
-#### FM-6: Stale Branch Cleanup
+#### FM-6: ~~Stale Branch Cleanup~~ → Low Priority
 
-**Current state**: No `--force-with-lease` in branch setup. No cleanup of stale feature branches after merge.
+**Reassessed**: `git push -u origin` (L917) works. `--force-with-lease` adds complexity for a problem that hasn't occurred in practice. Branch cleanup after merge is nice-to-have hygiene, not a failure mode.
 
-**TO-BE**: 
-1. `git push --force-with-lease` instead of `git push` in branch setup
-2. Post-harvest: `git branch -d feat/<feature>` locally after successful harvest
-3. `gwrk cleanup` command that lists/deletes branches for merged features
-
-**Effort**: ~1 hour. Git utility additions.
+**Status**: Parking lot. Not blocking daily-driver use.
 
 ---
 
