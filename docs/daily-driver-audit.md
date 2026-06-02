@@ -965,11 +965,55 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 
 ---
 
-## Open Questions (Updated 2026-06-02)
+## Prioritized Action Queue (Updated 2026-06-02)
 
 > [!IMPORTANT]
-> 1. ~~**Phase 14 scope**~~ → RESOLVED. Shipped as P14.
-> 2. **ROADMAP.md**: Rewrite needed. This audit is the authoritative source. ROADMAP should be a short summary pointing here. See Section L.
-> 3. **F013 closure**: Close as "delivered via ADR-004" or keep open for binary guard / overflow mode? Recommend close.
-> 4. **Test regression**: 17 failures from F019 merge. Fix before any new ship runs. See Section H.
-> 5. **plan_phases table**: Empty. `gwrk plan status` can't show phase-level data. Populate during lifecycle status command work (Section I) or as a standalone seed migration.
+> Execute top-down. Each item has been triaged for impact, effort, and dependency order. Items marked ✅ were resolved during this audit session.
+
+### Tier 1: Fix Before Next Ship Run
+
+| # | Section | Item | Effort | Notes |
+|---|---------|------|--------|-------|
+| ~~1~~ | ~~H~~ | ~~17 test failures from F019 merge~~ | ~~—~~ | ✅ Resolved. 152 pass, 0 fail. |
+| 2 | DB | **DB hygiene: fix F019 name/status, delete 099-drift-test.** `gwrk plan status` shows wrong data until this is run. | 5 min | Run the SQL in "Backlog DB Hygiene" section. |
+| 3 | Q | **Fix `tasks verify` index.json skip.** Skips valid manifests with "invalid manifest" error because schema doesn't handle `index.json` format. | 30 min | Filter `index.json` before schema validation. |
+
+### Tier 2: Unblock Daily-Driver Quality
+
+| # | Section | Item | Effort | Notes |
+|---|---------|------|--------|-------|
+| 4 | N/FM-5 | **Spec `<command_safety>` for implement prompt.** Agents hang on sub-commands (interactive stdin, merge editors, dev servers). Needs proper spec in F004 ship-loop, not a quick patch. | ~1 hr spec | The corrected diagnosis: hung sub-commands, not overall agent timeout. |
+| 5 | O | **LaunchAgent E2E verification.** `gwrk server install` has never been run on the workstation. Paths may be wrong. | 30 min manual | Risk: silent launchd failures if `process.execPath` or `dist/` path is wrong. |
+| 6 | Q | **Add `.gitattributes` merge protection for `tasks.json`.** `specs/**/.gwrk/tasks.json merge=ours` prevents merge conflicts on task state. | 15 min | Add template to `gwrk init`. |
+
+### Tier 3: Strategic (Spec/Research Required)
+
+| # | Section | Item | Effort | Notes |
+|---|---------|------|--------|-------|
+| 7 | P | **Server-initiated harvest (heartbeat polling).** Add `checkMergedPRs()` to heartbeat loop. Option C from audit: `gh pr list --state merged` in existing heartbeat. | ~2 hrs | Needs spec amendment to F011. Harvest engine works; trigger is the gap. |
+| 8 | M.2 | **Wire `gwrk define research`.** Pluginable research workflow. Brief exists: R006. | Research first | Plugin system concern — different users research differently. |
+| 9 | M.3 | **Project perspective mechanism.** Enforcement skills for non-gwrk projects. Brief exists: R007. | Research first | The primary use case for F014 project overrides. |
+| 10 | T | **Compression needs SP data.** `gwrk measure compression --all` returns 0.0x everywhere because no specs have SP values. Compression engine works; input is the gap. | ~2 hrs | Seed SP values into spec stories, or auto-derive from task count. |
+| 11 | M.4 | **Rewrite `docs/product/WHAT_IS_GWRK.md`.** Currently self-referential. Should be the PE's operating system thesis. | ~1 hr | |
+
+### Tier 4: Backlog (Not Blocking)
+
+| # | Section | Item | Effort | Notes |
+|---|---------|------|--------|-------|
+| 12 | R | **Close F013 as "delivered via ADR-004."** 60% shipped (signal envelope, cost classification, project info). Binary guard and overflow mode are deferred. | 5 min | Update DB status. |
+| 13 | S | **Remove `--parallel` flag from `gwrk ship`.** False promise — no implementation. Parallel dispatch (F005) is deferred indefinitely. | 15 min | Delete flag + related code in `ship.ts`. |
+| 14 | N/FM-6 | **Branch cleanup after merge.** Nice-to-have hygiene. `--force-with-lease` adds complexity for a non-problem. | — | Parking lot. |
+| 15 | V | **Obsidian Integration (F020).** Well-designed, not urgent. Design doc is ready to become spec input when needed. | — | `gwrk define spec 020` when ready. |
+| 16 | W | **Google Stitch Integration.** Exploratory. No blocking dependency. | — | Could integrate into `gwrk define` as visual artifact generator. |
+| 17 | U | **F012: Knowledge Work.** Ghost feature — empty spec directory. Number reserved. | — | Assign when discovery pillar needs a formal spec. |
+
+### Resolved This Session
+
+| Item | What happened |
+|------|--------------|
+| Section H: 17 test failures | ✅ All fixed. 152 pass, 0 fail. |
+| Section K: Prompt hardening | ✅ XML wrapping, SIGPIPE, hedge words, filename validation at gate-gen. |
+| Section L: ROADMAP vs audit | ✅ Assessed — this audit is the authoritative source. |
+| Section M: Doc restructure | ✅ 6 overlapping dirs → coherent hierarchy. 6 dead workflows archived. `gwrk measure effort` removed. R006/R007 research briefs created. |
+| Open Q #1: Phase 14 scope | ✅ Shipped as P14. |
+| Open Q #4: Test regression | ✅ Resolved — 0 failures. |
