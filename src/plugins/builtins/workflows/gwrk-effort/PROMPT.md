@@ -25,6 +25,7 @@ This workflow produces a **Story Point–driven effort estimate** for gwrk work.
 
 Each role has an **hours-per-SP rate** reflecting the nature of their contribution. Rates assume a standard 8-hour day.
 
+[type: gwrk-native]
 | Role | Code | Activity | Hours/SP | Notes |
 | :--- | :--- | :--- | ---: | :--- |
 | **Rust / Engine Engineer** | `RE` | Engine implementation (parser, diff, normalization, fingerprinting, hashing, PDF) | **6** | High-complexity systems work in Rust; Tree-sitter, napi-rs, deterministic compute |
@@ -32,6 +33,15 @@ Each role has an **hours-per-SP rate** reflecting the nature of their contributi
 | **Product Manager** | `PM` | Spec authoring, story definition, UAT, acceptance testing | **2** | Definition + validation; lower per-SP because PM work front-loads |
 | **Principal Engineer** | `PE` | Architecture review, code review, guardrail enforcement, cross-spec integration | **1.5** | Oversight role; high leverage, lower direct hours per SP |
 | **Data / Generator Engineer** | `DE` | Synthetic data generation, mutation operators, ground-truth manifests, calibration | **5** | Algorithmic complexity: AST transforms, deterministic generation, test corpus |
+[/type]
+
+[type: generic]
+| Role | Code | Activity | Hours/SP | Notes |
+| :--- | :--- | :--- | ---: | :--- |
+| **Senior Engineer** | `SE` | Feature implementation and unit testing | **4** | Standard development role |
+| **Product Manager** | `PM` | Requirements definition and UAT | **2** | Design and validation |
+| **QA Engineer** | `QA` | Test planning and automation | **3** | Quality assurance |
+[/type]
 
 > [!IMPORTANT]
 > **Overlap rule:** When a story requires multiple roles, each role's hours are calculated independently and summed. A 5 SP story assigned to `RE + TS` = (5 × 6) + (5 × 4) = 50 hours. Use fractional SP splits when contribution is unequal (e.g., RE: 3 SP, TS: 2 SP).
@@ -54,6 +64,7 @@ Pull all user stories from `specs/000-build-plan.md` §5 (Story Point Coverage) 
 
 Assign each story and each spec to its primary execution role(s):
 
+[type: gwrk-native]
 | Domain | Primary Role | Supporting Role |
 | :--- | :--- | :--- |
 | Engine Foundation, AST Diff, Normalization, Comment Provenance | `RE` | `PE` |
@@ -68,6 +79,11 @@ Assign each story and each spec to its primary execution role(s):
 | Demo Tier | `TS` | `PM` |
 | All specs (definition phase) | `PM` | — |
 | All specs (review phase) | `PE` | — |
+[/type]
+
+[type: generic]
+Assign each story to its primary execution role(s) based on the project's domains and roles.
+[/type]
 
 ### 3. Calculate Hours from SP
 
@@ -134,11 +150,18 @@ SP-derived estimates using role-specific Hours/SP rates per /effort workflow.
 ## Role Summary
 | Role | SP Assigned | Raw Hours | With Overhead | Days |
 | :--- | ---: | ---: | ---: | ---: |
+[type: gwrk-native]
 | Rust / Engine Engineer | [SP] | [H] | [H] | [D] |
 | TS / Fullstack Developer | [SP] | [H] | [H] | [D] |
 | Product Manager | [SP] | [H] | [H] | [D] |
 | Principal Engineer | [SP] | [H] | [H] | [D] |
 | Data / Generator Engineer | [SP] | [H] | [H] | [D] |
+[/type]
+[type: generic]
+| Senior Engineer | [SP] | [H] | [H] | [D] |
+| Product Manager | [SP] | [H] | [H] | [D] |
+| QA Engineer | [SP] | [H] | [H] | [D] |
+[/type]
 | **Total** | **[SP]** | **[H]** | **[H]** | **[D]** |
 
 ## Spec-Level Breakdown

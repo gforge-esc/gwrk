@@ -4,6 +4,8 @@ import {
   IntentEngine,
   type IntentSummary,
 } from "../engine/intent-engine.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { conditionPrompt } from "../engine/prompt-conditioner.js";
 import { type TaskDispatch, dispatchToAgent } from "../utils/agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
 import type { WorkflowManifest, JsonIntent } from "./manifest.js";
@@ -224,8 +226,12 @@ export class WorkflowRuntime {
       );
     }
 
+    // Phase 13: Project-aware prompt conditioning
+    const profile = await detectProfile(projectRoot);
+    const conditionedPrompt = conditionPrompt(basePrompt, profile);
+
     // Inject the outputSchema and input into the final prompt
-    const fullPrompt = `${basePrompt}\n\nCRITICAL: Your output MUST be a single JSON object matching this schema:\n${JSON.stringify(manifest.outputSchema, null, 2)}\n\nInput:\n${input}`;
+    const fullPrompt = `${conditionedPrompt}\n\nCRITICAL: Your output MUST be a single JSON object matching this schema:\n${JSON.stringify(manifest.outputSchema, null, 2)}\n\nInput:\n${input}`;
 
     const task: TaskDispatch = {
       type: "workflow",

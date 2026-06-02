@@ -51,6 +51,7 @@ description: Generate domain-specific quality checklists that gate implementatio
 5. Mandatory verification dimensions (per workspace/coding-style rules):
 
    <verification_dimensions>
+[type: gwrk-native]
    - **Testing** (CRITICAL):
      - Are unit test requirements (TR-###) specified **in spec.md**, not just plan.md?
      - Is E2E verification (Playwright) **explicitly required** for all user-facing flows?
@@ -65,6 +66,15 @@ description: Generate domain-specific quality checklists that gate implementatio
    - **Config Hygiene**: Are all config values externalized (no magic values, no defaults)?
    - **Error Handling**: Are failure states, validation errors, and edge cases specified?
    - **Docker Verification**: Is `make up` verification explicitly required for handoff?
+[/type]
+
+[type: generic]
+   - **Testing**: Are testing requirements clearly defined and verifiable?
+   - **State Management**: Are patterns for state synchronization and consistency defined?
+   - **Data Integrity**: Are validation rules and seed data requirements specified?
+   - **Observability**: Are logging and monitoring requirements defined?
+   - **Error Handling**: Are failure states and edge cases specified?
+[/type]
    </verification_dimensions>
 
 6. Report via notify_user:

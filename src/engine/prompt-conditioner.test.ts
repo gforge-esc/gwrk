@@ -24,7 +24,7 @@ describe("FR-033: Project-Aware Prompt Conditioning", () => {
     };
 
     const conditioned = conditionPrompt(prompt, profile);
-    expect(conditioned).toContain("<project_profile>");
+    expect(conditioned).toContain("<project_profile");
     expect(conditioned).toContain('type="pnpm-monorepo"');
     expect(conditioned).toContain("Act as a software engineer.");
   });
@@ -70,11 +70,14 @@ describe("FR-034: PROMPT.md Refactoring Guards", () => {
       const promptPath = path.join("src/plugins/builtins/workflows", dir, "PROMPT.md");
       if (fs.existsSync(promptPath)) {
         const content = fs.readFileSync(promptPath, "utf-8");
+        // Remove all gated blocks to see what's left "in the open"
+        const ungatedContent = content.replace(/\[type:\s*[^\]]*gwrk-native[^\]]*\][\s\S]*?\[\/type\]/g, "");
+        
         for (const term of ungatedTerms) {
-          // Check if term exists and is NOT wrapped in [type: gwrk-native]
-          const regex = new RegExp(`(?<!\\[type: gwrk-native\\])${term.replace(".", "\\.")}`, "g");
-          const matches = content.match(regex);
+          const regex = new RegExp(`${term.replace(".", "\\.")}`, "g");
+          const matches = ungatedContent.match(regex);
           if (matches) {
+            // console.log(`Ungated match in ${dir}: ${term}`);
             totalUngatedMatches += matches.length;
           }
         }

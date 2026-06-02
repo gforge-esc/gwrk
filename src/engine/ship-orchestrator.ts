@@ -22,6 +22,8 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { harvestFeature } from "./harvest.js";
+import { detectProfile } from "./profile-detector.js";
+import { conditionPrompt } from "./prompt-conditioner.js";
 import {
   type ShipRunConfig,
   ShipStage,
@@ -279,8 +281,12 @@ export class ShipOrchestrator extends EventEmitter {
         );
       }
 
+      // Phase 13: Project-aware prompt conditioning
+      const profile = await detectProfile(this.config.cwd);
+      const conditionedPrompt = conditionPrompt(reviewPrompt, profile);
+
       const result = await this.dispatchWithFailback({
-        prompt: reviewPrompt,
+        prompt: conditionedPrompt,
         featureDir: `specs/${this.config.featureId}`,
         agent: this.config.backend,
         env: {},
@@ -508,6 +514,10 @@ export class ShipOrchestrator extends EventEmitter {
         ? this.buildRetryPrompt(tasksToDispatch)
         : this.buildInitialPrompt(tasksToDispatch);
 
+      // Phase 13: Project-aware prompt conditioning
+      const profile = await detectProfile(this.config.cwd);
+      const conditionedPrompt = conditionPrompt(prompt, profile);
+
       const taskIds = tasksToDispatch.map((t) => t.id).join(", ");
       console.log(
         `  ▸ IMPLEMENT  ${isRetry ? `retry (${this.state.iteration}/${this.config.maxIterations})` : `${tasksToDispatch.length} task(s) (${taskIds})`}`,
@@ -517,7 +527,7 @@ export class ShipOrchestrator extends EventEmitter {
         agent: this.config.backend,
         workflow: "gwrk-implement",
         featureDir: `specs/${this.config.featureId}`,
-        prompt,
+        prompt: conditionedPrompt,
         quiet: true,
       });
 

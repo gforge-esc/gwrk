@@ -49,12 +49,17 @@ Derive test file locations from `plan.md`'s file structure and `docs/architectur
 Co-locate tests as `<module>.test.ts` adjacent to their source file.
 
 <test_type_mapping>
+[type: gwrk-native]
 | TR Category | Test Framework | File Location |
 |---|---|---|
 | Unit tests | Vitest | Co-located `<module>.test.ts` |
 | Integration (API) | Vitest + server inject | Co-located with route handler |
 | E2E (UI flows) | Playwright | `e2e/*.spec.ts` |
 | Docker/infra verification | Shell | Covered by gates — skip here |
+[/type]
+[type: generic]
+Map requirements to the project's standard test frameworks and file locations (e.g., unit tests co-located with source, integration tests in a `tests/` directory).
+[/type]
 </test_type_mapping>
 
 ### 3. Generate Unit Tests
@@ -95,6 +100,7 @@ For each US-### with a user-facing flow in this phase:
 - Include error state tests from the spec
 
 <red_validation_rules>
+[type: gwrk-native]
 After generating all test files:
 
 ```bash
@@ -103,10 +109,15 @@ pnpm test --run 2>&1 | tail -20
 # Expected: test failures (imports that don't resolve, assertions that fail)
 # If ALL tests pass: CRITICAL — tests are trivial, flag and revise
 ```
+[/type]
+
+[type: generic]
+Verify that the generated tests fail as expected before implementation (RED state) using the project's test runner.
+[/type]
 
 - If tests pass → they're hollow. **Revise with stronger assertions.**
 - If tests compile but fail assertions → ideal RED state.
-
+</red_validation_rules>
 ### 6. Verify RED State
 
 Tests MUST import the target modules (even if they don't exist yet). This is the intended RED state — missing imports cause test failures, which is exactly what we want. The implementing agent creates the real source files.
@@ -120,6 +131,7 @@ Tests MUST import the target modules (even if they don't exist yet). This is the
 **MANDATORY OUTPUT.** Write `{feature_dir}/gap-matrix.md` — a coverage matrix mapping every requirement to its test file.
 
 Format:
+[type: gwrk-native]
 ```markdown
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
@@ -127,6 +139,15 @@ Format:
 | FR-002 | Plugin loader resolution | unit | src/plugins/loader.test.ts | ✅ | T002 |
 | US-001 | User registers a plugin | integration | src/commands/plugin.test.ts | ✅ | T003 |
 ```
+[/type]
+
+[type: generic]
+```markdown
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| AC-ID | Description | type | path/to/test | ✅/❌ | GATE-ID |
+```
+[/type]
 
 Rules:
 - One row per FR-###, US-###, or TR-### in this phase

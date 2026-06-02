@@ -41,7 +41,12 @@ cat "$GWRK_CONTEXT"
 
 Read the gate brief JSON. This contains:
 - `feature`: feature ID
+[type: gwrk-native]
 - `projectType`: today always `"gwrk-typescript"`
+[/type]
+[type: generic]
+- `projectType`: The detected project type (e.g., nodejs, rust, python)
+[/type]
 - `tasks[]`: array of `TaskBrief` objects with `taskId`, `title`, `description`, `primaryFile`, `fileType`, `identifiers`, `doneWhenCommands`, `contractRefs`
 
 ### 2. Read feature artifacts
@@ -77,10 +82,21 @@ Every gate script MUST:
 3. Have at least ONE assertion that invokes a real tool (pnpm, grep, bash -n, jq, test)
 4. End with `echo "PASS: {taskId} — {title}"`
 5. NOT contain `GATE_STUB`
+[type: gwrk-native]
 6. Every assertion MUST emit a diagnostic message to stderr on failure (ADR-004 §2.4). Bare `set -e` assertions that die silently are PROHIBITED. Use the `|| { echo "FAIL: ..." >&2; exit 1; }` pattern. The failure message MUST include: task ID, file path, and what was expected.
+[/type]
+[type: generic]
+6. Every assertion MUST emit a diagnostic message to stderr on failure. Use the `|| { echo "FAIL: ..." >&2; exit 1; }` pattern.
+[/type]
 
+[type: gwrk-native]
 Assertion patterns by file type (all use `|| { echo "FAIL: ..." >&2; exit 1; }` for ADR-004 error navigation):
+[/type]
+[type: generic]
+Assertion patterns by file type:
+[/type]
 
+[type: gwrk-native]
 - **test** (`*.test.ts`):
   ```bash
   pnpm vitest run {file} --reporter=verbose \
@@ -93,6 +109,11 @@ Assertion patterns by file type (all use `|| { echo "FAIL: ..." >&2; exit 1; }` 
   grep -q '{identifier}' {file} \
     || { echo "FAIL: {taskId} — {file} missing '{identifier}'" >&2; exit 1; }
   ```
+[/type]
+[type: generic]
+- **test**: Use the project's detected test runner (e.g., `npm test`, `cargo test`, `pytest`).
+- **source**: Verify file existence and presence of key identifiers (functions, classes, variables).
+[/type]
 - **shell** (`*.sh`):
   ```bash
   test -f {file} \
