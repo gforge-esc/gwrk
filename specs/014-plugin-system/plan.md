@@ -398,6 +398,8 @@ Ship builtin enforcement skills that teach implementing agents gwrk's operationa
 
 ---
 
+### Phase 10: .agents/ Migration to Builtins (ADR-007)
+
 > Eliminate gwrk's runtime dependency on the `.agents/` directory by migrating all content into the builtin plugin architecture. After this phase, `.agents/` is inert — nothing reads from it at runtime.
 
 **Requirements Addressed:** FR-L25-003 (core workflows independent of `.agents/`), TC-011 (zero-dependency workflows), US-011 (execute workflows without `.agents/`), ADR-007
@@ -467,7 +469,98 @@ Ship builtin enforcement skills that teach implementing agents gwrk's operationa
 
 ---
 
-### Phase 11: .agents/ Deletion & Verification (ADR-007)
+### Phase 11: Research CLI (R006)
+
+Implement `gwrk define research <initiative>` to scaffold research directories and briefs based on methodology.
+
+**Files (3):**
+- `src/commands/research.ts` (NEW: handler for `gwrk define research`)
+- `src/engine/research-scaffold.ts` (NEW: scaffold logic for R0XX numbering and brief generation)
+- `src/commands/research.test.ts` (NEW: TR-011)
+
+**Requirements Addressed:** FR-R006-001, US-017
+
+**Dependencies:** Phase 6
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-011 | Unit | `src/engine/research-scaffold.ts` | Scaffolds correct directory and brief.md |
+
+#### Done When
+- `gwrk define research test-initiative` creates `docs/research/RXXX-test-initiative/brief.md`
+
+---
+
+### Phase 12: Methodology Dispatch (R006)
+
+Implement `--run` flag for `gwrk define research` to execute methodology plugins via `WorkflowRuntime`.
+
+**Files (8):**
+- `src/commands/research.ts` (MODIFY: add `--run` flag and dispatch logic)
+- `src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml` (NEW: builtin methodology)
+- `src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md` (NEW: builtin methodology)
+- `src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml` (NEW: builtin methodology)
+- `src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md` (NEW: builtin methodology)
+- `src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml` (NEW: builtin methodology)
+- `src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md` (NEW: builtin methodology)
+- `src/commands/research-dispatch.test.ts` (NEW: TR-P12-001)
+
+**Requirements Addressed:** FR-R006-002, US-018
+
+**Dependencies:** Phase 5, Phase 11
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-P12-001 | Integration | `src/commands/research.ts` | Dispatches methodology plugin to WorkflowRuntime |
+
+#### Done When
+- `gwrk define research test-initiative --run` successfully executes the technical methodology plugin
+
+---
+
+### Phase 13: Grounding Injection (ADR-009)
+
+Implement dynamic injection of project knowledge documents (`.gwrk/ontology/domain.md`, etc.) into the agent prompt.
+
+**Files (3):**
+- `src/utils/agent.ts` (MODIFY: `dispatchToAgent` context injection logic)
+- `src/commands/init.ts` (MODIFY: scaffold `.gwrk/ontology` and `.gwrk/perspective` directories)
+- `src/engine/agent.test.ts` (NEW: TR-012)
+
+**Requirements Addressed:** FR-L25-008, FR-ADR009-001, US-019, US-014 (partially), TC-013
+
+**Dependencies:** Phase 3
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-009 | Injection order MUST be ontology, then hierarchy, then UX posture. |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-012 | Unit | `src/utils/agent.ts` | Injects ontology, hierarchy, and UX posture in correct order if present |
+
+#### Done When
+- `gwrk init` creates `.gwrk/ontology` and `.gwrk/perspective` directories
+- `dispatchToAgent` logs show `<domain_ontology>` tags when file exists
+
+---
+
+### Phase 14: .agents/ Deletion & Verification (ADR-007)
 
 > Delete the `.agents/` directory from the repository and verify gwrk functions without it. This is the final cleanup — all content has been migrated in Phase 10.
 
@@ -527,7 +620,7 @@ _No mockups exist for this feature._
 |---|---|---|---|
 | FR-L1-007 | github-integration dispatchMode | Codex Cloud integration is a separate high-effort feature (F005 Tier 3) | Wave 5 |
 | Layer 3 | Extension Plugins (remaining) | Review plugins (Phase 8) are the first L3 use case. Domain Packs and Channel Adapters require F012 and F017 | Wave 7 |
-| `.agents/skills/` | Skill migration via `gwrk plugin migrate` | Skills already dual-exist in `~/.gwrk/plugins/skills/` (seeded by init). `.agents/skills/` retained for IDE compatibility per TC-006 | Phase 11 deletes `.agents/` wholesale |
+| `.agents/skills/` | Skill migration via `gwrk plugin migrate` | Skills already dual-exist in `~/.gwrk/plugins/skills/` (seeded by init). `.agents/skills/` retained for IDE compatibility per TC-006 | Phase 14 deletes `.agents/` wholesale |
 
 ---
 
@@ -551,6 +644,9 @@ _No mockups exist for this feature._
 | US-014 | 7 | ✅ Done |
 | US-015 | 5 | ✅ Done |
 | US-016 | 9 | ✅ Done |
+| US-017 | 11 | ✅ Done |
+| US-018 | 12 | ✅ Done |
+| US-019 | 13 | ✅ Done |
 | FR-001 | 1 | ✅ Done |
 | FR-002 | 1 | ✅ Done |
 | FR-003 | 1 | ✅ Done |
@@ -585,11 +681,17 @@ _No mockups exist for this feature._
 | FR-L25-005 | 7 | ✅ Done |
 | FR-L25-006 | 5 | ✅ Done |
 | FR-L25-007 | 5 | ✅ Done |
+| FR-L25-008 | 13 | ✅ Done |
+| FR-R006-001 | 11 | ✅ Done |
+| FR-R006-002 | 12 | ✅ Done |
+| FR-ADR009-001 | 13 | ✅ Done |
 | DM-001 to DM-007 | 1 | ✅ Done |
-| TC-006 | 10, 11 | ✅ Done |
-| TC-011 | 10, 11 | ✅ Done |
+| TC-006 | 10, 14 | ✅ Done |
+| TC-011 | 10, 14 | ✅ Done |
+| TC-013 | 13 | ✅ Done |
 | TR-001 to TR-012 | All | ✅ Done |
 | TR-P10-001 to TR-P10-004 | 10 | ✅ Done |
-| TR-P11-001 to TR-P11-004 | 11 | ✅ Done |
+| TR-P11-001 to TR-P11-004 | 14 | ✅ Done |
 | TR-P9-001 to TR-P9-006 | 9 | ✅ Done |
+| TR-P12-001 | 12 | ✅ Done |
 | VR-011 to VR-016 | All | ✅ Done |
