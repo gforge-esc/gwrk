@@ -279,7 +279,13 @@ All detection is filesystem-based — config files and `devDependencies` lookups
 
 ### Proposal 2: Domain Ontology, Information Hierarchy, and UX Posture
 
-**Decided in [ADR-009](../../docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md).**
+**Status: Implemented.** Decided in [ADR-009](../../docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md) and shipped via F014 Phase 13.
+
+- **F014 spec** references it: FR-L25-008, US-019, TC-013, TR-012, SC-016 ([spec.md L251](../../specs/014-plugin-system/spec.md#L251))
+- **Code**: [agent.ts](../../src/utils/agent.ts) — `dispatchToAgent()` injects `<domain_ontology>`, `<information_hierarchy>`, `<ux_posture>` from `.gwrk/` if files exist
+- **Init**: [init.ts](../../src/commands/init.ts) — `gwrk init` scaffolds `.gwrk/ontology/` and `.gwrk/perspective/`
+- **Tests**: [agent.test.ts](../../src/engine/agent.test.ts) — 3 tests: injection, ordering, negative path
+- **Hardened**: Per-file try/catch on readFileSync — unreadable file warns, doesn't crash dispatch
 
 Three project knowledge layers, all optional, file-based, injected at dispatch:
 - `.gwrk/ontology/domain.md` — what things mean (classes, properties, relations, axioms, glossary)
@@ -374,11 +380,13 @@ if (profile && summary.source === "builtin" && manifest.language) {
 |---|---|---|
 | Enforcement skills | **Implemented** | FR-014, US-016, skill-runtime.ts |
 | Project-local override | **Implemented** | US-016 AC3, PluginLoader |
-| Profile detection (type/language/layout) | **Implemented** | profile-detector.ts |
+| Profile detection (type/language/layout) | **Implemented** | profile-detector.ts — detects TS, Python, Rust, JS, React, Next.js, Express |
 | Profile detection (quality posture) | **Proposed** | No code. Extends `ProjectProfile` with `quality.{styleGuide, formatter, linter, testHarness}`. |
-| Profile → enforcement routing | **Proposed** | No spec basis. Requires FR-014 amendment + manifest.ts schema change. |
+| Profile → enforcement routing | **Spec'd, not coded** | F014 spec L284-285 adds `language`/`framework` to manifest schema. manifest.ts has no language field yet. `resolveEnforcementSkills()` has no profile parameter. |
+| `toolchain` model | **Researched** | Not in spec, not in code. R007 research material. Convergence insight (Biome, Ruff) documented. |
 | Style guide landscape (7 languages) | **Researched** | Proposal 1 tables. Detection signals documented per ecosystem. |
-| Domain ontology | **Decided** | ADR-009. File-based injection at dispatch. |
+| Domain ontology injection | **Implemented** | ADR-009. agent.ts. F014 P13 shipped. Hardened with per-file try/catch. |
+| Init scaffolding (ontology/perspective) | **Implemented** | init.ts — `gwrk init` scaffolds `.gwrk/ontology/` and `.gwrk/perspective/` |
 | Architecture grounding | **Proposed** | No spec basis. gwrk uses it informally. |
 | Builtin split (generic/gwrk/ts) | **Proposed** | Backwards compatible. No spec change needed. |
 
@@ -386,9 +394,11 @@ if (profile && summary.source === "builtin" && manifest.language) {
 
 ## Open Items
 
-| Item | Decision needed |
-|---|---|
-| Ontology: enforcement skill vs. new injection path vs. just-a-file? | Determines implementation complexity |
-| Profile quality detection: how deep? | Detect style guide from config files (shallow) vs. parse ESLint extends chains (deep)? |
-| Manifest fields: which are filtering vs. informational? | `language`/`framework` filter routing. `styleGuide`/`formatter`/`linter`/`testHarness` — filter or advisory? |
-| Architecture grounding: worth the new concept or premature? | May be deferred indefinitely |
+| Item | Status | Decision needed |
+|---|---|---|
+| `language`/`framework` manifest fields | Spec'd but not coded | Implement in manifest.ts + skill-runtime.ts. Small change — wires profile to routing. |
+| `toolchain` model (convergence, style guides) | Research complete | Ship `language` filter first? Toolchain informational-only? Or defer entirely? |
+| Builtin split (generic-conventions) | Proposed | Extract project-agnostic rules from gwrk-conventions. Requires `language` filter. |
+| Ontology: enforcement skill vs. just-a-file? | **Resolved** | Just-a-file won. ADR-009 implemented. Zero manifest changes. |
+| Profile quality detection: how deep? | Open | Detect style guide from config files (shallow) vs. parse ESLint extends chains (deep)? |
+| Architecture grounding: worth the new concept or premature? | Open | May be deferred indefinitely. |
