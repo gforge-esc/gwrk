@@ -473,9 +473,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
         : "implementation";
+
+    // R007: Detect project profile for language-aware enforcement routing
+    const { detectProfile } = await import("../engine/profile-detector.js");
+    const profile = await detectProfile(task.workDir || projectRoot);
+
     const enforcement = await resolveEnforcementSkills(
       task.workDir || projectRoot,
       scope as "implementation" | "review",
+      profile,
     );
 
     if (hasEnforcementPlaceholder) {

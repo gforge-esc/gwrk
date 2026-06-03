@@ -7,6 +7,13 @@ import { PassThrough } from 'node:stream';
 
 vi.mock('../plugins/skill-runtime.js');
 vi.mock('node:child_process');
+vi.mock('../engine/profile-detector.js', () => ({
+  detectProfile: vi.fn().mockResolvedValue({
+    type: 'nodejs',
+    stack: { language: 'TypeScript' },
+    layout: 'flat',
+  }),
+}));
 vi.mock('./config.js', () => ({
   loadConfig: vi.fn().mockReturnValue({
     agents: {
@@ -51,7 +58,11 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       stdin: '<code_quality></code_quality>'
     });
 
-    expect(skillRuntime.resolveEnforcementSkills).toHaveBeenCalledWith('/fake/root', 'implementation');
+    expect(skillRuntime.resolveEnforcementSkills).toHaveBeenCalledWith(
+      '/fake/root',
+      'implementation',
+      expect.objectContaining({ stack: { language: 'TypeScript' } }),
+    );
     expect(capturedStdin).toContain('# Strict Typing Rule');
   });
 });
