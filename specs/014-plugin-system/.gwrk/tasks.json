@@ -625,7 +625,7 @@
           "id": "T063",
           "title": "Create research-scaffold.ts",
           "description": "NEW src/engine/research-scaffold.ts. scaffold logic for R0XX numbering and brief generation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/research-scaffold.ts",
           "sp": 2
         }
@@ -651,7 +651,7 @@
           "id": "T065",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml",
           "sp": 2
         },
@@ -659,7 +659,7 @@
           "id": "T066",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md",
           "sp": 2
         },
@@ -667,7 +667,7 @@
           "id": "T067",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml",
           "sp": 2
         },
@@ -675,7 +675,7 @@
           "id": "T068",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md",
           "sp": 2
         },
@@ -683,7 +683,7 @@
           "id": "T069",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml",
           "sp": 2
         },
@@ -691,7 +691,7 @@
           "id": "T070",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md",
           "sp": 2
         }
@@ -708,7 +708,7 @@
         {
           "id": "T071",
           "title": "Modify agent.ts",
-          "description": "MODIFY src/utils/agent.ts. `dispatchToAgent` context injection logic. Tests: src/engine/agent.test.ts",
+          "description": "MODIFY src/utils/agent.ts. `dispatchToAgent` context injection logic. Tests: src/engine/agent.test.ts\n\nREOPENED: UAT FAIL — Grounding injection logic is missing from src/utils/agent.ts and unit tests are failing.",
           "status": "open",
           "gateScript": "pnpm vitest run src/engine/agent.test.ts",
           "sp": 1
@@ -717,7 +717,7 @@
           "id": "T072",
           "title": "Modify init.ts",
           "description": "MODIFY src/commands/init.ts. scaffold `.gwrk/ontology` and `.gwrk/perspective` directories",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/init.ts",
           "sp": 1
         }
