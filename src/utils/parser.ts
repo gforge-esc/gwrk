@@ -264,3 +264,37 @@ export function extractSpecSections(
 
   return relevant.join("\n").trim();
 }
+
+/**
+ * Extract declared file paths from a phase section's "Files (N):" block.
+ * Parses both bullet-list format (`- \`path\``) and table format (`| \`path\` |`).
+ * Used to build write-scope allowlists for agent guardrails.
+ *
+ * @param phaseSection - Raw markdown from extractPhaseSection
+ * @returns Array of file paths declared in the phase (e.g. ["src/engine/foo.ts"])
+ */
+export function extractPhaseFiles(phaseSection: string): string[] {
+  const files: string[] = [];
+
+  // Bullet-list format: - `src/engine/profile-detector.ts` (MODIFY: ...)
+  const filesMatch = phaseSection.match(/\*\*Files \(\d+\):\*\*\n((?:- .*\n?)+)/);
+  if (filesMatch) {
+    const fileLines = filesMatch[1].trim().split("\n");
+    for (const line of fileLines) {
+      const m = line.match(/- `([^`]+)`/);
+      if (m) files.push(m[1]);
+    }
+  }
+
+  // Table format fallback: | `path/to/file.ts` | [NEW] Description |
+  if (files.length === 0) {
+    const tableRows = phaseSection.matchAll(
+      /^\|\s*`([^`]+)`\s*\|/gm,
+    );
+    for (const row of tableRows) {
+      if (!row[1].includes("---")) files.push(row[1]);
+    }
+  }
+
+  return files;
+}

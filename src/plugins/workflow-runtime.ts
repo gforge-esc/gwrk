@@ -80,6 +80,13 @@ export interface WorkflowOptions {
   agent?: string;
   model?: string;
   quiet?: boolean;
+  /**
+   * Optional write-scope allowlist. When set, WRITE_FILE intents targeting
+   * paths outside this list are filtered with a warning. Paths are matched
+   * as suffixes (e.g. "src/engine/foo.ts" matches intent path ending in that).
+   * Test files (*.test.ts, *.spec.ts) and spec artifacts are always allowed.
+   */
+  allowedPaths?: string[];
 }
 
 /** Typed output contract for workflow agent responses. */
@@ -320,6 +327,30 @@ export class WorkflowRuntime {
         );
         return false;
       }
+
+      // Guard: enforce write-scope allowlist when provided.
+      // Plan-declared file paths define what a workflow is allowed to write.
+      // Test files and spec artifacts are always allowed regardless of allowlist.
+      if (
+        intent.action === "WRITE_FILE" &&
+        intent.filePath &&
+        options.allowedPaths &&
+        options.allowedPaths.length > 0
+      ) {
+        const fp = intent.filePath;
+        const isTestFile = fp.endsWith(".test.ts") || fp.endsWith(".spec.ts") || fp.startsWith("e2e/");
+        const isSpecArtifact = fp.startsWith("specs/") || fp.includes("gap-matrix");
+        if (!isTestFile && !isSpecArtifact) {
+          const inScope = options.allowedPaths.some((allowed) => fp.endsWith(allowed) || fp.includes(allowed));
+          if (!inScope) {
+            console.warn(
+              `  ⚠ Filtered WRITE_FILE intent outside allowed scope: ${fp}`,
+            );
+            return false;
+          }
+        }
+      }
+
       return true;
     });
 

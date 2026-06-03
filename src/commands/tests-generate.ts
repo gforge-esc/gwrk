@@ -8,6 +8,7 @@ import { DefineStage } from "../engine/define-types.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
+  extractPhaseFiles,
   extractPhaseRequirements,
   extractPhaseSection,
   extractSpecSections,
@@ -201,6 +202,41 @@ Examples:
 
           if (exitCode !== 0) {
             throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+          }
+
+          // Post-execution guardrail: revert non-test modifications to src/
+          // The define-tests agent sometimes overwrites production source files
+          // using native tools (bypassing the JSON intent engine). Detect and
+          // revert any src/ file that isn't a test file.
+          try {
+            const changedFiles = execSync(
+              "git diff --name-only HEAD",
+              { cwd: projectRoot, encoding: "utf-8" },
+            ).trim().split("\n").filter(Boolean);
+
+            const illegal = changedFiles.filter((f) => {
+              // Allow test files
+              if (f.endsWith(".test.ts") || f.endsWith(".spec.ts")) return false;
+              // Allow e2e tests
+              if (f.startsWith("e2e/")) return false;
+              // Allow spec artifacts (gap-matrix, etc.)
+              if (f.startsWith("specs/")) return false;
+              // Everything else in src/ is illegal for define-tests
+              if (f.startsWith("src/")) return true;
+              return false;
+            });
+
+            if (illegal.length > 0) {
+              execSync(
+                `git checkout HEAD -- ${illegal.map((f) => `"${f}"`).join(" ")}`,
+                { cwd: projectRoot },
+              );
+              console.warn(
+                `  ⚠ Reverted ${illegal.length} non-test file(s) modified by agent: ${illegal.join(", ")}`,
+              );
+            }
+          } catch {
+            // Guard is best-effort — don't fail the command if git ops fail
           }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
