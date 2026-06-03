@@ -992,7 +992,7 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 |---|---------|------|--------|-------|
 | 7 | P | **Server-initiated harvest (heartbeat polling).** Add `checkMergedPRs()` to heartbeat loop. Option C from audit: `gh pr list --state merged` in existing heartbeat. | ~2 hrs | Needs spec amendment to F011. Harvest engine works; trigger is the gap. |
 | ~~8~~ | ~~M.2~~ | ~~**Wire `gwrk define research`.**~~ R006 draft complete. Research methodologies are workflow plugins. CLI: `gwrk define research R00X --methodology jtbd`. Domain ontology first-class. | ~~Research~~ | ✅ Draft complete — awaiting review |
-| ~~9~~ | ~~M.3~~ | ~~**Project perspective mechanism.**~~ R007 draft complete. Three layers: enforcement skills (how we build), domain ontology (what we're building), architecture grounding (system shape). Profile → enforcement routing algorithm designed. | ~~Research~~ | ✅ Draft complete — awaiting review |
+| ~~9~~ | ~~M.3~~ | ~~**Project perspective mechanism.**~~ R007 draft complete. Three layers: enforcement skills (how we build), domain ontology (what we're building), architecture grounding (system shape). Profile → enforcement routing algorithm designed. **F014 P13 shipped ADR-009 injection.** | ~~Research~~ | ✅ Research complete. Ontology injection shipped. Routing → next feature cycle. |
 | 10 | T | **Compression needs SP data.** `gwrk measure compression --all` returns 0.0x everywhere because no specs have SP values. Compression engine works; input is the gap. | ~2 hrs | Seed SP values into spec stories, or auto-derive from task count. |
 | 11 | M.4 | **Rewrite `docs/product/WHAT_IS_GWRK.md`.** Currently self-referential. Should be the PE's operating system thesis. | ~1 hr | |
 
@@ -1019,4 +1019,15 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | Tasks verify: index.json | ✅ `loadManifests()` now skips `index.json` before Zod parsing. Test added. |
 | Open Q #1: Phase 14 scope | ✅ Shipped as P14. |
 | Open Q #4: Test regression | ✅ Resolved — 0 failures. |
+
+### Resolved 2026-06-03
+
+| Item | What happened |
+|------|--------------|
+| F014 P11-P13 ship | ✅ PR #72 merged. Research CLI (P11), Methodology Dispatch (P12), Grounding Injection (P13) all shipped. 807 tests, 0 failures. |
+| Ship/harvest DB chain | ✅ Root cause: `require('node:crypto')` in ESM → `project_id=NULL` → harvest `listRuns` query matched 0 rows. Fixed `runs.ts` to use ESM `import`. |
+| Ship `finishRun` write-back | ✅ `ship.ts` now writes `pr_number`, `pr_url`, `status` via `orchestrator.getResult()` accessor. |
+| ADR-009 hardening | ✅ Grounding injection in `agent.ts` wrapped in per-file try/catch. Refactored from 3 copy-paste blocks to data-driven loop. |
+| Ship e2e test | ✅ `ship-orchestrator.e2e.test.ts` — 9 tests with real in-memory SQLite (no DB mocking). Catches: ESM crypto bug, PR data bug, project_id filtering, stale run accumulation. |
+| DB remediation | ✅ 17 orphaned runs backfilled with `project_id`. P11/P12/P13 runs marked `shipped`. Stale P11 runs marked `abandoned`. |
 
