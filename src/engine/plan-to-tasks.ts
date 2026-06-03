@@ -51,8 +51,15 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
 
     if (!currentPhase) continue;
 
-    // **Files (N):**
-    if (line.match(/^\*\*Files\s*\(\d+\):\*\*/)) {
+    // **Files (N):** or #### Files — enter file section
+    if (line.match(/^\*\*Files\s*(\(\d+\))?:\*\*/) || line.match(/^####\s+Files\s*$/i)) {
+      section = "files";
+      continue;
+    }
+
+    // Bold sub-headings within a phase that contain file lists
+    // e.g., **Rules migration:** or **Missing builtin workflows (5):**
+    if (section === "none" && currentPhase && line.match(/^\*\*[A-Z].*:\*\*\s*$/)) {
       section = "files";
       continue;
     }
@@ -75,8 +82,8 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
       continue;
     }
 
-    // **Requirements**, **Dependencies**, **Contract** — skip
-    if (line.match(/^\*\*(Requirements|Dependencies|Contract)/)) {
+    // **Requirements**, **Dependencies**, **Contract**, **Governance** — skip
+    if (line.match(/^\*\*(Requirements|Dependencies|Contract|Governance)/)) {
       section = "none";
       continue;
     }
@@ -101,6 +108,17 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
           path: simpleMatch[1],
           action: simpleMatch[2],
           description: "",
+        });
+        continue;
+      }
+      // Match: - `path` (ACTION: multi-word with special chars)
+      // e.g., - `some/dir/` (DELETE: entire directory tree — 39 files)
+      const extendedMatch = line.match(/^-\s+`([^`]+)`\s+\((\w+):\s*(.+)\)\s*$/);
+      if (extendedMatch) {
+        currentPhase.files.push({
+          path: extendedMatch[1],
+          action: extendedMatch[2],
+          description: extendedMatch[3].trim(),
         });
         continue;
       }
@@ -176,6 +194,23 @@ export function generateTaskState(
           sp: 1,
         });
       }
+    }
+
+    // Last resort: if the phase still has 0 tasks (no files parsed at all),
+    // synthesize one from the phase title to satisfy the Zod min(1) constraint.
+    if (tasks.length === 0) {
+      const id = `T${String(taskCounter++).padStart(3, "0")}`;
+      const gate = p.doneWhen.length > 0
+        ? p.doneWhen[0]
+        : `echo "Phase ${p.number}: ${p.title}"`;
+      tasks.push({
+        id,
+        title: p.title,
+        description: `Complete phase ${p.number}: ${p.title}`,
+        status: "open" as const,
+        gateScript: gate,
+        sp: 2,
+      });
     }
 
     const spEstimate = tasks.reduce((sum, t) => sum + t.sp, 0);
