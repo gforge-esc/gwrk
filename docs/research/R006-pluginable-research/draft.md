@@ -86,15 +86,21 @@ Three options were evaluated:
 
 Research is pre-definition work — it feeds `gwrk define spec`. Keeping it under `define` preserves the CLI grammar's pillar structure (Discovery → Definition → Shipping → Delivery).
 
-```bash
-# Default methodology (current gwrk-research workflow)
-gwrk define research R006
+**The research command follows the same pattern as `gwrk define spec`** ([specify.ts L64-72](../../../src/commands/specify.ts#L64-L72)): the user provides a **name**, not a number. The number (`R008`, `R009`, ...) is auto-incremented by the same [`getNextFeatureNumber()`](../../../src/utils/scaffold-feature.ts#L136-L158) pattern that specs use — scanning `docs/research/` for the highest existing `R0XX-*` directory and incrementing.
 
-# Explicit methodology
-gwrk define research R006 --methodology jtbd
+```bash
+# Create new research initiative (auto-numbered → R008-pluginable-research)
+gwrk define research "Pluginable Research Workflow"
+
+# Create with explicit methodology
+gwrk define research "User Switching Behavior" --methodology jtbd
 
 # Domain ontology construction (independent workflow)
-gwrk define research R006 --methodology ontology
+gwrk define research "EnergyWork Domain Model" --methodology ontology
+
+# Run existing initiative by ID or slug (like `gwrk define spec 014`)
+gwrk define research R006
+gwrk define research pluginable-research
 
 # List available research methodologies
 gwrk define research --list-methodologies
@@ -102,13 +108,30 @@ gwrk define research --list-methodologies
 
 The `--methodology` flag resolves to a workflow plugin name: `gwrk-research-<methodology>`. If omitted, uses `gwrk-research` (the default technical architecture methodology).
 
-### Dispatch flow
+### Scaffolding flow (new initiative)
+
+Just like `gwrk define spec "Add OAuth2 integration"` creates `specs/047-add-oauth2-integration/`, the research command creates `docs/research/R008-<slug>/` with a templated `brief.md`:
 
 ```
-gwrk define research R006 --methodology jtbd
+gwrk define research "User Switching Behavior" --methodology jtbd
   │
-  ├── Resolve initiative: docs/research/R006-pluginable-research/
+  ├── getNextResearchNumber("docs/research/")  → R008
+  ├── generateSlug("User Switching Behavior")  → user-switching-behavior
+  ├── Create docs/research/R008-user-switching-behavior/
+  │     ├── brief.md (seeded from methodology template — JTBD sections pre-populated)
+  │     └── references/ (empty)
+  ├── Register in plan DB (status: RESEARCHING)
+  └── Print: "Created: R008-user-switching-behavior"
+```
+
+### Dispatch flow (existing initiative)
+
+```
+gwrk define research R008 --run
+  │
+  ├── Resolve initiative: docs/research/R008-user-switching-behavior/
   ├── Validate brief.md exists
+  ├── Read brief frontmatter → methodology: jtbd
   ├── Resolve workflow: gwrk-research-jtbd
   ├── Load PROMPT.md from plugin
   ├── Inject brief.md path as context
@@ -136,24 +159,17 @@ Standardize the control metadata as YAML frontmatter. Keep the body freeform —
 
 ```yaml
 ---
-type: research-brief
-initiative: R006
 title: Pluginable Research Workflow
-mode: standard          # lite | standard | deep
-owner: David Gonzalez
-status: brief           # brief | evidence | synthesis | probe | prd-ready | parked | killed
-methodology: technical  # technical | jtbd | ontology | landscape | case
-consumer: F014
+methodology: technical    # which workflow plugin to dispatch
+consumer: F014            # what spec consumes this research
 created: 2026-06-02
-target_decision: 2026-06-15
-domain_ontology: null   # path to project domain ontology if relevant
+updated: 2026-06-02
 ---
 ```
 
 This enables:
-- **Methodology routing**: `gwrk define research R006` reads frontmatter to determine which workflow plugin to dispatch
-- **Progress tracking**: status field visible to `gwrk plan`
-- **Ontology injection**: if `domain_ontology` is set, the research workflow injects it as grounding context
+- **Methodology routing**: `gwrk define research R006` reads `methodology` to pick the right workflow plugin
+- **Spec auto-discovery**: `gwrk define spec 014` scans research briefs for `consumer: F014` and injects matching drafts
 
 ---
 
