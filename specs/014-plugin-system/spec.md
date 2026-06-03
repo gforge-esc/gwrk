@@ -1,8 +1,8 @@
 ---
 type: specification
 feature: 014-plugin-system
-last_modified: "2026-06-02T12:00:00Z"
-revision: 4
+last_modified: "2026-06-03T12:00:00Z"
+revision: 5
 ---
 
 # Feature Specification: 014 Plugin System
@@ -170,7 +170,7 @@ As a Principal Engineer, I want `gwrk init` to populate `~/.gwrk/plugins/` with 
 As a Principal Engineer, I want to override a built-in workflow by placing a custom version in `.gwrk/plugins/workflows/`, so that I can tailor the development process to my specific project needs.
 **Implements**: FR-005, FR-L25-006
 **Acceptance Scenarios**:
-1. **Given** local override exists, **When** `gwrk specify` is run, **Then**:
+1. **Given** local override exists, **When** `gwrk specify" is run, **Then**:
    - `gwrk specify dummy 2>&1 | grep "override"` exits 0
 
 ### US-016 - Enforcement Skills for Code Quality with Language Filtering (Priority: P1) — **SHIPPED**
@@ -203,6 +203,20 @@ As a Principal Engineer, I want the ontology construction workflow to scan sourc
 **Acceptance Scenarios**:
 1. **Given** a project with `docs/grounding/architecture.md`, **When** `gwrk define ontology --run` is executed, **Then**:
    - The agent output reflects concepts found in the architecture document.
+
+### US-023 - Toolchain Detection (Priority: P0)
+As a Principal Engineer, I want `gwrk project info` to report the detected toolchain (primary linter/formatter, test runner) alongside the language and build system, so that agents can use the correct tools (like Biome or Ruff) without manual configuration.
+**Implements**: FR-015
+**Acceptance Scenarios**:
+1. **Given** a TypeScript project with a `biome.json` file, **When** `gwrk project info --format json` is run, **Then**:
+   - `gwrk project info --format json | jq -e '.toolchain.primary == "biome"' > /dev/null` exits 0
+
+### US-024 - Mandatory Context Gathering (Priority: P0)
+As a Principal Engineer, I want the `gwrk ship` (implement) workflow to start with a mandatory context-gathering preamble, so that agents actively read the project profile, toolchain, and status before writing any code.
+**Implements**: FR-L25-013
+**Acceptance Scenarios**:
+1. **Given** the built-in implement workflow, **When** it is executed, **Then**:
+   - `cat src/plugins/builtins/workflows/gwrk-implement/PROMPT.md | grep -q "gwrk project info"` exits 0
 
 ### US-017 - Scaffold Research Initiative (Priority: P0)
 As a Principal Engineer, I want `gwrk define research "User Switching Behavior" --methodology jtbd` to scaffold a new research directory so that I have a structured brief ready to fill out.
@@ -241,7 +255,7 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 
 - **FR-001**: System MUST provide `gwrk plugin install <path|url>` that validates `manifest.yaml`. (Implements: US-001)
 - **FR-002**: System MUST validate manifest.yaml against a Zod schema on install. (Implements: US-001)
-- **FR-003**: System MUST provide `gwrk plugin list` that scans `~/.gwrk/plugins/` and displays installed plugins. (Implements: US-002)
+- **FR-003**: System MUST provide `gwrk plugin list` that scans `~/.gwrk/plugins/" and displays installed plugins. (Implements: US-002)
 - **FR-004**: System MUST provide `gwrk plugin remove <name>`. (Implements: US-003)
 - **FR-005**: System MUST provide `gwrk plugin disable <name>` and `enable`. (Implements: US-004)
 
@@ -253,6 +267,7 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-009**: Compound skill manifest MUST declare `composes`. (Implements: US-006)
 - **FR-010**: `gwrk skill --help` MUST list all installed skills. (Implements: US-008)
 - **FR-014**: System MUST ship builtin enforcement skills (`tier: enforcement`). Enforcement skills MUST support `language` and `framework` manifest fields. `resolveEnforcementSkills()` MUST filter built-in enforcement skills to match the detected `ProjectProfile` language/framework. Project-local enforcement skills MUST always load. (Implements: US-016) — **SHIPPED**
+- **FR-015**: System MUST detect `toolchain.primary`, `toolchain.formatter`, and `toolchain.test` from filesystem signals (config files, devDependencies). The `ProjectProfile` object MUST surface this data via the `gwrk project info` command. (Implements: US-023)
 
 ### Migration & Seeding
 
@@ -271,14 +286,15 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-L25-004**: System MUST provide a `DefineOrchestrator` for spec -> plan -> tasks. (Implements: US-013)
 - **FR-L25-005**: `gwrk init` MUST provision core workflows and project grounding dirs (`.gwrk/ontology`, `.gwrk/perspective`). (Implements: US-014)
 - **FR-L25-006**: `WorkflowRuntime` MUST follow local → global resolution. (Implements: US-015)
-- **FR-L25-007**: `WorkflowRuntime` MUST support multi-action intents.
+- **FR-L25-007**: `WorkflowRuntime" MUST support multi-action intents.
 - **FR-L25-008**: `WorkflowRuntime` MUST dynamically inject project knowledge documents (`.gwrk/ontology/domain.md`, `.gwrk/perspective/hierarchy.md`, `.gwrk/perspective/ux-posture.md`) into the agent prompt if they exist on disk. (Implements: US-019)
 - **FR-R006-001**: System MUST provide `gwrk define research <initiative>` command that creates a new research initiative in `docs/research/R0XX-<slug>/` with a templated `brief.md` based on the `--methodology` provided (default: `technical`). (Implements: US-017)
-- **FR-R006-002**: System MUST support executing research methodologies via `gwrk define research <initiative> --run`. The `WorkflowRuntime` MUST resolve the workflow plugin specified by the `methodology` field in the brief's YAML frontmatter. (Implements: US-018)
+- **FR-R006-002**: System MUST support executing research methodologies via `gwrk define research <initiative> --run`. The `WorkflowRuntime` MUST resolve the workflow plugin specified by the `methodology" field in the brief's YAML frontmatter. (Implements: US-018)
 - **FR-L25-009**: System MUST provide `gwrk define ontology` command that scaffolds `.gwrk/ontology/` and `.gwrk/perspective/` directories. (Implements: US-020)
 - **FR-L25-010**: System MUST provide `gwrk-ontology-construct` builtin workflow plugin for automated ontology generation. (Implements: US-021)
 - **FR-L25-011**: System MUST provide a source material scanner utility that discovers and reads codebase structure, feature specifications, and architecture documents for agent grounding. (Implements: US-022)
 - **FR-L25-012**: Ontology construction MUST enforce the Five Primitives methodology (Classes, Properties, Relations, Individuals, Axioms) as defined in ADR-009. (Implements: US-021)
+- **FR-L25-013**: The `WorkflowRuntime` built-in `implement` workflow MUST include a mandatory context-gathering preamble requiring the agent to execute `gwrk project info` and `gwrk project discover` before initiating code changes. (Implements: US-024)
 
 #### FR-L25-001 Error States
 | Condition | stderr contains | Exit code |
@@ -329,17 +345,30 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 ]);
 ```
 
+### DM-007: ProjectProfile Toolchain Extension (F013 Update)
+```typescript
+interface ProjectProfile {
+  // ... existing fields (type, stack, layout) ...
+  toolchain?: {
+    primary?: string;   // e.g., "biome", "ruff", "eslint", "cargo"
+    formatter?: string; // e.g., "prettier", "black"
+    test?: string;      // e.g., "vitest", "pytest", "cargo-test"
+  };
+}
+```
+
 ---
 
 ## 6. Technical Constraints
 
 - **TC-001**: Air-Gapped — No external network calls for plugin loading.
 - **TC-002**: Fail-Fast Config — Missing `manifest.yaml` → fail immediately.
-- **TC-003**: TypeScript Only — No `.js` or `.jsx` in `src/`.
+- **TC-003**: TypeScript Only — No `.js` or `.jsx" in `src/`.
 - **TC-010**: Strict Isolation Rule — `AgentBackend.dispatch()` MUST NOT mutate global filesystem state.
 - **TC-012**: Language Filtering (R007) — `resolveEnforcementSkills` MUST silently skip builtins with mismatched `language` properties instead of throwing errors.
 - **TC-013**: Grounding Injection Order (ADR-009) — Domain ontology MUST be injected before information hierarchy and UX posture.
 - **TC-014**: Five Primitives Methodology — The `gwrk-ontology-construct` workflow MUST produce output structured around Classes, Properties, Relations, Individuals, and Axioms.
+- **TC-015**: Toolchain detection (FR-015) MUST be entirely filesystem-based, reading config files and `package.json" without executing external commands or network requests. Zero context cost.
 
 ---
 
@@ -352,24 +381,28 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 - **TR-013**: `src/plugins/skill-runtime.test.ts` — Unit test `resolveEnforcementSkills()` correctly applying `ProjectProfile` language filtering. (FR-014)
 - **TR-014**: `src/commands/define-ontology.test.ts` — Unit test for `gwrk define ontology` scaffolding logic. (FR-L25-009)
 - **TR-015**: `src/plugins/builtins/workflows/gwrk-ontology-construct/prompt.test.ts` — Unit test (or prompt verification) for Five Primitives compliance. (FR-L25-012)
+- **TR-016**: `src/engine/profile-detector.test.ts` — Unit test filesystem-based detection of Biome, Ruff, and standard toolchains. (FR-015)
 
 ---
 
 ## 8. Success Criteria
 
 - **SC-001** to **SC-013**: Existing F014 functionality validated.
-- **SC-014**: `gwrk define research "New Feature"` creates `docs/research/RXXX-new-feature/brief.md`.
-- **SC-015**: A Python project running `gwrk ship` does not have `typescript-standards` injected into its prompt.
-- **SC-016**: Projects with `.gwrk/ontology/domain.md` successfully inject the file contents into `dispatchToAgent` calls.
+- **SC-014**: `gwrk define research "New Feature"" creates `docs/research/RXXX-new-feature/brief.md`.
+- **SC-015**: A Python project running `gwrk ship` does not have `typescript-standards" injected into its prompt.
+- **SC-016**: Projects with `.gwrk/ontology/domain.md` successfully inject the file contents into `dispatchToAgent" calls.
 - **SC-017**: `gwrk define ontology --run` produces `domain.md`, `hierarchy.md`, and `ux-posture.md` grounded in project source material.
+- **SC-018**: Projects with `biome.json` successfully report `toolchain.primary: "biome"` via `gwrk project info`.
+- **SC-019**: Dispatched implementation agents execute `gwrk project info` and `gwrk project discover` on their first turn as mandated by the workflow preamble.
 
 ---
 
 ## 9. Verification Requirements
 
-- **VR-017**: E2E: Run `gwrk define research test-initiative`, verify directory creation, then run `gwrk define research test-initiative --run` and verify `draft.md` generation.
+- **VR-017**: E2E: Run `gwrk define research test-initiative`, verify directory creation, then run `gwrk define research test-initiative --run` and verify `draft.md" generation.
 - **VR-018**: Unit: `pnpm test` passes all TR-011 through TR-013.
 - **VR-019**: E2E: Run `gwrk define ontology --run` in a test project and verify the creation and content of the three ontology/perspective documents.
+- **VR-020**: E2E: Run `gwrk project info --format json` in a fixture project with `biome.json" and verify `.toolchain.primary == "biome"`.
 
 ---
 
@@ -384,3 +417,5 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 | US-020 | FR-L25-009 | FR-L25-009 | US-020 | TR-014 |
 | US-021 | FR-L25-010 | FR-L25-010, FR-L25-012 | US-021 | TR-009, TR-015 |
 | US-022 | FR-L25-011 | FR-L25-011 | US-022 | TR-015 |
+| US-023 | FR-015 | FR-015 | US-023 | TR-016 |
+| US-024 | FR-L25-013 | FR-L25-013 | US-024 | none — prompt verification |
