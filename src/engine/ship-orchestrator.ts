@@ -631,7 +631,11 @@ export class ShipOrchestrator extends EventEmitter {
    */
   private async stageTestGate(): Promise<StageResult> {
     console.log("  ▸ TEST_GATE");
-    const { failCount, output } = this.runTestSuite();
+    const phaseTestFiles = this.getPhaseTestFiles();
+    if (phaseTestFiles.length > 0) {
+      console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+    }
+    const { failCount, output } = this.runTestSuite(phaseTestFiles);
     const baseline = this.state.testBaseline ?? 0;
 
     if (failCount === 0) {
@@ -663,10 +667,18 @@ export class ShipOrchestrator extends EventEmitter {
     return this.handleNoGo("TEST_GATE");
   }
 
-  /** Run test suite, return failure count and output. */
-  private runTestSuite(): { failCount: number; output: string } {
+  /** Run test suite, return failure count and output.
+   *  When phaseTestFiles are available, runs only those files instead of
+   *  the full suite. This prevents cross-phase RED test contamination.
+   */
+  private runTestSuite(phaseTestFiles?: string[]): { failCount: number; output: string } {
+    // If we have phase-scoped test files, run only those
+    const command = phaseTestFiles && phaseTestFiles.length > 0
+      ? `pnpm vitest run ${phaseTestFiles.join(" ")}`
+      : "pnpm test";
+
     try {
-      const result = execSync("pnpm test", {
+      const result = execSync(command, {
         cwd: this.config.cwd,
         stdio: "pipe",
         timeout: 120_000,
@@ -681,10 +693,60 @@ export class ShipOrchestrator extends EventEmitter {
     }
   }
 
+  /**
+   * Extract test file paths from the current phase's task descriptions.
+   * Returns paths like "src/commands/research.test.ts" found in task
+   * titles/descriptions. Falls back to filesystem convention (co-located .test.ts).
+   */
+  private getPhaseTestFiles(): string[] {
+    try {
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      if (!phase) return [];
+
+      const testFiles = new Set<string>();
+      const sourceFiles: string[] = [];
+
+      for (const task of phase.tasks) {
+        const text = `${task.title} ${task.description ?? ""}`;
+        const matches = text.matchAll(
+          /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
+        );
+        for (const match of matches) {
+          const filePath = match[0].replace(/[,;.]$/, "");
+          if (filePath.includes(".test.ts") || filePath.includes(".test.js")) {
+            testFiles.add(filePath);
+          } else if (filePath.endsWith(".ts") || filePath.endsWith(".js")) {
+            sourceFiles.push(filePath);
+          }
+        }
+      }
+
+      // Fallback: find co-located test files for source files
+      if (testFiles.size === 0) {
+        for (const src of sourceFiles) {
+          const testPath = src.replace(/\.(ts|js)$/, ".test.$1");
+          if (fs.existsSync(path.join(this.config.cwd, testPath))) {
+            testFiles.add(testPath);
+          }
+        }
+      }
+
+      return [...testFiles];
+    } catch {
+      return [];
+    }
+  }
+
   /** Snapshot test failure count before IMPLEMENT touches anything. */
   private captureTestBaseline(): void {
     console.log("  ▸ capturing test baseline...");
-    const { failCount } = this.runTestSuite();
+    const phaseTestFiles = this.getPhaseTestFiles();
+    if (phaseTestFiles.length > 0) {
+      console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+    }
+    const { failCount } = this.runTestSuite(phaseTestFiles);
     this.state.testBaseline = failCount;
     console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
   }
