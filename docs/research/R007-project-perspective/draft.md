@@ -77,33 +77,16 @@ framework: Django
 
 **Impact**: Requires amending FR-014 and the `EnforcementSkillManifestSchema` in [manifest.ts](../../src/plugins/manifest.ts). Backwards compatible — existing manifests without `language` continue to load for all projects.
 
-### Proposal 2: Domain Ontology
+### Proposal 2: Domain Ontology, Information Hierarchy, and UX Posture
 
-**This has zero basis in any existing spec, ADR, or code.** It is a new architectural concept directed by the user.
+**Decided in [ADR-009](../../docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md).**
 
-A domain ontology answers: "What are the core concepts of this project, what do they mean, and how do they relate?" This is distinct from enforcement skills (how we write code) and architecture grounding (system shape).
+Three project knowledge layers, all optional, file-based, injected at dispatch:
+- `.gwrk/ontology/domain.md` — what things mean (classes, properties, relations, axioms, glossary)
+- `.gwrk/perspective/hierarchy.md` — what matters first (L0 Decision → L4 Recovery)
+- `.gwrk/perspective/ux-posture.md` — how actors experience the system (entry → closure)
 
-**Proposed storage**: `.gwrk/ontology/domain.md` — a Pack C format document (classes, properties, relations, axioms, glossary) per the [Gonzo Feature Research Brief v2](../R006-pluginable-research/references/gonzo-feature-research-brief-v2.md#L428-L483).
-
-**Proposed injection**: Into agent dispatch prompts as `<domain_ontology>` context, alongside enforcement skills in [agent.ts](../../src/utils/agent.ts).
-
-**Proposed construction**: Via `gwrk define research --methodology ontology` (R006 workflow plugin).
-
-**Open question**: Should ontology injection be an enforcement skill (fits existing infrastructure) or a new injection path (more explicit, separate concern)?
-
-| Approach | Pros | Cons |
-|---|---|---|
-| **As an enforcement skill** | No new injection path. `.gwrk/plugins/skills/domain-ontology/SKILL.md` just works. | Semantically odd — ontology isn't enforcement. Mixes concerns. |
-| **New injection path** | Clean separation. Explicit `{{ontology}}` marker. | New code path in agent.ts. New concept to maintain. |
-| **Just a file that agents see** | Zero new code. Agent reads `.gwrk/ontology/domain.md` via file access. | No structured injection. Agent may or may not find it. |
-
-### Proposal 3: Architecture Grounding for Non-gwrk Projects
-
-gwrk uses `docs/grounding/architecture.md` in its own prompts via `[type: gwrk-native]` guards. No mechanism exists for other projects.
-
-**Proposed**: `.gwrk/grounding/architecture.md` — injected into prompts when present. Same question as ontology: enforcement skill, new injection path, or just-a-file.
-
-**This is the lowest priority proposal.** Enforcement skills already provide architecture context. A dedicated grounding doc may be premature optimization.
+Grounded in the [Gonzo Feature Research Brief v2](../R006-pluginable-research/references/gonzo-feature-research-brief-v2.md) (Sections 4-5, Pack C) and the [ontology-construction-prompt](references/ontology-construction-prompt.hbs).
 
 ---
 
