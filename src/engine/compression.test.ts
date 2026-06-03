@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import { getDb } from "../db/index.js";
 import {
   computeCompression,
+  computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
 } from "./compression.js";
@@ -16,6 +18,9 @@ import type {
 
 vi.mock("node:fs");
 vi.mock("node:child_process");
+vi.mock("../db/index.js", () => ({
+  getDb: vi.fn(),
+}));
 
 /**
  * RED tests for src/engine/compression.ts
@@ -318,5 +323,52 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
     const summary = generateSummary([]);
     expect(summary.features).toHaveLength(0);
     expect(summary.totals.totalSP).toBe(0);
+  });
+});
+
+describe("FR-014: computeLeadingIndicators", () => {
+  it("TR-015: computes convergence, density, and spec quality correctly", () => {
+    const mockDb = {
+      prepare: vi.fn().mockReturnValue({
+        all: vi.fn().mockImplementation((featureId) => {
+          if (featureId === "feat-a") {
+            return [
+              { task_id: "T001", completions: 1 },
+              { task_id: "T002", completions: 2 },
+            ];
+          }
+          return [];
+        }),
+        get: vi.fn().mockReturnValue({ total_lines: 100, total_files: 5 }),
+      }),
+    };
+
+    vi.mocked(getDb).mockReturnValue(mockDb as any);
+
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockImplementation(((p: string) => {
+      if (p.endsWith("contracts")) return ["c1.md", "c2.md"];
+      if (p.endsWith("gates")) return ["g1.sh"];
+      if (p.endsWith(".runs")) return ["feat-a.log"];
+      return [];
+    }) as any);
+    vi.mocked(fs.readFileSync).mockReturnValue("[10:00:00]  $ git commit\n[10:05:00]  $ pnpm build");
+
+    const forecast: EffortForecast = {
+      totalSP: 10,
+      roles: [],
+      estimatedHours: 50,
+      estimatedDays: 6.25,
+    };
+
+    const indicators = computeLeadingIndicators("feat-a", forecast, "proj-1");
+
+    expect(indicators.convergence.firstPassRate).toBe(50); // 1/2
+    expect(indicators.convergence.avgAttempts).toBe(1.5); // (1+2)/2
+    expect(indicators.density.linesPerSP).toBe(10); // 100 / 10
+    expect(indicators.density.filesPerSP).toBe(0.5); // 5 / 10
+    expect(indicators.density.toolCallsPerSP).toBe(0.2); // 2 / 10
+    expect(indicators.specQuality.contractCount).toBe(2);
+    expect(indicators.specQuality.gateCount).toBe(1);
   });
 });

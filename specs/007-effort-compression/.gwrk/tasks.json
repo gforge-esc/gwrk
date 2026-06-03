@@ -18,6 +18,7 @@
           "description": "NEW: effort engine — story extraction, role bracketing, hour computation, report generation",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.127Z"
         },
         {
@@ -26,6 +27,7 @@
           "description": "NEW: markdown parser that extracts US-### blocks with SP values and role assignments from spec.md",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -34,6 +36,7 @@
           "description": "NEW: shared TypeScript interfaces for EffortReport, RoleBreakdown, StoryEstimate, CompressionReport, DeliveryActuals, CompressionRatios, CompressionSummary, LeadingIndicators",
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -42,6 +45,7 @@
           "description": "NEW: canonical role multiplier defaults — RE=6, TS=4, PM=2, PE=1.5, DE=5 — and config override resolution",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -50,6 +54,7 @@
           "description": "NEW: generates effort markdown report to `docs/assessments/effort-<feature>-YYYY-MM-DD.md`",
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -58,6 +63,7 @@
           "description": "NEW: unit tests — story extraction, hour calculation, report generation, missing spec fail-fast",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -66,6 +72,7 @@
           "description": "NEW: unit tests — US block extraction, SP parsing, role parsing, edge cases",
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -74,9 +81,11 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
         "`pnpm vitest run src/engine/effort.test.ts` exits 0",
         "`pnpm vitest run src/engine/spec-parser.test.ts` exits 0",
@@ -97,6 +106,7 @@
           "description": "NEW: compression engine — ratio computation, leading indicators, summary generation, SQLite persistence",
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -105,6 +115,7 @@
           "description": "NEW: extracts spec creation date, first/last impl commit, PR merge time from Git log and `gh` CLI",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -113,6 +124,7 @@
           "description": "NEW: clusters commits by gap threshold, computes active coding time",
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -121,6 +133,7 @@
           "description": "NEW: unit tests — ratios, indicators, summary, fail-fast on no impl, SQLite persistence",
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -129,6 +142,7 @@
           "description": "NEW: unit tests — Git log parsing, `gh` fallback",
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -137,6 +151,7 @@
           "description": "NEW: unit tests — gap detection, session boundaries",
           "status": "completed",
           "gateScript": "gates/T014-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -145,6 +160,7 @@
           "description": "NEW: SQLite adapters for `compression` table — insert, query, aggregate",
           "status": "completed",
           "gateScript": "gates/T015-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -153,9 +169,11 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
         "`pnpm vitest run src/engine/compression.test.ts` exits 0",
         "`pnpm vitest run src/engine/git-timestamps.test.ts` exits 0",
@@ -173,6 +191,7 @@
           "description": "NEW: Commander command — loads config, calls effort engine, writes report",
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -181,6 +200,7 @@
           "description": "NEW: Commander command — calls compression engine, formats output, persistence",
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -189,6 +209,7 @@
           "description": "NEW: unit tests — command wiring, `--json` output",
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -197,6 +218,7 @@
           "description": "NEW: unit tests — command wiring, indicators in output",
           "status": "completed",
           "gateScript": "gates/T020-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -205,6 +227,7 @@
           "description": "MODIFY: register `measure effort` and `measure compression` subcommands",
           "status": "completed",
           "gateScript": "gates/T021-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -213,6 +236,7 @@
           "description": "MODIFY: extend `GwrkConfigSchema` with `effort.roles` and `compression.sessionGapMinutes`",
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -221,6 +245,7 @@
           "description": "MODIFY: add tests for extended config schema",
           "status": "completed",
           "gateScript": "gates/T023-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
@@ -229,9 +254,11 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T024-gate.sh",
+          "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": [
         "`pnpm vitest run src/commands/effort.test.ts` exits 0",
         "`pnpm vitest run src/commands/compression.test.ts` exits 0",
@@ -247,9 +274,11 @@
           "title": "Implement Leading Indicators",
           "description": "Implement FR-014 and FR-015 for convergence, density, and spec quality indicators.",
           "status": "open",
-          "gateScript": "gates/T025-gate.sh"
+          "gateScript": "gates/T025-gate.sh",
+          "sp": 0
         }
       ],
+      "sp_estimate": 0,
       "doneWhen": []
     }
   ]

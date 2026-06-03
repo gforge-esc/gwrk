@@ -30,12 +30,13 @@ export function computeLeadingIndicators(
   // We query history to see how many times each task in this feature/project
   // transitioned to 'completed'. Each such transition represents a successful
   // implementation attempt.
+  // We relax from_status check to catch all transitions to completed.
   const taskCompletions = db
     .prepare(
       `
     SELECT task_id, COUNT(*) as completions
     FROM history
-    WHERE feature_id = ? AND project_id = ? AND to_status = 'completed' AND from_status = 'open'
+    WHERE feature_id = ? AND project_id = ? AND to_status = 'completed' AND (task_id LIKE 'T%' OR task_id LIKE 'US%')
     GROUP BY task_id
   `,
     )
@@ -214,6 +215,12 @@ export function generateSummary(
       avgPointCompression: 0,
       avgTotalCompression: 0,
       avgFirstPassRate: 0,
+      avgAvgAttempts: 0,
+      avgLinesPerSP: 0,
+      avgFilesPerSP: 0,
+      avgToolCallsPerSP: 0,
+      totalContracts: 0,
+      totalGates: 0,
     },
     best: { featureId: "", pointCompression: 0 },
     worst: { featureId: "", pointCompression: Number.POSITIVE_INFINITY },
@@ -225,6 +232,10 @@ export function generateSummary(
   let totalPointCompression = 0;
   let totalTotalCompression = 0;
   let totalFirstPassRate = 0;
+  let totalAvgAttempts = 0;
+  let totalLinesPerSP = 0;
+  let totalFilesPerSP = 0;
+  let totalToolCallsPerSP = 0;
 
   for (const r of reports) {
     summary.totals.totalSP += r.forecast.totalSP;
@@ -233,7 +244,16 @@ export function generateSummary(
 
     totalPointCompression += r.compression.pointCompression;
     totalTotalCompression += r.compression.totalCompression;
-    totalFirstPassRate += r.indicators?.convergence.firstPassRate || 0;
+    
+    if (r.indicators) {
+      totalFirstPassRate += r.indicators.convergence.firstPassRate;
+      totalAvgAttempts += r.indicators.convergence.avgAttempts;
+      totalLinesPerSP += r.indicators.density.linesPerSP;
+      totalFilesPerSP += r.indicators.density.filesPerSP;
+      totalToolCallsPerSP += r.indicators.density.toolCallsPerSP;
+      summary.totals.totalContracts! += r.indicators.specQuality.contractCount;
+      summary.totals.totalGates! += r.indicators.specQuality.gateCount;
+    }
 
     if (r.compression.pointCompression > summary.best.pointCompression) {
       summary.best = {
@@ -249,9 +269,14 @@ export function generateSummary(
     }
   }
 
-  summary.totals.avgPointCompression = totalPointCompression / reports.length;
-  summary.totals.avgTotalCompression = totalTotalCompression / reports.length;
-  summary.totals.avgFirstPassRate = totalFirstPassRate / reports.length;
+  const count = reports.length;
+  summary.totals.avgPointCompression = totalPointCompression / count;
+  summary.totals.avgTotalCompression = totalTotalCompression / count;
+  summary.totals.avgFirstPassRate = totalFirstPassRate / count;
+  summary.totals.avgAvgAttempts = totalAvgAttempts / count;
+  summary.totals.avgLinesPerSP = totalLinesPerSP / count;
+  summary.totals.avgFilesPerSP = totalFilesPerSP / count;
+  summary.totals.avgToolCallsPerSP = totalToolCallsPerSP / count;
 
   const sorted = [...reports].sort(
     (a, b) =>

@@ -156,6 +156,13 @@ describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
         totalActualCodingHours: 2,
         avgPointCompression: 25,
         avgTotalCompression: 3,
+        avgFirstPassRate: 85,
+        avgAvgAttempts: 1.1,
+        avgLinesPerSP: 12,
+        avgFilesPerSP: 0.8,
+        avgToolCallsPerSP: 3,
+        totalContracts: 5,
+        totalGates: 8,
       },
       best: { featureId: "001-mock", pointCompression: 25 },
       worst: { featureId: "002-mock", pointCompression: 20 },
@@ -168,6 +175,11 @@ describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
     const fullLog = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(fullLog).toContain("=== COMPRESSION SUMMARY ===");
     expect(fullLog).toContain("Total SP Delivered");
+    expect(fullLog).toContain("--- Avg Leading Indicators ---");
+    expect(fullLog).toContain("85.0% first-pass");
+    expect(fullLog).toContain("1.10 avg attempts");
+    expect(fullLog).toContain("12.0 lines/SP");
+    expect(fullLog).toContain("5 total contracts");
   });
 
   it("TR-010: exits with code 1 when no impl commits (error bubbled from gatherDeliveryActuals)", async () => {

@@ -126,12 +126,19 @@ Examples:
           console.log(
             `Avg Total Compression: ${summary.totals.avgTotalCompression.toFixed(2)}x`,
           );
-          if (summary.totals.avgFirstPassRate) {
-            console.log(
-              `Avg First-Pass Rate:  ${summary.totals.avgFirstPassRate.toFixed(1)}%`,
-            );
-          }
-          console.log(`Trend: ${summary.trend.toUpperCase()}\n`);
+
+          console.log("\n--- Avg Leading Indicators ---");
+          console.log(
+            `Convergence:  ${summary.totals.avgFirstPassRate?.toFixed(1)}% first-pass, ${summary.totals.avgAvgAttempts?.toFixed(2)} avg attempts`,
+          );
+          console.log(
+            `Density:      ${summary.totals.avgLinesPerSP?.toFixed(1)} lines/SP, ${summary.totals.avgFilesPerSP?.toFixed(1)} files/SP, ${summary.totals.avgToolCallsPerSP?.toFixed(1)} tools/SP`,
+          );
+          console.log(
+            `Spec Quality: ${summary.totals.totalContracts} total contracts, ${summary.totals.totalGates} total gates`,
+          );
+
+          console.log(`\nTrend: ${summary.trend.toUpperCase()}\n`);
 
           if (summary.best.featureId) {
             console.log(

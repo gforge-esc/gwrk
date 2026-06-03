@@ -183,6 +183,12 @@ export interface CompressionSummary {
     avgPointCompression: number;
     avgTotalCompression: number;
     avgFirstPassRate?: number;
+    avgAvgAttempts?: number;
+    avgLinesPerSP?: number;
+    avgFilesPerSP?: number;
+    avgToolCallsPerSP?: number;
+    totalContracts?: number;
+    totalGates?: number;
   };
   best: { featureId: string; pointCompression: number };
   worst: { featureId: string; pointCompression: number };
