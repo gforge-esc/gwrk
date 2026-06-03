@@ -984,7 +984,7 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 |---|---------|------|--------|-------|
 | ~~4~~ | ~~N/FM-5~~ | ~~**Command safety posture ([ADR-008](docs/decisions/ADR-008-command-safety-posture.md)).**~~ Layers 1+2 implemented: `COMMAND_SAFETY_BLOCK` injected into every dispatch, `SAFE_AGENT_ENV` hardened in spawned process. 5 tests added. | ~~30 min~~ | ✅ Done |
 | 5 | O | **LaunchAgent E2E verification.** `gwrk server install` has never been run on the workstation. Paths may be wrong. | 30 min manual | Risk: silent launchd failures if `process.execPath` or `dist/` path is wrong. |
-| 6 | Q | **Add `.gitattributes` merge protection for `tasks.json`.** `specs/**/.gwrk/tasks.json merge=ours` prevents merge conflicts on task state. | 15 min | Add template to `gwrk init`. |
+| ~~6~~ | ~~Q~~ | ~~**Add `.gitattributes` merge protection for `tasks.json`.**~~ `gwrk init` now seeds `.gitattributes` with `merge=ours` for tasks.json, `merge=binary` for manifests, `merge=union` for history. Idempotent — skips if file exists. 2 tests added. | ~~15 min~~ | ✅ Done |
 
 ### Tier 3: Strategic (Spec/Research Required)
 

@@ -88,4 +88,27 @@ describe("init command", () => {
     await initCommand.parseAsync(["--non-interactive"], { from: "user" });
     expect(registerProject).toHaveBeenCalledTimes(2); // registerProject is called on every init
   });
+
+  it("should seed .gitattributes with merge protection for tasks.json", async () => {
+    await initCommand.parseAsync(["--non-interactive"], { from: "user" });
+
+    const gitattrsPath = path.join(tmpDir, ".gitattributes");
+    expect(fs.existsSync(gitattrsPath)).toBe(true);
+
+    const content = fs.readFileSync(gitattrsPath, "utf-8");
+    expect(content).toContain("specs/**/.gwrk/tasks.json merge=ours");
+    expect(content).toContain("specs/**/.gwrk/runs/*.json merge=binary");
+    expect(content).toContain("specs/**/.gwrk/history.jsonl merge=union");
+  });
+
+  it("should not overwrite existing .gitattributes", async () => {
+    const gitattrsPath = path.join(tmpDir, ".gitattributes");
+    fs.writeFileSync(gitattrsPath, "*.png binary\n");
+
+    await initCommand.parseAsync(["--non-interactive"], { from: "user" });
+
+    const content = fs.readFileSync(gitattrsPath, "utf-8");
+    expect(content).toBe("*.png binary\n");
+    expect(content).not.toContain("tasks.json");
+  });
 });

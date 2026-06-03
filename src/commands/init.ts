@@ -261,6 +261,29 @@ export const initCommand = new Command("init")
             }
           }
 
+          // Seed .gitattributes — merge protection for task state (ADR-003)
+          const gitattrsPath = path.join(projectRoot, ".gitattributes");
+          if (!fs.existsSync(gitattrsPath)) {
+            fs.writeFileSync(
+              gitattrsPath,
+              [
+                "# gwrk merge strategies — protect task state across branches",
+                "#",
+                "# tasks.json: Keep the current branch version on conflict.",
+                "# Manual reconciliation required after merge.",
+                "specs/**/.gwrk/tasks.json merge=ours",
+                "",
+                "# Execution manifests: binary merge (both sides' files survive as separate files).",
+                "specs/**/.gwrk/runs/*.json merge=binary",
+                "",
+                "# History (deprecated, will be removed): append-only union merge.",
+                "specs/**/.gwrk/history.jsonl merge=union",
+                "",
+              ].join("\n"),
+            );
+            console.log(`  ${GREEN}✓${RESET} .gitattributes (merge protection)`);
+          }
+
           const projectName = path.basename(projectRoot);
           config = {
             project: {
