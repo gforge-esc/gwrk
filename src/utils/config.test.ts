@@ -34,6 +34,8 @@ describe('FR-017: Three-layer Config Resolution', () => {
 
   it('TC-003: should validate effort section in GwrkConfigSchema', () => {
     const validEffort = {
+      project: { name: 'test-project' },
+      agents: { define: 'gemini', implement: 'gemini' },
       effort: {
         profile: 'default',
         rates: { TS: 50 }
@@ -45,6 +47,8 @@ describe('FR-017: Three-layer Config Resolution', () => {
 
   it('should throw error for invalid effort rate types', () => {
     const invalidEffort = {
+      project: { name: 'test-project' },
+      agents: { define: 'gemini', implement: 'gemini' },
       effort: {
         rates: { TS: 'fast' } // Should be number
       }
