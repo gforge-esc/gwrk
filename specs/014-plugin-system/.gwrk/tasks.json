@@ -642,7 +642,7 @@
         {
           "id": "T064",
           "title": "Modify research.ts",
-          "description": "MODIFY src/commands/research.ts. add `--run` flag and dispatch logic. Tests: src/commands/research-dispatch.test.ts",
+          "description": "MODIFY src/commands/research.ts. add `--run` flag and dispatch logic. Tests: src/commands/research-dispatch.test.ts\n\nREVIEW FAIL (code): lint check — FR-R006-001.\n  WHERE: src/commands/research.ts:87:21\n  EXPECTED: No use of 'any' type.\n  ACTUAL: } catch (error: any) {\n  FIX: Replace 'any' with 'unknown' and use a type guard (error instanceof Error) before accessing .message.",
           "status": "open",
           "gateScript": "pnpm vitest run src/commands/research-dispatch.test.ts",
           "sp": 1
@@ -651,7 +651,7 @@
           "id": "T065",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml",
           "sp": 2
         },
@@ -659,7 +659,7 @@
           "id": "T066",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md",
           "sp": 2
         },
@@ -667,7 +667,7 @@
           "id": "T067",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml",
           "sp": 2
         },
@@ -675,7 +675,7 @@
           "id": "T068",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md",
           "sp": 2
         },
@@ -683,7 +683,7 @@
           "id": "T069",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml",
           "sp": 2
         },
@@ -691,7 +691,7 @@
           "id": "T070",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md. builtin methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md",
           "sp": 2
         }
