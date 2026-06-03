@@ -491,36 +491,30 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = task.workDir || projectRoot;
-  const ontologyPath = path.join(workDir, ".gwrk/ontology/domain.md");
-  const hierarchyPath = path.join(workDir, ".gwrk/perspective/hierarchy.md");
-  const uxPath = path.join(workDir, ".gwrk/perspective/ux-posture.md");
+  const groundingFiles: Array<{ path: string; tag: string }> = [
+    { path: path.join(workDir, ".gwrk/ontology/domain.md"), tag: "domain_ontology" },
+    { path: path.join(workDir, ".gwrk/perspective/hierarchy.md"), tag: "information_hierarchy" },
+    { path: path.join(workDir, ".gwrk/perspective/ux-posture.md"), tag: "ux_posture" },
+  ];
 
   let grounding = "";
-  if (fs.existsSync(ontologyPath)) {
-    const content = fs.readFileSync(ontologyPath, "utf-8");
-    grounding += `<domain_ontology>\n${content}\n</domain_ontology>\n\n`;
-    if (!task.quiet) {
-      process.stdout.write(
-        `${DIM}  → Grounding: <domain_ontology> injected${RESET}\n`,
-      );
-    }
-  }
-  if (fs.existsSync(hierarchyPath)) {
-    const content = fs.readFileSync(hierarchyPath, "utf-8");
-    grounding += `<information_hierarchy>\n${content}\n</information_hierarchy>\n\n`;
-    if (!task.quiet) {
-      process.stdout.write(
-        `${DIM}  → Grounding: <information_hierarchy> injected${RESET}\n`,
-      );
-    }
-  }
-  if (fs.existsSync(uxPath)) {
-    const content = fs.readFileSync(uxPath, "utf-8");
-    grounding += `<ux_posture>\n${content}\n</ux_posture>\n\n`;
-    if (!task.quiet) {
-      process.stdout.write(
-        `${DIM}  → Grounding: <ux_posture> injected${RESET}\n`,
-      );
+  for (const { path: filePath, tag } of groundingFiles) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+        if (!task.quiet) {
+          process.stdout.write(
+            `${DIM}  → Grounding: <${tag}> injected${RESET}\n`,
+          );
+        }
+      } catch (err) {
+        if (!task.quiet) {
+          process.stdout.write(
+            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
+          );
+        }
+      }
     }
   }
 

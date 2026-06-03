@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
@@ -43,7 +44,6 @@ export function startRun(
   // Auto-resolve project_id from cwd if not provided
   const projectId = run.project_id ?? (() => {
     try {
-      const crypto = require("node:crypto");
       return crypto.createHash("md5").update(process.cwd()).digest("hex");
     } catch {
       return null;
