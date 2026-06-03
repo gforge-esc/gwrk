@@ -2,426 +2,207 @@
 
 > **Status:** Draft — Awaiting Review
 > **Initiative:** [R007 brief](brief.md)
-> **Consumer:** F014 Plugin System, `gwrk init`, `resolveEnforcementSkills()`
+> **Consumer:** F014 Plugin System
 > **Related:** [R006 draft](../R006-pluginable-research/draft.md) — shared plugin resolution chain
 
 ---
 
 ## Executive Summary
 
-Project perspective is how gwrk understands "how we build" for any given project. Today this only works for gwrk itself (`_isGwrk` flag, `gwrk-native` type guards, hardcoded `gwrk-conventions` and `typescript-standards` enforcement skills). Every other project gets `generic` fallback content with wrong-language standards.
+Project perspective is how gwrk understands "how we build" for any given project. Today this only works for gwrk itself. R007 proposes extending F014's existing enforcement skill infrastructure to support non-gwrk projects.
 
-The recommendation splits project perspective into three independent-but-connected layers:
-
-1. **Enforcement skills** — "How we build" (code conventions, architecture patterns, quality gates). Scoped by language/framework. Resolved via profile → skill matching.
-2. **Domain ontology** — "What we're building" (domain concepts, vocabulary, relationships, axioms). Optional but dramatically amplifies research and spec quality. Stored in `.gwrk/ontology/`.
-3. **Architecture grounding** — "The shape of the system" (service boundaries, data flow, deployment topology). Stored in `.gwrk/grounding/architecture.md`.
-
-All three are project-local, user-authored (or agent-assisted), and injected into agent prompts through the existing enforcement injection path. gwrk ships the **mechanism**, not the content — projects declare their own perspective.
-
-Domain ontology is the bridge between R007 (perspective) and R006 (research). A project's ontology feeds into every research brief, every spec, and every implement prompt. Constructing a brief and constructing a domain ontology are independent workflows, but the ontology makes briefs and specs dramatically sharper by eliminating synonym collision, concept mush, and assumption burial.
+This draft separates what **already exists** (cited to spec/code) from what **is proposed** (new design requiring spec amendment). The user's direction adds domain ontology as a concern — this is explicitly **new architecture** with no existing spec or code basis.
 
 ---
 
-## Q1: Project Perspective Authoring
+## What Exists Today (Grounded)
 
-### Findings
+### Enforcement Skills — FR-014, US-016 (Implemented)
 
-Four approaches were evaluated:
+**Spec**: [F014 spec.md FR-014](../../specs/014-plugin-system/spec.md#L367):
 
-| Approach | Friction | Fidelity | Maintenance |
-|---|---|---|---|
-| `gwrk init` scaffolds templates | Low | Low (generic) | User must edit |
-| `gwrk plugin create --tier enforcement` | Medium | High (explicit) | User-maintained |
-| Agent-generated from codebase analysis | Very low | Medium (may hallucinate) | Needs review |
-| Import from community registry | Low | Variable | Community-maintained |
+> System MUST ship builtin enforcement skills in `src/plugins/builtins/skills/`. Enforcement skills (`tier: enforcement`) define coding standards, quality constraints, and project conventions that are automatically loaded by write workflows. Enforcement skills follow the same resolution order as workflows: project-local `.gwrk/plugins/skills/` overrides global `~/.gwrk/plugins/skills/` overrides builtins.
 
-### Recommendation: Hybrid — scaffold + agent-assist
+**Code**: [skill-runtime.ts L154-199](../../src/plugins/skill-runtime.ts#L154-L199) — `resolveEnforcementSkills(projectRoot, scope)` loads all enforcement skills. Resolution order: project-local → global → builtins. Precedence: project-local overrides builtins of the same name.
 
-`gwrk init` creates the directory structure and a starter skill based on profile detection. Then `gwrk define research --methodology ontology` can refine it with agent assistance.
+**Manifest schema**: [manifest.ts L119](../../src/plugins/manifest.ts#L119) — Enforcement skills have `scope: "implementation" | "review" | "all"`. No `language` or `framework` fields exist.
 
-```bash
-# Step 1: gwrk init detects Python/Django + React + Go
-gwrk init
-# Creates:
-#   .gwrk/plugins/skills/   (empty directory, ready for project skills)
-#   .gwrk/ontology/          (empty directory, ready for domain modeling)
-#   .gwrk/grounding/         (empty directory, ready for architecture doc)
+### Project-Local Override — US-016 AC3 (Spec'd)
 
-# Step 2: User creates enforcement skills (manual or agent-assisted)
-gwrk plugin create django-conventions --tier enforcement --scope.language Python --scope.framework Django
-# Creates .gwrk/plugins/skills/django-conventions/SKILL.md + manifest.yaml
+**Spec**: [F014 spec.md US-016 AC3](../../specs/014-plugin-system/spec.md#L333-L334):
 
-# Step 3: User constructs domain ontology (agent-assisted)
-gwrk define research --methodology ontology
-# Agent scans codebase, extracts domain concepts, writes .gwrk/ontology/domain.md
+> Given a project needs custom standards, When a user installs a project-local skill at `.gwrk/plugins/skills/typescript-standards/`, Then the local override takes precedence over the builtin.
 
-# Step 4: User writes architecture grounding (manual)
-# .gwrk/grounding/architecture.md — service boundaries, data flow, deployment
-```
+**Code**: `PluginLoader` in [loader.ts](../../src/plugins/loader.ts) scans project-local, then global, then builtins. Already works.
 
-### Init scaffolding additions
+### Profile Detection (Implemented, Not Connected)
 
-```diff
-  // src/commands/init.ts — new directories for project perspective
-  const dirs = [
-    "specs",
-    ".gwrk/rules",
-+   ".gwrk/plugins/skills",    // project-scoped enforcement skills
-+   ".gwrk/ontology",          // domain ontology storage
-+   ".gwrk/grounding",         // architecture grounding docs
-  ];
-```
+**Code**: [profile-detector.ts](../../src/engine/profile-detector.ts) — auto-detects `ProjectProfile` with `type`, `stack.language`, `stack.framework`, `stack.buildSystem`, `layout`. Output used by prompt conditioner for `[type:]` guards.
+
+**Gap**: Profile detection and enforcement skill resolution don't talk to each other. `resolveEnforcementSkills()` takes no profile parameter and loads all enforcement skills unconditionally.
+
+### Prompt Conditioner (Implemented, gwrk-Only)
+
+**Code**: [prompt-conditioner.ts](../../src/engine/prompt-conditioner.ts) — resolves `[type: gwrk-native]` / `[type: generic]` guards, injects `<project_profile>` XML. The only custom type is `gwrk-native`. Every other project gets `generic` fallback.
 
 ---
 
-## Q2: Profile → Enforcement Routing
+## What R007 Proposes (New Design — Requires Spec Amendment)
 
-### Findings
+### Proposal 1: Profile → Enforcement Routing
 
-Today, `resolveEnforcementSkills()` (skill-runtime.ts L149) loads every enforcement skill unconditionally. A Python project gets `typescript-standards` — wrong language.
+**Problem**: A Python project currently receives `typescript-standards` because `resolveEnforcementSkills()` doesn't filter by profile. [skill-runtime.ts L159](../../src/plugins/skill-runtime.ts#L159) calls `loader.listPlugins({ tier: "enforcement" })` — no language filter.
 
-Three routing options:
-
-| Option | Behavior | Risk |
-|---|---|---|
-| (a) Filter by profile match | Only inject skills whose `scope.language` matches `profile.stack.language` | Might miss relevant skills |
-| (b) Always inject project-local, filter builtins | User explicitly chose project-local skills; filter only builtins | Good balance |
-| **(c) Project-local wins, builtins filtered** | Project-local always injected. Builtins only if no project-local AND profile matches. | Most predictable |
-
-### Recommendation: Option (c) — project-local wins, builtins filtered
-
-```typescript
-async function resolveEnforcementSkills(
-  projectRoot: string,
-  scope: "implementation" | "review",
-  profile?: ProjectProfile,  // NEW: pass detected profile
-): Promise<string> {
-  const projectSkills = await loadProjectLocalSkills(projectRoot, scope);
-  
-  if (projectSkills.length > 0) {
-    // Project declared its own enforcement — use those exclusively
-    return projectSkills.map(s => s.content).join("\n\n");
-  }
-  
-  // No project-local enforcement — fall back to builtins, filtered by profile
-  const builtins = await loadBuiltinSkills(scope);
-  if (!profile) return builtins.map(s => s.content).join("\n\n");
-  
-  return builtins
-    .filter(s => matchesProfile(s.manifest.scope, profile))
-    .map(s => s.content)
-    .join("\n\n");
-}
-
-function matchesProfile(
-  skillScope: { language?: string; framework?: string },
-  profile: ProjectProfile,
-): boolean {
-  if (!skillScope.language) return true;  // no language constraint → always match
-  return skillScope.language.toLowerCase() === profile.stack?.language?.toLowerCase();
-}
-```
-
-### Manifest schema extension
+**Proposed change**: Add `scope.language` and `scope.framework` to the enforcement manifest schema.
 
 ```yaml
-# manifest.yaml for enforcement skills — add scope fields
+# New manifest fields (requires manifest.ts amendment)
 type: skill
 name: django-conventions
 tier: enforcement
-scope:
-  language: Python          # NEW: profile matching
-  framework: Django         # NEW: more specific matching
-  context: implementation   # existing: implementation | review
+scope: implementation
+# --- NEW FIELDS ---
+language: Python
+framework: Django
 ```
 
----
-
-## Q3: Architecture Grounding for Non-gwrk Projects
-
-### Findings
-
-gwrk's own `docs/grounding/architecture.md` is injected into prompts so agents understand the codebase. For non-gwrk projects, no equivalent exists.
-
-### Recommendation: `.gwrk/grounding/architecture.md` — manual authoring, agent-assisted
+**Routing algorithm**:
 
 ```
-.gwrk/
-  grounding/
-    architecture.md     ← System shape: services, data flow, deployment
+1. Load all enforcement skills (existing listPlugins call)
+2. If project has local enforcement skills → inject all (user chose these)
+3. If falling back to builtins → filter by profile.stack.language match
+4. Skills with no language field → always match (backwards compatible)
 ```
 
-The prompt conditioner (`prompt-conditioner.ts`) injects this as `<project_architecture>` context when present. If absent, agents rely on enforcement skills and profile detection (which still works — just less precise).
+**Impact**: Requires amending FR-014 and the `EnforcementSkillManifestSchema` in [manifest.ts](../../src/plugins/manifest.ts). Backwards compatible — existing manifests without `language` continue to load for all projects.
 
-Agent-assisted generation is a future enhancement: `gwrk init --discover` scans the codebase and produces a draft architecture doc. But the manual path works now and is reliable.
+### Proposal 2: Domain Ontology
 
----
+**This has zero basis in any existing spec, ADR, or code.** It is a new architectural concept directed by the user.
 
-## Q4: Polyglot Routing
+A domain ontology answers: "What are the core concepts of this project, what do they mean, and how do they relate?" This is distinct from enforcement skills (how we write code) and architecture grounding (system shape).
 
-### Findings
+**Proposed storage**: `.gwrk/ontology/domain.md` — a Pack C format document (classes, properties, relations, axioms, glossary) per the [Gonzo Feature Research Brief v2](../R006-pluginable-research/references/gonzo-feature-research-brief-v2.md#L428-L483).
 
-In a monorepo (Python + Go + TypeScript), enforcement skills need scoping:
+**Proposed injection**: Into agent dispatch prompts as `<domain_ontology>` context, alongside enforcement skills in [agent.ts](../../src/utils/agent.ts).
 
-| Strategy | When to use | Complexity |
+**Proposed construction**: Via `gwrk define research --methodology ontology` (R006 workflow plugin).
+
+**Open question**: Should ontology injection be an enforcement skill (fits existing infrastructure) or a new injection path (more explicit, separate concern)?
+
+| Approach | Pros | Cons |
 |---|---|---|
-| **Per-project** (all skills loaded) | Small monorepo, <3 languages | Low |
-| **Per-file** (match by file extension) | Large monorepo, many languages | High — requires file-aware dispatch |
-| **Per-workspace** (each package gets its own profile) | Nx/Turborepo-style workspace | Medium — requires workspace detection |
+| **As an enforcement skill** | No new injection path. `.gwrk/plugins/skills/domain-ontology/SKILL.md` just works. | Semantically odd — ontology isn't enforcement. Mixes concerns. |
+| **New injection path** | Clean separation. Explicit `{{ontology}}` marker. | New code path in agent.ts. New concept to maintain. |
+| **Just a file that agents see** | Zero new code. Agent reads `.gwrk/ontology/domain.md` via file access. | No structured injection. Agent may or may not find it. |
 
-### Recommendation: Per-project for now, per-workspace later
+### Proposal 3: Architecture Grounding for Non-gwrk Projects
 
-Load all project-local enforcement skills for every dispatch. This is slightly noisy for large monorepos but correct — the agent sees all relevant conventions. Per-workspace routing is a future refinement that requires workspace boundary detection in the profile detector.
+gwrk uses `docs/grounding/architecture.md` in its own prompts via `[type: gwrk-native]` guards. No mechanism exists for other projects.
 
-The domain ontology is always project-wide — domain concepts span all services in a monorepo.
+**Proposed**: `.gwrk/grounding/architecture.md` — injected into prompts when present. Same question as ontology: enforcement skill, new injection path, or just-a-file.
+
+**This is the lowest priority proposal.** Enforcement skills already provide architecture context. A dedicated grounding doc may be premature optimization.
+
+---
+
+## Q2: Profile → Enforcement Routing (Detailed)
+
+### Current code
+
+```typescript
+// skill-runtime.ts L154-159 — no profile awareness
+export async function resolveEnforcementSkills(
+  projectRoot: string,
+  scope: "implementation" | "review" | "all" = "all",
+): Promise<string> {
+  const loader = new PluginLoader({ projectDir: projectRoot });
+  const allPlugins = await loader.listPlugins({ tier: "enforcement" });
+```
+
+### Proposed change
+
+```typescript
+// Add profile parameter — optional, backwards compatible
+export async function resolveEnforcementSkills(
+  projectRoot: string,
+  scope: "implementation" | "review" | "all" = "all",
+  profile?: ProjectProfile,  // NEW
+): Promise<string> {
+```
+
+Then in the loop at [L170-196](../../src/plugins/skill-runtime.ts#L170-L196), add filtering:
+
+```typescript
+// After loading the manifest:
+const manifest = loaded.manifest as EnforcementSkillManifest;
+
+// NEW: Profile-based filtering (only for builtins — project-local always loads)
+if (profile && summary.source === "builtin" && manifest.language) {
+  if (manifest.language.toLowerCase() !== profile.stack?.language?.toLowerCase()) {
+    continue;
+  }
+}
+```
+
+### Builtin split
+
+| Builtin | Current behavior | Proposed |
+|---|---|---|
+| `gwrk-conventions` | Loads for all projects | Add `language: null` (all projects) — split gwrk-specific rules to `_isGwrk` guard |
+| `typescript-standards` | Loads for all projects | Add `language: TypeScript` — only loads for TS projects |
+| NEW: `generic-conventions` | N/A | Generic commit format, PR hygiene. `language: null`. |
 
 ---
 
 ## Q5: Escape from gwrk-Specific Builtins
 
-### Findings
+**Current builtins** (`gwrk-conventions`, `typescript-standards`) are gwrk-specific. For non-gwrk projects this is wrong — Python projects get TypeScript standards.
 
-Current builtins are gwrk-specific:
-- `gwrk-conventions` — commit message format, spec conventions, flamingo branding
-- `typescript-standards` — strict TypeScript patterns
+**Proposed split** (backwards compatible):
 
-For non-gwrk projects, these are wrong.
-
-### Recommendation: Split builtins into generic + gwrk-specific
-
-```
-src/plugins/builtins/skills/
-  generic-conventions/          ← NEW: project-agnostic (commit messages, PR format)
-    SKILL.md
-    manifest.yaml               ← scope.language: null (all projects)
-  typescript-standards/         ← EXISTING: add scope.language: TypeScript
-    SKILL.md
-    manifest.yaml
-  gwrk-conventions/             ← EXISTING: only loads when _isGwrk
-    SKILL.md
-    manifest.yaml               ← scope.project: gwrk (special case)
-```
-
-The `_isGwrk` flag already exists in the prompt conditioner. Use it to gate `gwrk-conventions`. Filter `typescript-standards` by profile match. `generic-conventions` loads for all projects.
+1. Extract generic rules from `gwrk-conventions` into `generic-conventions` (commit messages, task management — project-agnostic)
+2. Keep `gwrk-conventions` for gwrk-specific rules (flamingo branding, spec conventions). Gate with `_isGwrk` check or `language: gwrk-native`.
+3. Add `language: TypeScript` to `typescript-standards` manifest so it only loads for TS projects (requires Proposal 1).
 
 ---
 
-## Domain Ontology — Detailed Design
+## Init Scaffolding
 
-### Why domain ontology is a perspective concern, not just a research concern
+**What exists**: `gwrk init` creates `specs/`, `.gwrk/rules/`, `.gitattributes`. See [init.ts L231-285](../../src/commands/init.ts#L231-L285).
 
-A domain ontology answers: "What are the core concepts of this project, what do they mean, and how do they relate?" This is distinct from:
-- **Enforcement skills** → "How do we write code?" (syntax, patterns, conventions)
-- **Architecture grounding** → "What is the shape of the system?" (services, data flow)
-- **Research briefs** → "What should we build next?" (features, progress, evidence)
+**Proposed addition** (minimal — just directories):
 
-But the ontology feeds all three:
-
-| Consumer | How ontology helps |
-|---|---|
-| **Enforcement skills** | Agent knows domain vocabulary → writes idiomatic code using correct terms |
-| **Architecture grounding** | Ontology classes map to services, tables, API resources |
-| **Research briefs** | Section 5 (Domain Boundary) inherits from the project ontology |
-| **Feature specs** | Spec constraints reference ontology axioms → no concept mush |
-| **Implement prompts** | Agent understands what "Order", "Fulfillment", "Assessment" mean in this project |
-
-### Ontology storage and structure
-
-```
-.gwrk/
-  ontology/
-    domain.md           ← Primary ontology document (Pack C format)
-    glossary.md          ← Term disambiguation (Pack C6)
-    modules/             ← Optional: per-domain-area ontology fragments
-      billing.md
-      assessment.md
-      fulfillment.md
+```diff
+  const dirs = ["specs", ".gwrk/rules"];
++ // Only if we proceed with ontology/grounding proposals:
++ // ".gwrk/ontology"
++ // ".gwrk/grounding"
 ```
 
-The primary `domain.md` follows the Pack C structure from the Gonzo Brief:
-
-```markdown
-# Project Domain Ontology: [Project Name]
-
-> **Status:** Living document — updated as domain understanding deepens
-> **Last updated:** [date]
-
-## Classes
-
-| Class | Definition | Boundary | Example Individuals |
-|---|---|---|---|
-| Assessment | A structured evaluation of [subject] against [criteria] | Not a Survey (assessments have verdicts; surveys collect data) | Q3 Risk Assessment, Annual Compliance Review |
-| ...
-
-## Properties
-
-| Class | Property | Kind | Description | Constraint |
-|---|---|---|---|---|
-| Assessment | status | state | Current lifecycle position | enum: draft, active, completed, archived |
-| ...
-
-## Relations
-
-| Relation | Domain | Range | Cardinality | Direction | Required? |
-|---|---|---|---|---|---|
-| evaluates | Assessment | Subject | N:1 | uni | Y |
-| ...
-
-## Axioms
-
-| ID | Type | Rule | What It Prevents |
-|---|---|---|---|
-| AX-001 | disjointness | An Assessment is never a Survey | Concept mush between evaluation and data collection |
-| ...
-
-## Glossary
-
-| Term | Canonical Meaning | Synonyms | Must Not Be Confused With |
-|---|---|---|---|
-| Assessment | Structured evaluation with verdict | Review, Evaluation, Audit | Survey (no verdict), Report (output, not process) |
-| ...
-```
-
-### Ontology injection into prompts
-
-The ontology is injected alongside enforcement skills in `dispatchToAgent()`:
-
-```typescript
-// After enforcement skill injection (agent.ts L432-455)
-
-// ADR-008 + R007: Inject domain ontology as grounding context
-const ontologyPath = path.join(task.workDir || projectRoot, ".gwrk/ontology/domain.md");
-if (fs.existsSync(ontologyPath) && dispatch.stdin) {
-  const ontology = fs.readFileSync(ontologyPath, "utf-8");
-  dispatch.stdin = dispatch.stdin.replace(
-    /{{ontology}}/,
-    `<domain_ontology>\n${ontology}\n</domain_ontology>`
-  );
-  // If no placeholder, append as context
-  if (!dispatch.stdin.includes("<domain_ontology>")) {
-    dispatch.stdin = `<domain_ontology>\n${ontology}\n</domain_ontology>\n\n${dispatch.stdin}`;
-  }
-}
-```
-
-### Constructing vs. consuming ontology
-
-| Activity | Workflow | Input | Output |
-|---|---|---|---|
-| **Construct ontology** | `gwrk define research --methodology ontology` | Codebase, existing docs, interviews | `.gwrk/ontology/domain.md` + `glossary.md` |
-| **Consume in research** | `gwrk define research R00X` | ontology auto-injected as grounding | Research draft informed by domain vocabulary |
-| **Consume in spec** | `gwrk define spec 00X` | ontology auto-injected as grounding | Spec uses correct domain terms |
-| **Consume in implement** | `gwrk ship` | ontology injected via enforcement | Agent writes code using correct domain vocabulary |
-
-Construction and consumption are independent workflows. A project can:
-1. Have no ontology (works fine — enforcement skills + profile detection)
-2. Manually write `.gwrk/ontology/domain.md` (full control)
-3. Use `gwrk define research --methodology ontology` to agent-generate one
-4. Iteratively refine through research → ontology → spec cycles
+**Not proposed**: scaffolding enforcement skill templates. Users create those via `gwrk plugin create` (already exists per FR-L1-009) or manually.
 
 ---
 
-## Profile → Enforcement Routing Spec
+## Summary: What's Grounded vs. What's New
 
-### Matching algorithm
-
-```
-1. Scan .gwrk/plugins/skills/ for enforcement-tier skills
-2. If any found → inject all project-local enforcement skills (user chose these)
-3. If none found → fall back to builtins:
-   a. Load all builtins with tier: enforcement
-   b. Filter by scope.language matching profile.stack.language
-   c. Always include skills with scope.language: null (generic)
-   d. Include gwrk-conventions only if _isGwrk
-4. Inject domain ontology from .gwrk/ontology/domain.md (if exists)
-5. Inject architecture grounding from .gwrk/grounding/architecture.md (if exists)
-```
-
-### Resolution order diagram
-
-```mermaid
-flowchart TD
-    A["resolveEnforcementSkills()"] --> B{"Project-local\n.gwrk/plugins/skills/\nhas enforcement skills?"}
-    B -->|Yes| C["Inject ALL project-local\n(user explicitly declared these)"]
-    B -->|No| D["Load builtins"]
-    D --> E{"Profile detected?"}
-    E -->|Yes| F["Filter builtins by\nscope.language match"]
-    E -->|No| G["Inject all builtins\n(fallback)"]
-    F --> H["Inject matched builtins"]
-    C --> I["Inject domain ontology\n(.gwrk/ontology/domain.md)"]
-    G --> I
-    H --> I
-    I --> J["Inject architecture grounding\n(.gwrk/grounding/architecture.md)"]
-    J --> K["Return combined enforcement context"]
-```
-
----
-
-## Project Init Scaffold
-
-### What `gwrk init` should generate
-
-Current scaffolding:
-```
-specs/
-.gwrk/rules/
-.gitattributes
-```
-
-Proposed additions:
-```
-.gwrk/plugins/skills/      ← Ready for project-scoped enforcement skills
-.gwrk/ontology/             ← Ready for domain ontology
-.gwrk/grounding/            ← Ready for architecture grounding
-```
-
-These are empty directories — zero-config by default. A project works fine without any of them. But when a user creates enforcement skills, writes an ontology, or adds architecture grounding, gwrk picks them up automatically through the resolution chain.
-
-### First-run guidance
-
-After `gwrk init`, print:
-
-```
-  ✓ .gwrk/plugins/skills/  (project enforcement skills — optional)
-  ✓ .gwrk/ontology/         (domain ontology — optional)
-  ✓ .gwrk/grounding/        (architecture grounding — optional)
-
-  Tip: Create enforcement skills for your project:
-    gwrk plugin create my-conventions --tier enforcement
-
-  Tip: Generate a domain ontology from your codebase:
-    gwrk define research --methodology ontology
-```
-
----
-
-## Migration Path
-
-### Existing builtins
-
-| Builtin | Change | Risk |
+| Item | Status | Spec/Code basis |
 |---|---|---|
-| `gwrk-conventions` | Add `scope.project: gwrk` — only loads when `_isGwrk` | None — behavior preserved for gwrk |
-| `typescript-standards` | Add `scope.language: TypeScript` — only loads for TS projects | Existing TS projects unaffected |
-| NEW: `generic-conventions` | Extract project-agnostic rules (commit format, PR hygiene) | Additive |
-
-### Enforcement resolver
-
-| Change | Impact |
-|---|---|
-| Add `profile` parameter to `resolveEnforcementSkills()` | Signature change — update all callers |
-| Add project-local skill scanning | New code path — needs tests |
-| Add ontology/grounding injection | New injection point — additive |
+| Enforcement skills | **Implemented** | FR-014, US-016, skill-runtime.ts |
+| Project-local override | **Implemented** | US-016 AC3, PluginLoader |
+| Profile detection | **Implemented** | profile-detector.ts |
+| `scope.language` filtering | **Proposed** | No spec basis. Requires FR-014 amendment. |
+| Domain ontology | **Proposed** | No spec/ADR basis. User direction. New concept. |
+| Architecture grounding | **Proposed** | No spec basis. gwrk uses it informally. |
+| Builtin split (generic/gwrk/ts) | **Proposed** | Backwards compatible. No spec change needed. |
 
 ---
 
 ## Open Items
 
-| Item | Status | Decision needed |
-|---|---|---|
-| Ontology module splitting (per-domain-area) | Proposed | Defer until a project needs it |
-| Agent-assisted architecture grounding (`--discover`) | Deferred | Good idea, not urgent |
-| Per-workspace enforcement routing | Deferred | Needs workspace boundary detection |
-| Community plugin registry | Deferred | No infrastructure exists |
-| Ontology versioning / diffing | Proposed | Track in `.gwrk/ontology/` via git |
+| Item | Decision needed |
+|---|---|
+| Ontology: enforcement skill vs. new injection path vs. just-a-file? | Determines implementation complexity |
+| `scope.language` filtering: amend FR-014 or defer? | Blocks non-gwrk project support |
+| Architecture grounding: worth the new concept or premature? | May be deferred indefinitely |
