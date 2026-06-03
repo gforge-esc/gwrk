@@ -1,7 +1,7 @@
 /**
  * @phase 12
  * @feature 014-plugin-system
- * @status red
+ * @status active
  */
 import { describe, it, expect, vi } from 'vitest';
 import * as researchCmd from './research.js';
@@ -27,7 +27,7 @@ vi.mock('../engine/WorkflowRuntime.js', () => {
   };
 });
 
-describe.skip('FR-R006-002: Methodology Dispatch (--run)', () => {
+describe('FR-R006-002: Methodology Dispatch (--run)', () => {
   it('US-018: Executes research workflow using methodology from frontmatter', async () => {
     const runtimeSpy = vi.spyOn(WorkflowRuntime.prototype, 'execute');
     
