@@ -10,6 +10,7 @@ import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
 import {
+  commitAllClean,
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
@@ -233,6 +234,9 @@ Examples:
               `Warning: Could not write execution manifest: ${manifestError}`,
             );
           }
+
+          // Define must always leave a clean working tree
+          commitAllClean(cwd, `chore(${feature}): define spec execution manifest`);
 
           const planStore = new PlanStore(resolveProjectId(cwd));
           planStore.handleDefineComplete({
