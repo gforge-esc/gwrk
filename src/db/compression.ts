@@ -22,6 +22,14 @@ export interface CompressionRecord {
   session_count?: number;
   project_id?: string;
   recorded_at?: string;
+  // Leading Indicators
+  convergence_first_pass_rate?: number;
+  convergence_avg_attempts?: number;
+  density_lines_per_sp?: number;
+  density_files_per_sp?: number;
+  density_tool_calls_per_sp?: number;
+  spec_quality_contract_count?: number;
+  spec_quality_gate_count?: number;
 }
 
 /**
@@ -48,6 +56,14 @@ export function recordCompression(
     merge_timestamp: report.actuals.prMergedAt,
     session_count: report.actuals.sessionCount,
     project_id: projectId,
+    // Indicators
+    convergence_first_pass_rate: report.indicators?.convergence.firstPassRate,
+    convergence_avg_attempts: report.indicators?.convergence.avgAttempts,
+    density_lines_per_sp: report.indicators?.density.linesPerSP,
+    density_files_per_sp: report.indicators?.density.filesPerSP,
+    density_tool_calls_per_sp: report.indicators?.density.toolCallsPerSP,
+    spec_quality_contract_count: report.indicators?.specQuality.contractCount,
+    spec_quality_gate_count: report.indicators?.specQuality.gateCount,
   };
 
   const result = conn
@@ -56,13 +72,19 @@ export function recordCompression(
          feature_id, phase_id, estimated_hours, actual_coding_hours,
          estimated_days, actual_delivery_days, point_compression,
          total_compression, dormancy_days, first_impl_commit,
-         merge_timestamp, session_count, project_id
+         merge_timestamp, session_count, project_id,
+         convergence_first_pass_rate, convergence_avg_attempts,
+         density_lines_per_sp, density_files_per_sp, density_tool_calls_per_sp,
+         spec_quality_contract_count, spec_quality_gate_count
        )
        VALUES (
          @feature_id, @phase_id, @estimated_hours, @actual_coding_hours,
          @estimated_days, @actual_delivery_days, @point_compression,
          @total_compression, @dormancy_days, @first_impl_commit,
-         @merge_timestamp, @session_count, @project_id
+         @merge_timestamp, @session_count, @project_id,
+         @convergence_first_pass_rate, @convergence_avg_attempts,
+         @density_lines_per_sp, @density_files_per_sp, @density_tool_calls_per_sp,
+         @spec_quality_contract_count, @spec_quality_gate_count
        )`,
     )
     .run(record);

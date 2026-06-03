@@ -3,6 +3,7 @@ import path from "node:path";
 import { Command } from "commander";
 import {
   computeCompression,
+  computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
 } from "../engine/compression.js";
@@ -11,6 +12,8 @@ import { resolveRoleMultipliers } from "../engine/roles.js";
 import { extractStories } from "../engine/spec-parser.js";
 import type { CompressionReport } from "../engine/types.js";
 import { loadConfig } from "../utils/config.js";
+import { resolveProjectId } from "../utils/project-id.js";
+import { recordCompression } from "../db/compression.js";
 
 function getEffortReport(
   featureDir: string,
@@ -83,14 +86,28 @@ Examples:
             };
 
             const ratios = computeCompression(forecast, actuals);
+            const projectId = resolveProjectId(projectRoot);
+            const indicators = computeLeadingIndicators(
+              feat,
+              forecast,
+              projectId,
+            );
 
-            reports.push({
+            const report: CompressionReport = {
               featureId: feat,
               generatedAt: new Date().toISOString(),
               forecast,
               actuals,
               compression: ratios,
-            });
+              indicators,
+            };
+
+            reports.push(report);
+            try {
+              recordCompression(report, projectId);
+            } catch (err) {
+              // Ignore persistence errors in bulk run
+            }
           } catch (e) {
             // Ignore features that might not be shipped yet or missing spec
           }
@@ -109,6 +126,11 @@ Examples:
           console.log(
             `Avg Total Compression: ${summary.totals.avgTotalCompression.toFixed(2)}x`,
           );
+          if (summary.totals.avgFirstPassRate) {
+            console.log(
+              `Avg First-Pass Rate:  ${summary.totals.avgFirstPassRate.toFixed(1)}%`,
+            );
+          }
           console.log(`Trend: ${summary.trend.toUpperCase()}\n`);
 
           if (summary.best.featureId) {
@@ -165,6 +187,8 @@ Examples:
         };
 
         const ratios = computeCompression(forecast, actuals);
+        const projectId = resolveProjectId(projectRoot);
+        const indicators = computeLeadingIndicators(feature, forecast, projectId);
 
         const report: CompressionReport = {
           featureId: feature,
@@ -172,7 +196,14 @@ Examples:
           forecast,
           actuals,
           compression: ratios,
+          indicators,
         };
+
+        try {
+          recordCompression(report, projectId);
+        } catch (err) {
+          // Non-fatal persistence error
+        }
 
         if (options.json) {
           console.log(JSON.stringify(report, null, 2));
@@ -191,6 +222,19 @@ Examples:
           console.log(
             `Elapsed Window:    ${actuals.deliveryWindowHours.toFixed(2)} hours`,
           );
+
+          if (indicators) {
+            console.log("\n--- Leading Indicators ---");
+            console.log(
+              `Convergence:       ${indicators.convergence.firstPassRate}% first-pass, ${indicators.convergence.avgAttempts} avg attempts`,
+            );
+            console.log(
+              `Density:           ${indicators.density.linesPerSP} lines/SP, ${indicators.density.filesPerSP} files/SP, ${indicators.density.toolCallsPerSP} tools/SP`,
+            );
+            console.log(
+              `Spec Quality:      ${indicators.specQuality.contractCount} contracts, ${indicators.specQuality.gateCount} gates`,
+            );
+          }
         }
       }
     });

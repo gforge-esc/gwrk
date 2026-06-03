@@ -8,6 +8,13 @@ vi.mock("../engine/compression.js", () => ({
   gatherDeliveryActuals: vi.fn(),
   computeCompression: vi.fn(),
   generateSummary: vi.fn(),
+  computeLeadingIndicators: vi.fn(),
+}));
+vi.mock("../db/compression.js", () => ({
+  recordCompression: vi.fn(),
+}));
+vi.mock("../utils/project-id.js", () => ({
+  resolveProjectId: vi.fn().mockReturnValue("test-proj"),
 }));
 vi.mock("../engine/spec-parser.js", () => ({
   extractStories: vi.fn(),
@@ -21,11 +28,13 @@ vi.mock("../engine/effort.js", () => ({
 
 import {
   computeCompression,
+  computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
 } from "../engine/compression.js";
 import { computeEffort } from "../engine/effort.js";
 import { extractStories } from "../engine/spec-parser.js";
+import { recordCompression } from "../db/compression.js";
 
 describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
   let tempDir: string;
@@ -94,6 +103,12 @@ describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
       totalCompression: 3.1,
       dormancyDays: 10,
     });
+
+    vi.mocked(computeLeadingIndicators).mockReturnValue({
+      convergence: { firstPassRate: 80, avgAttempts: 1.2 },
+      density: { linesPerSP: 10, filesPerSP: 0.5, toolCallsPerSP: 2 },
+      specQuality: { contractCount: 2, gateCount: 3 },
+    });
   });
 
   afterEach(() => {
@@ -111,6 +126,19 @@ describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
 
     expect(parsed.compression.pointCompression).toBe(25);
     expect(parsed.compression.totalCompression).toBe(3.1);
+    expect(parsed.indicators.convergence.firstPassRate).toBe(80);
+  });
+
+  // FR-015: Indicators in text output
+  it("FR-015: displays leading indicators in text output", async () => {
+    await compressionCommand.parseAsync(["node", "test", "001-mock"]);
+
+    const fullLog = consoleLogSpy.mock.calls.map((c) => c[0]).join("\n");
+    expect(fullLog).toContain("--- Leading Indicators ---");
+    expect(fullLog).toContain("80% first-pass");
+    expect(fullLog).toContain("10 lines/SP");
+    expect(fullLog).toContain("2 contracts");
+    expect(recordCompression).toHaveBeenCalled();
   });
 
   // US-005, FR-009: Cross-feature compression summary

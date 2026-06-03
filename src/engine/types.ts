@@ -108,6 +108,22 @@ export interface EffortForecast {
   estimatedHours: number;
   estimatedDays: number;
 }
+export interface LeadingIndicators {
+  convergence: {
+    firstPassRate: number; // %
+    avgAttempts: number;
+  };
+  density: {
+    linesPerSP: number;
+    filesPerSP: number;
+    toolCallsPerSP: number;
+  };
+  specQuality: {
+    contractCount: number;
+    gateCount: number;
+  };
+}
+
 export interface CompressionReport {
   featureId: string;
   phaseId?: string;
@@ -115,6 +131,7 @@ export interface CompressionReport {
   forecast: EffortForecast;
   actuals: DeliveryActuals;
   compression: CompressionRatios;
+  indicators?: LeadingIndicators;
 }
 
 export const HarvestPayloadSchema = z.object({
@@ -165,6 +182,7 @@ export interface CompressionSummary {
     totalActualCodingHours: number;
     avgPointCompression: number;
     avgTotalCompression: number;
+    avgFirstPassRate?: number;
   };
   best: { featureId: string; pointCompression: number };
   worst: { featureId: string; pointCompression: number };

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { getDb } from "../db/index.js";
 import type {
   CommitCluster,
   CompressionRatios,
@@ -8,7 +9,109 @@ import type {
   CompressionSummary,
   DeliveryActuals,
   EffortForecast,
+  LeadingIndicators,
 } from "./types.js";
+
+/**
+ * Computes leading indicators for a feature.
+ * Convergence: First-pass rate and Avg attempts per task.
+ * Density: Lines/SP, Files/SP, Tool Calls/SP.
+ * Spec Quality: Contract count and Gate count.
+ * (FR-014)
+ */
+export function computeLeadingIndicators(
+  featureId: string,
+  forecast: EffortForecast,
+  projectId: string,
+): LeadingIndicators {
+  const db = getDb();
+
+  // 1. Convergence
+  // We query history to see how many times each task in this feature/project
+  // transitioned to 'completed'. Each such transition represents a successful
+  // implementation attempt.
+  const taskCompletions = db
+    .prepare(
+      `
+    SELECT task_id, COUNT(*) as completions
+    FROM history
+    WHERE feature_id = ? AND project_id = ? AND to_status = 'completed' AND from_status = 'open'
+    GROUP BY task_id
+  `,
+    )
+    .all(featureId, projectId) as { task_id: string; completions: number }[];
+
+  const taskCount = taskCompletions.length || 1;
+  const firstPassTasks = taskCompletions.filter((t) => t.completions === 1)
+    .length;
+  const firstPassRate = (firstPassTasks / taskCount) * 100;
+  const avgAttempts =
+    taskCompletions.reduce((sum, t) => sum + t.completions, 0) / taskCount;
+
+  // 2. Density
+  // Aggregate stats from the runs table for this feature.
+  const runStats = db
+    .prepare(
+      `
+    SELECT SUM(lines_added + lines_deleted) as total_lines, SUM(files_changed) as total_files
+    FROM runs
+    WHERE feature_id = ? AND project_id = ? AND exit_code = 0
+  `,
+    )
+    .get(featureId, projectId) as { total_lines: number; total_files: number };
+
+  const totalLines = runStats?.total_lines || 0;
+  const totalFiles = runStats?.total_files || 0;
+  const spCount = forecast.totalSP || 1;
+
+  // Tool calls: Heuristic count from agent log files if available
+  let toolCalls = 0;
+  try {
+    const runsDir = path.join(process.cwd(), ".runs");
+    if (fs.existsSync(runsDir)) {
+      const logs = fs
+        .readdirSync(runsDir)
+        .filter((f) => f.includes(featureId) && f.endsWith(".log"));
+      for (const logFile of logs) {
+        const content = fs.readFileSync(path.join(runsDir, logFile), "utf-8");
+        // Count lines that look like tool calls (e.g., "[12:34:56 +00:01]  $ git ...")
+        const matches = content.match(/^\[.*\]\s+\$ /gm);
+        if (matches) toolCalls += matches.length;
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // 3. Spec Quality
+  const featureDir = path.join(process.cwd(), "specs", featureId);
+  const contractCount = fs.existsSync(path.join(featureDir, "contracts"))
+    ? fs
+        .readdirSync(path.join(featureDir, "contracts"))
+        .filter((f) => f.endsWith(".md")).length
+    : 0;
+  const gateCount = fs.existsSync(path.join(featureDir, "gates"))
+    ? fs
+        .readdirSync(path.join(featureDir, "gates"))
+        .filter((f) => f.endsWith(".sh")).length
+    : 0;
+
+  return {
+    convergence: {
+      firstPassRate: Math.round(firstPassRate),
+      avgAttempts: Number(avgAttempts.toFixed(2)),
+    },
+    density: {
+      linesPerSP: Number((totalLines / spCount).toFixed(2)),
+      filesPerSP: Number((totalFiles / spCount).toFixed(2)),
+      toolCallsPerSP: Number((toolCalls / spCount).toFixed(2)),
+    },
+    specQuality: {
+      contractCount,
+      gateCount,
+    },
+  };
+}
 
 /**
  * Clusters timestamps into work sessions.
@@ -110,6 +213,7 @@ export function generateSummary(
       totalActualCodingHours: 0,
       avgPointCompression: 0,
       avgTotalCompression: 0,
+      avgFirstPassRate: 0,
     },
     best: { featureId: "", pointCompression: 0 },
     worst: { featureId: "", pointCompression: Number.POSITIVE_INFINITY },
@@ -120,6 +224,7 @@ export function generateSummary(
 
   let totalPointCompression = 0;
   let totalTotalCompression = 0;
+  let totalFirstPassRate = 0;
 
   for (const r of reports) {
     summary.totals.totalSP += r.forecast.totalSP;
@@ -128,6 +233,7 @@ export function generateSummary(
 
     totalPointCompression += r.compression.pointCompression;
     totalTotalCompression += r.compression.totalCompression;
+    totalFirstPassRate += r.indicators?.convergence.firstPassRate || 0;
 
     if (r.compression.pointCompression > summary.best.pointCompression) {
       summary.best = {
@@ -145,6 +251,7 @@ export function generateSummary(
 
   summary.totals.avgPointCompression = totalPointCompression / reports.length;
   summary.totals.avgTotalCompression = totalTotalCompression / reports.length;
+  summary.totals.avgFirstPassRate = totalFirstPassRate / reports.length;
 
   const sorted = [...reports].sort(
     (a, b) =>
