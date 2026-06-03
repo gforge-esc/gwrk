@@ -53,29 +53,229 @@ This draft separates what **already exists** (cited to spec/code) from what **is
 
 **Problem**: A Python project currently receives `typescript-standards` because `resolveEnforcementSkills()` doesn't filter by profile. [skill-runtime.ts L159](../../src/plugins/skill-runtime.ts#L159) calls `loader.listPlugins({ tier: "enforcement" })` — no language filter.
 
-**Proposed change**: Add `scope.language` and `scope.framework` to the enforcement manifest schema.
+**Proposed change**: Add `language`, `framework`, and `toolchain` to the enforcement manifest schema. The `# --- NEW FIELDS ---` are not cosmetic — they encode the complete quality posture of a project.
+
+#### Profile Dimensions
+
+A complete project profile is the intersection of three concerns:
+
+| Dimension | What it governs | Detection signal |
+|---|---|---|
+| **Language** | Which enforcement skills load | `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `*.swift`, etc. |
+| **Toolchain** | Quality posture — formatting, linting, style enforcement | Config files and dependencies (see below) |
+| **Test Harness** | Test framework conventions, file patterns | `vitest.config.*`, `pytest.ini`, built-in (`cargo test`, `go test`), etc. |
+
+#### Convergence Insight
+
+The traditional taxonomy of "style guide + formatter + linter" as separate concerns is collapsing. **Convergence tools** unify formatting, linting, and style enforcement into a single tool:
+
+| Tool | Replaces | Language | Detection |
+|---|---|---|---|
+| **Biome** | Prettier + ESLint + config-airbnb/google | TypeScript/JS | `biome.json` or `@biomejs/biome` in deps |
+| **Ruff** | Black + flake8 + isort + pyupgrade + pylint | Python | `ruff.toml` or `pyproject.toml [tool.ruff]` |
+| **rustfmt + clippy** | Bundled in toolchain from day one | Rust | `Cargo.toml` (always) |
+| **gofmt + go vet** | Bundled in toolchain from day one | Go | `go.mod` (always) |
+
+> Rust and Go solved this at the language level — the toolchain *is* the standard. Biome and Ruff are the JS/Python ecosystems catching up to that model.
+
+This means the manifest should model **toolchain** rather than individual formatter/linter/styleGuide fields. A project using Biome doesn't have a "formatter" and a "linter" — it has one tool that does both.
+
+#### Boundary: Toolchain vs. Infrastructure
+
+Package managers (`pnpm`, `npm`, `uv`, `pip`, `poetry`), runtime version managers (`pyenv`, `nvm`, `fnm`, `mise`), and build tools (`bun`, `cargo`, `go`) are **infrastructure** — they govern how code is installed and run. These belong in `stack.buildSystem`, which [profile-detector.ts](../../src/engine/profile-detector.ts) already detects today.
+
+`toolchain` is strictly about **quality posture** — how code is validated. The question it answers: "what tool gates this code?"
+
+| Axis | Field | Examples | Question |
+|---|---|---|---|
+| Infrastructure | `stack.buildSystem` | `pnpm`, `uv`, `cargo`, `bun` | "How do I install and run this?" |
+| Runtime version | `stack.runtimeManager` (future) | `pyenv`, `nvm`, `mise` | "Which runtime version?" |
+| Quality | `toolchain.primary` | `biome`, `ruff`, `eslint`, `clippy` | "What validates this code?" |
+
+> **bun** is an exception worth noting — it converges runtime + package manager + test runner + bundler. But even bun projects still use ESLint or Biome for quality. So bun is `stack.buildSystem: "bun"`, not `toolchain`.
+
+#### Style Guide Landscape by Language
+
+Each language ecosystem has competing standards. The enforcement skill must know which one the project follows — shipping Airbnb rules to a Google-style project creates noise.
+
+##### TypeScript / JavaScript
+
+| Style Guide | Philosophy | Formatter | Linter Config | Detection Signal |
+|---|---|---|---|---|
+| **Airbnb** | Highly opinionated, comprehensive. De facto community standard. Covers React/JSX. Requires semicolons, trailing commas. | Prettier | `eslint-config-airbnb` | `devDependencies` contains `eslint-config-airbnb` |
+| **Google** | Conservative, enterprise-focused. Separate "style" vs "language" rules. Migrating toward TypeScript-first. | Prettier / `clang-format` | `eslint-config-google` | `devDependencies` contains `eslint-config-google` |
+| **StandardJS** | Zero-config, no semicolons, no trailing commas. Anti-configuration. | Built-in `standard --fix` | `standard` package | `devDependencies` contains `standard` |
+| **Biome** | Rust-powered. All-in-one formatter + linter. Replaces both Prettier and ESLint. | Built-in | Built-in | `biome.json` exists OR `devDependencies` contains `@biomejs/biome` |
+| **None (custom)** | Project-specific `.eslintrc` without a known base config. | Varies | Custom | `.eslintrc*` exists but no known config-* dependency |
+
+##### Python
+
+| Style Guide | Philosophy | Formatter | Linter | Detection Signal |
+|---|---|---|---|---|
+| **PEP 8** | Official Python standard. Flexible — guidelines, not rules. | `autopep8` | `pycodestyle`, `flake8` | `setup.cfg [flake8]` or `.flake8` exists |
+| **Google Python** | Stricter than PEP 8. Prescriptive on docstrings (Google-style), type annotations. | `yapf` (Google-maintained) | `pylint` with Google config | `pylintrc` with Google patterns OR `.style.yapf` |
+| **Black** | "Uncompromising" auto-formatter. Eliminates all style debates. PEP 8 superset. | `black` (itself) | Paired with `ruff` or `flake8` | `pyproject.toml [tool.black]` OR `devDependencies` |
+| **Ruff** | Rust-powered. Replaces flake8 + isort + pyupgrade + black. Fastest linter/formatter. | Built-in `ruff format` | Built-in | `ruff.toml` or `pyproject.toml [tool.ruff]` |
+
+##### Rust
+
+| Style Guide | Philosophy | Formatter | Linter | Detection Signal |
+|---|---|---|---|---|
+| **Rust Style Guide** | Official, edition-aware. Single standard — no competing guides. | `rustfmt` | `clippy` | `Cargo.toml` exists (always) |
+| **Clippy Strictness** | `warn` (default) vs `deny` vs `pedantic` — project chooses severity. | N/A | `clippy` with `-D warnings` | `clippy.toml` or `#![deny(clippy::pedantic)]` in `lib.rs` |
+
+> Rust is unique: one style guide, one formatter, one linter. The only knob is clippy severity level.
+
+##### Go
+
+| Style Guide | Philosophy | Formatter | Linter | Detection Signal |
+|---|---|---|---|---|
+| **Effective Go** | Foundational idioms document. Not prescriptive on tooling. | `gofmt` / `goimports` | `go vet` | `go.mod` exists (always) |
+| **Google Go** | Industry standard for production Go. Extends Effective Go with team conventions. | `gofmt` | `golangci-lint` | `.golangci.yml` exists |
+
+> Go is similar to Rust: `gofmt` is non-negotiable (zero config). The linter meta-tool (`golangci-lint`) aggregates dozens of individual linters.
+
+##### Java
+
+| Style Guide | Philosophy | Formatter | Linter | Detection Signal |
+|---|---|---|---|---|
+| **Google Java** | Industry standard. Covers formatting, naming, Javadoc. | `google-java-format` | `Checkstyle` with `google_checks.xml` | `checkstyle.xml` contains google ref |
+| **Sun/Oracle** | Legacy standard. Still used in older enterprise codebases. | IDE-based | `Checkstyle` with `sun_checks.xml` | `checkstyle.xml` contains sun ref |
+| **Spring** | Framework-specific conventions atop Google Java. | `spring-javaformat` | `Checkstyle` + `spring-javaformat` | `spring-javaformat-maven-plugin` in `pom.xml` |
+
+##### Kotlin
+
+| Style Guide | Philosophy | Formatter | Linter | Detection Signal |
+|---|---|---|---|---|
+| **Kotlin Official** | JetBrains-maintained. IDE-integrated formatting. | IntelliJ / `ktlint` | `ktlint` (formatting) + `detekt` (analysis) | `.editorconfig` with Kotlin sections OR `detekt.yml` |
+| **Android Kotlin** | Extends official with Android-specific patterns. | `ktlint` | `detekt` + Android Lint | `build.gradle` contains `detekt` plugin |
+
+##### Swift
+
+| Style Guide | Philosophy | Formatter | Linter | Detection Signal |
+|---|---|---|---|---|
+| **Google Swift** | Comprehensive, opinionated. Covers API design, naming. | `swift-format` (Google) | SwiftLint | `.swift-format` config exists |
+| **Airbnb Swift** | Community standard for iOS teams. | `SwiftFormat` (nicklockwood) | SwiftLint | `.swiftformat` config exists |
+| **Apple API Design** | Official naming and API conventions. Less about formatting. | Xcode built-in | N/A | Default when no config files detected |
+
+#### Test Harness Taxonomy
+
+| Language | Default/Canonical | Popular Alternatives | Detection Signal |
+|---|---|---|---|
+| **TypeScript** | `vitest` (modern), `jest` (established) | `mocha`, `ava`, `node:test` | `vitest.config.*`, `jest.config.*`, `package.json scripts.test` |
+| **Python** | `pytest` | `unittest`, `nose2` | `pytest.ini`, `pyproject.toml [tool.pytest]`, `conftest.py` |
+| **Rust** | `cargo test` (built-in `#[test]`) | `proptest`, `criterion` (bench) | Always present — built into toolchain |
+| **Go** | `go test` (built-in) | `testify`, `gomock` | Always present — built into toolchain |
+| **Java** | `JUnit 5` | `TestNG`, `Spock` | `pom.xml` / `build.gradle` dependency |
+| **Kotlin** | `JUnit 5` + `kotlin.test` | `Kotest`, `MockK` | `build.gradle` dependency |
+| **Swift** | `XCTest` | `Quick`/`Nimble`, `swift-testing` | `.xcodeproj` / `Package.swift` dependency |
+
+#### Proposed Manifest Schema
 
 ```yaml
-# New manifest fields (requires manifest.ts amendment)
+# Example: django-conventions enforcement skill
 type: skill
 name: django-conventions
 tier: enforcement
 scope: implementation
-# --- NEW FIELDS ---
-language: Python
-framework: Django
+# --- Profile-Aware Fields ---
+language: Python                  # Filter: only load for Python projects
+framework: Django                 # Filter: only load for Django projects (optional)
+toolchain:
+  primary: ruff                   # Convergence tool — formatting + linting + style
+  test: pytest                    # Test framework conventions
 ```
+
+```yaml
+# Example: react-typescript-standards (legacy separate tools)
+type: skill
+name: react-typescript-standards
+tier: enforcement
+scope: all
+language: TypeScript
+framework: React
+toolchain:
+  primary: eslint                 # Linter (with config-airbnb)
+  formatter: prettier             # Separate formatter — not converged
+  test: vitest
+```
+
+```yaml
+# Example: biome-conventions (convergence tool)
+type: skill
+name: biome-conventions
+tier: enforcement
+scope: all
+language: TypeScript
+toolchain:
+  primary: biome                  # Single convergence tool — formatter + linter + style
+  test: vitest
+```
+
+```yaml
+# Example: rust-conventions (toolchain-native)
+type: skill
+name: rust-conventions
+tier: enforcement
+scope: all
+language: Rust
+toolchain:
+  primary: cargo                  # rustfmt + clippy are cargo subcommands
+  test: cargo-test                # Built-in
+```
+
+All new fields are **optional**. Existing manifests without them continue to load for all projects (backwards compatible).
+
+The `toolchain.primary` field is the key routing discriminant — it tells gwrk which quality tool the enforcement skill is designed to complement. When a project uses Biome, only skills with `toolchain.primary: biome` (or no toolchain field) load. The optional `toolchain.formatter` field exists only for ecosystems where formatting hasn't converged yet (e.g., Prettier + ESLint).
 
 **Routing algorithm**:
 
 ```
 1. Load all enforcement skills (existing listPlugins call)
 2. If project has local enforcement skills → inject all (user chose these)
-3. If falling back to builtins → filter by profile.stack.language match
+3. If falling back to builtins → filter by:
+   a. profile.stack.language match (required if skill has language field)
+   b. profile.stack.framework match (if skill has framework field)
+   c. profile.styleGuide match (if detectable and skill declares one)
 4. Skills with no language field → always match (backwards compatible)
 ```
 
 **Impact**: Requires amending FR-014 and the `EnforcementSkillManifestSchema` in [manifest.ts](../../src/plugins/manifest.ts). Backwards compatible — existing manifests without `language` continue to load for all projects.
+
+#### Enhanced Profile Detection
+
+The current `ProjectProfile` type needs to grow to support routing. Proposed additions to [profile-detector.ts](../../src/engine/profile-detector.ts):
+
+```typescript
+export interface ProjectProfile {
+  type: string;
+  stack?: {
+    language?: string;
+    framework?: string;
+    buildSystem?: string;
+  };
+  layout?: string;
+  _isGwrk?: boolean;
+  // --- NEW ---
+  toolchain?: {
+    primary?: string;      // Convergence tool or primary linter
+                           // "biome" | "ruff" | "cargo" | "golangci-lint" | "eslint" | ...
+    formatter?: string;    // Only when not converged: "prettier" | "black" | ...
+    test?: string;         // "vitest" | "jest" | "pytest" | "cargo-test" | "go-test" | ...
+  };
+}
+```
+
+Detection priority (first match wins):
+
+```
+1. Convergence tools: biome.json → primary=biome, ruff.toml → primary=ruff
+2. Separate tools: .eslintrc* → primary=eslint, then check for prettier
+3. Toolchain-native: Cargo.toml → primary=cargo, go.mod → primary=go
+4. Test harness: vitest.config → test=vitest, conftest.py → test=pytest
+```
+
+All detection is filesystem-based — config files and `devDependencies` lookups. No network calls, no user prompts.
 
 ### Proposal 2: Domain Ontology, Information Hierarchy, and UX Posture
 
@@ -174,9 +374,11 @@ if (profile && summary.source === "builtin" && manifest.language) {
 |---|---|---|
 | Enforcement skills | **Implemented** | FR-014, US-016, skill-runtime.ts |
 | Project-local override | **Implemented** | US-016 AC3, PluginLoader |
-| Profile detection | **Implemented** | profile-detector.ts |
-| `scope.language` filtering | **Proposed** | No spec basis. Requires FR-014 amendment. |
-| Domain ontology | **Proposed** | No spec/ADR basis. User direction. New concept. |
+| Profile detection (type/language/layout) | **Implemented** | profile-detector.ts |
+| Profile detection (quality posture) | **Proposed** | No code. Extends `ProjectProfile` with `quality.{styleGuide, formatter, linter, testHarness}`. |
+| Profile → enforcement routing | **Proposed** | No spec basis. Requires FR-014 amendment + manifest.ts schema change. |
+| Style guide landscape (7 languages) | **Researched** | Proposal 1 tables. Detection signals documented per ecosystem. |
+| Domain ontology | **Decided** | ADR-009. File-based injection at dispatch. |
 | Architecture grounding | **Proposed** | No spec basis. gwrk uses it informally. |
 | Builtin split (generic/gwrk/ts) | **Proposed** | Backwards compatible. No spec change needed. |
 
@@ -187,5 +389,6 @@ if (profile && summary.source === "builtin" && manifest.language) {
 | Item | Decision needed |
 |---|---|
 | Ontology: enforcement skill vs. new injection path vs. just-a-file? | Determines implementation complexity |
-| `scope.language` filtering: amend FR-014 or defer? | Blocks non-gwrk project support |
+| Profile quality detection: how deep? | Detect style guide from config files (shallow) vs. parse ESLint extends chains (deep)? |
+| Manifest fields: which are filtering vs. informational? | `language`/`framework` filter routing. `styleGuide`/`formatter`/`linter`/`testHarness` — filter or advisory? |
 | Architecture grounding: worth the new concept or premature? | May be deferred indefinitely |
