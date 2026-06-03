@@ -4,4 +4,7 @@
 
 This workflow is responsible for implementing changes based on RED tests.
 
-<!-- TODO: Add mandatory context gathering commands per FR-L25-013 -->
+Before writing any code, you MUST gather project context by running:
+
+1. `gwrk project info` — understand the project structure, stack, and configuration
+2. `gwrk project discover` — discover the project's enforcement skills, conventions, and architecture grounding
