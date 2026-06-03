@@ -74,6 +74,9 @@ Examples:
         }
 
         // Guard: refuse to overwrite existing tests without --force (ADR-005 §8.4)
+        // When a specific phase is targeted, skip this guard — the user is adding
+        // tests for a new phase, not regenerating existing ones.
+        const rawPhase = phaseArg || options.phase;
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
         const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
         const hasTestFiles = (() => {
@@ -106,7 +109,7 @@ Examples:
           hasTestRunManifest ||
           (hasTestFiles && !options.force);
 
-        if (testsExist && !options.force) {
+        if (testsExist && !options.force && !rawPhase) {
           blocked(
             `Tests already exist for ${feature} (artifacts found).\n  Re-run: gwrk define tests ${feature} --force`,
           );
@@ -117,7 +120,6 @@ Examples:
         }
 
         // Format phase uniformly if provided (positional takes precedence over --phase)
-        const rawPhase = phaseArg || options.phase;
         let paddedPhase: string | undefined = undefined;
         if (rawPhase) {
           paddedPhase = rawPhase.match(/^\d+$/)
