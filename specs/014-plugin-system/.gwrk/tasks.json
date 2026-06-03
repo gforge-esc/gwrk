@@ -616,7 +616,7 @@
         {
           "id": "T062",
           "title": "Create research.ts",
-          "description": "NEW src/commands/research.ts. handler for `gwrk define research`. Tests: src/commands/research.test.ts",
+          "description": "NEW src/commands/research.ts. handler for `gwrk define research`. Tests: src/commands/research.test.ts\n\nREVIEW FAIL (code): lint check — FR-R006-001.\n  WHERE: src/commands/research.ts:47:21\n  EXPECTED: No use of 'any' type.\n  ACTUAL: } catch (error: any) {\n  FIX: Replace 'any' with 'unknown' and use a type guard (error instanceof Error) before accessing .message.",
           "status": "open",
           "gateScript": "pnpm vitest run src/commands/research.test.ts",
           "sp": 2
@@ -625,7 +625,7 @@
           "id": "T063",
           "title": "Create research-scaffold.ts",
           "description": "NEW src/engine/research-scaffold.ts. scaffold logic for R0XX numbering and brief generation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/research-scaffold.ts",
           "sp": 2
         }
