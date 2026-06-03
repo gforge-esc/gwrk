@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-03T19:52:29.074Z_define_p00",
+  "feature": "007-effort-compression",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-03T19:52:29.074Z",
+  "finishedAt": "2026-06-03T20:01:50.208Z",
+  "durationS": 561,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 126,
+  "linesDeleted": 26,
+  "gitCommit": "2de84c6eba3ab9c548eae805719234cec39ed6e8",
+  "gitBranch": "develop",
+  "digest": []
+}
