@@ -1,6 +1,6 @@
 {
   "featureId": "014-plugin-system",
-  "createdAt": "2026-06-03T12:02:57.033Z",
+  "createdAt": "2026-06-03T12:20:56.244Z",
   "generatedFrom": {
     "plan": {
       "hash": "09e7a416da312bf6b4d842dfbcb58704548650015faa55d82f1173f93b3137a3",
@@ -282,9 +282,57 @@
           "status": "open",
           "gateScript": "test -f src/commands/status.ts",
           "sp": 1
+        },
+        {
+          "id": "T026",
+          "title": "Create review-plugin.ts",
+          "description": "NEW src/plugins/review-plugin.ts. `ReviewPlugin` interface, `ReviewStep` schema, resolution. Tests: src/plugins/review-plugin.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/plugins/review-plugin.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T027",
+          "title": "Create ",
+          "description": "NEW src/plugins/builtins/reviews/review-code-cli/. built-in CLI code review plugin. Tests: src/engine/router.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/router.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T028",
+          "title": "Create ",
+          "description": "NEW src/plugins/builtins/reviews/review-uat-cli/. built-in CLI UAT review plugin. Tests: src/engine/router.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/router.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T029",
+          "title": "Create ",
+          "description": "NEW src/plugins/builtins/reviews/review-code-webapp/. built-in webapp code review plugin. Tests: src/engine/router.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/router.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T030",
+          "title": "Create ",
+          "description": "NEW src/plugins/builtins/reviews/review-uat-webapp/. built-in webapp UAT review plugin. Tests: src/engine/router.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/router.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T031",
+          "title": "Modify ship-orchestrator.ts",
+          "description": "MODIFY src/engine/ship-orchestrator.ts. delegate to ReviewPlugin, add post-dispatch phase-scope validation",
+          "status": "open",
+          "gateScript": "test -f src/engine/ship-orchestrator.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 7,
+      "sp_estimate": 18,
       "doneWhen": [
         "`gwrk status` correctly identifies unavailable backends via quota probing",
         "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
@@ -297,7 +345,7 @@
       "title": "Enforcement Skills (FR-014 / US-016)",
       "tasks": [
         {
-          "id": "T026",
+          "id": "T032",
           "title": "Create SKILL.md",
           "description": "NEW src/plugins/builtins/skills/gwrk-conventions/SKILL.md. valid task statuses, tasks.json Zod schema, commit identity rules, `.agents/` is legacy, file naming",
           "status": "open",
@@ -305,7 +353,7 @@
           "sp": 2
         },
         {
-          "id": "T027",
+          "id": "T033",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/skills/gwrk-conventions/manifest.yaml. `type: skill`, `tier: enforcement`, `scope: implementation`",
           "status": "open",
@@ -313,7 +361,7 @@
           "sp": 2
         },
         {
-          "id": "T028",
+          "id": "T034",
           "title": "Create SKILL.md",
           "description": "NEW src/plugins/builtins/skills/typescript-standards/SKILL.md. strict typing, no `any`, lint compliance, no `.js`/`.jsx` in `src/`, ESM conventions",
           "status": "open",
@@ -321,7 +369,7 @@
           "sp": 2
         },
         {
-          "id": "T029",
+          "id": "T035",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/skills/typescript-standards/manifest.yaml. `type: skill`, `tier: enforcement`, `scope: implementation`",
           "status": "open",
@@ -329,7 +377,7 @@
           "sp": 2
         },
         {
-          "id": "T030",
+          "id": "T036",
           "title": "Modify skill-runtime.ts",
           "description": "MODIFY src/plugins/skill-runtime.ts. add `resolveEnforcementSkills(projectRoot)` — scans builtins, global, and project-local for `tier: enforcement` manifests, returns SKILL.md content",
           "status": "open",
@@ -337,7 +385,7 @@
           "sp": 1
         },
         {
-          "id": "T031",
+          "id": "T037",
           "title": "Modify manifest.ts",
           "description": "MODIFY src/plugins/manifest.ts. add `tier: enforcement` to `SkillManifestSchema`, add `scope` field",
           "status": "open",
@@ -345,7 +393,7 @@
           "sp": 1
         },
         {
-          "id": "T032",
+          "id": "T038",
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. call `resolveEnforcementSkills()` during dispatch context assembly, inject into `<code_quality>` section",
           "status": "open",
@@ -353,7 +401,7 @@
           "sp": 1
         },
         {
-          "id": "T033",
+          "id": "T039",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
           "status": "open",
@@ -374,8 +422,185 @@
     {
       "id": "phase-10",
       "title": ".agents/ Migration to Builtins (ADR-007)",
-      "tasks": [],
-      "sp_estimate": 0,
+      "tasks": [
+        {
+          "id": "T040",
+          "title": "Create operating-model.md",
+          "description": "NEW src/plugins/builtins/rules/operating-model.md. copy from `.agents/rules/operating-model.md`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/rules/operating-model.md",
+          "sp": 2
+        },
+        {
+          "id": "T041",
+          "title": "Create workspace.md",
+          "description": "NEW src/plugins/builtins/rules/workspace.md. copy from `.agents/rules/workspace.md`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/rules/workspace.md",
+          "sp": 2
+        },
+        {
+          "id": "T042",
+          "title": "Modify init.ts",
+          "description": "MODIFY src/commands/init.ts. seed `.gwrk/rules/` from `builtins/rules/` during `gwrk init`",
+          "status": "open",
+          "gateScript": "test -f src/commands/init.ts",
+          "sp": 1
+        },
+        {
+          "id": "T043",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-analyze/manifest.yaml. ",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-analyze/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T044",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md. from `.agents/workflows/gwrk-analyze.md`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md",
+          "sp": 2
+        },
+        {
+          "id": "T045",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-cascade-sync/manifest.yaml. ",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-cascade-sync/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T046",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-cascade-sync/PROMPT.md. from `.agents/workflows/gwrk-cascade-sync.md`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-cascade-sync/PROMPT.md",
+          "sp": 2
+        },
+        {
+          "id": "T047",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-checklist/manifest.yaml. ",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-checklist/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T048",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-checklist/PROMPT.md. from `.agents/workflows/gwrk-checklist.md`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-checklist/PROMPT.md",
+          "sp": 2
+        },
+        {
+          "id": "T049",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-constitution/manifest.yaml. ",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-constitution/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T050",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-constitution/PROMPT.md. from `.agents/workflows/gwrk-constitution.md`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-constitution/PROMPT.md",
+          "sp": 2
+        },
+        {
+          "id": "T051",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-effort/manifest.yaml. ",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-effort/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T052",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-effort/PROMPT.md. from `.agents/workflows/gwrk-effort.md`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-effort/PROMPT.md",
+          "sp": 2
+        },
+        {
+          "id": "T053",
+          "title": "Create principal-engineer.md",
+          "description": "NEW src/plugins/builtins/personas/principal-engineer.md. from `.agents/prompts/personas/`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/personas/principal-engineer.md",
+          "sp": 2
+        },
+        {
+          "id": "T054",
+          "title": "Create product-manager.md",
+          "description": "NEW src/plugins/builtins/personas/product-manager.md. from `.agents/prompts/personas/`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/personas/product-manager.md",
+          "sp": 2
+        },
+        {
+          "id": "T055",
+          "title": "Create senior-dev.md",
+          "description": "NEW src/plugins/builtins/personas/senior-dev.md. from `.agents/prompts/personas/`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/personas/senior-dev.md",
+          "sp": 2
+        },
+        {
+          "id": "T056",
+          "title": "Create verification-gate.md",
+          "description": "NEW .specify/templates/verification-gate.md. from `.agents/templates/verification-gate.md`",
+          "status": "open",
+          "gateScript": "test -f .specify/templates/verification-gate.md",
+          "sp": 2
+        },
+        {
+          "id": "T057",
+          "title": "Create monorepo-context.md",
+          "description": "NEW .specify/templates/monorepo-context.md. from `.agents/templates/monorepo-context.md`",
+          "status": "open",
+          "gateScript": "test -f .specify/templates/monorepo-context.md",
+          "sp": 2
+        },
+        {
+          "id": "T058",
+          "title": "Create e2e-patterns.md",
+          "description": "NEW .specify/templates/e2e-patterns.md. from `.agents/templates/e2e-patterns.md`",
+          "status": "open",
+          "gateScript": "test -f .specify/templates/e2e-patterns.md",
+          "sp": 2
+        },
+        {
+          "id": "T059",
+          "title": "Modify skill-runtime.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. remove `.agents/skills/` symbolic log path at L125",
+          "status": "open",
+          "gateScript": "test -f src/plugins/skill-runtime.ts",
+          "sp": 1
+        },
+        {
+          "id": "T060",
+          "title": "Modify slack-agent.ts",
+          "description": "MODIFY src/server/slack-agent.ts. remove `.agents/workflows/` string check at L26",
+          "status": "open",
+          "gateScript": "test -f src/server/slack-agent.ts",
+          "sp": 1
+        },
+        {
+          "id": "T061",
+          "title": "Modify AGENTS.md",
+          "description": "MODIFY AGENTS.md. `.agents/rules/` → `.gwrk/rules/`",
+          "status": "open",
+          "gateScript": "test -f AGENTS.md",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 40,
       "doneWhen": [
         "`gwrk init` creates `.gwrk/rules/` with `operating-model.md` and `workspace.md`",
         "All 15 `gwrk-*` workflows resolve from `builtins/workflows/` (verified by TR-P10-002)",
@@ -389,7 +614,7 @@
       "title": "Research CLI (R006)",
       "tasks": [
         {
-          "id": "T034",
+          "id": "T062",
           "title": "Create research.ts",
           "description": "NEW src/commands/research.ts. handler for `gwrk define research`. Tests: src/commands/research.test.ts",
           "status": "open",
@@ -397,7 +622,7 @@
           "sp": 2
         },
         {
-          "id": "T035",
+          "id": "T063",
           "title": "Create research-scaffold.ts",
           "description": "NEW src/engine/research-scaffold.ts. scaffold logic for R0XX numbering and brief generation",
           "status": "open",
@@ -415,7 +640,7 @@
       "title": "Methodology Dispatch (R006)",
       "tasks": [
         {
-          "id": "T036",
+          "id": "T064",
           "title": "Modify research.ts",
           "description": "MODIFY src/commands/research.ts. add `--run` flag and dispatch logic. Tests: src/commands/research-dispatch.test.ts",
           "status": "open",
@@ -423,7 +648,7 @@
           "sp": 1
         },
         {
-          "id": "T037",
+          "id": "T065",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml. builtin methodology",
           "status": "open",
@@ -431,7 +656,7 @@
           "sp": 2
         },
         {
-          "id": "T038",
+          "id": "T066",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md. builtin methodology",
           "status": "open",
@@ -439,7 +664,7 @@
           "sp": 2
         },
         {
-          "id": "T039",
+          "id": "T067",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml. builtin methodology",
           "status": "open",
@@ -447,7 +672,7 @@
           "sp": 2
         },
         {
-          "id": "T040",
+          "id": "T068",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md. builtin methodology",
           "status": "open",
@@ -455,7 +680,7 @@
           "sp": 2
         },
         {
-          "id": "T041",
+          "id": "T069",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml. builtin methodology",
           "status": "open",
@@ -463,7 +688,7 @@
           "sp": 2
         },
         {
-          "id": "T042",
+          "id": "T070",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md. builtin methodology",
           "status": "open",
@@ -481,7 +706,7 @@
       "title": "Grounding Injection (ADR-009)",
       "tasks": [
         {
-          "id": "T043",
+          "id": "T071",
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. `dispatchToAgent` context injection logic. Tests: src/engine/agent.test.ts",
           "status": "open",
@@ -489,7 +714,7 @@
           "sp": 1
         },
         {
-          "id": "T044",
+          "id": "T072",
           "title": "Modify init.ts",
           "description": "MODIFY src/commands/init.ts. scaffold `.gwrk/ontology` and `.gwrk/perspective` directories",
           "status": "open",
@@ -506,8 +731,33 @@
     {
       "id": "phase-14",
       "title": ".agents/ Deletion & Verification (ADR-007)",
-      "tasks": [],
-      "sp_estimate": 0,
+      "tasks": [
+        {
+          "id": "T073",
+          "title": "Modify ",
+          "description": "DELETE .agents/. entire directory tree — 39 files",
+          "status": "open",
+          "gateScript": "test -f .agents/",
+          "sp": 1
+        },
+        {
+          "id": "T074",
+          "title": "Modify migrate.ts",
+          "description": "MODIFY src/plugins/migrate.ts. add deprecation warning if `.agents/` detected — advise `gwrk init`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/migrate.ts",
+          "sp": 1
+        },
+        {
+          "id": "T075",
+          "title": "Modify drift-detector.ts",
+          "description": "MODIFY src/engine/drift-detector.ts. remove `.agents/` artifact check at L24-52 — directory no longer exists",
+          "status": "open",
+          "gateScript": "test -f src/engine/drift-detector.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 3,
       "doneWhen": [
         "`.agents/` directory does not exist in the repository",
         "`git ls-files .agents/` returns empty",
