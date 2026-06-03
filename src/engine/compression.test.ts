@@ -333,8 +333,8 @@ describe("FR-014: computeLeadingIndicators", () => {
         all: vi.fn().mockImplementation((featureId) => {
           if (featureId === "feat-a") {
             return [
-              { task_id: "T001", completions: 1 },
-              { task_id: "T002", completions: 2 },
+              { task_id: "T001", attempts: 1 },
+              { task_id: "T002", attempts: 2 },
             ];
           }
           return [];

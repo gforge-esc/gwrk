@@ -27,27 +27,34 @@ export function computeLeadingIndicators(
   const db = getDb();
 
   // 1. Convergence
-  // We query history to see how many times each task in this feature/project
-  // transitioned to 'completed'. Each such transition represents a successful
-  // implementation attempt.
-  // We relax from_status check to catch all transitions to completed.
-  const taskCompletions = db
+  // We estimate attempts per task by counting how many runs started before the task was completed.
+  const taskStats = db
     .prepare(
       `
-    SELECT task_id, COUNT(*) as completions
-    FROM history
-    WHERE feature_id = ? AND project_id = ? AND to_status = 'completed' AND (task_id LIKE 'T%' OR task_id LIKE 'US%')
-    GROUP BY task_id
+    SELECT
+      h.task_id,
+      (
+        SELECT COUNT(*)
+        FROM runs r
+        WHERE r.feature_id = h.feature_id
+          AND r.project_id = h.project_id
+          AND r.command IN ('implement', 'ship')
+          AND r.started_at <= h.timestamp
+      ) as attempts
+    FROM history h
+    WHERE h.feature_id = ?
+      AND h.project_id = ?
+      AND h.to_status = 'completed'
+      AND (h.task_id LIKE 'T%' OR h.task_id LIKE 'US%')
   `,
     )
-    .all(featureId, projectId) as { task_id: string; completions: number }[];
+    .all(featureId, projectId) as { task_id: string; attempts: number }[];
 
-  const taskCount = taskCompletions.length || 1;
-  const firstPassTasks = taskCompletions.filter((t) => t.completions === 1)
-    .length;
+  const taskCount = taskStats.length || 1;
+  const firstPassTasks = taskStats.filter((t) => t.attempts === 1).length;
   const firstPassRate = (firstPassTasks / taskCount) * 100;
   const avgAttempts =
-    taskCompletions.reduce((sum, t) => sum + t.completions, 0) / taskCount;
+    taskStats.reduce((sum, t) => sum + t.attempts, 0) / taskCount;
 
   // 2. Density
   // Aggregate stats from the runs table for this feature.

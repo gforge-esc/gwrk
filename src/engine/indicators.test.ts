@@ -19,9 +19,9 @@ describe("FR-014: computeLeadingIndicators", () => {
 
     // Mock convergence query
     mockDb.all.mockReturnValue([
-      { task_id: "T001", completions: 1 },
-      { task_id: "T002", completions: 2 },
-      { task_id: "T003", completions: 1 },
+      { task_id: "T001", attempts: 1 },
+      { task_id: "T002", attempts: 2 },
+      { task_id: "T003", attempts: 1 },
     ]);
 
     // Mock density run stats query
