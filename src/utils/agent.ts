@@ -354,6 +354,7 @@ export interface TaskDispatch {
   workflow?: string;
   featureDir?: string;
   quiet?: boolean;
+  dryRun?: boolean;
 }
 
 /**
@@ -488,9 +489,51 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     }
   }
 
+  // ADR-009: Inject project knowledge documents (grounding)
+  const workDir = task.workDir || projectRoot;
+  const groundingFiles: Array<{ path: string; tag: string }> = [
+    { path: path.join(workDir, ".gwrk/ontology/domain.md"), tag: "domain_ontology" },
+    { path: path.join(workDir, ".gwrk/perspective/hierarchy.md"), tag: "information_hierarchy" },
+    { path: path.join(workDir, ".gwrk/perspective/ux-posture.md"), tag: "ux_posture" },
+  ];
+
+  let grounding = "";
+  for (const { path: filePath, tag } of groundingFiles) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+        if (!task.quiet) {
+          process.stdout.write(
+            `${DIM}  → Grounding: <${tag}> injected${RESET}\n`,
+          );
+        }
+      } catch (err) {
+        if (!task.quiet) {
+          process.stdout.write(
+            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
+          );
+        }
+      }
+    }
+  }
+
+  if (grounding) {
+    dispatch.stdin = `${grounding}${dispatch.stdin}`;
+  }
+
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
   if (dispatch.stdin && !dispatch.stdin.includes("<command_safety>")) {
     dispatch.stdin = `${COMMAND_SAFETY_BLOCK}\n\n${dispatch.stdin}`;
+  }
+
+  if (task.dryRun) {
+    return {
+      exitCode: 0,
+      stdout: dispatch.stdin,
+      stderr: "",
+      durationS: 0,
+    };
   }
 
   const opts: DispatchOptions = {
