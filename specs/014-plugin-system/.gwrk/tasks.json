@@ -1,10 +1,10 @@
 {
   "featureId": "014-plugin-system",
-  "createdAt": "2026-05-29T18:51:39.750Z",
+  "createdAt": "2026-06-03T12:02:57.033Z",
   "generatedFrom": {
     "plan": {
-      "hash": "1232c068c501cc87343573c88611753afbb59f25a353272e6aaf1ee693f2d9d1",
-      "modifiedAt": "2026-05-29T16:58:11.731Z"
+      "hash": "09e7a416da312bf6b4d842dfbcb58704548650015faa55d82f1173f93b3137a3",
+      "modifiedAt": "2026-06-03T02:40:04.158Z"
     }
   },
   "phases": [
@@ -14,78 +14,38 @@
       "tasks": [
         {
           "id": "T001",
-          "title": "Implement src/plugins/manifest.ts",
-          "description": "NEW: Zod schemas for Skill, Agent, and Workflow manifests",
+          "title": "Create manifest.ts",
+          "description": "NEW src/plugins/manifest.ts. Zod schemas for Skill, Agent, and Workflow manifests. Tests: src/plugins/manifest.test.ts",
           "status": "open",
-          "gateScript": "gates/T001-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/manifest.test.ts",
+          "sp": 2
         },
         {
           "id": "T002",
-          "title": "Implement src/plugins/loader.ts",
-          "description": "NEW: Plugin scanner, registry, and resolution engine",
+          "title": "Create loader.ts",
+          "description": "NEW src/plugins/loader.ts. Plugin scanner, registry, and resolution engine. Tests: src/plugins/loader.test.ts",
           "status": "open",
-          "gateScript": "gates/T002-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/loader.test.ts",
+          "sp": 2
         },
         {
           "id": "T003",
-          "title": "Implement src/commands/plugin.ts",
-          "description": "NEW: `gwrk plugin list/install/remove/disable/enable` handlers",
+          "title": "Create plugin.ts",
+          "description": "NEW src/commands/plugin.ts. `gwrk plugin list/install/remove/disable/enable` handlers. Tests: src/plugins/manifest.test.ts",
           "status": "open",
-          "gateScript": "gates/T003-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/manifest.test.ts",
+          "sp": 2
         },
         {
           "id": "T004",
-          "title": "Implement src/utils/config.ts",
-          "description": "MODIFY: Add support for reading `~/.gwrk/plugins/` paths",
+          "title": "Modify config.ts",
+          "description": "MODIFY src/utils/config.ts. Add support for reading `~/.gwrk/plugins/` paths",
           "status": "open",
-          "gateScript": "gates/T004-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T005",
-          "title": "Implement src/plugins/manifest.test.ts",
-          "description": "NEW: Unit tests for manifest validation",
-          "status": "open",
-          "gateScript": "gates/T005-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T006",
-          "title": "Implement src/plugins/loader.test.ts",
-          "description": "NEW: Unit tests for resolution order",
-          "status": "open",
-          "gateScript": "gates/T006-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T007",
-          "title": "Implement src/commands/plugin.test.ts",
-          "description": "NEW: Integration tests for plugin CLI",
-          "status": "open",
-          "gateScript": "gates/T007-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T008",
-          "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T008-gate.sh",
-          "sp": 0,
-          "classification": "noop"
+          "gateScript": "test -f src/utils/config.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 7,
       "doneWhen": [
         "`pnpm vitest run src/plugins/loader.test.ts` exits 0"
       ]
@@ -95,61 +55,31 @@
       "title": "Skill Runtime (Layer 2)",
       "tasks": [
         {
-          "id": "T009",
-          "title": "Implement src/plugins/skill-runtime.ts",
-          "description": "NEW: Atomic/Compound assembly and execution logic",
+          "id": "T005",
+          "title": "Create skill-runtime.ts",
+          "description": "NEW src/plugins/skill-runtime.ts. Atomic/Compound assembly and execution logic. Tests: src/plugins/skill-runtime.test.ts",
           "status": "open",
-          "gateScript": "gates/T009-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/skill-runtime.test.ts",
+          "sp": 2
         },
         {
-          "id": "T010",
-          "title": "Implement src/commands/skill.ts",
-          "description": "NEW: `gwrk skill <name>` command handler",
+          "id": "T006",
+          "title": "Create skill.ts",
+          "description": "NEW src/commands/skill.ts. `gwrk skill <name>` command handler. Tests: src/plugins/skill-runtime.test.ts",
           "status": "open",
-          "gateScript": "gates/T010-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/skill-runtime.test.ts",
+          "sp": 2
         },
         {
-          "id": "T011",
-          "title": "Implement src/utils/agent-layer.ts",
-          "description": "MODIFY: Support ANSI stripping and binary guards for skill output",
+          "id": "T007",
+          "title": "Modify agent-layer.ts",
+          "description": "MODIFY src/utils/agent-layer.ts. Support ANSI stripping and binary guards for skill output",
           "status": "open",
-          "gateScript": "gates/T011-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T012",
-          "title": "Implement src/plugins/skill-runtime.test.ts",
-          "description": "NEW: Unit tests for prompt assembly",
-          "status": "open",
-          "gateScript": "gates/T012-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T013",
-          "title": "Implement src/commands/skill.test.ts",
-          "description": "NEW: Integration tests for skill piping",
-          "status": "open",
-          "gateScript": "gates/T013-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T014",
-          "title": "Implement test strategy for Phase 2",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T014-gate.sh",
-          "sp": 0,
-          "classification": "noop"
+          "gateScript": "test -f src/utils/agent-layer.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 5,
       "doneWhen": [
         "`echo \"test\" | gwrk skill narrative` (mocked) exits 0 with signal on stderr"
       ]
@@ -159,70 +89,39 @@
       "title": "Agent Backend Adapters (Layer 1 - ADR-006)",
       "tasks": [
         {
-          "id": "T015",
-          "title": "Implement src/plugins/builtins/agents/index.ts",
-          "description": "NEW: Static registry of built-in adapters",
+          "id": "T008",
+          "title": "Create index.ts",
+          "description": "NEW src/plugins/builtins/agents/index.ts. Static registry of built-in adapters",
           "status": "open",
-          "gateScript": "gates/T015-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "test -f src/plugins/builtins/agents/index.ts",
+          "sp": 2
         },
         {
-          "id": "T016",
-          "title": "Implement src/plugins/builtins/agents/claude/adapter.ts`, `gemini/adapter.ts`, `codex/adapter.ts",
-          "description": "NEW: Adapters",
+          "id": "T009",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. Replace spawn logic with `AgentBackend.dispatch()`. Tests: src/plugins/agent-adapter.test.ts",
           "status": "open",
-          "gateScript": "gates/T016-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/agent-adapter.test.ts",
+          "sp": 1
         },
         {
-          "id": "T017",
-          "title": "Implement src/utils/agent.ts",
-          "description": "MODIFY: Replace spawn logic with `AgentBackend.dispatch(",
+          "id": "T010",
+          "title": "Create sync-context.ts",
+          "description": "NEW src/commands/sync-context.ts. `gwrk plugin sync-context` handler",
           "status": "open",
-          "gateScript": "gates/T017-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "test -f src/commands/sync-context.ts",
+          "sp": 2
         },
         {
-          "id": "T018",
-          "title": "Implement src/commands/sync-context.ts",
-          "description": "NEW: `gwrk plugin sync-context` handler",
+          "id": "T011",
+          "title": "Create 003-agent-context.sql",
+          "description": "NEW src/db/migrations/003-agent-context.sql. Track sync state in SQLite",
           "status": "open",
-          "gateScript": "gates/T018-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T019",
-          "title": "Implement src/db/migrations/003-agent-context.sql",
-          "description": "NEW: Track sync state in SQLite",
-          "status": "open",
-          "gateScript": "gates/T019-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T020",
-          "title": "Implement src/plugins/agent-adapter.test.ts",
-          "description": "NEW: Verify exit normalization",
-          "status": "open",
-          "gateScript": "gates/T020-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T021",
-          "title": "Implement test strategy for Phase 3",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T021-gate.sh",
-          "sp": 0,
-          "classification": "noop"
+          "gateScript": "test -f src/db/migrations/003-agent-context.sql",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 7,
       "doneWhen": [
         "`gwrk plugin sync-context` generates context files with boundary markers"
       ]
@@ -232,52 +131,31 @@
       "title": "Antigravity (agy) Adapter",
       "tasks": [
         {
-          "id": "T022",
-          "title": "Implement src/plugins/builtins/agents/agy/adapter.ts",
-          "description": "NEW: `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`",
+          "id": "T012",
+          "title": "Create adapter.ts",
+          "description": "NEW src/plugins/builtins/agents/agy/adapter.ts. `AgyAdapter` implementing `AgentBackend` — `--print`, `--dangerously-skip-permissions`, `AGENTS.md`. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
           "status": "open",
-          "gateScript": "gates/T022-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/builtins/agents/agy/adapter.test.ts",
+          "sp": 2
         },
         {
-          "id": "T023",
-          "title": "Implement src/plugins/builtins/agents/agy/adapter.test.ts",
-          "description": "NEW: Unit tests for dispatch, parseResult, syncGovernance, isAvailable",
+          "id": "T013",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/plugins/builtins/agents/index.ts. Register `AgyAdapter` in `BUILTIN_AGENTS`",
           "status": "open",
-          "gateScript": "gates/T023-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "test -f src/plugins/builtins/agents/index.ts",
+          "sp": 1
         },
         {
-          "id": "T024",
-          "title": "Implement src/plugins/builtins/agents/index.ts",
-          "description": "MODIFY: Register `AgyAdapter` in `BUILTIN_AGENTS`",
+          "id": "T014",
+          "title": "Modify router.ts",
+          "description": "MODIFY src/engine/router.ts. Add `agy` to fallback chain after `gemini`",
           "status": "open",
-          "gateScript": "gates/T024-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T025",
-          "title": "Implement src/engine/router.ts",
-          "description": "MODIFY: Add `agy` to fallback chain after `gemini`",
-          "status": "open",
-          "gateScript": "gates/T025-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T026",
-          "title": "Implement test strategy for Phase 4",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T026-gate.sh",
-          "sp": 0,
-          "classification": "noop"
+          "gateScript": "test -f src/engine/router.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 4,
       "doneWhen": [
         "`pnpm vitest run src/plugins/builtins/agents/agy/adapter.test.ts` exits 0",
         "`pnpm biome check src/plugins/builtins/agents/agy/adapter.ts` exits 0"
@@ -288,61 +166,31 @@
       "title": "WorkflowRuntime (Layer 2.5 - F014-R)",
       "tasks": [
         {
-          "id": "T027",
-          "title": "Implement src/plugins/workflow-runtime.ts",
-          "description": "NEW: Resolve and execute workflows via agents",
+          "id": "T015",
+          "title": "Create workflow-runtime.ts",
+          "description": "NEW src/plugins/workflow-runtime.ts. Resolve and execute workflows via agents. Tests: src/plugins/workflow-runtime.test.ts",
           "status": "open",
-          "gateScript": "gates/T027-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/plugins/workflow-runtime.test.ts",
+          "sp": 2
         },
         {
-          "id": "T028",
-          "title": "Implement src/engine/intent-engine.ts",
-          "description": "NEW: Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`",
+          "id": "T016",
+          "title": "Create intent-engine.ts",
+          "description": "NEW src/engine/intent-engine.ts. Native FS mutation: `WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`. Tests: src/engine/intent-engine.test.ts",
           "status": "open",
-          "gateScript": "gates/T028-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/engine/intent-engine.test.ts",
+          "sp": 2
         },
         {
-          "id": "T029",
-          "title": "Implement src/plugins/builtins/workflows/",
-          "description": "NEW: 10 core workflows as built-in plugins",
+          "id": "T017",
+          "title": "Create ",
+          "description": "NEW src/plugins/builtins/workflows/. 10 core workflows as built-in plugins. Tests: src/plugins/workflow-runtime.test.ts",
           "status": "open",
-          "gateScript": "gates/T029-gate.sh",
-          "sp": 0,
-          "classification": "change"
-        },
-        {
-          "id": "T030",
-          "title": "Implement src/plugins/workflow-runtime.test.ts",
-          "description": "NEW: Verify JSON intent parsing and validation",
-          "status": "open",
-          "gateScript": "gates/T030-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T031",
-          "title": "Implement src/engine/intent-engine.test.ts",
-          "description": "NEW: Verify FS path containment and execution",
-          "status": "open",
-          "gateScript": "gates/T031-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T032",
-          "title": "Implement test strategy for Phase 5",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "open",
-          "gateScript": "gates/T032-gate.sh",
-          "sp": 0,
-          "classification": "noop"
+          "gateScript": "pnpm vitest run src/plugins/workflow-runtime.test.ts",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 6,
       "doneWhen": [
         "`gwrk-specify` workflow executes in memory and returns valid `WRITE_FILE` intents"
       ]
@@ -352,57 +200,15 @@
       "title": "DefineOrchestrator & CLI Rewiring",
       "tasks": [
         {
-          "id": "T033",
-          "title": "Implement src/engine/define-orchestrator.ts",
-          "description": "NEW: TS state machine for spec->plan->tasks loop",
-          "status": "completed",
-          "gateScript": "gates/T033-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-29T23:35:06.000Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T034",
-          "title": "Implement src/commands/specify.ts`, `plan.ts`, `tasks-generate.ts",
-          "description": "MODIFY: Rewire to `WorkflowRuntime` (REWIRED via DefineOrchestrator)",
-          "status": "completed",
-          "gateScript": "gates/T034-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-29T23:35:06.000Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T035",
-          "title": "Implement src/engine/define-orchestrator.test.ts",
-          "description": "NEW: Verify state transitions",
-          "status": "completed",
-          "gateScript": "gates/T035-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-29T23:35:06.000Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T036",
-          "title": "Implement src/commands/specify.test.ts`, `plan.test.ts",
-          "description": "MODIFY: E2E verification (Renamed plan.test.ts to define-plan.test.ts)",
-          "status": "completed",
-          "gateScript": "gates/T036-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-29T23:35:06.000Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T037",
-          "title": "Implement test strategy for Phase 6",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
-          "gateScript": "gates/T037-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-29T23:35:06.000Z",
-          "classification": "noop"
+          "id": "T018",
+          "title": "Create define-orchestrator.ts",
+          "description": "NEW src/engine/define-orchestrator.ts. TS state machine for spec->plan->tasks loop. Tests: src/engine/define-orchestrator.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/define-orchestrator.test.ts",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 2,
       "doneWhen": [
         "`gwrk specify my-feature` works in a directory without an `.agents/` folder"
       ]
@@ -412,57 +218,31 @@
       "title": "Provisioning & Migration",
       "tasks": [
         {
-          "id": "T038",
-          "title": "Implement src/commands/init.ts",
-          "description": "MODIFY: Provision `~/.gwrk/plugins/` with built-ins",
-          "status": "completed",
-          "gateScript": "gates/T038-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:45:00.000Z",
-          "classification": "greenfield"
+          "id": "T019",
+          "title": "Modify init.ts",
+          "description": "MODIFY src/commands/init.ts. Provision `~/.gwrk/plugins/` with built-ins",
+          "status": "open",
+          "gateScript": "test -f src/commands/init.ts",
+          "sp": 1
         },
         {
-          "id": "T039",
-          "title": "Implement src/plugins/migrate.ts",
-          "description": "NEW: `.agents/` to `~/.gwrk/plugins/` migration",
-          "status": "completed",
-          "gateScript": "gates/T039-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:45:00.000Z",
-          "classification": "greenfield"
+          "id": "T020",
+          "title": "Create migrate.ts",
+          "description": "NEW src/plugins/migrate.ts. `.agents/` to `~/.gwrk/plugins/` migration",
+          "status": "open",
+          "gateScript": "test -f src/plugins/migrate.ts",
+          "sp": 2
         },
         {
-          "id": "T040",
-          "title": "Implement src/plugins/seed.ts",
-          "description": "NEW: Taxonomy to atomic skills seeding",
-          "status": "completed",
-          "gateScript": "gates/T040-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:45:00.000Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T041",
-          "title": "Implement src/commands/init.test.ts",
-          "description": "Implement changes for src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T041-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:45:00.000Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T042",
-          "title": "Implement test strategy for Phase 7",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
-          "gateScript": "gates/T042-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:45:00.000Z",
-          "classification": "noop"
+          "id": "T021",
+          "title": "Create seed.ts",
+          "description": "NEW src/plugins/seed.ts. Taxonomy to atomic skills seeding",
+          "status": "open",
+          "gateScript": "test -f src/plugins/seed.ts",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 5,
       "doneWhen": [
         "`gwrk init` populates `~/.gwrk/plugins/workflows/` with 10 core workflows"
       ]
@@ -472,183 +252,116 @@
       "title": "Routing & Intelligence (ex-F008)",
       "tasks": [
         {
-          "id": "T043",
-          "title": "Implement src/engine/router.ts",
-          "description": "NEW: `selectBackend(`\n\nREVIEW FAIL (code): biome lint — lint/suspicious/noExplicitAny.\n  WHERE: src/engine/router.ts:84\n  EXPECTED: Specific type or Record<string, unknown>\n  ACTUAL: as any\n  FIX: Replace 'as any' with a proper type cast to Record<string, unknown> or update GwrkConfigSchema.\n\nREMEDIATION (UAT): `agy` adapter is implemented but not registered in `BUILTIN_AGENTS`. Router should support all built-in backends.\nMISSING GATE: gates/T043-gate.sh not found.",
+          "id": "T022",
+          "title": "Create router.ts",
+          "description": "NEW src/engine/router.ts. `selectBackend()` logic with fallback chains. Tests: src/engine/router.test.ts",
           "status": "open",
-          "gateScript": "gates/T043-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/engine/router.test.ts",
+          "sp": 2
         },
         {
-          "id": "T044",
-          "title": "Implement src/engine/quota.ts",
-          "description": "NEW: Quota probing per adapter\n\nREMEDIATION (UAT): `quotaProbe` is currently a stub for `rate-limited` and `exhausted` states. None of the built-in adapters implement the optional `checkQuota()` method required for non-binary status detection.\nMISSING GATE: gates/T044-gate.sh not found.",
+          "id": "T023",
+          "title": "Create quota.ts",
+          "description": "NEW src/engine/quota.ts. Quota probing per adapter",
           "status": "open",
-          "gateScript": "gates/T044-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "test -f src/engine/quota.ts",
+          "sp": 2
         },
         {
-          "id": "T045",
-          "title": "Implement src/db/migrations/004-routing-history.sql",
-          "description": "NEW: `routing_decisions` table\n\nREMEDIATION (UAT): Migration exists but verification gate is missing.\nMISSING GATE: gates/T045-gate.sh not found.",
+          "id": "T024",
+          "title": "Create 004-routing-history.sql",
+          "description": "NEW src/db/migrations/004-routing-history.sql. `routing_decisions` table",
           "status": "open",
-          "gateScript": "gates/T045-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "test -f src/db/migrations/004-routing-history.sql",
+          "sp": 2
         },
         {
-          "id": "T046",
-          "title": "Implement src/engine/router.test.ts",
-          "description": "NEW: Verify fallback chains and historical learning\n\nREMEDIATION (UAT): Unit tests pass but cover mocked quota behavior. Real-world verification with backend adapters is missing.\nMISSING GATE: gates/T046-gate.sh not found.",
+          "id": "T025",
+          "title": "Modify status.ts",
+          "description": "MODIFY src/commands/status.ts. Include backend availability in status",
           "status": "open",
-          "gateScript": "gates/T046-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T047",
-          "title": "Implement src/commands/status.ts",
-          "description": "MODIFY: Include backend availability in status\n\nREVIEW FAIL (code): biome lint — lint/suspicious/noExplicitAny.\n  WHERE: src/commands/status.ts:48\n  EXPECTED: Specific interface for status data\n  ACTUAL: const statusData: any\n  FIX: Define a proper interface for status data and use it instead of 'any'.\n\nREMEDIATION (UAT): Manpages for `gwrk status` (gwrk-status.1) are missing from the build output as required by the UAT scope.\nMISSING GATE: gates/T047-gate.sh not found.",
-          "status": "open",
-          "gateScript": "gates/T047-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T048",
-          "title": "Implement test strategy for Phase 8",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREMEDIATION (UAT): Overall phase test coverage is incomplete regarding real-world quota probing and manpage verification.\nMISSING GATE: gates/T048-gate.sh not found.",
-          "status": "open",
-          "gateScript": "gates/T048-gate.sh",
-          "sp": 0,
-          "classification": "noop"
+          "gateScript": "test -f src/commands/status.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 7,
       "doneWhen": [
-        "`gwrk status` correctly identifies unavailable backends via quota probing"
-      ]
-    },
-    {
-      "id": "phase-09",
-      "title": "A: Review Plugin Layer (Layer 3 — First Extension) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T049",
-          "title": "Implement test strategy for Phase 9",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
-          "gateScript": "gates/T049-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:50:51.000Z",
-          "classification": "noop"
-        }
-      ],
-      "sp_estimate": 0,
-      "doneWhen": [
+        "`gwrk status` correctly identifies unavailable backends via quota probing",
         "`ShipOrchestrator` no longer hardcodes workflow paths — resolves via `ReviewPlugin`",
         "Post-dispatch validation reverts any cross-phase task re-opens",
         "`.gwrkrc.json` `review` field selects active review strategy"
       ]
     },
     {
-      "id": "phase-10",
+      "id": "phase-09",
       "title": "Enforcement Skills (FR-014 / US-016)",
       "tasks": [
         {
-          "id": "T050",
-          "title": "Implement src/plugins/builtins/skills/gwrk-conventions/SKILL.md",
-          "description": "NEW: valid task statuses, tasks.json Zod schema, commit identity rules, `.agents/` is legacy, file naming",
+          "id": "T026",
+          "title": "Create SKILL.md",
+          "description": "NEW src/plugins/builtins/skills/gwrk-conventions/SKILL.md. valid task statuses, tasks.json Zod schema, commit identity rules, `.agents/` is legacy, file naming",
           "status": "open",
-          "gateScript": "gates/T050-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T16:10:10.536Z",
-          "classification": "greenfield"
+          "gateScript": "test -f src/plugins/builtins/skills/gwrk-conventions/SKILL.md",
+          "sp": 2
         },
         {
-          "id": "T051",
-          "title": "Implement src/plugins/builtins/skills/gwrk-conventions/manifest.yaml",
-          "description": "NEW: `type: skill`, `tier: enforcement`, `scope: implementation`",
+          "id": "T027",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/skills/gwrk-conventions/manifest.yaml. `type: skill`, `tier: enforcement`, `scope: implementation`",
           "status": "open",
-          "gateScript": "gates/T051-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:55:00.000Z",
-          "classification": "change"
+          "gateScript": "test -f src/plugins/builtins/skills/gwrk-conventions/manifest.yaml",
+          "sp": 2
         },
         {
-          "id": "T052",
-          "title": "Implement src/plugins/builtins/skills/typescript-standards/SKILL.md",
-          "description": "NEW: strict typing, no `any`, lint compliance, no `.js`/`.jsx` in `src/`, ESM conventions",
+          "id": "T028",
+          "title": "Create SKILL.md",
+          "description": "NEW src/plugins/builtins/skills/typescript-standards/SKILL.md. strict typing, no `any`, lint compliance, no `.js`/`.jsx` in `src/`, ESM conventions",
           "status": "open",
-          "gateScript": "gates/T052-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:55:00.000Z",
-          "classification": "greenfield"
+          "gateScript": "test -f src/plugins/builtins/skills/typescript-standards/SKILL.md",
+          "sp": 2
         },
         {
-          "id": "T053",
-          "title": "Implement src/plugins/builtins/skills/typescript-standards/manifest.yaml",
-          "description": "NEW: `type: skill`, `tier: enforcement`, `scope: implementation`",
+          "id": "T029",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/skills/typescript-standards/manifest.yaml. `type: skill`, `tier: enforcement`, `scope: implementation`",
           "status": "open",
-          "gateScript": "gates/T053-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:55:00.000Z",
-          "classification": "change"
+          "gateScript": "test -f src/plugins/builtins/skills/typescript-standards/manifest.yaml",
+          "sp": 2
         },
         {
-          "id": "T054",
-          "title": "Implement src/plugins/skill-runtime.ts",
-          "description": "MODIFY: add `resolveEnforcementSkills(projectRoot`",
+          "id": "T030",
+          "title": "Modify skill-runtime.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. add `resolveEnforcementSkills(projectRoot)` — scans builtins, global, and project-local for `tier: enforcement` manifests, returns SKILL.md content",
           "status": "open",
-          "gateScript": "gates/T054-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T16:15:13.225Z",
-          "classification": "greenfield"
+          "gateScript": "test -f src/plugins/skill-runtime.ts",
+          "sp": 1
         },
         {
-          "id": "T055",
-          "title": "Implement src/plugins/manifest.ts",
-          "description": "MODIFY: add `tier: enforcement` to `SkillManifestSchema`, add `scope` field",
+          "id": "T031",
+          "title": "Modify manifest.ts",
+          "description": "MODIFY src/plugins/manifest.ts. add `tier: enforcement` to `SkillManifestSchema`, add `scope` field",
           "status": "open",
-          "gateScript": "gates/T055-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:55:00.000Z",
-          "classification": "greenfield"
+          "gateScript": "test -f src/plugins/manifest.ts",
+          "sp": 1
         },
         {
-          "id": "T056",
-          "title": "Implement src/utils/agent.ts",
-          "description": "MODIFY: call `resolveEnforcementSkills(`",
+          "id": "T032",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. call `resolveEnforcementSkills()` during dispatch context assembly, inject into `<code_quality>` section",
           "status": "open",
-          "gateScript": "gates/T056-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T16:17:17.721Z",
-          "classification": "greenfield"
+          "gateScript": "test -f src/utils/agent.ts",
+          "sp": 1
         },
         {
-          "id": "T057",
-          "title": "Implement src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
-          "description": "MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
+          "id": "T033",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
           "status": "open",
-          "gateScript": "gates/T057-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T09:55:00.000Z",
-          "classification": "greenfield"
-        },
-        {
-          "id": "T058",
-          "title": "Implement test strategy for Phase 10",
-          "description": "Phase 10 test strategy — all 8 enforcement tests pass (TR-P9-001 through TR-P9-006). UAT scope leak caused CIRCUIT_BREAK (FM-2).",
-          "status": "open",
-          "gateScript": "gates/T058-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-05-31T16:28:00.000Z",
-          "classification": "noop"
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0,
+      "sp_estimate": 12,
       "doneWhen": [
         "`gwrk plugin list --type skills | grep typescript-standards` exits 0 with `tier: enforcement`",
         "`gwrk plugin list --type skills | grep gwrk-conventions` exits 0 with `tier: enforcement`",
@@ -659,64 +372,141 @@
       ]
     },
     {
+      "id": "phase-10",
+      "title": ".agents/ Migration to Builtins (ADR-007)",
+      "tasks": [],
+      "sp_estimate": 0,
+      "doneWhen": [
+        "`gwrk init` creates `.gwrk/rules/` with `operating-model.md` and `workspace.md`",
+        "All 15 `gwrk-*` workflows resolve from `builtins/workflows/` (verified by TR-P10-002)",
+        "No runtime source file contains a hardcoded `.agents/` filesystem path",
+        "`pnpm build` passes",
+        "`pnpm test` passes"
+      ]
+    },
+    {
       "id": "phase-11",
-      "title": ".agents/ Deletion & Verification (ADR-007)",
+      "title": "Research CLI (R006)",
       "tasks": [
         {
-          "id": "T059",
-          "title": "Implement AnyManifest",
-          "description": "`src/plugins/manifest.ts`\n\nREVIEW FAIL (gate): gates/T059-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T059-gate.sh\n  EXPECTED: Gate script must exist to verify AnyManifest implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
+          "id": "T034",
+          "title": "Create research.ts",
+          "description": "NEW src/commands/research.ts. handler for `gwrk define research`. Tests: src/commands/research.test.ts",
           "status": "open",
-          "gateScript": "gates/T059-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
+          "gateScript": "pnpm vitest run src/commands/research.test.ts",
+          "sp": 2
         },
         {
-          "id": "T060",
-          "title": "Implement JsonIntent",
-          "description": "`src/plugins/manifest.ts`\n\nREVIEW FAIL (gate): gates/T060-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T060-gate.sh\n  EXPECTED: Gate script must exist to verify JsonIntent implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
+          "id": "T035",
+          "title": "Create research-scaffold.ts",
+          "description": "NEW src/engine/research-scaffold.ts. scaffold logic for R0XX numbering and brief generation",
           "status": "open",
-          "gateScript": "gates/T060-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T061",
-          "title": "Implement TaskDispatch",
-          "description": "`src/utils/agent.ts`\n\nREVIEW FAIL (gate): gates/T061-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T061-gate.sh\n  EXPECTED: Gate script must exist to verify TaskDispatch implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
-          "status": "open",
-          "gateScript": "gates/T061-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T062",
-          "title": "Implement TaskResult",
-          "description": "`src/utils/agent.ts`\n\nREVIEW FAIL (gate): gates/T062-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T062-gate.sh\n  EXPECTED: Gate script must exist to verify TaskResult implementation.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
-          "status": "open",
-          "gateScript": "gates/T062-gate.sh",
-          "sp": 0,
-          "classification": "greenfield"
-        },
-        {
-          "id": "T063",
-          "title": "Implement .agents/skills/",
-          "description": "Skill migration via `gwrk plugin migrate`\n\nREVIEW FAIL (gate): gates/T063-gate.sh — FILE_MISSING.\n  WHERE: specs/014-plugin-system/gates/T063-gate.sh\n  EXPECTED: Gate script must exist to verify skill migration logic.\n  ACTUAL: File does not exist.\n  FIX: Author and commit the gate script.\n\nUAT FAIL (2026-05-31): Phase 11 cannot pass while verification gates are missing.",
-          "status": "open",
-          "gateScript": "gates/T063-gate.sh",
-          "sp": 0,
-          "classification": "noop"
-        },
-        {
-          "id": "T064",
-          "title": "Implement test strategy for Phase 11",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.\n\nREVIEW FAIL (test): e2e/014-plugin-system-phase-11.spec.ts — TR-P11-002 FAIL.\n  WHERE: e2e/014-plugin-system-phase-11.spec.ts:23\n  EXPECTED: expect(reviewPayloadType).toBe(\"full-prompt-md\")\n  ACTUAL: expect(\"skeleton\").toBe(\"full-prompt-md\")\n  FIX: Update test to verify actual PROMPT.md content delivery. Also install missing @playwright/test dependency.\n\nUAT FAIL (2026-05-31): e2e/014-plugin-system-phase-11.spec.ts is hardcoded to fail TR-P11-002. Total pnpm test failures (6) also indicate regressions in harvest and unfinished Phase 12 work.",
-          "status": "open",
-          "gateScript": "gates/T064-gate.sh",
-          "sp": 0,
-          "classification": "noop"
+          "gateScript": "test -f src/engine/research-scaffold.ts",
+          "sp": 2
         }
       ],
+      "sp_estimate": 4,
+      "doneWhen": [
+        "`gwrk define research test-initiative` creates `docs/research/RXXX-test-initiative/brief.md`"
+      ]
+    },
+    {
+      "id": "phase-12",
+      "title": "Methodology Dispatch (R006)",
+      "tasks": [
+        {
+          "id": "T036",
+          "title": "Modify research.ts",
+          "description": "MODIFY src/commands/research.ts. add `--run` flag and dispatch logic. Tests: src/commands/research-dispatch.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/commands/research-dispatch.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T037",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml. builtin methodology",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-technical/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T038",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md. builtin methodology",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-technical/PROMPT.md",
+          "sp": 2
+        },
+        {
+          "id": "T039",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml. builtin methodology",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-ontology/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T040",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md. builtin methodology",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-ontology/PROMPT.md",
+          "sp": 2
+        },
+        {
+          "id": "T041",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml. builtin methodology",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-jtbd/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T042",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md. builtin methodology",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-research-jtbd/PROMPT.md",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 13,
+      "doneWhen": [
+        "`gwrk define research test-initiative --run` successfully executes the technical methodology plugin"
+      ]
+    },
+    {
+      "id": "phase-13",
+      "title": "Grounding Injection (ADR-009)",
+      "tasks": [
+        {
+          "id": "T043",
+          "title": "Modify agent.ts",
+          "description": "MODIFY src/utils/agent.ts. `dispatchToAgent` context injection logic. Tests: src/engine/agent.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/agent.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T044",
+          "title": "Modify init.ts",
+          "description": "MODIFY src/commands/init.ts. scaffold `.gwrk/ontology` and `.gwrk/perspective` directories",
+          "status": "open",
+          "gateScript": "test -f src/commands/init.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 2,
+      "doneWhen": [
+        "`gwrk init` creates `.gwrk/ontology` and `.gwrk/perspective` directories",
+        "`dispatchToAgent` logs show `<domain_ontology>` tags when file exists"
+      ]
+    },
+    {
+      "id": "phase-14",
+      "title": ".agents/ Deletion & Verification (ADR-007)",
+      "tasks": [],
       "sp_estimate": 0,
       "doneWhen": [
         "`.agents/` directory does not exist in the repository",
