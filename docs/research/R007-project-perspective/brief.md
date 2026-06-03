@@ -1,6 +1,6 @@
 # Research Initiative: R007 — Project Perspective & Enforcement Skills
 
-> **Status:** Brief — Open
+> **Status:** Draft Complete — Awaiting Review
 > **Consumer:** F014 Plugin System (enforcement skills, project overrides)
 > **Related:** R006 (pluginable research) — same plugin resolution chain, different concern
 > **Output:** `docs/research/R007-project-perspective/draft.md`

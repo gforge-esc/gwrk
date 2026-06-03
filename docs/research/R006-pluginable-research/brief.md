@@ -1,6 +1,6 @@
 # Research Initiative: R006 — Pluginable Research Workflow
 
-> **Status:** Brief — Open
+> **Status:** Draft Complete — Awaiting Review
 > **Consumer:** F014 Plugin System (enforcement skills, project overrides)
 > **Output:** `docs/research/R006-pluginable-research/draft.md`
 > **Origin:** Daily-driver audit session 2026-06-02, Section M decontamination
@@ -99,6 +99,7 @@ How does the research → spec handoff work mechanically? Options:
 
 ## Input Documents
 
+- `references/gonzo-feature-research-brief-v2.md` — Canonical research brief template (JTBD, information hierarchy, domain ontology, agentic prompts)
 - `src/plugins/builtins/workflows/gwrk-research/PROMPT.md` — Current research workflow
 - `specs/014-plugin-system/spec.md` — Plugin system spec (US-016, FR-014 enforcement skills)
 - `docs/research/R001-*/brief.md` through `R005-*/brief.md` — Existing research briefs as precedent
