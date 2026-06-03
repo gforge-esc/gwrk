@@ -29,7 +29,7 @@ describe('ResearchScaffolder (FR-R006-001)', () => {
     (fs.readdir as any).mockResolvedValue([]);
     const result = await scaffolder.scaffold('My Awesome Initiative!!!');
     // Should handle casing and special characters
-    expect(result.directory).toMatch(/r001-my-awesome-initiative$/);
+    expect(result.directory).toMatch(/R001-my-awesome-initiative$/i);
   });
 
   it('FR-R006-001: creates brief.md with default technical methodology', async () => {

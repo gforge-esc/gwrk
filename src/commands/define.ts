@@ -18,6 +18,7 @@ import { planCommand as definePlanCommand } from "./define-plan.js";
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 import { testsGenerateCommand } from "./tests-generate.js";
+import { researchCommand } from "./research.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -180,3 +181,4 @@ defineCommand.addCommand(specifyCommand); // gwrk define spec
 defineCommand.addCommand(definePlanCommand); // gwrk define plan
 defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
+defineCommand.addCommand(researchCommand); // gwrk define research
