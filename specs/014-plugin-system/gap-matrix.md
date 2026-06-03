@@ -1,11 +1,8 @@
-# Phase 13: Grounding Injection Gap Matrix
-
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
-| FR-L25-005 | `gwrk init` MUST provision core workflows and project grounding dirs | unit | src/commands/init.test.ts | ✅ | |
-| FR-L25-008 | `WorkflowRuntime` MUST dynamically inject project knowledge documents | unit | src/engine/agent.test.ts | ✅ | |
-| FR-ADR009-001 | Domain ontology MUST be injected before information hierarchy and UX posture | unit | src/engine/agent.test.ts | ✅ | |
-| US-014 | Provision Global Home | unit | src/commands/init.test.ts | ✅ | |
-| US-019 | Inject Domain Ontology and Posture | unit | src/engine/agent.test.ts | ✅ | |
-| TC-013 | Grounding Injection Order (ADR-009) | unit | src/engine/agent.test.ts | ✅ | |
-| TR-012 | Unit test `dispatchToAgent()` context injection logic | unit | src/engine/agent.test.ts | ✅ | |
+| FR-014 | Enforcement skills support `framework` manifest field | unit | `src/plugins/manifest.p15.red.test.ts` | ✅ | T013 |
+| FR-014 | `resolveEnforcementSkills` filters by `framework` | unit | `src/plugins/skill-runtime.p15.red.test.ts` | ✅ | T013 |
+| FR-014 | `resolveEnforcementSkills` filters BUILTIN skills by language | unit | `src/plugins/skill-runtime.p15.red.test.ts` | ✅ | T013 |
+| R007 | Project-local enforcement skills ALWAYS load (skip language/framework filtering) | unit | `src/plugins/skill-runtime.p15.red.test.ts` | ✅ | T013 |
+| US-016 | Python project doesn't receive TypeScript standards in `plugin list` | e2e | `e2e/014-plugin-system-phase-15.spec.ts` | ✅ | T013 |
+| US-016 | `gwrk plugin list --project` correctly applies profile filtering | integration | `src/commands/plugin.p15.red.test.ts` | ✅ | T013 |
