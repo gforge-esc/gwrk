@@ -1,6 +1,6 @@
 # Research Initiative: R007 — Project Perspective & Enforcement Skills
 
-> **Status:** Draft Complete — Awaiting Review
+> **Status:** Active — Feature A shipped, Feature B + ontology construction in progress
 > **Consumer:** F014 Plugin System (enforcement skills, project overrides)
 > **Related:** R006 (pluginable research) — same plugin resolution chain, different concern
 > **Output:** `docs/research/R007-project-perspective/draft.md`
@@ -146,6 +146,23 @@ The current builtins (`gwrk-conventions`, `typescript-standards`) are gwrk-speci
 - Should `gwrk-conventions` be split into generic (commit messages, task management) vs. gwrk-specific (flamingo branding, spec conventions)?
 - Should `typescript-standards` only load when `profile.stack.language === "TypeScript"`?
 
+**Resolved:** `typescript-standards` now has `language: TypeScript` in its manifest. `resolveEnforcementSkills()` filters by profile. Shipped in Feature A.
+
+### Q6: Ontology construction as a define workflow
+
+ADR-009 shipped ontology *injection* (agent.ts reads `.gwrk/ontology/domain.md` at dispatch) and *scaffolding* (`gwrk init` creates empty dirs). But constructing an ontology is missing.
+
+The [ontology-construction-prompt.hbs](references/ontology-construction-prompt.hbs) is a 486-line structured methodology prompt — the same shape as R006's research methodology workflows. Constructing an ontology is structurally identical to running a research methodology:
+
+| | Research (R006) | Ontology Construction |
+|---|---|---|
+| CLI | `gwrk define research R00X --methodology jtbd --run` | `gwrk define ontology --run` |
+| Dispatch | `WorkflowRuntime.executeWorkflow('gwrk-research-jtbd', ...)` | `WorkflowRuntime.executeWorkflow('gwrk-ontology-construct', ...)` |
+| Source material | Reference docs | Codebase, specs, architecture docs |
+| Output | `draft.md` | `domain.md`, `hierarchy.md`, `ux-posture.md` |
+
+This needs to be part of the next round of shipping.
+
 ---
 
 ## Input Documents
@@ -171,10 +188,11 @@ The current builtins (`gwrk-conventions`, `typescript-standards`) are gwrk-speci
 
 ## Output Contract
 
-1. **`draft.md`** — Design document covering Q1-Q5 with recommendations
-2. **Profile → enforcement routing spec** — Matching algorithm for skill filtering
-3. **Project init scaffold** — What `gwrk init` should generate for a new project
-4. **Migration path** — How existing `gwrk-conventions` and `typescript-standards` evolve to support non-gwrk projects
+1. ~~**`draft.md`** — Design document covering Q1-Q5 with recommendations~~ ✅ Done
+2. ~~**Profile → enforcement routing spec** — Matching algorithm for skill filtering~~ ✅ Shipped (Feature A)
+3. **Ontology construction workflow** — `gwrk define ontology` CLI command + `gwrk-ontology-construct` methodology plugin. Reuses R006's WorkflowRuntime dispatch. See Q6.
+4. **Project init scaffold** — What `gwrk init` should generate for a new project
+5. **Migration path** — How existing `gwrk-conventions` and `typescript-standards` evolve to support non-gwrk projects
 
 
 # Notes from daily-driver-audit.md

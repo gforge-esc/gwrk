@@ -279,7 +279,9 @@ All detection is filesystem-based — config files and `devDependencies` lookups
 
 ### Proposal 2: Domain Ontology, Information Hierarchy, and UX Posture
 
-**Status: Implemented.** Decided in [ADR-009](../../docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md) and shipped via F014 Phase 13.
+#### 2a: Injection — Shipped
+
+Decided in [ADR-009](../../docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md) and shipped via F014 Phase 13.
 
 - **F014 spec** references it: FR-L25-008, US-019, TC-013, TR-012, SC-016 ([spec.md L251](../../specs/014-plugin-system/spec.md#L251))
 - **Code**: [agent.ts](../../src/utils/agent.ts) — `dispatchToAgent()` injects `<domain_ontology>`, `<information_hierarchy>`, `<ux_posture>` from `.gwrk/` if files exist
@@ -291,6 +293,29 @@ Three project knowledge layers, all optional, file-based, injected at dispatch:
 - `.gwrk/ontology/domain.md` — what things mean (classes, properties, relations, axioms, glossary)
 - `.gwrk/perspective/hierarchy.md` — what matters first (L0 Decision → L4 Recovery)
 - `.gwrk/perspective/ux-posture.md` — how actors experience the system (entry → closure)
+
+#### 2b: Construction — Not Shipped
+
+ADR-009 shipped the *plumbing* (injection) but completely missed the *faucet* (construction). The `.gwrk/ontology/domain.md` file is scaffolded as an empty directory — the user is expected to write it by hand. But constructing a domain ontology is an agent workflow, not a text editing exercise.
+
+The [ontology-construction-prompt.hbs](references/ontology-construction-prompt.hbs) demonstrates this: it's a 486-line structured prompt with persona, methodology (Five Primitives), source material injection, self-reflection checklist, and output schema. This is the same shape as a research methodology workflow.
+
+**Structural parallel with research (R006):**
+
+| Concern | Research (R006) | Ontology Construction |
+|---|---|---|
+| CLI | `gwrk define research R00X --methodology jtbd` | `gwrk define ontology` (proposed) |
+| Scaffold | `docs/research/R00X/` + brief + refs | `.gwrk/ontology/` + source material |
+| Methodology | `gwrk-research-jtbd` workflow plugin | `gwrk-ontology-construct` workflow plugin |
+| Source material | Reference docs, prior research | Codebase, specs, architecture docs |
+| Output artifact | `draft.md` | `domain.md`, `hierarchy.md`, `ux-posture.md` |
+| Dispatch | `WorkflowRuntime.executeWorkflow()` | Same mechanism |
+
+The construction workflow should:
+1. Scan the project for source material (specs, architecture docs, README, existing code patterns)
+2. Dispatch an agent with the ontology construction methodology prompt
+3. Produce `domain.md` following the Five Primitives schema (classes, properties, relations, axioms, glossary)
+4. Optionally produce `hierarchy.md` and `ux-posture.md` in the same pass
 
 Grounded in the [Gonzo Feature Research Brief v2](../R006-pluginable-research/references/gonzo-feature-research-brief-v2.md) (Sections 4-5, Pack C) and the [ontology-construction-prompt](references/ontology-construction-prompt.hbs).
 
@@ -381,11 +406,12 @@ if (profile && summary.source === "builtin" && manifest.language) {
 | Enforcement skills | **Implemented** | FR-014, US-016, skill-runtime.ts |
 | Project-local override | **Implemented** | US-016 AC3, PluginLoader |
 | Profile detection (type/language/layout) | **Implemented** | profile-detector.ts — detects TS, Python, Rust, JS, React, Next.js, Express |
-| Profile detection (quality posture) | **Proposed** | No code. Extends `ProjectProfile` with `quality.{styleGuide, formatter, linter, testHarness}`. |
-| Profile → enforcement routing | **Spec'd, not coded** | F014 spec L284-285 adds `language`/`framework` to manifest schema. manifest.ts has no language field yet. `resolveEnforcementSkills()` has no profile parameter. |
+| Profile → enforcement routing | **Implemented** | R007 Feature A. manifest.ts `language` field + `resolveEnforcementSkills(profile)` filter. `typescript-standards` tagged `language: TypeScript`. |
+| Profile detection (quality posture) | **Proposed** | No code. Extends `ProjectProfile` with `toolchain.{primary, styleGuide, testHarness}`. |
 | `toolchain` model | **Researched** | Not in spec, not in code. R007 research material. Convergence insight (Biome, Ruff) documented. |
 | Style guide landscape (7 languages) | **Researched** | Proposal 1 tables. Detection signals documented per ecosystem. |
 | Domain ontology injection | **Implemented** | ADR-009. agent.ts. F014 P13 shipped. Hardened with per-file try/catch. |
+| Ontology construction workflow | **Missing** | ADR-009 shipped injection but not construction. `gwrk init` scaffolds empty dirs. No `gwrk define ontology` command. Construction is the same shape as R006 research methodology dispatch. |
 | Init scaffolding (ontology/perspective) | **Implemented** | init.ts — `gwrk init` scaffolds `.gwrk/ontology/` and `.gwrk/perspective/` |
 | Architecture grounding | **Proposed** | No spec basis. gwrk uses it informally. |
 | Builtin split (generic/gwrk/ts) | **Proposed** | Backwards compatible. No spec change needed. |
@@ -396,9 +422,10 @@ if (profile && summary.source === "builtin" && manifest.language) {
 
 | Item | Status | Decision needed |
 |---|---|---|
-| `language`/`framework` manifest fields | Spec'd but not coded | Implement in manifest.ts + skill-runtime.ts. Small change — wires profile to routing. |
-| `toolchain` model (convergence, style guides) | Research complete | Ship `language` filter first? Toolchain informational-only? Or defer entirely? |
-| Builtin split (generic-conventions) | Proposed | Extract project-agnostic rules from gwrk-conventions. Requires `language` filter. |
-| Ontology: enforcement skill vs. just-a-file? | **Resolved** | Just-a-file won. ADR-009 implemented. Zero manifest changes. |
+| ~~`language`/`framework` manifest fields~~ | **Shipped** | ~~Implement in manifest.ts + skill-runtime.ts.~~ Done — `language` field + filter. |
+| Ontology construction workflow | **Next ship** | `gwrk define ontology` — reuse R006's WorkflowRuntime dispatch. Needs: CLI command, methodology workflow plugin, source material scanner. See Proposal 2b. |
+| `toolchain` model (convergence, style guides) | Research complete | Route or annotate? Different skill per toolchain, or one skill with context? |
+| Builtin split (generic-conventions) | Proposed | What generic content exists? Or skip and let `gwrk-conventions` stay universal? |
 | Profile quality detection: how deep? | Open | Detect style guide from config files (shallow) vs. parse ESLint extends chains (deep)? |
 | Architecture grounding: worth the new concept or premature? | Open | May be deferred indefinitely. |
+
