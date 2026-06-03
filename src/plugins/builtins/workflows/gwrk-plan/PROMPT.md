@@ -4,10 +4,18 @@
 **Pillar**: Definition (Clarity)
 
 <scope_constraints>
-- Create plan.md. If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
+- Create plan.md (new) or amend an existing plan.md (when the input starts with "AMEND"). If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
 - Do not create tasks.json (that's `gwrk define tasks`).
 - Do not implement any code.
 - Reference existing project structure from `docs/grounding/architecture.md`.
+
+**AMENDMENT MODE (when input starts with "AMEND existing plan"):**
+- Read the existing `plan.md` FIRST — understand what phases exist and their status.
+- PRESERVE all existing phases verbatim. Do NOT rewrite, renumber, or modify them.
+- APPEND new phases after the last existing phase, continuing the numbering sequence.
+- Update the Coverage Matrix to include new US/FR/TR items from the amended spec.
+- Update the Deferred Items section to move newly-planned items out of deferred.
+- If the amendment only changes existing phases (e.g., correcting a file path), make the minimal edit — do NOT regenerate the entire plan.
 </scope_constraints>
 
 ## Branch Discipline
