@@ -354,6 +354,7 @@ export interface TaskDispatch {
   workflow?: string;
   featureDir?: string;
   quiet?: boolean;
+  dryRun?: boolean;
 }
 
 /**
@@ -488,9 +489,57 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     }
   }
 
+  // ADR-009: Inject project knowledge documents (grounding)
+  const workDir = task.workDir || projectRoot;
+  const ontologyPath = path.join(workDir, ".gwrk/ontology/domain.md");
+  const hierarchyPath = path.join(workDir, ".gwrk/perspective/hierarchy.md");
+  const uxPath = path.join(workDir, ".gwrk/perspective/ux-posture.md");
+
+  let grounding = "";
+  if (fs.existsSync(ontologyPath)) {
+    const content = fs.readFileSync(ontologyPath, "utf-8");
+    grounding += `<domain_ontology>\n${content}\n</domain_ontology>\n\n`;
+    if (!task.quiet) {
+      process.stdout.write(
+        `${DIM}  → Grounding: <domain_ontology> injected${RESET}\n`,
+      );
+    }
+  }
+  if (fs.existsSync(hierarchyPath)) {
+    const content = fs.readFileSync(hierarchyPath, "utf-8");
+    grounding += `<information_hierarchy>\n${content}\n</information_hierarchy>\n\n`;
+    if (!task.quiet) {
+      process.stdout.write(
+        `${DIM}  → Grounding: <information_hierarchy> injected${RESET}\n`,
+      );
+    }
+  }
+  if (fs.existsSync(uxPath)) {
+    const content = fs.readFileSync(uxPath, "utf-8");
+    grounding += `<ux_posture>\n${content}\n</ux_posture>\n\n`;
+    if (!task.quiet) {
+      process.stdout.write(
+        `${DIM}  → Grounding: <ux_posture> injected${RESET}\n`,
+      );
+    }
+  }
+
+  if (grounding) {
+    dispatch.stdin = `${grounding}${dispatch.stdin}`;
+  }
+
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
   if (dispatch.stdin && !dispatch.stdin.includes("<command_safety>")) {
     dispatch.stdin = `${COMMAND_SAFETY_BLOCK}\n\n${dispatch.stdin}`;
+  }
+
+  if (task.dryRun) {
+    return {
+      exitCode: 0,
+      stdout: dispatch.stdin,
+      stderr: "",
+      durationS: 0,
+    };
   }
 
   const opts: DispatchOptions = {

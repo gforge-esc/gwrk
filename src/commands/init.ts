@@ -44,10 +44,12 @@ export const initCommand = new Command("init")
   .option("--layout <layout>", "Project layout (flat, src-nested, monorepo)")
   .option("--architecture <arch>", "Project architecture description")
   .option("--conventions <conv>", "Project coding conventions")
-  .action(async (options) => {
-    await withSignal("init", async () => {
-      const projectRoot = process.cwd();
-      const startTime = Date.now();
+  .action(initAction);
+
+export async function initAction(options: any) {
+  await withSignal("init", async () => {
+    const projectRoot = process.cwd();
+    const startTime = Date.now();
       const isInteractive = !options.nonInteractive && process.stdin.isTTY;
 
       banner("project init", {
@@ -228,11 +230,19 @@ export const initCommand = new Command("init")
           if (options.github) config.project.githubRepo = options.github;
         } else {
           // Initialize new project
-          const dirs = ["specs", ".gwrk/rules"];
+          const dirs = [
+            "specs",
+            ".gwrk/rules",
+            ".gwrk/ontology",
+            ".gwrk/perspective",
+          ];
           for (const dir of dirs) {
-            fs.mkdirSync(path.join(projectRoot, dir), { recursive: true });
+            try {
+              fs.mkdirSync(path.join(projectRoot, dir), { recursive: true });
+            } catch (e: any) {
+              if (e.code !== "EEXIST") throw e;
+            }
           }
-
           // Provision global plugins
           const globalPluginBase = path.join(os.homedir(), ".gwrk", "plugins");
           for (const type of ["skills", "agents", "workflows"]) {
@@ -392,4 +402,4 @@ export const initCommand = new Command("init")
         if (rl) rl.close();
       }
     });
-  });
+}
