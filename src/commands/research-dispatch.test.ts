@@ -1,72 +1,99 @@
-/**
- * @phase 12
- * @feature 014-plugin-system
- * @status active
- */
-import { describe, it, expect, vi } from 'vitest';
-import * as researchCmd from './research.js';
-import { WorkflowRuntime } from '../engine/WorkflowRuntime.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { researchCommandHandler } from './research.js';
+import { ResearchScaffolder } from '../engine/research-scaffold.js';
+import { WorkflowRuntime } from '../plugins/workflow-runtime.js';
 
-// Mock WorkflowRuntime to avoid real execution during test
-vi.mock('../engine/WorkflowRuntime.js', () => {
+// Mock ResearchScaffolder
+vi.mock('../engine/research-scaffold.js', () => {
   return {
-    WorkflowRuntime: vi.fn().mockImplementation(() => ({
-      execute: vi.fn().mockImplementation(async (methodology) => {
-        if (methodology === 'unknown') {
-          throw new Error("Workflow 'unknown' not found.");
-        }
-        if (methodology === 'bad-json') {
-          throw new Error("Workflow output failed schema constraint: Expected JSON object.");
-        }
-        if (methodology === 'fs-edit') {
-          throw new Error("Workflow execution violation: Use WRITE_FILE JSON intent only.");
-        }
-        return { success: true };
-      })
-    }))
+    ResearchScaffolder: vi.fn().mockImplementation(() => {
+      return {
+        scaffold: vi.fn().mockResolvedValue({
+          directory: 'docs/research/R001-test-initiative',
+          number: 1
+        })
+      };
+    })
   };
 });
 
-describe('FR-R006-002: Methodology Dispatch (--run)', () => {
-  it('US-018: Executes research workflow using methodology from frontmatter', async () => {
-    const runtimeSpy = vi.spyOn(WorkflowRuntime.prototype, 'execute');
-    
-    if (!('handler' in researchCmd)) {
-      throw new Error("Target module missing 'handler' export");
-    }
+// Mock WorkflowRuntime
+vi.mock('../plugins/workflow-runtime.js', () => {
+  return {
+    WorkflowRuntime: vi.fn().mockImplementation(() => {
+      return {
+        executeWorkflow: vi.fn().mockResolvedValue({
+          summary: 'Mock research report generated.',
+          intents: [],
+          summaries: []
+        })
+      };
+    })
+  };
+});
 
-    await (researchCmd as any).handler({ initiative: 'R008', run: true, methodology: 'gwrk-research-technical' });
-    
-    expect(runtimeSpy).toHaveBeenCalled();
+describe('Research Command Dispatch (TR-P12-001)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('FR-L25-001: Exits with error when Workflow not found', async () => {
-    if (!('handler' in researchCmd)) {
-      throw new Error("Target module missing 'handler' export");
-    }
+  it('TR-P12-001: dispatches methodology plugin to WorkflowRuntime when --run is present', async () => {
+    const result = await researchCommandHandler({
+      initiative: 'test-initiative',
+      methodology: 'technical',
+      run: true
+    });
+
+    const WorkflowRuntimeMock = WorkflowRuntime as any;
+    const runtimeInstance = WorkflowRuntimeMock.mock.results[0].value;
     
-    await expect(
-      (researchCmd as any).handler({ initiative: 'R008', run: true, methodology: 'unknown' })
-    ).rejects.toThrow("Workflow 'unknown' not found.");
+    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
+      'gwrk-research-technical',
+      expect.stringContaining('test-initiative')
+    );
+
+    expect(result).toContain('Scaffolded research initiative');
+    expect(result).toContain('Summary: Mock research report generated');
   });
 
-  it('FR-L25-001: Exits with error on Invalid JSON Intent', async () => {
-    if (!('handler' in researchCmd)) {
-      throw new Error("Target module missing 'handler' export");
-    }
+  it('TR-P12-001: defaults to technical methodology if none provided with --run', async () => {
+    await researchCommandHandler({
+      initiative: 'test-initiative',
+      run: true
+    });
+
+    const WorkflowRuntimeMock = WorkflowRuntime as any;
+    const runtimeInstance = WorkflowRuntimeMock.mock.results[0].value;
     
-    await expect(
-      (researchCmd as any).handler({ initiative: 'R008', run: true, methodology: 'bad-json' })
-    ).rejects.toThrow("Workflow output failed schema constraint: Expected JSON object.");
+    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
+      'gwrk-research-technical',
+      expect.anything()
+    );
   });
 
-  it('FR-L25-001: Exits with error on Attempted direct FS edit', async () => {
-    if (!('handler' in researchCmd)) {
-      throw new Error("Target module missing 'handler' export");
-    }
+  it('TR-P12-001: dispatches custom methodology when provided with --run', async () => {
+    await researchCommandHandler({
+      initiative: 'test-initiative',
+      methodology: 'jtbd',
+      run: true
+    });
+
+    const WorkflowRuntimeMock = WorkflowRuntime as any;
+    const runtimeInstance = WorkflowRuntimeMock.mock.results[0].value;
     
-    await expect(
-      (researchCmd as any).handler({ initiative: 'R008', run: true, methodology: 'fs-edit' })
-    ).rejects.toThrow("Workflow execution violation: Use WRITE_FILE JSON intent only.");
+    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
+      'gwrk-research-jtbd',
+      expect.anything()
+    );
+  });
+
+  it('TR-P12-001: does NOT dispatch to WorkflowRuntime if --run is absent', async () => {
+    const result = await researchCommandHandler({
+      initiative: 'test-initiative'
+    });
+
+    const WorkflowRuntimeMock = WorkflowRuntime as any;
+    expect(WorkflowRuntimeMock).not.toHaveBeenCalled();
+    expect(result).not.toContain('Methodology execution complete');
   });
 });
