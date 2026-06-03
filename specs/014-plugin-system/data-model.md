@@ -79,7 +79,23 @@ interface AgentManifest extends PluginBase {
 }
 ```
 
-### 1.5 Workflow Manifest (Layer 2.5 - F014-R)
+### 1.5 Enforcement Skill Manifest (FR-014 / R007)
+
+```typescript
+interface EnforcementSkillManifest extends PluginBase {
+  type: 'skill';
+  tier: 'enforcement';
+  scope: 'implementation' | 'review' | 'all';
+  language?: string;     // R007 Profile Filtering
+  framework?: string;    // R007 Profile Filtering
+  toolchain?: {
+    primary?: string;    // Convergence tool (e.g., "biome", "ruff")
+    test?: string;       // Test framework (e.g., "vitest", "pytest")
+  };
+}
+```
+
+### 1.6 Workflow Manifest (Layer 2.5 - F014-R)
 
 ```typescript
 interface WorkflowManifest extends PluginBase {
@@ -139,7 +155,27 @@ interface WorkflowOutput {
 
 ## 3. Project Configuration
 
-### 3.1 Local Overrides (`.gwrk/plugins.yaml`)
+### 3.1 Project Profile (F013 / R007 Update)
+
+```typescript
+interface ProjectProfile {
+  type: string;
+  stack?: {
+    language?: string;
+    framework?: string;
+    buildSystem?: string;
+  };
+  layout?: string;
+  _isGwrk?: boolean;
+  toolchain?: {
+    primary?: string;   // e.g., "biome", "ruff", "eslint", "cargo"
+    formatter?: string; // e.g., "prettier", "black"
+    test?: string;      // e.g., "vitest", "jest", "pytest"
+  };
+}
+```
+
+### 3.2 Local Overrides (`.gwrk/plugins.yaml`)
 
 ```yaml
 disable:
