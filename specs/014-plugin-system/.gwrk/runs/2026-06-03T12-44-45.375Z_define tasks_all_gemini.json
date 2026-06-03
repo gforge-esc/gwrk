@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-03T12:44:45.375Z_define_all",
+  "feature": "014-plugin-system",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-03T12:44:45.375Z",
+  "finishedAt": "2026-06-03T12:44:45.546Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "575208bcf79ba4303b1885b5ae6823ad50a796ae",
+  "gitBranch": "develop",
+  "digest": []
+}
