@@ -173,12 +173,36 @@ As a Principal Engineer, I want to override a built-in workflow by placing a cus
 1. **Given** local override exists, **When** `gwrk specify` is run, **Then**:
    - `gwrk specify dummy 2>&1 | grep "override"` exits 0
 
-### US-016 - Enforcement Skills for Code Quality with Language Filtering (Priority: P1)
+### US-016 - Enforcement Skills for Code Quality with Language Filtering (Priority: P1) — **SHIPPED**
 As a Principal Engineer, I want coding standards to be shipped as builtin enforcement skills and filtered by my project's language/framework profile, so that a Python project doesn't receive TypeScript standards.
 **Implements**: FR-014
 **Acceptance Scenarios**:
 1. **Given** a Python project, **When** an agent is dispatched, **Then**:
    - `gwrk plugin list --project --type skills | grep typescript-standards; echo $?` returns 1
+
+### US-020 - Define Project Ontology (Priority: P0)
+As a Principal Engineer, I want `gwrk define ontology` to scaffold the project knowledge structure, so that the agent has a clear understanding of the domain, hierarchy, and UX posture.
+**Implements**: FR-L25-009
+**Acceptance Scenarios**:
+1. **Given** a new project, **When** `gwrk define ontology` is run, **Then**:
+   - `ls .gwrk/ontology/domain.md` exits 0
+   - `ls .gwrk/perspective/hierarchy.md` exits 0
+   - `ls .gwrk/perspective/ux-posture.md` exits 0
+
+### US-021 - Automated Ontology Construction (Priority: P0)
+As a Principal Engineer, I want `gwrk define ontology --run` to construct the ontology using the Five Primitives methodology, so that the domain model is grounded in actual codebase and spec evidence.
+**Implements**: FR-L25-010, FR-L25-012
+**Acceptance Scenarios**:
+1. **Given** existing specs and code, **When** `gwrk define ontology --run` is run, **Then**:
+   - `grep "## Classes" .gwrk/ontology/domain.md` exits 0
+   - `grep "## Axioms" .gwrk/ontology/domain.md` exits 0
+
+### US-022 - Source Material Grounding for Ontology (Priority: P0)
+As a Principal Engineer, I want the ontology construction workflow to scan source material (codebase, specs, architecture docs), so that the model reflects the technical reality of the project.
+**Implements**: FR-L25-011
+**Acceptance Scenarios**:
+1. **Given** a project with `docs/grounding/architecture.md`, **When** `gwrk define ontology --run` is executed, **Then**:
+   - The agent output reflects concepts found in the architecture document.
 
 ### US-017 - Scaffold Research Initiative (Priority: P0)
 As a Principal Engineer, I want `gwrk define research "User Switching Behavior" --methodology jtbd` to scaffold a new research directory so that I have a structured brief ready to fill out.
@@ -228,7 +252,7 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-008**: Compound skills MUST be executable as a single LLM call. (Implements: US-006, US-007)
 - **FR-009**: Compound skill manifest MUST declare `composes`. (Implements: US-006)
 - **FR-010**: `gwrk skill --help` MUST list all installed skills. (Implements: US-008)
-- **FR-014**: System MUST ship builtin enforcement skills (`tier: enforcement`). Enforcement skills MUST support `language` and `framework` manifest fields. `resolveEnforcementSkills()` MUST filter built-in enforcement skills to match the detected `ProjectProfile` language/framework. Project-local enforcement skills MUST always load. (Implements: US-016)
+- **FR-014**: System MUST ship builtin enforcement skills (`tier: enforcement`). Enforcement skills MUST support `language` and `framework` manifest fields. `resolveEnforcementSkills()` MUST filter built-in enforcement skills to match the detected `ProjectProfile` language/framework. Project-local enforcement skills MUST always load. (Implements: US-016) — **SHIPPED**
 
 ### Migration & Seeding
 
@@ -251,6 +275,10 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 - **FR-L25-008**: `WorkflowRuntime` MUST dynamically inject project knowledge documents (`.gwrk/ontology/domain.md`, `.gwrk/perspective/hierarchy.md`, `.gwrk/perspective/ux-posture.md`) into the agent prompt if they exist on disk. (Implements: US-019)
 - **FR-R006-001**: System MUST provide `gwrk define research <initiative>` command that creates a new research initiative in `docs/research/R0XX-<slug>/` with a templated `brief.md` based on the `--methodology` provided (default: `technical`). (Implements: US-017)
 - **FR-R006-002**: System MUST support executing research methodologies via `gwrk define research <initiative> --run`. The `WorkflowRuntime` MUST resolve the workflow plugin specified by the `methodology` field in the brief's YAML frontmatter. (Implements: US-018)
+- **FR-L25-009**: System MUST provide `gwrk define ontology` command that scaffolds `.gwrk/ontology/` and `.gwrk/perspective/` directories. (Implements: US-020)
+- **FR-L25-010**: System MUST provide `gwrk-ontology-construct` builtin workflow plugin for automated ontology generation. (Implements: US-021)
+- **FR-L25-011**: System MUST provide a source material scanner utility that discovers and reads codebase structure, feature specifications, and architecture documents for agent grounding. (Implements: US-022)
+- **FR-L25-012**: Ontology construction MUST enforce the Five Primitives methodology (Classes, Properties, Relations, Individuals, Axioms) as defined in ADR-009. (Implements: US-021)
 
 #### FR-L25-001 Error States
 | Condition | stderr contains | Exit code |
@@ -311,6 +339,7 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 - **TC-010**: Strict Isolation Rule — `AgentBackend.dispatch()` MUST NOT mutate global filesystem state.
 - **TC-012**: Language Filtering (R007) — `resolveEnforcementSkills` MUST silently skip builtins with mismatched `language` properties instead of throwing errors.
 - **TC-013**: Grounding Injection Order (ADR-009) — Domain ontology MUST be injected before information hierarchy and UX posture.
+- **TC-014**: Five Primitives Methodology — The `gwrk-ontology-construct` workflow MUST produce output structured around Classes, Properties, Relations, Individuals, and Axioms.
 
 ---
 
@@ -321,6 +350,8 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 - **TR-011**: `src/commands/research.test.ts` — Unit test scaffold logic for R0XX numbering and brief generation. (FR-R006-001)
 - **TR-012**: `src/engine/agent.test.ts` — Unit test `dispatchToAgent()` context injection logic for ontology and perspective files. (FR-ADR009-001)
 - **TR-013**: `src/plugins/skill-runtime.test.ts` — Unit test `resolveEnforcementSkills()` correctly applying `ProjectProfile` language filtering. (FR-014)
+- **TR-014**: `src/commands/define-ontology.test.ts` — Unit test for `gwrk define ontology` scaffolding logic. (FR-L25-009)
+- **TR-015**: `src/plugins/builtins/workflows/gwrk-ontology-construct/prompt.test.ts` — Unit test (or prompt verification) for Five Primitives compliance. (FR-L25-012)
 
 ---
 
@@ -330,6 +361,7 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 - **SC-014**: `gwrk define research "New Feature"` creates `docs/research/RXXX-new-feature/brief.md`.
 - **SC-015**: A Python project running `gwrk ship` does not have `typescript-standards` injected into its prompt.
 - **SC-016**: Projects with `.gwrk/ontology/domain.md` successfully inject the file contents into `dispatchToAgent` calls.
+- **SC-017**: `gwrk define ontology --run` produces `domain.md`, `hierarchy.md`, and `ux-posture.md` grounded in project source material.
 
 ---
 
@@ -337,6 +369,7 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 
 - **VR-017**: E2E: Run `gwrk define research test-initiative`, verify directory creation, then run `gwrk define research test-initiative --run` and verify `draft.md` generation.
 - **VR-018**: Unit: `pnpm test` passes all TR-011 through TR-013.
+- **VR-019**: E2E: Run `gwrk define ontology --run` in a test project and verify the creation and content of the three ontology/perspective documents.
 
 ---
 
@@ -348,3 +381,6 @@ const AnyManifestSchema = z.discriminatedUnion('type', [
 | US-017 | FR-R006-001 | FR-R006-001 | US-017 | TR-011 |
 | US-018 | FR-R006-002 | FR-R006-002 | US-018 | TR-009, TR-011 |
 | US-019 | FR-ADR009-001 | FR-ADR009-001 | US-019 | TR-012 |
+| US-020 | FR-L25-009 | FR-L25-009 | US-020 | TR-014 |
+| US-021 | FR-L25-010 | FR-L25-010, FR-L25-012 | US-021 | TR-009, TR-015 |
+| US-022 | FR-L25-011 | FR-L25-011 | US-022 | TR-015 |
