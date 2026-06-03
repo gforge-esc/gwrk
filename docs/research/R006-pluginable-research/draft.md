@@ -161,7 +161,6 @@ Standardize the control metadata as YAML frontmatter. Keep the body freeform —
 ---
 title: Pluginable Research Workflow
 methodology: technical    # which workflow plugin to dispatch
-consumer: F014            # what spec consumes this research
 created: 2026-06-02
 updated: 2026-06-02
 ---
@@ -169,7 +168,6 @@ updated: 2026-06-02
 
 This enables:
 - **Methodology routing**: `gwrk define research R006` reads `methodology` to pick the right workflow plugin
-- **Spec auto-discovery**: `gwrk define spec 014` scans research briefs for `consumer: F014` and injects matching drafts
 
 ---
 
@@ -177,23 +175,15 @@ This enables:
 
 ### Findings
 
-Today: `gwrk define spec --refs docs/research/R006/draft.md` (manual path specification).
+Today: `gwrk define spec --refs docs/research/R006/draft.md` (manual path specification). This works and is explicit.
 
-The brief's frontmatter already declares `consumer: F014`. The spec workflow could use this to auto-discover relevant research.
-
-### Recommendation: Hybrid — auto-discovery with manual override
+### Recommendation: `--refs` is the handoff
 
 ```bash
-# Manual (current — always works)
-gwrk define spec 014 --refs docs/research/R006/draft.md
-
-# Auto-discovery (scan research/ for consumer: F014)
-gwrk define spec 014
-# → spec workflow finds R006/draft.md, R007/draft.md with consumer: F014
-# → injects both as reference context automatically
+gwrk define spec 014 --refs docs/research/R006-pluginable-research/draft.md
 ```
 
-The auto-discovery is additive. If no matching research exists, the spec workflow proceeds without research context (current behavior). `--refs` always takes precedence for explicit path specification.
+The research → spec handoff is a human decision, not an automated one. The user knows which research feeds which spec. `--refs` is the mechanism. No auto-discovery needed — it would require forward-biasing the brief with a `consumer` field at creation time, which presumes knowledge we don't have.
 
 ---
 
@@ -344,11 +334,8 @@ defineCommand
 
 | Item | Status | Decision needed |
 |---|---|---|
-| Brief frontmatter schema | Draft | Validate with R007 (shared schema surface) |
-| Auto-discovery of research for specs | Draft | Validate that `consumer` field is reliably set |
 | Ontology storage location | Proposed: `.gwrk/ontology/` | Confirm vs. `docs/ontology/` |
 | Community registry for research plugins | Deferred | No registry infrastructure exists |
-| Migration of R001–R005 to frontmatter | Backlog | Low priority — they're completed |
 
 ---
 
