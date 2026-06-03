@@ -94,6 +94,8 @@ export function finishRun(
       | "finished_at"
       | "status"
       | "merge_commit_sha"
+      | "pr_number"
+      | "pr_url"
     >
   >,
   db?: Database.Database,
@@ -108,7 +110,9 @@ export function finishRun(
          gate_result = @gate_result,
          review_verdict = @review_verdict,
          status = @status,
-         merge_commit_sha = @merge_commit_sha
+         merge_commit_sha = @merge_commit_sha,
+         pr_number = COALESCE(@pr_number, pr_number),
+         pr_url = COALESCE(@pr_url, pr_url)
        WHERE id = @id`,
     )
     .run({
@@ -120,6 +124,8 @@ export function finishRun(
       review_verdict: update.review_verdict ?? null,
       status: update.status ?? null,
       merge_commit_sha: update.merge_commit_sha ?? null,
+      pr_number: update.pr_number ?? null,
+      pr_url: update.pr_url ?? null,
     });
 }
 

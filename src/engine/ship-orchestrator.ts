@@ -112,6 +112,15 @@ export class ShipOrchestrator extends EventEmitter {
     fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2), "utf-8");
   }
 
+  /** Expose final state for DB write-back by CLI wrapper. */
+  public getResult(): { prNumber?: number; prUrl?: string; stage: ShipStage } {
+    return {
+      prNumber: this.state.prNumber,
+      prUrl: this.state.prUrl,
+      stage: this.state.stage,
+    };
+  }
+
   public async run(): Promise<number> {
     const phaseNum = this.config.phaseId
       .replace("phase-", "")

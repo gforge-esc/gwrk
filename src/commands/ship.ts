@@ -227,11 +227,26 @@ async function shipPhase(
       if (exitCode !== 0) {
         throw new Error(`ShipOrchestrator failed with exit code ${exitCode}`);
       }
+
+      // Write PR data + status back to DB for harvest to find
+      const result = orchestrator.getResult();
+      const durationS = Math.round((Date.now() - startTime) / 1000);
+      finishRun(runId, {
+        exit_code: 0,
+        duration_s: durationS,
+        status: "shipped",
+        ...(result.prNumber ? { pr_number: result.prNumber } : {}),
+        ...(result.prUrl ? { pr_url: result.prUrl } : {}),
+      });
+      success("ship", durationS, runId);
     }
 
-    const durationS = Math.round((Date.now() - startTime) / 1000);
-    finishRun(runId, { exit_code: 0, duration_s: durationS });
-    success("ship", durationS, runId);
+    // Legacy path success
+    if (opts.legacy) {
+      const durationS = Math.round((Date.now() - startTime) / 1000);
+      finishRun(runId, { exit_code: 0, duration_s: durationS, status: "shipped" });
+      success("ship", durationS, runId);
+    }
   } catch (err: unknown) {
     const durationS = Math.round((Date.now() - startTime) / 1000);
     exitCode =
