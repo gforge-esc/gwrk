@@ -322,19 +322,20 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // 3. Determine verdict from gates (not agent edits).
+      // 3. Discard review agent's source file mutations BEFORE reading verdict.
+      //    Review agents in YOLO mode can modify source files (fixing imports,
+      //    reformatting, etc.). These edits are often incomplete and can break
+      //    the build. We revert first so gates run against the implementer's
+      //    clean build, not a build contaminated by review agent edits.
+      //    We preserve tasks.json (carries verdict state) but restore everything else.
+      this.revertSourceMutations();
+
+      // 4. Determine verdict from gates (not agent edits).
       //    Gates are truth, agent verdict is advisory. (ADR-007)
       const verdict = await this.readVerdict();
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
-
-      // 4. Discard review agent's source file mutations.
-      //    Review agents in YOLO mode can modify source files (fixing imports,
-      //    reformatting, etc.). These edits are often incomplete and can break
-      //    the build. The review's value is the verdict + task feedback, not code edits.
-      //    We preserve tasks.json (carries verdict state) but restore everything else.
-      this.revertSourceMutations();
 
       if (verdict === "GO") {
         return { success: true, exitCode: 0 };
