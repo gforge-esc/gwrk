@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { getDb } from "../db/index.js";
@@ -19,10 +20,11 @@ export function computeLeadingIndicators(
 
   // 1. Convergence
   // We use the run_id linked to the 'completed' status change to determine the attempt count.
-  // If run_id is missing, we fallback to counting runs for that phase that started before completion.
+  // If run_id is missing, we fallback to counting runs for that feature that started before completion.
   const taskStats = db
     .prepare(
       `
+    WITH project_info AS (SELECT ? as pid)
     SELECT
       task_id,
       MAX(attempts) as attempts
@@ -33,24 +35,23 @@ export function computeLeadingIndicators(
           (SELECT attempt FROM runs WHERE id = h.run_id),
           (
             SELECT COUNT(*)
-            FROM runs r
+            FROM runs r, project_info pi
             WHERE r.feature_id = h.feature_id
-              AND r.project_id = h.project_id
-              AND (r.phase_id = (SELECT phase_id FROM runs WHERE id = h.run_id) OR r.phase_id IS NULL)
+              AND (r.project_id = pi.pid OR r.project_id IS NULL OR r.project_id = '')
               AND r.command IN ('implement', 'ship')
               AND r.started_at <= h.timestamp
           )
         ) as attempts
-      FROM history h
+      FROM history h, project_info pi
       WHERE h.feature_id = ?
-        AND h.project_id = ?
+        AND (h.project_id = pi.pid OR h.project_id IS NULL OR h.project_id = '')
         AND h.to_status = 'completed'
         AND (h.task_id LIKE 'T%' OR h.task_id LIKE 'US%')
     )
     GROUP BY task_id
   `,
     )
-    .all(featureId, projectId) as { task_id: string; attempts: number }[];
+    .all(projectId, featureId) as { task_id: string; attempts: number }[];
 
   const taskCount = taskStats.length || 0;
   let firstPassRate = 0;
@@ -76,8 +77,41 @@ export function computeLeadingIndicators(
     )
     .get(featureId, projectId) as { total_lines: number | null; total_files: number | null };
 
-  const totalLines = runStats?.total_lines || 0;
-  const totalFiles = runStats?.total_files || 0;
+  let totalLines = runStats?.total_lines || 0;
+  let totalFiles = runStats?.total_files || 0;
+
+  // Fallback to Git if DB stats are missing (common for old runs)
+  if (totalLines === 0 || totalFiles === 0) {
+    try {
+      const featureDir = path.join(process.cwd(), "specs", featureId);
+      if (fs.existsSync(featureDir)) {
+        // Use git log --numstat to get churn for the feature directory
+        const gitOut = execFileSync(
+          "git",
+          ["log", "--numstat", "--format=", "--", featureDir],
+          { encoding: "utf-8" },
+        );
+        const lines = gitOut.split("\n").filter(Boolean);
+        const uniqueFiles = new Set<string>();
+        let gitLines = 0;
+
+        for (const line of lines) {
+          const [added, deleted, file] = line.split("\t");
+          if (added && deleted && file) {
+            if (added !== "-" && deleted !== "-") {
+              gitLines += parseInt(added, 10) + parseInt(deleted, 10);
+            }
+            uniqueFiles.add(file);
+          }
+        }
+        if (totalLines === 0) totalLines = gitLines;
+        if (totalFiles === 0) totalFiles = uniqueFiles.size;
+      }
+    } catch {
+      /* ignore git errors */
+    }
+  }
+
   const spCount = forecast.totalSP || 1;
 
   // Tool calls: Heuristic count from agent log files if available
@@ -115,12 +149,12 @@ export function computeLeadingIndicators(
   const contractCount = fs.existsSync(path.join(featureDir, "contracts"))
     ? fs
         .readdirSync(path.join(featureDir, "contracts"))
-        .filter((f) => f.endsWith(".md")).length
+        .filter((f) => f.endsWith(".md") && !f.startsWith("README")).length
     : 0;
   const gateCount = fs.existsSync(path.join(featureDir, "gates"))
     ? fs
         .readdirSync(path.join(featureDir, "gates"))
-        .filter((f) => f.endsWith(".sh")).length
+        .filter((f) => f.startsWith("T") && f.endsWith("-gate.sh")).length
     : 0;
 
   return {
@@ -139,3 +173,4 @@ export function computeLeadingIndicators(
     },
   };
 }
+

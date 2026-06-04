@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { computeLeadingIndicators } from "./indicators.js";
 import { getDb } from "../db/index.js";
 
 vi.mock("../db/index.js");
 vi.mock("node:fs");
+vi.mock("node:child_process");
 
 describe("FR-014: computeLeadingIndicators", () => {
   it("TR-015: computes convergence, density, and spec quality metrics correctly", () => {
@@ -30,8 +32,8 @@ describe("FR-014: computeLeadingIndicators", () => {
     // Mock filesystem for spec quality
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readdirSync).mockImplementation(((dir: string) => {
-      if (dir.endsWith("contracts")) return ["c1.md", "c2.md"];
-      if (dir.endsWith("gates")) return ["g1.sh", "g2.sh", "g3.sh"];
+      if (dir.endsWith("contracts")) return ["c1.md", "c2.md", "README.md"];
+      if (dir.endsWith("gates")) return ["T001-gate.sh", "T002-gate.sh", "T003-gate.sh", "run-all.sh"];
       if (dir.endsWith(".runs")) return ["feat-a.log"];
       return [];
     }) as any);
@@ -62,8 +64,36 @@ describe("FR-014: computeLeadingIndicators", () => {
     expect(indicators.density.toolCallsPerSP).toBe(0.2);
 
     // Spec Quality:
+    // contracts: 3 files, but README.md is filtered out -> 2
+    // gates: 4 files, but only T###-gate.sh match -> 3
     expect(indicators.specQuality.contractCount).toBe(2);
     expect(indicators.specQuality.gateCount).toBe(3);
+  });
+
+  it("falls back to Git for density if DB stats are missing", () => {
+    const mockDb = {
+      prepare: vi.fn().mockReturnThis(),
+      all: vi.fn().mockReturnValue([]),
+      get: vi.fn().mockReturnValue({ total_lines: 0, total_files: 0 }),
+    };
+
+    vi.mocked(getDb).mockReturnValue(mockDb as any);
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([]);
+    vi.mocked(execFileSync).mockReturnValue("10\t5\tfile1.ts\n2\t1\tfile2.ts\n");
+
+    const forecast = {
+      totalSP: 1,
+      roles: [],
+      estimatedHours: 10,
+      estimatedDays: 1,
+    };
+
+    const indicators = computeLeadingIndicators("feat-a", forecast, "proj-1");
+
+    expect(indicators.density.linesPerSP).toBe(18); // (10+5) + (2+1) = 18
+    expect(indicators.density.filesPerSP).toBe(2);
+    expect(execFileSync).toHaveBeenCalledWith("git", expect.arrayContaining(["log", "--numstat"]), expect.anything());
   });
 
   it("handles zero values gracefully", () => {
@@ -91,3 +121,4 @@ describe("FR-014: computeLeadingIndicators", () => {
     expect(indicators.specQuality.contractCount).toBe(0);
   });
 });
+
