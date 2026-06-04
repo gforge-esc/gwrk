@@ -329,18 +329,12 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
 describe("FR-014: computeLeadingIndicators", () => {
   it("TR-015: computes convergence, density, and spec quality correctly", () => {
     const mockDb = {
-      prepare: vi.fn().mockReturnValue({
-        all: vi.fn().mockImplementation((featureId) => {
-          if (featureId === "feat-a") {
-            return [
-              { task_id: "T001", attempts: 1 },
-              { task_id: "T002", attempts: 2 },
-            ];
-          }
-          return [];
-        }),
-        get: vi.fn().mockReturnValue({ total_lines: 100, total_files: 5 }),
-      }),
+      prepare: vi.fn().mockReturnThis(),
+      all: vi.fn().mockReturnValue([
+        { task_id: "T001", attempts: 1, is_completed: 1 },
+        { task_id: "T002", attempts: 2, is_completed: 1 },
+      ]),
+      get: vi.fn().mockReturnValue({ total_lines: 100, total_files: 5 }),
     };
 
     vi.mocked(getDb).mockReturnValue(mockDb as any);
@@ -348,11 +342,11 @@ describe("FR-014: computeLeadingIndicators", () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readdirSync).mockImplementation(((p: string) => {
       if (p.endsWith("contracts")) return ["c1.md", "c2.md"];
-      if (p.endsWith("gates")) return ["g1.sh"];
+      if (p.endsWith("gates")) return ["T001-gate.sh"];
       if (p.endsWith(".runs")) return ["feat-a.log"];
       return [];
     }) as any);
-    vi.mocked(fs.readFileSync).mockReturnValue("[10:00:00]  $ git commit\n[10:05:00]  $ pnpm build");
+    vi.mocked(fs.readFileSync).mockReturnValue("[10:00:00]  $ git commit\n[10:05:00]  > pnpm build");
 
     const forecast: EffortForecast = {
       totalSP: 10,

@@ -21,9 +21,10 @@ describe("FR-014: computeLeadingIndicators", () => {
 
     // Mock convergence query
     mockDb.all.mockReturnValue([
-      { task_id: "T001", attempts: 1 },
-      { task_id: "T002", attempts: 2 },
-      { task_id: "T003", attempts: 1 },
+      { task_id: "T001", attempts: 1, is_completed: 1 },
+      { task_id: "T002", attempts: 2, is_completed: 1 },
+      { task_id: "T003", attempts: 1, is_completed: 1 },
+      { task_id: "T004", attempts: 3, is_completed: 0 }, // Failed task
     ]);
 
     // Mock density run stats query
@@ -37,7 +38,7 @@ describe("FR-014: computeLeadingIndicators", () => {
       if (dir.endsWith(".runs")) return ["feat-a.log"];
       return [];
     }) as any);
-    vi.mocked(fs.readFileSync).mockReturnValue("[10:00:00 +00:00]  $ ls\n[10:01:00 +00:01]  $ pnpm build");
+    vi.mocked(fs.readFileSync).mockReturnValue("[10:00:00] $ ls\n[10:01:00] > pnpm build");
 
     const forecast = {
       totalSP: 10,
@@ -49,11 +50,11 @@ describe("FR-014: computeLeadingIndicators", () => {
     const indicators = computeLeadingIndicators("feat-a", forecast, "proj-1");
 
     // Convergence: 
-    // tasks: T001 (1), T002 (2), T003 (1) -> 3 tasks
-    // first-pass: T001, T003 -> 2/3 = 66.66% -> 67%
-    // avg attempts: (1+2+1)/3 = 4/3 = 1.333 -> 1.33
-    expect(indicators.convergence.firstPassRate).toBe(67);
-    expect(indicators.convergence.avgAttempts).toBe(1.33);
+    // tasks: T001 (1,C), T002 (2,C), T003 (1,C), T004 (3,NC) -> 4 tasks
+    // first-pass: T001, T003 -> 2/4 = 50%
+    // avg attempts: (1+2+1+3)/4 = 7/4 = 1.75
+    expect(indicators.convergence.firstPassRate).toBe(50);
+    expect(indicators.convergence.avgAttempts).toBe(1.75);
 
     // Density:
     // lines: 100 / 10 = 10

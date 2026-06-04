@@ -19,18 +19,20 @@ export function computeLeadingIndicators(
   const db = getDb();
 
   // 1. Convergence
-  // We use the run_id linked to the 'completed' status change to determine the attempt count.
-  // If run_id is missing, we fallback to counting runs for that feature that started before completion.
+  // We count all unique tasks (T### or US###) that have any history for this feature.
+  // We take the max attempt seen for each task.
   const taskStats = db
     .prepare(
       `
     WITH project_info AS (SELECT ? as pid)
     SELECT
       task_id,
-      MAX(attempts) as attempts
+      MAX(attempts) as attempts,
+      MAX(is_completed) as is_completed
     FROM (
       SELECT
         h.task_id,
+        CASE WHEN h.to_status = 'completed' THEN 1 ELSE 0 END as is_completed,
         COALESCE(
           (SELECT attempt FROM runs WHERE id = h.run_id),
           (
@@ -45,20 +47,19 @@ export function computeLeadingIndicators(
       FROM history h, project_info pi
       WHERE h.feature_id = ?
         AND (h.project_id = pi.pid OR h.project_id IS NULL OR h.project_id = '')
-        AND h.to_status = 'completed'
         AND (h.task_id LIKE 'T%' OR h.task_id LIKE 'US%')
     )
     GROUP BY task_id
   `,
     )
-    .all(projectId, featureId) as { task_id: string; attempts: number }[];
+    .all(projectId, featureId) as { task_id: string; attempts: number; is_completed: number }[];
 
   const taskCount = taskStats.length || 0;
   let firstPassRate = 0;
   let avgAttempts = 0;
 
   if (taskCount > 0) {
-    const firstPassTasks = taskStats.filter((t) => t.attempts === 1).length;
+    const firstPassTasks = taskStats.filter((t) => t.attempts === 1 && t.is_completed === 1).length;
     firstPassRate = (firstPassTasks / taskCount) * 100;
     avgAttempts = taskStats.reduce((sum, t) => sum + t.attempts, 0) / taskCount;
   }
@@ -72,7 +73,7 @@ export function computeLeadingIndicators(
       SUM(COALESCE(lines_added, 0) + COALESCE(lines_deleted, 0)) as total_lines, 
       SUM(COALESCE(files_changed, 0)) as total_files
     FROM runs
-    WHERE feature_id = ? AND project_id = ?
+    WHERE feature_id = ? AND (project_id = ? OR project_id IS NULL OR project_id = '')
   `,
     )
     .get(featureId, projectId) as { total_lines: number | null; total_files: number | null };
@@ -114,7 +115,7 @@ export function computeLeadingIndicators(
 
   const spCount = forecast.totalSP || 1;
 
-  // Tool calls: Heuristic count from agent log files if available
+  // Tool calls: Heuristic count from agent log files
   let toolCalls = 0;
   const countInDir = (dir: string, regex?: RegExp) => {
     if (fs.existsSync(dir)) {
@@ -124,12 +125,14 @@ export function computeLeadingIndicators(
       for (const logFile of logs) {
         try {
           const content = fs.readFileSync(path.join(dir, logFile), "utf-8");
-          const matches = content.match(/^\[.*\]\s+\$ /gm);
+          // Match tool calls: [timestamp] $ tool_name OR [timestamp] > tool_name
+          const matches = content.match(/^\[.*\]\s+[\$>]\s+\w+/gm);
           if (matches) toolCalls += matches.length;
         } catch { /* ignore */ }
       }
     }
   };
+
 
   try {
     // 1. Check active runs dir

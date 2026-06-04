@@ -134,9 +134,10 @@ export function generateSummary(
   let indicatorsCount = 0;
   let totalFirstPassRate = 0;
   let totalAvgAttempts = 0;
-  let totalLinesPerSP = 0;
-  let totalFilesPerSP = 0;
-  let totalToolCallsPerSP = 0;
+  let totalLines = 0;
+  let totalFiles = 0;
+  let totalToolCalls = 0;
+  let totalSPForIndicators = 0;
 
   for (const r of reports) {
     summary.totals.totalSP += r.forecast.totalSP;
@@ -150,9 +151,13 @@ export function generateSummary(
       indicatorsCount++;
       totalFirstPassRate += r.indicators.convergence.firstPassRate;
       totalAvgAttempts += r.indicators.convergence.avgAttempts;
-      totalLinesPerSP += r.indicators.density.linesPerSP;
-      totalFilesPerSP += r.indicators.density.filesPerSP;
-      totalToolCallsPerSP += r.indicators.density.toolCallsPerSP;
+      
+      // Weight density by SP
+      totalLines += r.indicators.density.linesPerSP * r.forecast.totalSP;
+      totalFiles += r.indicators.density.filesPerSP * r.forecast.totalSP;
+      totalToolCalls += r.indicators.density.toolCallsPerSP * r.forecast.totalSP;
+      totalSPForIndicators += r.forecast.totalSP;
+
       summary.totals.totalContracts = (summary.totals.totalContracts || 0) + r.indicators.specQuality.contractCount;
       summary.totals.totalGates = (summary.totals.totalGates || 0) + r.indicators.specQuality.gateCount;
     }
@@ -178,9 +183,12 @@ export function generateSummary(
   if (indicatorsCount > 0) {
     summary.totals.avgFirstPassRate = totalFirstPassRate / indicatorsCount;
     summary.totals.avgAvgAttempts = totalAvgAttempts / indicatorsCount;
-    summary.totals.avgLinesPerSP = totalLinesPerSP / indicatorsCount;
-    summary.totals.avgFilesPerSP = totalFilesPerSP / indicatorsCount;
-    summary.totals.avgToolCallsPerSP = totalToolCallsPerSP / indicatorsCount;
+    
+    if (totalSPForIndicators > 0) {
+      summary.totals.avgLinesPerSP = totalLines / totalSPForIndicators;
+      summary.totals.avgFilesPerSP = totalFiles / totalSPForIndicators;
+      summary.totals.avgToolCallsPerSP = totalToolCalls / totalSPForIndicators;
+    }
   }
 
   const sorted = [...reports].sort(
