@@ -140,6 +140,7 @@ async function shipPhase(
   }
 
   const startedAt = new Date().toISOString();
+  const startCommit = getCurrentCommit(cwd);
 
   const runId = startRun({
     feature_id: feature,
@@ -229,12 +230,16 @@ async function shipPhase(
       // Write PR data + status back to DB for harvest to find
       const result = orchestrator.getResult();
       const durationS = Math.round((Date.now() - startTime) / 1000);
+      const stats = getDiffStats(cwd, startCommit);
       finishRun(runId, {
         exit_code: 0,
         duration_s: durationS,
         status: "shipped",
         ...(result.prNumber ? { pr_number: result.prNumber } : {}),
         ...(result.prUrl ? { pr_url: result.prUrl } : {}),
+        files_changed: stats.filesChanged,
+        lines_added: stats.linesAdded,
+        lines_deleted: stats.linesDeleted,
       });
       success("ship", durationS, runId);
     }
@@ -242,18 +247,33 @@ async function shipPhase(
     // Legacy path success
     if (opts.legacy) {
       const durationS = Math.round((Date.now() - startTime) / 1000);
-      finishRun(runId, { exit_code: 0, duration_s: durationS, status: "shipped" });
+      const stats = getDiffStats(cwd, startCommit);
+      finishRun(runId, {
+        exit_code: 0,
+        duration_s: durationS,
+        status: "shipped",
+        files_changed: stats.filesChanged,
+        lines_added: stats.linesAdded,
+        lines_deleted: stats.linesDeleted,
+      });
       success("ship", durationS, runId);
     }
   } catch (err: unknown) {
     const durationS = Math.round((Date.now() - startTime) / 1000);
+    const stats = getDiffStats(cwd, startCommit);
     exitCode =
       err instanceof Error &&
       "code" in err &&
       typeof (err as { code?: unknown }).code === "number"
         ? (err as { code: number }).code
         : 1;
-    finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+    finishRun(runId, {
+      exit_code: exitCode,
+      duration_s: durationS,
+      files_changed: stats.filesChanged,
+      lines_added: stats.linesAdded,
+      lines_deleted: stats.linesDeleted,
+    });
     console.error(
       `\n  Error: ${err instanceof Error ? err.message : String(err)}`,
     );

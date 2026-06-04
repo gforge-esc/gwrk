@@ -18,8 +18,8 @@ export function computeLeadingIndicators(
   const db = getDb();
 
   // 1. Convergence
-  // We estimate attempts per task by counting how many runs started before the task was completed.
-  // We group by task_id to handle potential regressions and multiple 'completed' events.
+  // We use the run_id linked to the 'completed' status change to determine the attempt count.
+  // If run_id is missing, we fallback to counting runs for that phase that started before completion.
   const taskStats = db
     .prepare(
       `
@@ -29,14 +29,17 @@ export function computeLeadingIndicators(
     FROM (
       SELECT
         h.task_id,
-        (
-          SELECT COUNT(*)
-          FROM runs r
-          WHERE r.feature_id = h.feature_id
-            AND r.project_id = h.project_id
-            AND r.phase_id = (SELECT phase_id FROM runs WHERE id = h.run_id)
-            AND r.command IN ('implement', 'ship')
-            AND r.started_at <= h.timestamp
+        COALESCE(
+          (SELECT attempt FROM runs WHERE id = h.run_id),
+          (
+            SELECT COUNT(*)
+            FROM runs r
+            WHERE r.feature_id = h.feature_id
+              AND r.project_id = h.project_id
+              AND (r.phase_id = (SELECT phase_id FROM runs WHERE id = h.run_id) OR r.phase_id IS NULL)
+              AND r.command IN ('implement', 'ship')
+              AND r.started_at <= h.timestamp
+          )
         ) as attempts
       FROM history h
       WHERE h.feature_id = ?
@@ -68,7 +71,7 @@ export function computeLeadingIndicators(
       SUM(COALESCE(lines_added, 0) + COALESCE(lines_deleted, 0)) as total_lines, 
       SUM(COALESCE(files_changed, 0)) as total_files
     FROM runs
-    WHERE feature_id = ? AND project_id = ? AND exit_code = 0
+    WHERE feature_id = ? AND project_id = ?
   `,
     )
     .get(featureId, projectId) as { total_lines: number | null; total_files: number | null };
@@ -79,20 +82,30 @@ export function computeLeadingIndicators(
 
   // Tool calls: Heuristic count from agent log files if available
   let toolCalls = 0;
-  try {
-    const runsDir = path.join(process.cwd(), ".runs");
-    if (fs.existsSync(runsDir)) {
-      const featureRegex = new RegExp(`(^|[-])${featureId}([-]|\\.)`);
+  const countInDir = (dir: string, regex?: RegExp) => {
+    if (fs.existsSync(dir)) {
       const logs = fs
-        .readdirSync(runsDir)
-        .filter((f) => featureRegex.test(f) && f.endsWith(".log"));
+        .readdirSync(dir)
+        .filter((f) => (regex ? regex.test(f) : true) && f.endsWith(".log"));
       for (const logFile of logs) {
-        const content = fs.readFileSync(path.join(runsDir, logFile), "utf-8");
-        // Count lines that look like tool calls (e.g., "[12:34:56 +00:01]  $ git ...")
-        const matches = content.match(/^\[.*\]\s+\$ /gm);
-        if (matches) toolCalls += matches.length;
+        try {
+          const content = fs.readFileSync(path.join(dir, logFile), "utf-8");
+          const matches = content.match(/^\[.*\]\s+\$ /gm);
+          if (matches) toolCalls += matches.length;
+        } catch { /* ignore */ }
       }
     }
+  };
+
+  try {
+    // 1. Check active runs dir
+    const runsDir = path.join(process.cwd(), ".runs");
+    const featureRegex = new RegExp(`(^|[-])${featureId}([-]|\\.)`);
+    countInDir(runsDir, featureRegex);
+
+    // 2. Check harvested logs dir
+    const harvestedDir = path.join(process.cwd(), "specs", featureId, ".gwrk", "runs");
+    countInDir(harvestedDir);
   } catch {
     // Non-fatal
   }

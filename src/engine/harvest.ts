@@ -5,7 +5,11 @@ import { finishRun, listRuns } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { parsePlan } from "../utils/parser.js";
-import { computeCompression, gatherDeliveryActuals } from "./compression.js";
+import {
+  computeCompression,
+  computeLeadingIndicators,
+  gatherDeliveryActuals,
+} from "./compression.js";
 import { reconcileGates } from "./reconcile-gates.js";
 import { resolveRoleMultipliers } from "./roles.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -213,6 +217,11 @@ export async function harvestFeature(
 
           const actuals = gatherDeliveryActuals(featureDir, 30, prNumber);
           const compression = computeCompression(forecast, actuals);
+          const indicators = computeLeadingIndicators(
+            featureId,
+            forecast,
+            projectId,
+          );
 
           report = {
             featureId,
@@ -221,6 +230,7 @@ export async function harvestFeature(
             forecast,
             actuals,
             compression,
+            indicators,
           };
 
           recordCompression(report, projectId);

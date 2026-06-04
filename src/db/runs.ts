@@ -96,6 +96,9 @@ export function finishRun(
       | "merge_commit_sha"
       | "pr_number"
       | "pr_url"
+      | "files_changed"
+      | "lines_added"
+      | "lines_deleted"
     >
   >,
   db?: Database.Database,
@@ -112,7 +115,10 @@ export function finishRun(
          status = @status,
          merge_commit_sha = @merge_commit_sha,
          pr_number = COALESCE(@pr_number, pr_number),
-         pr_url = COALESCE(@pr_url, pr_url)
+         pr_url = COALESCE(@pr_url, pr_url),
+         files_changed = @files_changed,
+         lines_added = @lines_added,
+         lines_deleted = @lines_deleted
        WHERE id = @id`,
     )
     .run({
@@ -126,6 +132,9 @@ export function finishRun(
       merge_commit_sha: update.merge_commit_sha ?? null,
       pr_number: update.pr_number ?? null,
       pr_url: update.pr_url ?? null,
+      files_changed: update.files_changed ?? null,
+      lines_added: update.lines_added ?? null,
+      lines_deleted: update.lines_deleted ?? null,
     });
 }
 
