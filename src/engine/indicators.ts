@@ -20,14 +20,14 @@ export function computeLeadingIndicators(
 
   // 1. Convergence
   // We count all unique tasks (T### or US###) that have any history for this feature.
-  // We take the max attempt seen for each task.
+  // We count how many distinct feature-attempts (runs) each task was worked on.
   const taskStats = db
     .prepare(
       `
     WITH project_info AS (SELECT ? as pid)
     SELECT
       task_id,
-      MAX(attempts) as attempts,
+      COUNT(DISTINCT attempt_num) as attempts,
       MAX(is_completed) as is_completed
     FROM (
       SELECT
@@ -43,7 +43,7 @@ export function computeLeadingIndicators(
               AND r.command IN ('implement', 'ship')
               AND r.started_at <= h.timestamp
           )
-        ) as attempts
+        ) as attempt_num
       FROM history h, project_info pi
       WHERE h.feature_id = ?
         AND (h.project_id = pi.pid OR h.project_id IS NULL OR h.project_id = '')
