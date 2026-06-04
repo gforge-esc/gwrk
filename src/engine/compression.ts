@@ -258,8 +258,8 @@ export function generateSummary(
       totalLinesPerSP += r.indicators.density.linesPerSP;
       totalFilesPerSP += r.indicators.density.filesPerSP;
       totalToolCallsPerSP += r.indicators.density.toolCallsPerSP;
-      summary.totals.totalContracts! += r.indicators.specQuality.contractCount;
-      summary.totals.totalGates! += r.indicators.specQuality.gateCount;
+      summary.totals.totalContracts = (summary.totals.totalContracts || 0) + r.indicators.specQuality.contractCount;
+      summary.totals.totalGates = (summary.totals.totalGates || 0) + r.indicators.specQuality.gateCount;
     }
 
     if (r.compression.pointCompression > summary.best.pointCompression) {
