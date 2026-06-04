@@ -197,11 +197,11 @@
         {
           "id": "T018",
           "title": "Implement src/commands/compression.ts",
+          "description": "Wire compression CLI command with --all, --feature, and --json flags",
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-13T20:27:37.128Z",
-          "description": "Wire compression CLI command with --all, --feature, and --json flags"
+          "completedAt": "2026-05-13T20:27:37.128Z"
         },
         {
           "id": "T019",
@@ -273,7 +273,7 @@
           "id": "T025",
           "title": "Implement Leading Indicators",
           "description": "Implement FR-014 and FR-015 for convergence, density, and spec quality indicators.",
-          "status": "completed",
+          "status": "open",
           "gateScript": "gates/T025-gate.sh",
           "sp": 0,
           "completedAt": "2026-06-04T00:25:00.000Z"
