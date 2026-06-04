@@ -177,7 +177,7 @@ describe("FR-011 & FR-009 & FR-010: compressionCommand", () => {
     expect(fullLog).toContain("Total SP Delivered");
     expect(fullLog).toContain("--- Avg Leading Indicators ---");
     expect(fullLog).toContain("85.0% first-pass");
-    expect(fullLog).toContain("1.10 avg attempts");
+    expect(fullLog).toContain("(Avg Attempts): 1.10");
     expect(fullLog).toContain("12.0 lines/SP");
     expect(fullLog).toContain("5 total contracts");
   });

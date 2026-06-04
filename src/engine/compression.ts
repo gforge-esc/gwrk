@@ -38,6 +38,7 @@ export function computeLeadingIndicators(
         FROM runs r
         WHERE r.feature_id = h.feature_id
           AND r.project_id = h.project_id
+          AND r.phase_id = (SELECT phase_id FROM runs WHERE id = h.run_id)
           AND r.command IN ('implement', 'ship')
           AND r.started_at <= h.timestamp
       ) as attempts

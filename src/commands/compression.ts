@@ -129,7 +129,7 @@ Examples:
 
           console.log("\n--- Avg Leading Indicators ---");
           console.log(
-            `Convergence:  ${summary.totals.avgFirstPassRate?.toFixed(1)}% first-pass, ${summary.totals.avgAvgAttempts?.toFixed(2)} avg attempts`,
+            `Convergence:  ${summary.totals.avgFirstPassRate?.toFixed(1)}% first-pass, (Avg Attempts): ${summary.totals.avgAvgAttempts?.toFixed(2)}`,
           );
           console.log(
             `Density:      ${summary.totals.avgLinesPerSP?.toFixed(1)} lines/SP, ${summary.totals.avgFilesPerSP?.toFixed(1)} files/SP, ${summary.totals.avgToolCallsPerSP?.toFixed(1)} tools/SP`,
@@ -233,7 +233,7 @@ Examples:
           if (indicators) {
             console.log("\n--- Leading Indicators ---");
             console.log(
-              `Convergence:       ${indicators.convergence.firstPassRate}% first-pass, ${indicators.convergence.avgAttempts} avg attempts`,
+              `Convergence:       ${indicators.convergence.firstPassRate}% first-pass, (Avg Attempts): ${indicators.convergence.avgAttempts}`,
             );
             console.log(
               `Density:           ${indicators.density.linesPerSP} lines/SP, ${indicators.density.filesPerSP} files/SP, ${indicators.density.toolCallsPerSP} tools/SP`,
