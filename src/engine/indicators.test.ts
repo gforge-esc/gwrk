@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { computeLeadingIndicators } from "./compression.js";
+import { computeLeadingIndicators } from "./indicators.js";
 import { getDb } from "../db/index.js";
 
 vi.mock("../db/index.js");

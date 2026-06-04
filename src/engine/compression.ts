@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { getDb } from "../db/index.js";
+export { computeLeadingIndicators } from "./indicators.js";
 import type {
   CommitCluster,
   CompressionRatios,
@@ -11,116 +12,6 @@ import type {
   EffortForecast,
   LeadingIndicators,
 } from "./types.js";
-
-/**
- * Computes leading indicators for a feature.
- * Convergence: First-pass rate and Avg attempts per task.
- * Density: Lines/SP, Files/SP, Tool Calls/SP.
- * Spec Quality: Contract count and Gate count.
- * (FR-014)
- */
-export function computeLeadingIndicators(
-  featureId: string,
-  forecast: EffortForecast,
-  projectId: string,
-): LeadingIndicators {
-  const db = getDb();
-
-  // 1. Convergence
-  // We estimate attempts per task by counting how many runs started before the task was completed.
-  const taskStats = db
-    .prepare(
-      `
-    SELECT
-      h.task_id,
-      (
-        SELECT COUNT(*)
-        FROM runs r
-        WHERE r.feature_id = h.feature_id
-          AND r.project_id = h.project_id
-          AND r.phase_id = (SELECT phase_id FROM runs WHERE id = h.run_id)
-          AND r.command IN ('implement', 'ship')
-          AND r.started_at <= h.timestamp
-      ) as attempts
-    FROM history h
-    WHERE h.feature_id = ?
-      AND h.project_id = ?
-      AND h.to_status = 'completed'
-      AND (h.task_id LIKE 'T%' OR h.task_id LIKE 'US%')
-  `,
-    )
-    .all(featureId, projectId) as { task_id: string; attempts: number }[];
-
-  const taskCount = taskStats.length || 1;
-  const firstPassTasks = taskStats.filter((t) => t.attempts === 1).length;
-  const firstPassRate = (firstPassTasks / taskCount) * 100;
-  const avgAttempts =
-    taskStats.reduce((sum, t) => sum + t.attempts, 0) / taskCount;
-
-  // 2. Density
-  // Aggregate stats from the runs table for this feature.
-  const runStats = db
-    .prepare(
-      `
-    SELECT SUM(lines_added + lines_deleted) as total_lines, SUM(files_changed) as total_files
-    FROM runs
-    WHERE feature_id = ? AND project_id = ? AND exit_code = 0
-  `,
-    )
-    .get(featureId, projectId) as { total_lines: number; total_files: number };
-
-  const totalLines = runStats?.total_lines || 0;
-  const totalFiles = runStats?.total_files || 0;
-  const spCount = forecast.totalSP || 1;
-
-  // Tool calls: Heuristic count from agent log files if available
-  let toolCalls = 0;
-  try {
-    const runsDir = path.join(process.cwd(), ".runs");
-    if (fs.existsSync(runsDir)) {
-      const logs = fs
-        .readdirSync(runsDir)
-        .filter((f) => f.includes(featureId) && f.endsWith(".log"));
-      for (const logFile of logs) {
-        const content = fs.readFileSync(path.join(runsDir, logFile), "utf-8");
-        // Count lines that look like tool calls (e.g., "[12:34:56 +00:01]  $ git ...")
-        const matches = content.match(/^\[.*\]\s+\$ /gm);
-        if (matches) toolCalls += matches.length;
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  // 3. Spec Quality
-  const featureDir = path.join(process.cwd(), "specs", featureId);
-  const contractCount = fs.existsSync(path.join(featureDir, "contracts"))
-    ? fs
-        .readdirSync(path.join(featureDir, "contracts"))
-        .filter((f) => f.endsWith(".md")).length
-    : 0;
-  const gateCount = fs.existsSync(path.join(featureDir, "gates"))
-    ? fs
-        .readdirSync(path.join(featureDir, "gates"))
-        .filter((f) => f.endsWith(".sh")).length
-    : 0;
-
-  return {
-    convergence: {
-      firstPassRate: Math.round(firstPassRate),
-      avgAttempts: Number(avgAttempts.toFixed(2)),
-    },
-    density: {
-      linesPerSP: Number((totalLines / spCount).toFixed(2)),
-      filesPerSP: Number((totalFiles / spCount).toFixed(2)),
-      toolCallsPerSP: Number((toolCalls / spCount).toFixed(2)),
-    },
-    specQuality: {
-      contractCount,
-      gateCount,
-    },
-  };
-}
 
 /**
  * Clusters timestamps into work sessions.
@@ -239,6 +130,8 @@ export function generateSummary(
 
   let totalPointCompression = 0;
   let totalTotalCompression = 0;
+  
+  let indicatorsCount = 0;
   let totalFirstPassRate = 0;
   let totalAvgAttempts = 0;
   let totalLinesPerSP = 0;
@@ -254,6 +147,7 @@ export function generateSummary(
     totalTotalCompression += r.compression.totalCompression;
     
     if (r.indicators) {
+      indicatorsCount++;
       totalFirstPassRate += r.indicators.convergence.firstPassRate;
       totalAvgAttempts += r.indicators.convergence.avgAttempts;
       totalLinesPerSP += r.indicators.density.linesPerSP;
@@ -280,11 +174,14 @@ export function generateSummary(
   const count = reports.length;
   summary.totals.avgPointCompression = totalPointCompression / count;
   summary.totals.avgTotalCompression = totalTotalCompression / count;
-  summary.totals.avgFirstPassRate = totalFirstPassRate / count;
-  summary.totals.avgAvgAttempts = totalAvgAttempts / count;
-  summary.totals.avgLinesPerSP = totalLinesPerSP / count;
-  summary.totals.avgFilesPerSP = totalFilesPerSP / count;
-  summary.totals.avgToolCallsPerSP = totalToolCallsPerSP / count;
+
+  if (indicatorsCount > 0) {
+    summary.totals.avgFirstPassRate = totalFirstPassRate / indicatorsCount;
+    summary.totals.avgAvgAttempts = totalAvgAttempts / indicatorsCount;
+    summary.totals.avgLinesPerSP = totalLinesPerSP / indicatorsCount;
+    summary.totals.avgFilesPerSP = totalFilesPerSP / indicatorsCount;
+    summary.totals.avgToolCallsPerSP = totalToolCallsPerSP / indicatorsCount;
+  }
 
   const sorted = [...reports].sort(
     (a, b) =>

@@ -275,8 +275,7 @@
           "description": "Implement FR-014 and FR-015 for convergence, density, and spec quality indicators.",
           "status": "open",
           "gateScript": "gates/T025-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-04T00:25:00.000Z"
+          "sp": 0
         }
       ],
       "sp_estimate": 0,
