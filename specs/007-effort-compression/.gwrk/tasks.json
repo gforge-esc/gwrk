@@ -51,8 +51,8 @@
         {
           "id": "T005",
           "title": "Implement src/engine/report-writer.ts",
-          "description": "NEW: generates effort markdown report to `docs/assessments/effort-<feature>-YYYY-MM-DD.md`",
-          "status": "completed",
+          "description": "NEW: generates effort markdown report to `docs/assessments/effort-<feature>-YYYY-MM-DD.md` — RE-OPENED: File missing; gate T005-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T005-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -78,8 +78,8 @@
         {
           "id": "T008",
           "title": "Implement test strategy for Phase 1",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy. — RE-OPENED: Gate T008-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T008-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -112,8 +112,8 @@
         {
           "id": "T010",
           "title": "Implement src/engine/git-timestamps.ts",
-          "description": "NEW: extracts spec creation date, first/last impl commit, PR merge time from Git log and `gh` CLI",
-          "status": "completed",
+          "description": "NEW: extracts spec creation date, first/last impl commit, PR merge time from Git log and `gh` CLI — RE-OPENED: File missing; gate T010-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T010-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -121,8 +121,8 @@
         {
           "id": "T011",
           "title": "Implement src/engine/commit-cluster.ts",
-          "description": "NEW: clusters commits by gap threshold, computes active coding time",
-          "status": "completed",
+          "description": "NEW: clusters commits by gap threshold, computes active coding time — RE-OPENED: File missing; gate T011-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T011-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -139,8 +139,8 @@
         {
           "id": "T013",
           "title": "Implement src/engine/git-timestamps.test.ts",
-          "description": "NEW: unit tests — Git log parsing, `gh` fallback",
-          "status": "completed",
+          "description": "NEW: unit tests — Git log parsing, `gh` fallback — RE-OPENED: File missing; gate T013-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T013-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -148,8 +148,8 @@
         {
           "id": "T014",
           "title": "Implement src/engine/commit-cluster.test.ts",
-          "description": "NEW: unit tests — gap detection, session boundaries",
-          "status": "completed",
+          "description": "NEW: unit tests — gap detection, session boundaries — RE-OPENED: File missing; gate T014-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T014-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -166,8 +166,8 @@
         {
           "id": "T016",
           "title": "Implement test strategy for Phase 2",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy. — RE-OPENED: Gate T016-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T016-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -188,8 +188,8 @@
         {
           "id": "T017",
           "title": "Implement src/commands/effort.ts",
-          "description": "NEW: Commander command — loads config, calls effort engine, writes report",
-          "status": "completed",
+          "description": "NEW: Commander command — loads config, calls effort engine, writes report — RE-OPENED: File missing; gate T017-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T017-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -197,17 +197,17 @@
         {
           "id": "T018",
           "title": "Implement src/commands/compression.ts",
-          "description": "NEW: Commander command — calls compression engine, formats output, persistence",
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "sp": 0,
-          "completedAt": "2026-05-13T20:27:37.128Z"
+          "completedAt": "2026-05-13T20:27:37.128Z",
+          "description": "Wire compression CLI command with --all, --feature, and --json flags"
         },
         {
           "id": "T019",
           "title": "Implement src/commands/effort.test.ts",
-          "description": "NEW: unit tests — command wiring, `--json` output",
-          "status": "completed",
+          "description": "NEW: unit tests — command wiring, `--json` output — RE-OPENED: File missing; gate T019-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T019-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -224,7 +224,7 @@
         {
           "id": "T021",
           "title": "Implement src/cli.ts",
-          "description": "MODIFY: register `measure effort` and `measure compression` subcommands",
+          "description": "MODIFY: register `measure effort` and `measure compression` subcommands — NOTE: effort subcommand is missing from CLI.",
           "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "sp": 0,
@@ -251,8 +251,8 @@
         {
           "id": "T024",
           "title": "Implement test strategy for Phase 3",
-          "description": "Implement all unit and integration tests defined in the phase test strategy.",
-          "status": "completed",
+          "description": "Implement all unit and integration tests defined in the phase test strategy. — RE-OPENED: Gate T024-gate.sh failed.",
+          "status": "open",
           "gateScript": "gates/T024-gate.sh",
           "sp": 0,
           "completedAt": "2026-05-13T20:27:37.128Z"
@@ -273,9 +273,10 @@
           "id": "T025",
           "title": "Implement Leading Indicators",
           "description": "Implement FR-014 and FR-015 for convergence, density, and spec quality indicators.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T025-gate.sh",
-          "sp": 0
+          "sp": 0,
+          "completedAt": "2026-06-04T00:25:00.000Z"
         }
       ],
       "sp_estimate": 0,
