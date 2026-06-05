@@ -233,6 +233,12 @@ export class ShipOrchestrator extends EventEmitter {
         console.warn(`Harvest failed (non-fatal): ${err}`);
       }
 
+      // State file exists for crash recovery during a run. Once complete,
+      // it's stale — delete it so the next invocation starts fresh.
+      try {
+        fs.unlinkSync(this.getStatePath());
+      } catch { /* already gone */ }
+
       return 0;
     }
 
