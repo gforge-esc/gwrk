@@ -1045,23 +1045,23 @@ The Slack integration was designed as a two-way control surface but currently fu
 
 #### What Blocks Daily Driver
 
-The blockers are simpler than they look. Agent backends (gemini, claude, codex, agy) are all available locally — no Docker required. The server dispatches to the same CLI agents that `gwrk ship` uses from the terminal.
+The blockers are simpler than they look. Agent backends (gemini, claude, codex, agy) are all available locally — no Docker required. The server uses **Socket Mode** (outbound WebSocket to Slack) — no tunnel, no public URL, no ngrok. Slack IS the tunnel.
 
-1. **Server not running** — `gwrk server start` needs to be running on the workstation. No auto-start (launchd plist). Trivial to fix.
-2. **No tunnel** — Slack needs to reach the server. Requires ngrok or Tailscale to expose the local Fastify server to Slack's callback URLs.
-3. **Slack app config** — The Slack app's Request URL must point to the tunnel endpoint. Currently pointed at nothing (or localhost).
-4. **Untested end-to-end** — The slash commands and button actions have never been tested against a live Slack workspace with a running server. Unknown failure surface.
+Sleep/wake resilience already exists: `lifecycle.ts` detects sleep → pauses queue, detects wake → runs graceful reconnect (re-sample resources, verify git, verify network, resume queue). `network.ts` monitors connectivity and pauses/resumes on network down/up.
+
+1. **Server not running** — `gwrk server start` needs to be running. No launchd plist to auto-start on login and keep it alive across sleep/wake cycles.
+2. **Slack app not configured** — App token (`xapp-*`) and bot token need to be in `.gwrkrc.json` or environment. Unclear if they're set for the current Slack workspace.
+3. **Untested end-to-end** — The slash commands and button actions have never been tested against a live Slack workspace with a running server. Unknown failure surface.
 
 #### Path to "Work From Phone"
 
 | Step | Effort | What |
 |------|--------|------|
-| 1. **launchd plist** | 30 min | Auto-start `gwrk server start` on login. Keep it running. |
-| 2. **Tailscale tunnel** | 30 min | Expose server port via Tailscale Funnel or ngrok. |
-| 3. **Slack app config** | 15 min | Update Request URL + Event Subscriptions to tunnel endpoint. |
-| 4. **Smoke test** | 1 hr | Test `/gwrk status`, `/gwrk ship`, button actions from phone. Fix what breaks. |
+| 1. **launchd plist** | 30 min | Auto-start `gwrk server start` on login. `KeepAlive: true` handles crashes + sleep/wake. |
+| 2. **Verify Slack tokens** | 15 min | Confirm `appToken` and `botToken` in `.gwrkrc.json`. Socket Mode needs both. |
+| 3. **Smoke test** | 1 hr | `gwrk server start`, send `/gwrk status` from phone, test buttons. Fix what breaks. |
 
-> **Total: ~2.5 hrs to first real phone test.** No Docker. No cloud hosting. No rewrites. Just: run the server, tunnel it, point Slack at it, test.
+> **Total: ~1.5 hrs to first real phone test.** No Docker. No tunnel. No cloud hosting. No rewrites. Just: run the server, confirm Slack tokens, test.
 
 ### Resolved This Session
 
