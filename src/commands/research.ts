@@ -61,7 +61,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
 export const researchCommand = new Command("research")
   .description("Scaffold research directories and briefs (R0XX)")
   .argument("<initiative>", "Research initiative name")
-  .option("--methodology <type>", "Research methodology (technical, jtbd, etc.)", "technical")
+  .option("--methodology <type>", "Research methodology: technical, jtbd, ontology", "technical")
   .option("--run", "Execute the methodology plugin immediately after scaffolding")
   .action(async (initiative: string, opts: { methodology: string, run?: boolean }) => {
     try {
