@@ -31,15 +31,40 @@ describe("FR-014: computeLeadingIndicators", () => {
     // Mock density run stats query
     mockDb.get.mockReturnValue({ total_lines: 100, total_files: 5 });
 
-    // Mock filesystem for spec quality
-    vi.mocked(fs.existsSync).mockReturnValue(true);
+    // Mock filesystem for spec quality and tasks.json
+    vi.mocked(fs.existsSync).mockImplementation(((dir: string) => {
+      if (dir.endsWith("tasks.json")) return true;
+      if (dir.endsWith("contracts")) return true;
+      if (dir.endsWith("gates")) return true;
+      if (dir.endsWith(".runs")) return true;
+      return false;
+    }) as any);
     vi.mocked(fs.readdirSync).mockImplementation(((dir: string) => {
       if (dir.endsWith("contracts")) return ["c1.md", "c2.md", "README.md"];
-      if (dir.endsWith("gates")) return ["T001-gate.sh", "T002-gate.sh", "T003-gate.sh", "run-all.sh"];
+      if (dir.endsWith("gates"))
+        return ["T001-gate.sh", "T002-gate.sh", "T003-gate.sh", "run-all.sh"];
       if (dir.endsWith(".runs")) return ["feat-a.log"];
       return [];
     }) as any);
-    vi.mocked(fs.readFileSync).mockReturnValue("[10:00:00] $ ls\n[10:01:00] > pnpm build");
+    vi.mocked(fs.readFileSync).mockImplementation(((p: string) => {
+      if (p.endsWith("tasks.json"))
+        return JSON.stringify({
+          phases: [
+            {
+              tasks: [
+                { id: "T001" },
+                { id: "T002" },
+                { id: "T003" },
+                { id: "T004" },
+                { id: "T005" },
+                { id: "T006" },
+              ],
+            },
+          ],
+        });
+      if (p.endsWith(".log")) return "[10:00:00] $ ls\n[10:01:00] > pnpm build";
+      return "";
+    }) as any);
 
     const forecast = {
       totalSP: 10,
@@ -51,10 +76,13 @@ describe("FR-014: computeLeadingIndicators", () => {
     const indicators = computeLeadingIndicators("feat-a", forecast, "proj-1");
 
     // Convergence: 
-    // tasks: T001 (1,1,C), T002 (2,1,C), T003 (1,1,C), T004 (3,1,NC), T005 (1,2,C) -> 5 tasks
-    // first-pass: T001, T003 -> 2/5 = 40%
-    // avg attempts: (1+2+1+3+1)/5 = 8/5 = 1.6
-    expect(indicators.convergence.firstPassRate).toBe(40);
+    // tasks in history: T001 (1,1,C), T002 (2,1,C), T003 (1,1,C), T004 (3,1,NC), T005 (1,2,C) -> 5 tasks in history
+    // tasks in tasks.json: 6 tasks
+    // denominator = max(5, 6) = 6
+    // first-pass in history: T001, T003 -> 2
+    // first-pass rate: 2 / 6 = 33.33% -> rounded to 33
+    // avg attempts (history only): (1+2+1+3+1)/5 = 8/5 = 1.6
+    expect(indicators.convergence.firstPassRate).toBe(33);
     expect(indicators.convergence.avgAttempts).toBe(1.6);
 
     // Density:

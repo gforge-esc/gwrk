@@ -50,20 +50,56 @@ export function computeLeadingIndicators(
         AND (h.project_id = pi.pid OR h.project_id IS NULL OR h.project_id = '')
         AND (h.task_id LIKE 'T%' OR h.task_id LIKE 'US%')
     )
+    WHERE task_id GLOB 'T[0-9][0-9][0-9]' OR task_id GLOB 'US-[0-9]*'
     GROUP BY task_id
   `,
     )
-    .all(projectId, featureId) as { task_id: string; attempts: number; first_attempt: number; is_completed: number }[];
+    .all(projectId, featureId) as {
+    task_id: string;
+    attempts: number;
+    first_attempt: number;
+    is_completed: number;
+  }[];
 
-  const taskCount = taskStats.length || 0;
+  // Load total tasks from tasks.json or spec.md if available to get an accurate denominator (FR-014)
+  let totalTasksExpected = 0;
+  const featureDir = path.join(process.cwd(), "specs", featureId);
+  try {
+    const tasksJsonPath = path.join(featureDir, ".gwrk", "tasks.json");
+    if (fs.existsSync(tasksJsonPath)) {
+      const tasksJson = JSON.parse(fs.readFileSync(tasksJsonPath, "utf-8"));
+      totalTasksExpected = tasksJson.phases.reduce(
+        (sum: number, p: any) => sum + (p.tasks?.length || 0),
+        0,
+      );
+    } else {
+      // Fallback: count US-### blocks in spec.md
+      const specPath = path.join(featureDir, "spec.md");
+      if (fs.existsSync(specPath)) {
+        const content = fs.readFileSync(specPath, "utf-8");
+        const matches = content.match(/^#{2,4}\s+US-\d+[a-z]?/gim);
+        if (matches) totalTasksExpected = matches.length;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const taskCount = Math.max(taskStats.length, totalTasksExpected);
   let firstPassRate = 0;
   let avgAttempts = 0;
 
   if (taskCount > 0) {
-    // First-pass: completed in the very first attempt of the feature
-    const firstPassTasks = taskStats.filter((t) => t.first_attempt === 1 && t.attempts === 1 && t.is_completed === 1).length;
+    // First-pass: completed in the very first attempt of the feature (attempt_num=1)
+    const firstPassTasks = taskStats.filter(
+      (t) => t.first_attempt === 1 && t.attempts === 1 && t.is_completed === 1,
+    ).length;
     firstPassRate = (firstPassTasks / taskCount) * 100;
-    avgAttempts = taskStats.reduce((sum, t) => sum + t.attempts, 0) / taskCount;
+    
+    const attemptedCount = taskStats.length;
+    avgAttempts = attemptedCount > 0 
+      ? taskStats.reduce((sum, t) => sum + t.attempts, 0) / attemptedCount
+      : 0;
   }
 
   // 2. Density
@@ -86,7 +122,6 @@ export function computeLeadingIndicators(
   // Fallback to Git if DB stats are missing (common for old runs)
   if (totalLines === 0 || totalFiles === 0) {
     try {
-      const featureDir = path.join(process.cwd(), "specs", featureId);
       if (fs.existsSync(featureDir)) {
         // Use git log --numstat to get churn for the feature directory
         const gitOut = execFileSync(
@@ -150,7 +185,6 @@ export function computeLeadingIndicators(
   }
 
   // 3. Spec Quality
-  const featureDir = path.join(process.cwd(), "specs", featureId);
   const contractCount = fs.existsSync(path.join(featureDir, "contracts"))
     ? fs
         .readdirSync(path.join(featureDir, "contracts"))
