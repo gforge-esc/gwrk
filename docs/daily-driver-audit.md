@@ -1007,6 +1007,60 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | 16 | W | **Google Stitch Integration.** Exploratory. No blocking dependency. | — | Could integrate into `gwrk define` as visual artifact generator. |
 | 17 | U | **F012: Knowledge Work.** Ghost feature — empty spec directory. Number reserved. | — | Assign when discovery pillar needs a formal spec. |
 
+### Tier 5: Slack & Server Interactivity Audit (Blocks "Work From Phone")
+
+**Status: One-way feed. Not interactive. Buttons are decorative.**
+
+The Slack integration was designed as a two-way control surface but currently functions as a one-way status feed. This blocks the "daily driver from my phone" milestone because all real work requires the laptop terminal.
+
+#### What Exists (Code Audit 2026-06-05)
+
+| Component | File | Lines | Status |
+|-----------|------|-------|--------|
+| **Slash commands** | `slack-commands.ts` | 810 | 9 handlers: status, dispatch, approve, reject, pause, pulse, effort, logs, ship, define |
+| **Button actions** | `slack-actions.ts` | 350+ | 8 actions: merge_pr, request_changes, approve_spec, approve_plan, revise_spec, revise_plan, view_review, retry_phase |
+| **Notifications** | `slack-notify.ts` | 100 | Push to channel via webhook or Bolt |
+| **Messages** | `slack-messages.ts` | 200+ | Block Kit builders for phase start/complete/fail, pulse, compression |
+| **Home tab** | `slack-home.ts` | 300+ | Operations dashboard: server status, queue depth, active sandboxes |
+| **Mentions** | `slack-mentions.ts` | 80+ | @gwrk routing — delegates to slash handlers or freeform LLM |
+| **Presence** | `slack-presence.ts` | 100+ | Event types for phase lifecycle, CI results, reviews |
+| **Build server** | `server/index.ts` | 400+ | Fastify + Slack Bolt. Routes: /health, /api/status, /api/dispatch |
+
+#### What Works
+
+1. **Notifications OUT** — `slack-notify.ts` can post phase start/complete/fail messages to a channel. One-way push.
+2. **Home tab** — `slack-home.ts` renders a dashboard. Read-only.
+3. **Status command** — `/gwrk status` returns server + queue state.
+
+#### What Doesn't Work
+
+| Issue | Why |
+|-------|-----|
+| **Buttons don't connect** | Button `action_id`s (merge_pr, approve_spec, etc.) require the build server to be running. Server requires Docker/sandbox infrastructure that's deferred. Buttons render but clicking them either errors or does nothing useful without the server context. |
+| **Ship from Slack** | `/gwrk ship 001 p01` spawns `gwrk ship` as a child process of the build server. Requires server running on the laptop. Can't ship from phone unless server is tunneled (ngrok, Tailscale). |
+| **Define from Slack** | Same issue — spawns CLI commands as child processes. |
+| **Approve/reject** | Requires PR lookup from runs DB, which requires the server process to have access to the project's SQLite DB. |
+| **No bidirectional flow** | Can't ask a question from Slack and get a response. Mentions route to `handleSlashCommand` or a freeform LLM call but the LLM path has no project context. |
+| **Server not running** | `gwrk server start` exists but nobody runs it. No systemd/launchd integration. No auto-start. |
+
+#### What Blocks Daily Driver
+
+1. **Server availability** — The build server must be running and reachable from Slack. Currently requires: laptop open, `gwrk server start`, ngrok/Tailscale tunnel. No persistent hosting.
+2. **Sandbox dependency** — `dispatch-orchestrator.ts`, `sandbox.ts`, `docker.ts` assume Docker sandboxes for agent execution. Docker is deferred. Without sandboxes, dispatch routes have no execution backend.
+3. **DB locality** — SQLite is on the laptop. Slack actions need to read/write runs DB. No remote DB, no API layer over DB.
+4. **Authentication** — No user verification on Slack actions. Anyone in the workspace could theoretically merge PRs.
+
+#### Path to "Work From Phone"
+
+| Approach | Effort | Dependency |
+|----------|--------|------------|
+| **A: Tailscale tunnel** — Run server on desktop, expose via Tailscale. Slack hits desktop directly. | ~2 hrs | Tailscale installed, server auto-start via launchd |
+| **B: Cloud relay** — Lightweight cloud function receives Slack events, forwards to local server. | ~1 day | Cloud account, webhook routing |
+| **C: Hosted server** — Run gwrk server on a VPS. Clone repo there. | ~2 days | VPS, git sync, DB migration to Postgres |
+| **D: Slack-only mode** — Rewrite Slack handlers to use GitHub CLI directly (no build server). | ~3 days | Redesign dispatch to not require local server |
+
+> **Recommendation:** Option A (Tailscale) is the cheapest path to test "work from phone" with EnergyWork. Gets real data on whether the Slack surface is actually useful before investing in options B-D.
+
 ### Resolved This Session
 
 | Item | What happened |
