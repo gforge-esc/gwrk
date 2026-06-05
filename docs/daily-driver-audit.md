@@ -993,7 +993,7 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | 7 | P | **Server-initiated harvest (heartbeat polling).** Add `checkMergedPRs()` to heartbeat loop. Option C from audit: `gh pr list --state merged` in existing heartbeat. | ~2 hrs | Needs spec amendment to F011. Harvest engine works; trigger is the gap. |
 | ~~8~~ | ~~M.2~~ | ~~**Wire `gwrk define research`.**~~ R006 draft complete. Research methodologies are workflow plugins. CLI: `gwrk define research R00X --methodology jtbd`. Domain ontology first-class. | ~~Research~~ | ✅ Draft complete — awaiting review |
 | ~~9~~ | ~~M.3~~ | ~~**Project perspective mechanism.**~~ R007 draft complete. Three layers: enforcement skills (how we build), domain ontology (what we're building), architecture grounding (system shape). Profile → enforcement routing algorithm designed. **F014 P13 shipped ADR-009 injection.** | ~~Research~~ | ✅ Research complete. Ontology injection shipped. Routing → next feature cycle. |
-| 10 | T | **Compression needs SP data.** `gwrk measure compression --all` returns 0.0x everywhere because no specs have SP values. Compression engine works; input is the gap. | ~2 hrs | Seed SP values into spec stories, or auto-derive from task count. |
+| ~~10~~ | ~~T~~ | ~~**Compression needs SP data.**~~ F007 P4 shipped: leading indicators (convergence, density, specQuality). LOC-derived SP fallback mechanism defined but `forecast.storyPoints` not yet wired — remaining phases in F007 spec. | ~~~2 hrs~~ | ✅ P4 shipped (PR #74). Indicators live. SP derivation → F007 P5+. |
 | 11 | M.4 | **Rewrite `docs/product/WHAT_IS_GWRK.md`.** Currently self-referential. Should be the PE's operating system thesis. | ~1 hr | |
 
 ### Tier 4: Backlog (Not Blocking)
