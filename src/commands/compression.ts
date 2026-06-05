@@ -3,6 +3,7 @@ import path from "node:path";
 import { Command } from "commander";
 import {
   computeCompression,
+  computeForecastFromLOC,
   computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
@@ -75,15 +76,18 @@ Examples:
             const effort = getEffortReport(featDir, feat, projectRoot);
             const actuals = gatherDeliveryActuals(featDir);
 
-            const forecast = {
-              totalSP: effort.totalSP,
-              roles: effort.roles.map((r) => ({
-                role: r.role,
-                sp: r.spAssigned,
-              })),
-              estimatedHours: effort.totalWithOverhead,
-              estimatedDays: effort.totalDays,
-            };
+            // FR-016: LOC-derived SP fallback when spec has no explicit SP
+            const forecast = effort.totalSP > 0
+              ? {
+                  totalSP: effort.totalSP,
+                  roles: effort.roles.map((r) => ({
+                    role: r.role,
+                    sp: r.spAssigned,
+                  })),
+                  estimatedHours: effort.totalWithOverhead,
+                  estimatedDays: effort.totalDays,
+                }
+              : computeForecastFromLOC(featDir);
 
             const ratios = computeCompression(forecast, actuals);
             const projectId = resolveProjectId(projectRoot);
@@ -186,12 +190,15 @@ Examples:
         const effort = getEffortReport(featureDir, feature, projectRoot);
         const actuals = gatherDeliveryActuals(featureDir);
 
-        const forecast = {
-          totalSP: effort.totalSP,
-          roles: effort.roles.map((r) => ({ role: r.role, sp: r.spAssigned })),
-          estimatedHours: effort.totalWithOverhead,
-          estimatedDays: effort.totalDays,
-        };
+        // FR-016: LOC-derived SP fallback when spec has no explicit SP
+        const forecast = effort.totalSP > 0
+          ? {
+              totalSP: effort.totalSP,
+              roles: effort.roles.map((r) => ({ role: r.role, sp: r.spAssigned })),
+              estimatedHours: effort.totalWithOverhead,
+              estimatedDays: effort.totalDays,
+            }
+          : computeForecastFromLOC(featureDir);
 
         const ratios = computeCompression(forecast, actuals);
         const projectId = resolveProjectId(projectRoot);
