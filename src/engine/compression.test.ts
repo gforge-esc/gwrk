@@ -331,8 +331,8 @@ describe("FR-014: computeLeadingIndicators", () => {
     const mockDb = {
       prepare: vi.fn().mockReturnThis(),
       all: vi.fn().mockReturnValue([
-        { task_id: "T001", attempts: 1, is_completed: 1 },
-        { task_id: "T002", attempts: 2, is_completed: 1 },
+        { task_id: "T001", attempts: 1, first_attempt: 1, is_completed: 1 },
+        { task_id: "T002", attempts: 2, first_attempt: 1, is_completed: 1 },
       ]),
       get: vi.fn().mockReturnValue({ total_lines: 100, total_files: 5 }),
     };

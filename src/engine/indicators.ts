@@ -28,6 +28,7 @@ export function computeLeadingIndicators(
     SELECT
       task_id,
       COUNT(DISTINCT attempt_num) as attempts,
+      MIN(attempt_num) as first_attempt,
       MAX(is_completed) as is_completed
     FROM (
       SELECT
@@ -52,14 +53,15 @@ export function computeLeadingIndicators(
     GROUP BY task_id
   `,
     )
-    .all(projectId, featureId) as { task_id: string; attempts: number; is_completed: number }[];
+    .all(projectId, featureId) as { task_id: string; attempts: number; first_attempt: number; is_completed: number }[];
 
   const taskCount = taskStats.length || 0;
   let firstPassRate = 0;
   let avgAttempts = 0;
 
   if (taskCount > 0) {
-    const firstPassTasks = taskStats.filter((t) => t.attempts === 1 && t.is_completed === 1).length;
+    // First-pass: completed in the very first attempt of the feature
+    const firstPassTasks = taskStats.filter((t) => t.first_attempt === 1 && t.attempts === 1 && t.is_completed === 1).length;
     firstPassRate = (firstPassTasks / taskCount) * 100;
     avgAttempts = taskStats.reduce((sum, t) => sum + t.attempts, 0) / taskCount;
   }
