@@ -919,6 +919,9 @@ export class ShipOrchestrator extends EventEmitter {
           task.completedAt = new Date().toISOString();
         }
       } else {
+        console.log(`    ⚠ Gate FAILED: ${task.id} (${gatePath})`);
+        console.log(`      exit: ${gateResult.exitCode}`);
+        console.log(`      output: ${gateResult.output.slice(0, 500)}`);
         task.status = "open";
         task.completedAt = undefined;
         failedCount++;
