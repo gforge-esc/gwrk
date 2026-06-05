@@ -1031,3 +1031,17 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | Ship e2e test | ✅ `ship-orchestrator.e2e.test.ts` — 9 tests with real in-memory SQLite (no DB mocking). Catches: ESM crypto bug, PR data bug, project_id filtering, stale run accumulation. |
 | DB remediation | ✅ 17 orphaned runs backfilled with `project_id`. P11/P12/P13 runs marked `shipped`. Stale P11 runs marked `abandoned`. |
 
+### Resolved 2026-06-05
+
+| Item | What happened |
+|------|--------------|
+| R008 ontology & identity | ✅ Research brief + draft. Six-primitive ontology (Initiative, Commitment, Agent, Judgment, Signal, Methodology). Five mermaid diagrams. |
+| WHAT_IS_GWRK.md rewrite | ✅ Replaced with R008 deliverable. Honest framing: compression = shipping accountability, not delivery. README updated to match. Flamingo branding header. |
+| Ontology construction workflow | ✅ `gwrk-research-ontology/PROMPT.md` — 20-line skeleton replaced with 153-line five-primitive methodology. End-to-end verified. |
+| ADR-009 injection verified | ✅ Already wired (lines 498-529 of agent.ts). `.gwrk/ontology/domain.md` injected as `<domain_ontology>`. |
+| gwrk self-ontology | ✅ `gwrk define research gwrk-ontology --methodology ontology --run` → produced `.gwrk/ontology/domain.md` (10 classes, 9 relations, 6 axioms). |
+| UX: research --help | ✅ Lists all methodologies (technical, jtbd, ontology) instead of "etc." |
+| UX: undefined output | ✅ `info()` returns void — was wrapped in `console.log()`. Fixed. |
+| UX: log filenames | ✅ PROMPT.md → parent dir name. Feature slug capped at 40 chars. |
+| UX: research output | ✅ Shows file paths instead of a prose summary paragraph. |
+| Scaffolder name stutter | ✅ Strips user-provided R0XX- prefix (R008-r008-* → R008-*). |
