@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
 import { AgentBackendConfigSchema } from "../server/agent-registry.js";
+import { DEFAULT_LOC_RATES } from "../engine/effort-defaults.js";
+import { resolveRoleMultipliers } from "../engine/roles.js";
 
 const AgentBackendSchema = z.string();
 export type AgentBackend = string;
@@ -139,6 +141,25 @@ export const GwrkConfigSchema = z.object({
       repos: z.array(z.string().min(1)),
     })
     .optional(),
+  effort: z
+    .object({
+      profile: z.string().default("TS"),
+      roles: z
+        .record(
+          z.string(),
+          z.object({
+            hoursPerSP: z.number().optional(),
+          }),
+        )
+        .optional(),
+      locRates: z.record(z.string(), z.number()).optional(),
+    })
+    .default({ profile: "TS" }),
+  compression: z
+    .object({
+      sessionGapMinutes: z.number().default(30),
+    })
+    .default({ sessionGapMinutes: 30 }),
 });
 
 export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;
@@ -184,4 +205,39 @@ export function loadConfig(projectRoot: string): GwrkConfig {
   }
 
   return result.data;
+}
+
+/**
+ * Resolves the effort configuration using a three-layer chain:
+ * 1. Defaults (compiled-in)
+ * 2. Profile-based rates
+ * 3. Config overrides (from .gwrkrc.json)
+ */
+export function resolveEffortConfig(config: GwrkConfig): {
+  profile: string;
+  locRate: number;
+  hoursPerSP: number;
+} {
+  const profile = config.effort.profile;
+
+  // Layer 1 & 2: Defaults and Profile
+  let locRate = DEFAULT_LOC_RATES[profile] || DEFAULT_LOC_RATES.TS!;
+
+  // Layer 3: Config overrides
+  if (config.effort.locRates?.[profile]) {
+    locRate = config.effort.locRates[profile]!;
+  }
+
+  // Resolve hoursPerSP using existing role multiplier logic
+  const roles = resolveRoleMultipliers(config);
+
+  // Map common profiles to canonical role IDs
+  let roleId = profile;
+  if (profile === "Rust") roleId = "RE";
+
+  const role =
+    roles.find((r) => r.role === roleId) || roles.find((r) => r.role === "TS")!;
+  const hoursPerSP = role.hoursPerSP;
+
+  return { profile, locRate, hoursPerSP };
 }

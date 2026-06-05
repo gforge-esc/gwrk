@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getDb } from "../db/index.js";
 export { computeLeadingIndicators } from "./indicators.js";
+import { getLocRate } from "./effort-defaults.js";
 import type {
   CommitCluster,
   CompressionRatios,
@@ -65,6 +66,71 @@ export function clusterCommits(
   });
 
   return clusters;
+}
+
+/**
+ * Computes an EffortForecast from LOC when explicit SPs are missing.
+ * Derives SP from git numstat (implementation) and spec/plan/research files (definitional).
+ * (FR-016, FR-017, FR-019)
+ */
+export function computeForecastFromLOC(
+  featureDir: string,
+  profile = "TS",
+  hoursPerSP = 4,
+): EffortForecast {
+  const locRate = getLocRate(profile);
+  const deRate = getLocRate("DE");
+
+  let implLoc = 0;
+  let deLoc = 0;
+
+  // 1. Implementation LOC from Git numstat
+  try {
+    const parentDir = path.dirname(featureDir);
+    const featureBase = path.basename(featureDir);
+    const numstat = execFileSync(
+      "git",
+      ["log", "--numstat", "--format=", "--", featureBase],
+      { cwd: parentDir, encoding: "utf-8" },
+    ).toString();
+
+    const lines = numstat.split("\n");
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 3) {
+        const added = Number.parseInt(parts[0] || "0", 10);
+        if (!Number.isNaN(added)) {
+          implLoc += added;
+        }
+      }
+    }
+  } catch (err) {
+    // maybe no commits
+  }
+
+  // 2. Definitional LOC from spec.md, plan.md, research.md
+  const deFiles = ["spec.md", "plan.md", "research.md"];
+  for (const file of deFiles) {
+    const filePath = path.join(featureDir, file);
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8");
+      deLoc += content.split("\n").filter((l) => l.trim()).length;
+    }
+  }
+
+  const implSP = implLoc / locRate;
+  const deSP = deLoc / deRate;
+  const totalSP = Math.ceil(implSP + deSP);
+
+  const estimatedHours = totalSP * hoursPerSP * 1.25; // 1.25x overhead factor (FR-004)
+  const estimatedDays = Math.ceil(estimatedHours / 8);
+
+  return {
+    totalSP,
+    roles: [{ role: profile, sp: totalSP }],
+    estimatedHours,
+    estimatedDays,
+  };
 }
 
 /**
