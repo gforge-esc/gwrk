@@ -246,7 +246,7 @@ The **precision of GNU tooling** meets the **audacity of the runway**. Utilitari
 
 ## Lineage
 
-gwrk emerged from workflow infrastructure built across two production codebases — [Code-Red](https://github.com/) (courtroom code forensics, Rust + TypeScript + Tauri) and [GForge.ai](https://gforge.ai) (epistemic engine, Fastify + React + Prisma + PostgreSQL). The infrastructure was project-agnostic. gwrk is the extraction into a standalone tool: 46K+ lines of TypeScript, 845 tests, 17 feature specs, 347 gate scripts.
+gwrk emerged from workflow infrastructure built across several production codebases for my own projects and for client work. The infrastructure was project-agnostic. gwrk is the extraction into a standalone tool.
 
 ---
 
