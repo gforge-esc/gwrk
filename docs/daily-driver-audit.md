@@ -1045,14 +1045,9 @@ The Slack integration was designed as a two-way control surface but currently fu
 
 #### What Blocks Daily Driver
 
-Everything is wired. Socket Mode (outbound WebSocket — no tunnel needed). Sleep/wake resilience in `lifecycle.ts`. Tokens at `~/.gwrk/.env`. Channel configured in `.gwrkrc.json`. The actual blocker:
+Infrastructure is wired (Socket Mode, sleep/wake, tokens, channel). The server runs. The problem is the **Slack surface itself**: it's a one-way status feed. Buttons don't work. No real interactivity. You can read notifications from your phone but you can't do anything from your phone.
 
-1. **Nobody has run it.** `gwrk server start` hasn't been tested against the live Slack workspace. Unknown failure surface.
-2. **No launchd plist.** Server needs to survive sleep/wake cycles and login/logout. Needs a `com.gwrk.server.plist` to keep it alive.
-
-#### Path to "Work From Phone"
-
-Run `gwrk server start`. Send `/gwrk status` from your phone. See what breaks. Fix it. Then write a launchd plist so it stays running.
+The gap is not infrastructure — it's the Slack surface design. The button actions (`merge_pr`, `approve_spec`, `retry_phase`, etc.) need to actually work end-to-end. Until they do, "work from phone" is just "read from phone."
 
 ### Resolved This Session
 
