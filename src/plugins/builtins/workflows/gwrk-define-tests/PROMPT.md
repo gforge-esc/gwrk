@@ -43,6 +43,21 @@ Read and understand the feature and phase deeply:
 - `{feature_dir}/data-model.md` — entity shapes (if exists)
 - `docs/grounding/architecture.md` — project structure, tech stack, test conventions
 
+<existing_source_mandate>
+**CRITICAL: Read existing source files before testing against them.**
+
+If your tests will call, import, or assert against ANY existing function, class, schema, or type
+(e.g., a Zod schema like `GwrkConfigSchema`, an existing utility like `loadConfig()`), you MUST
+read the current source file first to understand:
+
+- Required parameters and fields (e.g., Zod `.object()` required keys)
+- Return types and shapes
+- Existing method signatures
+
+Tests that fail because they pass incomplete arguments to an existing API are not RED — they are **broken**.
+A broken test cannot be fixed by implementing the new feature. It will block the ship loop indefinitely.
+</existing_source_mandate>
+
 ### 2. Map Requirements to Test Types
 
 Derive test file locations from `plan.md`'s file structure and `docs/grounding/architecture.md`'s project layout.
@@ -117,6 +132,21 @@ Verify that the generated tests fail as expected before implementation (RED stat
 
 - If tests pass → they're hollow. **Revise with stronger assertions.**
 - If tests compile but fail assertions → ideal RED state.
+
+<red_for_the_right_reason>
+**RED means "fails because the feature isn't implemented yet" — not "fails for any reason."**
+
+A test is correctly RED when implementing the new feature (and nothing else) would make it pass.
+A test is **broken** when it fails due to:
+
+- Missing required fields on an existing schema (e.g., passing `{ effort: {...} }` to a schema that requires `project` and `agents`)
+- Wrong argument types to an existing function
+- Incorrect import paths to existing modules
+- Calling methods that don't exist on the current API (not the new API — the current one)
+
+Before committing, verify for each test: **"Would implementing ONLY this phase's new code make this test pass?"**
+If the answer is no — the test is broken, not RED. Fix it before committing.
+</red_for_the_right_reason>
 </red_validation_rules>
 ### 6. Verify RED State
 

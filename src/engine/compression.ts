@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { getDb } from "../db/index.js";
+export { computeLeadingIndicators } from "./indicators.js";
 import type {
   CommitCluster,
   CompressionRatios,
@@ -8,6 +10,7 @@ import type {
   CompressionSummary,
   DeliveryActuals,
   EffortForecast,
+  LeadingIndicators,
 } from "./types.js";
 
 /**
@@ -110,6 +113,13 @@ export function generateSummary(
       totalActualCodingHours: 0,
       avgPointCompression: 0,
       avgTotalCompression: 0,
+      avgFirstPassRate: 0,
+      avgAvgAttempts: 0,
+      avgLinesPerSP: 0,
+      avgFilesPerSP: 0,
+      avgToolCallsPerSP: 0,
+      totalContracts: 0,
+      totalGates: 0,
     },
     best: { featureId: "", pointCompression: 0 },
     worst: { featureId: "", pointCompression: Number.POSITIVE_INFINITY },
@@ -120,6 +130,14 @@ export function generateSummary(
 
   let totalPointCompression = 0;
   let totalTotalCompression = 0;
+  
+  let indicatorsCount = 0;
+  let totalFirstPassRate = 0;
+  let totalAvgAttempts = 0;
+  let totalLines = 0;
+  let totalFiles = 0;
+  let totalToolCalls = 0;
+  let totalSPForIndicators = 0;
 
   for (const r of reports) {
     summary.totals.totalSP += r.forecast.totalSP;
@@ -128,6 +146,21 @@ export function generateSummary(
 
     totalPointCompression += r.compression.pointCompression;
     totalTotalCompression += r.compression.totalCompression;
+    
+    if (r.indicators) {
+      indicatorsCount++;
+      totalFirstPassRate += r.indicators.convergence.firstPassRate;
+      totalAvgAttempts += r.indicators.convergence.avgAttempts;
+      
+      // Weight density by SP
+      totalLines += r.indicators.density.linesPerSP * r.forecast.totalSP;
+      totalFiles += r.indicators.density.filesPerSP * r.forecast.totalSP;
+      totalToolCalls += r.indicators.density.toolCallsPerSP * r.forecast.totalSP;
+      totalSPForIndicators += r.forecast.totalSP;
+
+      summary.totals.totalContracts = (summary.totals.totalContracts || 0) + r.indicators.specQuality.contractCount;
+      summary.totals.totalGates = (summary.totals.totalGates || 0) + r.indicators.specQuality.gateCount;
+    }
 
     if (r.compression.pointCompression > summary.best.pointCompression) {
       summary.best = {
@@ -143,8 +176,20 @@ export function generateSummary(
     }
   }
 
-  summary.totals.avgPointCompression = totalPointCompression / reports.length;
-  summary.totals.avgTotalCompression = totalTotalCompression / reports.length;
+  const count = reports.length;
+  summary.totals.avgPointCompression = totalPointCompression / count;
+  summary.totals.avgTotalCompression = totalTotalCompression / count;
+
+  if (indicatorsCount > 0) {
+    summary.totals.avgFirstPassRate = totalFirstPassRate / indicatorsCount;
+    summary.totals.avgAvgAttempts = totalAvgAttempts / indicatorsCount;
+    
+    if (totalSPForIndicators > 0) {
+      summary.totals.avgLinesPerSP = totalLines / totalSPForIndicators;
+      summary.totals.avgFilesPerSP = totalFiles / totalSPForIndicators;
+      summary.totals.avgToolCallsPerSP = totalToolCalls / totalSPForIndicators;
+    }
+  }
 
   const sorted = [...reports].sort(
     (a, b) =>

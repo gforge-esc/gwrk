@@ -5,6 +5,10 @@ import { finishRun, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { run, runGate } from "../utils/exec.js";
 import { banner, color, dryRun, fail, success } from "../utils/format.js";
+import {
+  getCurrentCommit,
+  getDiffStats,
+} from "../utils/git.js";
 import { appendHistory } from "../utils/history.js";
 import {
   loadTaskState,
@@ -13,6 +17,7 @@ import {
 } from "../utils/state.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
@@ -24,6 +29,7 @@ export const implementAction = async (
 ) => {
   await withSignal("implement", async () => {
     const cwd = process.cwd();
+    const projectId = resolveProjectId(cwd);
     const feature = resolveFeature(featureInput, cwd);
     const specDir = path.join(cwd, "specs", feature);
     const scriptPath = path.join(cwd, "scripts/dev/agent-run.sh");
@@ -42,6 +48,7 @@ export const implementAction = async (
     const runId = startRun({
       feature_id: feature,
       phase_id: phaseId,
+      project_id: projectId,
       command: "implement",
       agent_backend: backend,
       workflow: "implement",
@@ -54,6 +61,7 @@ export const implementAction = async (
       "Run ID": `${runId}`,
     });
 
+    const startCommit = getCurrentCommit(cwd);
     const startTime = Date.now();
     let exitCode = 0;
 
@@ -83,6 +91,8 @@ export const implementAction = async (
                 taskId: task.id,
                 fromStatus: task.status,
                 toStatus: "completed",
+                runId,
+                projectId,
               });
             }
             continue;
@@ -126,6 +136,8 @@ export const implementAction = async (
                 taskId: task.id,
                 fromStatus: task.status,
                 toStatus: "completed",
+                runId,
+                projectId,
               });
             }
           } else {
@@ -140,16 +152,30 @@ export const implementAction = async (
       }
 
       const durationS = Math.round((Date.now() - startTime) / 1000);
-      finishRun(runId, { exit_code: 0, duration_s: durationS });
+      const stats = getDiffStats(cwd, startCommit);
+      finishRun(runId, {
+        exit_code: 0,
+        duration_s: durationS,
+        files_changed: stats.filesChanged,
+        lines_added: stats.linesAdded,
+        lines_deleted: stats.linesDeleted,
+      });
       success("implement", durationS, runId);
     } catch (err: unknown) {
       console.error(err);
       const durationS = Math.round((Date.now() - startTime) / 1000);
+      const stats = getDiffStats(cwd, startCommit);
       exitCode =
         err instanceof Error && "code" in err
           ? (err as { code: number }).code
           : 1;
-      finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+      finishRun(runId, {
+        exit_code: exitCode,
+        duration_s: durationS,
+        files_changed: stats.filesChanged,
+        lines_added: stats.linesAdded,
+        lines_deleted: stats.linesDeleted,
+      });
       fail("implement", exitCode, durationS, runId);
       process.exitCode = exitCode;
     }
