@@ -320,13 +320,20 @@ export async function initAction(options: any) {
                 maxCpu: 80,
                 maxMem: 80,
                 minDiskGb: 10,
-                maxClones: 2,
+                maxClones: 4,
               },
               cloud: {
                 maxConcurrent: 10,
               },
             },
-          };
+            effort: {
+              profile: "TS",
+            },
+            compression: {
+              sessionGapMinutes: 30,
+            },
+            };
+
         }
 
         // Slack Channel Provisioning

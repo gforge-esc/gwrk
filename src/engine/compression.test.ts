@@ -7,6 +7,7 @@ import {
   computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
+  computeForecastFromLOC,
 } from "./compression.js";
 import type {
   CompressionRatios,
@@ -29,6 +30,52 @@ vi.mock("../db/index.js", () => ({
  * FR-008: Compute Total Compression ratio
  * FR-009: Cross-feature compression summary with trends
  */
+
+describe("FR-016 & FR-017: computeForecastFromLOC — LOC-derived fallback", () => {
+  it("TR-001: computes SP from implementation numstat and spec/plan/research LOC (TS profile)", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(((p: string) => {
+      if (p.endsWith("spec.md")) return "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n"; // 5 lines
+      if (p.endsWith("plan.md")) return "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n"; // 5 lines
+      return "";
+    }) as any);
+
+    vi.mocked(execFileSync).mockReturnValue("100\t20\tsrc/file.ts\n50\t10\tsrc/other.ts\n" as any); // 150 added lines
+
+    // TS rate = 50 LOC/SP, DE rate = 25 LOC/SP
+    // implSP = 150 / 50 = 3 SP
+    // deSP = 10 / 25 = 0.4 SP
+    // totalSP = ceil(3 + 0.4) = 4 SP
+    const forecast = computeForecastFromLOC("/mock/feat-a", "TS");
+
+    expect(forecast.totalSP).toBe(4);
+    expect(forecast.roles[0].role).toBe("TS");
+    expect(forecast.estimatedHours).toBe(4 * 4 * 1.25); // 4 SP * 4h/SP * 1.25 overhead = 20h
+    expect(forecast.estimatedDays).toBe(3); // ceil(20/8) = 3
+
+    vi.resetAllMocks();
+  });
+
+  it("TR-001: computes SP from implementation numstat and spec/plan/research LOC (Rust profile)", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue("Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n" as any); // 5 lines * 3 files = 15 lines
+
+    vi.mocked(execFileSync).mockReturnValue("100\t0\tsrc/main.rs\n" as any); // 100 added lines
+
+    // Rust rate = 35 LOC/SP, DE rate = 25 LOC/SP
+    // implSP = 100 / 35 = 2.85... SP
+    // deSP = 15 / 25 = 0.6 SP
+    // totalSP = ceil(2.85 + 0.6) = ceil(3.45) = 4 SP
+    const forecast = computeForecastFromLOC("/mock/feat-a", "Rust", 6); // RE multiplier is 6
+
+    expect(forecast.totalSP).toBe(4);
+    expect(forecast.roles[0].role).toBe("Rust");
+    expect(forecast.estimatedHours).toBe(4 * 6 * 1.25); // 4 SP * 6h/SP * 1.25 overhead = 30h
+    expect(forecast.estimatedDays).toBe(4); // ceil(30/8) = 4
+
+    vi.resetAllMocks();
+  });
+});
 
 describe("FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit clustering", () => {
   it("TR-005 & TR-006: extracts timestamps and clusters commits (15 mins active across 2 sessions)", () => {

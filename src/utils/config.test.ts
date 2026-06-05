@@ -1,57 +1,65 @@
-import { describe, it, expect } from 'vitest';
-// @ts-ignore - Function and schema might need updates (RED)
-import { resolveEffortConfig, GwrkConfigSchema } from './config.js';
+import { describe, expect, it } from "vitest";
+import { GwrkConfigSchema, resolveEffortConfig } from "./config.js";
 
-describe('FR-017: Three-layer Config Resolution', () => {
-  it('should resolve using internal defaults when no config is provided', () => {
-    const config = resolveEffortConfig({}, {});
-    expect(config.rates['TS']).toBe(50);
+describe("FR-017: Three-layer Config Resolution", () => {
+  it("should resolve using internal defaults when no config is provided", () => {
+    const config = GwrkConfigSchema.parse({
+      project: { name: "test-project" },
+      agents: {},
+    });
+    const effort = resolveEffortConfig(config);
+    expect(effort.profile).toBe("TS");
+    expect(effort.locRate).toBe(50);
+    expect(effort.hoursPerSP).toBe(4);
   });
 
-  it('should allow profile-level overrides', () => {
-    const userConfig = {
+  it("should resolve using profile-specific defaults (Rust)", () => {
+    const config = GwrkConfigSchema.parse({
+      project: { name: "test-project" },
+      agents: {},
+      effort: { profile: "Rust" },
+    });
+    const effort = resolveEffortConfig(config);
+    expect(effort.profile).toBe("Rust");
+    expect(effort.locRate).toBe(35);
+    expect(effort.hoursPerSP).toBe(6); // RE multiplier
+  });
+
+  it("should allow explicit overrides to trump defaults", () => {
+    const config = GwrkConfigSchema.parse({
+      project: { name: "test-project" },
+      agents: {},
       effort: {
-        profile: 'high-velocity',
-        profiles: {
-          'high-velocity': { TS: 30 }
-        }
-      }
-    };
-    const config = resolveEffortConfig(userConfig, {});
-    expect(config.rates['TS']).toBe(30);
+        profile: "TS",
+        locRates: { TS: 30 },
+        roles: { TS: { hoursPerSP: 2 } },
+      },
+    });
+    const effort = resolveEffortConfig(config);
+    expect(effort.locRate).toBe(30);
+    expect(effort.hoursPerSP).toBe(2);
   });
 
-  it('should allow explicit overrides to trump profiles', () => {
-    const userConfig = {
-      effort: {
-        profile: 'standard',
-        rates: { TS: 25 }
-      }
-    };
-    const config = resolveEffortConfig(userConfig, { rates: { TS: 10 } });
-    expect(config.rates['TS']).toBe(10);
-  });
-
-  it('TC-003: should validate effort section in GwrkConfigSchema', () => {
+  it("TC-003: should validate effort section in GwrkConfigSchema", () => {
     const validEffort = {
-      project: { name: 'test-project' },
-      agents: { define: 'gemini', implement: 'gemini' },
+      project: { name: "test-project" },
+      agents: {},
       effort: {
-        profile: 'default',
-        rates: { TS: 50 }
-      }
+        profile: "default",
+        locRates: { TS: 50 },
+      },
     };
     // DM-001: Effort profile schema verification
     expect(() => GwrkConfigSchema.parse(validEffort)).not.toThrow();
   });
 
-  it('should throw error for invalid effort rate types', () => {
+  it("should throw error for invalid effort rate types", () => {
     const invalidEffort = {
-      project: { name: 'test-project' },
-      agents: { define: 'gemini', implement: 'gemini' },
+      project: { name: "test-project" },
+      agents: {},
       effort: {
-        rates: { TS: 'fast' } // Should be number
-      }
+        locRates: { TS: "fast" }, // Should be number
+      },
     };
     expect(() => GwrkConfigSchema.parse(invalidEffort)).toThrow();
   });

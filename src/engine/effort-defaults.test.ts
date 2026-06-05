@@ -1,17 +1,28 @@
-import { describe, it, expect } from 'vitest';
-// @ts-ignore - Module does not exist yet (RED)
-import { EFFORT_DEFAULTS } from './effort-defaults.js';
+import { describe, expect, it } from "vitest";
+import { DEFAULT_LOC_RATES, getLocRate } from "./effort-defaults.js";
 
-describe('FR-019: Language-specific LOC rates', () => {
-  it('should have correct default rates for supported languages', () => {
-    expect(EFFORT_DEFAULTS['TS']).toBe(50);
-    expect(EFFORT_DEFAULTS['Rust']).toBe(35);
-    expect(EFFORT_DEFAULTS['Python']).toBe(65);
-    expect(EFFORT_DEFAULTS['DE']).toBe(25);
+describe("effort-defaults", () => {
+  it("should have correct default rates", () => {
+    expect(DEFAULT_LOC_RATES.TS).toBe(50);
+    expect(DEFAULT_LOC_RATES.Rust).toBe(35);
+    expect(DEFAULT_LOC_RATES.Python).toBe(65);
+    expect(DEFAULT_LOC_RATES.DE).toBe(25);
   });
 
-  it('should return undefined for unsupported languages', () => {
-    // @ts-expect-error - testing invalid input
-    expect(EFFORT_DEFAULTS['COBOL']).toBeUndefined();
+  describe("getLocRate", () => {
+    it("should return correct rate for known profiles", () => {
+      expect(getLocRate("TS")).toBe(50);
+      expect(getLocRate("Rust")).toBe(35);
+      expect(getLocRate("Python")).toBe(65);
+      expect(getLocRate("DE")).toBe(25);
+    });
+
+    it("should fallback to TS for unknown profiles", () => {
+      expect(getLocRate("Unknown")).toBe(50);
+    });
+
+    it("should fallback to TS for missing profile", () => {
+      expect(getLocRate()).toBe(50);
+    });
   });
 });
