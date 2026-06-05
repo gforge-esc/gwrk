@@ -1,4 +1,18 @@
-# What is gwrk?
+# 🦩 gwrk
+
+<div align="center">
+
+![gwrk — You better gwrk!](branding/gwrk-flamingo-flat.png)
+
+**You better gwrk!**
+
+*Truth → Clarity → Throughput → Value.*
+
+</div>
+
+---
+
+## What is gwrk?
 
 > **The scarce resource in AI-assisted engineering isn't code generation — it's architectural judgment.**
 

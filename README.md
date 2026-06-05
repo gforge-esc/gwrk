@@ -1,6 +1,24 @@
-# gwrk: The Principal Engineer's Operating System
+# 🦩 gwrk
 
-**gwrk** is a CLI-native operating system for Principal Engineers. It orchestrates multi-agent software delivery through a spec → plan → tasks → ship → harvest pipeline, enforced by Hard Gate verification at every stage.
+<div align="center">
+
+![gwrk — You better gwrk!](docs/branding/gwrk-flamingo-flat.png)
+
+**You better gwrk!**
+
+*Truth → Clarity → Throughput → Value.*
+
+</div>
+
+---
+
+> **The scarce resource in AI-assisted engineering isn't code generation — it's architectural judgment.**
+
+**gwrk** is a Principal Engineer's operating system. It takes your architectural thinking — decomposition, interface contracts, dependency ordering, review rigor — and turns it into shipped code at previously impossible speed.
+
+📖 **[What is gwrk?](docs/product/WHAT_IS_GWRK.md)** — the full thesis, ontology, and architecture.
+
+---
 
 ## Quick Start
 
@@ -13,59 +31,88 @@ cd your-project
 gwrk init
 
 # Define a feature
-gwrk specify my-feature          # Generate spec.md
-gwrk plan my-feature             # Generate plan.md
-gwrk define tasks my-feature     # Generate tasks.json + gate scripts
+gwrk define spec 001-my-feature        # Generate spec.md
+gwrk define plan 001-my-feature        # Generate plan.md
+gwrk define tests 001-my-feature       # Generate RED test files
+gwrk define tasks 001-my-feature       # Generate tasks.json + gate scripts
 
 # Ship it
-gwrk ship my-feature 1           # Autonomous implement → review → PR loop
-gwrk gate my-feature              # Verify all gates pass
+gwrk ship 001-my-feature 1             # Autonomous implement → review → PR loop
+
+# Measure it
+gwrk measure compression --all         # Shipping accountability
 ```
 
-## Architecture
+## The Four Pillars
 
-gwrk is a **plugin-driven CLI** built on three layers:
+```mermaid
+graph LR
+    subgraph "Truth → Clarity → Throughput → Value"
+        D["🔍 discover"] --> DEF["📋 define"]
+        DEF --> S["🏗️ ship"]
+        S --> M["📊 measure"]
+        M -->|"motivation"| D
+    end
+    style D fill:#8b5cf6,color:#fff
+    style DEF fill:#3b82f6,color:#fff
+    style S fill:#f59e0b,color:#fff
+    style M fill:#10b981,color:#fff
+```
 
-| Layer | Purpose | Examples |
-|-------|---------|---------|
-| **L1: Agent Backends** | Adapter plugins for LLM CLIs | Claude, Codex, Gemini |
-| **L2: Skills** | Composable reasoning modes | truth-extract, decision-forge |
-| **L2.5: WorkflowRuntime** | JSON intent execution engine | specify, plan, implement, review |
-
-All workflows produce **JSON Intents** (`WRITE_FILE`, `CREATE_DIR`, `RUN_COMMAND`) that the `IntentEngine` executes natively. LLMs reason; gwrk mutates. Anti-MCP: Unix-native, pipe-composable, no server required.
+| Pillar | CLI | What It Does |
+|--------|-----|-------------|
+| **Discovery** | `gwrk define research R00X` | Scaffold research initiatives with structured methodologies |
+| **Definition** | `gwrk define spec → plan → tests → tasks` | Strict pipeline — each step gates the next |
+| **Shipping** | `gwrk ship <feature> <phase>` | Autonomous implement → build → test → review → PR loop |
+| **Accountability** | `gwrk measure compression` | LOC-derived effort forecast vs. actual delivery time |
 
 ## CLI Commands
 
 ```
-gwrk specify <feature>           # Spec generation workflow
-gwrk plan <feature>              # Implementation plan workflow
-gwrk define tasks <feature>      # Generate tasks.json + gate scripts
-gwrk define tests <feature>      # TDD: generate test files from spec
-gwrk ship <feature> [phase]      # Autonomous ship loop
-gwrk gate <feature> [-p <phase>] # Run gate scripts
-gwrk skill <name> [< input]      # Invoke reasoning skill
-gwrk plugin list|install|remove  # Plugin management
-gwrk status                      # System status
-gwrk pulse                       # Productivity snapshot
+Foxtrot Charlie
+  define       Define: spec → plan → tasks → tests → analyze
+  ship         Ship: autonomous branch→implement→review→PR loop
+  test         Run vitest scoped to feature test files
+  gate         Execute gates and enforce truth
+  measure      Measure: compression, pulse (shipping accountability)
+
+Operations
+  init         Initialize gwrk in the current directory
+  tasks        Query and manage task state
+  plan         Build Plan Orchestrator — query and manage the project spine
+  db           Query the local execution ledger
+  status       Show system status
+  project      Project management commands
+  plugin       Manage plugins (skills, workflows, enforcement)
 ```
 
 ## Directory Model
 
 | Directory | Purpose |
 |-----------|---------|
-| `~/.gwrk/` | Global home — plugins, skills, workflows, config |
-| `.gwrk/` | Project-local overrides (minimal by default) |
+| `~/.gwrk/` | Global home — plugins, skills, workflows, config, execution ledger |
+| `.gwrk/` | Project-local overrides, ontology, perspective |
 | `specs/` | Feature specs, plans, tasks, gates |
-| `src/` | TypeScript source (CLI + server + engine) |
-| `docs/` | Architecture, PRD, ADRs, research |
+| `src/` | TypeScript source (CLI + engine) |
+| `docs/` | Architecture, product docs, ADRs, research |
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — Authoritative technical specification
-- [PRD](docs/GWRK-PRD-PRFAQ.md) — Product requirements and FAQ
-- [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md) — Plugin system design
-- [DEVELOPMENT.md](DEVELOPMENT.md) — Contributing and development setup
+- **[What is gwrk?](docs/product/WHAT_IS_GWRK.md)** — thesis, ontology, architecture
+- **[Foxtrot Charlie](docs/product/FOXTROT-CHARLIE.md)** — the operating model
+- **[ADR-009](docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md)** — domain ontology and project knowledge
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** — contributing and development setup
 
 ## Stack
 
-TypeScript CLI (Commander.js) · Fastify daemon (localhost:18790) · SQLite (better-sqlite3) · Vitest · Biome · pnpm
+TypeScript CLI (Commander.js) · SQLite (better-sqlite3) · Vitest · Biome · pnpm
+
+---
+
+<div align="center">
+
+🦩 **You better gwrk.** 🦩
+
+*Truth extracted. Clarity committed. Throughput shipped. Value delivered.*
+
+</div>
