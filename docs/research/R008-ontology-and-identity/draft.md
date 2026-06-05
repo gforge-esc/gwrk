@@ -2,7 +2,7 @@
 
 > **The scarce resource in AI-assisted engineering isn't code generation — it's architectural judgment.**
 
-gwrk is a Principal Engineer's operating system. It takes the thinking you've already done — the decomposition, the interface contracts, the dependency ordering, the review rigor — and turns it into shipped code at a speed that was previously impossible. Then it measures whether the code actually delivered value, so your next spec is sharper than the last.
+gwrk is a Principal Engineer's operating system. It takes the thinking you've already done — the decomposition, the interface contracts, the dependency ordering, the review rigor — and turns it into shipped code at a speed that was previously impossible. Then it measures how fast you shipped, so your next spec is sharper than the last.
 
 gwrk doesn't think for you. The better your judgment, the better it performs.
 
@@ -18,7 +18,7 @@ gwrk operates on six kinds of things. Understanding them is understanding the pr
 | **Commitment** | A written artifact that binds execution — `spec.md`, `plan.md`, `tasks.json`, gate scripts | Not a conversation. Not a narrative. If it's not in the repo, it doesn't exist. |
 | **Agent** | An ephemeral executor that receives a task and produces a diff | Not gwrk. gwrk orchestrates; agents implement. They're disposable — if one fails, gwrk retries on another backend. |
 | **Judgment** | A human decision that shapes what gets built, how it's decomposed, and what "done" means | Not automatable. Not delegable. This is the scarce resource the thesis names. |
-| **Signal** | Measured evidence of progress or regression — compression ratios, gate pass/fail, test deltas | Not opinion. Not narrative. Computable from artifacts. Signals inform judgment; they don't replace it. |
+| **Signal** | Measured evidence of shipping efficiency — compression ratios, gate pass/fail, test deltas | Not opinion. Not delivery (adoption, usage, impact). Computable from artifacts. Signals motivate better specs; they don't prove value to customers. |
 | **Methodology** | A repeatable intellectual process with inputs, passes, and outputs | Not a tool. Not a command. JTBD discovery, ontology construction, and spec-sharpening are methodologies. gwrk is the tool that assists them. |
 
 These connect in a loop:
@@ -46,7 +46,8 @@ Foxtrot Charlie distills execution into four pillars. Each maps directly to a gw
 | **Discovery** | Truth > narratives | `gwrk define research` | Scaffold research initiatives. Apply methodologies (JTBD, ontology, technical). Produce structured briefs. |
 | **Definition** | If it's not written, it's not committed | `gwrk define spec → plan → tests → tasks` | Strict pipeline — each step gates the next. Binary acceptance criteria. Gate scripts that exit 0 or 1. |
 | **Shipping** | Ship to learn. Fast reds surface problems early. | `gwrk ship <feature> <phase>` | Autonomous loop: implement → build → test → review → PR. Circuit breaker at 3 iterations. Gap analysis on failure. |
-| **Delivery** | Shipped ≠ delivered. Value = adoption + outcomes. | `gwrk measure compression` | LOC-derived effort forecast vs. actual delivery time. The metric that proves the thesis. |
+| | | `gwrk measure compression` | Shipping accountability: LOC-derived effort forecast vs. actual delivery time. Motivation metric, not a value claim. |
+| **Delivery** | Shipped ≠ delivered. Value = adoption + outcomes. | *Not yet in gwrk's domain.* | Delivery requires receipt — usage, impact, customer outcomes. gwrk gets code shipped; whether it was the *right* code is still a human judgment call. |
 
 The mantra that connects them: **Truth → Clarity → Throughput → Value.**
 
@@ -100,12 +101,12 @@ If review returns NO-GO, the loop retries with gap analysis. After 3 iterations,
 
 ## The Compression Flywheel
 
-Compression is the metric that proves the thesis. It answers: **how much faster did agents deliver than a human would have?**
+Compression is a motivation metric. It answers: **how fast did we ship relative to how long it would have taken without agents?** It does not measure value. It does not prove the feature was the right thing to build. It's an accountability measure for the shipping pillar — and it's the feedback signal that motivates sharper specs.
 
 ```
 Better judgment → sharper specs → fewer agent retries → higher compression
                                                               │
-higher compression → signal about what works → better judgment ←┘
+higher compression → motivation to invest in better specs ←───┘
 ```
 
 ### Real Data (as of June 2026)

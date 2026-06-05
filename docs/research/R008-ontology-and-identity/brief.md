@@ -59,7 +59,7 @@ Not features. Not commands. Kinds of things.
 | **Commitment** | A written artifact that binds execution — spec, plan, tasks, gate | Not a conversation. Not a narrative. Must be machine-readable enough to gate. | `spec.md`, `plan.md`, `tasks.json`, `T025-gate.sh` |
 | **Agent** | An ephemeral executor that receives a task and produces a diff | Not gwrk (gwrk orchestrates, agents implement). Not a backend (Gemini/Claude are backends, agents are instances). | A ship-loop implement run, a code review pass, a define-tests generation |
 | **Judgment** | A human decision that shapes what gets built, how it's decomposed, and what "done" means | Not automatable. Not delegable. The scarce resource the thesis names. | "This feature should have 4 phases", "The gate should check for X", "This spec needs a domain boundary section" |
-| **Signal** | Measured evidence of progress or regression | Not opinion. Not narrative. Must be computable from artifacts. | Compression ratio, gate pass/fail, test count, LOC delta, convergence indicator |
+| **Signal** | Measured evidence of shipping efficiency or regression | Not opinion. Not narrative. Must be computable from artifacts. | Compression ratio, gate pass/fail, test count, LOC delta, convergence indicator |
 | **Methodology** | A repeatable intellectual process with inputs, passes, and outputs | Not a tool. Not a command. A way of thinking that a tool can assist. | JTBD discovery, ontology construction, specify-sharpen, architecture-stress-test |
 
 ### Pass 2: Extract Relations
@@ -69,7 +69,7 @@ Not features. Not commands. Kinds of things.
 | decomposes-into | Initiative → Commitment | 1:N | An initiative produces commitments (spec → plan → tasks) |
 | gates | Commitment → Agent | 1:N | Commitments constrain what agents are allowed to do |
 | produces | Agent → Signal | 1:N | Agent work produces measurable signals |
-| informs | Signal → Judgment | N:1 | Signals inform (but don't replace) human judgment |
+| informs | Signal → Judgment | N:1 | Signals motivate (but don't replace) human judgment |
 | shapes | Judgment → Initiative | 1:N | Judgment determines what initiatives exist and how they're scoped |
 | applies | Methodology → Initiative | N:N | Methodologies are applied to initiatives (JTBD to discovery, ontology to definition) |
 
@@ -79,9 +79,9 @@ Not features. Not commands. Kinds of things.
 |----|------|-----------------|
 | AX-001 | An Agent never creates an Initiative | Scope creep. Agents implement; humans decide what to build. |
 | AX-002 | A Commitment must precede Agent work | Cowboy coding. No spec, no ship. |
-| AX-003 | A Signal is never a Judgment | Metric worship. Compression ratio is evidence, not a decision. |
+| AX-003 | A Signal is never a Judgment | Metric worship. Compression ratio is motivation, not a decision. |
 | AX-004 | Judgment cannot be delegated to an Agent | Automation theater. The thesis: judgment is the scarce resource. |
-| AX-005 | Every Initiative must produce at least one Signal | Accountability. Shipped ≠ delivered; signals close the loop. |
+| AX-005 | Every Initiative must produce at least one Signal | Accountability. Compression measures shipping efficiency, not customer value. |
 | AX-006 | A Methodology is not a Tool | Tool worship. gwrk is the tool; ontology construction is the methodology. |
 
 ---
