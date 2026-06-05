@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![gwrk — You better gwrk!](branding/gwrk-flamingo-flat.png)
+![gwrk — You better gwrk!](../branding/gwrk-flamingo-flat.png)
 
 **You better gwrk!**
 
