@@ -1036,30 +1036,32 @@ The Slack integration was designed as a two-way control surface but currently fu
 
 | Issue | Why |
 |-------|-----|
-| **Buttons don't connect** | Button `action_id`s (merge_pr, approve_spec, etc.) require the build server to be running. Server requires Docker/sandbox infrastructure that's deferred. Buttons render but clicking them either errors or does nothing useful without the server context. |
-| **Ship from Slack** | `/gwrk ship 001 p01` spawns `gwrk ship` as a child process of the build server. Requires server running on the laptop. Can't ship from phone unless server is tunneled (ngrok, Tailscale). |
-| **Define from Slack** | Same issue — spawns CLI commands as child processes. |
-| **Approve/reject** | Requires PR lookup from runs DB, which requires the server process to have access to the project's SQLite DB. |
-| **No bidirectional flow** | Can't ask a question from Slack and get a response. Mentions route to `handleSlashCommand` or a freeform LLM call but the LLM path has no project context. |
-| **Server not running** | `gwrk server start` exists but nobody runs it. No systemd/launchd integration. No auto-start. |
+| **Buttons don't connect** | Button `action_id`s (merge_pr, approve_spec, etc.) require the build server to be running. Server starts fine (`gwrk server start`) but isn't running by default. Buttons render but clicking them errors without the server process accepting the Slack callback. |
+| **Ship from Slack** | `/gwrk ship 001 p01` spawns `gwrk ship` as a child process of the build server. Requires server running on the workstation. Can't ship from phone unless server is tunneled (ngrok, Tailscale). |
+| **Define from Slack** | Same — spawns CLI commands as child processes of the server. |
+| **Approve/reject** | Requires PR lookup from runs DB + server context to call `gh pr merge`. |
+| **No bidirectional flow** | Can't ask a question from Slack and get a useful response. Mentions route to `handleSlashCommand` or a freeform LLM call but the LLM path has minimal project context. |
+| **Server not running** | `gwrk server start` works. Nobody runs it. No launchd plist. No auto-start. No tunnel. |
 
 #### What Blocks Daily Driver
 
-1. **Server availability** — The build server must be running and reachable from Slack. Currently requires: laptop open, `gwrk server start`, ngrok/Tailscale tunnel. No persistent hosting.
-2. **Sandbox dependency** — `dispatch-orchestrator.ts`, `sandbox.ts`, `docker.ts` assume Docker sandboxes for agent execution. Docker is deferred. Without sandboxes, dispatch routes have no execution backend.
-3. **DB locality** — SQLite is on the laptop. Slack actions need to read/write runs DB. No remote DB, no API layer over DB.
-4. **Authentication** — No user verification on Slack actions. Anyone in the workspace could theoretically merge PRs.
+The blockers are simpler than they look. Agent backends (gemini, claude, codex, agy) are all available locally — no Docker required. The server dispatches to the same CLI agents that `gwrk ship` uses from the terminal.
+
+1. **Server not running** — `gwrk server start` needs to be running on the workstation. No auto-start (launchd plist). Trivial to fix.
+2. **No tunnel** — Slack needs to reach the server. Requires ngrok or Tailscale to expose the local Fastify server to Slack's callback URLs.
+3. **Slack app config** — The Slack app's Request URL must point to the tunnel endpoint. Currently pointed at nothing (or localhost).
+4. **Untested end-to-end** — The slash commands and button actions have never been tested against a live Slack workspace with a running server. Unknown failure surface.
 
 #### Path to "Work From Phone"
 
-| Approach | Effort | Dependency |
-|----------|--------|------------|
-| **A: Tailscale tunnel** — Run server on desktop, expose via Tailscale. Slack hits desktop directly. | ~2 hrs | Tailscale installed, server auto-start via launchd |
-| **B: Cloud relay** — Lightweight cloud function receives Slack events, forwards to local server. | ~1 day | Cloud account, webhook routing |
-| **C: Hosted server** — Run gwrk server on a VPS. Clone repo there. | ~2 days | VPS, git sync, DB migration to Postgres |
-| **D: Slack-only mode** — Rewrite Slack handlers to use GitHub CLI directly (no build server). | ~3 days | Redesign dispatch to not require local server |
+| Step | Effort | What |
+|------|--------|------|
+| 1. **launchd plist** | 30 min | Auto-start `gwrk server start` on login. Keep it running. |
+| 2. **Tailscale tunnel** | 30 min | Expose server port via Tailscale Funnel or ngrok. |
+| 3. **Slack app config** | 15 min | Update Request URL + Event Subscriptions to tunnel endpoint. |
+| 4. **Smoke test** | 1 hr | Test `/gwrk status`, `/gwrk ship`, button actions from phone. Fix what breaks. |
 
-> **Recommendation:** Option A (Tailscale) is the cheapest path to test "work from phone" with EnergyWork. Gets real data on whether the Slack surface is actually useful before investing in options B-D.
+> **Total: ~2.5 hrs to first real phone test.** No Docker. No cloud hosting. No rewrites. Just: run the server, tunnel it, point Slack at it, test.
 
 ### Resolved This Session
 
