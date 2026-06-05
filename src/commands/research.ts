@@ -32,7 +32,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
     try {
       const methodology = args.methodology || "technical";
       const workflowName = `gwrk-research-${methodology}`;
-      console.log(info(`Executing methodology workflow: ${workflowName}...`));
+      info(`Executing methodology workflow: ${workflowName}...`);
 
       const runtime = new WorkflowRuntime();
       const workflowResult = await runtime.executeWorkflow(
