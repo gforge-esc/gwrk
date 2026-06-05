@@ -42,8 +42,9 @@ export class ResearchScaffolder {
     
     const prefix = `R${nextNum.toString().padStart(3, "0")}`;
     
-    // 2. Slugify initiative
-    const slug = initiative
+    // 2. Slugify initiative (strip any user-provided R0XX- prefix to avoid stuttering)
+    const stripped = initiative.replace(/^R\d{3}-/i, "");
+    const slug = stripped
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
