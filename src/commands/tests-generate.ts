@@ -218,7 +218,7 @@ Examples:
               // Allow test files
               if (f.endsWith(".test.ts") || f.endsWith(".spec.ts")) return false;
               // Allow e2e tests
-              if (f.startsWith("e2e/")) return false;
+              if (f.startsWith("e2e/") || f.startsWith("tests/e2e/")) return false;
               // Allow spec artifacts (gap-matrix, etc.)
               if (f.startsWith("specs/")) return false;
               // Everything else in src/ is illegal for define-tests
