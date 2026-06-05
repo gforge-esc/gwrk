@@ -185,6 +185,10 @@ async function shipPhase(
       if (fs.existsSync(statePath)) {
         try {
           existingState = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+          // Iteration count is a circuit breaker for THIS invocation, not a
+          // persistent counter. A new `gwrk ship` gets a fresh breaker.
+          // Stage is preserved for crash recovery; iteration is not.
+          existingState!.iteration = 1;
           console.log(`  🔄 Resuming from state: ${existingState?.stage}`);
         } catch (err) {
           console.warn(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
