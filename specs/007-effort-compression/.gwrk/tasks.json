@@ -160,24 +160,24 @@
         {
           "id": "T014",
           "title": "Create effort-defaults.ts",
-          "description": "NEW src/engine/effort-defaults.ts. compiled-in profile-keyed rates — TS=50, Rust=35, Python=65, DE=25. Tests: src/engine/effort-defaults.test.ts\n\nREVIEW FAIL (code): lint/style/noNonNullAssertion — FR-017.\n  WHERE: src/engine/effort-defaults.ts:17, 18\n  EXPECTED: Code without non-null assertions (!).\n  ACTUAL: return DEFAULT_LOC_RATES.TS!;\n  FIX: Use a safe default or type casting if guaranteed, e.g., DEFAULT_LOC_RATES[\"TS\"] ?? 50.",
-          "status": "open",
+          "description": "NEW src/engine/effort-defaults.ts. compiled-in profile-keyed rates — TS=50, Rust=35, Python=65, DE=25. Tests: src/engine/effort-defaults.test.ts",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/effort-defaults.test.ts",
           "sp": 2
         },
         {
           "id": "T015",
           "title": "Modify compression.ts",
-          "description": "MODIFY src/engine/compression.ts. add `computeForecastFromLOC` deriving SP from git numstat and spec/plan/research LOC. Tests: src/engine/compression.test.ts",
-          "status": "completed",
+          "description": "MODIFY src/engine/compression.ts. add `computeForecastFromLOC` deriving SP from git numstat and spec/plan/research LOC. Tests: src/engine/compression.test.ts\n\nREVIEW FAIL (UAT): US-001 / TR-004 fallback behavior not satisfied.\n  EXPECTED: CLI commands (effort, compression) automatically fallback to LOC-derived SP when spec has no explicit SP.\n  ACTUAL: src/commands/effort.ts is missing; measure compression command does not call computeForecastFromLOC; src/commands/effort.test.ts is forced RED.\n  FIX: Implement src/commands/effort.ts and update src/commands/compression.ts to use the fallback engine.",
+          "status": "open",
           "gateScript": "pnpm vitest run src/engine/compression.test.ts",
           "sp": 1
         },
         {
           "id": "T016",
           "title": "Modify config.ts",
-          "description": "MODIFY src/utils/config.ts. formal effort section in `GwrkConfigSchema`, add `resolveEffortConfig` three-layer chain. Tests: src/utils/config.test.ts\n\nREVIEW FAIL (code): lint/style/noNonNullAssertion — FR-019.\n  WHERE: src/utils/config.ts:224, 228, 239\n  EXPECTED: Code without non-null assertions (!).\n  ACTUAL: locRate = config.effort.locRates[profile]!;\n  FIX: Use a safe access or conditional check.",
-          "status": "open",
+          "description": "MODIFY src/utils/config.ts. formal effort section in `GwrkConfigSchema`, add `resolveEffortConfig` three-layer chain. Tests: src/utils/config.test.ts",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/utils/config.test.ts",
           "sp": 1
         }

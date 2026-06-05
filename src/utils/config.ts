@@ -221,11 +221,12 @@ export function resolveEffortConfig(config: GwrkConfig): {
   const profile = config.effort.profile;
 
   // Layer 1 & 2: Defaults and Profile
-  let locRate = DEFAULT_LOC_RATES[profile] || DEFAULT_LOC_RATES.TS!;
+  let locRate = DEFAULT_LOC_RATES[profile] ?? DEFAULT_LOC_RATES.TS ?? 50;
 
-  // Layer 3: Config overrides
-  if (config.effort.locRates?.[profile]) {
-    locRate = config.effort.locRates[profile]!;
+  // Layer 3: Config overrides (FR-019)
+  const overrideRate = config.effort.locRates?.[profile];
+  if (typeof overrideRate === "number") {
+    locRate = overrideRate;
   }
 
   // Resolve hoursPerSP using existing role multiplier logic
@@ -235,8 +236,11 @@ export function resolveEffortConfig(config: GwrkConfig): {
   let roleId = profile;
   if (profile === "Rust") roleId = "RE";
 
-  const role =
-    roles.find((r) => r.role === roleId) || roles.find((r) => r.role === "TS")!;
+  const defaultRole = roles.find((r) => r.role === "TS") || {
+    role: "TS",
+    hoursPerSP: 4,
+  };
+  const role = roles.find((r) => r.role === roleId) || defaultRole;
   const hoursPerSP = role.hoursPerSP;
 
   return { profile, locRate, hoursPerSP };

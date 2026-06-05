@@ -1,19 +1,17 @@
 /**
- * Default LOC per Story Point rates for different language profiles.
- * (FR-017)
+ * Compiled-in profile-keyed LOC rates (FR-017).
+ * Defines how many Lines of Code equal 1 Story Point for a given profile.
  */
 export const DEFAULT_LOC_RATES: Record<string, number> = {
   TS: 50,
   Rust: 35,
   Python: 65,
-  DE: 25, // Definitional Effort (Spec/Plan/Research)
+  DE: 25, // Definitional Effort (specs, plans)
 };
 
 /**
- * Resolves the LOC rate for a given language profile.
- * Falls back to TS default if profile is unknown.
+ * Safely retrieves the LOC rate for a profile with a fallback to TS (FR-017).
  */
-export function getLocRate(profile?: string): number {
-  if (!profile) return DEFAULT_LOC_RATES.TS!;
-  return DEFAULT_LOC_RATES[profile] || DEFAULT_LOC_RATES.TS!;
+export function getLocRate(profile: string): number {
+  return DEFAULT_LOC_RATES[profile] ?? DEFAULT_LOC_RATES.TS ?? 50;
 }
