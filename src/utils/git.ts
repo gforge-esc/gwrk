@@ -335,7 +335,7 @@ export function commitFiles(
     }
     execFileSync("git", commitArgs, {
       cwd: repoPath,
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
     // If there's nothing to commit, git commit will exit with non-zero
