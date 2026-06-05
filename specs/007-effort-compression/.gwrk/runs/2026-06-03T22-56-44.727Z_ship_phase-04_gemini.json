@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-03T22:56:44.727Z_ship_p04",
+  "feature": "007-effort-compression",
+  "phase": "phase-04",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "gemini-3-flash-preview",
+  "startedAt": "2026-06-03T22:56:44.727Z",
+  "finishedAt": "2026-06-03T22:56:45.653Z",
+  "durationS": 1,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 4,
+  "linesDeleted": 1,
+  "gitCommit": "d82abe66388c8358efe3b540caae4bf4d00c5fae",
+  "gitBranch": "develop",
+  "digest": []
+}

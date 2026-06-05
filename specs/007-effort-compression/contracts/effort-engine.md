@@ -1,13 +1,13 @@
 ---
 type: contract
 feature: 007-effort-compression
-last_modified: "2026-03-05T11:12:20Z"
+last_modified: "2026-06-03T14:00:00Z"
 ---
 
 # Contract: Effort Engine
 
 **Feature**: 007-effort-compression
-**Scope**: Story extraction, role bracketing, hour computation, report generation
+**Scope**: Story extraction, role bracketing, hour computation, report generation, and configuration resolution.
 
 ---
 
@@ -118,3 +118,18 @@ function effortCommand(featureId: string, options: { json?: boolean }): void
 | spec.md not found | 1 |
 | No user stories | 1 |
 | Config error | 1 |
+
+---
+
+## `resolveEffortConfig(profile: ProjectProfile, configOverrides: GwrkConfig): EffortConfig`
+
+**Source**: `src/utils/config.ts`
+**Consumed by**: `src/engine/effort.ts`, `src/engine/compression.ts`
+
+Implements the three-layer resolution chain for effort configuration: compiled-in defaults → project profile detection → `.gwrkrc.json` overrides. This determines the active `locPerSP` rate used for fallback SP calculation.
+
+```typescript
+function resolveEffortConfig(profile: ProjectProfile, configOverrides: GwrkConfig): EffortConfig
+```
+
+**Returns**: `EffortConfig` including resolved rates for implementation and definitional LOC.
