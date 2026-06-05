@@ -192,7 +192,8 @@
       ],
       "sp_estimate": 6,
       "doneWhen": [
-        "`gwrk-specify` workflow executes in memory and returns valid `WRITE_FILE` intents"
+        "`pnpm vitest run src/plugins/builtins/agents/agy/adapter.test.ts` exits 0",
+        "`pnpm biome check src/plugins/builtins/agents/agy/adapter.ts` exits 0"
       ]
     },
     {

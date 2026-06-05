@@ -253,6 +253,167 @@ Implement automated domain ontology generation using the Five Primitives methodo
 
 ---
 
+### Phase 9: Enforcement Skills (FR-014 / US-016)
+
+Ship builtin enforcement skills that teach implementing agents gwrk's operational vocabulary and coding standards. Enforcement skills are auto-loaded by SkillRuntime at dispatch time and injected into agent context for all write workflows (implement, review-code, review-uat).
+
+**Design Decisions (ADR-006 §2.2, ADR-007 §2.2):**
+- **Loading**: SkillRuntime auto-injection at dispatch time (ADR-006 Dual-Layer Context — enforcement sits at Layer 1/2 boundary)
+- **Resolution**: `tier: enforcement` follows workflow resolution order (builtins → global → project-local), not global-only. This is a semantic exception to TC-004 per US-016 AC 3.
+- **Naming**: Two separate builtins — `gwrk-conventions` (platform vocabulary) + `typescript-standards` (language/toolchain)
+
+**Files (8):**
+- `src/plugins/builtins/skills/gwrk-conventions/SKILL.md` (NEW: valid task statuses, tasks.json Zod schema, commit identity rules, `.agents/` is legacy, file naming)
+- `src/plugins/builtins/skills/gwrk-conventions/manifest.yaml` (NEW: `type: skill`, `tier: enforcement`, `scope: implementation`)
+- `src/plugins/builtins/skills/typescript-standards/SKILL.md` (NEW: strict typing, no `any`, lint compliance, no `.js`/`.jsx` in `src/`, ESM conventions)
+- `src/plugins/builtins/skills/typescript-standards/manifest.yaml` (NEW: `type: skill`, `tier: enforcement`, `scope: implementation`)
+- `src/plugins/skill-runtime.ts` (MODIFY: add `resolveEnforcementSkills(projectRoot)` — scans builtins, global, and project-local for `tier: enforcement` manifests, returns SKILL.md content)
+- `src/plugins/manifest.ts` (MODIFY: add `tier: enforcement` to `SkillManifestSchema`, add `scope` field)
+- `src/utils/agent.ts` (MODIFY: call `resolveEnforcementSkills()` during dispatch context assembly, inject into `<code_quality>` section)
+- `src/plugins/builtins/workflows/gwrk-implement/PROMPT.md` (MODIFY: replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime)
+
+**Requirements Addressed:** FR-014, US-016, FR-013 (enforcement tier), FR-010 (help listing)
+
+**Dependencies:** Phase 1 (manifest schema), Phase 2 (skill runtime), Phase 8A (review dispatch)
+
+**Contract Mapping:**
+- `contracts/skill-runtime.md` → `resolveEnforcementSkills(root)` → `src/plugins/skill-runtime.ts`
+- `contracts/plugin-registry.md` → `tier: enforcement` manifest → `src/plugins/manifest.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-005 | Gates MUST verify enforcement skill content is injected into dispatch prompts |
+| ADR-006 §2.2 | Enforcement skills are Layer 1 (Durable Governance) content — project-level, not per-task |
+| ADR-007 §2.2 | Resolution follows builtins → global → project-local hierarchy |
+| compile-gate | Always |
+
+#### Test Strategy
+| ID | Type | Subject | Assertion |
+|---|---|---|---|
+| TR-P9-001 | Unit | `skill-runtime.ts` | `resolveEnforcementSkills()` returns builtin SKILL.md content |
+| TR-P9-002 | Unit | `skill-runtime.ts` | Project-local `.gwrk/plugins/skills/typescript-standards/` overrides builtin |
+| TR-P9-003 | Unit | `manifest.ts` | `tier: enforcement` validates in SkillManifestSchema; `scope: implementation` accepted |
+| TR-P9-004 | Integration | `gwrk plugin list` | Shows enforcement skills with `tier: enforcement` grouping |
+| TR-P9-005 | Integration | Dispatch context | `dispatchToAgent()` stdin includes enforcement skill content in `<code_quality>` section |
+| TR-P9-006 | Unit | `gwrk-conventions` SKILL.md | Contains valid task status enum: `open \| in_progress \| completed \| cancelled` |
+
+#### Done When
+- `gwrk plugin list --type skills | grep typescript-standards` exits 0 with `tier: enforcement`
+- `gwrk plugin list --type skills | grep gwrk-conventions` exits 0 with `tier: enforcement`
+- Implementing agent's dispatch prompt includes enforcement skill content (verified by TR-P9-005)
+- Local `.gwrk/plugins/skills/typescript-standards/` overrides builtin (verified by TR-P9-002)
+- `pnpm build` passes
+- `pnpm test` passes
+
+---
+
+> Eliminate gwrk's runtime dependency on the `.agents/` directory by migrating all content into the builtin plugin architecture. After this phase, `.agents/` is inert — nothing reads from it at runtime.
+
+**Requirements Addressed:** FR-L25-003 (core workflows independent of `.agents/`), TC-011 (zero-dependency workflows), US-011 (execute workflows without `.agents/`), ADR-007
+
+**Dependencies:** Phase 8 (review dispatch already migrated)
+
+#### Files
+
+**Rules migration:**
+- `src/plugins/builtins/rules/operating-model.md` (NEW: copy from `.agents/rules/operating-model.md`)
+- `src/plugins/builtins/rules/workspace.md` (NEW: copy from `.agents/rules/workspace.md`)
+- `src/commands/init.ts` (MODIFY: seed `.gwrk/rules/` from `builtins/rules/` during `gwrk init`)
+
+**Missing builtin workflows (5):**
+- `src/plugins/builtins/workflows/gwrk-analyze/manifest.yaml` (NEW)
+- `src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md` (NEW: from `.agents/workflows/gwrk-analyze.md`)
+- `src/plugins/builtins/workflows/gwrk-cascade-sync/manifest.yaml` (NEW)
+- `src/plugins/builtins/workflows/gwrk-cascade-sync/PROMPT.md` (NEW: from `.agents/workflows/gwrk-cascade-sync.md`)
+- `src/plugins/builtins/workflows/gwrk-checklist/manifest.yaml` (NEW)
+- `src/plugins/builtins/workflows/gwrk-checklist/PROMPT.md` (NEW: from `.agents/workflows/gwrk-checklist.md`)
+- `src/plugins/builtins/workflows/gwrk-constitution/manifest.yaml` (NEW)
+- `src/plugins/builtins/workflows/gwrk-constitution/PROMPT.md` (NEW: from `.agents/workflows/gwrk-constitution.md`)
+- `src/plugins/builtins/workflows/gwrk-effort/manifest.yaml` (NEW)
+- `src/plugins/builtins/workflows/gwrk-effort/PROMPT.md` (NEW: from `.agents/workflows/gwrk-effort.md`)
+
+**Personas:**
+- `src/plugins/builtins/personas/principal-engineer.md` (NEW: from `.agents/prompts/personas/`)
+- `src/plugins/builtins/personas/product-manager.md` (NEW: from `.agents/prompts/personas/`)
+- `src/plugins/builtins/personas/senior-dev.md` (NEW: from `.agents/prompts/personas/`)
+
+**Templates:**
+- `.specify/templates/verification-gate.md` (NEW: from `.agents/templates/verification-gate.md`)
+- `.specify/templates/monorepo-context.md` (NEW: from `.agents/templates/monorepo-context.md`)
+- `.specify/templates/e2e-patterns.md` (NEW: from `.agents/templates/e2e-patterns.md`)
+
+**Reference updates:**
+- `src/plugins/skill-runtime.ts` (MODIFY: remove `.agents/skills/` symbolic log path at L125)
+- `src/server/slack-agent.ts` (MODIFY: remove `.agents/workflows/` string check at L26)
+- `AGENTS.md` (MODIFY: `.agents/rules/` → `.gwrk/rules/`)
+
+**Dead code removal:**
+- `.agents/scripts/parser/parser-scaffold.sh` — not referenced in src/. Delete.
+- `.agents/scripts/parser/parser-validate.sh` — not referenced in src/. Delete.
+- `.agents/workflows/plan.md` — superseded by `gwrk-plan`. Delete.
+- `.agents/workflows/specify.md` — superseded by `gwrk-specify`. Delete.
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| governance-audit | Verify all 15 gwrk-* workflows resolve from builtins without .agents/ |
+| compile-gate | Always |
+
+#### Test Strategy
+| ID | Type | Subject | Assertion |
+|---|---|---|---|
+| TR-P10-001 | Unit | `init.ts` rules seeding | `gwrk init` creates `.gwrk/rules/operating-model.md` and `workspace.md` |
+| TR-P10-002 | Integration | Builtin workflow resolution | All 15 `gwrk-*` workflows resolve via `PluginLoader` from builtins dir |
+| TR-P10-003 | Unit | `skill-runtime.ts` | No `.agents/` path in log strings |
+| TR-P10-004 | Unit | `slack-agent.ts` | No `.agents/workflows/` string check |
+
+#### Done When
+- `gwrk init` creates `.gwrk/rules/` with `operating-model.md` and `workspace.md`
+- All 15 `gwrk-*` workflows resolve from `builtins/workflows/` (verified by TR-P10-002)
+- No runtime source file contains a hardcoded `.agents/` filesystem path
+- `pnpm build` passes
+- `pnpm test` passes
+
+---
+
+### Phase 11: .agents/ Deletion & Verification (ADR-007)
+
+> Delete the `.agents/` directory from the repository and verify gwrk functions without it. This is the final cleanup — all content has been migrated in Phase 10.
+
+**Requirements Addressed:** US-011 AC L303 ("No `.agents/` directory is created in the project root by default"), TC-011, ADR-007
+
+**Dependencies:** Phase 10
+
+#### Files
+- `.agents/` (DELETE: entire directory tree — 39 files)
+- `src/plugins/migrate.ts` (MODIFY: add deprecation warning if `.agents/` detected — advise `gwrk init`)
+- `src/engine/drift-detector.ts` (MODIFY: remove `.agents/` artifact check at L24-52 — directory no longer exists)
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| governance-audit | Post-deletion full verification |
+| compile-gate | Always |
+
+#### Test Strategy
+| ID | Type | Subject | Assertion |
+|---|---|---|---|
+| TR-P11-001 | Integration | Full workflow resolution | `gwrk define spec --help` resolves, no `.agents/` fallback |
+| TR-P11-002 | Integration | Review dispatch | `gwrk ship` review stage sends full PROMPT.md, not skeleton |
+| TR-P11-003 | Unit | `migrate.ts` | Warns when `.agents/` exists in target project |
+| TR-P11-004 | Unit | `drift-detector.ts` | No `.agents/` references in drift checks |
+
+#### Done When
+- `.agents/` directory does not exist in the repository
+- `git ls-files .agents/` returns empty
+- `grep -rn '\.agents/' src/ --include='*.ts'` returns zero results (excluding `config.agents` property access)
+- `pnpm build` passes
+- `pnpm test` passes
+- `gwrk define spec --help` resolves workflow from builtins
+
+---
+
 ## Type Dependency Graph
 
 | Shared Type | Defined In | Consumed By |
@@ -277,6 +438,7 @@ _No mockups exist for this feature._
 |---|---|---|---|
 | FR-L1-007 | github-integration dispatchMode | Codex Cloud integration is a separate high-effort feature (F005 Tier 3) | Wave 5 |
 | Layer 3 | Extension Plugins (remaining) | Review plugins (Phase 8) are the first L3 use case. Domain Packs and Channel Adapters require F012 and F017 | Wave 7 |
+| `.agents/skills/` | Skill migration via `gwrk plugin migrate` | Skills already dual-exist in `~/.gwrk/plugins/skills/` (seeded by init). `.agents/skills/` retained for IDE compatibility per TC-006 | Phase 11 deletes `.agents/` wholesale |
 
 ---
 

@@ -96,4 +96,24 @@ describe("tasks-generate (Deterministic plan-to-tasks)", () => {
       })
     );
   });
+
+  it("should use gwrk-plan-to-tasks workflow and pass quiet: true", async () => {
+    const program = new Command();
+    program.addCommand(tasksGenerateCommand);
+    
+    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force", "--reconcile"]);
+
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan-to-tasks",
+      expect.stringContaining("--force"),
+      expect.objectContaining({
+        quiet: true,
+      }),
+    );
+    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
+      "gwrk-plan-to-tasks",
+      expect.stringContaining("--reconcile"),
+      expect.anything()
+    );
+  });
 });

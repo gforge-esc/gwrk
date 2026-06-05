@@ -2,7 +2,7 @@
 
 > **Status:** Authoritative · **Date:** 2026-06-02
 > **Anchored to:** [architecture.md](docs/architecture.md), [GWRK-PRD-PRFAQ.md](docs/GWRK-PRD-PRFAQ.md)
-> **Decisions:** [ADR-001](docs/decisions/ADR-001-task-tracking.md), [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003](docs/decisions/ADR-003-state-contract.md), [ADR-004](docs/decisions/ADR-004-agent-native-output.md), [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md)
+> **Decisions:** [ADR-001](docs/decisions/ADR-001-task-tracking.md), [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003](docs/decisions/ADR-003-state-contract.md), [ADR-004](docs/decisions/ADR-004-agent-native-output.md), [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md), [ADR-007](docs/decisions/ADR-007-single-dispatch-path.md)
 
 ---
 
@@ -72,8 +72,7 @@ gantt
 
 ### Feature 000-tdd-infrastructure ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED + TDD-HARDENED (consolidated with 001-cli-core above)
 
 ### Feature 001-cli-core ✅
 
