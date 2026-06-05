@@ -1,65 +1,70 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initCommand } from "./init.js";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { initAction } from './init.js';
+import fs from 'node:fs';
+import { detectProfile } from '../engine/profile-detector.js';
 
-/**
- * US-014: gwrk init Seeding
- * TR-P10-001: Rules seeding during init
- */
-describe("initCommand (Phase 10)", () => {
-  let tempDir: string;
-  let homeDir: string;
+vi.mock('node:fs');
+vi.mock('../utils/signal.js', () => ({
+  withSignal: vi.fn((name, fn) => fn()),
+  CommandError: class extends Error {
+    constructor(message: string, exitCode: number) {
+      super(message);
+    }
+  }
+}));
+vi.mock('../engine/profile-detector.js', () => ({
+  detectProfile: vi.fn().mockResolvedValue({ 
+    type: 'nodejs',
+    stack: { language: 'typescript' },
+    layout: 'flat'
+  })
+}));
+vi.mock('../plugins/migrate.js', () => ({
+  migratePlugins: vi.fn()
+}));
+vi.mock('../plugins/seed.js', () => ({
+  seedSkills: vi.fn()
+}));
+vi.mock('../db/runs.js', () => ({
+  registerProject: vi.fn()
+}));
+vi.mock('../utils/format.js', () => ({
+  banner: vi.fn(),
+  success: vi.fn(),
+  color: { BOLD: '', DIM: '', GREEN: '', CYAN: '', YELLOW: '', RESET: '' }
+}));
 
+describe('FR-L25-005: gwrk init MUST provision core workflows and project grounding dirs', () => {
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-init-p10-test-"));
-    homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-home-p10-test-"));
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-    vi.spyOn(os, "homedir").mockReturnValue(homeDir);
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    fs.rmSync(homeDir, { recursive: true, force: true });
-    vi.restoreAllMocks();
-  });
-
-  it("FR-L25-005: should seed .gwrk/rules/ from builtins during init (TR-P10-001)", async () => {
-    // SC-008: gwrk init populates rules
-    await initCommand.parseAsync([], { from: "user" });
-
-    const rulesDir = path.join(tempDir, ".gwrk", "rules");
-    expect(fs.existsSync(path.join(rulesDir, "operating-model.md")), "operating-model.md should be seeded").toBe(true);
-    expect(fs.existsSync(path.join(rulesDir, "workspace.md")), "workspace.md should be seeded").toBe(true);
-  });
-
-  it("SC-010: should ensure legacy .agents/ paths are inert (ADR-007)", async () => {
-    await initCommand.parseAsync([], { from: "user" });
-    // TC-011: Zero-dependency workflows should not create .agents/
-    expect(fs.existsSync(path.join(tempDir, ".agents"))).toBe(false);
-  });
-
-  it("should fail to initialize if required builtin rules are missing (Negative Path)", async () => {
-    // Use a non-existent builtin path by mocking fs.existsSync for the specific builtin path
-    const realFsExists = fs.existsSync;
-    vi.spyOn(fs, "existsSync").mockImplementation((p: any) => {
-      const pathStr = String(p);
-      if (pathStr.includes("builtins/rules")) {
-        return false;
-      }
-      return realFsExists(p);
+    vi.resetAllMocks();
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(fs.readdirSync).mockReturnValue([]);
+    vi.mocked(detectProfile).mockResolvedValue({ 
+      type: 'nodejs',
+      stack: { language: 'typescript' },
+      layout: 'flat'
     });
+  });
 
-    // Reset exitCode
-    process.exitCode = 0;
+  it('US-014: When gwrk init is run, Then ~/.gwrk/plugins/workflows/ is created', async () => {
+    await initAction({ nonInteractive: true });
+    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('.gwrk/plugins/workflows'), expect.objectContaining({ recursive: true }));
+  });
 
-    await initCommand.parseAsync([], { from: "user" });
+  it('US-014: When gwrk init is run, Then .gwrk/ontology and .gwrk/perspective directories are created', async () => {
+    await initAction({ nonInteractive: true });
+    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('.gwrk/ontology'), expect.objectContaining({ recursive: true }));
+    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('.gwrk/perspective'), expect.objectContaining({ recursive: true }));
+  });
 
-    // In withSignal, CommandError sets process.exitCode
-    expect(process.exitCode).toBe(1);
-    process.exitCode = 0; // reset for other tests
+  it('Negative path: Should handle fs.mkdirSync errors gracefully when directory already exists (EEXIST)', async () => {
+    vi.mocked(fs.mkdirSync).mockImplementation((path: any) => {
+      if (typeof path === 'string' && path.includes('.gwrk/ontology')) {
+        const err = new Error('EEXIST');
+        (err as any).code = 'EEXIST';
+        throw err;
+      }
+    });
+    await expect(initAction({ nonInteractive: true })).resolves.not.toThrow();
   });
 });

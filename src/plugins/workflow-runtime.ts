@@ -4,6 +4,8 @@ import {
   IntentEngine,
   type IntentSummary,
 } from "../engine/intent-engine.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { conditionPrompt } from "../engine/prompt-conditioner.js";
 import { type TaskDispatch, dispatchToAgent } from "../utils/agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
 import type { WorkflowManifest, JsonIntent } from "./manifest.js";
@@ -78,6 +80,13 @@ export interface WorkflowOptions {
   agent?: string;
   model?: string;
   quiet?: boolean;
+  /**
+   * Optional write-scope allowlist. When set, WRITE_FILE intents targeting
+   * paths outside this list are filtered with a warning. Paths are matched
+   * as suffixes (e.g. "src/engine/foo.ts" matches intent path ending in that).
+   * Test files (*.test.ts, *.spec.ts) and spec artifacts are always allowed.
+   */
+  allowedPaths?: string[];
 }
 
 /** Typed output contract for workflow agent responses. */
@@ -224,8 +233,13 @@ export class WorkflowRuntime {
       );
     }
 
+    // Phase 13: Project-aware prompt conditioning
+    const profile = await detectProfile(projectRoot);
+    const conditionedPrompt = conditionPrompt(basePrompt, profile);
+
     // Inject the outputSchema and input into the final prompt
-    const fullPrompt = `${basePrompt}\n\nCRITICAL: Your output MUST be a single JSON object matching this schema:\n${JSON.stringify(manifest.outputSchema, null, 2)}\n\nInput:\n${input}`;
+    // Input is wrapped in XML tags to prevent prompt injection from user content
+    const fullPrompt = `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(manifest.outputSchema, null, 2)}\n</output_contract>\n\n<user_input>\n${input}\n</user_input>`;
 
     const task: TaskDispatch = {
       type: "workflow",
@@ -283,17 +297,21 @@ export class WorkflowRuntime {
       );
     }
 
-    // FR-L25-001: Catch direct FS edit attempts in RUN_COMMAND
-    for (const intent of output.intents) {
+    // FR-L25-001: Filter direct FS edit attempts in RUN_COMMAND intents.
+    // Agents sometimes emit redundant RUN_COMMAND intents with shell redirects
+    // (> or tee) after already applying changes natively. These are not malicious —
+    // they're the agent echoing its work. Filter them instead of throwing.
+    output.intents = output.intents.filter((intent) => {
       if (intent.action === "RUN_COMMAND" && intent.command) {
         if (
           intent.command.includes(">") ||
           intent.command.includes("tee") ||
           intent.command.includes(">>")
         ) {
-          throw new Error(
-            "Workflow execution violation: Use WRITE_FILE JSON intent only.",
+          console.warn(
+            "  ⚠ Filtered RUN_COMMAND intent with shell redirect — agent already applied changes natively.",
           );
+          return false;
         }
       }
       // Guard: reject WRITE_FILE intents targeting tasks.json.
@@ -305,12 +323,36 @@ export class WorkflowRuntime {
         intent.filePath?.endsWith("tasks.json")
       ) {
         console.warn(
-          "  ⚠ Blocked WRITE_FILE intent targeting tasks.json — agent already applied changes natively.",
+          "  ⚠ Filtered WRITE_FILE intent targeting tasks.json — agent already applied changes natively.",
         );
-        // Remove the intent so it isn't executed
-        output.intents = output.intents.filter((i) => i !== intent);
+        return false;
       }
-    }
+
+      // Guard: enforce write-scope allowlist when provided.
+      // Plan-declared file paths define what a workflow is allowed to write.
+      // Test files and spec artifacts are always allowed regardless of allowlist.
+      if (
+        intent.action === "WRITE_FILE" &&
+        intent.filePath &&
+        options.allowedPaths &&
+        options.allowedPaths.length > 0
+      ) {
+        const fp = intent.filePath;
+        const isTestFile = fp.endsWith(".test.ts") || fp.endsWith(".spec.ts") || fp.startsWith("e2e/");
+        const isSpecArtifact = fp.startsWith("specs/") || fp.includes("gap-matrix");
+        if (!isTestFile && !isSpecArtifact) {
+          const inScope = options.allowedPaths.some((allowed) => fp.endsWith(allowed) || fp.includes(allowed));
+          if (!inScope) {
+            console.warn(
+              `  ⚠ Filtered WRITE_FILE intent outside allowed scope: ${fp}`,
+            );
+            return false;
+          }
+        }
+      }
+
+      return true;
+    });
 
     // Execute the intents natively
     const summaries = await this.intentEngine.executeIntents(

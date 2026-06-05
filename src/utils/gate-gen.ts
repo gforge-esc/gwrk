@@ -623,6 +623,14 @@ export function generateFilesystemGates(
         continue;
       }
 
+      // K.TO-BE §3: Validate file exists at generation time.
+      // Catches hallucinated/stale filenames from task descriptions
+      // before they become gates that fail at ship time.
+      if (!fs.existsSync(primaryFile)) {
+        skipped++;
+        continue;
+      }
+
       // Discover corresponding test file
       const testFile = discoverTestFile(primaryFile);
       if (!testFile) {

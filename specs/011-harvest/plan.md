@@ -214,21 +214,21 @@ None — full coverage.
 | US-H01 | 1 | Planned |
 | US-H02 | 2 | Planned |
 | US-H03 | 2 | Planned |
-| US-H04 | 3 | Planned |
-| US-H05 | 4 | Planned |
+| US-H04 | 3 | ✅ Done |
+| US-H05 | 4 | ✅ Done |
 | US-H06 | 2 | Planned |
 | US-H07 | 5 | Planned |
 | FR-H01 | 1 | Planned |
 | FR-H02 | 2 | Planned |
 | FR-H03 | 2 | Planned |
-| FR-H04 | 3 | Planned |
-| FR-H05 | 3 | Planned |
-| FR-H06 | 3 | Planned |
-| FR-H07 | 4 | Planned |
+| FR-H04 | 3 | ✅ Done |
+| FR-H05 | 3 | ✅ Done |
+| FR-H06 | 3 | ✅ Done |
+| FR-H07 | 4 | ✅ Done |
 | FR-H08 | 2 | Planned |
 | FR-H09 | 1 | Planned |
 | FR-H10 | 1 | Planned |
-| FR-H11 | 4 | Planned |
+| FR-H11 | 4 | ✅ Done |
 | FR-H12 | 5 | Planned |
 | FR-H13 | 5 | Planned |
 | FR-H14 | 5 | Planned |
@@ -236,11 +236,11 @@ None — full coverage.
 | TC-H01 | 1 | Planned |
 | TC-H02 | 1 | Planned |
 | TC-H03 | 1 | Planned |
-| TC-H04 | 3 | Planned |
+| TC-H04 | 3 | ✅ Done |
 | TC-H05 | 5 | Planned |
 | SC-H01 | 1 | Planned |
 | SC-H02 | 2 | Planned |
-| SC-H03 | 4 | Planned |
+| SC-H03 | 4 | ✅ Done |
 | SC-H04 | 1 | Planned |
-| SC-H05 | 3 | Planned |
+| SC-H05 | 3 | ✅ Done |
 | SC-H06 | 5 | Planned |

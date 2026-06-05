@@ -117,6 +117,8 @@ export const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   type: z.literal("skill"),
   tier: z.literal("enforcement"),
   scope: z.enum(["implementation", "review", "all"]).optional(),
+  /** Language this enforcement skill applies to (e.g. "TypeScript", "Python"). Omit to load for all projects. */
+  language: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });
 

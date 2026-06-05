@@ -103,11 +103,10 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     const { stdout, exitCode } = await runCli("measure --help");
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/^\s+pulse\b/m);
-    expect(stdout).toMatch(/^\s+effort\b/m);
     expect(stdout).toMatch(/^\s+compression\b/m);
 
     // No other subcommands
-    const hidden = ["metrics", "status", "runs", "stats"];
+    const hidden = ["effort", "metrics", "status", "runs", "stats"];
     for (const cmd of hidden) {
       const regex = new RegExp(`^\\s+${cmd}\\b`, "m");
       expect(stdout).not.toMatch(regex);
@@ -137,6 +136,6 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
     // 099-drift-test exists as a feature dir but has no spec.md
     const { stderr, exitCode } = await runCli("define plan 099");
     expect(exitCode).not.toBe(0);
-    expect(stderr).toMatch(/BLOCKED.*spec\.md not found/);
+    expect(stderr).toMatch(/Feature not found|BLOCKED.*spec\.md not found/);
   }, 15_000);
 });

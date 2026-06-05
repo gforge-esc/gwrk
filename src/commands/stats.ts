@@ -1,14 +1,15 @@
 import { Command } from "commander";
 import { getStats } from "../db/runs.js";
-
-import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveProjectId } from "../utils/project-id.js";
+import { withSignal } from "../utils/signal.js";
 
 export const statsCommand = new Command("stats")
   .description("Show aggregate success rates and execution statistics")
   .option("--json", "Output structured JSON to stdout")
   .action(async (options) => {
     await withSignal("stats", async () => {
-      const stats = getStats();
+      const projectId = resolveProjectId(process.cwd());
+      const stats = getStats(projectId);
 
       if (options.json) {
         console.log(JSON.stringify(stats, null, 2));

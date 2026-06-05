@@ -34,11 +34,12 @@ Returns all skills grouped by tier (atomic/compound) with their metadata.
 - **Assertion**: MUST scan `~/.gwrk/plugins/skills/` globally.
 - **Assertion**: SHOULD provide enriched help text for `gwrk skill <name> --help`.
 
-### `resolveEnforcementSkills(root: string, scope?: string): Promise<string>`
+### `resolveEnforcementSkills(root: string, scope?: string, profile?: ProjectProfile): Promise<string>`
 
 Resolves all enforcement skills applicable to the project and returns combined content.
 
 - **root**: Project root directory.
 - **scope**: Filter by `implementation`, `review`, or `all`.
+- **profile**: Optional project profile for language/toolchain filtering (R007).
 - **Precedence**: project-local > global > builtins.
 - **Returns**: Markdown string with markers `<!-- enforcement-skill: <name> -->`.

@@ -1,71 +1,66 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
+import { describe, expect, it } from "vitest";
+import { GwrkConfigSchema, resolveEffortConfig } from "./config.js";
 
-import { loadConfig } from "./config.js";
-
-vi.mock("node:fs");
-
-describe("TC-H03 / T004: Config & Environment Validation", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("FR-017: Three-layer Config Resolution", () => {
+  it("should resolve using internal defaults when no config is provided", () => {
+    const config = GwrkConfigSchema.parse({
+      project: { name: "test-project" },
+      agents: {},
+    });
+    const effort = resolveEffortConfig(config);
+    expect(effort.profile).toBe("TS");
+    expect(effort.locRate).toBe(50);
+    expect(effort.hoursPerSP).toBe(4);
   });
 
-  describe("TC-H03: Config Loading", () => {
-    it("TC-003: fails fast if .gwrkrc.json is missing", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-      
-      expect(() => loadConfig("/root")).toThrow("Configuration file .gwrkrc.json not found");
+  it("should resolve using profile-specific defaults (Rust)", () => {
+    const config = GwrkConfigSchema.parse({
+      project: { name: "test-project" },
+      agents: {},
+      effort: { profile: "Rust" },
     });
+    const effort = resolveEffortConfig(config);
+    expect(effort.profile).toBe("Rust");
+    expect(effort.locRate).toBe(35);
+    expect(effort.hoursPerSP).toBe(6); // RE multiplier
+  });
 
-    it("Phase 2: loads parallelism settings from config", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-        project: { name: "test" },
-        agents: { define: "gemini", implement: "gemini" },
-        parallelism: {
-          local: { maxClones: 2 },
-          cloud: { maxConcurrent: 3 }
-        }
-      }));
-
-      const config = loadConfig("/root");
-      expect(config.parallelism.local.maxClones).toBe(2);
-      expect(config.parallelism.cloud.maxConcurrent).toBe(3);
+  it("should allow explicit overrides to trump defaults", () => {
+    const config = GwrkConfigSchema.parse({
+      project: { name: "test-project" },
+      agents: {},
+      effort: {
+        profile: "TS",
+        locRates: { TS: 30 },
+        roles: { TS: { hoursPerSP: 2 } },
+      },
     });
+    const effort = resolveEffortConfig(config);
+    expect(effort.locRate).toBe(30);
+    expect(effort.hoursPerSP).toBe(2);
+  });
 
-    it("TR-003: loads agents registry from config", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-        project: { name: "test" },
-        agents: {
-          registry: {
-            gemini: {
-              type: "local-cli",
-              command: "gemini --model {{model}}",
-              discoveryMethod: "manual",
-              quotaProbe: {
-                method: "interactive-scrape",
-                command: "gemini",
-                sendKeys: "/stats",
-                parseRegex: "(\\d+)%",
-                cacheTTLMinutes: 5
-              },
-              maxConcurrent: 2,
-              models: [
-                { name: "flash", tier: "fast", modelFlag: "flash" }
-              ]
-            }
-          }
-        }
-      }));
+  it("TC-003: should validate effort section in GwrkConfigSchema", () => {
+    const validEffort = {
+      project: { name: "test-project" },
+      agents: {},
+      effort: {
+        profile: "default",
+        locRates: { TS: 50 },
+      },
+    };
+    // DM-001: Effort profile schema verification
+    expect(() => GwrkConfigSchema.parse(validEffort)).not.toThrow();
+  });
 
-      const config = loadConfig("/root");
-      expect(config.agents.registry).toBeDefined();
-      expect(config.agents.registry?.gemini.type).toBe("local-cli");
-    });
-
-
+  it("should throw error for invalid effort rate types", () => {
+    const invalidEffort = {
+      project: { name: "test-project" },
+      agents: {},
+      effort: {
+        locRates: { TS: "fast" }, // Should be number
+      },
+    };
+    expect(() => GwrkConfigSchema.parse(invalidEffort)).toThrow();
   });
 });

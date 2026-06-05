@@ -32,7 +32,6 @@ describe("CLI UX: Help Text Examples (Phase 11)", () => {
     "tasks next",
     "tasks done",
     "measure pulse",
-    "measure effort",
     "measure compression",
     "db runs",
     "test",

@@ -18,6 +18,9 @@ vi.mock("./commands/server.js", () => ({
 vi.mock("./commands/status.js", () => ({
   statusCommand: new Command("status"),
 }));
+vi.mock("./commands/project.js", () => ({
+  projectCommand: new Command("project"),
+}));
 vi.mock("./utils/config.js", () => ({ loadConfig: vi.fn() }));
 
 describe("FR-001 / FR-004: CLI Command Registration", () => {
@@ -44,6 +47,7 @@ describe("FR-001 / FR-004: CLI Command Registration", () => {
     expect(commandNames).toContain("server");
     expect(commandNames).toContain("status");
     expect(commandNames).toContain("plan");
+    expect(commandNames).toContain("project");
 
     // Eliminated groups — must NOT exist as top-level
     const eliminated = [

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { App } from "@slack/bolt";
 import type { HomeView, KnownBlock } from "@slack/types";
 import { generatePulseReport } from "../engine/pulse.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import type { GwrkConfig } from "../utils/config.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { LifecycleMonitor } from "./lifecycle.js";
@@ -118,7 +119,8 @@ export async function buildHomeTab(
 
   try {
     const { PlanStore } = await import("../engine/plan-store.js");
-    const store = new PlanStore();
+    const projectId = resolveProjectId(projectRoot);
+    const store = new PlanStore(projectId);
     if (!store.isEmpty()) {
       const planStatus = store.getPlanStatus();
 

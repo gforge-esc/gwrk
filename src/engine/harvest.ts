@@ -5,9 +5,14 @@ import { finishRun, listRuns } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { parsePlan } from "../utils/parser.js";
-import { computeCompression, gatherDeliveryActuals } from "./compression.js";
+import {
+  computeCompression,
+  computeLeadingIndicators,
+  gatherDeliveryActuals,
+} from "./compression.js";
 import { reconcileGates } from "./reconcile-gates.js";
 import { resolveRoleMultipliers } from "./roles.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import type {
   CompressionReport,
   EffortForecast,
@@ -88,6 +93,7 @@ export async function finalizeLogs(
     projectPath,
     stagedFiles,
     `harvest: finalize logs for ${featureId}`,
+    { skipHooks: true },
   );
 }
 
@@ -102,9 +108,11 @@ export async function harvestFeature(
   const { featureId, phaseId, mergeCommitSha, prNumber, mergedAt, status } =
     record;
 
+  const projectId = resolveProjectId(projectPath);
+
   // 0. Idempotency Guard (FR-H10)
   if (phaseId) {
-    const existing = getCompressionRecord(featureId, phaseId);
+    const existing = getCompressionRecord(featureId, phaseId, projectId);
     if (existing) {
       console.log(
         `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
@@ -114,16 +122,22 @@ export async function harvestFeature(
   }
 
   // 1. Finalize Logs (FR-H02)
-  await finalizeLogs(featureId, projectPath);
+  try {
+    await finalizeLogs(featureId, projectPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`Log finalization failed (non-fatal): ${msg}`);
+  }
 
   // 2. Finalize DB Run Records (FR-H03)
-  const runs = listRuns(featureId);
+  const runs = listRuns(featureId, projectId);
   const targetRun = runs.find(
     (r) =>
       r.phase_id === phaseId &&
       (r.pr_number === prNumber || !r.pr_number) &&
       r.status !== "merged",
   );
+
 
   if (targetRun?.id) {
     finishRun(targetRun.id, {
@@ -203,6 +217,11 @@ export async function harvestFeature(
 
           const actuals = gatherDeliveryActuals(featureDir, 30, prNumber);
           const compression = computeCompression(forecast, actuals);
+          const indicators = computeLeadingIndicators(
+            featureId,
+            forecast,
+            projectId,
+          );
 
           report = {
             featureId,
@@ -211,9 +230,10 @@ export async function harvestFeature(
             forecast,
             actuals,
             compression,
+            indicators,
           };
 
-          recordCompression(report);
+          recordCompression(report, projectId);
           console.log(
             `Recorded compression for ${featureId} ${phaseId}: point=${compression.pointCompression.toFixed(1)}x`,
           );

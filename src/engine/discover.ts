@@ -31,8 +31,6 @@ export interface ProjectDiscovery {
   specs: SpecSummary[];
   gates: {
     total: number;
-    passing: number;
-    failing: number;
   };
   config: {
     hasSlack: boolean;
@@ -176,7 +174,7 @@ async function discoverSpecs(projectRoot: string): Promise<SpecSummary[]> {
 async function discoverGates(
   projectRoot: string,
   specs: SpecSummary[],
-): Promise<{ total: number; passing: number; failing: number }> {
+): Promise<{ total: number }> {
   let total = 0;
 
   // Count gate files across all specs — don't execute during discovery
@@ -191,8 +189,7 @@ async function discoverGates(
     total += gateFiles.length;
   }
 
-  // passing/failing are only available via `gwrk gate <feature>`
-  return { total, passing: -1, failing: -1 };
+  return { total };
 }
 
 async function detectAgents(): Promise<string[]> {

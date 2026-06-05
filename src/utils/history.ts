@@ -10,6 +10,8 @@ export const HistoryEntrySchema = z.object({
   fromStatus: z.enum(["open", "in_progress", "completed", "cancelled"]),
   toStatus: z.enum(["open", "in_progress", "completed", "cancelled"]),
   agentId: z.string().optional(),
+  runId: z.number().optional(),
+  projectId: z.string().optional(),
 });
 
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;
@@ -21,10 +23,12 @@ export function appendHistory(entry: HistoryEntry): void {
   // Write to SQLite DB
   try {
     recordHistory({
+      project_id: entry.projectId,
       feature_id: entry.featureId,
       task_id: entry.taskId,
       from_status: entry.fromStatus,
       to_status: entry.toStatus,
+      run_id: entry.runId,
       metadata: entry.agentId
         ? JSON.stringify({ agentId: entry.agentId })
         : undefined,

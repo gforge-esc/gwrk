@@ -1,27 +1,30 @@
 ---
 type: implementation_plan
 feature: 007-effort-compression
-last_modified: "2026-03-06T15:00:00Z"
+last_modified: "2026-06-03T14:00:00Z"
 ---
 
 # Implementation Plan: 007 Effort + Compression
 
-**Branch**: `007-effort-compression` | **Date**: 2026-03-06 | **Spec**: [spec.md](./spec.md) | **Data Model**: [data-model.md](./data-model.md)
+**Branch**: `007-effort-compression` | **Date**: 2026-06-03 | **Spec**: [spec.md](./spec.md) | **Data Model**: [data-model.md](./data-model.md)
 
 ## Summary
 
 Phase 7 ships the **Effort Engine** (story extraction, role bracketing, SP-derived hours, markdown reports) and the **Compression Engine** (timestamp collection, commit clustering, Point/Total compression ratios, leading indicators, dormancy tracking, cross-feature summaries). Both engines are pure TypeScript — deterministic from spec artifacts, Git log, and SQLite execution ledger, no LLM required.
 
-The plan is split into 3 phases aligned with the architecture from `docs/architecture.md` §3:
+The plan is split into 5 phases aligned with the architecture from `docs/architecture.md` §3:
 - **Phase 1**: Effort Engine — `src/engine/effort.ts` + spec parser + report writer
 - **Phase 2**: Compression Engine — `src/engine/compression.ts` + Git timestamp collector + commit clustering + leading indicators + SQLite persistence
 - **Phase 3**: CLI Commands + Integration — `src/commands/effort.ts`, `src/commands/compression.ts`, config schema extension, `--json` output
+- **Phase 4**: LOC-Derived SP Fallback — `computeForecastFromLOC`, profile-keyed rates (TS=50, Rust=35, Python=65), and `resolveEffortConfig` three-layer chain.
+- **Phase 5**: Harvest Integration — Wire LOC fallback into `harvestFeature`, include define-run elapsed from DB in actuals, and surface both Point and Full compression.
 
 **Dependencies**: Phase 1 (CLI Core) must ship first — this plan consumes `src/utils/config.ts` (`loadConfig()`), `src/db/index.ts` (SQLite connection), and the Commander routing in `src/cli.ts`.
 
 **Cross-spec compatibility**: 
 - `001-cli-core`: Uses the `runs` table from the shared SQLite ledger for leading indicators.
 - `006-pulse`: Complementary Git analysis. Pulse focus on velocity/LOC; Compression focus on SP vs Actuals.
+- `011-harvest`: Phase 5 integrates the fallback mechanism directly into the harvest cycle.
 
 ---
 
@@ -167,6 +170,83 @@ Commander commands `measure effort` and `measure compression`, `--json` output m
 
 ---
 
+### Phase 4: LOC-Derived SP Fallback
+
+Implements LOC-derived Story Points as a fallback when spec explicit SP is missing. Adds three-layer config resolution (defaults -> profile -> overrides) for language-specific LOC rates.
+
+**Files (6):**
+- `src/engine/effort-defaults.ts` (NEW: compiled-in profile-keyed rates — TS=50, Rust=35, Python=65, DE=25)
+- `src/engine/compression.ts` (MODIFY: add `computeForecastFromLOC` deriving SP from git numstat and spec/plan/research LOC)
+- `src/utils/config.ts` (MODIFY: formal effort section in `GwrkConfigSchema`, add `resolveEffortConfig` three-layer chain)
+- `src/engine/effort-defaults.test.ts` (NEW: unit tests for profile rate mapping)
+- `src/engine/compression.test.ts` (MODIFY: test `computeForecastFromLOC` with mocked git and files)
+- `src/utils/config.test.ts` (MODIFY: tests for three-layer resolution and schema validation)
+
+**Requirements Addressed:** US-001, US-004, FR-016, FR-017, FR-019, DM-001, TC-001, TC-003
+
+**Dependencies:** Phase 1 and Phase 2.
+
+**Contract Mapping:**
+- `contracts/compression-engine.md` → `computeForecastFromLOC()` → `src/engine/compression.ts`
+- `contracts/effort-engine.md` → `resolveEffortConfig()` → `src/utils/config.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| workspace.md | TypeScript only, fail-fast config |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-001 | Unit | `src/engine/compression.test.ts` | Verify LOC-derived SP calculation for TS, Rust, and Definitional text |
+| TR-003 | Unit | `src/utils/config.test.ts` | Verify language detection and config overrides select the correct LOC/SP rate |
+| TR-004 | Unit | `src/commands/effort.test.ts` | Verify fallback behavior when spec has no SP |
+
+#### Done When
+- `pnpm vitest run src/engine/effort-defaults.test.ts` exits 0
+- `pnpm vitest run src/utils/config.test.ts` exits 0
+- `grep -q 'computeForecastFromLOC' src/engine/compression.ts` exits 0
+
+---
+
+### Phase 5: Harvest Integration
+
+Integrates the effort/compression engines with the Harvest cycle. Surfaces dual compression metrics (Point vs Full) and accurately accounts for total agent time including define runs from the DB.
+
+**Files (4):**
+- `src/engine/harvest.ts` (MODIFY: wire LOC fallback into `harvestFeature` when plan has no SP)
+- `src/engine/compression.ts` (MODIFY: include define-run elapsed from DB `runs` table in actuals)
+- `src/commands/compression.ts` (MODIFY: surface both Point and Full compression in CLI text and JSON output)
+- `src/commands/compression.test.ts` (MODIFY: test dual compression CLI output)
+
+**Requirements Addressed:** US-003, US-005, FR-007, FR-008, FR-009, FR-018, DM-002, TC-002
+
+**Dependencies:** Phase 4 and Feature 011 (Harvest).
+
+**Contract Mapping:**
+- `contracts/compression-engine.md` → `computeFullCompression()` → `src/engine/compression.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| workspace.md | TypeScript only |
+| seeding-governance.md | Mocking SQLite runs data for total agent time tests |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-002 | Unit | `src/engine/compression.test.ts` | Verify Point vs Full calculation using mocked DB runs and git clusters |
+| TR-012 | Unit | `src/commands/compression.test.ts` | Dual compression metrics (Point and Full) appear in output |
+
+#### Done When
+- `pnpm vitest run src/engine/compression.test.ts` exits 0
+- `pnpm vitest run src/commands/compression.test.ts` exits 0
+- `grep -q 'harvestFeature' src/engine/harvest.ts` exits 0
+
+---
+
 ## Type Dependency Graph
 
 | Shared Type | Defined In | Consumed By |
@@ -176,11 +256,12 @@ Commander commands `measure effort` and `measure compression`, `--json` output m
 | `StoryEstimate` | `src/engine/types.ts` | `src/engine/effort.ts`, `src/engine/spec-parser.ts` |
 | `RoleConfig` | `src/engine/types.ts` | `src/engine/roles.ts`, `src/utils/config.ts` |
 | `CompressionReport` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts`, `src/db/compression.ts` |
-| `DeliveryActuals` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/engine/git-timestamps.ts` |
+| `DeliveryActuals` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/engine/git-timestamps.ts`, `src/engine/harvest.ts` |
 | `CompressionRatios` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts` |
 | `LeadingIndicators` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts`, `src/db/compression.ts` |
 | `CompressionSummary` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/compression.ts` |
 | `CommitCluster` | `src/engine/types.ts` | `src/engine/commit-cluster.ts`, `src/engine/compression.ts` |
+| `EffortForecast` | `src/engine/types.ts` | `src/engine/compression.ts`, `src/commands/effort.ts` |
 
 ---
 
@@ -203,11 +284,11 @@ _No mockups exist for this feature._
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| US-001 | Phase 1 | Planned |
+| US-001 | Phase 1, Phase 4 | Planned |
 | US-002 | Phase 1 | Planned |
-| US-003 | Phase 2 | Planned |
-| US-004 | Phase 2 | Planned |
-| US-005 | Phase 2 | Planned |
+| US-003 | Phase 2, Phase 5 | Planned |
+| US-004 | Phase 4 | Planned |
+| US-005 | Phase 2, Phase 5 | Planned |
 | US-006 | Phase 2 | Planned |
 | US-007 | Phase 3 | Planned |
 | US-008 | Phase 3 | Planned |
@@ -219,28 +300,32 @@ _No mockups exist for this feature._
 | FR-004 | Phase 1 | Planned |
 | FR-005 | Phase 2 | Planned |
 | FR-006 | Phase 2 | Planned |
-| FR-007 | Phase 2 | Planned |
-| FR-008 | Phase 2 | Planned |
-| FR-009 | Phase 2 | Planned |
+| FR-007 | Phase 2, Phase 5 | Planned |
+| FR-008 | Phase 2, Phase 5 | Planned |
+| FR-009 | Phase 2, Phase 5 | Planned |
 | FR-010 | Phase 2 | Planned |
 | FR-011 | Phase 3 | Planned |
-| FR-012 | Phase 1, Phase 3 | Planned |
+| FR-012 | Phase 1, Phase 3, Phase 4 | Planned |
 | FR-013 | Phase 2 | Planned |
 | FR-014 | Phase 2 | Planned |
 | FR-015 | Phase 3 | Planned |
-| TC-001 | Phase 1, Phase 2 | Planned |
-| TC-002 | Phase 2 | Planned |
-| TC-003 | Phase 3 | Planned |
+| FR-016 | Phase 4 | Planned |
+| FR-017 | Phase 4 | Planned |
+| FR-018 | Phase 5 | Planned |
+| FR-019 | Phase 4 | Planned |
+| TC-001 | Phase 1, Phase 2, Phase 4 | Planned |
+| TC-002 | Phase 2, Phase 5 | Planned |
+| TC-003 | Phase 3, Phase 4 | Planned |
 | TC-004 | Phase 2, Phase 3 | Planned |
 | TC-005 | Phase 1 | Planned |
 | TC-006 | Phase 2 | Planned |
-| DM-001 | Phase 1 | Planned |
-| DM-002 | Phase 2 | Planned |
+| DM-001 | Phase 1, Phase 4 | Planned |
+| DM-002 | Phase 2, Phase 5 | Planned |
 | DM-003 | Phase 2 | Planned |
-| TR-001 | Phase 1 | Planned |
-| TR-002 | Phase 1 | Planned |
-| TR-003 | Phase 1 | Planned |
-| TR-004 | Phase 1 | Planned |
+| TR-001 | Phase 1, Phase 4 | Planned |
+| TR-002 | Phase 1, Phase 5 | Planned |
+| TR-003 | Phase 1, Phase 4 | Planned |
+| TR-004 | Phase 1, Phase 4 | Planned |
 | TR-005 | Phase 2 | Planned |
 | TR-006 | Phase 2 | Planned |
 | TR-007 | Phase 2 | Planned |
@@ -248,12 +333,12 @@ _No mockups exist for this feature._
 | TR-009 | Phase 2 | Planned |
 | TR-010 | Phase 2 | Planned |
 | TR-011 | Phase 3 | Planned |
-| TR-012 | Phase 3 | Planned |
+| TR-012 | Phase 3, Phase 5 | Planned |
 | TR-013 | Phase 1, Phase 3 | Planned |
 | TR-014 | Phase 2 | Planned |
 | TR-015 | Phase 2 | Planned |
-| SC-001 | Phase 1 | Planned |
-| SC-002 | Phase 2 | Planned |
+| SC-001 | Phase 1, Phase 4 | Planned |
+| SC-002 | Phase 2, Phase 5 | Planned |
 | SC-003 | Phase 2 | Deferred (see above) |
 | SC-004 | Phase 2 | Planned |
 | VR-001 | Phase 1 | Planned |

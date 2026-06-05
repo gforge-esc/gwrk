@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 describe("CLI Governance (Phase 11)", () => {
   const grammarDocPath = path.resolve(
     process.cwd(),
-    "docs/governance/cli-grammar.md",
+    "docs/grounding/cli-grammar.md",
   );
 
-  it("exists: docs/governance/cli-grammar.md (US-025)", () => {
+  it("exists: docs/grounding/cli-grammar.md (US-025)", () => {
     expect(
       fs.existsSync(grammarDocPath),
       `Governance doc missing at ${grammarDocPath}`,

@@ -55,18 +55,53 @@ vi.mock("../engine/drift-detector.js", () => {
 
 describe("Phase 5: Visualization & Monitoring", () => {
   describe("generatePlanVizHtml", () => {
-    it("should generate HTML containing graph data", () => {
-      const features = [{ id: "F001", name: "Feature 1", status: "IN_PROGRESS", sp_total: 10 }];
-      const phases = [{ id: "P001", feature_id: "F001", name: "Phase 1", status: "IN_PROGRESS", health: "GREEN", sp_estimate: 5, seq: 1 }];
+    it("should generate self-contained D3 HTML with graph data", () => {
+      const features = [{ id: "001-cli-core", name: "Feature 1", status: "IN_PROGRESS", sp_total: 10 }];
+      const phases = [{ id: "001-cli-core/phase-01", feature_id: "001-cli-core", name: "Phase 1", status: "IN_PROGRESS", health: "GREEN", sp_estimate: 5, seq: 1 }];
       const edges = [];
       
-      const html = generatePlanVizHtml(features, phases, edges, ["P001"]);
+      const html = generatePlanVizHtml(features, phases, edges, ["001-cli-core/phase-01"]);
       
       expect(html).toContain("<!DOCTYPE html>");
       expect(html).toContain("Feature 1");
       expect(html).toContain("Phase 1");
-      expect(html).toContain("#e74c3c"); // Critical path color
-      expect(html).toContain("sigma.min.js");
+      expect(html).toContain("d3.v7.min.js");
+      expect(html).toContain("#48bb78"); // Shipped feature color
+    });
+
+    it("should include dependency edges in graph data", () => {
+      const features = [
+        { id: "001-cli-core", name: "CLI Core", status: "SHIPPED", sp_total: 0 },
+        { id: "004-ship-loop", name: "Ship Loop", status: "SHIPPED", sp_total: 0 },
+      ];
+      const phases = [];
+      const edges = [{ from_id: "001-cli-core", to_id: "004-ship-loop", edge_type: "DEPENDS_ON" }];
+
+      const html = generatePlanVizHtml(features, phases, edges, []);
+
+      expect(html).toContain("001-cli-core");
+      expect(html).toContain("004-ship-loop");
+      expect(html).toContain("DEPENDS_ON");
+    });
+
+    it("should render feature labels and contain interactive controls", () => {
+      const features = [
+        { id: "001-cli-core", name: "CLI Core", status: "SHIPPED", sp_total: 0 },
+        { id: "004-ship-loop", name: "Ship Loop", status: "PLANNED", sp_total: 0 },
+      ];
+      const phases = [{ id: "001-cli-core/phase-01", feature_id: "001-cli-core", name: "Phase 1", status: "SHIPPED", health: "GREEN", sp_estimate: 5, seq: 1 }];
+      const edges = [];
+
+      const html = generatePlanVizHtml(features, phases, edges, []);
+
+      // Labels use id:name format when different
+      expect(html).toContain("001-cli-core: CLI Core");
+      // Interactive controls
+      expect(html).toContain("Show Phases");
+      expect(html).toContain("fitGraph");
+      // Stats line
+      expect(html).toContain("features");
+      expect(html).toContain("phases");
     });
   });
 

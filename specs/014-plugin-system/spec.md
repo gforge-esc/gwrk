@@ -1,8 +1,8 @@
 ---
 type: specification
 feature: 014-plugin-system
-last_modified: "2026-05-21T22:25:00Z"
-revision: 3
+last_modified: "2026-06-03T12:00:00Z"
+revision: 5
 ---
 
 # Feature Specification: 014 Plugin System
@@ -10,10 +10,10 @@ revision: 3
 **Feature Branch**: `feat/014-plugin-system`
 **Created**: 2026-03-15
 **Status**: Draft
-**Input**: OpenClaw research, skills architecture analysis, manifest stress test (signal-cut)
+**Input**: OpenClaw research, skills architecture analysis, manifest stress test, R006 (Pluginable Research), R007 (Project Perspective), ADR-009 (Domain Ontology)
 **Reference**: [skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md), [plugin-architecture-plan.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-architecture-plan.md)
 
-> **Positioning:** This is the plugin infrastructure spec. F008 (Agent Router), F012 (Knowledge Work), F016 (Domain Packs), and F017 (Channel Abstraction) depend on the manifest schema, plugin loader, and skill runtime established here.
+> **Positioning:** This is the plugin infrastructure spec. F008 (Agent Router), F012 (Knowledge Work), F016 (Domain Packs), and F017 (Channel Abstraction) depend on the manifest schema, plugin loader, and skill runtime established here. Research workflows (R006) and Domain Grounding (ADR-009) execute on top of this layer.
 
 ---
 
@@ -25,6 +25,8 @@ gwrk has plugin-shaped seams — skills, workflows, agent backends, Slack — bu
 2. **Shareability** — no install/publish mechanism for friends or collaborators
 3. **Composability** — skills can't be invoked as CLI commands, piped, or composed
 4. **Knowledge work expansion** — no way to add domain-specific packs without editing core
+5. **Research flexibility** — methodologies like JTBD or Ontology modeling require distinct prompts and workflows, not a single hardcoded script.
+6. **Project-specific constraints** — non-gwrk projects currently receive gwrk-specific linting and rules because enforcement routing lacks language/framework awareness.
 
 The F013 agent-native interface proved that CLI-native contracts (stdin/stdout, `--format json`, signals, piping) are the right interface for both humans and agents. The same principle must apply to gwrk's extensibility: plugins should be CLI-native, not server-coupled (anti-MCP).
 
@@ -40,6 +42,8 @@ The F013 agent-native interface proved that CLI-native contracts (stdin/stdout, 
 | Skill hierarchy | Two-tier: atomic (single mode) + compound (multi-pass) | Manifest stress test |
 | Manifest boundary | manifest.yaml = contract, SKILL.md = reasoning program | skills-architecture.md |
 | Define Orchestrator | TypeScript state machine replacing `define-until-solid.sh` | R004 Decision #4 |
+| Research Methodologies | Implemented as Workflow Plugins with `category: research` | R006 |
+| Grounding Context | Domain Ontology, Hierarchy, and UX injected dynamically at dispatch | ADR-009 |
 
 ---
 
@@ -49,15 +53,16 @@ The F014-R rework internalizes workflows into the gwrk product, ending the relia
 
 ### Architectural Layer Model (Updated)
 - **Layer 1: Agent Backend Plugins** (Claude, Codex, Gemini, Antigravity adapters) - *SHIPPED*
-- **Layer 2: Skill Plugins** (Atomic reasoning, compound compositions) - *SHIPPED*
-- **Layer 2.5: WorkflowRuntime** (JSON intent execution, built-in workflows) - **F014-R**
+- **Layer 2: Skill Plugins** (Atomic reasoning, compound compositions, Enforcement standards) - *SHIPPED*
+- **Layer 2.5: WorkflowRuntime** (JSON intent execution, built-in workflows, research methodologies, grounding injection) - **F014-R**
 - **Layer 3: Extension Plugins** (Domain Packs, Channel Adapters) - *FUTURE*
 
 ### Core Components of F014-R:
 1. **The JSON Intent Engine**: Parses agent output against a Zod-backed `outputSchema` and executes local actions (`WRITE_FILE`, `RUN_COMMAND`) natively.
-2. **Built-in Workflow Plugins**: 10 core workflows (specify, plan, implement, etc.) shipped in `builtins/workflows/`.
-3. **CLI Command Rewiring**: Moving `gwrk specify`, `plan`, and `define` commands to the `WorkflowRuntime`.
+2. **Built-in Workflow Plugins**: 10 core workflows (specify, plan, implement, research, etc.) shipped in `builtins/workflows/`.
+3. **CLI Command Rewiring**: Moving `gwrk specify`, `plan`, `define`, and `research` commands to the `WorkflowRuntime`.
 4. **DefineOrchestrator**: A TypeScript state machine for the `spec -> plan -> tasks` loop.
+5. **Context Grounding**: Dynamic injection of `.gwrk/ontology/domain.md` and perspective documents.
 
 ---
 
@@ -65,274 +70,174 @@ The F014-R rework internalizes workflows into the gwrk product, ending the relia
 
 ### US-001 - Install a Skill Plugin (Priority: P0)
 As a Principal Engineer, I want `gwrk plugin install <path>` to install a skill to `~/.gwrk/plugins/skills/`, so that I can add new reasoning capabilities from a local directory, a git URL, or a zip file.
-
 **Implements**: FR-001, FR-002
-
-**Independent Test**: `gwrk plugin install ./my-skill && gwrk plugin list --format json | jq '.[].name' | grep my-skill`
-
 **Acceptance Scenarios**:
 1. **Given** a directory with `manifest.yaml` + `SKILL.md`, **When** `gwrk plugin install ./truth-extract` is run, **Then**:
    - `ls ~/.gwrk/plugins/skills/truth-extract/manifest.yaml` exits 0
-   - `gwrk plugin list | grep truth-extract` exits 0
-2. **Given** a plugin already installed, **When** `gwrk plugin install ./truth-extract` is run again, **Then**:
-   - stderr: `Plugin 'truth-extract' already installed. Use --force to overwrite.`
-   - Exit code: 1
-3. **Given** a directory missing `manifest.yaml`, **When** `gwrk plugin install ./bad-dir` is run, **Then**:
-   - stderr: `No manifest.yaml found in ./bad-dir. A valid plugin requires manifest.yaml.`
-   - Exit code: 1
-
----
 
 ### US-002 - List Installed Plugins (Priority: P0)
 As a Principal Engineer, I want `gwrk plugin list` to show all installed plugins, so that I can see what capabilities gwrk has.
-
 **Implements**: FR-003
-
-**Independent Test**: `gwrk plugin list --format json | jq '. | length'` returns ≥ 0.
-
 **Acceptance Scenarios**:
-1. **Given** plugins installed, **When** `gwrk plugin list` is run, **Then**:
-   - Output lists each plugin with: name, type, tier (if skill), version
-   - Grouped by type (skills, workflows, agents, channels, domains)
-2. **Given** `--format json`, **When** `gwrk plugin list --format json` is run, **Then**:
-   - `jq '.[0].name'` returns plugin name
-   - `jq '.[0].type'` returns plugin type
-3. **Given** a project with `.gwrk/plugins.yaml` disabling a plugin, **When** `gwrk plugin list --project` is run, **Then**:
-   - Disabled plugins show `(disabled)` annotation
-   - Only active plugins listed without `--project` flag
-
----
+1. **Given** `--format json`, **When** `gwrk plugin list --format json` is run, **Then**:
+   - `gwrk plugin list --format json | jq '.[0].name'` exits 0 and returns plugin name
 
 ### US-003 - Remove a Plugin (Priority: P1)
 As a Principal Engineer, I want `gwrk plugin remove <name>` to uninstall a plugin from `~/.gwrk/plugins/`, so that I can clean up unused capabilities.
-
 **Implements**: FR-004
-
-**Independent Test**: `gwrk plugin remove truth-extract && gwrk plugin list | grep truth-extract; echo $?` returns 1.
-
 **Acceptance Scenarios**:
 1. **Given** plugin installed, **When** `gwrk plugin remove truth-extract` is run, **Then**:
-   - Directory `~/.gwrk/plugins/skills/truth-extract/` is deleted
-   - stdout: `Removed plugin 'truth-extract'.`
-2. **Given** plugin not installed, **When** `gwrk plugin remove nonexistent` is run, **Then**:
-   - stderr: `Plugin 'nonexistent' not found. Run 'gwrk plugin list' to see installed plugins.`
-   - Exit code: 1
-3. **Given** compound skill that `composes` the removed atomic, **When** `gwrk plugin remove narrative` is run, **Then**:
-   - stderr warns: `Warning: 'signal-cut' depends on 'narrative'. Remove anyway? Use --force to confirm.`
-   - Without `--force`, exit code: 1
-
----
+   - `test ! -d ~/.gwrk/plugins/skills/truth-extract/` exits 0
 
 ### US-004 - Disable/Enable Plugin per Project (Priority: P1)
 As a Principal Engineer, I want `gwrk plugin disable <name>` to deactivate a plugin in the current project without uninstalling it globally, so that I can scope capabilities per project.
-
 **Implements**: FR-005
-
-**Independent Test**: `gwrk plugin disable domains/writing && cat .gwrk/plugins.yaml | grep writing`
-
 **Acceptance Scenarios**:
 1. **Given** a gwrk project, **When** `gwrk plugin disable domains/writing` is run, **Then**:
-   - `.gwrk/plugins.yaml` is created/updated with `disable: [domains/writing]`
-   - `gwrk plugin list --project` shows `writing (disabled)`
-2. **Given** a disabled plugin, **When** `gwrk plugin enable domains/writing` is run, **Then**:
-   - `.gwrk/plugins.yaml` removes entry from disable list
-   - Plugin is active again in this project
-
----
+   - `grep "domains/writing" .gwrk/plugins.yaml` exits 0
 
 ### US-005 - Invoke an Atomic Skill (Priority: P0)
 As a Principal Engineer, I want `gwrk skill narrative < brief.md` to invoke a single reasoning mode and produce output on stdout, so that I can use skills as composable CLI commands.
-
 **Implements**: FR-006, FR-007, FR-008
-
-**Independent Test**: `echo "test" | gwrk skill narrative --format json | jq .` exits 0.
-
 **Acceptance Scenarios**:
 1. **Given** atomic skill installed, **When** `echo "brief" | gwrk skill narrative` is run, **Then**:
-   - stdout contains the skill's output (text or JSON per `--format`)
-   - stderr contains `[exit:0 | Xs]`
-   - Exit code: 0
-2. **Given** `--format json`, **When** piped, **Then**:
-   - stdout is valid JSON
-   - JSON is pipeable: `gwrk skill narrative --format json < in.md | jq .`
-3. **Given** skill not installed, **When** `gwrk skill nonexistent` is run, **Then**:
-   - stderr: `Skill 'nonexistent' not found. Run 'gwrk skill --help' to list available skills.`
-   - Exit code: 1
-
----
+   - `echo "test" | gwrk skill narrative > /dev/null` exits 0
 
 ### US-006 - Invoke a Compound Skill (Priority: P0)
 As a Principal Engineer, I want `gwrk skill signal-cut < brief.md` to execute a multi-pass compound skill in a single LLM call and return structured output.
-
 **Implements**: FR-006, FR-007, FR-009
-
-**Independent Test**: `echo "test product brief" | gwrk skill signal-cut --product gwrk` produces output.
-
 **Acceptance Scenarios**:
-1. **Given** compound skill with 3 passes, **When** invoked, **Then**:
-   - All passes are assembled into a single prompt (1 LLM call, not 3)
-   - Output reflects all passes applied sequentially
-   - `[exit:0 | Xs]` on stderr
-2. **Given** `--content-type blog`, **When** `gwrk skill signal-cut --content-type blog` is run, **Then**:
-   - Skill uses the content type playbook from SKILL.md
-3. **Given** a composed atomic is not installed, **When** compound is invoked, **Then**:
-   - stderr: `Missing dependency: skill 'narrative' required by 'signal-cut'. Run 'gwrk plugin install <path>'.`
-   - Exit code: 1
-
----
+1. **Given** compound skill, **When** invoked, **Then**:
+   - `echo "test" | gwrk skill signal-cut > /dev/null` exits 0
 
 ### US-007 - Pipe Skills Together (Priority: P0)
 As a Principal Engineer, I want `gwrk skill A | gwrk skill B` to compose skills via Unix pipes, so that I can build ad-hoc reasoning chains without defining a compound skill.
-
 **Implements**: FR-008
-
-**Independent Test**: `echo "test" | gwrk skill narrative | gwrk skill practitioner` produces output.
-
 **Acceptance Scenarios**:
 1. **Given** two atomic skills, **When** piped, **Then**:
-   - stdout of skill A is stdin of skill B
-   - `[exit:N | Xs]` goes to stderr for EACH skill (not in the pipe)
-   - Final stdout is skill B's output
-2. **Given** `--format json` on the first skill, **When** piped, **Then**:
-   - Second skill accepts JSON on stdin and processes it
-   - Format flags are per-command (pipe-local)
-
----
+   - `echo "test" | gwrk skill narrative | gwrk skill practitioner > /dev/null` exits 0
 
 ### US-008 - Discover Skills via --help (Priority: P1)
 As a Principal Engineer, I want `gwrk skill --help` to list all installed skills with their descriptions, and `gwrk skill <name> --help` to show a skill's full interface contract.
-
 **Implements**: FR-010
-
-**Independent Test**: `gwrk skill --help | grep narrative` exits 0.
-
 **Acceptance Scenarios**:
 1. **Given** skills installed, **When** `gwrk skill --help` is run, **Then**:
-   - Lists all skills grouped by tier (atomic, compound)
-   - Each entry shows: name, tier, description (from manifest)
-2. **Given** a specific skill, **When** `gwrk skill signal-cut --help` is run, **Then**:
-   - Shows: description, composed skills, flags, exit codes, runtime config
-   - Pattern matches F013 help enrichment (FR-008)
-
----
+   - `gwrk skill --help | grep narrative` exits 0
 
 ### US-009 - Migrate Existing Skills (Priority: P0)
 As a Principal Engineer, I want `gwrk plugin migrate` to move existing `.agents/skills/` and `.agents/workflows/` to `~/.gwrk/plugins/` with auto-generated manifests, so that my current skills work with the new system.
-
 **Implements**: FR-011
-
-**Independent Test**: `gwrk plugin migrate --dry-run` lists what would be migrated.
-
 **Acceptance Scenarios**:
-1. **Given** `.agents/skills/` exists with SKILL.md files, **When** `gwrk plugin migrate` is run, **Then**:
-   - Each skill is copied to `~/.gwrk/plugins/skills/<name>/`
-   - `manifest.yaml` is auto-generated from SKILL.md frontmatter
-   - Original `.agents/skills/` is NOT deleted (stays for IDE compatibility)
-2. **Given** `--dry-run`, **When** `gwrk plugin migrate --dry-run` is run, **Then**:
-   - Lists what would be migrated without copying anything
-3. **Given** skill already exists at destination, **When** migrate runs, **Then**:
-   - Skips with message: `Skipping 'truth-extract' — already installed.`
-
----
+1. **Given** `.agents/skills/` exists, **When** `gwrk plugin migrate --dry-run` is run, **Then**:
+   - `gwrk plugin migrate --dry-run` exits 0
 
 ### US-010 - Seed Atomic Skills from Taxonomy (Priority: P1)
 As a Principal Engineer, I want `gwrk plugin seed` to generate atomic skill plugins for all reasoning modes in the taxonomy, so that the ~40 modes become invocable CLI commands.
-
 **Implements**: FR-012
-
-**Independent Test**: `gwrk plugin seed --dry-run | wc -l` returns ≥ 30.
-
 **Acceptance Scenarios**:
-1. **Given** `reasoning-modes.md` exists, **When** `gwrk plugin seed` is run, **Then**:
-   - Atomic skill directories created at `~/.gwrk/plugins/skills/` for each mode
-   - Each has `manifest.yaml` (type, name, tier: atomic, category, prompt) + `SKILL.md`
-   - Categories preserved: reasoning, evaluative, creative, persona, communication, operational, meta
-2. **Given** some atomics already installed, **When** seed runs, **Then**:
-   - Skips existing skills, installs only new ones
-
----
+1. **Given** taxonomy exists, **When** `gwrk plugin seed --dry-run` is run, **Then**:
+   - `gwrk plugin seed --dry-run` exits 0
 
 ### US-011 - Execute a Built-in Workflow (Priority: P0)
 As a Principal Engineer, I want `gwrk specify` to use the built-in `gwrk-specify` workflow from `~/.gwrk/plugins/workflows/`, so that I can define requirements without needing a local `.agents/` folder.
-
 **Implements**: FR-L25-001, FR-L25-003
-
 **Acceptance Scenarios**:
-1. **Given** a new project, **When** `gwrk specify my-feature` is run, **Then**:
-   - `WorkflowRuntime` resolves `gwrk-specify` from built-ins.
-   - The agent is invoked with the workflow's prompt and `outputSchema`.
-   - File creation is handled by the JSON intent engine.
-
----
+1. **Given** a project, **When** `gwrk specify my-feature` is run, **Then**:
+   - `ls specs/my-feature/spec.md` exits 0
 
 ### US-012 - Decoupled Filesystem Mutation (Priority: P0)
 As a Principal Engineer, I want workflows to execute file changes via JSON intents (e.g., `WRITE_FILE`), so that the agent's reasoning is strictly separated from the execution of those changes.
-
 **Implements**: FR-L25-002
-
 **Acceptance Scenarios**:
-1. **Given** a workflow execution, **When** the agent returns a valid JSON intent, **Then**:
-   - `WorkflowRuntime` validates the JSON against the schema.
-   - `WorkflowRuntime` performs the file write on the local disk.
-   - stdout shows a summary of the executed actions.
-
----
+1. **Given** valid JSON intent output, **When** executed, **Then**:
+   - `gwrk specify dummy-feature` writes the file and exits 0
 
 ### US-013 - DefineOrchestrator Loop (Priority: P0)
 As a Principal Engineer, I want `gwrk define` to run a TypeScript state machine loop (spec -> plan -> tasks), so that I have a robust, predictable development experience that doesn't rely on shell scripts.
-
 **Implements**: FR-L25-004
-
 **Acceptance Scenarios**:
 1. **Given** a valid specification, **When** `gwrk define` is run, **Then**:
-   - `DefineOrchestrator` transitions through the `spec`, `plan`, and `tasks` states.
-   - Each state invokes the corresponding built-in workflow.
-   - The cycle continues until the user confirms completion or all stages are satisfied.
-
----
+   - `gwrk define --dry-run` exits 0
 
 ### US-014 - Provision Global Home (Priority: P1)
 As a Principal Engineer, I want `gwrk init` to populate `~/.gwrk/plugins/` with built-in workflows and skills, so that my global environment is ready for use immediately.
-
 **Implements**: FR-L1-008, FR-L25-005
-
 **Acceptance Scenarios**:
-1. **When** `gwrk init` is run for the first time, **Then**:
-   - `~/.gwrk/plugins/workflows/` is created and populated with core workflows.
-   - Default governance rules are synced to `~/.gwrk/rules/`.
-   - No `.agents/` directory is created in the project root by default.
-
----
+1. **When** `gwrk init` is run, **Then**:
+   - `ls ~/.gwrk/plugins/workflows/` exits 0
 
 ### US-015 - Project-Local Workflow Override (Priority: P1)
 As a Principal Engineer, I want to override a built-in workflow by placing a custom version in `.gwrk/plugins/workflows/`, so that I can tailor the development process to my specific project needs.
-
 **Implements**: FR-005, FR-L25-006
-
 **Acceptance Scenarios**:
-1. **Given** a project-specific workflow in `.gwrk/plugins/workflows/gwrk-specify/`, **When** `gwrk specify` is run, **Then**:
-   - `WorkflowRuntime` prioritizes the project-local override over the global built-in.
-   - stderr shows: `Using project-local override for 'gwrk-specify'`.
+1. **Given** local override exists, **When** `gwrk specify" is run, **Then**:
+   - `gwrk specify dummy 2>&1 | grep "override"` exits 0
 
----
-
-### US-016 - Enforcement Skills for Code Quality (Priority: P1)
-As a Principal Engineer, I want coding standards (e.g., TypeScript strict typing, lint compliance) to be shipped as builtin enforcement skills, so that implementing agents automatically follow project quality standards without relying on local config files.
-
+### US-016 - Enforcement Skills for Code Quality with Language Filtering (Priority: P1) — **SHIPPED**
+As a Principal Engineer, I want coding standards to be shipped as builtin enforcement skills and filtered by my project's language/framework profile, so that a Python project doesn't receive TypeScript standards.
 **Implements**: FR-014
-
-**Independent Test**: `gwrk plugin list --type skills | grep typescript-standards`
-
 **Acceptance Scenarios**:
-1. **Given** `gwrk init` has been run, **When** `gwrk plugin list` is run, **Then**:
-   - The `typescript-standards` skill is listed as `tier: enforcement`.
-   - The skill ships as a builtin in `src/plugins/builtins/skills/`.
-2. **Given** `gwrk ship` dispatches an implement workflow, **When** the agent starts, **Then**:
-   - The implement prompt's `<code_quality>` section references the enforcement skill.
-   - The agent reads the skill and applies its constraints to all generated code.
-3. **Given** a project needs custom standards, **When** a user installs a project-local skill at `.gwrk/plugins/skills/typescript-standards/`, **Then**:
-   - The local override takes precedence over the builtin (same as workflow resolution).
-   - stderr shows: `Using project-local override for 'typescript-standards'`.
+1. **Given** a Python project, **When** an agent is dispatched, **Then**:
+   - `gwrk plugin list --project --type skills | grep typescript-standards; echo $?` returns 1
+
+### US-020 - Define Project Ontology (Priority: P0)
+As a Principal Engineer, I want `gwrk define ontology` to scaffold the project knowledge structure, so that the agent has a clear understanding of the domain, hierarchy, and UX posture.
+**Implements**: FR-L25-009
+**Acceptance Scenarios**:
+1. **Given** a new project, **When** `gwrk define ontology` is run, **Then**:
+   - `ls .gwrk/ontology/domain.md` exits 0
+   - `ls .gwrk/perspective/hierarchy.md` exits 0
+   - `ls .gwrk/perspective/ux-posture.md` exits 0
+
+### US-021 - Automated Ontology Construction (Priority: P0)
+As a Principal Engineer, I want `gwrk define ontology --run` to construct the ontology using the Five Primitives methodology, so that the domain model is grounded in actual codebase and spec evidence.
+**Implements**: FR-L25-010, FR-L25-012
+**Acceptance Scenarios**:
+1. **Given** existing specs and code, **When** `gwrk define ontology --run` is run, **Then**:
+   - `grep "## Classes" .gwrk/ontology/domain.md` exits 0
+   - `grep "## Axioms" .gwrk/ontology/domain.md` exits 0
+
+### US-022 - Source Material Grounding for Ontology (Priority: P0)
+As a Principal Engineer, I want the ontology construction workflow to scan source material (codebase, specs, architecture docs), so that the model reflects the technical reality of the project.
+**Implements**: FR-L25-011
+**Acceptance Scenarios**:
+1. **Given** a project with `docs/grounding/architecture.md`, **When** `gwrk define ontology --run` is executed, **Then**:
+   - The agent output reflects concepts found in the architecture document.
+
+### US-023 - Toolchain Detection (Priority: P0)
+As a Principal Engineer, I want `gwrk project info` to report the detected toolchain (primary linter/formatter, test runner) alongside the language and build system, so that agents can use the correct tools (like Biome or Ruff) without manual configuration.
+**Implements**: FR-015
+**Acceptance Scenarios**:
+1. **Given** a TypeScript project with a `biome.json` file, **When** `gwrk project info --format json` is run, **Then**:
+   - `gwrk project info --format json | jq -e '.toolchain.primary == "biome"' > /dev/null` exits 0
+
+### US-024 - Mandatory Context Gathering (Priority: P0)
+As a Principal Engineer, I want the `gwrk ship` (implement) workflow to start with a mandatory context-gathering preamble, so that agents actively read the project profile, toolchain, and status before writing any code.
+**Implements**: FR-L25-013
+**Acceptance Scenarios**:
+1. **Given** the built-in implement workflow, **When** it is executed, **Then**:
+   - `cat src/plugins/builtins/workflows/gwrk-implement/PROMPT.md | grep -q "gwrk project info"` exits 0
+
+### US-017 - Scaffold Research Initiative (Priority: P0)
+As a Principal Engineer, I want `gwrk define research "User Switching Behavior" --methodology jtbd` to scaffold a new research directory so that I have a structured brief ready to fill out.
+**Implements**: FR-R006-001
+**Acceptance Scenarios**:
+1. **Given** no existing R008, **When** `gwrk define research "New Thing"` is run, **Then**:
+   - `ls docs/research/R008-new-thing/brief.md` exits 0
+
+### US-018 - Execute Research Workflow (Priority: P0)
+As a Principal Engineer, I want `gwrk define research R008 --run` to execute the appropriate methodology plugin so that an agent can draft the research output based on my brief.
+**Implements**: FR-R006-002
+**Acceptance Scenarios**:
+1. **Given** R008 brief exists, **When** run, **Then**:
+   - `ls docs/research/R008-*/draft.md` exits 0
+
+### US-019 - Inject Domain Ontology and Posture (Priority: P1)
+As a Principal Engineer, I want project knowledge (ontology, hierarchy, UX posture) to automatically ground the agent so that it understands my project's specific domain context without manual prompting.
+**Implements**: FR-ADR009-001
+**Acceptance Scenarios**:
+1. **Given** `.gwrk/ontology/domain.md` exists, **When** a workflow is dispatched, **Then**:
+   - `gwrk project discover --json | grep "domain.md"` exits 0
 
 ---
 
@@ -348,256 +253,107 @@ Plugin operations are local filesystem only. No external service credentials. Sk
 
 ### Plugin Infrastructure
 
-- **FR-001**: System MUST provide `gwrk plugin install <path|url>` that validates `manifest.yaml` existence, copies the plugin directory to `~/.gwrk/plugins/<type>/<name>/`, and validates manifest schema. Supports `--force` for overwrite. (Implements: US-001)
-- **FR-002**: System MUST validate manifest.yaml against a Zod schema on install. Invalid manifests MUST be rejected with specific error messages (missing fields, unknown type, invalid tier). (Implements: US-001)
-- **FR-003**: System MUST provide `gwrk plugin list` that scans `~/.gwrk/plugins/` and displays installed plugins grouped by type. Supports `--format json` and `--project` (shows resolution with local overrides applied). (Implements: US-002)
-- **FR-004**: System MUST provide `gwrk plugin remove <name>` that deletes the plugin directory. MUST warn if other plugins depend on it (via `composes` field) unless `--force` is used. (Implements: US-003)
-- **FR-005**: System MUST provide `gwrk plugin disable <name>` and `gwrk plugin enable <name>` that manage `.gwrk/plugins.yaml` in the current project. Only workflows and domains can be disabled. Skills, agents, channels are global-only and reject disable attempts. (Implements: US-004)
+- **FR-001**: System MUST provide `gwrk plugin install <path|url>` that validates `manifest.yaml`. (Implements: US-001)
+- **FR-002**: System MUST validate manifest.yaml against a Zod schema on install. (Implements: US-001)
+- **FR-003**: System MUST provide `gwrk plugin list` that scans `~/.gwrk/plugins/" and displays installed plugins. (Implements: US-002)
+- **FR-004**: System MUST provide `gwrk plugin remove <name>`. (Implements: US-003)
+- **FR-005**: System MUST provide `gwrk plugin disable <name>` and `enable`. (Implements: US-004)
 
-### Skill Runtime
+### Skill Runtime & Enforcement
 
-- **FR-006**: System MUST provide `gwrk skill <name>` command that resolves the skill from `~/.gwrk/plugins/skills/<name>/`, loads `manifest.yaml` and `SKILL.md`, assembles a prompt, and invokes the preferred agent CLI using its specific headless/YOLO execution format with the manifest's `preferredModel` passed as the `--model` argument. The exact invocation formats are explicitly defined as: `claude --dangerously-skip-permissions --model <model> -p "<prompt>"`, `gemini --yolo --model <model> -p "<prompt>"`, and `codex exec --dangerously-bypass-approvals-and-sandbox --model <model> "<prompt>"`. Compound skills require thinking models — the model version MUST be specific enough to guarantee multi-pass reasoning capability. (Implements: US-005, US-006)
-- **FR-007**: Skill invocation MUST inherit the full F013 contract: `--format json` for structured output, `[exit:N | Xs]` on stderr, `--agent` mode for ANSI-free output, pipe-composable stdin/stdout. (Implements: US-005, US-006)
-- **FR-008**: Compound skills MUST be executable as a single LLM call. The runtime assembles all passes from SKILL.md into one prompt. The `composes` field in manifest.yaml declares dependencies — runtime MUST verify all composed skills are installed before invocation. (Implements: US-006, US-007)
-- **FR-009**: Compound skill manifest MUST declare `composes: [<skill-name>, ...]` and `passes: [{name, skill, summary}, ...]`. The runtime validates that every entry in `composes` resolves to an installed atomic skill. (Implements: US-006)
-- **FR-010**: `gwrk skill --help` MUST list all installed skills grouped by tier (atomic, compound, enforcement). `gwrk skill <name> --help` MUST display the skill's interface contract from manifest.yaml: description, composed skills (if compound), flags, exit codes, runtime. (Implements: US-008)
-
-### Enforcement Skills
-
-- **FR-014**: System MUST ship builtin enforcement skills in `src/plugins/builtins/skills/`. Enforcement skills (`tier: enforcement`) define coding standards, quality constraints, and project conventions that are automatically loaded by write workflows (`gwrk-implement`, `gwrk-ship`). The implement prompt MUST reference enforcement skills in its `<code_quality>` section. Enforcement skills follow the same resolution order as workflows: project-local `.gwrk/plugins/skills/` overrides global `~/.gwrk/plugins/skills/` overrides builtins. (Implements: US-016)
+- **FR-006**: System MUST provide `gwrk skill <name>` command. (Implements: US-005, US-006)
+- **FR-007**: Skill invocation MUST inherit the full F013 contract. (Implements: US-005, US-006)
+- **FR-008**: Compound skills MUST be executable as a single LLM call. (Implements: US-006, US-007)
+- **FR-009**: Compound skill manifest MUST declare `composes`. (Implements: US-006)
+- **FR-010**: `gwrk skill --help` MUST list all installed skills. (Implements: US-008)
+- **FR-014**: System MUST ship builtin enforcement skills (`tier: enforcement`). Enforcement skills MUST support `language` and `framework` manifest fields. `resolveEnforcementSkills()` MUST filter built-in enforcement skills to match the detected `ProjectProfile` language/framework. Project-local enforcement skills MUST always load. (Implements: US-016) — **SHIPPED**
+- **FR-015**: System MUST detect `toolchain.primary`, `toolchain.formatter`, and `toolchain.test` from filesystem signals (config files, devDependencies). The `ProjectProfile` object MUST surface this data via the `gwrk project info` command. (Implements: US-023)
 
 ### Migration & Seeding
 
-- **FR-011**: System MUST provide `gwrk plugin migrate` that copies `.agents/skills/` and `.agents/workflows/` to `~/.gwrk/plugins/` with auto-generated `manifest.yaml` from SKILL.md frontmatter. Supports `--dry-run`. Does NOT delete originals. (Implements: US-009)
-- **FR-012**: System MUST provide `gwrk plugin seed` that parses `docs/reference/reasoning-modes.md` and generates atomic skill plugins for each mode. Each generated skill has `manifest.yaml` (with prompt from taxonomy) and a minimal `SKILL.md`. Supports `--dry-run`. (Implements: US-010)
+- **FR-011**: System MUST provide `gwrk plugin migrate`. (Implements: US-009)
+- **FR-012**: System MUST provide `gwrk plugin seed`. (Implements: US-010)
 
 ### Agent Backend Adapters (Layer 1 — R002)
 
-- **FR-L1-001**: Agent manifest (`manifest.yaml`) MUST declare: `type: agent`, `name`, `version`, `description`, `dispatchMode` (`local-cli` | `github-integration`), `contextFileName`, `invocation` block (command, headless, yolo, model, structuredOutput, costCap, workingDir), `capabilities`, `models`, `exitCodeMap`, and `managedConfig`. Validated by `AgentManifestSchema` (Zod). (Implements: US-L1-001)
-- **FR-L1-002**: `AgentBackend.dispatch(task)` MUST return `{ command, args, stdin, env, streamable }`. gwrk core pipes stdin to the CLI process. The adapter decides HOW to invoke — gwrk core only knows WHAT to dispatch. (Implements: US-L1-001)
-- **FR-L1-003**: `AgentBackend.parseResult(stdout, stderr, rawExitCode)` MUST normalize proprietary CLI exit codes to `TaskResult { exitCode: 0|1|2|127, errorType?, stdout, stderr, durationS }`. Mapping defined in manifest `exitCodeMap`. (Implements: US-L1-001)
-- **FR-L1-004**: `AgentBackend.syncGovernance(projectRoot, governance)` MUST generate the CLI-specific context file (e.g., `GEMINI.md`, `AGENTS.md`) from `.gwrk/agent-context.md` using `<!-- gwrk:begin -->` / `<!-- gwrk:end -->` boundary markers. Content outside markers MUST be preserved. (Implements: US-L1-002)
-- **FR-L1-005**: Agent manifests MUST declare `managedConfig` — an array of `{ path, keys }` describing which config files and keys the adapter owns. System MUST detect conflicts when two adapters claim the same key. Detection at install time and dispatch time. (Implements: US-L1-001)
-- **FR-L1-006**: System MUST provide `gwrk plugin sync-context` that regenerates all CLI-specific context files from `.gwrk/agent-context.md` for all active agent backends. (Implements: US-L1-002)
-- **FR-L1-007**: F014 Phase 1 MUST only support `dispatchMode: local-cli`. The `github-integration` mode (Codex Cloud) is a separate feature and MUST NOT block Phase 1. (Implements: US-L1-001)
-- **FR-L1-008**: `gwrk init` MUST detect installed CLIs (`which gemini`, `which claude`, `which codex`, `which agy`), activate corresponding built-in adapters, generate `.gwrk/agent-context.md`, and call `syncGovernance()` for each detected backend. (Implements: US-L1-002)
-- **FR-L1-009**: System MUST provide `gwrk plugin create agent <name>` that generates a scaffold plugin directory with `manifest.yaml` template and optional `adapter.ts` (when `--dispatch-mode github-integration`). Supports `--git` for init. Future: `gwrk plugin create skill <name>`. (Implements: US-L1-003)
-- **FR-L1-010**: System MUST ship built-in adapters (claude, codex, gemini, agy) in `src/plugins/builtins/agents/`. Adapter TypeScript compiles with `pnpm build`. Manifest YAML read at runtime via `import.meta.dirname`. Built-ins MUST be available without `gwrk plugin install`. The `agy` adapter (Antigravity CLI) uses `--print` for headless mode, `--dangerously-skip-permissions` for unattended execution, and writes `AGENTS.md` as its governance context file. The router fallback chain MUST include `agy` after `gemini` (same Gemini models, different CLI). (Implements: US-L1-001)
-- **FR-L1-011**: `gwrk plugin install <url>` MUST support git URLs with optional `#<ref>` for version pinning. On install: clone repo, validate manifest, copy to `~/.gwrk/plugins/agents/<name>/`, write `.gwrk-source.json` with `{ url, ref, commitSha, installedAt }`. (Implements: US-L1-003)
-- **FR-L1-012**: User-installed plugins at `~/.gwrk/plugins/agents/<name>/` MUST take precedence over built-in adapters with the same name. Resolution: built-in → user-installed (Map.set overwrites). (Implements: US-L1-001)
-- **FR-L1-013**: System MUST provide `gwrk plugin update <name>` that re-clones from the stored source URL in `.gwrk-source.json`. Supports `--all` to update all git-sourced plugins. (Implements: US-L1-003)
-### Workflow Runtime (Layer 2.5 — Execution Orbits)
+- **FR-L1-001** to **FR-L1-013**: See F014 Base Spec.
 
-- **FR-L25-001**: System MUST provide a `WorkflowRuntime` that resolves workflows from `~/.gwrk/plugins/workflows/` (built-ins) or `.gwrk/plugins/workflows/` (local overrides). A Workflow manifest (`type: workflow`) MUST declare an `outputSchema` defining the strict JSON structure the agent MUST return. (Implements: US-011)
-- **FR-L25-002**: The `WorkflowRuntime` MUST strictly decouple LLM reasoning from filesystem mutation. The runtime MUST parse the JSON Intent (e.g., `{ action: "WRITE_FILE", filePath: "...", content: "..." }`) and execute the local mutation natively in gwrk core. The Agent MUST NEVER mutate the filesystem directly via prompt engineering alone. (Implements: US-012)
-- **FR-L25-003**: All core `gwrk` commands (`specify`, `plan`, `define tests`, `define tasks`, `ship/implement`, `research`, `build-plan`) MUST route their prompts through `WorkflowRuntime`, catching the structured JSON intent and eliminating reliance on raw shell scripts or `.agents/workflows/` paths. (Implements: US-011)
-- **FR-L25-004**: System MUST provide a `DefineOrchestrator` (TypeScript state machine) that manages the `spec -> plan -> tasks -> analyze` loop. This orchestrator MUST replace the legacy `define-until-solid.sh` and ensure consistent state transitions between development stages. (Implements: US-013)
-- **FR-L25-005**: `gwrk init` MUST provision the global plugin home at `~/.gwrk/plugins/` with the 10 core built-in workflows: `specify`, `plan`, `implement`, `define-tests`, `author-gates`, `plan-to-tasks`, `review-code`, `review-uat`, `research` (beta), and `build-plan` (alpha). (Implements: US-014)
-- **FR-L25-006**: The `WorkflowRuntime` MUST follow the resolution order: `.gwrk/plugins/workflows/` (local override) → `~/.gwrk/plugins/workflows/` (global built-in). Local overrides MUST be logged to stderr during execution. (Implements: US-015)
-- **FR-L25-007**: `WorkflowRuntime` MUST support multi-action intents, allowing an agent to perform multiple file operations or commands in a single turn.
+### Workflow Runtime (Layer 2.5) & Research (R006) & Grounding (ADR-009)
+
+- **FR-L25-001**: System MUST provide a `WorkflowRuntime` that resolves workflows. (Implements: US-011)
+- **FR-L25-002**: `WorkflowRuntime` MUST strictly decouple LLM reasoning from filesystem mutation via JSON Intent. (Implements: US-012)
+- **FR-L25-003**: All core `gwrk` commands (`specify`, `plan`, `define tasks`, `ship/implement`, `research`) MUST route prompts through `WorkflowRuntime`. (Implements: US-011)
+- **FR-L25-004**: System MUST provide a `DefineOrchestrator` for spec -> plan -> tasks. (Implements: US-013)
+- **FR-L25-005**: `gwrk init` MUST provision core workflows and project grounding dirs (`.gwrk/ontology`, `.gwrk/perspective`). (Implements: US-014)
+- **FR-L25-006**: `WorkflowRuntime` MUST follow local → global resolution. (Implements: US-015)
+- **FR-L25-007**: `WorkflowRuntime" MUST support multi-action intents.
+- **FR-L25-008**: `WorkflowRuntime` MUST dynamically inject project knowledge documents (`.gwrk/ontology/domain.md`, `.gwrk/perspective/hierarchy.md`, `.gwrk/perspective/ux-posture.md`) into the agent prompt if they exist on disk. (Implements: US-019)
+- **FR-R006-001**: System MUST provide `gwrk define research <initiative>` command that creates a new research initiative in `docs/research/R0XX-<slug>/` with a templated `brief.md` based on the `--methodology` provided (default: `technical`). (Implements: US-017)
+- **FR-R006-002**: System MUST support executing research methodologies via `gwrk define research <initiative> --run`. The `WorkflowRuntime` MUST resolve the workflow plugin specified by the `methodology" field in the brief's YAML frontmatter. (Implements: US-018)
+- **FR-L25-009**: System MUST provide `gwrk define ontology` command that scaffolds `.gwrk/ontology/` and `.gwrk/perspective/` directories. (Implements: US-020)
+- **FR-L25-010**: System MUST provide `gwrk-ontology-construct` builtin workflow plugin for automated ontology generation. (Implements: US-021)
+- **FR-L25-011**: System MUST provide a source material scanner utility that discovers and reads codebase structure, feature specifications, and architecture documents for agent grounding. (Implements: US-022)
+- **FR-L25-012**: Ontology construction MUST enforce the Five Primitives methodology (Classes, Properties, Relations, Individuals, Axioms) as defined in ADR-009. (Implements: US-021)
+- **FR-L25-013**: The `WorkflowRuntime` built-in `implement` workflow MUST include a mandatory context-gathering preamble requiring the agent to execute `gwrk project info` and `gwrk project discover` before initiating code changes. (Implements: US-024)
 
 #### FR-L25-001 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
 | Invalid JSON Intent | `Workflow output failed schema constraint: Expected JSON object.` | 1 |
 | Attempted direct FS edit | `Workflow execution violation: Use WRITE_FILE JSON intent only.` | 1 |
-| Workflow not found | `Workflow '<name>' not found. Run 'gwrk plugin list --type workflows'.` | 1 |
-
-#### FR-L1-001 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Invalid agent manifest | `Invalid agent manifest: <Zod error>. See 'gwrk plugin --help'.` | 1 |
-| Unknown dispatchMode | `Unknown dispatchMode '<mode>'. Supported: local-cli, github-integration.` | 1 |
-| CLI not found | `Agent backend '<name>' requires '<command>' CLI. Install it first.` | 127 |
-| Config conflict | `Config conflict: '<key>' in '<path>' claimed by both '<a>' and '<b>'.` | 1 |
-
-#### FR-L1-009 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Plugin name exists | `Plugin '<name>' already exists. Use a different name or --force.` | 1 |
-| Invalid name | `Plugin name must be kebab-case (a-z, 0-9, hyphens only).` | 1 |
+| Workflow not found | `Workflow '<name>' not found.` | 1 |
 
 ### Manifest Schema
 
-- **FR-013**: Manifest schema (validated by Zod) MUST support four plugin geometries:
-  - **Skill (Atomic)**: `type: 'skill'`, `name`, `tier: atomic`, `version`, `prompt`, `interface`
-  - **Skill (Compound)**: `type: 'skill'`, `tier: compound`, `composes`
-  - **Skill (Enforcement)**: `type: 'skill'`, `tier: enforcement`, `scope: implementation`. Auto-loaded by write workflows. Contains coding standards, lint rules, and quality constraints as structured SKILL.md.
-  - **Workflow**: `type: 'workflow'`, `name`, `outputSchema`
-  - All user-facing config (manifest.yaml, plugins.yaml) MUST be YAML.
-
-#### FR-001 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| `manifest.yaml` not found | `No manifest.yaml found in <path>. A valid plugin requires manifest.yaml.` | 1 |
-| Invalid manifest schema | `Invalid manifest: <Zod error>. See 'gwrk plugin --help' for schema.` | 1 |
-| Plugin already exists | `Plugin '<name>' already installed. Use --force to overwrite.` | 1 |
-| Unknown plugin type | `Unknown plugin type '<type>'. Supported: skill, workflow, agent, channel, domain.` | 1 |
-
-#### FR-004 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Plugin not found | `Plugin '<name>' not found. Run 'gwrk plugin list' to see installed plugins.` | 1 |
-| Dependency exists | `Warning: '<compound>' depends on '<name>'. Use --force to remove anyway.` | 1 |
-
-#### FR-005 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Attempting to disable a skill | `Skills are global-only and cannot be disabled per-project.` | 1 |
-| Not in a gwrk project | `Not a gwrk project. Run 'gwrk init' to add gwrk to this project.` | 1 |
-
-#### FR-006 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Skill not found | `Skill '<name>' not found. Run 'gwrk skill --help' to list available skills.` | 1 |
-| Missing dependency | `Missing dependency: skill '<dep>' required by '<compound>'. Run 'gwrk plugin install <path>'.` | 1 |
-| No agent available | `No agent backend available. Preferred: <agent>. Run 'gwrk plugin list --type agents'.` | 1 |
-| LLM invocation fails | `Skill invocation failed: <error>. Agent: <agent>, duration: <Xs>.` | 1 |
+- **FR-013**: Manifest schema MUST support Plugin geometries: Skill (Atomic, Compound, Enforcement) and Workflow.
 
 ---
 
 ## 5. Data Model Requirements
 
-### DM-001: Plugin Manifest (Atomic)
+### DM-006: Plugin Base Schema (Unified)
 
 ```typescript
-interface AtomicManifest {
-  type: 'skill';
-  name: string;              // e.g., "narrative"
-  tier: 'atomic';
-  version: string;           // semver
-  description: string;
-  category: string;          // From taxonomy: reasoning, evaluative, creative, etc.
-  prompt: string;            // The mode's prompt injection
-  interface: PluginInterface;
-  runtime: SkillRuntime;
-  tags: string[];
-}
-```
-
-### DM-002: Plugin Manifest (Compound)
-
-```typescript
-interface CompoundManifest {
-  type: 'skill';
-  name: string;              // e.g., "signal-cut"
-  tier: 'compound';
-  version: string;
-  description: string;
-  composes: string[];        // Names of atomic skills
-  passes: SkillPass[];
-  interface: PluginInterface;
-  context: SkillContext;
-  outputContract: string[];  // Quality assertions (LLM-enforced)
-  runtime: SkillRuntime;
-  tags: string[];
-}
-
-interface SkillPass {
-  name: string;              // e.g., "narrative"
-  skill: string;             // Reference to atomic skill name
-  summary: string;           // One-line description of this pass
-}
-
-interface SkillContext {
-  required: string[];        // e.g., ["input"]
-  optional: string[];        // e.g., ["audience", "product"]
-}
-```
-
-### DM-003: Plugin Interface (shared)
-
-```typescript
-interface PluginInterface {
-  input: 'stdin';
-  output: 'stdout';
-  flags?: PluginFlag[];
-  exitCodes: Record<number, string>;
-}
-
-interface PluginFlag {
-  name: string;              // e.g., "--content-type"
-  values?: string[];         // Enum values (empty = freeform)
-  required?: boolean;
-  default?: string;
-  description?: string;
-}
-```
-
-### DM-004: Skill Runtime Config
-
-```typescript
-interface SkillRuntime {
-  preferredAgent: string;    // Agent CLI name: 'gemini', 'claude', 'codex'
-  preferredModel: string;    // Exact or wildcard model: 'claude-opus-4-6', 'gemini-2.5-pro', 'o3-pro'
-  fallbackAgent?: string;
-  fallbackModel?: string;
-  maxInputTokens: number;
-  expectedLatency?: string;  // e.g., "10-30s"
-}
-```
-
-### DM-005: Project Plugin Override
-
-```typescript
-// .gwrk/plugins.yaml schema
-interface PluginsOverride {
-  disable?: string[];          // Plugin paths to disable (e.g., "domains/writing")
-  override?: Record<string, string>; // Plugin name → local path
-}
-```
-
-No database entities. Plugin metadata is filesystem-only (manifest.yaml files). No SQLite interaction.
-
-### DM-006: Plugin Base Schema (Unified — R002)
-
-```typescript
-// Base fields shared across ALL plugin types
 const PluginBaseSchema = z.object({
   type: z.enum(['agent', 'skill', 'workflow', 'extension', 'channel']),
-  name: z.string().min(1).regex(/^[a-z0-9-]+$/),    // kebab-case required
+  name: z.string().min(1).regex(/^[a-z0-9-]+$/),
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
   description: z.string().min(1),
 });
 
-// Agent-specific (extends base)
-const AgentManifestSchema = PluginBaseSchema.extend({
-  type: z.literal('agent'),
-  dispatchMode: z.enum(['local-cli', 'github-integration']),
-  contextFileName: z.string(),
-  invocation: InvocationSchema.optional(),     // local-cli only
-  capabilities: CapabilitiesSchema,
-  models: z.record(z.string()),
-  exitCodeMap: z.record(ExitCodeEntrySchema),
-  managedConfig: z.array(ManagedConfigSchema).default([]),
+const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
+  type: z.literal('skill'),
+  tier: z.literal('enforcement'),
+  scope: z.enum(['implementation', 'review', 'all']),
+  language: z.string().optional(),     // R007 Profile Filtering
+  framework: z.string().optional(),    // R007 Profile Filtering
 });
 
-// Workflow-specific (extends base)
 const WorkflowManifestSchema = PluginBaseSchema.extend({
   type: z.literal('workflow'),
-  outputSchema: z.record(z.any()), // JSON Schema
+  category: z.enum(['research']).optional(), // R006 Research
+  methodology: z.string().optional(),        // R006
+  brief_template: z.string().optional(),     // R006
+  outputSchema: z.record(z.any()),
 });
 
-// Discriminated union — validated by plugin loader
 const AnyManifestSchema = z.discriminatedUnion('type', [
   AgentManifestSchema,
-  SkillManifestSchema,         // DM-001 / DM-002
+  SkillManifestSchema,
+  EnforcementSkillManifestSchema,
   WorkflowManifestSchema,
-  // Future: ExtensionManifestSchema, ChannelManifestSchema
 ]);
 ```
 
-`gwrk plugin install` validates ANY plugin type from `AnyManifestSchema`, then routes to the correct type-specific directory (`agents/`, `skills/`, etc.).
-
-### DM-007: Git Source Tracking
-
+### DM-007: ProjectProfile Toolchain Extension (F013 Update)
 ```typescript
-// ~/.gwrk/plugins/agents/<name>/.gwrk-source.json
-interface PluginSource {
-  url: string;           // git clone URL
-  ref: string;           // branch or tag (default: 'main')
-  commitSha: string;     // pinned commit at install time
-  installedAt: string;   // ISO 8601
+interface ProjectProfile {
+  // ... existing fields (type, stack, layout) ...
+  toolchain?: {
+    primary?: string;   // e.g., "biome", "ruff", "eslint", "cargo"
+    formatter?: string; // e.g., "prettier", "black"
+    test?: string;      // e.g., "vitest", "pytest", "cargo-test"
+  };
 }
 ```
 
@@ -605,61 +361,48 @@ interface PluginSource {
 
 ## 6. Technical Constraints
 
-- **TC-001**: Air-Gapped — No external network calls for plugin loading. Install is local path or git URL. No plugin registry service.
-- **TC-002**: Fail-Fast Config — Missing `manifest.yaml` → fail immediately. Invalid schema → fail immediately with Zod error.
-- **TC-003**: TypeScript Only — No `.js` or `.jsx` in `src/`. ESM modules, ES2022 target.
-- **TC-004**: Global-Only Skills — Skills, agents, and channels MUST only resolve from `~/.gwrk/plugins/`. The CLI MUST NOT look for these in `.gwrk/plugins/`. Local scope is exclusively for workflow additions and domain disables.
-- **TC-005**: YAML Config — All user-facing config files (`manifest.yaml`, `.gwrk/plugins.yaml`) MUST be YAML. Machine-generated files (`.gwrk/tasks.json`) may remain JSON.
-- **TC-006**: SKILL.md Preservation — `gwrk plugin migrate` MUST NOT delete `.agents/` originals. IDE agents (Antigravity, etc.) read `.agents/` directly.
-- **TC-007**: Single LLM Call — Compound skill passes are assembled into one prompt, not executed as separate LLM calls. `expectedLatency` in manifest reflects one call.
-- **TC-008**: F013 Contract — All `gwrk skill` invocations inherit: `--format json`, `[exit:N | Xs]` on stderr, `--agent` mode, pipe safety (signals on stderr only).
-- **TC-009**: Resolution Order — Global → local override → local disable. `gwrk plugin list --project` shows resolved state.
-- **TC-010**: Strict Isolation Rule (R004) — `AgentBackend.dispatch()` MUST NOT mutate global filesystem state (e.g., `~/.gemini/`, `~/.config/`) during execution. All config mutations MUST be confined to the provided `projectRoot`. Plugins that violate this MUST be rejected at manifest validation if `managedConfig` references paths outside `projectRoot`.
-- **TC-011**: Zero-Dependency Workflows — Core workflows shipped in `builtins/workflows/` MUST be self-contained and not rely on files in `.agents/`.
+- **TC-001**: Air-Gapped — No external network calls for plugin loading.
+- **TC-002**: Fail-Fast Config — Missing `manifest.yaml` → fail immediately.
+- **TC-003**: TypeScript Only — No `.js` or `.jsx" in `src/`.
+- **TC-010**: Strict Isolation Rule — `AgentBackend.dispatch()` MUST NOT mutate global filesystem state.
+- **TC-012**: Language Filtering (R007) — `resolveEnforcementSkills` MUST silently skip builtins with mismatched `language` properties instead of throwing errors.
+- **TC-013**: Grounding Injection Order (ADR-009) — Domain ontology MUST be injected before information hierarchy and UX posture.
+- **TC-014**: Five Primitives Methodology — The `gwrk-ontology-construct` workflow MUST produce output structured around Classes, Properties, Relations, Individuals, and Axioms.
+- **TC-015**: Toolchain detection (FR-015) MUST be entirely filesystem-based, reading config files and `package.json" without executing external commands or network requests. Zero context cost.
 
 ---
 
 ## 7. Testing Requirements
 
-- **TR-001**: `src/plugins/manifest.test.ts` — Unit test manifest Zod schema: valid atomic, valid compound, valid workflow, missing fields rejected, unknown type rejected. Vitest. (FR-002, FR-013, FR-L25-001)
-- **TR-002**: `src/plugins/loader.test.ts` — Unit test plugin loader: scan `~/.gwrk/plugins/`, resolve by type, apply `.gwrk/` overrides/disables, verify resolution order. Vitest. (FR-003, FR-005, FR-L25-006)
-- **TR-003**: `src/commands/plugin.test.ts` — Unit test CLI commands: install (validates then copies), remove (warns on deps), list (groups by type), disable/enable (writes plugins.yaml). Vitest. (FR-001, FR-003, FR-004, FR-005)
-- **TR-004**: `src/plugins/skill-runtime.test.ts` — Unit test skill runtime: load manifest + SKILL.md, assemble prompt, mock agent invocation, emit stdout/stderr per F013. Test atomic and compound paths. Vitest. (FR-006, FR-007, FR-008)
-- **TR-005**: `src/plugins/migrate.test.ts` — Unit test migration: copy `.agents/skills/`, generate manifest from frontmatter, dry-run mode, skip existing. Vitest. (FR-011)
-- **TR-006**: `src/plugins/seed.test.ts` — Unit test seeding: parse reasoning-modes.md, generate atomic skills, preserve categories, skip existing. Vitest. (FR-012)
-- **TR-007**: Exit code audit — Shell test: `gwrk skill nonexistent; echo $?` returns 1. `gwrk plugin install ./bad; echo $?` returns 1. `gwrk skill narrative --bad-flag; echo $?` returns 2. (FR-006, FR-001)
-- **TR-008**: Pipe composition — Shell test: `echo "test" | gwrk skill narrative 2>/dev/null | wc -c` returns > 0. Verify signals on stderr, content on stdout. (FR-007, FR-008)
-- **TR-009**: `src/plugins/workflow-runtime.test.ts` — Unit test `WorkflowRuntime`: resolve workflow, assemble prompt, mock agent JSON response, execute `WRITE_FILE` and `RUN_COMMAND` intents, validate schema. (FR-L25-001, FR-L25-002)
-- **TR-010**: `src/engine/define-orchestrator.test.ts` — Unit test `DefineOrchestrator`: transition between spec, plan, and tasks states, verify workflow invocation for each state. (FR-L25-004)
+- **TR-001**: `src/plugins/manifest.test.ts` — Unit test manifest Zod schemas (including language/framework for enforcement). (FR-013)
+- **TR-009**: `src/plugins/workflow-runtime.test.ts` — Unit test `WorkflowRuntime`. (FR-L25-001)
+- **TR-011**: `src/commands/research.test.ts` — Unit test scaffold logic for R0XX numbering and brief generation. (FR-R006-001)
+- **TR-012**: `src/engine/agent.test.ts` — Unit test `dispatchToAgent()` context injection logic for ontology and perspective files. (FR-ADR009-001)
+- **TR-013**: `src/plugins/skill-runtime.test.ts` — Unit test `resolveEnforcementSkills()` correctly applying `ProjectProfile` language filtering. (FR-014)
+- **TR-014**: `src/commands/define-ontology.test.ts` — Unit test for `gwrk define ontology` scaffolding logic. (FR-L25-009)
+- **TR-015**: `src/plugins/builtins/workflows/gwrk-ontology-construct/prompt.test.ts` — Unit test (or prompt verification) for Five Primitives compliance. (FR-L25-012)
+- **TR-016**: `src/engine/profile-detector.test.ts` — Unit test filesystem-based detection of Biome, Ruff, and standard toolchains. (FR-015)
 
 ---
 
 ## 8. Success Criteria
 
-- **SC-001**: `gwrk plugin install ./truth-extract && gwrk skill truth-extract < input.md` produces output.
-- **SC-002**: `gwrk skill --help` lists all installed skills with descriptions, grouped by tier.
-- **SC-003**: `gwrk skill signal-cut --format json < brief.md | jq .` produces valid JSON.
-- **SC-004**: `echo "test" | gwrk skill narrative | gwrk skill practitioner` composes via pipes.
-- **SC-005**: `gwrk plugin list --format json | jq '.[0].name'` returns plugin name.
-- **SC-006**: `gwrk specify my-feature` executes the built-in workflow and generates `specs/my-feature/spec.md` via JSON intent. (FR-L25-003)
-- **SC-007**: `gwrk define` successfully navigates the spec-to-tasks loop using `DefineOrchestrator`. (FR-L25-004)
-- **SC-008**: `gwrk init` populates `~/.gwrk/plugins/workflows/` with the 10 core workflows. (FR-L25-005)
-- **SC-009**: All workflow file mutations are executed by `WorkflowRuntime`, not the agent CLI. (FR-L25-002)
-- **SC-010**: `gwrk plugin migrate --dry-run` lists existing skills from `.agents/skills/`.
-- **SC-011**: `gwrk plugin seed --dry-run` lists ~40 atomic skills from reasoning-modes taxonomy.
-- **SC-012**: `gwrk plugin disable domains/writing` writes `.gwrk/plugins.yaml` and `gwrk plugin list --project` shows it disabled.
-- **SC-013**: All skill/workflow invocations emit `[exit:N | Xs]` on stderr (F013 contract).
+- **SC-001** to **SC-013**: Existing F014 functionality validated.
+- **SC-014**: `gwrk define research "New Feature"" creates `docs/research/RXXX-new-feature/brief.md`.
+- **SC-015**: A Python project running `gwrk ship` does not have `typescript-standards" injected into its prompt.
+- **SC-016**: Projects with `.gwrk/ontology/domain.md` successfully inject the file contents into `dispatchToAgent" calls.
+- **SC-017**: `gwrk define ontology --run` produces `domain.md`, `hierarchy.md`, and `ux-posture.md` grounded in project source material.
+- **SC-018**: Projects with `biome.json` successfully report `toolchain.primary: "biome"` via `gwrk project info`.
+- **SC-019**: Dispatched implementation agents execute `gwrk project info` and `gwrk project discover` on their first turn as mandated by the workflow preamble.
 
 ---
 
 ## 9. Verification Requirements
 
-- **VR-011**: E2E: Run `gwrk specify` in a project with no `.agents/` directory and verify a spec is created.
-- **VR-012**: E2E: Modify a workflow in `.gwrk/plugins/workflows/` and verify the override is used.
-- **VR-013**: E2E: Run `gwrk define` and verify transitions through all stages to `tasks.json`.
-- **VR-014**: Negative: Agent returns malformed JSON; verify `WorkflowRuntime` catches the error and exits 1.
-- **VR-015**: Negative: Agent attempts to write a file outside the project root; verify `WorkflowRuntime` blocks the action.
-- **VR-016**: Unit: `pnpm test` passes all TR-001 through TR-010.
+- **VR-017**: E2E: Run `gwrk define research test-initiative`, verify directory creation, then run `gwrk define research test-initiative --run` and verify `draft.md" generation.
+- **VR-018**: Unit: `pnpm test` passes all TR-011 through TR-013.
+- **VR-019**: E2E: Run `gwrk define ontology --run` in a test project and verify the creation and content of the three ontology/perspective documents.
+- **VR-020**: E2E: Run `gwrk project info --format json` in a fixture project with `biome.json" and verify `.toolchain.primary == "biome"`.
 
 ---
 
@@ -667,23 +410,12 @@ interface PluginSource {
 
 | US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
 |--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001, FR-002 | FR-001 | US-001 | TR-003, TR-007 |
-| US-002 | FR-003 | FR-002 | US-001 | TR-001 |
-| US-003 | FR-004 | FR-003 | US-002 | TR-002, TR-003 |
-| US-004 | FR-005 | FR-004 | US-003 | TR-003 |
-| US-005 | FR-006, FR-007, FR-008 | FR-005 | US-004 | TR-002, TR-003 |
-| US-006 | FR-006, FR-007, FR-009 | FR-006 | US-005, US-006 | TR-004, TR-008 |
-| US-007 | FR-008 | FR-007 | US-005, US-006 | TR-004 |
-| US-008 | FR-010 | FR-008 | US-006, US-007 | TR-004, TR-008 |
-| US-009 | FR-011 | FR-009 | US-006 | TR-004 |
-| US-010 | FR-012 | FR-010 | US-008 | TR-003 |
-| US-011 | FR-L25-001, FR-L25-003 | FR-011 | US-009 | TR-005 |
-| US-012 | FR-L25-002 | FR-012 | US-010 | TR-006 |
-| US-013 | FR-L25-004 | FR-013 | US-001, US-005, US-006 | TR-001 |
-| US-014 | FR-L25-005 | FR-L25-001 | US-011 | TR-009 |
-| US-015 | FR-L25-006 | FR-L25-002 | US-012 | TR-009 |
-| — | — | FR-L25-003 | US-011 | TR-009 |
-| — | — | FR-L25-004 | US-013 | TR-010 |
-| — | — | FR-L25-005 | US-014 | TR-002 |
-| — | — | FR-L25-006 | US-015 | TR-002 |
-| US-016 | FR-014 | FR-014 | US-016 | TR-004 |
+| US-016 | FR-014 | FR-014 | US-016 | TR-013 |
+| US-017 | FR-R006-001 | FR-R006-001 | US-017 | TR-011 |
+| US-018 | FR-R006-002 | FR-R006-002 | US-018 | TR-009, TR-011 |
+| US-019 | FR-ADR009-001 | FR-ADR009-001 | US-019 | TR-012 |
+| US-020 | FR-L25-009 | FR-L25-009 | US-020 | TR-014 |
+| US-021 | FR-L25-010 | FR-L25-010, FR-L25-012 | US-021 | TR-009, TR-015 |
+| US-022 | FR-L25-011 | FR-L25-011 | US-022 | TR-015 |
+| US-023 | FR-015 | FR-015 | US-023 | TR-016 |
+| US-024 | FR-L25-013 | FR-L25-013 | US-024 | none — prompt verification |

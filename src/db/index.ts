@@ -93,6 +93,21 @@ function runMigrations(db: Database.Database): void {
   safeAddColumn(db, "runs", "status", "TEXT");
   safeAddColumn(db, "runs", "merge_commit_sha", "TEXT");
   safeAddColumn(db, "issues", "html_url", "TEXT");
+
+  // Project Scoping (Phase 14)
+  const scopedTables = [
+    "plan_features",
+    "plan_phases",
+    "plan_edges",
+    "plan_proposals",
+    "gate_results",
+    "compression",
+    "issues",
+    "routing_history",
+  ];
+  for (const table of scopedTables) {
+    safeAddColumn(db, table, "project_id", "TEXT");
+  }
 }
 
 /**

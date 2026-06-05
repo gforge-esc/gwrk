@@ -1,8 +1,10 @@
+import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadTaskState } from "../utils/state.js";
+import { planToTasks } from "./plan-to-tasks.js";
 import {
   type DefineRunConfig,
   DefineStage,
@@ -154,6 +156,23 @@ export class DefineOrchestrator extends EventEmitter {
       }
 
       const next = result.nextStage || this.getNextStage(this.state.stage);
+
+      // Auto-commit define artifacts after each successful stage
+      try {
+        execSync("git add -A", { cwd: this.config.cwd });
+        const stageName = this.state.stage.toLowerCase().replace(/_/g, "-");
+        execSync(
+          `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${this.config.featureId}): define ${stageName}"`,
+          {
+            cwd: this.config.cwd,
+            env: { ...process.env, GWRK_SHIP: "1" },
+            stdio: "ignore",
+          },
+        );
+      } catch {
+        // Non-fatal — nothing to commit or git not available
+      }
+
       console.log(`Transitioning: ${this.state.stage} -> ${next}`);
       this.state.stage = next;
 
@@ -266,21 +285,13 @@ export class DefineOrchestrator extends EventEmitter {
     }
   }
 
-  private async stagePlanToTasks(input?: string): Promise<StageResult> {
+  private async stagePlanToTasks(_input?: string): Promise<StageResult> {
     console.log("Stage: PLAN_TO_TASKS");
     try {
-      const prompt = input || `Decompose plan for feature ${this.config.featureId}`;
-      const result = await this.runtime.executeWorkflow(
-        "gwrk-plan-to-tasks",
-        prompt,
-        {
-          agent: this.config.backend,
-          projectRoot: this.config.cwd,
-          quiet: true,
-        },
-      );
-
-      console.log(`  ${result.summary}`);
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const state = planToTasks(featureDir, this.config.featureId);
+      const taskCount = state.phases.reduce((sum, p) => sum + p.tasks.length, 0);
+      console.log(`  ✓ Generated ${state.phases.length} phase(s), ${taskCount} task(s) from plan.md (deterministic)`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-02T05:05:21.822Z_define_all",
+  "feature": "019-agy-agent-migration",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-02T05:05:21.822Z",
+  "finishedAt": "2026-06-02T05:05:21.829Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 319,
+  "linesDeleted": 24,
+  "gitCommit": "54c64535460721ac75d6e19335f68d593e69d1d5",
+  "gitBranch": "develop",
+  "digest": []
+}

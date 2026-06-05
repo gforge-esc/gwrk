@@ -35,6 +35,7 @@
 
 ### 1. Build (MANDATORY)
 
+[type: gwrk-native]
 gwrk is a CLI tool. No Docker, no web server.
 
 ```bash
@@ -43,6 +44,11 @@ pnpm build
 
 > [!CAUTION]
 > If `pnpm build` fails, report as **BLOCKING** infrastructure issue. Cannot proceed.
+[/type]
+
+[type: generic]
+Verify the build process using the project's standard build command (e.g., `npm run build`, `make`, `cargo build`).
+[/type]
 
 ### 1. Load Context
 
@@ -92,6 +98,7 @@ pnpm build 2>&1
 
 ### 4. Lint Check
 
+[type: gwrk-native]
 ```bash
 pnpm lint 2>&1
 ```
@@ -103,6 +110,11 @@ pnpm lint 2>&1
   git add {feature_dir}/.gwrk/tasks.json && git commit -m "review: auto-fix lint errors"
   ```
 - REMAINING: Document non-auto-fixable errors as findings.
+[/type]
+
+[type: generic]
+Verify code quality using the project's standard linting command. If auto-fixable errors exist, apply them.
+[/type]
 
 ### 5. Reconcile Task State
 
@@ -137,11 +149,17 @@ c. **Type Safety**: No `any` types in non-test critical paths?
 
 Run ONLY phase-relevant tests, not the full suite:
 
+[type: gwrk-native]
 ```bash
 # Identify test files from this phase's tasks
 TEST_FILES=$(jq -r --arg pid "$PHASE_ID" '.phases[] | select(.id == $pid) | .tasks[].title' "$TASKS_FILE" | grep -oE 'src/[^ ]+\.ts' | sed 's/\.ts$/.test.ts/' | xargs -I{} sh -c 'test -f "{}" && echo "{}"')
 pnpm vitest run $TEST_FILES --reporter=verbose 2>&1
 ```
+[/type]
+
+[type: generic]
+Identify and run only the test files relevant to the changes in this phase using the project's test runner.
+[/type]
 
 - PASS: All phase tests pass.
 - FAIL: Document which tests fail and why. Only re-open tasks in THIS phase.
@@ -220,11 +238,20 @@ REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
 
 | Field | Purpose | Example |
 |---|---|---|
+[type: gwrk-native]
 | `WHERE` | Exact location for the agent to read | `src/engine/plan-solver.ts:42-58` |
 | `EXPECTED` | What the contract/spec requires | `export function compare(a: ASTNode, b: ASTNode): DiffResult` |
 | `ACTUAL` | What the implementation has | `export function compare(a: any, b: any): any` |
 | `FIX` | Specific action to take | `Replace any types with ASTNode and DiffResult from contracts/parser-api.md` |
 | `GATE` | Which gate assertion failed | `gates/T012-gate.sh assertion #3` |
+[/type]
+[type: generic]
+| `WHERE` | Exact location for the agent to read | `path/to/file:line` |
+| `EXPECTED` | What the requirement requires | `Expected behavior` |
+| `ACTUAL` | What the implementation has | `Actual behavior` |
+| `FIX` | Specific action to take | `Remediation steps` |
+| `GATE` | Which gate assertion failed | `Verification source` |
+[/type]
 </note_format>
 
 ## Anti-Patterns

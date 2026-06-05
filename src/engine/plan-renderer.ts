@@ -30,7 +30,7 @@ export class PlanRenderer {
     return `# 000 Build Plan — gwrk
 
 > **Status:** Authoritative · **Date:** ${date}
-> **Anchored to:** [architecture.md](docs/architecture.md), [GWRK-PRD-PRFAQ.md](docs/GWRK-PRD-PRFAQ.md)
+> **Anchored to:** [architecture.md](docs/grounding/architecture.md), [GWRK-PRD-PRFAQ.md](docs/product/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](docs/decisions/ADR-001-task-tracking.md), [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003](docs/decisions/ADR-003-state-contract.md), [ADR-004](docs/decisions/ADR-004-agent-native-output.md), [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md)
 
 ---
@@ -89,7 +89,8 @@ export class PlanRenderer {
     else if (f.status === "SPECIFIED" || f.status === "DEFINED") icon = " 🟡";
     else if (f.status === "IN_PROGRESS") icon = " 🔴";
 
-    return `${f.id}["${f.id}: ${f.name}${icon}"]`;
+    const label = f.name !== f.id ? `${f.id}: ${f.name}` : f.id;
+    return `${f.id}["${label}${icon}"]`;
   }
 
   private renderCriticalPath(): string {
@@ -129,7 +130,8 @@ export class PlanRenderer {
       else if (f.status === "SPECIFIED" || f.status === "DEFINED") icon = "🟡";
       else if (f.status === "RETIRED") icon = "⚫";
 
-      md += `### Feature ${f.id.replace(/^F/, "")} — ${f.name} ${icon}\n\n`;
+      const heading = f.name !== f.id ? `${f.id} — ${f.name}` : f.id;
+      md += `### Feature ${heading} ${icon}\n\n`;
 
       if (f.status === "SHIPPED") {
         md +=

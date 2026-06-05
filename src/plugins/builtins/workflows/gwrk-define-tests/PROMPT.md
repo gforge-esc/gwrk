@@ -41,20 +41,40 @@ Read and understand the feature and phase deeply:
 - `{feature_dir}/plan.md` — Phase {N} file paths, type dependency graph, contracts
 - `{feature_dir}/contracts/` — method-level request/response schemas
 - `{feature_dir}/data-model.md` — entity shapes (if exists)
-- `docs/architecture.md` — project structure, tech stack, test conventions
+- `docs/grounding/architecture.md` — project structure, tech stack, test conventions
+
+<existing_source_mandate>
+**CRITICAL: Read existing source files before testing against them.**
+
+If your tests will call, import, or assert against ANY existing function, class, schema, or type
+(e.g., a Zod schema like `GwrkConfigSchema`, an existing utility like `loadConfig()`), you MUST
+read the current source file first to understand:
+
+- Required parameters and fields (e.g., Zod `.object()` required keys)
+- Return types and shapes
+- Existing method signatures
+
+Tests that fail because they pass incomplete arguments to an existing API are not RED — they are **broken**.
+A broken test cannot be fixed by implementing the new feature. It will block the ship loop indefinitely.
+</existing_source_mandate>
 
 ### 2. Map Requirements to Test Types
 
-Derive test file locations from `plan.md`'s file structure and `docs/architecture.md`'s project layout.
+Derive test file locations from `plan.md`'s file structure and `docs/grounding/architecture.md`'s project layout.
 Co-locate tests as `<module>.test.ts` adjacent to their source file.
 
 <test_type_mapping>
+[type: gwrk-native]
 | TR Category | Test Framework | File Location |
 |---|---|---|
 | Unit tests | Vitest | Co-located `<module>.test.ts` |
 | Integration (API) | Vitest + server inject | Co-located with route handler |
 | E2E (UI flows) | Playwright | `e2e/*.spec.ts` |
 | Docker/infra verification | Shell | Covered by gates — skip here |
+[/type]
+[type: generic]
+Map requirements to the project's standard test frameworks and file locations (e.g., unit tests co-located with source, integration tests in a `tests/` directory).
+[/type]
 </test_type_mapping>
 
 ### 3. Generate Unit Tests
@@ -95,33 +115,53 @@ For each US-### with a user-facing flow in this phase:
 - Include error state tests from the spec
 
 <red_validation_rules>
+[type: gwrk-native]
 After generating all test files:
 
 ```bash
 # Tests should compile but FAIL
-pnpm test --run 2>&1 | tail -20
+pnpm test --run 2>&1
 # Expected: test failures (imports that don't resolve, assertions that fail)
 # If ALL tests pass: CRITICAL — tests are trivial, flag and revise
 ```
+[/type]
+
+[type: generic]
+Verify that the generated tests fail as expected before implementation (RED state) using the project's test runner.
+[/type]
 
 - If tests pass → they're hollow. **Revise with stronger assertions.**
 - If tests compile but fail assertions → ideal RED state.
 
-### 6. Write RED implementation stubs
+<red_for_the_right_reason>
+**RED means "fails because the feature isn't implemented yet" — not "fails for any reason."**
 
-**MANDATORY FOR TYPESCRIPT**: If you write `.test.ts` files, `tsc` compilation will fail ("Cannot find module") unless the target source module exists. You MUST also generate minimal source file stubs (classes/functions throwing `Not implemented`).
+A test is correctly RED when implementing the new feature (and nothing else) would make it pass.
+A test is **broken** when it fails due to:
 
-<stub_generation_rules>
-- Provide minimal signatures so tests compile.
-- **NEVER hallucinate import paths for shared types**. If a stub requires a type from `plan.md` (e.g., `PlanFeature`), do NOT guess the import path `import type { PlanFeature } from "./types.js"`.
-- Instead, **inline dummy types directly in the stub** (e.g., `export type PlanFeature = any;`). The implementing agent will resolve the actual import path when writing the real logic. This prevents the TS build from failing due to broken imports.
-</stub_generation_rules>
+- Missing required fields on an existing schema (e.g., passing `{ effort: {...} }` to a schema that requires `project` and `agents`)
+- Wrong argument types to an existing function
+- Incorrect import paths to existing modules
+- Calling methods that don't exist on the current API (not the new API — the current one)
+
+Before committing, verify for each test: **"Would implementing ONLY this phase's new code make this test pass?"**
+If the answer is no — the test is broken, not RED. Fix it before committing.
+</red_for_the_right_reason>
+</red_validation_rules>
+### 6. Verify RED State
+
+Tests MUST import the target modules (even if they don't exist yet). This is the intended RED state — missing imports cause test failures, which is exactly what we want. The implementing agent creates the real source files.
+
+> [!CAUTION]
+> Do NOT create source file stubs in `src/`. The `define tests` guardrail reverts ANY non-test
+> modifications to `src/`. Only `*.test.ts` files are allowed. Missing imports = correct RED state.
 
 ### 7. Write Gap Matrix
 
 **MANDATORY OUTPUT.** Write `{feature_dir}/gap-matrix.md` — a coverage matrix mapping every requirement to its test file.
 
 Format:
+[type: gwrk-native]
 ```markdown
 | AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
 |----|---------------------|-----------|-----------|-------------|------|
@@ -129,6 +169,15 @@ Format:
 | FR-002 | Plugin loader resolution | unit | src/plugins/loader.test.ts | ✅ | T002 |
 | US-001 | User registers a plugin | integration | src/commands/plugin.test.ts | ✅ | T003 |
 ```
+[/type]
+
+[type: generic]
+```markdown
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| AC-ID | Description | type | path/to/test | ✅/❌ | GATE-ID |
+```
+[/type]
 
 Rules:
 - One row per FR-###, US-###, or TR-### in this phase
@@ -178,7 +227,8 @@ Before reporting, verify:
 
 ## Anti-Patterns
 
-- ❌ Writing production code (only test files)
+- ❌ Writing production code (only test files — the guardrail WILL revert src/ changes)
+- ❌ Creating source file stubs (even "Not implemented" stubs — that's the implementer's job)
 - ❌ Tests that assert `true` or check only status codes
 - ❌ Tests without spec traceability (every `describe`/`it` maps to FR/US/TR)
 - ❌ Skipping negative paths (error states, invalid input, missing config)

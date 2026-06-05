@@ -13,6 +13,7 @@ import {
 
 describe("src/db/plan.ts (DM-018-001/002/003)", () => {
   let db: Database.Database;
+  const projectId = "test-project";
 
   beforeEach(() => {
     db = getTestDb();
@@ -25,8 +26,8 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
       status: "PLANNED",
       sp_total: 25,
     };
-    insertFeature(feature, db);
-    const result = getFeature("F018", db);
+    insertFeature(feature, projectId, db);
+    const result = getFeature("F018", projectId, db);
     expect(result).toMatchObject(feature);
   });
 
@@ -38,6 +39,7 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
         status: "PLANNED",
         sp_total: 25,
       },
+      projectId,
       db,
     );
     const phase = {
@@ -49,37 +51,39 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
       sp_estimate: 5,
       seq: 1,
     };
-    insertPhase(phase, db);
-    const result = getPhase("F018-P1", db);
+    insertPhase(phase, projectId, db);
+    const result = getPhase("F018-P1", projectId, db);
     expect(result).toMatchObject(phase);
   });
 
   it("FR-001: should insert and retrieve edges", () => {
     insertFeature(
       { id: "F018", name: "Feature 1", status: "PLANNED", sp_total: 0 },
+      projectId,
       db,
     );
     insertFeature(
       { id: "F019", name: "Feature 2", status: "PLANNED", sp_total: 0 },
+      projectId,
       db,
     );
 
     const edge = { from_id: "F018", to_id: "F019", edge_type: "DEPENDS_ON" };
-    insertEdge(edge, db);
+    insertEdge(edge, projectId, db);
 
-    const edges = getEdgesForFeature("F019", db);
+    const edges = getEdgesForFeature("F019", projectId, db);
     expect(edges).toContainEqual(expect.objectContaining(edge));
   });
 
   it("FR-001: should support recursive dependency traversal (CTE)", () => {
-    insertFeature({ id: "A", name: "A", status: "PLANNED", sp_total: 0 }, db);
-    insertFeature({ id: "B", name: "B", status: "PLANNED", sp_total: 0 }, db);
-    insertFeature({ id: "C", name: "C", status: "PLANNED", sp_total: 0 }, db);
+    insertFeature({ id: "A", name: "A", status: "PLANNED", sp_total: 0 }, projectId, db);
+    insertFeature({ id: "B", name: "B", status: "PLANNED", sp_total: 0 }, projectId, db);
+    insertFeature({ id: "C", name: "C", status: "PLANNED", sp_total: 0 }, projectId, db);
 
-    insertEdge({ from_id: "A", to_id: "B", edge_type: "DEPENDS_ON" }, db);
-    insertEdge({ from_id: "B", to_id: "C", edge_type: "DEPENDS_ON" }, db);
+    insertEdge({ from_id: "A", to_id: "B", edge_type: "DEPENDS_ON" }, projectId, db);
+    insertEdge({ from_id: "B", to_id: "C", edge_type: "DEPENDS_ON" }, projectId, db);
 
-    const allDeps = getAllDependencies("C", db);
+    const allDeps = getAllDependencies("C", projectId, db);
     expect(allDeps.map((d) => d.id)).toContain("A");
     expect(allDeps.map((d) => d.id)).toContain("B");
   });

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
@@ -19,6 +20,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { loadTaskState } from "../utils/state.js";
 
@@ -146,6 +148,47 @@ try {
     throw new Error(`Workflow execution failed with exit code ${exitCode}`);
   }
 
+  // ── Invalidate stale ship orchestrator state files ──
+  // When plan phases are amended/reconciled, old .state files may reference
+  // phase IDs that now have different content. Delete them so ship doesn't
+  // skip new work by resuming from a stale DONE state.
+  try {
+    const runsDir = path.join(projectRoot, ".runs");
+    if (fs.existsSync(runsDir)) {
+      const stateFiles = fs.readdirSync(runsDir)
+        .filter(f => f.startsWith(`${feature}_phase-`) && f.endsWith(".state"));
+      
+      const newState = loadTaskState(featureDir);
+      let cleaned = 0;
+      
+      for (const stateFile of stateFiles) {
+        const stateFilePath = path.join(runsDir, stateFile);
+        try {
+          const savedState = JSON.parse(fs.readFileSync(stateFilePath, "utf-8"));
+          // If the saved state says DONE, check if the phase now has open tasks
+          if (savedState.stage === "DONE") {
+            const phaseId = savedState.phaseId;
+            const phaseData = newState.phases.find(p => p.id === phaseId);
+            if (phaseData && phaseData.tasks.some(t => t.status === "open")) {
+              fs.unlinkSync(stateFilePath);
+              cleaned++;
+            }
+          }
+        } catch {
+          // Corrupt state file — delete it
+          fs.unlinkSync(stateFilePath);
+          cleaned++;
+        }
+      }
+      
+      if (cleaned > 0) {
+        console.error(`  ✓ cleaned ${cleaned} stale ship state file(s)`);
+      }
+    }
+  } catch (cleanupErr) {
+    console.warn(`  ⚠ state cleanup failed (non-fatal): ${cleanupErr}`);
+  }
+
   // ── Deterministic gate generation (Block 0C) ──
   // After tasks.json is written by the agent, generate vitest gates
   // deterministically. This replaces LLM gate authoring entirely.
@@ -219,11 +262,26 @@ try {
             );
           }
 
-          const planStore = new PlanStore();
+          const planStore = new PlanStore(resolveProjectId(projectRoot));
           planStore.handleDefineComplete({
             featureId: feature,
             status: "DEFINED",
           });
+
+          // Auto-commit define artifacts (clean working tree)
+          try {
+            execSync("git add -A", { cwd: projectRoot });
+            execSync(
+              `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): define tasks"`,
+              {
+                cwd: projectRoot,
+                env: { ...process.env, GWRK_SHIP: "1" },
+                stdio: "ignore",
+              },
+            );
+          } catch {
+            // Non-fatal — may have nothing to commit
+          }
         } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
           const message =

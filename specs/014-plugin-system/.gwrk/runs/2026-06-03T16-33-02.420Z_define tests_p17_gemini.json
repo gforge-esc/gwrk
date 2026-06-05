@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-03T16:33:02.420Z_define_p17",
+  "feature": "014-plugin-system",
+  "phase": "p17",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-03T16:33:02.420Z",
+  "finishedAt": "2026-06-03T16:33:52.986Z",
+  "durationS": 51,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 33,
+  "linesDeleted": 299,
+  "gitCommit": "b233a8642ab71cff3bfb73f8f822a9da0d80cd31",
+  "gitBranch": "develop",
+  "digest": []
+}

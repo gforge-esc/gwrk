@@ -13,7 +13,7 @@ import {
   dispatchToAgent,
 } from "../utils/agent.js";
 import { runGate } from "../utils/gate-runner.js";
-import { createBranch, isDirty, syncBranch } from "../utils/git.js";
+import { createBranch, getCurrentBranch, isDirty, syncBranch } from "../utils/git.js";
 import { assembleDigest } from "../utils/manifest.js";
 import {
   type Phase,
@@ -22,6 +22,8 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { harvestFeature } from "./harvest.js";
+import { detectProfile } from "./profile-detector.js";
+import { conditionPrompt } from "./prompt-conditioner.js";
 import {
   type ShipRunConfig,
   ShipStage,
@@ -29,6 +31,7 @@ import {
   type StageResult,
 } from "./ship-types.js";
 import type { HarvestRecord } from "./types.js";
+import { activatePhaseTests } from "./test-activator.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -109,6 +112,15 @@ export class ShipOrchestrator extends EventEmitter {
     fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2), "utf-8");
   }
 
+  /** Expose final state for DB write-back by CLI wrapper. */
+  public getResult(): { prNumber?: number; prUrl?: string; stage: ShipStage } {
+    return {
+      prNumber: this.state.prNumber,
+      prUrl: this.state.prUrl,
+      stage: this.state.stage,
+    };
+  }
+
   public async run(): Promise<number> {
     const phaseNum = this.config.phaseId
       .replace("phase-", "")
@@ -142,6 +154,9 @@ export class ShipOrchestrator extends EventEmitter {
       switch (this.state.stage) {
         case ShipStage.BRANCH_SETUP:
           result = await this.stageBranchSetup();
+          break;
+        case ShipStage.ACTIVATE_TESTS:
+          result = await this.stageActivateTests();
           break;
         case ShipStage.IMPLEMENT:
           result = await this.stageImplement();
@@ -206,8 +221,8 @@ export class ShipOrchestrator extends EventEmitter {
         const record: HarvestRecord = {
           featureId: this.config.featureId,
           phaseId: this.config.phaseId,
-          prNumber: 0,
-          prUrl: "",
+          prNumber: this.state.prNumber ?? 0,
+          prUrl: this.state.prUrl ?? "",
           mergeCommitSha: "local-ship",
           mergedAt: new Date().toISOString(),
           mergedBy: "gwrk-ship",
@@ -217,6 +232,12 @@ export class ShipOrchestrator extends EventEmitter {
       } catch (err) {
         console.warn(`Harvest failed (non-fatal): ${err}`);
       }
+
+      // State file exists for crash recovery during a run. Once complete,
+      // it's stale — delete it so the next invocation starts fresh.
+      try {
+        fs.unlinkSync(this.getStatePath());
+      } catch { /* already gone */ }
 
       return 0;
     }
@@ -279,8 +300,12 @@ export class ShipOrchestrator extends EventEmitter {
         );
       }
 
+      // Phase 13: Project-aware prompt conditioning
+      const profile = await detectProfile(this.config.cwd);
+      const conditionedPrompt = conditionPrompt(reviewPrompt, profile);
+
       const result = await this.dispatchWithFailback({
-        prompt: reviewPrompt,
+        prompt: conditionedPrompt,
         featureDir: `specs/${this.config.featureId}`,
         agent: this.config.backend,
         env: {},
@@ -303,19 +328,20 @@ export class ShipOrchestrator extends EventEmitter {
         beforeState,
       );
 
-      // 3. Determine verdict from gates (not agent edits).
+      // 3. Discard review agent's source file mutations BEFORE reading verdict.
+      //    Review agents in YOLO mode can modify source files (fixing imports,
+      //    reformatting, etc.). These edits are often incomplete and can break
+      //    the build. We revert first so gates run against the implementer's
+      //    clean build, not a build contaminated by review agent edits.
+      //    We preserve tasks.json (carries verdict state) but restore everything else.
+      this.revertSourceMutations();
+
+      // 4. Determine verdict from gates (not agent edits).
       //    Gates are truth, agent verdict is advisory. (ADR-007)
       const verdict = await this.readVerdict();
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
-
-      // 4. Discard review agent's source file mutations.
-      //    Review agents in YOLO mode can modify source files (fixing imports,
-      //    reformatting, etc.). These edits are often incomplete and can break
-      //    the build. The review's value is the verdict + task feedback, not code edits.
-      //    We preserve tasks.json (carries verdict state) but restore everything else.
-      this.revertSourceMutations();
 
       if (verdict === "GO") {
         return { success: true, exitCode: 0 };
@@ -336,6 +362,7 @@ export class ShipOrchestrator extends EventEmitter {
   private getNextStage(stage: ShipStage): ShipStage {
     const stages = [
       ShipStage.BRANCH_SETUP,
+      ShipStage.ACTIVATE_TESTS,
       ShipStage.IMPLEMENT,
       ShipStage.BUILD_CHECK,
       ShipStage.TEST_GATE,
@@ -360,13 +387,24 @@ export class ShipOrchestrator extends EventEmitter {
     }
 
     const branchName = `feat/${this.config.featureId}`;
+    const currentBranch = getCurrentBranch(this.config.cwd);
+
+    // Already on the correct feature branch — no checkout or merge needed.
+    // The develop merge happens at PR merge time, not during ship.
+    if (currentBranch === branchName) {
+      console.log(`  Branch ${branchName} — already checked out`);
+      this.state.branchName = branchName;
+      if (this.state.iteration === 1) this.captureTestBaseline();
+      return { success: true, exitCode: 0 };
+    }
+
     try {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
       if (this.state.iteration === 1) this.captureTestBaseline();
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
-      // Branch already exists — just check it out and sync with develop
+      // Branch already exists — just check it out (no develop merge)
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("already exists")) {
         try {
@@ -375,19 +413,17 @@ export class ShipOrchestrator extends EventEmitter {
             cwd: this.config.cwd,
             stdio: ["ignore", "ignore", "pipe"],
           });
-          // Sync with latest develop
-          await syncBranch(this.config.cwd, "develop");
           this.state.branchName = branchName;
-          console.log(`  Branch ${branchName} exists — checked out and synced`);
+          console.log(`  Branch ${branchName} exists — checked out`);
           if (this.state.iteration === 1) this.captureTestBaseline();
           return { success: true, exitCode: 0 };
-        } catch (syncErr: unknown) {
-          const syncMsg =
-            syncErr instanceof Error ? syncErr.message : String(syncErr);
+        } catch (checkoutErr: unknown) {
+          const checkoutMsg =
+            checkoutErr instanceof Error ? checkoutErr.message : String(checkoutErr);
           return {
             success: false,
             exitCode: 1,
-            error: `Failed to checkout existing branch: ${syncMsg}`,
+            error: `Failed to checkout existing branch: ${checkoutMsg}`,
           };
         }
       }
@@ -398,6 +434,47 @@ export class ShipOrchestrator extends EventEmitter {
         error: `Failed to create feature branch: ${msg}`,
       };
     }
+  }
+
+  /**
+   * ACTIVATE_TESTS: Un-skip phase-tagged tests before IMPLEMENT.
+   * Tests generated by `define tests` for future phases use it.skip()
+   * with a @phase N docblock. This stage activates tests for the
+   * current phase so the agent sees them as RED (not skipped).
+   */
+  private async stageActivateTests(): Promise<StageResult> {
+    console.log("  ▸ ACTIVATE_TESTS");
+    const testFiles = this.getPhaseTestFiles();
+    if (testFiles.length === 0) {
+      console.log("  ⏭ no phase-scoped test files found");
+      return { success: true, exitCode: 0 };
+    }
+
+    const { activated, files } = activatePhaseTests(
+      this.config.cwd,
+      this.config.phaseId,
+      testFiles,
+    );
+
+    if (activated > 0) {
+      console.log(`  ✓ activated ${activated} test file(s): ${files.join(", ")}`);
+      try {
+        execSync(
+          `git add ${files.join(" ")} && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore: activate ${this.config.phaseId} tests"`,
+          {
+            cwd: this.config.cwd,
+            stdio: "pipe",
+            env: { ...process.env, GWRK_SHIP: "1" },
+          },
+        );
+      } catch {
+        // Not fatal — files may already be tracked or no changes
+      }
+    } else {
+      console.log("  ⏭ all tests already active");
+    }
+
+    return { success: true, exitCode: 0 };
   }
 
   /**
@@ -508,6 +585,10 @@ export class ShipOrchestrator extends EventEmitter {
         ? this.buildRetryPrompt(tasksToDispatch)
         : this.buildInitialPrompt(tasksToDispatch);
 
+      // Phase 13: Project-aware prompt conditioning
+      const profile = await detectProfile(this.config.cwd);
+      const conditionedPrompt = conditionPrompt(prompt, profile);
+
       const taskIds = tasksToDispatch.map((t) => t.id).join(", ");
       console.log(
         `  ▸ IMPLEMENT  ${isRetry ? `retry (${this.state.iteration}/${this.config.maxIterations})` : `${tasksToDispatch.length} task(s) (${taskIds})`}`,
@@ -517,7 +598,7 @@ export class ShipOrchestrator extends EventEmitter {
         agent: this.config.backend,
         workflow: "gwrk-implement",
         featureDir: `specs/${this.config.featureId}`,
-        prompt,
+        prompt: conditionedPrompt,
         quiet: true,
       });
 
@@ -612,7 +693,11 @@ export class ShipOrchestrator extends EventEmitter {
    */
   private async stageTestGate(): Promise<StageResult> {
     console.log("  ▸ TEST_GATE");
-    const { failCount, output } = this.runTestSuite();
+    const phaseTestFiles = this.getPhaseTestFiles();
+    if (phaseTestFiles.length > 0) {
+      console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+    }
+    const { failCount, output } = this.runTestSuite(phaseTestFiles);
     const baseline = this.state.testBaseline ?? 0;
 
     if (failCount === 0) {
@@ -644,10 +729,18 @@ export class ShipOrchestrator extends EventEmitter {
     return this.handleNoGo("TEST_GATE");
   }
 
-  /** Run test suite, return failure count and output. */
-  private runTestSuite(): { failCount: number; output: string } {
+  /** Run test suite, return failure count and output.
+   *  When phaseTestFiles are available, runs only those files instead of
+   *  the full suite. This prevents cross-phase RED test contamination.
+   */
+  private runTestSuite(phaseTestFiles?: string[]): { failCount: number; output: string } {
+    // If we have phase-scoped test files, run only those
+    const command = phaseTestFiles && phaseTestFiles.length > 0
+      ? `pnpm vitest run ${phaseTestFiles.join(" ")}`
+      : "pnpm test";
+
     try {
-      const result = execSync("pnpm test", {
+      const result = execSync(command, {
         cwd: this.config.cwd,
         stdio: "pipe",
         timeout: 120_000,
@@ -662,10 +755,60 @@ export class ShipOrchestrator extends EventEmitter {
     }
   }
 
+  /**
+   * Extract test file paths from the current phase's task descriptions.
+   * Returns paths like "src/commands/research.test.ts" found in task
+   * titles/descriptions. Falls back to filesystem convention (co-located .test.ts).
+   */
+  private getPhaseTestFiles(): string[] {
+    try {
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      if (!phase) return [];
+
+      const testFiles = new Set<string>();
+      const sourceFiles: string[] = [];
+
+      for (const task of phase.tasks) {
+        const text = `${task.title} ${task.description ?? ""}`;
+        const matches = text.matchAll(
+          /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
+        );
+        for (const match of matches) {
+          const filePath = match[0].replace(/[,;.]$/, "");
+          if (filePath.includes(".test.ts") || filePath.includes(".test.js")) {
+            testFiles.add(filePath);
+          } else if (filePath.endsWith(".ts") || filePath.endsWith(".js")) {
+            sourceFiles.push(filePath);
+          }
+        }
+      }
+
+      // Fallback: find co-located test files for source files
+      if (testFiles.size === 0) {
+        for (const src of sourceFiles) {
+          const testPath = src.replace(/\.(ts|js)$/, ".test.$1");
+          if (fs.existsSync(path.join(this.config.cwd, testPath))) {
+            testFiles.add(testPath);
+          }
+        }
+      }
+
+      return [...testFiles];
+    } catch {
+      return [];
+    }
+  }
+
   /** Snapshot test failure count before IMPLEMENT touches anything. */
   private captureTestBaseline(): void {
     console.log("  ▸ capturing test baseline...");
-    const { failCount } = this.runTestSuite();
+    const phaseTestFiles = this.getPhaseTestFiles();
+    if (phaseTestFiles.length > 0) {
+      console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+    }
+    const { failCount } = this.runTestSuite(phaseTestFiles);
     this.state.testBaseline = failCount;
     console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
   }
@@ -782,6 +925,9 @@ export class ShipOrchestrator extends EventEmitter {
           task.completedAt = new Date().toISOString();
         }
       } else {
+        console.log(`    ⚠ Gate FAILED: ${task.id} (${gatePath})`);
+        console.log(`      exit: ${gateResult.exitCode}`);
+        console.log(`      output: ${gateResult.output.slice(0, 500)}`);
         task.status = "open";
         task.completedAt = undefined;
         failedCount++;
@@ -1004,6 +1150,14 @@ _Generated by gwrk ship_`;
       }
 
       if (prNumber) {
+        this.state.prNumber = Number(prNumber);
+        this.state.prUrl = "";
+        try {
+          this.state.prUrl = execSync(
+            `gh pr view ${prNumber} --json url --jq '.url'`,
+            { cwd: this.config.cwd, encoding: "utf-8" },
+          ).trim();
+        } catch { /* best-effort URL resolution */ }
         console.log(`    PR #${prNumber} ready`);
         // gh pr checks blocks until finished, returning non-zero if failed.
         // If no required checks are configured, treat as pass.

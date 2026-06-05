@@ -9,7 +9,12 @@ You are executing a bounded research initiative. Read every input document liste
 
 ## Purpose
 
-Produces a draft reference document (`docs/reference/<name>.md`) from a research brief (`docs/research/<initiative>/brief.md`). The output is a synthesis of existing documents plus codebase discovery, designed to inform specification work that follows.
+[type: gwrk-native]
+Produces a draft reference document (`docs/grounding/<name>.md`) from a research brief (`docs/research/<initiative>/brief.md`). The output is a synthesis of existing documents plus codebase discovery, designed to inform specification work that follows.
+[/type]
+[type: generic]
+Produces a research report based on the provided research brief and input documents. The output is a synthesis of existing documents plus codebase discovery, designed to inform the project's development.
+[/type]
 
 <scope_constraints>
 - MUST read brief.md FIRST — it defines scope, questions, inputs, and output contract
@@ -25,18 +30,28 @@ Produces a draft reference document (`docs/reference/<name>.md`) from a research
 
 ## Inputs
 
+[type: gwrk-native]
 - `initiative_dir`: Path to research initiative directory (e.g., `docs/research/R001-parallel-dispatch`)
+[/type]
+[type: generic]
+- `initiative_dir`: Path to the directory containing the research brief.
+[/type]
 
 ## Algorithm
 
 ### 1. Load Brief
 
+[type: gwrk-native]
 ```bash
 BRIEF="$initiative_dir/brief.md"
 if [[ ! -f "$BRIEF" ]]; then
   STOP: "brief.md not found in $initiative_dir"
 fi
 ```
+[/type]
+[type: generic]
+Identify and load the research brief (typically `brief.md`) from the initiative directory.
+[/type]
 
 Read brief.md. Extract:
 - Questions to answer (the research agenda)
@@ -79,7 +94,12 @@ Every claim MUST have one of:
 
 ### 4. Synthesis Phase — Produce Draft
 
+[type: gwrk-native]
 Write the draft to: `$initiative_dir/draft.md`
+[/type]
+[type: generic]
+Produce a research draft document based on the findings.
+[/type]
 
 The draft MUST satisfy every item in the output contract. Use this structure:
 
@@ -112,8 +132,14 @@ The draft MUST satisfy every item in the output contract. Use this structure:
 ## Spec Alignment Notes
 [Explicit list of what changes in the consuming spec]
 
+[type: gwrk-native]
 ## Architecture Amendments
 [Specific text for architecture.md updates]
+[/type]
+[type: generic]
+## Architecture Recommendations
+[Recommendations for project architecture updates]
+[/type]
 
 ## Open Items
 [Anything flagged as "Requires Decision" — these need PM resolution]
@@ -130,6 +156,7 @@ Before reporting completion, verify:
 
 ### 6. Report
 
+[type: gwrk-native]
 ```
 Research initiative [R00N] COMPLETE.
 Draft: $initiative_dir/draft.md
@@ -137,6 +164,10 @@ Questions answered: N/N
 Output contract items: N/N
 Open items requiring decision: N
 ```
+[/type]
+[type: generic]
+Report research completion with summary of findings and any open items.
+[/type]
 
 ## Anti-Patterns
 

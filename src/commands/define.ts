@@ -18,8 +18,10 @@ import { planCommand as definePlanCommand } from "./define-plan.js";
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 import { testsGenerateCommand } from "./tests-generate.js";
+import { researchCommand } from "./research.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
@@ -42,7 +44,7 @@ export const defineCommand = new Command("define")
     `
 Examples:
   gwrk define 001
-  gwrk define 001-cli-core --refs docs/reference/
+  gwrk define 001-cli-core --refs docs/grounding/
   gwrk define spec 001
   gwrk define plan 001
   gwrk define tasks 001
@@ -97,7 +99,7 @@ Examples:
             dryRun: opts.dryRun,
           });
 
-          const planStore = new PlanStore();
+          const planStore = new PlanStore(resolveProjectId(cwd));
           orchestrator.on("plan:define:complete", (event) => {
             planStore.handleDefineComplete(event);
           });
@@ -179,3 +181,4 @@ defineCommand.addCommand(specifyCommand); // gwrk define spec
 defineCommand.addCommand(definePlanCommand); // gwrk define plan
 defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
+defineCommand.addCommand(researchCommand); // gwrk define research

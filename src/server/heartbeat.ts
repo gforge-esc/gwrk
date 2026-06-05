@@ -3,16 +3,20 @@ import type { PlanPhase } from "../db/plan.js";
 import { DriftDetector, type DriftResult } from "../engine/drift-detector.js";
 import { PlanStore } from "../engine/plan-store.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { resolveProjectId } from "../utils/project-id.js";
 
 export class PlanHeartbeat {
   private interval: NodeJS.Timeout | null = null;
   private store: PlanStore;
+  private projectId: string;
 
   constructor(
     private config: GwrkConfig,
     private slackApp: App | null,
+    private projectRoot: string = process.cwd(),
   ) {
-    this.store = new PlanStore();
+    this.projectId = resolveProjectId(this.projectRoot);
+    this.store = new PlanStore(this.projectId);
   }
 
   start() {
@@ -51,7 +55,7 @@ export class PlanHeartbeat {
       features: status.features,
       phases: phases,
     });
-    const driftResults = detector.verify(process.cwd());
+    const driftResults = detector.verify(this.projectRoot);
     const drifted = driftResults.filter((r) => r.status === "DRIFTED");
 
     // 3. Detect Blocked

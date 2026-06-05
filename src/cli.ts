@@ -11,8 +11,6 @@ import { planCommand } from "./commands/plan.js";
 import { pluginCommand } from "./commands/plugin.js";
 import { projectCommand } from "./commands/project.js";
 import { serverCommand } from "./commands/server.js";
-import { setupSlackCommand } from "./commands/setup-slack.js";
-import { setupCommand } from "./commands/setup.js";
 import { shipCommand } from "./commands/ship.js";
 import { skillCommand } from "./commands/skill.js";
 import { statusCommand } from "./commands/status.js";
@@ -28,8 +26,6 @@ export const program = new Command();
 
 program.exitOverride();
 program.enablePositionalOptions();
-
-setupCommand.addCommand(setupSlackCommand);
 
 program
   .name("gwrk")
@@ -63,7 +59,6 @@ program
           "status",
           "project",
           "plugin",
-          "setup",
         ];
 
         out += `  ${CYAN}Foxtrot Charlie${RESET}\n`;
@@ -122,7 +117,6 @@ program.addCommand(planCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
-program.addCommand(setupCommand);
 program.addCommand(skillCommand);
 program.addCommand(pluginCommand);
 
@@ -165,9 +159,7 @@ program.hook("preAction", (thisCommand, actionCommand) => {
   }
 
   if (
-    actionCommand.name() !== "init" &&
-    actionCommand.name() !== "setup" &&
-    actionCommand.name() !== "slack"
+    actionCommand.name() !== "init"
   ) {
     // This will process.exit(1) if config is missing or invalid
     loadConfig(process.cwd());

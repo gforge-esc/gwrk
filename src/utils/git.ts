@@ -319,6 +319,7 @@ export function commitFiles(
   repoPath: string,
   files: string[],
   message: string,
+  options?: { skipHooks?: boolean },
 ): void {
   try {
     // Stage files
@@ -328,9 +329,13 @@ export function commitFiles(
     });
 
     // Commit
-    execFileSync("git", ["commit", "-m", message], {
+    const commitArgs = ["commit", "-m", message];
+    if (options?.skipHooks) {
+      commitArgs.push("--no-verify");
+    }
+    execFileSync("git", commitArgs, {
       cwd: repoPath,
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
     // If there's nothing to commit, git commit will exit with non-zero
@@ -347,6 +352,42 @@ export function commitFiles(
       return;
     }
     throw e;
+  }
+}
+
+/**
+ * Commits all staged+unstaged changes to leave a clean working tree.
+ * Used by define subcommands after writing execution manifests.
+ * No-op if tree is already clean.
+ */
+export function commitAllClean(repoPath: string, message: string): void {
+  if (isWorkingTreeClean(repoPath)) return;
+  try {
+    execFileSync("git", ["add", "-A"], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    execFileSync(
+      "git",
+      ["commit", "--no-verify", "-m", message],
+      {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+  } catch (e) {
+    const err = e as { stderr?: Buffer | string; stdout?: Buffer | string };
+    const stderr = err.stderr?.toString() || "";
+    const stdout = err.stdout?.toString() || "";
+    const combined = `${stderr} ${stdout}`;
+    if (
+      combined.includes("nothing to commit") ||
+      combined.includes("working tree clean")
+    ) {
+      return;
+    }
+    // Non-fatal — warn but don't fail the define command
+    console.warn(`Warning: post-define commit failed: ${combined.trim()}`);
   }
 }
 

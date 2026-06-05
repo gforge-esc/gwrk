@@ -8,6 +8,7 @@ import {
 } from "../engine/issues.js";
 import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { resolveProjectId } from "../utils/project-id.js";
 
 export async function githubWebhookPlugin(
   fastify: FastifyInstance,
@@ -79,9 +80,11 @@ export async function githubWebhookPlugin(
           author: issue.user?.login || "unknown",
         };
 
+        const projectId = resolveProjectId(projectRoot);
+
         // FR-H14: Record in issues table
         if (action === "opened" || action === "labeled") {
-          saveIssue(record);
+          saveIssue(record, projectId);
           // FR-H15: Slack notification
           if (action === "opened") {
             await notifyIssueOpened(record);

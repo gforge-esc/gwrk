@@ -183,17 +183,17 @@ _No mockups exist for this feature._
 
 | Spec Item | Phase | Status |
 |---|---|---|
-| US-001 | 1 | Planned |
+| US-001 | 1 | ✅ Done |
 | US-002 | 2 | Planned |
 | US-003 | 3 | Planned |
 | US-004 | 3 | Planned |
 | US-005 | 2 | Planned |
 | US-006 | 2 | Planned |
 | US-007 | 4 | Planned |
-| US-008 | 1 | Planned |
-| FR-001 | 1 | Planned |
-| FR-002 | 1 | Planned |
-| FR-003 | 1 | Planned |
+| US-008 | 1 | ✅ Done |
+| FR-001 | 1 | ✅ Done |
+| FR-002 | 1 | ✅ Done |
+| FR-003 | 1 | ✅ Done |
 | FR-004 | 2 | Planned |
 | FR-005 | 3 | Planned |
 | FR-006 | 3 | Planned |
@@ -202,21 +202,21 @@ _No mockups exist for this feature._
 | FR-009 | 2 | Planned |
 | FR-010 | 2 | Planned |
 | FR-011 | 4 | Planned |
-| FR-012 | 1 | Planned |
-| FR-013 | 1 | Planned |
-| FR-014 | 1 | Planned |
-| FR-015 | 1 | Planned |
-| TC-001 | 1, 4 | Planned |
-| TC-002 | 1 | Planned |
+| FR-012 | 1 | ✅ Done |
+| FR-013 | 1 | ✅ Done |
+| FR-014 | 1 | ✅ Done |
+| FR-015 | 1 | ✅ Done |
+| TC-001 | 1, 4 | ✅ Done |
+| TC-002 | 1 | ✅ Done |
 | TC-003 | Deferred | Out of scope for daemon |
 | TC-004 | 2 | Planned |
 | TC-005 | 2 | Planned |
 | TC-006 | 2 | Planned |
-| TR-001 | 1 | Planned |
+| TR-001 | 1 | ✅ Done |
 | TR-002 | 2 | Planned |
-| TR-003 | 1 | Planned |
+| TR-003 | 1 | ✅ Done |
 | TR-004 | 2 | Planned |
 | TR-005 | 2 | Planned |
 | TR-006 | 3 | Planned |
 | TR-007 | 3 | Planned |
-| TR-008 | 1 | Planned |
+| TR-008 | 1 | ✅ Done |

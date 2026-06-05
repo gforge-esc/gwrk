@@ -1,0 +1,66 @@
+{
+  "featureId": "019-agy-agent-migration",
+  "createdAt": "2026-06-02T05:05:21.827Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "b7864f8583b1750e3e8fefd59cf6e3e19278a53ecf23d65e0a26944fd895f097",
+      "modifiedAt": "2026-06-02T04:02:07.938Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "AgyAdapter Foundation",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create adapter.ts",
+          "description": "NEW src/plugins/builtins/agents/agy/adapter.ts. Implements AgyAdapter with command mapping and governance sync. Tests: src/plugins/builtins/agents/agy/adapter.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/plugins/builtins/agents/agy/adapter.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T002",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/agents/agy/manifest.yaml. Plugin manifest for agy agent backend",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/agents/agy/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T003",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/plugins/builtins/agents/index.ts. Register AgyAdapter in BUILTIN_AGENTS",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/agents/index.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 5,
+      "doneWhen": [
+        "`pnpm vitest run src/plugins/builtins/agents/agy/adapter.test.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Router Integration",
+      "tasks": [
+        {
+          "id": "T004",
+          "title": "Modify router.ts",
+          "description": "MODIFY src/engine/router.ts. Update fallbackOrder and default backend logic. Tests: src/engine/router.test.ts\n\nREVIEW FAIL (code): biome lint — lint/suspicious/noExplicitAny.\n  WHERE: src/engine/router.ts:87\n  EXPECTED: Specific type or Record<string, unknown>\n  ACTUAL: as any\n  FIX: Replace 'as any' with a proper type cast to Record<string, unknown> or update GwrkConfigSchema.",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/router.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 1,
+      "doneWhen": [
+        "`pnpm vitest run src/engine/router.test.ts` exits 0",
+        "`gwrk gate-check VR-001` (via mock dispatch observation) exits 0",
+        "None — full coverage."
+      ]
+    }
+  ]
+}

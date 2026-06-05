@@ -10,28 +10,32 @@ import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
 import {
+  commitAllClean,
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const planCommand = new Command("plan")
-  .description("Create an implementation plan for a feature")
+  .description("Create or amend an implementation plan for a feature")
   .addHelpText(
     "after",
     `
 Examples:
-  gwrk define plan 001
-  gwrk define plan 001-cli-core --refs docs/reference/
+  gwrk define plan 001                                       # New plan
+  gwrk define plan 014 "Add research workflow phases"        # Amend existing
+  gwrk define plan 001-cli-core --refs docs/grounding/
   cat discovery.json | gwrk define plan 001
 `,
   )
   .argument("<feature>", "The feature directory under specs/")
+  .argument("[prompt]", "Amendment instructions (when plan.md already exists)")
   .option("--refs <path>", "Path to additional reference docs")
-  .action(async (featureArg, opts: { refs?: string }) => {
+  .action(async (featureArg, prompt: string | undefined, opts: { refs?: string }) => {
     await withSignal("define plan", async () => {
       const projectRoot = process.cwd();
       const feature = resolveFeature(featureArg, projectRoot);
@@ -66,6 +70,35 @@ Examples:
         }
       }
 
+      // Detect mode: amend (plan.md already has real content) vs new
+      const planPath = path.join(featureDir, "plan.md");
+      const planExists = fs.existsSync(planPath);
+      const planContent = planExists ? fs.readFileSync(planPath, "utf-8") : "";
+      const planHasContent = planContent.trim().length > 0;
+      // Template-only files don't count as "rework" — only files that have been
+      // through at least one plan generation pass.
+      const isAmend = planHasContent && !planContent.includes("{{FEATURE_NUMBER}}");
+
+      // Build the effective prompt
+      let effectivePrompt: string;
+      if (isAmend) {
+        const amendInstructions = contextContent || prompt || "Add new phases for the updated spec requirements";
+        effectivePrompt = `AMEND existing plan for feature ${feature}.\n\nExisting plan: specs/${feature}/plan.md\n\nAmendment instructions: ${amendInstructions}`;
+      } else {
+        effectivePrompt = `Plan implementation for feature ${feature}${contextContent ? `\n\nContext:\n${contextContent}` : ""}`;
+      }
+
+      const mode = isAmend ? "amend" : "new";
+
+      // Inject refs as reference material
+      if (opts.refs) {
+        const resolvedRefs = path.resolve(opts.refs);
+        if (fs.existsSync(resolvedRefs)) {
+          const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
+          effectivePrompt = `<reference_document source="${opts.refs}" authority="primary">\n${refsContent}\n</reference_document>\n\n${effectivePrompt}`;
+        }
+      }
+
       const runId = startRun({
         feature_id: feature,
         command: "define plan",
@@ -76,6 +109,7 @@ Examples:
       banner("define plan", {
         Feature: feature,
         Agent: backend,
+        Mode: mode,
         "Run ID": `${runId}`,
         ...(opts.refs ? { Refs: opts.refs } : {}),
       });
@@ -84,8 +118,6 @@ Examples:
       const startedAt = new Date().toISOString();
 
       try {
-        const input = `Plan implementation for feature ${feature}${contextContent ? `\n\nContext:\n${contextContent}` : ""}${opts.refs ? `\n\nReference: ${opts.refs}` : ""}`;
-        
         const orchestrator = new DefineOrchestrator({
           featureId: feature,
           backend,
@@ -99,7 +131,7 @@ Examples:
           backend,
         });
 
-        const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
+        const exitCode = await orchestrator.runLoop(effectivePrompt, { stopAfterOne: true });
 
         if (exitCode !== 0) {
           throw new Error(`Workflow execution failed with exit code ${exitCode}`);
@@ -147,7 +179,10 @@ Examples:
           );
         }
 
-        const planStore = new PlanStore();
+        // Define must always leave a clean working tree
+        commitAllClean(projectRoot, `chore(${feature}): define plan execution manifest`);
+
+        const planStore = new PlanStore(resolveProjectId(projectRoot));
         planStore.handleDefineComplete({
           featureId: feature,
           status: "DEFINED",

@@ -40,7 +40,7 @@ describe("runsCommand — CLI and JSON output", () => {
     vi.mocked(listRuns).mockReturnValue([]);
     await runsCommand.parseAsync(["node", "cli.js", "001-cli-core"]);
 
-    expect(listRuns).toHaveBeenCalledWith("001-cli-core");
+    expect(listRuns).toHaveBeenCalledWith("001-cli-core", expect.any(String));
     expect(consoleLogSpy).toHaveBeenCalledWith(
       "No runs found for 001-cli-core",
     );

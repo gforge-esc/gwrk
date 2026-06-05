@@ -136,4 +136,42 @@ outputSchema:
       }),
     );
   });
+
+  it("should detect amend mode when plan.md has real content", async () => {
+    // Write a real plan.md (not a template)
+    const specDir = path.join(tempDir, "specs", "test-feature");
+    fs.writeFileSync(
+      path.join(specDir, "plan.md"),
+      "# Implementation Plan: 014 Plugin System\n\n## Phase 1: Core\n\nDone."
+    );
+
+    await program.parseAsync(["node", "test", "plan", "test-feature", "Add phase 11 for research"]);
+
+    // Verify the prompt includes AMEND directive
+    const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
+    expect(call.prompt).toContain("AMEND existing plan");
+    expect(call.prompt).toContain("Add phase 11 for research");
+  });
+
+  it("should use new mode when no plan.md exists", async () => {
+    await program.parseAsync(["node", "test", "plan", "test-feature"]);
+
+    const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
+    expect(call.prompt).toContain("Plan implementation for feature");
+    expect(call.prompt).not.toContain("AMEND");
+  });
+
+  it("should treat template-only plan.md as new (not amend)", async () => {
+    // Write a template-only plan.md
+    const specDir = path.join(tempDir, "specs", "test-feature");
+    fs.writeFileSync(
+      path.join(specDir, "plan.md"),
+      "# Implementation Plan: {{FEATURE_NUMBER}} {{FEATURE_NAME}}\n\n{{SUMMARY}}"
+    );
+
+    await program.parseAsync(["node", "test", "plan", "test-feature"]);
+
+    const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
+    expect(call.prompt).not.toContain("AMEND");
+  });
 });

@@ -2,6 +2,7 @@ import { execSync, spawn } from "node:child_process";
 import type { App } from "@slack/bolt";
 import { findOpenPr } from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import type { CommandContext } from "./slack-commands.js";
 
 /**
@@ -23,11 +24,12 @@ function mergeGitHubPr(prNumber: number, cwd: string): string {
 function lookupPr(
   featureId: string,
   phaseId: string,
+  projectId: string,
 ): { pr_number: number; pr_url: string | null } {
-  const pr = findOpenPr(featureId, phaseId);
+  const pr = findOpenPr(featureId, phaseId, projectId);
   if (!pr) {
     // Try without phase filter as fallback
-    const anyPr = findOpenPr(featureId);
+    const anyPr = findOpenPr(featureId, undefined, projectId);
     if (anyPr) {
       return anyPr;
     }
@@ -39,6 +41,8 @@ function lookupPr(
 }
 
 export async function registerSlackActions(app: App, context: CommandContext) {
+  const projectId = resolveProjectId(context.projectRoot);
+
   // Handle button actions
   app.action("merge_pr", async ({ ack, body, client, logger }) => {
     await ack();
@@ -49,7 +53,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const { featureId, phaseId } = JSON.parse(payload);
 
     try {
-      const pr = lookupPr(featureId, phaseId);
+      const pr = lookupPr(featureId, phaseId, projectId);
       mergeGitHubPr(pr.pr_number, context.projectRoot);
 
       await client.chat.postMessage({
@@ -135,7 +139,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     const { featureId, planPath } = JSON.parse(payload);
 
     try {
-      const store = new PlanStore();
+      const store = new PlanStore(projectId);
       store.handleDefineComplete({ featureId, status: "DEFINED" });
 
       await client.chat.postMessage({
@@ -230,7 +234,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     // Resolve PR URL: payload prNumber → runs table → gh pr list fallback
     let reviewUrl = "";
     const resolvedPrNumber =
-      payloadPrNumber || findOpenPr(featureId, phaseId)?.pr_number;
+      payloadPrNumber || findOpenPr(featureId, phaseId, projectId)?.pr_number;
 
     if (resolvedPrNumber) {
       try {
@@ -337,7 +341,7 @@ export async function registerSlackActions(app: App, context: CommandContext) {
             if (actionValue) {
               const { featureId, phaseId } = JSON.parse(actionValue);
 
-              const pr = lookupPr(featureId, phaseId);
+              const pr = lookupPr(featureId, phaseId, projectId);
               mergeGitHubPr(pr.pr_number, context.projectRoot);
               await client.chat.postMessage({
                 channel: event.item.channel,

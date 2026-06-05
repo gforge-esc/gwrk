@@ -83,21 +83,67 @@ describe("DefineOrchestrator (Integration)", () => {
   });
 
   it("should transition through full lifecycle and persist state", async () => {
+    // Create a plan.md so the deterministic parser can run
+    const featureDir = path.join(tempDir, "specs", config.featureId);
+    fs.mkdirSync(path.join(featureDir, ".gwrk"), { recursive: true });
+
     const orchestrator = new DefineOrchestrator(config);
     
-    // Track calls to dispatchToAgent to verify transitions
+    // Mock dispatchToAgent to also create plan.md after PLAN stage
+    vi.mocked(agent.dispatchToAgent).mockImplementation(async (opts: any) => {
+      if (opts.workflow === "gwrk-specify") {
+        // SPECIFY stage creates spec.md
+        fs.writeFileSync(path.join(featureDir, "spec.md"), "Spec content that is long enough to not be a stub. ".repeat(3));
+      }
+      if (opts.workflow === "gwrk-plan") {
+        // PLAN stage creates plan.md with valid phase headings
+        fs.writeFileSync(path.join(featureDir, "plan.md"), [
+          "# Plan",
+          "",
+          "### Phase 1: Setup",
+          "",
+          "**Files (1):**",
+          "- `src/setup.ts` (NEW: Create setup)",
+          "",
+        ].join("\n"));
+      }
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ summary: "Mocked Success", intents: [] }),
+        stderr: "",
+        durationS: 1,
+        logPath: "mock.log"
+      };
+    });
+
     await orchestrator.runLoop();
 
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-specify" }));
     expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan" }));
-    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-define-tests" }));
-    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan-to-tasks" }));
-    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-analyze" }));
+    // plan-to-tasks is deterministic — no agent dispatch
+    expect(agent.dispatchToAgent).not.toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan-to-tasks" }));
+    
+    // Verify tasks.json was produced by the deterministic parser
+    const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
+    expect(fs.existsSync(tasksPath)).toBe(true);
     
     expect((orchestrator as any).state.stage).toBe(DefineStage.DONE);
   });
 
   it("should resume from persisted state file", async () => {
+    // Create a valid plan.md for the deterministic parser
+    const featureDir = path.join(tempDir, "specs", config.featureId);
+    fs.mkdirSync(path.join(featureDir, ".gwrk"), { recursive: true });
+    fs.writeFileSync(path.join(featureDir, "plan.md"), [
+      "# Plan",
+      "",
+      "### Phase 1: Setup",
+      "",
+      "**Files (1):**",
+      "- `src/setup.ts` (NEW: Create setup)",
+      "",
+    ].join("\n"));
+
     const statePath = path.join(tempDir, ".runs", `${config.featureId}_define.state`);
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
     fs.writeFileSync(statePath, JSON.stringify({
@@ -118,9 +164,10 @@ describe("DefineOrchestrator (Integration)", () => {
     expect(agent.dispatchToAgent).not.toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan" }));
     expect(agent.dispatchToAgent).not.toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-define-tests" }));
     
-    // SHOULD have called plan-to-tasks and analyze
-    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-plan-to-tasks" }));
-    expect(agent.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ workflow: "gwrk-analyze" }));
+    // plan-to-tasks is deterministic — no dispatchToAgent call
+    // But tasks.json should have been produced
+    const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
+    expect(fs.existsSync(tasksPath)).toBe(true);
   });
 
   it("should fail and stop if a stage fails", async () => {

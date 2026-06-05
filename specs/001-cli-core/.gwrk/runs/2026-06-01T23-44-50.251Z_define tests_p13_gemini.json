@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-01T23:44:50.251Z_define_p13",
+  "feature": "001-cli-core",
+  "phase": "p13",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-01T23:44:50.251Z",
+  "finishedAt": "2026-06-01T23:47:36.183Z",
+  "durationS": 166,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 6,
+  "linesAdded": 74,
+  "linesDeleted": 105,
+  "gitCommit": "2846ca72136738b719098c33823d78f2b6641b98",
+  "gitBranch": "feat/001-cli-core",
+  "digest": []
+}

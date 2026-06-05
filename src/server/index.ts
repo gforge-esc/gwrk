@@ -124,7 +124,7 @@ export async function startServer(
 
   // FR-015: Build Plan Heartbeat
   const slackApp = getSlackApp();
-  const planHeartbeat = new PlanHeartbeat(config, slackApp);
+  const planHeartbeat = new PlanHeartbeat(config, slackApp, projectRoot);
   planHeartbeat.start();
 
   await healthRoutes(server, lifecycle, network, sandbox);

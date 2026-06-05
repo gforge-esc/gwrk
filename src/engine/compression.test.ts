@@ -1,10 +1,13 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import { getDb } from "../db/index.js";
 import {
   computeCompression,
+  computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
+  computeForecastFromLOC,
 } from "./compression.js";
 import type {
   CompressionRatios,
@@ -16,6 +19,9 @@ import type {
 
 vi.mock("node:fs");
 vi.mock("node:child_process");
+vi.mock("../db/index.js", () => ({
+  getDb: vi.fn(),
+}));
 
 /**
  * RED tests for src/engine/compression.ts
@@ -24,6 +30,52 @@ vi.mock("node:child_process");
  * FR-008: Compute Total Compression ratio
  * FR-009: Cross-feature compression summary with trends
  */
+
+describe("FR-016 & FR-017: computeForecastFromLOC — LOC-derived fallback", () => {
+  it("TR-001: computes SP from implementation numstat and spec/plan/research LOC (TS profile)", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(((p: string) => {
+      if (p.endsWith("spec.md")) return "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n"; // 5 lines
+      if (p.endsWith("plan.md")) return "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n"; // 5 lines
+      return "";
+    }) as any);
+
+    vi.mocked(execFileSync).mockReturnValue("100\t20\tsrc/file.ts\n50\t10\tsrc/other.ts\n" as any); // 150 added lines
+
+    // TS rate = 50 LOC/SP, DE rate = 25 LOC/SP
+    // implSP = 150 / 50 = 3 SP
+    // deSP = 10 / 25 = 0.4 SP
+    // totalSP = ceil(3 + 0.4) = 4 SP
+    const forecast = computeForecastFromLOC("/mock/feat-a", "TS");
+
+    expect(forecast.totalSP).toBe(4);
+    expect(forecast.roles[0].role).toBe("TS");
+    expect(forecast.estimatedHours).toBe(4 * 4 * 1.25); // 4 SP * 4h/SP * 1.25 overhead = 20h
+    expect(forecast.estimatedDays).toBe(3); // ceil(20/8) = 3
+
+    vi.resetAllMocks();
+  });
+
+  it("TR-001: computes SP from implementation numstat and spec/plan/research LOC (Rust profile)", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue("Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n" as any); // 5 lines * 3 files = 15 lines
+
+    vi.mocked(execFileSync).mockReturnValue("100\t0\tsrc/main.rs\n" as any); // 100 added lines
+
+    // Rust rate = 35 LOC/SP, DE rate = 25 LOC/SP
+    // implSP = 100 / 35 = 2.85... SP
+    // deSP = 15 / 25 = 0.6 SP
+    // totalSP = ceil(2.85 + 0.6) = ceil(3.45) = 4 SP
+    const forecast = computeForecastFromLOC("/mock/feat-a", "Rust", 6); // RE multiplier is 6
+
+    expect(forecast.totalSP).toBe(4);
+    expect(forecast.roles[0].role).toBe("Rust");
+    expect(forecast.estimatedHours).toBe(4 * 6 * 1.25); // 4 SP * 6h/SP * 1.25 overhead = 30h
+    expect(forecast.estimatedDays).toBe(4); // ceil(30/8) = 4
+
+    vi.resetAllMocks();
+  });
+});
 
 describe("FR-005 & FR-006 & FR-010: gatherDeliveryActuals — Git commit clustering", () => {
   it("TR-005 & TR-006: extracts timestamps and clusters commits (15 mins active across 2 sessions)", () => {
@@ -318,5 +370,46 @@ describe("FR-009: generateSummary — cross-feature summary", () => {
     const summary = generateSummary([]);
     expect(summary.features).toHaveLength(0);
     expect(summary.totals.totalSP).toBe(0);
+  });
+});
+
+describe("FR-014: computeLeadingIndicators", () => {
+  it("TR-015: computes convergence, density, and spec quality correctly", () => {
+    const mockDb = {
+      prepare: vi.fn().mockReturnThis(),
+      all: vi.fn().mockReturnValue([
+        { task_id: "T001", attempts: 1, first_attempt: 1, is_completed: 1 },
+        { task_id: "T002", attempts: 2, first_attempt: 1, is_completed: 1 },
+      ]),
+      get: vi.fn().mockReturnValue({ total_lines: 100, total_files: 5 }),
+    };
+
+    vi.mocked(getDb).mockReturnValue(mockDb as any);
+
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockImplementation(((p: string) => {
+      if (p.endsWith("contracts")) return ["c1.md", "c2.md"];
+      if (p.endsWith("gates")) return ["T001-gate.sh"];
+      if (p.endsWith(".runs")) return ["feat-a.log"];
+      return [];
+    }) as any);
+    vi.mocked(fs.readFileSync).mockReturnValue("[10:00:00]  $ git commit\n[10:05:00]  > pnpm build");
+
+    const forecast: EffortForecast = {
+      totalSP: 10,
+      roles: [],
+      estimatedHours: 50,
+      estimatedDays: 6.25,
+    };
+
+    const indicators = computeLeadingIndicators("feat-a", forecast, "proj-1");
+
+    expect(indicators.convergence.firstPassRate).toBe(50); // 1/2
+    expect(indicators.convergence.avgAttempts).toBe(1.5); // (1+2)/2
+    expect(indicators.density.linesPerSP).toBe(10); // 100 / 10
+    expect(indicators.density.filesPerSP).toBe(0.5); // 5 / 10
+    expect(indicators.density.toolCallsPerSP).toBe(0.2); // 2 / 10
+    expect(indicators.specQuality.contractCount).toBe(2);
+    expect(indicators.specQuality.gateCount).toBe(1);
   });
 });

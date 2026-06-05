@@ -6,6 +6,7 @@ import { dispatchToAgent } from "../utils/agent.js";
 import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
+import type { ProjectProfile } from "../engine/profile-detector.js";
 import type {
   AtomicSkillManifest,
   CompoundSkillManifest,
@@ -154,6 +155,7 @@ export async function executeSkill(
 export async function resolveEnforcementSkills(
   projectRoot: string,
   scope: "implementation" | "review" | "all" = "all",
+  profile?: ProjectProfile,
 ): Promise<string> {
   const loader = new PluginLoader({ projectDir: projectRoot });
   const allPlugins = await loader.listPlugins({ tier: "enforcement" });
@@ -183,6 +185,14 @@ export async function resolveEnforcementSkills(
         manifestScope !== scope
       ) {
         continue;
+      }
+
+      // Filter by language (R007: profile-aware enforcement routing)
+      // Only filter builtins — project-local skills always load (the user chose them)
+      if (profile?.stack?.language && manifest.language) {
+        if (manifest.language.toLowerCase() !== profile.stack.language.toLowerCase()) {
+          continue;
+        }
       }
 
       const skillMdPath = path.join(loaded.path, "SKILL.md");

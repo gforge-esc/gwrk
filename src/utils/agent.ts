@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { recordRoutingDecision } from "../db/plugins.js";
+import { resolveProjectId } from "./project-id.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
@@ -16,6 +17,38 @@ import {
 const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
+
+/**
+ * ADR-008 Layer 2: Environment variables that mechanically prevent
+ * interactive sub-processes from hanging agent sessions.
+ */
+export const SAFE_AGENT_ENV: Record<string, string> = {
+  GIT_EDITOR: "true",
+  EDITOR: "true",
+  VISUAL: "true",
+  GIT_MERGE_AUTOEDIT: "no",
+  DEBIAN_FRONTEND: "noninteractive",
+  CI: "true",
+  npm_config_yes: "true",
+};
+
+/**
+ * ADR-008 Layer 1: Prompt block injected into every agent-dispatched
+ * workflow. Tells the agent how to handle commands safely.
+ */
+export const COMMAND_SAFETY_BLOCK = `<command_safety>
+RULES FOR EVERY COMMAND YOU RUN:
+1. NEVER run interactive commands. All commands must complete without human input.
+2. NEVER start long-running servers (pnpm dev, npm start, python -m http.server).
+3. ALWAYS use non-interactive flags: --no-edit, --non-interactive, -y, --yes.
+4. ALWAYS set GIT_EDITOR=true and EDITOR=true to prevent editor invocations.
+5. If a command produces no output for 60 seconds, kill it (Ctrl-C) and retry
+   with --non-interactive or equivalent flags.
+6. If git merge output contains "CONFLICT", abort with git merge --abort
+   and report the conflict. Do NOT attempt manual resolution.
+7. Prefer timeout 120 <cmd> for any build or test command.
+8. NEVER run: vim, nano, less, more, man, top, htop, watch, tail -f.
+</command_safety>`;
 
 /**
  * Normalized Exit Code Map (ADR-006)
@@ -118,11 +151,15 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
   const runsDir = path.join(projectRoot, ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const workflow = path.basename(opts.workflowPath, ".md");
+  // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
+  const rawWorkflow = path.basename(opts.workflowPath, ".md");
+  const workflow = rawWorkflow === "PROMPT"
+    ? path.basename(path.dirname(opts.workflowPath))
+    : rawWorkflow;
   const rawFeature = opts.featureDir
     ? path.basename(opts.featureDir)
     : (opts.prompt ?? "unknown");
-  const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
   const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
@@ -144,10 +181,12 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
     const stdoutLines: string[] = [];
     const stderrLines: string[] = [];
 
+    // ADR-008 Layer 2: Hardened environment for agent sub-processes
     const child = spawn(command, args, {
       cwd: executionRoot,
       env: {
         ...process.env,
+        ...SAFE_AGENT_ENV,
         ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
@@ -319,6 +358,7 @@ export interface TaskDispatch {
   workflow?: string;
   featureDir?: string;
   quiet?: boolean;
+  dryRun?: boolean;
 }
 
 /**
@@ -437,9 +477,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
         : "implementation";
+
+    // R007: Detect project profile for language-aware enforcement routing
+    const { detectProfile } = await import("../engine/profile-detector.js");
+    const profile = await detectProfile(task.workDir || projectRoot);
+
     const enforcement = await resolveEnforcementSkills(
       task.workDir || projectRoot,
       scope as "implementation" | "review",
+      profile,
     );
 
     if (hasEnforcementPlaceholder) {
@@ -451,6 +497,53 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
         `<code_quality>\n${enforcement}\n</code_quality>`,
       );
     }
+  }
+
+  // ADR-009: Inject project knowledge documents (grounding)
+  const workDir = task.workDir || projectRoot;
+  const groundingFiles: Array<{ path: string; tag: string }> = [
+    { path: path.join(workDir, ".gwrk/ontology/domain.md"), tag: "domain_ontology" },
+    { path: path.join(workDir, ".gwrk/perspective/hierarchy.md"), tag: "information_hierarchy" },
+    { path: path.join(workDir, ".gwrk/perspective/ux-posture.md"), tag: "ux_posture" },
+  ];
+
+  let grounding = "";
+  for (const { path: filePath, tag } of groundingFiles) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        grounding += `<${tag}>\n${content}\n</${tag}>\n\n`;
+        if (!task.quiet) {
+          process.stdout.write(
+            `${DIM}  → Grounding: <${tag}> injected${RESET}\n`,
+          );
+        }
+      } catch (err) {
+        if (!task.quiet) {
+          process.stdout.write(
+            `${DIM}  ⚠ Grounding: <${tag}> unreadable (${err instanceof Error ? err.message : err})${RESET}\n`,
+          );
+        }
+      }
+    }
+  }
+
+  if (grounding) {
+    dispatch.stdin = `${grounding}${dispatch.stdin}`;
+  }
+
+  // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
+  if (dispatch.stdin && !dispatch.stdin.includes("<command_safety>")) {
+    dispatch.stdin = `${COMMAND_SAFETY_BLOCK}\n\n${dispatch.stdin}`;
+  }
+
+  if (task.dryRun) {
+    return {
+      exitCode: 0,
+      stdout: dispatch.stdin,
+      stderr: "",
+      durationS: 0,
+    };
   }
 
   const opts: DispatchOptions = {
@@ -478,13 +571,17 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // Record routing decision for historical learning
   const taskType =
     task.type || path.basename(task.workflow || "unknown", ".md");
-  recordRoutingDecision({
-    task_type: taskType,
-    selected_backend: agentName,
-    outcome: result.exitCode === 0 ? "success" : "failure",
-    duration_ms: durationS * 1000,
-    error_message: result.errorType ?? undefined,
-  });
+  const projectId = resolveProjectId(projectRoot);
+  recordRoutingDecision(
+    {
+      task_type: taskType,
+      selected_backend: agentName,
+      outcome: result.exitCode === 0 ? "success" : "failure",
+      duration_ms: durationS * 1000,
+      error_message: result.errorType ?? undefined,
+    },
+    projectId,
+  );
 
   return {
     ...result,

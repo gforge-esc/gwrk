@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import path from "node:path";
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
@@ -34,19 +36,42 @@ export interface RunRecord {
 export function startRun(
   run: Pick<
     RunRecord,
-    "feature_id" | "phase_id" | "command" | "agent_backend" | "workflow"
+    "feature_id" | "phase_id" | "command" | "agent_backend" | "workflow" | "project_id"
   >,
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
+  // Auto-resolve project_id from cwd if not provided
+  const projectId = run.project_id ?? (() => {
+    try {
+      return crypto.createHash("md5").update(process.cwd()).digest("hex");
+    } catch {
+      return null;
+    }
+  })();
+
+  // Ensure project exists in projects table to satisfy FK constraint
+  if (projectId) {
+    conn
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)`,
+      )
+      .run({
+        id: projectId,
+        name: path.basename(process.cwd()),
+        path: process.cwd(),
+      });
+  }
+
   const result = conn
     .prepare(
-      `INSERT INTO runs (feature_id, phase_id, command, agent_backend, workflow)
-       VALUES (@feature_id, @phase_id, @command, @agent_backend, @workflow)`,
+      `INSERT INTO runs (feature_id, phase_id, project_id, command, agent_backend, workflow)
+       VALUES (@feature_id, @phase_id, @project_id, @command, @agent_backend, @workflow)`,
     )
     .run({
       feature_id: run.feature_id,
       phase_id: run.phase_id ?? null,
+      project_id: projectId,
       command: run.command,
       agent_backend: run.agent_backend ?? null,
       workflow: run.workflow ?? null,
@@ -69,6 +94,11 @@ export function finishRun(
       | "finished_at"
       | "status"
       | "merge_commit_sha"
+      | "pr_number"
+      | "pr_url"
+      | "files_changed"
+      | "lines_added"
+      | "lines_deleted"
     >
   >,
   db?: Database.Database,
@@ -83,7 +113,12 @@ export function finishRun(
          gate_result = @gate_result,
          review_verdict = @review_verdict,
          status = @status,
-         merge_commit_sha = @merge_commit_sha
+         merge_commit_sha = @merge_commit_sha,
+         pr_number = COALESCE(@pr_number, pr_number),
+         pr_url = COALESCE(@pr_url, pr_url),
+         files_changed = @files_changed,
+         lines_added = @lines_added,
+         lines_deleted = @lines_deleted
        WHERE id = @id`,
     )
     .run({
@@ -95,6 +130,11 @@ export function finishRun(
       review_verdict: update.review_verdict ?? null,
       status: update.status ?? null,
       merge_commit_sha: update.merge_commit_sha ?? null,
+      pr_number: update.pr_number ?? null,
+      pr_url: update.pr_url ?? null,
+      files_changed: update.files_changed ?? null,
+      lines_added: update.lines_added ?? null,
+      lines_deleted: update.lines_deleted ?? null,
     });
 }
 
@@ -159,9 +199,17 @@ export function recordRun(
  */
 export function listRuns(
   featureId: string,
+  projectId?: string,
   db?: Database.Database,
 ): RunRecord[] {
   const conn = db ?? getDb();
+  if (projectId) {
+    return conn
+      .prepare(
+        "SELECT * FROM runs WHERE feature_id = ? AND project_id = ? ORDER BY id DESC",
+      )
+      .all(featureId, projectId) as RunRecord[];
+  }
   return conn
     .prepare("SELECT * FROM runs WHERE feature_id = ? ORDER BY id DESC")
     .all(featureId) as RunRecord[];
@@ -174,22 +222,30 @@ export function listRuns(
 export function findOpenPr(
   featureId: string,
   phaseId?: string,
+  projectId?: string,
   db?: Database.Database,
 ): { pr_number: number; pr_url: string | null } | null {
   const conn = db ?? getDb();
-  const query = phaseId
-    ? `SELECT pr_number, pr_url FROM runs
-       WHERE feature_id = ? AND phase_id = ? AND pr_number IS NOT NULL
-       ORDER BY id DESC LIMIT 1`
-    : `SELECT pr_number, pr_url FROM runs
-       WHERE feature_id = ? AND pr_number IS NOT NULL
-       ORDER BY id DESC LIMIT 1`;
-  const args = phaseId ? [featureId, phaseId] : [featureId];
+  let query = "SELECT pr_number, pr_url FROM runs WHERE feature_id = ?";
+  const args: any[] = [featureId];
+
+  if (phaseId) {
+    query += " AND phase_id = ?";
+    args.push(phaseId);
+  }
+  if (projectId) {
+    query += " AND project_id = ?";
+    args.push(projectId);
+  }
+
+  query += " AND pr_number IS NOT NULL ORDER BY id DESC LIMIT 1";
+
   const row = conn.prepare(query).get(...args) as
     | { pr_number: number; pr_url: string | null }
     | undefined;
   return row ?? null;
 }
+
 
 export interface ProjectRecord {
   id: string;
@@ -234,11 +290,24 @@ export interface RunStats {
 /**
  * Get aggregate success rates and execution durations from completed runs.
  */
-export function getStats(db?: Database.Database): RunStats[] {
+export function getStats(
+  projectId?: string,
+  db?: Database.Database,
+): RunStats[] {
   const conn = db ?? getDb();
-  return conn
-    .prepare(
-      `SELECT
+  const query = projectId
+    ? `SELECT
+         command,
+         agent_backend,
+         workflow,
+         COUNT(*) as total_runs,
+         SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) as success_runs,
+         AVG(duration_s) as avg_duration_s
+       FROM runs
+       WHERE exit_code IS NOT NULL AND project_id = ?
+       GROUP BY command, agent_backend, workflow
+       ORDER BY total_runs DESC`
+    : `SELECT
          command,
          agent_backend,
          workflow,
@@ -248,10 +317,12 @@ export function getStats(db?: Database.Database): RunStats[] {
        FROM runs
        WHERE exit_code IS NOT NULL
        GROUP BY command, agent_backend, workflow
-       ORDER BY total_runs DESC`,
-    )
-    .all() as RunStats[];
+       ORDER BY total_runs DESC`;
+
+  const args = projectId ? [projectId] : [];
+  return conn.prepare(query).all(...args) as RunStats[];
 }
+
 
 /**
  * List all projects.

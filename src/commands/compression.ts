@@ -3,6 +3,8 @@ import path from "node:path";
 import { Command } from "commander";
 import {
   computeCompression,
+  computeForecastFromLOC,
+  computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
 } from "../engine/compression.js";
@@ -11,6 +13,8 @@ import { resolveRoleMultipliers } from "../engine/roles.js";
 import { extractStories } from "../engine/spec-parser.js";
 import type { CompressionReport } from "../engine/types.js";
 import { loadConfig } from "../utils/config.js";
+import { resolveProjectId } from "../utils/project-id.js";
+import { recordCompression } from "../db/compression.js";
 
 function getEffortReport(
   featureDir: string,
@@ -72,25 +76,42 @@ Examples:
             const effort = getEffortReport(featDir, feat, projectRoot);
             const actuals = gatherDeliveryActuals(featDir);
 
-            const forecast = {
-              totalSP: effort.totalSP,
-              roles: effort.roles.map((r) => ({
-                role: r.role,
-                sp: r.spAssigned,
-              })),
-              estimatedHours: effort.totalWithOverhead,
-              estimatedDays: effort.totalDays,
-            };
+            // FR-016: LOC-derived SP fallback when spec has no explicit SP
+            const forecast = effort.totalSP > 0
+              ? {
+                  totalSP: effort.totalSP,
+                  roles: effort.roles.map((r) => ({
+                    role: r.role,
+                    sp: r.spAssigned,
+                  })),
+                  estimatedHours: effort.totalWithOverhead,
+                  estimatedDays: effort.totalDays,
+                }
+              : computeForecastFromLOC(featDir);
 
             const ratios = computeCompression(forecast, actuals);
+            const projectId = resolveProjectId(projectRoot);
+            const indicators = computeLeadingIndicators(
+              feat,
+              forecast,
+              projectId,
+            );
 
-            reports.push({
+            const report: CompressionReport = {
               featureId: feat,
               generatedAt: new Date().toISOString(),
               forecast,
               actuals,
               compression: ratios,
-            });
+              indicators,
+            };
+
+            reports.push(report);
+            try {
+              recordCompression(report, projectId);
+            } catch (err) {
+              // Ignore persistence errors in bulk run
+            }
           } catch (e) {
             // Ignore features that might not be shipped yet or missing spec
           }
@@ -109,7 +130,19 @@ Examples:
           console.log(
             `Avg Total Compression: ${summary.totals.avgTotalCompression.toFixed(2)}x`,
           );
-          console.log(`Trend: ${summary.trend.toUpperCase()}\n`);
+
+          console.log("\n--- Avg Leading Indicators ---");
+          console.log(
+            `Convergence:  ${summary.totals.avgFirstPassRate?.toFixed(1)}% first-pass, (Avg Attempts): ${summary.totals.avgAvgAttempts?.toFixed(2)}`,
+          );
+          console.log(
+            `Density:      ${summary.totals.avgLinesPerSP?.toFixed(1)} lines/SP, ${summary.totals.avgFilesPerSP?.toFixed(1)} files/SP, ${summary.totals.avgToolCallsPerSP?.toFixed(1)} tools/SP`,
+          );
+          console.log(
+            `Spec Quality: ${summary.totals.totalContracts} total contracts, ${summary.totals.totalGates} total gates`,
+          );
+
+          console.log(`\nTrend: ${summary.trend.toUpperCase()}\n`);
 
           if (summary.best.featureId) {
             console.log(
@@ -157,14 +190,19 @@ Examples:
         const effort = getEffortReport(featureDir, feature, projectRoot);
         const actuals = gatherDeliveryActuals(featureDir);
 
-        const forecast = {
-          totalSP: effort.totalSP,
-          roles: effort.roles.map((r) => ({ role: r.role, sp: r.spAssigned })),
-          estimatedHours: effort.totalWithOverhead,
-          estimatedDays: effort.totalDays,
-        };
+        // FR-016: LOC-derived SP fallback when spec has no explicit SP
+        const forecast = effort.totalSP > 0
+          ? {
+              totalSP: effort.totalSP,
+              roles: effort.roles.map((r) => ({ role: r.role, sp: r.spAssigned })),
+              estimatedHours: effort.totalWithOverhead,
+              estimatedDays: effort.totalDays,
+            }
+          : computeForecastFromLOC(featureDir);
 
         const ratios = computeCompression(forecast, actuals);
+        const projectId = resolveProjectId(projectRoot);
+        const indicators = computeLeadingIndicators(feature, forecast, projectId);
 
         const report: CompressionReport = {
           featureId: feature,
@@ -172,7 +210,14 @@ Examples:
           forecast,
           actuals,
           compression: ratios,
+          indicators,
         };
+
+        try {
+          recordCompression(report, projectId);
+        } catch (err) {
+          // Non-fatal persistence error
+        }
 
         if (options.json) {
           console.log(JSON.stringify(report, null, 2));
@@ -191,6 +236,19 @@ Examples:
           console.log(
             `Elapsed Window:    ${actuals.deliveryWindowHours.toFixed(2)} hours`,
           );
+
+          if (indicators) {
+            console.log("\n--- Leading Indicators ---");
+            console.log(
+              `Convergence:       ${indicators.convergence.firstPassRate}% first-pass, (Avg Attempts): ${indicators.convergence.avgAttempts}`,
+            );
+            console.log(
+              `Density:           ${indicators.density.linesPerSP} lines/SP, ${indicators.density.filesPerSP} files/SP, ${indicators.density.toolCallsPerSP} tools/SP`,
+            );
+            console.log(
+              `Spec Quality:      ${indicators.specQuality.contractCount} contracts, ${indicators.specQuality.gateCount} gates`,
+            );
+          }
         }
       }
     });

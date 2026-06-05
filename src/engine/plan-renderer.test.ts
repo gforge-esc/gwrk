@@ -64,8 +64,8 @@ describe('PlanRenderer', () => {
     const renderer = new PlanRenderer(mockFeatures, mockPhases, mockEdges, mockSolver);
     const md = renderer.render();
 
-    expect(md).toContain('### Feature 0 — Extraction ✅');
-    expect(md).toContain('### Feature 1 — CLI Core ✅'); // Status based on getFeatureLabel logic
+    expect(md).toContain('### Feature F0 — Extraction ✅');
+    expect(md).toContain('### Feature F1 — CLI Core ✅');
     expect(md).toContain('| 1 | Bootstrap | DONE ✅ | 10 |');
     expect(md).toContain('| 2 | Commands | SHIPPED ✅ | 15 |'); // SHIPPED also gets ✅ in my current PlanRenderer logic
   });

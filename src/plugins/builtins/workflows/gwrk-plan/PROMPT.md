@@ -4,10 +4,18 @@
 **Pillar**: Definition (Clarity)
 
 <scope_constraints>
-- Create ONLY plan.md (and optionally data-model.md, contracts/).
+- Create plan.md (new) or amend an existing plan.md (when the input starts with "AMEND"). If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
 - Do not create tasks.json (that's `gwrk define tasks`).
 - Do not implement any code.
-- Reference existing project structure from `docs/architecture.md`.
+- Reference existing project structure from `docs/grounding/architecture.md`.
+
+**AMENDMENT MODE (when input starts with "AMEND existing plan"):**
+- Read the existing `plan.md` FIRST — understand what phases exist and their status.
+- PRESERVE all existing phases verbatim. Do NOT rewrite, renumber, or modify them.
+- APPEND new phases after the last existing phase, continuing the numbering sequence.
+- Update the Coverage Matrix to include new US/FR/TR items from the amended spec.
+- Update the Deferred Items section to move newly-planned items out of deferred.
+- If the amendment only changes existing phases (e.g., correcting a file path), make the minimal edit — do NOT regenerate the entire plan.
 </scope_constraints>
 
 ## Branch Discipline
@@ -21,8 +29,9 @@
 
 ## Architecture Reference
 
+[type: gwrk-native]
 <architecture_reference>
-The plan MUST be grounded in `docs/architecture.md`:
+The plan MUST be grounded in `docs/grounding/architecture.md`:
 - **Project Structure** (§2): Map features to the correct source directory.
 - **Tech Stack** (§4): TypeScript CLI (Commander.js), Fastify server, SQLite (better-sqlite3), Vitest, Biome.
 - **Foxtrot Charlie Pillars**: Discovery, Definition, Shipping, Delivery — commands align to pillars.
@@ -49,6 +58,11 @@ Decisions:
 - [ADR-003](docs/decisions/ADR-003-state-contract.md) — Execution state contract
 - [ADR-004](docs/decisions/ADR-004-agent-native-output.md) — Agent-native output protocol
 </architecture_reference>
+[/type]
+
+[type: generic]
+Reference the project's own architecture documentation and existing directory structure for file layout decisions.
+[/type]
 
 ## Inputs
 
@@ -71,10 +85,15 @@ Decisions:
 ### 2. Load context
 
 - Read `{feature_dir}/spec.md` (required).
-- Read `docs/architecture.md` (required — for project structure, tech stack).
+[type: gwrk-native]
+- Read `docs/grounding/architecture.md` (required — for project structure, tech stack).
 - Read `specs/000-build-plan.md` §Dependency Graph and §Critical Path — understand upstream/downstream impacts and where this spec fits.
-- Read `docs/reference/agent-native-cli.md` (required — for agent-native design imperatives and command surface).
+- Read `docs/grounding/agent-native-cli.md` (required — for agent-native design imperatives and command surface).
 - Read `docs/decisions/ADR-004-agent-native-output.md` (required — for output protocol contract).
+[/type]
+[type: generic]
+- Read the project's architecture and planning documents to understand the technical context.
+[/type]
 - Read `.specify/templates/plan-template.md` (required — output skeleton).
 
 ### 2a. Cross-reference sister specs (MANDATORY)
@@ -103,6 +122,7 @@ If conflicts are found:
 
 Determine which governance rules and skills apply to this feature. Read each applicable rule file:
 
+[type: gwrk-native]
 | If feature touches... | Read this governance rule | Applicable skills |
 |---|---|---|
 | CLI commands, output | `docs/decisions/ADR-004-agent-native-output.md` | — |
@@ -111,6 +131,11 @@ Determine which governance rules and skills apply to this feature. Read each app
 | Architecture decisions | `~/.gwrk/plugins/skills/decision-forge/SKILL.md` | `decision-forge` |
 | Spec quality | `~/.gwrk/plugins/skills/specify-sharpen/SKILL.md` | `specify-sharpen` |
 | Any code changes | — | `compile-gate` (always implicit) |
+[/type]
+
+[type: generic]
+Review the project's governance rules in the `.rules/` or `.gwrk/rules/` directory (if they exist) and apply relevant skills.
+[/type]
 
 ### 4. Generate plan.md
 
@@ -119,6 +144,7 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 
 <output_rules>
 - Map **every** `US-###` and `FR-###` from the spec to a phase. Unmapped items go in Deferred Items.
+[type: gwrk-native]
 - Use the gwrk source layout for file paths:
   - CLI entry → `src/cli.ts`
   - Command handlers → `src/commands/<command>.ts`
@@ -127,6 +153,10 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
   - Shared utilities → `src/utils/<module>.ts`
   - SQLite → `src/db/index.ts`, `src/db/migrations/`
   - Tests → co-located `<module>.test.ts`
+[/type]
+[type: generic]
+- Use the project's existing source layout for file paths.
+[/type]
 - **Phase sizing**: ≤10 file changes per phase. Split by functional boundary if larger.
 - Every phase MUST have: Governance & Skills Contract, Test Strategy table, Done When section.
 - **Test Strategy** maps `TR-###` to test type, target file, and executable assertion.
@@ -134,7 +164,9 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 - Every contract method in `contracts/` MUST be mapped to the phase that implements it.
 - **Coverage Matrix** MUST account for every `US-###`, `FR-###`, `TR-###`, `TC-###`, `SC-###`, `VR-###`, `DM-###` from the spec.
 - Deferred Items section MUST exist (even if "None — full coverage.").
+[type: gwrk-native]
 - **Agent-Native compliance**: If the plan introduces new commands, each MUST specify: command type (query/generator/verifier/mutator), `[exit:N | Xs]` wrapper, `--format json` support, and error-as-navigation messages.
+[/type]
 </output_rules>
 
 ### 5. Generate `data-model.md` (if entities exist in spec)
@@ -161,7 +193,9 @@ Before reporting, verify the plan includes:
 - Type dependency graph (if shared types exist)
 - Method-level contracts (if APIs exist)
 - Contract methods mapped to phases (if contracts/ exist)
+[type: gwrk-native]
 - Exact file paths for every phase (using gwrk source layout)
+[/type]
 - Phase sizing ≤10 files (split if larger)
 - `FR-###` references for every deliverable
 - Every `US-###` from spec is assigned to a phase or listed in Deferred Items
@@ -169,7 +203,9 @@ Before reporting, verify the plan includes:
 - Every `TR-###`, `DM-###`, `SC-###`, `VR-###` from spec appears in Coverage Matrix
 - Coverage Matrix section exists with zero unaccounted items
 - Deferred Items section exists (even if empty: "None — full coverage")
+[type: gwrk-native]
 - Agent-Native compliance: new commands have type, signal wrapper, format support, error guidance
+[/type]
 
 If any are missing, add them before reporting.
 </quality_gate>

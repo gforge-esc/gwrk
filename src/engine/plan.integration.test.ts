@@ -14,7 +14,7 @@ describe.skip('PlanStore Integration (FR-001/005/009/013)', () => {
       fs.unlinkSync(dbPath);
     }
     process.env.GWRK_DB_PATH = dbPath;
-    store = new PlanStore();
+    store = new PlanStore("test-project");
   });
 
   afterAll(() => {

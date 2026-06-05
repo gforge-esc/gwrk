@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-05-29
+> **Status:** Authoritative · **Date:** 2026-06-02
 > **Anchored to:** [architecture.md](docs/architecture.md), [GWRK-PRD-PRFAQ.md](docs/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](docs/decisions/ADR-001-task-tracking.md), [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003](docs/decisions/ADR-003-state-contract.md), [ADR-004](docs/decisions/ADR-004-agent-native-output.md), [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md), [ADR-007](docs/decisions/ADR-007-single-dispatch-path.md)
 
@@ -20,53 +20,36 @@
 
 ```mermaid
 graph TD
-    F000["F000: Extraction ✅"] --> F001["F001: CLI Core ✅"]
-    F001["F001: CLI Core ✅"] --> F013["F013: Agent-Native Interface ✅"]
-    F001["F001: CLI Core ✅"] --> F002["F002: Build Server ✅"]
-    F001["F001: CLI Core ✅"] --> F006["F006: Pulse"]
-    F001["F001: CLI Core ✅"] --> F007["F007: Effort + Compression"]
-    F001["F001: CLI Core ✅"] --> F012["F012: Knowledge Work"]
-    F001["F001: CLI Core ✅"] --> F014["F014: Plugin System (Three-Layer Architecture) ✅"]
-    F002["F002: Build Server ✅"] --> F003["F003: Slack ✅"]
-    F002["F002: Build Server ✅"] --> F005["F005: Parallel Dispatch"]
-    F002["F002: Build Server ✅"] --> F015["F015: Event Bus & Scheduler"]
-    F013["F013: Agent-Native Interface ✅"] --> TDD
-    F013["F013: Agent-Native Interface ✅"] --> F004["F004: Ship Loop ✅"]
-    TDD --> F004["F004: Ship Loop ✅"]
-    F004["F004: Ship Loop ✅"] --> F005["F005: Parallel Dispatch"]
-    F004["F004: Ship Loop ✅"] --> F011["F011: Harvest (Done, Done!)"]
-    F004["F004: Ship Loop ✅"] --> F004P5
-    F014["F014: Plugin System (Three-Layer Architecture) ✅"] --> F014R
-    F014R --> F005["F005: Parallel Dispatch"]
-    F014R --> F004RD
-    F014["F014: Plugin System (Three-Layer Architecture) ✅"] --> F012["F012: Knowledge Work"]
-    F014["F014: Plugin System (Three-Layer Architecture) ✅"] --> F016["F016: Domain Packs"]
-    F014["F014: Plugin System (Three-Layer Architecture) ✅"] --> F017["F017: Channel Abstraction"]
-    F003["F003: Slack ✅"] --> F009["F009: Agent-DUT"]
-    F003["F003: Slack ✅"] --> F011["F011: Harvest (Done, Done!)"]
-    F002["F002: Build Server ✅"] --> F011["F011: Harvest (Done, Done!)"]
-    F006["F006: Pulse"] --> F010["F010: GForge Integration"]
-    F007["F007: Effort + Compression"] --> F010["F010: GForge Integration"]
-    F015["F015: Event Bus & Scheduler"] --> F017["F017: Channel Abstraction"]
-    F003["F003: Slack ✅"] --> F017["F017: Channel Abstraction"]
-    F012["F012: Knowledge Work"] --> F016["F016: Domain Packs"]
-    F005["F005: Parallel Dispatch"] --> F014P4
-    F018["F018: Build Plan Orchestrator 🟡"] --> F018P2
-    F018["F018: Build Plan Orchestrator 🟡"] --> F018P3
-    F018P2 --> F018P4
-    F018P3 --> F018P4
-    F018P4 --> F018P5
-    F018P5 --> F002["F002: Build Server ✅"]
-    F018P5 --> F003["F003: Slack ✅"]
-    style F000 fill:#22cc22,stroke:#118811,color:#fff
-    style F000-TDD fill:#22cc22,stroke:#118811,color:#fff
-    style F001 fill:#22cc22,stroke:#118811,color:#fff
-    style F002 fill:#22cc22,stroke:#118811,color:#fff
-    style F003 fill:#22cc22,stroke:#118811,color:#fff
-    style F004 fill:#22cc22,stroke:#118811,color:#fff
-    style F013 fill:#22cc22,stroke:#118811,color:#fff
-    style F014 fill:#22cc22,stroke:#118811,color:#fff
-    style F014-R fill:#22cc22,stroke:#118811,color:#fff
+    001-cli-core["001-cli-core ✅"] --> 013-agent-native-interface["013-agent-native-interface ✅"]
+    001-cli-core["001-cli-core ✅"] --> 002-build-server["002-build-server ✅"]
+    001-cli-core["001-cli-core ✅"] --> 006-pulse["006-pulse ✅"]
+    001-cli-core["001-cli-core ✅"] --> 007-effort-compression["007-effort-compression ✅"]
+    001-cli-core["001-cli-core ✅"] --> 012-knowledge-work["012-knowledge-work"]
+    001-cli-core["001-cli-core ✅"] --> 014-plugin-system["014-plugin-system ✅"]
+    002-build-server["002-build-server ✅"] --> 003-slack["003-slack ✅"]
+    002-build-server["002-build-server ✅"] --> 005-parallel-dispatch["005-parallel-dispatch ✅"]
+    013-agent-native-interface["013-agent-native-interface ✅"] --> 000-tdd-infrastructure["000-tdd-infrastructure ✅"]
+    013-agent-native-interface["013-agent-native-interface ✅"] --> 004-ship-loop["004-ship-loop ✅"]
+    000-tdd-infrastructure["000-tdd-infrastructure ✅"] --> 004-ship-loop["004-ship-loop ✅"]
+    004-ship-loop["004-ship-loop ✅"] --> 005-parallel-dispatch["005-parallel-dispatch ✅"]
+    004-ship-loop["004-ship-loop ✅"] --> 011-harvest["011-harvest ✅"]
+    014-plugin-system["014-plugin-system ✅"] --> 012-knowledge-work["012-knowledge-work"]
+    003-slack["003-slack ✅"] --> 011-harvest["011-harvest ✅"]
+    002-build-server["002-build-server ✅"] --> 011-harvest["011-harvest ✅"]
+    style 000-tdd-infrastructure fill:#22cc22,stroke:#118811,color:#fff
+    style 001-cli-core fill:#22cc22,stroke:#118811,color:#fff
+    style 002-build-server fill:#22cc22,stroke:#118811,color:#fff
+    style 003-slack fill:#22cc22,stroke:#118811,color:#fff
+    style 004-ship-loop fill:#22cc22,stroke:#118811,color:#fff
+    style 005-parallel-dispatch fill:#22cc22,stroke:#118811,color:#fff
+    style 006-pulse fill:#22cc22,stroke:#118811,color:#fff
+    style 007-effort-compression fill:#22cc22,stroke:#118811,color:#fff
+    style 008-agent-router fill:#22cc22,stroke:#118811,color:#fff
+    style 011-harvest fill:#22cc22,stroke:#118811,color:#fff
+    style 013-agent-native-interface fill:#22cc22,stroke:#118811,color:#fff
+    style 014-plugin-system fill:#22cc22,stroke:#118811,color:#fff
+    style 018-build-plan-orchestrator fill:#22cc22,stroke:#118811,color:#fff
+    style 019-agy-agent-migration fill:#22cc22,stroke:#118811,color:#fff
 ```
 
 ---
@@ -79,196 +62,188 @@ gantt
     dateFormat X
     axisFormat %s
 
-    Agent Mode                :done, F013_P3, 0, 11
+    Agent Mode (Layer 2, stdin, Classify, PhaseSchema) :done, 013_agent_native_interface_phase_03, 0, 11
+    Digest & Phase-Skip       :done, 004_ship_loop_phase_01, after 013_agent_native_interface_phase_03, 1
 ```
 
 ---
 
 ## Features
 
-### Feature 001-cli-core — CLI Core ✅
-
-**Status:** SHIPPED + TDD-HARDENED (spec rewrite v3)
-
-> Shipped pre-TDD. Subsequently hardened via F013 phases 9, 12 (gap analysis, test backfill).
-> Spec rewritten to TDD standard (revision 3, 2026-05-30).
-> Artifacts: `specs/001-cli-core/refs/`
-
-### Feature 002-build-server — 002-build-server 🟡
-
-**Status:** DEFINED
-
-### Feature 003-slack — 003-slack 🟡
-
-**Status:** DEFINED
-
-### Feature 004-ship-loop — Ship Loop ✅🔧
-
-**Status:** DONE — active rework: gate pipeline redesign (ADR-005 amendment)
-
-> Ship orchestrator functional. Gate verdict pipeline identified 5 failure modes
-> (LLM gate hallucination, SIGPIPE, define-tests MODIFY isolation, parser phase numbering).
-> Redesign documented in `specs/004-ship-loop/refs/gate-pipeline-redesign.md`.
-> Root cause: `specs/004-ship-loop/refs/ship-failure-diagnosis.md`.
-
-### Feature 005-parallel-dispatch — 005-parallel-dispatch 🟡
-
-**Status:** DEFINED
-
-### Feature 006-pulse — 006-pulse 🟡
-
-**Status:** DEFINED
-
-### Feature 007-effort-compression — 007-effort-compression 🟡
-
-**Status:** DEFINED
-
-### Feature 008-agent-router — 008-agent-router 🟡
-
-**Status:** DEFINED
-
-### Feature 011-harvest — 011-harvest 🟡
-
-**Status:** DEFINED
-
-### Feature 012-knowledge-work — 012-knowledge-work ⚪
-
-**Status:** PLANNED
-
-### Feature 013-agent-native-interface — 013-agent-native-interface 🟡
-
-**Status:** DEFINED
-
-### Feature 014-plugin-system — 014-plugin-system 🟡
-
-**Status:** SPECIFIED
-
-### Feature 018-build-plan-orchestrator — 018-build-plan-orchestrator 🟡
-
-**Status:** DEFINED
-
-### Feature 000 — Extraction ✅
-
-**Status:** DONE
-
-### Feature 000-TDD — TDD Infrastructure ✅
-
-**Status:** DONE
-
-### Feature 001 — CLI Core ✅
+### Feature 000-tdd-infrastructure ✅
 
 **Status:** SHIPPED + TDD-HARDENED (consolidated with 001-cli-core above)
 
-### Feature 002 — Build Server ✅
+### Feature 001-cli-core ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
 
-### Feature 003 — Slack ✅
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Project Bootstrap & Config ✅ | SHIPPED ✅ | 0 |
+| 2 | SQLite Execution Ledger ✅ | SHIPPED ✅ | 0 |
+| 3 | Clarity Pillar — Define ✅ | SHIPPED ✅ | 0 |
+| 4 | Throughput Pillar — Ship ✅ | SHIPPED ✅ | 0 |
+| 5 | Task Engine — State, Gates & History ✅ | SHIPPED ✅ | 0 |
+| 6 | Value Pillar — Measure ✅ | SHIPPED ✅ | 0 |
+| 7 | Init Hardening ✅ | SHIPPED ✅ | 0 |
+| 8 | E2E Surface Hardening ✅ | SHIPPED ✅ | 0 |
+| 9 | State Contract — Execution Manifests & Merge Safety | SHIPPED ✅ | 0 |
+| 10 | Unified Init — Project Onboarding ⭐ **REWRITE (R3)** | SHIPPED ✅ | 0 |
+| 11 | CLI UX Polish ✅ | SHIPPED ✅ | 0 |
+| 12 | Define Pillar Output Parity | SHIPPED ✅ | 0 |
+| 13 | Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)** | SHIPPED ✅ | 0 |
+| 14 | Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)** | SHIPPED ✅ | 0 |
+
+### Feature 002-build-server ✅
 
 > [!WARNING]
 > **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
 
-### Feature 004 — Ship Loop ✅🔧
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Daemon Lifecycle & Service Management | SHIPPED ✅ | 0 |
+| 2 | Resilience & System Status | SHIPPED ✅ | 0 |
+| 3 | Slack Event Bridge & Bless Actions | SHIPPED ✅ | 0 |
+| 4 | Execution Ledger | SHIPPED ✅ | 0 |
 
-**Status:** DONE — rework pending (consolidated with 004-ship-loop above)
+### Feature 003-slack ✅
 
-### Feature 005 — Parallel Dispatch ⚪
-
-**Status:** PLANNED
-
-### Feature 006 — Pulse ⚪
-
-**Status:** PLANNED
-
-### Feature 007 — Effort + Compression ⚪
-
-**Status:** PLANNED
-
-### Feature 009 — Agent-DUT ⚪
-
-**Status:** PLANNED
-
-### Feature 010 — GForge Integration ⚪
-
-**Status:** PLANNED
-
-### Feature 011 — Harvest (Done, Done!) ⚪
-
-**Status:** PLANNED
-
-### Feature 012 — Knowledge Work ⚪
-
-**Status:** PLANNED
-
-### Feature 013 — Agent-Native Interface ✅
-
-**Status:** DONE
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
-| 1 | Foundation | DONE ✅ | 7 |
-| 2 | Discovery | DONE ✅ | 10 |
-| 3 | Agent Mode | DONE ✅ | 11 |
-| 4 | `src/utils/signal.ts`, `output.ts`, `agent-layer.ts` | DONE ✅ | 0 |
-| 5 | `src/commands/gate-check.ts`, `project.ts` | DONE ✅ | 0 |
-| 6 | `src/engine/discover.ts`, `classify.ts` | DONE ✅ | 0 |
-| 7 | -- | DONE ✅ | 0 |
-| 8 | 003 to the TDD standard established by 000-tdd-infrastructure. Regenerate all legacy garbage gates | DONE ✅ | 0 |
-| 9 | cli-core | Rewrite spec to TDD standard. Fix `dispatchAgent | DONE ✅ | 0 |
-| 10 | build-server | Rewrite spec to TDD standard. Add lifecycle integration tests. Implement `server clean` | DONE ✅ | 0 |
-| 11 | slack | Rewrite gap-analysis as test-coverage audit. Verify contracts against shipped code. Remediate ❌ items. | `gwrk test 003-slack` = 0 failed | | DONE ✅ | 0 |
-| 12 | cli-core | 44 | ~40 | ~91% | | DONE ✅ | 0 |
-| 13 | build-server | 26 | 18 | 69% | | DONE ✅ | 0 |
-| 14 | slack | 31 | 3 | 10% ✅ | DONE ✅ | 0 |
-| 15 | -- | DONE ✅ | 0 |
+| 1 | Slack Definition Pillar (P0) | SHIPPED ✅ | 0 |
+| 2 | Conversational Agent Surface (P1) | SHIPPED ✅ | 0 |
+| 3 | Webhook Hardening & Topology (P1) | SHIPPED ✅ | 0 |
 
-### Feature 014 — Plugin System (Three-Layer Architecture) ✅
+### Feature 004-ship-loop ✅
 
-**Status:** DONE
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
-| 1 | Plugin Loader + Registry | DONE ✅ | 0 |
-| 2 | Skill Runtime | DONE ✅ | 0 |
-| 3 | Agent Backend Adapters | DONE ✅ | 0 |
-| 4 | Routing Intelligence | DONE ✅ | 0 |
-| 5 | Three layers | DONE ✅ | 0 |
-| 6 | manifest.yaml** = contract | DONE ✅ | 0 |
-| 7 | Global only** for skills | DONE ✅ | 0 |
-| 8 | Anti-MCP | DONE ✅ | 0 |
-| 9 | Config ownership | DONE ✅ | 0 |
-| 10 | -- | DONE ✅ | 0 |
+| 1 | Digest & Phase-Skip | SHIPPED ✅ | 0 |
+| 2 | Resilience & Bail | SHIPPED ✅ | 0 |
+| 3 | Verification & Artifacts | SHIPPED ✅ | 0 |
+| 4 | Plugin Dispatch Boundary | SHIPPED ✅ | 0 |
+| 5 | DispatchOrchestrator — TypeScript Ship Loop (F004-R) | SHIPPED ✅ | 0 |
 
-### Feature 014-R — WorkflowRuntime Rework ✅
+### Feature 005-parallel-dispatch ✅
 
-**Status:** DONE
-
-### Feature 015 — Event Bus & Scheduler ⚪
-
-**Status:** PLANNED
-
-### Feature 016 — Domain Packs ⚪
-
-**Status:** PLANNED
-
-### Feature 017 — Channel Abstraction ⚪
-
-**Status:** PLANNED
-
-### Feature 018 — Build Plan Orchestrator 🟡
-
-**Status:** SPECIFIED
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
-| 1 | Data Model + Seed | PLANNED ⚪ | 5 |
-| 2 | Solver + CLI | PLANNED ⚪ | 5 |
-| 3 | Graph Mutation | PLANNED ⚪ | 5 |
-| 4 | Event Hooks + Verify + Render | PLANNED ⚪ | 5 |
-| 5 | Viz + Heartbeat + Governance | PLANNED ⚪ | 5 |
-| 6 | better-build-plan/seed-payload.md) — structured YAML inventory of all 19 features with status, health, SP, artifacts, rework count, dependency edges, per-phase breakdown | PLANNED ⚪ | 0 |
-| 7 | -- | PLANNED ⚪ | 0 |
+| 1 | Worktree Sandbox Manager | SHIPPED ✅ | 0 |
+| 2 | Parallel Dispatch Orchestrator | SHIPPED ✅ | 0 |
+
+### Feature 006-pulse ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Engine & Git Utility Refinement | SHIPPED ✅ | 0 |
+| 2 | CLI Commands & Terminal Rendering | SHIPPED ✅ | 0 |
+| 3 | Final Verification & E2E | SHIPPED ✅ | 0 |
+
+### Feature 007-effort-compression ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Effort Engine | SHIPPED ✅ | 0 |
+| 2 | Compression Engine | SHIPPED ✅ | 0 |
+| 3 | CLI Commands + Integration | SHIPPED ✅ | 0 |
+
+### Feature 008-agent-router ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Agent Registry & Zod Validation | SHIPPED ✅ | 0 |
+| 2 | Quota Prober & Cache | SHIPPED ✅ | 0 |
+| 3 | Backend Selector (Core Logic) | SHIPPED ✅ | 0 |
+| 4 | Integration & Wiring | SHIPPED ✅ | 0 |
+
+### Feature 011-harvest ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Webhook Infrastructure & Orchestration | SHIPPED ✅ | 0 |
+| 2 | Finalization & Cleanup | SHIPPED ✅ | 0 |
+| 3 | Compression Calculation | SHIPPED ✅ | 0 |
+| 4 | Done, Done! Notification | SHIPPED ✅ | 0 |
+| 5 | Post-Ship Issue Tracking | SHIPPED ✅ | 0 |
+
+### Feature 012-knowledge-work ⚪
+
+**Status:** PLANNED
+
+### Feature 013-agent-native-interface ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Foundation (Signal, Format, Gate-Check, Exit Codes) | SHIPPED ✅ | 7 |
+| 2 | Discovery (Discover Engine, Help Rewrite, Error-as-Nav) | SHIPPED ✅ | 10 |
+| 3 | Agent Mode (Layer 2, stdin, Classify, PhaseSchema) | SHIPPED ✅ | 11 |
+
+### Feature 014-plugin-system ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Foundation (Plugin Loader & Registry) | SHIPPED ✅ | 0 |
+| 2 | Skill Runtime (Layer 2) | SHIPPED ✅ | 0 |
+| 3 | Agent Backend Adapters (Layer 1 - ADR-006) | SHIPPED ✅ | 0 |
+| 4 | Antigravity (agy) Adapter | SHIPPED ✅ | 0 |
+| 5 | WorkflowRuntime (Layer 2.5 - F014-R) | SHIPPED ✅ | 0 |
+| 6 | DefineOrchestrator & CLI Rewiring | SHIPPED ✅ | 0 |
+| 7 | Provisioning & Migration | SHIPPED ✅ | 0 |
+| 8 | Routing & Intelligence (ex-F008) | SHIPPED ✅ | 0 |
+| 9 | Enforcement Skills (FR-014 / US-016) | SHIPPED ✅ | 0 |
+| 11 | .agents/ Deletion & Verification (ADR-007) | SHIPPED ✅ | 0 |
+
+### Feature 018-build-plan-orchestrator ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | Foundation & Data Model | SHIPPED ✅ | 0 |
+| 2 | Solver Engine & Ready Queue | SHIPPED ✅ | 0 |
+| 3 | Graph Mutation & Lifecycle Hooks | SHIPPED ✅ | 0 |
+| 4 | Verification & Markdown Rendering | SHIPPED ✅ | 0 |
+| 5 | Visualization & Monitoring | SHIPPED ✅ | 0 |
+
+### Feature 019-agy-agent-migration ✅
+
+> [!WARNING]
+> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 | AgyAdapter Foundation | SHIPPED ✅ | 0 |
+| 2 | Router Integration | SHIPPED ✅ | 0 |
 
 ---
 
@@ -276,7 +251,8 @@ gantt
 
 | Wave | Features | Theme |
 |---|---|---|
-| Wave 1 | F013, F014, F018 | TBD |
+| Wave 1 | 001-cli-core, 002-build-server, 003-slack, 004-ship-loop, 005-parallel-dispatch, 006-pulse, 007-effort-compression, 008-agent-router, 011-harvest, 013-agent-native-interface, 014-plugin-system, 018-build-plan-orchestrator, 019-agy-agent-migration | TBD |
+| Wave 2 | 013-agent-native-interface, 002-build-server, 006-pulse, 007-effort-compression, 014-plugin-system, 003-slack, 005-parallel-dispatch, 011-harvest, 004-ship-loop | TBD |
 
 ---
 
@@ -284,40 +260,22 @@ gantt
 
 | Feature | SP | Status |
 |---|---|---|
-| 001-cli-core | 0 | SHIPPED ✅ |
-| 002-build-server | 0 | SHIPPED ✅ |
-| 003-slack | 0 | SHIPPED ✅ |
-| 004-ship-loop | 0 | DONE 🔧 |
-| 005-parallel-dispatch | 0 | PLANNED |
-| 006-pulse | 0 | DEFINED |
-| 007-effort-compression | 0 | DEFINED |
-| 008-agent-router | 0 | DEFINED |
-| 011-harvest | 0 | DEFINED |
+| 000-tdd-infrastructure | 0 | SHIPPED |
+| 001-cli-core | 0 | SHIPPED |
+| 002-build-server | 0 | SHIPPED |
+| 003-slack | 0 | SHIPPED |
+| 004-ship-loop | 0 | SHIPPED |
+| 005-parallel-dispatch | 0 | SHIPPED |
+| 006-pulse | 0 | SHIPPED |
+| 007-effort-compression | 0 | SHIPPED |
+| 008-agent-router | 0 | SHIPPED |
+| 011-harvest | 0 | SHIPPED |
 | 012-knowledge-work | 0 | PLANNED |
-| 013-agent-native-interface | 0 | DEFINED |
-| 014-plugin-system | 0 | SPECIFIED |
-| 018-build-plan-orchestrator | 0 | DEFINED |
-| F000 | 0 | DONE |
-| F000-TDD | 0 | DONE |
-| F001 | 0 | SHIPPED ✅ |
-| F002 | 0 | SHIPPED ✅ |
-| F003 | 0 | SHIPPED ✅ |
-| F004 | 0 | DONE 🔧 |
-| F005 | 0 | PLANNED |
-| F006 | 0 | PLANNED |
-| F007 | 0 | PLANNED |
-| F009 | 0 | PLANNED |
-| F010 | 0 | PLANNED |
-| F011 | 0 | PLANNED |
-| F012 | 0 | PLANNED |
-| F013 | 28 | DONE |
-| F014 | 0 | DONE |
-| F014-R | 0 | DONE |
-| F015 | 0 | PLANNED |
-| F016 | 0 | PLANNED |
-| F017 | 0 | PLANNED |
-| F018 | 25 | SPECIFIED |
-| **Total** | **53** | |
+| 013-agent-native-interface | 28 | SHIPPED |
+| 014-plugin-system | 0 | SHIPPED |
+| 018-build-plan-orchestrator | 0 | SHIPPED |
+| 019-agy-agent-migration | 0 | SHIPPED |
+| **Total** | **28** | |
 
 ---
 
@@ -331,5 +289,4 @@ gantt
 
 ## Changelog
 
-- **2026-05-29:** F001 consolidated — TDD-hardened via F013 phases 9/12. F004 updated with gate pipeline redesign (5 failure modes diagnosed, 2 solutions proposed). ADR-007 added to decisions.
-- **2026-05-01:** Regenerated from graph state via `gwrk plan render`.
+- **2026-06-02:** Regenerated from graph state via `gwrk plan render`.

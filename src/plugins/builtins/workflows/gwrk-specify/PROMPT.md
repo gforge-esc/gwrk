@@ -21,23 +21,29 @@
 
 ## Architecture Reference
 
-Before specifying, check if these files exist and load them for context. If they do not exist, this is a non-gwrk project — skip all gwrk-specific defaults and derive constraints solely from the reference document and description.
-- `docs/architecture.md` — Project structure, tech stack (if it exists)
-- `specs/000-build-plan.md` — Dependency graph, critical path (if it exists)
-- `docs/reference/agent-native-cli.md` — Agent-native design imperatives (if it exists)
-- `docs/decisions/ADR-004-agent-native-output.md` — Output protocol contract (if it exists)
+[type: gwrk-native]
+Before specifying, check if these files exist and load them for context:
+- `docs/grounding/architecture.md` — Project structure, tech stack
+- `specs/000-build-plan.md` — Dependency graph, critical path
+- `docs/grounding/agent-native-cli.md` — Agent-native design imperatives
+- `docs/decisions/ADR-004-agent-native-output.md` — Output protocol contract
+[/type]
+
+[type: generic]
+Reference the project's own architecture documentation and existing directory structure for technical constraints.
+[/type]
 
 ## gwrk Design Imperatives
 
+[type: gwrk-native]
 <gwrk_design_imperatives>
-The following principles apply ONLY to gwrk projects (projects where `docs/architecture.md` exists). For non-gwrk projects, skip this section entirely and derive technical constraints from the reference document or description.
-
 When specifying features for gwrk, ensure the spec honors these principles:
 - **Fail-Fast Config**: No graceful defaults. Missing config → `process.exit(1)` with corrective message.
 - **Air-Gapped by Default**: No runtime CDN fetches, no telemetry, no analytics.
 - **Agent-Native Output**: New commands MUST specify exit codes, error navigation messages, and `--format json` support. Every acceptance scenario `Then` clause should be a shell assertion.
 - **DB Access Constraint**: Discovery commands MUST work from a bare git clone (no SQLite, no build server). Commands requiring server/DB access MUST fail fast if unavailable.
 </gwrk_design_imperatives>
+[/type]
 
 ## Inputs
 
@@ -51,7 +57,7 @@ When specifying features for gwrk, ensure the spec honors these principles:
 
 2. Find highest feature number in `specs/` and increment.
    ```bash
-   ls specs/ | grep -E '^[0-9]+' | sort -n | tail -1
+   ls specs/ | grep -E '^[0-9]+' | sort -n | tail -n 1 || echo "000"
    ```
 
 3. **Clarify ambiguities** (if needed):
@@ -81,10 +87,17 @@ When specifying features for gwrk, ensure the spec honors these principles:
    ls specs/*/spec.md 2>/dev/null
    ```
    For each relevant spec that shares:
+[type: gwrk-native]
    - Build plan dependencies or successors
    - Source directories (`src/commands/`, `src/engine/`, `src/server/`, `src/utils/`, `src/db/`)
    - Zod schemas or shared types
    - ADR contracts (especially ADR-004 output protocol)
+[/type]
+[type: generic]
+   - Technical dependencies or functional overlaps
+   - Shared source directories or modules
+   - Shared data models or contracts
+[/type]
 
    Read the spec and its `contracts/` directory. Check for:
    - **Shared type compatibility**: Do your types align with existing contracts?
@@ -105,8 +118,12 @@ When specifying features for gwrk, ensure the spec honors these principles:
    - Every `TR-###` MUST be **feature-specific**: name the target file/module and what to assert. If a test type doesn't apply, mark `DEFERRED` with rationale.
    - Every FR with failure modes MUST have an `Error States` table (condition, stderr, exit code).
    - Technical Constraints:
-     - If this is a gwrk project (has `docs/architecture.md`): Include TC-001 (Air-Gapped), TC-002 (Fail-Fast), TC-003 (TypeScript Only).
-     - If this is a non-gwrk project: Derive technical constraints from the reference document. Do NOT apply gwrk defaults.
+[type: gwrk-native]
+     - Include TC-001 (Air-Gapped), TC-002 (Fail-Fast), TC-003 (TypeScript Only).
+[/type]
+[type: generic]
+     - Derive technical constraints from the project's own standards.
+[/type]
      - Add feature-specific TCs as needed.
    - Coverage matrix MUST include the `Tested by TR` column. Every FR MUST map to ≥1 TR (or `no test — rationale`).
    - **Agent-Native compliance**: If the spec introduces new CLI commands, each MUST specify: command type (query/generator/verifier/mutator), exit codes, error-as-navigation messages, and `--format json` support where applicable.
@@ -139,6 +156,8 @@ If any check fails, fix the spec before reporting. Do NOT defer to `/checklist`.
 
 <critical_reminders>
 - If a `<reference_document>` was provided in the input, it is the AUTHORITATIVE source. Use its exact screen names, role names, data sources, and acceptance criteria. Do NOT invent generic alternatives.
+[type: gwrk-native]
 - If architecture reference files do not exist on disk, this is a non-gwrk project. Do NOT apply gwrk defaults (Air-Gapped, Agent-Native, TypeScript-only).
+[/type]
 - The scaffold script (`.specify/scripts/...`) may not exist in non-gwrk projects. If it fails, proceed without it — the feature directory already exists.
 </critical_reminders>

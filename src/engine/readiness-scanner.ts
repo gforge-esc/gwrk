@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
+export interface ReadinessPhase {
+  number: number;
+  title: string;
+}
+
 export interface ReadinessResult {
   featureId: string;
   level: number;
@@ -9,6 +14,28 @@ export interface ReadinessResult {
   hasPlan: boolean;
   hasTasks: boolean;
   spTotal?: number;
+  phases: ReadinessPhase[];
+}
+
+/**
+ * Parse phase headings from a plan.md file.
+ * Matches: ### Phase N: Title
+ */
+export function parsePlanPhases(planContent: string): ReadinessPhase[] {
+  const phases: ReadinessPhase[] = [];
+  const lines = planContent.split("\n");
+
+  for (const line of lines) {
+    const match = line.match(/^###\s+Phase\s+(\d+):\s+(.+)/);
+    if (match) {
+      phases.push({
+        number: Number.parseInt(match[1], 10),
+        title: match[2].trim(),
+      });
+    }
+  }
+
+  return phases;
 }
 
 /**
@@ -31,7 +58,8 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
     const featureDir = path.join(specsDir, featureId);
 
     const hasSpec = fs.existsSync(path.join(featureDir, "spec.md"));
-    const hasPlan = fs.existsSync(path.join(featureDir, "plan.md"));
+    const planPath = path.join(featureDir, "plan.md");
+    const hasPlan = fs.existsSync(planPath);
     const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
     const hasTasks = fs.existsSync(tasksPath);
 
@@ -67,6 +95,17 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
       }
     }
 
+    // Parse phases from plan.md
+    let phases: ReadinessPhase[] = [];
+    if (hasPlan) {
+      try {
+        const planContent = fs.readFileSync(planPath, "utf-8");
+        phases = parsePlanPhases(planContent);
+      } catch {
+        // Non-fatal — phases stays empty
+      }
+    }
+
     results.push({
       featureId,
       level,
@@ -75,8 +114,10 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
       hasPlan,
       hasTasks,
       spTotal,
+      phases,
     });
   }
 
   return results;
 }
+

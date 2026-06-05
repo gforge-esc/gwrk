@@ -51,6 +51,64 @@ describe('FR-014: resolveEnforcementSkills', () => {
     expect(skills).toContain('Local Standards');
   });
 
+  it('R007: skips enforcement skill when language does not match profile', async () => {
+    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
+      { name: 'typescript-standards', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', status: 'active' }
+    ]);
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: 'typescript-standards', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', language: 'TypeScript' },
+      path: '/fake/path/typescript-standards',
+      status: 'active'
+    });
+    vi.mocked(fsp.readFile).mockResolvedValue('# TypeScript Standards');
+
+    const skills = await resolveEnforcementSkills('/fake/root', 'all', {
+      type: 'python',
+      stack: { language: 'Python' },
+    });
+
+    expect(skills).not.toContain('TypeScript Standards');
+    expect(skills).toBe('');
+  });
+
+  it('R007: loads enforcement skill when language matches profile', async () => {
+    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
+      { name: 'typescript-standards', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', status: 'active' }
+    ]);
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: 'typescript-standards', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', language: 'TypeScript' },
+      path: '/fake/path/typescript-standards',
+      status: 'active'
+    });
+    vi.mocked(fsp.readFile).mockResolvedValue('# TypeScript Standards');
+
+    const skills = await resolveEnforcementSkills('/fake/root', 'all', {
+      type: 'nodejs',
+      stack: { language: 'TypeScript' },
+    });
+
+    expect(skills).toContain('TypeScript Standards');
+  });
+
+  it('R007: loads enforcement skill with no language field for all profiles', async () => {
+    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
+      { name: 'gwrk-conventions', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', status: 'active' }
+    ]);
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: 'gwrk-conventions', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc' },
+      path: '/fake/path/gwrk-conventions',
+      status: 'active'
+    });
+    vi.mocked(fsp.readFile).mockResolvedValue('# GWRK Conventions');
+
+    const skills = await resolveEnforcementSkills('/fake/root', 'all', {
+      type: 'python',
+      stack: { language: 'Python' },
+    });
+
+    expect(skills).toContain('GWRK Conventions');
+  });
+
   it('TR-P10-003: contains no legacy .agents/ path references', async () => {
     const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
     const source = realFs.readFileSync('src/plugins/skill-runtime.ts', 'utf8');

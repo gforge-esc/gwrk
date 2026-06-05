@@ -62,11 +62,17 @@ cat {feature_dir}/.gwrk/tasks.json | jq '.phases[] | {name, tasks: [.tasks[] | {
 
 This is the highest-weight detection pass. Every task must be test-drivable:
 
+[type: gwrk-native]
 - **TR Section**: Does spec.md contain Testing Requirements (TR-###)?
   - E2E tests (Playwright) for user-facing flows?
   - Docker verification (`make up`) for handoff?
   - Unit tests for business logic?
   - If TR section missing: **CRITICAL** gap.
+[/type]
+
+[type: generic]
+- **Testing Requirements**: Does the specification define clear testing requirements for unit, integration, and end-to-end scenarios?
+[/type]
 
 - **Per-Task Test Gates**: For each task in tasks.json:
   - Does the task description include verifiable ACCEPTANCE criteria?
@@ -84,10 +90,16 @@ This is the highest-weight detection pass. Every task must be test-drivable:
 
 When `/plan-to-tasks` has already generated gate scripts, analyze their quality:
 
+[type: gwrk-native]
 - **Assertion Strength**: Read each gate script:
   - Does it assert EXACT type signatures (not just file existence)?
   - Does it use `grep -q` or `jq -e` against implementation files?
   - Gates that only check `[ -f file ]`: **HIGH** finding.
+[/type]
+
+[type: generic]
+- **Assertion Strength**: Verify that gate scripts perform meaningful checks beyond simple file existence.
+[/type]
 
 - **Contract Derivation**: Are gates derived from `contracts/`, not task prose?
   - Gates that paraphrase task descriptions instead of testing contracts: **HIGH** finding.

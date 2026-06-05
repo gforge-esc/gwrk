@@ -488,7 +488,7 @@ describe("generateFilesystemGates (FM-1/2/3)", () => {
     }
   });
 
-  it("should generate file-existence gate when no test file found", () => {
+  it("should skip gate when primary file does not exist on disk (K.TO-BE §3)", () => {
     const phases = [
       {
         id: "phase-01",
@@ -507,11 +507,10 @@ describe("generateFilesystemGates (FM-1/2/3)", () => {
 
     const result = generateFilesystemGates(tempDir, phases);
 
-    expect(result.generated).toBe(1);
-    const gatePath = path.join(tempDir, "gates", "T002-gate.sh");
-    const content = fs.readFileSync(gatePath, "utf-8");
-    expect(content).toContain("test -f src/config.ts");
-    expect(content).toContain("no test file found");
+    // K.TO-BE §3: file doesn't exist on disk → skip, don't generate bogus gate
+    expect(result.skipped).toBe(1);
+    expect(result.generated).toBe(0);
+    expect(fs.existsSync(path.join(tempDir, "gates", "T002-gate.sh"))).toBe(false);
   });
 
   it("should preserve PE-authored gates (no filesystem convention marker)", () => {

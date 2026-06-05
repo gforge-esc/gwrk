@@ -6,9 +6,7 @@ import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
-import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
-import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
-import { SandboxManager } from "../server/sandbox.js";
+
 import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
 import { type AgentBackend, loadConfig } from "../utils/config.js";
@@ -39,6 +37,7 @@ import {
 
 import { getBackendSelector } from "../server/index.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import {
   loadSetupState,
   isSetupComplete,
@@ -141,6 +140,7 @@ async function shipPhase(
   }
 
   const startedAt = new Date().toISOString();
+  const startCommit = getCurrentCommit(cwd);
 
   const runId = startRun({
     feature_id: feature,
@@ -185,6 +185,10 @@ async function shipPhase(
       if (fs.existsSync(statePath)) {
         try {
           existingState = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+          // Iteration count is a circuit breaker for THIS invocation, not a
+          // persistent counter. A new `gwrk ship` gets a fresh breaker.
+          // Stage is preserved for crash recovery; iteration is not.
+          existingState!.iteration = 1;
           console.log(`  🔄 Resuming from state: ${existingState?.stage}`);
         } catch (err) {
           console.warn(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
@@ -217,7 +221,7 @@ async function shipPhase(
       // Wire events to bridge for Slack notifications
       new ShipBridge(orchestrator, cwd);
 
-      const planStore = new PlanStore();
+      const planStore = new PlanStore(resolveProjectId(cwd));
       orchestrator.on("plan:ship:complete", (event) => {
         planStore.handleShipComplete(event);
       });
@@ -226,20 +230,54 @@ async function shipPhase(
       if (exitCode !== 0) {
         throw new Error(`ShipOrchestrator failed with exit code ${exitCode}`);
       }
+
+      // Write PR data + status back to DB for harvest to find
+      const result = orchestrator.getResult();
+      const durationS = Math.round((Date.now() - startTime) / 1000);
+      const stats = getDiffStats(cwd, startCommit);
+      finishRun(runId, {
+        exit_code: 0,
+        duration_s: durationS,
+        status: "shipped",
+        ...(result.prNumber ? { pr_number: result.prNumber } : {}),
+        ...(result.prUrl ? { pr_url: result.prUrl } : {}),
+        files_changed: stats.filesChanged,
+        lines_added: stats.linesAdded,
+        lines_deleted: stats.linesDeleted,
+      });
+      success("ship", durationS, runId);
     }
 
-    const durationS = Math.round((Date.now() - startTime) / 1000);
-    finishRun(runId, { exit_code: 0, duration_s: durationS });
-    success("ship", durationS, runId);
+    // Legacy path success
+    if (opts.legacy) {
+      const durationS = Math.round((Date.now() - startTime) / 1000);
+      const stats = getDiffStats(cwd, startCommit);
+      finishRun(runId, {
+        exit_code: 0,
+        duration_s: durationS,
+        status: "shipped",
+        files_changed: stats.filesChanged,
+        lines_added: stats.linesAdded,
+        lines_deleted: stats.linesDeleted,
+      });
+      success("ship", durationS, runId);
+    }
   } catch (err: unknown) {
     const durationS = Math.round((Date.now() - startTime) / 1000);
+    const stats = getDiffStats(cwd, startCommit);
     exitCode =
       err instanceof Error &&
       "code" in err &&
       typeof (err as { code?: unknown }).code === "number"
         ? (err as { code: number }).code
         : 1;
-    finishRun(runId, { exit_code: exitCode, duration_s: durationS });
+    finishRun(runId, {
+      exit_code: exitCode,
+      duration_s: durationS,
+      files_changed: stats.filesChanged,
+      lines_added: stats.linesAdded,
+      lines_deleted: stats.linesDeleted,
+    });
     console.error(
       `\n  Error: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -370,7 +408,7 @@ Exit codes:
 Examples:
   gwrk ship 001 1
   gwrk ship 001-cli-core --dry-run
-  gwrk ship 001 --parallel --concurrency 4
+  gwrk ship 001 --agent gemini
 `,
   )
   .argument("<feature>", "Feature ID")
@@ -383,8 +421,7 @@ Examples:
     "Override the default agent (e.g., gemini, claude, codex)",
   )
   .option("--format <format>", "Output format (json)")
-  .option("--parallel", "Dispatch tasks within a phase in parallel")
-  .option("--concurrency <n>", "Max concurrent tasks (overrides config)", "2")
+
   .option("--legacy", "Use legacy bash ship loop (work-until-done.sh)")
   .option(
     "--resume-from <stage>",
@@ -440,97 +477,7 @@ Examples:
           throw new CommandError("Run gwrk setup first", 1);
         }
 
-        if (opts.parallel) {
-          const orchestrator = new DispatchOrchestrator(
-            config,
-            new SandboxManager(cwd),
-            new LocalInvocationStrategy(),
-          );
 
-          const taskState = loadTaskState(featureSpecDir);
-          const phaseIds = phase
-            ? [`phase-${phase.padStart(2, "0")}`]
-            : taskState.phases.map((p) => p.id);
-
-          console.log(
-            `${GREEN}▶${RESET} Parallel dispatch enabled (concurrency: ${opts.concurrency || config.parallelism.local.maxClones})`,
-          );
-
-          let finalExitCode = 0;
-          const shipStartTime = Date.now();
-
-          for (const phaseId of phaseIds) {
-            const phaseData = taskState.phases.find((p) => p.id === phaseId);
-            if (!phaseData || isPhaseComplete(phaseData)) continue;
-
-            const openTasks = phaseData.tasks.filter(
-              (t) => t.status === "open",
-            );
-            if (openTasks.length === 0) continue;
-
-            let backend = opts.agent as string as AgentBackend;
-            let selectedModel: string | undefined;
-            if (!backend) {
-              const selector = getBackendSelector(cwd);
-              const selection = await selector.selectBackend({
-                runId: `ship-${feature}-${Date.now()}`,
-                feature,
-                phase: phaseId,
-                taskType: "implement",
-                language: "typescript",
-                taskSP: openTasks.reduce((sum, t) => sum + (t.sp || 0), 0),
-              });
-              backend = selection.backend as AgentBackend;
-              selectedModel = selection.model;
-              console.log(
-                `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
-              );
-            }
-
-            console.log(
-              `\n${GREEN}Phase ${phaseId}${RESET}: Dispatching ${openTasks.length} tasks in parallel...`,
-            );
-
-            const results = await orchestrator.dispatchPhase({
-              featureId: feature,
-              phaseId: phaseId,
-              tasks: openTasks.map((t) => ({
-                id: t.id,
-                prompt: `${t.title}\n\n${t.description}`,
-              })),
-              backend,
-              model: selectedModel,
-              concurrency: opts.concurrency
-                ? Number.parseInt(opts.concurrency as string)
-                : undefined,
-            });
-
-            for (const res of results) {
-              const task = phaseData.tasks.find((t) => t.id === res.id);
-              if (!task) continue;
-              if (res.status === "completed") {
-                task.status = "completed";
-                task.completedAt = new Date().toISOString();
-                console.log(`  ${GREEN}✓${RESET} ${res.id}: Success`);
-              } else {
-                finalExitCode = 1;
-                console.log(`  ${RED}✗${RESET} ${res.id}: Failed`);
-              }
-            }
-
-            saveTaskState(featureSpecDir, taskState);
-            if (finalExitCode !== 0) break;
-          }
-
-          const totalDurationS = Math.round(
-            (Date.now() - shipStartTime) / 1000,
-          );
-          process.stderr.write(
-            `[exit:${finalExitCode} | ${totalDurationS}s]\n`,
-          );
-          if (finalExitCode !== 0) process.exit(finalExitCode);
-          return;
-        }
 
         // Determine which phases to ship
         let phases: string[];

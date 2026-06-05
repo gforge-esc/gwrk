@@ -3,6 +3,7 @@
  */
 export enum ShipStage {
   BRANCH_SETUP = "BRANCH_SETUP",
+  ACTIVATE_TESTS = "ACTIVATE_TESTS",
   IMPLEMENT = "IMPLEMENT",
   BUILD_CHECK = "BUILD_CHECK",
   TEST_GATE = "TEST_GATE",
@@ -48,6 +49,8 @@ export interface ShipState {
   failureContext: FailureContext | null;
   branchName?: string;
   testBaseline?: number;
+  prNumber?: number;
+  prUrl?: string;
 }
 
 /**

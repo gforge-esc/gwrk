@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { computeEffort } from "./effort.js";
-import { writeEffortReport } from "./report-writer.js";
 import { resolveRoleMultipliers } from "./roles.js";
 import { extractStories } from "./spec-parser.js";
 import type {
@@ -12,10 +11,9 @@ import type {
 } from "./types.js";
 
 /**
- * RED tests for src/engine/effort.ts + roles.ts + report-writer.ts
+ * RED tests for src/engine/effort.ts + roles.ts
  * Contracts: contracts/effort-engine.md
  * FR-002: Compute hours with role multipliers + 1.25× overhead
- * FR-003: Generate markdown effort report to docs/assessments/
  * FR-012: Role multiplier overrides from .gwrkrc.json
  */
 
@@ -222,44 +220,5 @@ describe("FR-012: resolveRoleMultipliers — config override", () => {
       "RE",
       "TS",
     ]);
-  });
-});
-
-describe("FR-003: writeEffortReport — markdown report generation", () => {
-  // TR-003: report file written to docs/assessments/
-  it("TR-003: writes markdown file to docs/assessments/effort-<feature>-YYYY-MM-DD.md", () => {
-    const report: EffortReport = {
-      featureId: "test-feature",
-      generatedAt: new Date().toISOString(),
-      totalSP: 10,
-      overheadFactor: 1.25,
-      roles: [],
-      stories: [],
-      totalRawHours: 40,
-      totalWithOverhead: 50,
-      totalDays: 6.25,
-    };
-    const outputPath = writeEffortReport(report, "/tmp/test-assessments");
-    expect(outputPath).toMatch(/effort-test-feature-\d{4}-\d{2}-\d{2}\.md$/);
-  });
-
-  it("report contains Total Story Points header", () => {
-    const report: EffortReport = {
-      featureId: "test-feature",
-      generatedAt: new Date().toISOString(),
-      totalSP: 10,
-      overheadFactor: 1.25,
-      roles: [],
-      stories: [],
-      totalRawHours: 40,
-      totalWithOverhead: 50,
-      totalDays: 6.25,
-    };
-    const outputPath = writeEffortReport(report, "/tmp/test-assessments");
-    // File content should contain "Total Story Points"
-    const { readFileSync } = require("node:fs");
-    const content = readFileSync(outputPath, "utf-8");
-    expect(content).toContain("Total Story Points");
-    expect(content).toContain("1.25");
   });
 });
