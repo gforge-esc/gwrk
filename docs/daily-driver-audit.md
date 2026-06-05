@@ -1045,23 +1045,14 @@ The Slack integration was designed as a two-way control surface but currently fu
 
 #### What Blocks Daily Driver
 
-The blockers are simpler than they look. Agent backends (gemini, claude, codex, agy) are all available locally — no Docker required. The server uses **Socket Mode** (outbound WebSocket to Slack) — no tunnel, no public URL, no ngrok. Slack IS the tunnel.
+Everything is wired. Socket Mode (outbound WebSocket — no tunnel needed). Sleep/wake resilience in `lifecycle.ts`. Tokens at `~/.gwrk/.env`. Channel configured in `.gwrkrc.json`. The actual blocker:
 
-Sleep/wake resilience already exists: `lifecycle.ts` detects sleep → pauses queue, detects wake → runs graceful reconnect (re-sample resources, verify git, verify network, resume queue). `network.ts` monitors connectivity and pauses/resumes on network down/up.
-
-1. **Server not running** — `gwrk server start` needs to be running. No launchd plist to auto-start on login and keep it alive across sleep/wake cycles.
-2. **Slack app not configured** — App token (`xapp-*`) and bot token need to be in `.gwrkrc.json` or environment. Unclear if they're set for the current Slack workspace.
-3. **Untested end-to-end** — The slash commands and button actions have never been tested against a live Slack workspace with a running server. Unknown failure surface.
+1. **Nobody has run it.** `gwrk server start` hasn't been tested against the live Slack workspace. Unknown failure surface.
+2. **No launchd plist.** Server needs to survive sleep/wake cycles and login/logout. Needs a `com.gwrk.server.plist` to keep it alive.
 
 #### Path to "Work From Phone"
 
-| Step | Effort | What |
-|------|--------|------|
-| 1. **launchd plist** | 30 min | Auto-start `gwrk server start` on login. `KeepAlive: true` handles crashes + sleep/wake. |
-| 2. **Verify Slack tokens** | 15 min | Confirm `appToken` and `botToken` in `.gwrkrc.json`. Socket Mode needs both. |
-| 3. **Smoke test** | 1 hr | `gwrk server start`, send `/gwrk status` from phone, test buttons. Fix what breaks. |
-
-> **Total: ~1.5 hrs to first real phone test.** No Docker. No tunnel. No cloud hosting. No rewrites. Just: run the server, confirm Slack tokens, test.
+Run `gwrk server start`. Send `/gwrk status` from your phone. See what breaks. Fix it. Then write a launchd plist so it stays running.
 
 ### Resolved This Session
 
