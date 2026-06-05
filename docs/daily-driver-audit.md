@@ -994,7 +994,7 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | ~~8~~ | ~~M.2~~ | ~~**Wire `gwrk define research`.**~~ R006 draft complete. Research methodologies are workflow plugins. CLI: `gwrk define research R00X --methodology jtbd`. Domain ontology first-class. | ~~Research~~ | ✅ Draft complete — awaiting review |
 | ~~9~~ | ~~M.3~~ | ~~**Project perspective mechanism.**~~ R007 draft complete. Three layers: enforcement skills (how we build), domain ontology (what we're building), architecture grounding (system shape). Profile → enforcement routing algorithm designed. **F014 P13 shipped ADR-009 injection.** | ~~Research~~ | ✅ Research complete. Ontology injection shipped. Routing → next feature cycle. |
 | ~~10~~ | ~~T~~ | ~~**Compression needs SP data.**~~ LOC-derived SP fallback wired (PR #76 + manual wiring fix). `gwrk measure compression --all` now produces real data for all 13 features. | ~~2 hrs~~ | ✅ Done. 1376 total SP, avg 144.68x point compression. |
-| 11 | M.4 | **Rewrite `docs/product/WHAT_IS_GWRK.md`.** Currently self-referential. Should be the PE's operating system thesis. | ~1 hr | |
+| ~~11~~ | ~~M.4~~ | ~~**Rewrite `docs/product/WHAT_IS_GWRK.md`.**~~ R008 research complete. Ontology-grounded rewrite: six primitives, five mermaid diagrams, honest framing (compression = accountability, not delivery). README updated to match. | ~~1 hr~~ | ✅ Done. R008 deliverable shipped. |
 
 ### Tier 4: Backlog (Not Blocking)
 
