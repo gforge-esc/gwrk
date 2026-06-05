@@ -23,13 +23,20 @@ gwrk operates on six kinds of things. Understanding them is understanding the pr
 
 These connect in a loop:
 
-```
-Judgment → Initiative → Commitment → Agent → Signal → Judgment
-    │                                                     ▲
-    └─────── your thinking ──────────────────────────────┘
+```mermaid
+graph LR
+    J["🧠 Judgment"] --> I["📋 Initiative"]
+    I --> C["📝 Commitment"]
+    C --> A["🤖 Agent"]
+    A --> S["📊 Signal"]
+    S --> J
+    style J fill:#4a9eff,color:#fff
+    style C fill:#3b82f6,color:#fff
+    style A fill:#f59e0b,color:#fff
+    style S fill:#10b981,color:#fff
 ```
 
-Your judgment creates initiatives. Initiatives produce commitments (specs, plans, gates). Commitments constrain agents. Agents produce signals (compression, test results, gate verdicts). Signals inform your next judgment. The system tightens around reality with every cycle.
+Your judgment creates initiatives. Initiatives produce commitments (specs, plans, gates). Commitments constrain agents. Agents produce signals (compression, test results, gate verdicts). Signals motivate your next judgment. The system tightens around reality with every cycle.
 
 ---
 
@@ -41,13 +48,27 @@ gwrk is the automation of [Foxtrot Charlie](FOXTROT-CHARLIE.md) — an operating
 
 Foxtrot Charlie distills execution into four pillars. Each maps directly to a gwrk CLI surface:
 
+```mermaid
+graph LR
+    subgraph "Truth → Clarity → Throughput → Value"
+        D["🔍 discover"] --> DEF["📋 define"]
+        DEF --> S["🏗️ ship"]
+        S --> M["📊 measure"]
+        M -->|"motivation"| D
+    end
+    style D fill:#8b5cf6,color:#fff
+    style DEF fill:#3b82f6,color:#fff
+    style S fill:#f59e0b,color:#fff
+    style M fill:#10b981,color:#fff
+```
+
 | Pillar | Mantra | CLI | What It Does Today |
 |--------|--------|-----|-------------------|
 | **Discovery** | Truth > narratives | `gwrk define research` | Scaffold research initiatives. Apply methodologies (JTBD, ontology, technical). Produce structured briefs. |
 | **Definition** | If it's not written, it's not committed | `gwrk define spec → plan → tests → tasks` | Strict pipeline — each step gates the next. Binary acceptance criteria. Gate scripts that exit 0 or 1. |
 | **Shipping** | Ship to learn. Fast reds surface problems early. | `gwrk ship <feature> <phase>` | Autonomous loop: implement → build → test → review → PR. Circuit breaker at 3 iterations. Gap analysis on failure. |
 | | | `gwrk measure compression` | Shipping accountability: LOC-derived effort forecast vs. actual delivery time. Motivation metric, not a value claim. |
-| **Delivery** | Shipped ≠ delivered. Value = adoption + outcomes. | *Not yet in gwrk's domain.* | Delivery requires receipt — usage, impact, customer outcomes. gwrk gets code shipped; whether it was the *right* code is still a human judgment call. |
+| **Delivery** | Shipped ≠ delivered. Value = adoption + outcomes. | *Not yet in gwrk's purview.* | If Discovery and Definition are done well, then Shipping is likely to be successful but measuring value recieved is outside the scope of gwrk. |
 
 The mantra that connects them: **Truth → Clarity → Throughput → Value.**
 
@@ -77,15 +98,32 @@ Foxtrot Charlie assumes three failure modes. No new process is added. No ceremon
 
 This is the product's core loop. Each step must complete before the next begins.
 
+```mermaid
+graph TD
+    SPEC["gwrk define spec"] --> PLAN["gwrk define plan"]
+    PLAN --> TESTS["gwrk define tests"]
+    TESTS --> TASKS["gwrk define tasks"]
+    TASKS --> SHIP["gwrk ship feature phase"]
+
+    subgraph "Ship Loop (autonomous)"
+        SHIP --> IMPL["Implement"]
+        IMPL --> BUILD["Build Check"]
+        BUILD --> TEST["Test Gate"]
+        TEST -->|"PASS"| REVIEW["Code Review + UAT"]
+        TEST -->|"FAIL"| IMPL
+        REVIEW -->|"GO"| PR["PR + Merge"]
+        REVIEW -->|"NO-GO"| GAP["Gap Analysis"]
+        GAP --> IMPL
+    end
+
+    PR --> HARVEST["Harvest → Compression"]
 ```
-gwrk define spec 007     →  spec.md (requirements, FRs, acceptance criteria)
-gwrk define plan 007     →  plan.md (phases, dependency ordering, effort forecast)
-gwrk define tests 007    →  RED test files (fail because the feature isn't built yet)
-gwrk define tasks 007    →  tasks.json (machine-readable work items + gate scripts)
-gwrk ship 007 1          →  autonomous implement → build → test → review → PR → merge
-gwrk ship 007 2          →  next phase...
-gwrk measure compression →  was it worth it?
-```
+
+Key points this diagram makes visible:
+- **Strict ordering**: tests before tasks, plan before tests — you can't skip
+- **Autonomous retry**: NO-GO triggers gap analysis and reimplementation, not human intervention
+- **Circuit breaker**: 3 iterations max, then the human decides
+- **Harvest**: closes the loop back to compression on merge
 
 The ship loop is autonomous. On each iteration:
 1. **Implement** — dispatch an agent with the task prompt, enforcement skills, and project context
@@ -103,10 +141,14 @@ If review returns NO-GO, the loop retries with gap analysis. After 3 iterations,
 
 Compression is a motivation metric. It answers: **how fast did we ship relative to how long it would have taken without agents?** It does not measure value. It does not prove the feature was the right thing to build. It's an accountability measure for the shipping pillar — and it's the feedback signal that motivates sharper specs.
 
-```
-Better judgment → sharper specs → fewer agent retries → higher compression
-                                                              │
-higher compression → motivation to invest in better specs ←───┘
+```mermaid
+graph TD
+    SPECS["Better Specs"] -->|"clearer requirements"| AGENTS["Agent Performance"]
+    AGENTS -->|"fewer retries"| COMPRESSION["Compression Ratio"]
+    COMPRESSION -->|"motivation: what works"| LEARNING["Your Learning"]
+    LEARNING -->|"improved judgment"| SPECS
+
+    style COMPRESSION fill:#10b981,color:#fff,stroke-width:3px
 ```
 
 ### Real Data (as of June 2026)
@@ -130,6 +172,25 @@ Compression is an imprecise measurement that backs into motivation: if your comp
 ## The Plugin System
 
 gwrk is project-aware, not a generic agent launcher.
+
+```mermaid
+graph TD
+    PROFILE["Profile Detector"] -->|"detects language/stack"| ROUTER["Enforcement Router"]
+    ROUTER --> SKILLS["Enforcement Skills"]
+    ROUTER --> WORKFLOWS["Workflow Plugins"]
+    ROUTER --> ONTOLOGY["Domain Ontology"]
+
+    SKILLS --> CONV["gwrk-conventions"]
+    SKILLS --> TS["typescript-standards"]
+    SKILLS --> CUSTOM["project-specific"]
+
+    WORKFLOWS --> SPEC_WF["gwrk-define-spec"]
+    WORKFLOWS --> TEST_WF["gwrk-define-tests"]
+    WORKFLOWS --> IMPL_WF["gwrk-implement"]
+
+    ONTOLOGY --> DOM[".gwrk/ontology/domain.md"]
+    ONTOLOGY --> HIER[".gwrk/perspective/hierarchy.md"]
+```
 
 **Profile Detection** — auto-detects language, build system, and project layout from filesystem markers (`package.json`, `Cargo.toml`, `pyproject.toml`). Routes enforcement skills accordingly.
 
