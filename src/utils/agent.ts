@@ -151,11 +151,15 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
   const runsDir = path.join(projectRoot, ".runs");
   fs.mkdirSync(runsDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const workflow = path.basename(opts.workflowPath, ".md");
+  // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
+  const rawWorkflow = path.basename(opts.workflowPath, ".md");
+  const workflow = rawWorkflow === "PROMPT"
+    ? path.basename(path.dirname(opts.workflowPath))
+    : rawWorkflow;
   const rawFeature = opts.featureDir
     ? path.basename(opts.featureDir)
     : (opts.prompt ?? "unknown");
-  const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  const feature = rawFeature.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
   const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 

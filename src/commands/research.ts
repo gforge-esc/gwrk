@@ -1,3 +1,4 @@
+import path from "node:path";
 import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { Command } from "commander";
 import { success, info, startTimer, stopTimer } from "../utils/format.js";
@@ -42,10 +43,13 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
 
       const durationS = Math.round((Date.now() - startTime) / 1000);
       stopTimer(timer);
-      
-      // Use success() which prints its own box to console
+
+      // Show the log path relative to cwd
+      const relLog = path.relative(process.cwd(), workflowResult.logPath || "");
       success(workflowName, durationS, undefined, workflowResult.logPath);
-      output += `\nSummary: ${workflowResult.summary}`;
+
+      // Show what files were created (actionable, not prose)
+      output = `Research: ${result.directory}\nLog: ${relLog}`;
     } catch (error) {
       stopTimer(timer);
       throw error;
