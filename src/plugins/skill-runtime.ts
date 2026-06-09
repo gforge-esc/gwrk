@@ -190,7 +190,14 @@ export async function resolveEnforcementSkills(
       // Filter by language (R007: profile-aware enforcement routing)
       // Only filter builtins — project-local skills always load (the user chose them)
       if (profile?.stack?.language && manifest.language) {
-        if (manifest.language.toLowerCase() !== profile.stack.language.toLowerCase()) {
+        const manifestLang = manifest.language.toLowerCase();
+        // Polyglot: check against languages array if present
+        if (profile.stack.languages && profile.stack.languages.length > 1) {
+          const profileLangs = profile.stack.languages.map((l) => l.toLowerCase());
+          if (!profileLangs.includes(manifestLang)) {
+            continue;
+          }
+        } else if (manifestLang !== profile.stack.language.toLowerCase()) {
           continue;
         }
       }
