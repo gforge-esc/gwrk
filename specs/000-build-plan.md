@@ -56,84 +56,84 @@ graph TD
 ```mermaid
 gantt
     title Critical Path
-    dateFormat X
+    dateFormat YYYY-MM-DD
     axisFormat %s
 
-    Project Bootstrap & Config ✅ :, 001_cli_core_phase_01, 0, 1
-    SQLite Execution Ledger ✅ :, 001_cli_core_phase_02, after 001_cli_core_phase_01, 1
-    Clarity Pillar — Define ✅ :, 001_cli_core_phase_03, after 001_cli_core_phase_02, 1
-    Throughput Pillar — Ship ✅ :, 001_cli_core_phase_04, after 001_cli_core_phase_03, 1
-    Task Engine — State, Gates & History ✅ :, 001_cli_core_phase_05, after 001_cli_core_phase_04, 1
-    Value Pillar — Measure ✅  :, 001_cli_core_phase_06, after 001_cli_core_phase_05, 1
-    Init Hardening ✅          :done, 001_cli_core_phase_07, after 001_cli_core_phase_06, 1
-    E2E Surface Hardening ✅   :done, 001_cli_core_phase_08, after 001_cli_core_phase_07, 1
-    State Contract — Execution Manifests & Merge Safety :done, 001_cli_core_phase_09, after 001_cli_core_phase_08, 1
-    Unified Init — Project Onboarding ⭐ **REWRITE (R3)** :done, 001_cli_core_phase_10, after 001_cli_core_phase_09, 1
-    CLI UX Polish ✅           :done, 001_cli_core_phase_11, after 001_cli_core_phase_10, 1
-    Define Pillar Output Parity :done, 001_cli_core_phase_12, after 001_cli_core_phase_11, 1
-    Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)** :done, 001_cli_core_phase_13, after 001_cli_core_phase_12, 1
-    Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)** :done, 001_cli_core_phase_14, after 001_cli_core_phase_13, 1
-    Resilience & System Status :done, 002_build_server_phase_02, after 001_cli_core_phase_14, 1
-    Slack Event Bridge & Bless Actions :done, 002_build_server_phase_03, after 002_build_server_phase_02, 1
-    Execution Ledger          :done, 002_build_server_phase_04, after 002_build_server_phase_03, 1
-    Conversational Agent Surface (P1) :done, 003_slack_phase_02, after 002_build_server_phase_04, 1
-    Webhook Hardening & Topology (P1) :done, 003_slack_phase_03, after 003_slack_phase_02, 1
-    Resilience & Bail         :, 004_ship_loop_phase_02, after 003_slack_phase_03, 1
-    Verification & Artifacts  :, 004_ship_loop_phase_03, after 004_ship_loop_phase_02, 1
-    Plugin Dispatch Boundary  :, 004_ship_loop_phase_04, after 004_ship_loop_phase_03, 1
-    DispatchOrchestrator — TypeScript Ship Loop (F004-R) :done, 004_ship_loop_phase_05, after 004_ship_loop_phase_04, 1
-    Parallel Dispatch Orchestrator :done, 005_parallel_dispatch_phase_02, after 004_ship_loop_phase_05, 1
-    CLI Commands & Terminal Rendering :done, 006_pulse_phase_02, after 005_parallel_dispatch_phase_02, 1
-    Final Verification & E2E  :done, 006_pulse_phase_03, after 006_pulse_phase_02, 1
-    Compression Engine        :, 007_effort_compression_phase_02, after 006_pulse_phase_03, 1
-    CLI Commands + Integration :, 007_effort_compression_phase_03, after 007_effort_compression_phase_02, 1
-    LOC-Derived SP Fallback   :done, 007_effort_compression_phase_04, after 007_effort_compression_phase_03, 1
-    Harvest Integration       :, 007_effort_compression_phase_05, after 007_effort_compression_phase_04, 1
-    Agent Registry & Zod Validation :done, 008_agent_router_phase_01, after 007_effort_compression_phase_05, 1
-    Quota Prober & Cache      :done, 008_agent_router_phase_02, after 008_agent_router_phase_01, 1
-    Backend Selector (Core Logic) :done, 008_agent_router_phase_03, after 008_agent_router_phase_02, 1
-    Integration & Wiring      :done, 008_agent_router_phase_04, after 008_agent_router_phase_03, 1
-    Finalization & Cleanup    :done, 011_harvest_phase_02, after 008_agent_router_phase_04, 1
-    Compression Calculation   :done, 011_harvest_phase_03, after 011_harvest_phase_02, 1
-    Done, Done! Notification  :done, 011_harvest_phase_04, after 011_harvest_phase_03, 1
-    Post-Ship Issue Tracking  :done, 011_harvest_phase_05, after 011_harvest_phase_04, 1
-    Discovery ✅               :done, 013_agent_native_interface_phase_02, after 011_harvest_phase_05, 1
-    Agent Mode ✅              :done, 013_agent_native_interface_phase_03, after 013_agent_native_interface_phase_02, 1
-    Skill Runtime (Layer 2) ✅ SHIPPED :done, 014_plugin_system_phase_02, after 013_agent_native_interface_phase_03, 1
-    Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED :done, 014_plugin_system_phase_03, after 014_plugin_system_phase_02, 1
-    Antigravity (agy) Adapter ✅ SHIPPED :done, 014_plugin_system_phase_04, after 014_plugin_system_phase_03, 1
-    WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED :done, 014_plugin_system_phase_05, after 014_plugin_system_phase_04, 1
-    DefineOrchestrator & CLI Rewiring ✅ SHIPPED :done, 014_plugin_system_phase_06, after 014_plugin_system_phase_05, 1
-    Provisioning & Migration ✅ SHIPPED :done, 014_plugin_system_phase_07, after 014_plugin_system_phase_06, 1
-    Routing & Intelligence (ex-F008) ✅ SHIPPED :done, 014_plugin_system_phase_08, after 014_plugin_system_phase_07, 1
-    Enforcement Skills (FR-014 / US-016) ✅ SHIPPED :done, 014_plugin_system_phase_09, after 014_plugin_system_phase_08, 1
-    .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED :done, 014_plugin_system_phase_10, after 014_plugin_system_phase_09, 1
-    Research CLI (R006) ✅ SHIPPED :done, 014_plugin_system_phase_11, after 014_plugin_system_phase_10, 1
-    Methodology Dispatch (R006) ✅ SHIPPED :done, 014_plugin_system_phase_12, after 014_plugin_system_phase_11, 1
-    Grounding Injection (ADR-009) ✅ SHIPPED :done, 014_plugin_system_phase_13, after 014_plugin_system_phase_12, 1
-    .agents/ Deletion & Verification (ADR-007) ✅ SHIPPED :, 014_plugin_system_phase_14, after 014_plugin_system_phase_13, 1
-    Profile-Aware Enforcement Routing (R007) ✅ SHIPPED :done, 014_plugin_system_phase_15, after 014_plugin_system_phase_14, 1
-    Toolchain Detection (R007) :done, 014_plugin_system_phase_16, after 014_plugin_system_phase_15, 1
-    Context Gathering Mandate (R007) :done, 014_plugin_system_phase_17, after 014_plugin_system_phase_16, 1
-    Ontology Construction Workflow (ADR-009) :done, 014_plugin_system_phase_18, after 014_plugin_system_phase_17, 1
-    Foundation & Data Model   :done, 018_build_plan_orchestrator_phase_01, after 014_plugin_system_phase_18, 1
-    Solver Engine & Ready Queue :done, 018_build_plan_orchestrator_phase_02, after 018_build_plan_orchestrator_phase_01, 1
-    Graph Mutation & Lifecycle Hooks :done, 018_build_plan_orchestrator_phase_03, after 018_build_plan_orchestrator_phase_02, 1
-    Verification & Markdown Rendering :done, 018_build_plan_orchestrator_phase_04, after 018_build_plan_orchestrator_phase_03, 1
-    Visualization & Monitoring :done, 018_build_plan_orchestrator_phase_05, after 018_build_plan_orchestrator_phase_04, 1
-    AgyAdapter Foundation     :done, 019_agy_agent_migration_phase_01, after 018_build_plan_orchestrator_phase_05, 1
-    Router Integration        :done, 019_agy_agent_migration_phase_02, after 019_agy_agent_migration_phase_01, 1
-    Configuration Schema & Profile Detection :, 020_polyglot_monorepo_phase_01, after 019_agy_agent_migration_phase_02, 1
-    CLI Integration & Init Workspaces :, 020_polyglot_monorepo_phase_02, after 020_polyglot_monorepo_phase_01, 1
-    Foundation ✅              :done, 013_agent_native_interface_phase_01, after 020_polyglot_monorepo_phase_02, 1
-    Daemon Lifecycle & Service Management :done, 002_build_server_phase_01, after 013_agent_native_interface_phase_01, 1
-    Engine & Git Utility Refinement :done, 006_pulse_phase_01, after 002_build_server_phase_01, 1
-    Effort Engine             :, 007_effort_compression_phase_01, after 006_pulse_phase_01, 1
-    Foundation (Plugin Loader & Registry) ✅ SHIPPED :done, 014_plugin_system_phase_01, after 007_effort_compression_phase_01, 1
-    Slack Definition Pillar (P0) :done, 003_slack_phase_01, after 014_plugin_system_phase_01, 1
-    Worktree Sandbox Manager  :done, 005_parallel_dispatch_phase_01, after 003_slack_phase_01, 1
-    Webhook Infrastructure & Orchestration :done, 011_harvest_phase_01, after 005_parallel_dispatch_phase_01, 1
-    Digest & Phase-Skip       :done, 004_ship_loop_phase_01, after 011_harvest_phase_01, 1
+    Project Bootstrap and Config :001_cli_core_phase_01, 2026-01-01, 1d
+    SQLite Execution Ledger   :001_cli_core_phase_02, after 001_cli_core_phase_01, 1d
+    Clarity Pillar Define     :001_cli_core_phase_03, after 001_cli_core_phase_02, 1d
+    Throughput Pillar Ship    :001_cli_core_phase_04, after 001_cli_core_phase_03, 1d
+    Task Engine State Gates and History :001_cli_core_phase_05, after 001_cli_core_phase_04, 1d
+    Value Pillar Measure      :001_cli_core_phase_06, after 001_cli_core_phase_05, 1d
+    Init Hardening            :done, 001_cli_core_phase_07, after 001_cli_core_phase_06, 1d
+    E2E Surface Hardening     :done, 001_cli_core_phase_08, after 001_cli_core_phase_07, 1d
+    State Contract Execution Manifests and Merge Safety :done, 001_cli_core_phase_09, after 001_cli_core_phase_08, 1d
+    Unified Init Project Onboarding REWRITE R3 :done, 001_cli_core_phase_10, after 001_cli_core_phase_09, 1d
+    CLI UX Polish             :done, 001_cli_core_phase_11, after 001_cli_core_phase_10, 1d
+    Define Pillar Output Parity :done, 001_cli_core_phase_12, after 001_cli_core_phase_11, 1d
+    Project Awareness Prompt Conditioning and PROMPT.md Refactoring NEW R3 :done, 001_cli_core_phase_13, after 001_cli_core_phase_12, 1d
+    Project-Scoped DB Isolation NEW 2026-06-01 :done, 001_cli_core_phase_14, after 001_cli_core_phase_13, 1d
+    Resilience and System Status :done, 002_build_server_phase_02, after 001_cli_core_phase_14, 1d
+    Slack Event Bridge and Bless Actions :done, 002_build_server_phase_03, after 002_build_server_phase_02, 1d
+    Execution Ledger          :done, 002_build_server_phase_04, after 002_build_server_phase_03, 1d
+    Conversational Agent Surface P1 :done, 003_slack_phase_02, after 002_build_server_phase_04, 1d
+    Webhook Hardening and Topology P1 :done, 003_slack_phase_03, after 003_slack_phase_02, 1d
+    Resilience and Bail       :004_ship_loop_phase_02, after 003_slack_phase_03, 1d
+    Verification and Artifacts :004_ship_loop_phase_03, after 004_ship_loop_phase_02, 1d
+    Plugin Dispatch Boundary  :004_ship_loop_phase_04, after 004_ship_loop_phase_03, 1d
+    DispatchOrchestrator TypeScript Ship Loop F004-R :done, 004_ship_loop_phase_05, after 004_ship_loop_phase_04, 1d
+    Parallel Dispatch Orchestrator :done, 005_parallel_dispatch_phase_02, after 004_ship_loop_phase_05, 1d
+    CLI Commands and Terminal Rendering :done, 006_pulse_phase_02, after 005_parallel_dispatch_phase_02, 1d
+    Final Verification and E2E :done, 006_pulse_phase_03, after 006_pulse_phase_02, 1d
+    Compression Engine        :007_effort_compression_phase_02, after 006_pulse_phase_03, 1d
+    CLI Commands and Integration :007_effort_compression_phase_03, after 007_effort_compression_phase_02, 1d
+    LOC-Derived SP Fallback   :done, 007_effort_compression_phase_04, after 007_effort_compression_phase_03, 1d
+    Harvest Integration       :007_effort_compression_phase_05, after 007_effort_compression_phase_04, 1d
+    Agent Registry and Zod Validation :done, 008_agent_router_phase_01, after 007_effort_compression_phase_05, 1d
+    Quota Prober and Cache    :done, 008_agent_router_phase_02, after 008_agent_router_phase_01, 1d
+    Backend Selector Core Logic :done, 008_agent_router_phase_03, after 008_agent_router_phase_02, 1d
+    Integration and Wiring    :done, 008_agent_router_phase_04, after 008_agent_router_phase_03, 1d
+    Finalization and Cleanup  :done, 011_harvest_phase_02, after 008_agent_router_phase_04, 1d
+    Compression Calculation   :done, 011_harvest_phase_03, after 011_harvest_phase_02, 1d
+    Done Done Notification    :done, 011_harvest_phase_04, after 011_harvest_phase_03, 1d
+    Post-Ship Issue Tracking  :done, 011_harvest_phase_05, after 011_harvest_phase_04, 1d
+    Discovery                 :done, 013_agent_native_interface_phase_02, after 011_harvest_phase_05, 1d
+    Agent Mode                :done, 013_agent_native_interface_phase_03, after 013_agent_native_interface_phase_02, 1d
+    Skill Runtime Layer 2     :done, 014_plugin_system_phase_02, after 013_agent_native_interface_phase_03, 1d
+    Agent Backend Adapters Layer 1 - ADR-006 :done, 014_plugin_system_phase_03, after 014_plugin_system_phase_02, 1d
+    Antigravity agy Adapter   :done, 014_plugin_system_phase_04, after 014_plugin_system_phase_03, 1d
+    WorkflowRuntime Layer 2.5 - F014-R :done, 014_plugin_system_phase_05, after 014_plugin_system_phase_04, 1d
+    DefineOrchestrator and CLI Rewiring :done, 014_plugin_system_phase_06, after 014_plugin_system_phase_05, 1d
+    Provisioning and Migration :done, 014_plugin_system_phase_07, after 014_plugin_system_phase_06, 1d
+    Routing and Intelligence ex-F008 :done, 014_plugin_system_phase_08, after 014_plugin_system_phase_07, 1d
+    Enforcement Skills FR-014 US-016 :done, 014_plugin_system_phase_09, after 014_plugin_system_phase_08, 1d
+    .agents Migration to Builtins ADR-007 :done, 014_plugin_system_phase_10, after 014_plugin_system_phase_09, 1d
+    Research CLI R006         :done, 014_plugin_system_phase_11, after 014_plugin_system_phase_10, 1d
+    Methodology Dispatch R006 :done, 014_plugin_system_phase_12, after 014_plugin_system_phase_11, 1d
+    Grounding Injection ADR-009 :done, 014_plugin_system_phase_13, after 014_plugin_system_phase_12, 1d
+    .agents Deletion and Verification ADR-007 :014_plugin_system_phase_14, after 014_plugin_system_phase_13, 1d
+    Profile-Aware Enforcement Routing R007 :done, 014_plugin_system_phase_15, after 014_plugin_system_phase_14, 1d
+    Toolchain Detection R007  :done, 014_plugin_system_phase_16, after 014_plugin_system_phase_15, 1d
+    Context Gathering Mandate R007 :done, 014_plugin_system_phase_17, after 014_plugin_system_phase_16, 1d
+    Ontology Construction Workflow ADR-009 :done, 014_plugin_system_phase_18, after 014_plugin_system_phase_17, 1d
+    Foundation and Data Model :done, 018_build_plan_orchestrator_phase_01, after 014_plugin_system_phase_18, 1d
+    Solver Engine and Ready Queue :done, 018_build_plan_orchestrator_phase_02, after 018_build_plan_orchestrator_phase_01, 1d
+    Graph Mutation and Lifecycle Hooks :done, 018_build_plan_orchestrator_phase_03, after 018_build_plan_orchestrator_phase_02, 1d
+    Verification and Markdown Rendering :done, 018_build_plan_orchestrator_phase_04, after 018_build_plan_orchestrator_phase_03, 1d
+    Visualization and Monitoring :done, 018_build_plan_orchestrator_phase_05, after 018_build_plan_orchestrator_phase_04, 1d
+    AgyAdapter Foundation     :done, 019_agy_agent_migration_phase_01, after 018_build_plan_orchestrator_phase_05, 1d
+    Router Integration        :done, 019_agy_agent_migration_phase_02, after 019_agy_agent_migration_phase_01, 1d
+    Configuration Schema and Profile Detection :020_polyglot_monorepo_phase_01, after 019_agy_agent_migration_phase_02, 1d
+    CLI Integration and Init Workspaces :020_polyglot_monorepo_phase_02, after 020_polyglot_monorepo_phase_01, 1d
+    Foundation                :done, 013_agent_native_interface_phase_01, after 020_polyglot_monorepo_phase_02, 1d
+    Daemon Lifecycle and Service Management :done, 002_build_server_phase_01, after 013_agent_native_interface_phase_01, 1d
+    Engine and Git Utility Refinement :done, 006_pulse_phase_01, after 002_build_server_phase_01, 1d
+    Effort Engine             :007_effort_compression_phase_01, after 006_pulse_phase_01, 1d
+    Foundation Plugin Loader and Registry :done, 014_plugin_system_phase_01, after 007_effort_compression_phase_01, 1d
+    Slack Definition Pillar P0 :done, 003_slack_phase_01, after 014_plugin_system_phase_01, 1d
+    Worktree Sandbox Manager  :done, 005_parallel_dispatch_phase_01, after 003_slack_phase_01, 1d
+    Webhook Infrastructure and Orchestration :done, 011_harvest_phase_01, after 005_parallel_dispatch_phase_01, 1d
+    Digest and Phase-Skip     :done, 004_ship_loop_phase_01, after 011_harvest_phase_01, 1d
 ```
 
 ---
