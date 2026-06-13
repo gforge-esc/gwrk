@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-13T22:56:28.862Z_define_p00",
+  "feature": "020-polyglot-monorepo",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-13T22:56:28.862Z",
+  "finishedAt": "2026-06-13T22:59:28.622Z",
+  "durationS": 180,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 159,
+  "linesDeleted": 0,
+  "gitCommit": "0428f0b42e4af1e0ae207f75921f66146e7564da",
+  "gitBranch": "develop",
+  "digest": []
+}
