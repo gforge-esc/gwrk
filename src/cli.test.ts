@@ -66,3 +66,24 @@ describe("FR-001 / FR-004: CLI Command Registration", () => {
     parseSpy.mockRestore();
   });
 });
+
+describe("FR-003: Explicit Workspace Flag (020-polyglot-monorepo)", () => {
+  it("US-003: accepts and parses --workspace flag across CLI", async () => {
+    const { program } = await import("./cli.js");
+    const parseSpy = vi
+      .spyOn(Command.prototype, "parse")
+      .mockImplementation(() => {
+        return {} as unknown as ReturnType<typeof Command.prototype.parse>;
+      });
+      
+    // Manually push to opts for assertion since we mocked parse
+    program.setOptionValue("workspace", "web");
+    expect(program.opts().workspace).toBe("web");
+    
+    // Also test it is declared as an option
+    const hasWorkspaceOption = program.options.some(o => o.long === '--workspace');
+    expect(hasWorkspaceOption).toBe(true);
+    
+    parseSpy.mockRestore();
+  });
+});

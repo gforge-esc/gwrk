@@ -68,3 +68,33 @@ describe('FR-L25-005: gwrk init MUST provision core workflows and project ground
     await expect(initAction({ nonInteractive: true })).resolves.not.toThrow();
   });
 });
+
+describe("FR-004: Workspace Init (020-polyglot-monorepo)", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(detectProfile).mockResolvedValue({ 
+      type: 'nodejs',
+      stack: { language: 'typescript' },
+      layout: 'flat'
+    });
+  });
+
+  it("US-004: appends workspace profile when run inside an existing project subdirectory", async () => {
+    // Mock fs.existsSync to simulate being inside a subdirectory of a gwrk project
+    vi.mocked(fs.existsSync).mockImplementation((p: any) => {
+      if (typeof p === 'string' && p.endsWith('.gwrkrc.json')) return true; // Pretend root config exists
+      return false;
+    });
+    
+    // Simulate fs.readFileSync for root config
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ project: { name: "root" } }));
+
+    await initAction({ nonInteractive: true });
+
+    // Ensure it wrote an updated config with workspace to the parent directory
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining('.gwrkrc.json'),
+      expect.stringContaining('"workspaces"')
+    );
+  });
+});

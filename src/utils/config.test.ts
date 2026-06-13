@@ -64,3 +64,34 @@ describe("FR-017: Three-layer Config Resolution", () => {
     expect(() => GwrkConfigSchema.parse(invalidEffort)).toThrow();
   });
 });
+
+describe("FR-001: Workspace Configuration Schema (020-polyglot-monorepo)", () => {
+  it("US-001: should validate GwrkConfigSchema with valid workspaces", () => {
+    const validConfig = {
+      project: { name: "polyglot-project" },
+      agents: {},
+      workspaces: {
+        web: {
+          stack: { language: "typescript" }
+        },
+        backend: {
+          stack: { language: "rust" }
+        }
+      }
+    };
+    expect(() => GwrkConfigSchema.parse(validConfig)).not.toThrow();
+  });
+
+  it("US-001: should throw error for invalid workspace configuration", () => {
+    const invalidConfig = {
+      project: { name: "polyglot-project" },
+      agents: {},
+      workspaces: {
+        web: {
+          stack: "typescript" // Invalid, should be an object
+        }
+      }
+    };
+    expect(() => GwrkConfigSchema.parse(invalidConfig)).toThrow();
+  });
+});
