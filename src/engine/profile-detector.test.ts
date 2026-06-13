@@ -79,4 +79,65 @@ describe("profile-detector", () => {
     expect(result).toContain("ADR-004");
     expect(result).not.toContain("[type: gwrk-native]");
   });
+
+  it("detects polyglot-monorepo when multiple language markers are present", async () => {
+    // EnergyWork scenario: Python + JS + Go
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({
+      dependencies: { express: "^4.18.2" },
+      devDependencies: { typescript: "^5.0.0" }
+    }));
+    fs.writeFileSync(path.join(tmpDir, "pyproject.toml"), "");
+    fs.writeFileSync(path.join(tmpDir, "go.mod"), "");
+    
+    const profile = await detectProfile(tmpDir);
+    expect(profile.type).toBe("polyglot-monorepo");
+    expect(profile.stack?.languages).toEqual(["TypeScript", "Python", "Go"]);
+    expect(profile.stack?.language).toBe("TypeScript"); // primary (backwards compat)
+    expect(profile.layout).toBe("monorepo");
+  });
+
+  it("detects Go project from go.mod", async () => {
+    fs.writeFileSync(path.join(tmpDir, "go.mod"), "module example.com/app");
+    
+    const profile = await detectProfile(tmpDir);
+    expect(profile.type).toBe("go");
+    expect(profile.stack?.language).toBe("Go");
+    expect(profile.stack?.buildSystem).toBe("go");
+  });
+
+  it("detects two-language polyglot (Rust + Go)", async () => {
+    fs.writeFileSync(path.join(tmpDir, "Cargo.toml"), "");
+    fs.writeFileSync(path.join(tmpDir, "go.mod"), "");
+    
+    const profile = await detectProfile(tmpDir);
+    expect(profile.type).toBe("polyglot-monorepo");
+    expect(profile.stack?.languages).toEqual(["Rust", "Go"]);
+    expect(profile.layout).toBe("monorepo");
+  });
+
+  it("single language still sets languages as undefined", async () => {
+    fs.writeFileSync(path.join(tmpDir, "Cargo.toml"), "");
+    
+    const profile = await detectProfile(tmpDir);
+    expect(profile.type).toBe("rust");
+    expect(profile.stack?.languages).toBeUndefined();
+  });
+
+  it("polyglot profile emits <languages> XML in prompt conditioning", async () => {
+    const profile = {
+      type: "polyglot-monorepo",
+      stack: {
+        language: "TypeScript",
+        languages: ["TypeScript", "Python", "Go"],
+      },
+      layout: "monorepo",
+    };
+    
+    const result = conditionPrompt("Test", profile);
+    expect(result).toContain("<languages>");
+    expect(result).toContain("<lang>TypeScript</lang>");
+    expect(result).toContain("<lang>Python</lang>");
+    expect(result).toContain("<lang>Go</lang>");
+    expect(result).toContain('type="polyglot-monorepo"');
+  });
 });

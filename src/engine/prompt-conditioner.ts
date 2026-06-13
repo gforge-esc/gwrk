@@ -7,6 +7,8 @@ export interface ProjectProfile {
   type: string;
   stack?: {
     language?: string;
+    /** Multiple languages detected in a polyglot monorepo */
+    languages?: string[];
     framework?: string;
     buildSystem?: string;
   };
@@ -69,6 +71,15 @@ function generateProfileXml(profile: ProjectProfile): string {
 
   const stackTag =
     stackAttrs.length > 0 ? `  <stack ${stackAttrs.join(" ")} />\n` : "";
+
+  // Polyglot: emit <languages> tag when multiple languages detected
+  let languagesTag = "";
+  if (profile.stack?.languages && profile.stack.languages.length > 1) {
+    const langItems = profile.stack.languages
+      .map((lang) => `    <lang>${lang}</lang>`)
+      .join("\n");
+    languagesTag = `  <languages>\n${langItems}\n  </languages>\n`;
+  }
   
   let layoutTag = "";
   if (typeof profile.layout === "string" && profile.layout) {
@@ -80,5 +91,5 @@ function generateProfileXml(profile: ProjectProfile): string {
     layoutTag = `  <layout ${layoutAttrs} />\n`;
   }
 
-  return `<project_profile type="${profile.type}">\n${stackTag}${layoutTag}</project_profile>`;
+  return `<project_profile type="${profile.type}">\n${stackTag}${languagesTag}${layoutTag}</project_profile>`;
 }
