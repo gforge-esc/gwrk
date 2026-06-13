@@ -64,7 +64,24 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
  */
 export const researchCommand = new Command("research")
   .description("Scaffold research directories and briefs (R0XX)")
-  .argument("<initiative>", "Research initiative name")
+  .addHelpText(
+    "after",
+    `
+Examples:
+
+  Scaffold a new research initiative:
+    gwrk define research "polyglot-monorepo"
+
+  Scaffold with a specific methodology:
+    gwrk define research "user-onboarding" --methodology jtbd
+
+  Scaffold and immediately run the research workflow:
+    gwrk define research "agent-routing" --run
+
+  Available methodologies: technical (default), jtbd, ontology
+`,
+  )
+  .argument("<initiative>", "Research initiative name (e.g. 'polyglot-monorepo')")
   .option("--methodology <type>", "Research methodology: technical, jtbd, ontology", "technical")
   .option("--run", "Execute the methodology plugin immediately after scaffolding")
   .action(async (initiative: string, opts: { methodology: string, run?: boolean }) => {
