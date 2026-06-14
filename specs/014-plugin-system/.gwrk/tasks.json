@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Foundation (Plugin Loader & Registry) ✅ SHIPPED",
           "description": "Complete phase 1: Foundation (Plugin Loader & Registry) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 1: Foundation (Plugin Loader & Registry) ✅ SHIPPED\"",
           "sp": 2
         }
