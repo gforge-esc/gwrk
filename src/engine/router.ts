@@ -10,6 +10,7 @@ export interface RoutingTask {
   skillName?: string;
   feature?: string;
   phase?: string;
+  preferredAgent?: string;
 }
 
 /**
@@ -29,10 +30,19 @@ export async function selectBackend(
 ): Promise<AgentBackend> {
   const config = loadConfig(projectRoot);
 
-  // 1. Check skill-specific preference (Simplified mock for now)
+  // 1. Check skill-specific preference (FR-006)
+  if (task.preferredAgent) {
+    try {
+      const backend = await registry.getAgentBackend(task.preferredAgent);
+      const status = await quotaProbe(backend);
+      if (status.status === "available") return backend;
+    } catch (e) {
+      // Fall through to historical learning if preferred agent is unavailable
+    }
+  }
+
   if (task.type === "skill" && task.skillName) {
-    // In a real implementation, we would load the SKILL.md and check for preferredAgent
-    // For Phase 8, we handle known skill preferences or follow general routing
+    // Legacy hardcoded preferences for specific skills
     if (task.skillName === "narrative" || task.skillName === "signal-cut") {
       try {
         const backend = await registry.getAgentBackend("claude");

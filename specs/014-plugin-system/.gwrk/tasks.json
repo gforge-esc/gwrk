@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Foundation (Plugin Loader & Registry) \u2705 SHIPPED",
           "description": "Complete phase 1: Foundation (Plugin Loader & Registry) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 1: Foundation (Plugin Loader & Registry) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -31,7 +31,7 @@
           "id": "T002",
           "title": "Skill Runtime (Layer 2) \u2705 SHIPPED",
           "description": "Complete phase 2: Skill Runtime (Layer 2) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 2: Skill Runtime (Layer 2) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -46,7 +46,7 @@
           "id": "T003",
           "title": "Agent Backend Adapters (Layer 1 - ADR-006) \u2705 SHIPPED",
           "description": "Complete phase 3: Agent Backend Adapters (Layer 1 - ADR-006) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 3: Agent Backend Adapters (Layer 1 - ADR-006) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -61,7 +61,7 @@
           "id": "T004",
           "title": "Antigravity (agy) Adapter \u2705 SHIPPED",
           "description": "Complete phase 4: Antigravity (agy) Adapter \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 4: Antigravity (agy) Adapter \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -76,7 +76,7 @@
           "id": "T005",
           "title": "WorkflowRuntime (Layer 2.5 - F014-R) \u2705 SHIPPED",
           "description": "Complete phase 5: WorkflowRuntime (Layer 2.5 - F014-R) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 5: WorkflowRuntime (Layer 2.5 - F014-R) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -91,7 +91,7 @@
           "id": "T006",
           "title": "DefineOrchestrator & CLI Rewiring \u2705 SHIPPED",
           "description": "Complete phase 6: DefineOrchestrator & CLI Rewiring \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 6: DefineOrchestrator & CLI Rewiring \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -106,7 +106,7 @@
           "id": "T007",
           "title": "Provisioning & Migration \u2705 SHIPPED",
           "description": "Complete phase 7: Provisioning & Migration \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 7: Provisioning & Migration \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -121,7 +121,7 @@
           "id": "T008",
           "title": "Routing & Intelligence (ex-F008) \u2705 SHIPPED",
           "description": "Complete phase 8: Routing & Intelligence (ex-F008) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 8: Routing & Intelligence (ex-F008) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -396,7 +396,7 @@
           "id": "T010",
           "title": ".agents/ Migration to Builtins (ADR-007) \u2705 SHIPPED",
           "description": "Complete phase 10: .agents/ Migration to Builtins (ADR-007) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 10: .agents/ Migration to Builtins (ADR-007) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -450,7 +450,7 @@
           "id": "T012",
           "title": "Methodology Dispatch (R006) \u2705 SHIPPED",
           "description": "Complete phase 12: Methodology Dispatch (R006) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 12: Methodology Dispatch (R006) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -465,7 +465,7 @@
           "id": "T013",
           "title": "Grounding Injection (ADR-009) \u2705 SHIPPED",
           "description": "Complete phase 13: Grounding Injection (ADR-009) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 13: Grounding Injection (ADR-009) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -480,7 +480,7 @@
           "id": "T014",
           "title": ".agents/ Deletion & Verification (ADR-007) \u2705 SHIPPED",
           "description": "Complete phase 14: .agents/ Deletion & Verification (ADR-007) \u2705 SHIPPED",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 14: .agents/ Deletion & Verification (ADR-007) \u2705 SHIPPED\"",
           "sp": 2
         }
@@ -495,7 +495,7 @@
           "id": "T015",
           "title": "Modify manifest.ts",
           "description": "MODIFY src/plugins/manifest.ts. Add `language` field to `EnforcementSkillManifestSchema`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/manifest.ts",
           "sp": 1
         },
@@ -503,7 +503,7 @@
           "id": "T016",
           "title": "Modify skill-runtime.ts",
           "description": "MODIFY src/plugins/skill-runtime.ts. Filter built-in enforcement skills by `profile.stack.language`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/skill-runtime.ts",
           "sp": 1
         }
@@ -521,7 +521,7 @@
           "id": "T017",
           "title": "Modify profile-detector.ts",
           "description": "MODIFY src/engine/profile-detector.ts. Detect Biome, Ruff, ESLint, Prettier, vitest, pytest signals",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/profile-detector.ts",
           "sp": 1
         },
@@ -529,7 +529,7 @@
           "id": "T018",
           "title": "Modify prompt-conditioner.ts",
           "description": "MODIFY src/engine/prompt-conditioner.ts. Extend `ProjectProfile` interface with `toolchain`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/prompt-conditioner.ts",
           "sp": 1
         },
@@ -537,7 +537,7 @@
           "id": "T019",
           "title": "Modify project.ts",
           "description": "MODIFY src/commands/project.ts. Report `toolchain` in `gwrk project info --format json`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/project.ts",
           "sp": 1
         }
@@ -555,7 +555,7 @@
           "id": "T020",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `gwrk project info` and `gwrk project discover` to Step 1 preamble",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
           "sp": 1
         }
@@ -573,7 +573,7 @@
           "id": "T021",
           "title": "Create define-ontology.ts",
           "description": "NEW src/commands/define-ontology.ts. `gwrk define ontology [--run]` handler",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/define-ontology.ts",
           "sp": 2
         },
@@ -581,7 +581,7 @@
           "id": "T022",
           "title": "Create ontology-scaffold.ts",
           "description": "NEW src/engine/ontology-scaffold.ts. Logic for directory and empty artifact creation",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/ontology-scaffold.ts",
           "sp": 2
         },
@@ -589,7 +589,7 @@
           "id": "T023",
           "title": "Create source-scanner.ts",
           "description": "NEW src/engine/source-scanner.ts. Scan specs and codebase for grounding material",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/source-scanner.ts",
           "sp": 2
         },
@@ -597,7 +597,7 @@
           "id": "T024",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml. ",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml",
           "sp": 2
         },
@@ -605,7 +605,7 @@
           "id": "T025",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md. Five Primitives methodology",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md",
           "sp": 2
         }
@@ -623,7 +623,7 @@
           "id": "T059",
           "title": "Modify manifest.ts",
           "description": "MODIFY src/plugins/manifest.ts. Add `ExtensionManifestSchema` and update discriminated union",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/manifest.ts",
           "sp": 1
         },
@@ -631,7 +631,7 @@
           "id": "T060",
           "title": "Create extension-runtime.ts",
           "description": "NEW src/plugins/extension-runtime.ts. Extension discovery and `resolveExtensionContext()` logic",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/extension-runtime.ts",
           "sp": 2
         },
@@ -639,7 +639,7 @@
           "id": "T061",
           "title": "Create context-provider.ts",
           "description": "NEW src/plugins/context-provider.ts. `ContextProvider` interface",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/context-provider.ts",
           "sp": 2
         },
@@ -647,7 +647,7 @@
           "id": "T062",
           "title": "Modify config.ts",
           "description": "MODIFY src/utils/config.ts. Support `extensions` block in `.gwrkrc.json`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/utils/config.ts",
           "sp": 1
         }
@@ -665,7 +665,7 @@
           "id": "T063",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/extensions/obsidian-vault/manifest.yaml. `provides: [context]`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/extensions/obsidian-vault/manifest.yaml",
           "sp": 2
         },
@@ -673,7 +673,7 @@
           "id": "T064",
           "title": "Create adapter.ts",
           "description": "NEW src/plugins/builtins/extensions/obsidian-vault/adapter.ts. Implements `ContextProvider` interface",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/builtins/extensions/obsidian-vault/adapter.ts",
           "sp": 2
         }
@@ -691,7 +691,7 @@
           "id": "T065",
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. Call `resolveExtensionContext()` and inject into `<external_context>` block",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/utils/agent.ts",
           "sp": 1
         }

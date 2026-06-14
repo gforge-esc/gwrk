@@ -7,6 +7,8 @@ import { PluginLoader } from './loader.js';
 vi.mock('node:fs');
 vi.mock('node:fs/promises');
 vi.mock('./loader.js');
+vi.mock('../engine/router.js');
+vi.mock('../utils/agent.js');
 
 describe('FR-014: resolveEnforcementSkills', () => {
   beforeEach(() => {
@@ -114,5 +116,48 @@ describe('FR-014: resolveEnforcementSkills', () => {
     const source = realFs.readFileSync('src/plugins/skill-runtime.ts', 'utf8');
     expect(source).not.toContain('.agents/skills/');
     expect(source.match(/\.agents\//g)).toBeNull();
+  });
+
+  it('FR-006: executeSkill passes preferredAgent and preferredModel to router and agent', async () => {
+    const { executeSkill } = await import('./skill-runtime.js');
+    const { selectBackend } = await import('../engine/router.js');
+    const { dispatchToAgent } = await import('../utils/agent.js');
+
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: {
+        name: 'test-skill',
+        type: 'skill',
+        tier: 'atomic',
+        version: '1.0.0',
+        description: 'desc',
+        prompt: 'test prompt',
+        runtime: {
+          preferredAgent: 'claude',
+          preferredModel: 'claude-3-opus'
+        }
+      },
+      path: '/fake/path/test-skill',
+      status: 'active'
+    });
+
+    vi.mocked(selectBackend).mockResolvedValue({ name: 'claude' } as any);
+    vi.mocked(dispatchToAgent).mockResolvedValue({
+      stdout: 'done',
+      stderr: '',
+      exitCode: 0,
+      durationS: 1
+    } as any);
+
+    await executeSkill('test-skill');
+
+    expect(selectBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredAgent: 'claude' }),
+      expect.any(String),
+      expect.any(Object)
+    );
+
+    expect(dispatchToAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'claude', model: 'claude-3-opus' })
+    );
   });
 });

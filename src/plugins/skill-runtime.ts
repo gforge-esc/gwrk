@@ -118,8 +118,15 @@ export async function executeSkill(
   const projectRoot = loaderOptions.projectDir || process.cwd();
   const registry = new AgentBackendRegistry(loader);
 
+  // Safely extract runtime preferences if they exist (Atomic/Compound tiers)
+  const runtime = "runtime" in manifest ? manifest.runtime : undefined;
+
   const backend = await selectBackend(
-    { type: "skill", skillName: name },
+    {
+      type: "skill",
+      skillName: name,
+      preferredAgent: runtime?.preferredAgent,
+    },
     projectRoot,
     registry,
   );
@@ -128,6 +135,7 @@ export async function executeSkill(
     type: `skill/${name}`,
     prompt,
     agent: backend.name,
+    model: runtime?.preferredModel,
     stdin: prompt,
     workflow: `skill/${name}`, // Symbolic path for logging
     workDir: projectRoot,
