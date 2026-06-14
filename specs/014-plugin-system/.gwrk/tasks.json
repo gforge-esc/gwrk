@@ -91,7 +91,7 @@
           "id": "T006",
           "title": "DefineOrchestrator & CLI Rewiring ✅ SHIPPED",
           "description": "Complete phase 6: DefineOrchestrator & CLI Rewiring ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 6: DefineOrchestrator & CLI Rewiring ✅ SHIPPED\"",
           "sp": 2
         }
