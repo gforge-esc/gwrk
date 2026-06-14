@@ -572,7 +572,7 @@
         {
           "id": "T021",
           "title": "Create define-ontology.ts",
-          "description": "NEW src/commands/define-ontology.ts. `gwrk define ontology [--run]` handler",
+          "description": "NEW src/commands/define-ontology.ts. gwrk define ontology [--run] handler",
           "status": "completed",
           "gateScript": "test -f src/commands/define-ontology.ts",
           "sp": 2
