@@ -76,7 +76,7 @@
           "id": "T005",
           "title": "WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED",
           "description": "Complete phase 5: WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 5: WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED\"",
           "sp": 2
         }
