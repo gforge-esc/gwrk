@@ -395,8 +395,8 @@
         {
           "id": "T010",
           "title": ".agents/ Migration to Builtins (ADR-007) ✅ SHIPPED",
-          "description": "Complete phase 10: .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED",
-          "status": "completed",
+          "description": "Complete phase 10: .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED\n\nREVIEW FAIL (code): TR-P10-001 to TR-P10-004 Gate Failures.\n  WHERE: specs/014-plugin-system/gates/TR-P10-*.sh\n  EXPECTED: Gate scripts to point to valid test files.\n  ACTUAL: Gate scripts point to non-existent .p10.red.test.ts files.\n  FIX: Update gate scripts to point to correct main test files (src/plugins/loader.test.ts, etc.) and specific test titles.\n\nREVIEW FAIL (uat): gwrk init is a stub — FR-011.\n  WHERE: src/commands/init.ts\n  EXPECTED: Functional initialization logic seeding .gwrk/rules/.\n  ACTUAL: Throws \"Not implemented: FR-001, FR-046\".\n  FIX: Implement init logic as per ADR-007 and F014 Phase 7.\n\nREVIEW FAIL (lint): TR-016 (Toolchain Detection) Failures.\n  WHERE: src/engine/profile-detector.ts:151,278\n  EXPECTED: Lint-clean source code (no !! or any).\n  ACTUAL: L151: non-null assertion (!); L278: explicit any.\n  FIX: Use proper type guards and explicit typing in profile-detector.ts.",
+          "status": "open",
           "gateScript": "echo \"Phase 10: .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED\"",
           "sp": 2
         }
