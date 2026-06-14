@@ -105,8 +105,17 @@ Examples:
           }
         })();
 
+        // Staleness check: if plan.md is newer than gap-matrix.md, the plan
+        // changed and tests should be regenerable without --force.
+        const planIsNewer = (() => {
+          if (!fs.existsSync(gapMatrixPath) || !fs.existsSync(planPath)) return false;
+          const planMtime = fs.statSync(planPath).mtimeMs;
+          const gapMtime = fs.statSync(gapMatrixPath).mtimeMs;
+          return planMtime > gapMtime;
+        })();
+
         const testsExist =
-          fs.existsSync(gapMatrixPath) ||
+          (fs.existsSync(gapMatrixPath) && !planIsNewer) ||
           hasTestRunManifest ||
           (hasTestFiles && !options.force);
 
