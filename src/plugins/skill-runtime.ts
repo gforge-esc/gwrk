@@ -1,12 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { ProjectProfile } from "../engine/profile-detector.js";
 import { selectBackend } from "../engine/router.js";
 import { processForAgent } from "../utils/agent-layer.js";
 import { dispatchToAgent } from "../utils/agent.js";
 import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
-import type { ProjectProfile } from "../engine/profile-detector.js";
 import type {
   AtomicSkillManifest,
   CompoundSkillManifest,
@@ -220,8 +220,11 @@ export async function resolveEnforcementSkills(
 
       const skillMdPath = path.join(loaded.path, "SKILL.md");
       const content = await fs.readFile(skillMdPath, "utf-8");
-      
-      skillMap.set(summary.name, `<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
+
+      skillMap.set(
+        summary.name,
+        `<!-- enforcement-skill: ${manifest.name} -->\n${content}`,
+      );
       visitedNames.add(summary.name);
     } catch (e) {
       // Skip invalid/failed plugins

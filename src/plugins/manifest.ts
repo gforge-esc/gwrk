@@ -242,7 +242,9 @@ export const AnyManifestSchema = z.union([
 
 export type AtomicSkillManifest = z.infer<typeof AtomicSkillManifestSchema>;
 export type CompoundSkillManifest = z.infer<typeof CompoundSkillManifestSchema>;
-export type EnforcementSkillManifest = z.infer<typeof EnforcementSkillManifestSchema>;
+export type EnforcementSkillManifest = z.infer<
+  typeof EnforcementSkillManifestSchema
+>;
 export type SkillManifest = z.infer<typeof SkillManifestSchema>;
 export type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type WorkflowManifest = z.infer<typeof WorkflowManifestSchema>;

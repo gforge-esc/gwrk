@@ -3,16 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { recordRoutingDecision } from "../db/plugins.js";
-import { resolveProjectId } from "./project-id.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
-import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import {
   type AgentBackend as ConfigAgentBackend,
   loadConfig,
 } from "./config.js";
+import { resolveProjectId } from "./project-id.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
@@ -154,9 +154,10 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
   const rawWorkflow = path.basename(opts.workflowPath, ".md");
-  const workflow = rawWorkflow === "PROMPT"
-    ? path.basename(path.dirname(opts.workflowPath))
-    : rawWorkflow;
+  const workflow =
+    rawWorkflow === "PROMPT"
+      ? path.basename(path.dirname(opts.workflowPath))
+      : rawWorkflow;
   const rawFeature = opts.featureDir
     ? path.basename(opts.featureDir)
     : (opts.prompt ?? "unknown");
@@ -503,9 +504,18 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = task.workDir || projectRoot;
   const groundingFiles: Array<{ path: string; tag: string }> = [
-    { path: path.join(workDir, ".gwrk/ontology/domain.md"), tag: "domain_ontology" },
-    { path: path.join(workDir, ".gwrk/perspective/hierarchy.md"), tag: "information_hierarchy" },
-    { path: path.join(workDir, ".gwrk/perspective/ux-posture.md"), tag: "ux_posture" },
+    {
+      path: path.join(workDir, ".gwrk/ontology/domain.md"),
+      tag: "domain_ontology",
+    },
+    {
+      path: path.join(workDir, ".gwrk/perspective/hierarchy.md"),
+      tag: "information_hierarchy",
+    },
+    {
+      path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
+      tag: "ux_posture",
+    },
   ];
 
   let grounding = "";

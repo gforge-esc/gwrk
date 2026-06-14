@@ -10,14 +10,14 @@
   "phases": [
     {
       "id": "phase-01",
-      "title": "Foundation (Plugin Loader & Registry) ✅ SHIPPED",
+      "title": "Foundation (Plugin Loader & Registry) \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T001",
-          "title": "Foundation (Plugin Loader & Registry) ✅ SHIPPED",
-          "description": "Complete phase 1: Foundation (Plugin Loader & Registry) ✅ SHIPPED",
+          "title": "Foundation (Plugin Loader & Registry) \u2705 SHIPPED",
+          "description": "Complete phase 1: Foundation (Plugin Loader & Registry) \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 1: Foundation (Plugin Loader & Registry) ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 1: Foundation (Plugin Loader & Registry) \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
@@ -25,14 +25,14 @@
     },
     {
       "id": "phase-02",
-      "title": "Skill Runtime (Layer 2) ✅ SHIPPED",
+      "title": "Skill Runtime (Layer 2) \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T002",
-          "title": "Skill Runtime (Layer 2) ✅ SHIPPED",
-          "description": "Complete phase 2: Skill Runtime (Layer 2) ✅ SHIPPED",
+          "title": "Skill Runtime (Layer 2) \u2705 SHIPPED",
+          "description": "Complete phase 2: Skill Runtime (Layer 2) \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 2: Skill Runtime (Layer 2) ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 2: Skill Runtime (Layer 2) \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
@@ -40,14 +40,14 @@
     },
     {
       "id": "phase-03",
-      "title": "Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED",
+      "title": "Agent Backend Adapters (Layer 1 - ADR-006) \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T003",
-          "title": "Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED",
-          "description": "Complete phase 3: Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED",
+          "title": "Agent Backend Adapters (Layer 1 - ADR-006) \u2705 SHIPPED",
+          "description": "Complete phase 3: Agent Backend Adapters (Layer 1 - ADR-006) \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 3: Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 3: Agent Backend Adapters (Layer 1 - ADR-006) \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
@@ -55,14 +55,14 @@
     },
     {
       "id": "phase-04",
-      "title": "Antigravity (agy) Adapter ✅ SHIPPED",
+      "title": "Antigravity (agy) Adapter \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T004",
-          "title": "Antigravity (agy) Adapter ✅ SHIPPED",
-          "description": "Complete phase 4: Antigravity (agy) Adapter ✅ SHIPPED",
+          "title": "Antigravity (agy) Adapter \u2705 SHIPPED",
+          "description": "Complete phase 4: Antigravity (agy) Adapter \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 4: Antigravity (agy) Adapter ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 4: Antigravity (agy) Adapter \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
@@ -70,14 +70,14 @@
     },
     {
       "id": "phase-05",
-      "title": "WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED",
+      "title": "WorkflowRuntime (Layer 2.5 - F014-R) \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T005",
-          "title": "WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED",
-          "description": "Complete phase 5: WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED",
+          "title": "WorkflowRuntime (Layer 2.5 - F014-R) \u2705 SHIPPED",
+          "description": "Complete phase 5: WorkflowRuntime (Layer 2.5 - F014-R) \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 5: WorkflowRuntime (Layer 2.5 - F014-R) ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 5: WorkflowRuntime (Layer 2.5 - F014-R) \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
@@ -85,14 +85,14 @@
     },
     {
       "id": "phase-06",
-      "title": "DefineOrchestrator & CLI Rewiring ✅ SHIPPED",
+      "title": "DefineOrchestrator & CLI Rewiring \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T006",
-          "title": "DefineOrchestrator & CLI Rewiring ✅ SHIPPED",
-          "description": "Complete phase 6: DefineOrchestrator & CLI Rewiring ✅ SHIPPED",
+          "title": "DefineOrchestrator & CLI Rewiring \u2705 SHIPPED",
+          "description": "Complete phase 6: DefineOrchestrator & CLI Rewiring \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 6: DefineOrchestrator & CLI Rewiring ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 6: DefineOrchestrator & CLI Rewiring \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
@@ -100,14 +100,14 @@
     },
     {
       "id": "phase-07",
-      "title": "Provisioning & Migration ✅ SHIPPED",
+      "title": "Provisioning & Migration \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T007",
-          "title": "Provisioning & Migration ✅ SHIPPED",
-          "description": "Complete phase 7: Provisioning & Migration ✅ SHIPPED",
+          "title": "Provisioning & Migration \u2705 SHIPPED",
+          "description": "Complete phase 7: Provisioning & Migration \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 7: Provisioning & Migration ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 7: Provisioning & Migration \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
@@ -115,236 +115,18 @@
     },
     {
       "id": "phase-08",
-      "title": "Routing & Intelligence (ex-F008) ✅ SHIPPED",
+      "title": "Routing & Intelligence (ex-F008) \u2705 SHIPPED",
       "tasks": [
         {
           "id": "T008",
-          "title": "Routing & Intelligence (ex-F008) ✅ SHIPPED",
-          "description": "Complete phase 8: Routing & Intelligence (ex-F008) ✅ SHIPPED",
+          "title": "Routing & Intelligence (ex-F008) \u2705 SHIPPED",
+          "description": "Complete phase 8: Routing & Intelligence (ex-F008) \u2705 SHIPPED",
           "status": "open",
-          "gateScript": "echo \"Phase 8: Routing & Intelligence (ex-F008) ✅ SHIPPED\"",
+          "gateScript": "echo \"Phase 8: Routing & Intelligence (ex-F008) \u2705 SHIPPED\"",
           "sp": 2
         }
       ],
       "sp_estimate": 2
-    },
-    {
-      "id": "phase-09",
-      "title": "Enforcement Skills (FR-014 / US-016) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T009",
-          "title": "Enforcement Skills (FR-014 / US-016) ✅ SHIPPED",
-          "description": "Complete phase 9: Enforcement Skills (FR-014 / US-016) ✅ SHIPPED",
-          "status": "open",
-          "gateScript": "echo \"Phase 9: Enforcement Skills (FR-014 / US-016) ✅ SHIPPED\"",
-          "sp": 2
-        }
-      ],
-      "sp_estimate": 2
-    },
-    {
-      "id": "phase-10",
-      "title": ".agents/ Migration to Builtins (ADR-007) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T010",
-          "title": ".agents/ Migration to Builtins (ADR-007) ✅ SHIPPED",
-          "description": "Complete phase 10: .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED",
-          "status": "open",
-          "gateScript": "echo \"Phase 10: .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED\"",
-          "sp": 2
-        }
-      ],
-      "sp_estimate": 2
-    },
-    {
-      "id": "phase-11",
-      "title": "Research CLI (R006) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T011",
-          "title": "Research CLI (R006) ✅ SHIPPED",
-          "description": "Complete phase 11: Research CLI (R006) ✅ SHIPPED",
-          "status": "open",
-          "gateScript": "echo \"Phase 11: Research CLI (R006) ✅ SHIPPED\"",
-          "sp": 2
-        }
-      ],
-      "sp_estimate": 2
-    },
-    {
-      "id": "phase-12",
-      "title": "Methodology Dispatch (R006) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T012",
-          "title": "Methodology Dispatch (R006) ✅ SHIPPED",
-          "description": "Complete phase 12: Methodology Dispatch (R006) ✅ SHIPPED",
-          "status": "open",
-          "gateScript": "echo \"Phase 12: Methodology Dispatch (R006) ✅ SHIPPED\"",
-          "sp": 2
-        }
-      ],
-      "sp_estimate": 2
-    },
-    {
-      "id": "phase-13",
-      "title": "Grounding Injection (ADR-009) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T013",
-          "title": "Grounding Injection (ADR-009) ✅ SHIPPED",
-          "description": "Complete phase 13: Grounding Injection (ADR-009) ✅ SHIPPED",
-          "status": "open",
-          "gateScript": "echo \"Phase 13: Grounding Injection (ADR-009) ✅ SHIPPED\"",
-          "sp": 2
-        }
-      ],
-      "sp_estimate": 2
-    },
-    {
-      "id": "phase-14",
-      "title": ".agents/ Deletion & Verification (ADR-007) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T014",
-          "title": ".agents/ Deletion & Verification (ADR-007) ✅ SHIPPED",
-          "description": "Complete phase 14: .agents/ Deletion & Verification (ADR-007) ✅ SHIPPED",
-          "status": "open",
-          "gateScript": "echo \"Phase 14: .agents/ Deletion & Verification (ADR-007) ✅ SHIPPED\"",
-          "sp": 2
-        }
-      ],
-      "sp_estimate": 2
-    },
-    {
-      "id": "phase-15",
-      "title": "Profile-Aware Enforcement Routing (R007) ✅ SHIPPED",
-      "tasks": [
-        {
-          "id": "T015",
-          "title": "Modify manifest.ts",
-          "description": "MODIFY src/plugins/manifest.ts. Add `language` field to `EnforcementSkillManifestSchema`",
-          "status": "open",
-          "gateScript": "test -f src/plugins/manifest.ts",
-          "sp": 1
-        },
-        {
-          "id": "T016",
-          "title": "Modify skill-runtime.ts",
-          "description": "MODIFY src/plugins/skill-runtime.ts. Filter built-in enforcement skills by `profile.stack.language`",
-          "status": "open",
-          "gateScript": "test -f src/plugins/skill-runtime.ts",
-          "sp": 1
-        }
-      ],
-      "sp_estimate": 2,
-      "doneWhen": [
-        "`pnpm vitest run src/plugins/skill-runtime.test.ts` exits 0"
-      ]
-    },
-    {
-      "id": "phase-16",
-      "title": "Toolchain Detection (R007)",
-      "tasks": [
-        {
-          "id": "T017",
-          "title": "Modify profile-detector.ts",
-          "description": "MODIFY src/engine/profile-detector.ts. Detect Biome, Ruff, ESLint, Prettier, vitest, pytest signals",
-          "status": "open",
-          "gateScript": "test -f src/engine/profile-detector.ts",
-          "sp": 1
-        },
-        {
-          "id": "T018",
-          "title": "Modify prompt-conditioner.ts",
-          "description": "MODIFY src/engine/prompt-conditioner.ts. Extend `ProjectProfile` interface with `toolchain`",
-          "status": "open",
-          "gateScript": "test -f src/engine/prompt-conditioner.ts",
-          "sp": 1
-        },
-        {
-          "id": "T019",
-          "title": "Modify project.ts",
-          "description": "MODIFY src/commands/project.ts. Report `toolchain` in `gwrk project info --format json`",
-          "status": "open",
-          "gateScript": "test -f src/commands/project.ts",
-          "sp": 1
-        }
-      ],
-      "sp_estimate": 3,
-      "doneWhen": [
-        "`gwrk project info --format json | jq '.toolchain.primary'` returns \"biome\" for a project with `biome.json`"
-      ]
-    },
-    {
-      "id": "phase-17",
-      "title": "Context Gathering Mandate (R007)",
-      "tasks": [
-        {
-          "id": "T020",
-          "title": "Modify PROMPT.md",
-          "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `gwrk project info` and `gwrk project discover` to Step 1 preamble",
-          "status": "open",
-          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
-          "sp": 1
-        }
-      ],
-      "sp_estimate": 1,
-      "doneWhen": [
-        "`cat src/plugins/builtins/workflows/gwrk-implement/PROMPT.md | grep \"gwrk project info\"` exits 0"
-      ]
-    },
-    {
-      "id": "phase-18",
-      "title": "Ontology Construction Workflow (ADR-009)",
-      "tasks": [
-        {
-          "id": "T021",
-          "title": "Create define-ontology.ts",
-          "description": "NEW src/commands/define-ontology.ts. `gwrk define ontology [--run]` handler",
-          "status": "open",
-          "gateScript": "test -f src/commands/define-ontology.ts",
-          "sp": 2
-        },
-        {
-          "id": "T022",
-          "title": "Create ontology-scaffold.ts",
-          "description": "NEW src/engine/ontology-scaffold.ts. Logic for directory and empty artifact creation",
-          "status": "open",
-          "gateScript": "test -f src/engine/ontology-scaffold.ts",
-          "sp": 2
-        },
-        {
-          "id": "T023",
-          "title": "Create source-scanner.ts",
-          "description": "NEW src/engine/source-scanner.ts. Scan specs and codebase for grounding material",
-          "status": "open",
-          "gateScript": "test -f src/engine/source-scanner.ts",
-          "sp": 2
-        },
-        {
-          "id": "T024",
-          "title": "Create manifest.yaml",
-          "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml. ",
-          "status": "open",
-          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml",
-          "sp": 2
-        },
-        {
-          "id": "T025",
-          "title": "Create PROMPT.md",
-          "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md. Five Primitives methodology",
-          "status": "open",
-          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md",
-          "sp": 2
-        }
-      ],
-      "sp_estimate": 10,
-      "doneWhen": [
-        "`gwrk define ontology --run` produces a grounded `domain.md` file"
-      ]
     },
     {
       "id": "phase-09",
@@ -385,7 +167,7 @@
         {
           "id": "T030",
           "title": "Modify skill-runtime.ts",
-          "description": "MODIFY src/plugins/skill-runtime.ts. add `resolveEnforcementSkills(projectRoot)` — scans builtins, global, and project-local for `tier: enforcement` manifests, returns SKILL.md content",
+          "description": "MODIFY src/plugins/skill-runtime.ts. add `resolveEnforcementSkills(projectRoot)` \u2014 scans builtins, global, and project-local for `tier: enforcement` manifests, returns SKILL.md content",
           "status": "completed",
           "gateScript": "test -f src/plugins/skill-runtime.ts",
           "sp": 1
@@ -409,7 +191,7 @@
         {
           "id": "T033",
           "title": "Modify PROMPT.md",
-          "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. replace inline `<code_quality>` placeholder with `{{enforcement}}` marker — resolved by SkillRuntime",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. replace inline `<code_quality>` placeholder with `{{enforcement}}` marker \u2014 resolved by SkillRuntime",
           "status": "completed",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
           "sp": 1
@@ -585,7 +367,7 @@
         {
           "id": "T055",
           "title": "Modify AGENTS.md",
-          "description": "MODIFY AGENTS.md. `.agents/rules/` → `.gwrk/rules/`",
+          "description": "MODIFY AGENTS.md. `.agents/rules/` \u2192 `.gwrk/rules/`",
           "status": "completed",
           "gateScript": "test -f AGENTS.md",
           "sp": 1
@@ -607,13 +389,28 @@
       ]
     },
     {
+      "id": "phase-10",
+      "title": ".agents/ Migration to Builtins (ADR-007) \u2705 SHIPPED",
+      "tasks": [
+        {
+          "id": "T010",
+          "title": ".agents/ Migration to Builtins (ADR-007) \u2705 SHIPPED",
+          "description": "Complete phase 10: .agents/ Migration to Builtins (ADR-007) \u2705 SHIPPED",
+          "status": "open",
+          "gateScript": "echo \"Phase 10: .agents/ Migration to Builtins (ADR-007) \u2705 SHIPPED\"",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2
+    },
+    {
       "id": "phase-11",
       "title": ".agents/ Deletion & Verification (ADR-007)",
       "tasks": [
         {
           "id": "T056",
           "title": "Modify ",
-          "description": "DELETE .agents/. entire directory tree — 39 files",
+          "description": "DELETE .agents/. entire directory tree \u2014 39 files",
           "status": "completed",
           "gateScript": "test -f .agents/",
           "sp": 1
@@ -621,7 +418,7 @@
         {
           "id": "T057",
           "title": "Modify migrate.ts",
-          "description": "MODIFY src/plugins/migrate.ts. add deprecation warning if `.agents/` detected — advise `gwrk init`",
+          "description": "MODIFY src/plugins/migrate.ts. add deprecation warning if `.agents/` detected \u2014 advise `gwrk init`",
           "status": "completed",
           "gateScript": "test -f src/plugins/migrate.ts",
           "sp": 1
@@ -629,7 +426,7 @@
         {
           "id": "T058",
           "title": "Modify drift-detector.ts",
-          "description": "MODIFY src/engine/drift-detector.ts. remove `.agents/` artifact check at L24-52 — directory no longer exists",
+          "description": "MODIFY src/engine/drift-detector.ts. remove `.agents/` artifact check at L24-52 \u2014 directory no longer exists",
           "status": "completed",
           "gateScript": "test -f src/engine/drift-detector.ts",
           "sp": 1
@@ -643,6 +440,179 @@
         "`pnpm build` passes",
         "`pnpm test` passes",
         "`gwrk define spec --help` resolves workflow from builtins"
+      ]
+    },
+    {
+      "id": "phase-12",
+      "title": "Methodology Dispatch (R006) \u2705 SHIPPED",
+      "tasks": [
+        {
+          "id": "T012",
+          "title": "Methodology Dispatch (R006) \u2705 SHIPPED",
+          "description": "Complete phase 12: Methodology Dispatch (R006) \u2705 SHIPPED",
+          "status": "open",
+          "gateScript": "echo \"Phase 12: Methodology Dispatch (R006) \u2705 SHIPPED\"",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2
+    },
+    {
+      "id": "phase-13",
+      "title": "Grounding Injection (ADR-009) \u2705 SHIPPED",
+      "tasks": [
+        {
+          "id": "T013",
+          "title": "Grounding Injection (ADR-009) \u2705 SHIPPED",
+          "description": "Complete phase 13: Grounding Injection (ADR-009) \u2705 SHIPPED",
+          "status": "open",
+          "gateScript": "echo \"Phase 13: Grounding Injection (ADR-009) \u2705 SHIPPED\"",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2
+    },
+    {
+      "id": "phase-14",
+      "title": ".agents/ Deletion & Verification (ADR-007) \u2705 SHIPPED",
+      "tasks": [
+        {
+          "id": "T014",
+          "title": ".agents/ Deletion & Verification (ADR-007) \u2705 SHIPPED",
+          "description": "Complete phase 14: .agents/ Deletion & Verification (ADR-007) \u2705 SHIPPED",
+          "status": "open",
+          "gateScript": "echo \"Phase 14: .agents/ Deletion & Verification (ADR-007) \u2705 SHIPPED\"",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2
+    },
+    {
+      "id": "phase-15",
+      "title": "Profile-Aware Enforcement Routing (R007) \u2705 SHIPPED",
+      "tasks": [
+        {
+          "id": "T015",
+          "title": "Modify manifest.ts",
+          "description": "MODIFY src/plugins/manifest.ts. Add `language` field to `EnforcementSkillManifestSchema`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/manifest.ts",
+          "sp": 1
+        },
+        {
+          "id": "T016",
+          "title": "Modify skill-runtime.ts",
+          "description": "MODIFY src/plugins/skill-runtime.ts. Filter built-in enforcement skills by `profile.stack.language`",
+          "status": "open",
+          "gateScript": "test -f src/plugins/skill-runtime.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 2,
+      "doneWhen": [
+        "`pnpm vitest run src/plugins/skill-runtime.test.ts` exits 0"
+      ]
+    },
+    {
+      "id": "phase-16",
+      "title": "Toolchain Detection (R007)",
+      "tasks": [
+        {
+          "id": "T017",
+          "title": "Modify profile-detector.ts",
+          "description": "MODIFY src/engine/profile-detector.ts. Detect Biome, Ruff, ESLint, Prettier, vitest, pytest signals",
+          "status": "open",
+          "gateScript": "test -f src/engine/profile-detector.ts",
+          "sp": 1
+        },
+        {
+          "id": "T018",
+          "title": "Modify prompt-conditioner.ts",
+          "description": "MODIFY src/engine/prompt-conditioner.ts. Extend `ProjectProfile` interface with `toolchain`",
+          "status": "open",
+          "gateScript": "test -f src/engine/prompt-conditioner.ts",
+          "sp": 1
+        },
+        {
+          "id": "T019",
+          "title": "Modify project.ts",
+          "description": "MODIFY src/commands/project.ts. Report `toolchain` in `gwrk project info --format json`",
+          "status": "open",
+          "gateScript": "test -f src/commands/project.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 3,
+      "doneWhen": [
+        "`gwrk project info --format json | jq '.toolchain.primary'` returns \"biome\" for a project with `biome.json`"
+      ]
+    },
+    {
+      "id": "phase-17",
+      "title": "Context Gathering Mandate (R007)",
+      "tasks": [
+        {
+          "id": "T020",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `gwrk project info` and `gwrk project discover` to Step 1 preamble",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 1,
+      "doneWhen": [
+        "`cat src/plugins/builtins/workflows/gwrk-implement/PROMPT.md | grep \"gwrk project info\"` exits 0"
+      ]
+    },
+    {
+      "id": "phase-18",
+      "title": "Ontology Construction Workflow (ADR-009)",
+      "tasks": [
+        {
+          "id": "T021",
+          "title": "Create define-ontology.ts",
+          "description": "NEW src/commands/define-ontology.ts. `gwrk define ontology [--run]` handler",
+          "status": "open",
+          "gateScript": "test -f src/commands/define-ontology.ts",
+          "sp": 2
+        },
+        {
+          "id": "T022",
+          "title": "Create ontology-scaffold.ts",
+          "description": "NEW src/engine/ontology-scaffold.ts. Logic for directory and empty artifact creation",
+          "status": "open",
+          "gateScript": "test -f src/engine/ontology-scaffold.ts",
+          "sp": 2
+        },
+        {
+          "id": "T023",
+          "title": "Create source-scanner.ts",
+          "description": "NEW src/engine/source-scanner.ts. Scan specs and codebase for grounding material",
+          "status": "open",
+          "gateScript": "test -f src/engine/source-scanner.ts",
+          "sp": 2
+        },
+        {
+          "id": "T024",
+          "title": "Create manifest.yaml",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml. ",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml",
+          "sp": 2
+        },
+        {
+          "id": "T025",
+          "title": "Create PROMPT.md",
+          "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md. Five Primitives methodology",
+          "status": "open",
+          "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 10,
+      "doneWhen": [
+        "`gwrk define ontology --run` produces a grounded `domain.md` file"
       ]
     },
     {
