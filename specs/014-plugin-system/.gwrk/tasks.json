@@ -304,7 +304,7 @@
           "id": "T021",
           "title": "Create define-ontology.ts",
           "description": "NEW src/commands/define-ontology.ts. `gwrk define ontology [--run]` handler",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/commands/define-ontology.ts",
           "sp": 2
         },
@@ -312,7 +312,7 @@
           "id": "T022",
           "title": "Create ontology-scaffold.ts",
           "description": "NEW src/engine/ontology-scaffold.ts. Logic for directory and empty artifact creation",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/engine/ontology-scaffold.ts",
           "sp": 2
         },
@@ -320,7 +320,7 @@
           "id": "T023",
           "title": "Create source-scanner.ts",
           "description": "NEW src/engine/source-scanner.ts. Scan specs and codebase for grounding material",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/engine/source-scanner.ts",
           "sp": 2
         },
@@ -328,7 +328,7 @@
           "id": "T024",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml. ",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/manifest.yaml",
           "sp": 2
         },
@@ -336,7 +336,7 @@
           "id": "T025",
           "title": "Create PROMPT.md",
           "description": "NEW src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md. Five Primitives methodology",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-ontology-construct/PROMPT.md",
           "sp": 2
         }
