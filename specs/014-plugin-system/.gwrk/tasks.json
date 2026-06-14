@@ -151,7 +151,7 @@
           "id": "T010",
           "title": ".agents/ Migration to Builtins (ADR-007) ✅ SHIPPED",
           "description": "Complete phase 10: .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 10: .agents/ Migration to Builtins (ADR-007) ✅ SHIPPED\"",
           "sp": 2
         }
