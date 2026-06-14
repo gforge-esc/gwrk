@@ -105,7 +105,7 @@
         {
           "id": "T007",
           "title": "Provisioning & Migration ✅ SHIPPED",
-          "description": "Complete phase 7: Provisioning & Migration ✅ SHIPPED",
+          "description": "Complete phase 7: Provisioning & Migration ✅ SHIPPED\n\nREVIEW FAIL (uat): gwrk init is a stub.\n  WHERE: src/commands/init.ts\n  EXPECTED: Functional initialization logic (FR-011, FR-012).\n  ACTUAL: Throws \"Not implemented: FR-001, FR-046\".",
           "status": "open",
           "gateScript": "echo \"Phase 7: Provisioning & Migration ✅ SHIPPED\"",
           "sp": 2
@@ -120,8 +120,8 @@
         {
           "id": "T008",
           "title": "Routing & Intelligence (ex-F008) ✅ SHIPPED",
-          "description": "Complete phase 8: Routing & Intelligence (ex-F008) ✅ SHIPPED",
-          "status": "completed",
+          "description": "Complete phase 8: Routing & Intelligence (ex-F008) ✅ SHIPPED\n\nREVIEW FAIL (code): Zod Schema Limitation — FR-L1-005.\n  WHERE: src/utils/config.ts:GwrkConfigSchema.agents\n  EXPECTED: .passthrough() or support for all TaskClassification types (test, review, remediation)\n  ACTUAL: Strict object schema strips unknown keys, preventing selectBackend from honoring custom agent mappings.\n  FIX: Add .passthrough() to GwrkConfigSchema.agents.\n\nREVIEW FAIL (lint): noExplicitAny.\n  WHERE: src/engine/router.ts:97\n  EXPECTED: Typed access to config.agents\n  ACTUAL: const agentsConfig = config.agents as any;\n  FIX: Remove 'as any' and use proper typing after fixing the Zod schema.\n\nREVIEW FAIL (uat): E2E Tests are empty.\n  WHERE: src/plugins.e2e.test.ts\n  EXPECTED: Functional verification of routing and plugin system.\n  ACTUAL: File contains only empty test blocks with comments.",
+          "status": "open",
           "gateScript": "echo \"Phase 8: Routing & Intelligence (ex-F008) ✅ SHIPPED\"",
           "sp": 2
         }
