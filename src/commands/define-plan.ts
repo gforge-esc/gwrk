@@ -18,6 +18,7 @@ import {
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 export const planCommand = new Command("plan")
@@ -60,6 +61,7 @@ Examples:
 
       const config = loadConfig(projectRoot);
       const backend = config.agents.define;
+      const model = resolveModelForTask("define", backend, projectRoot);
 
       // TC-007: Read stdin if piped (discovery JSON)
       let contextContent: string | undefined;
@@ -121,6 +123,7 @@ Examples:
         const orchestrator = new DefineOrchestrator({
           featureId: feature,
           backend,
+          model,
           cwd: projectRoot,
           refs: opts.refs,
         }, {
@@ -160,7 +163,7 @@ Examples:
             phase: "p00",
             command: "define plan",
             agent: backend,
-            model: "unknown",
+            model: model || "unknown",
             startedAt,
             finishedAt,
             durationS,

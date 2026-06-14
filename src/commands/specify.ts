@@ -8,6 +8,7 @@ import { PlanStore } from "../engine/plan-store.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
 
 import {
   commitAllClean,
@@ -66,6 +67,7 @@ Arguments:
         const cwd = process.cwd();
         const config = loadConfig(cwd);
         const backend = config.agents.define;
+        const model = resolveModelForTask("define", backend, cwd);
         const specsDir = path.join(cwd, "specs");
 
         // Read prompt/stdin BEFORE resolution — we need the prompt to decide
@@ -196,6 +198,7 @@ Arguments:
           const orchestrator = new DefineOrchestrator({
             featureId: feature,
             backend,
+            model,
             cwd,
             refs: opts.refs,
           }, {

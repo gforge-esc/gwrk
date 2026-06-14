@@ -14,6 +14,7 @@ import {
   extractSpecSections,
 } from "../utils/parser.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
 import { loadTaskState } from "../utils/state.js";
 
 import {
@@ -146,6 +147,7 @@ Examples:
 
         const config = loadConfig(projectRoot);
         const backend = config.agents.define;
+        const model = resolveModelForTask("define", backend, projectRoot);
 
         const startedAt = new Date().toISOString();
         const runId = startRun({
@@ -205,6 +207,7 @@ Examples:
           const orchestrator = new DefineOrchestrator({
             featureId: feature,
             backend,
+            model,
             cwd: projectRoot,
           }, {
             stage: DefineStage.DEFINE_TESTS,

@@ -22,6 +22,7 @@ import { researchCommand } from "./research.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
@@ -71,6 +72,7 @@ Examples:
         const feature = resolveFeature(featureArg, cwd);
         const config = loadConfig(cwd);
         const backend = config.agents.define;
+        const model = resolveModelForTask("define", backend, cwd);
 
         const startedAt = new Date().toISOString();
         const runId = startRun({
@@ -94,6 +96,7 @@ Examples:
           const orchestrator = new DefineOrchestrator({
             featureId: feature,
             backend,
+            model,
             cwd,
             refs: opts.refs,
             dryRun: opts.dryRun,

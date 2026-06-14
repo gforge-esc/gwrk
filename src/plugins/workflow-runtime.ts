@@ -245,6 +245,7 @@ export class WorkflowRuntime {
       type: "workflow",
       prompt: fullPrompt,
       agent: options.agent,
+      model: options.model,
       workDir: projectRoot,
       workflow: name,
       quiet: options.quiet,

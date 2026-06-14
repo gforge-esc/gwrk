@@ -17,9 +17,9 @@ describe("task-classifier", () => {
     expect(classifyTask("review")).toBe(TaskClassification.THINKING);
   });
 
-  it("TR-010: classifies 'define' as 'high-context'", () => {
-    expect(classifyTask(TaskType.DEFINE)).toBe(TaskClassification.HIGH_CONTEXT);
-    expect(classifyTask("define")).toBe(TaskClassification.HIGH_CONTEXT);
+  it("TR-010: classifies 'define' as 'thinking'", () => {
+    expect(classifyTask(TaskType.DEFINE)).toBe(TaskClassification.THINKING);
+    expect(classifyTask("define")).toBe(TaskClassification.THINKING);
   });
 
   it("TR-010: classifies 'remediation' as 'fast'", () => {
