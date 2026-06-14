@@ -154,8 +154,7 @@ export class PlanRenderer {
       md += `### Feature ${heading} ${icon}\n\n`;
 
       if (f.status === "SHIPPED") {
-        md +=
-          "> [!WARNING]\n> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.\n\n";
+        md += `**Status:** SHIPPED ✅\n\n`;
       } else {
         md += `**Status:** ${f.status}\n\n`;
       }

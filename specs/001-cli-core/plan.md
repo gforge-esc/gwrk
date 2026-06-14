@@ -266,19 +266,24 @@ Implement the two-tier state architecture ([ADR-003](file:///Users/gonzo/Code/gw
 
 Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, and directory scaffolding.
 
-**Files (5):**
+> **Cross-Feature Note:** `profile-detector.ts` already exists (shipped R007/014). Config schema extension for `workspaces` is owned by 020-polyglot-monorepo. This phase focuses on the init wizard UX and setup absorption — not schema design.
+
+**Files (3):**
 - `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag)
 - `src/commands/setup.ts` (DELETE: Absorbed into init)
 - `src/commands/setup-slack.ts` (MODIFY: Refactor to be callable from init flow, not standalone)
-- `src/engine/profile-detector.ts` (NEW: Auto-detect project type, stack, layout from filesystem signals)
-- `src/utils/config.ts` (MODIFY: Extend `GwrkConfigSchema` with optional `project.type`, `project.stack`, `project.layout`, `project.architecture`, `project.conventions`)
 
-**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, US-001 (R3), US-021 (absorbed), US-027, TC-011
+**Already Shipped (R007/014):**
+- `src/engine/profile-detector.ts` — ✅ Root-level detection for pnpm-monorepo, rust, python, go, nodejs, polyglot-monorepo
+- `src/utils/config.ts` — ✅ `stack.languages` array, basic profile fields
+
+**Deferred to 020:**
+- `src/utils/config.ts` `workspaces` schema — FR-032 (workspace-level profiles owned by 020-P1)
+
+**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), US-001 (R3), US-021 (absorbed), TC-011
 
 **Tests:**
 - `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, profile auto-detection) — TR-001, TR-021
-- `src/engine/profile-detector.test.ts` (NEW: Detection for pnpm-monorepo, rust, python, gwrk-native, unknown) — TR-027, TR-028, TR-029, TR-030
-- `src/utils/config.test.ts` (MODIFY: Schema backward compat with old + new formats) — TR-033
 - `src/commands/setup.test.ts` (DELETE or refactor into init.test.ts)
 
 **gwrk command to implement:**
@@ -529,22 +534,27 @@ Implement structural project scoping across the global SQLite database to preven
 
 ## Phase Execution Order
 
-Open phases should be implemented sequentially:
+> **Daily driver = viable.** Viable means gwrk proves its value, not just runs commands. Compression (007) is the viability proof.
 
-| Order | Phase | Scope | gwrk command |
-|-------|-------|-------|-------------|
-| 1 | Phase 10 | Unified init + profile detection + schema extension | `gwrk ship 001 10` |
-| 2 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` |
-| 3 | Phase 13 | Prompt conditioning + PROMPT.md refactoring + `project info` | `gwrk ship 001 13` |
-| 4 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` |
-| 5 | Phase 9 | State contracts + execution manifests (deferred, lower priority) | `gwrk ship 001 9` |
+| Priority | Feature/Phase | Scope | gwrk command | Notes |
+|----------|--------------|-------|-------------|-------|
+| **1** | **020-P1** | Config schema + workspace detection | `gwrk ship 020 1` | **Absorbs FR-032.** Unblocks EnergyWork. |
+| **2** | **020-P2** | Init workspace support + `--workspace` flag | `gwrk ship 020 2` | Completes polyglot monorepo support. |
+| **3** | Phase 13 | Prompt conditioning + PROMPT.md refactoring | `gwrk ship 001 13` | Stops gwrk-native leakage in non-gwrk projects. |
+| **4** | **007-P1** | Effort engine | `gwrk ship 007 1` | **Viability proof — critical path.** |
+| **5** | **007-P2** | Compression engine | `gwrk ship 007 2` | Core compression calculation. |
+| **6** | **007-P3** | CLI commands + integration | `gwrk ship 007 3` | `gwrk measure compression` end-to-end. |
+| 7 | Phase 10 | Unified init wizard + setup absorption | `gwrk ship 001 10` | Polish — functional without it. |
+| 8 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` | Polish — quiet output. |
+| 9 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` | Partially shipped. |
+| 10 | Phase 9 | State contracts + execution manifests | `gwrk ship 001 9` | Deferred. |
 
-> Phase 14 depends on Phase 10 (init must register projects before scoping works). P13 and P14 are independent of each other and could ship in parallel after P10.
-
-
-> Phase 13 depends on Phase 10 (profile schema must exist before injection). Phase 12 is independent and can run before or after 13, but before is preferred (cleaner runtime before prompt refactoring).
+> Phase 13 depends on 020-P1 (profile schema must exist before prompt injection works for non-gwrk projects). 007 phases are sequential (P1 → P2 → P3).
 
 ## Deferred Items
 
 - US-009 / FR-009: Cross-artifact analysis — now internal definition stage, no standalone command.
 - `history.jsonl` removal: Deferred until `gwrk harvest` is operational (Phase 2 Build Server).
+- FR-030, FR-031 (auto-detection): Delivered by R007. Tests in `profile-detector.test.ts`.
+- FR-032 (config schema extension): Absorbed by 020-polyglot-monorepo P1.
+

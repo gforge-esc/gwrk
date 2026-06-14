@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-06-13
+> **Status:** Authoritative · **Date:** 2026-06-14
 > **Anchored to:** [architecture.md](docs/grounding/architecture.md), [GWRK-PRD-PRFAQ.md](docs/product/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [ADR-001](docs/decisions/ADR-001-task-tracking.md), [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003](docs/decisions/ADR-003-state-contract.md), [ADR-004](docs/decisions/ADR-004-agent-native-output.md), [ADR-005](docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006](docs/decisions/ADR-006-plugin-agent-backends.md)
 
@@ -59,20 +59,20 @@ gantt
     dateFormat YYYY-MM-DD
     axisFormat %s
 
-    Project Bootstrap and Config :001_cli_core_phase_01, 2026-01-01, 1d
-    SQLite Execution Ledger   :001_cli_core_phase_02, after 001_cli_core_phase_01, 1d
-    Clarity Pillar Define     :001_cli_core_phase_03, after 001_cli_core_phase_02, 1d
-    Throughput Pillar Ship    :001_cli_core_phase_04, after 001_cli_core_phase_03, 1d
-    Task Engine State Gates and History :001_cli_core_phase_05, after 001_cli_core_phase_04, 1d
-    Value Pillar Measure      :001_cli_core_phase_06, after 001_cli_core_phase_05, 1d
+    Project Bootstrap and Config :done, 001_cli_core_phase_01, 2026-01-01, 1d
+    SQLite Execution Ledger   :done, 001_cli_core_phase_02, after 001_cli_core_phase_01, 1d
+    Clarity Pillar Define     :done, 001_cli_core_phase_03, after 001_cli_core_phase_02, 1d
+    Throughput Pillar Ship    :done, 001_cli_core_phase_04, after 001_cli_core_phase_03, 1d
+    Task Engine State Gates and History :done, 001_cli_core_phase_05, after 001_cli_core_phase_04, 1d
+    Value Pillar Measure      :done, 001_cli_core_phase_06, after 001_cli_core_phase_05, 1d
     Init Hardening            :done, 001_cli_core_phase_07, after 001_cli_core_phase_06, 1d
     E2E Surface Hardening     :done, 001_cli_core_phase_08, after 001_cli_core_phase_07, 1d
-    State Contract Execution Manifests and Merge Safety :done, 001_cli_core_phase_09, after 001_cli_core_phase_08, 1d
-    Unified Init Project Onboarding REWRITE R3 :done, 001_cli_core_phase_10, after 001_cli_core_phase_09, 1d
+    State Contract Execution Manifests and Merge Safety :001_cli_core_phase_09, after 001_cli_core_phase_08, 1d
+    Unified Init Project Onboarding REWRITE R3 :001_cli_core_phase_10, after 001_cli_core_phase_09, 1d
     CLI UX Polish             :done, 001_cli_core_phase_11, after 001_cli_core_phase_10, 1d
-    Define Pillar Output Parity :done, 001_cli_core_phase_12, after 001_cli_core_phase_11, 1d
-    Project Awareness Prompt Conditioning and PROMPT.md Refactoring NEW R3 :done, 001_cli_core_phase_13, after 001_cli_core_phase_12, 1d
-    Project-Scoped DB Isolation NEW 2026-06-01 :done, 001_cli_core_phase_14, after 001_cli_core_phase_13, 1d
+    Define Pillar Output Parity :001_cli_core_phase_12, after 001_cli_core_phase_11, 1d
+    Project Awareness Prompt Conditioning and PROMPT.md Refactoring NEW R3 :001_cli_core_phase_13, after 001_cli_core_phase_12, 1d
+    Project-Scoped DB Isolation NEW 2026-06-01 :001_cli_core_phase_14, after 001_cli_core_phase_13, 1d
     Resilience and System Status :done, 002_build_server_phase_02, after 001_cli_core_phase_14, 1d
     Slack Event Bridge and Bless Actions :done, 002_build_server_phase_03, after 002_build_server_phase_02, 1d
     Execution Ledger          :done, 002_build_server_phase_04, after 002_build_server_phase_03, 1d
@@ -113,9 +113,9 @@ gantt
     Grounding Injection ADR-009 :done, 014_plugin_system_phase_13, after 014_plugin_system_phase_12, 1d
     .agents Deletion and Verification ADR-007 :014_plugin_system_phase_14, after 014_plugin_system_phase_13, 1d
     Profile-Aware Enforcement Routing R007 :done, 014_plugin_system_phase_15, after 014_plugin_system_phase_14, 1d
-    Toolchain Detection R007  :done, 014_plugin_system_phase_16, after 014_plugin_system_phase_15, 1d
-    Context Gathering Mandate R007 :done, 014_plugin_system_phase_17, after 014_plugin_system_phase_16, 1d
-    Ontology Construction Workflow ADR-009 :done, 014_plugin_system_phase_18, after 014_plugin_system_phase_17, 1d
+    Toolchain Detection R007  :014_plugin_system_phase_16, after 014_plugin_system_phase_15, 1d
+    Context Gathering Mandate R007 :014_plugin_system_phase_17, after 014_plugin_system_phase_16, 1d
+    Ontology Construction Workflow ADR-009 :014_plugin_system_phase_18, after 014_plugin_system_phase_17, 1d
     Foundation and Data Model :done, 018_build_plan_orchestrator_phase_01, after 014_plugin_system_phase_18, 1d
     Solver Engine and Ready Queue :done, 018_build_plan_orchestrator_phase_02, after 018_build_plan_orchestrator_phase_01, 1d
     Graph Mutation and Lifecycle Hooks :done, 018_build_plan_orchestrator_phase_03, after 018_build_plan_orchestrator_phase_02, 1d
@@ -146,25 +146,24 @@ gantt
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
-| 1 | Project Bootstrap & Config ✅ | PLANNED ⚪ | 0 |
-| 2 | SQLite Execution Ledger ✅ | PLANNED ⚪ | 0 |
-| 3 | Clarity Pillar — Define ✅ | PLANNED ⚪ | 0 |
-| 4 | Throughput Pillar — Ship ✅ | PLANNED ⚪ | 0 |
-| 5 | Task Engine — State, Gates & History ✅ | PLANNED ⚪ | 0 |
-| 6 | Value Pillar — Measure ✅ | PLANNED ⚪ | 0 |
+| 1 | Project Bootstrap & Config ✅ | SHIPPED ✅ | 0 |
+| 2 | SQLite Execution Ledger ✅ | SHIPPED ✅ | 0 |
+| 3 | Clarity Pillar — Define ✅ | SHIPPED ✅ | 0 |
+| 4 | Throughput Pillar — Ship ✅ | SHIPPED ✅ | 0 |
+| 5 | Task Engine — State, Gates & History ✅ | SHIPPED ✅ | 0 |
+| 6 | Value Pillar — Measure ✅ | SHIPPED ✅ | 0 |
 | 7 | Init Hardening ✅ | SHIPPED ✅ | 0 |
 | 8 | E2E Surface Hardening ✅ | SHIPPED ✅ | 0 |
-| 9 | State Contract — Execution Manifests & Merge Safety | SHIPPED ✅ | 0 |
-| 10 | Unified Init — Project Onboarding ⭐ **REWRITE (R3)** | SHIPPED ✅ | 0 |
+| 9 | State Contract — Execution Manifests & Merge Safety | PLANNED ⚪ | 0 |
+| 10 | Unified Init — Project Onboarding ⭐ **REWRITE (R3)** | PLANNED ⚪ | 0 |
 | 11 | CLI UX Polish ✅ | SHIPPED ✅ | 0 |
-| 12 | Define Pillar Output Parity | SHIPPED ✅ | 0 |
-| 13 | Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)** | SHIPPED ✅ | 0 |
-| 14 | Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)** | SHIPPED ✅ | 0 |
+| 12 | Define Pillar Output Parity | PLANNED ⚪ | 0 |
+| 13 | Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)** | PLANNED ⚪ | 0 |
+| 14 | Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)** | PLANNED ⚪ | 0 |
 
 ### Feature 002-build-server ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -175,8 +174,7 @@ gantt
 
 ### Feature 003-slack ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -198,8 +196,7 @@ gantt
 
 ### Feature 005-parallel-dispatch ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -208,8 +205,7 @@ gantt
 
 ### Feature 006-pulse ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -231,8 +227,7 @@ gantt
 
 ### Feature 008-agent-router ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -243,8 +238,7 @@ gantt
 
 ### Feature 011-harvest ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -260,8 +254,7 @@ gantt
 
 ### Feature 013-agent-native-interface ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -290,14 +283,13 @@ gantt
 | 13 | Grounding Injection (ADR-009) ✅ SHIPPED | SHIPPED ✅ | 0 |
 | 14 | .agents/ Deletion & Verification (ADR-007) ✅ SHIPPED | PLANNED ⚪ | 0 |
 | 15 | Profile-Aware Enforcement Routing (R007) ✅ SHIPPED | SHIPPED ✅ | 0 |
-| 16 | Toolchain Detection (R007) | SHIPPED ✅ | 0 |
-| 17 | Context Gathering Mandate (R007) | SHIPPED ✅ | 0 |
-| 18 | Ontology Construction Workflow (ADR-009) | SHIPPED ✅ | 0 |
+| 16 | Toolchain Detection (R007) | PLANNED ⚪ | 0 |
+| 17 | Context Gathering Mandate (R007) | PLANNED ⚪ | 0 |
+| 18 | Ontology Construction Workflow (ADR-009) | PLANNED ⚪ | 0 |
 
 ### Feature 018-build-plan-orchestrator ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -309,8 +301,7 @@ gantt
 
 ### Feature 019-agy-agent-migration ✅
 
-> [!WARNING]
-> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.
+**Status:** SHIPPED ✅
 
 | Phase | Name | Status | SP |
 |---|---|---|---|
@@ -370,4 +361,4 @@ gantt
 
 ## Changelog
 
-- **2026-06-13:** Regenerated from graph state via `gwrk plan render`.
+- **2026-06-14:** Regenerated from graph state via `gwrk plan render`.

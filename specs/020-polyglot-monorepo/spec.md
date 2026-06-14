@@ -11,6 +11,8 @@ revision: 1
 **Created**: 2026-06-13
 **Status**: Active
 **Input**: Polyglot monorepo support — workspace detection, per-workspace enforcement routing, config schema extensions. See R010.
+**Dependencies**: R007 (profile detection — shipped), 001-P10 (schema extension — overlapping scope, see notes below)
+**Existing Code**: `src/engine/profile-detector.ts` (R007, root-level detection), `src/utils/config.ts` (has `stack.languages` array)
 
 ---
 

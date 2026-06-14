@@ -17,7 +17,7 @@ Extend `GwrkConfigSchema` to support workspaces and implement `cwd`-based worksp
 **Files (4):**
 - `src/utils/config.ts` (Modify: Add `workspaces` to `GwrkConfigSchema` and validation logic)
 - `src/utils/config.test.ts` (Modify: Add TR-001 tests for valid and invalid `workspaces`)
-- `src/engine/profile-detector.ts` (New: Resolve active workspace based on `cwd` vs workspace keys)
+- `src/engine/profile-detector.ts` (Modify: Add workspace resolution — `cwd` matching against workspace keys. Extends existing root-level detection from R007.)
 - `src/engine/profile-detector.test.ts` (New: Add TR-002 tests for `cwd` resolution)
 
 **Requirements Addressed:** FR-001, FR-002, US-001, US-002, TC-001, TC-002, TC-003
