@@ -690,8 +690,8 @@
         {
           "id": "T065",
           "title": "Modify agent.ts",
-          "description": "MODIFY src/utils/agent.ts. Call `resolveExtensionContext()` and inject into `<external_context>` block",
-          "status": "completed",
+          "description": "MODIFY src/utils/agent.ts. Call `resolveExtensionContext()` and inject into `<external_context>` block\n\nREVIEW FAIL (code): Missing Keywords — FR-L3-006 / US-027.\n  WHERE: src/utils/agent.ts:517\n  EXPECTED: resolveExtensionContext(workDir, keywords) where keywords are extracted from task.prompt.\n  ACTUAL: resolveExtensionContext(workDir) with no keywords passed.\n  FIX: Extract keywords from task.prompt (e.g., via simple split/filter) and pass them to resolveExtensionContext().\n\nREVIEW FAIL (test): Shallow Coverage — TR-018.\n  WHERE: src/utils/agent.test.ts:167\n  EXPECTED: Test should verify that keywords are passed to the mock and that context content is injected, not just the tag.\n  ACTUAL: Test only verifies presence of '<external_context>' tag.\n  FIX: Update TR-018 to expect keywords in the call and verify content injection.\n\nUAT REVIEW (2026-06-14): FAIL. Implementation still lacks keyword extraction and test coverage is insufficient. Task remains OPEN.",
+          "status": "open",
           "gateScript": "test -f src/utils/agent.ts",
           "sp": 1
         }
