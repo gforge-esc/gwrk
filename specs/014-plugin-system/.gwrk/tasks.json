@@ -252,7 +252,7 @@
           "id": "T017",
           "title": "Modify profile-detector.ts",
           "description": "MODIFY src/engine/profile-detector.ts. Detect Biome, Ruff, ESLint, Prettier, vitest, pytest signals",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/engine/profile-detector.ts",
           "sp": 1
         },
@@ -260,7 +260,7 @@
           "id": "T018",
           "title": "Modify prompt-conditioner.ts",
           "description": "MODIFY src/engine/prompt-conditioner.ts. Extend `ProjectProfile` interface with `toolchain`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/engine/prompt-conditioner.ts",
           "sp": 1
         },
@@ -268,7 +268,7 @@
           "id": "T019",
           "title": "Modify project.ts",
           "description": "MODIFY src/commands/project.ts. Report `toolchain` in `gwrk project info --format json`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/commands/project.ts",
           "sp": 1
         }
