@@ -695,7 +695,7 @@
           "id": "T063",
           "title": "Create manifest.yaml",
           "description": "NEW src/plugins/builtins/extensions/obsidian-vault/manifest.yaml. `provides: [context]`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/builtins/extensions/obsidian-vault/manifest.yaml",
           "sp": 2
         },
@@ -703,7 +703,7 @@
           "id": "T064",
           "title": "Create adapter.ts",
           "description": "NEW src/plugins/builtins/extensions/obsidian-vault/adapter.ts. Implements `ContextProvider` interface",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/builtins/extensions/obsidian-vault/adapter.ts",
           "sp": 2
         }
