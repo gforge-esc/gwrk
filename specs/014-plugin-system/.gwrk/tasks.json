@@ -136,7 +136,7 @@
           "id": "T009",
           "title": "Enforcement Skills (FR-014 / US-016) ✅ SHIPPED",
           "description": "Complete phase 9: Enforcement Skills (FR-014 / US-016) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 9: Enforcement Skills (FR-014 / US-016) ✅ SHIPPED\"",
           "sp": 2
         }
