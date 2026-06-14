@@ -106,7 +106,7 @@
           "id": "T007",
           "title": "Provisioning & Migration ✅ SHIPPED",
           "description": "Complete phase 7: Provisioning & Migration ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 7: Provisioning & Migration ✅ SHIPPED\"",
           "sp": 2
         }
