@@ -520,8 +520,8 @@
         {
           "id": "T017",
           "title": "Modify profile-detector.ts",
-          "description": "MODIFY src/engine/profile-detector.ts. Detect Biome, Ruff, ESLint, Prettier, vitest, pytest signals",
-          "status": "completed",
+          "description": "MODIFY src/engine/profile-detector.ts. Detect Biome, Ruff, ESLint, Prettier, vitest, pytest signals\n\nREVIEW FAIL (lint): TR-016 (Toolchain Detection) Failures.\n  WHERE: src/engine/profile-detector.ts:151,278\n  EXPECTED: Lint-clean source code (no !! or any).\n  ACTUAL: L151: non-null assertion (!); L278: explicit any.\n  FIX: Use proper type guards and explicit typing in profile-detector.ts.",
+          "status": "open",
           "gateScript": "test -f src/engine/profile-detector.ts",
           "sp": 1
         },
