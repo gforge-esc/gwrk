@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-14T15:09:56.288Z_define_p00",
+  "feature": "001-cli-core",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-14T15:09:56.288Z",
+  "finishedAt": "2026-06-14T15:11:48.535Z",
+  "durationS": 112,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 75,
+  "linesDeleted": 40,
+  "gitCommit": "97f06ba4486531f51ec781c9a9bc85386f6680d8",
+  "gitBranch": "develop",
+  "digest": []
+}
