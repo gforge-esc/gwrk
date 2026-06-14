@@ -37,6 +37,7 @@ describe("FR-035: Project Profile Introspection", () => {
     expect(output).toContain("Project Profile: gwrk-native");
     expect(output).toContain("Language: TypeScript");
     expect(output).toContain("Layout: src-nested");
+    expect(output).toContain("Source: auto-detected"); // New requirement FR-035
   });
 
   it("US-029.2: supports --format json", async () => {

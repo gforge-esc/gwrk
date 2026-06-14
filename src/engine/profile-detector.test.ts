@@ -61,14 +61,20 @@ describe("profile-detector", () => {
     expect(profile.stack.framework).toBe("Express");
   });
 
-  it("should detect gwrk-native", async () => {
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({
-      name: "@gwrk/cli",
-      version: "0.1.0",
-    }));
+  it("should detect gwrk-native via docs/architecture.md", async () => {
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "docs", "architecture.md"), "# Architecture");
     
     const profile = await detectProfile(tmpDir);
-    expect(profile._isGwrk).toBe(true);
+    expect(profile.type).toBe("gwrk-native");
+  });
+
+  it("should follow priority rules: Cargo.toml over package.json", async () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), "{}");
+    fs.writeFileSync(path.join(tmpDir, "Cargo.toml"), "");
+    
+    const profile = await detectProfile(tmpDir);
+    expect(profile.type).toBe("rust");
   });
 
   it("TR-034: gwrk-native prompt assembly regression snapshot", async () => {
