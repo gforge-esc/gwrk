@@ -465,7 +465,7 @@
           "id": "T013",
           "title": "Grounding Injection (ADR-009) ✅ SHIPPED",
           "description": "Complete phase 13: Grounding Injection (ADR-009) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 13: Grounding Injection (ADR-009) ✅ SHIPPED\"",
           "sp": 2
         }
