@@ -41,7 +41,6 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
       mockChild.stdout = new PassThrough();
       mockChild.stderr = new PassThrough();
 
-      // End process after a short delay to allow listeners to attach
       setTimeout(() => {
         mockChild.stdout.end();
         mockChild.stderr.end();
@@ -67,12 +66,6 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
   });
 });
 
-/**
- * ADR-008: Command Safety Posture
- *
- * Layer 1: <command_safety> prompt block injected into dispatch stdin
- * Layer 2: SAFE_AGENT_ENV environment variables in spawned process
- */
 describe('ADR-008: Command Safety Posture', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -120,7 +113,6 @@ describe('ADR-008: Command Safety Posture', () => {
 
       expect(capturedStdin).toContain('<command_safety>');
       expect(capturedStdin).toContain('</command_safety>');
-      // Safety block is prepended before the original prompt
       expect(capturedStdin.indexOf('<command_safety>')).toBeLessThan(
         capturedStdin.indexOf('Implement this feature')
       );
@@ -152,7 +144,6 @@ describe('ADR-008: Command Safety Posture', () => {
         stdin: '<command_safety>Custom rules</command_safety>\nDo the work'
       });
 
-      // Should appear exactly once
       const matches = capturedStdin.match(/<command_safety>/g);
       expect(matches).toHaveLength(1);
     });
@@ -194,10 +185,38 @@ describe('ADR-008: Command Safety Posture', () => {
         stdin: 'Test prompt'
       });
 
-      // Verify all SAFE_AGENT_ENV keys are present in the spawn env
       for (const [key, value] of Object.entries(SAFE_AGENT_ENV)) {
         expect(capturedEnv[key]).toBe(value);
       }
     });
+  });
+});
+
+describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
+  it("FR-L3-006: injects output of resolveExtensionContext into prompt", async () => {
+    let capturedStdin = '';
+    vi.mocked(spawn).mockImplementation(() => {
+      const mockChild = new EventEmitter() as any;
+      const stdin = new PassThrough();
+      stdin.on('data', (chunk) => { capturedStdin += chunk.toString(); });
+      mockChild.stdin = stdin;
+      mockChild.stdout = new PassThrough();
+      mockChild.stderr = new PassThrough();
+      setTimeout(() => {
+        mockChild.stdout.end();
+        mockChild.stderr.end();
+        mockChild.emit('close', 0);
+      }, 50);
+      return mockChild;
+    });
+
+    await dispatchToAgent({
+      workflow: 'gwrk-implement',
+      workDir: '/fake/root',
+      agent: 'gemini',
+      stdin: 'Test extension context'
+    });
+
+    expect(capturedStdin).toContain('<external_context>');
   });
 });

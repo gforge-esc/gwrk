@@ -81,7 +81,6 @@ describe("profile-detector", () => {
   });
 
   it("detects polyglot-monorepo when multiple language markers are present", async () => {
-    // EnergyWork scenario: Python + JS + Go
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({
       dependencies: { express: "^4.18.2" },
       devDependencies: { typescript: "^5.0.0" }
@@ -92,7 +91,7 @@ describe("profile-detector", () => {
     const profile = await detectProfile(tmpDir);
     expect(profile.type).toBe("polyglot-monorepo");
     expect(profile.stack?.languages).toEqual(["TypeScript", "Python", "Go"]);
-    expect(profile.stack?.language).toBe("TypeScript"); // primary (backwards compat)
+    expect(profile.stack?.language).toBe("TypeScript");
     expect(profile.layout).toBe("monorepo");
   });
 
@@ -153,9 +152,7 @@ describe("FR-002: Workspace Detection via CWD (020-polyglot-monorepo)", () => {
       }
     };
     
-    // Typecast to any because resolveWorkspaceProfile is part of the implementation needed for tests to pass eventually
     const resolveWorkspaceProfile = (pd as any).resolveWorkspaceProfile;
-    
     expect(resolveWorkspaceProfile).toBeDefined();
 
     const webProfile = resolveWorkspaceProfile("/path/to/repo/apps/web", "/path/to/repo", mockConfig);
@@ -166,5 +163,29 @@ describe("FR-002: Workspace Detection via CWD (020-polyglot-monorepo)", () => {
     
     const fallbackProfile = resolveWorkspaceProfile("/path/to/repo/unknown", "/path/to/repo", mockConfig);
     expect(fallbackProfile).toBeUndefined();
+  });
+});
+
+describe("TR-016: Toolchain Detection (Phase 16)", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("FR-015: correctly identifies Biome/Ruff/ESLint signals", async () => {
+    fs.writeFileSync(path.join(tmpDir, "biome.json"), "");
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({
+      devDependencies: { vitest: "1.0.0" }
+    }));
+    
+    const profile = await detectProfile(tmpDir);
+    expect((profile as any).toolchain).toBeDefined();
+    expect((profile as any).toolchain?.primary).toBe("biome");
+    expect((profile as any).toolchain?.test).toBe("vitest");
   });
 });
