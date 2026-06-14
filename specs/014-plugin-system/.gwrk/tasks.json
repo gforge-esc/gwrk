@@ -226,7 +226,7 @@
           "id": "T015",
           "title": "Modify manifest.ts",
           "description": "MODIFY src/plugins/manifest.ts. Add `language` field to `EnforcementSkillManifestSchema`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/manifest.ts",
           "sp": 1
         },
@@ -234,7 +234,7 @@
           "id": "T016",
           "title": "Modify skill-runtime.ts",
           "description": "MODIFY src/plugins/skill-runtime.ts. Filter built-in enforcement skills by `profile.stack.language`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/skill-runtime.ts",
           "sp": 1
         }
