@@ -653,7 +653,7 @@
           "id": "T059",
           "title": "Modify manifest.ts",
           "description": "MODIFY src/plugins/manifest.ts. Add `ExtensionManifestSchema` and update discriminated union",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/manifest.ts",
           "sp": 1
         },
@@ -661,7 +661,7 @@
           "id": "T060",
           "title": "Create extension-runtime.ts",
           "description": "NEW src/plugins/extension-runtime.ts. Extension discovery and `resolveExtensionContext()` logic",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/extension-runtime.ts",
           "sp": 2
         },
@@ -669,7 +669,7 @@
           "id": "T061",
           "title": "Create context-provider.ts",
           "description": "NEW src/plugins/context-provider.ts. `ContextProvider` interface",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/context-provider.ts",
           "sp": 2
         },
@@ -677,7 +677,7 @@
           "id": "T062",
           "title": "Modify config.ts",
           "description": "MODIFY src/utils/config.ts. Support `extensions` block in `.gwrkrc.json`",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/utils/config.ts",
           "sp": 1
         }
