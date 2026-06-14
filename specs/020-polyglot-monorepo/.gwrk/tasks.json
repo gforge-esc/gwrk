@@ -1,0 +1,66 @@
+{
+  "featureId": "020-polyglot-monorepo",
+  "createdAt": "2026-06-14T01:33:49.760Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "17479f495f4262d89cd044a45098f786a3e950c126eb1804bada4570666f38c2",
+      "modifiedAt": "2026-06-14T01:01:18.819Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Configuration Schema & Profile Detection",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify config.ts",
+          "description": "Modify src/utils/config.ts. Add `workspaces` to `GwrkConfigSchema` and validation logic. Tests: src/utils/config.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/utils/config.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T002",
+          "title": "Modify profile-detector.ts",
+          "description": "Modify src/engine/profile-detector.ts. Add workspace resolution — `cwd` matching against workspace keys. Extends existing root-level detection from R007.. Tests: src/engine/profile-detector.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/profile-detector.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 2,
+      "doneWhen": [
+        "`pnpm vitest run src/utils/config.test.ts --grep \"US-001\"` exits 0",
+        "`pnpm vitest run src/engine/profile-detector.test.ts --grep \"US-002\"` exits 0"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "CLI Integration & Init Workspaces",
+      "tasks": [
+        {
+          "id": "T003",
+          "title": "Modify cli.ts",
+          "description": "Modify src/cli.ts. Add global `--workspace <name>` flag parsing and propagation. Tests: src/cli.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/cli.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T004",
+          "title": "Modify init.ts",
+          "description": "Modify src/commands/init.ts. Detect existing project root and append workspace instead of new root config. Tests: src/commands/init.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/commands/init.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 2,
+      "doneWhen": [
+        "`pnpm vitest run src/cli.test.ts --grep \"US-003\"` exits 0",
+        "`pnpm vitest run src/commands/init.test.ts --grep \"US-004\"` exits 0"
+      ]
+    }
+  ]
+}
