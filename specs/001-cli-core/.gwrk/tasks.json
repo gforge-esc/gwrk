@@ -1,10 +1,10 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-06-14T15:25:47.490Z",
+  "createdAt": "2026-06-14T17:08:42.269Z",
   "generatedFrom": {
     "plan": {
-      "hash": "3f058922d2182b0dabbe652117eb4a6807c1d6eb23d2d395740149566faa6628",
-      "modifiedAt": "2026-06-14T15:15:40.581Z"
+      "hash": "3cb648a5964e09bbea1e6885f4045a3004b252a2f545b71b7ca9e3ed28b2d96e",
+      "modifiedAt": "2026-06-14T15:37:13.301Z"
     }
   },
   "phases": [
@@ -167,7 +167,7 @@
         {
           "id": "T010",
           "title": "Modify init.ts",
-          "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag, add registry cloning and extension discovery",
+          "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery",
           "status": "open",
           "gateScript": "test -f src/commands/init.ts",
           "sp": 1
@@ -206,6 +206,7 @@
         "`gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`",
         "`gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`",
         "`gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently",
+        "`gwrk init --agent` outputs structured JSON, skips human-dependent steps (TCC, SSH, Slack), relaxes pre-requisites — designed for agent-driven bootstrapping of new repos",
         "`gwrk setup` is removed from CLI surface",
         "`pnpm build` compiles clean, `pnpm test` all passing",
         "Schema backward compat: existing `.gwrkrc.json` files parse without error"
