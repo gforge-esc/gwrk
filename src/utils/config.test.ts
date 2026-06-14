@@ -68,7 +68,12 @@ describe("FR-017: Three-layer Config Resolution", () => {
 describe("FR-001: Workspace Configuration Schema (020-polyglot-monorepo)", () => {
   it("US-001: should validate GwrkConfigSchema with valid workspaces", () => {
     const validConfig = {
-      project: { name: "polyglot-project" },
+      project: {
+        name: "polyglot-project",
+        type: "pnpm-monorepo",
+        stack: { language: "TypeScript", packageManager: "pnpm" },
+        layout: "monorepo"
+      },
       agents: {},
       workspaces: {
         web: {
@@ -80,6 +85,29 @@ describe("FR-001: Workspace Configuration Schema (020-polyglot-monorepo)", () =>
       }
     };
     expect(() => GwrkConfigSchema.parse(validConfig)).not.toThrow();
+  });
+
+  it("FR-032: should validate GwrkConfigSchema with extended profile fields", () => {
+    const validConfig = {
+      project: {
+        name: "extended-project",
+        type: "gwrk-native",
+        stack: {
+          language: "TypeScript",
+          framework: "React",
+          buildSystem: "pnpm",
+          testFramework: "vitest"
+        },
+        layout: "monorepo",
+        architecture: "docs/architecture.md",
+        conventions: "docs/conventions.md"
+      },
+      agents: {}
+    };
+    const parsed = GwrkConfigSchema.parse(validConfig);
+    expect(parsed.project.type).toBe("gwrk-native");
+    expect(parsed.project.stack?.testFramework).toBe("vitest");
+    expect(parsed.project.architecture).toBe("docs/architecture.md");
   });
 
   it("US-001: should throw error for invalid workspace configuration", () => {

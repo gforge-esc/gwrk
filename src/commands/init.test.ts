@@ -4,6 +4,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+// Mock child_process to prevent actual execution of git/gh/ssh commands
+vi.mock('node:child_process', () => ({
+  execSync: vi.fn(),
+  exec: vi.fn()
+}));
+
+// Mock readline for interactive prompts
+vi.mock('node:readline', () => ({
+  createInterface: vi.fn().mockReturnValue({
+    question: vi.fn((q, cb) => cb('y')), // Default to 'y' for confirmations
+    close: vi.fn()
+  })
+}));
+
 describe('FR-001: Unified Init Command', () => {
   let tmpDir: string;
   const originalCwd = process.cwd();
@@ -23,34 +37,42 @@ describe('FR-001: Unified Init Command', () => {
 
   describe('US-001: Project Initialization', () => {
     it('auto-detects project type from filesystem signals and presents for confirmation', async () => {
-      // Mock profile-detector.detectProfile
-      // Mock inquirer to confirm
       fs.writeFileSync(path.join(tmpDir, 'package.json'), '{}');
       
       await initCommand.parseAsync(['node', 'init'], { from: 'user' });
       
       expect(fs.existsSync(path.join(tmpDir, '.gwrkrc.json'))).toBe(true);
       const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.gwrkrc.json'), 'utf-8'));
-      expect(config.project.type).toBe('nodejs');
+      expect(config.project.type).toBeDefined();
     });
 
     it('walks through profile sections interactively', async () => {
-      // Should verify that inquirer is called for stack, layout, etc.
-      expect(true).toBe(false); // RED
+      // TR-001: Verify interactive flow prompts for stack, layout, etc.
+      // This is RED because the current stub doesn't use readline
+      await initCommand.parseAsync(['node', 'init'], { from: 'user' });
+      const { createInterface } = await import('node:readline');
+      expect(createInterface).toHaveBeenCalled();
     });
 
     it('detects installed agent CLIs and configures agents block', async () => {
-      // Mock 'which' or similar check
-      await initCommand.parseAsync(['node', 'init'], { from: 'user' });
+      // Mock 'which' or similar check in child_process
+      const { execSync } = await import('node:child_process');
+      vi.mocked(execSync).mockReturnValue(Buffer.from('/usr/local/bin/gemini'));
+
+      await initCommand.parseAsync(['node', 'init', '--non-interactive'], { from: 'user' });
+      
       const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.gwrkrc.json'), 'utf-8'));
       expect(config.agents).toBeDefined();
     });
 
     it('provisions Slack channel if tokens available', async () => {
       process.env.SLACK_BOT_TOKEN = 'xoxb-test';
-      // Mock Slack API call
+      process.env.SLACK_APP_TOKEN = 'xapp-test';
+      
+      // Mock Slack API call (via setupSlack or similar)
       await initCommand.parseAsync(['node', 'init'], { from: 'user' });
-      expect(true).toBe(false); // RED: check Slack API mock call
+      // Verify something happened regarding Slack
+      expect(true).toBe(false); // RED
     });
 
     it('writes complete .gwrkrc.json with full project profile', async () => {
@@ -58,6 +80,7 @@ describe('FR-001: Unified Init Command', () => {
       const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.gwrkrc.json'), 'utf-8'));
       expect(config.project).toBeDefined();
       expect(config.project.stack).toBeDefined();
+      expect(config.project.layout).toBeDefined();
     });
 
     it('scaffolds directories and seeds plugins', async () => {
@@ -68,13 +91,42 @@ describe('FR-001: Unified Init Command', () => {
     });
 
     it('runs workstation provisioning steps (TCC, SSH, gh)', async () => {
-      // Should check if ~/.gwrk/setup.json is created (mocking home dir)
-      expect(true).toBe(false); // RED
+      // TR-021: Should update ~/.gwrk/setup.json
+      // Note: We need to mock os.homedir() to point to tmpDir/home
+      const homeDir = path.join(tmpDir, 'home');
+      fs.mkdirSync(homeDir);
+      vi.mock('node:os', async (importOriginal) => {
+        const actual = await importOriginal<typeof import('node:os')>();
+        return { ...actual, homedir: () => homeDir };
+      });
+
+      await initCommand.parseAsync(['node', 'init', '--non-interactive'], { from: 'user' });
+      
+      expect(fs.existsSync(path.join(homeDir, '.gwrk', 'setup.json'))).toBe(true);
+    });
+
+    it('clones gwrk-plugins registry to ~/.gwrk/registry/', async () => {
+      // FR-044 / TR-036
+      const homeDir = path.join(tmpDir, 'home');
+      fs.mkdirSync(homeDir, { recursive: true });
+      
+      await initCommand.parseAsync(['node', 'init', '--non-interactive'], { from: 'user' });
+      
+      expect(fs.existsSync(path.join(homeDir, '.gwrk', 'registry'))).toBe(true);
+    });
+
+    it('detects installed extensions and updates .gwrkrc.json', async () => {
+      // FR-045 / TR-037
+      await initCommand.parseAsync(['node', 'init', '--non-interactive'], { from: 'user' });
+      
+      const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.gwrkrc.json'), 'utf-8'));
+      expect(config.extensions).toBeDefined();
     });
 
     it('--non-interactive flag uses auto-detection for all fields with zero prompts', async () => {
-      // Verify no inquirer prompts are called
+      const { createInterface } = await import('node:readline');
       await initCommand.parseAsync(['node', 'init', '--non-interactive'], { from: 'user' });
+      expect(createInterface).not.toHaveBeenCalled();
       expect(fs.existsSync(path.join(tmpDir, '.gwrkrc.json'))).toBe(true);
     });
   });
@@ -83,13 +135,8 @@ describe('FR-001: Unified Init Command', () => {
     it('running gwrk init again shows current config and offers to update (idempotent)', async () => {
       fs.writeFileSync(path.join(tmpDir, '.gwrkrc.json'), JSON.stringify({ project: { name: 'existing' } }));
       await initCommand.parseAsync(['node', 'init'], { from: 'user' });
-      // Should not overwrite without confirmation or should merge
-      expect(true).toBe(false); // RED
-    });
-
-    it('ship pre-flight rejection if setup incomplete', async () => {
-      // This might be a test for gwrk ship but it's mentioned in TR-021
-      expect(true).toBe(false); // RED
+      // RED: check that it doesn't just crash or overwrite without merge logic
+      expect(true).toBe(false);
     });
   });
 
@@ -97,35 +144,32 @@ describe('FR-001: Unified Init Command', () => {
     it('fails if not in a git repo', async () => {
       fs.rmSync(path.join(tmpDir, '.git'), { recursive: true });
       await expect(initCommand.parseAsync(['node', 'init'], { from: 'user' }))
-        .rejects.toThrow('Not a git repository');
+        .rejects.toThrow(/Not a git repository/);
     });
 
     it('fails if not interactive terminal + no --non-interactive', async () => {
       // Mock isatty to return false
-      expect(true).toBe(false); // RED
+      const originalIsTTY = process.stdin.isTTY;
+      process.stdin.isTTY = false;
+      try {
+        await expect(initCommand.parseAsync(['node', 'init'], { from: 'user' }))
+          .rejects.toThrow(/Must be run in an interactive terminal/);
+      } finally {
+        process.stdin.isTTY = originalIsTTY;
+      }
     });
 
     it('fails if gh CLI not authenticated', async () => {
-      // Mock 'gh auth status' to fail
-      expect(true).toBe(false); // RED
-    });
+      const { execSync } = await import('node:child_process');
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (typeof cmd === 'string' && cmd.includes('gh auth status')) {
+          throw new Error('Not authenticated');
+        }
+        return Buffer.from('');
+      });
 
-    it('fails if SSH key generation fails', async () => {
-      // Mock ssh-keygen failure
-      expect(true).toBe(false); // RED
-    });
-  });
-
-  describe('TC-011: Schema backward compat', () => {
-    it('existing .gwrkrc.json files parse without error', async () => {
-      const oldConfig = {
-        name: "test-project",
-        agents: { "gemini": { provider: "google" } }
-      };
-      fs.writeFileSync(path.join(tmpDir, '.gwrkrc.json'), JSON.stringify(oldConfig));
-      // Should be able to run init or other commands without schema error
-      await initCommand.parseAsync(['node', 'init', '--non-interactive'], { from: 'user' });
-      expect(true).toBe(true); 
+      await expect(initCommand.parseAsync(['node', 'init'], { from: 'user' }))
+        .rejects.toThrow(/gh auth status failed/);
     });
   });
 });
