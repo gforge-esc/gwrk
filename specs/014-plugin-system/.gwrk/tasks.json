@@ -672,8 +672,8 @@
         {
           "id": "T064",
           "title": "Create adapter.ts",
-          "description": "NEW src/plugins/builtins/extensions/obsidian-vault/adapter.ts. Implements `ContextProvider` interface",
-          "status": "completed",
+          "description": "NEW src/plugins/builtins/extensions/obsidian-vault/adapter.ts. Implements `ContextProvider` interface\n\nREVIEW FAIL (code): noExplicitAny — src/plugins/builtins/extensions/obsidian-vault/adapter.ts.\n  WHERE: src/plugins/builtins/extensions/obsidian-vault/adapter.ts:16:28\n  EXPECTED: Specific type or unknown for config.\n  ACTUAL: config: Record<string, any>\n  FIX: Replace 'any' with 'unknown' or a specific type, and update the ContextProvider interface if necessary.\n\nREVIEW FAIL (uat): Stub Implementation — US-027.\n  WHERE: src/plugins/builtins/extensions/obsidian-vault/adapter.ts:22\n  EXPECTED: Functional Obsidian vault scanner that resolves context based on keywords.\n  ACTUAL: Returns a hardcoded mock context result.\n  FIX: Implement real vault scanning logic using the 'vaultPath' from config.\n\nUAT REVIEW (2026-06-14): FAIL. Confirmed implementation is still a stub and test only verifies mock behavior. Task remains OPEN.",
+          "status": "open",
           "gateScript": "test -f src/plugins/builtins/extensions/obsidian-vault/adapter.ts",
           "sp": 2
         }
