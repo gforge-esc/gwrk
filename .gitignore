@@ -33,3 +33,7 @@ scripts/dev/
 
 .antigravitycli/
 .antigravitycli/
+
+# random files
+*.err
+*.out
