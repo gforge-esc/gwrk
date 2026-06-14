@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-14T02:46:25.593Z_define_p00",
+  "feature": "014-plugin-system",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-14T02:46:25.593Z",
+  "finishedAt": "2026-06-14T02:49:14.722Z",
+  "durationS": 169,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 4,
+  "linesDeleted": 4,
+  "gitCommit": "bfbce4af30c746a106c4531a7b5265c78063769d",
+  "gitBranch": "develop",
+  "digest": []
+}
