@@ -187,18 +187,34 @@ export async function resolveEnforcementSkills(
         continue;
       }
 
-      // Filter by language (R007: profile-aware enforcement routing)
-      // Only filter builtins — project-local skills always load (the user chose them)
-      if (profile?.stack?.language && manifest.language) {
-        const manifestLang = manifest.language.toLowerCase();
-        // Polyglot: check against languages array if present
-        if (profile.stack.languages && profile.stack.languages.length > 1) {
-          const profileLangs = profile.stack.languages.map((l) => l.toLowerCase());
-          if (!profileLangs.includes(manifestLang)) {
+      // Filter by language/framework (R007: profile-aware enforcement routing)
+      // Only filter BUILTIN enforcement skills; project-local and global always load.
+      const isBuiltin = loaded.path.includes("builtins");
+
+      if (isBuiltin && profile) {
+        // Language filtering
+        if (manifest.language && profile.stack?.language) {
+          const manifestLang = manifest.language.toLowerCase();
+          // Polyglot: check against languages array if present
+          if (profile.stack.languages && profile.stack.languages.length > 1) {
+            const profileLangs = profile.stack.languages.map((l) =>
+              l.toLowerCase(),
+            );
+            if (!profileLangs.includes(manifestLang)) {
+              continue;
+            }
+          } else if (manifestLang !== profile.stack.language.toLowerCase()) {
             continue;
           }
-        } else if (manifestLang !== profile.stack.language.toLowerCase()) {
-          continue;
+        }
+
+        // Framework filtering
+        if (manifest.framework) {
+          const profileFramework = profile.stack?.framework?.toLowerCase();
+          const manifestFramework = manifest.framework.toLowerCase();
+          if (profileFramework !== manifestFramework) {
+            continue;
+          }
         }
       }
 

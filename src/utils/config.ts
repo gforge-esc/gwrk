@@ -162,6 +162,7 @@ export const GwrkConfigSchema = z.object({
       sessionGapMinutes: z.number().default(30),
     })
     .default({ sessionGapMinutes: 30 }),
+  extensions: z.record(z.string(), z.record(z.any())).optional(),
 });
 
 export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;

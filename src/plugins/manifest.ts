@@ -119,6 +119,8 @@ export const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   scope: z.enum(["implementation", "review", "all"]).optional(),
   /** Language this enforcement skill applies to (e.g. "TypeScript", "Python"). Omit to load for all projects. */
   language: z.string().optional(),
+  /** Framework this enforcement skill applies to (e.g. "React", "Express"). Omit to load for all projects. */
+  framework: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });
 
@@ -216,6 +218,15 @@ export const ReviewManifestSchema = PluginBaseSchema.extend({
 });
 
 /**
+ * Extension Manifest (Layer 3)
+ */
+export const ExtensionManifestSchema = PluginBaseSchema.extend({
+  type: z.literal("extension"),
+  provides: z.array(z.enum(["context", "metrics", "search", "notification"])),
+  adapter: z.string(), // Path to the adapter entry point
+});
+
+/**
  * Any Plugin Manifest (Union of all types)
  * We use z.union instead of z.discriminatedUnion at the top level because
  * SkillManifestSchema is itself a discriminated union, and members of
@@ -226,7 +237,7 @@ export const AnyManifestSchema = z.union([
   AgentManifestSchema,
   WorkflowManifestSchema,
   ReviewManifestSchema,
-  // Future: ExtensionManifestSchema, ChannelManifestSchema
+  ExtensionManifestSchema,
 ]);
 
 export type AtomicSkillManifest = z.infer<typeof AtomicSkillManifestSchema>;
@@ -236,4 +247,5 @@ export type SkillManifest = z.infer<typeof SkillManifestSchema>;
 export type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type WorkflowManifest = z.infer<typeof WorkflowManifestSchema>;
 export type ReviewManifest = z.infer<typeof ReviewManifestSchema>;
+export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>;
 export type AnyManifest = z.infer<typeof AnyManifestSchema>;
