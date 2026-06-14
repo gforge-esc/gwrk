@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-14T01:28:31.747Z_define_all",
+  "feature": "020-polyglot-monorepo",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-14T01:28:31.747Z",
+  "finishedAt": "2026-06-14T01:33:14.009Z",
+  "durationS": 282,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 5,
+  "linesDeleted": 5,
+  "gitCommit": "7510a5e1997eb9515ce488fb0881a2d7ff1fcf74",
+  "gitBranch": "develop",
+  "digest": []
+}
