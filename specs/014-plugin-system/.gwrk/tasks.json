@@ -46,7 +46,7 @@
           "id": "T003",
           "title": "Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED",
           "description": "Complete phase 3: Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 3: Agent Backend Adapters (Layer 1 - ADR-006) ✅ SHIPPED\"",
           "sp": 2
         }
