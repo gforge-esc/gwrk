@@ -1,100 +1,78 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { initAction } from './init.js';
-import fs from 'node:fs';
-import { detectProfile } from '../engine/profile-detector.js';
+import { describe, it, expect } from 'vitest';
+import { initCommand } from './init.js';
 
-vi.mock('node:fs');
-vi.mock('../utils/signal.js', () => ({
-  withSignal: vi.fn((name, fn) => fn()),
-  CommandError: class extends Error {
-    constructor(message: string, exitCode: number) {
-      super(message);
-    }
-  }
-}));
-vi.mock('../engine/profile-detector.js', () => ({
-  detectProfile: vi.fn().mockResolvedValue({ 
-    type: 'nodejs',
-    stack: { language: 'typescript' },
-    layout: 'flat'
-  })
-}));
-vi.mock('../plugins/migrate.js', () => ({
-  migratePlugins: vi.fn()
-}));
-vi.mock('../plugins/seed.js', () => ({
-  seedSkills: vi.fn()
-}));
-vi.mock('../db/runs.js', () => ({
-  registerProject: vi.fn()
-}));
-vi.mock('../utils/format.js', () => ({
-  banner: vi.fn(),
-  success: vi.fn(),
-  color: { BOLD: '', DIM: '', GREEN: '', CYAN: '', YELLOW: '', RESET: '' }
-}));
+describe('FR-001: Unified Init Command', () => {
+  describe('US-001: Project Initialization', () => {
+    it('auto-detects project type from filesystem signals and presents for confirmation', async () => {
+      expect(initCommand).toBeDefined();
+      expect(true).toBe(false); // RED
+    });
 
-describe('FR-L25-005: gwrk init MUST provision core workflows and project grounding dirs', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    vi.mocked(fs.readdirSync).mockReturnValue([]);
-    vi.mocked(detectProfile).mockResolvedValue({ 
-      type: 'nodejs',
-      stack: { language: 'typescript' },
-      layout: 'flat'
+    it('walks through profile sections interactively', async () => {
+      expect(true).toBe(false); // RED
+    });
+
+    it('detects installed agent CLIs and configures agents block', async () => {
+      expect(true).toBe(false); // RED
+    });
+
+    it('provisions Slack channel if tokens available', async () => {
+      expect(true).toBe(false); // RED
+    });
+
+    it('writes complete .gwrkrc.json with full project profile', async () => {
+      expect(true).toBe(false); // RED
+    });
+
+    it('scaffolds directories and seeds plugins', async () => {
+      expect(true).toBe(false); // RED
+    });
+
+    it('runs workstation provisioning steps (TCC, SSH, gh)', async () => {
+      // Absorbs US-021 / FR-022
+      expect(true).toBe(false); // RED
+    });
+
+    it('--non-interactive flag uses auto-detection for all fields with zero prompts', async () => {
+      expect(true).toBe(false); // RED
     });
   });
 
-  it('US-014: When gwrk init is run, Then ~/.gwrk/plugins/workflows/ is created', async () => {
-    await initAction({ nonInteractive: true });
-    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('.gwrk/plugins/workflows'), expect.objectContaining({ recursive: true }));
-  });
-
-  it('US-014: When gwrk init is run, Then .gwrk/ontology and .gwrk/perspective directories are created', async () => {
-    await initAction({ nonInteractive: true });
-    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('.gwrk/ontology'), expect.objectContaining({ recursive: true }));
-    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('.gwrk/perspective'), expect.objectContaining({ recursive: true }));
-  });
-
-  it('Negative path: Should handle fs.mkdirSync errors gracefully when directory already exists (EEXIST)', async () => {
-    vi.mocked(fs.mkdirSync).mockImplementation((path: any) => {
-      if (typeof path === 'string' && path.includes('.gwrk/ontology')) {
-        const err = new Error('EEXIST');
-        (err as any).code = 'EEXIST';
-        throw err;
-      }
+  describe('TR-001 / TR-021: Idempotency and Pre-flight', () => {
+    it('running gwrk init again shows current config and offers to update (idempotent)', async () => {
+      expect(true).toBe(false); // RED
     });
-    await expect(initAction({ nonInteractive: true })).resolves.not.toThrow();
-  });
-});
 
-describe("FR-004: Workspace Init (020-polyglot-monorepo)", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    vi.mocked(detectProfile).mockResolvedValue({ 
-      type: 'nodejs',
-      stack: { language: 'typescript' },
-      layout: 'flat'
+    it('ship pre-flight rejection if setup incomplete', async () => {
+      expect(true).toBe(false); // RED
     });
   });
 
-  it("US-004: appends workspace profile when run inside an existing project subdirectory", async () => {
-    // Mock fs.existsSync to simulate being inside a subdirectory of a gwrk project
-    vi.mocked(fs.existsSync).mockImplementation((p: any) => {
-      if (typeof p === 'string' && p.endsWith('.gwrkrc.json')) return true; // Pretend root config exists
-      return false;
+  describe('FR-001: Error States', () => {
+    it('fails if already initialized without --non-interactive', async () => {
+      expect(true).toBe(false); // RED
     });
-    
-    // Simulate fs.readFileSync for root config
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ project: { name: "root" } }));
 
-    await initAction({ nonInteractive: true });
+    it('fails if not in a git repo', async () => {
+      expect(true).toBe(false); // RED
+    });
 
-    // Ensure it wrote an updated config with workspace to the parent directory
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
-      expect.stringContaining('.gwrkrc.json'),
-      expect.stringContaining('"workspaces"')
-    );
+    it('fails if not interactive terminal + no --non-interactive', async () => {
+      expect(true).toBe(false); // RED
+    });
+
+    it('fails if gh CLI not authenticated', async () => {
+      expect(true).toBe(false); // RED
+    });
+
+    it('fails if SSH key generation fails', async () => {
+      expect(true).toBe(false); // RED
+    });
+  });
+
+  describe('TC-011: Schema backward compat', () => {
+    it('existing .gwrkrc.json files parse without error', async () => {
+      expect(true).toBe(false); // RED
+    });
   });
 });
