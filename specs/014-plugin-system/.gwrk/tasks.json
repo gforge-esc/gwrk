@@ -166,7 +166,7 @@
           "id": "T011",
           "title": "Research CLI (R006) ✅ SHIPPED",
           "description": "Complete phase 11: Research CLI (R006) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 11: Research CLI (R006) ✅ SHIPPED\"",
           "sp": 2
         }
