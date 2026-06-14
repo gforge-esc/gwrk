@@ -21,7 +21,7 @@ export function classifyTask(taskType: string | TaskType): TaskClassification {
     case TaskType.TEST:
       return TaskClassification.FAST;
     case TaskType.DEFINE:
-      return TaskClassification.HIGH_CONTEXT;
+      return TaskClassification.THINKING;
     default:
       return TaskClassification.FAST; // Default to fast — escalate explicitly
   }

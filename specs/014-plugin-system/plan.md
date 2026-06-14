@@ -414,6 +414,97 @@ Ship builtin enforcement skills that teach implementing agents gwrk's operationa
 
 ---
 
+### Phase 19: Extension Schema and Runtime (Layer 3)
+
+Implement the discovery and resolution engine for Layer 3 Extension Plugins, including the updated manifest schemas.
+
+**Files (4):**
+- `src/plugins/manifest.ts` (MODIFY: Add `ExtensionManifestSchema` and update discriminated union)
+- `src/plugins/extension-runtime.ts` (NEW: Extension discovery and `resolveExtensionContext()` logic)
+- `src/plugins/context-provider.ts` (NEW: `ContextProvider` interface)
+- `src/utils/config.ts` (MODIFY: Support `extensions` block in `.gwrkrc.json`)
+
+**Requirements Addressed:** FR-L3-001, FR-L3-002, FR-L3-003, FR-L3-004, FR-L3-005, US-025, US-026
+
+**Dependencies:** Phase 1
+
+**Contract Mapping:**
+- `contracts/extension-runtime.md` → `resolveExtensionContext()` → `src/plugins/extension-runtime.ts`
+- `contracts/extension-runtime.md` → `ContextProvider` → `src/plugins/context-provider.ts`
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| ADR-004 | Use agent-native signals |
+| TC-016 | Extension Isolation (try-catch around provider calls) |
+| TC-018 | Silent Fail for missing extensions |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-017 | Unit | `src/plugins/extension-runtime.ts` | Discovers extensions, loads config, and aggregates context safely |
+
+#### Done When
+- `pnpm vitest run src/plugins/extension-runtime.test.ts` exits 0
+
+---
+
+### Phase 20: Built-in Obsidian Vault Extension
+
+Implement the reference `obsidian-vault` extension plugin to provide context from a local Obsidian vault.
+
+**Files (2):**
+- `src/plugins/builtins/extensions/obsidian-vault/manifest.yaml` (NEW: `provides: [context]`)
+- `src/plugins/builtins/extensions/obsidian-vault/adapter.ts` (NEW: Implements `ContextProvider` interface)
+
+**Requirements Addressed:** FR-L3-007, US-027
+
+**Dependencies:** Phase 19
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| TC-016 | Adapter must not crash process |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-019 | Unit | `src/plugins/builtins/extensions/obsidian-vault/adapter.ts` | Returns context items matching keywords |
+
+#### Done When
+- `pnpm vitest run src/plugins/builtins/extensions/obsidian-vault/adapter.test.ts` exits 0
+
+---
+
+### Phase 21: Context Injection in Dispatch
+
+Automate the injection of extension-provided data into `dispatchToAgent()` calls to enrich agent prompts.
+
+**Files (1):**
+- `src/utils/agent.ts` (MODIFY: Call `resolveExtensionContext()` and inject into `<external_context>` block)
+
+**Requirements Addressed:** FR-L3-006, US-027
+
+**Dependencies:** Phase 19
+
+#### Governance & Skills Contract
+| Rule / Skill | Applicability |
+|---|---|
+| TC-017 | Context Truncation (enforce token/character limits) |
+| compile-gate | Always |
+
+#### Test Strategy
+| TR-### | Test type | Target | Assertion |
+|---|---|---|---|
+| TR-018 | Unit | `src/utils/agent.ts` | Injects output of `resolveExtensionContext` into prompt |
+
+#### Done When
+- `pnpm vitest run src/utils/agent.test.ts` exits 0
+
+---
+
 ## Type Dependency Graph
 
 | Shared Type | Defined In | Consumed By |
@@ -534,3 +625,23 @@ _No mockups exist for this feature._
 | VR-018 | 11, 12 | ✅ Done |
 | VR-019 | 18 | PLANNED |
 | VR-020 | 16 | PLANNED |
+| US-025 | 19 | PLANNED |
+| US-026 | 19 | PLANNED |
+| US-027 | 20, 21 | PLANNED |
+| FR-L3-001 | 19 | PLANNED |
+| FR-L3-002 | 19 | PLANNED |
+| FR-L3-003 | 19 | PLANNED |
+| FR-L3-004 | 19 | PLANNED |
+| FR-L3-005 | 19 | PLANNED |
+| FR-L3-006 | 21 | PLANNED |
+| FR-L3-007 | 20 | PLANNED |
+| DM-006 | 19 | PLANNED |
+| DM-008 | 19 | PLANNED |
+| TC-016 | 19, 20, 21 | PLANNED |
+| TC-017 | 21 | PLANNED |
+| TC-018 | 19, 21 | PLANNED |
+| TR-017 | 19 | PLANNED |
+| TR-018 | 21 | PLANNED |
+| TR-019 | 20 | PLANNED |
+| VR-021 | 21 | PLANNED |
+| VR-022 | 19, 20, 21 | PLANNED |

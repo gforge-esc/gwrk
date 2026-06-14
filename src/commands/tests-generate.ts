@@ -14,6 +14,7 @@ import {
   extractSpecSections,
 } from "../utils/parser.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
 import { loadTaskState } from "../utils/state.js";
 
 import {
@@ -95,20 +96,36 @@ Examples:
           }
         })();
 
-        const hasTestRunManifest = (() => {
-          try {
-            if (!fs.existsSync(runsManifestDir)) return false;
-            const files = fs.readdirSync(runsManifestDir);
-            return files.some((f) => f.includes("define tests") || f.includes("define_tests"));
-          } catch {
-            return false;
+        // Staleness check: if plan.md is newer than the most recent test artifact
+        // (gap-matrix OR run manifest), the plan changed and tests should be
+        // regenerable without --force.
+        const planMtime = fs.statSync(planPath).mtimeMs;
+        const latestTestArtifactMtime = (() => {
+          let latest = 0;
+          if (fs.existsSync(gapMatrixPath)) {
+            latest = Math.max(latest, fs.statSync(gapMatrixPath).mtimeMs);
           }
+          if (fs.existsSync(runsManifestDir)) {
+            try {
+              const files = fs.readdirSync(runsManifestDir);
+              for (const f of files) {
+                if (f.includes("define tests") || f.includes("define_tests")) {
+                  const fpath = path.join(runsManifestDir, f);
+                  latest = Math.max(latest, fs.statSync(fpath).mtimeMs);
+                }
+              }
+            } catch { /* ignore */ }
+          }
+          return latest;
         })();
 
+        const planIsNewer = latestTestArtifactMtime > 0 && planMtime > latestTestArtifactMtime;
+
         const testsExist =
-          fs.existsSync(gapMatrixPath) ||
-          hasTestRunManifest ||
-          (hasTestFiles && !options.force);
+          !planIsNewer && (
+            latestTestArtifactMtime > 0 ||
+            (hasTestFiles && !options.force)
+          );
 
         if (testsExist && !options.force && !rawPhase) {
           blocked(
@@ -130,6 +147,7 @@ Examples:
 
         const config = loadConfig(projectRoot);
         const backend = config.agents.define;
+        const model = resolveModelForTask("define", backend, projectRoot);
 
         const startedAt = new Date().toISOString();
         const runId = startRun({
@@ -189,6 +207,7 @@ Examples:
           const orchestrator = new DefineOrchestrator({
             featureId: feature,
             backend,
+            model,
             cwd: projectRoot,
           }, {
             stage: DefineStage.DEFINE_TESTS,
@@ -218,7 +237,7 @@ Examples:
               // Allow test files
               if (f.endsWith(".test.ts") || f.endsWith(".spec.ts")) return false;
               // Allow e2e tests
-              if (f.startsWith("e2e/")) return false;
+              if (f.startsWith("e2e/") || f.startsWith("tests/e2e/")) return false;
               // Allow spec artifacts (gap-matrix, etc.)
               if (f.startsWith("specs/")) return false;
               // Everything else in src/ is illegal for define-tests

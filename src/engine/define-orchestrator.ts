@@ -231,6 +231,7 @@ export class DefineOrchestrator extends EventEmitter {
 
       const result = await this.runtime.executeWorkflow("gwrk-specify", effectiveInput, {
         agent: this.config.backend,
+        model: this.config.model,
         projectRoot: this.config.cwd,
         quiet: true,
       });
@@ -252,6 +253,7 @@ export class DefineOrchestrator extends EventEmitter {
 
       const result = await this.runtime.executeWorkflow("gwrk-plan", effectiveInput, {
         agent: this.config.backend,
+        model: this.config.model,
         projectRoot: this.config.cwd,
         quiet: true,
       });
@@ -273,6 +275,7 @@ export class DefineOrchestrator extends EventEmitter {
 
       const result = await this.runtime.executeWorkflow("gwrk-define-tests", effectiveInput, {
         agent: this.config.backend,
+        model: this.config.model,
         projectRoot: this.config.cwd,
         quiet: true,
       });
@@ -304,6 +307,7 @@ export class DefineOrchestrator extends EventEmitter {
     try {
       const result = await this.runtime.executeWorkflow("gwrk-analyze", `Analyze consistency for feature ${this.config.featureId}`, {
         agent: this.config.backend,
+        model: this.config.model,
         projectRoot: this.config.cwd,
         quiet: true,
       });

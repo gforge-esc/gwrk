@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { researchCommandHandler } from './research.js';
 import { ResearchScaffolder } from '../engine/research-scaffold.js';
 import { WorkflowRuntime } from '../plugins/workflow-runtime.js';
+import * as fsPromises from 'node:fs/promises';
+
+vi.mock('node:fs/promises');
 
 // Mock ResearchScaffolder
 vi.mock('../engine/research-scaffold.js', () => {
@@ -11,7 +14,10 @@ vi.mock('../engine/research-scaffold.js', () => {
         scaffold: vi.fn().mockResolvedValue({
           directory: 'docs/research/R001-test-initiative',
           number: 1
-        })
+        }),
+        resolveByPrefix: vi.fn().mockResolvedValue({
+          directory: 'docs/research/R001-test-initiative',
+        }),
       };
     })
   };
@@ -25,7 +31,8 @@ vi.mock('../plugins/workflow-runtime.js', () => {
         executeWorkflow: vi.fn().mockResolvedValue({
           summary: 'Mock research report generated.',
           intents: [],
-          summaries: []
+          summaries: [],
+          logPath: '/tmp/fake.log',
         })
       };
     })
@@ -35,6 +42,8 @@ vi.mock('../plugins/workflow-runtime.js', () => {
 describe('Research Command Dispatch (TR-P12-001)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock brief.md read — the implementation now reads this
+    (fsPromises.readFile as any).mockResolvedValue('# Test Brief\n## Objective\nTest objective');
   });
 
   it('TR-P12-001: dispatches methodology plugin to WorkflowRuntime when --run is present', async () => {
@@ -49,11 +58,11 @@ describe('Research Command Dispatch (TR-P12-001)', () => {
     
     expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
       'gwrk-research-technical',
-      expect.stringContaining('test-initiative')
+      expect.stringContaining('Test objective')
     );
 
-    expect(result).toContain('Scaffolded research initiative');
-    expect(result).toContain('Summary: Mock research report generated');
+    // Output now shows directory and log path
+    expect(result).toContain('Research:');
   });
 
   it('TR-P12-001: defaults to technical methodology if none provided with --run', async () => {

@@ -61,7 +61,8 @@ As a PE, I want `gwrk init` to be a comprehensive interactive wizard that provis
 9. Registers project in `~/.gwrk/gwrk.db`.
 10. Running `gwrk init` again shows current config and offers to update (idempotent).
 11. `--non-interactive` flag uses auto-detection for all fields with zero prompts (CI/scripting path).
-12. Final output: summary of everything provisioned.
+12. `--agent` flag: agent-optimized mode — auto-detect, zero prompts, structured JSON to stdout, relaxed pre-requisites (no gh auth or SSH required), graceful skip for unavailable steps. Designed for agent-driven project bootstrapping (e.g., setting up `gwrk-plugins` from a gwrk session).
+13. Final output: summary of everything provisioned (interactive/non-interactive) or JSON status (agent mode).
 
 > **Note**: This absorbs former US-021 (`gwrk setup`). The `setup` command is removed. Workstation provisioning steps (TCC, SSH, gh) are integrated as steps within `init`.
 
@@ -372,7 +373,8 @@ As a PE, I want my project data (plans, runs, stats) to be isolated by project i
 
 ## 3. Functional Requirements
 
-- **FR-001**: ⭐ **REWRITE (R3)** `gwrk init` — Comprehensive interactive onboarding wizard. Auto-detects project profile, provisions workstation (TCC, SSH, gh), configures agents, provisions Slack, scaffolds directories, seeds plugins. Absorbs former `gwrk setup`. Idempotent. Supports `--non-interactive` for CI. (US-001, US-021)
+- **FR-001**: ⭐ **REWRITE (R3)** `gwrk init` — Comprehensive interactive onboarding wizard. Auto-detects project profile, provisions workstation (TCC, SSH, gh), clones plugin registry, detects extensions, configures agents, provisions Slack, scaffolds directories, seeds plugins. Absorbs former `gwrk setup`. Idempotent. Supports `--non-interactive` for CI and `--agent` for agent-driven bootstrapping. (US-001, US-021, US-032)
+- **FR-046**: ⭐ **NEW (2026-06-14)** `gwrk init --agent` — Agent-optimized init mode. MUST: (1) auto-detect project type with zero prompts, (2) write `.gwrkrc.json` with detected profile, (3) scaffold required directories, (4) skip workstation provisioning steps that require human interaction (TCC, SSH, Slack), (5) skip steps that fail gracefully (gh auth, registry clone if offline), (6) output structured JSON to stdout: `{"status": "ok", "profile": {...}, "created": [...], "skipped": [...]}`, (7) exit 0 on success, exit 1 on fatal error (not in git repo). Differs from `--non-interactive`: agent mode outputs JSON (not human summary), relaxes pre-requisites, and is designed for programmatic consumption by other gwrk agents. (US-001)
 - **FR-002**: `gwrk define spec <feature>` — dispatch `/specify` workflow. Streaming. (US-002)
 - **FR-003**: `gwrk define plan <feature>` — dispatch `/plan` workflow. Validate spec exists and is not a Stub. (US-003)
 - **FR-004**: `gwrk define tasks <feature>` — parse plan.md → tasks.json + gate scripts. (US-004)
@@ -411,6 +413,11 @@ As a PE, I want my project data (plans, runs, stats) to be isolated by project i
 - **FR-038**: ⭐ **NEW (2026-06-01)** DB access layer updates: all query functions for the 8 target tables accept and filter by `projectId`. (US-030)
 - **FR-039**: ⭐ **NEW (2026-06-01)** `PlanStore` refactor to accept `projectId` and scope all internal DB calls. (US-030)
 - **FR-040**: ⭐ **NEW (2026-06-01)** CLI command updates: `plan`, `stats`, and `runs` derive `projectId` from `cwd` and pass it through the engine/DB layers. (US-030)
+- **FR-041**: ⭐ **NEW (2026-06-14)** `gwrk plugin search <query>` — Search the local registry at `~/.gwrk/registry/` for matching plugin manifests. (US-031)
+- **FR-042**: ⭐ **NEW (2026-06-14)** `gwrk plugin install <id|url>` — Resolve plugin ID from registry or use direct URL. Clone to `~/.gwrk/plugins/`. Validate `manifest.yaml`. (US-031)
+- **FR-043**: ⭐ **NEW (2026-06-14)** `gwrk plugin update [id]` — Update installed plugins via `git pull`. (US-031)
+- **FR-044**: ⭐ **NEW (2026-06-14)** `gwrk init` Workstation Provisioning MUST clone `https://github.com/gwrk-org/gwrk-plugins` to `~/.gwrk/registry/` if not present, and `git pull` if present. (US-001)
+- **FR-045**: ⭐ **NEW (2026-06-14)** `gwrk init` Extension Discovery MUST check for installed CLIs (e.g. `obsidian-cli`) and populate the `extensions` block in `.gwrkrc.json`. (US-032)
 
 ### Error States
 
@@ -418,7 +425,9 @@ As a PE, I want my project data (plans, runs, stats) to be isolated by project i
 |---|---|---|---|
 | FR-001 | Already initialized (no flags) | `gwrk already initialized. Run with --non-interactive to update.` | 0 |
 | FR-001 | Not in a git repo | `Not a git repository. Run git init first.` | 1 |
-| FR-001 | Not interactive terminal + no --non-interactive | `Must be run in an interactive terminal, or use --non-interactive.` | 1 |
+| FR-001 | Not interactive terminal + no --non-interactive/--agent | `Must be run in an interactive terminal, or use --non-interactive/--agent.` | 1 |
+| FR-046 | --agent mode, already initialized | `{"status": "ok", "message": "already initialized", "profile": {...}}` (JSON) | 0 |
+| FR-046 | --agent mode, not in git repo | `{"status": "error", "message": "Not a git repository"}` (JSON) | 1 |
 | FR-003 | spec.md missing | `spec.md not found` | 1 |
 | FR-003 | spec.md is Stub | `[BLOCKED] Spec ... is marked as a Stub` | 1 |
 | FR-006 | Gate fails | `Gate failed for <taskId>` | 1 |
@@ -600,8 +609,12 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 - **TR-030**: ⭐ **NEW (R3)** `src/engine/profile-detector.test.ts` — Test unknown project: empty directory resolves as `type: "unknown"` without error. (FR-030)
 - **TR-031**: ⭐ **NEW (R3)** `src/engine/prompt-conditioner.test.ts` — Unit test prompt conditioning: given a profile, verify `<project_profile>` XML block generated and injected. Verify gwrk-native profile preserves ADR-004/Commander.js sections. Verify non-gwrk profile omits them. (FR-033, FR-034)
 - **TR-032**: ⭐ **NEW (R3)** `src/commands/project-info.test.ts` — Unit test `gwrk project info`: verify JSON output matches `ProjectProfileSchema`. (FR-035)
-- **TR-033**: ⭐ **NEW (R3)** `src/utils/config.test.ts` — Verify `GwrkConfigSchema` accepts old-format (no profile) and new-format (with profile) `.gwrkrc.json`. (TC-011)
+- **TR-033**: ⭐ **NEW (R3)** Verify `GwrkConfigSchema` accepts old-format (no profile) and new-format (with profile) `.gwrkrc.json`. (TC-011)
 - **TR-034**: ⭐ **NEW (R3)** Regression test — gwrk-native prompt snapshot: run prompt assembly on gwrk codebase pre-R3 vs post-R3, diff must be empty. Vitest snapshot. (TC-010)
+- **TR-035**: ⭐ **NEW (2026-06-14)** `src/commands/plugin.test.ts` — plugin search/install/update command tests. (FR-041, FR-042, FR-043)
+- **TR-036**: ⭐ **NEW (2026-06-14)** `src/engine/registry.test.ts` — registry resolution and cloning logic. (FR-044)
+- **TR-037**: ⭐ **NEW (2026-06-14)** `src/engine/extension-detector.test.ts` — extension CLI discovery. (FR-045)
+
 
 ---
 
@@ -643,7 +656,7 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 
 | US | FR | TR |
 |---|---|---|
-| US-001 | FR-001, FR-022, FR-030, FR-031, FR-032 | TR-001, TR-021, TR-027, TR-028, TR-033 |
+| US-001 | FR-001, FR-022, FR-030, FR-031, FR-032, FR-044, FR-045 | TR-001, TR-021, TR-027, TR-028, TR-033, TR-036, TR-037 |
 | US-002 | FR-002 | TR-002, TR-012 |
 | US-003 | FR-003 | TR-003, TR-012, TR-019 |
 | US-004 | FR-004 | TR-004 |
@@ -672,3 +685,6 @@ Tables: `projects`, `runs`, `history`. WAL mode. Managed by `better-sqlite3`.
 | US-027 | FR-030, FR-031, FR-032 | TR-027, TR-028, TR-029, TR-030, TR-033 |
 | US-028 | FR-033, FR-034 | TR-031, TR-034 |
 | US-029 | FR-035 | TR-032 |
+| US-030 | FR-036, FR-037, FR-038, FR-039, FR-040 | TR-013 |
+| US-031 | FR-041, FR-042, FR-043 | TR-035 |
+| US-032 | FR-045 | TR-037 |

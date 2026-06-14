@@ -118,11 +118,23 @@ export class PlanStore {
         const phaseSeq = `phase-${String(phase.number).padStart(2, "0")}`;
         const phaseId = `${res.featureId}/${phaseSeq}`;
         const existingPhase = db.getPhase(phaseId, this.projectId);
-        if (existingPhase) continue; // Don't clobber existing phase data
 
         // Determine status: check if this feature+phase has a ship run
         const shipKey = `${res.featureId}:${phaseSeq}`;
-        const status = shippedPhases.has(shipKey) ? "SHIPPED" : "PLANNED";
+        const shippedByRun = shippedPhases.has(shipKey);
+
+        if (existingPhase) {
+          // Reconcile status: if runs say shipped but graph says PLANNED, update
+          if (shippedByRun && existingPhase.status === "PLANNED") {
+            db.insertPhase(
+              { ...existingPhase, status: "SHIPPED" },
+              this.projectId,
+            );
+          }
+          continue; // Don't clobber other phase data
+        }
+
+        const status = shippedByRun ? "SHIPPED" : "PLANNED";
 
         db.insertPhase(
           {

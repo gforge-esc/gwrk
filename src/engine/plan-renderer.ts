@@ -93,14 +93,30 @@ export class PlanRenderer {
     return `${f.id}["${label}${icon}"]`;
   }
 
+  /**
+   * Sanitize a label for use in a mermaid gantt chart.
+   * Mermaid gantt uses `:` as label/metadata delimiter and `,` as field separator.
+   * Only alphanumeric, spaces, hyphens, and dots are safe.
+   */
+  private sanitizeGanttLabel(label: string): string {
+    return label
+      .replace(/[✅⭐🔴🟡⚪⚫]/g, "")       // strip status emojis
+      .replace(/\bSHIPPED\b/g, "")             // strip SHIPPED marker
+      .replace(/&/g, "and")                     // & → and
+      .replace(/\+/g, "and")                    // + → and
+      .replace(/[^a-zA-Z0-9\s\-._]/g, "")      // strip everything else unsafe
+      .replace(/\s{2,}/g, " ")                  // collapse whitespace
+      .trim();
+  }
+
   private renderCriticalPath(): string {
     const { path } = this.solver.getCriticalPath();
     if (path.length === 0) return "";
 
     let md =
-      "## Critical Path\n\n```mermaid\ngantt\n    title Critical Path\n    dateFormat X\n    axisFormat %s\n\n";
+      "## Critical Path\n\n```mermaid\ngantt\n    title Critical Path\n    dateFormat YYYY-MM-DD\n    axisFormat %s\n\n";
 
-    let lastId = "0";
+    let lastId = "";
     for (const p of path) {
       const status =
         p.status === "DONE" || p.status === "SHIPPED"
@@ -110,8 +126,12 @@ export class PlanRenderer {
             : "";
       const id = p.id.replace(/[^a-zA-Z0-9]/g, "_");
       const duration = p.sp_estimate || 1;
+      const label = this.sanitizeGanttLabel(p.name);
 
-      md += `    ${p.name.padEnd(25)} :${status}, ${id}, ${lastId === "0" ? "0" : `after ${lastId}`}, ${duration}\n`;
+      const afterClause = lastId === "" ? "2026-01-01" : `after ${lastId}`;
+      // Mermaid 11.12 crashes on `:,` (empty status). Omit status field when empty.
+      const statusField = status ? `${status}, ` : "";
+      md += `    ${label.padEnd(25)} :${statusField}${id}, ${afterClause}, ${duration}d\n`;
       lastId = id;
     }
 
@@ -134,8 +154,7 @@ export class PlanRenderer {
       md += `### Feature ${heading} ${icon}\n\n`;
 
       if (f.status === "SHIPPED") {
-        md +=
-          "> [!WARNING]\n> **Status:** ⚠️ Shipped but not yet TDD-hardened or verified.\n\n";
+        md += `**Status:** SHIPPED ✅\n\n`;
       } else {
         md += `**Status:** ${f.status}\n\n`;
       }

@@ -646,3 +646,38 @@ describe("FR-009/T010: Agent config fail-fast", () => {
   });
 });
 
+describe("Push upstream tracking for new branches", () => {
+  let program: Command;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    program = new Command();
+    program.addCommand(shipCommand);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit unexpectedly called with "${code}"`);
+    });
+  });
+
+  it("post-manifest push should use 'git push -u origin <branch>' for upstream tracking", async () => {
+    const { getCurrentBranch } = await import("../utils/git.js");
+    vi.mocked(getCurrentBranch).mockReturnValue("feat/014-plugin-system");
+
+    vi.mocked(execModule.run).mockResolvedValue(undefined);
+
+    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--legacy"]);
+
+    // Find the git push call in the run mock
+    const pushCalls = vi.mocked(execModule.run).mock.calls.filter(
+      (call) => call[0] === "git" && Array.isArray(call[1]) && call[1].includes("push")
+    );
+
+    // Should have at least one push call
+    expect(pushCalls.length).toBeGreaterThanOrEqual(1);
+
+    // The push call should include -u origin <branch>
+    const pushArgs = pushCalls[0][1] as string[];
+    expect(pushArgs).toContain("-u");
+    expect(pushArgs).toContain("origin");
+    expect(pushArgs).toContain("feat/014-plugin-system");
+  });
+});

@@ -15,7 +15,20 @@ export interface ScaffoldResult {
 
 export class ResearchScaffolder {
   /**
-   * US-017: Scaffolds a new research directory and brief.md
+   * Slugify an initiative name for directory naming.
+   */
+  private slugify(initiative: string): string {
+    const stripped = initiative.replace(/^R\d{3}-/i, "");
+    return stripped
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  /**
+   * US-017: Scaffolds a new research directory and brief.md.
+   * Idempotent: if a directory matching the initiative slug already exists,
+   * returns that directory instead of creating a new one.
    */
   async scaffold(initiative: string, options: ScaffoldOptions = {}): Promise<ScaffoldResult> {
     if (!initiative) {
@@ -27,10 +40,25 @@ export class ResearchScaffolder {
     // Ensure docs/research exists
     await fs.mkdir(researchDir, { recursive: true });
 
-    // 1. Determine next R0XX number
+    // 1. Read existing directories
     const existing = await fs.readdir(researchDir);
     const researchDirs = existing.filter(d => d.startsWith("R") && /R\d{3}-/.test(d));
+
+    // 2. Check for existing directory matching this initiative (idempotency)
+    const slug = this.slugify(initiative);
+    const existingMatch = researchDirs.find(d => {
+      // Extract slug portion after R0XX-
+      const dirSlug = d.replace(/^R\d{3}-/, "");
+      return dirSlug === slug;
+    });
+
+    if (existingMatch) {
+      return {
+        directory: path.join("docs", "research", existingMatch),
+      };
+    }
     
+    // 3. Determine next R0XX number
     let nextNum = 1;
     if (researchDirs.length > 0) {
       const numbers = researchDirs.map(d => {
@@ -42,20 +70,13 @@ export class ResearchScaffolder {
     
     const prefix = `R${nextNum.toString().padStart(3, "0")}`;
     
-    // 2. Slugify initiative (strip any user-provided R0XX- prefix to avoid stuttering)
-    const stripped = initiative.replace(/^R\d{3}-/i, "");
-    const slug = stripped
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    
     const targetDirName = `${prefix}-${slug}`;
     const targetPath = path.join(researchDir, targetDirName);
     
-    // 3. Create directory
+    // 4. Create directory
     await fs.mkdir(targetPath, { recursive: true });
     
-    // 4. Create brief.md
+    // 5. Create brief.md
     const methodology = options.methodology || "technical";
     const briefContent = `---
 initiative: ${initiative}
@@ -86,4 +107,26 @@ created: ${new Date().toISOString().split("T")[0]}
       directory: path.join("docs", "research", targetDirName)
     };
   }
+
+  /**
+   * US-018: Resolve an existing research directory by R0XX prefix.
+   * Used by `gwrk define research R011 --run` to find and run against
+   * an existing research initiative without re-scaffolding.
+   */
+  async resolveByPrefix(prefix: string): Promise<ScaffoldResult> {
+    const researchDir = path.join(process.cwd(), "docs", "research");
+    const existing = await fs.readdir(researchDir);
+
+    const normalizedPrefix = prefix.toUpperCase();
+    const match = existing.find(d => d.toUpperCase().startsWith(`${normalizedPrefix}-`));
+
+    if (!match) {
+      throw new Error(`Research initiative ${prefix} not found in docs/research/`);
+    }
+
+    return {
+      directory: path.join("docs", "research", match),
+    };
+  }
 }
+

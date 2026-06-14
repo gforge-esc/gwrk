@@ -678,11 +678,22 @@ export class ShipOrchestrator extends EventEmitter {
         (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
       const lastLines = stderr.split("\n").slice(-10).join("\n");
       console.log(`  ✗ build FAILED:\n${lastLines}`);
-      return {
-        success: false,
-        exitCode: 1,
-        error: `TypeScript build failed:\n${lastLines}`,
-      };
+
+      // Re-open tasks so the retry agent has work to do
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      if (phase) {
+        for (const task of phase.tasks) {
+          if (task.status === "completed") {
+            task.status = "open";
+            task.completedAt = undefined;
+            task.description = `${task.description || ""}\n\nBUILD_CHECK FAILED:\n${lastLines}`.trim();
+          }
+        }
+        saveTaskState(featureDir, taskState);
+      }
+      return this.handleNoGo("BUILD_CHECK");
     }
   }
 

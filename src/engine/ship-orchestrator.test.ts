@@ -258,4 +258,125 @@ describe("ShipOrchestrator", () => {
       }),
     );
   });
+
+  it("BUILD_CHECK failure should retry via IMPLEMENT (not exit immediately)", async () => {
+    const { execSync } = await import("node:child_process");
+    const mockExecSync = vi.mocked(execSync);
+
+    // execSync mock: must return strings (not Buffers) because callers
+    // like stagePrCi use { encoding: "utf-8" } and call .trim() on the result.
+    let buildCallCount = 0;
+    mockExecSync.mockImplementation((cmd: string, ..._args: unknown[]) => {
+      if (typeof cmd === "string" && cmd.includes("pnpm build")) {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          const err = new Error("tsc: error TS2345") as Error & { stderr: Buffer };
+          err.stderr = Buffer.from("error TS2345: Argument of type 'string'");
+          throw err;
+        }
+        return "";
+      }
+      if (typeof cmd === "string" && cmd.includes("pnpm test")) {
+        return "Tests: 5 passed";
+      }
+      if (typeof cmd === "string" && cmd.includes("gh pr list")) return "";
+      if (typeof cmd === "string" && cmd.includes("gh pr create")) return "https://github.com/mock/pull/42";
+      if (typeof cmd === "string" && cmd.includes("gh pr checks")) return "";
+      return "";
+    });
+
+    vi.mocked(state.loadTaskState).mockImplementation(() => ({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [{
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [{
+          id: "T001", title: "Task 1", description: "Desc 1",
+          status: "open",
+          gateScript: "gates/T001-gate.sh"
+        }]
+      }]
+    }));
+
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0, stdout: "Success", stderr: "", durationS: 10
+    });
+
+    // Exact runGate call sequence (post-flight never fires because
+    // loadTaskState mock returns status:"open", and runPostFlightGates
+    // only checks tasks with status:"completed"):
+    //
+    // #1: pre-flight iter 1 → FAIL (task needs work, triggers dispatch)
+    // --- BUILD_CHECK iter 1 fails → handleNoGo → iter 2 ---
+    // #2: pre-flight iter 2 → FAIL (build was broken, agent must fix)
+    // --- BUILD_CHECK iter 2 passes ---
+    // --- TEST_GATE passes (pnpm test via execSync, not runGate) ---
+    // #3: readVerdict in CODE_REVIEW → PASS (GO)
+    // #4: readVerdict in UAT_REVIEW → PASS (GO)
+    vi.mocked(gateRunner.runGate)
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // #1
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // #2
+      .mockResolvedValueOnce({ passed: true, exitCode: 0, output: "Pass" })   // #3
+      .mockResolvedValueOnce({ passed: true, exitCode: 0, output: "Pass" });  // #4
+
+    const orchestrator = new ShipOrchestrator(config);
+    const exitCode = await orchestrator.run();
+
+    // Key assertion: should have retried and eventually succeeded
+    expect(exitCode).toBe(0);
+    expect((orchestrator as any).state.stage).toBe(ShipStage.DONE);
+    expect((orchestrator as any).state.iteration).toBe(2);
+  });
+
+  it("BUILD_CHECK failure should trip circuit breaker after maxIterations", async () => {
+    const { execSync } = await import("node:child_process");
+    const mockExecSync = vi.mocked(execSync);
+
+    // Build ALWAYS fails
+    mockExecSync.mockImplementation((cmd: string, ..._args: unknown[]) => {
+      if (typeof cmd === "string" && cmd.includes("pnpm build")) {
+        const err = new Error("tsc error") as Error & { stderr: Buffer };
+        err.stderr = Buffer.from("error TS2345");
+        throw err;
+      }
+      return Buffer.from("");
+    });
+
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [{
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [{
+          id: "T001", title: "Task 1", description: "Desc 1",
+          status: "open",
+          gateScript: "gates/T001-gate.sh"
+        }]
+      }]
+    });
+
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0, stdout: "Success", stderr: "", durationS: 10
+    });
+
+    // Exact runGate call sequence (maxIterations=2):
+    // Post-flight never fires (loadTaskState mock returns status:"open").
+    //
+    // #1: pre-flight iter 1 → FAIL → dispatch agent
+    // --- BUILD_CHECK iter 1 fails → handleNoGo → iter 2 ---
+    // #2: pre-flight iter 2 → FAIL → dispatch agent
+    // --- BUILD_CHECK iter 2 fails → handleNoGo → iter 3 > maxIterations → CIRCUIT_BREAK ---
+    vi.mocked(gateRunner.runGate)
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" })  // #1
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" }); // #2
+
+    const smallConfig = { ...config, maxIterations: 2 };
+    const orchestrator = new ShipOrchestrator(smallConfig);
+    const exitCode = await orchestrator.run();
+
+    expect(exitCode).toBe(1);
+    expect((orchestrator as any).state.stage).toBe(ShipStage.CIRCUIT_BREAK);
+  });
 });

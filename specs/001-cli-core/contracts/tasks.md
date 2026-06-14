@@ -91,15 +91,37 @@ function runGate(gateScript: string): { exitCode: number; stdout: string; stderr
 
 ---
 
-## `appendHistory(entry: HistoryEntry): void`
+## `appendHistory(entry: HistoryEntry): void` (DEPRECATED)
 
 **Source**: `src/utils/history.ts`
 **Consumed by**: `src/commands/tasks.ts`
 
-Appends a single JSONL line to `.gwrk/history.jsonl`. Creates file if it doesn't exist.
+**Deprecated (R3)**: Writes are now redirected to the global SQLite `history` table and local git-tracked `Execution Manifests`. Reads remain supported for backward compatibility until `gwrk harvest` is operational.
+
+---
+
+## `writeExecutionManifest(manifest: ExecutionManifest): void`
+
+**Source**: `src/utils/manifest.ts`
+**Consumed by**: `src/commands/ship.ts`, `src/commands/define.ts`
+
+Writes a structured JSON manifest to `specs/<feature>/.gwrk/runs/<timestamp>_<command>.json`.
 
 ```typescript
-function appendHistory(entry: HistoryEntry): void
+function writeExecutionManifest(manifest: ExecutionManifest): void
+```
+
+---
+
+## `verifyTaskState(featureDir: string): Promise<VerificationReport>`
+
+**Source**: `src/engine/tasks-verify.ts`
+**Consumed by**: `src/commands/tasks.ts`
+
+Validates `tasks.json` schema, checks for orphaned execution manifests, and detects state regressions (completed → open).
+
+```typescript
+function verifyTaskState(featureDir: string): Promise<VerificationReport>
 ```
 
 ---

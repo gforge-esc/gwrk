@@ -29,6 +29,8 @@ export interface DefineState {
 export interface DefineRunConfig {
   featureId: string;
   backend: string;
+  /** Resolved model name from tier-aware selection (e.g. "gemini-3.1-pro-preview") */
+  model?: string;
   cwd: string;
   refs?: string;
   dryRun?: boolean;

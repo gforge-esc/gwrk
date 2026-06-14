@@ -23,6 +23,8 @@ export const GwrkConfigSchema = z.object({
     stack: z
       .object({
         language: z.string().optional(),
+        /** Multiple languages detected in a polyglot monorepo */
+        languages: z.array(z.string()).optional(),
         framework: z.string().optional(),
         buildSystem: z.string().optional(),
         testFramework: z.string().optional(),

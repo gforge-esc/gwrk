@@ -1007,6 +1007,48 @@ DELETE FROM plan_features WHERE id = '099-drift-test';
 | 16 | W | **Google Stitch Integration.** Exploratory. No blocking dependency. | — | Could integrate into `gwrk define` as visual artifact generator. |
 | 17 | U | **F012: Knowledge Work.** Ghost feature — empty spec directory. Number reserved. | — | Assign when discovery pillar needs a formal spec. |
 
+### Tier 5: Slack & Server Interactivity Audit (Blocks "Work From Phone")
+
+**Status: One-way feed. Not interactive. Buttons are decorative.**
+
+The Slack integration was designed as a two-way control surface but currently functions as a one-way status feed. This blocks the "daily driver from my phone" milestone because all real work requires the laptop terminal.
+
+#### What Exists (Code Audit 2026-06-05)
+
+| Component | File | Lines | Status |
+|-----------|------|-------|--------|
+| **Slash commands** | `slack-commands.ts` | 810 | 9 handlers: status, dispatch, approve, reject, pause, pulse, effort, logs, ship, define |
+| **Button actions** | `slack-actions.ts` | 350+ | 8 actions: merge_pr, request_changes, approve_spec, approve_plan, revise_spec, revise_plan, view_review, retry_phase |
+| **Notifications** | `slack-notify.ts` | 100 | Push to channel via webhook or Bolt |
+| **Messages** | `slack-messages.ts` | 200+ | Block Kit builders for phase start/complete/fail, pulse, compression |
+| **Home tab** | `slack-home.ts` | 300+ | Operations dashboard: server status, queue depth, active sandboxes |
+| **Mentions** | `slack-mentions.ts` | 80+ | @gwrk routing — delegates to slash handlers or freeform LLM |
+| **Presence** | `slack-presence.ts` | 100+ | Event types for phase lifecycle, CI results, reviews |
+| **Build server** | `server/index.ts` | 400+ | Fastify + Slack Bolt. Routes: /health, /api/status, /api/dispatch |
+
+#### What Works
+
+1. **Notifications OUT** — `slack-notify.ts` can post phase start/complete/fail messages to a channel. One-way push.
+2. **Home tab** — `slack-home.ts` renders a dashboard. Read-only.
+3. **Status command** — `/gwrk status` returns server + queue state.
+
+#### What Doesn't Work
+
+| Issue | Why |
+|-------|-----|
+| **Buttons don't connect** | Button `action_id`s (merge_pr, approve_spec, etc.) require the build server to be running. Server starts fine (`gwrk server start`) but isn't running by default. Buttons render but clicking them errors without the server process accepting the Slack callback. |
+| **Ship from Slack** | `/gwrk ship 001 p01` spawns `gwrk ship` as a child process of the build server. Requires server running on the workstation. Can't ship from phone unless server is tunneled (ngrok, Tailscale). |
+| **Define from Slack** | Same — spawns CLI commands as child processes of the server. |
+| **Approve/reject** | Requires PR lookup from runs DB + server context to call `gh pr merge`. |
+| **No bidirectional flow** | Can't ask a question from Slack and get a useful response. Mentions route to `handleSlashCommand` or a freeform LLM call but the LLM path has minimal project context. |
+| **Server not running** | `gwrk server start` works. Nobody runs it. No launchd plist. No auto-start. No tunnel. |
+
+#### What Blocks Daily Driver
+
+Infrastructure is wired (Socket Mode, sleep/wake, tokens, channel). The server runs. The problem is the **Slack surface itself**: it's a one-way status feed. Buttons don't work. No real interactivity. You can read notifications from your phone but you can't do anything from your phone.
+
+The gap is not infrastructure — it's the Slack surface design. The button actions (`merge_pr`, `approve_spec`, `retry_phase`, etc.) need to actually work end-to-end. Until they do, "work from phone" is just "read from phone."
+
 ### Resolved This Session
 
 | Item | What happened |

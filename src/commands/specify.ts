@@ -8,6 +8,7 @@ import { PlanStore } from "../engine/plan-store.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
 
 import {
   commitAllClean,
@@ -27,15 +28,34 @@ export const specifyCommand = new Command("spec")
     "after",
     `
 Examples:
-  gwrk define spec "Add OAuth2 integration"                  # New feature, auto-numbered
-  gwrk define spec 014 "Refine the plugin section"           # Rework existing
-  gwrk define spec 047-ontology "Ontology Integration"       # New with explicit slug
-  gwrk define spec 001-cli-core --refs docs/grounding/new-feature.md
-  echo "Refine the authentication section" | gwrk define spec 001
+
+  New feature (name auto-generated from description):
+    gwrk define spec "Add OAuth2 integration"
+
+  New feature (explicit name + description):
+    gwrk define spec "oauth2-integration" "Add OAuth2 support with PKCE flow"
+
+  Rework an existing spec:
+    gwrk define spec 014 "Refine the plugin section"
+    gwrk define spec 014-plugin-system "Add enforcement skill scaffolding"
+
+  With reference docs:
+    gwrk define spec "Polyglot monorepo" --refs docs/research/R010/draft.md
+    gwrk define spec 020 --refs docs/research/R010/draft.md
+
+  Via stdin:
+    echo "Refine the authentication section" | gwrk define spec 001
+
+Arguments:
+  The first argument is EITHER:
+    - A feature name/slug for a NEW feature ("oauth2-integration")
+    - A feature ID for an EXISTING feature (014 or 014-plugin-system)
+  When only one argument is given, it is treated as the description
+  and the feature name is auto-generated from it.
 `,
   )
-  .argument("[feature]", "Feature ID (e.g. 014-plugin-system). Omit to create new.")
-  .argument("[prompt]", "Feature description (new) or rework instructions (existing)")
+  .argument("[feature-name-or-id]", "Feature name/slug (new) or feature ID (existing). Omit to auto-generate from description.")
+  .argument("[description]", "Feature description (new) or rework instructions (existing)")
   .option("--refs <path>", "Path to additional reference docs")
   .action(
     async (
@@ -47,6 +67,7 @@ Examples:
         const cwd = process.cwd();
         const config = loadConfig(cwd);
         const backend = config.agents.define;
+        const model = resolveModelForTask("define", backend, cwd);
         const specsDir = path.join(cwd, "specs");
 
         // Read prompt/stdin BEFORE resolution — we need the prompt to decide
@@ -66,7 +87,7 @@ Examples:
           // No feature arg → creation mode. Prompt is the description.
           if (!effectiveInput) {
             throw new CommandError(
-              `Feature description required.\n\nTo create a new feature:\n  gwrk define spec "Description of the feature"`,
+              `Feature description required.\n\nUsage:\n  gwrk define spec "Description of the feature"          # auto-names from description\n  gwrk define spec "feature-name" "Description"           # explicit name + description\n  echo "description" | gwrk define spec                   # via stdin`,
               2,
             );
           }
@@ -92,7 +113,7 @@ Examples:
               console.log(`Created: ${feature}`);
             } else {
               throw new CommandError(
-                `Feature "${featureArg}" not found.\n\nTo create a new feature:\n  gwrk define spec "${featureArg}" "Description of the feature"\n  gwrk define spec "Description of the feature"\n\nTo list available features:\n  gwrk project specs`,
+                `Feature "${featureArg}" not found and no description was provided.\n\nDid you mean to create a new feature?\n  gwrk define spec "${featureArg}" "What this feature does"\n                     ↑ name/slug       ↑ description\n\nOr did you mean this as the description? Omit the name to auto-generate:\n  gwrk define spec "${featureArg}"\n                     ↑ treated as description, name auto-generated\n\nTo rework an existing feature, use its ID:\n  gwrk project specs                         # list available features`,
                 1,
               );
             }
@@ -177,6 +198,7 @@ Examples:
           const orchestrator = new DefineOrchestrator({
             featureId: feature,
             backend,
+            model,
             cwd,
             refs: opts.refs,
           }, {

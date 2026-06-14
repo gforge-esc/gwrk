@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-14T01:58:50.143Z_define_p02",
+  "feature": "007-effort-compression",
+  "phase": "p02",
+  "command": "define tests",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-14T01:58:50.143Z",
+  "finishedAt": "2026-06-14T02:01:48.159Z",
+  "durationS": 178,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 9,
+  "linesAdded": 92,
+  "linesDeleted": 1022,
+  "gitCommit": "b194806877e5db7e9ff3b39075fe9cfecfcdc4f9",
+  "gitBranch": "develop",
+  "digest": []
+}

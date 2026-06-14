@@ -245,6 +245,7 @@ export class WorkflowRuntime {
       type: "workflow",
       prompt: fullPrompt,
       agent: options.agent,
+      model: options.model,
       workDir: projectRoot,
       workflow: name,
       quiet: options.quiet,
@@ -338,7 +339,7 @@ export class WorkflowRuntime {
         options.allowedPaths.length > 0
       ) {
         const fp = intent.filePath;
-        const isTestFile = fp.endsWith(".test.ts") || fp.endsWith(".spec.ts") || fp.startsWith("e2e/");
+        const isTestFile = fp.endsWith(".test.ts") || fp.endsWith(".spec.ts") || fp.startsWith("tests/e2e/") || fp.startsWith("e2e/");
         const isSpecArtifact = fp.startsWith("specs/") || fp.includes("gap-matrix");
         if (!isTestFile && !isSpecArtifact) {
           const inScope = options.allowedPaths.some((allowed) => fp.endsWith(allowed) || fp.includes(allowed));

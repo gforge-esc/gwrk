@@ -64,71 +64,90 @@ export const HistoryEntrySchema = z.object({
 
 ---
 
-## DM-003: Configuration (`.gwrkrc.json`)
+## DM-003: Configuration (`.gwrkrc.json`) ⭐ **EXTENDED (R3)**
 
 **Location**: Project root
 **Validation**: Zod schema, fail-fast at startup.
 
 ```typescript
-const AgentBackendSchema = z.enum(['gemini', 'claude', 'codex']);
+const AgentBackendSchema = z.string();
 
 export const GwrkConfigSchema = z.object({
   project: z.object({
     name: z.string().min(1),
-  }),
-  github: z.object({
-    org: z.string().min(1),
-    visibility: z.enum(['public', 'private']).default('private'),
+    githubRepo: z.string().optional(),
+    // R3: Project Profile (all optional — auto-detected if missing)
+    type: z.string().optional(),
+    stack: z.object({
+      language: z.string().optional(),
+      framework: z.string().optional(),
+      buildSystem: z.string().optional(),
+      testFramework: z.string().optional(),
+      packageManager: z.string().optional(),
+    }).optional(),
+    layout: z.object({
+      sourceRoot: z.string().optional(),
+      apps: z.string().optional(),
+      packages: z.string().optional(),
+      specs: z.string().optional(),
+      docs: z.string().optional(),
+    }).optional(),
+    architecture: z.object({
+      doc: z.string().optional(),
+      decisions: z.string().optional(),
+    }).optional(),
+    conventions: z.object({
+      branchPrefix: z.string().optional(),
+      testPattern: z.string().optional(),
+    }).optional(),
   }),
   agents: z.object({
-    define: AgentBackendSchema,
-    implement: AgentBackendSchema,
-    // Token tracking is optional if agent does not report it
-    trackTokens: z.boolean().default(true),
+    define: AgentBackendSchema.default("gemini"),
+    implement: AgentBackendSchema.default("gemini"),
   }),
 });
 ```
 
 ---
 
-## DM-004: SQLite Execution Ledger (`~/.gwrk/gwrk.db`)
+## DM-004: SQLite Execution Ledger (`~/.gwrk/gwrk.db`) ⭐ **SCOPED (R3)**
 
-**Scope**: Global analytical ledger. WAL mode. No UPDATE/DELETE (audit trail).
+**Scope**: Global analytical ledger. WAL mode. Isolated by `project_id`.
 
-### Table: `runs`
+### Table: `runs` (Updated R3)
 Records every agent dispatch and orchestration run.
 
 | Column | Type | Description |
 |---|---|---|
-| `id` | INTEGER PRIMARY KEY | Auto-increment |
-| `feature_id` | TEXT | e.g. "001-cli-core" |
-| `command` | TEXT | e.g. "plan", "implement", "wud" |
-| `phase_id` | TEXT | e.g. "phase-01" (optional) |
-| `agent_backend` | TEXT | e.g. "gemini" |
-| `workflow` | TEXT | Workflow path or shell script name |
-| `exit_code` | INTEGER | Process exit code (NULL if running) |
-| `duration_s` | INTEGER | Duration in seconds |
-| `started_at` | DATETIME | ISO 8601 (DEFAULT CURRENT_TIMESTAMP) |
+| `id` | INTEGER PRIMARY KEY | |
+| `project_id` | TEXT | MD5 hash of project root |
+| `feature_id` | TEXT | |
+| `command` | TEXT | |
+| ... | ... | |
 
-### Table: `history`
-Records every task state transition for compression tracking.
+### New Tables (Migration 009)
+`plan_features`, `plan_phases`, `plan_edges`, `plan_proposals`, `gate_results`, `compression`, `issues`, `routing_history`. All include `project_id`.
 
-| Column | Type | Description |
-|---|---|---|
-| `id` | INTEGER PRIMARY KEY | Auto-increment |
-| `feature_id` | TEXT | e.g. "001-cli-core" |
-| `task_id` | TEXT | e.g. "T001" |
-| `from_status` | TEXT | Previous status |
-| `to_status` | TEXT | New status |
-| `agent_id` | TEXT | Optional agent identifier |
-| `created_at` | DATETIME | ISO 8601 (DEFAULT CURRENT_TIMESTAMP) |
+---
 
-### Table: `projects`
-Registration for projects managed by gwrk.
+## DM-005: Execution Manifest (`specs/<feature>/.gwrk/runs/*.json`) ⭐ **NEW (R3)**
 
-| Column | Type | Description |
-|---|---|---|
-| `id` | INTEGER PRIMARY KEY | Auto-increment |
-| `name` | TEXT | Project name |
-| `root_path` | TEXT | Absolute path to project |
-| `created_at` | DATETIME | ISO 8601 |
+Git-tracked structured JSON per agent run.
+
+```typescript
+export const ExecutionManifestSchema = z.object({
+  runId: z.string(),
+  feature: z.string(),
+  phase: z.string(),
+  command: z.string(),
+  agent: z.string(),
+  model: z.string(),
+  startedAt: z.string().datetime(),
+  finishedAt: z.string().datetime(),
+  durationS: z.number(),
+  exitCode: z.number(),
+  attempt: z.number(),
+  gitCommit: z.string(),
+  gitBranch: z.string(),
+});
+```

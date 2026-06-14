@@ -342,7 +342,8 @@ async function shipPhase(
           ["commit", "-m", `chore(${feature}): add execution manifest`],
           { cwd, env: { ...process.env, GWRK_SHIP: "1" } },
         );
-        await run("git", ["push"], { cwd });
+        const currentBranch = getCurrentBranch(cwd);
+        await run("git", ["push", "-u", "origin", currentBranch], { cwd });
       }
     } catch (pushErr) {
       console.warn(

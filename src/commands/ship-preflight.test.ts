@@ -70,7 +70,7 @@ describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
       // Expected
     }
     expect(process.exitCode).toBe(1);
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Run gwrk setup first"));
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Run gwrk init first"));
   });
 
   it("US-021: SHOULD reject ship if setup.json is incomplete", async () => {
@@ -83,6 +83,7 @@ describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
       // Expected
     }
     expect(process.exitCode).toBe(1);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Run gwrk init first"));
   });
 
   it("US-021: SHOULD proceed with ship if setup.json is complete", async () => {
@@ -95,6 +96,6 @@ describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
       // Expected failure later in ship (missing phase, etc.)
     }
     
-    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("Run gwrk setup first"));
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("Run gwrk init first"));
   });
 });

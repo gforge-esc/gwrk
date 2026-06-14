@@ -1,6 +1,12 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-05-20T21:56:25.239Z",
+  "createdAt": "2026-06-14T17:08:42.269Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "3cb648a5964e09bbea1e6885f4045a3004b252a2f545b71b7ca9e3ed28b2d96e",
+      "modifiedAt": "2026-06-14T15:37:13.301Z"
+    }
+  },
   "phases": [
     {
       "id": "phase-01",
@@ -8,763 +14,496 @@
       "tasks": [
         {
           "id": "T001",
-          "title": "Implement package.json",
-          "description": "Implement changes for package.json. Tests: src/cli.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T001-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T002",
-          "title": "Implement tsconfig.json",
-          "description": "Implement changes for tsconfig.json. Tests: src/cli.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T002-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T003",
-          "title": "Implement src/cli.ts",
-          "description": "Implement changes for src/cli.ts. Tests: src/cli.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T003-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T004",
-          "title": "Implement src/commands/init.ts",
-          "description": "Implement changes for src/commands/init.ts. Tests: src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T004-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T005",
-          "title": "Implement src/utils/config.ts",
-          "description": "Implement changes for src/utils/config.ts. Tests: src/utils/config.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T005-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T006",
-          "title": "Implement src/utils/format.ts",
-          "description": "Implement changes for src/utils/format.ts. Tests: src/cli.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T006-gate.sh",
-          "sp": 0
+          "title": "Project Bootstrap & Config ✅",
+          "description": "Complete phase 1: Project Bootstrap & Config ✅",
+          "status": "open",
+          "gateScript": "echo \"Phase 1: Project Bootstrap & Config ✅\"",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2
     },
     {
       "id": "phase-02",
       "title": "SQLite Execution Ledger ✅",
       "tasks": [
         {
-          "id": "T007",
-          "title": "Implement src/db/index.ts",
-          "description": "Implement changes for src/db/index.ts. Tests: src/db/db.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T007-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T008",
-          "title": "Implement src/db/migrations/001-initial.sql",
-          "description": "Implement changes for src/db/migrations/001-initial.sql. Tests: src/db/db.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T008-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T009",
-          "title": "Implement src/db/runs.ts",
-          "description": "Implement changes for src/db/runs.ts. Tests: src/db/db.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T009-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T010",
-          "title": "Implement src/commands/db.ts",
-          "description": "Implement changes for src/commands/db.ts. Tests: src/commands/runs.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T010-gate.sh",
-          "sp": 0
+          "id": "T002",
+          "title": "SQLite Execution Ledger ✅",
+          "description": "Complete phase 2: SQLite Execution Ledger ✅",
+          "status": "open",
+          "gateScript": "echo \"Phase 2: SQLite Execution Ledger ✅\"",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2
     },
     {
       "id": "phase-03",
       "title": "Clarity Pillar — Define ✅",
       "tasks": [
         {
-          "id": "T011",
-          "title": "Implement src/commands/define.ts",
-          "description": "Implement changes for src/commands/define.ts. Tests: src/commands/define.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T011-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T012",
-          "title": "Implement src/commands/specify.ts",
-          "description": "Implement changes for src/commands/specify.ts. Tests: src/commands/specify.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T012-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T013",
-          "title": "Implement src/commands/plan.ts",
-          "description": "Implement changes for src/commands/plan.ts. Tests: src/commands/plan.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T013-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T014",
-          "title": "Implement src/commands/analyze.ts",
-          "description": "Implement changes for src/commands/analyze.ts. Tests: src/commands/analyze.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T014-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T015",
-          "title": "Implement src/commands/tasks-generate.ts",
-          "description": "Implement changes for src/commands/tasks-generate.ts. Tests: src/commands/tasks-generate.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T015-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T016",
-          "title": "Implement src/utils/agent.ts",
-          "description": "Implement changes for src/utils/agent.ts. Tests: src/utils/agent.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T016-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T017",
-          "title": "Implement src/utils/parser.ts",
-          "description": "Implement changes for src/utils/parser.ts. Tests: src/engine/spec-parser.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T017-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T018",
-          "title": "Implement src/utils/exec.ts",
-          "description": "Implement changes for src/utils/exec.ts. Tests: src/utils/agent.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T018-gate.sh",
-          "sp": 0
+          "id": "T003",
+          "title": "Clarity Pillar — Define ✅",
+          "description": "Complete phase 3: Clarity Pillar — Define ✅",
+          "status": "open",
+          "gateScript": "echo \"Phase 3: Clarity Pillar — Define ✅\"",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2
     },
     {
       "id": "phase-04",
       "title": "Throughput Pillar — Ship ✅",
       "tasks": [
         {
-          "id": "T019",
-          "title": "Implement src/commands/ship.ts",
-          "description": "Implement changes for src/commands/ship.ts. Tests: src/commands/ship.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T019-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T020",
-          "title": "Implement src/commands/implement.ts",
-          "description": "Implement changes for src/commands/implement.ts. Tests: src/commands/ship.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T020-gate.sh",
-          "sp": 0
+          "id": "T004",
+          "title": "Throughput Pillar — Ship ✅",
+          "description": "Complete phase 4: Throughput Pillar — Ship ✅",
+          "status": "open",
+          "gateScript": "echo \"Phase 4: Throughput Pillar — Ship ✅\"",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2
     },
     {
       "id": "phase-05",
       "title": "Task Engine — State, Gates & History ✅",
       "tasks": [
         {
-          "id": "T021",
-          "title": "Implement src/commands/tasks.ts",
-          "description": "Implement changes for src/commands/tasks.ts. Tests: src/commands/tasks-query.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T021-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T022",
-          "title": "Implement src/utils/state.ts",
-          "description": "Implement changes for src/utils/state.ts. Tests: src/utils/state.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T022-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T023",
-          "title": "Implement src/utils/gate-gen.ts",
-          "description": "Implement changes for src/utils/gate-gen.ts. Tests: src/utils/state.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T023-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T024",
-          "title": "Implement src/utils/history.ts",
-          "description": "Implement changes for src/utils/history.ts. Tests: src/utils/state.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T024-gate.sh",
-          "sp": 0
+          "id": "T005",
+          "title": "Task Engine — State, Gates & History ✅",
+          "description": "Complete phase 5: Task Engine — State, Gates & History ✅",
+          "status": "open",
+          "gateScript": "echo \"Phase 5: Task Engine — State, Gates & History ✅\"",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2
     },
     {
       "id": "phase-06",
       "title": "Value Pillar — Measure ✅",
       "tasks": [
         {
-          "id": "T025",
-          "title": "Implement src/commands/measure.ts",
-          "description": "Implement changes for src/commands/measure.ts. Tests: src/commands/pulse.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T025-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T026",
-          "title": "Implement src/commands/pulse.ts",
-          "description": "Implement changes for src/commands/pulse.ts. Tests: src/commands/pulse.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T026-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T027",
-          "title": "Implement src/commands/effort.ts",
-          "description": "Implement changes for src/commands/effort.ts. Tests: src/commands/effort.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T027-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T028",
-          "title": "Implement src/commands/compression.ts",
-          "description": "Implement changes for src/commands/compression.ts. Tests: src/commands/compression.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T028-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T029",
-          "title": "Implement src/engine/pulse.ts",
-          "description": "Implement changes for src/engine/pulse.ts. Tests: src/engine/pulse.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T029-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T030",
-          "title": "Implement src/engine/effort.ts",
-          "description": "Implement changes for src/engine/effort.ts. Tests: src/engine/effort.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T030-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T031",
-          "title": "Implement src/engine/compression.ts",
-          "description": "Implement changes for src/engine/compression.ts. Tests: src/engine/compression.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T031-gate.sh",
-          "sp": 0
+          "id": "T006",
+          "title": "Value Pillar — Measure ✅",
+          "description": "Complete phase 6: Value Pillar — Measure ✅",
+          "status": "open",
+          "gateScript": "echo \"Phase 6: Value Pillar — Measure ✅\"",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2
     },
     {
       "id": "phase-07",
       "title": "Init Hardening ✅",
       "tasks": [
         {
-          "id": "T032",
-          "title": "Implement src/commands/init.ts",
-          "description": "Implement changes for src/commands/init.ts. Tests: src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T032-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T033",
-          "title": "Implement src/commands/new.ts",
-          "description": "Implement changes for src/commands/new.ts. Tests: src/commands/new.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T033-gate.sh",
-          "sp": 0
+          "id": "T007",
+          "title": "Init Hardening ✅",
+          "description": "Complete phase 7: Init Hardening ✅",
+          "status": "open",
+          "gateScript": "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2,
+      "doneWhen": [
+        "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
+        "`gwrk init` registers project in `~/.gwrk/gwrk.db` ✅",
+        "`gwrk new test-project` creates dir, initializes git, runs init ✅",
+        "Running `gwrk init` twice is idempotent ✅"
+      ]
     },
     {
       "id": "phase-08",
       "title": "E2E Surface Hardening ✅",
       "tasks": [
         {
-          "id": "T034",
-          "title": "Implement src/commands/run.ts",
-          "description": "Implement changes for src/commands/run.ts. Tests: src/cli.e2e.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T034-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T035",
-          "title": "Implement src/commands/metrics.ts",
-          "description": "Implement changes for src/commands/metrics.ts. Tests: src/cli.e2e.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T035-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T036",
-          "title": "Implement src/cli.e2e.test.ts",
-          "description": "Implement changes for src/cli.e2e.test.ts. Tests: src/cli.e2e.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T036-gate.sh",
-          "sp": 0
+          "id": "T008",
+          "title": "E2E Surface Hardening ✅",
+          "description": "Complete phase 8: E2E Surface Hardening ✅",
+          "status": "open",
+          "gateScript": "All dead files removed ✅",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2,
+      "doneWhen": [
+        "All dead files removed ✅",
+        "`pnpm test` — all passing (verified CLI core tests) ✅",
+        "`gwrk --help` output matches spec US-018 acceptance criteria exactly ✅"
+      ]
     },
     {
       "id": "phase-09",
-      "title": "State Contract — Execution Manifests & Merge Safety ✅",
+      "title": "State Contract — Execution Manifests & Merge Safety",
       "tasks": [
         {
-          "id": "T037",
-          "title": "Implement src/utils/manifest.ts",
-          "description": "Implement changes for src/utils/manifest.ts. Tests: src/utils/manifest.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T037-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T038",
-          "title": "Implement src/commands/tasks.ts",
-          "description": "Implement changes for src/commands/tasks.ts. Tests: src/commands/tasks-verify.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T038-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T039",
-          "title": "Implement src/commands/ship.ts",
-          "description": "Implement changes for src/commands/ship.ts. Tests: src/commands/ship.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T039-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T040",
-          "title": "Implement src/commands/define.ts",
-          "description": "Implement changes for src/commands/define.ts. Tests: src/commands/define.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T040-gate.sh",
-          "sp": 0
+          "id": "T009",
+          "title": "State Contract — Execution Manifests & Merge Safety",
+          "description": "Complete phase 9: State Contract — Execution Manifests & Merge Safety",
+          "status": "open",
+          "gateScript": "Every `ship`/`define` run writes a manifest to `.gwrk/runs/`",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2,
+      "doneWhen": [
+        "Every `ship`/`define` run writes a manifest to `.gwrk/runs/`",
+        "`gwrk tasks verify <feature>` validates schema + manifest coverage",
+        "`history.jsonl` writes are replaced with manifest + `gwrk.db history`",
+        "All tests pass"
+      ]
     },
     {
       "id": "phase-10",
-      "title": "Phase 10: Unified Init — Project Onboarding ⭐ (R3)",
+      "title": "Unified Init — Project Onboarding ⭐ **REWRITE (R3)**",
       "tasks": [
         {
-          "id": "T041",
-          "title": "Extend GwrkConfigSchema with project profile fields",
-          "description": "Add optional project profile fields (type, stack, layout, architecture, conventions) to GwrkConfigSchema in src/utils/config.ts. Tests: src/utils/config.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T041-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:43:13.602Z"
+          "id": "T010",
+          "title": "Modify init.ts",
+          "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery",
+          "status": "open",
+          "gateScript": "test -f src/commands/init.ts",
+          "sp": 1
         },
         {
-          "id": "T042",
-          "title": "Implement detectProfile core logic and project type detection",
-          "description": "Implement core detection logic for project type (cargo, python, pnpm, etc.) in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T042-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:43:14.704Z"
+          "id": "T011",
+          "title": "Modify setup.ts",
+          "description": "DELETE src/commands/setup.ts. Absorbed into init",
+          "status": "open",
+          "gateScript": "test -f src/commands/setup.ts",
+          "sp": 1
         },
         {
-          "id": "T043",
-          "title": "Implement tech stack and layout extraction in detectProfile",
-          "description": "Implement extraction of language, framework, build system, and source layout in src/engine/profile-detector.ts. Tests: src/engine/profile-detector.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T043-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:43:15.751Z"
+          "id": "T012",
+          "title": "Modify setup-slack.ts",
+          "description": "MODIFY src/commands/setup-slack.ts. Refactor to be callable from init flow, not standalone",
+          "status": "open",
+          "gateScript": "test -f src/commands/setup-slack.ts",
+          "sp": 1
         },
         {
-          "id": "T044",
-          "title": "Refactor setup-slack.ts for internal callability",
-          "description": "Refactor Slack setup logic to be easily callable from the interactive init flow. Tests: src/commands/setup-slack.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T044-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:45:00.000Z"
-        },
-        {
-          "id": "T045",
-          "title": "Implement gwrk init interactive wizard skeleton and welcome",
-          "description": "Setup interactive prompt framework in src/commands/init.ts and implement the initial welcome and detection display. Tests: src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T045-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:43:18.172Z"
-        },
-        {
-          "id": "T046",
-          "title": "Implement profile confirmation and editing in init wizard",
-          "description": "Allow user to confirm or manually override detected profile fields (type, stack, layout) in src/commands/init.ts. Tests: src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T046-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:43:19.359Z"
-        },
-        {
-          "id": "T047",
-          "title": "Absorb macOS TCC guidance into init flow",
-          "description": "Integrate TCC Full Disk Access check and guidance from setup.ts into the unified init flow. Tests: src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T047-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:45:00.000Z"
-        },
-        {
-          "id": "T048",
-          "title": "Absorb SSH key and GH auth into init flow",
-          "description": "Integrate SSH key generation and GitHub CLI authentication checks from setup.ts into the unified init flow. Tests: src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T048-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:07.660Z"
-        },
-        {
-          "id": "T049",
-          "title": "Implement --non-interactive flag for silent init",
-          "description": "Ensure init can run without prompts, using pure auto-detection and default scaffolding. Tests: src/commands/init.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T049-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:07.665Z"
-        },
-        {
-          "id": "T050",
-          "title": "Delete src/commands/setup.ts and finalize CLI surface",
-          "description": "Remove the obsolete setup command and verify the updated CLI surface and branding. Tests: src/cli.e2e.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T050-gate.sh",
-          "sp": 0,
-          "completedAt": "2026-06-01T23:22:08.892Z"
+          "id": "T013",
+          "title": "Create extension-detector.ts",
+          "description": "NEW src/engine/extension-detector.ts. Detect installed CLIs like obsidian-cli",
+          "status": "open",
+          "gateScript": "test -f src/engine/extension-detector.ts",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 5,
+      "doneWhen": [
+        "`gwrk init` runs interactive profile wizard: detects project type, confirms with user, walks through stack/layout/architecture/conventions",
+        "`gwrk init` runs workstation provisioning (TCC, SSH, gh) — former `gwrk setup` behavior",
+        "`gwrk init` detects agent CLIs and configures agents block",
+        "`gwrk init` provisions Slack channel if tokens available",
+        "`gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`",
+        "`gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`",
+        "`gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently",
+        "`gwrk init --agent` outputs structured JSON, skips human-dependent steps (TCC, SSH, Slack), relaxes pre-requisites — designed for agent-driven bootstrapping of new repos",
+        "`gwrk setup` is removed from CLI surface",
+        "`pnpm build` compiles clean, `pnpm test` all passing",
+        "Schema backward compat: existing `.gwrkrc.json` files parse without error"
+      ]
     },
     {
       "id": "phase-11",
-      "title": "Phase 11: CLI UX Polish ✅",
+      "title": "CLI UX Polish ✅",
       "tasks": [
         {
-          "id": "T051",
-          "title": "Add Examples to ship.ts help",
-          "description": "Add Examples section to ship.ts. Tests: src/cli.ux.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T051-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T052",
-          "title": "Add Examples to define.ts help",
-          "description": "Add Examples section to define.ts. Tests: src/cli.ux.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T052-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T053",
-          "title": "Add Examples to tasks.ts help",
-          "description": "Add Examples section to tasks.ts. Tests: src/cli.ux.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T053-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T054",
-          "title": "Add Examples to measure.ts help",
-          "description": "Add Examples section to measure.ts. Tests: src/cli.ux.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T054-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T055",
-          "title": "Add Examples to db.ts help",
-          "description": "Add Examples section to db.ts. Tests: src/cli.ux.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T055-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T056",
-          "title": "Add Examples to test.ts help",
-          "description": "Add Examples section to test.ts. Tests: src/cli.ux.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T056-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T057",
-          "title": "Implement resolveFeature in define-plan.ts",
-          "description": "Add prefix aliasing for feature args. Tests: src/cli.consistency.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T057-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T058",
-          "title": "Implement resolveFeature in tests-generate.ts",
-          "description": "Add prefix aliasing and relax output contract. Tests: src/commands/tests-generate-contract.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T058-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T059",
-          "title": "Implement resolveFeature in runs.ts",
-          "description": "Add prefix aliasing for feature args. Tests: src/cli.consistency.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T059-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T060",
-          "title": "Implement resolveFeature in harvest.ts",
-          "description": "Add prefix aliasing for feature args. Tests: src/cli.consistency.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T060-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T061",
-          "title": "Verify Examples in gate.ts",
-          "description": "Confirm gate.ts has help examples. Tests: src/cli.ux.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T061-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T062",
-          "title": "Create docs/governance/cli-grammar.md",
-          "description": "Implement CLI grammar standard. Tests: tests/governance.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T062-gate.sh",
-          "sp": 0
+          "id": "T014",
+          "title": "CLI UX Polish ✅",
+          "description": "Complete phase 11: CLI UX Polish ✅",
+          "status": "open",
+          "gateScript": "`gwrk <any-command-with-args> --help` shows an `Examples:` section",
+          "sp": 2
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 2,
+      "doneWhen": [
+        "`gwrk <any-command-with-args> --help` shows an `Examples:` section",
+        "`gwrk define plan 001` resolves to `001-cli-core` (prefix aliasing works)",
+        "`gwrk define tests 001` resolves to `001-cli-core` (prefix aliasing works)",
+        "`gwrk db runs 001` resolves to `001-cli-core` (prefix aliasing works)",
+        "`gwrk define tests` no longer fails when agent produces test files instead of gap-matrix.md",
+        "`docs/governance/cli-grammar.md` exists with canonical grammar, rules, and command inventory",
+        "`project gates` remains removed (✅ verified)",
+        "`pnpm build` compiles clean, `pnpm test` all passing"
+      ]
     },
     {
       "id": "phase-12",
-      "title": "Phase 12: Define Pillar Output Parity",
+      "title": "Define Pillar Output Parity",
       "tasks": [
         {
-          "id": "T063",
-          "title": "Implement tolerant flag in WorkflowRuntime",
-          "description": "Add tolerant?: boolean to WorkflowOptions in src/plugins/workflow-runtime.ts. Update executeWorkflow to only treat prose-as-success when tolerant is true. Tests: src/plugins/workflow-runtime.test.ts [REMEDIATION: Flag is missing from WorkflowOptions; behavior is currently hardcoded to exitCode === 0]",
+          "id": "T015",
+          "title": "Modify tests-generate.ts",
+          "description": "MODIFY src/commands/tests-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()`. Detect agent-native success by checking for committed test files even when JSON parsing fails.. Tests: src/commands/tests-generate-contract.test.ts",
           "status": "open",
-          "gateScript": "gates/T063-gate.sh",
-          "sp": 0
+          "gateScript": "pnpm vitest run src/commands/tests-generate-contract.test.ts",
+          "sp": 1
         },
         {
-          "id": "T064",
-          "title": "Refactor DefineOrchestrator to pass UX flags",
-          "description": "Add quiet?: boolean and tolerant?: boolean to DefineRunConfig in src/engine/define-types.ts. Update DefineOrchestrator.ts to pass these to WorkflowRuntime. Tests: src/engine/define-orchestrator.test.ts [REMEDIATION: DefineRunConfig missing quiet/tolerant; Orchestrator using hardcoded quiet: true]",
+          "id": "T016",
+          "title": "Modify specify.ts",
+          "description": "MODIFY src/commands/specify.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.",
           "status": "open",
-          "gateScript": "gates/T064-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/commands/specify.ts",
+          "sp": 1
         },
         {
-          "id": "T065",
-          "title": "Implement quiet mode and robust success in tests-generate.ts",
-          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator. Ensure command exits 0 if test artifacts are present, regardless of JSON parsing. Tests: src/commands/tests-generate-contract.test.ts [REMEDIATION: Not passing flags to DefineOrchestrator]",
+          "id": "T017",
+          "title": "Modify define-plan.ts",
+          "description": "MODIFY src/commands/define-plan.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.",
           "status": "open",
-          "gateScript": "gates/T065-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/commands/define-plan.ts",
+          "sp": 1
         },
         {
-          "id": "T066",
-          "title": "Implement quiet mode in specify.ts, plan.ts, and tasks-generate.ts",
-          "description": "Pass quiet: true and tolerant: true to DefineOrchestrator in all define subcommands. Tests: src/commands/specify.test.ts, src/commands/plan.test.ts [REMEDIATION: Not passing flags to DefineOrchestrator]",
+          "id": "T018",
+          "title": "Modify tasks-generate.ts",
+          "description": "MODIFY src/commands/tasks-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()` for gate authoring dispatch.",
           "status": "open",
-          "gateScript": "gates/T066-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/commands/tasks-generate.ts",
+          "sp": 1
         },
         {
-          "id": "T067",
-          "title": "Repair tests-generate-contract.test.ts and verify Phase 12",
-          "description": "Fix broken imports in src/commands/tests-generate-contract.test.ts. Add assertions for quiet: true and tolerant: true across all define commands. Tests: src/commands/tests-generate-contract.test.ts [REMEDIATION: Test file still broken with incorrect imports and outdated API usage]",
+          "id": "T019",
+          "title": "Modify workflow-runtime.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Make `extractJsonFromOutput()` failure non-fatal when the agent committed artifacts. Add `tolerant` mode that returns a synthetic success result when the agent did native work.. Tests: src/plugins/workflow-runtime.test.ts",
           "status": "open",
-          "gateScript": "gates/T067-gate.sh",
-          "sp": 0
+          "gateScript": "pnpm vitest run src/plugins/workflow-runtime.test.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 5,
+      "doneWhen": [
+        "`gwrk define tests 003 --force` runs with quiet spinner output (no agent narration in terminal)",
+        "Agent that commits tests natively but returns prose → exit 0 (not exit 1)",
+        "Full agent output in `.runs/` log file for debugging",
+        "`gwrk define spec 001` runs with quiet spinner output",
+        "`gwrk define plan 001` runs with quiet spinner output",
+        "`pnpm build` compiles clean, `pnpm test` all passing"
+      ]
     },
     {
       "id": "phase-13",
-      "title": "Phase 13: Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ (R3)",
+      "title": "Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)**",
       "tasks": [
         {
-          "id": "T068",
-          "title": "Implement prompt-conditioner logic",
-          "description": "Implement conditionPrompt in src/engine/prompt-conditioner.ts to inject <project_profile> XML and resolve [type: gwrk-native] guards. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T068-gate.sh]",
+          "id": "T020",
+          "title": "Create prompt-conditioner.ts",
+          "description": "NEW src/engine/prompt-conditioner.ts. Generate `<project_profile>` XML from resolved profile, serialize for prompt injection",
           "status": "open",
-          "gateScript": "gates/T068-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/engine/prompt-conditioner.ts",
+          "sp": 2
         },
         {
-          "id": "T069",
-          "title": "Integrate prompt-conditioner into WorkflowRuntime",
-          "description": "Update WorkflowRuntime.executeWorkflow() in src/plugins/workflow-runtime.ts to call conditionPrompt before dispatching to agents. Tests: src/plugins/workflow-runtime.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T069-gate.sh]",
+          "id": "T021",
+          "title": "Modify workflow-runtime.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Call prompt-conditioner before dispatching, inject XML block into prompt",
           "status": "open",
-          "gateScript": "gates/T069-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/plugins/workflow-runtime.ts",
+          "sp": 1
         },
         {
-          "id": "T070",
-          "title": "Integrate prompt-conditioner into ShipOrchestrator review",
-          "description": "Update review dispatch in src/engine/ship-orchestrator.ts to call conditionPrompt. Tests: src/engine/ship-orchestrator.test.ts [REVIEW FAIL (test): Regression in ShipOrchestrator.test.ts (5 failures). FIX: Mock detectProfile in src/engine/ship-orchestrator.test.ts. Also implement missing gates/T070-gate.sh]",
+          "id": "T022",
+          "title": "Modify ship-orchestrator.ts",
+          "description": "MODIFY src/server/ship-orchestrator.ts. Inject profile into review dispatch",
           "status": "open",
-          "gateScript": "gates/T070-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/server/ship-orchestrator.ts",
+          "sp": 1
         },
         {
-          "id": "T071",
-          "title": "Implement gwrk project info command",
-          "description": "Implement the project info action in src/commands/project-info.ts to display the resolved profile. Support --format json. Tests: src/commands/project-info.test.ts [REVIEW FAIL (code): Destructive implementation in src/commands/project.ts (deleted 'discover' and 'specs' subcommands). FIX: Restore subcommands and add 'info' alongside them. Also implement missing gates/T071-gate.sh]",
+          "id": "T023",
+          "title": "Create project-info.ts",
+          "description": "NEW src/commands/project-info.ts. `gwrk project info` with `--format json`",
           "status": "open",
-          "gateScript": "gates/T071-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/commands/project-info.ts",
+          "sp": 2
         },
         {
-          "id": "T072",
-          "title": "Refactor critical PROMPT.md files (plan, review-uat, author-gates)",
-          "description": "Add [type: gwrk-native] guards to gwrk-plan, gwrk-review-uat, and gwrk-author-gates PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T072-gate.sh]",
+          "id": "T024",
+          "title": "Create project.ts",
+          "description": "NEW src/commands/project.ts. `gwrk project` parent command",
           "status": "open",
-          "gateScript": "gates/T072-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/commands/project.ts",
+          "sp": 2
         },
         {
-          "id": "T073",
-          "title": "Refactor medium PROMPT.md files (implement, define-tests, plan-to-tasks, review-code)",
-          "description": "Add [type: gwrk-native] guards to gwrk-implement, gwrk-define-tests, gwrk-plan-to-tasks, and gwrk-review-code PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T073-gate.sh]",
+          "id": "T025",
+          "title": "Modify cli.ts",
+          "description": "MODIFY src/cli.ts. Register `project` command group",
           "status": "open",
-          "gateScript": "gates/T073-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T074",
-          "title": "Refactor remaining low PROMPT.md files",
-          "description": "Add [type: gwrk-native] guards to gwrk-analyze, gwrk-cascade-sync, gwrk-build-plan, gwrk-checklist, gwrk-effort, and gwrk-research PROMPT.md files. Tests: src/engine/prompt-conditioner.test.ts [REVIEW FAIL (gate): Missing gate script. FIX: Implement gates/T074-gate.sh]",
-          "status": "open",
-          "gateScript": "gates/T074-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/cli.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 9,
+      "doneWhen": [
+        "`<project_profile>` XML block injected into every workflow prompt at runtime",
+        "All 15 PROMPT.md files refactored with conditional `gwrk-native` guards",
+        "`gwrk project info --format json` returns resolved profile",
+        "`grep -r \"src/commands\\|src/engine\\|ADR-004\\|Commander.js\\|better-sqlite3\" src/plugins/builtins/workflows/*/PROMPT.md` returns ZERO ungated matches",
+        "gwrk-native prompt assembly is byte-identical to pre-R3 (regression snapshot passes)",
+        "`pnpm build` compiles clean, `pnpm test` all passing"
+      ]
     },
     {
       "id": "phase-14",
-      "title": "Phase 14: Project-Scoped DB Isolation",
+      "title": "Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)**",
       "tasks": [
         {
-          "id": "T075",
-          "title": "Update DB Safety Net with project_id",
-          "description": "Update safeAddColumn in src/db/index.ts to include project_id for all 8 target tables (plan_features, plan_phases, plan_edges, plan_proposals, gate_results, compression, issues, routing_history). Tests: src/db/db.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T075-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T076",
-          "title": "Scope Plan DB Queries",
-          "description": "Update all query functions in src/db/plan.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T076-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T077",
-          "title": "Scope Run & Gate DB Queries",
-          "description": "Update query functions in src/db/runs.ts and src/db/gates.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T077-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T078",
-          "title": "Scope Analytics & Plugin DB Queries",
-          "description": "Update query functions in src/db/compression.ts, src/db/issues.ts, and src/db/plugins.ts to accept and filter by projectId. Tests: src/db/scoping.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T078-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T079",
-          "title": "Update PlanStore Engine for Project Awareness",
-          "description": "Refactor PlanStore in src/engine/plan-store.ts to accept projectId in its constructor and use it for all DB calls. Tests: src/engine/plan-store-scoping.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T079-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T080",
-          "title": "Update Plan Commands with Project Derivation",
-          "description": "Update CLI subcommands in src/commands/plan.ts to derive projectId from cwd and pass it to PlanStore. Tests: src/commands/project-scoped.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T080-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T081",
-          "title": "Update Analytics Commands with Project Derivation",
-          "description": "Update CLI subcommands in src/commands/stats.ts and src/commands/runs.ts to derive projectId and pass it to DB layer. Tests: src/commands/project-scoped.test.ts",
-          "status": "completed",
-          "gateScript": "gates/T081-gate.sh",
-          "sp": 0
-        },
-        {
-          "id": "T082",
-          "title": "Verify Cross-Project Isolation",
-          "description": "Ensure that operations in one project do not pollute another via E2E verification. Tests: src/commands/project-scoped.test.ts\n\nREVIEW FAIL (code): Verify Cross-Project Isolation — FR-040.\n  WHERE: src/db/collision.test.ts\n  EXPECTED: Features with the same ID in different projects should coexist.\n  ACTUAL: Overwrite occurs because 'id' is the sole PRIMARY KEY in 'plan_features' and other tables.\n  FIX: Migration 009 must be refactored to recreate tables with composite PRIMARY KEY (id, project_id).",
+          "id": "T026",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/db/index.ts. Add `project_id` to `safeAddColumn` for the 8 target tables",
           "status": "open",
-          "gateScript": "gates/T082-gate.sh",
-          "sp": 0
+          "gateScript": "test -f src/db/index.ts",
+          "sp": 1
+        },
+        {
+          "id": "T027",
+          "title": "Modify plan.ts",
+          "description": "MODIFY src/db/plan.ts. Scope all query functions by `projectId`. Tests: src/engine/plan-store-scoping.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/plan-store-scoping.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T028",
+          "title": "Modify runs.ts",
+          "description": "MODIFY src/db/runs.ts. Scope `listRuns` and `getStats` by `projectId`",
+          "status": "open",
+          "gateScript": "test -f src/db/runs.ts",
+          "sp": 1
+        },
+        {
+          "id": "T029",
+          "title": "Modify gates.ts",
+          "description": "MODIFY src/db/gates.ts. Scope `getGateResults` and `recordGateResult`",
+          "status": "open",
+          "gateScript": "test -f src/db/gates.ts",
+          "sp": 1
+        },
+        {
+          "id": "T030",
+          "title": "Modify compression.ts",
+          "description": "MODIFY src/db/compression.ts. Scope `listCompressionRecords`",
+          "status": "open",
+          "gateScript": "test -f src/db/compression.ts",
+          "sp": 1
+        },
+        {
+          "id": "T031",
+          "title": "Modify issues.ts",
+          "description": "MODIFY src/db/issues.ts. Scope `listIssues` and `upsertIssue`",
+          "status": "open",
+          "gateScript": "test -f src/db/issues.ts",
+          "sp": 1
+        },
+        {
+          "id": "T032",
+          "title": "Modify plugins.ts",
+          "description": "MODIFY src/db/plugins.ts. Scope `getRoutingHistory`",
+          "status": "open",
+          "gateScript": "test -f src/db/plugins.ts",
+          "sp": 1
+        },
+        {
+          "id": "T033",
+          "title": "Modify plan-store.ts",
+          "description": "MODIFY src/engine/plan-store.ts. Constructor accepts `projectId`, pass to DB layer. Tests: src/engine/plan-store-scoping.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/plan-store-scoping.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T034",
+          "title": "Modify drift-detector.ts",
+          "description": "MODIFY src/engine/drift-detector.ts. Scope drift checks by `projectId`",
+          "status": "open",
+          "gateScript": "test -f src/engine/drift-detector.ts",
+          "sp": 1
+        },
+        {
+          "id": "T035",
+          "title": "Modify plan.ts",
+          "description": "MODIFY src/commands/plan.ts. Derive `projectId` and pass to `PlanStore`. Tests: src/engine/plan-store-scoping.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/plan-store-scoping.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T036",
+          "title": "Modify stats.ts",
+          "description": "MODIFY src/commands/stats.ts. Derive `projectId` and pass to DB layer",
+          "status": "open",
+          "gateScript": "test -f src/commands/stats.ts",
+          "sp": 1
+        },
+        {
+          "id": "T037",
+          "title": "Modify runs.ts",
+          "description": "MODIFY src/commands/runs.ts. Derive `projectId` and pass to DB layer",
+          "status": "open",
+          "gateScript": "test -f src/commands/runs.ts",
+          "sp": 1
         }
       ],
-      "sp_estimate": 0
+      "sp_estimate": 12,
+      "doneWhen": [
+        "`gwrk plan status` on Project A only shows Project A features.",
+        "`gwrk db runs` only shows runs for the current project.",
+        "No cross-project pollution in stats, gates, or compression.",
+        "`pnpm build` compiles clean, `pnpm test` all passing."
+      ]
+    },
+    {
+      "id": "phase-15",
+      "title": "Plugin Management ⭐ **NEW (2026-06-14)**",
+      "tasks": [
+        {
+          "id": "T038",
+          "title": "Create plugin.ts",
+          "description": "NEW src/commands/plugin.ts. search, install, update subcommands",
+          "status": "open",
+          "gateScript": "test -f src/commands/plugin.ts",
+          "sp": 2
+        },
+        {
+          "id": "T039",
+          "title": "Create registry.ts",
+          "description": "NEW src/engine/registry.ts. searchPlugins, installPlugin, updatePlugin logic. Tests: src/engine/registry.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/registry.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T040",
+          "title": "Create manifest-loader.ts",
+          "description": "NEW src/utils/manifest-loader.ts. load and validate manifest.yaml",
+          "status": "open",
+          "gateScript": "test -f src/utils/manifest-loader.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 6,
+      "doneWhen": [
+        "`gwrk plugin search <query>` returns matching plugins from local registry",
+        "`gwrk plugin install <id|url>` clones/copies plugin to `~/.gwrk/plugins/`",
+        "`gwrk plugin update` pulls latest for all/specific plugins",
+        "All tests pass",
+        "US-009 / FR-009: Cross-artifact analysis — now internal definition stage, no standalone command.",
+        "`history.jsonl` removal: Deferred until `gwrk harvest` is operational (Phase 2 Build Server).",
+        "FR-030, FR-031 (auto-detection): Delivered by R007. Tests in `profile-detector.test.ts`.",
+        "FR-032 (config schema extension): Absorbed by 020-polyglot-monorepo P1."
+      ]
     }
   ]
 }

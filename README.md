@@ -101,7 +101,7 @@ Operations
 - **[What is gwrk?](docs/product/WHAT_IS_GWRK.md)** — thesis, ontology, architecture
 - **[Foxtrot Charlie](docs/product/FOXTROT-CHARLIE.md)** — the operating model
 - **[ADR-009](docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md)** — domain ontology and project knowledge
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** — contributing and development setup
+- **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** — contributing and development setup
 
 ## Stack
 
