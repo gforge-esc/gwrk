@@ -1,10 +1,10 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-06-14T01:52:36.919Z",
+  "createdAt": "2026-06-14T15:25:47.490Z",
   "generatedFrom": {
     "plan": {
-      "hash": "80feedc8b04d53843baf286d8e51611b10722e6ea1ca8d398da675b7c3da0dfd",
-      "modifiedAt": "2026-06-14T01:16:30.049Z"
+      "hash": "3f058922d2182b0dabbe652117eb4a6807c1d6eb23d2d395740149566faa6628",
+      "modifiedAt": "2026-06-14T15:15:40.581Z"
     }
   },
   "phases": [
@@ -167,7 +167,7 @@
         {
           "id": "T010",
           "title": "Modify init.ts",
-          "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag",
+          "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag, add registry cloning and extension discovery",
           "status": "open",
           "gateScript": "test -f src/commands/init.ts",
           "sp": 1
@@ -187,14 +187,24 @@
           "status": "open",
           "gateScript": "test -f src/commands/setup-slack.ts",
           "sp": 1
+        },
+        {
+          "id": "T013",
+          "title": "Create extension-detector.ts",
+          "description": "NEW src/engine/extension-detector.ts. Detect installed CLIs like obsidian-cli",
+          "status": "open",
+          "gateScript": "test -f src/engine/extension-detector.ts",
+          "sp": 2
         }
       ],
-      "sp_estimate": 3,
+      "sp_estimate": 5,
       "doneWhen": [
         "`gwrk init` runs interactive profile wizard: detects project type, confirms with user, walks through stack/layout/architecture/conventions",
         "`gwrk init` runs workstation provisioning (TCC, SSH, gh) — former `gwrk setup` behavior",
         "`gwrk init` detects agent CLIs and configures agents block",
         "`gwrk init` provisions Slack channel if tokens available",
+        "`gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`",
+        "`gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`",
         "`gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently",
         "`gwrk setup` is removed from CLI surface",
         "`pnpm build` compiles clean, `pnpm test` all passing",
@@ -206,7 +216,7 @@
       "title": "CLI UX Polish ✅",
       "tasks": [
         {
-          "id": "T013",
+          "id": "T014",
           "title": "CLI UX Polish ✅",
           "description": "Complete phase 11: CLI UX Polish ✅",
           "status": "open",
@@ -231,7 +241,7 @@
       "title": "Define Pillar Output Parity",
       "tasks": [
         {
-          "id": "T014",
+          "id": "T015",
           "title": "Modify tests-generate.ts",
           "description": "MODIFY src/commands/tests-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()`. Detect agent-native success by checking for committed test files even when JSON parsing fails.. Tests: src/commands/tests-generate-contract.test.ts",
           "status": "open",
@@ -239,7 +249,7 @@
           "sp": 1
         },
         {
-          "id": "T015",
+          "id": "T016",
           "title": "Modify specify.ts",
           "description": "MODIFY src/commands/specify.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.",
           "status": "open",
@@ -247,7 +257,7 @@
           "sp": 1
         },
         {
-          "id": "T016",
+          "id": "T017",
           "title": "Modify define-plan.ts",
           "description": "MODIFY src/commands/define-plan.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.",
           "status": "open",
@@ -255,7 +265,7 @@
           "sp": 1
         },
         {
-          "id": "T017",
+          "id": "T018",
           "title": "Modify tasks-generate.ts",
           "description": "MODIFY src/commands/tasks-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()` for gate authoring dispatch.",
           "status": "open",
@@ -263,7 +273,7 @@
           "sp": 1
         },
         {
-          "id": "T018",
+          "id": "T019",
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Make `extractJsonFromOutput()` failure non-fatal when the agent committed artifacts. Add `tolerant` mode that returns a synthetic success result when the agent did native work.. Tests: src/plugins/workflow-runtime.test.ts",
           "status": "open",
@@ -286,7 +296,7 @@
       "title": "Project Awareness — Prompt Conditioning & PROMPT.md Refactoring ⭐ **NEW (R3)**",
       "tasks": [
         {
-          "id": "T019",
+          "id": "T020",
           "title": "Create prompt-conditioner.ts",
           "description": "NEW src/engine/prompt-conditioner.ts. Generate `<project_profile>` XML from resolved profile, serialize for prompt injection",
           "status": "open",
@@ -294,7 +304,7 @@
           "sp": 2
         },
         {
-          "id": "T020",
+          "id": "T021",
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Call prompt-conditioner before dispatching, inject XML block into prompt",
           "status": "open",
@@ -302,7 +312,7 @@
           "sp": 1
         },
         {
-          "id": "T021",
+          "id": "T022",
           "title": "Modify ship-orchestrator.ts",
           "description": "MODIFY src/server/ship-orchestrator.ts. Inject profile into review dispatch",
           "status": "open",
@@ -310,7 +320,7 @@
           "sp": 1
         },
         {
-          "id": "T022",
+          "id": "T023",
           "title": "Create project-info.ts",
           "description": "NEW src/commands/project-info.ts. `gwrk project info` with `--format json`",
           "status": "open",
@@ -318,7 +328,7 @@
           "sp": 2
         },
         {
-          "id": "T023",
+          "id": "T024",
           "title": "Create project.ts",
           "description": "NEW src/commands/project.ts. `gwrk project` parent command",
           "status": "open",
@@ -326,7 +336,7 @@
           "sp": 2
         },
         {
-          "id": "T024",
+          "id": "T025",
           "title": "Modify cli.ts",
           "description": "MODIFY src/cli.ts. Register `project` command group",
           "status": "open",
@@ -349,7 +359,7 @@
       "title": "Project-Scoped DB Isolation ⭐ **NEW (2026-06-01)**",
       "tasks": [
         {
-          "id": "T025",
+          "id": "T026",
           "title": "Modify index.ts",
           "description": "MODIFY src/db/index.ts. Add `project_id` to `safeAddColumn` for the 8 target tables",
           "status": "open",
@@ -357,7 +367,7 @@
           "sp": 1
         },
         {
-          "id": "T026",
+          "id": "T027",
           "title": "Modify plan.ts",
           "description": "MODIFY src/db/plan.ts. Scope all query functions by `projectId`. Tests: src/engine/plan-store-scoping.test.ts",
           "status": "open",
@@ -365,7 +375,7 @@
           "sp": 1
         },
         {
-          "id": "T027",
+          "id": "T028",
           "title": "Modify runs.ts",
           "description": "MODIFY src/db/runs.ts. Scope `listRuns` and `getStats` by `projectId`",
           "status": "open",
@@ -373,7 +383,7 @@
           "sp": 1
         },
         {
-          "id": "T028",
+          "id": "T029",
           "title": "Modify gates.ts",
           "description": "MODIFY src/db/gates.ts. Scope `getGateResults` and `recordGateResult`",
           "status": "open",
@@ -381,7 +391,7 @@
           "sp": 1
         },
         {
-          "id": "T029",
+          "id": "T030",
           "title": "Modify compression.ts",
           "description": "MODIFY src/db/compression.ts. Scope `listCompressionRecords`",
           "status": "open",
@@ -389,7 +399,7 @@
           "sp": 1
         },
         {
-          "id": "T030",
+          "id": "T031",
           "title": "Modify issues.ts",
           "description": "MODIFY src/db/issues.ts. Scope `listIssues` and `upsertIssue`",
           "status": "open",
@@ -397,7 +407,7 @@
           "sp": 1
         },
         {
-          "id": "T031",
+          "id": "T032",
           "title": "Modify plugins.ts",
           "description": "MODIFY src/db/plugins.ts. Scope `getRoutingHistory`",
           "status": "open",
@@ -405,7 +415,7 @@
           "sp": 1
         },
         {
-          "id": "T032",
+          "id": "T033",
           "title": "Modify plan-store.ts",
           "description": "MODIFY src/engine/plan-store.ts. Constructor accepts `projectId`, pass to DB layer. Tests: src/engine/plan-store-scoping.test.ts",
           "status": "open",
@@ -413,7 +423,7 @@
           "sp": 1
         },
         {
-          "id": "T033",
+          "id": "T034",
           "title": "Modify drift-detector.ts",
           "description": "MODIFY src/engine/drift-detector.ts. Scope drift checks by `projectId`",
           "status": "open",
@@ -421,7 +431,7 @@
           "sp": 1
         },
         {
-          "id": "T034",
+          "id": "T035",
           "title": "Modify plan.ts",
           "description": "MODIFY src/commands/plan.ts. Derive `projectId` and pass to `PlanStore`. Tests: src/engine/plan-store-scoping.test.ts",
           "status": "open",
@@ -429,7 +439,7 @@
           "sp": 1
         },
         {
-          "id": "T035",
+          "id": "T036",
           "title": "Modify stats.ts",
           "description": "MODIFY src/commands/stats.ts. Derive `projectId` and pass to DB layer",
           "status": "open",
@@ -437,7 +447,7 @@
           "sp": 1
         },
         {
-          "id": "T036",
+          "id": "T037",
           "title": "Modify runs.ts",
           "description": "MODIFY src/commands/runs.ts. Derive `projectId` and pass to DB layer",
           "status": "open",
@@ -450,7 +460,44 @@
         "`gwrk plan status` on Project A only shows Project A features.",
         "`gwrk db runs` only shows runs for the current project.",
         "No cross-project pollution in stats, gates, or compression.",
-        "`pnpm build` compiles clean, `pnpm test` all passing.",
+        "`pnpm build` compiles clean, `pnpm test` all passing."
+      ]
+    },
+    {
+      "id": "phase-15",
+      "title": "Plugin Management ⭐ **NEW (2026-06-14)**",
+      "tasks": [
+        {
+          "id": "T038",
+          "title": "Create plugin.ts",
+          "description": "NEW src/commands/plugin.ts. search, install, update subcommands",
+          "status": "open",
+          "gateScript": "test -f src/commands/plugin.ts",
+          "sp": 2
+        },
+        {
+          "id": "T039",
+          "title": "Create registry.ts",
+          "description": "NEW src/engine/registry.ts. searchPlugins, installPlugin, updatePlugin logic. Tests: src/engine/registry.test.ts",
+          "status": "open",
+          "gateScript": "pnpm vitest run src/engine/registry.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T040",
+          "title": "Create manifest-loader.ts",
+          "description": "NEW src/utils/manifest-loader.ts. load and validate manifest.yaml",
+          "status": "open",
+          "gateScript": "test -f src/utils/manifest-loader.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 6,
+      "doneWhen": [
+        "`gwrk plugin search <query>` returns matching plugins from local registry",
+        "`gwrk plugin install <id|url>` clones/copies plugin to `~/.gwrk/plugins/`",
+        "`gwrk plugin update` pulls latest for all/specific plugins",
+        "All tests pass",
         "US-009 / FR-009: Cross-artifact analysis — now internal definition stage, no standalone command.",
         "`history.jsonl` removal: Deferred until `gwrk harvest` is operational (Phase 2 Build Server).",
         "FR-030, FR-031 (auto-detection): Delivered by R007. Tests in `profile-detector.test.ts`.",
