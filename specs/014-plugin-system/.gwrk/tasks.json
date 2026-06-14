@@ -31,7 +31,7 @@
           "id": "T002",
           "title": "Skill Runtime (Layer 2) ✅ SHIPPED",
           "description": "Complete phase 2: Skill Runtime (Layer 2) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 2: Skill Runtime (Layer 2) ✅ SHIPPED\"",
           "sp": 2
         }
