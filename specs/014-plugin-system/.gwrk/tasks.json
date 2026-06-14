@@ -721,7 +721,7 @@
           "id": "T065",
           "title": "Modify agent.ts",
           "description": "MODIFY src/utils/agent.ts. Call `resolveExtensionContext()` and inject into `<external_context>` block",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/utils/agent.ts",
           "sp": 1
         }
