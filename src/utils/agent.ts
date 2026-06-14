@@ -8,6 +8,7 @@ import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
+import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import {
   type AgentBackend as ConfigAgentBackend,
   loadConfig,
@@ -530,6 +531,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   if (grounding) {
     dispatch.stdin = `${grounding}${dispatch.stdin}`;
+  }
+
+  // Layer 3: External Context Injection (Phase 21)
+  const extContext = await resolveExtensionContext(workDir);
+  if (extContext.length > 0) {
+    const contextContent = extContext
+      .map((res) => `<${res.source}>\n${res.content}\n</${res.source}>`)
+      .join("\n\n");
+    dispatch.stdin = `${dispatch.stdin}\n\n<external_context>\n${contextContent}\n</external_context>`;
   }
 
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin

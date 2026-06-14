@@ -3,6 +3,7 @@ import path from "node:path";
 import { type GwrkConfig, GwrkConfigSchema } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 import { TaskStateSchema } from "../utils/state.js";
+import { type ProjectProfile, detectProfile } from "./profile-detector.js";
 
 export interface GitState {
   branch: string;
@@ -27,6 +28,7 @@ export interface ProjectDiscovery {
     name: string;
     root: string;
     git: GitState;
+    profile: ProjectProfile;
   };
   specs: SpecSummary[];
   gates: {
@@ -47,6 +49,7 @@ export async function discoverProject(
   projectRoot: string,
 ): Promise<ProjectDiscovery> {
   const git = await getGitState(projectRoot);
+  const profile = await detectProfile(projectRoot);
   const config = loadRawConfig(projectRoot);
   const specs = await discoverSpecs(projectRoot);
   const gates = await discoverGates(projectRoot, specs);
@@ -58,6 +61,7 @@ export async function discoverProject(
       name: projectName,
       root: projectRoot,
       git,
+      profile,
     },
     specs,
     gates,

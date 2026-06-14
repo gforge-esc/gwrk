@@ -32,25 +32,34 @@ export const GwrkConfigSchema = z.object({
       })
       .optional(),
     layout: z
-      .object({
-        sourceRoot: z.string().optional(),
-        apps: z.string().optional(),
-        packages: z.string().optional(),
-        specs: z.string().optional(),
-        docs: z.string().optional(),
-      })
+      .union([
+        z.string(),
+        z.object({
+          sourceRoot: z.string().optional(),
+          apps: z.string().optional(),
+          packages: z.string().optional(),
+          specs: z.string().optional(),
+          docs: z.string().optional(),
+        }),
+      ])
       .optional(),
     architecture: z
-      .object({
-        doc: z.string().optional(),
-        decisions: z.string().optional(),
-      })
+      .union([
+        z.string(),
+        z.object({
+          doc: z.string().optional(),
+          decisions: z.string().optional(),
+        }),
+      ])
       .optional(),
     conventions: z
-      .object({
-        branchPrefix: z.string().optional(),
-        testPattern: z.string().optional(),
-      })
+      .union([
+        z.string(),
+        z.object({
+          branchPrefix: z.string().optional(),
+          testPattern: z.string().optional(),
+        }),
+      ])
       .optional(),
     slack: z
       .object({
@@ -163,6 +172,22 @@ export const GwrkConfigSchema = z.object({
     })
     .default({ sessionGapMinutes: 30 }),
   extensions: z.record(z.string(), z.record(z.any())).optional(),
+  workspaces: z
+    .record(
+      z.string(),
+      z.object({
+        type: z.string().optional(),
+        stack: z
+          .object({
+            language: z.string().optional(),
+            framework: z.string().optional(),
+            buildSystem: z.string().optional(),
+          })
+          .optional(),
+        layout: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;

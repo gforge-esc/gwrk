@@ -28,6 +28,8 @@ export async function discoverExtensions(
     return [];
   }
 
+  if (!config) return [];
+
   const enabledExtensions = config.extensions || {};
   const extensionNames = Object.keys(enabledExtensions);
   if (extensionNames.length === 0) return [];

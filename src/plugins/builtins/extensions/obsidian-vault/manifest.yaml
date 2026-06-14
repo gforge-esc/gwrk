@@ -1,0 +1,6 @@
+type: extension
+name: obsidian-vault
+version: 0.1.0
+description: "Provides context from an Obsidian vault"
+provides: [context]
+adapter: ./adapter.js

@@ -20,6 +20,8 @@ import { tasksGenerateCommand } from "./tasks-generate.js";
 import { testsGenerateCommand } from "./tests-generate.js";
 import { researchCommand } from "./research.js";
 
+import { defineOntologyCommand } from "./define-ontology.js";
+
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveModelForTask } from "../utils/resolve-model.js";
@@ -185,3 +187,12 @@ defineCommand.addCommand(definePlanCommand); // gwrk define plan
 defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
 defineCommand.addCommand(researchCommand); // gwrk define research
+
+const ontologyCommand = new Command("ontology")
+  .description("Define project domain ontology (classes, properties, relations)")
+  .option("--run", "Execute automated construction workflow")
+  .option("--agent <agent>", "Override agent")
+  .option("--model <model>", "Override model")
+  .action(defineOntologyCommand);
+
+defineCommand.addCommand(ontologyCommand);

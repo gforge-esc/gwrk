@@ -8,7 +8,8 @@ import {
   PluginLoader,
   PluginNotFoundError,
 } from "../plugins/loader.js";
-import { AnyManifestSchema, type PluginBase } from "../plugins/manifest.js";
+import { AnyManifestSchema, type PluginBase, type SkillManifest } from "../plugins/manifest.js";
+import { detectProfile } from "../engine/profile-detector.js";
 import { migrateSkills } from "../plugins/migrate.js";
 import { seedSkills } from "../plugins/seed.js";
 import { color } from "../utils/format.js";
@@ -137,15 +138,53 @@ export async function listPlugins(
     category?: string;
   } = {},
 ) {
+  const projectRoot = options.project ? process.cwd() : undefined;
   const loader = new PluginLoader({
-    projectDir: options.project ? process.cwd() : undefined,
+    projectDir: projectRoot,
   });
-  const plugins = await loader.listPlugins({
+  let plugins = await loader.listPlugins({
     includeDisabled: options.project,
     type: options.type,
     tier: options.tier,
     category: options.category,
   });
+
+  // Filter by profile language if --project is used (Phase 15 requirement)
+  if (options.project) {
+    const profile = await detectProfile(projectRoot!);
+    if (profile.stack?.language) {
+      const lang = profile.stack.language.toLowerCase();
+
+      // We need the full manifest to check the language field
+      const filtered: PluginSummary[] = [];
+      for (const p of plugins) {
+        try {
+          const loaded = await loader.resolvePlugin(p.name);
+          const manifest = loaded.manifest as any;
+
+          if (
+            manifest.type === "skill" &&
+            manifest.tier === "enforcement" &&
+            manifest.language
+          ) {
+            const manifestLang = manifest.language.toLowerCase();
+            if (profile.stack.languages && profile.stack.languages.length > 1) {
+              const profileLangs = profile.stack.languages.map((l) =>
+                l.toLowerCase(),
+              );
+              if (!profileLangs.includes(manifestLang)) continue;
+            } else if (manifestLang !== lang) {
+              continue;
+            }
+          }
+          filtered.push(p);
+        } catch {
+          filtered.push(p);
+        }
+      }
+      plugins = filtered;
+    }
+  }
 
   if (options.format === "json") {
     return JSON.stringify(plugins, null, 2);

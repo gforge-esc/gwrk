@@ -57,7 +57,7 @@ describe('FR-014: resolveEnforcementSkills', () => {
     ]);
     vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
       manifest: { name: 'typescript-standards', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', language: 'TypeScript' },
-      path: '/fake/path/typescript-standards',
+      path: '/fake/builtins/skills/typescript-standards',
       status: 'active'
     });
     vi.mocked(fsp.readFile).mockResolvedValue('# TypeScript Standards');
@@ -77,7 +77,7 @@ describe('FR-014: resolveEnforcementSkills', () => {
     ]);
     vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
       manifest: { name: 'typescript-standards', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', language: 'TypeScript' },
-      path: '/fake/path/typescript-standards',
+      path: '/fake/builtins/skills/typescript-standards',
       status: 'active'
     });
     vi.mocked(fsp.readFile).mockResolvedValue('# TypeScript Standards');
