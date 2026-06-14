@@ -267,15 +267,15 @@ Implement the two-tier state architecture ([ADR-003](docs/decisions/ADR-003-stat
 Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, extension discovery, registry cloning, and directory scaffolding.
 
 **Files (4):**
-- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag, add registry cloning and extension discovery)
+- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery)
 - `src/commands/setup.ts` (DELETE: Absorbed into init)
 - `src/commands/setup-slack.ts` (MODIFY: Refactor to be callable from init flow, not standalone)
 - `src/engine/extension-detector.ts` (NEW: Detect installed CLIs like obsidian-cli)
 
-**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, FR-044, FR-045, US-001 (R3), US-021 (absorbed), US-031 (init part), US-032
+**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, FR-044, FR-045, FR-046, US-001 (R3), US-021 (absorbed), US-031 (init part), US-032
 
 **Tests:**
-- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, profile auto-detection, registry cloning, extension discovery) — TR-001, TR-021, TR-036, TR-037
+- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, `--agent`, profile auto-detection, registry cloning, extension discovery) — TR-001, TR-021, TR-036, TR-037, TR-046
 
 **gwrk command to implement:**
 ```
@@ -290,6 +290,7 @@ gwrk ship 001 10
 - `gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`
 - `gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`
 - `gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently
+- `gwrk init --agent` outputs structured JSON, skips human-dependent steps (TCC, SSH, Slack), relaxes pre-requisites — designed for agent-driven bootstrapping of new repos
 - `gwrk setup` is removed from CLI surface
 - `pnpm build` compiles clean, `pnpm test` all passing
 - Schema backward compat: existing `.gwrkrc.json` files parse without error

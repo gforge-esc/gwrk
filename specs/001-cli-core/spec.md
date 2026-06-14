@@ -61,7 +61,8 @@ As a PE, I want `gwrk init` to be a comprehensive interactive wizard that provis
 9. Registers project in `~/.gwrk/gwrk.db`.
 10. Running `gwrk init` again shows current config and offers to update (idempotent).
 11. `--non-interactive` flag uses auto-detection for all fields with zero prompts (CI/scripting path).
-12. Final output: summary of everything provisioned.
+12. `--agent` flag: agent-optimized mode — auto-detect, zero prompts, structured JSON to stdout, relaxed pre-requisites (no gh auth or SSH required), graceful skip for unavailable steps. Designed for agent-driven project bootstrapping (e.g., setting up `gwrk-plugins` from a gwrk session).
+13. Final output: summary of everything provisioned (interactive/non-interactive) or JSON status (agent mode).
 
 > **Note**: This absorbs former US-021 (`gwrk setup`). The `setup` command is removed. Workstation provisioning steps (TCC, SSH, gh) are integrated as steps within `init`.
 
@@ -372,7 +373,8 @@ As a PE, I want my project data (plans, runs, stats) to be isolated by project i
 
 ## 3. Functional Requirements
 
-- **FR-001**: ⭐ **REWRITE (R3)** `gwrk init` — Comprehensive interactive onboarding wizard. Auto-detects project profile, provisions workstation (TCC, SSH, gh), clones plugin registry, detects extensions, configures agents, provisions Slack, scaffolds directories, seeds plugins. Absorbs former `gwrk setup`. Idempotent. Supports `--non-interactive` for CI. (US-001, US-021, US-032)
+- **FR-001**: ⭐ **REWRITE (R3)** `gwrk init` — Comprehensive interactive onboarding wizard. Auto-detects project profile, provisions workstation (TCC, SSH, gh), clones plugin registry, detects extensions, configures agents, provisions Slack, scaffolds directories, seeds plugins. Absorbs former `gwrk setup`. Idempotent. Supports `--non-interactive` for CI and `--agent` for agent-driven bootstrapping. (US-001, US-021, US-032)
+- **FR-046**: ⭐ **NEW (2026-06-14)** `gwrk init --agent` — Agent-optimized init mode. MUST: (1) auto-detect project type with zero prompts, (2) write `.gwrkrc.json` with detected profile, (3) scaffold required directories, (4) skip workstation provisioning steps that require human interaction (TCC, SSH, Slack), (5) skip steps that fail gracefully (gh auth, registry clone if offline), (6) output structured JSON to stdout: `{"status": "ok", "profile": {...}, "created": [...], "skipped": [...]}`, (7) exit 0 on success, exit 1 on fatal error (not in git repo). Differs from `--non-interactive`: agent mode outputs JSON (not human summary), relaxes pre-requisites, and is designed for programmatic consumption by other gwrk agents. (US-001)
 - **FR-002**: `gwrk define spec <feature>` — dispatch `/specify` workflow. Streaming. (US-002)
 - **FR-003**: `gwrk define plan <feature>` — dispatch `/plan` workflow. Validate spec exists and is not a Stub. (US-003)
 - **FR-004**: `gwrk define tasks <feature>` — parse plan.md → tasks.json + gate scripts. (US-004)
@@ -423,7 +425,9 @@ As a PE, I want my project data (plans, runs, stats) to be isolated by project i
 |---|---|---|---|
 | FR-001 | Already initialized (no flags) | `gwrk already initialized. Run with --non-interactive to update.` | 0 |
 | FR-001 | Not in a git repo | `Not a git repository. Run git init first.` | 1 |
-| FR-001 | Not interactive terminal + no --non-interactive | `Must be run in an interactive terminal, or use --non-interactive.` | 1 |
+| FR-001 | Not interactive terminal + no --non-interactive/--agent | `Must be run in an interactive terminal, or use --non-interactive/--agent.` | 1 |
+| FR-046 | --agent mode, already initialized | `{"status": "ok", "message": "already initialized", "profile": {...}}` (JSON) | 0 |
+| FR-046 | --agent mode, not in git repo | `{"status": "error", "message": "Not a git repository"}` (JSON) | 1 |
 | FR-003 | spec.md missing | `spec.md not found` | 1 |
 | FR-003 | spec.md is Stub | `[BLOCKED] Spec ... is marked as a Stub` | 1 |
 | FR-006 | Gate fails | `Gate failed for <taskId>` | 1 |
