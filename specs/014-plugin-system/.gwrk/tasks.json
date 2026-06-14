@@ -286,7 +286,7 @@
           "id": "T020",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `gwrk project info` and `gwrk project discover` to Step 1 preamble",
-          "status": "completed",
+          "status": "open",
           "gateScript": "test -f src/plugins/builtins/workflows/gwrk-implement/PROMPT.md",
           "sp": 1
         }
