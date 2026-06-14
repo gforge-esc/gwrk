@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-14T15:25:47.475Z_define_p10",
+  "feature": "001-cli-core",
+  "phase": "p10",
+  "command": "define tasks",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-14T15:25:47.475Z",
+  "finishedAt": "2026-06-14T15:25:48.032Z",
+  "durationS": 1,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 77,
+  "linesDeleted": 30,
+  "gitCommit": "87e24699158a8c372993dd696862f9d3b067cbfc",
+  "gitBranch": "develop",
+  "digest": []
+}
