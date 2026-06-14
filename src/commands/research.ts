@@ -1,4 +1,6 @@
 import path from "node:path";
+import * as fsSync from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { Command } from "commander";
 import { success, info, startTimer, stopTimer } from "../utils/format.js";
@@ -13,6 +15,15 @@ export interface ResearchArgs {
   initiative: string;
   methodology?: string;
   run?: boolean;
+  refs?: string;
+}
+
+/**
+ * Detect whether the initiative argument is an R0XX prefix
+ * (e.g., "R011") or a name (e.g., "obsidian-vault").
+ */
+function isPrefix(initiative: string): boolean {
+  return /^R\d{3}$/i.test(initiative);
 }
 
 export async function researchCommandHandler(args: ResearchArgs): Promise<string> {
@@ -22,23 +33,61 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
 
   const startTime = Date.now();
   const scaffolder = new ResearchScaffolder();
-  const result = await scaffolder.scaffold(args.initiative, {
-    methodology: args.methodology
-  });
+
+  // Resolve the research directory:
+  // - If R0XX prefix → find existing dir (don't scaffold)
+  // - If name → scaffold (idempotent — returns existing if slug matches)
+  let result;
+  if (isPrefix(args.initiative)) {
+    result = await scaffolder.resolveByPrefix(args.initiative);
+  } else {
+    result = await scaffolder.scaffold(args.initiative, {
+      methodology: args.methodology,
+    });
+  }
 
   let output = `Scaffolded research initiative at ${result.directory}`;
 
   if (args.run) {
     const timer = startTimer();
     try {
+      // Read the brief.md content to pass to the workflow
+      const briefPath = path.resolve(result.directory, "brief.md");
+      const briefContent = await fsPromises.readFile(briefPath, "utf-8");
+
+      // Determine methodology from args or brief frontmatter
       const methodology = args.methodology || "technical";
       const workflowName = `gwrk-research-${methodology}`;
       info(`Executing methodology workflow: ${workflowName}...`);
 
+      // Build workflow input: refs (if provided) + brief content + directory context
+      let workflowInput = briefContent;
+
+      // Inject --refs as authoritative source material (same pattern as specify.ts)
+      if (args.refs) {
+        const resolvedRefs = path.resolve(args.refs);
+        if (!fsSync.existsSync(resolvedRefs)) {
+          throw new Error(
+            `Reference file not found: ${args.refs}\nResolved to: ${resolvedRefs}`,
+          );
+        }
+        const refsContent = fsSync.readFileSync(resolvedRefs, "utf-8");
+        workflowInput = [
+          `<reference_document source="${args.refs}" authority="primary">`,
+          refsContent,
+          `</reference_document>`,
+          ``,
+          workflowInput,
+        ].join("\n");
+      }
+
+      // Append directory context so the agent knows where to write draft.md
+      workflowInput += `\n\n<research_context>\nDirectory: ${result.directory}\nMethodology: ${methodology}\n</research_context>`;
+
       const runtime = new WorkflowRuntime();
       const workflowResult = await runtime.executeWorkflow(
         workflowName,
-        `Execute research for initiative: ${args.initiative}\nDirectory: ${result.directory}\nMethodology: ${methodology}`
+        workflowInput,
       );
 
       const durationS = Math.round((Date.now() - startTime) / 1000);
@@ -75,21 +124,29 @@ Examples:
   Scaffold with a specific methodology:
     gwrk define research "user-onboarding" --methodology jtbd
 
+  Run research on an existing initiative (reads brief.md):
+    gwrk define research R011 --run
+
   Scaffold and immediately run the research workflow:
     gwrk define research "agent-routing" --run
+
+  Run with additional reference material:
+    gwrk define research R011 --run --refs docs/research/R011/references/notes.md
 
   Available methodologies: technical (default), jtbd, ontology
 `,
   )
-  .argument("<initiative>", "Research initiative name (e.g. 'polyglot-monorepo')")
+  .argument("<initiative>", "Research initiative name or R0XX prefix (e.g. 'polyglot-monorepo' or 'R011')")
   .option("--methodology <type>", "Research methodology: technical, jtbd, ontology", "technical")
-  .option("--run", "Execute the methodology plugin immediately after scaffolding")
-  .action(async (initiative: string, opts: { methodology: string, run?: boolean }) => {
+  .option("--run", "Execute the methodology plugin (reads brief.md as input)")
+  .option("--refs <path>", "Path to additional reference docs")
+  .action(async (initiative: string, opts: { methodology: string, run?: boolean, refs?: string }) => {
     try {
       const output = await researchCommandHandler({
         initiative,
         methodology: opts.methodology,
-        run: opts.run
+        run: opts.run,
+        refs: opts.refs,
       });
       console.log(output);
     } catch (error: any) {
@@ -97,3 +154,4 @@ Examples:
       process.exit(1);
     }
   });
+
