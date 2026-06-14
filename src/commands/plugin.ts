@@ -7,6 +7,7 @@ import {
   ManifestValidationError,
   PluginLoader,
   PluginNotFoundError,
+  type PluginSummary,
 } from "../plugins/loader.js";
 import { AnyManifestSchema, type PluginBase, type SkillManifest } from "../plugins/manifest.js";
 import { detectProfile } from "../engine/profile-detector.js";
