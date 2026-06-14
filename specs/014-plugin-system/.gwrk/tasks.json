@@ -181,7 +181,7 @@
           "id": "T012",
           "title": "Methodology Dispatch (R006) ✅ SHIPPED",
           "description": "Complete phase 12: Methodology Dispatch (R006) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 12: Methodology Dispatch (R006) ✅ SHIPPED\"",
           "sp": 2
         }
