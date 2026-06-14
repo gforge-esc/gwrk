@@ -211,7 +211,7 @@
           "id": "T014",
           "title": ".agents/ Deletion & Verification (ADR-007) ✅ SHIPPED",
           "description": "Complete phase 14: .agents/ Deletion & Verification (ADR-007) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 14: .agents/ Deletion & Verification (ADR-007) ✅ SHIPPED\"",
           "sp": 2
         }
