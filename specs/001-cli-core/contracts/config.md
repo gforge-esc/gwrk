@@ -44,4 +44,8 @@ function loadConfig(projectRoot: string): GwrkConfig
 
 See [data-model.md](./data-model.md) DM-003 for full schema definition.
 
-**Critical**: No `.default()` calls. Every field is required. Missing field → `process.exit(1)`.
+**Critical (R3 Update)**: 
+- `project.type`, `project.stack`, `project.layout`, `project.architecture`, and `project.conventions` are **optional** and auto-detected at runtime if missing.
+- Existing `.gwrkrc.json` files WITHOUT these fields MUST continue to parse without error.
+- Explicit configuration in `.gwrkrc.json` always overrides auto-detected values.
+- `agents.define` and `agents.implement` default to `"gemini"` if missing.

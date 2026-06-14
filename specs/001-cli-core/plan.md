@@ -1,19 +1,19 @@
 ---
 type: implementation_plan
 feature: 001-cli-core
-last_modified: "2026-05-30T00:22:00Z"
-revision: 3
+last_modified: "2026-06-14T11:00:00Z"
+revision: 4
 ---
 
 # Implementation Plan: 001 CLI Core
 
-**Branch**: `develop` | **Revised**: 2026-05-30 | **Spec**: [spec.md](./spec.md)
+**Branch**: `develop` | **Revised**: 2026-06-14 | **Spec**: [spec.md](./spec.md)
 
 ## Summary
 
 The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), comprehensive interactive onboarding (`init`), project-aware prompt conditioning, agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
 
-> **Status**: Phases 1–8, 11 are **implemented and tested**. Phase 9 (state contracts), Phase 10 (unified init — R3 rewrite), Phase 12 (define output parity), and Phase 13 (project awareness — R3 new) are open.
+> **Status**: Phases 1–8, 11 are **implemented and tested**. Phase 9 (state contracts), Phase 10 (unified init — R3 rewrite), Phase 12 (define output parity), Phase 13 (project awareness — R3 new), Phase 14 (scoped DB), and Phase 15 (plugins) are open.
 
 ---
 
@@ -240,7 +240,7 @@ Final verification that the CLI surface matches US-018 exactly. Clean up dead co
 
 ### Phase 9: State Contract — Execution Manifests & Merge Safety
 
-Implement the two-tier state architecture ([ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md)): git-native execution manifests for distributed agents, `.gitattributes` merge protection, and `tasks verify` post-merge guard.
+Implement the two-tier state architecture ([ADR-003](docs/decisions/ADR-003-state-contract.md)): git-native execution manifests for distributed agents, `.gitattributes` merge protection, and `tasks verify` post-merge guard.
 
 **Files (4):**
 - `src/utils/manifest.ts` (NEW) — Write `ExecutionManifest` JSON to `specs/<feature>/.gwrk/runs/`
@@ -264,27 +264,18 @@ Implement the two-tier state architecture ([ADR-003](file:///Users/gonzo/Code/gw
 
 ### Phase 10: Unified Init — Project Onboarding ⭐ **REWRITE (R3)**
 
-Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, and directory scaffolding.
+Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, extension discovery, registry cloning, and directory scaffolding.
 
-> **Cross-Feature Note:** `profile-detector.ts` already exists (shipped R007/014). Config schema extension for `workspaces` is owned by 020-polyglot-monorepo. This phase focuses on the init wizard UX and setup absorption — not schema design.
-
-**Files (3):**
-- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag)
+**Files (4):**
+- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag, add registry cloning and extension discovery)
 - `src/commands/setup.ts` (DELETE: Absorbed into init)
 - `src/commands/setup-slack.ts` (MODIFY: Refactor to be callable from init flow, not standalone)
+- `src/engine/extension-detector.ts` (NEW: Detect installed CLIs like obsidian-cli)
 
-**Already Shipped (R007/014):**
-- `src/engine/profile-detector.ts` — ✅ Root-level detection for pnpm-monorepo, rust, python, go, nodejs, polyglot-monorepo
-- `src/utils/config.ts` — ✅ `stack.languages` array, basic profile fields
-
-**Deferred to 020:**
-- `src/utils/config.ts` `workspaces` schema — FR-032 (workspace-level profiles owned by 020-P1)
-
-**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), US-001 (R3), US-021 (absorbed), TC-011
+**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, FR-044, FR-045, US-001 (R3), US-021 (absorbed), US-031 (init part), US-032
 
 **Tests:**
-- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, profile auto-detection) — TR-001, TR-021
-- `src/commands/setup.test.ts` (DELETE or refactor into init.test.ts)
+- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, profile auto-detection, registry cloning, extension discovery) — TR-001, TR-021, TR-036, TR-037
 
 **gwrk command to implement:**
 ```
@@ -296,6 +287,8 @@ gwrk ship 001 10
 - `gwrk init` runs workstation provisioning (TCC, SSH, gh) — former `gwrk setup` behavior
 - `gwrk init` detects agent CLIs and configures agents block
 - `gwrk init` provisions Slack channel if tokens available
+- `gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`
+- `gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`
 - `gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently
 - `gwrk setup` is removed from CLI surface
 - `pnpm build` compiles clean, `pnpm test` all passing
@@ -459,6 +452,34 @@ Implement structural project scoping across the global SQLite database to preven
 
 ---
 
+### Phase 15: Plugin Management ⭐ **NEW (2026-06-14)**
+
+Deliver the `gwrk plugin` command suite for searching, installing, and updating plugins.
+
+**Files (3):**
+- `src/commands/plugin.ts` (NEW: search, install, update subcommands)
+- `src/engine/registry.ts` (NEW: searchPlugins, installPlugin, updatePlugin logic)
+- `src/utils/manifest-loader.ts` (NEW: load and validate manifest.yaml)
+
+**Requirements Addressed:** FR-041, FR-042, FR-043, US-031 (plugin part)
+
+**Tests:**
+- `src/commands/plugin.test.ts` (NEW: search/install/update command tests) — TR-035
+- `src/engine/registry.test.ts` (NEW: registry resolution and cloning logic)
+
+**gwrk command to implement:**
+```
+gwrk ship 001 15
+```
+
+#### Done When
+- `gwrk plugin search <query>` returns matching plugins from local registry
+- `gwrk plugin install <id|url>` clones/copies plugin to `~/.gwrk/plugins/`
+- `gwrk plugin update` pulls latest for all/specific plugins
+- All tests pass
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -471,6 +492,7 @@ Implement structural project scoping across the global SQLite database to preven
 | US-006 | 5 | ✅ Done |
 | US-007 | 5 | ✅ Done |
 | US-008 | 1 | ✅ Done |
+| US-009 | 3 | ✅ Done |
 | US-010 | 6 | ✅ Done |
 | US-011 | 3 | ✅ Done |
 | US-012 | 4 | ✅ Done |
@@ -492,6 +514,8 @@ Implement structural project scoping across the global SQLite database to preven
 | US-028 | 13 | ☐ Open (R3) |
 | US-029 | 13 | ☐ Open (R3) |
 | US-030 | 14 | ☐ Open |
+| US-031 | 10, 15 | ☐ Open |
+| US-032 | 10 | ☐ Open |
 | FR-001 | 1, 7, 10 | ⭐ R3 rewrite in Phase 10 |
 | FR-002 | 3 | ✅ Done |
 | FR-003 | 3 | ✅ Done |
@@ -531,6 +555,11 @@ Implement structural project scoping across the global SQLite database to preven
 | FR-038 | 14 | ☐ Open |
 | FR-039 | 14 | ☐ Open |
 | FR-040 | 14 | ☐ Open |
+| FR-041 | 15 | ☐ Open |
+| FR-042 | 15 | ☐ Open |
+| FR-043 | 15 | ☐ Open |
+| FR-044 | 10 | ☐ Open |
+| FR-045 | 10 | ☐ Open |
 
 ## Phase Execution Order
 
@@ -545,9 +574,10 @@ Implement structural project scoping across the global SQLite database to preven
 | **5** | **007-P2** | Compression engine | `gwrk ship 007 2` | Core compression calculation. |
 | **6** | **007-P3** | CLI commands + integration | `gwrk ship 007 3` | `gwrk measure compression` end-to-end. |
 | 7 | Phase 10 | Unified init wizard + setup absorption | `gwrk ship 001 10` | Polish — functional without it. |
-| 8 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` | Polish — quiet output. |
-| 9 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` | Partially shipped. |
-| 10 | Phase 9 | State contracts + execution manifests | `gwrk ship 001 9` | Deferred. |
+| 8 | Phase 15 | Plugin management suite | `gwrk ship 001 15` | **NEW (2026-06-14)** |
+| 9 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` | Polish — quiet output. |
+| 10 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` | Partially shipped. |
+| 11 | Phase 9 | State contracts + execution manifests | `gwrk ship 001 9` | Deferred. |
 
 > Phase 13 depends on 020-P1 (profile schema must exist before prompt injection works for non-gwrk projects). 007 phases are sequential (P1 → P2 → P3).
 
@@ -557,4 +587,3 @@ Implement structural project scoping across the global SQLite database to preven
 - `history.jsonl` removal: Deferred until `gwrk harvest` is operational (Phase 2 Build Server).
 - FR-030, FR-031 (auto-detection): Delivered by R007. Tests in `profile-detector.test.ts`.
 - FR-032 (config schema extension): Absorbed by 020-polyglot-monorepo P1.
-
