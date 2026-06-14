@@ -90,3 +90,7 @@ export function computeEffort(
     totalDays: totalWithOverhead / 8,
   };
 }
+
+export const runEffortCLI = async (featureId: string): Promise<void> => {
+  throw new Error('Not implemented');
+};
