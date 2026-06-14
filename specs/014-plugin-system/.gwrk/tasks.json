@@ -121,7 +121,7 @@
           "id": "T008",
           "title": "Routing & Intelligence (ex-F008) ✅ SHIPPED",
           "description": "Complete phase 8: Routing & Intelligence (ex-F008) ✅ SHIPPED",
-          "status": "completed",
+          "status": "open",
           "gateScript": "echo \"Phase 8: Routing & Intelligence (ex-F008) ✅ SHIPPED\"",
           "sp": 2
         }
