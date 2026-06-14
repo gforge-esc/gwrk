@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-14T01:41:14.787Z_define_p00",
+  "feature": "001-cli-core",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "gemini",
+  "model": "gemini-3.1-pro-preview",
+  "startedAt": "2026-06-14T01:41:14.787Z",
+  "finishedAt": "2026-06-14T01:46:40.078Z",
+  "durationS": 325,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 12,
+  "linesAdded": 252,
+  "linesDeleted": 5,
+  "gitCommit": "983ce4ecbef22a97809347ceeb2590ac023fe2ee",
+  "gitBranch": "develop",
+  "digest": []
+}
