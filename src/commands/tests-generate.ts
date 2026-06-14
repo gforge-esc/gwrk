@@ -95,29 +95,36 @@ Examples:
           }
         })();
 
-        const hasTestRunManifest = (() => {
-          try {
-            if (!fs.existsSync(runsManifestDir)) return false;
-            const files = fs.readdirSync(runsManifestDir);
-            return files.some((f) => f.includes("define tests") || f.includes("define_tests"));
-          } catch {
-            return false;
+        // Staleness check: if plan.md is newer than the most recent test artifact
+        // (gap-matrix OR run manifest), the plan changed and tests should be
+        // regenerable without --force.
+        const planMtime = fs.statSync(planPath).mtimeMs;
+        const latestTestArtifactMtime = (() => {
+          let latest = 0;
+          if (fs.existsSync(gapMatrixPath)) {
+            latest = Math.max(latest, fs.statSync(gapMatrixPath).mtimeMs);
           }
+          if (fs.existsSync(runsManifestDir)) {
+            try {
+              const files = fs.readdirSync(runsManifestDir);
+              for (const f of files) {
+                if (f.includes("define tests") || f.includes("define_tests")) {
+                  const fpath = path.join(runsManifestDir, f);
+                  latest = Math.max(latest, fs.statSync(fpath).mtimeMs);
+                }
+              }
+            } catch { /* ignore */ }
+          }
+          return latest;
         })();
 
-        // Staleness check: if plan.md is newer than gap-matrix.md, the plan
-        // changed and tests should be regenerable without --force.
-        const planIsNewer = (() => {
-          if (!fs.existsSync(gapMatrixPath) || !fs.existsSync(planPath)) return false;
-          const planMtime = fs.statSync(planPath).mtimeMs;
-          const gapMtime = fs.statSync(gapMatrixPath).mtimeMs;
-          return planMtime > gapMtime;
-        })();
+        const planIsNewer = latestTestArtifactMtime > 0 && planMtime > latestTestArtifactMtime;
 
         const testsExist =
-          (fs.existsSync(gapMatrixPath) && !planIsNewer) ||
-          hasTestRunManifest ||
-          (hasTestFiles && !options.force);
+          !planIsNewer && (
+            latestTestArtifactMtime > 0 ||
+            (hasTestFiles && !options.force)
+          );
 
         if (testsExist && !options.force && !rawPhase) {
           blocked(
