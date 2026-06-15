@@ -4,10 +4,10 @@ import { Command } from "commander";
 import {
   computeCompression,
   computeForecastFromLOC,
-  computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
 } from "../engine/compression.js";
+import { computeLeadingIndicators } from "../engine/indicators.js";
 import { computeEffort } from "../engine/effort.js";
 import { resolveRoleMultipliers } from "../engine/roles.js";
 import { extractStories } from "../engine/spec-parser.js";

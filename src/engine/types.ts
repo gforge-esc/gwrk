@@ -1,35 +1,33 @@
 import { z } from "zod";
 
-export const WeeklyBucketSchema = z.object({
-  weekStart: z.string(), // ISO 8601 date (Monday of the week)
-  totalMain: z.number(),
-  totalDrafts: z.number(),
-  added: z.number(),
-  deleted: z.number(),
-});
-export type WeeklyBucket = z.infer<typeof WeeklyBucketSchema>;
+export interface WeeklyBucket {
+  weekStart: string;
+  totalMain: number;
+  totalDrafts: number;
+  added: number;
+  deleted: number;
+}
 
 export const PulseSnapshotSchema = z.object({
   repoPath: z.string(),
   repoName: z.string(),
   defaultBranch: z.string(),
-  scannedAt: z.string(), // ISO timestamp
+  scannedAt: z.string(),
   mainLoc: z.number(),
   draftLoc: z.number(),
-  weeklyBuckets: z.array(WeeklyBucketSchema),
+  weeklyBuckets: z.array(z.any()),
 });
 export type PulseSnapshot = z.infer<typeof PulseSnapshotSchema>;
 
-export const SpecProgressSchema = z.object({
-  totalSpecs: z.number(),
-  totalPlans: z.number(),
-});
-export type SpecProgress = z.infer<typeof SpecProgressSchema>;
+export interface SpecProgress {
+  totalSpecs: number;
+  totalPlans: number;
+}
 
 export const PulseReportSchema = z.object({
   generatedAt: z.string(),
   repositories: z.array(PulseSnapshotSchema),
-  specProgress: SpecProgressSchema,
+  specProgress: z.any(),
 });
 export type PulseReport = z.infer<typeof PulseReportSchema>;
 
@@ -134,31 +132,7 @@ export interface CompressionReport {
   indicators?: LeadingIndicators;
 }
 
-export const HarvestPayloadSchema = z.object({
-  featureId: z.string(),
-  phaseId: z.string().optional(),
-  prNumber: z.number(),
-  mergeCommitSha: z.string(),
-  mergedAt: z.string(), // ISO 8601
-});
-export type HarvestPayload = z.infer<typeof HarvestPayloadSchema>;
 
-export const CompressionRecordSchema = z.object({
-  featureId: z.string(),
-  phaseId: z.string().optional(),
-  estimatedHours: z.number(),
-  actualCodingHours: z.number(),
-  estimatedDays: z.number(),
-  actualDeliveryDays: z.number(),
-  pointCompression: z.number(),
-  totalCompression: z.number(),
-  dormancyDays: z.number(),
-  firstImplCommit: z.string(),
-  mergeTimestamp: z.string(),
-  sessionCount: z.number(),
-  recordedAt: z.string().optional(),
-});
-export type CompressionRecord = z.infer<typeof CompressionRecordSchema>;
 
 export interface HarvestRecord {
   featureId: string;
@@ -172,25 +146,3 @@ export interface HarvestRecord {
   headBranch?: string;
 }
 
-export interface CompressionSummary {
-  projectName: string;
-  generatedAt: string;
-  features: CompressionReport[];
-  totals: {
-    totalSP: number;
-    totalEstimatedHours: number;
-    totalActualCodingHours: number;
-    avgPointCompression: number;
-    avgTotalCompression: number;
-    avgFirstPassRate?: number;
-    avgAvgAttempts?: number;
-    avgLinesPerSP?: number;
-    avgFilesPerSP?: number;
-    avgToolCallsPerSP?: number;
-    totalContracts?: number;
-    totalGates?: number;
-  };
-  best: { featureId: string; pointCompression: number };
-  worst: { featureId: string; pointCompression: number };
-  trend: string;
-}
