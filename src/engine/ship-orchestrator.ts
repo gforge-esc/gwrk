@@ -495,17 +495,53 @@ export class ShipOrchestrator extends EventEmitter {
     let reopenedCount = 0;
     for (const task of postFlightPhase.tasks) {
       if (task.status !== "completed" || !task.gateScript) continue;
-      const gatePath = path.join(featureDir, task.gateScript);
-      if (!fs.existsSync(gatePath)) continue;
-      const gateResult = await runGate(gatePath);
+
+      // Gate resolution: 3 strategies (must match gwrk gate CLI)
+      // 1. Gate file in gates/ directory (canonical)
+      const conventionPath = path.join(
+        featureDir, "gates", `${task.id}-gate.sh`,
+      );
+      // 2. gateScript as file path relative to feature dir
+      const scriptPath = path.join(featureDir, task.gateScript);
+
+      let gateResult: { passed: boolean; output: string };
+      let gateLabel: string;
+
+      if (fs.existsSync(conventionPath)) {
+        // Strategy 1: canonical gate file
+        gateLabel = `gates/${task.id}-gate.sh`;
+        const result = await runGate(conventionPath);
+        gateResult = { passed: result.passed, output: result.output };
+      } else if (fs.existsSync(scriptPath)) {
+        // Strategy 2: gateScript as file path
+        gateLabel = task.gateScript;
+        const result = await runGate(scriptPath);
+        gateResult = { passed: result.passed, output: result.output };
+      } else {
+        // Strategy 3: gateScript as inline shell command
+        gateLabel = `(inline) ${task.gateScript.substring(0, 60)}`;
+        try {
+          const output = execSync(task.gateScript, {
+            cwd: this.config.cwd,
+            stdio: "pipe",
+            timeout: 30_000,
+            encoding: "utf-8",
+          });
+          gateResult = { passed: true, output: output || "" };
+        } catch (err: unknown) {
+          const stderr = (err as { stderr?: string })?.stderr || "";
+          gateResult = { passed: false, output: stderr || String(err) };
+        }
+      }
+
       if (!gateResult.passed) {
         task.status = "open";
         task.completedAt = undefined;
         reopenedCount++;
         console.log(
-          `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
+          `  ✗ post-flight FAIL: ${task.id} — ${gateLabel}`,
         );
-        const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
+        const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${gateLabel} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
         task.description = (task.description || "") + failNote;
       } else {
         console.log(`  ✓ post-flight PASS: ${task.id}`);
