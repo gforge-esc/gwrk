@@ -103,8 +103,8 @@ planCommand
       const store = new PlanStore(projectId);
 
       if (options.dryRun) {
-        const { parsePlan } = await import("../utils/parser-plan.js");
-        const payload = parsePlan(planPath);
+        const { parseBuildPlan } = await import("../utils/parser-plan.js");
+        const payload = parseBuildPlan(planPath);
         console.log("Dry Run: Seed Payload extracted from 000-build-plan.md");
         console.log(JSON.stringify(payload, null, 2));
         return;

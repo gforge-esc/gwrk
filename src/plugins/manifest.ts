@@ -206,6 +206,8 @@ export const ReviewStepSchema = z.object({
   skip: z.boolean().optional(),
 });
 
+export type ReviewStep = z.infer<typeof ReviewStepSchema>;
+
 export const ReviewManifestSchema = PluginBaseSchema.extend({
   type: z.literal("review"),
   projectType: z.enum(["cli", "webapp"]),

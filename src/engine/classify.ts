@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type TaskClassification = "greenfield" | "change" | "refactor" | "noop";
+export type ChangeClassification = "greenfield" | "change" | "refactor" | "noop";
 
 export interface ClassifyOptions {
   files: string[];
@@ -17,7 +17,7 @@ export interface ClassifyOptions {
  * REFACTOR: Files exist, task changes structure not behavior.
  * NOOP: No code change required (config, docs).
  */
-export function classifyTask(opts: ClassifyOptions): TaskClassification {
+export function classifyTask(opts: ClassifyOptions): ChangeClassification {
   const { files, rootDir, modifiesBehavior = true } = opts;
 
   if (!fs.existsSync(rootDir)) {

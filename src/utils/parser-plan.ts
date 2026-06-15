@@ -33,7 +33,7 @@ export interface PlanEdgePayload {
 /**
  * Parse 000-build-plan.md (Markdown + Mermaid) or a YAML seed payload.
  */
-export function parsePlan(filePath: string): ParsedPlan {
+export function parseBuildPlan(filePath: string): ParsedPlan {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Build plan file not found: ${filePath}`);
   }
