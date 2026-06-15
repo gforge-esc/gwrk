@@ -10,7 +10,7 @@ export interface QuotaReading {
   status: "fresh" | "cached" | "shared-pool" | "timeout-assumed-available";
 }
 
-export interface QuotaCache {
+interface QuotaCache {
   [backendName: string]: QuotaReading;
 }
 

@@ -9,7 +9,7 @@ import type { ContextProvider, ContextResult } from "./context-provider.js";
  */
 const MAX_CONTEXT_CHARS = 10000;
 
-export interface ActiveExtension {
+interface ActiveExtension {
   name: string;
   adapter: ContextProvider;
   config: Record<string, any>;

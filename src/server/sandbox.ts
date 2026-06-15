@@ -5,7 +5,7 @@ import path from "node:path";
 import type { AgentBackendId } from "../utils/config.js";
 import type { SandboxInfo } from "./types.js";
 
-export interface SandboxOptions {
+interface SandboxOptions {
   featureId: string;
   phaseId: string;
   taskId: string;

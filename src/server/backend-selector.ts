@@ -5,7 +5,7 @@ import type { QuotaProber, QuotaReading } from "./quota-prober.js";
 import { recordDecision } from "./routing-decisions.js";
 import { TaskClassification, classifyTask } from "./task-classifier.js";
 
-export interface TaskContext {
+interface TaskContext {
   runId: string;
   feature: string;
   phase: string;
@@ -14,7 +14,7 @@ export interface TaskContext {
   taskSP: number;
 }
 
-export interface BackendSelection {
+interface BackendSelection {
   backend: string;
   model: string;
   command: string;

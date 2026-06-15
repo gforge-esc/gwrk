@@ -14,7 +14,7 @@ import { WorkflowRuntime } from "./workflow-runtime.js";
  * ReviewPlugin interface (Layer 3 Extension)
  * Represents a set of review strategies (code, uat) for a project.
  */
-export interface ReviewPlugin {
+interface ReviewPlugin {
   name: string;
   version: string;
   description: string;
@@ -37,7 +37,7 @@ export interface ReviewPlugin {
 /**
  * ReviewDispatch is the result of a review execution.
  */
-export interface ReviewDispatch {
+interface ReviewDispatch {
   verdict: "GO" | "NO-GO";
   summary: string;
   reopenedTasks: string[];

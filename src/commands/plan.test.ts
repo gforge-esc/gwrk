@@ -44,7 +44,7 @@ vi.mock("../utils/output.js", () => ({
   createOutput: vi.fn(),
 }));
 
-import { planCommand } from "./define-plan.js";
+import { definePlanCommand as planCommand } from "./define-plan.js";
 
 describe("planCommand (Phase 6 E2E)", () => {
   let tempDir: string;

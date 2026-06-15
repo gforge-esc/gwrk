@@ -13,7 +13,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 
-import { planCommand as definePlanCommand } from "./define-plan.js";
+import { definePlanCommand } from "./define-plan.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";

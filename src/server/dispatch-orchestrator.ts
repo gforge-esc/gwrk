@@ -4,7 +4,7 @@ import type { InvocationStrategy } from "./backends/invocation-strategy.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { TaskRecord } from "./types.js";
 
-export interface DispatchPhaseOptions {
+interface DispatchPhaseOptions {
   featureId: string;
   phaseId: string;
   tasks: Array<{

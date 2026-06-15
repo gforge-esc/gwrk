@@ -21,7 +21,7 @@ import { resolveProjectId } from "../utils/project-id.js";
 import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
-export const planCommand = new Command("plan")
+export const definePlanCommand = new Command("plan")
   .description("Create or amend an implementation plan for a feature")
   .addHelpText(
     "after",

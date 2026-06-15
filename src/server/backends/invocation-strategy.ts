@@ -1,7 +1,7 @@
 import { type TaskResult, dispatchToAgent } from "../../utils/agent.js";
 import type { AgentBackendId } from "../../utils/config.js";
 
-export interface TaskInvocation {
+interface TaskInvocation {
   taskId: string;
   featureId: string;
   phaseId: string;

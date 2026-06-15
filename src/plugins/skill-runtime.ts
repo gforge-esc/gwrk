@@ -14,7 +14,7 @@ import type {
   SkillManifest,
 } from "./manifest.js";
 
-export interface SkillOptions {
+interface SkillOptions {
   input?: string;
   format?: "text" | "json";
   agent?: boolean;
@@ -22,7 +22,7 @@ export interface SkillOptions {
   [key: string]: any;
 }
 
-export interface SkillResult {
+interface SkillResult {
   stdout: string;
   stderr: string;
   exitCode: number;

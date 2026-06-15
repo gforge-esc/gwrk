@@ -23,7 +23,7 @@ export interface SlackEvent {
   timestamp: string;
 }
 
-export interface BatchedNotification {
+interface BatchedNotification {
   projectId: string;
   events: SlackEvent[];
   batchedSince: string;

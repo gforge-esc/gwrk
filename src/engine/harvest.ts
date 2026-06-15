@@ -19,7 +19,7 @@ import type {
   HarvestRecord,
 } from "./types.js";
 
-export interface LogEntry {
+interface LogEntry {
   runId: string | number;
   phase?: string;
   agent?: string;

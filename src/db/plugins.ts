@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
-export interface AgentContextSync {
+interface AgentContextSync {
   project_root: string;
   backend_name: string;
   last_sync_at: string;
@@ -44,7 +44,7 @@ export function recordAgentContextSync(
     });
 }
 
-export interface RoutingDecision {
+interface RoutingDecision {
   task_type: string;
   selected_backend: string;
   outcome: "success" | "failure" | "rate-limited" | "timeout";

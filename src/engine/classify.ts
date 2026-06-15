@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type ChangeClassification = "greenfield" | "change" | "refactor" | "noop";
+type ChangeClassification = "greenfield" | "change" | "refactor" | "noop";
 
-export interface ClassifyOptions {
+interface ClassifyOptions {
   files: string[];
   rootDir: string;
   modifiesBehavior?: boolean;
@@ -17,7 +17,7 @@ export interface ClassifyOptions {
  * REFACTOR: Files exist, task changes structure not behavior.
  * NOOP: No code change required (config, docs).
  */
-export function classifyTask(opts: ClassifyOptions): ChangeClassification {
+export function classifyChange(opts: ClassifyOptions): ChangeClassification {
   const { files, rootDir, modifiesBehavior = true } = opts;
 
   if (!fs.existsSync(rootDir)) {
@@ -52,7 +52,7 @@ export function classifyTask(opts: ClassifyOptions): ChangeClassification {
  * Matches: src/..., tests/..., docs/..., scripts/..., gates/..., specs/...
  * And standalone files: package.json, etc.
  */
-export function extractFilePaths(text: string): string[] {
+function extractFilePaths(text: string): string[] {
   const pathRegex = /(?:src|tests|docs|scripts|gates|specs)\/(\S+)/g;
   const matches = Array.from(text.matchAll(pathRegex)).map((m) => m[0]);
 

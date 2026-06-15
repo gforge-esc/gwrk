@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 // RED — module does not exist
-import { classifyTask } from "./classify.js";
+import { classifyChange } from "./classify.js";
 
 describe("Task Classification Engine", () => {
 	const testRoot = "/tmp/gwrk-test-classify";
@@ -28,7 +28,7 @@ describe("Task Classification Engine", () => {
 
 	// --- Classification: greenfield (file doesn't exist) ---
 	it("classifies as 'greenfield' when target file does not exist", () => {
-		const result = classifyTask({
+		const result = classifyChange({
 			files: ["src/utils/signal.ts"],
 			rootDir: testRoot,
 		});
@@ -43,7 +43,7 @@ describe("Task Classification Engine", () => {
 			'export const statusCommand = {};',
 		);
 
-		const result = classifyTask({
+		const result = classifyChange({
 			files: ["src/commands/status.ts"],
 			rootDir: testRoot,
 			modifiesBehavior: true,
@@ -59,7 +59,7 @@ describe("Task Classification Engine", () => {
 			'export const statusCommand = {};',
 		);
 
-		const result = classifyTask({
+		const result = classifyChange({
 			files: ["src/commands/status.ts"],
 			rootDir: testRoot,
 			modifiesBehavior: false,
@@ -70,7 +70,7 @@ describe("Task Classification Engine", () => {
 
 	// --- Classification: noop (no code change) ---
 	it("classifies as 'noop' when task has no file changes", () => {
-		const result = classifyTask({
+		const result = classifyChange({
 			files: [],
 			rootDir: testRoot,
 		});
@@ -85,7 +85,7 @@ describe("Task Classification Engine", () => {
 			'export const statusCommand = {};',
 		);
 
-		const result = classifyTask({
+		const result = classifyChange({
 			files: [
 				"src/commands/status.ts", // exists
 				"src/utils/signal.ts", // doesn't exist
@@ -100,7 +100,7 @@ describe("Task Classification Engine", () => {
 	// --- Negative: invalid rootDir ---
 	it("rejects invalid input: handles non-existent rootDir", () => {
 		expect(() =>
-			classifyTask({
+			classifyChange({
 				files: ["src/utils/signal.ts"],
 				rootDir: "/nonexistent/path",
 			}),

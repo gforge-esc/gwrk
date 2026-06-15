@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import yaml from "yaml";
 
-export interface ParsedPlan {
+interface ParsedPlan {
   features: PlanFeaturePayload[];
   phases: PlanPhasePayload[];
   edges: PlanEdgePayload[];

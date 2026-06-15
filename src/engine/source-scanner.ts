@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export interface SourceMaterial {
+interface SourceMaterial {
   specs: string[];
   architecture: string;
   patterns: string[];

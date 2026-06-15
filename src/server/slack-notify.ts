@@ -88,7 +88,7 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
  * - Shell scripts (work-until-done.sh)
  * - CI pipelines
  */
-export async function sendViaWebhook(message: SlackMessage): Promise<void> {
+async function sendViaWebhook(message: SlackMessage): Promise<void> {
   let webhookUrl: string | undefined;
   try {
     const config = loadConfig(process.cwd());

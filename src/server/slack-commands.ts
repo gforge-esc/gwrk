@@ -10,7 +10,7 @@ import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import type { DispatchRecord } from "./types.js";
 
-export interface SlackBlockKit {
+interface SlackBlockKit {
   blocks: KnownBlock[];
   response_type: "ephemeral" | "in_channel";
 }

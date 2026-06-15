@@ -1,7 +1,7 @@
 import { execFile, execFileSync, spawn } from "node:child_process";
 import type { StdioOptions } from "node:child_process";
 
-export interface RunOptions {
+interface RunOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   stdio?: StdioOptions;
@@ -52,7 +52,7 @@ export function run(
   });
 }
 
-export interface ExecResult {
+interface ExecResult {
   exitCode: number;
   stdout: string;
   stderr: string;

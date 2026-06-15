@@ -16,7 +16,7 @@ export type ServerLifecycle =
 
 export type NetworkStatus = "online" | "offline" | "unknown";
 
-export interface ComponentHealth {
+interface ComponentHealth {
   status: "ok" | "degraded" | "unavailable";
   message?: string;
 }

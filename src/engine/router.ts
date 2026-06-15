@@ -5,7 +5,7 @@ import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { loadConfig } from "../utils/config.js";
 import { quotaProbe } from "./quota.js";
 
-export interface RoutingTask {
+interface RoutingTask {
   type: string;
   skillName?: string;
   feature?: string;

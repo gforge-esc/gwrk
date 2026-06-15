@@ -54,14 +54,14 @@ RULES FOR EVERY COMMAND YOU RUN:
 /**
  * Normalized Exit Code Map (ADR-006)
  */
-export const EXIT_CODE_MAP: Record<number, number> = {
+const EXIT_CODE_MAP: Record<number, number> = {
   53: 1, // Gemini turn limit
   42: 2, // Usage error
   126: 1, // Claude permission denied
   127: 127, // Command not found
 };
 
-export interface DispatchOptions {
+interface DispatchOptions {
   backend: AgentBackendId | string;
   workflowPath: string;
   featureDir?: string;
@@ -132,7 +132,7 @@ function stampLine(
   }
 }
 
-export async function dispatchAgent(opts: DispatchOptions): Promise<{
+async function dispatchAgent(opts: DispatchOptions): Promise<{
   exitCode: number;
   logPath: string;
   stdout: string;

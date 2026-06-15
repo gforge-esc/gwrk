@@ -5,13 +5,13 @@ import { execCommand } from "../utils/exec.js";
 import { TaskStateSchema } from "../utils/state.js";
 import { type ProjectProfile, detectProfile } from "./profile-detector.js";
 
-export interface GitState {
+interface GitState {
   branch: string;
   clean: boolean;
   lastCommit: string;
 }
 
-export interface SpecSummary {
+interface SpecSummary {
   id: string;
   name: string;
   dirPath: string;
@@ -23,7 +23,7 @@ export interface SpecSummary {
   tasksComplete: number;
 }
 
-export interface ProjectDiscovery {
+interface ProjectDiscovery {
   project: {
     name: string;
     root: string;

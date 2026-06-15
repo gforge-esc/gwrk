@@ -4,7 +4,7 @@ import type { AgentBackend } from "./agent-backend.js";
 import { BUILTIN_AGENTS } from "./builtins/agents/index.js";
 import type { PluginLoader } from "./loader.js";
 
-export class BackendNotFoundError extends Error {
+class BackendNotFoundError extends Error {
   constructor(name: string) {
     super(`Agent backend '${name}' not found.`);
     this.name = "BackendNotFoundError";

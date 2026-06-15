@@ -5,7 +5,7 @@ import { parse, stringify } from "yaml";
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]+?)\n---\n?([\s\S]*)$/;
 
-export interface MigrateOptions {
+interface MigrateOptions {
   dryRun?: boolean;
 }
 

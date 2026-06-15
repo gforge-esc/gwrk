@@ -91,7 +91,7 @@ export function getHighestFromSpecs(specsDir: string): number {
  * Get the highest feature number from the plan_features DB table.
  * Returns 0 if the DB is unavailable or empty.
  */
-export function getHighestFromDb(): number {
+function getHighestFromDb(): number {
 	try {
 		// Synchronous DB access — getDb and prepare are sync in better-sqlite3
 		// Dynamic import won't work here since we need sync return.

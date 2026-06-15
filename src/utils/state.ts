@@ -10,7 +10,7 @@ const TaskStatusSchema = z.enum([
   "cancelled",
 ]);
 
-export const TaskSchema = z.object({
+const TaskSchema = z.object({
   id: z.string().regex(/^T\d{3}$/),
   title: z.string().min(1),
   description: z.string(),
@@ -28,7 +28,7 @@ export const TaskSchema = z.object({
     .optional(),
 });
 
-export const PhaseSchema = z.object({
+const PhaseSchema = z.object({
   id: z.string().regex(/^phase-\d{2}$/),
   title: z.string().min(1),
   tasks: z.array(TaskSchema).min(1),
