@@ -21,7 +21,6 @@ import {
   loadTaskState,
   saveTaskState,
 } from "../utils/state.js";
-import { harvestFeature } from "./harvest.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 import {
@@ -30,7 +29,6 @@ import {
   type ShipState,
   type ShipStageResult,
 } from "./ship-types.js";
-import type { HarvestRecord } from "./types.js";
 import { activatePhaseTests } from "./test-activator.js";
 
 // ANSI helpers for progress output
@@ -219,22 +217,7 @@ export class ShipOrchestrator extends EventEmitter {
       this.emit("plan:ship:complete", eventData);
       this.emit("ship:complete", eventData);
 
-      // Close the loop: harvest finalizes logs, DB, gates, tasks, compression, Slack
-      try {
-        const record: HarvestRecord = {
-          featureId: this.config.featureId,
-          phaseId: this.config.phaseId,
-          prNumber: this.state.prNumber ?? 0,
-          prUrl: this.state.prUrl ?? "",
-          mergeCommitSha: "local-ship",
-          mergedAt: new Date().toISOString(),
-          mergedBy: "gwrk-ship",
-          status: "merged",
-        };
-        await harvestFeature(this.config.cwd, record);
-      } catch (err) {
-        console.warn(`Harvest failed (non-fatal): ${err}`);
-      }
+
 
       // State file exists for crash recovery during a run. Once complete,
       // it's stale — delete it so the next invocation starts fresh.

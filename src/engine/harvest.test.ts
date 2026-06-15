@@ -28,6 +28,7 @@ vi.mock("../utils/git.js", async () => {
 vi.mock("../db/runs.js", () => ({
   listRuns: vi.fn(() => []),
   finishRun: vi.fn(),
+  recordRun: vi.fn(() => 999),
 }));
 
 vi.mock("../db/compression.js", () => ({
@@ -214,5 +215,65 @@ describe("FR-H08: Branch Cleanup", () => {
   it("US-H06: cleanupBranch deletes branch (TR-H05)", async () => {
     await cleanupBranch("feat/test", "/tmp");
     expect(gitUtils.deleteRemoteBranch).toHaveBeenCalledWith("/tmp", "feat/test");
+  });
+});
+
+describe("FR-H03 & Phase-less Harvest: Backfill & Reconciliation", () => {
+  let tempDir: string;
+  const featureId = "test-feature-backfill";
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-harvest-backfill-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it("FR-H03: should backfill a run record if no matching pending run is found", async () => {
+    const record = {
+      featureId,
+      phaseId: "phase-01",
+      prNumber: 99,
+      prUrl: "https://github.com/foo/bar/pull/99",
+      mergeCommitSha: "abcdef",
+      mergedAt: new Date().toISOString(),
+      status: "merged" as const,
+    };
+
+    vi.mocked(runsDb.listRuns).mockReturnValue([]);
+
+    await harvestFeature(tempDir, record as any);
+
+    expect(runsDb.recordRun).toHaveBeenCalledWith(expect.objectContaining({
+      feature_id: featureId,
+      phase_id: "phase-01",
+      status: "merged",
+      merge_commit_sha: "abcdef",
+      pr_number: 99,
+    }));
+  });
+
+  it("should process all phases sequentially when no phaseId is provided", async () => {
+    const record = {
+      featureId,
+      phaseId: undefined, // Phase-less
+      prNumber: 100,
+      status: "merged" as const,
+    };
+
+    const featureDir = path.join(tempDir, "specs", featureId);
+    fs.mkdirSync(featureDir, { recursive: true });
+    fs.writeFileSync(path.join(featureDir, "plan.md"), "# Plan");
+
+    vi.mocked(parserUtils.parsePlan).mockReturnValue({
+      phases: [{ id: "phase-01", sp: 2 }, { id: "phase-02", sp: 3 }]
+    } as any);
+
+    await harvestFeature(tempDir, record as any);
+
+    // Should call listRuns for each phase to find runs
+    expect(runsDb.listRuns).toHaveBeenCalledTimes(2);
   });
 });

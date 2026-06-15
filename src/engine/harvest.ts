@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getCompressionRecord, recordCompression } from "../db/compression.js";
-import { finishRun, listRuns } from "../db/runs.js";
+import { finishRun, listRuns, recordRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { parsePlan } from "../utils/parser.js";
@@ -110,6 +110,29 @@ export async function harvestFeature(
 
   const projectId = resolveProjectId(projectPath);
 
+  // If no phaseId is specified, discover all phases from plan.md and run harvest for each
+  if (!phaseId) {
+    console.log(`No phaseId provided for harvest on ${featureId}. Attempting to discover all phases from plan.md...`);
+    const featureDir = path.join(projectPath, "specs", featureId);
+    const planPath = path.join(featureDir, "plan.md");
+    if (fs.existsSync(planPath)) {
+      try {
+        const parsedPlan = parsePlan(planPath);
+        console.log(`Discovered ${parsedPlan.phases.length} phases for feature ${featureId}: ${parsedPlan.phases.map(p => p.id).join(", ")}`);
+        for (const phase of parsedPlan.phases) {
+          const subRecord = { ...record, phaseId: phase.id };
+          console.log(`Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`);
+          await harvestFeature(projectPath, subRecord);
+        }
+      } catch (err) {
+        console.error(`Failed to process phase-less harvest for ${featureId}:`, err);
+      }
+    } else {
+      console.warn(`No plan.md found for ${featureId} at ${planPath}, cannot process phase-less harvest.`);
+    }
+    return;
+  }
+
   // 0. Idempotency Guard (FR-H10)
   if (phaseId) {
     const existing = getCompressionRecord(featureId, phaseId, projectId);
@@ -147,8 +170,24 @@ export async function harvestFeature(
     });
   } else {
     console.warn(
-      `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}`,
+      `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}. Backfilling run record.`,
     );
+    try {
+      const backfillId = recordRun({
+        feature_id: featureId,
+        phase_id: phaseId || undefined,
+        project_id: projectId,
+        command: "ship",
+        status: "merged",
+        merge_commit_sha: mergeCommitSha,
+        pr_number: prNumber || undefined,
+        pr_url: record.prUrl || undefined,
+        finished_at: mergedAt,
+      });
+      console.log(`Backfilled run record for ${featureId} ${phaseId} (Run ID: ${backfillId})`);
+    } catch (dbErr) {
+      console.warn(`Failed to backfill run record (non-fatal): ${dbErr}`);
+    }
   }
 
   // 2.2 Phase Completion Check (FR-H09)
