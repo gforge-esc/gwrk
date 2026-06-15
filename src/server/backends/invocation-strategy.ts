@@ -1,11 +1,11 @@
 import { type TaskResult, dispatchToAgent } from "../../utils/agent.js";
-import type { AgentBackend } from "../../utils/config.js";
+import type { AgentBackendId } from "../../utils/config.js";
 
 export interface TaskInvocation {
   taskId: string;
   featureId: string;
   phaseId: string;
-  backend: AgentBackend;
+  backend: AgentBackendId;
   model?: string;
   workDir: string;
   prompt?: string;

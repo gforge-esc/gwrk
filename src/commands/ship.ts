@@ -9,7 +9,7 @@ import type { ShipStage, ShipState } from "../engine/ship-types.js";
 
 import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
-import { type AgentBackend, loadConfig } from "../utils/config.js";
+import { type AgentBackendId, loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -53,7 +53,7 @@ const { GREEN, DIM, RESET, YELLOW, RED } = color;
 async function shipPhase(
   featureInput: string,
   phase: string,
-  backend: AgentBackend,
+  backend: AgentBackendId,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
   selectedModel?: string,
@@ -376,7 +376,7 @@ function isPhaseComplete(phaseData: TaskState["phases"][number]): boolean {
 export async function dispatchPhaseWork(
   feature: string,
   phase: string,
-  backend: AgentBackend,
+  backend: AgentBackendId,
   workflow: string,
 ): Promise<TaskResult> {
   return dispatchToAgent({
@@ -598,7 +598,7 @@ Examples:
         const shipStartTime = Date.now();
         let finalExitCode = 0;
         for (const p of phases) {
-          let currentBackend = opts.agent as string as AgentBackend;
+          let currentBackend = opts.agent as string as AgentBackendId;
           let selectedModel: string | undefined;
           let selectedCommand: string | undefined;
 
@@ -612,7 +612,7 @@ Examples:
               language: "typescript",
               taskSP: 1, // Default for orchestrator
             });
-            currentBackend = selection.backend as AgentBackend;
+            currentBackend = selection.backend as AgentBackendId;
             selectedModel = selection.model;
             selectedCommand = selection.command;
             console.log(

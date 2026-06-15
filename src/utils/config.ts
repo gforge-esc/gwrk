@@ -6,7 +6,7 @@ import { DEFAULT_LOC_RATES } from "../engine/effort-defaults.js";
 import { resolveRoleMultipliers } from "../engine/roles.js";
 
 const AgentBackendSchema = z.string();
-export type AgentBackend = string;
+export type AgentBackendId = string;
 
 export const SlackConfigSchema = z.object({
   botToken: z.string().startsWith("xoxb-"),

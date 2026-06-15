@@ -9,7 +9,7 @@ import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import {
-  type AgentBackend as ConfigAgentBackend,
+  type AgentBackendId,
   loadConfig,
 } from "./config.js";
 import { resolveProjectId } from "./project-id.js";
@@ -62,7 +62,7 @@ export const EXIT_CODE_MAP: Record<number, number> = {
 };
 
 export interface DispatchOptions {
-  backend: ConfigAgentBackend | string;
+  backend: AgentBackendId | string;
   workflowPath: string;
   featureDir?: string;
   prompt?: string;
@@ -351,7 +351,7 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
 export interface TaskDispatch {
   type?: string;
   prompt?: string;
-  agent?: ConfigAgentBackend | string;
+  agent?: AgentBackendId | string;
   model?: string;
   commandOverride?: string;
   workDir?: string;
@@ -567,7 +567,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const opts: DispatchOptions = {
-    backend: agentName as ConfigAgentBackend,
+    backend: agentName as AgentBackendId,
     workflowPath: await resolveWorkflowPath(task.workflow ?? "gwrk-implement"),
     featureDir: task.featureDir,
     prompt: task.prompt,
