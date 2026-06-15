@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { Command } from "commander";
-import { runGate } from "../utils/exec.js";
+import { runGate } from "../utils/gate-runner.js";
 import { banner, color, fail, success } from "../utils/format.js";
 import { resolveFormat } from "../utils/output.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
@@ -199,16 +199,16 @@ export async function runGateCheck(
     }
 
     const start = performance.now();
-    const result = runGate(absoluteConventionPath);
+    const result = await runGate(absoluteConventionPath);
     const durationMs = Math.round(performance.now() - start);
     return {
       taskId,
       feature: normalizedFeature,
       gatePath: conventionPath,
-      result: result.exitCode === 0 ? "PASS" : "FAIL",
+      result: result.passed ? "PASS" : "FAIL",
       exitCode: result.exitCode,
-      stdout: result.stdout || "",
-      stderr: result.stderr || "",
+      stdout: result.output,
+      stderr: "",
       durationMs,
     };
   }
@@ -240,16 +240,16 @@ export async function runGateCheck(
   const absoluteScriptPath = path.join(featureDir, gateScript);
   if (fs.existsSync(absoluteScriptPath)) {
     const start = performance.now();
-    const result = runGate(absoluteScriptPath);
+    const result = await runGate(absoluteScriptPath);
     const durationMs = Math.round(performance.now() - start);
     return {
       taskId,
       feature: normalizedFeature,
       gatePath: gateScript,
-      result: result.exitCode === 0 ? "PASS" : "FAIL",
+      result: result.passed ? "PASS" : "FAIL",
       exitCode: result.exitCode,
-      stdout: result.stdout || "",
-      stderr: result.stderr || "",
+      stdout: result.output,
+      stderr: "",
       durationMs,
     };
   }
