@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SkillManifestSchema } from './manifest.js';
+import { SkillManifestSchema, AnyManifestSchema } from './manifest.js';
 
 describe('FR-013 / US-016: SkillManifestSchema Enforcement Tier', () => {
   it('TR-P9-003: accepts tier: enforcement and scope: implementation', () => {
@@ -27,5 +27,35 @@ describe('FR-013 / US-016: SkillManifestSchema Enforcement Tier', () => {
     };
     
     expect(() => SkillManifestSchema.parse(manifest)).toThrow();
+  });
+});
+
+describe("ExtensionManifestSchema (Phase 19)", () => {
+  it("FR-L3-001: validates a valid extension manifest", () => {
+    const manifest = {
+      name: "obsidian-vault",
+      type: "extension",
+      version: "1.0.0",
+      description: "Obsidian integration",
+      provides: ["context"],
+      adapter: "./adapter.js",
+    };
+
+    const result = AnyManifestSchema.parse(manifest);
+    expect(result.type).toBe("extension");
+    expect((result as any).provides).toContain("context");
+  });
+
+  it("rejects invalid provides values", () => {
+    const manifest = {
+      name: "bad-ext",
+      type: "extension",
+      version: "1.0.0",
+      description: "Bad extension",
+      provides: ["invalid-capability"],
+      adapter: "./adapter.js",
+    };
+
+    expect(() => AnyManifestSchema.parse(manifest)).toThrow();
   });
 });

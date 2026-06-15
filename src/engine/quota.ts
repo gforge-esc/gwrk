@@ -1,6 +1,6 @@
 import type { AgentBackend } from "../plugins/agent-backend.js";
 
-export interface QuotaStatus {
+interface QuotaStatus {
   status: "available" | "rate-limited" | "exhausted" | "unavailable";
   backoffS?: number;
   remainingRequests?: number;

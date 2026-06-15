@@ -7,9 +7,9 @@ import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { parsePlan } from "../utils/parser.js";
 import {
   computeCompression,
-  computeLeadingIndicators,
   gatherDeliveryActuals,
 } from "./compression.js";
+import { computeLeadingIndicators } from "./indicators.js";
 import { reconcileGates } from "./reconcile-gates.js";
 import { resolveRoleMultipliers } from "./roles.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -19,7 +19,7 @@ import type {
   HarvestRecord,
 } from "./types.js";
 
-export interface LogEntry {
+interface LogEntry {
   runId: string | number;
   phase?: string;
   agent?: string;

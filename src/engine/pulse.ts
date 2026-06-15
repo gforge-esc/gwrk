@@ -26,7 +26,7 @@ interface ParsedCommit {
 /**
  * Parses raw output from `git log --numstat --format=%H|%aI`
  */
-export function parseGitLog(raw: string): ParsedCommit[] {
+function parseGitLog(raw: string): ParsedCommit[] {
   if (!raw || !raw.trim()) return [];
 
   const commits: ParsedCommit[] = [];
@@ -76,7 +76,7 @@ export function parseGitLog(raw: string): ParsedCommit[] {
 /**
  * Groups commits into ISO-week buckets. Output is sorted oldest first.
  */
-export function bucketByWeek(
+function bucketByWeek(
   commits: ParsedCommit[],
   defaultBranchCommits: Set<string>,
 ): WeeklyBucket[] {
@@ -180,7 +180,7 @@ export function scanRepository(
 /**
  * Scans project specs directory for progress metrics.
  */
-export function scanSpecProgress(projectRoot: string): SpecProgress {
+function scanSpecProgress(projectRoot: string): SpecProgress {
   let totalSpecs = 0;
   let totalPlans = 0;
 

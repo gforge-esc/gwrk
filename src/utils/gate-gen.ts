@@ -12,7 +12,7 @@ export interface GateBrief {
   tasks: TaskBrief[];
 }
 
-export interface TaskBrief {
+interface TaskBrief {
   taskId: string;
   title: string;
   description: string;
@@ -240,7 +240,7 @@ const FUNCTIONAL_VERBS = [
  *
  * Returns an array of violation strings. Empty array = gate is valid.
  */
-export function lintGateScript(content: string): string[] {
+function lintGateScript(content: string): string[] {
   const violations: string[] = [];
   const lines = content
     .split("\n")
@@ -279,7 +279,7 @@ export function lintGateScript(content: string): string[] {
  *
  * Returns a map of gate filename → violations. Only includes gates with violations.
  */
-export function lintAllGates(gatesDir: string): Map<string, string[]> {
+function lintAllGates(gatesDir: string): Map<string, string[]> {
   const violations = new Map<string, string[]>();
 
   if (!fs.existsSync(gatesDir)) return violations;
@@ -301,7 +301,7 @@ export function lintAllGates(gatesDir: string): Map<string, string[]> {
 
 // ─── Gap Matrix types and parser (ADR-005 §8) ────────────────────────────────
 
-export interface GapMatrixRow {
+interface GapMatrixRow {
   ac: string; // e.g., "FR-001"
   criterion: string; // human-readable description
   testType: "unit" | "functional" | "integration" | "e2e" | "structural";

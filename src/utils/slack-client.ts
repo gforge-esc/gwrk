@@ -4,14 +4,14 @@ import * as path from "node:path";
 import { App } from "@slack/bolt";
 import { type SlackConfig, SlackConfigSchema } from "./config.js";
 
-export interface SlackSetupResult {
+interface SlackSetupResult {
   workspace: string;
   tokensWritten: boolean;
   socketModeOk: boolean;
   alreadyConfigured: boolean;
 }
 
-export function getEnvPath(): string {
+function getEnvPath(): string {
   return path.join(os.homedir(), ".gwrk", ".env");
 }
 

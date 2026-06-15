@@ -24,7 +24,7 @@ interface ParsedPhase {
   testTargets: string[];
 }
 
-export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
+function parsePlanMarkdown(planContent: string): ParsedPhase[] {
   const phases: ParsedPhase[] = [];
   const lines = planContent.split("\n");
 
@@ -149,7 +149,7 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
 /**
  * Generate a valid TaskState from parsed phases.
  */
-export function generateTaskState(
+function generateTaskState(
   featureId: string,
   parsed: ParsedPhase[],
   planPath: string,

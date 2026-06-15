@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../utils/config.js";
-import { run, runGate } from "../utils/exec.js";
+import { run } from "../utils/exec.js";
+import { runGate } from "../utils/gate-runner.js";
 import { loadTaskState } from "../utils/state.js";
 import { implementAction } from "./implement.js";
 
 vi.mock("../utils/exec.js", () => ({
   run: vi.fn().mockResolvedValue(undefined),
-  runGate: vi.fn().mockReturnValue({ exitCode: 1, stdout: "", stderr: "" }),
+}));
+
+vi.mock("../utils/gate-runner.js", () => ({
+  runGate: vi.fn().mockResolvedValue({ passed: false, exitCode: 1, output: "" }),
 }));
 
 vi.mock("../utils/config.js", () => ({
@@ -55,11 +59,12 @@ describe("implementAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Default mock: fail pre-flight (exit 1), pass post-flight (exit 0)
+    // Default mock: fail pre-flight (not passed), pass post-flight (passed)
     const gateCalls: Record<string, number> = {};
-    vi.mocked(runGate).mockImplementation((p: string) => {
+    vi.mocked(runGate).mockImplementation(async (p: string) => {
       gateCalls[p] = (gateCalls[p] || 0) + 1;
-      return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
+      const passed = gateCalls[p] !== 1;
+      return { passed, exitCode: passed ? 0 : 1, output: "" };
     });
   });
 
@@ -85,10 +90,11 @@ describe("implementAction", () => {
   it("skips tasks that already pass pre-flight gate", async () => {
     // T001 passes pre-flight, T002 fails pre-flight then passes post-flight
     const gateCalls: Record<string, number> = {};
-    vi.mocked(runGate).mockImplementation((p: string) => {
-      if (p.includes("T001")) return { exitCode: 0, stdout: "", stderr: "" };
+    vi.mocked(runGate).mockImplementation(async (p: string) => {
+      if (p.includes("T001")) return { passed: true, exitCode: 0, output: "" };
       gateCalls[p] = (gateCalls[p] || 0) + 1;
-      return { exitCode: gateCalls[p] === 1 ? 1 : 0, stdout: "", stderr: "" };
+      const passed = gateCalls[p] !== 1;
+      return { passed, exitCode: passed ? 0 : 1, output: "" };
     });
 
     await implementAction("004-ship-loop", "1", {});

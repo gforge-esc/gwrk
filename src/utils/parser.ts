@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-export interface ParsedTask {
+interface ParsedTask {
   title: string;
   description: string;
 }

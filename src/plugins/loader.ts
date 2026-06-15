@@ -11,7 +11,7 @@ export class PluginNotFoundError extends Error {
   }
 }
 
-export class PluginDisabledError extends Error {
+class PluginDisabledError extends Error {
   constructor(name: string) {
     super(`Plugin '${name}' is disabled in this project.`);
     this.name = "PluginDisabledError";
@@ -25,12 +25,12 @@ export class ManifestValidationError extends Error {
   }
 }
 
-export interface PluginLoaderOptions {
+interface PluginLoaderOptions {
   globalDir?: string;
   projectDir?: string;
 }
 
-export interface ListOptions {
+interface ListOptions {
   activeOnly?: boolean;
   type?: string;
   tier?: string;
@@ -47,7 +47,7 @@ export interface PluginSummary {
   status: "active" | "disabled";
 }
 
-export interface LoadedPlugin<T = AnyManifest> {
+interface LoadedPlugin<T = AnyManifest> {
   manifest: T;
   path: string;
   status: "active" | "disabled";

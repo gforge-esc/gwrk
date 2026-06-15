@@ -321,7 +321,7 @@ export function listProposals(
 /**
  * Delete a proposal.
  */
-export function deleteProposal(
+function deleteProposal(
   id: string,
   projectId: string,
   db?: Database.Database,

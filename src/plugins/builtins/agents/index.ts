@@ -11,6 +11,6 @@ export const BUILTIN_AGENTS: Record<string, AgentBackend> = {
   codex: new CodexAdapter(),
 };
 
-export const builtInAgents = BUILTIN_AGENTS;
+const builtInAgents = BUILTIN_AGENTS;
 
 export { AgyAdapter, GeminiAdapter, ClaudeAdapter, CodexAdapter };

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export interface ReadinessPhase {
+interface ReadinessPhase {
   number: number;
   title: string;
 }
@@ -21,7 +21,7 @@ export interface ReadinessResult {
  * Parse phase headings from a plan.md file.
  * Matches: ### Phase N: Title
  */
-export function parsePlanPhases(planContent: string): ReadinessPhase[] {
+function parsePlanPhases(planContent: string): ReadinessPhase[] {
   const phases: ReadinessPhase[] = [];
   const lines = planContent.split("\n");
 

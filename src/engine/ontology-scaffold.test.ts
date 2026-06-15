@@ -10,6 +10,8 @@ describe("FR-L25-009: Ontology Scaffolding", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Simulate files not existing by default
+    vi.mocked(fs.access).mockRejectedValue(new Error("File not found"));
   });
 
   it("US-020: should create the required directory structure", async () => {

@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const execFilePromise = promisify(execFile);
 
-export interface GateResult {
+interface GateResult {
   passed: boolean;
   exitCode: number;
   output: string;

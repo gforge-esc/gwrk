@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { recordHistory } from "../db/runs.js";
 
-export const HistoryEntrySchema = z.object({
+const HistoryEntrySchema = z.object({
   timestamp: z.string().datetime(),
   featureId: z.string().min(1),
   taskId: z.string().regex(/^T\d{3}$/),

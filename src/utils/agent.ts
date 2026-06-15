@@ -3,15 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { recordRoutingDecision } from "../db/plugins.js";
-import { resolveProjectId } from "./project-id.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
+import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import {
-  type AgentBackend as ConfigAgentBackend,
+  type AgentBackendId,
   loadConfig,
 } from "./config.js";
+import { resolveProjectId } from "./project-id.js";
 
 // ANSI — must match format.ts
 const DIM = "\x1b[2m";
@@ -53,15 +54,15 @@ RULES FOR EVERY COMMAND YOU RUN:
 /**
  * Normalized Exit Code Map (ADR-006)
  */
-export const EXIT_CODE_MAP: Record<number, number> = {
+const EXIT_CODE_MAP: Record<number, number> = {
   53: 1, // Gemini turn limit
   42: 2, // Usage error
   126: 1, // Claude permission denied
   127: 127, // Command not found
 };
 
-export interface DispatchOptions {
-  backend: ConfigAgentBackend | string;
+interface DispatchOptions {
+  backend: AgentBackendId | string;
   workflowPath: string;
   featureDir?: string;
   prompt?: string;
@@ -131,7 +132,7 @@ function stampLine(
   }
 }
 
-export async function dispatchAgent(opts: DispatchOptions): Promise<{
+async function dispatchAgent(opts: DispatchOptions): Promise<{
   exitCode: number;
   logPath: string;
   stdout: string;
@@ -153,9 +154,10 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   // Use parent directory name for plugin workflows (PROMPT.md → parent dir name)
   const rawWorkflow = path.basename(opts.workflowPath, ".md");
-  const workflow = rawWorkflow === "PROMPT"
-    ? path.basename(path.dirname(opts.workflowPath))
-    : rawWorkflow;
+  const workflow =
+    rawWorkflow === "PROMPT"
+      ? path.basename(path.dirname(opts.workflowPath))
+      : rawWorkflow;
   const rawFeature = opts.featureDir
     ? path.basename(opts.featureDir)
     : (opts.prompt ?? "unknown");
@@ -349,7 +351,7 @@ export async function dispatchAgent(opts: DispatchOptions): Promise<{
 export interface TaskDispatch {
   type?: string;
   prompt?: string;
-  agent?: ConfigAgentBackend | string;
+  agent?: AgentBackendId | string;
   model?: string;
   commandOverride?: string;
   workDir?: string;
@@ -502,9 +504,18 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = task.workDir || projectRoot;
   const groundingFiles: Array<{ path: string; tag: string }> = [
-    { path: path.join(workDir, ".gwrk/ontology/domain.md"), tag: "domain_ontology" },
-    { path: path.join(workDir, ".gwrk/perspective/hierarchy.md"), tag: "information_hierarchy" },
-    { path: path.join(workDir, ".gwrk/perspective/ux-posture.md"), tag: "ux_posture" },
+    {
+      path: path.join(workDir, ".gwrk/ontology/domain.md"),
+      tag: "domain_ontology",
+    },
+    {
+      path: path.join(workDir, ".gwrk/perspective/hierarchy.md"),
+      tag: "information_hierarchy",
+    },
+    {
+      path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
+      tag: "ux_posture",
+    },
   ];
 
   let grounding = "";
@@ -532,6 +543,15 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     dispatch.stdin = `${grounding}${dispatch.stdin}`;
   }
 
+  // Layer 3: External Context Injection (Phase 21)
+  const extContext = await resolveExtensionContext(workDir);
+  if (extContext.length > 0) {
+    const contextContent = extContext
+      .map((res) => `<${res.source}>\n${res.content}\n</${res.source}>`)
+      .join("\n\n");
+    dispatch.stdin = `${dispatch.stdin}\n\n<external_context>\n${contextContent}\n</external_context>`;
+  }
+
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
   if (dispatch.stdin && !dispatch.stdin.includes("<command_safety>")) {
     dispatch.stdin = `${COMMAND_SAFETY_BLOCK}\n\n${dispatch.stdin}`;
@@ -547,7 +567,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const opts: DispatchOptions = {
-    backend: agentName as ConfigAgentBackend,
+    backend: agentName as AgentBackendId,
     workflowPath: await resolveWorkflowPath(task.workflow ?? "gwrk-implement"),
     featureDir: task.featureDir,
     prompt: task.prompt,

@@ -75,7 +75,7 @@ export function extractJsonFromOutput(stdout: string): unknown {
   throw new Error("Expected JSON object in agent output");
 }
 
-export interface WorkflowOptions {
+interface WorkflowOptions {
   projectRoot?: string;
   agent?: string;
   model?: string;
@@ -90,12 +90,12 @@ export interface WorkflowOptions {
 }
 
 /** Typed output contract for workflow agent responses. */
-export interface WorkflowOutput {
+interface WorkflowOutput {
   summary?: string;
   intents: JsonIntent[];
 }
 
-export interface WorkflowResult {
+interface WorkflowResult {
   summary: string;
   intents: JsonIntent[];
   summaries: IntentSummary[];

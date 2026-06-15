@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { recordHistory } from "../db/runs.js";
-import { runGate } from "../utils/exec.js";
+import { runGate } from "../utils/gate-runner.js";
 import { color, fail, success } from "../utils/format.js";
 import {
   getCurrentBranch,
@@ -130,17 +130,16 @@ Examples:
         }
       }
 
-      const result = runGate(gateScript);
+      const result = await runGate(gateScript);
 
-      if (result.exitCode !== 0) {
+      if (!result.passed) {
         if (result.exitCode === 127) {
           throw new CommandError(
             `CRITICAL: gates/${taskId}-gate.sh not found`,
             1,
           );
         }
-        if (result.stdout) process.stdout.write(result.stdout);
-        if (result.stderr) process.stderr.write(result.stderr);
+        if (result.output) process.stderr.write(result.output);
         throw new CommandError(
           `Gate failed for ${taskId}. State unchanged.`,
           1,

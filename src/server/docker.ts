@@ -60,7 +60,7 @@ async function waitForDocker(
   return false;
 }
 
-export interface DockerStatus {
+interface DockerStatus {
   installed: boolean;
   running: boolean;
   startedByUs: boolean;
@@ -74,7 +74,7 @@ export interface DockerStatus {
  * 3. Attempt to start Docker Desktop (macOS) → wait up to 30s for daemon.
  * 4. If still not running → fail with actionable guidance.
  */
-export async function ensureDocker(): Promise<DockerStatus> {
+async function ensureDocker(): Promise<DockerStatus> {
   // Step 1: Is Docker installed?
   if (!isDockerInstalled()) {
     console.error("");

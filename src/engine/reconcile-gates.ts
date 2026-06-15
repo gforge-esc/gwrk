@@ -8,7 +8,7 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-export interface ReconcileResult {
+interface ReconcileResult {
   passed: number;
   failed: number;
   total: number;

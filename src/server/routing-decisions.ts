@@ -1,6 +1,6 @@
 import { getDb } from "../db/index.js";
 
-export interface RoutingDecisionRecord {
+interface RoutingDecisionRecord {
   runId: string;
   feature: string;
   phase: string;

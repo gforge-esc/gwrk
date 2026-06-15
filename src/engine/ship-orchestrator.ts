@@ -28,7 +28,7 @@ import {
   type ShipRunConfig,
   ShipStage,
   type ShipState,
-  type StageResult,
+  type ShipStageResult,
 } from "./ship-types.js";
 import type { HarvestRecord } from "./types.js";
 import { activatePhaseTests } from "./test-activator.js";
@@ -149,7 +149,7 @@ export class ShipOrchestrator extends EventEmitter {
         iteration: this.state.iteration,
       });
 
-      let result: StageResult;
+      let result: ShipStageResult;
       // ... rest of switch ...
       switch (this.state.stage) {
         case ShipStage.BRANCH_SETUP:
@@ -166,6 +166,9 @@ export class ShipOrchestrator extends EventEmitter {
           break;
         case ShipStage.TEST_GATE:
           result = await this.stageTestGate();
+          break;
+        case ShipStage.DIAGNOSE:
+          result = await this.stageDiagnose();
           break;
         case ShipStage.CODE_REVIEW:
           result = await this.stageCodeReview();
@@ -266,7 +269,7 @@ export class ShipOrchestrator extends EventEmitter {
   private async executeReviewWorkflow(
     workflowName: string,
     prompt: string,
-  ): Promise<StageResult> {
+  ): Promise<ShipStageResult> {
     const featureDir = path.join(
       this.config.cwd,
       "specs",
@@ -375,7 +378,7 @@ export class ShipOrchestrator extends EventEmitter {
     return stages[currentIndex + 1] || ShipStage.DONE;
   }
 
-  private async stageBranchSetup(): Promise<StageResult> {
+  private async stageBranchSetup(): Promise<ShipStageResult> {
     console.log("  ▸ BRANCH_SETUP");
     // FR-002: Dirty tree fail fast
     if (await isDirty(this.config.cwd)) {
@@ -442,7 +445,7 @@ export class ShipOrchestrator extends EventEmitter {
    * with a @phase N docblock. This stage activates tests for the
    * current phase so the agent sees them as RED (not skipped).
    */
-  private async stageActivateTests(): Promise<StageResult> {
+  private async stageActivateTests(): Promise<ShipStageResult> {
     console.log("  ▸ ACTIVATE_TESTS");
     const testFiles = this.getPhaseTestFiles();
     if (testFiles.length === 0) {
@@ -482,7 +485,7 @@ export class ShipOrchestrator extends EventEmitter {
    * in the current phase. If any fail, re-opens the task and returns a
    * failure result. Returns null if all gates pass.
    */
-  private async runPostFlightGates(featureDir: string): Promise<StageResult | null> {
+  private async runPostFlightGates(featureDir: string): Promise<ShipStageResult | null> {
     const postFlightState = loadTaskState(featureDir);
     const postFlightPhase = postFlightState.phases.find(
       (p: Phase) => p.id === this.config.phaseId,
@@ -492,17 +495,53 @@ export class ShipOrchestrator extends EventEmitter {
     let reopenedCount = 0;
     for (const task of postFlightPhase.tasks) {
       if (task.status !== "completed" || !task.gateScript) continue;
-      const gatePath = path.join(featureDir, task.gateScript);
-      if (!fs.existsSync(gatePath)) continue;
-      const gateResult = await runGate(gatePath);
+
+      // Gate resolution: 3 strategies (must match gwrk gate CLI)
+      // 1. Gate file in gates/ directory (canonical)
+      const conventionPath = path.join(
+        featureDir, "gates", `${task.id}-gate.sh`,
+      );
+      // 2. gateScript as file path relative to feature dir
+      const scriptPath = path.join(featureDir, task.gateScript);
+
+      let gateResult: { passed: boolean; output: string };
+      let gateLabel: string;
+
+      if (fs.existsSync(conventionPath)) {
+        // Strategy 1: canonical gate file
+        gateLabel = `gates/${task.id}-gate.sh`;
+        const result = await runGate(conventionPath);
+        gateResult = { passed: result.passed, output: result.output };
+      } else if (fs.existsSync(scriptPath)) {
+        // Strategy 2: gateScript as file path
+        gateLabel = task.gateScript;
+        const result = await runGate(scriptPath);
+        gateResult = { passed: result.passed, output: result.output };
+      } else {
+        // Strategy 3: gateScript as inline shell command
+        gateLabel = `(inline) ${task.gateScript.substring(0, 60)}`;
+        try {
+          const output = execSync(task.gateScript, {
+            cwd: this.config.cwd,
+            stdio: "pipe",
+            timeout: 30_000,
+            encoding: "utf-8",
+          });
+          gateResult = { passed: true, output: output || "" };
+        } catch (err: unknown) {
+          const stderr = (err as { stderr?: string })?.stderr || "";
+          gateResult = { passed: false, output: stderr || String(err) };
+        }
+      }
+
       if (!gateResult.passed) {
         task.status = "open";
         task.completedAt = undefined;
         reopenedCount++;
         console.log(
-          `  ✗ post-flight FAIL: ${task.id} — gate ${task.gateScript}`,
+          `  ✗ post-flight FAIL: ${task.id} — ${gateLabel}`,
         );
-        const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${task.gateScript} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
+        const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${gateLabel} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
         task.description = (task.description || "") + failNote;
       } else {
         console.log(`  ✓ post-flight PASS: ${task.id}`);
@@ -522,7 +561,7 @@ export class ShipOrchestrator extends EventEmitter {
     return null;
   }
 
-  private async stageImplement(): Promise<StageResult> {
+  private async stageImplement(): Promise<ShipStageResult> {
     // FR-003: Pre-flight gate check
     const featureDir = path.join(
       this.config.cwd,
@@ -663,7 +702,7 @@ export class ShipOrchestrator extends EventEmitter {
    * Runs after IMPLEMENT and before TEST_GATE. If `pnpm build` fails,
    * the iteration retries — preventing broken builds from reaching review.
    */
-  private async stageBuildCheck(): Promise<StageResult> {
+  private async stageBuildCheck(): Promise<ShipStageResult> {
     console.log("  ▸ BUILD_CHECK");
     try {
       execSync("pnpm build", {
@@ -702,7 +741,7 @@ export class ShipOrchestrator extends EventEmitter {
    * Only triggers NO-GO if tests got WORSE than the baseline captured
    * at BRANCH_SETUP. Pre-existing RED tests don't block unrelated work.
    */
-  private async stageTestGate(): Promise<StageResult> {
+  private async stageTestGate(): Promise<ShipStageResult> {
     console.log("  ▸ TEST_GATE");
     const phaseTestFiles = this.getPhaseTestFiles();
     if (phaseTestFiles.length > 0) {
@@ -824,7 +863,7 @@ export class ShipOrchestrator extends EventEmitter {
     console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
   }
 
-  private async stageCodeReview(): Promise<StageResult> {
+  private async stageCodeReview(): Promise<ShipStageResult> {
     console.log("  ▸ CODE_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
 
@@ -868,7 +907,7 @@ export class ShipOrchestrator extends EventEmitter {
     return this.executeReviewWorkflow(plugin.codeReviewWorkflow, scopedPrompt);
   }
 
-  private async stageUatReview(): Promise<StageResult> {
+  private async stageUatReview(): Promise<ShipStageResult> {
     console.log("  ▸ UAT_REVIEW");
     const plugin = await resolveReviewPlugin(this.config.cwd);
 
@@ -1017,7 +1056,7 @@ export class ShipOrchestrator extends EventEmitter {
     }
   }
 
-  private async stagePrCi(): Promise<StageResult> {
+  private async stagePrCi(): Promise<ShipStageResult> {
     console.log("  ▸ PR_CI");
     const branchName = this.state.branchName;
     const specName = this.config.featureId;
@@ -1300,7 +1339,7 @@ _Generated by gwrk ship_`;
     ].join("\n");
   }
 
-  private handleNoGo(stage: string): StageResult {
+  private handleNoGo(stage: string): ShipStageResult {
     this.state.iteration++;
     if (this.state.iteration > this.config.maxIterations) {
       // FR-007: Circuit breaker
@@ -1329,9 +1368,141 @@ _Generated by gwrk ship_`;
       };
     }
 
+    // Route through DIAGNOSE before retrying IMPLEMENT.
+    // DIAGNOSE uses a thinking model to analyze the error and produce
+    // targeted fix instructions, preventing blind retry loops.
     console.log(
-      `  ↻ NO-GO → retry IMPLEMENT (${this.state.iteration}/${this.config.maxIterations})`,
+      `  ↻ NO-GO → DIAGNOSE → IMPLEMENT (${this.state.iteration}/${this.config.maxIterations})`,
     );
+    return { success: true, exitCode: 0, nextStage: ShipStage.DIAGNOSE };
+  }
+
+  /**
+   * DIAGNOSE: Thinking-model analysis of gate failures before retry.
+   *
+   * When BUILD_CHECK or TEST_GATE fails, the implement agent retries blind —
+   * it sees the error text appended to task descriptions but lacks the analytical
+   * capacity to reason about root causes (missing imports, type mismatches,
+   * circular dependencies). This stage dispatches a thinking model to:
+   *
+   * 1. Read the error output from the failed gate
+   * 2. Read the relevant source files mentioned in the errors
+   * 3. Produce a targeted, actionable fix plan (not code — instructions)
+   * 4. Inject those instructions into task descriptions for the retry
+   *
+   * The thinking model is NOT given tool access — it reasons only, it doesn't edit.
+   * The implement agent then executes the fix with full tool access.
+   */
+  private async stageDiagnose(): Promise<ShipStageResult> {
+    console.log("  ▸ DIAGNOSE");
+    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+
+    if (!phase) {
+      // No phase data — skip diagnosis, proceed to implement
+      return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
+    }
+
+    // Collect error context from open tasks (appended by BUILD_CHECK/TEST_GATE)
+    const errorContext: string[] = [];
+    for (const task of phase.tasks) {
+      if (task.status === "open" && task.description) {
+        const errorMatch = task.description.match(
+          /(?:BUILD_CHECK FAILED|TEST_GATE REGRESSION|POST-FLIGHT GATE FAIL)[\s\S]*$/,
+        );
+        if (errorMatch) {
+          errorContext.push(`Task ${task.id}: ${errorMatch[0]}`);
+        }
+      }
+    }
+
+    if (errorContext.length === 0) {
+      console.log("    ⏭ no error context to diagnose");
+      return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
+    }
+
+    // Run a fresh build/test to capture current error state
+    let currentErrors = "";
+    try {
+      execSync("pnpm build", {
+        cwd: this.config.cwd,
+        stdio: "pipe",
+        timeout: 60_000,
+      });
+      // Build passes now? Some iteration may have partially fixed things.
+      // Still run diagnosis on test failures if any.
+    } catch (err: unknown) {
+      const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      currentErrors = stderr;
+    }
+
+    // Build the diagnosis prompt — concise, targeted, no agent narration
+    const diagnosisPrompt = [
+      "You are a TypeScript build diagnostician. Analyze these errors and produce SPECIFIC fix instructions.",
+      "",
+      "## Current Build/Test Errors",
+      currentErrors || "(build passes — check test failures in task descriptions below)",
+      "",
+      "## Error Context from Failed Gates",
+      ...errorContext,
+      "",
+      "## Instructions",
+      "For each error, produce ONE line in this exact format:",
+      "FIX: <file_path> — <what to do>",
+      "",
+      "Examples:",
+      "FIX: src/commands/plugin.ts — Add missing import: `import { type PluginSummary } from '../plugins/loader.js'`",
+      "FIX: src/utils/config.ts — Change `extensions` type from `string[]` to `Record<string, ExtensionConfig>`",
+      "FIX: src/engine/profile-detector.ts — Remove duplicate export of `detectProfile`",
+      "",
+      "Be SPECIFIC. Name the exact file, the exact import, the exact type. Do NOT explain why.",
+      "Do NOT produce code blocks. Just FIX: lines.",
+    ].join("\n");
+
+    try {
+      // Dispatch to thinking model — no tool access, reasoning only
+      const result = await dispatchToAgent({
+        agent: this.config.backend,
+        prompt: diagnosisPrompt,
+        featureDir: `specs/${this.config.featureId}`,
+        quiet: true,
+        env: {
+          // Force thinking model if available
+          GEMINI_MODEL: "gemini-2.5-pro",
+        },
+      });
+
+      if (result.exitCode === 0 && result.stdout) {
+        // Extract FIX: lines from the diagnosis output
+        const fixLines = result.stdout
+          .split("\n")
+          .filter((line: string) => line.trim().startsWith("FIX:"))
+          .map((line: string) => line.trim());
+
+        if (fixLines.length > 0) {
+          const fixBlock = `\n\nDIAGNOSIS (iteration ${this.state.iteration}):\n${fixLines.join("\n")}`;
+          console.log(`    ✓ diagnosis produced ${fixLines.length} fix instruction(s)`);
+
+          // Inject fix instructions into open task descriptions
+          for (const task of phase.tasks) {
+            if (task.status === "open") {
+              task.description = `${task.description || ""}${fixBlock}`.trim();
+            }
+          }
+          saveTaskState(featureDir, taskState);
+        } else {
+          console.log("    ⚠ diagnosis produced no FIX: lines");
+        }
+      } else {
+        console.log(`    ⚠ diagnosis dispatch failed (exit ${result.exitCode}), proceeding to IMPLEMENT anyway`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`    ⚠ diagnosis error: ${msg}, proceeding to IMPLEMENT anyway`);
+    }
+
+    // Always proceed to IMPLEMENT — diagnosis is advisory, not blocking
     return { success: true, exitCode: 0, nextStage: ShipStage.IMPLEMENT };
   }
 

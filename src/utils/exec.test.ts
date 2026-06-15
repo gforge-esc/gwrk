@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { execCommand, run, runGate } from "./exec";
+import { execCommand, run } from "./exec";
 
 describe("exec utilities", () => {
   describe("run", () => {
@@ -77,48 +75,4 @@ describe("exec utilities", () => {
     });
   });
 
-  describe("runGate", () => {
-    it("should return exitCode 127 for ENOENT when script is missing", () => {
-      const res = runGate("missing-gate-script.sh");
-      expect(res.exitCode).toBe(127);
-      expect(res.stderr).toContain("Gate script not found");
-      expect(res.stdout).toBe("");
-    });
-
-    it("should return success and stdout for a successful gate", () => {
-      const tempScript = path.join(process.cwd(), ".temp-gate-success.sh");
-      fs.writeFileSync(
-        tempScript,
-        "#!/usr/bin/env bash\necho 'Gate passed.'\nexit 0",
-      );
-      fs.chmodSync(tempScript, "755");
-
-      try {
-        const res = runGate(tempScript);
-        expect(res.exitCode).toBe(0);
-        expect(res.stdout.trim()).toBe("Gate passed.");
-        expect(res.stderr).toBe("");
-      } finally {
-        fs.unlinkSync(tempScript);
-      }
-    });
-
-    it("should return failure, stdout, and stderr for a failed gate", () => {
-      const tempScript = path.join(process.cwd(), ".temp-gate-fail.sh");
-      fs.writeFileSync(
-        tempScript,
-        "#!/usr/bin/env bash\necho 'Gate stdout'\necho 'Gate stderr' >&2\nexit 1",
-      );
-      fs.chmodSync(tempScript, "755");
-
-      try {
-        const res = runGate(tempScript);
-        expect(res.exitCode).toBe(1);
-        expect(res.stdout.trim()).toBe("Gate stdout");
-        expect(res.stderr.trim()).toBe("Gate stderr");
-      } finally {
-        fs.unlinkSync(tempScript);
-      }
-    });
-  });
 });

@@ -7,6 +7,7 @@ export enum ShipStage {
   IMPLEMENT = "IMPLEMENT",
   BUILD_CHECK = "BUILD_CHECK",
   TEST_GATE = "TEST_GATE",
+  DIAGNOSE = "DIAGNOSE",
   CODE_REVIEW = "CODE_REVIEW",
   UAT_REVIEW = "UAT_REVIEW",
   PR_CI = "PR_CI",
@@ -17,7 +18,7 @@ export enum ShipStage {
 /**
  * Iteration history entry for circuit breaker diagnostics (DM-001)
  */
-export interface IterationTimelineEntry {
+interface IterationTimelineEntry {
   iteration: number;
   stage: ShipStage;
   verdict: "GO" | "NO-GO";
@@ -27,7 +28,7 @@ export interface IterationTimelineEntry {
 /**
  * Structured failure context for rip-cord bail (FR-018, DM-001)
  */
-export interface FailureContext {
+interface FailureContext {
   openTasks: string[];
   lastVerdict?: string;
   iterationTimeline: IterationTimelineEntry[];
@@ -73,7 +74,7 @@ export interface ShipRunConfig {
 /**
  * Result of an individual stage execution
  */
-export type StageResult = {
+export type ShipStageResult = {
   success: boolean;
   exitCode: number;
   error?: string;

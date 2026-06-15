@@ -13,6 +13,12 @@ export interface ProjectProfile {
     buildSystem?: string;
   };
   layout?: string;
+  /** Toolchain signals (formatter, linter, test runner) */
+  toolchain?: {
+    primary?: "biome" | "eslint" | "ruff";
+    formatter?: "prettier" | "biome" | "black";
+    test?: "vitest" | "jest" | "pytest" | "cargo-test" | "go-test";
+  };
   /** True when gwrk is operating on its own codebase (self-development) */
   _isGwrk?: boolean;
 }

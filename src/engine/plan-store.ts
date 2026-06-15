@@ -4,7 +4,7 @@ import {
   type PlanEdgePayload,
   type PlanFeaturePayload,
   type PlanPhasePayload,
-  parsePlan,
+  parseBuildPlan,
 } from "../utils/parser-plan.js";
 import { scanReadiness } from "./readiness-scanner.js";
 
@@ -53,7 +53,7 @@ export class PlanStore {
    * Clear the plan and seed from a file.
    */
   seedFromFile(filePath: string): void {
-    const payload = parsePlan(filePath);
+    const payload = parseBuildPlan(filePath);
     this.seedPlan(payload.features, payload.phases, payload.edges);
   }
 

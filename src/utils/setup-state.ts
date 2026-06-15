@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
-export const SetupStateSchema = z.object({
+const SetupStateSchema = z.object({
   completedAt: z.string().optional(),
   steps: z.object({
     tcc: z.boolean().default(false),

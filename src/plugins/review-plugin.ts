@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { z } from "zod";
 import { loadConfig } from "../utils/config.js";
 import {
   type TaskState,
@@ -8,28 +7,14 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { PluginLoader } from "./loader.js";
-import type { ReviewManifest, WorkflowManifest } from "./manifest.js";
+import type { ReviewManifest, ReviewStep, WorkflowManifest } from "./manifest.js";
 import { WorkflowRuntime } from "./workflow-runtime.js";
-
-/**
- * ReviewStep schema defines a single atomic action within a review workflow.
- * Plugins can declare these as templates.
- */
-export const ReviewStepSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  description: z.string(),
-  required: z.boolean().optional(),
-  skip: z.boolean().optional(),
-});
-
-export type ReviewStep = z.infer<typeof ReviewStepSchema>;
 
 /**
  * ReviewPlugin interface (Layer 3 Extension)
  * Represents a set of review strategies (code, uat) for a project.
  */
-export interface ReviewPlugin {
+interface ReviewPlugin {
   name: string;
   version: string;
   description: string;
@@ -52,7 +37,7 @@ export interface ReviewPlugin {
 /**
  * ReviewDispatch is the result of a review execution.
  */
-export interface ReviewDispatch {
+interface ReviewDispatch {
   verdict: "GO" | "NO-GO";
   summary: string;
   reopenedTasks: string[];

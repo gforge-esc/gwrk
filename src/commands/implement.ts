@@ -3,7 +3,8 @@ import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
-import { run, runGate } from "../utils/exec.js";
+import { run } from "../utils/exec.js";
+import { runGate } from "../utils/gate-runner.js";
 import { banner, color, dryRun, fail, success } from "../utils/format.js";
 import {
   getCurrentCommit,
@@ -73,8 +74,8 @@ export const implementAction = async (
         const gatePath = path.join(specDir, "gates", `${task.id}-gate.sh`);
 
         if (fs.existsSync(gatePath)) {
-          const result = runGate(gatePath);
-          if (result.exitCode === 0) {
+          const result = await runGate(gatePath);
+          if (result.passed) {
             console.log(
               `${YELLOW}⚠${RESET} ${task.id} pre-flight PASS — gate already satisfied, skipping`,
             );
@@ -118,8 +119,8 @@ export const implementAction = async (
         // Verify the gate after agent execution
         if (fs.existsSync(gatePath)) {
           console.log(`\n${DIM}Verifying gate for ${task.id}...${RESET}`);
-          const postResult = runGate(gatePath);
-          if (postResult.exitCode === 0) {
+          const postResult = await runGate(gatePath);
+          if (postResult.passed) {
             console.log(
               `${GREEN}✓${RESET} ${task.id} gate passed. Marking completed.`,
             );
@@ -144,8 +145,7 @@ export const implementAction = async (
             console.log(
               `${YELLOW}⚠${RESET} ${task.id} gate failed after implementation.`,
             );
-            if (postResult.stdout) process.stdout.write(postResult.stdout);
-            if (postResult.stderr) process.stderr.write(postResult.stderr);
+            if (postResult.output) process.stderr.write(postResult.output);
             throw new Error(`Gate failed for ${task.id}`);
           }
         }
