@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
-const ExecutionManifestSchema = z.object({
+export const ExecutionManifestSchema = z.object({
   runId: z.string(),
   feature: z.string(),
   phase: z.string(),
