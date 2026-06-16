@@ -158,17 +158,17 @@ export async function harvestFeature(
     (r) =>
       r.phase_id === phaseId &&
       (r.pr_number === prNumber || !r.pr_number) &&
-      r.status !== "merged",
+      r.status !== "merged" && r.status !== "closed",
   );
 
 
   if (targetRun?.id) {
     finishRun(targetRun.id, {
-      status: "merged",
+      status: status,
       merge_commit_sha: mergeCommitSha,
       finished_at: mergedAt,
     });
-  } else {
+  } else if (status === "merged") {
     console.warn(
       `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}. Backfilling run record.`,
     );
@@ -188,10 +188,20 @@ export async function harvestFeature(
     } catch (dbErr) {
       console.warn(`Failed to backfill run record (non-fatal): ${dbErr}`);
     }
+  } else {
+    console.log(`No pending run found for closed PR ${prNumber}. Skipping backfill.`);
+  }
+
+  // If this PR was closed (not merged), we just wanted to clean up the run record and logs. 
+  // We do not finalize the phase, compute compression, or reconcile gates.
+  if (status === "closed") {
+    console.log(`PR ${prNumber} was closed. Run record updated. Skipping phase finalization.`);
+    return;
   }
 
   // 2.2 Phase Completion Check (FR-H09)
-  // If this phase has multiple runs (e.g. parallel dispatch), only proceed if ALL are merged.
+  // If this phase has multiple runs (e.g. parallel dispatch), the merged PR wins.
+  // We close any remaining pending runs so they don't block phase finalization forever.
   if (phaseId) {
     const pendingRuns = runs.filter(
       (r) =>
@@ -203,9 +213,16 @@ export async function harvestFeature(
 
     if (pendingRuns.length > 0) {
       console.log(
-        `Phase ${phaseId} has ${pendingRuns.length} pending runs, skipping phase finalization.`,
+        `Phase ${phaseId} has ${pendingRuns.length} other pending runs. Marking them as closed since phase was merged.`,
       );
-      return;
+      for (const r of pendingRuns) {
+        if (r.id === undefined) continue;
+        try {
+          finishRun(r.id, { status: "closed", finished_at: new Date().toISOString() });
+        } catch (e) {
+          console.warn(`Failed to close pending run ${r.id}: ${e}`);
+        }
+      }
     }
   }
 
@@ -291,7 +308,12 @@ export async function harvestFeature(
 
   // 5. Branch Cleanup (FR-H08)
   if (status === "merged" && record.headBranch) {
-    await cleanupBranch(record.headBranch, projectPath);
+    try {
+      await cleanupBranch(record.headBranch, projectPath);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`Failed to cleanup branch ${record.headBranch} (non-fatal): ${msg}`);
+    }
   }
 
   return report;

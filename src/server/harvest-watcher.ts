@@ -38,18 +38,18 @@ export class HarvestWatcher {
     try {
       const baseBranch = detectDefaultBranch(this.projectRoot, "develop");
 
-      // Execute GitHub CLI command to get merged PRs
+      // Execute GitHub CLI command to get merged and closed PRs
       const result = await execCommand("gh", [
         "pr",
         "list",
         "--state",
-        "merged",
+        "all",
         "--base",
         baseBranch,
         "--limit",
-        "20",
+        "40",
         "--json",
-        "number,headRefName,mergedAt,mergeCommit,url",
+        "number,headRefName,mergedAt,mergeCommit,url,state,closedAt",
       ], undefined, { cwd: this.projectRoot });
 
       if (result.exitCode !== 0) {
@@ -61,12 +61,16 @@ export class HarvestWatcher {
       const prs = JSON.parse(result.stdout) as Array<{
         number: number;
         headRefName: string;
-        mergedAt: string;
+        mergedAt: string | null;
+        closedAt: string | null;
+        state: string;
         mergeCommit: { oid: string } | null;
         url: string;
       }>;
 
       for (const pr of prs) {
+        if (pr.state === "OPEN") continue;
+
         // Target branch check: must be a feature branch or phase branch
         if (!pr.headRefName.startsWith("feat/") && !pr.headRefName.startsWith("phase/")) {
           continue;
@@ -94,8 +98,11 @@ export class HarvestWatcher {
         }
 
         const commitSha = pr.mergeCommit?.oid || "unknown";
+        const isMerged = pr.state === "MERGED";
+        const prStatus = isMerged ? "merged" : "closed";
+        const timestamp = isMerged ? (pr.mergedAt || new Date().toISOString()) : (pr.closedAt || new Date().toISOString());
 
-        console.log(`HarvestWatcher: Found merged PR #${pr.number} for ${featureId} (${phaseId || "all phases"}). Starting harvest...`);
+        console.log(`HarvestWatcher: Found ${prStatus} PR #${pr.number} for ${featureId} (${phaseId || "all phases"}). Starting harvest...`);
 
         const record: HarvestRecord = {
           featureId,
@@ -103,9 +110,9 @@ export class HarvestWatcher {
           prNumber: pr.number,
           prUrl: pr.url,
           mergeCommitSha: commitSha,
-          mergedAt: pr.mergedAt,
+          mergedAt: timestamp, // Using mergedAt to carry the terminal timestamp (either mergedAt or closedAt)
           mergedBy: "HarvestWatcher",
-          status: "merged",
+          status: prStatus,
           headBranch: headRef,
         };
 
