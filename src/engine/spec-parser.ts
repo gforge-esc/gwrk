@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import type { StoryEstimate } from "./types.js";
@@ -20,7 +24,8 @@ export function extractStories(featureDir: string): StoryEstimate[] {
 
   // Match headers: ### US-001 - Title text [optional tags]
   // Or without the dash: ### US-001 Title
-  const storyRegex = /^#{2,4}\s+(US-\d+[a-z]?)(?:\s+(?:-|—)\s+|\s+)(.*?)$/i;
+  // Or with colon: ### US-001: Title
+  const storyRegex = /^#{2,4}\s+(US-\d+[a-z]?)(?:[:\s]+(?:-|—)?[:\s]*|\s+)(.*?)$/i;
 
   // Extract tracking brackets like [5 SP, TS, PE] or (Priority: P0, 5 SP)
   const bracketsRegex = /[\[\(](.*?)[\]\)]$/;

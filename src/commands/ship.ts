@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -23,6 +27,7 @@ import {
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
+  isWorkingTreeClean,
 } from "../utils/git.js";
 import {
   assembleDigest,
@@ -332,11 +337,7 @@ async function shipPhase(
     try {
       const manifestDir = path.join(featureDir, ".gwrk", "runs");
       await run("git", ["add", manifestDir], { cwd });
-      const porcelain = execSync("git status --porcelain", {
-        cwd,
-        encoding: "utf-8",
-      }).trim();
-      if (porcelain) {
+      if (!isWorkingTreeClean(cwd)) {
         await run(
           "git",
           ["commit", "-m", `chore(${feature}): add execution manifest`],
@@ -474,8 +475,8 @@ Examples:
         // FR-022: Workstation setup pre-flight check
         const setupState = loadSetupState();
         if (!isSetupComplete(setupState)) {
-          blocked("Run gwrk setup first");
-          throw new CommandError("Run gwrk setup first", 1);
+          blocked("Run gwrk init first");
+          throw new CommandError("Run gwrk init first", 1);
         }
 
 

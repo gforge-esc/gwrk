@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /**
  * Define Loop Stage Definitions (FR-L25-004)
  */
@@ -6,6 +10,7 @@ export enum DefineStage {
   PLAN = "PLAN",
   DEFINE_TESTS = "DEFINE_TESTS",
   PLAN_TO_TASKS = "PLAN_TO_TASKS",
+  CHECKLIST = "CHECKLIST",
   ANALYZE = "ANALYZE",
   DONE = "DONE",
 }
@@ -21,6 +26,8 @@ export interface DefineState {
   runId: string;
   backend: string;
   refs?: string;
+  /** Carry forward the reconcile intent across crash recovery */
+  reconcile?: boolean;
 }
 
 /**
@@ -34,6 +41,8 @@ export interface DefineRunConfig {
   cwd: string;
   refs?: string;
   dryRun?: boolean;
+  /** If true, merge new plan with existing tasks, preserving completed status */
+  reconcile?: boolean;
 }
 
 /**

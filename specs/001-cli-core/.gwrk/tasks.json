@@ -1,114 +1,121 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-06-14T17:08:42.269Z",
+  "createdAt": "2026-06-16T20:54:36.364Z",
   "generatedFrom": {
     "plan": {
-      "hash": "3cb648a5964e09bbea1e6885f4045a3004b252a2f545b71b7ca9e3ed28b2d96e",
-      "modifiedAt": "2026-06-14T15:37:13.301Z"
+      "hash": "234856e3bd2782f01832d1c1f9357bb658d3b981b93cafbeb954798ec42a76ef",
+      "modifiedAt": "2026-06-16T19:43:19.536Z"
     }
   },
   "phases": [
     {
       "id": "phase-01",
-      "title": "Project Bootstrap & Config ✅",
+      "title": "Project Bootstrap & Config",
       "tasks": [
         {
           "id": "T001",
-          "title": "Project Bootstrap & Config ✅",
-          "description": "Complete phase 1: Project Bootstrap & Config ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 1: Project Bootstrap & Config ✅\"",
-          "sp": 2
+          "title": "Project Bootstrap & Config",
+          "description": "Complete phase 1: Project Bootstrap & Config",
+          "status": "completed",
+          "gateScript": "echo \"Phase 1: Project Bootstrap & Config\"",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-02",
-      "title": "SQLite Execution Ledger ✅",
+      "title": "SQLite Execution Ledger",
       "tasks": [
         {
           "id": "T002",
-          "title": "SQLite Execution Ledger ✅",
-          "description": "Complete phase 2: SQLite Execution Ledger ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 2: SQLite Execution Ledger ✅\"",
-          "sp": 2
+          "title": "SQLite Execution Ledger",
+          "description": "Complete phase 2: SQLite Execution Ledger",
+          "status": "completed",
+          "gateScript": "echo \"Phase 2: SQLite Execution Ledger\"",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-03",
-      "title": "Clarity Pillar — Define ✅",
+      "title": "Clarity Pillar — Define",
       "tasks": [
         {
           "id": "T003",
-          "title": "Clarity Pillar — Define ✅",
-          "description": "Complete phase 3: Clarity Pillar — Define ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 3: Clarity Pillar — Define ✅\"",
-          "sp": 2
+          "title": "Clarity Pillar — Define",
+          "description": "Complete phase 3: Clarity Pillar — Define",
+          "status": "completed",
+          "gateScript": "echo \"Phase 3: Clarity Pillar — Define\"",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-04",
-      "title": "Throughput Pillar — Ship ✅",
+      "title": "Throughput Pillar — Ship",
       "tasks": [
         {
           "id": "T004",
-          "title": "Throughput Pillar — Ship ✅",
-          "description": "Complete phase 4: Throughput Pillar — Ship ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 4: Throughput Pillar — Ship ✅\"",
-          "sp": 2
+          "title": "Throughput Pillar — Ship",
+          "description": "Complete phase 4: Throughput Pillar — Ship",
+          "status": "completed",
+          "gateScript": "echo \"Phase 4: Throughput Pillar — Ship\"",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-05",
-      "title": "Task Engine — State, Gates & History ✅",
+      "title": "Task Engine — State, Gates & History",
       "tasks": [
         {
           "id": "T005",
-          "title": "Task Engine — State, Gates & History ✅",
-          "description": "Complete phase 5: Task Engine — State, Gates & History ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 5: Task Engine — State, Gates & History ✅\"",
-          "sp": 2
+          "title": "Task Engine — State, Gates & History",
+          "description": "Complete phase 5: Task Engine — State, Gates & History",
+          "status": "completed",
+          "gateScript": "gates/T005-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:55:12.607Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-06",
-      "title": "Value Pillar — Measure ✅",
+      "title": "Value Pillar — Measure",
       "tasks": [
         {
           "id": "T006",
-          "title": "Value Pillar — Measure ✅",
-          "description": "Complete phase 6: Value Pillar — Measure ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 6: Value Pillar — Measure ✅\"",
-          "sp": 2
+          "title": "Value Pillar — Measure",
+          "description": "Complete phase 6: Value Pillar — Measure",
+          "status": "completed",
+          "gateScript": "gates/T006-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:56:38.642Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-07",
-      "title": "Init Hardening ✅",
+      "title": "Init Hardening",
       "tasks": [
         {
           "id": "T007",
-          "title": "Init Hardening ✅",
-          "description": "Complete phase 7: Init Hardening ✅",
-          "status": "open",
-          "gateScript": "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
-          "sp": 2
+          "title": "Init Hardening",
+          "description": "Complete phase 7: Init Hardening\n\nREVIEW FAIL (code): LINT — FR-001.\n  WHERE: src/commands/init.ts:30,37\n  EXPECTED: Specific types for options and config\n  ACTUAL: use of 'any'\n  FIX: Replace 'any' with proper types (e.g. from commander or custom interfaces)\n\nREVIEW FAIL (code): IMPLEMENTATION — FR-001.\n  WHERE: src/commands/init.ts:68\n  EXPECTED: Implementation of CLI detection, SQLite registration, Slack creation\n  ACTUAL: throw new Error(\"Not implemented: FR-001, FR-046\")\n  FIX: Implement the missing logic as per US-001 and Phase 7 criteria.\n\nREVIEW FAIL (code): GATE — FR-001.\n  WHERE: gates/T007-gate.sh\n  EXPECTED: Verification of gwrk init / new hardening\n  ACTUAL: Verification of src/utils/state.ts (Status Transition History)\n  FIX: Update gate script to verify init/new behavior.\n\nUAT RE-OPEN (2026-06-16):\n- gwrk init throws 'Not implemented: FR-001, FR-046'\n- gwrk new command is missing from the source tree\n- Task was marked completed prematurely.",
+          "status": "completed",
+          "gateScript": "gates/T007-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-06-16T21:13:03.800Z"
         }
       ],
       "sp_estimate": 2,
@@ -121,15 +128,16 @@
     },
     {
       "id": "phase-08",
-      "title": "E2E Surface Hardening ✅",
+      "title": "E2E Surface Hardening",
       "tasks": [
         {
           "id": "T008",
-          "title": "E2E Surface Hardening ✅",
-          "description": "Complete phase 8: E2E Surface Hardening ✅",
-          "status": "open",
-          "gateScript": "All dead files removed ✅",
-          "sp": 2
+          "title": "E2E Surface Hardening",
+          "description": "Complete phase 8: E2E Surface Hardening\n\nUAT RE-OPEN (2026-06-16):\n- 21 failed tests project-wide. Regressions in pulse, compression, and parser-plan.\n- src/utils/parser-plan.test.ts failure: parsePlan is not a function (renamed to parseBuildPlan?)\n- CLI Surface Pollution: gwrk --help shows unauthorized top-level commands (test, gate, plan, server, status, project, plugin).\n- CLI Surface Pollution: gwrk define --help shows unauthorized subcommands (tests, research, ontology).",
+          "status": "completed",
+          "gateScript": "gates/T008-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-06-16T21:18:58.237Z"
         }
       ],
       "sp_estimate": 2,
@@ -214,15 +222,16 @@
     },
     {
       "id": "phase-11",
-      "title": "CLI UX Polish ✅",
+      "title": "CLI UX Polish",
       "tasks": [
         {
           "id": "T014",
-          "title": "CLI UX Polish ✅",
-          "description": "Complete phase 11: CLI UX Polish ✅",
-          "status": "open",
+          "title": "CLI UX Polish",
+          "description": "Complete phase 11: CLI UX Polish",
+          "status": "completed",
           "gateScript": "`gwrk <any-command-with-args> --help` shows an `Examples:` section",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2,

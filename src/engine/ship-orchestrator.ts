@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -982,6 +990,9 @@ export class ShipOrchestrator extends EventEmitter {
         console.log(`      output: ${gateResult.output.slice(0, 500)}`);
         task.status = "open";
         task.completedAt = undefined;
+        // Inject gate output so DIAGNOSE can analyze the failure
+        const gateSnippet = gateResult.output.slice(0, 500);
+        task.description = `${task.description || ""}\n\nPOST-FLIGHT GATE FAIL (${task.id}, gate: ${task.gateScript}):\nexit: ${gateResult.exitCode}\n${gateSnippet}`.trim();
         failedCount++;
       }
     }

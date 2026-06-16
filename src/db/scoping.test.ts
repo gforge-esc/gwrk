@@ -1,6 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import Database from "better-sqlite3";
-import { insertFeature, getFeature, listFeatures, type PlanFeature } from "./plan.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  type PlanFeature,
+  getFeature,
+  insertFeature,
+  listFeatures,
+} from "./plan.js";
 
 describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
   let db: Database.Database;
@@ -25,7 +34,12 @@ describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
   });
 
   it("should scope feature insertion and retrieval by projectId", () => {
-    const f1: PlanFeature = { id: "F1", name: "Feat 1", status: "open", sp_total: 5 };
+    const f1: PlanFeature = {
+      id: "F1",
+      name: "Feat 1",
+      status: "open",
+      sp_total: 5,
+    };
     const p1 = "proj-1";
     const p2 = "proj-2";
 
@@ -45,8 +59,16 @@ describe("Database Scoping (US-030 / FR-037 / FR-038 / TR-036)", () => {
     const p1 = "proj-1";
     const p2 = "proj-2";
 
-    insertFeature({ id: "F1", name: "F1", status: "open", sp_total: 1 }, p1, db);
-    insertFeature({ id: "F2", name: "F2", status: "open", sp_total: 1 }, p2, db);
+    insertFeature(
+      { id: "F1", name: "F1", status: "open", sp_total: 1 },
+      p1,
+      db,
+    );
+    insertFeature(
+      { id: "F2", name: "F2", status: "open", sp_total: 1 },
+      p2,
+      db,
+    );
 
     const list1 = listFeatures(p1, db);
     expect(list1).toHaveLength(1);

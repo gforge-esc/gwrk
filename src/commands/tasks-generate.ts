@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
@@ -55,6 +59,7 @@ Examples:
     "--no-llm",
     "Skip LLM gate authoring (writes tasks.json only, no gates)",
   )
+  .option("--dry-run", "Print the command without executing")
   .action(
     async (
       featureArg: string,
@@ -64,6 +69,7 @@ Examples:
         reconcile?: boolean;
         llm?: boolean;
         phase?: string;
+        dryRun?: boolean;
       },
     ) => {
       await withSignal(`define tasks ${featureArg}`, async () => {
@@ -91,7 +97,7 @@ Examples:
             if (!fs.existsSync(srcDir)) return false;
             const allFiles = fs.readdirSync(srcDir);
             return allFiles.some(
-              (f) => f.endsWith(".test.ts") && !f.startsWith("cli.e2e"),
+              (f) => f.includes(feature) && f.endsWith(".test.ts") && !f.startsWith("cli.e2e"),
             );
           } catch {
             return false;
@@ -101,7 +107,7 @@ Examples:
           fs.existsSync(gapMatrixPath) ||
           fs.existsSync(runsManifestDir) ||
           hasTestFiles;
-        if (!testsRan) {
+        if (!testsRan && !opts.dryRun) {
           blocked(
             `RED tests must exist before generating tasks (ADR-005 §8.4).\n  Run: gwrk define tests ${feature}`,
           );
@@ -114,6 +120,7 @@ Examples:
         banner("define tasks", {
           Feature: feature,
           Phase: paddedPhase || "All",
+          "Dry Run": opts.dryRun ? "Yes" : "No",
         });
         const startTime = Date.now();
         const startedAt = new Date().toISOString();
@@ -127,94 +134,34 @@ Examples:
           agent_backend: backend,
           workflow: "plan-to-tasks",
         });
-try {
-  const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
 
-  const orchestrator = new DefineOrchestrator({
-    featureId: feature,
-    backend,
-    cwd: projectRoot,
-  }, {
-    stage: DefineStage.PLAN_TO_TASKS,
-    featureId: feature,
-    startedAt,
-    runId: `define-tasks-${feature}-${Date.now()}`,
-    backend,
-  });
-
-  const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
-
-  if (exitCode !== 0) {
-    throw new Error(`Workflow execution failed with exit code ${exitCode}`);
-  }
-
-  // ── Invalidate stale ship orchestrator state files ──
-  // When plan phases are amended/reconciled, old .state files may reference
-  // phase IDs that now have different content. Delete them so ship doesn't
-  // skip new work by resuming from a stale DONE state.
-  try {
-    const runsDir = path.join(projectRoot, ".runs");
-    if (fs.existsSync(runsDir)) {
-      const stateFiles = fs.readdirSync(runsDir)
-        .filter(f => f.startsWith(`${feature}_phase-`) && f.endsWith(".state"));
-      
-      const newState = loadTaskState(featureDir);
-      let cleaned = 0;
-      
-      for (const stateFile of stateFiles) {
-        const stateFilePath = path.join(runsDir, stateFile);
         try {
-          const savedState = JSON.parse(fs.readFileSync(stateFilePath, "utf-8"));
-          // If the saved state says DONE, check if the phase now has open tasks
-          if (savedState.stage === "DONE") {
-            const phaseId = savedState.phaseId;
-            const phaseData = newState.phases.find(p => p.id === phaseId);
-            if (phaseData && phaseData.tasks.some(t => t.status === "open")) {
-              fs.unlinkSync(stateFilePath);
-              cleaned++;
-            }
+          const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
+
+          const orchestrator = new DefineOrchestrator({
+            featureId: feature,
+            backend,
+            cwd: projectRoot,
+            reconcile: opts.reconcile,
+            dryRun: opts.dryRun,
+          }, {
+            stage: DefineStage.PLAN_TO_TASKS,
+            featureId: feature,
+            startedAt,
+            runId: `define-tasks-${feature}-${Date.now()}`,
+            backend,
+            reconcile: opts.reconcile,
+          });
+
+          const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
+
+          if (exitCode !== 0) {
+            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
           }
-        } catch {
-          // Corrupt state file — delete it
-          fs.unlinkSync(stateFilePath);
-          cleaned++;
-        }
-      }
-      
-      if (cleaned > 0) {
-        console.error(`  ✓ cleaned ${cleaned} stale ship state file(s)`);
-      }
-    }
-  } catch (cleanupErr) {
-    console.warn(`  ⚠ state cleanup failed (non-fatal): ${cleanupErr}`);
-  }
 
-  // ── Deterministic gate generation (Block 0C) ──
-  // After tasks.json is written by the agent, generate vitest gates
-  // deterministically. This replaces LLM gate authoring entirely.
-  try {
-    const state = loadTaskState(featureDir);
-    const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
-
-    let gateResult: { generated: number; skipped: number };
-    if (fs.existsSync(gapMatrixPath)) {
-      console.error("  ▸ generating vitest gates from gap-matrix.md");
-      gateResult = generateVitestGates(featureDir, gapMatrixPath, state.phases);
-    } else {
-      console.error("  ▸ generating vitest gates from filesystem convention");
-      gateResult = generateFilesystemGates(featureDir, state.phases);
-    }
-
-    // Regenerate the run-all-gates.sh runner
-    const gatesDir = path.join(featureDir, "gates");
-    if (fs.existsSync(gatesDir)) {
-      generateRunner(gatesDir);
-    }
-
-    console.error(`  ✓ gates: ${gateResult.generated} generated, ${gateResult.skipped} skipped`);
-  } catch (gateError) {
-    console.warn(`  ⚠ gate generation failed (non-fatal): ${gateError}`);
-  }
+          if (opts.dryRun) {
+            return;
+          }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: 0, duration_s: durationS });

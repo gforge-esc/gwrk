@@ -1,9 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
-import { AgentBackendConfigSchema } from "../server/agent-registry.js";
 import { DEFAULT_LOC_RATES } from "../engine/effort-defaults.js";
 import { resolveRoleMultipliers } from "../engine/roles.js";
+import { AgentBackendConfigSchema } from "../server/agent-registry.js";
 
 const AgentBackendSchema = z.string();
 export type AgentBackendId = string;

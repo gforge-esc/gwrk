@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getTestDb } from "./index.js";
@@ -76,12 +80,32 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
   });
 
   it("FR-001: should support recursive dependency traversal (CTE)", () => {
-    insertFeature({ id: "A", name: "A", status: "PLANNED", sp_total: 0 }, projectId, db);
-    insertFeature({ id: "B", name: "B", status: "PLANNED", sp_total: 0 }, projectId, db);
-    insertFeature({ id: "C", name: "C", status: "PLANNED", sp_total: 0 }, projectId, db);
+    insertFeature(
+      { id: "A", name: "A", status: "PLANNED", sp_total: 0 },
+      projectId,
+      db,
+    );
+    insertFeature(
+      { id: "B", name: "B", status: "PLANNED", sp_total: 0 },
+      projectId,
+      db,
+    );
+    insertFeature(
+      { id: "C", name: "C", status: "PLANNED", sp_total: 0 },
+      projectId,
+      db,
+    );
 
-    insertEdge({ from_id: "A", to_id: "B", edge_type: "DEPENDS_ON" }, projectId, db);
-    insertEdge({ from_id: "B", to_id: "C", edge_type: "DEPENDS_ON" }, projectId, db);
+    insertEdge(
+      { from_id: "A", to_id: "B", edge_type: "DEPENDS_ON" },
+      projectId,
+      db,
+    );
+    insertEdge(
+      { from_id: "B", to_id: "C", edge_type: "DEPENDS_ON" },
+      projectId,
+      db,
+    );
 
     const allDeps = getAllDependencies("C", projectId, db);
     expect(allDeps.map((d) => d.id)).toContain("A");

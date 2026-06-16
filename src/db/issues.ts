@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
@@ -48,7 +52,6 @@ export function saveIssue(
   return Number(result.lastInsertRowid);
 }
 
-
 /**
  * Update an existing issue by issue_number.
  */
@@ -89,4 +92,3 @@ export function listIssues(
     )
     .all(featureId, projectId) as IssueRecord[];
 }
-

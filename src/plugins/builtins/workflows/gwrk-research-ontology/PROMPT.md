@@ -5,7 +5,14 @@
 
 ## Purpose
 
-Construct a formal domain ontology for the target project. The ontology defines what concepts exist in the project's domain, how they relate, and what rules prevent invalid states. The output is a `.gwrk/ontology/domain.md` file that gwrk injects into all agent prompts as grounding context (ADR-009).
+Construct a formal domain ontology for the target project. The ontology defines what concepts exist in the project's domain, how they relate, and what rules prevent invalid states. 
+
+[type: gwrk-native]
+The output is a `.gwrk/ontology/domain.md` file that gwrk injects into all agent prompts as grounding context (ADR-009).
+[/type]
+[type: generic]
+The output is a domain ontology report that serves as grounding context for development agents and team alignment.
+[/type]
 
 ## Why This Matters
 
@@ -14,10 +21,16 @@ Without a domain ontology, agents produce **concept mush** — they use synonyms
 ## Scope Constraints
 
 - MUST focus on the project's domain language and conceptual structure.
+[type: gwrk-native]
 - MUST produce output that fits in `.gwrk/ontology/domain.md` (the ADR-009 injection point).
+[/type]
+[type: generic]
+- MUST produce a structured domain model in markdown format.
+[/type]
 - MUST align with existing project documentation, code, and specs.
 - MUST NOT speculate on implementation details or propose code changes.
 - MUST NOT produce a generic ontology — every class must serve this specific project.
+
 
 ## Algorithm: Five-Primitive Ontology Construction
 
@@ -144,6 +157,7 @@ Produce a single markdown file in the ADR-009 format:
 | [term] | [definition] | [disambiguation] |
 ```
 
+[type: gwrk-native]
 ## Intent Generation
 
 After constructing the ontology, generate `WRITE_FILE` intents to:
@@ -151,3 +165,13 @@ After constructing the ontology, generate `WRITE_FILE` intents to:
 2. Write `domain.md` to `.gwrk/ontology/domain.md`
 
 The file must be standalone — no external dependencies, no imports, no links to files that may not exist. It will be injected verbatim into agent prompts as `<domain_ontology>` context.
+[/type]
+
+[type: generic]
+## Intent Generation
+
+After constructing the ontology, generate `WRITE_FILE` intents to:
+1. Create a `docs/ontology/` or `.gwrk/ontology/` directory if it doesn't exist
+2. Write `domain.md` to the selected directory.
+[/type]
+

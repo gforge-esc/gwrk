@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -92,7 +96,12 @@ const STATUS_COERCION_MAP: Record<string, string> = {
   removed: "cancelled",
 };
 
-const VALID_STATUSES = new Set(["open", "in_progress", "completed", "cancelled"]);
+const VALID_STATUSES = new Set([
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
 
 /**
  * Sanitize task statuses in raw JSON before Zod validation.
@@ -116,7 +125,8 @@ function sanitizeTaskStatuses(raw: Record<string, unknown>): number {
       if (typeof status !== "string") continue;
 
       if (!VALID_STATUSES.has(status)) {
-        const coercedStatus = STATUS_COERCION_MAP[status.toLowerCase()] ?? "open";
+        const coercedStatus =
+          STATUS_COERCION_MAP[status.toLowerCase()] ?? "open";
         console.warn(
           `  ⚠ task ${t.id ?? "?"}: coerced invalid status "${status}" → "${coercedStatus}"`,
         );

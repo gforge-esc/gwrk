@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -36,7 +40,8 @@ Examples:
   .argument("<feature>", "The feature directory under specs/")
   .argument("[prompt]", "Amendment instructions (when plan.md already exists)")
   .option("--refs <path>", "Path to additional reference docs")
-  .action(async (featureArg, prompt: string | undefined, opts: { refs?: string }) => {
+  .option("--dry-run", "Print the command without executing")
+  .action(async (featureArg, prompt: string | undefined, opts: { refs?: string; dryRun?: boolean }) => {
     await withSignal("define plan", async () => {
       const projectRoot = process.cwd();
       const feature = resolveFeature(featureArg, projectRoot);
@@ -95,10 +100,19 @@ Examples:
       // Inject refs as reference material
       if (opts.refs) {
         const resolvedRefs = path.resolve(opts.refs);
-        if (fs.existsSync(resolvedRefs)) {
-          const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
-          effectivePrompt = `<reference_document source="${opts.refs}" authority="primary">\n${refsContent}\n</reference_document>\n\n${effectivePrompt}`;
+        if (!fs.existsSync(resolvedRefs)) {
+          throw new CommandError(`Reference file not found: ${opts.refs}`);
         }
+        const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
+        effectivePrompt = [
+          `<reference_document source="${opts.refs}" authority="primary">`,
+          refsContent,
+          `</reference_document>`,
+          ``,
+          effectivePrompt,
+          ``,
+          `CRITICAL REMINDER: Use the reference document above as the authoritative source of truth.`,
+        ].join("\n");
       }
 
       const runId = startRun({
@@ -126,6 +140,7 @@ Examples:
           model,
           cwd: projectRoot,
           refs: opts.refs,
+          dryRun: opts.dryRun,
         }, {
           stage: DefineStage.PLAN,
           featureId: feature,
@@ -138,6 +153,10 @@ Examples:
 
         if (exitCode !== 0) {
           throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+        }
+
+        if (opts.dryRun) {
+          return;
         }
 
         const durationS = Math.round((Date.now() - startTime) / 1000);

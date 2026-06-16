@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { Command } from "commander";
 import fs from "node:fs";
@@ -22,15 +26,19 @@ vi.mock("../utils/resolve-feature.js", () => ({
   resolveFeature: vi.fn().mockImplementation((f: string) => f),
 }));
 
-vi.mock("../utils/setup-state.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../utils/setup-state.js")>();
-  return {
-    ...actual,
-    loadSetupState: mockLoadSetupState,
-    isSetupComplete: mockIsSetupComplete,
-  };
-});
+vi.mock("../db/runs.js", () => ({
+  startRun: vi.fn().mockReturnValue(999),
+  finishRun: vi.fn(),
+  recordHistory: vi.fn(),
+}));
 
+vi.mock("../utils/setup-state.js", () => ({
+  loadSetupState: mockLoadSetupState,
+  isSetupComplete: mockIsSetupComplete,
+  saveSetupState: vi.fn(),
+}));
+
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { shipCommand } from "./ship.js";
 
 describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
@@ -41,9 +49,19 @@ describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ship-preflight-test-"));
 
     const featureDir = path.join(tempDir, "specs", "test-feature");
-    fs.mkdirSync(featureDir, { recursive: true });
+    const gwrkDir = path.join(featureDir, ".gwrk");
+    fs.mkdirSync(gwrkDir, { recursive: true });
     fs.writeFileSync(path.join(featureDir, "spec.md"), "# Spec");
-    fs.writeFileSync(path.join(featureDir, "tasks.json"), JSON.stringify({ phases: [] }));
+    fs.writeFileSync(path.join(gwrkDir, "tasks.json"), JSON.stringify({
+      featureId: "test-feature",
+      createdAt: new Date().toISOString(),
+      phases: [{
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [{ id: "T001", title: "Task 1", status: "open", description: "Desc", gateScript: "gates/T001-gate.sh" }],
+        sp_estimate: 0
+      }]
+    }));
 
     program = new Command();
     program.addCommand(shipCommand);
@@ -51,6 +69,7 @@ describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(resolveFeature).mockReturnValue("test-feature");
     mockLoadSetupState.mockReset();
     mockIsSetupComplete.mockReset();
   });

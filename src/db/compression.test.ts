@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CompressionReport } from "../engine/types.js";
@@ -47,7 +51,12 @@ describe("FR-H06: Compression recording", () => {
     expect(id).toBeDefined();
     expect(typeof id).toBe("number");
 
-    const record = getCompressionRecord("011-harvest", "phase-1", "test-project", db);
+    const record = getCompressionRecord(
+      "011-harvest",
+      "phase-1",
+      "test-project",
+      db,
+    );
     expect(record).toBeDefined();
     expect(record?.estimated_hours).toBe(100);
     expect(record?.actual_coding_hours).toBe(2); // 120 minutes / 60

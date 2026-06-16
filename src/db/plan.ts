@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
@@ -188,7 +192,6 @@ export function listPhases(
     .all(featureId, projectId) as PlanPhase[];
 }
 
-
 /**
  * Insert or replace an edge.
  */
@@ -261,7 +264,6 @@ export function getAllDependencies(
     )
     .all(id, projectId, projectId, projectId) as PlanFeature[];
 }
-
 
 /**
  * Insert or replace a proposal.

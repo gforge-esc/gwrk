@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -96,6 +100,7 @@ vi.mock("../utils/git.js", () => ({
   getCurrentCommit: vi.fn().mockReturnValue("mock-commit"),
   getCurrentBranch: vi.fn().mockReturnValue("mock-branch"),
   isDirty: vi.fn().mockResolvedValue(false),
+  isWorkingTreeClean: vi.fn().mockReturnValue(true),
   createBranch: vi.fn().mockResolvedValue(undefined),
   syncBranch: vi.fn().mockResolvedValue(undefined),
   getDiffStats: vi
@@ -335,7 +340,7 @@ describe("shipCommand", () => {
 
     expect(process.exitCode).toBe(1);
     expect(blockedSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Run gwrk setup first"),
+      expect.stringContaining("Run gwrk init first"),
     );
   });
 
@@ -659,8 +664,9 @@ describe("Push upstream tracking for new branches", () => {
   });
 
   it("post-manifest push should use 'git push -u origin <branch>' for upstream tracking", async () => {
-    const { getCurrentBranch } = await import("../utils/git.js");
+    const { getCurrentBranch, isWorkingTreeClean } = await import("../utils/git.js");
     vi.mocked(getCurrentBranch).mockReturnValue("feat/014-plugin-system");
+    vi.mocked(isWorkingTreeClean).mockReturnValue(false);
 
     vi.mocked(execModule.run).mockResolvedValue(undefined);
 

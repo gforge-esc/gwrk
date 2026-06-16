@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -22,6 +30,7 @@ interface ParsedPhase {
   files: { path: string; action: string; description: string }[];
   doneWhen: string[];
   testTargets: string[];
+  isCompleted: boolean;
 }
 
 function parsePlanMarkdown(planContent: string): ParsedPhase[] {
@@ -38,12 +47,16 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
     );
     if (phaseMatch) {
       if (currentPhase) phases.push(currentPhase);
+      const rawTitle = phaseMatch[2].trim();
+      const isCompleted = rawTitle.includes("✅") || rawTitle.includes("[x]");
+      const title = rawTitle.replace(/\s*✅/, "").replace(/\s*\[x\]/, "").trim();
       currentPhase = {
         number: Number.parseInt(phaseMatch[1], 10),
-        title: phaseMatch[2].trim(),
+        title,
         files: [],
         doneWhen: [],
         testTargets: [],
+        isCompleted,
       };
       section = "none";
       continue;
@@ -153,65 +166,118 @@ function generateTaskState(
   featureId: string,
   parsed: ParsedPhase[],
   planPath: string,
+  existingState?: TaskState,
 ): TaskState {
   let taskCounter = 1;
+  const existingTasks = existingState
+    ? existingState.phases.flatMap((p) => p.tasks)
+    : [];
+  const matchedExistingIds = new Set<string>();
 
   const phases: Phase[] = parsed.map((p) => {
     const phaseId = `phase-${String(p.number).padStart(2, "0")}`;
     const testFiles = p.files.filter((f) => f.path.endsWith(".test.ts"));
     const implFiles = p.files.filter((f) => !f.path.endsWith(".test.ts"));
 
-    const tasks: Task[] = implFiles.map((f) => {
-      const id = `T${String(taskCounter++).padStart(3, "0")}`;
+    let tasks: Task[] = implFiles.map((f) => {
+      const title = `${f.action === "NEW" ? "Create" : "Modify"} ${f.path.split("/").pop()}`;
       const relatedTest = testFiles.find((t) =>
-        t.path.includes(f.path.replace(/\.ts$/, ".test.ts").split("/").pop()!.replace(".test.ts", "")),
+        t.path.includes(
+          f.path
+            .replace(/\.ts$/, ".test.ts")
+            .split("/")
+            .pop()!
+            .replace(".test.ts", ""),
+        ),
       );
 
       const gateScript = relatedTest
         ? `pnpm vitest run ${relatedTest.path}`
         : `test -f ${f.path}`;
 
+      const existing = existingTasks.find(
+        (et) => et.title === title && !matchedExistingIds.has(et.id),
+      );
+      if (existing) matchedExistingIds.add(existing.id);
+
       return {
-        id,
-        title: `${f.action === "NEW" ? "Create" : "Modify"} ${f.path.split("/").pop()}`,
+        id: "", // Assigned later to ensure sequentiality
+        title,
         description: `${f.action} ${f.path}. ${f.description}${relatedTest ? `. Tests: ${relatedTest.path}` : ""}`,
-        status: "open" as const,
+        status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
         gateScript,
         sp: f.action === "NEW" ? 2 : 1,
+        completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
       };
     });
 
     // If no impl files were found, create tasks from the raw file list
     if (tasks.length === 0) {
       for (const f of p.files) {
-        const id = `T${String(taskCounter++).padStart(3, "0")}`;
+        const title = `${f.action === "NEW" ? "Create" : "Update"} ${f.path.split("/").pop()}`;
+        const existing = existingTasks.find(
+          (et) => et.title === title && !matchedExistingIds.has(et.id),
+        );
+        if (existing) matchedExistingIds.add(existing.id);
+
         tasks.push({
-          id,
-          title: `${f.action === "NEW" ? "Create" : "Update"} ${f.path.split("/").pop()}`,
+          id: "",
+          title,
           description: `${f.action} ${f.path}. ${f.description}`,
-          status: "open" as const,
+          status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
           gateScript: `test -f ${f.path}`,
           sp: 1,
+          completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
         });
       }
     }
 
-    // Last resort: if the phase still has 0 tasks (no files parsed at all),
-    // synthesize one from the phase title to satisfy the Zod min(1) constraint.
+    // Last resort: synthesize one from the phase title
     if (tasks.length === 0) {
-      const id = `T${String(taskCounter++).padStart(3, "0")}`;
-      const gate = p.doneWhen.length > 0
-        ? p.doneWhen[0]
-        : `echo "Phase ${p.number}: ${p.title}"`;
+      const title = p.title;
+      const existing = existingTasks.find(
+        (et) => et.title === title && !matchedExistingIds.has(et.id),
+      );
+      if (existing) matchedExistingIds.add(existing.id);
+
+      const gate =
+        p.doneWhen.length > 0
+          ? p.doneWhen[0]
+          : `echo "Phase ${p.number}: ${p.title}"`;
       tasks.push({
-        id,
-        title: p.title,
+        id: "",
+        title,
         description: `Complete phase ${p.number}: ${p.title}`,
-        status: "open" as const,
+        status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
         gateScript: gate,
         sp: 2,
+        completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
       });
     }
+
+    // Reconciliation: Find tasks that were in this phase in existingState but are now gone
+    if (existingState) {
+      const existingPhase = existingState.phases.find((ep) => ep.id === phaseId);
+      if (existingPhase) {
+        const removedTasks = existingPhase.tasks.filter(
+          (et) => !matchedExistingIds.has(et.id),
+        );
+        for (const rt of removedTasks) {
+          matchedExistingIds.add(rt.id);
+          tasks.push({
+            ...rt,
+            id: "", // Reassigned later
+            status: "cancelled",
+          });
+        }
+      }
+    }
+
+    // Assign sequential IDs
+    tasks = tasks.map((t) => ({
+      ...t,
+      id: `T${String(taskCounter++).padStart(3, "0")}`,
+    }));
 
     const spEstimate = tasks.reduce((sum, t) => sum + t.sp, 0);
 
@@ -223,6 +289,24 @@ function generateTaskState(
       doneWhen: p.doneWhen.length > 0 ? p.doneWhen : undefined,
     };
   });
+
+  // Reconciliation: Catch any remaining matchedExistingIds that weren't in any matched phase
+  // (e.g. if a phase was entirely removed)
+  if (existingState) {
+    const orphanTasks = existingTasks.filter(
+      (et) => !matchedExistingIds.has(et.id),
+    );
+    if (orphanTasks.length > 0 && phases.length > 0) {
+      const lastPhase = phases[phases.length - 1];
+      for (const ot of orphanTasks) {
+        lastPhase.tasks.push({
+          ...ot,
+          id: `T${String(taskCounter++).padStart(3, "0")}`,
+          status: "cancelled",
+        });
+      }
+    }
+  }
 
   // Provenance: hash of plan.md
   let generatedFrom: { plan: { hash: string; modifiedAt: string } } | undefined;
@@ -251,10 +335,27 @@ function generateTaskState(
 /**
  * Full pipeline: read plan.md, parse, generate tasks.json, write.
  */
-export function planToTasks(featureDir: string, featureId: string): TaskState {
+export function planToTasks(
+  featureDir: string,
+  featureId: string,
+  options: { reconcile?: boolean } = {},
+): TaskState {
   const planPath = path.join(featureDir, "plan.md");
   if (!fs.existsSync(planPath)) {
     throw new Error(`Plan not found at ${planPath}`);
+  }
+
+  let existingState: TaskState | undefined;
+  if (options.reconcile) {
+    const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
+    if (fs.existsSync(tasksPath)) {
+      try {
+        const content = fs.readFileSync(tasksPath, "utf-8");
+        existingState = JSON.parse(content) as TaskState;
+      } catch (err) {
+        console.warn(`Warning: Could not load existing tasks for reconciliation: ${err}`);
+      }
+    }
   }
 
   const planContent = fs.readFileSync(planPath, "utf-8");
@@ -266,7 +367,7 @@ export function planToTasks(featureDir: string, featureId: string): TaskState {
     );
   }
 
-  const state = generateTaskState(featureId, parsed, planPath);
+  const state = generateTaskState(featureId, parsed, planPath, existingState);
 
   // Write via saveTaskState for Zod validation
   const gwrkDir = path.join(featureDir, ".gwrk");

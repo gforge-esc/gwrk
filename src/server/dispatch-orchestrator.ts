@@ -1,3 +1,8 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { EventEmitter } from "node:events";
 import type { TaskResult } from "../utils/agent.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
 import type { InvocationStrategy } from "./backends/invocation-strategy.js";
@@ -48,7 +53,7 @@ class Semaphore {
   }
 }
 
-export class DispatchOrchestrator {
+export class DispatchOrchestrator extends EventEmitter {
   private queueTimeoutMs = 3600000; // 1 hour default
   private semaphores: Map<string, Semaphore> = new Map();
   private maxRetries = 3;
@@ -57,7 +62,9 @@ export class DispatchOrchestrator {
     private config: GwrkConfig,
     private sandboxManager: SandboxManager,
     private invocationStrategy: InvocationStrategy,
-  ) {}
+  ) {
+    super();
+  }
 
   private getSemaphore(backend: string): Semaphore {
     const key = backend === "codex-cloud" ? "cloud" : "local";
@@ -128,6 +135,7 @@ export class DispatchOrchestrator {
             attempts++;
             let sandboxDir = "";
             try {
+              this.emit("plan:sandbox:start", { taskId: taskRecord.id, backend: taskRecord.backend });
               sandboxDir = await this.sandboxManager.createSandbox({
                 featureId,
                 phaseId,
@@ -137,6 +145,7 @@ export class DispatchOrchestrator {
               });
               taskRecord.sandboxDir = sandboxDir;
 
+              this.emit("plan:task:start", { taskId: taskRecord.id, sandboxDir, backend: taskRecord.backend });
               const result = await this.invocationStrategy.invoke({
                 taskId: taskRecord.id,
                 featureId,
@@ -154,6 +163,7 @@ export class DispatchOrchestrator {
 
               if (success) {
                 taskRecord.status = "completed";
+                this.emit("plan:task:complete", { taskId: taskRecord.id, result });
                 await this.sandboxManager.destroySandbox(sandboxDir, featureId);
                 break;
               }
@@ -165,6 +175,7 @@ export class DispatchOrchestrator {
                   /rate limit|429|too many requests/i.test(result.stderr));
 
               if (isRateLimited && attempts < this.maxRetries) {
+                this.emit("plan:task:rate_limit", { taskId: taskRecord.id, attempts });
                 await this.sandboxManager.destroySandbox(sandboxDir, featureId);
                 await this.throttle(taskRecord.backend, attempts);
                 continue;
@@ -172,6 +183,7 @@ export class DispatchOrchestrator {
 
               // Non-retryable error or max retries reached
               taskRecord.status = "failed";
+              this.emit("plan:task:complete", { taskId: taskRecord.id, result });
               await this.sandboxManager.destroySandbox(sandboxDir, featureId);
               break;
             } catch (error: unknown) {
@@ -179,6 +191,7 @@ export class DispatchOrchestrator {
                 error instanceof Error ? error : new Error(String(error));
               taskRecord.status = "failed";
               taskRecord.error = err.message;
+              this.emit("plan:task:error", { taskId: taskRecord.id, error: err.message });
               if (sandboxDir) {
                 await this.sandboxManager.destroySandbox(sandboxDir, featureId);
               }

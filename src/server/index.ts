@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fastify from "fastify";
 import type { GwrkConfig } from "../utils/config.js";
 import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
