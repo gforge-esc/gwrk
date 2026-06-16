@@ -133,11 +133,11 @@
         {
           "id": "T008",
           "title": "E2E Surface Hardening",
-          "description": "Complete phase 8: E2E Surface Hardening",
+          "description": "Complete phase 8: E2E Surface Hardening\n\nUAT RE-OPEN (2026-06-16):\n- 21 failed tests project-wide. Regressions in pulse, compression, and parser-plan.\n- src/utils/parser-plan.test.ts failure: parsePlan is not a function (renamed to parseBuildPlan?)\n- CLI Surface Pollution: gwrk --help shows unauthorized top-level commands (test, gate, plan, server, status, project, plugin).\n- CLI Surface Pollution: gwrk define --help shows unauthorized subcommands (tests, research, ontology).",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "sp": 2,
-          "completedAt": "2026-06-16T20:56:59.395Z"
+          "completedAt": "2026-06-16T21:18:58.237Z"
         }
       ],
       "sp_estimate": 2,
