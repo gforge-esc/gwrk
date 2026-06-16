@@ -75,9 +75,7 @@ export function getGateResult(
     .prepare(
       "SELECT * FROM gate_results WHERE feature_id = ? AND phase_id = ? AND task_id = ? AND project_id = ?",
     )
-    .get(featureId, phaseId, taskId, projectId) as
-    | GateResultRecord
-    | undefined;
+    .get(featureId, phaseId, taskId, projectId) as GateResultRecord | undefined;
 }
 
 /**
@@ -95,4 +93,3 @@ export function getAllGateResults(
     )
     .all(featureId, projectId) as GateResultRecord[];
 }
-

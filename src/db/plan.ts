@@ -192,7 +192,6 @@ export function listPhases(
     .all(featureId, projectId) as PlanPhase[];
 }
 
-
 /**
  * Insert or replace an edge.
  */
@@ -265,7 +264,6 @@ export function getAllDependencies(
     )
     .all(id, projectId, projectId, projectId) as PlanFeature[];
 }
-
 
 /**
  * Insert or replace a proposal.

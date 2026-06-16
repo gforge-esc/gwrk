@@ -51,7 +51,12 @@ describe("FR-H06: Compression recording", () => {
     expect(id).toBeDefined();
     expect(typeof id).toBe("number");
 
-    const record = getCompressionRecord("011-harvest", "phase-1", "test-project", db);
+    const record = getCompressionRecord(
+      "011-harvest",
+      "phase-1",
+      "test-project",
+      db,
+    );
     expect(record).toBeDefined();
     expect(record?.estimated_hours).toBe(100);
     expect(record?.actual_coding_hours).toBe(2); // 120 minutes / 60

@@ -127,4 +127,3 @@ export function listCompressionRecords(
     )
     .all(featureId, projectId) as CompressionRecord[];
 }
-

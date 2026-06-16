@@ -40,25 +40,32 @@ export interface RunRecord {
 export function startRun(
   run: Pick<
     RunRecord,
-    "feature_id" | "phase_id" | "command" | "agent_backend" | "workflow" | "project_id"
+    | "feature_id"
+    | "phase_id"
+    | "command"
+    | "agent_backend"
+    | "workflow"
+    | "project_id"
   >,
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
   // Auto-resolve project_id from cwd if not provided
-  const projectId = run.project_id ?? (() => {
-    try {
-      return crypto.createHash("md5").update(process.cwd()).digest("hex");
-    } catch {
-      return null;
-    }
-  })();
+  const projectId =
+    run.project_id ??
+    (() => {
+      try {
+        return crypto.createHash("md5").update(process.cwd()).digest("hex");
+      } catch {
+        return null;
+      }
+    })();
 
   // Ensure project exists in projects table to satisfy FK constraint
   if (projectId) {
     conn
       .prepare(
-        `INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)`,
+        "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
       )
       .run({
         id: projectId,
@@ -231,7 +238,7 @@ export function findOpenPr(
 ): { pr_number: number; pr_url: string | null } | null {
   const conn = db ?? getDb();
   let query = "SELECT pr_number, pr_url FROM runs WHERE feature_id = ?";
-  const args: any[] = [featureId];
+  const args: (string | number)[] = [featureId];
 
   if (phaseId) {
     query += " AND phase_id = ?";
@@ -249,7 +256,6 @@ export function findOpenPr(
     | undefined;
   return row ?? null;
 }
-
 
 export interface ProjectRecord {
   id: string;
@@ -326,7 +332,6 @@ export function getStats(
   const args = projectId ? [projectId] : [];
   return conn.prepare(query).all(...args) as RunStats[];
 }
-
 
 /**
  * List all projects.

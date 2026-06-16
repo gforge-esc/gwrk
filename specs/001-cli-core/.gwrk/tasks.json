@@ -16,9 +16,10 @@
           "id": "T001",
           "title": "Project Bootstrap & Config ✅",
           "description": "Complete phase 1: Project Bootstrap & Config ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 1: Project Bootstrap & Config ✅\"",
-          "sp": 2
+          "status": "completed",
+          "gateScript": "gates/T001-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-06-16T19:06:50.209Z"
         }
       ],
       "sp_estimate": 2
@@ -31,9 +32,10 @@
           "id": "T002",
           "title": "SQLite Execution Ledger ✅",
           "description": "Complete phase 2: SQLite Execution Ledger ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 2: SQLite Execution Ledger ✅\"",
-          "sp": 2
+          "status": "completed",
+          "gateScript": "gates/T002-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-06-16T19:06:28.778Z"
         }
       ],
       "sp_estimate": 2

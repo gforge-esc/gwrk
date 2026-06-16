@@ -80,12 +80,32 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
   });
 
   it("FR-001: should support recursive dependency traversal (CTE)", () => {
-    insertFeature({ id: "A", name: "A", status: "PLANNED", sp_total: 0 }, projectId, db);
-    insertFeature({ id: "B", name: "B", status: "PLANNED", sp_total: 0 }, projectId, db);
-    insertFeature({ id: "C", name: "C", status: "PLANNED", sp_total: 0 }, projectId, db);
+    insertFeature(
+      { id: "A", name: "A", status: "PLANNED", sp_total: 0 },
+      projectId,
+      db,
+    );
+    insertFeature(
+      { id: "B", name: "B", status: "PLANNED", sp_total: 0 },
+      projectId,
+      db,
+    );
+    insertFeature(
+      { id: "C", name: "C", status: "PLANNED", sp_total: 0 },
+      projectId,
+      db,
+    );
 
-    insertEdge({ from_id: "A", to_id: "B", edge_type: "DEPENDS_ON" }, projectId, db);
-    insertEdge({ from_id: "B", to_id: "C", edge_type: "DEPENDS_ON" }, projectId, db);
+    insertEdge(
+      { from_id: "A", to_id: "B", edge_type: "DEPENDS_ON" },
+      projectId,
+      db,
+    );
+    insertEdge(
+      { from_id: "B", to_id: "C", edge_type: "DEPENDS_ON" },
+      projectId,
+      db,
+    );
 
     const allDeps = getAllDependencies("C", projectId, db);
     expect(allDeps.map((d) => d.id)).toContain("A");

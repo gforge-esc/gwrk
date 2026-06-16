@@ -95,4 +95,3 @@ export function getRoutingHistory(
     )
     .all(taskType, projectId, limit) as RoutingDecision[];
 }
-

@@ -52,7 +52,6 @@ export function saveIssue(
   return Number(result.lastInsertRowid);
 }
 
-
 /**
  * Update an existing issue by issue_number.
  */
@@ -93,4 +92,3 @@ export function listIssues(
     )
     .all(featureId, projectId) as IssueRecord[];
 }
-

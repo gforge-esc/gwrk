@@ -4,8 +4,8 @@
 
 import { Command } from "commander";
 import { listRuns } from "../db/runs.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { withSignal } from "../utils/signal.js";
 
 /**
