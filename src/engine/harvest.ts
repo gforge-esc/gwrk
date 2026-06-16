@@ -137,9 +137,17 @@ export async function harvestFeature(
   if (phaseId) {
     const existing = getCompressionRecord(featureId, phaseId, projectId);
     if (existing) {
-      console.log(
-        `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
-      );
+      console.log(`Harvest already completed for ${featureId} ${phaseId}, skipping.`);
+      return;
+    }
+
+    // Fallback: Use the run record itself as an idempotency token if compression is disabled/unimplemented
+    const runs = listRuns(featureId, projectId);
+    const alreadyProcessedRun = runs.find(
+      (r) => r.phase_id === phaseId && r.pr_number === prNumber && r.status === status
+    );
+    if (alreadyProcessedRun) {
+      console.log(`Run for PR ${prNumber} already marked as ${status}. Skipping harvest idempotently.`);
       return;
     }
   }
@@ -154,6 +162,11 @@ export async function harvestFeature(
 
   // 2. Finalize DB Run Records (FR-H03)
   const runs = listRuns(featureId, projectId);
+  
+  const alreadyProcessedRun = runs.find(
+    (r) => r.phase_id === phaseId && r.pr_number === prNumber && r.status === status
+  );
+
   const targetRun = runs.find(
     (r) =>
       r.phase_id === phaseId &&
@@ -161,8 +174,9 @@ export async function harvestFeature(
       r.status !== "merged" && r.status !== "closed",
   );
 
-
-  if (targetRun?.id) {
+  if (alreadyProcessedRun) {
+    console.log(`Run record for PR ${prNumber} is already ${status}. Skipping DB update.`);
+  } else if (targetRun?.id) {
     finishRun(targetRun.id, {
       status: status,
       merge_commit_sha: mergeCommitSha,
@@ -251,22 +265,21 @@ export async function harvestFeature(
         const parsedPlan = parsePlan(planPath);
         const targetPhase = parsedPlan.phases.find((p) => p.id === phaseId);
 
-        if (targetPhase && targetPhase.sp !== undefined) {
+        if (targetPhase) {
+          const sp = targetPhase.sp ?? 0;
           const config = loadConfig(projectPath);
           const roleMultipliers = resolveRoleMultipliers(config);
 
           // Use PE as default role if not specified, or TS
-          const peRole =
-            roleMultipliers.find((r) => r.role === "PE") || roleMultipliers[0];
+          const peRole = roleMultipliers.find((r) => r.role === "PE") || roleMultipliers[0];
           const hoursPerSP = peRole?.hoursPerSP || 1.5;
           const overheadFactor = 1.25;
-
-          const estimatedHours = targetPhase.sp * hoursPerSP * overheadFactor;
+          const estimatedHours = sp * hoursPerSP * overheadFactor;
           const estimatedDays = estimatedHours / 8;
 
           const forecast: EffortForecast = {
-            totalSP: targetPhase.sp,
-            roles: [{ role: peRole?.role || "PE", sp: targetPhase.sp }],
+            totalSP: sp,
+            roles: [{ role: peRole?.role || "PE", sp }],
             estimatedHours,
             estimatedDays,
           };

@@ -68,7 +68,7 @@ export function recordCompression(
 
   const result = conn
     .prepare(
-      `INSERT INTO compression (
+      `INSERT OR REPLACE INTO compression (
          feature_id, phase_id, estimated_hours, actual_coding_hours,
          estimated_days, actual_delivery_days, point_compression,
          total_compression, dormancy_days, first_impl_commit,
