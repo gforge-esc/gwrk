@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-16T19:01:05.608Z_define_all",
+  "feature": "001-cli-core",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-16T19:01:05.608Z",
+  "finishedAt": "2026-06-16T19:01:05.798Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "4b9cb8a1754106e7a406469cc439d93663debbf8",
+  "gitBranch": "feat/001-cli-core",
+  "digest": []
+}
