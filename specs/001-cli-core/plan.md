@@ -1,8 +1,8 @@
 ---
 type: implementation_plan
 feature: 001-cli-core
-last_modified: "2026-06-14T11:00:00Z"
-revision: 4
+last_modified: "2026-06-14T12:00:00Z"
+revision: 5
 ---
 
 # Implementation Plan: 001 CLI Core
@@ -13,7 +13,7 @@ revision: 4
 
 The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), comprehensive interactive onboarding (`init`), project-aware prompt conditioning, agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
 
-> **Status**: Phases 1–8, 11 are **implemented and tested**. Phase 9 (state contracts), Phase 10 (unified init — R3 rewrite), Phase 12 (define output parity), Phase 13 (project awareness — R3 new), Phase 14 (scoped DB), and Phase 15 (plugins) are open.
+> **Status**: Phases 1–8, 11 are **implemented and tested**. Phase 9 (state contracts), Phase 10 (interactive init), Phase 12 (define output parity), Phase 13 (project awareness), Phase 14 (scoped DB), Phase 15 (plugins), and Phase 16 (ecosystem discovery & agent provisioning) are open.
 
 ---
 
@@ -37,6 +37,7 @@ The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot
 - Phase 13 added: prompt conditioning, PROMPT.md refactoring, `gwrk project info`
 - Phase Execution Order table added with specific `gwrk ship` commands
 - Coverage matrix updated with R3 items
+- Phase 16 added: ecosystem discovery and agent-optimized init (FR-044, FR-045, FR-046)
 
 **Reference**: [prompt-contamination-audit.md](./refs/prompt-contamination-audit.md)
 
@@ -264,20 +265,19 @@ Implement the two-tier state architecture ([ADR-003](docs/decisions/ADR-003-stat
 
 ---
 
-### Phase 10: Unified Init — Project Onboarding ⭐ **REWRITE (R3)**
+### Phase 10: Interactive Onboarding & Profile Auto-Detection ⭐ **REWRITE (R3)**
 
-Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, extension discovery, registry cloning, and directory scaffolding.
+Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, and directory scaffolding.
 
-**Files (4):**
-- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery)
+**Files (3):**
+- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag)
 - `src/commands/setup.ts` (DELETE: Absorbed into init)
 - `src/commands/setup-slack.ts` (MODIFY: Refactor to be callable from init flow, not standalone)
-- `src/engine/extension-detector.ts` (NEW: Detect installed CLIs like obsidian-cli)
 
-**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, FR-044, FR-045, FR-046, US-001 (R3), US-021 (absorbed), US-031 (init part), US-032
+**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, US-001 (R3), US-021 (absorbed), US-027
 
 **Tests:**
-- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, `--agent`, profile auto-detection, registry cloning, extension discovery) — TR-001, TR-021, TR-036, TR-037, TR-046
+- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, profile auto-detection) — TR-001, TR-021, TR-027, TR-028, TR-029, TR-030
 
 **gwrk command to implement:**
 ```
@@ -289,10 +289,7 @@ gwrk ship 001 10
 - `gwrk init` runs workstation provisioning (TCC, SSH, gh) — former `gwrk setup` behavior
 - `gwrk init` detects agent CLIs and configures agents block
 - `gwrk init` provisions Slack channel if tokens available
-- `gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`
-- `gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`
 - `gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently
-- `gwrk init --agent` outputs structured JSON, skips human-dependent steps (TCC, SSH, Slack), relaxes pre-requisites — designed for agent-driven bootstrapping of new repos
 - `gwrk setup` is removed from CLI surface
 - `pnpm build` compiles clean, `pnpm test` all passing
 - Schema backward compat: existing `.gwrkrc.json` files parse without error
@@ -483,6 +480,34 @@ gwrk ship 001 15
 
 ---
 
+### Phase 16: Ecosystem Discovery & Agent Provisioning ⭐ **NEW (2026-06-14)**
+
+Extend `gwrk init` to support headless agent bootstrapping, local extension discovery, and automatic plugin registry cloning.
+
+**Files (2):**
+- `src/commands/init.ts` (MODIFY: Add registry cloning, extension detection, and `--agent` flag)
+- `src/engine/extension-detector.ts` (NEW: Detect installed CLIs like obsidian-cli)
+
+**Requirements Addressed:** FR-044, FR-045, FR-046, US-032
+
+**Tests:**
+- `src/commands/init.test.ts` (MODIFY: Add `--agent` mode tests)
+- `src/engine/extension-detector.test.ts` (NEW) — TR-037
+- `src/engine/registry.test.ts` (MODIFY: Verify init cloning integration) — TR-036
+
+**gwrk command to implement:**
+```
+gwrk ship 001 16
+```
+
+#### Done When
+- `gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`
+- `gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`
+- `gwrk init --agent` outputs structured JSON, skips human-dependent steps (TCC, SSH, Slack), relaxes pre-requisites — designed for agent-driven bootstrapping of new repos
+- `pnpm build` compiles clean, `pnpm test` all passing
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -517,8 +542,8 @@ gwrk ship 001 15
 | US-028 | 13 | ☐ Open (R3) |
 | US-029 | 13 | ☐ Open (R3) |
 | US-030 | 14 | ☐ Open |
-| US-031 | 10, 15 | ☐ Open |
-| US-032 | 10 | ☐ Open |
+| US-031 | 15 | ☐ Open |
+| US-032 | 16 | ☐ Open |
 | FR-001 | 1, 7, 10 | ⭐ R3 rewrite in Phase 10 |
 | FR-002 | 3 | ✅ Done |
 | FR-003 | 3 | ✅ Done |
@@ -561,8 +586,9 @@ gwrk ship 001 15
 | FR-041 | 15 | ☐ Open |
 | FR-042 | 15 | ☐ Open |
 | FR-043 | 15 | ☐ Open |
-| FR-044 | 10 | ☐ Open |
-| FR-045 | 10 | ☐ Open |
+| FR-044 | 16 | ☐ Open |
+| FR-045 | 16 | ☐ Open |
+| FR-046 | 16 | ☐ Open |
 
 ## Phase Execution Order
 
@@ -578,6 +604,7 @@ gwrk ship 001 15
 | **6** | **007-P3** | CLI commands + integration | `gwrk ship 007 3` | `gwrk measure compression` end-to-end. |
 | 7 | Phase 10 | Unified init wizard + setup absorption | `gwrk ship 001 10` | Polish — functional without it. |
 | 8 | Phase 15 | Plugin management suite | `gwrk ship 001 15` | **NEW (2026-06-14)** |
+| 8.5 | Phase 16 | Ecosystem discovery & agent init | `gwrk ship 001 16` | **NEW (2026-06-14)** |
 | 9 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` | Polish — quiet output. |
 | 10 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` | Partially shipped. |
 | 11 | Phase 9 | State contracts + execution manifests | `gwrk ship 001 9` | Deferred. |
