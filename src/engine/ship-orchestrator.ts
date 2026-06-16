@@ -135,7 +135,11 @@ export class ShipOrchestrator extends EventEmitter {
     });
 
     // Pre-flight branch verification for state resumptions
-    if (this.state.stage !== ShipStage.BRANCH_SETUP) {
+    if (
+      this.state.stage !== ShipStage.BRANCH_SETUP &&
+      this.state.stage !== ShipStage.DONE &&
+      this.state.stage !== ShipStage.CIRCUIT_BREAK
+    ) {
       const branchName = `feat/${this.config.featureId}`;
       const currentBranch = getCurrentBranch(this.config.cwd);
       if (currentBranch !== branchName) {
