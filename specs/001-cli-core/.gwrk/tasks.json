@@ -48,9 +48,10 @@
           "id": "T003",
           "title": "Clarity Pillar — Define ✅",
           "description": "Complete phase 3: Clarity Pillar — Define ✅",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T19:58:35.878Z"
         }
       ],
       "sp_estimate": 2

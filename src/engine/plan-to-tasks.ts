@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -26,6 +30,7 @@ interface ParsedPhase {
   files: { path: string; action: string; description: string }[];
   doneWhen: string[];
   testTargets: string[];
+  isCompleted: boolean;
 }
 
 function parsePlanMarkdown(planContent: string): ParsedPhase[] {
@@ -42,12 +47,16 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
     );
     if (phaseMatch) {
       if (currentPhase) phases.push(currentPhase);
+      const rawTitle = phaseMatch[2].trim();
+      const isCompleted = rawTitle.includes("✅") || rawTitle.includes("[x]");
+      const title = rawTitle.replace(/\s*✅/, "").replace(/\s*\[x\]/, "").trim();
       currentPhase = {
         number: Number.parseInt(phaseMatch[1], 10),
-        title: phaseMatch[2].trim(),
+        title,
         files: [],
         doneWhen: [],
         testTargets: [],
+        isCompleted,
       };
       section = "none";
       continue;
@@ -195,10 +204,10 @@ function generateTaskState(
         id: "", // Assigned later to ensure sequentiality
         title,
         description: `${f.action} ${f.path}. ${f.description}${relatedTest ? `. Tests: ${relatedTest.path}` : ""}`,
-        status: (existing?.status || "open") as Task["status"],
+        status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
         gateScript,
         sp: f.action === "NEW" ? 2 : 1,
-        completedAt: existing?.completedAt,
+        completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
       };
     });
 
@@ -215,10 +224,10 @@ function generateTaskState(
           id: "",
           title,
           description: `${f.action} ${f.path}. ${f.description}`,
-          status: (existing?.status || "open") as Task["status"],
+          status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
           gateScript: `test -f ${f.path}`,
           sp: 1,
-          completedAt: existing?.completedAt,
+          completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
         });
       }
     }
@@ -239,10 +248,10 @@ function generateTaskState(
         id: "",
         title,
         description: `Complete phase ${p.number}: ${p.title}`,
-        status: (existing?.status || "open") as Task["status"],
+        status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
         gateScript: gate,
         sp: 2,
-        completedAt: existing?.completedAt,
+        completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
       });
     }
 
