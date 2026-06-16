@@ -64,9 +64,10 @@
           "id": "T004",
           "title": "Throughput Pillar — Ship ✅",
           "description": "Complete phase 4: Throughput Pillar — Ship ✅",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 4: Throughput Pillar — Ship ✅\"",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T14:52:00.000Z"
         }
       ],
       "sp_estimate": 2
