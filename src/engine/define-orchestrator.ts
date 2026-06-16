@@ -60,7 +60,7 @@ export class DefineOrchestrator extends EventEmitter {
 
     let initialStage = DefineStage.SPECIFY;
 
-    // Progression: Spec -> Plan -> Tasks -> Analyze -> Tests -> Done
+    // Progression: Spec -> Plan -> DefineTests -> Tasks -> Checklist -> Analyze -> Done
     if (fs.existsSync(specPath)) {
       initialStage = DefineStage.PLAN;
       // Check if spec has content (not just a stub)
@@ -68,9 +68,14 @@ export class DefineOrchestrator extends EventEmitter {
       if (specContent.includes("{{FEATURE_NUMBER}}") || specContent.length < 100) {
         initialStage = DefineStage.SPECIFY;
       } else if (fs.existsSync(planPath)) {
-        initialStage = DefineStage.PLAN_TO_TASKS;
-        if (fs.existsSync(tasksPath)) {
-          initialStage = DefineStage.ANALYZE;
+        initialStage = DefineStage.DEFINE_TESTS;
+        // ADR-005 §8.4: Define tests must run before tasks
+        const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+        if (fs.existsSync(gapMatrixPath)) {
+          initialStage = DefineStage.PLAN_TO_TASKS;
+          if (fs.existsSync(tasksPath)) {
+            initialStage = DefineStage.CHECKLIST;
+          }
         }
       }
     }
@@ -82,6 +87,7 @@ export class DefineOrchestrator extends EventEmitter {
       runId: `define-${this.config.featureId}-${Date.now()}`,
       backend: this.config.backend,
       refs: this.config.refs,
+      reconcile: this.config.reconcile,
     };
   }
 
@@ -108,6 +114,7 @@ export class DefineOrchestrator extends EventEmitter {
       DefineStage.PLAN,
       DefineStage.DEFINE_TESTS,
       DefineStage.PLAN_TO_TASKS,
+      DefineStage.CHECKLIST,
       DefineStage.ANALYZE,
       DefineStage.DONE,
     ];
@@ -142,6 +149,9 @@ export class DefineOrchestrator extends EventEmitter {
           break;
         case DefineStage.PLAN_TO_TASKS:
           result = await this.stagePlanToTasks(currentInput);
+          break;
+        case DefineStage.CHECKLIST:
+          result = await this.stageChecklist();
           break;
         case DefineStage.ANALYZE:
           result = await this.stageAnalyze();
@@ -296,13 +306,34 @@ export class DefineOrchestrator extends EventEmitter {
     console.log("Stage: PLAN_TO_TASKS");
     try {
       const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
-      const state = planToTasks(featureDir, this.config.featureId);
+      const state = planToTasks(featureDir, this.config.featureId, {
+        reconcile: this.state.reconcile,
+      });
       const taskCount = state.phases.reduce((sum, p) => sum + p.tasks.length, 0);
       console.log(`  ✓ Generated ${state.phases.length} phase(s), ${taskCount} task(s) from plan.md (deterministic)`);
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, exitCode: 1, error: msg };
+    }
+  }
+
+  private async stageChecklist(): Promise<StageResult> {
+    console.log("Stage: CHECKLIST");
+    try {
+      const result = await this.runtime.executeWorkflow("gwrk-checklist", `Generate checklist for feature ${this.config.featureId}`, {
+        agent: this.config.backend,
+        model: this.config.model,
+        projectRoot: this.config.cwd,
+        quiet: true,
+      });
+
+      console.log(`  ${result.summary}`);
+      return { success: true, exitCode: 0 };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  Warning: CHECKLIST stage skipped or failed: ${msg}`);
+      return { success: true, exitCode: 0 };
     }
   }
 

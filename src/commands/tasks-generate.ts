@@ -138,12 +138,14 @@ try {
     featureId: feature,
     backend,
     cwd: projectRoot,
+    reconcile: opts.reconcile,
   }, {
     stage: DefineStage.PLAN_TO_TASKS,
     featureId: feature,
     startedAt,
     runId: `define-tasks-${feature}-${Date.now()}`,
     backend,
+    reconcile: opts.reconcile,
   });
 
   const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });

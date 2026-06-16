@@ -10,6 +10,7 @@ export enum DefineStage {
   PLAN = "PLAN",
   DEFINE_TESTS = "DEFINE_TESTS",
   PLAN_TO_TASKS = "PLAN_TO_TASKS",
+  CHECKLIST = "CHECKLIST",
   ANALYZE = "ANALYZE",
   DONE = "DONE",
 }
@@ -25,6 +26,8 @@ export interface DefineState {
   runId: string;
   backend: string;
   refs?: string;
+  /** Carry forward the reconcile intent across crash recovery */
+  reconcile?: boolean;
 }
 
 /**
@@ -38,6 +41,8 @@ export interface DefineRunConfig {
   cwd: string;
   refs?: string;
   dryRun?: boolean;
+  /** If true, merge new plan with existing tasks, preserving completed status */
+  reconcile?: boolean;
 }
 
 /**
