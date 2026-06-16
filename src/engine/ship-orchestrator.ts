@@ -134,6 +134,21 @@ export class ShipOrchestrator extends EventEmitter {
       backend: this.config.backend,
     });
 
+    // Pre-flight branch verification for state resumptions
+    if (this.state.stage !== ShipStage.BRANCH_SETUP) {
+      const branchName = `feat/${this.config.featureId}`;
+      const currentBranch = getCurrentBranch(this.config.cwd);
+      if (currentBranch !== branchName) {
+        console.log(`  ⚠ Resuming from state but currently on ${currentBranch}. Checking out ${branchName}...`);
+        try {
+          execSync(`git checkout ${branchName}`, { cwd: this.config.cwd, stdio: "ignore" });
+        } catch (err: unknown) {
+          console.error(`  ✗ Failed to checkout ${branchName}. Please checkout manually and retry.`);
+          return 1;
+        }
+      }
+    }
+
     while (
       this.state.stage !== ShipStage.DONE &&
       this.state.stage !== ShipStage.CIRCUIT_BREAK
