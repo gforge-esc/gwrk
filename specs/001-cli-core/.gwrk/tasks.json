@@ -489,25 +489,28 @@
           "id": "T038",
           "title": "Create plugin.ts",
           "description": "NEW src/commands/plugin.ts. search, install, update subcommands",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/plugin.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T17:05:00.000Z"
         },
         {
           "id": "T039",
           "title": "Create registry.ts",
           "description": "NEW src/engine/registry.ts. searchPlugins, installPlugin, updatePlugin logic. Tests: src/engine/registry.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/registry.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T22:30:00.000Z"
         },
         {
           "id": "T040",
           "title": "Create manifest-loader.ts",
           "description": "NEW src/utils/manifest-loader.ts. load and validate manifest.yaml",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/utils/manifest-loader.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T22:30:00.000Z"
         }
       ],
       "sp_estimate": 6,
