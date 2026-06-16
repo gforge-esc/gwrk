@@ -176,7 +176,7 @@
         {
           "id": "T010",
           "title": "Modify init.ts",
-          "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery",
+          "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery\n\nREVIEW FAIL (code): LINT — FR-001.\n  WHERE: src/commands/init.ts:76, 85, 120, 129\n  EXPECTED: Specific types for options, config, and reduce accumulator.\n  ACTUAL: use of 'any'\n  FIX: Replace 'any' with proper types (e.g. from commander or custom interfaces).\n\nREVIEW FAIL (code): IMPLEMENTATION — US-001.\n  WHERE: src/commands/init.ts:149\n  EXPECTED: Provisioning steps including SSH key generation if missing.\n  ACTUAL: Only checks for existence of SSH keys.\n  FIX: Implement SSH key generation logic as per US-001.",
           "status": "open",
           "gateScript": "test -f src/commands/init.ts",
           "sp": 1
@@ -185,14 +185,15 @@
           "id": "T011",
           "title": "Modify setup.ts",
           "description": "DELETE src/commands/setup.ts. Absorbed into init",
-          "status": "open",
-          "gateScript": "test -f src/commands/setup.ts",
-          "sp": 1
+          "status": "completed",
+          "gateScript": "test ! -f src/commands/setup.ts",
+          "sp": 1,
+          "completedAt": "2026-06-16T22:00:00.000Z"
         },
         {
           "id": "T012",
           "title": "Modify setup-slack.ts",
-          "description": "MODIFY src/commands/setup-slack.ts. Refactor to be callable from init flow, not standalone",
+          "description": "MODIFY src/commands/setup-slack.ts. Refactor to be callable from init flow, not standalone\n\nREVIEW FAIL (code): LINT — FR-001.\n  WHERE: src/commands/setup-slack.ts:24\n  EXPECTED: Specific types for options.\n  ACTUAL: use of 'any'\n  FIX: Replace 'any' with proper types.",
           "status": "open",
           "gateScript": "test -f src/commands/setup-slack.ts",
           "sp": 1
@@ -201,9 +202,10 @@
           "id": "T013",
           "title": "Create extension-detector.ts",
           "description": "NEW src/engine/extension-detector.ts. Detect installed CLIs like obsidian-cli",
-          "status": "open",
-          "gateScript": "test -f src/engine/extension-detector.ts",
-          "sp": 2
+          "status": "completed",
+          "gateScript": "pnpm vitest run src/engine/extension-detector.test.ts",
+          "sp": 2,
+          "completedAt": "2026-06-16T22:00:00.000Z"
         }
       ],
       "sp_estimate": 5,
