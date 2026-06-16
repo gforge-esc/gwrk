@@ -155,9 +155,10 @@
           "id": "T009",
           "title": "State Contract — Execution Manifests & Merge Safety",
           "description": "Complete phase 9: State Contract — Execution Manifests & Merge Safety",
-          "status": "open",
-          "gateScript": "Every `ship`/`define` run writes a manifest to `.gwrk/runs/`",
-          "sp": 2
+          "status": "completed",
+          "gateScript": "gates/T009-gate.sh",
+          "sp": 2,
+          "completedAt": "2026-06-16T21:21:41.152Z"
         }
       ],
       "sp_estimate": 2,

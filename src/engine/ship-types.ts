@@ -56,6 +56,8 @@ export interface ShipState {
   testBaseline?: number;
   prNumber?: number;
   prUrl?: string;
+  gateResult?: "PASS" | "FAIL";
+  reviewVerdict?: "GO" | "NO-GO";
 }
 
 /**

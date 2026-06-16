@@ -151,7 +151,7 @@ Examples:
             phase: "p00",
             command: "define",
             agent: backend,
-            model: "unknown",
+            model: model || "unknown",
             startedAt,
             finishedAt,
             durationS,

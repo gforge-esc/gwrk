@@ -119,11 +119,19 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /** Expose final state for DB write-back by CLI wrapper. */
-  public getResult(): { prNumber?: number; prUrl?: string; stage: ShipStage } {
+  public getResult(): {
+    prNumber?: number;
+    prUrl?: string;
+    stage: ShipStage;
+    gateResult?: "PASS" | "FAIL";
+    reviewVerdict?: "GO" | "NO-GO";
+  } {
     return {
       prNumber: this.state.prNumber,
       prUrl: this.state.prUrl,
       stage: this.state.stage,
+      gateResult: this.state.gateResult,
+      reviewVerdict: this.state.reviewVerdict,
     };
   }
 
@@ -352,6 +360,7 @@ export class ShipOrchestrator extends EventEmitter {
       // 4. Determine verdict from gates (not agent edits).
       //    Gates are truth, agent verdict is advisory. (ADR-007)
       const verdict = await this.readVerdict();
+      this.state.reviewVerdict = verdict;
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
       );
@@ -1001,6 +1010,7 @@ export class ShipOrchestrator extends EventEmitter {
     saveTaskState(featureDir, taskState);
 
     if (failedCount > 0) {
+      this.state.gateResult = "FAIL";
       const openTasks = phase.tasks.filter((t: Task) => t.status === "open");
       console.log(
         `    ${openTasks.length} task(s) re-opened: ${openTasks.map((t) => t.id).join(", ")}`,
@@ -1013,6 +1023,7 @@ export class ShipOrchestrator extends EventEmitter {
       }
       return "NO-GO";
     }
+    this.state.gateResult = "PASS";
     return "GO";
   }
 
