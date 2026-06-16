@@ -1,4 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { initAction } from "./init.js";
 
 describe("FR-001: Unified Init Wizard", () => {
@@ -61,3 +68,54 @@ describe("FR-046: --agent mode", () => {
     await expect(initAction({ agent: true })).rejects.toThrow();
   });
 });
+
+describe("US-004: Workspace Append (020-polyglot-monorepo)", () => {
+  let tempDir: string;
+  let oldCwd: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-init-test-"));
+    oldCwd = process.cwd();
+  });
+
+  afterEach(() => {
+    process.chdir(oldCwd);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("should append workspace to existing config if in a subdirectory", async () => {
+    // Setup root project
+    const rootConfig = { project: { name: "root" } };
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify(rootConfig, null, 2));
+
+    // Setup workspace subdirectory
+    const wsDir = path.join(tempDir, "packages/web");
+    fs.mkdirSync(wsDir, { recursive: true });
+    fs.writeFileSync(path.join(wsDir, "package.json"), JSON.stringify({ name: "web" }));
+    
+    process.chdir(wsDir);
+
+    // TR-004: Execute init --workspace web
+    await initAction({ workspace: "web" });
+
+    // Verify root config was updated
+    const updatedConfig = JSON.parse(fs.readFileSync(path.join(tempDir, ".gwrkrc.json"), "utf-8"));
+    expect(updatedConfig.workspaces).toBeDefined();
+    expect(updatedConfig.workspaces["packages/web"]).toBeDefined();
+    expect(updatedConfig.workspaces["packages/web"].type).toBe("nodejs");
+  });
+
+  it("should return idempotency message if run at root", async () => {
+    const rootConfig = { project: { name: "root" } };
+    fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify(rootConfig, null, 2));
+    
+    process.chdir(tempDir);
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await initAction({});
+    expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining("gwrk already initialized"));
+    stdoutSpy.mockRestore();
+  });
+});
+
+

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 #!/usr/bin/env node
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
@@ -32,6 +36,7 @@ program
   .version(pkg.version)
   .description("The Principal Engineer's Operating System")
   .option("--format <type>", "Output format (json)")
+  .option("--workspace <name>", "Select a workspace profile")
   .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
   .configureHelp({
     formatHelp: (cmd, helper) => {
