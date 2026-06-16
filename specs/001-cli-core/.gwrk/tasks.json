@@ -379,7 +379,7 @@
         {
           "id": "T026",
           "title": "Modify index.ts",
-          "description": "MODIFY src/db/index.ts. Add `project_id` to `safeAddColumn` for the 8 target tables",
+          "description": "MODIFY src/db/index.ts. Add `project_id` to `safeAddColumn` for the 8 target tables\n\nUAT REVIEW (2026-06-16): NO-GO\n- 22 FAILED TESTS: Significant regressions across parser-plan, pulse, and effort engines.\n- MISSING EXPORTS: src/utils/parser-plan.ts (parsePlan), src/engine/pulse.ts (parseGitLog, bucketByWeek, scanSpecProgress).\n- SURFACE POLLUTION: 'gwrk project gates' still exists, violating Phase 11 criteria.\n- UNIMPLEMENTED: Effort engine fallback and report generation still throw 'Not implemented'.",
           "status": "open",
           "gateScript": "test -f src/db/index.ts",
           "sp": 1
@@ -387,7 +387,7 @@
         {
           "id": "T027",
           "title": "Modify plan.ts",
-          "description": "MODIFY src/db/plan.ts. Scope all query functions by `projectId`. Tests: src/engine/plan-store-scoping.test.ts",
+          "description": "MODIFY src/db/plan.ts. Scope all query functions by `projectId`. Tests: src/engine/plan-store-scoping.test.ts\n\nUAT REVIEW (2026-06-16): NO-GO\n- Blocked by 22 project-wide test failures.",
           "status": "open",
           "gateScript": "pnpm vitest run src/engine/plan-store-scoping.test.ts",
           "sp": 1
