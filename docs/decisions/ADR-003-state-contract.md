@@ -82,21 +82,26 @@ Every agent run produces a manifest committed to `specs/<feature>/.gwrk/runs/`:
 
 ---
 
-## 4. Data Flow
+## 4. Data Flow and Decoupled Harvest
+
+To ensure that distributed agents and local executions both reliably update the analytical state, the Harvest process is strictly decoupled from the Ship loop.
 
 ```
-Agent (any) ──push──► GitHub ──pull──► Build Server ──harvest──► gwrk.db
+Agent (any) ──push──► GitHub ──merge──► (Poll) HarvestWatcher ──harvest──► gwrk.db
 
 Agent writes:
   1. Code changes
   2. tasks.json mutations
   3. Execution manifest (runs/*.json)
 
-Build Server reads:
-  1. gwrk harvest → scan runs/*.json → upsert into gwrk.db
-  2. Idempotent (dedup by runId)
-  3. Triggered by: git poll, ship done, manual invocation
+Build Server (HarvestWatcher Daemon):
+  1. Polls GitHub every 5 minutes for recently merged feature PRs.
+  2. When a merged PR is detected, runs `gwrk harvest <feature>`.
+  3. `harvest` parses the feature's `plan.md` (phaseless execution) and `.gwrk/runs/*.json` to upsert into `gwrk.db`.
+  4. Automatic Backfilling: If a ship loop fails to produce an execution manifest (e.g., agent crash), Harvest synthesizes a run record with `status: 'merged'` to maintain ledger consistency.
 ```
+
+The ship loop's role is strictly to prepare code, commit, and push. It **does not** run harvest. Harvest runs asynchronously via the `HarvestWatcher` background daemon or via manual `gwrk harvest` invocation.
 
 ---
 

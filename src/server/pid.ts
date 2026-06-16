@@ -42,7 +42,10 @@ export function readPid(): number | undefined {
 export function removePid(): void {
   if (fs.existsSync(PID_FILE)) {
     try {
-      fs.unlinkSync(PID_FILE);
+      const content = fs.readFileSync(PID_FILE, "utf8").trim();
+      if (content === process.pid.toString()) {
+        fs.unlinkSync(PID_FILE);
+      }
     } catch {
       // ignore
     }
