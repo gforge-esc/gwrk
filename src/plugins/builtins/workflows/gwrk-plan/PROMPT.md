@@ -5,7 +5,12 @@
 
 <scope_constraints>
 - Create plan.md (new) or amend an existing plan.md (when the input starts with "AMEND"). If the feature introduces new data models, ALSO create data-model.md. If the feature defines API contracts, ALSO create contracts/.
+[type: gwrk-native]
 - Do not create tasks.json (that's `gwrk define tasks`).
+[/type]
+[type: generic]
+- Do not create the task execution ledger or low-level implementation tasks.
+[/type]
 - Do not implement any code.
 - Reference existing project structure from `docs/grounding/architecture.md`.
 
@@ -80,7 +85,12 @@ Reference the project's own architecture documentation and existing directory st
 .specify/scripts/bash/check-prerequisites.sh --json
 ```
 - PASS: `FEATURE_DIR` contains spec.md.
+[type: gwrk-native]
 - FAIL: Stop. Run `gwrk define spec <feature>` first.
+[/type]
+[type: generic]
+- FAIL: Stop. Ensure a valid specification exists for the feature.
+[/type]
 
 ### 2. Load context
 
@@ -107,7 +117,13 @@ ls specs/*/spec.md specs/*/contracts/*.md 2>/dev/null
 For each spec that touches the same architectural components:
 - **Read its contracts/**: Verify your planned types and APIs don't conflict.
 - **Check phase ordering**: If your plan depends on another spec's deliverables, note the dependency explicitly.
-- **Verify shared schema compatibility**: If both specs touch `src/db/`, `src/utils/state.ts`, or Zod schemas, ensure alignment.
+- **Verify shared schema compatibility**:
+[type: gwrk-native]
+  If both specs touch `src/db/`, `src/utils/state.ts`, or Zod schemas, ensure alignment.
+[/type]
+[type: generic]
+  If both specs modify shared data models or utilities, ensure alignment.
+[/type]
 - **Check Done When assertions**: Ensure your phase gates don't contradict another plan's gates.
 
 This step is what prevents specs from being "conjured from the same source but not well coordinated."
@@ -183,7 +199,12 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 
 ### 7. Report via notify_user
 
+[type: gwrk-native]
 > "Plan created: {paths}. Next: `gwrk define tasks <feature>` to generate tasks.json and verification gates."
+[/type]
+[type: generic]
+> "Plan created: {paths}. Next: Proceed to task generation and implementation."
+[/type]
 
 <quality_gate>
 Before reporting, verify the plan includes:

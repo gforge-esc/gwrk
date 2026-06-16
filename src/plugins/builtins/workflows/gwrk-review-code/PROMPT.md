@@ -89,9 +89,14 @@ fi
 
 ### 3. Infrastructure Check
 
+[type: gwrk-native]
 ```bash
 pnpm build 2>&1
 ```
+[/type]
+[type: generic]
+Verify the build process using the project's standard build command.
+[/type]
 
 - PASS: Build succeeds.
 - FAIL: Document as blocking finding. Continue with file review.
@@ -265,7 +270,12 @@ REVIEW FAIL ({review_type}): {check_name} — {FR_REF}.
 - ❌ Using tasks.json status as primary verdict when gates exist (gates are truth)
 - ❌ Running `git add -A` (scope commits to phase files and tasks.json only)
 - ❌ Re-opening tasks from OTHER phases (only touch tasks in the current phase)
+[type: gwrk-native]
 - ❌ Running `pnpm test` globally (run only phase-relevant test files)
+[/type]
+[type: generic]
+- ❌ Running the full test suite globally (run only phase-relevant test files)
+[/type]
 
 ## JSON Intent Format
 
