@@ -255,7 +255,7 @@
         {
           "id": "T015",
           "title": "Modify tests-generate.ts",
-          "description": "MODIFY src/commands/tests-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()`. Detect agent-native success by checking for committed test files even when JSON parsing fails.. Tests: src/commands/tests-generate-contract.test.ts",
+          "description": "MODIFY src/commands/tests-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()`. Detect agent-native success by checking for committed test files even when JSON parsing fails.. Tests: src/commands/tests-generate-contract.test.ts\n\nUAT REVIEW (2026-06-16): FAIL\n- src/commands/tests-generate-contract.test.ts is skipped because it attempts to call non-exported functions.\n- Integration with WorkflowRuntime tolerant mode is unverified due to test instability.",
           "status": "open",
           "gateScript": "pnpm vitest run src/commands/tests-generate-contract.test.ts",
           "sp": 1
@@ -263,7 +263,7 @@
         {
           "id": "T016",
           "title": "Modify specify.ts",
-          "description": "MODIFY src/commands/specify.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.",
+          "description": "MODIFY src/commands/specify.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.\n\nUAT REVIEW (2026-06-16): FAIL\n- Verification blocked by project-wide regressions (23 test failures).",
           "status": "open",
           "gateScript": "test -f src/commands/specify.ts",
           "sp": 1
@@ -271,7 +271,7 @@
         {
           "id": "T017",
           "title": "Modify define-plan.ts",
-          "description": "MODIFY src/commands/define-plan.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.",
+          "description": "MODIFY src/commands/define-plan.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.\n\nUAT REVIEW (2026-06-16): FAIL\n- Verification blocked by project-wide regressions (23 test failures).",
           "status": "open",
           "gateScript": "test -f src/commands/define-plan.ts",
           "sp": 1
@@ -279,7 +279,7 @@
         {
           "id": "T018",
           "title": "Modify tasks-generate.ts",
-          "description": "MODIFY src/commands/tasks-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()` for gate authoring dispatch.",
+          "description": "MODIFY src/commands/tasks-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()` for gate authoring dispatch.\n\nUAT REVIEW (2026-06-16): FAIL\n- Verification blocked by project-wide regressions (23 test failures).",
           "status": "open",
           "gateScript": "test -f src/commands/tasks-generate.ts",
           "sp": 1
@@ -287,7 +287,7 @@
         {
           "id": "T019",
           "title": "Modify workflow-runtime.ts",
-          "description": "MODIFY src/plugins/workflow-runtime.ts. Make `extractJsonFromOutput()` failure non-fatal when the agent committed artifacts. Add `tolerant` mode that returns a synthetic success result when the agent did native work.. Tests: src/plugins/workflow-runtime.test.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Make `extractJsonFromOutput()` failure non-fatal when the agent committed artifacts. Add `tolerant` mode that returns a synthetic success result when the agent did native work.. Tests: src/plugins/workflow-runtime.test.ts\n\nUAT REVIEW (2026-06-16): FAIL\n- src/plugins/workflow-runtime-phase12.test.ts fails: 'Workflow output failed schema constraint: Expected JSON object'.\n- Root cause: hasArtifacts check uses unmocked git status, which returns empty in clean CI/test environments.",
           "status": "open",
           "gateScript": "pnpm vitest run src/plugins/workflow-runtime.test.ts",
           "sp": 1
