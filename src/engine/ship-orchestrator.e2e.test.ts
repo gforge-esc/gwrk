@@ -79,7 +79,13 @@ describe("Ship→Harvest DB Chain", () => {
       db,
     );
 
-    const runs = listRuns(FEATURE_ID, undefined, db);
+    // We don't know the exact MD5 of process.cwd() here easily, 
+    // but we know listRuns NOW REQUIRES a projectId.
+    // For this test, we can query the DB directly to see what was inserted.
+    const row = db.prepare("SELECT project_id FROM runs WHERE id = ?").get(runId) as { project_id: string };
+    const resolvedProjectId = row.project_id;
+
+    const runs = listRuns(FEATURE_ID, resolvedProjectId, db);
     expect(runs).toHaveLength(1);
     expect(runs[0].project_id).toBeTruthy();
     expect(runs[0].project_id).toMatch(/^[0-9a-f]{32}$/); // MD5 hex

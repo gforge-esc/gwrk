@@ -22,7 +22,7 @@ export interface IssueRecord {
 /**
  * Save a new issue record or replace if it already exists (by issue_number).
  */
-export function saveIssue(
+export function upsertIssue(
   issue: IssueRecord,
   projectId: string,
   db?: Database.Database,
@@ -53,27 +53,31 @@ export function saveIssue(
 }
 
 /**
- * Update an existing issue by issue_number.
+ * Update an existing issue by issue_number and project_id.
  */
 export function updateIssue(
   issueNumber: number,
+  projectId: string,
   updates: Partial<IssueRecord>,
   db?: Database.Database,
 ): void {
   const conn = db ?? getDb();
 
   const fields = Object.keys(updates)
-    .filter((k) => k !== "issue_number" && k !== "id")
+    .filter((k) => k !== "issue_number" && k !== "id" && k !== "project_id")
     .map((k) => `${k} = @${k}`)
     .join(", ");
 
   if (!fields) return;
 
   conn
-    .prepare(`UPDATE issues SET ${fields} WHERE issue_number = @issue_number`)
+    .prepare(
+      `UPDATE issues SET ${fields} WHERE issue_number = @issue_number AND project_id = @project_id`,
+    )
     .run({
       ...updates,
       issue_number: issueNumber,
+      project_id: projectId,
     });
 }
 

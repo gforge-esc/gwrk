@@ -4,7 +4,7 @@
 
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { type IssueRecord, saveIssue, updateIssue } from "../db/issues.js";
+import { type IssueRecord, updateIssue, upsertIssue } from "../db/issues.js";
 import { harvestFeature } from "../engine/harvest.js";
 import {
   associateIssueWithFeature,
@@ -88,13 +88,13 @@ export async function githubWebhookPlugin(
 
         // FR-H14: Record in issues table
         if (action === "opened" || action === "labeled") {
-          saveIssue(record, projectId);
+          upsertIssue(record, projectId);
           // FR-H15: Slack notification
           if (action === "opened") {
             await notifyIssueOpened(record);
           }
         } else if (action === "closed") {
-          updateIssue(issue.number, {
+          updateIssue(issue.number, projectId, {
             state: "closed",
             closed_at: issue.closed_at,
           });
