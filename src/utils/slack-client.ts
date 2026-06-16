@@ -15,7 +15,7 @@ interface SlackSetupResult {
   alreadyConfigured: boolean;
 }
 
-function getEnvPath(): string {
+export function getEnvPath(): string {
   return path.join(os.homedir(), ".gwrk", ".env");
 }
 
