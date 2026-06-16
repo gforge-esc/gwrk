@@ -311,49 +311,55 @@
           "id": "T020",
           "title": "Create prompt-conditioner.ts",
           "description": "NEW src/engine/prompt-conditioner.ts. Generate `<project_profile>` XML from resolved profile, serialize for prompt injection",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/prompt-conditioner.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T16:30:00.000Z"
         },
         {
           "id": "T021",
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Call prompt-conditioner before dispatching, inject XML block into prompt",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/plugins/workflow-runtime.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-06-16T16:30:00.000Z"
         },
         {
           "id": "T022",
           "title": "Modify ship-orchestrator.ts",
           "description": "MODIFY src/server/ship-orchestrator.ts. Inject profile into review dispatch",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/server/ship-orchestrator.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-06-16T16:30:00.000Z"
         },
         {
           "id": "T023",
           "title": "Create project-info.ts",
           "description": "NEW src/commands/project-info.ts. `gwrk project info` with `--format json`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/project-info.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T16:30:00.000Z"
         },
         {
           "id": "T024",
           "title": "Create project.ts",
           "description": "NEW src/commands/project.ts. `gwrk project` parent command",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/project.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T16:40:00.000Z"
         },
         {
           "id": "T025",
           "title": "Modify cli.ts",
           "description": "MODIFY src/cli.ts. Register `project` command group",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/cli.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-06-16T16:40:00.000Z"
         }
       ],
       "sp_estimate": 9,
