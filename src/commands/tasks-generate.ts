@@ -144,6 +144,7 @@ Examples:
             cwd: projectRoot,
             reconcile: opts.reconcile,
             dryRun: opts.dryRun,
+            quiet: true,
           }, {
             stage: DefineStage.PLAN_TO_TASKS,
             featureId: feature,

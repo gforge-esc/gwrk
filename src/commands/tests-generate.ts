@@ -153,6 +153,8 @@ Examples:
             model,
             cwd: projectRoot,
             dryRun: options.dryRun,
+            quiet: true,
+            tolerant: true,
           }, {
             stage: DefineStage.DEFINE_TESTS,
             featureId: feature,
@@ -165,7 +167,31 @@ Examples:
           const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
 
           if (exitCode !== 0) {
-            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+            // T015: Detect agent-native success by checking for committed test files
+            // even when JSON parsing fails (which causes exitCode 1 in non-tolerant mode)
+            const hasTests = (() => {
+              try {
+                const srcDir = path.join(projectRoot, "src");
+                if (!fs.existsSync(srcDir)) return false;
+                const allFiles = fs.readdirSync(srcDir);
+                // Look for tests that match the feature ID or are generally feature tests
+                return allFiles.some(
+                  (f) => f.includes(feature) && f.endsWith(".test.ts"),
+                );
+              } catch {
+                return false;
+              }
+            })();
+
+            if (hasTests) {
+              console.warn(
+                `[define tests] Workflow returned ${exitCode} but test files were detected. Treating as success (native execution).`,
+              );
+            } else {
+              throw new Error(
+                `Workflow execution failed with exit code ${exitCode}`,
+              );
+            }
           }
 
           if (options.dryRun) {

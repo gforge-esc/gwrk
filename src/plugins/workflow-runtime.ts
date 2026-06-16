@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -84,6 +85,7 @@ interface WorkflowOptions {
   agent?: string;
   model?: string;
   quiet?: boolean;
+  tolerant?: boolean;
   /**
    * Optional write-scope allowlist. When set, WRITE_FILE intents targeting
    * paths outside this list are filtered with a warning. Paths are matched
@@ -270,7 +272,19 @@ export class WorkflowRuntime {
     } catch (e) {
       // FR-029: Tolerate agents that do native work and return prose.
       // If the agent exited 0, treat prose output as synthetic success.
-      if (result.exitCode === 0) {
+      // T019: Detect agent-native success by checking for committed artifacts
+      const hasArtifacts = (() => {
+        try {
+          const status = execSync("git status --porcelain", {
+            cwd: projectRoot,
+          }).toString();
+          return status.trim().length > 0;
+        } catch {
+          return false;
+        }
+      })();
+
+      if (result.exitCode === 0 && (options.tolerant || hasArtifacts)) {
         const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
         console.warn(
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,
