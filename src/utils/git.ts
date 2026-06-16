@@ -416,8 +416,11 @@ export function deleteRemoteBranch(
       cwd: repoPath,
       stdio: ["ignore", "ignore", "pipe"],
     });
-  } catch (e) {
+  } catch (e: unknown) {
     // Log error but don't fail, as per FR-H08
-    console.error(`Failed to delete remote branch ${branch}:`, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    // Suppress the massive stack trace and buffer output from execFileSync
+    const cleanMsg = msg.split('\n')[0]; 
+    console.error(`Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`);
   }
 }
