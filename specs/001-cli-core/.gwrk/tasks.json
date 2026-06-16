@@ -81,9 +81,9 @@
           "title": "Task Engine — State, Gates & History",
           "description": "Complete phase 5: Task Engine — State, Gates & History",
           "status": "completed",
-          "gateScript": "echo \"Phase 5: Task Engine — State, Gates & History\"",
+          "gateScript": "gates/T005-gate.sh",
           "sp": 2,
-          "completedAt": "2026-06-16T20:54:36.363Z"
+          "completedAt": "2026-06-16T20:55:12.607Z"
         }
       ],
       "sp_estimate": 2
@@ -97,9 +97,9 @@
           "title": "Value Pillar — Measure",
           "description": "Complete phase 6: Value Pillar — Measure",
           "status": "completed",
-          "gateScript": "echo \"Phase 6: Value Pillar — Measure\"",
+          "gateScript": "gates/T006-gate.sh",
           "sp": 2,
-          "completedAt": "2026-06-16T20:54:36.363Z"
+          "completedAt": "2026-06-16T20:56:38.642Z"
         }
       ],
       "sp_estimate": 2
@@ -113,9 +113,9 @@
           "title": "Init Hardening",
           "description": "Complete phase 7: Init Hardening",
           "status": "completed",
-          "gateScript": "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
+          "gateScript": "gates/T007-gate.sh",
           "sp": 2,
-          "completedAt": "2026-06-16T20:54:36.363Z"
+          "completedAt": "2026-06-16T20:56:49.382Z"
         }
       ],
       "sp_estimate": 2,
@@ -135,9 +135,9 @@
           "title": "E2E Surface Hardening",
           "description": "Complete phase 8: E2E Surface Hardening",
           "status": "completed",
-          "gateScript": "All dead files removed ✅",
+          "gateScript": "gates/T008-gate.sh",
           "sp": 2,
-          "completedAt": "2026-06-16T20:54:36.363Z"
+          "completedAt": "2026-06-16T20:56:59.395Z"
         }
       ],
       "sp_estimate": 2,

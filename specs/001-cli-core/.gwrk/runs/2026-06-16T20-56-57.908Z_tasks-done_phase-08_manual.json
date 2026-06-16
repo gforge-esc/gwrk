@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-16T20:56:57.908Z_tasks-done_T008",
+  "feature": "001-cli-core",
+  "phase": "phase-08",
+  "command": "tasks-done",
+  "agent": "manual",
+  "model": "none",
+  "startedAt": "2026-06-16T20:56:57.908Z",
+  "finishedAt": "2026-06-16T20:56:59.400Z",
+  "durationS": 1,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 17,
+  "linesDeleted": 11,
+  "gitCommit": "6008421d08033a799e08186a9718edbe3b6db796",
+  "gitBranch": "feat/001-cli-core",
+  "digest": []
+}
