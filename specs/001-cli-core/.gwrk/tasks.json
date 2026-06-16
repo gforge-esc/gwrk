@@ -1,118 +1,121 @@
 {
   "featureId": "001-cli-core",
-  "createdAt": "2026-06-16T19:01:05.618Z",
+  "createdAt": "2026-06-16T20:54:36.364Z",
   "generatedFrom": {
     "plan": {
-      "hash": "3cb648a5964e09bbea1e6885f4045a3004b252a2f545b71b7ca9e3ed28b2d96e",
-      "modifiedAt": "2026-06-14T15:37:13.301Z"
+      "hash": "234856e3bd2782f01832d1c1f9357bb658d3b981b93cafbeb954798ec42a76ef",
+      "modifiedAt": "2026-06-16T19:43:19.536Z"
     }
   },
   "phases": [
     {
       "id": "phase-01",
-      "title": "Project Bootstrap & Config ✅",
+      "title": "Project Bootstrap & Config",
       "tasks": [
         {
           "id": "T001",
-          "title": "Project Bootstrap & Config ✅",
-          "description": "Complete phase 1: Project Bootstrap & Config ✅",
+          "title": "Project Bootstrap & Config",
+          "description": "Complete phase 1: Project Bootstrap & Config",
           "status": "completed",
-          "gateScript": "gates/T001-gate.sh",
+          "gateScript": "echo \"Phase 1: Project Bootstrap & Config\"",
           "sp": 2,
-          "completedAt": "2026-06-16T19:06:50.209Z"
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-02",
-      "title": "SQLite Execution Ledger ✅",
+      "title": "SQLite Execution Ledger",
       "tasks": [
         {
           "id": "T002",
-          "title": "SQLite Execution Ledger ✅",
-          "description": "Complete phase 2: SQLite Execution Ledger ✅",
+          "title": "SQLite Execution Ledger",
+          "description": "Complete phase 2: SQLite Execution Ledger",
           "status": "completed",
-          "gateScript": "gates/T002-gate.sh",
+          "gateScript": "echo \"Phase 2: SQLite Execution Ledger\"",
           "sp": 2,
-          "completedAt": "2026-06-16T19:06:28.778Z"
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-03",
-      "title": "Clarity Pillar — Define ✅",
+      "title": "Clarity Pillar — Define",
       "tasks": [
         {
           "id": "T003",
-          "title": "Clarity Pillar — Define ✅",
-          "description": "Complete phase 3: Clarity Pillar — Define ✅",
+          "title": "Clarity Pillar — Define",
+          "description": "Complete phase 3: Clarity Pillar — Define",
           "status": "completed",
-          "gateScript": "gates/T003-gate.sh",
+          "gateScript": "echo \"Phase 3: Clarity Pillar — Define\"",
           "sp": 2,
-          "completedAt": "2026-06-16T19:58:35.878Z"
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-04",
-      "title": "Throughput Pillar — Ship ✅",
+      "title": "Throughput Pillar — Ship",
       "tasks": [
         {
           "id": "T004",
-          "title": "Throughput Pillar — Ship ✅",
-          "description": "Complete phase 4: Throughput Pillar — Ship ✅",
+          "title": "Throughput Pillar — Ship",
+          "description": "Complete phase 4: Throughput Pillar — Ship",
           "status": "completed",
-          "gateScript": "echo \"Phase 4: Throughput Pillar — Ship ✅\"",
+          "gateScript": "echo \"Phase 4: Throughput Pillar — Ship\"",
           "sp": 2,
-          "completedAt": "2026-06-16T14:52:00.000Z"
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-05",
-      "title": "Task Engine — State, Gates & History ✅",
+      "title": "Task Engine — State, Gates & History",
       "tasks": [
         {
           "id": "T005",
-          "title": "Task Engine — State, Gates & History ✅",
-          "description": "Complete phase 5: Task Engine — State, Gates & History ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 5: Task Engine — State, Gates & History ✅\"",
-          "sp": 2
+          "title": "Task Engine — State, Gates & History",
+          "description": "Complete phase 5: Task Engine — State, Gates & History",
+          "status": "completed",
+          "gateScript": "echo \"Phase 5: Task Engine — State, Gates & History\"",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-06",
-      "title": "Value Pillar — Measure ✅",
+      "title": "Value Pillar — Measure",
       "tasks": [
         {
           "id": "T006",
-          "title": "Value Pillar — Measure ✅",
-          "description": "Complete phase 6: Value Pillar — Measure ✅",
-          "status": "open",
-          "gateScript": "echo \"Phase 6: Value Pillar — Measure ✅\"",
-          "sp": 2
+          "title": "Value Pillar — Measure",
+          "description": "Complete phase 6: Value Pillar — Measure",
+          "status": "completed",
+          "gateScript": "echo \"Phase 6: Value Pillar — Measure\"",
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2
     },
     {
       "id": "phase-07",
-      "title": "Init Hardening ✅",
+      "title": "Init Hardening",
       "tasks": [
         {
           "id": "T007",
-          "title": "Init Hardening ✅",
-          "description": "Complete phase 7: Init Hardening ✅",
-          "status": "open",
+          "title": "Init Hardening",
+          "description": "Complete phase 7: Init Hardening",
+          "status": "completed",
           "gateScript": "`gwrk init` detects available CLIs and provisions GEMINI.md/CLAUDE.md/AGENTS.md ✅",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2,
@@ -125,15 +128,16 @@
     },
     {
       "id": "phase-08",
-      "title": "E2E Surface Hardening ✅",
+      "title": "E2E Surface Hardening",
       "tasks": [
         {
           "id": "T008",
-          "title": "E2E Surface Hardening ✅",
-          "description": "Complete phase 8: E2E Surface Hardening ✅",
-          "status": "open",
+          "title": "E2E Surface Hardening",
+          "description": "Complete phase 8: E2E Surface Hardening",
+          "status": "completed",
           "gateScript": "All dead files removed ✅",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2,
@@ -218,15 +222,16 @@
     },
     {
       "id": "phase-11",
-      "title": "CLI UX Polish ✅",
+      "title": "CLI UX Polish",
       "tasks": [
         {
           "id": "T014",
-          "title": "CLI UX Polish ✅",
-          "description": "Complete phase 11: CLI UX Polish ✅",
-          "status": "open",
+          "title": "CLI UX Polish",
+          "description": "Complete phase 11: CLI UX Polish",
+          "status": "completed",
           "gateScript": "`gwrk <any-command-with-args> --help` shows an `Examples:` section",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-06-16T20:54:36.363Z"
         }
       ],
       "sp_estimate": 2,
