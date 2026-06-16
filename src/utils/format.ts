@@ -119,9 +119,10 @@ export function warn(message: string): void {
 }
 
 /** Print a dry-run notice */
-export function dryRun(command: string): void {
+export function dryRun(command: string, agent?: string): void {
+  const agentSuffix = agent ? ` (agent: ${agent})` : "";
   console.log(
-    `${MAGENTA}[DRY RUN]${RESET} Would execute: ${DIM}${command}${RESET}`,
+    `${MAGENTA}[DRY RUN]${RESET} Would execute: ${DIM}${command}${agentSuffix}${RESET}`,
   );
 }
 

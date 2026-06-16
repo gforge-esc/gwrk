@@ -61,11 +61,12 @@ Arguments:
   .argument("[feature-name-or-id]", "Feature name/slug (new) or feature ID (existing). Omit to auto-generate from description.")
   .argument("[description]", "Feature description (new) or rework instructions (existing)")
   .option("--refs <path>", "Path to additional reference docs")
+  .option("--dry-run", "Print the command without executing")
   .action(
     async (
       featureArg: string | undefined,
       prompt: string | undefined,
-      opts: { refs?: string },
+      opts: { refs?: string; dryRun?: boolean },
     ) => {
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
@@ -95,9 +96,13 @@ Arguments:
               2,
             );
           }
-          const result = scaffoldFeature(specsDir, effectiveInput);
-          feature = result.featureId;
-          console.log(`Created: ${feature}`);
+          if (opts.dryRun) {
+            feature = "dry-run-feature";
+          } else {
+            const result = scaffoldFeature(specsDir, effectiveInput);
+            feature = result.featureId;
+            console.log(`Created: ${feature}`);
+          }
         } else {
           // Feature arg provided → try to resolve
           try {
@@ -105,16 +110,20 @@ Arguments:
           } catch {
             // Not found. If prompt exists → scaffold with explicit slug.
             if (effectiveInput) {
-              const result = scaffoldFeature(specsDir, effectiveInput, {
-                shortName: featureArg.replace(/^\d+-/, "").length > 0
-                  ? featureArg
-                  : undefined,
-                number: /^\d+$/.test(featureArg)
-                  ? undefined // auto-number, featureArg is just a bare number with no slug
-                  : undefined,
-              });
-              feature = result.featureId;
-              console.log(`Created: ${feature}`);
+              if (opts.dryRun) {
+                feature = featureArg;
+              } else {
+                const result = scaffoldFeature(specsDir, effectiveInput, {
+                  shortName: featureArg.replace(/^\d+-/, "").length > 0
+                    ? featureArg
+                    : undefined,
+                  number: /^\d+$/.test(featureArg)
+                    ? undefined // auto-number, featureArg is just a bare number with no slug
+                    : undefined,
+                });
+                feature = result.featureId;
+                console.log(`Created: ${feature}`);
+              }
             } else {
               throw new CommandError(
                 `Feature "${featureArg}" not found and no description was provided.\n\nDid you mean to create a new feature?\n  gwrk define spec "${featureArg}" "What this feature does"\n                     ↑ name/slug       ↑ description\n\nOr did you mean this as the description? Omit the name to auto-generate:\n  gwrk define spec "${featureArg}"\n                     ↑ treated as description, name auto-generated\n\nTo rework an existing feature, use its ID:\n  gwrk project specs                         # list available features`,
@@ -150,9 +159,6 @@ Arguments:
         }
 
         // Inject refs as authoritative source material.
-        // Per Anthropic prompt structure: dynamic content goes BEFORE instructions,
-        // wrapped in XML tags for clear content boundaries.
-        // Per GPT-5.2 guide: repeated critical instructions at the end for long prompts.
         if (opts.refs) {
           const resolvedRefs = path.resolve(opts.refs);
           if (!fs.existsSync(resolvedRefs)) {
@@ -205,6 +211,7 @@ Arguments:
             model,
             cwd,
             refs: opts.refs,
+            dryRun: opts.dryRun,
           }, {
             stage: DefineStage.SPECIFY,
             featureId: feature,
@@ -219,7 +226,12 @@ Arguments:
             throw new Error(`Workflow execution failed with exit code ${exitCode}`);
           }
 
+          if (opts.dryRun) {
+            return;
+          }
+
           const durationS = Math.round((Date.now() - startTime) / 1000);
+
           finishRun(runId, { exit_code: 0, duration_s: durationS });
           success("define spec", durationS, runId);
 

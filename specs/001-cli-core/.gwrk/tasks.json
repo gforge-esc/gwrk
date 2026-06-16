@@ -49,7 +49,7 @@
           "title": "Clarity Pillar — Define ✅",
           "description": "Complete phase 3: Clarity Pillar — Define ✅",
           "status": "open",
-          "gateScript": "echo \"Phase 3: Clarity Pillar — Define ✅\"",
+          "gateScript": "gates/T003-gate.sh",
           "sp": 2
         }
       ],
