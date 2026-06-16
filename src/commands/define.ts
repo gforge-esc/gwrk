@@ -20,6 +20,7 @@ import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { definePlanCommand } from "./define-plan.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
+import { analyzeCommand } from "./analyze.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 import { testsGenerateCommand } from "./tests-generate.js";
 import { researchCommand } from "./research.js";
@@ -189,6 +190,7 @@ Examples:
 defineCommand.addCommand(specifyCommand); // gwrk define spec
 defineCommand.addCommand(definePlanCommand); // gwrk define plan
 defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
+defineCommand.addCommand(analyzeCommand, { hidden: true }); // gwrk define analyze (internal)
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
 defineCommand.addCommand(researchCommand); // gwrk define research
 

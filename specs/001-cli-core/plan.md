@@ -110,12 +110,13 @@ Global SQLite at `~/.gwrk/gwrk.db` for run recording and analytics.
 
 Agent dispatch wrappers under `gwrk define` for spec, plan, tasks, and bare definition loop.
 
-**Files (8):**
-- `src/commands/define.ts` ✅ — Parent: bare=definition loop, subcommands: spec, plan, tasks
+**Files (9):**
+- `src/commands/define.ts` ✅ — Parent: bare=definition loop, subcommands: spec, plan, tasks, tests, analyze
 - `src/commands/specify.ts` ✅ — `gwrk define spec <feature> [--refs]`
-- `src/commands/plan.ts` ✅ — `gwrk define plan <feature> [--refs]`
-- `src/commands/analyze.ts` ✅ — Internal definition stage (not user-facing)
+- `src/commands/define-plan.ts` ✅ — `gwrk define plan <feature> [--refs]`
+- `src/commands/analyze.ts` ✅ — Internal definition stage (hidden)
 - `src/commands/tasks-generate.ts` ✅ — `gwrk define tasks` with `--force` and `--reconcile`
+- `src/commands/tests-generate.ts` ✅ — `gwrk define tests` for RED test generation
 - `src/utils/agent.ts` ✅ — Agent dispatch: backend resolution, log streaming, logPath return
 - `src/utils/parser.ts` ✅ — Parse plan.md → phases and tasks
 - `src/utils/exec.ts` ✅ — Shell command execution wrapper
@@ -128,6 +129,7 @@ Agent dispatch wrappers under `gwrk define` for spec, plan, tasks, and bare defi
 - `src/commands/analyze.test.ts` ✅ — TR-009
 - `src/commands/define.test.ts` ✅
 - `src/commands/tasks-generate.test.ts` ✅ — TR-004
+- `src/commands/tests-generate.test.ts` ✅
 - `src/commands/tasks-reconcile.test.ts` ✅ — 4 reconcile scenarios
 - `src/utils/agent.test.ts` ✅
 - `src/engine/spec-parser.test.ts` ✅
