@@ -72,6 +72,7 @@ async function detectAgents() {
 /**
  * Unified Init Command.
  * Absorbs setup.ts and integrates interactive profile wizard.
+ * Also handles workspace appending for polyglot monorepos (020).
  */
 export const initAction = async (options: any): Promise<void> => {
   const cwd = process.cwd();
