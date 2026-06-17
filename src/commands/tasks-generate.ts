@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
@@ -15,7 +19,7 @@ import { banner, blocked, fail, success } from "../utils/format.js";
 import {
   generateFilesystemGates,
   generateRunner,
-  generateVitestGates,
+  generateDeterministicGates,
 } from "../utils/gate-gen.js";
 import {
   getCurrentBranch,

@@ -6,10 +6,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Phase, Task, TaskState } from "../utils/state.js";
+import type { ProjectProfile } from "./prompt-conditioner.js";
+import { getTestExtension, getTestCommand } from "../utils/toolchain-mapper.js";
 
 /**
  * Deterministic plan.md → tasks.json generator.
@@ -167,6 +173,7 @@ function generateTaskState(
   parsed: ParsedPhase[],
   planPath: string,
   existingState?: TaskState,
+  profile: ProjectProfile = { type: "unknown" },
 ): TaskState {
   let taskCounter = 1;
   const existingTasks = existingState
@@ -174,25 +181,24 @@ function generateTaskState(
     : [];
   const matchedExistingIds = new Set<string>();
 
+  const testExt = getTestExtension(profile);
+
   const phases: Phase[] = parsed.map((p) => {
     const phaseId = `phase-${String(p.number).padStart(2, "0")}`;
-    const testFiles = p.files.filter((f) => f.path.endsWith(".test.ts"));
-    const implFiles = p.files.filter((f) => !f.path.endsWith(".test.ts"));
+    const testFiles = p.files.filter((f) => f.path.endsWith(testExt));
+    const implFiles = p.files.filter((f) => !f.path.endsWith(testExt));
 
     let tasks: Task[] = implFiles.map((f) => {
       const title = `${f.action === "NEW" ? "Create" : "Modify"} ${f.path.split("/").pop()}`;
+      
+      // Match implementation file to test file by basename without extensions
+      const implBaseName = path.basename(f.path).replace(/\.[^/.]+$/, ""); // Strip last extension
       const relatedTest = testFiles.find((t) =>
-        t.path.includes(
-          f.path
-            .replace(/\.ts$/, ".test.ts")
-            .split("/")
-            .pop()!
-            .replace(".test.ts", ""),
-        ),
+        t.path.includes(implBaseName)
       );
 
       const gateScript = relatedTest
-        ? `pnpm vitest run ${relatedTest.path}`
+        ? getTestCommand(profile, [relatedTest.path])
         : `test -f ${f.path}`;
 
       const existing = existingTasks.find(
@@ -338,7 +344,7 @@ function generateTaskState(
 export function planToTasks(
   featureDir: string,
   featureId: string,
-  options: { reconcile?: boolean } = {},
+  options: { reconcile?: boolean; profile?: ProjectProfile } = {},
 ): TaskState {
   const planPath = path.join(featureDir, "plan.md");
   if (!fs.existsSync(planPath)) {
@@ -367,7 +373,7 @@ export function planToTasks(
     );
   }
 
-  const state = generateTaskState(featureId, parsed, planPath, existingState);
+  const state = generateTaskState(featureId, parsed, planPath, existingState, options.profile);
 
   // Write via saveTaskState for Zod validation
   const gwrkDir = path.join(featureDir, ".gwrk");

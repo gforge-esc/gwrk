@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -12,8 +16,9 @@ import { planToTasks } from "./plan-to-tasks.js";
 import {
   generateFilesystemGates,
   generateRunner,
-  generateVitestGates,
+  generateDeterministicGates,
 } from "../utils/gate-gen.js";
+import { detectProfile } from "./profile-detector.js";
 import {
   type DefineRunConfig,
   DefineStage,
@@ -362,8 +367,12 @@ export class DefineOrchestrator extends EventEmitter {
     console.log("Stage: PLAN_TO_TASKS");
     try {
       const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      
+      const profile = await detectProfile(this.config.cwd);
+      
       const state = planToTasks(featureDir, this.config.featureId, {
         reconcile: this.state.reconcile,
+        profile,
       });
       const taskCount = state.phases.reduce((sum, p) => sum + p.tasks.length, 0);
       console.log(`  ✓ Generated ${state.phases.length} phase(s), ${taskCount} task(s) from plan.md (deterministic)`);
@@ -405,8 +414,8 @@ export class DefineOrchestrator extends EventEmitter {
         let gateResult: { generated: number; skipped: number };
         
         if (fs.existsSync(gapMatrixPath)) {
-          console.log("  ▸ generating vitest gates from gap-matrix.md");
-          gateResult = generateVitestGates(featureDir, gapMatrixPath, state.phases);
+          console.log("  ▸ generating deterministic gates from gap-matrix.md");
+          gateResult = generateDeterministicGates(featureDir, gapMatrixPath, state.phases, profile);
         } else {
           console.log("  ▸ generating vitest gates from filesystem convention");
           gateResult = generateFilesystemGates(featureDir, state.phases);

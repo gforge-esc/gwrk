@@ -6,6 +6,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -29,6 +33,7 @@ import {
   loadTaskState,
   saveTaskState,
 } from "../utils/state.js";
+import { getTestCommand, getTestExtension, getSourceExtension } from "../utils/toolchain-mapper.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 import {
@@ -416,14 +421,14 @@ export class ShipOrchestrator extends EventEmitter {
     if (currentBranch === branchName) {
       console.log(`  Branch ${branchName} — already checked out`);
       this.state.branchName = branchName;
-      if (this.state.iteration === 1) this.captureTestBaseline();
+      if (this.state.iteration === 1) await this.captureTestBaseline();
       return { success: true, exitCode: 0 };
     }
 
     try {
       await createBranch(this.config.cwd, branchName, "develop");
       this.state.branchName = branchName;
-      if (this.state.iteration === 1) this.captureTestBaseline();
+      if (this.state.iteration === 1) await this.captureTestBaseline();
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       // Branch already exists — just check it out (no develop merge)
@@ -437,7 +442,7 @@ export class ShipOrchestrator extends EventEmitter {
           });
           this.state.branchName = branchName;
           console.log(`  Branch ${branchName} exists — checked out`);
-          if (this.state.iteration === 1) this.captureTestBaseline();
+          if (this.state.iteration === 1) await this.captureTestBaseline();
           return { success: true, exitCode: 0 };
         } catch (checkoutErr: unknown) {
           const checkoutMsg =
@@ -466,7 +471,7 @@ export class ShipOrchestrator extends EventEmitter {
    */
   private async stageActivateTests(): Promise<ShipStageResult> {
     console.log("  ▸ ACTIVATE_TESTS");
-    const testFiles = this.getPhaseTestFiles();
+    const testFiles = await this.getPhaseTestFiles();
     if (testFiles.length === 0) {
       console.log("  ⏭ no phase-scoped test files found");
       return { success: true, exitCode: 0 };
@@ -762,11 +767,11 @@ export class ShipOrchestrator extends EventEmitter {
    */
   private async stageTestGate(): Promise<ShipStageResult> {
     console.log("  ▸ TEST_GATE");
-    const phaseTestFiles = this.getPhaseTestFiles();
+    const phaseTestFiles = await this.getPhaseTestFiles();
     if (phaseTestFiles.length > 0) {
       console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
     }
-    const { failCount, output } = this.runTestSuite(phaseTestFiles);
+    const { failCount, output } = await this.runTestSuite(phaseTestFiles);
     const baseline = this.state.testBaseline ?? 0;
 
     if (failCount === 0) {
@@ -802,11 +807,21 @@ export class ShipOrchestrator extends EventEmitter {
    *  When phaseTestFiles are available, runs only those files instead of
    *  the full suite. This prevents cross-phase RED test contamination.
    */
-  private runTestSuite(phaseTestFiles?: string[]): { failCount: number; output: string } {
+  private async runTestSuite(phaseTestFiles?: string[]): Promise<{ failCount: number; output: string }> {
+    const profile = await detectProfile(this.config.cwd);
+    
     // If we have phase-scoped test files, run only those
-    const command = phaseTestFiles && phaseTestFiles.length > 0
-      ? `pnpm vitest run ${phaseTestFiles.join(" ")}`
-      : "pnpm test";
+    let command = "pnpm test";
+    if (phaseTestFiles && phaseTestFiles.length > 0) {
+      command = getTestCommand(profile, phaseTestFiles);
+    } else {
+      command = getTestCommand(profile, []);
+      if (command.includes("vitest run")) {
+        command = "pnpm vitest run";
+      } else if (command.includes("jest")) {
+        command = "npx jest";
+      }
+    }
 
     try {
       const result = execSync(command, {
@@ -829,8 +844,12 @@ export class ShipOrchestrator extends EventEmitter {
    * Returns paths like "src/commands/research.test.ts" found in task
    * titles/descriptions. Falls back to filesystem convention (co-located .test.ts).
    */
-  private getPhaseTestFiles(): string[] {
+  private async getPhaseTestFiles(): Promise<string[]> {
     try {
+      const profile = await detectProfile(this.config.cwd);
+      const testExt = getTestExtension(profile);
+      const sourceExt = getSourceExtension(profile);
+
       const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
       const taskState = loadTaskState(featureDir);
       const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
@@ -846,9 +865,9 @@ export class ShipOrchestrator extends EventEmitter {
         );
         for (const match of matches) {
           const filePath = match[0].replace(/[,;.]$/, "");
-          if (filePath.includes(".test.ts") || filePath.includes(".test.js")) {
+          if (filePath.endsWith(testExt)) {
             testFiles.add(filePath);
-          } else if (filePath.endsWith(".ts") || filePath.endsWith(".js")) {
+          } else if (filePath.endsWith(sourceExt) || filePath.endsWith(".js") || filePath.endsWith(".ts")) {
             sourceFiles.push(filePath);
           }
         }
@@ -857,7 +876,9 @@ export class ShipOrchestrator extends EventEmitter {
       // Fallback: find co-located test files for source files
       if (testFiles.size === 0) {
         for (const src of sourceFiles) {
-          const testPath = src.replace(/\.(ts|js)$/, ".test.$1");
+          const testPath = src.endsWith(sourceExt)
+            ? src.slice(0, -sourceExt.length) + testExt
+            : src.replace(/\.(js|ts)$/, testExt);
           if (fs.existsSync(path.join(this.config.cwd, testPath))) {
             testFiles.add(testPath);
           }
@@ -871,13 +892,13 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /** Snapshot test failure count before IMPLEMENT touches anything. */
-  private captureTestBaseline(): void {
+  private async captureTestBaseline(): Promise<void> {
     console.log("  ▸ capturing test baseline...");
-    const phaseTestFiles = this.getPhaseTestFiles();
+    const phaseTestFiles = await this.getPhaseTestFiles();
     if (phaseTestFiles.length > 0) {
       console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
     }
-    const { failCount } = this.runTestSuite(phaseTestFiles);
+    const { failCount } = await this.runTestSuite(phaseTestFiles);
     this.state.testBaseline = failCount;
     console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
   }

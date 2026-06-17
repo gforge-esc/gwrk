@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, it, expect } from 'vitest';
 import fs from "node:fs";
 
@@ -21,7 +25,7 @@ describe('tasks-generate (Phase 12)', () => {
       expect(source).not.toContain("gwrk-author-gates");
 
       // The deterministic path should exist instead
-      expect(source).toContain("generateVitestGates");
+      expect(source).toContain("generateDeterministicGates");
     });
   });
 });

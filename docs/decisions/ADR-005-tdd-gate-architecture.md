@@ -266,3 +266,29 @@ define tasks   → tasks.json + gates/        (task decomposition + vitest gates
 ### 8.7 Reversibility
 
 Low cost. Reverting means removing `generateVitestGates()` and routing all gate generation through the LLM path. The gap matrix artifact would survive as documentation. Cost: ~2 hours.
+
+---
+
+## 9. Amendment: Profile-Driven Gates (2026-06-16)
+
+> **Status:** Decided · **Date:** 2026-06-16
+> **Amends:** §8 (Deterministic Vitest Gates)
+> **Author:** David Gonzalez
+
+### 9.1 Context
+
+§8 established deterministic gates using `pnpm vitest run`. However, hardcoding vitest blocks `gwrk` from being used as a daily driver on non-TypeScript projects (e.g. Python, Go, Rust). The F014 Plugin System originally considered a heavy `toolchain` extension plugin to solve this, but this proved unnecessary as `.gwrkrc.json` already provides a robust, project-specific override mechanism.
+
+### 9.2 Decision: `ProjectProfile` Driven Commands
+
+We replace hardcoded `vitest` assumptions with a `toolchain-mapper` utility that reads `ProjectProfile.toolchain.test` and `ProjectProfile.toolchain.primary`.
+
+1. **Config-First**: `detectProfile()` merges `.gwrkrc.json` overrides into the detected `ProjectProfile`.
+2. **Language-Agnostic Generation**: `generateVitestGates` is renamed to `generateDeterministicGates` and takes the `ProjectProfile`. It maps the test harness (e.g. `pytest`, `cargo-test`, `go-test`) to the correct bash execution string.
+3. **Pre-flight Checks**: `ship-orchestrator.ts` uses the same mapper to run the appropriate test suite command prior to implementation.
+
+### 9.3 Impact
+
+- `generateVitestGates()` → `generateDeterministicGates()`
+- `pnpm vitest run` and `.test.ts` assumptions removed from `plan-to-tasks.ts`, `gate-gen.ts`, and `ship-orchestrator.ts`.
+- Gwrk is now capable of managing TDD gates for polyglot monorepos and multiple language ecosystems natively.

@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import type { ProjectProfile } from "./prompt-conditioner.js";
@@ -267,6 +271,25 @@ export async function detectProfile(
     } else {
       profile.layout = "flat";
     }
+  }
+
+  // 6. Merge local .gwrkrc.json overrides (Phase 16 - Profile-Driven Gates)
+  try {
+    const rcPath = path.join(projectRoot, ".gwrkrc.json");
+    if (fs.existsSync(rcPath)) {
+      const rc = JSON.parse(fs.readFileSync(rcPath, "utf-8"));
+      if (rc.project) {
+        if (rc.project.type) profile.type = rc.project.type;
+        if (rc.project.stack) {
+          profile.stack = { ...profile.stack, ...rc.project.stack };
+        }
+        if (rc.project.toolchain) {
+          profile.toolchain = { ...profile.toolchain, ...rc.project.toolchain };
+        }
+      }
+    }
+  } catch {
+    // Ignore config load errors
   }
 
   return profile;
