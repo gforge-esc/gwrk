@@ -212,6 +212,7 @@ Arguments:
             cwd,
             refs: opts.refs,
             dryRun: opts.dryRun,
+            quiet: true,
           }, {
             stage: DefineStage.SPECIFY,
             featureId: feature,

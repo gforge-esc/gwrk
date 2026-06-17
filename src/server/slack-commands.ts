@@ -288,7 +288,7 @@ const handlers: Record<string, SlashCommandHandler> = {
         : undefined;
       const projectId = resolveProjectId(context.projectRoot);
 
-      const pr = findOpenPr(resolved, phaseId, projectId);
+      const pr = findOpenPr(resolved, projectId, phaseId);
       if (!pr) {
         return {
           response_type: "ephemeral",

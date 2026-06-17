@@ -11,6 +11,7 @@ Uses `gwrk project info` to understand the dependency graph and ensures that cha
 [/type]
 [type: generic]
 Identifies dependent modules and files that require updates after a change to a core component or interface.
+[/type]
 
 ## Scope Constraints
 - MUST maintain architectural integrity and existing patterns.

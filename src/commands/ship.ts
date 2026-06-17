@@ -168,6 +168,7 @@ async function shipPhase(
 
   const startTime = Date.now();
   let exitCode = 0;
+  let orchestrator: ShipOrchestrator | undefined;
 
   try {
     if (opts.legacy) {
@@ -206,7 +207,7 @@ async function shipPhase(
       }
 
       const gwrkConfig = loadConfig(cwd);
-      const orchestrator = new ShipOrchestrator(
+      orchestrator = new ShipOrchestrator(
         {
           featureId: feature,
           phaseId: phaseId,
@@ -302,6 +303,7 @@ async function shipPhase(
 
     const manifestId = generateRunId(startedAt, "ship", phaseId);
     const featureDir = path.join(cwd, "specs", feature);
+    const result = orchestrator?.getResult();
 
     writeManifest(featureDir, {
       runId: manifestId,
@@ -315,6 +317,8 @@ async function shipPhase(
       durationS,
       exitCode,
       attempt: 1,
+      gateResult: result?.gateResult,
+      reviewVerdict: result?.reviewVerdict,
       filesChanged,
       linesAdded,
       linesDeleted,

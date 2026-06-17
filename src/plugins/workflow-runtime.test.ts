@@ -9,12 +9,14 @@ import * as detector from '../engine/profile-detector.js';
 import * as agentUtils from '../utils/agent.js';
 import { PluginLoader } from './loader.js';
 import fs from 'node:fs/promises';
+import { execSync } from "node:child_process";
 
 vi.mock('../engine/prompt-conditioner.js');
 vi.mock('../engine/profile-detector.js');
 vi.mock('../utils/agent.js');
 vi.mock('./loader.js');
 vi.mock('node:fs/promises');
+vi.mock('node:child_process');
 
 describe('WorkflowRuntime Phase 13: Project Awareness', () => {
   beforeEach(() => {
@@ -67,5 +69,67 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     const stdout = 'Prose before\n{"summary": "bare", "intents": []}\nProse after';
     const result = extractJsonFromOutput(stdout);
     expect(result).toEqual({ summary: 'bare', intents: [] });
+  });
+
+  it('TR-029: should return synthetic success for prose output if exitCode is 0 and tolerant mode is on', async () => {
+    const mockManifest = {
+      name: 'test-workflow',
+      type: 'workflow',
+      outputSchema: { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } }
+    };
+    
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: mockManifest as any,
+      path: '/mock/plugin/path'
+    });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: 'I did the work natively, here is some prose.',
+      stderr: '',
+      durationS: 1
+    });
+
+    const runtime = new WorkflowRuntime();
+    const result = await runtime.executeWorkflow('test-workflow', 'input data', { 
+      projectRoot: '/mock/root',
+      tolerant: true
+    });
+
+    expect(result.summary).toContain('Agent completed successfully (native execution, no JSON intents)');
+    expect(result.intents).toEqual([]);
+  });
+
+  it('TR-029: should return synthetic success if exitCode is 0 and artifacts are detected (even if tolerant is off)', async () => {
+    const mockManifest = {
+      name: 'test-workflow',
+      type: 'workflow',
+      outputSchema: { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } }
+    };
+    
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: mockManifest as any,
+      path: '/mock/plugin/path'
+    });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: 'I did the work natively and committed it.',
+      stderr: '',
+      durationS: 1
+    });
+
+    vi.mocked(execSync).mockReturnValue(Buffer.from('M  src/new-file.ts'));
+
+    const runtime = new WorkflowRuntime();
+    const result = await runtime.executeWorkflow('test-workflow', 'input data', { 
+      projectRoot: '/mock/root',
+      tolerant: false
+    });
+
+    expect(result.summary).toContain('Agent completed successfully (native execution, no JSON intents)');
+    expect(execSync).toHaveBeenCalledWith("git status --porcelain", expect.anything());
   });
 });

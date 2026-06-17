@@ -8,8 +8,8 @@ import { getTestDb } from "./index.js";
 import {
   type IssueRecord,
   listIssues,
-  saveIssue,
   updateIssue,
+  upsertIssue,
 } from "./issues.js";
 
 describe("FR-H14: Issues Ledger", () => {
@@ -19,7 +19,7 @@ describe("FR-H14: Issues Ledger", () => {
     db = getTestDb();
   });
 
-  it("US-H07: saveIssue inserts a new issue record", () => {
+  it("US-H07: upsertIssue inserts a new issue record", () => {
     const issue: IssueRecord = {
       issue_number: 101,
       feature_id: "011-harvest",
@@ -30,7 +30,7 @@ describe("FR-H14: Issues Ledger", () => {
       author: "tester",
     };
 
-    const id = saveIssue(issue, "test-project", db);
+    const id = upsertIssue(issue, "test-project", db);
     expect(id).toBeGreaterThan(0);
 
     const issues = listIssues("011-harvest", "test-project", db);
@@ -49,9 +49,10 @@ describe("FR-H14: Issues Ledger", () => {
       author: "tester",
     };
 
-    saveIssue(issue, "test-project", db);
+    upsertIssue(issue, "test-project", db);
     updateIssue(
       102,
+      "test-project",
       { state: "closed", closed_at: new Date().toISOString() },
       db,
     );

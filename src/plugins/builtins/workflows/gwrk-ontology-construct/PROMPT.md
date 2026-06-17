@@ -18,6 +18,7 @@ Your output MUST be structured according to these five primitives:
 
 The following project documents have been gathered to ground your reasoning:
 
+[type: gwrk-native]
 ### Architecture
 {{architecture}}
 
@@ -26,6 +27,12 @@ The following project documents have been gathered to ground your reasoning:
 
 ### Code Patterns
 {{patterns}}
+[/type]
+
+[type: generic]
+### Project Documentation
+Review the project's architecture, specifications, and existing code patterns to ground your reasoning.
+[/type]
 
 ## Instructions
 

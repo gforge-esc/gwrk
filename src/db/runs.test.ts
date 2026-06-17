@@ -17,11 +17,21 @@ import {
   startRun,
 } from "./runs.js";
 
+const TEST_PROJECT_ID = "test-project-id";
+
 describe("runs db", () => {
   let db: Database.Database;
 
   beforeEach(() => {
     db = getTestDb();
+    registerProject(
+      {
+        id: TEST_PROJECT_ID,
+        name: "Test Project",
+        path: "/tmp/test-project",
+      },
+      db,
+    );
   });
 
   it("should start and finish a run", () => {
@@ -31,6 +41,7 @@ describe("runs db", () => {
         phase_id: "phase-1",
         command: "test",
         agent_backend: "gemini",
+        project_id: TEST_PROJECT_ID,
       },
       db,
     );
@@ -46,7 +57,7 @@ describe("runs db", () => {
       db,
     );
 
-    const runs = listRuns("test-feat", undefined, db);
+    const runs = listRuns("test-feat", TEST_PROJECT_ID, db);
     expect(runs.length).toBeGreaterThan(0);
     expect(runs[0].exit_code).toBe(0);
     expect(runs[0].feature_id).toBe("test-feat");
@@ -59,12 +70,13 @@ describe("runs db", () => {
         command: "ship",
         exit_code: 0,
         duration_s: 45,
+        project_id: TEST_PROJECT_ID,
       },
       db,
     );
 
     expect(runId).toBeGreaterThan(0);
-    const runs = listRuns("record-feat", undefined, db);
+    const runs = listRuns("record-feat", TEST_PROJECT_ID, db);
     expect(runs[0].duration_s).toBe(45);
   });
 
@@ -90,11 +102,12 @@ describe("runs db", () => {
         agent_backend: "gemini",
         exit_code: 0,
         duration_s: 10,
+        project_id: TEST_PROJECT_ID,
       },
       db,
     );
 
-    const stats = getStats(undefined, db);
+    const stats = getStats(TEST_PROJECT_ID, db);
     const stat = stats.find((s) => s.command === "stats-cmd");
     expect(stat).toBeDefined();
     expect(stat?.total_runs).toBeGreaterThan(0);
@@ -121,6 +134,7 @@ describe("runs db", () => {
           phase_id: "p1",
           command: "ship",
           agent_backend: "gemini",
+          project_id: TEST_PROJECT_ID,
         },
         db,
       );
@@ -136,7 +150,7 @@ describe("runs db", () => {
         db,
       );
 
-      const runs = listRuns("harvest-feat", undefined, db);
+      const runs = listRuns("harvest-feat", TEST_PROJECT_ID, db);
       const run = runs.find((r) => r.id === runId);
       expect(run).toBeDefined();
       expect(run?.status).toBe("merged");
@@ -161,6 +175,7 @@ describe("runs db", () => {
         {
           feature_id: "harvest-partial-feat",
           command: "ship",
+          project_id: TEST_PROJECT_ID,
         },
         db,
       );
@@ -174,7 +189,7 @@ describe("runs db", () => {
         db,
       );
 
-      const runs = listRuns("harvest-partial-feat", undefined, db);
+      const runs = listRuns("harvest-partial-feat", TEST_PROJECT_ID, db);
       const run = runs.find((r) => r.id === runId);
       expect(run).toBeDefined();
       expect(run?.status).toBeNull();

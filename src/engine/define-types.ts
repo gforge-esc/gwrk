@@ -43,6 +43,8 @@ export interface DefineRunConfig {
   dryRun?: boolean;
   /** If true, merge new plan with existing tasks, preserving completed status */
   reconcile?: boolean;
+  quiet?: boolean;
+  tolerant?: boolean;
 }
 
 /**

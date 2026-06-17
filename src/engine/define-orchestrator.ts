@@ -285,7 +285,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
       });
 
       console.log(`  ${result.summary}`);
@@ -312,7 +313,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
       });
 
       console.log(`  ${result.summary}`);
@@ -339,7 +341,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant ?? true,
       });
 
       console.log(`  ${result.summary}`);
@@ -436,7 +439,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
       });
 
       console.log(`  ${result.summary}`);
@@ -460,7 +464,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
       });
 
       console.log(`  ${result.summary}`);

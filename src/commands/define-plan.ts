@@ -141,6 +141,7 @@ Examples:
           cwd: projectRoot,
           refs: opts.refs,
           dryRun: opts.dryRun,
+          quiet: true,
         }, {
           stage: DefineStage.PLAN,
           featureId: feature,
