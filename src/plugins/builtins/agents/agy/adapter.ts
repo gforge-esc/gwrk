@@ -99,7 +99,7 @@ export class AgyAdapter implements AgentBackend {
     // Normalization logic (ADR-004/ADR-006)
     if (rawExitCode === 127) {
       errorType = "command_not_found";
-    } else if (stderr.includes("turn_limit") || stdout.includes("turn_limit")) {
+    } else if (stderr.includes("turn_limit")) {
       exitCode = 1;
       errorType = "turn_limit";
     } else if (rawExitCode !== 0) {

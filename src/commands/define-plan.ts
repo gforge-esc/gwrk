@@ -132,6 +132,7 @@ Examples:
 
       const startTime = Date.now();
       const startedAt = new Date().toISOString();
+      let finished = false;
 
       try {
         const orchestrator = new DefineOrchestrator({
@@ -142,6 +143,7 @@ Examples:
           refs: opts.refs,
           dryRun: opts.dryRun,
           quiet: true,
+          tolerant: true,
         }, {
           stage: DefineStage.PLAN,
           featureId: feature,
@@ -162,6 +164,7 @@ Examples:
 
         const durationS = Math.round((Date.now() - startTime) / 1000);
         finishRun(runId, { exit_code: 0, duration_s: durationS });
+        finished = true;
         success("define plan", durationS, runId);
 
         // Write Execution Manifest (ADR-003)
@@ -213,7 +216,9 @@ Examples:
       } catch (err: unknown) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
         const msg = err instanceof Error ? err.message : String(err);
-        finishRun(runId, { exit_code: 1, duration_s: durationS });
+        if (!finished) {
+          finishRun(runId, { exit_code: 1, duration_s: durationS });
+        }
         fail("define plan", 1, durationS, runId);
         console.error(msg);
         process.exitCode = 1;
