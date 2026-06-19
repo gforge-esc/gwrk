@@ -14,6 +14,13 @@ export interface AgentBackend {
   readonly name: string;
 
   /**
+   * When true, this agent writes files directly via its own tools rather than
+   * returning JSON intents. The workflow runtime tolerates prose output from
+   * native writers instead of requiring structured JSON.
+   */
+  readonly nativeWriter?: boolean;
+
+  /**
    * Generates the CLI-specific context file from the project's source of truth.
    * MUST use <!-- gwrk:begin --> / <!-- gwrk:end --> boundary markers.
    */

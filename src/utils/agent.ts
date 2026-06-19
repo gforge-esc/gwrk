@@ -378,6 +378,8 @@ export interface TaskResult {
   stderr: string;
   durationS: number;
   logPath?: string;
+  /** True when the agent writes files directly via built-in tools. */
+  nativeWriter?: boolean;
 }
 
 /**
@@ -611,5 +613,6 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     ...result,
     durationS,
     logPath,
+    nativeWriter: adapter.nativeWriter ?? false,
   };
 }

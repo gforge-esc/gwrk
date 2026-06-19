@@ -284,7 +284,7 @@ export class WorkflowRuntime {
         }
       })();
 
-      if (result.exitCode === 0 && (options.tolerant || hasArtifacts)) {
+      if (result.exitCode === 0 && (result.nativeWriter || options.tolerant || hasArtifacts)) {
         const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
         console.warn(
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,

@@ -10,6 +10,7 @@ import type { AgentBackend } from "../../../agent-backend.js";
 
 export class AgyAdapter implements AgentBackend {
   readonly name = "agy";
+  readonly nativeWriter = true;
 
   async isAvailable(): Promise<boolean> {
     const res = await execCommand("which", ["agy"]);

@@ -143,7 +143,6 @@ Examples:
           refs: opts.refs,
           dryRun: opts.dryRun,
           quiet: true,
-          tolerant: true,
         }, {
           stage: DefineStage.PLAN,
           featureId: feature,
