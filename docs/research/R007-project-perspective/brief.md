@@ -1,4 +1,5 @@
 # Research Initiative: R007 — Project Perspective & Enforcement Skills
+status: COMPLETED
 
 > **Status:** Active — Feature A shipped, Feature B + ontology construction in progress
 > **Consumer:** F014 Plugin System (enforcement skills, project overrides)

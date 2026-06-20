@@ -1,4 +1,5 @@
 # Research Initiative: R002 — Agent Backend Plugin Design
+status: COMPLETED
 
 > **Status:** Brief — Awaiting Approval
 > **Consumer:** F014 spec expansion (Layer 1 FRs), architecture.md v5.0

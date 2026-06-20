@@ -1,4 +1,5 @@
 # Research Initiative: R003 — Agent Stage Containment
+status: COMPLETED
 
 > **Status:** Brief — Active Research
 > **Consumer:** Operating model enforcement, `gwrk define tests` hardening, F005/F014 spec amendments

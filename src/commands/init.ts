@@ -58,7 +58,7 @@ async function confirm(question: string, defaultYes = true): Promise<boolean> {
 }
 
 async function detectAgents() {
-  const agents = ["gemini", "claude", "anthropic", "codex", "ollama", "gh"];
+  const agents = ["agy", "claude", "gemini", "codex", "ollama", "gh"];
   const detected = [];
   for (const a of agents) {
     try {
@@ -67,6 +67,38 @@ async function detectAgents() {
     } catch {}
   }
   return detected;
+}
+
+/**
+ * Build a schema-compliant agents config block from detected CLIs.
+ * Must match GwrkConfigSchema.agents (define, implement, registry, fallbackOrder).
+ */
+function buildAgentConfig(detected: string[]): Record<string, unknown> {
+  // Prefer agy, then claude, then first detected
+  const preferred = detected.find(a => a === "agy")
+    || detected.find(a => a === "claude")
+    || detected[0]
+    || "agy";
+
+  const registry: Record<string, unknown> = {};
+  for (const agent of detected) {
+    registry[agent] = {
+      name: agent,
+      type: "local-cli",
+      command: agent,
+      discoveryMethod: "manual",
+      quotaProbe: { method: "optimistic", cacheTTLMinutes: 5 },
+      maxConcurrent: agent === "agy" ? 2 : 1,
+      models: [],
+    };
+  }
+
+  return {
+    define: preferred,
+    implement: preferred,
+    registry,
+    fallbackOrder: detected,
+  };
 }
 
 /**
@@ -127,10 +159,7 @@ export const initAction = async (options: any): Promise<void> => {
       architecture: "unknown",
       conventions: "unknown"
     },
-    agents: detectedAgents.reduce((acc: any, a) => {
-      acc[a] = { enabled: true };
-      return acc;
-    }, {}),
+    agents: buildAgentConfig(detectedAgents),
     extensions: extensions.filter(e => e.detected).map(e => e.id)
   };
 
