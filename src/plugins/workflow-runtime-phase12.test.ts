@@ -28,6 +28,8 @@ describe("WorkflowRuntime (Phase 12)", () => {
         stdout: "I have updated the files natively. No JSON here.",
         stderr: "",
         logPath: "/tmp/log",
+        durationS: 0,
+        nativeWriter: true,
       });
 
       const mockReadFile = vi.mocked(readFile);

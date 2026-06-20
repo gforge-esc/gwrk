@@ -35,6 +35,8 @@ describe("WorkflowRuntime Hardening (Phase 12)", () => {
         stdout: "I thought about it but decided to do nothing. No JSON here.",
         stderr: "",
         logPath: "/tmp/log",
+        durationS: 0,
+        nativeWriter: true,
       });
 
       const mockReadFile = vi.mocked(readFile);
