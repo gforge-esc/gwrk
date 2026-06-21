@@ -12,6 +12,8 @@ vi.mock("../engine/compression.js", () => ({
   gatherDeliveryActuals: vi.fn(),
   computeCompression: vi.fn(),
   generateSummary: vi.fn(),
+}));
+vi.mock("../engine/indicators.js", () => ({
   computeLeadingIndicators: vi.fn(),
 }));
 vi.mock("../db/compression.js", () => ({
@@ -32,10 +34,10 @@ vi.mock("../engine/effort.js", () => ({
 
 import {
   computeCompression,
-  computeLeadingIndicators,
   gatherDeliveryActuals,
   generateSummary,
 } from "../engine/compression.js";
+import { computeLeadingIndicators } from "../engine/indicators.js";
 import { computeEffort } from "../engine/effort.js";
 import { extractStories } from "../engine/spec-parser.js";
 import { recordCompression } from "../db/compression.js";

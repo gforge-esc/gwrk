@@ -60,8 +60,8 @@ describe('PlanRenderer', () => {
     const md = renderer.render();
 
     expect(md).toContain('gantt');
-    expect(md).toContain('Bootstrap                 :done, F1_P1, 0, 10');
-    expect(md).toContain('Commands                  :done, F1_P2, after F1_P1, 15');
+    expect(md).toContain('Bootstrap                 :done, F1_P1, 2026-01-01, 10d');
+    expect(md).toContain('Commands                  :done, F1_P2, after F1_P1, 15d');
   });
 
   it('should render features and phases table', () => {

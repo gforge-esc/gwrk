@@ -277,7 +277,7 @@ describe("FR-H03 & Phase-less Harvest: Backfill & Reconciliation", () => {
 
     await harvestFeature(tempDir, record as any);
 
-    // Should call listRuns for each phase to find runs
-    expect(runsDb.listRuns).toHaveBeenCalledTimes(2);
+    // Should call listRuns for each phase (2 per phase: idempotency + merge check)
+    expect(runsDb.listRuns).toHaveBeenCalledTimes(4);
   });
 });

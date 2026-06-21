@@ -187,7 +187,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(findOpenPr).toHaveBeenCalledWith("003-slack", "phase-01", expect.any(String));
+    expect(findOpenPr).toHaveBeenCalledWith("003-slack", expect.any(String), "phase-01");
     expect(execSync).toHaveBeenCalledWith(
       "gh pr merge 42 --merge --delete-branch",
       expect.objectContaining({ cwd: "/tmp" }),

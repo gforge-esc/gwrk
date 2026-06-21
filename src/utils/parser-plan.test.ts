@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
-import { parsePlan } from "./parser-plan.js";
+import { parseBuildPlan as parsePlan } from "./parser-plan.js";
 
 vi.mock("node:fs");
 
