@@ -10,7 +10,7 @@
 
 | Plugin Type | Name | Purpose |
 |---|---|---|
-| Extension | `knowledge-vault` | Context provider — indexes markdown vaults |
+| Extension | `obsidian-vault` | Context provider — Obsidian-specific via `obsidian cli` |
 | Skill (atomic) | `knowledge-capture` | Structured note intake |
 | Skill (compound) | `knowledge-synthesize` | 3-pass reasoning: Forensic → Synthetic → Calibration |
 | Workflow | `gwrk-capture` | Note capture via `gwrk discover capture` |
