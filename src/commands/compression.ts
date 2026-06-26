@@ -2,23 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { recordCompression } from "../db/compression.js";
 import {
   computeCompression,
   computeForecastFromLOC,
   gatherDeliveryActuals,
   generateSummary,
 } from "../engine/compression.js";
-import { computeLeadingIndicators } from "../engine/indicators.js";
 import { computeEffort } from "../engine/effort.js";
+import { computeLeadingIndicators } from "../engine/indicators.js";
 import { resolveRoleMultipliers } from "../engine/roles.js";
 import { extractStories } from "../engine/spec-parser.js";
 import type { CompressionReport } from "../engine/types.js";
 import { loadConfig } from "../utils/config.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { recordCompression } from "../db/compression.js";
 
 function getEffortReport(
   featureDir: string,
@@ -81,17 +85,18 @@ Examples:
             const actuals = gatherDeliveryActuals(featDir);
 
             // FR-016: LOC-derived SP fallback when spec has no explicit SP
-            const forecast = effort.totalSP > 0
-              ? {
-                  totalSP: effort.totalSP,
-                  roles: effort.roles.map((r) => ({
-                    role: r.role,
-                    sp: r.spAssigned,
-                  })),
-                  estimatedHours: effort.totalWithOverhead,
-                  estimatedDays: effort.totalDays,
-                }
-              : computeForecastFromLOC(featDir);
+            const forecast =
+              effort.totalSP > 0
+                ? {
+                    totalSP: effort.totalSP,
+                    roles: effort.roles.map((r) => ({
+                      role: r.role,
+                      sp: r.spAssigned,
+                    })),
+                    estimatedHours: effort.totalWithOverhead,
+                    estimatedDays: effort.totalDays,
+                  }
+                : computeForecastFromLOC(featDir);
 
             const ratios = computeCompression(forecast, actuals);
             const projectId = resolveProjectId(projectRoot);
@@ -195,18 +200,26 @@ Examples:
         const actuals = gatherDeliveryActuals(featureDir);
 
         // FR-016: LOC-derived SP fallback when spec has no explicit SP
-        const forecast = effort.totalSP > 0
-          ? {
-              totalSP: effort.totalSP,
-              roles: effort.roles.map((r) => ({ role: r.role, sp: r.spAssigned })),
-              estimatedHours: effort.totalWithOverhead,
-              estimatedDays: effort.totalDays,
-            }
-          : computeForecastFromLOC(featureDir);
+        const forecast =
+          effort.totalSP > 0
+            ? {
+                totalSP: effort.totalSP,
+                roles: effort.roles.map((r) => ({
+                  role: r.role,
+                  sp: r.spAssigned,
+                })),
+                estimatedHours: effort.totalWithOverhead,
+                estimatedDays: effort.totalDays,
+              }
+            : computeForecastFromLOC(featureDir);
 
         const ratios = computeCompression(forecast, actuals);
         const projectId = resolveProjectId(projectRoot);
-        const indicators = computeLeadingIndicators(feature, forecast, projectId);
+        const indicators = computeLeadingIndicators(
+          feature,
+          forecast,
+          projectId,
+        );
 
         const report: CompressionReport = {
           featureId: feature,

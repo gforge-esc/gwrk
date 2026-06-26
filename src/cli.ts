@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 #!/usr/bin/env node
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -163,9 +167,7 @@ program.hook("preAction", (thisCommand, actionCommand) => {
     process.exit(2);
   }
 
-  if (
-    actionCommand.name() !== "init"
-  ) {
+  if (actionCommand.name() !== "init") {
     // This will process.exit(1) if config is missing or invalid
     loadConfig(process.cwd());
   }

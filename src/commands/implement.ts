@@ -2,18 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
-import { runGate } from "../utils/gate-runner.js";
 import { banner, color, dryRun, fail, success } from "../utils/format.js";
-import {
-  getCurrentCommit,
-  getDiffStats,
-} from "../utils/git.js";
+import { runGate } from "../utils/gate-runner.js";
+import { getCurrentCommit, getDiffStats } from "../utils/git.js";
 import { appendHistory } from "../utils/history.js";
 import {
   loadTaskState,
@@ -21,8 +22,8 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;

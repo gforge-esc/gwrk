@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,10 +16,7 @@ import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
-import {
-  type AgentBackendId,
-  loadConfig,
-} from "./config.js";
+import { type AgentBackendId, loadConfig } from "./config.js";
 import { resolveProjectId } from "./project-id.js";
 
 // ANSI — must match format.ts

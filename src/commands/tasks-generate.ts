@@ -6,9 +6,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
@@ -17,9 +21,9 @@ import { PlanStore } from "../engine/plan-store.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
+  generateDeterministicGates,
   generateFilesystemGates,
   generateRunner,
-  generateDeterministicGates,
 } from "../utils/gate-gen.js";
 import {
   getCurrentBranch,
@@ -27,8 +31,8 @@ import {
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { loadTaskState } from "../utils/state.js";
 
@@ -101,7 +105,10 @@ Examples:
             if (!fs.existsSync(srcDir)) return false;
             const allFiles = fs.readdirSync(srcDir);
             return allFiles.some(
-              (f) => f.includes(feature) && f.endsWith(".test.ts") && !f.startsWith("cli.e2e"),
+              (f) =>
+                f.includes(feature) &&
+                f.endsWith(".test.ts") &&
+                !f.startsWith("cli.e2e"),
             );
           } catch {
             return false;
@@ -142,26 +149,33 @@ Examples:
         try {
           const input = `Decompose plan for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${opts.force ? " --force" : ""}${opts.reconcile ? " --reconcile" : ""}`;
 
-          const orchestrator = new DefineOrchestrator({
-            featureId: feature,
-            backend,
-            cwd: projectRoot,
-            reconcile: opts.reconcile,
-            dryRun: opts.dryRun,
-            quiet: true,
-          }, {
-            stage: DefineStage.PLAN_TO_TASKS,
-            featureId: feature,
-            startedAt,
-            runId: `define-tasks-${feature}-${Date.now()}`,
-            backend,
-            reconcile: opts.reconcile,
+          const orchestrator = new DefineOrchestrator(
+            {
+              featureId: feature,
+              backend,
+              cwd: projectRoot,
+              reconcile: opts.reconcile,
+              dryRun: opts.dryRun,
+              quiet: true,
+            },
+            {
+              stage: DefineStage.PLAN_TO_TASKS,
+              featureId: feature,
+              startedAt,
+              runId: `define-tasks-${feature}-${Date.now()}`,
+              backend,
+              reconcile: opts.reconcile,
+            },
+          );
+
+          const exitCode = await orchestrator.runLoop(input, {
+            stopAfterOne: true,
           });
 
-          const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
-
           if (exitCode !== 0) {
-            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+            throw new Error(
+              `Workflow execution failed with exit code ${exitCode}`,
+            );
           }
 
           if (opts.dryRun) {

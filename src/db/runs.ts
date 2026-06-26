@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import crypto from "node:crypto";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -232,7 +236,8 @@ export function findOpenPr(
   db?: Database.Database,
 ): { pr_number: number; pr_url: string | null } | null {
   const conn = db ?? getDb();
-  let query = "SELECT pr_number, pr_url FROM runs WHERE feature_id = ? AND project_id = ?";
+  let query =
+    "SELECT pr_number, pr_url FROM runs WHERE feature_id = ? AND project_id = ?";
   const args: (string | number)[] = [featureId, projectId];
 
   if (phaseId) {

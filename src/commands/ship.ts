@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,12 +45,9 @@ import {
 } from "../utils/state.js";
 
 import { getBackendSelector } from "../server/index.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import {
-  loadSetupState,
-  isSetupComplete,
-} from "../utils/setup-state.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
+import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
@@ -194,7 +195,7 @@ async function shipPhase(
           // Iteration count is a circuit breaker for THIS invocation, not a
           // persistent counter. A new `gwrk ship` gets a fresh breaker.
           // Stage is preserved for crash recovery; iteration is not.
-          existingState!.iteration = 1;
+          if (existingState) existingState.iteration = 1;
           console.log(`  🔄 Resuming from state: ${existingState?.stage}`);
         } catch (err) {
           console.warn(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
@@ -482,8 +483,6 @@ Examples:
           blocked("Run gwrk init first");
           throw new CommandError("Run gwrk init first", 1);
         }
-
-
 
         // Determine which phases to ship
         let phases: string[];
