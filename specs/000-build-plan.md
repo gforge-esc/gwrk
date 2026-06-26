@@ -24,14 +24,14 @@ graph TD
     001-cli-core["001-cli-core 🔴"] --> 002-build-server["002-build-server ✅"]
     001-cli-core["001-cli-core 🔴"] --> 006-pulse["006-pulse ✅"]
     001-cli-core["001-cli-core 🔴"] --> 007-effort-compression["007-effort-compression 🔴"]
-    001-cli-core["001-cli-core 🔴"] --> 012-knowledge-work["012-knowledge-work"]
+
     001-cli-core["001-cli-core 🔴"] --> 014-plugin-system["014-plugin-system 🔴"]
     002-build-server["002-build-server ✅"] --> 003-slack["003-slack ✅"]
     002-build-server["002-build-server ✅"] --> 005-parallel-dispatch["005-parallel-dispatch ✅"]
     013-agent-native-interface["013-agent-native-interface ✅"] --> 004-ship-loop["004-ship-loop 🔴"]
     004-ship-loop["004-ship-loop 🔴"] --> 005-parallel-dispatch["005-parallel-dispatch ✅"]
     004-ship-loop["004-ship-loop 🔴"] --> 011-harvest["011-harvest ✅"]
-    014-plugin-system["014-plugin-system 🔴"] --> 012-knowledge-work["012-knowledge-work"]
+
     003-slack["003-slack ✅"] --> 011-harvest["011-harvest ✅"]
     002-build-server["002-build-server ✅"] --> 011-harvest["011-harvest ✅"]
     style 001-cli-core fill:#ffaa00,stroke:#cc8800,color:#000
@@ -248,9 +248,9 @@ gantt
 | 4 | Done, Done! Notification | SHIPPED ✅ | 0 |
 | 5 | Post-Ship Issue Tracking | SHIPPED ✅ | 0 |
 
-### Feature 012-knowledge-work ⚪
+### Feature 012-knowledge-work — CLOSED
 
-**Status:** PLANNED
+**Status:** EXTERNALIZED (to `gwrk-plugins`, 2026-06-21). See `specs/.archive/012-knowledge-work/README.md`.
 
 ### Feature 013-agent-native-interface ✅
 
@@ -341,7 +341,7 @@ gantt
 | 007-effort-compression | 0 | IN_PROGRESS |
 | 008-agent-router | 0 | SHIPPED |
 | 011-harvest | 0 | SHIPPED |
-| 012-knowledge-work | 0 | PLANNED |
+| 012-knowledge-work | 0 | EXTERNALIZED |
 | 013-agent-native-interface | 0 | SHIPPED |
 | 014-plugin-system | 0 | IN_PROGRESS |
 | 018-build-plan-orchestrator | 0 | SHIPPED |
