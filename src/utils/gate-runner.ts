@@ -45,6 +45,14 @@ export async function runGate(scriptPath: string): Promise<GateResult> {
       .map((s) => s?.trim())
       .join("\n");
 
+    if (err.code === "EACCES") {
+      return {
+        passed: false,
+        exitCode: 126,
+        output: `Gate script not executable: ${scriptPath} (run chmod +x)`,
+      };
+    }
+
     if (err.code === "ENOENT") {
       return {
         passed: false,
