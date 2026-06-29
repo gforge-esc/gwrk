@@ -92,7 +92,8 @@ export class PlanSolver {
       if (
         phase.status === "DONE" ||
         phase.status === "SHIPPED" ||
-        phase.status === "VERIFIED"
+        phase.status === "VERIFIED" ||
+        phase.status === "CLOSED"
       ) {
         continue;
       }
@@ -105,7 +106,8 @@ export class PlanSolver {
           pred &&
           (pred.status === "DONE" ||
             pred.status === "SHIPPED" ||
-            pred.status === "VERIFIED")
+            pred.status === "VERIFIED" ||
+            pred.status === "CLOSED")
         );
       });
 

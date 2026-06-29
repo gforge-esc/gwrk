@@ -29,7 +29,7 @@ graph TD
 
   it("FR-013: should parse features and phases correctly", () => {
     const markdown = `
-### Feature 001 — CLI Core ✅
+### Feature 001-cli-core ✅
 
 Bootstrap the gwrk CLI.
 
@@ -37,7 +37,7 @@ Bootstrap the gwrk CLI.
 1. **Phase 1 — Foundation (7 SP):** CLI entry...
 2. **Phase 2 — Discovery (10 SP):** discovery...
 
-### Feature 002 — Build Server 🔴
+### Feature 002-build-server 🔴
 
 #### Implementation phases:
 - Phase 1: Fastify daemon (5 SP)
@@ -48,18 +48,18 @@ Bootstrap the gwrk CLI.
 
     const result = parsePlan("dummy.md");
     expect(result.features).toHaveLength(2);
-    expect(result.features[0].id).toBe("F001");
+    expect(result.features[0].id).toBe("001-cli-core");
     expect(result.features[0].status).toBe("DONE");
     
     expect(result.phases).toHaveLength(4);
     expect(result.phases[0]).toEqual(expect.objectContaining({
-      id: "F001-P1",
+      id: "001-cli-core-P1",
       name: "Foundation",
       sp_estimate: 7,
       status: "DONE"
     }));
     expect(result.phases[2]).toEqual(expect.objectContaining({
-      id: "F002-P1",
+      id: "002-build-server-P1",
       name: "Fastify daemon",
       sp_estimate: 5,
       status: "PLANNED"
