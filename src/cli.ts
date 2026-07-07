@@ -174,8 +174,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     program.parse();
   } catch (err: unknown) {
-    const error = err as { code?: string; exitCode?: number };
-    if (error.code === "commander.helpDisplayed") {
+    const error = err as { code?: string; exitCode?: number; message?: string };
+    // Commander writes --help / --version output itself; just exit cleanly.
+    if (
+      error.code === "commander.helpDisplayed" ||
+      error.code === "commander.version"
+    ) {
       process.exit(0);
     }
     if (error.code === "commander.unknownCommand") {
@@ -191,7 +195,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     ) {
       process.exit(2);
     }
-    // For other commander errors, use their exitCode or default to 1
+    // Non-commander errors (e.g. config validation in the preAction hook)
+    // would otherwise exit silently — surface the message so the failure is
+    // debuggable instead of producing zero output.
+    if (!error.code?.startsWith("commander.")) {
+      console.error(error.message ?? String(err));
+    }
     process.exit(error.exitCode || 1);
   }
 }

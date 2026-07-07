@@ -160,7 +160,9 @@ export const initAction = async (options: any): Promise<void> => {
       conventions: "unknown"
     },
     agents: buildAgentConfig(detectedAgents),
-    extensions: extensions.filter(e => e.detected).map(e => e.id)
+    extensions: Object.fromEntries(
+      extensions.filter(e => e.detected).map(e => [e.id, {}])
+    )
   };
 
   if (!isNonInteractive) {
