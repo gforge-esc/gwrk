@@ -51,6 +51,16 @@ vi.mock("../plugins/workflow-runtime.js", () => {
   };
 });
 
+// Mock config + model resolution — research resolves the configured define
+// agent before dispatching. Mocked here so the suite stays hermetic (this
+// file mocks node:fs, which would otherwise break the real loadConfig).
+vi.mock("../utils/config.js", () => ({
+  loadConfig: vi.fn(() => ({ agents: { define: "claude" } })),
+}));
+vi.mock("../utils/resolve-model.js", () => ({
+  resolveModelForTask: vi.fn(() => "claude-opus-4-8"),
+}));
+
 /**
  * RED tests for the research command audit fixes:
  * 1. --run must read brief.md and pass its content to the workflow

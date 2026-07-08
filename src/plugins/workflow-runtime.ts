@@ -24,6 +24,28 @@ import type { WorkflowManifest, JsonIntent } from "./manifest.js";
  * 3. Plain text mixed with JSON (ignores the plain text)
  */
 export function extractJsonFromOutput(stdout: string): unknown {
+  // Step 0: Unwrap Claude Code's `--output-format json` envelope. Its real
+  // payload is a string in the `result` field (typically wrapped in prose and
+  // a ```json fence), so recurse into it. Without this, the balanced-brace
+  // scan below matches the envelope's own outer braces and returns the wrapper
+  // object — which has no `summary`/`intents` — failing schema validation.
+  const trimmed = stdout.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const envelope = JSON.parse(trimmed) as Record<string, unknown>;
+      if (
+        envelope &&
+        typeof envelope === "object" &&
+        envelope.type === "result" &&
+        typeof envelope.result === "string"
+      ) {
+        return extractJsonFromOutput(envelope.result);
+      }
+    } catch {
+      // Not a single well-formed envelope — fall through to fence/brace scan.
+    }
+  }
+
   // Step 1: Extract content from markdown code fences (```json ... ```)
   const fenceBlocks = [...stdout.matchAll(/```(?:json)?\s*\n?([\s\S]*?)```/g)];
   if (fenceBlocks.length > 0) {
