@@ -71,6 +71,20 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     expect(result).toEqual({ summary: 'bare', intents: [] });
   });
 
+  it('unwraps Claude --output-format json envelope and extracts the inner payload', () => {
+    // Claude wraps the answer (prose + fenced JSON) in a `result` string.
+    const inner = 'Here is the report.\n```json\n{"summary": "env", "intents": []}\n```';
+    const envelope = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: inner,
+      session_id: 'abc',
+    });
+    const result = extractJsonFromOutput(envelope);
+    expect(result).toEqual({ summary: 'env', intents: [] });
+  });
+
   it('TR-029: should return synthetic success for prose output if exitCode is 0 and tolerant mode is on', async () => {
     const mockManifest = {
       name: 'test-workflow',
