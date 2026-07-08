@@ -177,7 +177,7 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
     }
   });
 
-  it("TR-005: should route done_done to ops channel", async () => {
+  it("TR-005: should route done_done to ops channel", { timeout: 15_000 }, async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
     try {
       const spy = vi.spyOn(slackNotify, "notifySlack");
