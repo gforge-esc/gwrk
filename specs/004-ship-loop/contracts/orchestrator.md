@@ -13,7 +13,11 @@ The `ShipOrchestrator` is the TypeScript state machine responsible for the ship 
 ```typescript
 export enum ShipStage {
   BRANCH_SETUP = "BRANCH_SETUP",
+  ACTIVATE_TESTS = "ACTIVATE_TESTS",
   IMPLEMENT = "IMPLEMENT",
+  BUILD_CHECK = "BUILD_CHECK",
+  TEST_GATE = "TEST_GATE",
+  DIAGNOSE = "DIAGNOSE",
   CODE_REVIEW = "CODE_REVIEW",
   UAT_REVIEW = "UAT_REVIEW",
   PR_CI = "PR_CI",
@@ -31,6 +35,11 @@ export interface ShipState {
   backend: string;
   failureContext: FailureContext | null;
   branchName?: string;
+  testBaseline?: number;
+  prNumber?: number;
+  prUrl?: string;
+  gateResult?: "PASS" | "FAIL";
+  reviewVerdict?: "GO" | "NO-GO";
 }
 
 export interface ShipRunConfig {
@@ -54,20 +63,32 @@ export interface ShipRunConfig {
 1. **BRANCH_SETUP**: 
    - Checks if working tree is clean. Fail fast if dirty.
    - Creates/switches to `feat/<featureId>` branch from `develop`.
-2. **IMPLEMENT**:
+2. **ACTIVATE_TESTS**:
+   - Initializes baseline test results for regression checking.
+3. **IMPLEMENT**:
    - Executes pre-flight gate checks for all open tasks in `tasks.json`.
    - Skips tasks whose gates already pass.
    - Dispatches remaining tasks to agent via `dispatchToAgent()`.
+   - Transitions to `BUILD_CHECK`.
+4. **BUILD_CHECK**:
+   - Maps the project's build command from the `ProjectProfile` using `getBuildCommand()`.
+   - If the mapped build command is `null` (no build toolchain configured), skips build check with message: `✓ build skipped (no build toolchain)`.
+   - Otherwise, executes the build command and asserts its success. Fails back to `IMPLEMENT` on failure.
+   - Transitions to `TEST_GATE`.
+5. **TEST_GATE**:
+   - Maps the project's test command using `getTestCommand()`.
+   - If the mapped test command is `null` (no test toolchain configured), skips test check with message: `✓ tests skipped (no test toolchain)`.
+   - Otherwise, executes the test command and compares failures against baseline. Fails back to `IMPLEMENT` on regression.
    - Transitions to `CODE_REVIEW`.
-3. **CODE_REVIEW**:
+6. **CODE_REVIEW**:
    - Dispatches `review-code` workflow.
    - If verdict is `GO` → transitions to `UAT_REVIEW`.
    - If verdict is `NO-GO` → increments iteration and loops back to `IMPLEMENT`.
-4. **UAT_REVIEW**:
+7. **UAT_REVIEW**:
    - Dispatches `review-uat` workflow.
    - If verdict is `GO` → transitions to `PR_CI`.
    - If verdict is `NO-GO` → increments iteration and loops back to `IMPLEMENT`.
-5. **PR_CI**:
+8. **PR_CI**:
    - Creates GitHub PR targeting `develop`.
    - Polls for CI completion using `gh pr checks`.
    - Transitions to `DONE`.

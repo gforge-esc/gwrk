@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -10,7 +14,7 @@ import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import type { DispatchRecord } from "./types.js";
 
-export interface SlackBlockKit {
+interface SlackBlockKit {
   blocks: KnownBlock[];
   response_type: "ephemeral" | "in_channel";
 }
@@ -284,7 +288,7 @@ const handlers: Record<string, SlashCommandHandler> = {
         : undefined;
       const projectId = resolveProjectId(context.projectRoot);
 
-      const pr = findOpenPr(resolved, phaseId, projectId);
+      const pr = findOpenPr(resolved, projectId, phaseId);
       if (!pr) {
         return {
           response_type: "ephemeral",

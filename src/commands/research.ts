@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import path from "node:path";
 import * as fsSync from "node:fs";
 import * as fsPromises from "node:fs/promises";
@@ -5,6 +9,8 @@ import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { Command } from "commander";
 import { success, info, startTimer, stopTimer } from "../utils/format.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { loadConfig } from "../utils/config.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
 
 /**
  * FR-R006-001: Command handler for 'gwrk define research <initiative>'
@@ -24,6 +30,18 @@ export interface ResearchArgs {
  */
 function isPrefix(initiative: string): boolean {
   return /^R\d{3}$/i.test(initiative);
+}
+
+/**
+ * Extract the `methodology` field from a brief.md YAML frontmatter block.
+ * Lets `--run R0XX` honor the methodology the brief was scaffolded with
+ * instead of silently defaulting to "technical".
+ */
+function methodologyFromBrief(briefContent: string): string | undefined {
+  const fm = briefContent.match(/^---\n([\s\S]*?)\n---/);
+  if (!fm) return undefined;
+  const line = fm[1].match(/^methodology:\s*(.+)$/m);
+  return line ? line[1].trim() : undefined;
 }
 
 export async function researchCommandHandler(args: ResearchArgs): Promise<string> {
@@ -55,10 +73,21 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
       const briefPath = path.resolve(result.directory, "brief.md");
       const briefContent = await fsPromises.readFile(briefPath, "utf-8");
 
-      // Determine methodology from args or brief frontmatter
-      const methodology = args.methodology || "technical";
+      // Determine methodology: explicit flag > brief frontmatter > default.
+      const methodology =
+        args.methodology || methodologyFromBrief(briefContent) || "technical";
       const workflowName = `gwrk-research-${methodology}`;
-      info(`Executing methodology workflow: ${workflowName}...`);
+
+      // Resolve the configured agent + model for define-pillar work.
+      // Without this the dispatcher falls back to its hardcoded "gemini"
+      // default and fails on projects configured for another backend.
+      const config = loadConfig(process.cwd());
+      const backend = config.agents.define;
+      const model = resolveModelForTask("define", backend, process.cwd());
+
+      info(
+        `Executing methodology workflow: ${workflowName} (agent: ${backend}${model ? `, model: ${model}` : ""})...`,
+      );
 
       // Build workflow input: refs (if provided) + brief content + directory context
       let workflowInput = briefContent;
@@ -88,6 +117,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
       const workflowResult = await runtime.executeWorkflow(
         workflowName,
         workflowInput,
+        { agent: backend, model },
       );
 
       const durationS = Math.round((Date.now() - startTime) / 1000);
@@ -137,7 +167,7 @@ Examples:
 `,
   )
   .argument("<initiative>", "Research initiative name or R0XX prefix (e.g. 'polyglot-monorepo' or 'R011')")
-  .option("--methodology <type>", "Research methodology: technical, jtbd, ontology", "technical")
+  .option("--methodology <type>", "Research methodology: technical, jtbd, ontology (default: brief frontmatter, else technical)")
   .option("--run", "Execute the methodology plugin (reads brief.md as input)")
   .option("--refs <path>", "Path to additional reference docs")
   .action(async (initiative: string, opts: { methodology: string, run?: boolean, refs?: string }) => {

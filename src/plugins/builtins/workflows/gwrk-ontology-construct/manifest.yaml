@@ -1,0 +1,15 @@
+type: workflow
+name: gwrk-ontology-construct
+version: 0.1.0
+description: "Constructs a domain ontology using the Five Primitives methodology"
+outputSchema:
+  type: object
+  properties:
+    intents:
+      type: array
+      items:
+        type: object
+        properties:
+          action: { type: string, enum: [WRITE_FILE, CREATE_DIR, RUN_COMMAND] }
+          filePath: { type: string }
+          content: { type: string }

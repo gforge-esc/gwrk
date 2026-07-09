@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
@@ -71,9 +75,7 @@ export function getGateResult(
     .prepare(
       "SELECT * FROM gate_results WHERE feature_id = ? AND phase_id = ? AND task_id = ? AND project_id = ?",
     )
-    .get(featureId, phaseId, taskId, projectId) as
-    | GateResultRecord
-    | undefined;
+    .get(featureId, phaseId, taskId, projectId) as GateResultRecord | undefined;
 }
 
 /**
@@ -91,4 +93,3 @@ export function getAllGateResults(
     )
     .all(featureId, projectId) as GateResultRecord[];
 }
-

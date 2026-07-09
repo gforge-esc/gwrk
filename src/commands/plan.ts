@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -103,8 +111,8 @@ planCommand
       const store = new PlanStore(projectId);
 
       if (options.dryRun) {
-        const { parsePlan } = await import("../utils/parser-plan.js");
-        const payload = parsePlan(planPath);
+        const { parseBuildPlan } = await import("../utils/parser-plan.js");
+        const payload = parseBuildPlan(planPath);
         console.log("Dry Run: Seed Payload extracted from 000-build-plan.md");
         console.log(JSON.stringify(payload, null, 2));
         return;
@@ -132,24 +140,32 @@ planCommand
         const readiness = store.scanReadiness(specsDir);
         console.log("Dry Run: Discovered features from specs/");
         for (const r of readiness) {
-          const phaseInfo = r.phases.length > 0
-            ? ` (${r.phases.length} phases: ${r.phases.map(p => `P${p.number}`).join(", ")})`
-            : "";
+          const phaseInfo =
+            r.phases.length > 0
+              ? ` (${r.phases.length} phases: ${r.phases.map((p) => `P${p.number}`).join(", ")})`
+              : "";
           console.log(`  ${r.featureId}: L${r.level} ${r.status}${phaseInfo}`);
         }
-        const totalPhases = readiness.reduce((sum, r) => sum + r.phases.length, 0);
-        console.log(`\nTotal: ${readiness.length} features, ${totalPhases} phases`);
+        const totalPhases = readiness.reduce(
+          (sum, r) => sum + r.phases.length,
+          0,
+        );
+        console.log(
+          `\nTotal: ${readiness.length} features, ${totalPhases} phases`,
+        );
         return;
       }
 
-      const { added, skipped, phasesInserted, pruned, reconciled } = store.initFromSpecs(specsDir);
+      const { added, skipped, phasesInserted, pruned, reconciled } =
+        store.initFromSpecs(specsDir);
       console.log(
         `Initialized build plan graph. Added: ${added.length}, Skipped (existing): ${skipped.length}, Phases: ${phasesInserted}`,
       );
       if (added.length > 0) console.log(`  Added: ${added.join(", ")}`);
-      if (pruned.length > 0) console.log(`  Pruned (no specs/ dir): ${pruned.join(", ")}`);
+      if (pruned.length > 0)
+        console.log(`  Pruned (no specs/ dir): ${pruned.join(", ")}`);
       if (reconciled.length > 0) {
-        console.log(`  Reconciled status:`);
+        console.log("  Reconciled status:");
         for (const r of reconciled) console.log(`    ${r}`);
       }
     });

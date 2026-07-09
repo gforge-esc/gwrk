@@ -8,27 +8,10 @@
     }
   },
   "agents": {
-    "define": "gemini",
-    "implement": "gemini",
+    "define": "agy",
+    "implement": "agy",
     "throttleMs": 15000,
     "registry": {
-      "gemini": {
-        "type": "local-cli",
-        "command": "gemini",
-        "discoveryMethod": "manual",
-        "quotaProbe": {
-          "method": "optimistic",
-          "cacheTTLMinutes": 5
-        },
-        "maxConcurrent": 2,
-        "models": [
-          { "name": "gemini-3-flash-preview", "tier": "fast" },
-          { "name": "gemini-3.1-flash-lite-preview", "tier": "fast" },
-          { "name": "gemini-3.1-pro-preview", "tier": "thinking" },
-          { "name": "gemini-2.5-pro", "tier": "high-context" },
-          { "name": "gemini-2.5-flash", "tier": "fast" }
-        ]
-      },
       "claude": {
         "type": "local-cli",
         "command": "claude",
@@ -38,11 +21,30 @@
           "cacheTTLMinutes": 5
         },
         "maxConcurrent": 1,
-        "models": [{ "name": "claude-sonnet-4", "tier": "thinking" }],
+        "models": [
+          {
+            "name": "claude-sonnet-4",
+            "tier": "thinking"
+          }
+        ],
         "fallback": "gemini"
+      },
+      "agy": {
+        "type": "local-cli",
+        "command": "agy",
+        "discoveryMethod": "manual",
+        "quotaProbe": {
+          "method": "optimistic",
+          "cacheTTLMinutes": 5
+        },
+        "maxConcurrent": 2,
+        "models": []
       }
     },
-    "fallbackOrder": ["gemini", "claude"]
+    "fallbackOrder": [
+      "agy",
+      "claude"
+    ]
   },
   "server": {
     "port": 18790,

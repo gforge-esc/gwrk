@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { dbCommand } from "./commands/db.js";
@@ -32,6 +36,7 @@ program
   .version(pkg.version)
   .description("The Principal Engineer's Operating System")
   .option("--format <type>", "Output format (json)")
+  .option("--workspace <name>", "Select a workspace profile")
   .option("--agent", "Enable Agent-Native Mode (TC-006)", false)
   .configureHelp({
     formatHelp: (cmd, helper) => {
@@ -158,9 +163,7 @@ program.hook("preAction", (thisCommand, actionCommand) => {
     process.exit(2);
   }
 
-  if (
-    actionCommand.name() !== "init"
-  ) {
+  if (actionCommand.name() !== "init") {
     // This will process.exit(1) if config is missing or invalid
     loadConfig(process.cwd());
   }
@@ -171,8 +174,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     program.parse();
   } catch (err: unknown) {
-    const error = err as { code?: string; exitCode?: number };
-    if (error.code === "commander.helpDisplayed") {
+    const error = err as { code?: string; exitCode?: number; message?: string };
+    // Commander writes --help / --version output itself; just exit cleanly.
+    if (
+      error.code === "commander.helpDisplayed" ||
+      error.code === "commander.version"
+    ) {
       process.exit(0);
     }
     if (error.code === "commander.unknownCommand") {
@@ -188,7 +195,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     ) {
       process.exit(2);
     }
-    // For other commander errors, use their exitCode or default to 1
+    // Non-commander errors (e.g. config validation in the preAction hook)
+    // would otherwise exit silently — surface the message so the failure is
+    // debuggable instead of producing zero output.
+    if (!error.code?.startsWith("commander.")) {
+      console.error(error.message ?? String(err));
+    }
     process.exit(error.exitCode || 1);
   }
 }

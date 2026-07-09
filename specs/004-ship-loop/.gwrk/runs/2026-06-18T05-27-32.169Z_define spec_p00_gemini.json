@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-18T05:27:32.169Z_define_p00",
+  "feature": "004-ship-loop",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "gemini",
+  "model": "unknown",
+  "startedAt": "2026-06-18T05:27:32.169Z",
+  "finishedAt": "2026-06-18T05:28:44.214Z",
+  "durationS": 72,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 2,
+  "linesDeleted": 472,
+  "gitCommit": "fa59a8c94c669ce0ded6dde6a802efbb82e2da10",
+  "gitBranch": "develop",
+  "digest": []
+}

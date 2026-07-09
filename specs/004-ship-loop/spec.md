@@ -1,161 +1,201 @@
-# Feature Specification: 004 Ship Loop
+---
+type: specification
+feature: 004-ship-loop
+last_modified: "2026-06-19T11:00:00Z"
+revision: 2
+---
 
-**Feature Branch**: `feat/004-ship-loop`
-**Created**: 2026-02-27
-**Revised**: 2026-03-17
-**Status**: Settled
-**Input**: The autonomous execution kernel for Pillar 3 (Shipping). `gwrk ship <feature> [phase]` orchestrates the Ship Loop — the 7-step cycle that ends when a PR is issued and Slack is notified: DISPATCH → PRE-FLIGHT → EXECUTE → POST-FLIGHT → VERIFY → PR → NOTIFY. Delegates to a native TypeScript `DispatchOrchestrator` acting upon structured Intents produced by the `WorkflowRuntime`. Phase is optional — omitting it ships all phases sequentially, skipping completed ones.
+# Feature Specification: 004 Ship Loop (Reworked)
 
-> **Ship Loop boundary (architecture.md §6.2)**: This spec covers steps 1-7. Step 7 (NOTIFY) uses **Slack Incoming Webhook** (003 FR-014) — a direct HTTPS POST that works from Codex Cloud, local clones, and any environment without build server access. Post-merge lifecycle (merge detection, log rehoming, DB finalization, compression, done-done notification) is **Harvest** — see [011-harvest](file:///Users/gonzo/Code/gwrk/specs/011-harvest/spec.md) and architecture.md §6.3.
-
-> **Nomenclature**: "Ship loop" is the execution mechanism. "WUD" (Work Until Done) is the agent persona that operates the ship loop (architecture.md §2). The spec uses "ship loop" and "DispatchOrchestrator" for the machinery, discarding legacy ".sh" names.
-
-> **Architectural anchors**: [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) (two-tier state), [ADR-004](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) (operational signals), [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) (plugin agent backends), [FOXTROT-CHARLIE](file:///Users/gonzo/Code/gwrk/docs/FOXTROT-CHARLIE.md) §Pillar 3, [architecture.md](file:///Users/gonzo/Code/gwrk/docs/architecture.md) §6.2 (Ship Loop), [agent-native-cli.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-native-cli.md) §1.2
+**Feature Branch**: `develop`
+**Created**: 2026-03-05
+**Revised**: 2026-06-19 (Rework v2 - Profile-aware Build/Test Skipping & Schema-compliant Agent Init)
+**Status**: Active
+**Input**: Rework ship-orchestrator and toolchain-mapper to support non-TypeScript projects by allowing skipping of BUILD_CHECK and TEST_GATE, adding toolchain build/test config, and fixing Zod agent validation issues from gwrk init.
 
 ---
 
 ## 2. User Scenarios & Testing
 
-### US-001 - Ship Single Phase (Priority: P0)
-As a Principal Engineer, I want `gwrk ship <feature> <phase>` to run the full lifecycle for one phase: branch → implement → review → PR → CI.
+### US-001 - Ship Single Phase completes lifecycle (Priority: P0)
+As a Principal Engineer, I want to run `gwrk ship` for a single phase and have the entire branch -> implement -> review -> PR -> CI lifecycle execute successfully.
 
-**Implements**: FR-001, FR-002, FR-003, FR-004, FR-006, FR-011, FR-012, FR-016, FR-017
+**Implements**: FR-001, FR-002, FR-004, FR-005, FR-011, FR-015, FR-019, FR-020, FR-021
 
-**Independent Test**: Run `gwrk ship` against a feature with prepared `tasks.json` and gate scripts; verify the full lifecycle completes with PR creation and execution manifest recording.
+**Independent Test**: Run `gwrk ship 004-ship-loop phase-01` in a sandbox project.
 
 **Acceptance Scenarios**:
-1. **Given** a feature `004-ship-loop` with `tasks.json` containing open tasks in phase-01 and passing gate scripts, **When** running `gwrk ship 004-ship-loop 1`, **Then**:
-   - `jq '[.phases[] | select(.id == "phase-01") | .tasks[] | select(.status == "completed")] | length' specs/004-ship-loop/.gwrk/tasks.json` returns `>= 1`
-   - `ls specs/004-ship-loop/.gwrk/runs/*.json | wc -l` returns `>= 1`
-   - `jq -e '.runId and .feature and .phase and .durationS and .exitCode and .digest' specs/004-ship-loop/.gwrk/runs/*.json` exits 0
-   - `gwrk db runs 004-ship-loop --json | jq '. | length'` returns `>= 1`
+1. **Given** a valid feature branch, **When** running a single phase, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 --non-interactive` exits 0
+   - `git branch --list | grep -q 'feat/004-ship-loop'` exits 0
+   - `gwrk tasks list 004-ship-loop --json | jq -e '.tasks[] | select(.id=="T001").status == "completed"'` exits 0
 
-### US-002 - Hard Gate Pre-flight (Priority: P0)
-As the ship engine, I want each task's gate to be checked before implementation begins, and tasks whose gates already pass are skipped.
+---
+
+### US-002 - Pre-flight tasks.json gate checks (Priority: P0)
+As a ship engine, I want tasks that already pass their gate script to be skipped during implementation to prevent redundant work.
 
 **Implements**: FR-003
 
-**Independent Test**: Mock a task whose gate already passes; verify the task is skipped with pre-flight PASS log.
+**Independent Test**: Mock task gate as passing, run ship loop, verify skip message in logs.
 
 **Acceptance Scenarios**:
-1. **Given** a task T001 whose gate script already exits 0, **When** `gwrk ship 004-ship-loop 1` reaches T001, **Then**:
-   - `grep -q 'pre-flight PASS.*T001' "$WUD_LOG"` exits 0
-   - `grep -vc 'IMPLEMENT.*T001' "$WUD_LOG"` exits 0 (T001 not dispatched)
+1. **Given** task `T001` gate script exits 0, **When** running `gwrk ship`, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q 'pre-flight PASS'` exits 0
 
-### US-003 - Ship All Phases (Priority: P0)
-As a Principal Engineer, I want `gwrk ship <feature>` (no phase) to ship all phases sequentially, stopping on first failure.
+---
 
-**Implements**: FR-001, FR-013, FR-014
+### US-003 - Ship All Phases sequentially (Priority: P0)
+As a PE, I want to omit the phase argument in `gwrk ship` to ship all phases in the feature sequentially.
 
-**Independent Test**: Run `gwrk ship` with `--dry-run` against a feature with 3 phases; verify all phase invocations are printed.
+**Implements**: FR-001, FR-013
+
+**Independent Test**: Run `gwrk ship 004-ship-loop` with multiple open phases.
 
 **Acceptance Scenarios**:
-1. **Given** a feature with 3 phases in `tasks.json`, **When** running `gwrk ship 004-ship-loop --dry-run`, **Then**:
-   - `gwrk ship 004-ship-loop --dry-run 2>&1 | grep -c 'DRY RUN'` outputs `3`
-2. **Given** a feature with 3 phases where phase 2 fails, **When** running `gwrk ship 004-ship-loop`, **Then**:
-   - Phase 3 is never attempted (no manifest for phase-03 in this run)
-   - Exit code is non-zero
+1. **Given** multiple open phases, **When** running `gwrk ship` without a phase argument, **Then**:
+   - `gwrk ship 004-ship-loop --non-interactive` exits 0
+
+---
 
 ### US-004 - Circuit Breaker (Priority: P0)
-As a Principal Engineer, I want the ship loop to stop after a configurable number of retry iterations.
+As a developer, I want the shipping loop to terminate if implementing takes more than `MAX_ITERATIONS` to prevent infinite loops.
 
-**Implements**: FR-007, FR-018
+**Implements**: FR-007
 
-**Independent Test**: Set `--max-iterations 1` and force review NO-GO; verify circuit-breaker exit.
+**Independent Test**: Set `MAX_ITERATIONS=1`, fail review twice, assert loop terminates.
 
 **Acceptance Scenarios**:
-1. **Given** `--max-iterations 1` and a review that always returns NO-GO, **When** running `gwrk ship 004-ship-loop 1 --max-iterations 1`, **Then**:
-   - `echo $?` outputs non-zero
-   - `grep -q 'Circuit breaker' "$WUD_LOG"` exits 0
-   - `jq -r '.stage' .runs/004-ship-loop_p1.state` outputs `CIRCUIT_BREAK`
+1. **Given** `MAX_ITERATIONS=1` and failing review, **When** running `gwrk ship`, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 --non-interactive` exits 1
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q 'CIRCUIT_BREAK'` exits 0
 
-### US-005 - Crash Recovery (Priority: P1)
-As the ship engine, I want the state machine to persist its stage to disk and resume on restart.
+---
+
+### US-005 - Crash Recovery (Priority: P0)
+As a developer, I want the shipping loop to save its state before every stage transition and resume from that stage if interrupted.
 
 **Implements**: FR-008
 
-**Independent Test**: Write a mid-run state file; restart ship; verify it resumes from the persisted stage.
+**Independent Test**: Kill `gwrk ship` during implementation, resume, assert state loaded.
 
 **Acceptance Scenarios**:
-1. **Given** a state file `.runs/004-ship-loop_p1.state` with `{"stage": "CODE_REVIEW", "iteration": 1}`, **When** running `gwrk ship 004-ship-loop 1`, **Then**:
-   - `grep -q 'Resuming from state: CODE_REVIEW' "$WUD_LOG"` exits 0
+1. **Given** a saved state file under `.runs/`, **When** running `gwrk ship` again, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 --non-interactive` exits 0
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q 'Resuming from stage'` exits 0
+
+---
 
 ### US-006 - PR Creation & CI Gate (Priority: P0)
-As the ship engine, I want a PR created targeting `develop` after reviews pass, with CI checks awaited.
+As a ship engine, I want to push code to GitHub, create a PR to develop, and wait for CI check statuses to pass before marking the phase complete.
 
 **Implements**: FR-006
 
-**Independent Test**: Run ship to completion; verify PR exists targeting `develop`.
+**Independent Test**: Mock GitHub CLI responses and PR status checks.
 
 **Acceptance Scenarios**:
-1. **Given** a completed phase with passing reviews, **When** ship creates a PR, **Then**:
-   - `gh pr list --head feat/004-ship-loop --base develop --json number --jq '.[0].number'` returns a PR number
-   - CI checks pass or `no checks` edge case is handled
+1. **Given** successful review state, **When** running PR_CI stage, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q 'PR created'` exits 0
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q 'CI checks passed'` exits 0
+
+---
 
 ### US-007 - Execution Manifest with Log Digest (Priority: P0)
-As a Principal Engineer, I want every ship run to produce a git-tracked execution manifest with a log digest capturing the learning signal.
+As a PE, I want a structured execution manifest and log digest committed to the repo on success to keep analytical records.
 
-**Implements**: FR-012, FR-017
+**Implements**: FR-010, FR-012, FR-017
 
-**Independent Test**: Run ship; verify manifest file exists with required fields including `digest[]`.
+**Independent Test**: Assert run manifest and logs exist in `.gwrk/runs/`.
 
 **Acceptance Scenarios**:
-1. **Given** a completed ship run, **Then**:
-   - `ls specs/004-ship-loop/.gwrk/runs/*.json | wc -l` returns `>= 1`
-   - `jq -e '.runId and .feature and .phase and .exitCode and .durationS and .gitCommit and .digest' specs/004-ship-loop/.gwrk/runs/*.json` exits 0
-   - `jq '.digest | length' specs/004-ship-loop/.gwrk/runs/*.json` returns `>= 1`
+1. **Given** a successful phase run, **When** finished, **Then**:
+   - `ls specs/004-ship-loop/.gwrk/runs/*.json` exits 0
+   - `cat specs/004-ship-loop/.gwrk/runs/*.json | jq -e '.digest'` exits 0
 
-### US-008 - Agent Backend Config (Priority: P1)
-As a Principal Engineer, I want the agent backend resolved from `.gwrkrc.json` with `--agent` override.
+---
+
+### US-008 - Agent Backend Config resolution (Priority: P0)
+As a PE, I want the ship loop to resolve agent backends hierarchically (CLI flags > `.gwrkrc.json` > system defaults).
 
 **Implements**: FR-009
 
-**Independent Test**: Set `.gwrkrc.json agents.implement` to `gemini`; run ship; verify the configured agent is used.
+**Independent Test**: Pass `--agent claude` and assert Claude backend is dispatched.
 
 **Acceptance Scenarios**:
-1. **Given** `.gwrkrc.json` with `agents.implement: "gemini"`, **When** running `gwrk ship 004-ship-loop 1 --dry-run`, **Then**:
-   - `gwrk ship 004-ship-loop 1 --dry-run 2>&1 | grep -q 'gemini'` exits 0
-2. **Given** `--agent claude` override, **When** running `gwrk ship 004-ship-loop 1 --dry-run --agent claude`, **Then**:
-   - `gwrk ship 004-ship-loop 1 --dry-run --agent claude 2>&1 | grep -q 'claude'` exits 0
+1. **Given** `.gwrkrc.json` defines backend `gemini`, **When** running with `--agent claude`, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 --agent claude 2>&1 | grep -q 'dispatching to claude'` exits 0
+
+---
 
 ### US-009 - Phase-Skip for Completed Phases (Priority: P0)
-As a Principal Engineer, I want `gwrk ship <feature>` to skip phases where all tasks are already `completed` in `tasks.json`.
+As a ship engine, I want to skip phases where all tasks are already complete to avoid wasting execution resources.
 
 **Implements**: FR-014
 
-**Independent Test**: Set all tasks in phase-01 to `completed`; run ship without phase arg; verify phase-01 is skipped.
+**Independent Test**: Set all tasks in a phase to `completed`, verify phase is skipped.
 
 **Acceptance Scenarios**:
-1. **Given** a feature with 3 phases where phase-01 has all tasks `completed`, **When** running `gwrk ship <feature>`, **Then**:
-   - `gwrk ship <feature> 2>&1 | grep -q 'Phase 01.*skipping'` exits 0
-   - Phase 01 is never dispatched (no manifest for phase-01 from this run)
+1. **Given** all tasks completed in `phase-01`, **When** shipping the feature, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q 'skipping completed phase'` exits 0
+
+---
 
 ### US-010 - Staging Validation (Priority: P0)
-As a Principal Engineer, I want the phase orchestrator to validate staged files before push, rejecting out-of-scope changes.
+As a PE, I want a validation script to run before push to assert that no files outside the build plan/scope are modified.
 
 **Implements**: FR-016
 
-**Independent Test**: Stage a file outside the feature scope; run staging validator; verify rejection.
+**Independent Test**: Modify `package.json` in a task not planning it, assert validation rejection.
 
 **Acceptance Scenarios**:
-1. **Given** staged files including `specs/000-build-plan.md`, **When** `validate-staging.sh` runs, **Then**:
-   - Exit code is 1
-   - stderr contains `Build plan staged` and `agents must not modify`
-2. **Given** only in-scope files staged, **When** `validate-staging.sh` runs, **Then**:
-   - Exit code is 0
-   - Output contains `Staging validation passed`
+1. **Given** out-of-scope files staged, **When** implementing task, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q 'Staging validation failed'` exits 0
 
-### US-011 - Rip-Cord Bail on Circuit Break (Priority: P1)
-As a Principal Engineer, I want the circuit breaker to produce structured failure context so I can diagnose what went wrong without reading raw logs.
+---
+
+### US-011 - Structured failureContext on CIRCUIT_BREAK (Priority: P0)
+As a developer, I want a structured `failureContext` JSON written to the state file on circuit break so that debugging is straightforward.
 
 **Implements**: FR-018
 
-**Independent Test**: Force circuit break; verify state file contains failure context.
+**Independent Test**: Trigger circuit break, read the state file, assert JSON format.
 
 **Acceptance Scenarios**:
-1. **Given** a circuit break triggered by max iterations, **Then**:
-   - `.runs/<feature>_p<phase>.state` contains `"stage": "CIRCUIT_BREAK"` and `"failureContext"` object
-   - `failureContext` contains: `openTasks`, `lastVerdict`, `iterationTimeline`, `digest`
+1. **Given** a circuit broken run, **When** reading the state file, **Then**:
+   - `cat .runs/004-ship-loop.state.json | jq -e '.failureContext'` exits 0
+
+---
+
+### US-012 - Profile-Aware Build & Test Skip (Priority: P0) ⭐ **REWORK**
+As a PE, I want `gwrk ship` to skip `BUILD_CHECK` and/or `TEST_GATE` when build or test toolchains are not configured or are set to `null`, so that the shipping loop does not fail on non-TypeScript, polyglot, or zero-build projects.
+
+**Implements**: FR-022, FR-023, FR-024
+
+**Independent Test**: Configure `toolchain.build = null` and `toolchain.test = null` in `.gwrkrc.json`, run `gwrk ship`.
+
+**Acceptance Scenarios**:
+1. **Given** a project with `toolchain.build = null` in `.gwrkrc.json`, **When** running the shipping loop, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q '✓ build skipped (no build toolchain)'` exits 0
+2. **Given** a project with `toolchain.test = null` in `.gwrkrc.json`, **When** running the shipping loop, **Then**:
+   - `gwrk ship 004-ship-loop phase-01 2>&1 | grep -q '✓ tests skipped (no test toolchain)'` exits 0
+
+---
+
+### US-013 - Schema-Compliant Agent Initialization (Priority: P0) ⭐ **REWORK**
+As a developer, I want `gwrk init` to generate a `.gwrkrc.json` with a schema-compliant `agents` block (containing `define`, `implement`, `registry`, and `fallbackOrder` fields) so that Zod validation does not fail on projects initialized via `gwrk init`.
+
+**Implements**: FR-025
+
+**Independent Test**: Run `gwrk init --non-interactive` in a clean directory, then run `gwrk project info`.
+
+**Acceptance Scenarios**:
+1. **Given** a clean directory, **When** running `gwrk init --non-interactive`, **Then**:
+   - `gwrk init --non-interactive` exits 0
+   - `cat .gwrkrc.json | jq -e '.agents.define'` exits 0
+   - `cat .gwrkrc.json | jq -e '.agents.implement'` exits 0
+   - `cat .gwrkrc.json | jq -e '.agents.registry'` exits 0
+   - `cat .gwrkrc.json | jq -e '.agents.fallbackOrder'` exits 0
+   - `gwrk project info` exits 0
 
 ---
 
@@ -167,226 +207,151 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 ## 4. Functional Requirements
 
-### Layer 1: TypeScript CLI (`ship.ts`)
-
-- **FR-001**: System MUST provide `gwrk ship <feature> [phase]` that delegates to `DispatchOrchestrator`. When phase is omitted, all phases from `tasks.json` are shipped sequentially, stopping on first failure. `shipPhase()` accepts `workDir` and `backend` overrides for composability with 005-parallel-dispatch. (Implements: US-001, US-003)
-- **FR-009**: System MUST resolve agent backend hierarchically: (1) explicit `--agent` CLI override, (2) programmatic `backend` parameter from calling code, (3) fallback to `.gwrkrc.json agents.implement`. No graceful default — missing config → `process.exit(1)`. (Implements: US-008)
-- **FR-011**: System MUST record every agent dispatch in the SQLite execution ledger (`~/.gwrk/gwrk.db` `runs` table) via `startRun()`/`finishRun()`. (Implements: US-001)
-- **FR-012**: System MUST write an execution manifest to `specs/<feature>/.gwrk/runs/` per ADR-003 §3 for every ship run. Manifest includes `digest[]` array of structured log events per FR-017. (Implements: US-001, US-007)
-- **FR-013**: When phase argument is omitted, system MUST read all phases from `tasks.json` and ship each sequentially, exiting on first non-zero exit code. (Implements: US-003)
-- **FR-014**: When shipping all phases, system MUST check each phase's task states in `tasks.json` before dispatch. If ALL tasks in a phase have `status: "completed"` or `status: "cancelled"`, that phase MUST be skipped with log message `⏭  Phase NN: all tasks complete — skipping`. This check happens in `ship.ts` before calling the phase orchestrator. (Implements: US-009)
-- **FR-015**: System MUST wrap all terminal output in the Agent-Native `[exit:N | Xs]` format per ADR-004. Command type is `mutator`. The CLI interface MUST support `--format json` for downstream consumption. (Implements: US-001)
-
-#### FR-001 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| tasks.json not found | `Task state file not found` | 1 |
-| Phase not found | `Phase phase-NN not found` | 1 |
-| Orchestrator crash | `DispatchOrchestrator failed` | 1 |
-
-#### FR-009 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Agent not configured | `Missing required config: agents.implement` | 1 |
-
-### Layer 1: DispatchOrchestrator (TypeScript)
-
-- **FR-002**: `DispatchOrchestrator` MUST create a `feat/<feature>` branch from current `develop` HEAD natively via simple-git or spawned git (replacing `wud-branch.sh`). Dirty working tree → fail fast. (Implements: US-001)
-- **FR-003**: `DispatchOrchestrator` MUST execute pre-flight gate check per task. Gate already passing → skip with `pre-flight PASS — gate already satisfied`. Gate failing → proceed to implementation. (Implements: US-001, US-002)
-- **FR-004**: `DispatchOrchestrator` MUST implement the state machine: `BRANCH_SETUP → IMPLEMENT → CODE_REVIEW → UAT_REVIEW → PR_CI → DONE`. Each transition persists state to disk. (Implements: US-001)
-- **FR-005**: `DispatchOrchestrator` MUST dispatch code review (`review-code` workflow) and UAT review (`review-uat` workflow) via `WorkflowRuntime`. NO-GO → increment iteration, loop back to IMPLEMENT. (Implements: US-001)
-- **FR-006**: `DispatchOrchestrator` MUST create a GitHub PR via native GitHub REST/GraphQL or `gh pr create` after reviews pass, then poll for CI completion (replacing `wud-ci-wait.sh`). (Implements: US-001, US-006)
-- **FR-007**: `DispatchOrchestrator` MUST enforce circuit breaker via `MAX_ITERATIONS` env var (default 3). Exceeded → exit 1, `CIRCUIT_BREAK` state persisted. (Implements: US-004)
-- **FR-008**: `DispatchOrchestrator` MUST persist state machine progress to `.runs/<feature>_p<phase>.state` as JSON after every stage transition. On restart, resume from last persisted stage. (Implements: US-005)
-- **FR-010**: `DispatchOrchestrator` MUST create a timestamped log file in `.runs/` per run (machine-local, gitignored). (Implements: US-001)
-- **FR-016**: `DispatchOrchestrator` MUST run staging validation natively after agent completes, before push. Validator rejects: out-of-scope files, orphan spec dirs, build plan modifications (Design Mandate Rule 3). Validation failure → re-run agent with corrective guidance. (Implements: US-010)
-- **FR-017**: `DispatchOrchestrator` logging has three tiers, all git-tracked: (a) **Raw log** — full agent output committed to `specs/<feature>/.gwrk/runs/<timestamp>_<stage>.log`. (b) **Log digest** — structured stage events in sidecar concatenated into `digest[]` array in the execution manifest. (c) **SQLite** — harvested post-merge by `gwrk harvest`. (Implements: US-001, US-007, US-011)
-- **FR-018**: On `CIRCUIT_BREAK`, `DispatchOrchestrator` MUST write structured failure context to state file: `{ failureContext: { openTasks: [...], lastVerdict: "NO-GO", iterationTimeline: [...], digest: [...] } }`. Exit 1. (Implements: US-011)
+- **FR-001**: System MUST delegate shipping execution to `ShipOrchestrator` state machine. (Implements: US-001, US-003)
+- **FR-002**: System MUST check for dirty working trees and reject execution if unstaged changes exist. (Implements: US-001)
+- **FR-003**: System MUST execute a task's gate script before dispatching implementation, skipping the task if it already passes. (Implements: US-002)
+- **FR-004**: System MUST transition feature state correctly from BRANCH_SETUP to IMPLEMENT to CODE_REVIEW/UAT_REVIEW to PR_CI to DONE. (Implements: US-001)
+- **FR-005**: System MUST dispatch human/agent reviews, executing loops back to IMPLEMENT on NO-GO decisions. (Implements: US-001)
+- **FR-006**: System MUST push branches to the remote repository, create a PR to develop, and block completion until remote CI checks succeed. (Implements: US-006)
+- **FR-007**: System MUST trip the circuit breaker and abort execution if reviews fail continuously exceeding `MAX_ITERATIONS`. (Implements: US-004)
+- **FR-008**: System MUST persist execution state to a machine-local file before every stage transition to support recovery. (Implements: US-005)
+- **FR-009**: System MUST resolve agent configuration hierarchically by checking CLI parameters, `.gwrkrc.json` configs, and fallback systems. (Implements: US-008)
+- **FR-010**: System MUST store timestamped logs of agent and toolchain output under `.runs/`. (Implements: US-007)
+- **FR-011**: System MUST record shipping runs in the SQLite runs analytical ledger database. (Implements: US-001)
+- **FR-012**: System MUST commit a structured run manifest JSON to the repository under `specs/<feature>/.gwrk/runs/`. (Implements: US-007)
+- **FR-013**: System MUST ship all open phases sequentially if a phase argument is omitted. (Implements: US-003)
+- **FR-014**: System MUST skip phases where all tasks are already completed. (Implements: US-009)
+- **FR-015**: System MUST append the Agent-Native operational signal wrapper `[exit:N | Xs]` to all output streams. (Implements: US-001)
+- **FR-016**: System MUST run validation script assertions on staged files before pushing changes. (Implements: US-010)
+- **FR-017**: System MUST support 3-tier logging (raw logs, digest array inside the manifest, SQLite runs history). (Implements: US-007)
+- **FR-018**: System MUST write a structured `failureContext` JSON block to the state file on circuit break. (Implements: US-011)
+- **FR-019**: System MUST encapsulate agent interaction within a single `dispatchToAgent()` function. (Implements: US-001)
+- **FR-020**: System MUST normalize agent CLI exit codes to standard gwrk exit codes. (Implements: US-001)
+- **FR-021**: System MUST deliver agent prompt context via standard input piping. (Implements: US-001)
+- **FR-022**: System MUST map a project's build command from the `ProjectProfile` using `getBuildCommand()`, skipping compilation with a standard message if the command is `null`. (Implements: US-012)
+- **FR-023**: System MUST execute and assert tests using the mapped test command, skipping execution with a standard message if the mapped test command is `null`. (Implements: US-012)
+- **FR-024**: System MUST extend `GwrkConfigSchema` to validate `project.toolchain.build` and `project.toolchain.test` properties as optional, nullable strings. (Implements: US-012)
+- **FR-025**: System MUST generate a schema-compliant `agents` block inside `.gwrkrc.json` during `gwrk init` containing correct Zod properties. (Implements: US-013)
 
 #### FR-002 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Dirty working tree | `Dirty working tree — commit or stash before shipping` | 1 |
-| Branch creation failed | `Failed to create feature branch` | 1 |
-| Sync produces merge conflict | `Conflict during develop sync — resolve manually` | 1 |
-
-#### FR-003 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| Gate already passes | `pre-flight PASS — gate already satisfied, skipping` | 0 (skip) |
-
-#### FR-006 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| `gh` CLI not found | `gh CLI not found — install: https://cli.github.com` | 2 |
-| PR creation fails | `Failed to create PR` | 1 |
-| CI timeout | `CI timeout after N minutes` | 2 |
+| Dirty git tree detected at startup | Dirty working tree | 1 |
 
 #### FR-007 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Circuit breaker | `Circuit breaker tripped after N iterations` | 1 |
+| Max iterations exceeded | CIRCUIT_BREAK | 1 |
 
 #### FR-008 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Corrupt state file | `Corrupt state file — starting fresh` | 0 (auto-heal) |
-
-#### FR-014 Error States
-| Condition | stderr contains | Exit code |
-|---|---|---|
-| tasks.json missing | Falls through to FR-001 | 1 |
-| Mixed open/completed | Proceeds normally (not skipped) | 0 |
+| State file is corrupted and cannot be parsed | State recovery failed | 1 |
 
 #### FR-016 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Out-of-scope files staged | `Staging validation FAILED` + specific violations | 1 |
-| Build plan staged | `agents must not modify the build plan (Rule 3)` | 1 |
+| Out-of-scope files staged | Staging validation failed | 1 |
 
-### Loop-Closing Contract
-
-> **Ship Loop (004) → Harvest (011) handoff**: Ship loop ends at PR issued + Slack notification (step 7). It produces: (a) git-tracked execution manifests in `specs/<feature>/.gwrk/runs/` (ADR-003 Tier 1), (b) raw logs git-committed per FR-017, (c) SQLite run record started via `startRun()`. **Harvest (011)** is triggered by GitHub webhook on PR merge and consumes these outputs: rehomes logs, finalizes DB records via `finishRun()`, calculates compression, posts done-done to Slack. See architecture.md §6.3 and `specs/011-harvest/spec.md`.
-
-### Layer 1: Plugin Dispatch Boundary (ADR-006)
-
-> **Purpose:** These FRs establish the dispatch facade that makes F004 plugin-ready. Today the facade wraps `spawn(cli, args)`. When F014 ships, the facade internals are replaced by `pluginRegistry.getAgentBackend().dispatch()` — no other F004 code changes. See [ADR-006](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) and [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
-
-- **FR-019**: System MUST dispatch agent work through a single function signature: `dispatchToAgent(task: TaskDispatch): Promise<TaskResult>`. The `DispatchOrchestrator` MUST call this function natively — it MUST NOT spawn CLI processes directly. `TaskDispatch` contains: `{ prompt: string, agent: string, workDir: string, stdin: string, env: Record<string, string> }`. `TaskResult` contains: `{ exitCode: number, errorType?: "turn_limit" | "permission" | "timeout" | "unknown", stdout: string, stderr: string, durationS: number }`. (Implements: US-001, US-008)
-- **FR-020**: `dispatchToAgent()` MUST normalize exit codes to the gwrk standard: `0` (success), `1` (failure), `2` (usage error), `127` (command not found). Proprietary CLI exit codes (e.g., Gemini's `53` for turn limit) MUST be mapped to `exitCode: 1` with `errorType: "turn_limit"`. The ship loop MUST consume `TaskResult.exitCode` and `TaskResult.errorType`, never raw process exit codes. (Implements: US-001)
-- **FR-021**: Context delivery to the agent CLI MUST use stdin piping as the primary delivery mechanism: `echo "$stdin" | $cli_command`. Inline `-p "<prompt>"` arguments MUST NOT be used for context longer than 4096 bytes. This avoids `ARG_MAX` shell limitations and ensures reliable delivery. (Implements: US-001)
-
-#### FR-019 Error States
+#### FR-022 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Agent CLI not found | `Agent CLI not found: <name>` | 127 |
-| Dispatch timeout | `Agent dispatch timed out after Ns` | 1 |
+| Mapped build command execution fails | build FAILED | 1 |
 
-#### FR-020 Error States
+#### FR-023 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Turn limit hit | `Agent hit turn limit — consider increasing model.maxSessionTurns` | 1 |
+| Mapped test command execution fails | TEST_GATE: new failure | 1 |
+
+#### FR-024 Error States
+| Condition | stderr contains | Exit code |
+|---|---|---|
+| Configuration fails schema validation | ZodError | 1 |
 
 ---
 
 ## 5. Data Model Requirements
 
-### DM-001: Ship Run State (`.runs/<feature>_p<phase>.state`)
-
-Machine-local crash recovery state. Gitignored via `.runs/` in `.gitignore`.
-
-```json
-{
-  "stage": "CODE_REVIEW",
-  "iteration": 1,
-  "feature": "004-ship-loop",
-  "phase": 1,
-  "startedAt": "2026-03-09T14:02:33Z",
-  "runId": "uuid-v4",
-  "backend": "gemini",
-  "failureContext": null
-}
-```
-
-On `CIRCUIT_BREAK`, `failureContext` is populated:
-```json
-{
-  "failureContext": {
-    "openTasks": ["T003", "T005"],
-    "lastVerdict": "NO-GO",
-    "iterationTimeline": [
-      { "iteration": 1, "stage": "UAT_REVIEW", "verdict": "NO-GO", "durationS": 342 },
-      { "iteration": 2, "stage": "CODE_REVIEW", "verdict": "NO-GO", "durationS": 287 }
-    ],
-    "digest": ["IMPLEMENT: agent exited 0, 4 files changed", "CODE_REVIEW: NO-GO — test failures in ship.test.ts"]
+- **DM-001**: `ShipState` state file schema:
+  ```typescript
+  interface WudState {
+    featureId: string;
+    phaseId: string;
+    stage: ShipStage;
+    iteration: number;
+    testBaseline?: number;
+    failureContext?: {
+      openTasks: string[];
+      lastVerdict?: string;
+      digest: string[];
+    };
   }
-}
-```
-
-### DM-002: Execution Manifest (`specs/<feature>/.gwrk/runs/*.json`)
-
-Git-tracked structured JSON per run. Per ADR-003 §3. Extended with `digest[]`:
-
-```json
-{
-  "runId": "2026-03-14T14:02:33Z_ship_p01_gemini",
-  "feature": "004-ship-loop",
-  "phase": "phase-01",
-  "command": "ship",
-  "agent": "gemini",
-  "startedAt": "2026-03-14T14:02:33Z",
-  "finishedAt": "2026-03-14T14:18:02Z",
-  "durationS": 929,
-  "exitCode": 0,
-  "attempt": 1,
-  "gateResult": "PASS",
-  "reviewVerdict": "GO",
-  "filesChanged": 4,
-  "linesAdded": 127,
-  "linesDeleted": 33,
-  "gitCommit": "abc1234",
-  "gitBranch": "feat/004-ship-loop",
-  "digest": [
-    "BRANCH_SETUP: created feat/004-ship-loop from develop (0.3s)",
-    "IMPLEMENT: gemini completed, 4 files changed, gates 3/5 passing",
-    "CODE_REVIEW: GO — all assertions satisfied",
-    "UAT_REVIEW: GO — acceptance criteria met",
-    "PR_CI: PR #42 created, CI passed (2m14s)"
-  ]
-}
-```
-
-File naming: `<ISO-timestamp>_<command>_<phase>_<agent>.json`
-
-### DM-003: SQLite Execution Ledger (`runs` table)
-
-Per ADR-002: `command: "ship"`, `workflow: "work-until-done"`, `exit_code`, `duration_s`, `agent_backend`. Populated by `ship.ts` via `startRun()`/`finishRun()`.
+  ```
+- **DM-003**: `.gwrkrc.json` configuration Zod schema updated to support `project.toolchain`:
+  ```typescript
+  const ToolchainSchema = z.object({
+    primary: z.string().optional(),
+    formatter: z.string().optional(),
+    build: z.string().nullable().optional(),
+    test: z.string().nullable().optional()
+  }).optional();
+  ```
+- **DM-005**: `ExecutionManifest` schema committed to `specs/<feature>/.gwrk/runs/`.
 
 ---
 
 ## 6. Technical Constraints
 
-- **TC-001**: Air-Gapped — No external network calls at runtime. External ops delegated to `gh`, `git` CLIs.
-- **TC-002**: Fail-Fast Config — Zod validation with no `.default()` calls. Missing config → `process.exit(1)`.
+- **TC-001**: Air-Gapped — No external network calls at runtime. No CDN. No telemetry.
+- **TC-002**: Fail-Fast Config — Zod validation with no `.default()` calls. Missing var → `process.exit(1)`.
 - **TC-003**: TypeScript Only — No `.js` or `.jsx` in `src/`. ESM modules, ES2022 target.
-- **TC-004**: Gate Integrity — Ship engine MUST NOT modify gate scripts.
-- **TC-005**: Branch Isolation — Implementation on `feat/<feature>`, PRs target `develop`.
-- **TC-006**: Crash Safety — State flushed to disk before every stage transition.
-- **TC-007**: Shell Scripts ARE the Product — The TS layer adds SQLite recording, manifests, and UX. It does NOT reimplement orchestration.
-- **TC-008**: Staging Scope — `validate-staging.sh` MUST reject files outside the feature's expected scope (Design Mandate Rules 3+5).
+- **TC-004**: No interactive execution — All commands must complete without human input.
 
 ---
 
 ## 7. Testing Requirements
 
-- **TR-001**: `src/engine/orchestrator.test.ts` — Verify `DispatchOrchestrator` completes state machine logically without unbound shell variables, handles non-zero agent exit, respects `MAX_ITERATIONS`. Vitest. (FR-004, FR-007)
-- **TR-002**: `src/engine/branch.test.ts` validation — Verify branch creation from develop, checkout existing, dirty-tree rejection natively. Vitest. (FR-002)
-- **TR-003**: `src/engine/verdict.test.ts` validation — Verify GO when all tasks completed, NO-GO when open tasks remain. Vitest. (FR-005)
-- **TR-004**: `src/engine/ci-wait.test.ts` validation — Verify CI wait completes, timeout returns exit 2, no-checks edge case passes. Vitest. (FR-006)
-- **TR-005**: `src/commands/ship.test.ts` — Verify ship CLI: single-phase dispatch, all-phases iteration, `--max-iterations`, `--ci-timeout`, `--dry-run`, failure exit, phase-skip. Vitest. (FR-001, FR-011, FR-013, FR-014)
-- **TR-006**: `src/cli.e2e.test.ts` — Verify `gwrk ship --help` shows `--dry-run`, `--max-iterations`, `--ci-timeout`, `--agent`, and no stale subcommands. Vitest + CLI. (FR-001)
-- **TR-007**: `src/engine/orchestrator.e2e.test.ts` — E2E: full lifecycle invocation with structured manifest output, retry on failure. Vitest. (FR-004, FR-007, FR-012, FR-017)
-- **TR-008**: `src/engine/staging.test.ts` validation — Verify rejection of out-of-scope files, build plan protection, orphan detection. Vitest. (FR-016)
+- **TR-001**: `src/scripts-e2e.test.ts` — asserts that a single phase runs successfully from start to finish. Vitest. (FR-001)
+- **TR-002**: `src/scripts-e2e.test.ts` — asserts that dirty git working trees are rejected at branch setup stage. Vitest. (FR-002)
+- **TR-003**: `src/scripts-e2e.test.ts` — asserts that passing pre-flight gates skips the task. Vitest. (FR-003)
+- **TR-004**: `src/scripts-e2e.test.ts` — asserts the state transitions are recorded accurately. Vitest. (FR-004)
+- **TR-005**: `src/scripts-e2e.test.ts` — asserts review dispatch loops on NO-GO. Vitest. (FR-005)
+- **TR-006**: `src/scripts-e2e.test.ts` — asserts PR is created and CI is successfully awaited. Vitest. (FR-006)
+- **TR-007**: `src/commands/ship.test.ts` — asserts circuit breaker triggers after MAX_ITERATIONS. Vitest. (FR-007)
+- **TR-008**: `src/commands/ship.test.ts` — asserts crash recovery resumes correctly from the last persisted stage. Vitest. (FR-008)
+- **TR-009**: `src/commands/ship.test.ts` — asserts hierarchical resolution of agent backends. Vitest. (FR-009)
+- **TR-010**: `src/scripts-e2e.test.ts` — asserts raw logs are stored under `.runs/`. Vitest. (FR-010)
+- **TR-011**: `src/commands/ship.test.ts` — asserts run details are saved into the SQLite execution runs table. Vitest. (FR-011)
+- **TR-012**: `src/commands/ship.test.ts` — asserts execution manifest and digest write. Vitest. (FR-012)
+- **TR-013**: `src/commands/ship.test.ts` — asserts sequential shipping of all phases. Vitest. (FR-013)
+- **TR-014**: `src/commands/ship.test.ts` — asserts completed phases are skipped. Vitest. (FR-014)
+- **TR-015**: `src/commands/ship.test.ts` — asserts exit codes are wrapped with signal format. Vitest. (FR-015)
+- **TR-016**: `src/scripts-e2e.test.ts` — asserts out-of-scope files trigger staging validation failure. Vitest. (FR-016)
+- **TR-017**: `src/scripts-e2e.test.ts` — asserts three-tier logging format and content. Vitest. (FR-017)
+- **TR-018**: `src/scripts-e2e.test.ts` — asserts state contains failureContext JSON on circuit break. Vitest. (FR-018)
+- **TR-019**: `src/utils/agent.test.ts` — asserts `dispatchToAgent` returns a valid `TaskResult`. Vitest. (FR-019)
+- **TR-020**: `src/utils/agent.test.ts` — asserts exit code normalization. Vitest. (FR-020)
+- **TR-021**: `src/utils/agent.test.ts` — asserts context piping via stdin. Vitest. (FR-021)
+- **TR-022**: `src/utils/toolchain-mapper.test.ts` — asserts `getBuildCommand` returns correct command or null from ProjectProfile. Vitest. (FR-022)
+- **TR-023**: `src/engine/ship-orchestrator.test.ts` — asserts `stageBuildCheck` and `stageTestGate` skip execution when build/test command is null. Vitest. (FR-022, FR-023)
+- **TR-024**: `src/utils/config.test.ts` — asserts `GwrkConfigSchema` validates build/test toolchain properties. Vitest. (FR-024)
+- **TR-025**: `src/commands/init.test.ts` — asserts agent configuration written during init is schema-compliant. Vitest. (FR-025)
 
 ---
 
 ## 8. Success Criteria
 
-- **SC-001**: `gwrk ship <feature> <phase>` completes full lifecycle: branch → implement → review → PR → CI.
-- **SC-002**: `gwrk ship <feature>` (no phase) ships all phases sequentially, stops on first failure, skips completed phases.
-- **SC-003**: Every agent dispatch is audit-ready in SQLite `runs` table and git-tracked execution manifest with `digest[]`.
-- **SC-004**: Circuit breaker stops runaway loops. Crash recovery resumes from last stage. Rip-cord bail produces structured failure context.
-- **SC-005**: `gwrk ship --help` shows `--dry-run`, `--max-iterations`, `--ci-timeout`, `--agent` and type classification `mutator`.
-- **SC-006**: Staging validator rejects out-of-scope files and build plan modifications.
+- **SC-001**: Clean ship run compiles and passes tests on TypeScript projects.
+- **SC-002**: Clean ship run skips compilation and/or tests on non-TypeScript projects without crashing.
+- **SC-003**: `gwrk init` writes valid schema-compliant configuration that Zod parses successfully.
 
 ---
 
 ## 9. Verification Requirements
 
-- **VR-001**: E2E: Run `gwrk ship 004-ship-loop 1` → verify execution manifest in `.gwrk/runs/` with `digest[]` → verify SQLite records → verify PR targeting `develop`.
-- **VR-002**: Run `gwrk ship 004-ship-loop --dry-run` → verify all phases printed → verify no agent dispatched.
-- **VR-003**: Run `gwrk ship --help` → verify output matches SC-005.
-- **VR-004**: Run `validate-staging.sh` with out-of-scope files → verify rejection → run with clean scope → verify pass.
+- **VR-001**: E2E validation verifying that `gwrk ship` completes successfully on a typescript project.
+- **VR-002**: E2E validation verifying that `gwrk ship` skips build check on a python project (no build toolchain).
+- **VR-003**: E2E validation verifying that `gwrk init` produces a `.gwrkrc.json` that passes Zod verification.
 
 ---
 
@@ -394,21 +359,28 @@ Per ADR-002: `command: "ship"`, `workflow: "work-until-done"`, `exit_code`, `dur
 
 | US-### | Backed by FR | FR-### | Fulfills US | Tested by TR |
 |--------|-------------|--------|-------------|-------------|
-| US-001 | FR-001,002,003,004,006,011,012,015,016,017 | FR-001 | US-001, US-003 | TR-005, TR-007 |
+| US-001 | FR-001, FR-002, FR-004, FR-005, FR-011, FR-015, FR-019, FR-020, FR-021 | FR-001 | US-001, US-003 | TR-001 |
 | US-002 | FR-003 | FR-002 | US-001 | TR-002 |
-| US-003 | FR-001, FR-013, FR-014 | FR-003 | US-001, US-002 | TR-005, TR-007 |
-| US-004 | FR-007, FR-018 | FR-004 | US-001 | TR-001, TR-007 |
-| US-005 | FR-008 | FR-005 | US-001 | TR-001, TR-003 |
-| US-006 | FR-006 | FR-006 | US-001, US-006 | TR-001, TR-004 |
-| US-007 | FR-012, FR-017 | FR-007 | US-004 | TR-001, TR-007 |
-| US-008 | FR-009 | FR-008 | US-005 | TR-001, TR-007 |
-| US-009 | FR-014 | FR-009 | US-008 | TR-005 |
-| US-010 | FR-016 | FR-010 | US-001 | TR-001 |
-| US-011 | FR-018 | FR-011 | US-001 | TR-005 |
-| | | FR-012 | US-001, US-007 | TR-005, TR-007 |
-| | | FR-013 | US-003 | TR-005 |
-| | | FR-014 | US-009 | TR-005 |
-| | | FR-015 | US-001 | TR-005 |
-| | | FR-016 | US-010 | TR-008 |
-| | | FR-017 | US-001, US-007 | TR-007 |
-| | | FR-018 | US-004, US-011 | TR-001 |
+| US-003 | FR-001, FR-013 | FR-003 | US-002 | TR-003 |
+| US-004 | FR-007 | FR-004 | US-001 | TR-004 |
+| US-005 | FR-008 | FR-005 | US-001 | TR-005 |
+| US-006 | FR-006 | FR-006 | US-006 | TR-006 |
+| US-007 | FR-010, FR-012, FR-017 | FR-007 | US-004 | TR-007 |
+| US-008 | FR-009 | FR-008 | US-005 | TR-008 |
+| US-009 | FR-014 | FR-009 | US-008 | TR-009 |
+| US-010 | FR-016 | FR-010 | US-007 | TR-010 |
+| US-011 | FR-018 | FR-011 | US-001 | TR-011 |
+| US-012 | FR-022, FR-023, FR-024 | FR-012 | US-007 | TR-012 |
+| US-013 | FR-025 | FR-013 | US-003 | TR-013 |
+| | | FR-014 | US-009 | TR-014 |
+| | | FR-015 | US-001 | TR-015 |
+| | | FR-016 | US-010 | TR-016 |
+| | | FR-017 | US-007 | TR-017 |
+| | | FR-018 | US-011 | TR-018 |
+| | | FR-019 | US-001 | TR-019 |
+| | | FR-020 | US-001 | TR-020 |
+| | | FR-021 | US-001 | TR-021 |
+| | | FR-022 | US-012 | TR-022, TR-023 |
+| | | FR-023 | US-012 | TR-023 |
+| | | FR-024 | US-012 | TR-024 |
+| | | FR-025 | US-013 | TR-025 |

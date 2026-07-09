@@ -1,7 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 
-export interface ReadinessPhase {
+interface ReadinessPhase {
   number: number;
   title: string;
 }
@@ -21,7 +25,7 @@ export interface ReadinessResult {
  * Parse phase headings from a plan.md file.
  * Matches: ### Phase N: Title
  */
-export function parsePlanPhases(planContent: string): ReadinessPhase[] {
+function parsePlanPhases(planContent: string): ReadinessPhase[] {
   const phases: ReadinessPhase[] = [];
   const lines = planContent.split("\n");
 

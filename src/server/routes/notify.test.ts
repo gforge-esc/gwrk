@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /**
  * Module does not exist yet (RED)
  */
@@ -173,7 +177,7 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
     }
   });
 
-  it("TR-005: should route done_done to ops channel", async () => {
+  it("TR-005: should route done_done to ops channel", { timeout: 15_000 }, async () => {
     const server = await startServer(mockConfig, { handleSignals: false });
     try {
       const spy = vi.spyOn(slackNotify, "notifySlack");

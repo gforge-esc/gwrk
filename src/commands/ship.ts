@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -9,7 +17,7 @@ import type { ShipStage, ShipState } from "../engine/ship-types.js";
 
 import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
-import { type AgentBackend, loadConfig } from "../utils/config.js";
+import { type AgentBackendId, loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -23,6 +31,7 @@ import {
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
+  isWorkingTreeClean,
 } from "../utils/git.js";
 import {
   assembleDigest,
@@ -36,12 +45,9 @@ import {
 } from "../utils/state.js";
 
 import { getBackendSelector } from "../server/index.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import {
-  loadSetupState,
-  isSetupComplete,
-} from "../utils/setup-state.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
+import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
@@ -53,7 +59,7 @@ const { GREEN, DIM, RESET, YELLOW, RED } = color;
 async function shipPhase(
   featureInput: string,
   phase: string,
-  backend: AgentBackend,
+  backend: AgentBackendId,
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
   selectedModel?: string,
@@ -163,6 +169,7 @@ async function shipPhase(
 
   const startTime = Date.now();
   let exitCode = 0;
+  let orchestrator: ShipOrchestrator | undefined;
 
   try {
     if (opts.legacy) {
@@ -188,7 +195,7 @@ async function shipPhase(
           // Iteration count is a circuit breaker for THIS invocation, not a
           // persistent counter. A new `gwrk ship` gets a fresh breaker.
           // Stage is preserved for crash recovery; iteration is not.
-          existingState!.iteration = 1;
+          if (existingState) existingState.iteration = 1;
           console.log(`  🔄 Resuming from state: ${existingState?.stage}`);
         } catch (err) {
           console.warn(`  ⚠️ Corrupt state file — starting fresh: ${err}`);
@@ -201,7 +208,7 @@ async function shipPhase(
       }
 
       const gwrkConfig = loadConfig(cwd);
-      const orchestrator = new ShipOrchestrator(
+      orchestrator = new ShipOrchestrator(
         {
           featureId: feature,
           phaseId: phaseId,
@@ -297,6 +304,7 @@ async function shipPhase(
 
     const manifestId = generateRunId(startedAt, "ship", phaseId);
     const featureDir = path.join(cwd, "specs", feature);
+    const result = orchestrator?.getResult();
 
     writeManifest(featureDir, {
       runId: manifestId,
@@ -310,6 +318,8 @@ async function shipPhase(
       durationS,
       exitCode,
       attempt: 1,
+      gateResult: result?.gateResult,
+      reviewVerdict: result?.reviewVerdict,
       filesChanged,
       linesAdded,
       linesDeleted,
@@ -332,11 +342,7 @@ async function shipPhase(
     try {
       const manifestDir = path.join(featureDir, ".gwrk", "runs");
       await run("git", ["add", manifestDir], { cwd });
-      const porcelain = execSync("git status --porcelain", {
-        cwd,
-        encoding: "utf-8",
-      }).trim();
-      if (porcelain) {
+      if (!isWorkingTreeClean(cwd)) {
         await run(
           "git",
           ["commit", "-m", `chore(${feature}): add execution manifest`],
@@ -376,7 +382,7 @@ function isPhaseComplete(phaseData: TaskState["phases"][number]): boolean {
 export async function dispatchPhaseWork(
   feature: string,
   phase: string,
-  backend: AgentBackend,
+  backend: AgentBackendId,
   workflow: string,
 ): Promise<TaskResult> {
   return dispatchToAgent({
@@ -474,11 +480,9 @@ Examples:
         // FR-022: Workstation setup pre-flight check
         const setupState = loadSetupState();
         if (!isSetupComplete(setupState)) {
-          blocked("Run gwrk setup first");
-          throw new CommandError("Run gwrk setup first", 1);
+          blocked("Run gwrk init first");
+          throw new CommandError("Run gwrk init first", 1);
         }
-
-
 
         // Determine which phases to ship
         let phases: string[];
@@ -598,7 +602,7 @@ Examples:
         const shipStartTime = Date.now();
         let finalExitCode = 0;
         for (const p of phases) {
-          let currentBackend = opts.agent as string as AgentBackend;
+          let currentBackend = opts.agent as string as AgentBackendId;
           let selectedModel: string | undefined;
           let selectedCommand: string | undefined;
 
@@ -612,7 +616,7 @@ Examples:
               language: "typescript",
               taskSP: 1, // Default for orchestrator
             });
-            currentBackend = selection.backend as AgentBackend;
+            currentBackend = selection.backend as AgentBackendId;
             selectedModel = selection.model;
             selectedCommand = selection.command;
             console.log(

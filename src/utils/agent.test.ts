@@ -1,11 +1,19 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { dispatchToAgent, SAFE_AGENT_ENV, COMMAND_SAFETY_BLOCK } from './agent.js';
 import * as skillRuntime from '../plugins/skill-runtime.js';
+import * as extensionRuntime from '../plugins/extension-runtime.js';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
 vi.mock('../plugins/skill-runtime.js');
+vi.mock('../plugins/extension-runtime.js', () => ({
+  resolveExtensionContext: vi.fn().mockResolvedValue([]),
+}));
 vi.mock('node:child_process');
 vi.mock('../engine/profile-detector.js', () => ({
   detectProfile: vi.fn().mockResolvedValue({
@@ -194,6 +202,10 @@ describe('ADR-008: Command Safety Posture', () => {
 
 describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
   it("FR-L3-006: injects output of resolveExtensionContext into prompt", async () => {
+    vi.mocked(extensionRuntime.resolveExtensionContext).mockResolvedValue([
+      { source: "test-source", content: "External Context Content", relevance: 1.0 }
+    ]);
+
     let capturedStdin = '';
     vi.mocked(spawn).mockImplementation(() => {
       const mockChild = new EventEmitter() as any;

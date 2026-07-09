@@ -78,6 +78,9 @@ gwrk commands follow this taxonomy:
 - `gwrk ship <feature> <phase>` — ship a phase
 - `gwrk plugin list` — list plugins
 [/type]
+[type: generic]
+Verify the application's CLI commands as defined in the specification.
+[/type]
 
 For each user story in scope:
 
@@ -94,9 +97,14 @@ b. **Negative Path**: Test error conditions from spec.
    - FAIL: Record confusing or missing error handling.
 
 c. **Unit Tests**: Verify relevant test suites pass.
+[type: gwrk-native]
    ```bash
    pnpm vitest run <relevant-test-file> --reporter=verbose
    ```
+[/type]
+[type: generic]
+   Run the project's test suite for the relevant files.
+[/type]
    - PASS: All tests green.
    - FAIL: Record failing tests.
 

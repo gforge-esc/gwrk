@@ -1,8 +1,8 @@
 ---
 type: implementation_plan
 feature: 001-cli-core
-last_modified: "2026-06-14T11:00:00Z"
-revision: 4
+last_modified: "2026-06-16T15:00:00Z"
+revision: 6
 ---
 
 # Implementation Plan: 001 CLI Core
@@ -13,7 +13,7 @@ revision: 4
 
 The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot Charlie pillar hierarchy (`define`, `ship`, `measure`), comprehensive interactive onboarding (`init`), project-aware prompt conditioning, agent dispatch, SQLite execution ledger, task engine with Hard Gate enforcement, provenance tracking, and standardized output formatting.
 
-> **Status**: Phases 1–8, 11 are **implemented and tested**. Phase 9 (state contracts), Phase 10 (unified init — R3 rewrite), Phase 12 (define output parity), Phase 13 (project awareness — R3 new), Phase 14 (scoped DB), and Phase 15 (plugins) are open.
+> **Status**: Phases 1–8, 11 are **implemented and tested**. Phase 9 (state contracts), Phase 10 (interactive init), Phase 12 (define output parity), Phase 13 (project awareness), Phase 14 (scoped DB), Phase 15 (plugins), Phase 16 (ecosystem), Phase 17 (protection), and Phase 18 (lifecycle) are open.
 
 ---
 
@@ -37,6 +37,7 @@ The gwrk CLI — the Principal Engineer's Operating System. Delivers the Foxtrot
 - Phase 13 added: prompt conditioning, PROMPT.md refactoring, `gwrk project info`
 - Phase Execution Order table added with specific `gwrk ship` commands
 - Coverage matrix updated with R3 items
+- Phase 16 added: ecosystem discovery and agent-optimized init (FR-044, FR-045, FR-046)
 
 **Reference**: [prompt-contamination-audit.md](./refs/prompt-contamination-audit.md)
 
@@ -110,12 +111,13 @@ Global SQLite at `~/.gwrk/gwrk.db` for run recording and analytics.
 
 Agent dispatch wrappers under `gwrk define` for spec, plan, tasks, and bare definition loop.
 
-**Files (8):**
-- `src/commands/define.ts` ✅ — Parent: bare=definition loop, subcommands: spec, plan, tasks
+**Files (9):**
+- `src/commands/define.ts` ✅ — Parent: bare=definition loop, subcommands: spec, plan, tasks, tests, analyze
 - `src/commands/specify.ts` ✅ — `gwrk define spec <feature> [--refs]`
-- `src/commands/plan.ts` ✅ — `gwrk define plan <feature> [--refs]`
-- `src/commands/analyze.ts` ✅ — Internal definition stage (not user-facing)
+- `src/commands/define-plan.ts` ✅ — `gwrk define plan <feature> [--refs]`
+- `src/commands/analyze.ts` ✅ — Internal definition stage (hidden)
 - `src/commands/tasks-generate.ts` ✅ — `gwrk define tasks` with `--force` and `--reconcile`
+- `src/commands/tests-generate.ts` ✅ — `gwrk define tests` for RED test generation
 - `src/utils/agent.ts` ✅ — Agent dispatch: backend resolution, log streaming, logPath return
 - `src/utils/parser.ts` ✅ — Parse plan.md → phases and tasks
 - `src/utils/exec.ts` ✅ — Shell command execution wrapper
@@ -128,6 +130,7 @@ Agent dispatch wrappers under `gwrk define` for spec, plan, tasks, and bare defi
 - `src/commands/analyze.test.ts` ✅ — TR-009
 - `src/commands/define.test.ts` ✅
 - `src/commands/tasks-generate.test.ts` ✅ — TR-004
+- `src/commands/tests-generate.test.ts` ✅
 - `src/commands/tasks-reconcile.test.ts` ✅ — 4 reconcile scenarios
 - `src/utils/agent.test.ts` ✅
 - `src/engine/spec-parser.test.ts` ✅
@@ -262,20 +265,19 @@ Implement the two-tier state architecture ([ADR-003](docs/decisions/ADR-003-stat
 
 ---
 
-### Phase 10: Unified Init — Project Onboarding ⭐ **REWRITE (R3)**
+### Phase 10: Interactive Onboarding & Profile Auto-Detection ⭐ **REWRITE (R3)**
 
-Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, extension discovery, registry cloning, and directory scaffolding.
+Merge current `init.ts` + `setup.ts` into a single comprehensive interactive wizard. `gwrk init` becomes the ONE command that provisions everything: project profile (auto-detected), workstation config (TCC, SSH, gh), agent detection, Slack channel, and directory scaffolding.
 
-**Files (4):**
-- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery)
+**Files (3):**
+- `src/commands/init.ts` (MODIFY: Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` flag)
 - `src/commands/setup.ts` (DELETE: Absorbed into init)
 - `src/commands/setup-slack.ts` (MODIFY: Refactor to be callable from init flow, not standalone)
-- `src/engine/extension-detector.ts` (NEW: Detect installed CLIs like obsidian-cli)
 
-**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, FR-044, FR-045, FR-046, US-001 (R3), US-021 (absorbed), US-031 (init part), US-032
+**Requirements Addressed:** FR-001 (R3 rewrite), FR-022 (absorbed), FR-030, FR-031, FR-032, US-001 (R3), US-021 (absorbed), US-027
 
 **Tests:**
-- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, `--agent`, profile auto-detection, registry cloning, extension discovery) — TR-001, TR-021, TR-036, TR-037, TR-046
+- `src/commands/init.test.ts` (MODIFY: Add interactive wizard tests, workstation provisioning, `--non-interactive`, profile auto-detection) — TR-001, TR-021, TR-027, TR-028, TR-029, TR-030
 
 **gwrk command to implement:**
 ```
@@ -287,10 +289,7 @@ gwrk ship 001 10
 - `gwrk init` runs workstation provisioning (TCC, SSH, gh) — former `gwrk setup` behavior
 - `gwrk init` detects agent CLIs and configures agents block
 - `gwrk init` provisions Slack channel if tokens available
-- `gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`
-- `gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`
 - `gwrk init --non-interactive` uses pure auto-detection, writes `.gwrkrc.json` silently
-- `gwrk init --agent` outputs structured JSON, skips human-dependent steps (TCC, SSH, Slack), relaxes pre-requisites — designed for agent-driven bootstrapping of new repos
 - `gwrk setup` is removed from CLI surface
 - `pnpm build` compiles clean, `pnpm test` all passing
 - Schema backward compat: existing `.gwrkrc.json` files parse without error
@@ -481,6 +480,125 @@ gwrk ship 001 15
 
 ---
 
+### Phase 16: Ecosystem Discovery & Agent Provisioning ⭐ **NEW (2026-06-14)**
+
+Extend `gwrk init` to support headless agent bootstrapping, local extension discovery, and automatic plugin registry cloning.
+
+**Files (2):**
+- `src/commands/init.ts` (MODIFY: Add registry cloning, extension detection, and `--agent` flag)
+- `src/engine/extension-detector.ts` (NEW: Detect installed CLIs like obsidian-cli)
+
+**Requirements Addressed:** FR-044, FR-045, FR-046, US-032
+
+**Tests:**
+- `src/commands/init.test.ts` (MODIFY: Add `--agent` mode tests)
+- `src/engine/extension-detector.test.ts` (NEW) — TR-037
+- `src/engine/registry.test.ts` (MODIFY: Verify init cloning integration) — TR-036
+
+**gwrk command to implement:**
+```
+gwrk ship 001 16
+```
+
+#### Done When
+- `gwrk init` clones `gwrk-plugins` registry to `~/.gwrk/registry/`
+- `gwrk init` detects installed extensions (e.g. obsidian-cli) and updates `.gwrkrc.json`
+- `gwrk init --agent` outputs structured JSON, skips human-dependent steps (TCC, SSH, Slack), relaxes pre-requisites — designed for agent-driven bootstrapping of new repos
+- `pnpm build` compiles clean, `pnpm test` all passing
+
+---
+### Phase 17: State Protection & Governance Seeding ⭐ **NEW (2026-06-16)**
+
+Implement repository-level protections for core gwrk state and automate the seeding of governance files during initialization to ensure agent compliance and merge safety.
+
+**Files (2):**
+- `src/commands/init.ts` (MODIFY: Seed `.gitattributes` with merge strategies for `tasks.json`, manifests, and history. Seed `AGENTS.md` for governance.)
+- `src/utils/git.ts` (MODIFY: Add support for union and binary merge drivers in init-time config.)
+
+**Requirements Addressed:** FR-019, FR-020, FR-021, US-019, US-020, US-002 (agy governance)
+
+**Tests:**
+- `src/commands/init-protection.test.ts` (NEW: Verify `.gitattributes` content and `AGENTS.md` existence after init)
+- `src/utils/git-merge.test.ts` (NEW: Verify merge driver configuration)
+
+**gwrk command to implement:**
+```
+gwrk ship 001 17
+```
+
+#### Done When
+- `gwrk init` seeds `.gitattributes` with `merge=ours` for `tasks.json`, `merge=binary` for manifests, and `merge=union` for history
+- `gwrk init` seeds `AGENTS.md` with standard gwrk governance markers
+- Repository-level protections are idempotent (skip if files exist and are correct)
+- All tests pass
+
+---
+
+### Phase 18: Build Plan Lifecycle Status ⭐ **NEW (2026-06-16)**
+
+Deliver the `gwrk plan status <feature> --phases` command to provide deep visibility into the implementation lifecycle of a feature, from specification to shipping.
+
+**Files (2):**
+- `src/commands/plan.ts` (MODIFY: Add `--phases` flag to `status` subcommand)
+- `src/engine/lifecycle-renderer.ts` (NEW: Logic to aggregate and format lifecycle data: spec mtime, plan mtime, test/task existence, PR links)
+
+**Requirements Addressed:** US-030 (lifecycle detail part), FR-040 (extension)
+
+**Tests:**
+- `src/commands/plan-lifecycle.test.ts` (NEW: Verify lifecycle ladder output format and data accuracy)
+- `src/engine/lifecycle-renderer.test.ts` (NEW)
+
+**gwrk command to implement:**
+```
+gwrk ship 001 18
+```
+
+#### Done When
+- `gwrk plan status <feature> --phases` displays a "lifecycle ladder" showing artifact readiness per phase
+- PR links and timestamps are correctly aggregated from the SQLite execution ledger
+- Output respects `--format json`
+- All tests pass
+
+---
+
+## Success Criteria
+
+| ID | Criterion | Phase | Status |
+|---|---|---|---|
+| SC-001 | `gwrk --help` shows exactly the settled hierarchy. No stubs. No dead commands. | 8 | ✅ Done |
+| SC-002 | `gwrk tasks done` enforces gates strictly — failing gate NEVER updates state. | 5 | ✅ Done |
+| SC-003 | `gwrk define <feature>` runs the full DUS loop and records the run in SQLite. | 3 | ✅ Done |
+| SC-004 | `gwrk ship <feature> <phase>` runs the full ship lifecycle and records the run in SQLite. | 4 | ✅ Done |
+| SC-005 | `pnpm test` passes with 100% of tests GREEN. | 11 | ✅ Done |
+| SC-006 | `pnpm run build` compiles clean with zero TypeScript errors. | 1 | ✅ Done |
+| SC-007 | Every `ship`/`define` run produces a manifest in `.gwrk/runs/` that survives git push. | 9 | ☐ Open |
+| SC-008 | `gwrk tasks verify <feature>` detects and reports post-merge state corruption. | 9 | ☐ Open |
+| SC-009 | `gwrk init` provisions profile + workstation + agents + Slack in one interactive flow. | 10 | ☐ Open |
+| SC-010 | All `define` subcommands produce the same quiet, logged output as `ship`. | 12 | ☐ Open |
+| SC-011 | `gwrk define plan` in external projects produces project-appropriate paths. | 13 | ☐ Open |
+| SC-012 | `gwrk define plan` in the gwrk repo produces identical prompt structure to pre-R3. | 13 | ☐ Open |
+| SC-013 | `gwrk project info --format json` returns a valid `ProjectProfile`. | 13 | ☐ Open |
+| SC-014 | All 15 PROMPT.md files refactored with conditional profile sections. | 13 | ☐ Open |
+
+---
+
+## Verification Requirements
+
+| ID | Requirement | Phase | Status |
+|---|---|---|---|
+| VR-001 | E2E: `gwrk init` → mock spec/plan → `gwrk tasks generate` → gate pass → `gwrk tasks done`. | 8 | ✅ Done |
+| VR-002 | Negative: `gwrk tasks done` with failing gate → state unchanged, exit 1. | 5 | ✅ Done |
+| VR-003 | Config: remove required field → any gwrk command crashes with Zod error. | 1 | ✅ Done |
+| VR-004 | E2E: `gwrk --help` output matches taxonomy exactly. | 8 | ✅ Done |
+| VR-005 | E2E: `gwrk run plan` with stub spec → `[BLOCKED]` error, exit 1. | 3 | ✅ Done |
+| VR-006 | E2E: `gwrk init --non-interactive` in monorepo → `.gwrkrc.json` has auto-detected profile. | 10 | ☐ Open |
+| VR-007 | E2E: `gwrk define plan` in external project → plan.md has no gwrk-native references. | 13 | ☐ Open |
+| VR-008 | E2E: `gwrk project info` in external project returns correct type. | 13 | ☐ Open |
+| VR-009 | Snapshot: Pre-R3 gwrk plan prompt matches post-R3 for gwrk-native. | 13 | ☐ Open |
+| VR-010 | Audit: `grep` returns zero ungated gwrk-native references in PROMPT.md. | 13 | ☐ Open |
+
+---
+
 ## Coverage Matrix
 
 | Spec Item | Phase | Status |
@@ -515,8 +633,8 @@ gwrk ship 001 15
 | US-028 | 13 | ☐ Open (R3) |
 | US-029 | 13 | ☐ Open (R3) |
 | US-030 | 14 | ☐ Open |
-| US-031 | 10, 15 | ☐ Open |
-| US-032 | 10 | ☐ Open |
+| US-031 | 15 | ☐ Open |
+| US-032 | 16 | ☐ Open |
 | FR-001 | 1, 7, 10 | ⭐ R3 rewrite in Phase 10 |
 | FR-002 | 3 | ✅ Done |
 | FR-003 | 3 | ✅ Done |
@@ -534,9 +652,9 @@ gwrk ship 001 15
 | FR-016 | 6 | ✅ Done |
 | FR-017 | 6 | ✅ Done |
 | FR-018 | 8 | ✅ Done |
-| FR-019 | 9 | ☐ Open |
-| FR-020 | 9 | ☐ Open |
-| FR-021 | 9 | ☐ Open |
+| FR-019 | 9, 17 | ☐ Open |
+| FR-020 | 9, 17 | ☐ Open |
+| FR-021 | 9, 17 | ☐ Open |
 | FR-022 | 10 (absorbed into FR-001) | ☐ Open |
 | FR-023 | 11 | ✅ Done |
 | FR-024 | 11 | ✅ Done |
@@ -555,12 +673,79 @@ gwrk ship 001 15
 | FR-037 | 14 | ☐ Open |
 | FR-038 | 14 | ☐ Open |
 | FR-039 | 14 | ☐ Open |
-| FR-040 | 14 | ☐ Open |
+| FR-040 | 14, 18 | ☐ Open |
 | FR-041 | 15 | ☐ Open |
 | FR-042 | 15 | ☐ Open |
 | FR-043 | 15 | ☐ Open |
-| FR-044 | 10 | ☐ Open |
-| FR-045 | 10 | ☐ Open |
+| FR-044 | 16 | ☐ Open |
+| FR-045 | 16 | ☐ Open |
+| FR-046 | 16 | ☐ Open |
+| SC-001 | 8 | ✅ Done |
+| SC-002 | 5 | ✅ Done |
+| SC-003 | 3 | ✅ Done |
+| SC-004 | 4 | ✅ Done |
+| SC-005 | 11 | ✅ Done |
+| SC-006 | 1 | ✅ Done |
+| SC-007 | 9 | ☐ Open |
+| SC-008 | 9 | ☐ Open |
+| SC-009 | 10 | ☐ Open (R3) |
+| SC-010 | 12 | ☐ Open |
+| SC-011 | 13 | ☐ Open (R3) |
+| SC-012 | 13 | ☐ Open (R3) |
+| SC-013 | 13 | ☐ Open (R3) |
+| SC-014 | 13 | ☐ Open (R3) |
+| VR-001 | 8 | ✅ Done |
+| VR-002 | 5 | ✅ Done |
+| VR-003 | 1 | ✅ Done |
+| VR-004 | 8 | ✅ Done |
+| VR-005 | 3 | ✅ Done |
+| VR-006 | 10 | ☐ Open (R3) |
+| VR-007 | 13 | ☐ Open (R3) |
+| VR-008 | 13 | ☐ Open (R3) |
+| VR-009 | 13 | ☐ Open (R3) |
+| VR-010 | 13 | ☐ Open (R3) |
+| TR-001 | 1 | ✅ Done |
+| TR-002 | 3 | ✅ Done |
+| TR-003 | 3 | ✅ Done |
+| TR-004 | 3 | ✅ Done |
+| TR-005 | 5 | ✅ Done |
+| TR-006 | 5 | ✅ Done |
+| TR-007 | 5, 6 | ✅ Done |
+| TR-008 | 1 | ✅ Done |
+| TR-009 | 3 | ✅ Done |
+| TR-010 | 6 | ✅ Done |
+| TR-011 | 3 | ✅ Done |
+| TR-012 | 3 | ✅ Done |
+| TR-013 | 2 | ✅ Done |
+| TR-014 | 2 | ✅ Done |
+| TR-015 | 2 | ✅ Done |
+| TR-016 | 6 | ✅ Done |
+| TR-017 | 6 | ✅ Done |
+| TR-018 | 8 | ✅ Done |
+| TR-019 | 8 | ✅ Done |
+| TR-020 | 9 | ☐ Open |
+| TR-021 | 10 | ☐ Open (R3) |
+| TR-022 | 11 | ✅ Done |
+| TR-023 | 11 | ✅ Done |
+| TR-024 | 11 | ✅ Done |
+| TR-025 | 11 | ✅ Done |
+| TR-026 | 12 | ☐ Open |
+| TR-027 | 10 | ☐ Open (R3) |
+| TR-028 | 10 | ☐ Open (R3) |
+| TR-029 | 10 | ☐ Open (R3) |
+| TR-030 | 10 | ☐ Open (R3) |
+| TR-031 | 13 | ☐ Open (R3) |
+| TR-032 | 13 | ☐ Open (R3) |
+| TR-033 | 10 | ☐ Open (R3) |
+| TR-034 | 13 | ☐ Open (R3) |
+| TR-035 | 15 | ☐ Open |
+| TR-036 | 16 | ☐ Open |
+| TR-037 | 16 | ☐ Open |
+| DM-001 | 2 | ✅ Done |
+| DM-002 | 2 | ✅ Done |
+| DM-003 | 1, 10 | ✅ Done (ext open) |
+| DM-004 | 2 | ✅ Done |
+| DM-005 | 9 | ☐ Open |
 
 ## Phase Execution Order
 
@@ -576,9 +761,12 @@ gwrk ship 001 15
 | **6** | **007-P3** | CLI commands + integration | `gwrk ship 007 3` | `gwrk measure compression` end-to-end. |
 | 7 | Phase 10 | Unified init wizard + setup absorption | `gwrk ship 001 10` | Polish — functional without it. |
 | 8 | Phase 15 | Plugin management suite | `gwrk ship 001 15` | **NEW (2026-06-14)** |
-| 9 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` | Polish — quiet output. |
-| 10 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` | Partially shipped. |
-| 11 | Phase 9 | State contracts + execution manifests | `gwrk ship 001 9` | Deferred. |
+| 8.5 | Phase 16 | Ecosystem discovery & agent init | `gwrk ship 001 16` | **NEW (2026-06-14)** |
+| 9 | Phase 17 | State protection & governance seeding | `gwrk ship 001 17` | **NEW (2026-06-16)** |
+| 10 | Phase 18 | Build plan lifecycle status | `gwrk ship 001 18` | **NEW (2026-06-16)** |
+| 11 | Phase 12 | Define pillar output parity | `gwrk ship 001 12` | Polish — quiet output. |
+| 12 | Phase 14 | Project-scoped DB isolation | `gwrk ship 001 14` | Partially shipped. |
+| 13 | Phase 9 | State contracts + execution manifests | `gwrk ship 001 9` | Deferred. |
 
 > Phase 13 depends on 020-P1 (profile schema must exist before prompt injection works for non-gwrk projects). 007 phases are sequential (P1 → P2 → P3).
 

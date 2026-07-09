@@ -1,9 +1,12 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { testsGenerateCommand } from "./tests-generate.js";
 
 const { mockExecuteWorkflow } = vi.hoisted(() => ({
   mockExecuteWorkflow: vi.fn().mockResolvedValue({ summary: "Success", intents: [], summaries: [] }),
@@ -25,6 +28,8 @@ vi.mock("../db/runs.js", () => ({
   startRun: vi.fn().mockReturnValue(123),
   finishRun: vi.fn(),
 }));
+
+import { testsGenerateCommand } from "./tests-generate.js";
 
 describe('Tests Generate Command (Phase 12)', () => {
   let tempDir: string;
@@ -50,6 +55,7 @@ describe('Tests Generate Command (Phase 12)', () => {
       getCurrentCommit: vi.fn().mockReturnValue("abc123"),
       getCurrentBranch: vi.fn().mockReturnValue("develop"),
       getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+      commitAllClean: vi.fn(),
     }));
 
     // Mock execSync to avoid git status failures
@@ -61,12 +67,14 @@ describe('Tests Generate Command (Phase 12)', () => {
   });
 
   afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
     vi.restoreAllMocks();
   });
 
   describe('FR-028: Quiet mode parity', () => {
-    it('MUST pass quiet: true to executeWorkflow for define subcommands', async () => {
+    it('MUST pass quiet: true and tolerant: true to executeWorkflow for define tests', async () => {
       // Mock artifact production so it doesn't fail after workflow
       mockExecuteWorkflow.mockImplementationOnce(async () => {
         const srcDir = path.join(tempDir, "src");
@@ -81,7 +89,8 @@ describe('Tests Generate Command (Phase 12)', () => {
         "gwrk-define-tests",
         expect.anything(),
         expect.objectContaining({
-          quiet: true
+          quiet: true,
+          tolerant: true
         })
       );
     });

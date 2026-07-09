@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,89 +11,27 @@ import {
   ManifestValidationError,
   PluginLoader,
   PluginNotFoundError,
+  type PluginSummary,
 } from "../plugins/loader.js";
-import { AnyManifestSchema, type PluginBase } from "../plugins/manifest.js";
+import { AnyManifestSchema, type PluginBase, type SkillManifest } from "../plugins/manifest.js";
+import { detectProfile } from "../engine/profile-detector.js";
 import { migrateSkills } from "../plugins/migrate.js";
 import { seedSkills } from "../plugins/seed.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
 import { syncContextCommand } from "./sync-context.js";
+import { searchPlugins, installPlugin as registryInstallPlugin, updatePlugin } from "../engine/registry.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
 /**
- * FR-001: Install a plugin from a local path.
+ * FR-001: Install a plugin from a local path, ID, or URL.
  */
 export async function installPlugin(
-  sourcePath: string,
+  idOrUrl: string,
   options: { force?: boolean } = {},
 ) {
-  const manifestPath = path.join(sourcePath, "manifest.yaml");
-  let rawManifest: string;
-  try {
-    rawManifest = await fs.readFile(manifestPath, "utf-8");
-  } catch (e) {
-    throw new Error(
-      `No manifest.yaml found in ${sourcePath}. A valid plugin requires manifest.yaml.`,
-    );
-  }
-
-  const parsed = parse(rawManifest);
-  const result = AnyManifestSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new ManifestValidationError(
-      path.basename(sourcePath),
-      result.error.message,
-    );
-  }
-
-  const manifest = result.data as PluginBase;
-  const globalDir = path.join(os.homedir(), ".gwrk", "plugins");
-  const targetTypeDir =
-    manifest.type === "skill"
-      ? "skills"
-      : manifest.type === "agent"
-        ? "agents"
-        : manifest.type === "workflow"
-          ? "workflows"
-          : `${manifest.type}s`;
-
-  const targetDir = path.join(globalDir, targetTypeDir, manifest.name);
-
-  let stats: import("fs").Stats | undefined;
-  try {
-    stats = await fs.stat(targetDir);
-  } catch (e: unknown) {
-    // Ignore ENOENT
-  }
-
-  if (stats?.isDirectory() && !options.force) {
-    throw new Error(
-      `Plugin '${manifest.name}' already installed. Use --force to overwrite.`,
-    );
-  }
-
-  await fs.mkdir(targetDir, { recursive: true });
-
-  // Copy all files from source to target
-  const entries = await fs.readdir(sourcePath, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.name === "node_modules" || entry.name === ".git") continue;
-    const src = path.join(sourcePath, entry.name);
-    const dest = path.join(targetDir, entry.name);
-    if (entry.isDirectory()) {
-      // Simple recursive copy (not exhaustive, but enough for most plugins)
-      await fs.mkdir(dest, { recursive: true });
-      const subEntries = await fs.readdir(src);
-      for (const sub of subEntries) {
-        await fs.copyFile(path.join(src, sub), path.join(dest, sub));
-      }
-    } else {
-      await fs.copyFile(src, dest);
-    }
-  }
-
-  return manifest;
+  return registryInstallPlugin(idOrUrl, options);
 }
 
 /**
@@ -137,15 +79,53 @@ export async function listPlugins(
     category?: string;
   } = {},
 ) {
+  const projectRoot = options.project ? process.cwd() : undefined;
   const loader = new PluginLoader({
-    projectDir: options.project ? process.cwd() : undefined,
+    projectDir: projectRoot,
   });
-  const plugins = await loader.listPlugins({
+  let plugins = await loader.listPlugins({
     includeDisabled: options.project,
     type: options.type,
     tier: options.tier,
     category: options.category,
   });
+
+  // Filter by profile language if --project is used (Phase 15 requirement)
+  if (options.project) {
+    const profile = await detectProfile(projectRoot!);
+    if (profile.stack?.language) {
+      const lang = profile.stack.language.toLowerCase();
+
+      // We need the full manifest to check the language field
+      const filtered: PluginSummary[] = [];
+      for (const p of plugins) {
+        try {
+          const loaded = await loader.resolvePlugin(p.name);
+          const manifest = loaded.manifest as any;
+
+          if (
+            manifest.type === "skill" &&
+            manifest.tier === "enforcement" &&
+            manifest.language
+          ) {
+            const manifestLang = manifest.language.toLowerCase();
+            if (profile.stack.languages && profile.stack.languages.length > 1) {
+              const profileLangs = profile.stack.languages.map((l) =>
+                l.toLowerCase(),
+              );
+              if (!profileLangs.includes(manifestLang)) continue;
+            } else if (manifestLang !== lang) {
+              continue;
+            }
+          }
+          filtered.push(p);
+        } catch {
+          filtered.push(p);
+        }
+      }
+      plugins = filtered;
+    }
+  }
 
   if (options.format === "json") {
     return JSON.stringify(plugins, null, 2);
@@ -234,14 +214,50 @@ export async function togglePlugin(name: string, enabled: boolean) {
 export const pluginCommand = new Command("plugin")
   .description("Manage gwrk plugins (skills, agents, workflows)")
   .addCommand(
+    new Command("search")
+      .description("Search for plugins in the registry")
+      .argument("<query>", "Search query")
+      .action(async (query) => {
+        await withSignal("plugin search", async () => {
+          const results = await searchPlugins(query);
+          if (results.length === 0) {
+            console.log(`${YELLOW}No plugins found matching '${query}'.${RESET}`);
+            return;
+          }
+          console.log(`\n${BOLD}${CYAN}SEARCH RESULTS${RESET}\n`);
+          for (const p of results) {
+            console.log(`  ${GREEN}${p.name.padEnd(20)}${RESET} v${p.version}`);
+            console.log(`    ${DIM}${p.description}${RESET}\n`);
+          }
+        });
+      }),
+  )
+  .addCommand(
     new Command("install")
-      .description("Install a plugin from a local path")
-      .argument("<path>", "Path to the plugin directory")
+      .description("Install a plugin from ID, URL, or local path")
+      .argument("<id|url|path>", "Plugin ID, git URL, or local path")
       .option("-f, --force", "Overwrite if already installed")
-      .action(async (sourcePath, options) => {
+      .action(async (idOrUrl, options) => {
         await withSignal("plugin install", async () => {
-          const manifest = await installPlugin(sourcePath, options);
+          const manifest = await installPlugin(idOrUrl, options);
           console.log(`${GREEN}Installed plugin '${manifest.name}'.${RESET}`);
+        });
+      }),
+  )
+  .addCommand(
+    new Command("update")
+      .description("Update installed plugins")
+      .argument("[name]", "Name of the plugin to update")
+      .action(async (name) => {
+        await withSignal("plugin update", async () => {
+          const updated = await updatePlugin(name);
+          if (updated.length === 0) {
+            console.log(`${YELLOW}No plugins updated.${RESET}`);
+          } else {
+            for (const p of updated) {
+              console.log(`${GREEN}Updated plugin '${p}'.${RESET}`);
+            }
+          }
         });
       }),
   )
@@ -262,7 +278,7 @@ export const pluginCommand = new Command("plugin")
       .description("List installed plugins")
       .option("--format <type>", "Output format (json)")
       .option("--project", "Show resolution for current project")
-      .option("--type <type>", "Filter by plugin type (agent, skill, workflow, review)")
+      .option("--type <type>", "Filter by plugin type (agent, skill, workflow, extension, review)")
       .option("--tier <tier>", "Filter by tier (atomic, compound, enforcement)")
       .option("--category <cat>", "Filter by category (reasoning, evaluative, etc.)")
       .action(async (options) => {

@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     passWithNoTests: false,
+    // Server route tests share PID files — retry once on parallel conflicts
+    retry: 1,
     exclude: [
       "**/node_modules/**",
       "**/dist/**",

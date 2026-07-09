@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
@@ -6,6 +10,7 @@ import type { AgentBackend } from "../../../agent-backend.js";
 
 export class AgyAdapter implements AgentBackend {
   readonly name = "agy";
+  readonly nativeWriter = true;
 
   async isAvailable(): Promise<boolean> {
     const res = await execCommand("which", ["agy"]);
@@ -95,7 +100,7 @@ export class AgyAdapter implements AgentBackend {
     // Normalization logic (ADR-004/ADR-006)
     if (rawExitCode === 127) {
       errorType = "command_not_found";
-    } else if (stderr.includes("turn_limit") || stdout.includes("turn_limit")) {
+    } else if (stderr.includes("turn_limit")) {
       exitCode = 1;
       errorType = "turn_limit";
     } else if (rawExitCode !== 0) {

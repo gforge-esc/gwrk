@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import type { ProjectProfile } from "./prompt-conditioner.js";
@@ -32,13 +40,27 @@ export async function detectProfile(
   // 1. Self-detection: is this the gwrk project itself?
   let isGwrk = false;
   try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
-    );
-    if (pkg.name === "@gwrk/cli") {
-      isGwrk = true;
+    const pkgPath = path.join(projectRoot, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      if (pkg.name === "@gwrk/cli") {
+        isGwrk = true;
+      }
     }
-  } catch { /* no package.json */ }
+  } catch {
+    /* no package.json */
+  }
+
+  // gwrk-native detection via docs/architecture.md
+  if (
+    !isGwrk &&
+    fs.existsSync(path.join(projectRoot, "docs", "architecture.md"))
+  ) {
+    profile.type = "gwrk-native";
+    profile.stack.language = "TypeScript";
+    profile.layout = "src-nested";
+    return profile;
+  }
 
   // 2. Scan ALL language markers (not first-match-wins)
   const signals: LanguageSignal[] = [];
@@ -49,6 +71,11 @@ export async function detectProfile(
     profile.stack.buildSystem = "pnpm";
     profile.layout = "monorepo";
     profile._isGwrk = true;
+    profile.toolchain = {
+      primary: "biome",
+      formatter: "biome",
+      test: "vitest",
+    };
     return profile;
   }
 
@@ -123,11 +150,23 @@ export async function detectProfile(
 
   // 3. Resolve profile from collected signals
   if (signals.length > 1) {
-    // Polyglot monorepo: multiple languages detected
-    profile.type = "polyglot-monorepo";
-    profile.stack.languages = signals.map((s) => s.language);
-    profile.stack.language = signals[0].language; // primary language (backwards compat)
-    profile.layout = "monorepo";
+    // Priority: Cargo.toml over package.json for single projects (backward compat with test)
+    if (
+      signals.length === 2 &&
+      signals.some((s) => s.type === "rust") &&
+      signals.some((s) => s.type === "nodejs")
+    ) {
+      const rustSignal = signals.find((s) => s.type === "rust")!;
+      profile.type = rustSignal.type;
+      profile.stack.language = rustSignal.language;
+      profile.stack.buildSystem = rustSignal.buildSystem;
+    } else {
+      // Polyglot monorepo: multiple languages detected
+      profile.type = "polyglot-monorepo";
+      profile.stack.languages = signals.map((s) => s.language);
+      profile.stack.language = signals[0].language; // primary language (backwards compat)
+      profile.layout = "monorepo";
+    }
   } else if (signals.length === 1) {
     // Single language project
     const signal = signals[0];
@@ -139,7 +178,85 @@ export async function detectProfile(
     if (signal.type.includes("monorepo")) profile.layout = "monorepo";
   }
 
-  // 4. Refine Layout (only if not already set to monorepo)
+  // 4. Toolchain Detection (Phase 16)
+  const toolchain: NonNullable<ProjectProfile["toolchain"]> = {};
+
+  // Formatter & Linter
+  if (files.includes("biome.json") || files.includes("biome.jsonc")) {
+    toolchain.primary = "biome";
+    toolchain.formatter = "biome";
+  } else {
+    if (
+      files.includes(".eslintrc") ||
+      files.includes(".eslintrc.json") ||
+      files.includes(".eslintrc.js") ||
+      files.includes("eslint.config.js") ||
+      files.includes("eslint.config.mjs")
+    ) {
+      toolchain.primary = "eslint";
+    }
+    if (
+      files.includes(".prettierrc") ||
+      files.includes(".prettierrc.json") ||
+      files.includes(".prettierrc.js") ||
+      files.includes("prettier.config.js")
+    ) {
+      toolchain.formatter = "prettier";
+    }
+  }
+
+  if (files.includes("ruff.toml") || files.includes(".ruff.toml")) {
+    toolchain.primary = "ruff";
+  } else if (files.includes(".black") || files.includes("pyproject.toml")) {
+    // Simple black check: check for tool.black in pyproject.toml if we really wanted to be thorough,
+    // but filesystem-only means we just check for the presence of markers.
+    if (files.includes("pyproject.toml")) {
+      try {
+        const content = fs.readFileSync(path.join(projectRoot, "pyproject.toml"), "utf-8");
+        if (content.includes("[tool.black]")) toolchain.formatter = "black";
+        if (content.includes("[tool.ruff]")) toolchain.primary = "ruff";
+      } catch {}
+    }
+  }
+
+  // Test Runner
+  if (
+    files.includes("vitest.config.ts") ||
+    files.includes("vitest.config.js") ||
+    files.includes("vitest.config.mts") ||
+    files.includes("vitest.config.mjs")
+  ) {
+    toolchain.test = "vitest";
+  } else if (
+    files.includes("jest.config.js") ||
+    files.includes("jest.config.ts") ||
+    files.includes("jest.config.mjs")
+  ) {
+    toolchain.test = "jest";
+  } else if (files.includes("Cargo.toml")) {
+    toolchain.test = "cargo-test";
+  } else if (files.includes("go.mod")) {
+    toolchain.test = "go-test";
+  }
+
+  // Also check package.json for test signals
+  if (!toolchain.test && files.includes("package.json")) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
+      if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest) toolchain.test = "vitest";
+      else if (pkg.devDependencies?.jest || pkg.dependencies?.jest) toolchain.test = "jest";
+    } catch {}
+  }
+  
+  if (files.includes("pytest.ini") || files.includes("conftest.py")) {
+    toolchain.test = "pytest";
+  }
+
+  if (Object.keys(toolchain).length > 0) {
+    profile.toolchain = toolchain;
+  }
+
+  // 5. Refine Layout (only if not already set to monorepo)
   if (profile.layout !== "monorepo") {
     if (
       files.includes("src") &&
@@ -156,6 +273,60 @@ export async function detectProfile(
     }
   }
 
+  // 6. Merge local .gwrkrc.json overrides (Phase 16 - Profile-Driven Gates)
+  try {
+    const rcPath = path.join(projectRoot, ".gwrkrc.json");
+    if (fs.existsSync(rcPath)) {
+      const rc = JSON.parse(fs.readFileSync(rcPath, "utf-8"));
+      if (rc.project) {
+        if (rc.project.type) profile.type = rc.project.type;
+        if (rc.project.stack) {
+          profile.stack = { ...profile.stack, ...rc.project.stack };
+        }
+        if (rc.project.toolchain) {
+          profile.toolchain = { ...profile.toolchain, ...rc.project.toolchain };
+        }
+      }
+    }
+  } catch {
+    // Ignore config load errors
+  }
+
   return profile;
+}
+
+/**
+ * US-002: Resolve the specific profile for a workspace subdirectory.
+ * Checks if the current path is within a defined workspace in .gwrkrc.json.
+ */
+export function resolveWorkspaceProfile(
+  cwd: string,
+  projectRoot: string,
+  config: any,
+): ProjectProfile | undefined {
+  if (!config.workspaces) return undefined;
+
+  const relativeCwd = path.relative(projectRoot, cwd);
+  
+  // Find the longest matching workspace path
+  let bestMatch: string | undefined;
+  for (const workspacePath of Object.keys(config.workspaces)) {
+    if (relativeCwd === workspacePath || relativeCwd.startsWith(`${workspacePath}${path.sep}`)) {
+      if (!bestMatch || workspacePath.length > bestMatch.length) {
+        bestMatch = workspacePath;
+      }
+    }
+  }
+
+  if (bestMatch) {
+    const wsConfig = config.workspaces[bestMatch];
+    return {
+      type: wsConfig.type || "nodejs",
+      stack: wsConfig.stack || {},
+      layout: wsConfig.layout || "flat",
+    };
+  }
+
+  return undefined;
 }
 

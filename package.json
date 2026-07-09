@@ -1,9 +1,22 @@
 {
   "name": "@gwrk/cli",
-  "version": "0.1.0",
+  "version": "1.0.0-alpha.0",
   "type": "module",
   "bin": {
     "gwrk": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gforge-esc/gwrk.git"
   },
   "scripts": {
     "build": "tsc",

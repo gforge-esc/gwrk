@@ -330,18 +330,145 @@ defineCommand
 
 ---
 
-## Open Items
+## Q6: The Stable Plugin Interface (SPI) — Architectural Model
 
-| Item | Status | Decision needed |
-|---|---|---|
-| Ontology storage location | Proposed: `.gwrk/ontology/` | Confirm vs. `docs/ontology/` |
-| Community registry for research plugins | Deferred | No registry infrastructure exists |
+### Context
+
+Q1–Q5 established that research methodologies are workflow plugins dispatched through `WorkflowRuntime`. During a follow-on investigation into adding game-theoretic reasoning skills as pluggable capabilities, a deeper question emerged: **what is the stable boundary of gwrk as an OS?**
+
+The [Windows/Linux API Analysis](references/Architectural%20Analysis_%20Core%20Differences%20Between%20Windows%20and%20Linux%20APIs.md) provided the frame: both Linux and Windows NT succeed by drawing a clear stability line — Linux at the syscall ABI, Windows at the Win32 DLL layer. gwrk already has this structure. It just hasn't named it.
+
+### The gwrk Stable Boundary
+
+```
+┌─────────────────────────────────────────────────┐
+│                 USER / CLI                       │  ← "Applications"
+│  gwrk define research R006                      │
+│  gwrk ship 014                                  │
+│  gwrk define reasoning specs/017 --modes ...    │
+└─────────────────────────────┬───────────────────┘
+                              │
+                    ══════════╪══════════════════════  ← THE STABLE BOUNDARY
+                              │
+┌─────────────────────────────┴───────────────────┐
+│           STABLE PLUGIN INTERFACE (SPI)          │
+│                                                  │
+│  PluginLoader.resolvePlugin(name)               │  ← Plugin resolution chain
+│  WorkflowRuntime.executeWorkflow(name, input)   │  ← Workflow dispatch
+│  resolveEnforcementSkills(cwd, scope, profile)  │  ← Behavioral injection
+│  resolveExtensionContext(cwd, keywords)         │  ← Context injection
+│  detectProfile(projectRoot)                     │  ← Profile detection
+│  conditionPrompt(template, profile)             │  ← Prompt conditioning
+│  dispatchToAgent(config)                        │  ← Agent routing
+└─────────────────────────────┬───────────────────┘
+                              │
+                    ══════════╪══════════════════════  ← PRIVATE / UNSTABLE
+                              │
+┌─────────────────────────────┴───────────────────┐
+│              CORE INTERNALS (KERNEL)             │
+│                                                  │
+│  ShipOrchestrator state machine                 │  ← Can change freely
+│  Plan DAG solver                                │  ← Can change freely  
+│  Prompt assembly chain                          │  ← Can change freely
+│  Gate runner execution model                    │  ← Can change freely
+│  Agent backend protocol                         │  ← Can change freely
+└─────────────────────────────────────────────────┘
+```
+
+### Architectural Principles
+
+1. **The CLI is not the extension point.** The CLI is a stable routing layer. Plugin power comes from what's behind the routes (workflow resolution), not from adding new routes (no dynamic command registration).
+
+2. **WorkflowRuntime is the universal dispatch.** Research, reasoning, spec generation, implementation, review — all workflow dispatch. Different PROMPT.md files, different grounding context, same execution model.
+
+3. **Enforcement skills are the universal modifier.** A project doesn't need new commands — it needs project-aware enforcement skills that modify every existing command via `scope: all`.
+
+4. **The resolution chain is the override mechanism.** `Project-local > Global > Builtin`. A project "mutates" gwrk by placing a higher-priority plugin in the resolution chain.
+
+### Design Principle: No Magic Values
+
+Every reasoning constraint the agent follows must be traceable to a **configured enforcement skill**, a **grounding document**, or a **workflow PROMPT.md** — never to opaque model training weights.
+
+| Layer | Magic Values (Bad) | Explicit Configuration (Good) |
+|-------|-------------------|-------------------------------|
+| **Enforcement** | Hardcoded coding standards in PROMPT.md | `.gwrk/plugins/skills/conventions/SKILL.md` |
+| **Grounding** | Domain terms embedded in workflow prompts | `.gwrk/ontology/domain.md` |
+| **Reasoning** | Model decides how to analyze a problem | `gwrk define reasoning --modes X` dispatches explicit methodology |
+| **Profile** | Hardcoded `if (language === "Python")` guards | `.gwrkrc.json` declares profile, enforcement skills auto-filter |
+| **Agent** | Hardcoded model selection per command | `AgentRouter` selects based on capability mapping in agent manifest |
+
+### How Reasoning Fits (Same Pattern as Research)
+
+```bash
+gwrk define reasoning specs/017 --modes equilibrium-diagnosis
+#     │      │                          │
+#     │      │                          └── Resolves to enforcement skills + reasoning prompt
+#     │      └── Subcommand: dispatches to WorkflowRuntime
+#     └── Pillar: Definition
+
+gwrk define reasoning --list-modes          # Scans skills matching reasoning-*
+```
+
+Reasoning is a subcommand of `define` — same pattern as research. Both are pre-definition cognitive work. Both dispatch through `WorkflowRuntime`. Both use plugin resolution for methodology selection.
+
+---
+
+## Q7: ADR Impact Assessment
+
+The SPI model affects three existing ADRs:
+
+### ADR-006: Plugin Agent Backends — AMEND
+
+ADR-006 §7 defines a "Three-Layer Plugin Architecture" that is superseded by the SPI model:
+
+**Current:**
+```
+Layer 1: Agent Backend Plugins (ADR-006)
+Layer 2: Skill Plugins (F014)
+Layer 3: Extension Plugins (TBD)
+```
+
+**Proposed amendment:** Replace with the SPI architecture. The SPI formalizes `AgentRouter` (was Layer 1), `WorkflowRuntime` + `EnforcementSkillRuntime` (was Layer 2, now split), `ExtensionRuntime` (was Layer 3, now implemented), and `PluginLoader` + `ProfileDetector` + `PromptConditioner` (new — not covered in any layer).
+
+ADR-006's `AgentBackend` interface (§2.1) remains valid — it's one of 7 SPI interfaces, not the top of a stack.
+
+### ADR-007: Single Dispatch Path — STRENGTHEN
+
+ADR-007 established that all workflow dispatch flows through `WorkflowRuntime`. The SPI architecture elevates this from a single decision to a core architectural principle. ADR-007 should reference the SPI as the formal name for the stable boundary.
+
+### ADR-009: Domain Ontology — CROSS-REFERENCE
+
+ADR-009 established that projects declare knowledge layers as project-owned documents. The SPI positions this as part of the behavioral injection surface — grounding documents injected via `conditionPrompt()`. ADR-009 should reference the SPI as the injection mechanism and confirm profile-driven enforcement (`.gwrkrc.json` → skill filtering).
+
+### ADR-001, 002, 003, 004, 005, 008 — NO CHANGE
+
+These cover task tracking, SQLite ledger, state contracts, agent-native output, TDD gates, and command safety. None touch the SPI boundary.
+
+---
+
+## Resolved Decisions
+
+| Decision | Resolution | Rationale |
+|----------|-----------|-----------|
+| Ontology storage | `.gwrk/ontology/` | Confirmed. Project-local, injected as grounding. |
+| Reasoning placement | `gwrk define reasoning` | Same dispatch pattern as research. Cross-cutting DIAGNOSE use via `scope: diagnostic` enforcement skills. |
+| SPI versioning | Independent of gwrk semver | SPI version tracks the plugin contract. gwrk version tracks the CLI/kernel. UX transparency critical for principal architects, contributors, and users. |
+| `scope: "diagnostic"` | Confirmed | Small schema change to `manifest.ts`. Unlocks DIAGNOSE integration. |
+| Profile-driven enforcement | Confirmed | `.gwrkrc.json` `stack.language` auto-filters enforcement skills. |
+| Community registry | Deferred | No registry infrastructure exists. |
 
 ---
 
 ## Spec Alignment Notes
 
 - F014 spec needs amendment: add `category: research` to manifest schema
+- F014 spec needs amendment: add `scope: "diagnostic"` to enforcement skill schema
 - F014 plugin loader needs `listPlugins({ category })` filter
 - `gwrk define` command needs `research` subcommand
+- `gwrk define` command needs `reasoning` subcommand (same pattern)
 - `WorkflowRuntime` needs ontology injection (similar to enforcement injection)
+- SPI interfaces need formal documentation as a versioned contract
+- ADR-006 §7 needs amendment (three-layer → SPI)
+- ADR-007 needs strengthening (reference SPI)
+- ADR-009 needs cross-reference (injection mechanism)
+

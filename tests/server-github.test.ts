@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fastify from "fastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { saveIssue, updateIssue } from "../src/db/issues.js";
+import { upsertIssue, updateIssue } from "../src/db/issues.js";
 import { harvestFeature } from "../src/engine/harvest.js";
 import {
   associateIssueWithFeature,
@@ -15,8 +15,12 @@ vi.mock("../src/engine/harvest.js", () => ({
 }));
 
 vi.mock("../src/db/issues.js", () => ({
-  saveIssue: vi.fn(),
+  upsertIssue: vi.fn(),
   updateIssue: vi.fn(),
+}));
+
+vi.mock("../src/utils/project-id.js", () => ({
+  resolveProjectId: vi.fn().mockReturnValue("test-proj"),
 }));
 
 vi.mock("../src/engine/issues.js", () => ({
@@ -125,7 +129,7 @@ describe("GitHub Webhook Plugin", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(saveIssue).toHaveBeenCalled();
+    expect(upsertIssue).toHaveBeenCalled();
     expect(notifyIssueOpened).toHaveBeenCalled();
   });
 });

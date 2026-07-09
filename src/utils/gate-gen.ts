@@ -1,6 +1,16 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import type { Phase, Task } from "./state.js";
+import type { ProjectProfile } from "../engine/prompt-conditioner.js";
+import { getTestCommand, getLintCommand } from "./toolchain-mapper.js";
 
 // ─── GateBrief interfaces (ADR-005) ──────────────────────────────────────────
 // The brief is a structured manifest of what needs gating.
@@ -12,7 +22,7 @@ export interface GateBrief {
   tasks: TaskBrief[];
 }
 
-export interface TaskBrief {
+interface TaskBrief {
   taskId: string;
   title: string;
   description: string;
@@ -240,7 +250,7 @@ const FUNCTIONAL_VERBS = [
  *
  * Returns an array of violation strings. Empty array = gate is valid.
  */
-export function lintGateScript(content: string): string[] {
+function lintGateScript(content: string): string[] {
   const violations: string[] = [];
   const lines = content
     .split("\n")
@@ -279,7 +289,7 @@ export function lintGateScript(content: string): string[] {
  *
  * Returns a map of gate filename → violations. Only includes gates with violations.
  */
-export function lintAllGates(gatesDir: string): Map<string, string[]> {
+function lintAllGates(gatesDir: string): Map<string, string[]> {
   const violations = new Map<string, string[]>();
 
   if (!fs.existsSync(gatesDir)) return violations;
@@ -301,7 +311,7 @@ export function lintAllGates(gatesDir: string): Map<string, string[]> {
 
 // ─── Gap Matrix types and parser (ADR-005 §8) ────────────────────────────────
 
-export interface GapMatrixRow {
+interface GapMatrixRow {
   ac: string; // e.g., "FR-001"
   criterion: string; // human-readable description
   testType: "unit" | "functional" | "integration" | "e2e" | "structural";
@@ -378,19 +388,20 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
 // ─── Deterministic vitest gate generation (ADR-005 §8) ───────────────────────
 
 /**
- * generateVitestGates — produce deterministic gate scripts from a gap matrix.
+ * generateDeterministicGates — produce deterministic gate scripts from a gap matrix.
  *
  * For each gap matrix row where testExists is true and testType is
  * unit/functional/e2e, generates a gate script that invokes
- * `pnpm vitest run <file> --grep "<AC>"`.
+ * the profile-driven test command (e.g. vitest, pytest).
  *
  * Respects # AUTHORED preservation — existing gates are never overwritten.
  * Returns counts of generated and skipped gates.
  */
-export function generateVitestGates(
+export function generateDeterministicGates(
   featureDir: string,
   gapMatrixPath: string,
   phases: Phase[],
+  profile: ProjectProfile = { type: "unknown" }
 ): { generated: number; skipped: number } {
   const rows = parseGapMatrix(gapMatrixPath);
   const gatesDir = path.join(featureDir, "gates");
@@ -410,7 +421,7 @@ export function generateVitestGates(
       const text = `${task.title} ${task.description ?? ""}`;
       const rawFile =
         text.match(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/)?.[0] ??
-        text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md))\b/)?.[0] ??
+        text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md|py|go|rs))\b/)?.[0] ??
         null;
       const primaryFile = rawFile?.replace(/[,;.]$/, "") ?? null;
       if (primaryFile) {
@@ -427,16 +438,21 @@ export function generateVitestGates(
     if (!row.testFile || !row.testExists) return row;
 
     // Derive source file from test file: foo.test.ts → foo.ts
-    const sourceFile = row.testFile.replace(/\.test\.(ts|js)$/, ".$1");
+    let sourceFile = row.testFile.replace(/\.test\.(ts|js)$/, ".$1");
+    sourceFile = sourceFile.replace(/_test\.go$/, ".go");
+    if (path.basename(sourceFile).startsWith("test_")) {
+      sourceFile = path.join(path.dirname(sourceFile), path.basename(sourceFile).replace(/^test_/, ""));
+    }
+
     const taskId = sourceFileToTaskId.get(sourceFile);
     if (taskId) {
       return { ...row, gate: taskId };
     }
 
     // Fallback: try matching test file basename to any task
-    const testBasename = path.basename(row.testFile, ".test.ts");
+    const testBasename = path.basename(row.testFile).replace(/\.test\.(ts|js)$/, "").replace(/_test\.go$/, "").replace(/^test_/, "").replace(/\.(py|rs)$/, "");
     for (const [file, id] of sourceFileToTaskId) {
-      if (path.basename(file, ".ts") === testBasename) {
+      if (path.basename(file).replace(/\.(ts|js|py|go|rs)$/, "") === testBasename) {
         return { ...row, gate: id };
       }
     }
@@ -487,30 +503,36 @@ export function generateVitestGates(
       fileGroups.set(row.testFile, acList);
     }
 
-    // Test assertions: run vitest for each mapped test file
+    // Test assertions: run appropriate test command
     const testInvocations = [...fileGroups.entries()]
       .map(([file, acs]) => {
         const grepPattern = acs.join("|");
-        return `pnpm vitest run ${file} -t "${grepPattern}" --reporter=verbose \\
-  || { echo "FAIL: ${gateId} — vitest failed for ${file}" >&2; exit 1; }`;
+        const cmd = getTestCommand(profile, [file], grepPattern);
+        return `${cmd} \\
+  || { echo "FAIL: ${gateId} — test failed for ${file}" >&2; exit 1; }`;
       })
       .join("\n\n");
 
-    // Lint assertions: biome check on source files (derive from test files)
+    // Lint assertions: appropriate linter on source files
     const sourceFiles = [...fileGroups.keys()]
-      .map((testFile) => testFile.replace(/\.test\.(ts|js)$/, ".$1"))
+      .map((testFile) => {
+        let sourceFile = testFile.replace(/\.test\.(ts|js)$/, ".$1");
+        sourceFile = sourceFile.replace(/_test\.go$/, ".go");
+        if (path.basename(sourceFile).startsWith("test_")) {
+          sourceFile = path.join(path.dirname(sourceFile), path.basename(sourceFile).replace(/^test_/, ""));
+        }
+        return sourceFile;
+      })
       .filter((f) => fs.existsSync(path.resolve(f)));
 
-    const lintInvocations = sourceFiles
-      .map(
-        (file) =>
-          `pnpm biome check ${file} --no-errors-on-unmatched \\
-  || { echo "FAIL: ${gateId} — lint errors in ${file}" >&2; exit 1; }`,
-      )
-      .join("\n\n");
+    const lintCmd = getLintCommand(profile, sourceFiles);
+    const lintInvocations = lintCmd 
+      ? `${lintCmd} \\
+  || { echo "FAIL: ${gateId} — lint errors" >&2; exit 1; }`
+      : "";
 
     const title =
-      gateRows[0]?.criterion ?? `Gate ${gateId} — vitest verification`;
+      gateRows[0]?.criterion ?? `Gate ${gateId} — deterministic verification`;
 
     const gateContent = `#!/bin/bash
 set -euo pipefail

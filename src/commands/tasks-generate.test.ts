@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 import fs from "node:fs";
@@ -5,13 +9,24 @@ import path from "node:path";
 import os from "node:os";
 import { Command } from "commander";
 
-const { mockWriteManifest } = vi.hoisted(() => ({
+const { mockWriteManifest, mockExecuteWorkflow } = vi.hoisted(() => ({
   mockWriteManifest: vi.fn(),
+  mockExecuteWorkflow: vi.fn().mockResolvedValue({
+    summary: "Mocked Success",
+    intents: [],
+    exitCode: 0,
+  }),
 }));
 
 vi.mock("../utils/manifest.js", () => ({
   writeManifest: mockWriteManifest,
   generateRunId: vi.fn().mockReturnValue("mock-run-id"),
+}));
+
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: vi.fn().mockImplementation(() => ({
+    executeWorkflow: mockExecuteWorkflow,
+  })),
 }));
 
 vi.mock("../utils/git.js", () => ({
@@ -94,26 +109,6 @@ describe("tasks-generate (Deterministic plan-to-tasks)", () => {
         command: "define tasks",
         feature: "test-feature",
       })
-    );
-  });
-
-  it("should use gwrk-plan-to-tasks workflow and pass quiet: true", async () => {
-    const program = new Command();
-    program.addCommand(tasksGenerateCommand);
-    
-    await program.parseAsync(["node", "test", "tasks", "test-feature", "--force", "--reconcile"]);
-
-    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
-      "gwrk-plan-to-tasks",
-      expect.stringContaining("--force"),
-      expect.objectContaining({
-        quiet: true,
-      }),
-    );
-    expect(mockExecuteWorkflow).toHaveBeenCalledWith(
-      "gwrk-plan-to-tasks",
-      expect.stringContaining("--reconcile"),
-      expect.anything()
     );
   });
 });

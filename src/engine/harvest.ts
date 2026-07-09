@@ -1,15 +1,19 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { getCompressionRecord, recordCompression } from "../db/compression.js";
-import { finishRun, listRuns } from "../db/runs.js";
+import { finishRun, listRuns, recordRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { parsePlan } from "../utils/parser.js";
 import {
   computeCompression,
-  computeLeadingIndicators,
   gatherDeliveryActuals,
 } from "./compression.js";
+import { computeLeadingIndicators } from "./indicators.js";
 import { reconcileGates } from "./reconcile-gates.js";
 import { resolveRoleMultipliers } from "./roles.js";
 import { resolveProjectId } from "../utils/project-id.js";
@@ -19,7 +23,7 @@ import type {
   HarvestRecord,
 } from "./types.js";
 
-export interface LogEntry {
+interface LogEntry {
   runId: string | number;
   phase?: string;
   agent?: string;
@@ -110,13 +114,44 @@ export async function harvestFeature(
 
   const projectId = resolveProjectId(projectPath);
 
+  // If no phaseId is specified, discover all phases from plan.md and run harvest for each
+  if (!phaseId) {
+    console.log(`No phaseId provided for harvest on ${featureId}. Attempting to discover all phases from plan.md...`);
+    const featureDir = path.join(projectPath, "specs", featureId);
+    const planPath = path.join(featureDir, "plan.md");
+    if (fs.existsSync(planPath)) {
+      try {
+        const parsedPlan = parsePlan(planPath);
+        console.log(`Discovered ${parsedPlan.phases.length} phases for feature ${featureId}: ${parsedPlan.phases.map(p => p.id).join(", ")}`);
+        for (const phase of parsedPlan.phases) {
+          const subRecord = { ...record, phaseId: phase.id };
+          console.log(`Reconciling/Harvesting phase ${phase.id} for feature ${featureId}...`);
+          await harvestFeature(projectPath, subRecord);
+        }
+      } catch (err) {
+        console.error(`Failed to process phase-less harvest for ${featureId}:`, err);
+      }
+    } else {
+      console.warn(`No plan.md found for ${featureId} at ${planPath}, cannot process phase-less harvest.`);
+    }
+    return;
+  }
+
   // 0. Idempotency Guard (FR-H10)
   if (phaseId) {
     const existing = getCompressionRecord(featureId, phaseId, projectId);
     if (existing) {
-      console.log(
-        `Harvest already completed for ${featureId} ${phaseId}, skipping.`,
-      );
+      console.log(`Harvest already completed for ${featureId} ${phaseId}, skipping.`);
+      return;
+    }
+
+    // Fallback: Use the run record itself as an idempotency token if compression is disabled/unimplemented
+    const runs = listRuns(featureId, projectId);
+    const alreadyProcessedRun = runs.find(
+      (r) => r.phase_id === phaseId && r.pr_number === prNumber && r.status === status
+    );
+    if (alreadyProcessedRun) {
+      console.log(`Run for PR ${prNumber} already marked as ${status}. Skipping harvest idempotently.`);
       return;
     }
   }
@@ -131,28 +166,60 @@ export async function harvestFeature(
 
   // 2. Finalize DB Run Records (FR-H03)
   const runs = listRuns(featureId, projectId);
+  
+  const alreadyProcessedRun = runs.find(
+    (r) => r.phase_id === phaseId && r.pr_number === prNumber && r.status === status
+  );
+
   const targetRun = runs.find(
     (r) =>
       r.phase_id === phaseId &&
       (r.pr_number === prNumber || !r.pr_number) &&
-      r.status !== "merged",
+      r.status !== "merged" && r.status !== "closed",
   );
 
-
-  if (targetRun?.id) {
+  if (alreadyProcessedRun) {
+    console.log(`Run record for PR ${prNumber} is already ${status}. Skipping DB update.`);
+  } else if (targetRun?.id) {
     finishRun(targetRun.id, {
-      status: "merged",
+      status: status,
       merge_commit_sha: mergeCommitSha,
       finished_at: mergedAt,
     });
-  } else {
+  } else if (status === "merged") {
     console.warn(
-      `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}`,
+      `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}. Backfilling run record.`,
     );
+    try {
+      const backfillId = recordRun({
+        feature_id: featureId,
+        phase_id: phaseId || undefined,
+        project_id: projectId,
+        command: "ship",
+        status: "merged",
+        merge_commit_sha: mergeCommitSha,
+        pr_number: prNumber || undefined,
+        pr_url: record.prUrl || undefined,
+        finished_at: mergedAt,
+      });
+      console.log(`Backfilled run record for ${featureId} ${phaseId} (Run ID: ${backfillId})`);
+    } catch (dbErr) {
+      console.warn(`Failed to backfill run record (non-fatal): ${dbErr}`);
+    }
+  } else {
+    console.log(`No pending run found for closed PR ${prNumber}. Skipping backfill.`);
+  }
+
+  // If this PR was closed (not merged), we just wanted to clean up the run record and logs. 
+  // We do not finalize the phase, compute compression, or reconcile gates.
+  if (status === "closed") {
+    console.log(`PR ${prNumber} was closed. Run record updated. Skipping phase finalization.`);
+    return;
   }
 
   // 2.2 Phase Completion Check (FR-H09)
-  // If this phase has multiple runs (e.g. parallel dispatch), only proceed if ALL are merged.
+  // If this phase has multiple runs (e.g. parallel dispatch), the merged PR wins.
+  // We close any remaining pending runs so they don't block phase finalization forever.
   if (phaseId) {
     const pendingRuns = runs.filter(
       (r) =>
@@ -164,9 +231,16 @@ export async function harvestFeature(
 
     if (pendingRuns.length > 0) {
       console.log(
-        `Phase ${phaseId} has ${pendingRuns.length} pending runs, skipping phase finalization.`,
+        `Phase ${phaseId} has ${pendingRuns.length} other pending runs. Marking them as closed since phase was merged.`,
       );
-      return;
+      for (const r of pendingRuns) {
+        if (r.id === undefined) continue;
+        try {
+          finishRun(r.id, { status: "closed", finished_at: new Date().toISOString() });
+        } catch (e) {
+          console.warn(`Failed to close pending run ${r.id}: ${e}`);
+        }
+      }
     }
   }
 
@@ -195,22 +269,21 @@ export async function harvestFeature(
         const parsedPlan = parsePlan(planPath);
         const targetPhase = parsedPlan.phases.find((p) => p.id === phaseId);
 
-        if (targetPhase && targetPhase.sp !== undefined) {
+        if (targetPhase) {
+          const sp = targetPhase.sp ?? 0;
           const config = loadConfig(projectPath);
           const roleMultipliers = resolveRoleMultipliers(config);
 
           // Use PE as default role if not specified, or TS
-          const peRole =
-            roleMultipliers.find((r) => r.role === "PE") || roleMultipliers[0];
+          const peRole = roleMultipliers.find((r) => r.role === "PE") || roleMultipliers[0];
           const hoursPerSP = peRole?.hoursPerSP || 1.5;
           const overheadFactor = 1.25;
-
-          const estimatedHours = targetPhase.sp * hoursPerSP * overheadFactor;
+          const estimatedHours = sp * hoursPerSP * overheadFactor;
           const estimatedDays = estimatedHours / 8;
 
           const forecast: EffortForecast = {
-            totalSP: targetPhase.sp,
-            roles: [{ role: peRole?.role || "PE", sp: targetPhase.sp }],
+            totalSP: sp,
+            roles: [{ role: peRole?.role || "PE", sp }],
             estimatedHours,
             estimatedDays,
           };
@@ -252,7 +325,12 @@ export async function harvestFeature(
 
   // 5. Branch Cleanup (FR-H08)
   if (status === "merged" && record.headBranch) {
-    await cleanupBranch(record.headBranch, projectPath);
+    try {
+      await cleanupBranch(record.headBranch, projectPath);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`Failed to cleanup branch ${record.headBranch} (non-fatal): ${msg}`);
+    }
   }
 
   return report;

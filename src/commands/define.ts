@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
@@ -13,15 +21,18 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 
-import { planCommand as definePlanCommand } from "./define-plan.js";
+import { analyzeCommand } from "./analyze.js";
+import { definePlanCommand } from "./define-plan.js";
+import { researchCommand } from "./research.js";
 // Subcommands — each is a standalone user action
 import { specifyCommand } from "./specify.js";
 import { tasksGenerateCommand } from "./tasks-generate.js";
 import { testsGenerateCommand } from "./tests-generate.js";
-import { researchCommand } from "./research.js";
 
-import { resolveFeature } from "../utils/resolve-feature.js";
+import { defineOntologyCommand } from "./define-ontology.js";
+
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -144,7 +155,7 @@ Examples:
             phase: "p00",
             command: "define",
             agent: backend,
-            model: "unknown",
+            model: model || "unknown",
             startedAt,
             finishedAt,
             durationS,
@@ -183,5 +194,17 @@ Examples:
 defineCommand.addCommand(specifyCommand); // gwrk define spec
 defineCommand.addCommand(definePlanCommand); // gwrk define plan
 defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
+defineCommand.addCommand(analyzeCommand, { hidden: true }); // gwrk define analyze (internal)
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
 defineCommand.addCommand(researchCommand); // gwrk define research
+
+const ontologyCommand = new Command("ontology")
+  .description(
+    "Define project domain ontology (classes, properties, relations)",
+  )
+  .option("--run", "Execute automated construction workflow")
+  .option("--agent <agent>", "Override agent")
+  .option("--model <model>", "Override model")
+  .action(defineOntologyCommand);
+
+defineCommand.addCommand(ontologyCommand);

@@ -1,6 +1,10 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type { AgentBackend } from "../plugins/agent-backend.js";
 
-export interface QuotaStatus {
+interface QuotaStatus {
   status: "available" | "rate-limited" | "exhausted" | "unavailable";
   backoffS?: number;
   remainingRequests?: number;

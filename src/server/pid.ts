@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -42,7 +46,10 @@ export function readPid(): number | undefined {
 export function removePid(): void {
   if (fs.existsSync(PID_FILE)) {
     try {
-      fs.unlinkSync(PID_FILE);
+      const content = fs.readFileSync(PID_FILE, "utf8").trim();
+      if (content === process.pid.toString()) {
+        fs.unlinkSync(PID_FILE);
+      }
     } catch {
       // ignore
     }

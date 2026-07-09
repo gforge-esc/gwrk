@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-16T21:04:22.486Z_ship_p06",
+  "feature": "001-cli-core",
+  "phase": "phase-06",
+  "command": "ship",
+  "agent": "gemini",
+  "model": "gemini-3-flash-preview",
+  "startedAt": "2026-06-16T21:04:22.486Z",
+  "finishedAt": "2026-06-16T21:08:32.849Z",
+  "durationS": 250,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 1,
+  "linesAdded": 19,
+  "linesDeleted": 0,
+  "gitCommit": "46e02665921a5770d93d8c6a733eea80eb9fd890",
+  "gitBranch": "feat/001-cli-core",
+  "digest": []
+}

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -106,6 +110,15 @@ describe("AgyAdapter", () => {
     it("normalizes exit code > 0 to 1", () => {
       const result = adapter.parseResult("", "some error", 5);
       expect(result.exitCode).toBe(1);
+    });
+
+    it("does NOT false-positive on turn_limit in stdout content", () => {
+      // Regression: plan content containing "turn_limit" in spec examples
+      // (e.g. errorType: "turn_limit") must not trigger error detection
+      const planContent = '{"summary":"plan","intents":[{"content":"TR-009: errorType: turn_limit"}]}';
+      const result = adapter.parseResult(planContent, "", 0);
+      expect(result.exitCode).toBe(0);
+      expect(result.errorType).toBeUndefined();
     });
   });
 });

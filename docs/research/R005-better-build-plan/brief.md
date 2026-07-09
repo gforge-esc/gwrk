@@ -1,4 +1,5 @@
 # R005 — Active Build Planning
+status: COMPLETED
 
 > **Status:** Brief — Ready for Research Execution
 > **Initiated:** 2026-04-02

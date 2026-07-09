@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { Command } from "commander";
 import { detectProfile } from "../engine/profile-detector.js";
 
@@ -14,6 +18,7 @@ export const projectInfoCommand = new Command("info")
       process.stdout.write(JSON.stringify(profile, null, 2) + "\n");
     } else {
       process.stdout.write(`Project Profile: ${profile.type}\n`);
+      process.stdout.write("Source: auto-detected\n");
       process.stdout.write(
         `Language: ${profile.stack?.language || "unknown"}\n`,
       );
@@ -23,6 +28,11 @@ export const projectInfoCommand = new Command("info")
       process.stdout.write(
         `Build System: ${profile.stack?.buildSystem || "unknown"}\n`,
       );
+      if (profile.toolchain) {
+        process.stdout.write(
+          `Toolchain: primary=${profile.toolchain.primary || "none"}, formatter=${profile.toolchain.formatter || "none"}, test=${profile.toolchain.test || "none"}\n`,
+        );
+      }
       process.stdout.write(`Layout: ${typeof profile.layout === 'string' ? profile.layout : JSON.stringify(profile.layout)}\n`);
     }
   });

@@ -1,4 +1,8 @@
-import type { AgentBackend } from "../utils/config.js";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { AgentBackendId } from "../utils/config.js";
 
 export type DispatchStatus =
   | "queued"
@@ -16,7 +20,7 @@ export type ServerLifecycle =
 
 export type NetworkStatus = "online" | "offline" | "unknown";
 
-export interface ComponentHealth {
+interface ComponentHealth {
   status: "ok" | "degraded" | "unavailable";
   message?: string;
 }
@@ -33,7 +37,7 @@ export interface HealthResponse {
 
 export interface DispatchAttempt {
   attemptNumber: number;
-  backend: AgentBackend;
+  backend: AgentBackendId;
   startedAt: string;
   completedAt?: string;
   exitCode?: number;
@@ -45,7 +49,7 @@ export interface TaskRecord {
   id: string; // e.g., "T001"
   status: "pending" | "running" | "completed" | "failed";
   sandboxDir: string; // Path to git worktree: .runs/sandboxes/<feature>-<task>-<uuid>
-  backend: AgentBackend;
+  backend: AgentBackendId;
   model?: string;
   startedAt?: string;
   completedAt?: string;
@@ -57,7 +61,7 @@ export interface DispatchRecord {
   id: string;
   featureId: string;
   phaseId: string;
-  backend: AgentBackend;
+  backend: AgentBackendId;
   status: DispatchStatus;
   branchName: string;
   attempts: DispatchAttempt[];
@@ -80,7 +84,7 @@ export interface SandboxInfo {
   taskId: string;
   featureId: string;
   phaseId: string;
-  backend: AgentBackend;
+  backend: AgentBackendId;
   status: "creating" | "running" | "stopping" | "destroyed";
   startedAt: string;
 }

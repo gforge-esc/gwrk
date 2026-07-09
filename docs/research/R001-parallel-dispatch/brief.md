@@ -1,4 +1,5 @@
 # Research Initiative: R001 — Parallel Dispatch Architecture
+status: COMPLETED
 
 > **Status:** Brief — Awaiting Approval
 > **Consumer:** F005 spec rewrite, architecture.md v5.0

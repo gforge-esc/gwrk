@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type Database from "better-sqlite3";
 import type { CompressionReport } from "../engine/types.js";
 import { getDb } from "./index.js";
@@ -68,7 +72,7 @@ export function recordCompression(
 
   const result = conn
     .prepare(
-      `INSERT INTO compression (
+      `INSERT OR REPLACE INTO compression (
          feature_id, phase_id, estimated_hours, actual_coding_hours,
          estimated_days, actual_delivery_days, point_compression,
          total_compression, dormancy_days, first_impl_commit,
@@ -123,4 +127,3 @@ export function listCompressionRecords(
     )
     .all(featureId, projectId) as CompressionRecord[];
 }
-

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 import fs from "node:fs";
@@ -44,7 +48,7 @@ vi.mock("../utils/output.js", () => ({
   createOutput: vi.fn(),
 }));
 
-import { planCommand } from "./define-plan.js";
+import { definePlanCommand as planCommand } from "./define-plan.js";
 
 describe("planCommand (Phase 6 E2E)", () => {
   let tempDir: string;

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -5,11 +9,11 @@ import path from "node:path";
  * FR-R006-001: Scaffold logic for R0XX numbering and brief generation.
  */
 
-export interface ScaffoldOptions {
+interface ScaffoldOptions {
   methodology?: string;
 }
 
-export interface ScaffoldResult {
+export interface ResearchScaffoldResult {
   directory: string;
 }
 
@@ -30,7 +34,7 @@ export class ResearchScaffolder {
    * Idempotent: if a directory matching the initiative slug already exists,
    * returns that directory instead of creating a new one.
    */
-  async scaffold(initiative: string, options: ScaffoldOptions = {}): Promise<ScaffoldResult> {
+  async scaffold(initiative: string, options: ScaffoldOptions = {}): Promise<ResearchScaffoldResult> {
     if (!initiative) {
       throw new Error("Initiative name is required");
     }
@@ -113,7 +117,7 @@ created: ${new Date().toISOString().split("T")[0]}
    * Used by `gwrk define research R011 --run` to find and run against
    * an existing research initiative without re-scaffolding.
    */
-  async resolveByPrefix(prefix: string): Promise<ScaffoldResult> {
+  async resolveByPrefix(prefix: string): Promise<ResearchScaffoldResult> {
     const researchDir = path.join(process.cwd(), "docs", "research");
     const existing = await fs.readdir(researchDir);
 

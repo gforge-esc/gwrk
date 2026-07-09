@@ -1,12 +1,16 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { ProjectProfile } from "../engine/profile-detector.js";
 import { selectBackend } from "../engine/router.js";
 import { processForAgent } from "../utils/agent-layer.js";
 import { dispatchToAgent } from "../utils/agent.js";
 import { CommandError } from "../utils/signal.js";
 import { AgentBackendRegistry } from "./agent-registry.js";
 import { PluginLoader } from "./loader.js";
-import type { ProjectProfile } from "../engine/profile-detector.js";
 import type {
   AtomicSkillManifest,
   CompoundSkillManifest,
@@ -14,7 +18,7 @@ import type {
   SkillManifest,
 } from "./manifest.js";
 
-export interface SkillOptions {
+interface SkillOptions {
   input?: string;
   format?: "text" | "json";
   agent?: boolean;
@@ -22,7 +26,7 @@ export interface SkillOptions {
   [key: string]: any;
 }
 
-export interface SkillResult {
+interface SkillResult {
   stdout: string;
   stderr: string;
   exitCode: number;
@@ -118,8 +122,15 @@ export async function executeSkill(
   const projectRoot = loaderOptions.projectDir || process.cwd();
   const registry = new AgentBackendRegistry(loader);
 
+  // Safely extract runtime preferences if they exist (Atomic/Compound tiers)
+  const runtime = "runtime" in manifest ? manifest.runtime : undefined;
+
   const backend = await selectBackend(
-    { type: "skill", skillName: name },
+    {
+      type: "skill",
+      skillName: name,
+      preferredAgent: runtime?.preferredAgent,
+    },
     projectRoot,
     registry,
   );
@@ -128,6 +139,7 @@ export async function executeSkill(
     type: `skill/${name}`,
     prompt,
     agent: backend.name,
+    model: runtime?.preferredModel,
     stdin: prompt,
     workflow: `skill/${name}`, // Symbolic path for logging
     workDir: projectRoot,
@@ -187,25 +199,44 @@ export async function resolveEnforcementSkills(
         continue;
       }
 
-      // Filter by language (R007: profile-aware enforcement routing)
-      // Only filter builtins — project-local skills always load (the user chose them)
-      if (profile?.stack?.language && manifest.language) {
-        const manifestLang = manifest.language.toLowerCase();
-        // Polyglot: check against languages array if present
-        if (profile.stack.languages && profile.stack.languages.length > 1) {
-          const profileLangs = profile.stack.languages.map((l) => l.toLowerCase());
-          if (!profileLangs.includes(manifestLang)) {
+      // Filter by language/framework (R007: profile-aware enforcement routing)
+      // Only filter BUILTIN enforcement skills; project-local and global always load.
+      const isBuiltin = loaded.path.includes("builtins");
+
+      if (isBuiltin && profile) {
+        // Language filtering
+        if (manifest.language && profile.stack?.language) {
+          const manifestLang = manifest.language.toLowerCase();
+          // Polyglot: check against languages array if present
+          if (profile.stack.languages && profile.stack.languages.length > 1) {
+            const profileLangs = profile.stack.languages.map((l) =>
+              l.toLowerCase(),
+            );
+            if (!profileLangs.includes(manifestLang)) {
+              continue;
+            }
+          } else if (manifestLang !== profile.stack.language.toLowerCase()) {
             continue;
           }
-        } else if (manifestLang !== profile.stack.language.toLowerCase()) {
-          continue;
+        }
+
+        // Framework filtering
+        if (manifest.framework) {
+          const profileFramework = profile.stack?.framework?.toLowerCase();
+          const manifestFramework = manifest.framework.toLowerCase();
+          if (profileFramework !== manifestFramework) {
+            continue;
+          }
         }
       }
 
       const skillMdPath = path.join(loaded.path, "SKILL.md");
       const content = await fs.readFile(skillMdPath, "utf-8");
-      
-      skillMap.set(summary.name, `<!-- enforcement-skill: ${manifest.name} -->\n${content}`);
+
+      skillMap.set(
+        summary.name,
+        `<!-- enforcement-skill: ${manifest.name} -->\n${content}`,
+      );
       visitedNames.add(summary.name);
     } catch (e) {
       // Skip invalid/failed plugins

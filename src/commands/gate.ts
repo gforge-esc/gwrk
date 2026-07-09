@@ -1,8 +1,12 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { Command } from "commander";
-import { runGate } from "../utils/exec.js";
+import { runGate } from "../utils/gate-runner.js";
 import { banner, color, fail, success } from "../utils/format.js";
 import { resolveFormat } from "../utils/output.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
@@ -156,6 +160,7 @@ function preFlightCheck(
 export async function runGateCheck(
   taskId: string,
   feature: string,
+  gateScript?: string,
 ): Promise<GateCheckResult> {
   const projectRoot = process.cwd();
   // Strip specs/ prefix if present to avoid double prefixing
@@ -163,55 +168,136 @@ export async function runGateCheck(
     ? feature.replace("specs/", "")
     : feature;
 
-  const gatePath = path.join(
+  const featureDir = path.join(projectRoot, "specs", normalizedFeature);
+
+  // Gate resolution priority:
+  // 1. gates/{taskId}-gate.sh (canonical file path)
+  // 2. task.gateScript as file path (relative to feature dir)
+  // 3. task.gateScript as inline shell command (echo, test, grep, etc.)
+  const conventionPath = path.join(
     "specs",
     normalizedFeature,
     "gates",
     `${taskId}-gate.sh`,
   );
-  const absoluteGatePath = path.join(projectRoot, gatePath);
+  const absoluteConventionPath = path.join(projectRoot, conventionPath);
 
-  if (!fs.existsSync(absoluteGatePath)) {
+  // Strategy 1: Canonical gate file in gates/ directory
+  if (fs.existsSync(absoluteConventionPath)) {
+    // ── Anti-pattern pre-flight ──
+    const violations = preFlightCheck(taskId, normalizedFeature, projectRoot);
+    if (violations.length > 0) {
+      const violationMsg = violations
+        .map((v) => `  ⚠ PRE-FLIGHT: ${v}`)
+        .join("\n");
+      return {
+        taskId,
+        feature: normalizedFeature,
+        gatePath: conventionPath,
+        result: "FAIL",
+        exitCode: 1,
+        stdout: "",
+        stderr: `Gate pre-flight failed — anti-pattern detected:\n${violationMsg}`,
+        durationMs: 0,
+      };
+    }
+
+    const start = performance.now();
+    const result = await runGate(absoluteConventionPath);
+    const durationMs = Math.round(performance.now() - start);
+    return {
+      taskId,
+      feature: normalizedFeature,
+      gatePath: conventionPath,
+      result: result.passed ? "PASS" : "FAIL",
+      exitCode: result.exitCode,
+      stdout: result.output,
+      stderr: "",
+      durationMs,
+    };
+  }
+
+  // If no gateScript provided, try loading it from tasks.json
+  if (!gateScript) {
+    try {
+      const state = loadTaskState(featureDir);
+      for (const phase of state.phases) {
+        const task = phase.tasks.find((t) => t.id === taskId);
+        if (task?.gateScript) {
+          gateScript = task.gateScript;
+          break;
+        }
+      }
+    } catch {
+      // No tasks.json — fall through to not found
+    }
+  }
+
+  if (!gateScript) {
     throw new CommandError(
-      `Gate script not found: ${gatePath}. Run 'gwrk gate <feature>' to check gates.`,
+      `Gate script not found: ${conventionPath}. Run 'gwrk gate <feature>' to check gates.`,
       1,
     );
   }
 
-  // ── Anti-pattern pre-flight ──
-  // Hard-coded guard that runs BEFORE the gate script.
-  // Catches stubs and skipped tests that would pass gates vacuously.
-  const violations = preFlightCheck(taskId, normalizedFeature, projectRoot);
-  if (violations.length > 0) {
-    const violationMsg = violations
-      .map((v) => `  ⚠ PRE-FLIGHT: ${v}`)
-      .join("\n");
+  // Strategy 2: gateScript as file path (relative to feature dir)
+  const absoluteScriptPath = path.join(featureDir, gateScript);
+  if (fs.existsSync(absoluteScriptPath)) {
+    const start = performance.now();
+    const result = await runGate(absoluteScriptPath);
+    const durationMs = Math.round(performance.now() - start);
     return {
       taskId,
       feature: normalizedFeature,
-      gatePath,
-      result: "FAIL",
-      exitCode: 1,
-      stdout: "",
-      stderr: `Gate pre-flight failed — anti-pattern detected:\n${violationMsg}`,
-      durationMs: 0,
+      gatePath: gateScript,
+      result: result.passed ? "PASS" : "FAIL",
+      exitCode: result.exitCode,
+      stdout: result.output,
+      stderr: "",
+      durationMs,
     };
   }
 
+  // Strategy 3: gateScript as inline shell command
+  // Commands like: echo "Phase 1: ... ✅ SHIPPED", test -f src/foo.ts
   const start = performance.now();
-  const result = runGate(absoluteGatePath);
-  const durationMs = Math.round(performance.now() - start);
-
-  return {
-    taskId,
-    feature: normalizedFeature,
-    gatePath,
-    result: result.exitCode === 0 ? "PASS" : "FAIL",
-    exitCode: result.exitCode,
-    stdout: result.stdout || "",
-    stderr: result.stderr || "",
-    durationMs,
-  };
+  try {
+    const { execSync } = await import("node:child_process");
+    const output = execSync(gateScript, {
+      cwd: projectRoot,
+      stdio: "pipe",
+      timeout: 30_000,
+      encoding: "utf-8",
+    });
+    const durationMs = Math.round(performance.now() - start);
+    return {
+      taskId,
+      feature: normalizedFeature,
+      gatePath: `(inline) ${gateScript.substring(0, 60)}`,
+      result: "PASS",
+      exitCode: 0,
+      stdout: output || "",
+      stderr: "",
+      durationMs,
+    };
+  } catch (err: unknown) {
+    const durationMs = Math.round(performance.now() - start);
+    const stderr = (err as { stderr?: string })?.stderr || "";
+    const exitCode =
+      typeof (err as { status?: number })?.status === "number"
+        ? (err as { status: number }).status
+        : 1;
+    return {
+      taskId,
+      feature: normalizedFeature,
+      gatePath: `(inline) ${gateScript.substring(0, 60)}`,
+      result: "FAIL",
+      exitCode,
+      stdout: "",
+      stderr: stderr || String(err),
+      durationMs,
+    };
+  }
 }
 
 /**
@@ -415,7 +501,7 @@ Examples:
                 `  ${color.DIM}▸${color.RESET} ${task.id}... `,
               );
             }
-            const result = await runGateCheck(task.id, normalizedFeature);
+            const result = await runGateCheck(task.id, normalizedFeature, task.gateScript);
             results.push(result);
             phaseResults.push(result);
 

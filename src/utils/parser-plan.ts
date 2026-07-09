@@ -1,7 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import yaml from "yaml";
 
-export interface ParsedPlan {
+interface ParsedPlan {
   features: PlanFeaturePayload[];
   phases: PlanPhasePayload[];
   edges: PlanEdgePayload[];
@@ -33,7 +37,7 @@ export interface PlanEdgePayload {
 /**
  * Parse 000-build-plan.md (Markdown + Mermaid) or a YAML seed payload.
  */
-export function parsePlan(filePath: string): ParsedPlan {
+export function parseBuildPlan(filePath: string): ParsedPlan {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Build plan file not found: ${filePath}`);
   }
@@ -84,19 +88,18 @@ function parseMarkdownPlan(content: string): ParsedPlan {
     const lines = section.split("\n");
     const headerLine = lines[0]; // e.g. "013 — Agent-Native Interface ✅"
 
-    // Extract ID (e.g. 013 or 000-TDD) and convert to F-prefixed if needed
-    const idPartMatch = headerLine.match(/^([A-Z0-9-]+)/);
+    // Extract ID — capture full slug (e.g. 004-ship-loop, 001-cli-core)
+    // Handles: "004-ship-loop 🔴", "013-agent-native-interface ✅", "012-knowledge-work — CLOSED"
+    const idPartMatch = headerLine.match(/^([a-zA-Z0-9][\w-]*)/);
     if (!idPartMatch) continue;
 
-    let id = idPartMatch[1];
-    if (!id.startsWith("F")) {
-      id = `F${id}`;
-    }
+    const id = idPartMatch[1];
 
     const name = headerLine
-      .replace(/^[A-Z0-9-]+\s*[—–-]\s*/, "")
-      .replace(/(?:✅|⚠️|🟡|🔴|⚫).*$/, "")
-      .trim();
+      .substring(id.length)
+      .replace(/^\s*[—–\-:]\s*/, "")
+      .replace(/(?:✅|⚠️|🟡|🔴|⚫|⚪).*$/, "")
+      .trim() || id;
 
     let status = "PLANNED";
     if (headerLine.includes("✅")) status = "DONE";
@@ -110,21 +113,21 @@ function parseMarkdownPlan(content: string): ParsedPlan {
     if (statusLine) {
       const s = statusLine.toLowerCase();
       if (s.includes("complete") || s.includes("done")) status = "DONE";
+      else if (s.includes("externalized") || s.includes("closed")) status = "CLOSED";
       else if (s.includes("shipped")) status = "SHIPPED";
-      else if (s.includes("in progress")) status = "IN_PROGRESS";
+      else if (s.includes("in progress") || s.includes("in_progress")) status = "IN_PROGRESS";
       else if (s.includes("defined")) status = "DEFINED";
       else if (s.includes("specified")) status = "SPECIFIED";
     }
 
     features.push({ id, name, status, sp_total: 0 });
 
-    // 3. Parse Phases within feature if present
-    // 1. **Phase 1 — Foundation (7 SP):** `withSignal()` wrapper...
+    // 3a. Parse Phases from "Implementation Phases" heading + list items
     const phaseHeaderIndex = lines.findIndex((l) =>
       l.toLowerCase().includes("implementation phases"),
     );
+    let seq = 1;
     if (phaseHeaderIndex !== -1) {
-      let seq = 1;
       for (let i = phaseHeaderIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (line === "" || line.startsWith("#")) continue;
@@ -132,7 +135,7 @@ function parseMarkdownPlan(content: string): ParsedPlan {
         // Match: 1. **Phase 1 — Title (7 SP):** ...
         // or: - Phase 1: Title (7 SP)
         const phaseMatch = line.match(
-          /(?:Phase\s+(\d+)|[\d.]+)\s*[—–\-:]\s*(\*\*)?([^(:\n]+)(?:\*\*)?\s*(?:\((\d+)\s*SP\))?/i,
+          /(?:Phase\s+(\d+)|[\d.]+)\s*[—–\-:]\s*(\*\*)?([^(:\n]+)(?:\*\*)?(?:\((\d+)\s*SP\))?/i,
         );
         if (phaseMatch) {
           const phaseName = phaseMatch[3]
@@ -178,6 +181,43 @@ function parseMarkdownPlan(content: string): ParsedPlan {
               seq: seq++,
             });
           }
+        }
+      }
+    }
+
+    // 3b. Parse Phases from markdown table rows
+    // Format: | N | Name ... | STATUS ... | SP |
+    if (seq === 1) {
+      // No phases found from Implementation Phases heading, try table
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        // Skip header and separator rows
+        if (line.match(/^\|\s*Phase\s*\|/i)) continue;
+        if (line.match(/^\|\s*-+\s*\|/)) continue;
+
+        // Match: | 1 | Phase Name ... | SHIPPED ✅ | 0 |
+        const tableMatch = line.match(
+          /^\|\s*(\d+)\s*\|\s*(.+?)\s*\|\s*(SHIPPED|PLANNED|DONE|IN_PROGRESS|VERIFIED|DEFINED)[^|]*\|\s*(\d+)\s*\|/i,
+        );
+        if (tableMatch) {
+          const phaseNum = Number.parseInt(tableMatch[1], 10);
+          const phaseName = tableMatch[2]
+            .replace(/[✅⚪🔴🟡⭐]/g, "")
+            .replace(/\*\*[^*]+\*\*/g, "")
+            .trim();
+          const phaseStatus = tableMatch[3].toUpperCase();
+          const spEstimate = Number.parseInt(tableMatch[4], 10);
+          const phaseId = `${id}-P${seq}`;
+
+          phases.push({
+            id: phaseId,
+            feature_id: id,
+            name: phaseName,
+            status: phaseStatus === "SHIPPED" || phaseStatus === "DONE" ? phaseStatus : "PLANNED",
+            health: "CLEAN",
+            sp_estimate: spEstimate,
+            seq: seq++,
+          });
         }
       }
     }

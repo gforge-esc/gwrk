@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { getDb } from "../db/index.js";
 import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
 import { ModelSelector } from "./model-selector.js";
@@ -5,7 +9,7 @@ import type { QuotaProber, QuotaReading } from "./quota-prober.js";
 import { recordDecision } from "./routing-decisions.js";
 import { TaskClassification, classifyTask } from "./task-classifier.js";
 
-export interface TaskContext {
+interface TaskContext {
   runId: string;
   feature: string;
   phase: string;
@@ -14,7 +18,7 @@ export interface TaskContext {
   taskSP: number;
 }
 
-export interface BackendSelection {
+interface BackendSelection {
   backend: string;
   model: string;
   command: string;

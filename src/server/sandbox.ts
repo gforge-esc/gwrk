@@ -1,15 +1,19 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { AgentBackend } from "../utils/config.js";
+import type { AgentBackendId } from "../utils/config.js";
 import type { SandboxInfo } from "./types.js";
 
-export interface SandboxOptions {
+interface SandboxOptions {
   featureId: string;
   phaseId: string;
   taskId: string;
-  backend: AgentBackend;
+  backend: AgentBackendId;
   projectRoot: string;
 }
 

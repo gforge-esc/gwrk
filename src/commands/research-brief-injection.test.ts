@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { researchCommandHandler } from "./research.js";
 import { ResearchScaffolder } from "../engine/research-scaffold.js";
@@ -46,6 +50,16 @@ vi.mock("../plugins/workflow-runtime.js", () => {
     }),
   };
 });
+
+// Mock config + model resolution — research resolves the configured define
+// agent before dispatching. Mocked here so the suite stays hermetic (this
+// file mocks node:fs, which would otherwise break the real loadConfig).
+vi.mock("../utils/config.js", () => ({
+  loadConfig: vi.fn(() => ({ agents: { define: "claude" } })),
+}));
+vi.mock("../utils/resolve-model.js", () => ({
+  resolveModelForTask: vi.fn(() => "claude-opus-4-8"),
+}));
 
 /**
  * RED tests for the research command audit fixes:

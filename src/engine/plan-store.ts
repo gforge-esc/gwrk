@@ -1,10 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import path from "node:path";
 import * as db from "../db/plan.js";
 import {
   type PlanEdgePayload,
   type PlanFeaturePayload,
   type PlanPhasePayload,
-  parsePlan,
+  parseBuildPlan,
 } from "../utils/parser-plan.js";
 import { scanReadiness } from "./readiness-scanner.js";
 
@@ -53,7 +57,7 @@ export class PlanStore {
    * Clear the plan and seed from a file.
    */
   seedFromFile(filePath: string): void {
-    const payload = parsePlan(filePath);
+    const payload = parseBuildPlan(filePath);
     this.seedPlan(payload.features, payload.phases, payload.edges);
   }
 

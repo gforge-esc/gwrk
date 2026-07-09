@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
@@ -416,8 +420,11 @@ export function deleteRemoteBranch(
       cwd: repoPath,
       stdio: ["ignore", "ignore", "pipe"],
     });
-  } catch (e) {
+  } catch (e: unknown) {
     // Log error but don't fail, as per FR-H08
-    console.error(`Failed to delete remote branch ${branch}:`, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    // Suppress the massive stack trace and buffer output from execFileSync
+    const cleanMsg = msg.split('\n')[0]; 
+    console.error(`Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`);
   }
 }

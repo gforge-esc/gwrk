@@ -1,19 +1,23 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { z } from "zod";
 
 /**
  * Shared regex for kebab-case validation
  */
-export const KEBAB_CASE_REGEX = /^[a-z0-9-]+$/;
+const KEBAB_CASE_REGEX = /^[a-z0-9-]+$/;
 
 /**
  * Shared regex for semver validation
  */
-export const SEMVER_REGEX = /^\d+\.\d+\.\d+$/;
+const SEMVER_REGEX = /^\d+\.\d+\.\d+$/;
 
 /**
  * Base schema for all plugins
  */
-export const PluginBaseSchema = z.object({
+const PluginBaseSchema = z.object({
   type: z.enum([
     "agent",
     "skill",
@@ -32,7 +36,7 @@ export type PluginBase = z.infer<typeof PluginBaseSchema>;
 /**
  * Skill Interface (shared)
  */
-export const PluginFlagSchema = z.object({
+const PluginFlagSchema = z.object({
   name: z.string(),
   values: z.array(z.string()).optional(),
   required: z.boolean().optional(),
@@ -40,7 +44,7 @@ export const PluginFlagSchema = z.object({
   description: z.string().optional(),
 });
 
-export const PluginInterfaceSchema = z.object({
+const PluginInterfaceSchema = z.object({
   input: z.literal("stdin"),
   output: z.literal("stdout"),
   flags: z.array(PluginFlagSchema).optional(),
@@ -49,7 +53,7 @@ export const PluginInterfaceSchema = z.object({
 /**
  * Skill Runtime
  */
-export const SkillRuntimeSchema = z.object({
+const SkillRuntimeSchema = z.object({
   preferredAgent: z.string(),
   preferredModel: z.string(),
   fallbackAgent: z.string().optional(),
@@ -60,7 +64,7 @@ export const SkillRuntimeSchema = z.object({
 /**
  * Skill Context
  */
-export const SkillContextSchema = z.object({
+const SkillContextSchema = z.object({
   required: z.array(z.string()).default(["input"]),
   optional: z.array(z.string()).default([]),
 });
@@ -68,7 +72,7 @@ export const SkillContextSchema = z.object({
 /**
  * Skill Pass (Compound)
  */
-export const SkillPassSchema = z.object({
+const SkillPassSchema = z.object({
   name: z.string(),
   skill: z.string(),
   summary: z.string(),
@@ -77,7 +81,7 @@ export const SkillPassSchema = z.object({
 /**
  * Atomic Skill Manifest
  */
-export const AtomicSkillManifestSchema = PluginBaseSchema.extend({
+const AtomicSkillManifestSchema = PluginBaseSchema.extend({
   type: z.literal("skill"),
   tier: z.literal("atomic"),
   category: z.enum([
@@ -98,7 +102,7 @@ export const AtomicSkillManifestSchema = PluginBaseSchema.extend({
 /**
  * Compound Skill Manifest
  */
-export const CompoundSkillManifestSchema = PluginBaseSchema.extend({
+const CompoundSkillManifestSchema = PluginBaseSchema.extend({
   type: z.literal("skill"),
   tier: z.literal("compound"),
   composes: z.array(z.string()),
@@ -113,12 +117,14 @@ export const CompoundSkillManifestSchema = PluginBaseSchema.extend({
 /**
  * Enforcement Skill Manifest
  */
-export const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
+const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
   type: z.literal("skill"),
   tier: z.literal("enforcement"),
   scope: z.enum(["implementation", "review", "all"]).optional(),
   /** Language this enforcement skill applies to (e.g. "TypeScript", "Python"). Omit to load for all projects. */
   language: z.string().optional(),
+  /** Framework this enforcement skill applies to (e.g. "React", "Express"). Omit to load for all projects. */
+  framework: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });
 
@@ -134,7 +140,7 @@ export const SkillManifestSchema = z.discriminatedUnion("tier", [
 /**
  * Agent Invocation (Layer 1)
  */
-export const InvocationSchema = z.object({
+const InvocationSchema = z.object({
   command: z.string(),
   args: z.array(z.string()),
   headlessFlag: z.string().optional(),
@@ -144,7 +150,7 @@ export const InvocationSchema = z.object({
 /**
  * Agent Manifest (ADR-006)
  */
-export const AgentManifestSchema = PluginBaseSchema.extend({
+const AgentManifestSchema = PluginBaseSchema.extend({
   type: z.literal("agent"),
   dispatchMode: z.enum(["local-cli", "github-integration"]),
   contextFileName: z.string(),
@@ -188,7 +194,7 @@ export interface JsonIntent {
 /**
  * Workflow Manifest (Layer 2.5)
  */
-export const WorkflowManifestSchema = PluginBaseSchema.extend({
+const WorkflowManifestSchema = PluginBaseSchema.extend({
   type: z.literal("workflow"),
   outputSchema: z.record(z.any()), // JSON Schema
 });
@@ -196,7 +202,7 @@ export const WorkflowManifestSchema = PluginBaseSchema.extend({
 /**
  * Review Manifest (Layer 3)
  */
-export const ReviewStepSchema = z.object({
+const ReviewStepSchema = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string(),
@@ -204,7 +210,9 @@ export const ReviewStepSchema = z.object({
   skip: z.boolean().optional(),
 });
 
-export const ReviewManifestSchema = PluginBaseSchema.extend({
+export type ReviewStep = z.infer<typeof ReviewStepSchema>;
+
+const ReviewManifestSchema = PluginBaseSchema.extend({
   type: z.literal("review"),
   projectType: z.enum(["cli", "webapp"]),
   codeReviewWorkflow: z.string(),
@@ -213,6 +221,15 @@ export const ReviewManifestSchema = PluginBaseSchema.extend({
     code: z.array(ReviewStepSchema),
     uat: z.array(ReviewStepSchema),
   }),
+});
+
+/**
+ * Extension Manifest (Layer 3)
+ */
+const ExtensionManifestSchema = PluginBaseSchema.extend({
+  type: z.literal("extension"),
+  provides: z.array(z.enum(["context", "metrics", "search", "notification"])),
+  adapter: z.string(), // Path to the adapter entry point
 });
 
 /**
@@ -226,14 +243,17 @@ export const AnyManifestSchema = z.union([
   AgentManifestSchema,
   WorkflowManifestSchema,
   ReviewManifestSchema,
-  // Future: ExtensionManifestSchema, ChannelManifestSchema
+  ExtensionManifestSchema,
 ]);
 
 export type AtomicSkillManifest = z.infer<typeof AtomicSkillManifestSchema>;
 export type CompoundSkillManifest = z.infer<typeof CompoundSkillManifestSchema>;
-export type EnforcementSkillManifest = z.infer<typeof EnforcementSkillManifestSchema>;
+export type EnforcementSkillManifest = z.infer<
+  typeof EnforcementSkillManifestSchema
+>;
 export type SkillManifest = z.infer<typeof SkillManifestSchema>;
-export type AgentManifest = z.infer<typeof AgentManifestSchema>;
+type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type WorkflowManifest = z.infer<typeof WorkflowManifestSchema>;
 export type ReviewManifest = z.infer<typeof ReviewManifestSchema>;
+export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>;
 export type AnyManifest = z.infer<typeof AnyManifestSchema>;

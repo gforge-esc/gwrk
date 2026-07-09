@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /**
  * src/utils/format.ts — Unified CLI output formatting
  *
@@ -115,9 +119,10 @@ export function warn(message: string): void {
 }
 
 /** Print a dry-run notice */
-export function dryRun(command: string): void {
+export function dryRun(command: string, agent?: string): void {
+  const agentSuffix = agent ? ` (agent: ${agent})` : "";
   console.log(
-    `${MAGENTA}[DRY RUN]${RESET} Would execute: ${DIM}${command}${RESET}`,
+    `${MAGENTA}[DRY RUN]${RESET} Would execute: ${DIM}${command}${agentSuffix}${RESET}`,
   );
 }
 

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type { Command } from "commander";
 
 /**
@@ -5,7 +9,7 @@ import type { Command } from "commander";
  * Supports text (default) and JSON formats.
  * Implements FR-002, TC-006 per output.md contract.
  */
-export interface CommandOutput {
+interface CommandOutput {
   /** Whether output is JSON format */
   readonly isJson: boolean;
   /** Write data to stdout */

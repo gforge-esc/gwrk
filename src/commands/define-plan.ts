@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -21,7 +25,7 @@ import { resolveProjectId } from "../utils/project-id.js";
 import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
-export const planCommand = new Command("plan")
+export const definePlanCommand = new Command("plan")
   .description("Create or amend an implementation plan for a feature")
   .addHelpText(
     "after",
@@ -36,7 +40,8 @@ Examples:
   .argument("<feature>", "The feature directory under specs/")
   .argument("[prompt]", "Amendment instructions (when plan.md already exists)")
   .option("--refs <path>", "Path to additional reference docs")
-  .action(async (featureArg, prompt: string | undefined, opts: { refs?: string }) => {
+  .option("--dry-run", "Print the command without executing")
+  .action(async (featureArg, prompt: string | undefined, opts: { refs?: string; dryRun?: boolean }) => {
     await withSignal("define plan", async () => {
       const projectRoot = process.cwd();
       const feature = resolveFeature(featureArg, projectRoot);
@@ -95,10 +100,19 @@ Examples:
       // Inject refs as reference material
       if (opts.refs) {
         const resolvedRefs = path.resolve(opts.refs);
-        if (fs.existsSync(resolvedRefs)) {
-          const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
-          effectivePrompt = `<reference_document source="${opts.refs}" authority="primary">\n${refsContent}\n</reference_document>\n\n${effectivePrompt}`;
+        if (!fs.existsSync(resolvedRefs)) {
+          throw new CommandError(`Reference file not found: ${opts.refs}`);
         }
+        const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
+        effectivePrompt = [
+          `<reference_document source="${opts.refs}" authority="primary">`,
+          refsContent,
+          `</reference_document>`,
+          ``,
+          effectivePrompt,
+          ``,
+          `CRITICAL REMINDER: Use the reference document above as the authoritative source of truth.`,
+        ].join("\n");
       }
 
       const runId = startRun({
@@ -118,6 +132,7 @@ Examples:
 
       const startTime = Date.now();
       const startedAt = new Date().toISOString();
+      let finished = false;
 
       try {
         const orchestrator = new DefineOrchestrator({
@@ -126,6 +141,8 @@ Examples:
           model,
           cwd: projectRoot,
           refs: opts.refs,
+          dryRun: opts.dryRun,
+          quiet: true,
         }, {
           stage: DefineStage.PLAN,
           featureId: feature,
@@ -140,8 +157,13 @@ Examples:
           throw new Error(`Workflow execution failed with exit code ${exitCode}`);
         }
 
+        if (opts.dryRun) {
+          return;
+        }
+
         const durationS = Math.round((Date.now() - startTime) / 1000);
         finishRun(runId, { exit_code: 0, duration_s: durationS });
+        finished = true;
         success("define plan", durationS, runId);
 
         // Write Execution Manifest (ADR-003)
@@ -193,7 +215,9 @@ Examples:
       } catch (err: unknown) {
         const durationS = Math.round((Date.now() - startTime) / 1000);
         const msg = err instanceof Error ? err.message : String(err);
-        finishRun(runId, { exit_code: 1, duration_s: durationS });
+        if (!finished) {
+          finishRun(runId, { exit_code: 1, duration_s: durationS });
+        }
         fail("define plan", 1, durationS, runId);
         console.error(msg);
         process.exitCode = 1;

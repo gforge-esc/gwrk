@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +15,7 @@ export class PluginNotFoundError extends Error {
   }
 }
 
-export class PluginDisabledError extends Error {
+class PluginDisabledError extends Error {
   constructor(name: string) {
     super(`Plugin '${name}' is disabled in this project.`);
     this.name = "PluginDisabledError";
@@ -25,12 +29,12 @@ export class ManifestValidationError extends Error {
   }
 }
 
-export interface PluginLoaderOptions {
+interface PluginLoaderOptions {
   globalDir?: string;
   projectDir?: string;
 }
 
-export interface ListOptions {
+interface ListOptions {
   activeOnly?: boolean;
   type?: string;
   tier?: string;
@@ -47,7 +51,7 @@ export interface PluginSummary {
   status: "active" | "disabled";
 }
 
-export interface LoadedPlugin<T = AnyManifest> {
+interface LoadedPlugin<T = AnyManifest> {
   manifest: T;
   path: string;
   status: "active" | "disabled";

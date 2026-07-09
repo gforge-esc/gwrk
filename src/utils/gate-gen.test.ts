@@ -1,5 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { generateGateBrief, parseGapMatrix, generateVitestGates, discoverTestFile, generateFilesystemGates } from "./gate-gen.js";
+import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates } from "./gate-gen.js";
 import type { GateBrief } from "./gate-gen.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -248,7 +256,7 @@ describe("parseGapMatrix (TR-011)", () => {
   });
 });
 
-describe("generateVitestGates (TR-011, FR-012)", () => {
+describe("generateDeterministicGates (TR-011, FR-012)", () => {
   function makeTempFeatureWithMatrix(
     matrixContent: string,
     existingGates?: Record<string, string>,
@@ -284,7 +292,7 @@ describe("generateVitestGates (TR-011, FR-012)", () => {
 `,
     );
 
-    const result = generateVitestGates(
+    const result = generateDeterministicGates(
       tempDir,
       path.join(tempDir, "gap-matrix.md"),
       phases,
@@ -314,7 +322,7 @@ describe("generateVitestGates (TR-011, FR-012)", () => {
 `,
     );
 
-    const result = generateVitestGates(
+    const result = generateDeterministicGates(
       tempDir,
       path.join(tempDir, "gap-matrix.md"),
       phases,
@@ -337,7 +345,7 @@ describe("generateVitestGates (TR-011, FR-012)", () => {
 `,
     );
 
-    const result = generateVitestGates(
+    const result = generateDeterministicGates(
       tempDir,
       path.join(tempDir, "gap-matrix.md"),
       phases,
@@ -360,7 +368,7 @@ describe("generateVitestGates (TR-011, FR-012)", () => {
       { "T001-gate.sh": customContent },
     );
 
-    const result = generateVitestGates(
+    const result = generateDeterministicGates(
       tempDir,
       path.join(tempDir, "gap-matrix.md"),
       phases,
@@ -380,7 +388,7 @@ describe("generateVitestGates (TR-011, FR-012)", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "vitest-gates-test-"));
     fs.mkdirSync(path.join(tempDir, "gates"), { recursive: true });
 
-    const result = generateVitestGates(
+    const result = generateDeterministicGates(
       tempDir,
       path.join(tempDir, "gap-matrix.md"),
       phases,

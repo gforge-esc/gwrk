@@ -1,3 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -6,11 +14,18 @@ import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadTaskState } from "../utils/state.js";
 import { planToTasks } from "./plan-to-tasks.js";
 import {
+  generateFilesystemGates,
+  generateRunner,
+  generateDeterministicGates,
+} from "../utils/gate-gen.js";
+import { detectProfile } from "./profile-detector.js";
+import {
   type DefineRunConfig,
   DefineStage,
   type DefineState,
   type StageResult,
 } from "./define-types.js";
+import { dryRun as dryRunFmt } from "../utils/format.js";
 
 export class DefineOrchestrator extends EventEmitter {
   private config: DefineRunConfig;
@@ -56,7 +71,7 @@ export class DefineOrchestrator extends EventEmitter {
 
     let initialStage = DefineStage.SPECIFY;
 
-    // Progression: Spec -> Plan -> Tasks -> Analyze -> Tests -> Done
+    // Progression: Spec -> Plan -> DefineTests -> Tasks -> Checklist -> Analyze -> Done
     if (fs.existsSync(specPath)) {
       initialStage = DefineStage.PLAN;
       // Check if spec has content (not just a stub)
@@ -64,9 +79,29 @@ export class DefineOrchestrator extends EventEmitter {
       if (specContent.includes("{{FEATURE_NUMBER}}") || specContent.length < 100) {
         initialStage = DefineStage.SPECIFY;
       } else if (fs.existsSync(planPath)) {
-        initialStage = DefineStage.PLAN_TO_TASKS;
-        if (fs.existsSync(tasksPath)) {
-          initialStage = DefineStage.ANALYZE;
+        initialStage = DefineStage.DEFINE_TESTS;
+        
+        // ADR-005 §8.4: Define tests must run before tasks
+        // FR-027: Detect test files OR gap-matrix.md
+        const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+        const hasTestFiles = (() => {
+          try {
+            const srcDir = path.join(this.config.cwd, "src");
+            if (!fs.existsSync(srcDir)) return false;
+            const allFiles = fs.readdirSync(srcDir);
+            return allFiles.some(
+              (f) => f.includes(this.config.featureId) && f.endsWith(".test.ts"),
+            );
+          } catch {
+            return false;
+          }
+        })();
+
+        if (fs.existsSync(gapMatrixPath) || hasTestFiles) {
+          initialStage = DefineStage.PLAN_TO_TASKS;
+          if (fs.existsSync(tasksPath)) {
+            initialStage = DefineStage.CHECKLIST;
+          }
         }
       }
     }
@@ -78,6 +113,7 @@ export class DefineOrchestrator extends EventEmitter {
       runId: `define-${this.config.featureId}-${Date.now()}`,
       backend: this.config.backend,
       refs: this.config.refs,
+      reconcile: this.config.reconcile,
     };
   }
 
@@ -104,6 +140,7 @@ export class DefineOrchestrator extends EventEmitter {
       DefineStage.PLAN,
       DefineStage.DEFINE_TESTS,
       DefineStage.PLAN_TO_TASKS,
+      DefineStage.CHECKLIST,
       DefineStage.ANALYZE,
       DefineStage.DONE,
     ];
@@ -118,12 +155,17 @@ export class DefineOrchestrator extends EventEmitter {
    * @param options - Execution options
    */
   public async runLoop(initialInput?: string, options: { stopAfterOne?: boolean } = {}): Promise<number> {
-    console.log(`Starting Define Loop for ${this.config.featureId} at stage: ${this.state.stage}`);
+    if (!this.config.dryRun) {
+      console.log(`Starting Define Loop for ${this.config.featureId} at stage: ${this.state.stage}`);
+    }
 
     let currentInput = initialInput;
 
     while (this.state.stage !== DefineStage.DONE) {
-      this.persistState();
+      if (!this.config.dryRun) {
+        this.persistState();
+      }
+      
       let result: StageResult;
 
       switch (this.state.stage) {
@@ -139,6 +181,9 @@ export class DefineOrchestrator extends EventEmitter {
         case DefineStage.PLAN_TO_TASKS:
           result = await this.stagePlanToTasks(currentInput);
           break;
+        case DefineStage.CHECKLIST:
+          result = await this.stageChecklist();
+          break;
         case DefineStage.ANALYZE:
           result = await this.stageAnalyze();
           break;
@@ -151,29 +196,34 @@ export class DefineOrchestrator extends EventEmitter {
       currentInput = undefined;
 
       if (!result.success) {
-        console.error(`Stage ${this.state.stage} failed: ${result.error}`);
+        if (!this.config.dryRun) {
+          console.error(`Stage ${this.state.stage} failed: ${result.error}`);
+        }
         return result.exitCode;
       }
 
       const next = result.nextStage || this.getNextStage(this.state.stage);
 
-      // Auto-commit define artifacts after each successful stage
-      try {
-        execSync("git add -A", { cwd: this.config.cwd });
-        const stageName = this.state.stage.toLowerCase().replace(/_/g, "-");
-        execSync(
-          `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${this.config.featureId}): define ${stageName}"`,
-          {
-            cwd: this.config.cwd,
-            env: { ...process.env, GWRK_SHIP: "1" },
-            stdio: "ignore",
-          },
-        );
-      } catch {
-        // Non-fatal — nothing to commit or git not available
-      }
+      if (!this.config.dryRun) {
+        // Auto-commit define artifacts after each successful stage
+        try {
+          execSync("git add -A", { cwd: this.config.cwd });
+          const stageName = this.state.stage.toLowerCase().replace(/_/g, "-");
+          execSync(
+            `git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${this.config.featureId}): define ${stageName}"`,
+            {
+              cwd: this.config.cwd,
+              env: { ...process.env, GWRK_SHIP: "1" },
+              stdio: "ignore",
+            },
+          );
+        } catch {
+          // Non-fatal — nothing to commit or git not available
+        }
 
-      console.log(`Transitioning: ${this.state.stage} -> ${next}`);
+        console.log(`Transitioning: ${this.state.stage} -> ${next}`);
+      }
+      
       this.state.stage = next;
 
       if (options.stopAfterOne) {
@@ -181,17 +231,19 @@ export class DefineOrchestrator extends EventEmitter {
       }
     }
 
-    this.persistState();
-    // Clean up state on success if we reached DONE
-    if (this.state.stage === DefineStage.DONE && fs.existsSync(this.getStatePath())) {
-      fs.unlinkSync(this.getStatePath());
-    }
+    if (!this.config.dryRun) {
+      this.persistState();
+      // Clean up state on success if we reached DONE
+      if (this.state.stage === DefineStage.DONE && fs.existsSync(this.getStatePath())) {
+        fs.unlinkSync(this.getStatePath());
+      }
 
-    if (this.state.stage === DefineStage.DONE) {
-      this.emit("plan:define:complete", {
-        featureId: this.config.featureId,
-        status: "DEFINED",
-      });
+      if (this.state.stage === DefineStage.DONE) {
+        this.emit("plan:define:complete", {
+          featureId: this.config.featureId,
+          status: "DEFINED",
+        });
+      }
     }
 
     return 0;
@@ -223,6 +275,11 @@ export class DefineOrchestrator extends EventEmitter {
   }
 
   private async stageSpecify(input?: string): Promise<StageResult> {
+    if (this.config.dryRun) {
+      dryRunFmt("gwrk-specify", this.config.backend);
+      return { success: true, exitCode: 0 };
+    }
+
     console.log("Stage: SPECIFY");
     try {
       const refs = this.getRefsContext();
@@ -233,7 +290,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
       });
 
       console.log(`  ${result.summary}`);
@@ -245,6 +303,11 @@ export class DefineOrchestrator extends EventEmitter {
   }
 
   private async stagePlan(input?: string): Promise<StageResult> {
+    if (this.config.dryRun) {
+      dryRunFmt("gwrk-plan", this.config.backend);
+      return { success: true, exitCode: 0 };
+    }
+
     console.log("Stage: PLAN");
     try {
       const refs = this.getRefsContext();
@@ -255,7 +318,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
       });
 
       console.log(`  ${result.summary}`);
@@ -267,6 +331,11 @@ export class DefineOrchestrator extends EventEmitter {
   }
 
   private async stageDefineTests(input?: string): Promise<StageResult> {
+    if (this.config.dryRun) {
+      dryRunFmt("gwrk-define-tests", this.config.backend);
+      return { success: true, exitCode: 0 };
+    }
+
     console.log("Stage: DEFINE_TESTS");
     try {
       const refs = this.getRefsContext();
@@ -277,7 +346,8 @@ export class DefineOrchestrator extends EventEmitter {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant ?? true,
       });
 
       console.log(`  ${result.summary}`);
@@ -289,12 +359,76 @@ export class DefineOrchestrator extends EventEmitter {
   }
 
   private async stagePlanToTasks(_input?: string): Promise<StageResult> {
+    if (this.config.dryRun) {
+      dryRunFmt("plan-to-tasks (deterministic)", "local");
+      return { success: true, exitCode: 0 };
+    }
+
     console.log("Stage: PLAN_TO_TASKS");
     try {
       const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
-      const state = planToTasks(featureDir, this.config.featureId);
+      
+      const profile = await detectProfile(this.config.cwd);
+      
+      const state = planToTasks(featureDir, this.config.featureId, {
+        reconcile: this.state.reconcile,
+        profile,
+      });
       const taskCount = state.phases.reduce((sum, p) => sum + p.tasks.length, 0);
       console.log(`  ✓ Generated ${state.phases.length} phase(s), ${taskCount} task(s) from plan.md (deterministic)`);
+
+      // ── Invalidate stale ship orchestrator state files ──
+      try {
+        const runsDir = path.join(this.config.cwd, ".runs");
+        if (fs.existsSync(runsDir)) {
+          const stateFiles = fs.readdirSync(runsDir)
+            .filter(f => f.startsWith(`${this.config.featureId}_phase-`) && f.endsWith(".state"));
+          
+          let cleaned = 0;
+          for (const stateFile of stateFiles) {
+            const stateFilePath = path.join(runsDir, stateFile);
+            try {
+              const savedState = JSON.parse(fs.readFileSync(stateFilePath, "utf-8"));
+              if (savedState.stage === "DONE") {
+                const phaseId = savedState.phaseId;
+                const phaseData = state.phases.find(p => p.id === phaseId);
+                if (phaseData && phaseData.tasks.some(t => t.status === "open")) {
+                  fs.unlinkSync(stateFilePath);
+                  cleaned++;
+                }
+              }
+            } catch {
+              fs.unlinkSync(stateFilePath);
+              cleaned++;
+            }
+          }
+          if (cleaned > 0) console.log(`  ✓ cleaned ${cleaned} stale ship state file(s)`);
+        }
+      } catch (cleanupErr) {
+        console.warn(`  ⚠ state cleanup failed: ${cleanupErr}`);
+      }
+
+      // ── Deterministic gate generation ──
+      try {
+        const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
+        let gateResult: { generated: number; skipped: number };
+        
+        if (fs.existsSync(gapMatrixPath)) {
+          console.log("  ▸ generating deterministic gates from gap-matrix.md");
+          gateResult = generateDeterministicGates(featureDir, gapMatrixPath, state.phases, profile);
+        } else {
+          console.log("  ▸ generating vitest gates from filesystem convention");
+          gateResult = generateFilesystemGates(featureDir, state.phases);
+        }
+
+        const gatesDir = path.join(featureDir, "gates");
+        if (fs.existsSync(gatesDir)) generateRunner(gatesDir);
+        
+        console.log(`  ✓ gates: ${gateResult.generated} generated, ${gateResult.skipped} skipped`);
+      } catch (gateError) {
+        console.warn(`  ⚠ gate generation failed: ${gateError}`);
+      }
+
       return { success: true, exitCode: 0 };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -302,14 +436,45 @@ export class DefineOrchestrator extends EventEmitter {
     }
   }
 
+  private async stageChecklist(): Promise<StageResult> {
+    if (this.config.dryRun) {
+      dryRunFmt("gwrk-checklist", this.config.backend);
+      return { success: true, exitCode: 0 };
+    }
+
+    console.log("Stage: CHECKLIST");
+    try {
+      const result = await this.runtime.executeWorkflow("gwrk-checklist", `Generate checklist for feature ${this.config.featureId}`, {
+        agent: this.config.backend,
+        model: this.config.model,
+        projectRoot: this.config.cwd,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
+      });
+
+      console.log(`  ${result.summary}`);
+      return { success: true, exitCode: 0 };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  Warning: CHECKLIST stage skipped or failed: ${msg}`);
+      return { success: true, exitCode: 0 };
+    }
+  }
+
   private async stageAnalyze(): Promise<StageResult> {
+    if (this.config.dryRun) {
+      dryRunFmt("gwrk-analyze", this.config.backend);
+      return { success: true, exitCode: 0 };
+    }
+
     console.log("Stage: ANALYZE");
     try {
       const result = await this.runtime.executeWorkflow("gwrk-analyze", `Analyze consistency for feature ${this.config.featureId}`, {
         agent: this.config.backend,
         model: this.config.model,
         projectRoot: this.config.cwd,
-        quiet: true,
+        quiet: this.config.quiet ?? true,
+        tolerant: this.config.tolerant,
       });
 
       console.log(`  ${result.summary}`);

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import pkg from "graphology";
 import type { DirectedGraph } from "graphology";
 const { DirectedGraph: DirectedGraphConstructor } = pkg;
@@ -88,7 +92,8 @@ export class PlanSolver {
       if (
         phase.status === "DONE" ||
         phase.status === "SHIPPED" ||
-        phase.status === "VERIFIED"
+        phase.status === "VERIFIED" ||
+        phase.status === "CLOSED"
       ) {
         continue;
       }
@@ -101,7 +106,8 @@ export class PlanSolver {
           pred &&
           (pred.status === "DONE" ||
             pred.status === "SHIPPED" ||
-            pred.status === "VERIFIED")
+            pred.status === "VERIFIED" ||
+            pred.status === "CLOSED")
         );
       });
 

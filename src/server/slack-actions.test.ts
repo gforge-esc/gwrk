@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /**
  * Module does not exist yet (RED)
  */
@@ -183,7 +187,7 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     } as any);
 
     expect(ack).toHaveBeenCalled();
-    expect(findOpenPr).toHaveBeenCalledWith("003-slack", "phase-01", expect.any(String));
+    expect(findOpenPr).toHaveBeenCalledWith("003-slack", expect.any(String), "phase-01");
     expect(execSync).toHaveBeenCalledWith(
       "gh pr merge 42 --merge --delete-branch",
       expect.objectContaining({ cwd: "/tmp" }),

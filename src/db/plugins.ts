@@ -1,7 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type Database from "better-sqlite3";
 import { getDb } from "./index.js";
 
-export interface AgentContextSync {
+interface AgentContextSync {
   project_root: string;
   backend_name: string;
   last_sync_at: string;
@@ -44,7 +48,7 @@ export function recordAgentContextSync(
     });
 }
 
-export interface RoutingDecision {
+interface RoutingDecision {
   task_type: string;
   selected_backend: string;
   outcome: "success" | "failure" | "rate-limited" | "timeout";
@@ -91,4 +95,3 @@ export function getRoutingHistory(
     )
     .all(taskType, projectId, limit) as RoutingDecision[];
 }
-

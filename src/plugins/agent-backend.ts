@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type { TaskDispatch, TaskResult } from "../utils/agent.js";
 
 /**
@@ -8,6 +12,13 @@ export interface AgentBackend {
    * The unique name of this agent backend (e.g., "gemini", "claude").
    */
   readonly name: string;
+
+  /**
+   * When true, this agent writes files directly via its own tools rather than
+   * returning JSON intents. The workflow runtime tolerates prose output from
+   * native writers instead of requiring structured JSON.
+   */
+  readonly nativeWriter?: boolean;
 
   /**
    * Generates the CLI-specific context file from the project's source of truth.

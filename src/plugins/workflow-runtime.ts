@@ -1,3 +1,8 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { execSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -19,6 +24,28 @@ import type { WorkflowManifest, JsonIntent } from "./manifest.js";
  * 3. Plain text mixed with JSON (ignores the plain text)
  */
 export function extractJsonFromOutput(stdout: string): unknown {
+  // Step 0: Unwrap Claude Code's `--output-format json` envelope. Its real
+  // payload is a string in the `result` field (typically wrapped in prose and
+  // a ```json fence), so recurse into it. Without this, the balanced-brace
+  // scan below matches the envelope's own outer braces and returns the wrapper
+  // object — which has no `summary`/`intents` — failing schema validation.
+  const trimmed = stdout.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const envelope = JSON.parse(trimmed) as Record<string, unknown>;
+      if (
+        envelope &&
+        typeof envelope === "object" &&
+        envelope.type === "result" &&
+        typeof envelope.result === "string"
+      ) {
+        return extractJsonFromOutput(envelope.result);
+      }
+    } catch {
+      // Not a single well-formed envelope — fall through to fence/brace scan.
+    }
+  }
+
   // Step 1: Extract content from markdown code fences (```json ... ```)
   const fenceBlocks = [...stdout.matchAll(/```(?:json)?\s*\n?([\s\S]*?)```/g)];
   if (fenceBlocks.length > 0) {
@@ -75,11 +102,12 @@ export function extractJsonFromOutput(stdout: string): unknown {
   throw new Error("Expected JSON object in agent output");
 }
 
-export interface WorkflowOptions {
+interface WorkflowOptions {
   projectRoot?: string;
   agent?: string;
   model?: string;
   quiet?: boolean;
+  tolerant?: boolean;
   /**
    * Optional write-scope allowlist. When set, WRITE_FILE intents targeting
    * paths outside this list are filtered with a warning. Paths are matched
@@ -90,12 +118,12 @@ export interface WorkflowOptions {
 }
 
 /** Typed output contract for workflow agent responses. */
-export interface WorkflowOutput {
+interface WorkflowOutput {
   summary?: string;
   intents: JsonIntent[];
 }
 
-export interface WorkflowResult {
+interface WorkflowResult {
   summary: string;
   intents: JsonIntent[];
   summaries: IntentSummary[];
@@ -266,7 +294,19 @@ export class WorkflowRuntime {
     } catch (e) {
       // FR-029: Tolerate agents that do native work and return prose.
       // If the agent exited 0, treat prose output as synthetic success.
-      if (result.exitCode === 0) {
+      // T019: Detect agent-native success by checking for committed artifacts
+      const hasArtifacts = (() => {
+        try {
+          const status = execSync("git status --porcelain", {
+            cwd: projectRoot,
+          }).toString();
+          return status.trim().length > 0;
+        } catch {
+          return false;
+        }
+      })();
+
+      if (result.exitCode === 0 && (result.nativeWriter || options.tolerant || hasArtifacts)) {
         const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
         console.warn(
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,

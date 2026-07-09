@@ -1,5 +1,9 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type { FastifyInstance } from "fastify";
-import type { AgentBackend } from "../../utils/config.js";
+import type { AgentBackendId } from "../../utils/config.js";
 import { MessageBuilder, type SlackMessage } from "../slack-messages.js";
 import { notifySlack } from "../slack-notify.js";
 import type { DispatchRecord, NotifyPayload } from "../types.js";
@@ -24,7 +28,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         id: "notify-event", // dummy
         featureId: payload.feature,
         phaseId: payload.phase || "unknown",
-        backend: (payload.backend as AgentBackend) || "gemini",
+        backend: (payload.backend as AgentBackendId) || "gemini",
         status: "running", // default
         branchName: payload.branch || "main",
         attempts: [],

@@ -1,0 +1,19 @@
+{
+  "runId": "2026-06-19T16:57:54.025Z_define_p00",
+  "feature": "004-ship-loop",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "agy",
+  "model": "unknown",
+  "startedAt": "2026-06-19T16:57:54.025Z",
+  "finishedAt": "2026-06-19T17:00:14.394Z",
+  "durationS": 140,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 470,
+  "linesDeleted": 2,
+  "gitCommit": "9942b27db2b7f14d9a937a9440e107746e4dfee8",
+  "gitBranch": "develop",
+  "digest": []
+}

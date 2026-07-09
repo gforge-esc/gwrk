@@ -1,9 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFilePromise = promisify(execFile);
 
-export interface GateResult {
+interface GateResult {
   passed: boolean;
   exitCode: number;
   output: string;
@@ -40,6 +44,14 @@ export async function runGate(scriptPath: string): Promise<GateResult> {
       .filter(Boolean)
       .map((s) => s?.trim())
       .join("\n");
+
+    if (err.code === "EACCES") {
+      return {
+        passed: false,
+        exitCode: 126,
+        output: `Gate script not executable: ${scriptPath} (run chmod +x)`,
+      };
+    }
 
     if (err.code === "ENOENT") {
       return {

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync, spawn } from "node:child_process";
 import type { App } from "@slack/bolt";
 import { findOpenPr } from "../db/runs.js";
@@ -26,10 +30,10 @@ function lookupPr(
   phaseId: string,
   projectId: string,
 ): { pr_number: number; pr_url: string | null } {
-  const pr = findOpenPr(featureId, phaseId, projectId);
+  const pr = findOpenPr(featureId, projectId, phaseId);
   if (!pr) {
     // Try without phase filter as fallback
-    const anyPr = findOpenPr(featureId, undefined, projectId);
+    const anyPr = findOpenPr(featureId, projectId, undefined);
     if (anyPr) {
       return anyPr;
     }
@@ -233,13 +237,15 @@ export async function registerSlackActions(app: App, context: CommandContext) {
 
     // Resolve PR URL: payload prNumber → runs table → gh pr list fallback
     let reviewUrl = "";
-    const resolvedPrNumber =
-      payloadPrNumber || findOpenPr(featureId, phaseId, projectId)?.pr_number;
+    const prNumber =
+      payloadPrNumber ||
+      findOpenPr(featureId, projectId, phaseId)?.pr_number;
 
-    if (resolvedPrNumber) {
+
+    if (prNumber) {
       try {
         reviewUrl = execSync(
-          `gh pr view ${resolvedPrNumber} --json url -q .url`,
+          `gh pr view ${prNumber} --json url -q .url`,
           { cwd: context.projectRoot, encoding: "utf-8", timeout: 10_000 },
         ).trim();
       } catch {

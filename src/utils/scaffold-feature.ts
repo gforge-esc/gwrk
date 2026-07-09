@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { resolveProjectId } from "./project-id.js";
@@ -91,7 +95,7 @@ export function getHighestFromSpecs(specsDir: string): number {
  * Get the highest feature number from the plan_features DB table.
  * Returns 0 if the DB is unavailable or empty.
  */
-export function getHighestFromDb(): number {
+function getHighestFromDb(): number {
 	try {
 		// Synchronous DB access — getDb and prepare are sync in better-sqlite3
 		// Dynamic import won't work here since we need sync return.

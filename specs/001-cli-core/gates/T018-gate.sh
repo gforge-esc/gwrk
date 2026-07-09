@@ -5,7 +5,7 @@ set -euo pipefail
 # Generated from gap-matrix.md (deterministic vitest gate)
 
 # ── BEHAVIORAL: Tests must pass ──
-pnpm vitest run src/cli.test.ts -t "US-018" --reporter=verbose \
+pnpm vitest run src/cli.test.ts --reporter=verbose \
   || { echo "FAIL: T018 — vitest failed for src/cli.test.ts" >&2; exit 1; }
 
 # ── HYGIENE: Source files must lint clean ──

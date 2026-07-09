@@ -285,7 +285,7 @@ As a developer, I want all feature-scoped commands to accept feature as the firs
 **Acceptance**:
 1. Every command accepting `<feature>` has it as positional arg 1 (after the subcommand verb if applicable).
 2. No command requires feature as a flag or in a non-standard position.
-3. Every command accepting `<feature>` calls `resolveFeature()` to resolve prefix aliases (e.g., `001` → `001-cli-core`). Specifically: `define plan`, `define tests`, `db runs`, and `harvest` are currently missing this.
+3. Every command accepting `<feature>` calls `resolveFeature()` to resolve prefix aliases (e.g., `001` → `001-cli-core`).
 4. `gwrk define plan 001` resolves to `001-cli-core` and succeeds.
 5. `gwrk define tests 001` resolves to `001-cli-core` and succeeds.
 6. `gwrk db runs 001` resolves to `001-cli-core` and succeeds.

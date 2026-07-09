@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fastify from "fastify";
 import type { GwrkConfig } from "../utils/config.js";
 import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
@@ -6,6 +10,7 @@ import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
 import { PlanHeartbeat } from "./heartbeat.js";
+import { HarvestWatcher } from "./harvest-watcher.js";
 import { LifecycleMonitor } from "./lifecycle.js";
 import { SystemMonitor } from "./monitor.js";
 import { NetworkMonitor } from "./network.js";
@@ -127,6 +132,10 @@ export async function startServer(
   const planHeartbeat = new PlanHeartbeat(config, slackApp, projectRoot);
   planHeartbeat.start();
 
+  // Poll-based HarvestWatcher
+  const harvestWatcher = new HarvestWatcher(config, slackApp, projectRoot);
+  harvestWatcher.start();
+
   await healthRoutes(server, lifecycle, network, sandbox);
   await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
   await dispatchRoutes(server, queue);
@@ -136,6 +145,7 @@ export async function startServer(
   const shutdown = async () => {
     server.log.info("Shutting down server...");
     planHeartbeat.stop();
+    harvestWatcher.stop();
     await stopSlackApp();
     lifecycle.stop();
     network.stop();

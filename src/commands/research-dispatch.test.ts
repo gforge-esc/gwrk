@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { researchCommandHandler } from './research.js';
 import { ResearchScaffolder } from '../engine/research-scaffold.js';
@@ -39,6 +43,15 @@ vi.mock('../plugins/workflow-runtime.js', () => {
   };
 });
 
+// Mock config + model resolution — research now resolves the configured
+// agent (agents.define) and its model rather than defaulting to gemini.
+vi.mock('../utils/config.js', () => ({
+  loadConfig: vi.fn(() => ({ agents: { define: 'claude' } })),
+}));
+vi.mock('../utils/resolve-model.js', () => ({
+  resolveModelForTask: vi.fn(() => 'claude-opus-4-8'),
+}));
+
 describe('Research Command Dispatch (TR-P12-001)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,7 +71,8 @@ describe('Research Command Dispatch (TR-P12-001)', () => {
     
     expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
       'gwrk-research-technical',
-      expect.stringContaining('Test objective')
+      expect.stringContaining('Test objective'),
+      expect.objectContaining({ agent: 'claude', model: 'claude-opus-4-8' })
     );
 
     // Output now shows directory and log path
@@ -76,7 +90,8 @@ describe('Research Command Dispatch (TR-P12-001)', () => {
     
     expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
       'gwrk-research-technical',
-      expect.anything()
+      expect.anything(),
+      expect.objectContaining({ agent: 'claude' })
     );
   });
 
@@ -92,7 +107,37 @@ describe('Research Command Dispatch (TR-P12-001)', () => {
     
     expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
       'gwrk-research-jtbd',
-      expect.anything()
+      expect.anything(),
+      expect.objectContaining({ agent: 'claude' })
+    );
+  });
+
+  it('passes the configured define agent (not the gemini default) to the workflow', async () => {
+    await researchCommandHandler({
+      initiative: 'test-initiative',
+      methodology: 'technical',
+      run: true,
+    });
+
+    const WorkflowRuntimeMock = WorkflowRuntime as any;
+    const runtimeInstance = WorkflowRuntimeMock.mock.results[0].value;
+    const callArgs = runtimeInstance.executeWorkflow.mock.calls[0];
+    expect(callArgs[2]).toEqual({ agent: 'claude', model: 'claude-opus-4-8' });
+  });
+
+  it('resolves methodology from brief frontmatter when no --methodology flag', async () => {
+    (fsPromises.readFile as any).mockResolvedValue(
+      '---\nmethodology: jtbd\n---\n# Brief\n## Objective\nSomething',
+    );
+
+    await researchCommandHandler({ initiative: 'test-initiative', run: true });
+
+    const WorkflowRuntimeMock = WorkflowRuntime as any;
+    const runtimeInstance = WorkflowRuntimeMock.mock.results[0].value;
+    expect(runtimeInstance.executeWorkflow).toHaveBeenCalledWith(
+      'gwrk-research-jtbd',
+      expect.anything(),
+      expect.objectContaining({ agent: 'claude' }),
     );
   });
 

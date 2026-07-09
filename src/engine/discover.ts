@@ -1,16 +1,21 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { type GwrkConfig, GwrkConfigSchema } from "../utils/config.js";
 import { execCommand } from "../utils/exec.js";
 import { TaskStateSchema } from "../utils/state.js";
+import { type ProjectProfile, detectProfile } from "./profile-detector.js";
 
-export interface GitState {
+interface GitState {
   branch: string;
   clean: boolean;
   lastCommit: string;
 }
 
-export interface SpecSummary {
+interface SpecSummary {
   id: string;
   name: string;
   dirPath: string;
@@ -22,11 +27,12 @@ export interface SpecSummary {
   tasksComplete: number;
 }
 
-export interface ProjectDiscovery {
+interface ProjectDiscovery {
   project: {
     name: string;
     root: string;
     git: GitState;
+    profile: ProjectProfile;
   };
   specs: SpecSummary[];
   gates: {
@@ -47,6 +53,7 @@ export async function discoverProject(
   projectRoot: string,
 ): Promise<ProjectDiscovery> {
   const git = await getGitState(projectRoot);
+  const profile = await detectProfile(projectRoot);
   const config = loadRawConfig(projectRoot);
   const specs = await discoverSpecs(projectRoot);
   const gates = await discoverGates(projectRoot, specs);
@@ -58,6 +65,7 @@ export async function discoverProject(
       name: projectName,
       root: projectRoot,
       git,
+      profile,
     },
     specs,
     gates,

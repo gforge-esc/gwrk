@@ -22,7 +22,12 @@ description: Cross-artifact consistency analysis (read-only).
 
 - `{feature_dir}/spec.md` exists.
 - `{feature_dir}/plan.md` exists.
+[type: gwrk-native]
 - `{feature_dir}/.gwrk/tasks.json` exists (tasks.json is the tracking source of truth).
+[/type]
+[type: generic]
+- The project's task tracking or implementation plan is available.
+[/type]
 
 ## Steps
 
@@ -34,7 +39,12 @@ Read all available definition artifacts:
 |----------|---------|----------|
 | `spec.md` | Requirements, user stories, TRs | ✅ |
 | `plan.md` | Architecture, phases, file changes | ✅ |
+[type: gwrk-native]
 | `.gwrk/tasks.json` | Task tracking (phases, tasks, statuses) | ✅ |
+[/type]
+[type: generic]
+| `tasks.json` | Task tracking (if present) | Optional |
+[/type]
 | `gates/*.sh` | Verification gate scripts (if present) | Optional |
 | `data-model.md` | Domain entities | Optional |
 | `contracts/` | Zod schemas, API contracts | Optional |
@@ -42,11 +52,17 @@ Read all available definition artifacts:
 
 ### 2. Load Task State
 
+[type: gwrk-native]
 Read the current tracking state from `tasks.json`:
 
 ```bash
 cat {feature_dir}/.gwrk/tasks.json | jq '.phases[] | {name, tasks: [.tasks[] | {id, title, status}]}'
 ```
+[/type]
+
+[type: generic]
+Read the current tracking state from the project's task management system or tracking file.
+[/type]
 
 ### 3. Run Detection Passes
 
@@ -125,9 +141,14 @@ When `/plan-to-tasks` has already generated gate scripts, analyze their quality:
 
 #### F. Governance Alignment
 
+[type: gwrk-native]
 Reference applicable governance rules from `.gwrk/rules/`:
 - Config hygiene if config/env changes
 - Seeding governance if fixture changes
+[/type]
+[type: generic]
+Reference the project's own governance rules and standards.
+[/type]
 
 <severity_criteria>
 | Level | Criteria |

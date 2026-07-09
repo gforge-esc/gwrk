@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { loadConfig } from "../utils/config.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
@@ -88,7 +92,7 @@ export async function sendSlackMessage(message: SlackMessage): Promise<void> {
  * - Shell scripts (work-until-done.sh)
  * - CI pipelines
  */
-export async function sendViaWebhook(message: SlackMessage): Promise<void> {
+async function sendViaWebhook(message: SlackMessage): Promise<void> {
   let webhookUrl: string | undefined;
   try {
     const config = loadConfig(process.cwd());

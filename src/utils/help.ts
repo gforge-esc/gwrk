@@ -1,10 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import type { Command } from "commander";
 
 /**
  * Command metadata for enriched help text.
  * Implements DM-003.
  */
-export interface CommandMeta {
+interface CommandMeta {
   type: "query" | "generator" | "verifier" | "mutator";
   exitCodes: Record<number, string>;
   supportsJson: boolean;
@@ -16,7 +20,7 @@ export interface CommandMeta {
  * Applies CommandMeta to a commander Command instance to enrich --help.
  * Implements FR-008.
  */
-export function applyMeta(cmd: Command, meta: CommandMeta): void {
+function applyMeta(cmd: Command, meta: CommandMeta): void {
   const exitCodesStr = Object.entries(meta.exitCodes)
     .map(([code, desc]) => `  ${code}: ${desc}`)
     .join("\n");

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /**
  * src/engine/prompt-conditioner.ts
  * Phase 13: Project Awareness
@@ -13,6 +17,12 @@ export interface ProjectProfile {
     buildSystem?: string;
   };
   layout?: string;
+  /** Toolchain signals (formatter, linter, test runner) */
+  toolchain?: {
+    primary?: "biome" | "eslint" | "ruff";
+    formatter?: "prettier" | "biome" | "black";
+    test?: "vitest" | "jest" | "pytest" | "cargo-test" | "go-test";
+  };
   /** True when gwrk is operating on its own codebase (self-development) */
   _isGwrk?: boolean;
 }

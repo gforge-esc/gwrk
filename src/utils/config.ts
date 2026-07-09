@@ -1,12 +1,16 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
-import { AgentBackendConfigSchema } from "../server/agent-registry.js";
 import { DEFAULT_LOC_RATES } from "../engine/effort-defaults.js";
 import { resolveRoleMultipliers } from "../engine/roles.js";
+import { AgentBackendConfigSchema } from "../server/agent-registry.js";
 
 const AgentBackendSchema = z.string();
-export type AgentBackend = string;
+export type AgentBackendId = string;
 
 export const SlackConfigSchema = z.object({
   botToken: z.string().startsWith("xoxb-"),
@@ -32,25 +36,34 @@ export const GwrkConfigSchema = z.object({
       })
       .optional(),
     layout: z
-      .object({
-        sourceRoot: z.string().optional(),
-        apps: z.string().optional(),
-        packages: z.string().optional(),
-        specs: z.string().optional(),
-        docs: z.string().optional(),
-      })
+      .union([
+        z.string(),
+        z.object({
+          sourceRoot: z.string().optional(),
+          apps: z.string().optional(),
+          packages: z.string().optional(),
+          specs: z.string().optional(),
+          docs: z.string().optional(),
+        }),
+      ])
       .optional(),
     architecture: z
-      .object({
-        doc: z.string().optional(),
-        decisions: z.string().optional(),
-      })
+      .union([
+        z.string(),
+        z.object({
+          doc: z.string().optional(),
+          decisions: z.string().optional(),
+        }),
+      ])
       .optional(),
     conventions: z
-      .object({
-        branchPrefix: z.string().optional(),
-        testPattern: z.string().optional(),
-      })
+      .union([
+        z.string(),
+        z.object({
+          branchPrefix: z.string().optional(),
+          testPattern: z.string().optional(),
+        }),
+      ])
       .optional(),
     slack: z
       .object({
@@ -162,6 +175,23 @@ export const GwrkConfigSchema = z.object({
       sessionGapMinutes: z.number().default(30),
     })
     .default({ sessionGapMinutes: 30 }),
+  extensions: z.record(z.string(), z.record(z.any())).optional(),
+  workspaces: z
+    .record(
+      z.string(),
+      z.object({
+        type: z.string().optional(),
+        stack: z
+          .object({
+            language: z.string().optional(),
+            framework: z.string().optional(),
+            buildSystem: z.string().optional(),
+          })
+          .optional(),
+        layout: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;
