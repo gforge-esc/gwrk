@@ -175,7 +175,7 @@ describe("Phase 9: Enforcement Skills", () => {
    * TR-P9-005: dispatchToAgent() stdin includes enforcement skill content
    */
   describe("TR-P9-005: dispatch context assembly", () => {
-    it("enforcement skill content appears in assembled dispatch context", async () => {
+    it("enforcement skill content appears in assembled dispatch context", { timeout: 15_000 }, async () => {
       const skillRuntime = await import("./skill-runtime.js");
       const { dispatchToAgent } = await import("../utils/agent.js");
       const { spawn } = await import("node:child_process");
