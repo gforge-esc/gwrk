@@ -98,6 +98,22 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     expect(result).toEqual({ summary: 'env', intents: [] });
   });
 
+  it('throws (not silently returns the wrapper) when a result envelope carries no contract', () => {
+    // Regression: when the agent spends its turn asking questions instead of
+    // emitting the contract, the `result` string has no JSON. The envelope
+    // unwrap must propagate that failure — NOT fall back to brace-scanning the
+    // wrapper and returning {type:"result",…}, which has no summary/intents and
+    // masks the real failure as a misleading "missing property 'summary'".
+    const envelope = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'Q1. Scheduler mechanism? Q2. Run granularity? Please advise.',
+      session_id: 'abc',
+    });
+    expect(() => extractJsonFromOutput(envelope)).toThrow(/Expected JSON object/);
+  });
+
   it('TR-029: should return synthetic success for prose output if exitCode is 0 and tolerant mode is on', async () => {
     const mockManifest = {
       name: 'test-workflow',

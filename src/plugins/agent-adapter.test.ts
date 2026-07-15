@@ -73,6 +73,23 @@ describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", 
       expect(result.exitCode).toBe(1);
       expect(result.errorType).toBe("permission_denied");
     });
+
+    it("passes --json-schema to enforce the output contract when task.outputSchema is set", async () => {
+      const schema = {
+        type: "object",
+        properties: { summary: { type: "string" } },
+        required: ["summary"],
+      };
+      const dispatch = await adapter.dispatch({ prompt: "p", outputSchema: schema });
+      expect(dispatch.args).toContain("--json-schema");
+      const idx = dispatch.args.indexOf("--json-schema");
+      expect(JSON.parse(dispatch.args[idx + 1])).toEqual(schema);
+    });
+
+    it("omits --json-schema when no outputSchema is provided", async () => {
+      const dispatch = await adapter.dispatch({ prompt: "p" });
+      expect(dispatch.args).not.toContain("--json-schema");
+    });
   });
 
   describe("Governance Sync (FR-L1-004)", () => {

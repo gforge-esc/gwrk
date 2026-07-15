@@ -55,6 +55,15 @@ export class ClaudeAdapter implements AgentBackend {
     const command = "claude";
     const args: string[] = ["-p", task.prompt || "", "--output-format", "json"];
 
+    // Enforce the workflow's output contract at the model level. Without this,
+    // Claude may spend its single non-interactive turn asking clarifying
+    // questions instead of emitting the {summary, intents} envelope — the run
+    // then produces no schema-conforming JSON and fails validation. `--json-schema`
+    // makes Claude channel any ambiguity *into* the schema rather than break it.
+    if (task.outputSchema) {
+      args.push("--json-schema", JSON.stringify(task.outputSchema));
+    }
+
     if (task.featureDir) args.push(task.featureDir);
 
     const model = task.model || task.env?.CLAUDE_MODEL;
