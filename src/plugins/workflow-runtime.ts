@@ -32,18 +32,25 @@ export function extractJsonFromOutput(stdout: string): unknown {
   // object — which has no `summary`/`intents` — failing schema validation.
   const trimmed = stdout.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    let envelope: Record<string, unknown> | undefined;
     try {
-      const envelope = JSON.parse(trimmed) as Record<string, unknown>;
-      if (
-        envelope &&
-        typeof envelope === "object" &&
-        envelope.type === "result" &&
-        typeof envelope.result === "string"
-      ) {
-        return extractJsonFromOutput(envelope.result);
-      }
+      envelope = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
-      // Not a single well-formed envelope — fall through to fence/brace scan.
+      // Not a single well-formed JSON value — fall through to fence/brace scan.
+      envelope = undefined;
+    }
+    if (
+      envelope &&
+      typeof envelope === "object" &&
+      envelope.type === "result" &&
+      typeof envelope.result === "string"
+    ) {
+      // This IS a Claude Code result envelope: the real payload lives in
+      // `result`. Recurse into it and let any failure propagate. Do NOT fall
+      // back to brace-scanning the wrapper — that would match the envelope's
+      // own outer braces and return a wrapper object with no summary/intents,
+      // masking the true failure (e.g. the agent returned prose, not a contract).
+      return extractJsonFromOutput(envelope.result);
     }
   }
 
@@ -291,6 +298,10 @@ export class WorkflowRuntime {
       workDir: projectRoot,
       workflow: name,
       quiet: options.quiet,
+      // Enforce the contract at the model level for adapters that support it
+      // (e.g. Claude's --json-schema). The prompt's <output_contract> is prose
+      // the model can ignore; this is the structural guarantee.
+      outputSchema: manifest.outputSchema,
     };
 
     const result = await dispatchToAgent(task);

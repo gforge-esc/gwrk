@@ -76,6 +76,7 @@ interface DispatchOptions {
   workDir?: string;
   stdin?: string;
   quiet?: boolean;
+  outputSchema?: Record<string, unknown>;
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
@@ -97,6 +98,7 @@ export async function buildCommand(
     workflow: opts.workflowPath,
     featureDir: opts.featureDir,
     stdin: opts.stdin,
+    outputSchema: opts.outputSchema,
   };
 
   const dispatch = await adapter.dispatch(task);
@@ -366,6 +368,12 @@ export interface TaskDispatch {
   featureDir?: string;
   quiet?: boolean;
   dryRun?: boolean;
+  /**
+   * JSON Schema for the expected output contract. Adapters whose CLI supports
+   * structured output (e.g. Claude's `--json-schema`) pass this through to
+   * force schema-conforming output; adapters that don't simply ignore it.
+   */
+  outputSchema?: Record<string, unknown>;
 }
 
 /**
@@ -579,6 +587,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     featureDir: task.featureDir,
     prompt: task.prompt,
     workDir: task.workDir,
+    outputSchema: task.outputSchema,
   };
 
   const {
