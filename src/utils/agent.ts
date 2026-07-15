@@ -120,21 +120,21 @@ function formatStamp(startEpoch: number): string {
 }
 
 /**
- * Prefixes each output line with "HH:MM:SS +MM:SS" (wall clock + elapsed).
- * Writes timestamped output to both terminal and log file.
+ * Log a timestamped agent-output line ("HH:MM:SS +MM:SS") to the run log only.
+ *
+ * Agent stdout/stderr — including Claude Code's `--output-format json`
+ * envelope — is intentionally NOT echoed to the terminal; doing so floods the
+ * UX with raw JSON. The full transcript lives in the .runs/*.log file, and
+ * callers surface their own curated progress (e.g. the elapsed heartbeat).
  */
 function stampLine(
   line: string,
   startEpoch: number,
   logStream?: fs.WriteStream,
 ): void {
+  if (!logStream) return;
   const stamp = formatStamp(startEpoch);
-  process.stdout.write(`${DIM}${stamp}${RESET}  ${line}\n`);
-
-  // Tee timestamped output to log file (plain text, no ANSI)
-  if (logStream) {
-    logStream.write(`[${stamp}] ${line}\n`);
-  }
+  logStream.write(`[${stamp}] ${line}\n`);
 }
 
 async function dispatchAgent(opts: DispatchOptions): Promise<{
