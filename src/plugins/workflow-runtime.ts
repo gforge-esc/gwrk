@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -100,6 +101,19 @@ export function extractJsonFromOutput(stdout: string): unknown {
   }
 
   throw new Error("Expected JSON object in agent output");
+}
+
+/**
+ * True when a WRITE_FILE intent would replace an existing file with strictly
+ * less content — the signature of an agent that wrote the file natively and
+ * then emitted an abbreviated/placeholder WRITE_FILE payload. A `null`
+ * `existing` means the file doesn't exist yet, so the write is allowed.
+ */
+export function wouldShrinkExistingFile(
+  existing: string | null,
+  incoming: string,
+): boolean {
+  return existing !== null && incoming.length < existing.length;
 }
 
 interface WorkflowOptions {
@@ -367,6 +381,28 @@ export class WorkflowRuntime {
           "  ⚠ Filtered WRITE_FILE intent targeting tasks.json — agent already applied changes natively.",
         );
         return false;
+      }
+
+      // Guard: don't clobber a file the agent already wrote natively.
+      // Agents with file tools (e.g. claude under --dangerously-skip-
+      // permissions) sometimes write the file directly during the run, then
+      // emit a WRITE_FILE intent whose `content` is an abbreviated summary or
+      // a self-reference ("<full report — written to disk…>"). Executing that
+      // would overwrite the real content with a placeholder. If the target
+      // already exists and the intent carries less content than what's on
+      // disk, keep the on-disk (native) version.
+      if (intent.action === "WRITE_FILE" && intent.filePath) {
+        const abs = path.resolve(projectRoot, intent.filePath);
+        const existing = fs.existsSync(abs)
+          ? fs.readFileSync(abs, "utf-8")
+          : null;
+        const incoming = intent.content ?? "";
+        if (wouldShrinkExistingFile(existing, incoming)) {
+          console.warn(
+            `  ⚠ Kept the on-disk ${intent.filePath} — the agent wrote it directly and the WRITE_FILE intent had less content (${incoming.length} vs ${existing?.length} chars).`,
+          );
+          return false;
+        }
       }
 
       // Guard: enforce write-scope allowlist when provided.

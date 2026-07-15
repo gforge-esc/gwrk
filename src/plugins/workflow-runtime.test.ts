@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WorkflowRuntime, extractJsonFromOutput } from './workflow-runtime.js';
+import { WorkflowRuntime, extractJsonFromOutput, wouldShrinkExistingFile } from './workflow-runtime.js';
 import * as conditioner from '../engine/prompt-conditioner.js';
 import * as detector from '../engine/profile-detector.js';
 import * as agentUtils from '../utils/agent.js';
@@ -69,6 +69,19 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     const stdout = 'Prose before\n{"summary": "bare", "intents": []}\nProse after';
     const result = extractJsonFromOutput(stdout);
     expect(result).toEqual({ summary: 'bare', intents: [] });
+  });
+
+  it('wouldShrinkExistingFile guards native-write clobbers without blocking legit writes', () => {
+    // New file → allow (nothing to clobber).
+    expect(wouldShrinkExistingFile(null, 'anything')).toBe(false);
+    // Existing full file vs abbreviated/placeholder intent → skip the write.
+    const full = 'x'.repeat(15000);
+    expect(wouldShrinkExistingFile(full, '<full report — written to disk>')).toBe(true);
+    // Empty overwrite of an existing file → skip.
+    expect(wouldShrinkExistingFile(full, '')).toBe(true);
+    // Growth or equal-size rewrite → allow.
+    expect(wouldShrinkExistingFile('short', 'a much longer replacement body')).toBe(false);
+    expect(wouldShrinkExistingFile('same', 'same')).toBe(false);
   });
 
   it('unwraps Claude --output-format json envelope and extracts the inner payload', () => {
