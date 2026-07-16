@@ -123,6 +123,37 @@ describe("ShipOrchestrator", () => {
     expect(agent.dispatchToAgent).toHaveBeenCalledTimes(3); // IMPLEMENT + CODE_REVIEW + UAT_REVIEW
   });
 
+  it("runs git + agent in config.cwd (worktree) and honors a custom branchName", async () => {
+    vi.mocked(agent.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Success",
+      stderr: "",
+      durationS: 10,
+    });
+    vi.mocked(gateRunner.runGate)
+      .mockResolvedValueOnce({ passed: false, exitCode: 1, output: "Fail" }) // pre-flight → implement
+      .mockResolvedValue({ passed: true, exitCode: 0, output: "Pass" });
+
+    const wtConfig = {
+      ...config,
+      cwd: "/mock/worktree",
+      branchName: "feat/004-ship-loop-phase-01",
+    };
+    const orchestrator = new ShipOrchestrator(wtConfig);
+    await orchestrator.run();
+
+    // Branch created in the worktree, under the custom (per-phase) name.
+    expect(git.createBranch).toHaveBeenCalledWith(
+      "/mock/worktree",
+      "feat/004-ship-loop-phase-01",
+      "develop",
+    );
+    // The agent runs in the worktree, not process.cwd().
+    expect(agent.dispatchToAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ workDir: "/mock/worktree" }),
+    );
+  });
+
   it("should fail-fast if working tree is dirty", async () => {
     vi.mocked(git.isDirty).mockResolvedValue(true);
 
