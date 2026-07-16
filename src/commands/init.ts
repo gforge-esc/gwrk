@@ -314,9 +314,13 @@ export const initAction = async (options: any): Promise<void> => {
   fs.writeFileSync(configPath, JSON.stringify(projectConfig, null, 2));
   fs.writeFileSync(localConfigPath, JSON.stringify(personalConfig, null, 2));
 
-  // The personal file is per-machine and may hold secrets (Slack webhooks) —
-  // keep it out of git. The success message promises this; make it true.
-  ensureGitignoreEntry(cwd, ".gwrkrc.local.json");
+  // Keep out of git: the personal config (per-machine, may hold secrets) and
+  // gwrk's own runtime artifacts. `.runs/` matters most — the backend selector
+  // writes .runs/quota-cache.json before ship's dirty-tree check, so an
+  // untracked .runs/ makes ship refuse to run on its own output.
+  for (const entry of [".gwrkrc.local.json", ".runs/", ".gwrk/server.pid"]) {
+    ensureGitignoreEntry(cwd, entry);
+  }
 
   // Ship a tracked template teammates copy to .gwrkrc.local.json. Agents only —
   // never the Slack layer, since this file is committed.

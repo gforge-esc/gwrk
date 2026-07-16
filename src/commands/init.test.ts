@@ -199,6 +199,18 @@ describe("Init Command Tests", () => {
       );
     });
 
+    it("gitignores gwrk runtime artifacts (.runs/) so ship isn't blocked by its own output", async () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test" }));
+
+      await initAction({ nonInteractive: true });
+
+      const lines = fs
+        .readFileSync(path.join(tempDir, ".gitignore"), "utf-8")
+        .split("\n")
+        .map((l) => l.trim());
+      expect(lines).toContain(".runs/");
+    });
+
     it("does not duplicate an existing .gitignore entry", async () => {
       fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test" }));
       fs.writeFileSync(
