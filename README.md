@@ -8,6 +8,10 @@
 
 *Truth → Clarity → Throughput → Value.*
 
+[![release](https://img.shields.io/github/v/release/gforge-esc/gwrk?include_prereleases&label=alpha&color=ec4899)](https://github.com/gforge-esc/gwrk/releases/latest)
+[![CI](https://github.com/gforge-esc/gwrk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gforge-esc/gwrk/actions/workflows/ci.yml)
+[![license: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-3b82f6)](LICENSE)
+
 </div>
 
 ---
@@ -16,7 +20,7 @@
 
 **gwrk** is a Principal Engineer's operating system. It takes your architectural thinking — decomposition, interface contracts, dependency ordering, review rigor — and turns it into shipped code at previously impossible speed.
 
-> ⚠️ **Alpha Software** (`v1.0.0-alpha.0`) — gwrk is under active development. Some core workflows require files not yet bundled with the distribution (see [R004](docs/research/R004-shareability-readiness/draft.md)). Expect rough edges. Feedback and contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+> ⚠️ **Alpha Software** ([latest alpha release](https://github.com/gforge-esc/gwrk/releases/latest)) — gwrk is under active development. Some core workflows require files not yet bundled with the distribution (see [R004](docs/research/R004-shareability-readiness/draft.md)). Expect rough edges. Feedback and contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 📖 **[What is gwrk?](docs/product/WHAT_IS_GWRK.md)** — the full thesis, ontology, and architecture.
 
@@ -106,6 +110,15 @@ Operations
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — how to contribute
 - **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** — development setup
 - **[SECURITY.md](SECURITY.md)** — vulnerability reporting
+
+## Community & Roadmap
+
+gwrk is an early public alpha, and feedback shapes it directly.
+
+- 💬 **[Discussions](https://github.com/gforge-esc/gwrk/discussions)** — tell us what worked, what was rough, and what you'd like to see. Start in [🧪 Alpha Feedback](https://github.com/gforge-esc/gwrk/discussions/categories/alpha-feedback) or [💡 Ideas](https://github.com/gforge-esc/gwrk/discussions/categories/ideas).
+- 🗺️ **[Roadmap](https://github.com/orgs/gforge-esc/projects/5)** — where gwrk is headed (directional and outcome-led). Check it before requesting a feature.
+- 🐞 **[Issues](https://github.com/gforge-esc/gwrk/issues/new/choose)** — reproducible bugs and concrete requests.
+- 🧭 **[SUPPORT.md](SUPPORT.md)** — not sure where something goes? Start here.
 
 ## Stack
 

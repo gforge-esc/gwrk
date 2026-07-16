@@ -1,0 +1,49 @@
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for gwrk? 🦩
+
+        Lead with the **outcome** you're after, not the feature — gwrk's roadmap is outcome-led
+        (see [Foxtrot Charlie](https://github.com/gforge-esc/gwrk/blob/main/docs/product/FOXTROT-CHARLIE.md)).
+        Before adding a new one, **upvote** existing ideas you agree with and skim the
+        [roadmap](https://github.com/orgs/gforge-esc/projects/5) so we can gauge demand.
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What progress are you trying to make?
+      description: The job-to-be-done or outcome you want — the "why" behind the idea.
+      placeholder: "When I'm shipping a feature, I want to … so that …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed direction
+      description: How might gwrk help? Rough is fine — direction over spec.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pillar
+    attributes:
+      label: Which pillar does this touch?
+      options:
+        - Discovery (truth extraction)
+        - Definition (spec → plan → tests → tasks)
+        - Shipping (autonomous implementation)
+        - Accountability (metrics, compression)
+        - CLI / Operations
+        - Plugin System
+        - Cross-cutting
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else? (optional)
+      description: Examples, references, prior art, or mockups.
