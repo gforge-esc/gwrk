@@ -6,9 +6,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import crypto from "node:crypto";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { resolveProjectId } from "../utils/project-id.js";
 import { getDb } from "./index.js";
 
 export interface RunRecord {
@@ -54,16 +54,10 @@ export function startRun(
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
-  // Auto-resolve project_id from cwd if not provided
-  const projectId =
-    run.project_id ??
-    (() => {
-      try {
-        return crypto.createHash("md5").update(process.cwd()).digest("hex");
-      } catch {
-        return null;
-      }
-    })();
+  // Auto-resolve a stable project_id from cwd if not provided. Uses the shared
+  // resolver (git-remote/worktree aware) so runs recorded from a worktree
+  // correlate with the same project as the primary checkout.
+  const projectId = run.project_id ?? resolveProjectId(process.cwd());
 
   // Ensure project exists in projects table to satisfy FK constraint
   if (projectId) {
