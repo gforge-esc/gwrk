@@ -11,6 +11,8 @@ import { detectProfile } from "../engine/profile-detector.js";
 import { detectExtensions } from "../engine/extension-detector.js";
 import { syncRegistry } from "../engine/registry.js";
 import { setupSlack } from "./setup-slack.js";
+import { ensureSlackChannel } from "../server/slack-channel.js";
+import { seedSkills } from "../plugins/seed.js";
 import readline from "node:readline/promises";
 import { CommandError } from "../utils/signal.js";
 import { saveSetupState } from "../utils/setup-state.js";
@@ -229,12 +231,6 @@ export const initAction = async (options: any): Promise<void> => {
 
   // ── Layer 2: Project Setup ─────────────────────────────────────────
 
-  // 2. Idempotency Check
-  if (root === cwd && !isNonInteractive && !options.remote && !options.server) {
-    process.stdout.write("gwrk already initialized. Run with --non-interactive to update.\n");
-    return;
-  }
-
   // 3. Discovery Phase
   const profile = await detectProfile(cwd);
   const extensions = await detectExtensions();
@@ -247,6 +243,7 @@ export const initAction = async (options: any): Promise<void> => {
   const existingLocal = readJsonSafe(path.join(cwd, ".gwrkrc.local.json")) ?? {};
   const existingProject = existingTracked.project ?? {};
   const existingAgents = existingLocal.agents ?? existingTracked.agents;
+  const existingSlack = existingLocal.project?.slack ?? existingProject.slack;
   const existingStack =
     existingProject.stack && Object.keys(existingProject.stack).length > 0
       ? existingProject.stack
@@ -267,9 +264,17 @@ export const initAction = async (options: any): Promise<void> => {
       extensions.filter(e => e.detected).map(e => [e.id, {}])
     )
   };
+  
+  if (existingSlack) {
+    config.project.slack = existingSlack;
+  }
 
   if (!isNonInteractive) {
-    process.stdout.write("\n🦩 Welcome to gwrk init wizard!\n\n");
+    if (root === cwd) {
+      process.stdout.write("\n🦩 gwrk is already initialized here. Let's verify your setup.\n\n");
+    } else {
+      process.stdout.write("\n🦩 Welcome to gwrk init wizard!\n\n");
+    }
     
     config.project.name = await prompt("Project name", config.project.name);
     
@@ -287,13 +292,23 @@ export const initAction = async (options: any): Promise<void> => {
     if (await confirm("Perform workstation provisioning (SSH, gh auth)?")) {
       const { ssh, gh } = detectWorkstation();
       process.stdout.write(
-        ssh ? "✅ SSH keys detected.\n" : "⚠️ No SSH keys detected in ~/.ssh/\n",
+        ssh ? "✅ SSH keys detected.\n" : "⚠️ No SSH keys detected in ~/.ssh/. Generate one with: ssh-keygen -t ed25519 -C \"you@example.com\"\n",
       );
       process.stdout.write(
         gh
           ? "✅ GitHub CLI authenticated.\n"
           : "⚠️ GitHub CLI (gh) not authenticated. Run 'gh auth login'.\n",
       );
+      process.stdout.write(
+        "ℹ️  Note: If gwrk encounters file permission errors, ensure your Terminal has 'Full Disk Access' in macOS System Settings > Privacy & Security (TCC).\n"
+      );
+    }
+    
+    const slackChannel = await prompt("Slack channel for project notifications (leave blank to skip)", existingSlack?.channelId);
+    if (slackChannel) {
+      config.project.slack = { channelId: slackChannel };
+    } else {
+      delete config.project.slack;
     }
   }
 
@@ -307,6 +322,11 @@ export const initAction = async (options: any): Promise<void> => {
   if (deviceRole === "server" && (!isAgent || (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN))) {
     try {
       await setupSlack({ ...options, nonInteractive: isNonInteractive });
+      if (config.project.slack?.channelId) {
+        process.stdout.write(`Provisioning Slack channel ${config.project.slack.channelId}...\n`);
+        const channelId = await ensureSlackChannel(config.project.slack.channelId);
+        config.project.slack.channelId = channelId;
+      }
     } catch (e) {
       if (!isNonInteractive) {
         process.stdout.write("⚠️ Slack setup skipped or failed.\n");
@@ -315,13 +335,33 @@ export const initAction = async (options: any): Promise<void> => {
   }
 
   // 7. Scaffold Directories
-  const dirs = ["specs", "docs/architecture", "docs/decisions"];
+  const dirs = [
+    "specs",
+    "docs/architecture",
+    "docs/decisions",
+    ".gwrk/rules",
+    ".specify/templates"
+  ];
   for (const d of dirs) {
     const dirPath = path.join(cwd, d);
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
   }
+  
+  const globalPluginDirs = [
+    path.join(os.homedir(), ".gwrk", "plugins", "skills"),
+    path.join(os.homedir(), ".gwrk", "plugins", "agents"),
+    path.join(os.homedir(), ".gwrk", "plugins", "workflows")
+  ];
+  for (const d of globalPluginDirs) {
+    if (!fs.existsSync(d)) {
+      fs.mkdirSync(d, { recursive: true });
+    }
+  }
+
+  process.stdout.write("Seeding built-in skills and rules...\n");
+  await seedSkills();
 
   // 8. Write Config — split into project (tracked) and personal (gitignored).
   // Preserve any other tracked top-level keys the user had (extensions,
