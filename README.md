@@ -16,6 +16,8 @@
 
 **gwrk** is a Principal Engineer's operating system. It takes your architectural thinking — decomposition, interface contracts, dependency ordering, review rigor — and turns it into shipped code at previously impossible speed.
 
+> ⚠️ **Alpha Software** (`v1.0.0-alpha.0`) — gwrk is under active development. Some core workflows require files not yet bundled with the distribution (see [R004](docs/research/R004-shareability-readiness/draft.md)). Expect rough edges. Feedback and contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 📖 **[What is gwrk?](docs/product/WHAT_IS_GWRK.md)** — the full thesis, ontology, and architecture.
 
 ---
@@ -101,7 +103,9 @@ Operations
 - **[What is gwrk?](docs/product/WHAT_IS_GWRK.md)** — thesis, ontology, architecture
 - **[Foxtrot Charlie](docs/product/FOXTROT-CHARLIE.md)** — the operating model
 - **[ADR-009](docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md)** — domain ontology and project knowledge
-- **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** — contributing and development setup
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — how to contribute
+- **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** — development setup
+- **[SECURITY.md](SECURITY.md)** — vulnerability reporting
 
 ## Stack
 

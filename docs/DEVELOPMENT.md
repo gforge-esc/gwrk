@@ -42,18 +42,41 @@ docs/             # Architecture, PRD, ADRs, research
 
 ## Configuration
 
-gwrk uses `.gwrkrc.json` at the project root. All values are validated by Zod at startup — missing required config causes an immediate crash (Fail Fast).
+gwrk uses a three-layer config model. Each layer deep-merges over the previous one:
+
+| File | Tracked? | Purpose |
+|------|----------|---------|
+| `.gwrkrc.json` | ✅ Yes | Project identity — name, type, stack, layout, server defaults |
+| `.gwrkrc.local.json` | ❌ Gitignored | Personal agent preferences — define/implement agents, registry |
+| `~/.gwrk/config.json` | N/A | Machine-wide secrets — Slack tokens, webhook URLs, API keys |
+
+### Quick Setup
+
+```bash
+cp .gwrkrc.local.example.json .gwrkrc.local.json
+# Edit to set your preferred agents
+```
+
+Or run `gwrk init` which generates both files automatically.
+
+### Example `.gwrkrc.json` (tracked)
 
 ```jsonc
 {
-  "project": { "name": "my-project" },
+  "project": { "name": "my-project", "type": "nodejs" },
+  "server": { "port": 18790, "host": "localhost" }
+}
+```
+
+### Example `.gwrkrc.local.json` (gitignored)
+
+```jsonc
+{
   "agents": {
-    "define": "gemini",      // Agent for define workflows
-    "implement": "claude"    // Agent for ship/implement
-  },
-  "server": {
-    "port": 18790,
-    "host": "localhost"
+    "define": "claude",       // Your preferred agent for define workflows
+    "implement": "agy",       // Your preferred agent for ship/implement
+    "registry": { /* ... */ },
+    "fallbackOrder": ["agy", "claude"]
   }
 }
 ```

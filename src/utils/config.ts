@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { z } from "zod";
 import { DEFAULT_LOC_RATES } from "../engine/effort-defaults.js";
@@ -196,6 +197,64 @@ export const GwrkConfigSchema = z.object({
 
 export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;
 
+/**
+ * Deep-merge two plain objects. Overlay values win.
+ * - Objects are recursively merged.
+ * - Arrays and primitives in overlay replace base entirely.
+ * - Undefined overlay values are skipped (base preserved).
+ */
+// biome-ignore lint/suspicious/noExplicitAny: JSON merge utility operates on arbitrary config shapes
+export function deepMerge(base: Record<string, any>, overlay: Record<string, any>): Record<string, any> {
+  const result = { ...base };
+  for (const key of Object.keys(overlay)) {
+    const baseVal = base[key];
+    const overVal = overlay[key];
+    if (
+      overVal !== null &&
+      typeof overVal === "object" &&
+      !Array.isArray(overVal) &&
+      baseVal !== null &&
+      typeof baseVal === "object" &&
+      !Array.isArray(baseVal)
+    ) {
+      result[key] = deepMerge(baseVal, overVal);
+    } else {
+      result[key] = overVal;
+    }
+  }
+  return result;
+}
+
+/**
+ * Attempts to read and parse a JSON file. Returns null if file doesn't exist
+ * or contains invalid JSON (logged but non-fatal for overlay files).
+ */
+// biome-ignore lint/suspicious/noExplicitAny: JSON config parsing
+function tryReadJson(filePath: string, label: string): Record<string, any> | null {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch (error) {
+    console.error(`Warning: invalid JSON in ${label} at ${filePath}, skipping overlay`);
+    return null;
+  }
+}
+
+/**
+ * Three-layer config resolution:
+ *
+ * 1. `.gwrkrc.json` (project root, tracked) — project identity: name, type,
+ *    stack, layout, server defaults. Shared across team.
+ *
+ * 2. `.gwrkrc.local.json` (project root, gitignored) — personal per-project
+ *    overrides: agents.define, agents.implement, agents.registry. Each dev
+ *    picks their own agent without touching tracked files.
+ *
+ * 3. `~/.gwrk/config.json` (global home, never in any repo) — machine-wide
+ *    secrets and preferences: Slack tokens, webhook URLs, API keys.
+ *
+ * Merge order: project → local → global (later layers win via deepMerge).
+ */
 export function loadConfig(projectRoot: string): GwrkConfig {
   const configPath = path.join(projectRoot, ".gwrkrc.json");
 
@@ -205,12 +264,29 @@ export function loadConfig(projectRoot: string): GwrkConfig {
     );
   }
 
+  // Layer 1: Project config (required)
   // biome-ignore lint/suspicious/noExplicitAny: Parsed json configuration
   let raw: Record<string, any>;
   try {
     raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
   } catch (error) {
     throw new Error("Configuration error: invalid JSON in .gwrkrc.json");
+  }
+
+  // Layer 2: Personal per-project overrides (optional)
+  const localPath = path.join(projectRoot, ".gwrkrc.local.json");
+  const localOverrides = tryReadJson(localPath, ".gwrkrc.local.json");
+  if (localOverrides) {
+    raw = deepMerge(raw, localOverrides);
+  }
+
+  // Layer 3: Machine-wide global config (optional)
+  // GWRK_HOME overrides ~/.gwrk for testing and non-standard installations
+  const gwrkHome = process.env.GWRK_HOME || path.join(os.homedir(), ".gwrk");
+  const globalPath = path.join(gwrkHome, "config.json");
+  const globalOverrides = tryReadJson(globalPath, "~/.gwrk/config.json");
+  if (globalOverrides) {
+    raw = deepMerge(raw, globalOverrides);
   }
 
   // Inject environment variables into the raw object before parsing
