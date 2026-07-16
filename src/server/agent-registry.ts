@@ -3,8 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { z } from "zod";
+import { deepMerge } from "../utils/config.js";
 import { TaskClassification } from "./task-classifier.js";
 
 export const ModelEntrySchema = z.object({
@@ -65,7 +67,8 @@ export const AgentRegistrySchema = z.object({
 export type AgentRegistry = z.infer<typeof AgentRegistrySchema>;
 
 /**
- * Loads the agent registry from .gwrkrc.json.
+ * Loads the agent registry using three-layer config resolution.
+ * Project (.gwrkrc.json) → Personal (.gwrkrc.local.json) → Global (~/.gwrk/config.json).
  * Fail-fast on invalid or missing registry.
  */
 export function loadRegistry(
@@ -81,13 +84,32 @@ export function loadRegistry(
     return {} as AgentRegistry;
   }
 
-  let raw: any;
+  // biome-ignore lint/suspicious/noExplicitAny: Parsed json configuration
+  let raw: Record<string, any>;
   try {
     raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
   } catch (error) {
     console.error("Configuration error: invalid JSON in .gwrkrc.json");
     process.exit(1);
     return {} as AgentRegistry;
+  }
+
+  // Layer 2: Personal per-project overrides
+  const localPath = path.join(projectRoot, ".gwrkrc.local.json");
+  if (fs.existsSync(localPath)) {
+    try {
+      const local = JSON.parse(fs.readFileSync(localPath, "utf-8"));
+      raw = deepMerge(raw, local);
+    } catch { /* non-fatal */ }
+  }
+
+  // Layer 3: Machine-wide global config
+  const globalPath = path.join(os.homedir(), ".gwrk", "config.json");
+  if (fs.existsSync(globalPath)) {
+    try {
+      const global = JSON.parse(fs.readFileSync(globalPath, "utf-8"));
+      raw = deepMerge(raw, global);
+    } catch { /* non-fatal */ }
   }
 
   if (

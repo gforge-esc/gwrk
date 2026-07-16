@@ -228,9 +228,34 @@ export const initAction = async (options: any): Promise<void> => {
     }
   }
 
-  // 8. Write Config
+  // 8. Write Config — split into project (tracked) and personal (gitignored)
+  const projectConfig: Record<string, unknown> = {
+    project: {
+      name: config.project.name,
+      type: config.project.type,
+      stack: config.project.stack,
+      layout: config.project.layout,
+      architecture: config.project.architecture,
+      conventions: config.project.conventions,
+    },
+  };
+
+  const personalConfig: Record<string, unknown> = {
+    agents: config.agents,
+  };
+
+  // Slack config goes to personal (contains per-developer webhook prefs)
+  if (config.project.slack) {
+    (personalConfig as Record<string, unknown>).project = {
+      slack: config.project.slack,
+    };
+  }
+
   const configPath = path.join(cwd, ".gwrkrc.json");
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  const localConfigPath = path.join(cwd, ".gwrkrc.local.json");
+
+  fs.writeFileSync(configPath, JSON.stringify(projectConfig, null, 2));
+  fs.writeFileSync(localConfigPath, JSON.stringify(personalConfig, null, 2));
 
   // 9. Output
   if (isAgent) {
@@ -244,7 +269,8 @@ export const initAction = async (options: any): Promise<void> => {
     process.stdout.write(JSON.stringify(output, null, 2) + "\n");
   } else {
     process.stdout.write("\n✅ gwrk initialized successfully.\n");
-    process.stdout.write(`Config written to ${configPath}\n`);
+    process.stdout.write(`Project config written to ${configPath}\n`);
+    process.stdout.write(`Agent config written to ${localConfigPath} (gitignored — personal to your machine)\n`);
     process.stdout.write("Next steps:\n");
     process.stdout.write("  gwrk define spec my-feature\n");
     process.stdout.write("  gwrk status\n\n");

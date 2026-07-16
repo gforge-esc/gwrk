@@ -1,0 +1,52 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make gwrk better? We'd love to hear it.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What pain point or gap does this address?
+      placeholder: "I find it frustrating when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any other approaches you've thought about?
+
+  - type: dropdown
+    id: pillar
+    attributes:
+      label: Which pillar does this affect?
+      options:
+        - Discovery (truth extraction)
+        - Definition (spec → plan → tests → tasks)
+        - Shipping (autonomous implementation)
+        - Accountability (metrics, compression)
+        - CLI / Operations
+        - Plugin System
+        - Cross-cutting
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Screenshots, mockups, references, or any other context.
