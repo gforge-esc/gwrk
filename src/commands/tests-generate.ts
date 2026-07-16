@@ -87,7 +87,6 @@ Examples:
         // tests for a new phase, not regenerating existing ones.
         const rawPhase = phaseArg || options.phase;
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
-        const runsManifestDir = path.join(featureDir, ".gwrk", "runs");
         const hasTestFiles = (() => {
           try {
             const srcDir = path.join(projectRoot, "src");
@@ -103,10 +102,14 @@ Examples:
           }
         })();
 
+        // NOTE: do NOT treat specs/<feature>/.gwrk/runs/ as evidence of tests.
+        // That directory holds an execution manifest for EVERY define stage
+        // (spec, plan, tests…), so it exists after `define spec`/`define plan`
+        // on every feature — using it here blocked the first, legitimate
+        // `define tests` run for any feature that had been specced/planned.
+        // The real test-stage signals are gap-matrix.md and actual test files.
         const testsAlreadyExist =
-          fs.existsSync(gapMatrixPath) ||
-          fs.existsSync(runsManifestDir) ||
-          hasTestFiles;
+          fs.existsSync(gapMatrixPath) || hasTestFiles;
 
         if (testsAlreadyExist && !rawPhase && !options.force && !options.dryRun) {
           blocked(
