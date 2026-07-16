@@ -1,0 +1,21 @@
+{
+  "agents": {
+    "define": "gemini",
+    "implement": "gemini",
+    "throttleMs": 15000,
+    "registry": {
+      "gemini": {
+        "type": "local-cli",
+        "command": "gemini",
+        "discoveryMethod": "manual",
+        "quotaProbe": {
+          "method": "optimistic",
+          "cacheTTLMinutes": 5
+        },
+        "maxConcurrent": 2,
+        "models": []
+      }
+    },
+    "fallbackOrder": ["gemini"]
+  }
+}

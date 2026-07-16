@@ -53,7 +53,7 @@ gwrk uses a three-layer config model. Each layer deep-merges over the previous o
 ### Quick Setup
 
 ```bash
-cp .gwrkrc.local.example.json .gwrkrc.local.json
+cp .gwrkrc.local.json.example .gwrkrc.local.json
 # Edit to set your preferred agents
 ```
 

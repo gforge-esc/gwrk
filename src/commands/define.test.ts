@@ -39,6 +39,9 @@ vi.mock("../engine/plan-store.js", () => ({
     handleDefineComplete: vi.fn(),
   })),
 }));
+vi.mock("../utils/resolve-feature.js", () => ({
+  resolveFeature: vi.fn((feature: string) => feature),
+}));
 
 describe("defineCommand — Define Until Solid wrapper", () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -52,7 +55,7 @@ describe("defineCommand — Define Until Solid wrapper", () => {
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`process.exit(${code})`);
     });
-    vi.spyOn(process, "cwd").mockReturnValue("/Users/gonzo/Code/gwrk");
+    vi.spyOn(process, "cwd").mockReturnValue("/repo/gwrk");
 
     vi.mocked(loadConfig).mockReturnValue({
       project: { name: "gwrk" },

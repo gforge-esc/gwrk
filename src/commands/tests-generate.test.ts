@@ -120,6 +120,40 @@ describe("testsGenerateCommand", () => {
     );
   });
 
+  it("does NOT block on a pre-existing .gwrk/runs/ dir (left by define spec/plan)", async () => {
+    // Simulate a feature that has been through `define spec`/`define plan`:
+    // its .gwrk/runs/ execution-manifest dir exists, but no tests do yet.
+    const runsDir = path.join(featureDir, ".gwrk", "runs");
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(path.join(runsDir, "x_define plan_p00_claude.json"), "{}");
+    mockExecuteWorkflow.mockImplementation(async () => {
+      fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+      return { summary: "Success", intents: [], summaries: [] };
+    });
+
+    // No --force: must proceed (not blocked) and dispatch the workflow.
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "tests", "test-feature"]);
+
+    expect(mockExecuteWorkflow).toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("STILL blocks (no --force) when real test artifacts exist (gap-matrix.md)", async () => {
+    // A genuine test-stage artifact — the guard must still refuse without --force.
+    fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");
+
+    process.exitCode = 0;
+    try {
+      await program.parseAsync(["node", "test", "tests", "test-feature"]);
+    } catch {
+      // withSignal may surface the CommandError; exitCode is the contract.
+    }
+
+    expect(process.exitCode).toBe(1);
+    expect(mockExecuteWorkflow).not.toHaveBeenCalled();
+  });
+
   it("US-019/FR-019: SHOULD write execution manifest after success", async () => {
     mockExecuteWorkflow.mockImplementation(async () => {
       fs.writeFileSync(path.join(featureDir, "gap-matrix.md"), "| AC | Test File |\n");

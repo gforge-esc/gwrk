@@ -47,9 +47,9 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
   let section: "none" | "files" | "done_when" | "test_strategy" = "none";
 
   for (const line of lines) {
-    // ### Phase N: Title
+    // ### Phase N: Title  (separator may be a colon, em-dash, en-dash, or hyphen)
     const phaseMatch = line.match(
-      /^###\s+Phase\s+(\d+):\s+(.+)/,
+      /^###\s+Phase\s+(\d+)\s*[:—–-]\s+(.+)/,
     );
     if (phaseMatch) {
       if (currentPhase) phases.push(currentPhase);

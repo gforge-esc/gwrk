@@ -162,7 +162,10 @@ outputSchema:
 
     const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
     expect(call.prompt).toContain("Plan implementation for feature");
-    expect(call.prompt).not.toContain("AMEND");
+    // The base workflow template documents the "AMEND existing plan" trigger,
+    // so assert on "Amendment instructions:" — a string unique to the injected
+    // amend directive (define-plan.ts) and absent from the template.
+    expect(call.prompt).not.toContain("Amendment instructions:");
   });
 
   it("should treat template-only plan.md as new (not amend)", async () => {
@@ -176,6 +179,6 @@ outputSchema:
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
 
     const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
-    expect(call.prompt).not.toContain("AMEND");
+    expect(call.prompt).not.toContain("Amendment instructions:");
   });
 });
