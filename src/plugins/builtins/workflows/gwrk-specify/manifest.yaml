@@ -2,6 +2,10 @@ type: workflow
 name: gwrk-specify
 version: 0.1.0
 description: Create a feature specification from a natural language description.
+# The {summary, intents} contract IS the deliverable here, and the agent may
+# otherwise spend its single headless turn asking clarifying questions. Enforce
+# the schema at the model level (claude --json-schema) so it produces the spec.
+enforceOutputSchema: true
 outputSchema:
   type: object
   properties:

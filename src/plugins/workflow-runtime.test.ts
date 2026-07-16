@@ -175,4 +175,76 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     expect(result.summary).toContain('Agent completed successfully (native execution, no JSON intents)');
     expect(execSync).toHaveBeenCalledWith("git status --porcelain", expect.anything());
   });
+
+  it('recovers native success when Claude exhausts structured-output retries but wrote artifacts (exit 1)', async () => {
+    const mockManifest = {
+      name: 'test-workflow', type: 'workflow',
+      outputSchema: { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } }
+    };
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({ manifest: mockManifest as any, path: '/mock/plugin/path' });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 1,
+      stdout: JSON.stringify({ type: 'result', subtype: 'error_max_structured_output_retries', is_error: true }),
+      stderr: 'Warning: no stdin data received in 3s',
+      durationS: 1
+    });
+    vi.mocked(execSync).mockReturnValue(Buffer.from(' M specs/001/plan.md'));
+
+    const runtime = new WorkflowRuntime();
+    const result = await runtime.executeWorkflow('test-workflow', 'input data', { projectRoot: '/mock/root' });
+
+    expect(result.summary).toContain('native execution');
+    expect(result.intents).toEqual([]);
+  });
+
+  it('still fails on structured-output exhaustion when NO artifacts were written', async () => {
+    const mockManifest = {
+      name: 'test-workflow', type: 'workflow',
+      outputSchema: { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } }
+    };
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({ manifest: mockManifest as any, path: '/mock/plugin/path' });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 1,
+      stdout: JSON.stringify({ type: 'result', subtype: 'error_max_structured_output_retries', is_error: true }),
+      stderr: '',
+      durationS: 1
+    });
+    vi.mocked(execSync).mockReturnValue(Buffer.from('')); // clean tree — nothing written
+
+    const runtime = new WorkflowRuntime();
+    await expect(
+      runtime.executeWorkflow('test-workflow', 'input data', { projectRoot: '/mock/root' })
+    ).rejects.toThrow(/exit code 1/);
+  });
+
+  it('passes outputSchema to the agent only when the manifest sets enforceOutputSchema', async () => {
+    const outputSchema = { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } };
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: 'enforced-wf', type: 'workflow', enforceOutputSchema: true, outputSchema } as any,
+      path: '/mock/plugin/path'
+    });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({ exitCode: 0, stdout: JSON.stringify({ summary: 'ok', intents: [] }), stderr: '', durationS: 1 });
+
+    const runtime = new WorkflowRuntime();
+    await runtime.executeWorkflow('enforced-wf', 'input', { projectRoot: '/mock/root' });
+
+    expect(agentUtils.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ outputSchema }));
+  });
+
+  it('does NOT pass outputSchema when the manifest does not enforce it (content-heavy workflows)', async () => {
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: 'plan-wf', type: 'workflow', outputSchema: { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } } } as any,
+      path: '/mock/plugin/path'
+    });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({ exitCode: 0, stdout: JSON.stringify({ summary: 'ok', intents: [] }), stderr: '', durationS: 1 });
+
+    const runtime = new WorkflowRuntime();
+    await runtime.executeWorkflow('plan-wf', 'input', { projectRoot: '/mock/root' });
+
+    expect(agentUtils.dispatchToAgent).toHaveBeenCalledWith(expect.objectContaining({ outputSchema: undefined }));
+  });
 });
