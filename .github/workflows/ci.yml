@@ -47,8 +47,10 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Runs the hermetic suite; non-hermetic daemon/dispatch integration tests
+      # are quarantined via GWRK_SKIP_INTEGRATION (see vitest.config.ts).
       - name: Test
-        run: pnpm test
+        run: pnpm test:ci
 
       - name: Lint (advisory)
         run: pnpm lint

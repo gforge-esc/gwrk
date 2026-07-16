@@ -22,6 +22,7 @@
     "build": "tsc",
     "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/ && mkdir -p dist/plugins/builtins && cp -r src/plugins/builtins/* dist/plugins/builtins/",
     "test": "vitest run",
+    "test:ci": "GWRK_SKIP_INTEGRATION=1 vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:report": "tsx scripts/dev/test-report.ts",

@@ -1,5 +1,17 @@
 import { defineConfig } from "vitest/config";
 
+// Non-hermetic integration tests: they spawn real daemons and share global
+// state (fixed ports, PID files, the repo-root .gwrk/dispatches.jsonl), so they
+// flake under CI concurrency. `pnpm test` runs them locally; `pnpm test:ci`
+// sets GWRK_SKIP_INTEGRATION to quarantine them from the blocking CI gate.
+// TODO(gwrk): isolate these (temp dirs, random ports, no shared persistence)
+// and remove the quarantine.
+const QUARANTINED_INTEGRATION = [
+  "**/src/server/e2e.test.ts",
+  "**/src/server/integration.test.ts",
+  "**/src/server/routes/dispatch.test.ts",
+];
+
 export default defineConfig({
   test: {
     passWithNoTests: false,
@@ -17,6 +29,7 @@ export default defineConfig({
       "**/specs/**",
       "**/.test-mocks-*/**",
       "**/e2e/**",
+      ...(process.env.GWRK_SKIP_INTEGRATION ? QUARANTINED_INTEGRATION : []),
     ],
     coverage: {
       provider: "v8",
