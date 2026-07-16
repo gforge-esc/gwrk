@@ -49,6 +49,7 @@ import {
 } from "../utils/state.js";
 
 import { getBackendSelector } from "../server/index.js";
+import { SandboxManager } from "../server/sandbox.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
@@ -95,6 +96,7 @@ async function shipPhase(
   cwd: string,
   selectedModel?: string,
   selectedCommand?: string,
+  overrides: { stateRoot?: string; branchName?: string } = {},
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
   const feature = resolveFeature(featureInput, cwd);
@@ -247,6 +249,11 @@ async function shipPhase(
           maxIterations: Number.parseInt(opts.maxIterations as string),
           ciTimeout: Number.parseInt(opts.ciTimeout as string),
           cwd,
+          // Worktree mode: crash-recovery state lives in the primary checkout
+          // (survives worktree teardown); the branch is the per-feature ship
+          // branch created for the worktree.
+          stateRoot: overrides.stateRoot,
+          branchName: overrides.branchName,
           dryRun: !!opts.dryRun,
           selectedModel,
           selectedCommand,
@@ -467,6 +474,10 @@ Examples:
     "Resume from a specific stage (BRANCH_SETUP, IMPLEMENT, etc.)",
   )
   .option("--force", "Force ship even if phase is already complete")
+  .option(
+    "--worktree",
+    "Ship in an isolated git worktree (enables running features in parallel without collision)",
+  )
   .action(
     async (
       featureArg: string,
@@ -652,6 +663,12 @@ Examples:
               );
             }
           }
+          if (opts.worktree) {
+            dryRunFmt(
+              `create worktree .runs/sandboxes/${feature}-ship-<uuid> on feat/${feature} (base develop)` +
+                (config.worktree?.setup ? `; run "${config.worktree.setup}"` : ""),
+            );
+          }
           const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
           for (const p of phases) {
             dryRunFmt(`${scriptPath} ${feature} ${p}`);
@@ -659,44 +676,87 @@ Examples:
           return;
         }
 
-        // Ship each phase sequentially — stop on first failure
+        // Ship each phase sequentially — stop on first failure.
         const shipStartTime = Date.now();
         let finalExitCode = 0;
-        for (const p of phases) {
-          let currentBackend = opts.agent as string as AgentBackendId;
-          let selectedModel: string | undefined;
-          let selectedCommand: string | undefined;
 
-          if (!currentBackend) {
-            const selector = getBackendSelector(cwd);
-            const selection = await selector.selectBackend({
-              runId: `ship-${feature}-${Date.now()}`,
+        // --worktree: isolate the whole feature in a git worktree so multiple
+        // features can ship in parallel without colliding on the working tree.
+        // The orchestrator runs in the worktree (git/build/test/agent), keeps
+        // crash-recovery state in the primary checkout, and ships on the
+        // feature branch. Phases stay sequential within the feature.
+        let shipCwd = cwd;
+        let overrides: { stateRoot?: string; branchName?: string } = {};
+        let sandbox: SandboxManager | undefined;
+        let worktreeDir: string | undefined;
+        const shipBranch = `feat/${feature}`;
+
+        if (opts.worktree) {
+          sandbox = new SandboxManager(cwd);
+          console.log(`  ▸ creating worktree for ${feature} (${shipBranch})`);
+          worktreeDir = await sandbox.createSandbox({
+            featureId: feature,
+            phaseId: "all",
+            taskId: "ship",
+            backend: (opts.agent as AgentBackendId) || config.agents.implement,
+            projectRoot: cwd,
+            baseBranch: "develop",
+            branchName: shipBranch,
+            setup: config.worktree?.setup,
+          });
+          shipCwd = worktreeDir;
+          overrides = { stateRoot: cwd, branchName: shipBranch };
+          console.log(`  ✓ worktree ready: ${worktreeDir}`);
+        }
+
+        try {
+          for (const p of phases) {
+            let currentBackend = opts.agent as string as AgentBackendId;
+            let selectedModel: string | undefined;
+            let selectedCommand: string | undefined;
+
+            if (!currentBackend) {
+              // Select on the primary checkout so the quota cache/cooldown is
+              // shared, not scattered across ephemeral worktrees.
+              const selector = getBackendSelector(cwd);
+              const selection = await selector.selectBackend({
+                runId: `ship-${feature}-${Date.now()}`,
+                feature,
+                phase: `phase-${p.padStart(2, "0")}`,
+                taskType: "implement",
+                language: "typescript",
+                taskSP: 1, // Default for orchestrator
+              });
+              currentBackend = selection.backend as AgentBackendId;
+              selectedModel = selection.model;
+              selectedCommand = selection.command;
+              console.log(
+                `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
+              );
+            }
+
+            const exitCode = await shipPhase(
               feature,
-              phase: `phase-${p.padStart(2, "0")}`,
-              taskType: "implement",
-              language: "typescript",
-              taskSP: 1, // Default for orchestrator
-            });
-            currentBackend = selection.backend as AgentBackendId;
-            selectedModel = selection.model;
-            selectedCommand = selection.command;
-            console.log(
-              `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
+              p,
+              currentBackend,
+              opts,
+              shipCwd,
+              selectedModel,
+              selectedCommand,
+              overrides,
             );
+            if (exitCode !== 0) {
+              finalExitCode = exitCode;
+              break;
+            }
           }
-
-          const exitCode = await shipPhase(
-            feature,
-            p,
-            currentBackend,
-            opts,
-            cwd,
-            selectedModel,
-            selectedCommand,
-          );
-          if (exitCode !== 0) {
-            finalExitCode = exitCode;
-            break;
+        } finally {
+          if (sandbox && worktreeDir) {
+            console.log(`  ▸ removing worktree ${worktreeDir}`);
+            // Ship owns commit/push/PR via PR_CI — destroy only removes the tree.
+            await sandbox.destroySandbox(worktreeDir, feature, {
+              autoCommitPush: false,
+            });
           }
         }
 

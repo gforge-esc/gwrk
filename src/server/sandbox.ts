@@ -18,6 +18,12 @@ interface SandboxOptions {
   /** Base branch for the worktree. Defaults to `feature/<featureId>-wip`. */
   baseBranch?: string;
   /**
+   * Branch to check out in the worktree. Defaults to the daemon's
+   * `sandbox/<name>`. Ship passes `feat/<featureId>` so the PR head matches
+   * harvest's branch parser. If it already exists, it is checked out (re-ship).
+   */
+  branchName?: string;
+  /**
    * Command run inside the freshly-created worktree to self-provision it
    * (deps, per-worktree .env/ports), e.g. `make worktree:init`. From
    * `.gwrkrc` `worktree.setup`. A fresh worktree has only the committed tree.
@@ -56,24 +62,44 @@ export class SandboxManager {
     // Spec format: .runs/sandboxes/<feature>-<task>-<uuid>/
     const sandboxName = `${featureId}-${taskId}-${uuid}`;
     const workDir = path.join(this.runsDir, sandboxName);
-    const branchName = `sandbox/${sandboxName}`;
+    // The worktree's branch. Defaults to the daemon's per-task sandbox branch;
+    // ship passes its own `feat/<feature>` so the PR head matches harvest's
+    // branch parser.
+    const branchName = opts.branchName ?? `sandbox/${sandboxName}`;
 
     if (!fs.existsSync(this.runsDir)) {
       fs.mkdirSync(this.runsDir, { recursive: true });
     }
 
-    // Create a new worktree with a new branch
-    // git worktree add -b <new-branch> <path> <base-branch>
     const baseBranch = opts.baseBranch ?? `feature/${featureId}-wip`;
 
+    // Re-ship safe: if the branch already exists, check it out into the new
+    // worktree instead of failing on `-b`.
+    let branchExists = false;
     try {
-      // First ensure the base branch exists locally or we can't create a worktree from it
-      execSync(`git branch --list ${baseBranch}`, { cwd: projectRoot });
-
-      execSync(`git worktree add -b ${branchName} ${workDir} ${baseBranch}`, {
+      execSync(`git rev-parse --verify --quiet ${branchName}`, {
         cwd: projectRoot,
         stdio: "pipe",
       });
+      branchExists = true;
+    } catch {
+      branchExists = false;
+    }
+
+    try {
+      if (branchExists) {
+        execSync(`git worktree add ${workDir} ${branchName}`, {
+          cwd: projectRoot,
+          stdio: "pipe",
+        });
+      } else {
+        // Ensure the base branch exists; otherwise fall back to current HEAD.
+        execSync(`git branch --list ${baseBranch}`, { cwd: projectRoot });
+        execSync(`git worktree add -b ${branchName} ${workDir} ${baseBranch}`, {
+          cwd: projectRoot,
+          stdio: "pipe",
+        });
+      }
     } catch (e: unknown) {
       // Fallback to current branch if baseBranch doesn't exist (though it should in gwrk flow)
       try {

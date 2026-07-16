@@ -30,6 +30,15 @@ describe("SandboxManager (Git Worktree)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sandboxManager = new SandboxManager("/test/root");
+    // Default: the ship branch does not exist yet → `git rev-parse --verify`
+    // exits non-zero (throws), so createSandbox takes the `-b` (new-branch)
+    // path. Tests that exercise re-ship override this.
+    (execSync as Mock).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("rev-parse --verify")) {
+        throw new Error("fatal: unknown revision");
+      }
+      return "";
+    });
   });
 
   it("FR-002: should create a git worktree sandbox", async () => {
@@ -172,6 +181,54 @@ describe("SandboxManager (Git Worktree)", () => {
 
     expect(execSync).toHaveBeenCalledWith(
       expect.stringMatching(/git worktree add -b sandbox\/.+ .+ develop$/),
+      expect.any(Object),
+    );
+  });
+
+  it("PR-6: creates the worktree on a provided ship branch (feat/<feature>)", async () => {
+    (fs.existsSync as Mock).mockReturnValue(false);
+
+    await sandboxManager.createSandbox({
+      featureId: "001-platform-foundation",
+      phaseId: "all",
+      taskId: "ship",
+      backend: "claude",
+      projectRoot: "/test/root",
+      baseBranch: "develop",
+      branchName: "feat/001-platform-foundation",
+    });
+
+    expect(execSync).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /git worktree add -b feat\/001-platform-foundation \S+ develop$/,
+      ),
+      expect.any(Object),
+    );
+  });
+
+  it("PR-6: re-ship checks out the existing ship branch into the worktree", async () => {
+    (fs.existsSync as Mock).mockReturnValue(false);
+    // Branch already exists → rev-parse --verify succeeds (no throw).
+    (execSync as Mock).mockImplementation(() => "");
+
+    await sandboxManager.createSandbox({
+      featureId: "001-platform-foundation",
+      phaseId: "all",
+      taskId: "ship",
+      backend: "claude",
+      projectRoot: "/test/root",
+      branchName: "feat/001-platform-foundation",
+    });
+
+    // Checked out into the worktree without -b (no new branch).
+    expect(execSync).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /git worktree add \S+ feat\/001-platform-foundation$/,
+      ),
+      expect.any(Object),
+    );
+    expect(execSync).not.toHaveBeenCalledWith(
+      expect.stringContaining("git worktree add -b feat/001-platform-foundation"),
       expect.any(Object),
     );
   });
