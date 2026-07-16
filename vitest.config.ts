@@ -12,7 +12,7 @@ const QUARANTINED_INTEGRATION = [
   "**/src/server/integration.test.ts",
   "**/src/server/routes/dispatch.test.ts",
   // Slow CLI-spawn suites: node startup latency on CI blows the worker-RPC.
-  "**/src/cli.ux.test.ts",
+  // (cli.ux is now in-process and un-quarantined — PR-7.)
   "**/src/cli.pulse.e2e.test.ts",
   // Other CI-hostile integration tests (carried from develop #96).
   "**/src/**/notify.test.ts",
