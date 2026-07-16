@@ -4,8 +4,6 @@
 
 import fastify from "fastify";
 import type { GwrkConfig } from "../utils/config.js";
-import { LocalInvocationStrategy } from "./backends/invocation-strategy.js";
-import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
 import { githubWebhookPlugin } from "./github.js";
@@ -63,20 +61,7 @@ export async function startServer(
   const sandbox = new SandboxManager();
 
   const git = new GitManager(projectRoot);
-  const invocationStrategy = new LocalInvocationStrategy();
-  const orchestrator = new DispatchOrchestrator(
-    config,
-    sandbox,
-    invocationStrategy,
-  );
-  const queue = new DispatchQueue(
-    config,
-    monitor,
-    sandbox,
-    git,
-    orchestrator,
-    projectRoot,
-  );
+  const queue = new DispatchQueue(config, monitor, sandbox, projectRoot);
 
   const lifecycle = new LifecycleMonitor(config);
   const network = new NetworkMonitor(config);

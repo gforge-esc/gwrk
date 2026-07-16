@@ -3,17 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import * as crypto from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { finishRun, startRun } from "../db/runs.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
-import type { SlackEvent } from "./slack-presence.js";
 
-import { compileContext } from "./context.js";
-import type { DispatchOrchestrator } from "./dispatch-orchestrator.js";
-import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
@@ -28,6 +23,19 @@ export interface DispatchRequest {
   parallel?: boolean; // NEW: Enable parallel dispatch
 }
 
+/**
+ * DispatchQueue — the daemon's entry point into the unified ship engine.
+ *
+ * A dispatch is a **feature-phase**: the queue isolates it in a git worktree
+ * and drives the SAME `ShipOrchestrator` the CLI (`gwrk ship`) uses, running
+ * the full lifecycle (branch → implement → gates → review → PR to develop).
+ * Concurrency is across feature-phases, bounded by `parallelism.local.maxClones`
+ * — the queue's own active-ship gate, which replaced `DispatchOrchestrator`'s
+ * bespoke per-task Semaphore fan-out (PR-8).
+ *
+ * The daemon does NOT merge locally: the engine opens the PR and harvest
+ * finalizes post-merge from GitHub (the ship↔harvest seam, PR-3).
+ */
 export class DispatchQueue {
   private queue: DispatchRecord[] = [];
   private active: DispatchRecord[] = [];
@@ -38,8 +46,6 @@ export class DispatchQueue {
     private config: GwrkConfig,
     private monitor: SystemMonitor,
     private sandbox: SandboxManager,
-    private git: GitManager,
-    private orchestrator: DispatchOrchestrator,
     private projectRoot: string,
   ) {}
 
@@ -50,6 +56,13 @@ export class DispatchQueue {
   resume() {
     this.paused = false;
     this.processNext();
+  }
+
+  /** Ship branch for a feature-phase. Per-phase (`feat/<feature>-phase-NN`) so
+   * concurrent phases of one feature never collide on a branch/worktree, and so
+   * harvest's branch parser (`parseFeatureBranch`) recovers feature + phase. */
+  private shipBranch(featureId: string, phaseId: string): string {
+    return `feat/${featureId}-${phaseId}`;
   }
 
   enqueue(request: DispatchRequest): DispatchRecord {
@@ -87,11 +100,10 @@ export class DispatchQueue {
       phaseId: request.phaseId,
       backend: request.backend || this.config.agents.implement,
       status: "queued",
-      branchName: `phase/${request.featureId}-${request.phaseId}`,
+      branchName: this.shipBranch(request.featureId, request.phaseId),
       attempts: [],
       tasks,
       createdAt: new Date().toISOString(),
-      workDir: request.parallel ? undefined : "", // Mark if parallel or single
     };
 
     this.queue.push(record);
@@ -112,12 +124,10 @@ export class DispatchQueue {
       return;
     }
 
-    // Capacity check: count active sandboxes instead of just active phase records
-    const activeSandboxCount = this.active.reduce(
-      (acc, r) => acc + r.tasks.filter((t) => t.status === "running").length,
-      0,
-    );
-    if (activeSandboxCount >= this.config.parallelism.local.maxClones) {
+    // Capacity: each active record is one feature-phase ship in its own
+    // worktree. Cap concurrent ships at maxClones — this is the queue's ship
+    // gate that superseded DispatchOrchestrator's per-task Semaphore (PR-8).
+    if (this.active.length >= this.config.parallelism.local.maxClones) {
       return;
     }
 
@@ -139,13 +149,12 @@ export class DispatchQueue {
       startedAt: new Date().toISOString(),
     };
 
-    const taskId = record.tasks.length === 1 ? record.tasks[0].id : "all";
     attempt.runId = startRun({
       feature_id: record.featureId,
       phase_id: record.phaseId,
-      command: `gwrk ship implement ${record.featureId} --phase ${record.phaseId}${taskId !== "all" ? ` --task ${taskId}` : ""}`,
+      command: `gwrk ship ${record.featureId} ${record.phaseId}`,
       agent_backend: record.backend,
-      workflow: "implement",
+      workflow: "work-until-done",
     });
 
     record.attempts.push(attempt);
@@ -153,53 +162,55 @@ export class DispatchQueue {
     // Foxtrot Charlie: No phaseStart notification.
     // PE started the dispatch — they know. Only bless messages.
 
+    const shipBranch = this.shipBranch(record.featureId, record.phaseId);
+
     try {
-      // 1. Prepare Git
-      this.git.createPhaseBranch(record.featureId, record.phaseId);
+      // Isolate the feature-phase in a git worktree and drive the SAME unified
+      // ShipOrchestrator the CLI uses. The orchestrator owns branch setup,
+      // implement, build/test gates, review and the PR (→ develop). The daemon
+      // only supplies the isolated worktree and records the outcome; there is
+      // NO local merge-back — harvest finalizes post-merge from GitHub.
+      const worktreeDir = await this.sandbox.createSandbox({
+        featureId: record.featureId,
+        phaseId: record.phaseId,
+        taskId: "ship",
+        backend: record.backend,
+        projectRoot: this.projectRoot,
+        baseBranch: "develop",
+        branchName: shipBranch,
+        setup: this.config.worktree?.setup,
+      });
+      record.workDir = worktreeDir;
+      record.branchName = shipBranch;
+      persistDispatch(record);
 
-      // 2. Prepare Context
-      const context = compileContext(
-        this.projectRoot,
-        record.featureId,
-        record.phaseId,
+      const orchestrator = new ShipOrchestrator({
+        featureId: record.featureId,
+        phaseId: record.phaseId,
+        backend: record.backend,
+        maxIterations: 3,
+        ciTimeout: 30,
+        cwd: worktreeDir,
+        // Crash-recovery state lives in the primary checkout so it survives
+        // worktree teardown; ship on the per-feature-phase branch.
+        stateRoot: this.projectRoot,
+        branchName: shipBranch,
+        geminiModel: this.config.agents.gemini?.model,
+        geminiFailbackModels: this.config.agents.gemini?.failbackModels,
+      });
+
+      const exitCode = await orchestrator.run();
+
+      // Surface PR metadata for the review-ready notification.
+      const result = orchestrator.getResult();
+      if (result.prNumber) record.prNumber = result.prNumber;
+      if (result.prUrl) record.prUrl = result.prUrl;
+
+      await this.handleCompletion(
+        record.id,
+        exitCode,
+        exitCode === 0 ? "" : `ShipOrchestrator exited with code ${exitCode}`,
       );
-      const contextPath = path.join(
-        this.projectRoot,
-        ".gwrk",
-        "phase-context.md",
-      );
-      fs.mkdirSync(path.dirname(contextPath), { recursive: true });
-      fs.writeFileSync(contextPath, context);
-
-      // 3. Dispatch Tasks
-      if (record.tasks.length > 0) {
-        const results = await this.orchestrator.dispatchPhase({
-          featureId: record.featureId,
-          phaseId: record.phaseId,
-          tasks: record.tasks.map((t) => ({ id: t.id, backend: t.backend })),
-          // Use config limit by default, orchestrator handles it
-        });
-
-        // Update task records in dispatch record
-        for (const res of results) {
-          const task = record.tasks.find((t) => t.id === res.id);
-          if (task) {
-            Object.assign(task, res);
-          }
-        }
-
-        const anyFailed = results.some((r) => r.status === "failed");
-        await this.handleCompletion(
-          record.id,
-          anyFailed ? 1 : 0,
-          anyFailed ? "Some tasks failed" : "",
-        );
-      } else {
-        // Fallback for phase-level implementation (Phase 06)
-        // Simulate Agent Execution (for now)
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        await this.handleCompletion(record.id, 0, "");
-      }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : String(e);
       await this.handleCompletion(record.id, 1, errorMessage);
@@ -219,7 +230,7 @@ export class DispatchQueue {
     attempt.exitCode = exitCode;
     attempt.stderr = stderr;
 
-    // Only update tasks if they haven't been updated by orchestrator
+    // Reflect the ship outcome on any task records (status dashboards read them).
     for (const task of record.tasks) {
       if (task.status === "running" || task.status === "pending") {
         task.status = exitCode === 0 ? "completed" : "failed";
@@ -245,7 +256,8 @@ export class DispatchQueue {
       record.status = "completed";
       record.completedAt = attempt.completedAt;
 
-      // Foxtrot Charlie: reviewReady with merge CTA, not phaseComplete
+      // The unified engine already opened the PR (PR_CI → develop). Notify with
+      // the review/merge CTA. Harvest runs the Done-Done finalizer post-merge.
       await notifySlack(MessageBuilder.reviewReady(record), {
         type: "review_ready",
         feature: record.featureId,
@@ -253,57 +265,31 @@ export class DispatchQueue {
         payload: record as unknown as Record<string, unknown>,
         timestamp: new Date().toISOString(),
       });
-
-      // Merge back
-      try {
-        this.git.mergePhaseBack(record.featureId, record.phaseId);
-      } catch (e) {
-        console.error("Merge back failed:", e);
-        // We still mark as completed, but merge failure is logged
-      }
     } else {
-      if (record.attempts.length < 3) {
-        record.status = "retrying";
-      } else {
-        // Escalate to next backend in fallbackOrder
-        const fallbackOrder: AgentBackendId[] = [
-          "gemini",
-          "claude",
-          "codex",
-          "codex-cloud",
-        ];
-        const currentIndex = fallbackOrder.indexOf(record.backend);
-        if (currentIndex !== -1 && currentIndex < fallbackOrder.length - 1) {
-          record.backend = fallbackOrder[currentIndex + 1];
-          record.status = "retrying";
-        } else {
-          record.status = "failed";
-          await notifySlack(MessageBuilder.phaseFail(record, stderr), {
-            type: "phase_fail",
-            feature: record.featureId,
-            phase: record.phaseId,
-            payload: { ...record, stderr } as unknown as Record<
-              string,
-              unknown
-            >,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
+      // The engine owns iteration/diagnosis/failback internally, so a non-zero
+      // exit is terminal for the daemon — no bespoke outer retry/escalation
+      // (that overlap retired with DispatchOrchestrator, PR-8).
+      record.status = "failed";
+      await notifySlack(MessageBuilder.phaseFail(record, stderr), {
+        type: "phase_fail",
+        feature: record.featureId,
+        phase: record.phaseId,
+        payload: { ...record, stderr } as unknown as Record<string, unknown>,
+        timestamp: new Date().toISOString(),
+      });
     }
 
-    // Move from active to history/queue
+    // Move from active to history.
     this.active = this.active.filter((r) => r.id !== record.id);
+    this.history.push(record);
 
-    if (record.status === "retrying") {
-      this.queue.push(record);
-    } else {
-      this.history.push(record);
-    }
-
+    // Always tear down the worktree — ship owns commit/push/PR via PR_CI, so
+    // destroy only removes the tree (no auto commit/push/PR).
     if (record.workDir) {
       try {
-        await this.sandbox.destroySandbox(record.workDir, record.featureId);
+        await this.sandbox.destroySandbox(record.workDir, record.featureId, {
+          autoCommitPush: false,
+        });
       } catch (e) {
         console.error("Failed to destroy sandbox:", e);
       }
