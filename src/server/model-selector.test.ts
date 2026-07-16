@@ -52,6 +52,29 @@ describe("ModelSelector", () => {
       expect(model?.name).toBe("gemini-3.1-pro-preview");
     });
 
+    it("uses the CLI default model when the backend has no configured models", () => {
+      const bareBackend: AgentBackendConfig = {
+        name: "claude",
+        type: "local-cli",
+        command: "claude",
+        maxConcurrent: 1,
+        quotaProbe: { method: "optimistic", cacheTTLMinutes: 5 },
+        models: [],
+      };
+      const { model } = modelSelector.selectModel(
+        bareBackend,
+        TaskClassification.THINKING,
+        TaskType.IMPLEMENT,
+        mockProber as unknown as QuotaProber,
+      );
+      expect(model).not.toBeNull();
+      // No model flag — renders the bare command, letting the CLI pick.
+      expect(model?.modelFlag).toBeUndefined();
+      expect(modelSelector.renderCommand(bareBackend.command, model!)).toBe(
+        "claude",
+      );
+    });
+
     it("selects fast model for test task (TR-008)", () => {
       const { model } = modelSelector.selectModel(
         mockBackend,
