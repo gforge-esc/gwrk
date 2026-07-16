@@ -5,6 +5,11 @@ export default defineConfig({
     passWithNoTests: false,
     // Server route tests share PID files — retry once on parallel conflicts
     retry: 1,
+    // e2e/integration suites spawn the built CLI and real daemons; a single
+    // pulse scan run is ~2.5s locally and ~5s+ on CI, and VR-004 runs two in
+    // series. The 5s default is too tight on CI runners — give them headroom.
+    testTimeout: 30000,
+    hookTimeout: 30000,
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
