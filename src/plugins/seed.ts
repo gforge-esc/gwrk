@@ -23,6 +23,7 @@ export async function seedSkills(options: SeedOptions = {}): Promise<void> {
   const taxonomyFile = path.join(
     cliRoot,
     "docs",
+    "archive",
     "reference",
     "reasoning-modes.md",
   );
