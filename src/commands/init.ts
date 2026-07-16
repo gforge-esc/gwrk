@@ -13,6 +13,7 @@ import { syncRegistry } from "../engine/registry.js";
 import { setupSlack } from "./setup-slack.js";
 import readline from "node:readline/promises";
 import { CommandError } from "../utils/signal.js";
+import { saveSetupState } from "../utils/setup-state.js";
 
 /**
  * Find the nearest gwrk project root by searching upwards for .gwrkrc.json.
@@ -57,6 +58,27 @@ async function confirm(question: string, defaultYes = true): Promise<boolean> {
   }
 }
 
+/**
+ * Detect workstation readiness for the autonomous ship loop: an SSH public key
+ * and an authenticated GitHub CLI. Never throws — results are recorded as
+ * diagnostics in setup.json.
+ */
+function detectWorkstation(): { ssh: boolean; gh: boolean } {
+  let ssh = false;
+  try {
+    const sshPath = path.join(os.homedir(), ".ssh");
+    ssh =
+      fs.existsSync(sshPath) &&
+      fs.readdirSync(sshPath).some((f) => f.endsWith(".pub"));
+  } catch {}
+  let gh = false;
+  try {
+    execSync("gh auth status", { stdio: "ignore" });
+    gh = true;
+  } catch {}
+  return { ssh, gh };
+}
+
 async function detectAgents() {
   const agents = ["agy", "claude", "gemini", "codex", "ollama", "gh"];
   const detected = [];
@@ -99,6 +121,35 @@ function buildAgentConfig(detected: string[]): Record<string, unknown> {
     registry,
     fallbackOrder: detected,
   };
+}
+
+/**
+ * Read and parse a JSON file, returning undefined if absent or malformed.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: parsed json config
+function readJsonSafe(filePath: string): Record<string, any> | undefined {
+  if (!fs.existsSync(filePath)) return undefined;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Ensure `.gitignore` contains `entry`, creating the file if needed. Idempotent.
+ */
+function ensureGitignoreEntry(cwd: string, entry: string): void {
+  const gitignorePath = path.join(cwd, ".gitignore");
+  let content = "";
+  if (fs.existsSync(gitignorePath)) {
+    content = fs.readFileSync(gitignorePath, "utf-8");
+    if (content.split(/\r?\n/).some((line) => line.trim() === entry)) {
+      return;
+    }
+  }
+  const prefix = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+  fs.appendFileSync(gitignorePath, `${prefix}${entry}\n`);
 }
 
 /**
@@ -149,17 +200,29 @@ export const initAction = async (options: any): Promise<void> => {
   const extensions = await detectExtensions();
   const detectedAgents = await detectAgents();
 
+  // Load any existing config so re-init is non-destructive: preserve project
+  // identity the user already set, and migrate a legacy tracked `agents` block
+  // (or an existing personal one) instead of re-detecting from scratch.
+  const existingTracked = readJsonSafe(path.join(cwd, ".gwrkrc.json")) ?? {};
+  const existingLocal = readJsonSafe(path.join(cwd, ".gwrkrc.local.json")) ?? {};
+  const existingProject = existingTracked.project ?? {};
+  const existingAgents = existingLocal.agents ?? existingTracked.agents;
+  const existingStack =
+    existingProject.stack && Object.keys(existingProject.stack).length > 0
+      ? existingProject.stack
+      : undefined;
+
   // 4. Interactive Wizard
   let config: any = {
     project: {
-      name: path.basename(cwd),
-      type: profile.type,
-      stack: profile.stack,
-      layout: profile.layout,
-      architecture: "unknown",
-      conventions: "unknown"
+      name: existingProject.name ?? path.basename(cwd),
+      type: existingProject.type ?? profile.type,
+      stack: existingStack ?? profile.stack,
+      layout: existingProject.layout ?? profile.layout,
+      architecture: existingProject.architecture ?? "unknown",
+      conventions: existingProject.conventions ?? "unknown"
     },
-    agents: buildAgentConfig(detectedAgents),
+    agents: existingAgents ?? buildAgentConfig(detectedAgents),
     extensions: Object.fromEntries(
       extensions.filter(e => e.detected).map(e => [e.id, {}])
     )
@@ -182,25 +245,15 @@ export const initAction = async (options: any): Promise<void> => {
     config.project.conventions = await prompt("Conventions (e.g. TDD, ESM, functional)", "TDD");
 
     if (await confirm("Perform workstation provisioning (SSH, gh auth)?")) {
-      // Workstation provisioning
-      try {
-        const sshPath = path.join(os.homedir(), ".ssh");
-        const hasSsh = fs.existsSync(sshPath) && fs.readdirSync(sshPath).some(f => f.endsWith(".pub"));
-        if (!hasSsh) {
-          process.stdout.write("⚠️ No SSH keys detected in ~/.ssh/\n");
-        } else {
-          process.stdout.write("✅ SSH keys detected.\n");
-        }
-
-        try {
-          execSync("gh auth status", { stdio: "pipe" });
-          process.stdout.write("✅ GitHub CLI authenticated.\n");
-        } catch {
-          process.stdout.write("⚠️ GitHub CLI (gh) not authenticated. Run 'gh auth login'.\n");
-        }
-      } catch (e) {
-        process.stdout.write("⚠️ Workstation provisioning check failed.\n");
-      }
+      const { ssh, gh } = detectWorkstation();
+      process.stdout.write(
+        ssh ? "✅ SSH keys detected.\n" : "⚠️ No SSH keys detected in ~/.ssh/\n",
+      );
+      process.stdout.write(
+        gh
+          ? "✅ GitHub CLI authenticated.\n"
+          : "⚠️ GitHub CLI (gh) not authenticated. Run 'gh auth login'.\n",
+      );
     }
   }
 
@@ -228,17 +281,20 @@ export const initAction = async (options: any): Promise<void> => {
     }
   }
 
-  // 8. Write Config — split into project (tracked) and personal (gitignored)
-  const projectConfig: Record<string, unknown> = {
-    project: {
-      name: config.project.name,
-      type: config.project.type,
-      stack: config.project.stack,
-      layout: config.project.layout,
-      architecture: config.project.architecture,
-      conventions: config.project.conventions,
-    },
+  // 8. Write Config — split into project (tracked) and personal (gitignored).
+  // Preserve any other tracked top-level keys the user had (extensions,
+  // workspaces, server, effort); only project identity is refreshed here and
+  // the personal `agents`/`slack` layers are removed from the tracked file.
+  const projectConfig: Record<string, unknown> = { ...existingTracked };
+  projectConfig.project = {
+    name: config.project.name,
+    type: config.project.type,
+    stack: config.project.stack,
+    layout: config.project.layout,
+    architecture: config.project.architecture,
+    conventions: config.project.conventions,
   };
+  delete projectConfig.agents;
 
   const personalConfig: Record<string, unknown> = {
     agents: config.agents,
@@ -253,9 +309,36 @@ export const initAction = async (options: any): Promise<void> => {
 
   const configPath = path.join(cwd, ".gwrkrc.json");
   const localConfigPath = path.join(cwd, ".gwrkrc.local.json");
+  const exampleConfigPath = path.join(cwd, ".gwrkrc.local.json.example");
 
   fs.writeFileSync(configPath, JSON.stringify(projectConfig, null, 2));
   fs.writeFileSync(localConfigPath, JSON.stringify(personalConfig, null, 2));
+
+  // Keep out of git: the personal config (per-machine, may hold secrets) and
+  // gwrk's own runtime artifacts. `.runs/` matters most — the backend selector
+  // writes .runs/quota-cache.json before ship's dirty-tree check, so an
+  // untracked .runs/ makes ship refuse to run on its own output.
+  for (const entry of [".gwrkrc.local.json", ".runs/", ".gwrk/server.pid"]) {
+    ensureGitignoreEntry(cwd, entry);
+  }
+
+  // Ship a tracked template teammates copy to .gwrkrc.local.json. Agents only —
+  // never the Slack layer, since this file is committed.
+  const exampleConfig: Record<string, unknown> = { agents: config.agents };
+  fs.writeFileSync(exampleConfigPath, JSON.stringify(exampleConfig, null, 2));
+
+  // Persist workstation setup state so `gwrk ship`'s pre-flight ("Run gwrk init
+  // first") is actually satisfiable. ssh/gh are recorded as diagnostics.
+  const workstation = detectWorkstation();
+  saveSetupState({
+    completedAt: new Date().toISOString(),
+    steps: {
+      tcc: true,
+      ssh: workstation.ssh,
+      gh: workstation.gh,
+      verification: true,
+    },
+  });
 
   // 9. Output
   if (isAgent) {
@@ -271,6 +354,7 @@ export const initAction = async (options: any): Promise<void> => {
     process.stdout.write("\n✅ gwrk initialized successfully.\n");
     process.stdout.write(`Project config written to ${configPath}\n`);
     process.stdout.write(`Agent config written to ${localConfigPath} (gitignored — personal to your machine)\n`);
+    process.stdout.write(`Shareable template written to ${exampleConfigPath} (commit this; teammates copy it to .gwrkrc.local.json)\n`);
     process.stdout.write("Next steps:\n");
     process.stdout.write("  gwrk define spec my-feature\n");
     process.stdout.write("  gwrk status\n\n");

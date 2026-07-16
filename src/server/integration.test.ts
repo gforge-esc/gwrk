@@ -113,6 +113,19 @@ describe("Server E2E Integration", () => {
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.json().id).toBe(record.id);
 
+    // The dispatch runs fire-and-forget. Wait for it to leave the active queue
+    // before teardown so its merge-back git work settles while tempDir still
+    // exists — otherwise it spawns into a removed cwd and stalls the worker.
+    await vi.waitFor(
+      async () => {
+        const queue = (
+          await server.inject({ method: "GET", url: "/api/dispatch/queue" })
+        ).json();
+        expect(queue.active.length).toBe(0);
+      },
+      { timeout: 15000, interval: 100 },
+    );
+
     await server.close();
   });
 });

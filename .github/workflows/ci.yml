@@ -36,11 +36,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Integration tests create real git repos and commit to them. A CI runner
+      # has no git identity or default-branch name, so configure both globally.
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@gwrk.dev"
+          git config --global user.name "gwrk CI"
+          git config --global init.defaultBranch main
+
       - name: Build
         run: pnpm build
 
+      # Runs the hermetic suite; non-hermetic daemon/dispatch integration tests
+      # are quarantined via GWRK_SKIP_INTEGRATION (see vitest.config.ts).
       - name: Test
-        run: pnpm test
+        run: pnpm test:ci
 
       - name: Lint (advisory)
         run: pnpm lint

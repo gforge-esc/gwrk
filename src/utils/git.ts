@@ -263,7 +263,25 @@ export async function createBranch(
   branchName: string,
   baseBranch = "develop",
 ): Promise<void> {
-  // First ensure base branch exists and is up to date
+  // Cold start: on a fresh repo the base branch (develop) may not exist on the
+  // remote yet. Bootstrap it from the current HEAD so the first ship isn't
+  // blocked by "couldn't find remote ref develop".
+  const remoteHasBase =
+    execFileSync("git", ["ls-remote", "--heads", "origin", baseBranch], {
+      cwd: repoPath,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+      .toString()
+      .trim().length > 0;
+
+  if (!remoteHasBase) {
+    execFileSync("git", ["push", "origin", `HEAD:refs/heads/${baseBranch}`], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+  }
+
+  // Ensure base branch is fetched and up to date
   execFileSync("git", ["fetch", "origin", baseBranch], {
     cwd: repoPath,
     stdio: ["ignore", "ignore", "pipe"],
