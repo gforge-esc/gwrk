@@ -477,9 +477,11 @@ Examples:
           );
         }
 
-        // FR-022: Workstation setup pre-flight check
+        // FR-022: Workstation setup pre-flight check.
+        // A dry-run only prints what would happen — it never touches git or the
+        // agent, so it must not require a provisioned workstation.
         const setupState = loadSetupState();
-        if (!isSetupComplete(setupState)) {
+        if (!opts.dryRun && !isSetupComplete(setupState)) {
           blocked("Run gwrk init first");
           throw new CommandError("Run gwrk init first", 1);
         }
@@ -591,6 +593,13 @@ Examples:
         }
 
         if (opts.dryRun) {
+          // Report the backend that would build, so a dry-run confirms setup
+          // (e.g. "would build with claude") without invoking the agent.
+          const wouldBuildWith =
+            (opts.agent as string) || config.agents.implement;
+          console.log(
+            `  🤖 Would build with backend: ${wouldBuildWith} (${opts.agent ? "--agent override" : "config agents.implement"})`,
+          );
           const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
           for (const p of phases) {
             dryRunFmt(`${scriptPath} ${feature} ${p}`);
