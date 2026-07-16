@@ -15,6 +15,11 @@ const QUARANTINED_INTEGRATION = [
 export default defineConfig({
   test: {
     passWithNoTests: false,
+    // Run each test file in a forked child process. Several suites spawn the
+    // built CLI / git synchronously (execSync), which blocks a worker thread
+    // and stalls Tinypool's RPC ("Timeout calling onTaskUpdate"); process
+    // isolation avoids that.
+    pool: "forks",
     // Server route tests share PID files — retry once on parallel conflicts
     retry: 1,
     // e2e/integration suites spawn the built CLI and real daemons; a single
