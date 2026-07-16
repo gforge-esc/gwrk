@@ -69,7 +69,23 @@ export interface ShipRunConfig {
   backend: string;
   maxIterations: number;
   ciTimeout: number; // minutes
+  /**
+   * The working tree for all git/build/test ops AND agent execution. Today
+   * this is the primary checkout (process.cwd()); under worktree-isolated
+   * shipping it is the per-feature worktree path.
+   */
   cwd: string;
+  /**
+   * Where crash-recovery state (`.runs/<feature>_<phase>.state`) is persisted.
+   * Defaults to `cwd`. A worktree ship points this at the primary checkout so
+   * resume survives worktree teardown. Never inside an ephemeral worktree.
+   */
+  stateRoot?: string;
+  /**
+   * Branch to ship on. Defaults to `feat/<featureId>`. Parameterized so a
+   * worktree/parallel run can use a per-feature-phase branch.
+   */
+  branchName?: string;
   dryRun?: boolean;
   selectedModel?: string;
   selectedCommand?: string;
