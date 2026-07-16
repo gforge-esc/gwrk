@@ -5,6 +5,7 @@ dist
 coverage/
 .runs/
 .gwrk/server.pid
+.gwrkrc.local.json
 
 # ─── Anti-Cruft: block agent-dropped one-offs ───
 # Agents create test directories, review dumps, and one-off scripts in root.

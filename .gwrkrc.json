@@ -1,50 +1,6 @@
 {
   "project": {
-    "name": "gwrk",
-    "slack": {
-      "channelId": "C0AL99J34PP",
-      "channelName": "gwrk-dev",
-      "webhookUrl": "https://hooks.slack.com/services/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"
-    }
-  },
-  "agents": {
-    "define": "agy",
-    "implement": "agy",
-    "throttleMs": 15000,
-    "registry": {
-      "claude": {
-        "type": "local-cli",
-        "command": "claude",
-        "discoveryMethod": "manual",
-        "quotaProbe": {
-          "method": "optimistic",
-          "cacheTTLMinutes": 5
-        },
-        "maxConcurrent": 1,
-        "models": [
-          {
-            "name": "claude-sonnet-4",
-            "tier": "thinking"
-          }
-        ],
-        "fallback": "gemini"
-      },
-      "agy": {
-        "type": "local-cli",
-        "command": "agy",
-        "discoveryMethod": "manual",
-        "quotaProbe": {
-          "method": "optimistic",
-          "cacheTTLMinutes": 5
-        },
-        "maxConcurrent": 2,
-        "models": []
-      }
-    },
-    "fallbackOrder": [
-      "agy",
-      "claude"
-    ]
+    "name": "gwrk"
   },
   "server": {
     "port": 18790,

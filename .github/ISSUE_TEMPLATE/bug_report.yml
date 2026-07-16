@@ -1,0 +1,78 @@
+name: Bug Report
+description: Report something that isn't working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what the bug is.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Run `gwrk define spec my-feature`
+        2. Observe error in terminal
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include error messages or logs.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pillar
+    attributes:
+      label: Which pillar is affected?
+      options:
+        - Discovery (gwrk define research)
+        - Definition (gwrk define spec/plan/tests/tasks)
+        - Shipping (gwrk ship)
+        - Accountability (gwrk measure)
+        - CLI / Operations
+        - Plugin System
+        - Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your system details
+      value: |
+        - **OS**: 
+        - **Node.js version**: 
+        - **gwrk version**: (`gwrk --version`)
+        - **Agent CLI(s)**: (e.g., claude, gemini, agy)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      description: Paste relevant terminal output, error logs, or screenshots.

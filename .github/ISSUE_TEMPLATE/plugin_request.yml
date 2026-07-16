@@ -1,0 +1,43 @@
+name: Plugin Request
+description: Request a new agent backend, workflow, or skill plugin
+labels: ["plugin"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        gwrk's plugin system supports agent backends (L1), workflows (L2.5), and skills (L2).
+        Use this template to request a new plugin.
+
+  - type: dropdown
+    id: plugin-type
+    attributes:
+      label: Plugin Type
+      options:
+        - Agent Backend (L1) — new AI agent CLI adapter
+        - Workflow (L2.5) — new define/ship workflow
+        - Skill (L2) — new reasoning mode or composition
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What plugin do you want and what would it do?
+      placeholder: "An agent backend for Ollama that enables local LLM orchestration..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: How would you use this plugin in your workflow?
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Links to documentation, APIs, or existing implementations.
