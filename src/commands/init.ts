@@ -14,6 +14,7 @@ import { setupSlack } from "./setup-slack.js";
 import readline from "node:readline/promises";
 import { CommandError } from "../utils/signal.js";
 import { saveSetupState } from "../utils/setup-state.js";
+import { loadDevice, saveDevice } from "../utils/device.js";
 
 /**
  * Find the nearest gwrk project root by searching upwards for .gwrkrc.json.
@@ -154,7 +155,9 @@ function ensureGitignoreEntry(cwd: string, entry: string): void {
 
 /**
  * Unified Init Command.
- * Absorbs setup.ts and integrates interactive profile wizard.
+ * Two-layer design:
+ *   Layer 1 — Machine setup (first run, creates ~/.gwrk/device.json)
+ *   Layer 2 — Project setup (every run, idempotent)
  * Also handles workspace appending for polyglot monorepos (020).
  */
 export const initAction = async (options: any): Promise<void> => {
@@ -189,8 +192,45 @@ export const initAction = async (options: any): Promise<void> => {
     return;
   }
 
+  // ── Layer 1: Machine Setup ──────────────────────────────────────────
+  // Runs once per machine. Gated by ~/.gwrk/device.json.
+  const existingDevice = loadDevice();
+  let deviceRole: "server" | "remote";
+
+  if (options.remote) {
+    deviceRole = "remote";
+  } else if (options.server) {
+    deviceRole = "server";
+  } else if (existingDevice) {
+    // Machine already set up — preserve existing role
+    deviceRole = existingDevice.role;
+  } else if (isNonInteractive) {
+    // No device.json, non-interactive — default to remote
+    deviceRole = "remote";
+  } else {
+    // First run on this machine — ask
+    process.stdout.write("\n🦩 First-time gwrk setup on this machine.\n\n");
+    process.stdout.write(
+      "  gwrk uses a single server device for harvest, Slack, and the\n" +
+      "  autonomous daemon. All other machines are remote — they run\n" +
+      "  agents locally and push work to GitHub.\n\n",
+    );
+    const isServerDevice = await confirm("Is this machine the gwrk server?", false);
+    deviceRole = isServerDevice ? "server" : "remote";
+  }
+
+  // Save device identity (idempotent on id)
+  const device = saveDevice(deviceRole);
+  if (!existingDevice) {
+    process.stdout.write(`Device registered: ${device.hostname} (${deviceRole})\n`);
+  } else if (existingDevice.role !== deviceRole) {
+    process.stdout.write(`Device role changed: ${existingDevice.role} → ${deviceRole}\n`);
+  }
+
+  // ── Layer 2: Project Setup ─────────────────────────────────────────
+
   // 2. Idempotency Check
-  if (root === cwd && !isNonInteractive) {
+  if (root === cwd && !isNonInteractive && !options.remote && !options.server) {
     process.stdout.write("gwrk already initialized. Run with --non-interactive to update.\n");
     return;
   }
@@ -257,12 +297,14 @@ export const initAction = async (options: any): Promise<void> => {
     }
   }
 
-  // 5. Registry Sync
-  process.stdout.write("Syncing plugin registry...\n");
-  await syncRegistry();
+  // 5. Registry Sync (server-only — remote devices don't run the daemon)
+  if (deviceRole === "server") {
+    process.stdout.write("Syncing plugin registry...\n");
+    await syncRegistry();
+  }
 
-  // 6. Slack Setup
-  if (!isAgent || (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN)) {
+  // 6. Slack Setup (server-only)
+  if (deviceRole === "server" && (!isAgent || (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN))) {
     try {
       await setupSlack({ ...options, nonInteractive: isNonInteractive });
     } catch (e) {
@@ -332,6 +374,8 @@ export const initAction = async (options: any): Promise<void> => {
   const workstation = detectWorkstation();
   saveSetupState({
     completedAt: new Date().toISOString(),
+    deviceId: device.id,
+    deviceRole: device.role,
     steps: {
       tcc: true,
       ssh: workstation.ssh,
@@ -366,4 +410,6 @@ export const initCommand = new Command("init")
   .option("--non-interactive", "Run without interactive prompts")
   .option("--agent", "Agent-optimized init mode")
   .option("--workspace <name>", "Select a workspace profile")
+  .option("--remote", "Register this machine as a remote device (no daemon, no harvest)")
+  .option("--server", "Register this machine as the gwrk server")
   .action(initAction);

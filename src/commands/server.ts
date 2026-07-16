@@ -10,6 +10,7 @@ import { Command } from "commander";
 import { startServer } from "../server/index.js";
 import { isPidRunning, readPid, removePid } from "../server/pid.js";
 import { loadConfig } from "../utils/config.js";
+import { isRemote } from "../utils/device.js";
 import {
   getLogs,
   installServer,
@@ -31,6 +32,14 @@ serverCommand
   .option("-f, --foreground", "Run the server in the foreground")
   .action(async (options) => {
     await withSignal("server start", async () => {
+      if (isRemote()) {
+        throw new CommandError(
+          "This machine is registered as a remote device. The daemon runs on the server only.\n" +
+            "To change this machine's role: gwrk init --server",
+          1,
+        );
+      }
+
       const projectRoot = process.cwd();
       const config = loadConfig(projectRoot);
 

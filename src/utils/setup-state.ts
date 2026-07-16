@@ -9,6 +9,8 @@ import { z } from "zod";
 
 const SetupStateSchema = z.object({
   completedAt: z.string().optional(),
+  deviceId: z.string().optional(),
+  deviceRole: z.enum(["server", "remote"]).optional(),
   steps: z.object({
     tcc: z.boolean().default(false),
     ssh: z.boolean().default(false),
