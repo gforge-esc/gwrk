@@ -15,6 +15,23 @@ interface SandboxOptions {
   taskId: string;
   backend: AgentBackendId;
   projectRoot: string;
+  /** Base branch for the worktree. Defaults to `feature/<featureId>-wip`. */
+  baseBranch?: string;
+  /**
+   * Command run inside the freshly-created worktree to self-provision it
+   * (deps, per-worktree .env/ports), e.g. `make worktree:init`. From
+   * `.gwrkrc` `worktree.setup`. A fresh worktree has only the committed tree.
+   */
+  setup?: string;
+}
+
+interface DestroyOptions {
+  /**
+   * When true (default, daemon behavior) a dirty worktree is committed, pushed,
+   * and PR'd before removal. Ship sets this false — it owns commit/push/PR via
+   * its own PR_CI stage — so destroy only removes the worktree.
+   */
+  autoCommitPush?: boolean;
 }
 
 export class SandboxManager {
@@ -47,8 +64,7 @@ export class SandboxManager {
 
     // Create a new worktree with a new branch
     // git worktree add -b <new-branch> <path> <base-branch>
-    // We assume the feature branch is current or we should specify it
-    const baseBranch = `feature/${featureId}-wip`;
+    const baseBranch = opts.baseBranch ?? `feature/${featureId}-wip`;
 
     try {
       // First ensure the base branch exists locally or we can't create a worktree from it
@@ -59,7 +75,6 @@ export class SandboxManager {
         stdio: "pipe",
       });
     } catch (e: unknown) {
-      const err = e instanceof Error ? e : new Error(String(e));
       // Fallback to current branch if baseBranch doesn't exist (though it should in gwrk flow)
       try {
         execSync(`git worktree add -b ${branchName} ${workDir}`, {
@@ -72,12 +87,32 @@ export class SandboxManager {
       }
     }
 
+    // Self-provision the fresh worktree (deps, per-worktree .env/ports). A
+    // `git worktree add` copies only committed files, so an untracked .env /
+    // node_modules must be created here (ADR-005). Non-fatal: a project without
+    // a setup command still gets a usable worktree.
+    if (opts.setup) {
+      try {
+        execSync(opts.setup, { cwd: workDir, stdio: "pipe" });
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.error(
+          `worktree setup ("${opts.setup}") failed in ${workDir}: ${err.message}`,
+        );
+      }
+    }
+
     return workDir;
   }
 
-  async destroySandbox(workDir: string, featureId: string): Promise<void> {
+  async destroySandbox(
+    workDir: string,
+    featureId: string,
+    options: DestroyOptions = {},
+  ): Promise<void> {
     if (!fs.existsSync(workDir)) return;
 
+    const { autoCommitPush = true } = options;
     const projectRoot = path.dirname(path.dirname(this.runsDir));
 
     try {
@@ -87,7 +122,7 @@ export class SandboxManager {
         encoding: "utf-8",
       }).trim();
 
-      if (status) {
+      if (status && autoCommitPush) {
         // 2. Commit changes (gwrk agents usually do this, but just in case)
         execSync('git add . && git commit -m "Task contribution" || true', {
           cwd: workDir,
@@ -155,12 +190,20 @@ export class SandboxManager {
           const workDir = line.slice(9);
           if (workDir.includes(".runs/sandboxes/")) {
             current.workDir = workDir;
-            const name = path.basename(workDir);
-            const parts = name.split("-");
-            current.featureId = parts[0];
-            current.taskId = parts[1];
+            // Name is `<featureId>-<taskId>-<uuid>`; featureId itself contains
+            // hyphens (e.g. 001-platform-foundation), so parse from the end:
+            // last segment = uuid, second-to-last = taskId, the rest = featureId.
+            const parts = path.basename(workDir).split("-");
+            if (parts.length >= 3) {
+              parts.pop(); // uuid
+              current.taskId = parts.pop();
+              current.featureId = parts.join("-");
+            } else {
+              current.featureId = parts[0];
+              current.taskId = parts[1];
+            }
             current.status = "running";
-            current.startedAt = new Date().toISOString(); // We don't have exact start time from git
+            current.startedAt = new Date().toISOString(); // git gives no start time
           }
         } else if (line.startsWith("branch ") && current.workDir) {
           // could extract branch if needed

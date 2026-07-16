@@ -140,6 +140,82 @@ describe("SandboxManager (Git Worktree)", () => {
     );
   });
 
+  it("PR-5: runs the worktree.setup command inside the new worktree", async () => {
+    (fs.existsSync as Mock).mockReturnValue(false);
+
+    const workDir = await sandboxManager.createSandbox({
+      featureId: "001-platform-foundation",
+      phaseId: "phase-01",
+      taskId: "T1",
+      backend: "gemini",
+      projectRoot: "/test/root",
+      setup: "make worktree:init",
+    });
+
+    expect(execSync).toHaveBeenCalledWith(
+      "make worktree:init",
+      expect.objectContaining({ cwd: workDir }),
+    );
+  });
+
+  it("PR-5: uses a custom base branch when provided", async () => {
+    (fs.existsSync as Mock).mockReturnValue(false);
+
+    await sandboxManager.createSandbox({
+      featureId: "001-platform-foundation",
+      phaseId: "phase-01",
+      taskId: "T1",
+      backend: "gemini",
+      projectRoot: "/test/root",
+      baseBranch: "develop",
+    });
+
+    expect(execSync).toHaveBeenCalledWith(
+      expect.stringMatching(/git worktree add -b sandbox\/.+ .+ develop$/),
+      expect.any(Object),
+    );
+  });
+
+  it("PR-5: destroy with autoCommitPush=false only removes the worktree (ship owns the PR)", async () => {
+    const workDir = "/test/root/.runs/sandboxes/f1-T1-uuid";
+    (fs.existsSync as Mock).mockReturnValue(true);
+    (execSync as Mock).mockImplementation((cmd: string) => {
+      if (cmd === "git status --porcelain") return "M file.ts";
+      return "";
+    });
+
+    await sandboxManager.destroySandbox(workDir, "f1", {
+      autoCommitPush: false,
+    });
+
+    expect(execSync).not.toHaveBeenCalledWith(
+      "git push origin HEAD",
+      expect.any(Object),
+    );
+    expect(execSync).not.toHaveBeenCalledWith(
+      expect.stringContaining("gh pr create"),
+      expect.any(Object),
+    );
+    expect(execSync).toHaveBeenCalledWith(
+      `git worktree remove --force ${workDir}`,
+      expect.objectContaining({ cwd: "/test/root" }),
+    );
+  });
+
+  it("PR-5: listSandboxes keeps hyphenated feature IDs intact", async () => {
+    (execSync as Mock).mockReturnValue(
+      "worktree /test/root/.runs/sandboxes/001-platform-foundation-T1-ab12cd34\n" +
+        "branch refs/heads/sandbox/001-platform-foundation-T1-ab12cd34\n" +
+        "\n",
+    );
+
+    const sandboxes = await sandboxManager.listSandboxes();
+
+    expect(sandboxes).toHaveLength(1);
+    expect(sandboxes[0].featureId).toBe("001-platform-foundation");
+    expect(sandboxes[0].taskId).toBe("T1");
+  });
+
   it("TC-005: should prune all gwrk worktrees", async () => {
     await sandboxManager.pruneSandboxes();
 
