@@ -726,10 +726,45 @@ export class ShipOrchestrator extends EventEmitter {
    * Runs after IMPLEMENT and before TEST_GATE. If `pnpm build` fails,
    * the iteration retries — preventing broken builds from reaching review.
    */
+  /**
+   * Resolve the project's build command, or null if it has no build to gate on.
+   * Returns null when there is no package.json or no `build` script; otherwise
+   * picks the package manager from the lockfile (pnpm/yarn/npm).
+   */
+  private resolveBuildCommand(): string | null {
+    const pkgPath = path.join(this.config.cwd, "package.json");
+    if (!fs.existsSync(pkgPath)) return null;
+    let pkg: { scripts?: Record<string, string> };
+    try {
+      pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    } catch {
+      return null;
+    }
+    if (!pkg.scripts?.build) return null;
+    if (fs.existsSync(path.join(this.config.cwd, "pnpm-lock.yaml"))) {
+      return "pnpm build";
+    }
+    if (fs.existsSync(path.join(this.config.cwd, "yarn.lock"))) {
+      return "yarn build";
+    }
+    return "npm run build";
+  }
+
   private async stageBuildCheck(): Promise<ShipStageResult> {
     console.log("  ▸ BUILD_CHECK");
+
+    // Early phases of a cold-start project may have no build system yet (the
+    // Node app is bootstrapped in a later phase). Only gate on a build when the
+    // project actually has one, and use its package manager rather than
+    // assuming pnpm.
+    const buildCommand = this.resolveBuildCommand();
+    if (!buildCommand) {
+      console.log("  ⏭ no build script — skipping build gate");
+      return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
+    }
+
     try {
-      execSync("pnpm build", {
+      execSync(buildCommand, {
         cwd: this.config.cwd,
         stdio: "pipe",
         timeout: 60_000, // 60s — build should never take longer
@@ -737,9 +772,12 @@ export class ShipOrchestrator extends EventEmitter {
       console.log("  ✓ build passed");
       return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
     } catch (err: unknown) {
-      const stderr =
-        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
-      const lastLines = stderr.split("\n").slice(-10).join("\n");
+      // Capture both streams — tools write build errors to stdout as often as
+      // stderr, and an empty capture leaves DIAGNOSE with nothing to work with.
+      const e = err as { stdout?: Buffer; stderr?: Buffer };
+      const combined = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+      const lastLines =
+        combined.split("\n").slice(-15).join("\n") || "(no build output captured)";
       console.log(`  ✗ build FAILED:\n${lastLines}`);
 
       // Re-open tasks so the retry agent has work to do
