@@ -55,7 +55,7 @@ Each layer deep-merges over the previous one (later layers win).
 After cloning, copy the example and customize:
 
 ```bash
-cp .gwrkrc.local.example.json .gwrkrc.local.json
+cp .gwrkrc.local.json.example .gwrkrc.local.json
 # Edit .gwrkrc.local.json to set your preferred agents
 ```
 

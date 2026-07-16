@@ -76,19 +76,24 @@ export const GwrkConfigSchema = z.object({
       })
       .optional(),
   }),
-  agents: z.object({
-    define: AgentBackendSchema.default("gemini"),
-    implement: AgentBackendSchema.default("gemini"),
-    throttleMs: z.number().int().min(0).optional(),
-    fallbackOrder: z.array(z.string()).optional(),
-    registry: z.record(z.string(), AgentBackendConfigSchema).optional(),
-    gemini: z
-      .object({
-        model: z.string().optional(),
-        failbackModels: z.array(z.string()).optional(),
-      })
-      .optional(),
-  }),
+  // Optional so a project-identity-only .gwrkrc.json (agents live in the
+  // gitignored .gwrkrc.local.json layer) still validates. Inner defaults fill
+  // in define/implement when the whole block is absent.
+  agents: z
+    .object({
+      define: AgentBackendSchema.default("gemini"),
+      implement: AgentBackendSchema.default("gemini"),
+      throttleMs: z.number().int().min(0).optional(),
+      fallbackOrder: z.array(z.string()).optional(),
+      registry: z.record(z.string(), AgentBackendConfigSchema).optional(),
+      gemini: z
+        .object({
+          model: z.string().optional(),
+          failbackModels: z.array(z.string()).optional(),
+        })
+        .optional(),
+    })
+    .default({}),
   server: z
     .object({
       port: z.number().int().min(0).max(65535),
