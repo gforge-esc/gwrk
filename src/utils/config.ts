@@ -182,6 +182,14 @@ export const GwrkConfigSchema = z.object({
     })
     .default({ sessionGapMinutes: 30 }),
   extensions: z.record(z.string(), z.record(z.any())).optional(),
+  // Worktree-isolated shipping (ADR-005): a fresh `git worktree add` copies only
+  // the committed tree — no .env, no node_modules, no per-worktree ports. This
+  // command runs inside a newly-created worktree to self-provision it.
+  worktree: z
+    .object({
+      setup: z.string().optional(), // e.g. "make worktree:init"
+    })
+    .optional(),
   workspaces: z
     .record(
       z.string(),

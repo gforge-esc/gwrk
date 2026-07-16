@@ -2,28 +2,41 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { exec } from "node:child_process";
-import path from "node:path";
-import { promisify } from "node:util";
+import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
+import { program } from "./cli.js";
 
-const execAsync = promisify(exec);
-const CLI_PATH = path.resolve(process.cwd(), "dist/cli.js");
+// In-process help inspection — no `node dist/cli.js` spawn per command. The old
+// version spawned the built CLI 11 times (~0.2s locally, ~5s on CI ≈ 48s total),
+// which tripped the vitest worker-RPC timeout. Importing `program` is safe:
+// cli.ts only calls program.parse() when it is the entry point.
 
-async function runCli(
-  args: string,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  try {
-    const { stdout, stderr } = await execAsync(`node ${CLI_PATH} ${args}`);
-    return { stdout, stderr, exitCode: 0 };
-  } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string; code?: number };
-    return {
-      stdout: e.stdout || "",
-      stderr: e.stderr || "",
-      exitCode: e.code || 1,
-    };
+/** Resolve a space-separated command path (e.g. "define spec") to its Command. */
+function findCommand(pathStr: string): Command {
+  let cmd: Command = program;
+  for (const name of pathStr.split(" ")) {
+    const next = cmd.commands.find(
+      (c) => c.name() === name || c.aliases().includes(name),
+    );
+    if (!next) throw new Error(`command not found: "${pathStr}" (at "${name}")`);
+    cmd = next;
   }
+  return cmd;
+}
+
+/** Full help text including addHelpText("after", ...) hooks (the Examples block). */
+function helpText(cmd: Command): string {
+  let out = "";
+  cmd.configureOutput({
+    writeOut: (s) => {
+      out += s;
+    },
+    writeErr: (s) => {
+      out += s;
+    },
+  });
+  cmd.outputHelp();
+  return out;
 }
 
 describe("CLI UX: Help Text Examples (Phase 11)", () => {
@@ -42,11 +55,9 @@ describe("CLI UX: Help Text Examples (Phase 11)", () => {
   ];
 
   for (const cmd of commandsWithExamples) {
-    it(`gwrk ${cmd} --help shows 'Examples:' section (US-022)`, async () => {
-      const { stdout, exitCode } = await runCli(`${cmd} --help`);
-      expect(exitCode).toBe(0);
+    it(`gwrk ${cmd} --help shows 'Examples:' section (US-022)`, () => {
       expect(
-        stdout,
+        helpText(findCommand(cmd)),
         `Command 'gwrk ${cmd}' is missing 'Examples:' section in help`,
       ).toMatch(/Examples:/i);
     });

@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { type IssueRecord, updateIssue, upsertIssue } from "../db/issues.js";
 import { harvestFeature } from "../engine/harvest.js";
+import { parseFeatureBranch } from "../utils/feature-branch.js";
 import {
   associateIssueWithFeature,
   notifyIssueOpened,
@@ -136,24 +137,15 @@ export async function githubWebhookPlugin(
         .send({ status: "ignored", reason: "not_trunk_target" });
     }
 
-    // 4. Parse Feature (FR-H01)
-    if (!headRef?.startsWith("feat/")) {
+    // 4. Parse Feature (FR-H01) — shared parser, so the webhook and the poller
+    // agree on phase padding and harvest stays idempotent across both (FR-H11).
+    const parsed = parseFeatureBranch(headRef);
+    if (!parsed) {
       return reply
         .status(200)
         .send({ status: "ignored", reason: "not_feat_branch" });
     }
-
-    const branchName = headRef.replace("feat/", "");
-    let featureId: string;
-    let phaseId: string | undefined;
-
-    const phaseMatch = branchName.match(/(.+)-phase-(\d+)$/);
-    if (phaseMatch) {
-      featureId = phaseMatch[1];
-      phaseId = `phase-${phaseMatch[2]}`;
-    } else {
-      featureId = branchName;
-    }
+    const { featureId, phaseId } = parsed;
 
     const record: HarvestRecord = {
       featureId,

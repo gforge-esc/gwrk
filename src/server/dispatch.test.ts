@@ -2,39 +2,46 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import fs from "node:fs";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  type Mocked,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { GwrkConfig } from "../utils/config.js";
-import { DispatchOrchestrator } from "./dispatch-orchestrator.js";
 import { DispatchQueue } from "./dispatch.js";
-import { GitManager } from "./git-manager.js";
 import { SystemMonitor } from "./monitor.js";
 import { SandboxManager } from "./sandbox.js";
-
-import os from "node:os";
-import path from "node:path";
+import { notifySlack } from "./slack-notify.js";
 
 vi.mock("./monitor.js");
 vi.mock("./sandbox.js");
-vi.mock("./git-manager.js");
 vi.mock("./persistence.js");
 vi.mock("./slack-notify.js");
-vi.mock("./dispatch-orchestrator.js");
-vi.mock("./context.js", () => ({
-  compileContext: vi.fn().mockReturnValue("mock context"),
+// The daemon now drives the SAME unified ShipOrchestrator the CLI uses; mock it
+// (factory form, so the real engine module and its dependency chain never load)
+// to assert wiring — worktree → engine → PR → teardown — without running a real
+// ship (agents, git, PRs).
+vi.mock("../engine/ship-orchestrator.js", () => ({
+  ShipOrchestrator: vi.fn(),
 }));
 vi.mock("../db/runs.js", () => ({
   startRun: vi.fn().mockReturnValue(123),
   finishRun: vi.fn(),
 }));
 
-describe("DispatchQueue", () => {
+describe("DispatchQueue (unified ship engine)", () => {
   let queue: DispatchQueue;
-  let mockMonitor: vi.Mocked<SystemMonitor>;
-  let mockSandbox: vi.Mocked<SandboxManager>;
-  let mockGit: vi.Mocked<GitManager>;
-  let mockOrchestrator: vi.Mocked<DispatchOrchestrator>;
-  let tempDir: string;
+  let mockMonitor: Mocked<SystemMonitor>;
+  let mockSandbox: Mocked<SandboxManager>;
+  let mockRun: Mock;
+  let mockGetResult: Mock;
+  const projectRoot = "/proj";
+
   const mockConfig: GwrkConfig = {
     project: { name: "test" },
     agents: { define: "gemini", implement: "gemini" },
@@ -52,192 +59,159 @@ describe("DispatchQueue", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-dispatch-test-"));
-    mockMonitor = new SystemMonitor() as vi.Mocked<SystemMonitor>;
-    mockSandbox = new SandboxManager(tempDir) as vi.Mocked<SandboxManager>;
-    mockGit = new GitManager(tempDir) as vi.Mocked<GitManager>;
-    mockOrchestrator =
-      new DispatchOrchestrator() as vi.Mocked<DispatchOrchestrator>;
+    mockMonitor = new SystemMonitor() as Mocked<SystemMonitor>;
+    mockSandbox = new SandboxManager(projectRoot) as Mocked<SandboxManager>;
+    mockSandbox.createSandbox.mockResolvedValue("/work/dir");
+    mockSandbox.destroySandbox.mockResolvedValue(undefined);
 
-    mockOrchestrator.dispatchPhase.mockResolvedValue([]);
+    mockRun = vi.fn().mockResolvedValue(0);
+    mockGetResult = vi.fn().mockReturnValue({
+      stage: "DONE",
+      prNumber: 42,
+      prUrl: "https://example.com/pr/42",
+    });
+    (ShipOrchestrator as unknown as Mock).mockImplementation(() => ({
+      run: mockRun,
+      getResult: mockGetResult,
+    }));
 
-    queue = new DispatchQueue(
-      mockConfig,
-      mockMonitor,
-      mockSandbox,
-      mockGit,
-      mockOrchestrator,
-      tempDir,
-    );
+    queue = new DispatchQueue(mockConfig, mockMonitor, mockSandbox, projectRoot);
   });
 
-  afterEach(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  it("should enqueue a dispatch request", () => {
-    mockMonitor.isThrottled.mockReturnValue(true);
+  it("enqueues a feature-phase on a per-phase ship branch", () => {
+    mockMonitor.isThrottled.mockReturnValue(true); // keep it queued
     const record = queue.enqueue({
       featureId: "feat-1",
-      phaseId: "phase-1",
+      phaseId: "phase-01",
       taskId: "T1",
     });
     expect(record.status).toBe("queued");
+    // Per-phase branch so concurrent phases never collide and harvest can parse it.
+    expect(record.branchName).toBe("feat/feat-1-phase-01");
     expect(queue.getQueueDepth()).toBe(1);
   });
 
-  it("should process next if not throttled", async () => {
+  it("drives the unified ShipOrchestrator in an isolated worktree and PRs to develop on success", async () => {
     mockMonitor.isThrottled.mockReturnValue(false);
-    mockOrchestrator.dispatchPhase.mockResolvedValue([
-      {
-        id: "T1",
-        status: "completed",
-        sandboxDir: "workdir-1",
-        backend: "gemini",
-      },
-    ]);
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-01" });
 
-    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
-
-    // Wait for it to move to active
     await vi.waitFor(() => {
-      if (queue.getCompletedCount() !== 1) throw new Error("Not completed yet");
+      if (record.status !== "completed") throw new Error("not completed yet");
     });
 
-    expect(queue.getQueueDepth()).toBe(0);
-    expect(mockOrchestrator.dispatchPhase).toHaveBeenCalledWith(
+    // Worktree created on the per-phase ship branch, based on develop.
+    expect(mockSandbox.createSandbox).toHaveBeenCalledWith(
       expect.objectContaining({
-        tasks: [expect.objectContaining({ id: "T1" })],
+        featureId: "feat-1",
+        phaseId: "phase-01",
+        taskId: "ship",
+        baseBranch: "develop",
+        branchName: "feat/feat-1-phase-01",
+        projectRoot,
       }),
+    );
+
+    // The full lifecycle ran via the shared engine, INSIDE the worktree, with
+    // crash state kept in the primary checkout.
+    expect(ShipOrchestrator).toHaveBeenCalledWith(
+      expect.objectContaining({
+        featureId: "feat-1",
+        phaseId: "phase-01",
+        cwd: "/work/dir",
+        stateRoot: projectRoot,
+        branchName: "feat/feat-1-phase-01",
+      }),
+    );
+    expect(mockRun).toHaveBeenCalledTimes(1);
+
+    // PR metadata surfaced from the engine result (no local merge-back).
+    expect(record.prNumber).toBe(42);
+    expect(record.prUrl).toBe("https://example.com/pr/42");
+
+    // Review-ready CTA fired; the engine already opened the PR.
+    expect(notifySlack).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "review_ready" }),
+    );
+
+    // Worktree torn down WITHOUT auto commit/push/PR — the engine owns the PR.
+    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith(
+      "/work/dir",
+      "feat-1",
+      { autoCommitPush: false },
+    );
+
+    expect(queue.getCompletedCount()).toBe(1);
+    expect(queue.getActiveCount()).toBe(0);
+  });
+
+  it("marks the dispatch failed and still tears down the worktree when the engine exits non-zero", async () => {
+    mockMonitor.isThrottled.mockReturnValue(false);
+    mockRun.mockResolvedValue(1);
+
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-01" });
+
+    await vi.waitFor(() => {
+      if (record.status !== "failed") throw new Error("not failed yet");
+    });
+
+    expect(queue.getFailedCount()).toBe(1);
+    expect(notifySlack).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "phase_fail" }),
+    );
+    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith(
+      "/work/dir",
+      "feat-1",
+      { autoCommitPush: false },
     );
   });
 
-  it("should not process next if throttled", async () => {
-    mockMonitor.isThrottled.mockReturnValue(true);
+  it("tears down the worktree when the engine throws", async () => {
+    mockMonitor.isThrottled.mockReturnValue(false);
+    mockRun.mockRejectedValue(new Error("boom"));
 
-    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
+    const record = queue.enqueue({ featureId: "feat-1", phaseId: "phase-01" });
 
-    // Wait a bit to ensure it doesn't process
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => {
+      if (record.status !== "failed") throw new Error("not failed yet");
+    });
 
-    expect(queue.getActiveCount()).toBe(0);
+    expect(mockSandbox.destroySandbox).toHaveBeenCalledWith(
+      "/work/dir",
+      "feat-1",
+      { autoCommitPush: false },
+    );
+  });
+
+  it("bounds concurrent ships by parallelism.local.maxClones", () => {
+    mockMonitor.isThrottled.mockReturnValue(false);
+    // Never-resolving run() keeps ships active so the gate is observable.
+    mockRun.mockReturnValue(new Promise<number>(() => {}));
+
+    queue.enqueue({ featureId: "f1", phaseId: "phase-01" });
+    queue.enqueue({ featureId: "f2", phaseId: "phase-01" });
+    queue.enqueue({ featureId: "f3", phaseId: "phase-01" });
+
+    // maxClones = 2: two ships active, the third waits in the queue.
+    expect(queue.getActiveCount()).toBe(2);
     expect(queue.getQueueDepth()).toBe(1);
   });
 
-  it("should handle successful completion", async () => {
-    mockMonitor.isThrottled.mockReturnValue(false);
-    mockOrchestrator.dispatchPhase.mockResolvedValue([
-      {
-        id: "T1",
-        status: "completed",
-        sandboxDir: "workdir-1",
-        backend: "gemini",
-      },
-    ]);
-
-    const record = queue.enqueue({
-      featureId: "feat-1",
-      phaseId: "phase-1",
-      taskId: "T1",
-    });
-
-    // Wait for it to complete
-    await vi.waitFor(() => {
-      if (record.status !== "completed") throw new Error("Not completed yet");
-    });
-
-    expect(record.status).toBe("completed");
-    expect(queue.getActiveCount()).toBe(0);
-    expect(mockGit.mergePhaseBack).toHaveBeenCalledWith("feat-1", "phase-1");
-  });
-
-  it("should retry if exit code is non-zero and attempts < 3", async () => {
-    mockMonitor.isThrottled.mockReturnValue(false);
-    mockSandbox.createSandbox.mockResolvedValue("workdir-1");
-
-    // Mock a failed dispatch result so runDispatch auto-triggers handleCompletion with exit 1
-    mockOrchestrator.dispatchPhase.mockResolvedValueOnce([
-      {
-        id: "T1",
-        status: "failed",
-        sandboxDir: "workdir-1",
-        backend: "gemini",
-        exitCode: 1,
-      },
-    ]);
-
-    // Throttle after first attempt so retry stays queued
-    const originalIsThrottled = mockMonitor.isThrottled.getMockImplementation();
-    let attemptCount = 0;
-    mockMonitor.isThrottled.mockImplementation(() => {
-      attemptCount++;
-      // Allow first processNext (from enqueue), throttle after handleCompletion
-      return attemptCount > 1;
-    });
-
-    const record = queue.enqueue({
-      featureId: "feat-1",
-      phaseId: "phase-1",
-      taskId: "T1",
-    });
-
-    // Wait for the automatic retry to be queued
-    await vi.waitFor(() => {
-      if (record.status !== "retrying") throw new Error("Not retrying yet");
-    });
-
-    expect(record.status).toBe("retrying");
-    expect(record.attempts.length).toBe(1);
-  });
-
-  it("should escalate if attempts >= 3", async () => {
-    mockMonitor.isThrottled.mockReturnValue(false);
-    mockOrchestrator.dispatchPhase.mockResolvedValue([
-      {
-        id: "T1",
-        status: "failed",
-        sandboxDir: "workdir-1",
-        backend: "codex-cloud",
-        exitCode: 1,
-      },
-    ]);
-
-    // Config implement: gemini (fallback order will move through it)
-    const record = queue.enqueue({
-      featureId: "feat-1",
-      phaseId: "phase-1",
-      taskId: "T1",
-      backend: "codex-cloud",
-    });
-
-    // Attempt 1 (Automatically triggered by enqueue -> processNext -> runDispatch -> orchestrator -> handleCompletion)
-    await vi.waitFor(() => {
-      if (record.attempts.length < 1) throw new Error("Attempt 1 not recorded");
-    });
-
-    // Attempt 2
-    await vi.waitFor(() => {
-      if (record.attempts.length < 2) throw new Error("Attempt 2 not recorded");
-    });
-
-    // Attempt 3
-    await vi.waitFor(() => {
-      if (record.attempts.length < 3) throw new Error("Attempt 3 not recorded");
-    });
-
-    // Final failure
-    await vi.waitFor(() => {
-      if (record.status !== "failed") throw new Error("Not failed yet");
-    });
-
-    expect(record.status).toBe("failed");
-    expect(queue.getCompletedCount()).toBe(0);
-    expect(queue.getFailedCount()).toBe(1);
-  });
-
-  it("should return correct queue status", () => {
+  it("does not process while throttled", async () => {
     mockMonitor.isThrottled.mockReturnValue(true);
-    queue.enqueue({ featureId: "feat-1", phaseId: "phase-1", taskId: "T1" });
+
+    queue.enqueue({ featureId: "feat-1", phaseId: "phase-01" });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(queue.getActiveCount()).toBe(0);
+    expect(queue.getQueueDepth()).toBe(1);
+    expect(mockSandbox.createSandbox).not.toHaveBeenCalled();
+  });
+
+  it("returns queue status", () => {
+    mockMonitor.isThrottled.mockReturnValue(true);
+    queue.enqueue({ featureId: "feat-1", phaseId: "phase-01", taskId: "T1" });
 
     const status = queue.getQueue();
     expect(status.throttled).toBe(true);
@@ -245,17 +219,14 @@ describe("DispatchQueue", () => {
     expect(status.queued.length).toBe(1);
   });
 
-  it("should get dispatch by feature and phase", () => {
+  it("finds a dispatch by feature and phase", () => {
     mockMonitor.isThrottled.mockReturnValue(true);
     const record = queue.enqueue({
       featureId: "feat-1",
-      phaseId: "phase-1",
+      phaseId: "phase-01",
       taskId: "T1",
     });
-    const found = queue.getDispatch("feat-1", "phase-1", "T1");
-    expect(found).toBe(record);
-
-    const notFound = queue.getDispatch("feat-2", "phase-1", "T1");
-    expect(notFound).toBeNull();
+    expect(queue.getDispatch("feat-1", "phase-01", "T1")).toBe(record);
+    expect(queue.getDispatch("feat-2", "phase-01", "T1")).toBeNull();
   });
 });

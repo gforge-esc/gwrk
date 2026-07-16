@@ -14,10 +14,7 @@ import type { FastifyInstance } from "fastify";
  * do NOT require Docker to be running for the core API tests.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { LocalInvocationStrategy } from "../server/backends/invocation-strategy.js";
-import { DispatchOrchestrator } from "../server/dispatch-orchestrator.js";
 import { DispatchQueue } from "../server/dispatch.js";
-import { GitManager } from "../server/git-manager.js";
 import { LifecycleMonitor } from "../server/lifecycle.js";
 import { SystemMonitor } from "../server/monitor.js";
 import { NetworkMonitor } from "../server/network.js";
@@ -32,7 +29,6 @@ describe("Build Server E2E", () => {
   let queue: DispatchQueue;
   let monitor: SystemMonitor;
   let sandbox: SandboxManager;
-  let git: GitManager;
   let lifecycle: LifecycleMonitor;
   let network: NetworkMonitor;
   const projectRoot = process.cwd();
@@ -43,24 +39,10 @@ describe("Build Server E2E", () => {
     server = Fastify({ logger: false });
     monitor = new SystemMonitor(config);
     sandbox = new SandboxManager();
-    git = new GitManager(projectRoot);
     lifecycle = new LifecycleMonitor(config);
     network = new NetworkMonitor(config);
 
-    const invocationStrategy = new LocalInvocationStrategy();
-    const orchestrator = new DispatchOrchestrator(
-      config,
-      sandbox,
-      invocationStrategy,
-    );
-    queue = new DispatchQueue(
-      config,
-      monitor,
-      sandbox,
-      git,
-      orchestrator,
-      projectRoot,
-    );
+    queue = new DispatchQueue(config, monitor, sandbox, projectRoot);
 
     // Register all routes — match exact signatures from index.ts
     await dispatchRoutes(server, queue);
@@ -150,7 +132,7 @@ describe("Build Server E2E", () => {
       expect(body.phaseId).toBe("phase-01");
       expect(body.backend).toBe("gemini");
       expect(body.status).toBe("queued");
-      expect(body.branchName).toBe("phase/e2e-test-phase-01");
+      expect(body.branchName).toBe("feat/e2e-test-phase-01");
       expect(body.attempts).toEqual([]);
       expect(body.createdAt).toBeDefined();
       dispatchId = body.id;

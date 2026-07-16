@@ -126,3 +126,12 @@ gwrk gate <feature>                # Run gate scripts
 - **Hard Gates**: `gwrk tasks done` enforces gate scripts before state transitions
 - **TDD**: Tests are written before implementation; `GATE_STUB` blocks completion
 - **RAGB**: 🔴 RED (at risk) · 🟡 AMBER (in progress) · 🟢 GREEN (done done) · ⚫ BLACK (stopped)
+
+## Releasing
+
+gwrk uses Google's `release-please` to automate version bumping, changelog generation, and GitHub Releases based on conventional commits.
+
+- Merging code into `main` will trigger a **Release PR**.
+- Merging the Release PR will automatically cut a GitHub Release and attach the npm tarball.
+
+> **TODO (GA Release)**: The repository is currently locked to the `-alpha` prerelease sequence. When ready for General Availability (1.0.0), remove the `prerelease` and `prerelease-type` fields from `.release-please-config.json`.
