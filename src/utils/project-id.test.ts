@@ -7,7 +7,7 @@ import { resolveProjectId } from "./project-id.js";
 
 describe("resolveProjectId (FR-036 / TR-035)", () => {
   it("should generate a consistent MD5 hash for the same path", () => {
-    const path = "/Users/gonzo/Code/gwrk";
+    const path = "/repo/gwrk";
     const id1 = resolveProjectId(path);
     const id2 = resolveProjectId(path);
     expect(id1).toBe(id2);
