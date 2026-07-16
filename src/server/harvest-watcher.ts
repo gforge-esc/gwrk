@@ -7,6 +7,7 @@ import { harvestFeature } from "../engine/harvest.js";
 import { getCompressionRecord } from "../db/compression.js";
 import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { detectDefaultBranch } from "../utils/git.js";
 import type { App } from "@slack/bolt";
@@ -75,23 +76,12 @@ export class HarvestWatcher {
       for (const pr of prs) {
         if (pr.state === "OPEN") continue;
 
-        // Target branch check: must be a feature branch or phase branch
-        if (!pr.headRefName.startsWith("feat/") && !pr.headRefName.startsWith("phase/")) {
-          continue;
-        }
-
         const headRef = pr.headRefName;
-        const branchName = headRef.replace(/^(feat|phase)\//, "");
-
-        let featureId = branchName;
-        let phaseId: string | undefined;
-
-        // e.g. 014-plugin-system-phase-01 -> featureId: 014-plugin-system, phaseId: phase-01
-        const phaseMatch = branchName.match(/(.+)-phase-(\d+)$/);
-        if (phaseMatch) {
-          featureId = phaseMatch[1];
-          phaseId = `phase-${phaseMatch[2].padStart(2, "0")}`;
-        }
+        // Shared parser — must match the webhook path so a PR seen by both
+        // yields the same phase ID and idempotency holds (FR-H11).
+        const parsed = parseFeatureBranch(headRef);
+        if (!parsed) continue;
+        const { featureId, phaseId } = parsed;
 
         // Idempotency Guard (FR-H10): Check if already harvested
         if (phaseId) {
