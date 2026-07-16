@@ -105,6 +105,48 @@ describe("gwrk ship: Pre-flight Setup Check (Phase 10)", () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Run gwrk init first"));
   });
 
+  it("dry-run bypasses the workstation pre-flight (no setup required)", async () => {
+    mockLoadSetupState.mockReturnValue(null);
+    mockIsSetupComplete.mockReturnValue(false);
+    process.exitCode = 0;
+    try {
+      await program.parseAsync([
+        "node",
+        "test",
+        "ship",
+        "test-feature",
+        "1",
+        "--dry-run",
+      ]);
+    } catch {
+      // ignore
+    }
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.stringContaining("Run gwrk init first"),
+    );
+  });
+
+  it("dry-run reports the backend it would build with", async () => {
+    mockLoadSetupState.mockReturnValue(null);
+    mockIsSetupComplete.mockReturnValue(false);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync([
+        "node",
+        "test",
+        "ship",
+        "test-feature",
+        "1",
+        "--dry-run",
+      ]);
+    } catch {
+      // ignore
+    }
+    // loadConfig mock sets agents.implement = "gemini"
+    const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(printed).toContain("gemini");
+  });
+
   it("US-021: SHOULD proceed with ship if setup.json is complete", async () => {
     mockLoadSetupState.mockReturnValue({ steps: { tcc: true, ssh: true, gh: true, verification: true } });
     mockIsSetupComplete.mockReturnValue(true);

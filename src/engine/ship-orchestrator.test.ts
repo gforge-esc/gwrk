@@ -267,6 +267,12 @@ describe("ShipOrchestrator", () => {
     const { execSync } = await import("node:child_process");
     const mockExecSync = vi.mocked(execSync);
 
+    // Give the project a build script so BUILD_CHECK runs (existsSync is true
+    // globally, so the pnpm-lock.yaml check resolves the command to `pnpm build`).
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({ scripts: { build: "tsc" } }) as unknown as Buffer,
+    );
+
     // execSync mock: must return strings (not Buffers) because callers
     // like stagePrCi use { encoding: "utf-8" } and call .trim() on the result.
     let buildCallCount = 0;
@@ -333,9 +339,38 @@ describe("ShipOrchestrator", () => {
     expect((orchestrator as any).state.iteration).toBe(2);
   });
 
+  it("BUILD_CHECK skips when the project has no build script (cold start)", async () => {
+    const { execSync } = await import("node:child_process");
+    const mockExecSync = vi.mocked(execSync);
+
+    // No package.json in the project (early phase of a cold-start project).
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p: fs.PathLike) => !String(p).endsWith("package.json"),
+    );
+
+    const buildCalls: string[] = [];
+    mockExecSync.mockImplementation((cmd: string, ..._args: unknown[]) => {
+      if (typeof cmd === "string" && cmd.includes("build")) buildCalls.push(cmd);
+      if (typeof cmd === "string" && cmd.includes("gh pr create"))
+        return "https://github.com/mock/pull/42";
+      return "";
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    await orchestrator.run();
+
+    // No build command was ever executed, and the run advanced past BUILD_CHECK.
+    expect(buildCalls).toHaveLength(0);
+    expect((orchestrator as any).state.stage).not.toBe(ShipStage.BUILD_CHECK);
+  });
+
   it("BUILD_CHECK failure should trip circuit breaker after maxIterations", async () => {
     const { execSync } = await import("node:child_process");
     const mockExecSync = vi.mocked(execSync);
+
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({ scripts: { build: "tsc" } }) as unknown as Buffer,
+    );
 
     // Build ALWAYS fails
     mockExecSync.mockImplementation((cmd: string, ..._args: unknown[]) => {

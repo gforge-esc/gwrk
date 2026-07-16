@@ -19,14 +19,20 @@ const SetupStateSchema = z.object({
 
 export type SetupState = z.infer<typeof SetupStateSchema>;
 
-const SETUP_FILE = path.join(os.homedir(), ".gwrk", "setup.json");
+// GWRK_HOME overrides ~/.gwrk (matches config.ts) for testing and non-standard
+// installations.
+function setupFilePath(): string {
+  const gwrkHome = process.env.GWRK_HOME || path.join(os.homedir(), ".gwrk");
+  return path.join(gwrkHome, "setup.json");
+}
 
 export function loadSetupState(): SetupState | null {
-  if (!fs.existsSync(SETUP_FILE)) {
+  const setupFile = setupFilePath();
+  if (!fs.existsSync(setupFile)) {
     return null;
   }
   try {
-    const data = JSON.parse(fs.readFileSync(SETUP_FILE, "utf-8"));
+    const data = JSON.parse(fs.readFileSync(setupFile, "utf-8"));
     return SetupStateSchema.parse(data);
   } catch (err) {
     return null;
@@ -34,19 +40,21 @@ export function loadSetupState(): SetupState | null {
 }
 
 export function saveSetupState(state: SetupState): void {
-  const dir = path.dirname(SETUP_FILE);
+  const setupFile = setupFilePath();
+  const dir = path.dirname(setupFile);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(SETUP_FILE, JSON.stringify(state, null, 2));
+  fs.writeFileSync(setupFile, JSON.stringify(state, null, 2));
 }
 
+/**
+ * Setup is complete once `gwrk init` has run to completion (`verification`).
+ * The tcc/ssh/gh flags are recorded as diagnostics — a missing SSH key or gh
+ * auth surfaces as a real error at git-push / PR time, not as an unsatisfiable
+ * pre-flight block. This keeps "Run gwrk init first" a truthful instruction.
+ */
 export function isSetupComplete(state: SetupState | null): boolean {
   if (!state) return false;
-  return (
-    state.steps.tcc &&
-    state.steps.ssh &&
-    state.steps.gh &&
-    state.steps.verification
-  );
+  return state.steps.verification;
 }

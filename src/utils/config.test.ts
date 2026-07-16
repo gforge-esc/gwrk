@@ -77,6 +77,19 @@ describe("Three-layer config loading", () => {
     expect(config.agents.define).toBe("gemini");
   });
 
+  it("should load a project-identity-only config (no agents) and default agents", () => {
+    // The tracked .gwrkrc.json holds project identity only; agents live in the
+    // gitignored .gwrkrc.local.json layer. A fresh clone must still load.
+    fs.writeFileSync(
+      path.join(tmpDir, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "test-project" } }),
+    );
+    const config = loadConfig(tmpDir);
+    expect(config.project.name).toBe("test-project");
+    expect(config.agents.define).toBe("gemini");
+    expect(config.agents.implement).toBe("gemini");
+  });
+
   it("should merge .gwrkrc.local.json over project config", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".gwrkrc.json"),
@@ -135,6 +148,25 @@ describe("Three-layer config loading", () => {
     // Should not throw — malformed overlay is skipped
     const config = loadConfig(tmpDir);
     expect(config.agents.define).toBe("gemini"); // falls back to project
+  });
+
+  it("ships a .gwrkrc.local.json.example that loads as a personal overlay", () => {
+    // CONTRIBUTING.md tells contributors to `cp .gwrkrc.local.json.example
+    // .gwrkrc.local.json`. Guard it against schema drift.
+    const examplePath = path.resolve(
+      process.cwd(),
+      ".gwrkrc.local.json.example",
+    );
+    expect(fs.existsSync(examplePath), `Missing ${examplePath}`).toBe(true);
+
+    fs.writeFileSync(
+      path.join(tmpDir, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "test-project" } }),
+    );
+    fs.copyFileSync(examplePath, path.join(tmpDir, ".gwrkrc.local.json"));
+
+    const config = loadConfig(tmpDir);
+    expect(config.agents.registry?.gemini?.name).toBe("gemini");
   });
 
   it("should throw if .gwrkrc.json is missing", () => {
