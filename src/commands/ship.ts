@@ -10,7 +10,11 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
-import { finishRun, recordHistory, startRun } from "../db/runs.js";
+import {
+  finishRun as dbFinishRun,
+  recordHistory as dbRecordHistory,
+  startRun as dbStartRun,
+} from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
@@ -51,6 +55,33 @@ import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
+
+// Best-effort ledger writes. The runs ledger is write-through metrics, NOT the
+// ship→harvest handoff — harvest correlates via the GitHub PR/branch and
+// backfills its own run row. So a ledger failure (e.g. a worktree/remote runner
+// without a writable DB) must never fail an otherwise-successful ship.
+function startRun(...args: Parameters<typeof dbStartRun>): number {
+  try {
+    return dbStartRun(...args);
+  } catch (e) {
+    console.warn(`${YELLOW}⚠${RESET} ledger startRun skipped: ${e}`);
+    return -1;
+  }
+}
+function finishRun(...args: Parameters<typeof dbFinishRun>): void {
+  try {
+    dbFinishRun(...args);
+  } catch (e) {
+    console.warn(`${YELLOW}⚠${RESET} ledger finishRun skipped: ${e}`);
+  }
+}
+function recordHistory(...args: Parameters<typeof dbRecordHistory>): void {
+  try {
+    dbRecordHistory(...args);
+  } catch (e) {
+    console.warn(`${YELLOW}⚠${RESET} ledger recordHistory skipped: ${e}`);
+  }
+}
 
 /**
  * Ship a single phase through the full lifecycle.
@@ -238,7 +269,8 @@ async function shipPhase(
         throw new Error(`ShipOrchestrator failed with exit code ${exitCode}`);
       }
 
-      // Write PR data + status back to DB for harvest to find
+      // Record ship metrics (write-through). Harvest does NOT depend on this —
+      // it correlates the merge via the GitHub PR/branch and backfills its row.
       const result = orchestrator.getResult();
       const durationS = Math.round((Date.now() - startTime) / 1000);
       const stats = getDiffStats(cwd, startCommit);
