@@ -40,6 +40,11 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Configure Git for tests
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       # Known CI-hostile tests excluded:
       # - notify.test.ts: Starts real Fastify servers, 23s locally → unpredictable on CI
       # - pulse-integration.test.ts: Creates real git repos with 100 commits (~12s)
