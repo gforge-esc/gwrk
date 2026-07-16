@@ -14,6 +14,9 @@ vi.mock("node:readline/promises");
 vi.mock("../engine/registry.js", () => ({
   syncRegistry: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../plugins/seed.js", () => ({
+  seedSkills: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("Init Command Tests", () => {
   let tempDir: string;
@@ -52,7 +55,8 @@ describe("Init Command Tests", () => {
           .mockResolvedValueOnce("flat")       // Layout
           .mockResolvedValueOnce("Layered")    // Architecture
           .mockResolvedValueOnce("TDD")        // Conventions
-          .mockResolvedValueOnce("y"),         // Provision workstation
+          .mockResolvedValueOnce("y")          // Provision workstation
+          .mockResolvedValueOnce(""),          // Slack channel
         close: vi.fn(),
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
@@ -77,7 +81,8 @@ describe("Init Command Tests", () => {
           .mockResolvedValueOnce("src-nested")      // Layout
           .mockResolvedValueOnce("Hexagonal")       // Architecture
           .mockResolvedValueOnce("Functional")      // Conventions
-          .mockResolvedValueOnce("n"),              // Skip workstation
+          .mockResolvedValueOnce("n")               // Skip workstation
+          .mockResolvedValueOnce(""),               // Slack channel
         close: vi.fn(),
       };
       vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
@@ -99,9 +104,30 @@ describe("Init Command Tests", () => {
         JSON.stringify({ id: "test-id", hostname: "test", role: "remote", createdAt: new Date().toISOString() }),
       );
 
+      const mockRl = {
+        question: vi.fn()
+          .mockResolvedValueOnce("updated-project") // Project name
+          .mockResolvedValueOnce("y")               // Profile correct
+          .mockResolvedValueOnce("flat")            // Layout
+          .mockResolvedValueOnce("Clean")           // Architecture
+          .mockResolvedValueOnce("TDD")             // Conventions
+          .mockResolvedValueOnce("n")               // Skip workstation
+          .mockResolvedValueOnce("#new-channel"),   // Slack channel
+        close: vi.fn(),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
+
       const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
       await initAction({});
-      expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining("gwrk already initialized"));
+      expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining("gwrk is already initialized here"));
+      
+      const config = JSON.parse(fs.readFileSync(path.join(tempDir, ".gwrkrc.json"), "utf-8"));
+      expect(config.project.name).toBe("updated-project");
+      expect(config.project.architecture).toBe("Clean");
+      
+      const local = JSON.parse(fs.readFileSync(path.join(tempDir, ".gwrkrc.local.json"), "utf-8"));
+      expect(local.project.slack.channelId).toBe("#new-channel");
+      
       stdoutSpy.mockRestore();
     });
   });
