@@ -265,7 +265,7 @@ export function loadConfig(projectRoot: string): GwrkConfig {
 
   if (!fs.existsSync(configPath)) {
     throw new Error(
-      `Configuration file .gwrkrc.json not found at ${configPath}`,
+      `Configuration file .gwrkrc.json not found at ${configPath}. Run 'gwrk init' to initialize this project.`,
     );
   }
 
