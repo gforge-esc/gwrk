@@ -197,6 +197,17 @@ export interface JsonIntent {
 const WorkflowManifestSchema = PluginBaseSchema.extend({
   type: z.literal("workflow"),
   outputSchema: z.record(z.any()), // JSON Schema
+  /**
+   * When true, the outputSchema is passed to adapters that enforce structured
+   * output at the model level (e.g. Claude's `--json-schema`). Off by default:
+   * content-heavy workflows (plan, implement) write their deliverable files
+   * natively and the JSON is only a post-hoc report — forcing large structured
+   * output there exhausts the model's structured-output retries and fails the
+   * run even though the work succeeded. Enable ONLY where the JSON contract
+   * itself is the deliverable and the model might otherwise ask questions
+   * instead of producing it (e.g. specify).
+   */
+  enforceOutputSchema: z.boolean().optional().default(false),
 });
 
 /**

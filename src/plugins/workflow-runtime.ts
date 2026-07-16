@@ -298,15 +298,52 @@ export class WorkflowRuntime {
       workDir: projectRoot,
       workflow: name,
       quiet: options.quiet,
-      // Enforce the contract at the model level for adapters that support it
-      // (e.g. Claude's --json-schema). The prompt's <output_contract> is prose
-      // the model can ignore; this is the structural guarantee.
-      outputSchema: manifest.outputSchema,
+      // Enforce the contract at the model level ONLY when the workflow opts in
+      // (e.g. Claude's --json-schema). Content-heavy workflows write files
+      // natively and only report a manifest — forcing large structured output
+      // there exhausts the model's retries and fails an otherwise-good run.
+      // See WorkflowManifestSchema.enforceOutputSchema.
+      outputSchema: manifest.enforceOutputSchema
+        ? manifest.outputSchema
+        : undefined,
     };
 
     const result = await dispatchToAgent(task);
 
+    // Detect native artifacts (files the agent wrote directly). Used by both
+    // the structured-output safety net and the FR-029 tolerant path below.
+    const hasArtifacts = (): boolean => {
+      try {
+        return (
+          execSync("git status --porcelain", { cwd: projectRoot })
+            .toString()
+            .trim().length > 0
+        );
+      } catch {
+        return false;
+      }
+    };
+
     if (result.exitCode !== 0) {
+      // Safety net: Claude under --json-schema can exhaust its structured-output
+      // retries (subtype "error_max_structured_output_retries", exit 1) AFTER
+      // writing the deliverable files natively — the work is done, only the
+      // report failed to serialize. If artifacts exist, recover it as
+      // native-writer success rather than discarding the work.
+      const exhaustedStructuredOutput = result.stdout.includes(
+        "error_max_structured_output_retries",
+      );
+      if (exhaustedStructuredOutput && hasArtifacts()) {
+        console.warn(
+          "[workflow-runtime] Agent exhausted structured-output retries but wrote artifacts natively — recovering as native success.",
+        );
+        return {
+          summary:
+            "Agent completed successfully (native execution; structured output not serialized)",
+          intents: [],
+          summaries: [],
+        };
+      }
       throw new Error(
         `Workflow execution failed with exit code ${result.exitCode}: ${result.stderr}`,
       );
@@ -320,18 +357,7 @@ export class WorkflowRuntime {
       // FR-029: Tolerate agents that do native work and return prose.
       // If the agent exited 0, treat prose output as synthetic success.
       // T019: Detect agent-native success by checking for committed artifacts
-      const hasArtifacts = (() => {
-        try {
-          const status = execSync("git status --porcelain", {
-            cwd: projectRoot,
-          }).toString();
-          return status.trim().length > 0;
-        } catch {
-          return false;
-        }
-      })();
-
-      if (result.exitCode === 0 && (result.nativeWriter || options.tolerant || hasArtifacts)) {
+      if (result.exitCode === 0 && (result.nativeWriter || options.tolerant || hasArtifacts())) {
         const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
         console.warn(
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,
