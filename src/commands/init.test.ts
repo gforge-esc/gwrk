@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -42,6 +46,7 @@ describe("Init Command Tests", () => {
     it("US-001: should run interactive wizard when no flags provided", async () => {
       const mockRl = {
         question: vi.fn()
+          .mockResolvedValueOnce("n")          // Is this machine the gwrk server? (device role)
           .mockResolvedValueOnce("my-project") // Project name
           .mockResolvedValueOnce("y")          // Profile correct
           .mockResolvedValueOnce("flat")       // Layout
@@ -66,6 +71,7 @@ describe("Init Command Tests", () => {
 
       const mockRl = {
         question: vi.fn()
+          .mockResolvedValueOnce("n")                // Is this machine the gwrk server?
           .mockResolvedValueOnce("my-node-project") // Project name
           .mockResolvedValueOnce("y")               // Profile correct (nodejs)
           .mockResolvedValueOnce("src-nested")      // Layout
@@ -86,7 +92,13 @@ describe("Init Command Tests", () => {
     it("US-001: should be idempotent and offer to update existing config", async () => {
       // Setup fake root config to trigger idempotency
       fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "root" } }));
-      
+      // Pre-seed device.json so machine setup is skipped
+      fs.mkdirSync(gwrkHome, { recursive: true });
+      fs.writeFileSync(
+        path.join(gwrkHome, "device.json"),
+        JSON.stringify({ id: "test-id", hostname: "test", role: "remote", createdAt: new Date().toISOString() }),
+      );
+
       const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
       await initAction({});
       expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining("gwrk already initialized"));

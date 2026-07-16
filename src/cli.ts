@@ -7,6 +7,7 @@ import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { dbCommand } from "./commands/db.js";
 import { defineCommand } from "./commands/define.js";
+import { deviceCommand } from "./commands/device.js";
 import { gateCommand } from "./commands/gate.js";
 import { harvestCommand } from "./commands/harvest.js";
 import { initCommand } from "./commands/init.js";
@@ -61,6 +62,7 @@ program
           "plan",
           "db",
           "server",
+          "device",
           "status",
           "project",
           "plugin",
@@ -122,6 +124,7 @@ program.addCommand(planCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
+program.addCommand(deviceCommand);
 program.addCommand(skillCommand);
 program.addCommand(pluginCommand);
 
