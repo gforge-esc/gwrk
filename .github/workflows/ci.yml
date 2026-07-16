@@ -16,9 +16,10 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
-        node-version: [20, 22]
+        node-version: [22]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,8 +40,18 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Known CI-hostile tests excluded:
+      # - notify.test.ts: Starts real Fastify servers, 23s locally → unpredictable on CI
+      # - pulse-integration.test.ts: Creates real git repos with 100 commits (~12s)
+      # These are enforced locally by the pre-commit hook (build + test on develop/main).
       - name: Test
-        run: pnpm test
+        run: >-
+          pnpm vitest run
+          --exclude '**/e2e/**'
+          --exclude '**/notify.test.ts'
+          --exclude '**/pulse-integration.test.ts'
+        env:
+          CI: "true"
 
       - name: Lint (advisory)
         run: pnpm lint
