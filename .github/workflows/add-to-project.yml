@@ -1,0 +1,30 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Adds newly-opened issues to the public roadmap board. This replaces the Project's
+# built-in "auto-add" workflow (which isn't exposed via the API) with a
+# version-controlled equivalent.
+#
+# Activation (both required, else this job no-ops):
+#   • repo variable  ROADMAP_PROJECT_URL  — set by scripts/setup-roadmap-project.sh
+#   • repo secret     ADD_TO_PROJECT_PAT  — a PAT with `project` + `repo` scope
+#     (the default GITHUB_TOKEN cannot write to org-level Projects).
+name: Add issues to roadmap
+
+on:
+  issues:
+    types: [opened, reopened, transferred]
+
+permissions:
+  contents: read
+
+jobs:
+  add-to-project:
+    if: ${{ vars.ROADMAP_PROJECT_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: ${{ vars.ROADMAP_PROJECT_URL }}
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}

@@ -1,0 +1,8 @@
+# Code owners for gwrk.
+#
+# This is review *routing*, not a hard gate: GitHub auto-requests the owner on
+# every PR so ratification defaults to them. Keep `require_code_owner_reviews`
+# OFF in the branch rulesets (see scripts/setup-github-public.sh) so this never
+# makes anyone unmergeable — including the maintainer on their own PR.
+
+* @dgonzo

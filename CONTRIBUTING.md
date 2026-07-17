@@ -4,7 +4,7 @@ Thank you for your interest in contributing to gwrk! This guide will help you ge
 
 ## ⚠️ Alpha Status
 
-gwrk is in active alpha (`v1.0.0-alpha.0`). Some core commands (`gwrk define`, `gwrk ship`) still reference workflow files that aren't yet bundled with the distribution (tracked in [R004](docs/research/R004-shareability-readiness/draft.md)). The plugin system's WorkflowRuntime (Layer 2.5) is under active development. Expect rough edges — your feedback helps us prioritize.
+gwrk is in active alpha ([latest release](https://github.com/gforge-esc/gwrk/releases/latest)). Some core commands (`gwrk define`, `gwrk ship`) still reference workflow files that aren't yet bundled with the distribution (tracked in [R004](docs/research/R004-shareability-readiness/draft.md)). The plugin system's WorkflowRuntime (Layer 2.5) is under active development. Expect rough edges — your feedback helps us prioritize.
 
 ## Getting Started
 

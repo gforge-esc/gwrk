@@ -1,0 +1,9 @@
+# gwrk funding channels.
+#
+# Uncomment and fill in the ones you actually use; GitHub renders a "Sponsor"
+# button from these. Leave everything commented for no button (valid + harmless).
+#
+# github: [dgonzo]              # GitHub Sponsors username(s)
+# open_collective: gwrk         # Open Collective slug
+# ko_fi: your_handle            # Ko-fi username
+# custom: ["https://example.com/donate"]
