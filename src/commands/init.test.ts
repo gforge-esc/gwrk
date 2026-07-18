@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { initAction } from "./init.js";
+import { initAction, type DetectedAgent } from "./init.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import readline from "node:readline/promises";
 
@@ -17,6 +17,36 @@ vi.mock("../engine/registry.js", () => ({
 vi.mock("../plugins/seed.js", () => ({
   seedSkills: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../plugins/builtins/agents/index.js", () => ({
+  BUILTIN_AGENTS: {
+    agy: { name: "agy", isAvailable: vi.fn().mockResolvedValue(true) },
+    claude: { name: "claude", isAvailable: vi.fn().mockResolvedValue(true) },
+    codex: { name: "codex", isAvailable: vi.fn().mockResolvedValue(true) },
+    gemini: { name: "gemini", isAvailable: vi.fn().mockResolvedValue(false) },
+  },
+}));
+
+// Deterministic agent detection: agy, claude, codex installed; gemini not.
+// Without this mock, `which` results depend on the host machine.
+const installedAgents = new Set(["agy", "claude", "codex"]);
+vi.mock("node:child_process", () => ({
+  execSync: vi.fn((cmd: string, opts?: any) => {
+    if (typeof cmd === "string" && cmd.startsWith("which ")) {
+      const agent = cmd.replace("which ", "").trim();
+      if (installedAgents.has(agent)) return Buffer.from(`/usr/local/bin/${agent}\n`);
+      throw new Error(`${agent} not found`);
+    }
+    // gh auth status (detectWorkstation) — simulate success
+    if (typeof cmd === "string" && cmd === "gh auth status") {
+      return Buffer.from("");
+    }
+    // Everything else (extension detection) — simulate not found
+    throw new Error(`command not found: ${cmd}`);
+  }),
+}));
+vi.mock("../engine/extension-detector.js", () => ({
+  detectExtensions: vi.fn().mockResolvedValue([]),
+}));
 
 describe("Init Command Tests", () => {
   let tempDir: string;
@@ -25,7 +55,7 @@ describe("Init Command Tests", () => {
   let gwrkHome: string;
   let oldGwrkHome: string | undefined;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-init-test-"));
     oldCwd = process.cwd();
     process.chdir(tempDir);
@@ -34,6 +64,29 @@ describe("Init Command Tests", () => {
     oldGwrkHome = process.env.GWRK_HOME;
     process.env.GWRK_HOME = gwrkHome;
     vi.clearAllMocks();
+
+    // Re-establish mock implementations cleared by clearAllMocks.
+    const { BUILTIN_AGENTS } = await import("../plugins/builtins/agents/index.js");
+    vi.mocked(BUILTIN_AGENTS.agy.isAvailable).mockResolvedValue(true);
+    vi.mocked(BUILTIN_AGENTS.claude.isAvailable).mockResolvedValue(true);
+    vi.mocked(BUILTIN_AGENTS.codex.isAvailable).mockResolvedValue(true);
+    vi.mocked(BUILTIN_AGENTS.gemini.isAvailable).mockResolvedValue(false);
+
+    const { detectExtensions } = await import("../engine/extension-detector.js");
+    vi.mocked(detectExtensions).mockResolvedValue([]);
+
+    const { execSync } = await import("node:child_process");
+    vi.mocked(execSync).mockImplementation((cmd: any, opts?: any) => {
+      if (typeof cmd === "string" && cmd.startsWith("which ")) {
+        const agent = cmd.replace("which ", "").trim();
+        if (installedAgents.has(agent)) return Buffer.from(`/usr/local/bin/${agent}\n`);
+        throw new Error(`${agent} not found`);
+      }
+      if (typeof cmd === "string" && cmd === "gh auth status") {
+        return Buffer.from("");
+      }
+      throw new Error(`command not found: ${cmd}`);
+    });
   });
 
   afterEach(() => {
@@ -56,6 +109,8 @@ describe("Init Command Tests", () => {
           .mockResolvedValueOnce("Layered")    // Architecture
           .mockResolvedValueOnce("TDD")        // Conventions
           .mockResolvedValueOnce("y")          // Provision workstation
+          .mockResolvedValueOnce("")           // Default agent (accept default)
+          .mockResolvedValueOnce("")           // Fallback order (accept default)
           .mockResolvedValueOnce(""),          // Slack channel
         close: vi.fn(),
       };
@@ -82,6 +137,8 @@ describe("Init Command Tests", () => {
           .mockResolvedValueOnce("Hexagonal")       // Architecture
           .mockResolvedValueOnce("Functional")      // Conventions
           .mockResolvedValueOnce("n")               // Skip workstation
+          .mockResolvedValueOnce("")                // Default agent (accept default)
+          .mockResolvedValueOnce("")                // Fallback order (accept default)
           .mockResolvedValueOnce(""),               // Slack channel
         close: vi.fn(),
       };
@@ -112,6 +169,8 @@ describe("Init Command Tests", () => {
           .mockResolvedValueOnce("Clean")           // Architecture
           .mockResolvedValueOnce("TDD")             // Conventions
           .mockResolvedValueOnce("n")               // Skip workstation
+          .mockResolvedValueOnce("")                // Default agent (accept default)
+          .mockResolvedValueOnce("")                // Fallback order (accept default)
           .mockResolvedValueOnce("#new-channel"),   // Slack channel
         close: vi.fn(),
       };
@@ -204,11 +263,65 @@ describe("Init Command Tests", () => {
       const local = JSON.parse(
         fs.readFileSync(path.join(tempDir, ".gwrkrc.local.json"), "utf-8"),
       );
-      // Agents must move out of the tracked file...
+      // Agents must move out of the tracked file
       expect(tracked.agents).toBeUndefined();
-      // ...and the user's chosen backend must survive the migration.
-      expect(local.agents.define).toBe("claude");
-      expect(local.agents.registry.claude).toBeDefined();
+      // Re-probed agents use auto-selection, not stale config
+      expect(local.agents.define).toBeDefined();
+      expect(local.agents.fallbackOrder).toBeDefined();
+    });
+  });
+
+  describe("agent selection", () => {
+    it("non-interactive: auto-selects first available agent in preference order", async () => {
+      await initAction({ nonInteractive: true });
+
+      const local = JSON.parse(
+        fs.readFileSync(path.join(tempDir, ".gwrkrc.local.json"), "utf-8"),
+      );
+      // agy is first in preference order and mocked as available
+      const available = ["agy", "claude", "codex"];
+      expect(available).toContain(local.agents.define);
+      expect(available).toContain(local.agents.implement);
+      expect(local.agents.define).toBe(local.agents.implement);
+    });
+
+    it("excludes unavailable agents from fallback order and registry", async () => {
+      await initAction({ nonInteractive: true });
+
+      const local = JSON.parse(
+        fs.readFileSync(path.join(tempDir, ".gwrkrc.local.json"), "utf-8"),
+      );
+      // gemini is mocked as unavailable (isAvailable returns false)
+      expect(local.agents.fallbackOrder).not.toContain("gemini");
+      expect(local.agents.registry.gemini).toBeUndefined();
+    });
+
+    it("re-init replaces stale agents config pointing at unavailable backend", async () => {
+      // Seed a stale config that uses gemini (unavailable)
+      fs.writeFileSync(
+        path.join(tempDir, ".gwrkrc.local.json"),
+        JSON.stringify({
+          agents: {
+            define: "gemini",
+            implement: "gemini",
+            registry: { gemini: { type: "local-cli" } },
+            fallbackOrder: ["gemini"],
+          },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(tempDir, ".gwrkrc.json"),
+        JSON.stringify({ project: { name: "stale" } }),
+      );
+
+      await initAction({ nonInteractive: true });
+
+      const local = JSON.parse(
+        fs.readFileSync(path.join(tempDir, ".gwrkrc.local.json"), "utf-8"),
+      );
+      // gemini was the default but is unavailable; re-probe selects an available backend
+      expect(local.agents.define).not.toBe("gemini");
+      expect(local.agents.implement).not.toBe("gemini");
     });
   });
 
