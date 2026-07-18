@@ -60,6 +60,22 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release upload ${{ steps.release.outputs.tag_name }} \
-            gwrk-${{ steps.release.outputs.tag_name }}.tgz
+          tag='${{ steps.release.outputs.tag_name }}'
+          file="gwrk-${tag}.tgz"
+          # release-please creates the GitHub Release moments before this step;
+          # the REST lookup `gh` uses can lag, which surfaced as a consistent
+          # "release not found" on every release run. Wait for it to be visible,
+          # then upload idempotently so re-runs don't fail on an existing asset.
+          for attempt in $(seq 1 6); do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" "$file" --clobber
+              echo "Uploaded ${file} to release ${tag}"
+              exit 0
+            fi
+            echo "Release ${tag} not visible yet (attempt ${attempt}/6); waiting 10s..."
+            sleep 10
+          done
+          echo "::error::Release ${tag} never became available for asset upload"
+          exit 1
