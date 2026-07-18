@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1-alpha.0](https://github.com/gforge-esc/gwrk/compare/cli-v1.2.0-alpha.0...cli-v1.2.1-alpha.0) (2026-07-18)
+
+
+### Bug Fixes
+
+* **release:** harden release tarball upload against propagation lag ([#119](https://github.com/gforge-esc/gwrk/issues/119)) ([a5eedb0](https://github.com/gforge-esc/gwrk/commit/a5eedb07466152101a44f612179ffa99bc190c62))
+
 ## [1.2.0-alpha.0](https://github.com/gforge-esc/gwrk/compare/cli-v1.1.0-alpha.0...cli-v1.2.0-alpha.0) (2026-07-16)
 
 
