@@ -57,9 +57,22 @@ export function startRun(
   // Auto-resolve a stable project_id from cwd if not provided. Uses the shared
   // resolver (git-remote/worktree aware) so runs recorded from a worktree
   // correlate with the same project as the primary checkout.
-  const projectId = run.project_id ?? resolveProjectId(process.cwd());
+  let projectId = run.project_id ?? resolveProjectId(process.cwd());
 
-  // Ensure project exists in projects table to satisfy FK constraint
+  // Ensure a projects row exists for this run's project_id to satisfy the FK.
+  //
+  // projects.path is UNIQUE, so if a row already exists for this cwd under a
+  // DIFFERENT id (e.g. the repo's `origin` remote changed, which changes the
+  // resolved id) a plain INSERT OR IGNORE would be silently skipped and the
+  // runs insert below would fail the FK. Reconcile by path instead: reuse the
+  // existing row's id so history stays correlated and the FK always holds.
+  if (projectId && !run.project_id) {
+    const existing = conn
+      .prepare("SELECT id FROM projects WHERE path = ?")
+      .get(process.cwd()) as { id: string } | undefined;
+    if (existing) projectId = existing.id;
+  }
+
   if (projectId) {
     conn
       .prepare(

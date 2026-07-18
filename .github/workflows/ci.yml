@@ -19,7 +19,12 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        node-version: [22]
+        # Both values must stay in sync with the required status-check contexts
+        # in scripts/setup-github-public.sh (`ci (20)` and `ci (22)`). Dropping a
+        # value here without updating the rulesets leaves a required check that
+        # never reports and blocks every PR. Node 20 matches CONTRIBUTING's
+        # "Node 20 and 22" promise; engines.node is >= 18.
+        node-version: [20, 22]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

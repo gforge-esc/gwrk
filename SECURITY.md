@@ -1,11 +1,5 @@
 # Security Policy
 
-## Supported Versions
-
-| Version | Supported |
-|---------|-----------|
-| v1.0.0-alpha.x | ✅ Yes |
-
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in gwrk, please report it responsibly.

@@ -1,0 +1,69 @@
+title: "[Alpha feedback] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for kicking the tires on the gwrk alpha! 🦩
+
+        This is the place for **open-ended experience reports** — what worked, what was rough,
+        and what you wish it did. No reproducible steps required.
+
+        Found a reproducible defect? Open a
+        [Bug report](https://github.com/gforge-esc/gwrk/issues/new?template=bug_report.yml) instead.
+        Not sure where something goes? See [SUPPORT.md](https://github.com/gforge-esc/gwrk/blob/main/SUPPORT.md).
+
+  - type: dropdown
+    id: pillar
+    attributes:
+      label: Which part of gwrk is this about?
+      options:
+        - Discovery (gwrk define research)
+        - Definition (gwrk define spec/plan/tests/tasks)
+        - Shipping (gwrk ship)
+        - Accountability (gwrk measure)
+        - CLI / Operations
+        - Plugin System
+        - Install / setup
+        - Overall experience
+    validations:
+      required: true
+
+  - type: textarea
+    id: doing
+    attributes:
+      label: What were you trying to do?
+      description: The job you were trying to get done.
+    validations:
+      required: true
+
+  - type: textarea
+    id: worked
+    attributes:
+      label: What worked well?
+      description: What felt fast, clarifying, or good to use?
+
+  - type: textarea
+    id: rough
+    attributes:
+      label: What was rough or confusing?
+      description: Friction, surprises, dead-ends, unclear output — the honest version.
+    validations:
+      required: true
+
+  - type: textarea
+    id: wish
+    attributes:
+      label: What do you wish it did?
+      description: The single change that would most improve this for you.
+
+  - type: input
+    id: version
+    attributes:
+      label: gwrk version (optional)
+      description: Output of `gwrk --version`.
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment (optional)
+      description: OS, Node version, and which agent CLI(s) you're using (claude, gemini, codex, agy).
