@@ -126,6 +126,32 @@ describe("runs db", () => {
     expect(historyId).toBeGreaterThan(0);
   });
 
+  it("startRun reconciles by path when a stale project id occupies cwd (changed remote)", () => {
+    // Regression: the repo's `origin` remote changed, so resolveProjectId(cwd)
+    // now returns a NEW id, but the projects table still holds a row for the
+    // SAME path under the OLD id. `INSERT OR IGNORE` can't add the new id
+    // (projects.path is UNIQUE), so the runs insert used to fail the FK.
+    const STALE_ID = "stale-remote-id-0000000000000000";
+    registerProject(
+      { id: STALE_ID, name: "cwd-project", path: process.cwd() },
+      db,
+    );
+
+    // No explicit project_id → startRun resolves one from cwd. Must not throw,
+    // and must record the run under the existing (path-bound) project.
+    let runId = 0;
+    expect(() => {
+      runId = startRun(
+        { feature_id: "reconcile-feat", command: "define tests" },
+        db,
+      );
+    }).not.toThrow();
+
+    expect(runId).toBeGreaterThan(0);
+    const runs = listRuns("reconcile-feat", STALE_ID, db);
+    expect(runs.length).toBe(1);
+  });
+
   describe("FR-H03: DB Record Finalization", () => {
     it("US-H03: finishRun updates status, PR, and merge commit", () => {
       const runId = startRun(
