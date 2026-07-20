@@ -2,6 +2,10 @@ type: workflow
 name: gwrk-plan
 version: 0.1.0
 description: Create a technical implementation plan from a spec.
+# Force the {summary, intents} contract at the model level. Without this the
+# claude agent can end its turn in prose (e.g. asking clarifying questions),
+# which the output parser rejects. See gwrk-specify for the same opt-in.
+enforceOutputSchema: true
 outputSchema:
   type: object
   properties:
