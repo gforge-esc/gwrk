@@ -16,6 +16,7 @@ import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { resolveExtensionContext } from "../plugins/extension-runtime.js";
 import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
+import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
 import { resolveProjectId } from "./project-id.js";
 
@@ -77,6 +78,13 @@ interface DispatchOptions {
   stdin?: string;
   quiet?: boolean;
   outputSchema?: Record<string, unknown>;
+  /**
+   * When true, the backend's stdout is a stream-json event stream: render it
+   * into a readable .runs/*.log transcript and mirror the raw stream to a
+   * .jsonl sidecar. When false/undefined, stdout is logged verbatim (the prior
+   * behavior — preserved for prose backends like agy/codex/gemini).
+   */
+  emitsStreamJson?: boolean;
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
@@ -172,6 +180,14 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
   const logPath = path.join(runsDir, `${ts}_${workflow}_${feature}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
+  // Lossless raw event stream sidecar (stream-json backends only). The .log is
+  // the readable transcript; this .jsonl is the complete record for replay and
+  // exhaustive debugging.
+  const jsonlPath = logPath.replace(/\.log$/, ".jsonl");
+  const jsonlStream = opts.emitsStreamJson
+    ? fs.createWriteStream(jsonlPath, { flags: "a" })
+    : undefined;
+
   // Write structured header to log
   const branch = process.env.GIT_BRANCH ?? "unknown";
   logStream.write("# gwrk Agent Run Log\n");
@@ -189,6 +205,17 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
     const startEpoch = Date.now();
     const stdoutLines: string[] = [];
     const stderrLines: string[] = [];
+    // Terminal stream-json `result` event, captured for end-of-run error surfacing.
+    let lastResultEvent: unknown;
+
+    // Write a (possibly multi-line) transcript entry, timestamping each line so
+    // the log stays grep-able and stalls are visible by wall clock.
+    const writeStamped = (text: string) => {
+      const stamp = formatStamp(startEpoch);
+      for (const l of text.split("\n")) {
+        logStream.write(`[${stamp}] ${l}\n`);
+      }
+    };
 
     // ADR-008 Layer 2: Hardened environment for agent sub-processes
     const child = spawn(command, args, {
@@ -261,6 +288,21 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         return;
       }
 
+      // Stream-json backends (claude): mirror the raw stdout event to the
+      // lossless .jsonl sidecar, then render a readable transcript entry into
+      // the .log. Unparseable or unrecognized events fall back to the raw line
+      // so nothing is silently dropped. stderr stays on the default path below
+      // (plain diagnostics, not part of the event stream).
+      if (opts.emitsStreamJson && stream === "stdout") {
+        const routed = renderStreamStdoutLine(line);
+        jsonlStream?.write(`${routed.jsonl}\n`);
+        if (routed.resultEvent !== undefined) {
+          lastResultEvent = routed.resultEvent;
+        }
+        writeStamped(routed.log);
+        return;
+      }
+
       // Quiet mode: write timestamped line to log only, skip stdout
       if (opts.quiet) {
         if (logStream) {
@@ -306,6 +348,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       logStream.write(`# Duration  : ${mins}m ${secs}s\n`);
       logStream.write(`# Exit Code : ${code}\n`);
       logStream.end();
+      jsonlStream?.end();
 
       if (opts.quiet) {
         const status = code === 0 ? "✓" : "✗";
@@ -313,6 +356,17 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         process.stdout.write(
           `  ${status} agent done (${mins}m ${secs}s) → ${relLogPath}\n`,
         );
+        // Surface concise error context on failure (goal: helpful context, not
+        // a log dump). Success stays a single clean line.
+        const errSummary = formatResultError(lastResultEvent);
+        if (code !== 0 || errSummary) {
+          if (errSummary) {
+            process.stdout.write(`  ${YELLOW}⚠ ${errSummary}${RESET}\n`);
+          }
+          process.stdout.write(
+            `  ${DIM}↳ full transcript: ${relLogPath}${RESET}\n`,
+          );
+        }
       }
 
       resolve({
@@ -588,6 +642,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     prompt: task.prompt,
     workDir: task.workDir,
     outputSchema: task.outputSchema,
+    emitsStreamJson: adapter.emitsStreamJson,
   };
 
   const {

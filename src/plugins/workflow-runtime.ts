@@ -25,12 +25,48 @@ import type { WorkflowManifest, JsonIntent } from "./manifest.js";
  * 3. Plain text mixed with JSON (ignores the plain text)
  */
 export function extractJsonFromOutput(stdout: string): unknown {
-  // Step 0: Unwrap Claude Code's `--output-format json` envelope. Its real
-  // payload is a string in the `result` field (typically wrapped in prose and
-  // a ```json fence), so recurse into it. Without this, the balanced-brace
+  const trimmed = stdout.trim();
+
+  // Step 0a: Unwrap a Claude Code `--output-format stream-json` event stream.
+  // Each line is a standalone JSON event (system / assistant / user / result);
+  // the real contract lives in the `result` string of the terminal
+  // {"type":"result"} event. Only the claude backend emits this shape, so this
+  // branch is inert for agy/codex/gemini — their output carries no per-line
+  // result events, so lastResultPayload stays undefined and we fall through.
+  const streamLines = trimmed.split("\n");
+  if (streamLines.length > 1) {
+    let lastResultPayload: string | undefined;
+    for (const raw of streamLines) {
+      const line = raw.trim();
+      if (!line.startsWith("{") || !line.endsWith("}")) continue;
+      let evt: Record<string, unknown>;
+      try {
+        evt = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue; // not a complete JSON event line (prose, fragment) — ignore
+      }
+      if (
+        evt &&
+        typeof evt === "object" &&
+        evt.type === "result" &&
+        typeof evt.result === "string"
+      ) {
+        lastResultPayload = evt.result; // last wins (agent self-correction)
+      }
+    }
+    if (lastResultPayload !== undefined) {
+      // Recurse into the payload and let any failure propagate — do NOT fall
+      // back to brace-scanning the whole stream, which would match a wrapper
+      // event's braces and mask the true failure (mirrors Step 0b's guard).
+      return extractJsonFromOutput(lastResultPayload);
+    }
+  }
+
+  // Step 0b: Unwrap Claude Code's single `--output-format json` envelope. Its
+  // real payload is a string in the `result` field (typically wrapped in prose
+  // and a ```json fence), so recurse into it. Without this, the balanced-brace
   // scan below matches the envelope's own outer braces and returns the wrapper
   // object — which has no `summary`/`intents` — failing schema validation.
-  const trimmed = stdout.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     let envelope: Record<string, unknown> | undefined;
     try {
@@ -308,17 +344,40 @@ export class WorkflowRuntime {
         : undefined,
     };
 
+    // Baseline HEAD captured BEFORE dispatch so hasArtifacts() can detect
+    // native work the agent committed during the run (which leaves a clean
+    // working tree). `null` when this isn't a git repo / rev-parse fails.
+    const headBefore = ((): string | null => {
+      try {
+        return execSync("git rev-parse HEAD", { cwd: projectRoot })
+          .toString()
+          .trim();
+      } catch {
+        return null;
+      }
+    })();
+
     const result = await dispatchToAgent(task);
 
     // Detect native artifacts (files the agent wrote directly). Used by both
     // the structured-output safety net and the FR-029 tolerant path below.
+    // Counts BOTH uncommitted changes (dirty tree) AND commits the agent made
+    // during the run (HEAD moved) — a committed artifact leaves a clean tree,
+    // so a status-only check would miss native-writer work that was committed.
     const hasArtifacts = (): boolean => {
       try {
-        return (
+        const dirty =
           execSync("git status --porcelain", { cwd: projectRoot })
             .toString()
-            .trim().length > 0
-        );
+            .trim().length > 0;
+        if (dirty) return true;
+        if (headBefore !== null) {
+          const headAfter = execSync("git rev-parse HEAD", { cwd: projectRoot })
+            .toString()
+            .trim();
+          if (headAfter !== headBefore) return true;
+        }
+        return false;
       } catch {
         return false;
       }

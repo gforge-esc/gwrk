@@ -11,6 +11,14 @@ import type { AgentBackend } from "../../../agent-backend.js";
 export class ClaudeAdapter implements AgentBackend {
   readonly name = "claude";
 
+  /**
+   * Claude Code runs with `--output-format stream-json`, emitting one JSON
+   * event per line. The runner renders these into a readable .runs/*.log
+   * transcript and persists the raw stream to a .jsonl sidecar. Backends that
+   * emit plain prose (agy/codex/gemini) leave this unset and are logged as-is.
+   */
+  readonly emitsStreamJson = true;
+
   async isAvailable(): Promise<boolean> {
     const res = await execCommand("which", ["claude"]);
     return res.exitCode === 0;
@@ -53,7 +61,18 @@ export class ClaudeAdapter implements AgentBackend {
     env?: Record<string, string>;
   }> {
     const command = "claude";
-    const args: string[] = ["-p", task.prompt || "", "--output-format", "json"];
+    // `stream-json` emits one JSON event per line as work happens (system /
+    // assistant / tool_use / tool_result / result), which the runner turns into
+    // a full run transcript. `--verbose` is required by Claude Code to stream
+    // events in `-p` (print) mode. The prior `--output-format json` buffered
+    // everything into a single end-of-run blob, so runs had no reviewable log.
+    const args: string[] = [
+      "-p",
+      task.prompt || "",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+    ];
 
     // Enforce the workflow's output contract at the model level. Without this,
     // Claude may spend its single non-interactive turn asking clarifying
