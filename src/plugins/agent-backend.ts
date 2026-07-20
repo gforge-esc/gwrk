@@ -21,6 +21,15 @@ export interface AgentBackend {
   readonly nativeWriter?: boolean;
 
   /**
+   * When true, this backend's stdout is a newline-delimited JSON event stream
+   * (e.g. Claude Code's `--output-format stream-json`). The dispatch runner
+   * renders those events into a readable .runs/*.log transcript and mirrors the
+   * raw stream to a .jsonl sidecar. Backends that emit plain prose leave this
+   * unset, and their output is written to the log verbatim (unchanged).
+   */
+  readonly emitsStreamJson?: boolean;
+
+  /**
    * Generates the CLI-specific context file from the project's source of truth.
    * MUST use <!-- gwrk:begin --> / <!-- gwrk:end --> boundary markers.
    */

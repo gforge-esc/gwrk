@@ -114,6 +114,50 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     expect(() => extractJsonFromOutput(envelope)).toThrow(/Expected JSON object/);
   });
 
+  it('unwraps a stream-json event stream and extracts the payload from the final result event', () => {
+    // `--output-format stream-json --verbose` emits one JSON event per line.
+    // The contract lives in the `result` field of the terminal result event.
+    const inner = 'Here is the report.\n```json\n{"summary": "streamed", "intents": []}\n```';
+    const stream = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 's1', tools: ['Bash', 'Write'] }),
+      JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Working on it.' }] }, session_id: 's1' }),
+      // A tool_use whose input itself contains braces/JSON — the extractor must
+      // NOT grab this; it must reach into the result event's payload.
+      JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Write', input: { file_path: 'spec.md', content: '# Spec\n{ "not": "the contract" }' } }] }, session_id: 's1' }),
+      JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'File written', is_error: false }] }, session_id: 's1' }),
+      JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: inner, session_id: 's1', total_cost_usd: 0.42 }),
+    ].join('\n');
+    const result = extractJsonFromOutput(stream);
+    expect(result).toEqual({ summary: 'streamed', intents: [] });
+  });
+
+  it('picks the LAST result event when a stream contains more than one', () => {
+    // Defensive: if a stream ever carries multiple result events (self-correction),
+    // the final one is authoritative.
+    const stream = [
+      JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '{"summary": "first", "intents": []}', session_id: 's1' }),
+      JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: '{"summary": "second", "intents": []}', session_id: 's1' }),
+    ].join('\n');
+    const result = extractJsonFromOutput(stream);
+    expect(result).toEqual({ summary: 'second', intents: [] });
+  });
+
+  it('does NOT misfire on multi-line non-stream output (agy/codex/gemini regression guard)', () => {
+    // agy/codex/gemini emit plain prose (no {type:"result"} events). Multi-line
+    // output with a fenced contract must still extract via the fence path — the
+    // stream-json branch must stay inert so those backends are unaffected.
+    const stdout = [
+      'I inspected the repo and wrote the files directly.',
+      'Summary of what I did:',
+      '```json',
+      '{"summary": "native prose", "intents": []}',
+      '```',
+      'Done.',
+    ].join('\n');
+    const result = extractJsonFromOutput(stdout);
+    expect(result).toEqual({ summary: 'native prose', intents: [] });
+  });
+
   it('TR-029: should return synthetic success for prose output if exitCode is 0 and tolerant mode is on', async () => {
     const mockManifest = {
       name: 'test-workflow',
@@ -217,6 +261,39 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     await expect(
       runtime.executeWorkflow('test-workflow', 'input data', { projectRoot: '/mock/root' })
     ).rejects.toThrow(/exit code 1/);
+  });
+
+  it('recovers native success when the agent COMMITTED artifacts during the run (clean tree, HEAD moved)', async () => {
+    const mockManifest = {
+      name: 'test-workflow', type: 'workflow',
+      outputSchema: { type: 'object', required: ['summary', 'intents'], properties: { summary: { type: 'string' }, intents: { type: 'array' } } }
+    };
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({ manifest: mockManifest as any, path: '/mock/plugin/path' });
+    vi.mocked(fs.readFile).mockResolvedValue('# Test Prompt');
+    // Agent exits 0 but returns prose (no JSON contract), having written and
+    // committed the deliverable natively — so the working tree is clean.
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: 'I wrote plan.md and committed it. Here are two questions for you...',
+      stderr: '',
+      durationS: 1
+    });
+    // Clean tree, but HEAD advances between the pre-dispatch baseline and the
+    // post-dispatch check — the signature of a committed native artifact.
+    let revParseCount = 0;
+    vi.mocked(execSync).mockImplementation((cmd: any) => {
+      if (String(cmd).includes('status --porcelain')) return Buffer.from('');
+      if (String(cmd).includes('rev-parse HEAD')) {
+        return Buffer.from(revParseCount++ === 0 ? 'sha-before' : 'sha-after');
+      }
+      return Buffer.from('');
+    });
+
+    const runtime = new WorkflowRuntime();
+    const result = await runtime.executeWorkflow('test-workflow', 'input data', { projectRoot: '/mock/root' });
+
+    expect(result.summary).toContain('native execution');
+    expect(result.intents).toEqual([]);
   });
 
   it('passes outputSchema to the agent only when the manifest sets enforceOutputSchema', async () => {
