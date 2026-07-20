@@ -13,6 +13,7 @@ import { syncRegistry } from "../engine/registry.js";
 import { setupSlack } from "./setup-slack.js";
 import { ensureSlackChannel } from "../server/slack-channel.js";
 import { seedSkills } from "../plugins/seed.js";
+import { BUILTIN_AGENTS } from "../plugins/builtins/agents/index.js";
 import readline from "node:readline/promises";
 import { CommandError } from "../utils/signal.js";
 import { saveSetupState } from "../utils/setup-state.js";
@@ -82,47 +83,71 @@ function detectWorkstation(): { ssh: boolean; gh: boolean } {
   return { ssh, gh };
 }
 
-async function detectAgents() {
-  const agents = ["agy", "claude", "gemini", "codex", "ollama", "gh"];
-  const detected = [];
-  for (const a of agents) {
-    try {
-      execSync(`which ${a}`, { stdio: "ignore" });
-      detected.push(a);
-    } catch {}
-  }
-  return detected;
+export interface DetectedAgent {
+  name: string;
+  installed: boolean;
+  available: boolean;
 }
 
 /**
- * Build a schema-compliant agents config block from detected CLIs.
+ * Probe agent backends: check both installation (`which`) and runtime
+ * availability (`isAvailable()`). Only agents with builtin adapters
+ * are probed — ollama/gh have no AgentBackend implementation.
+ */
+export async function detectAgents(): Promise<DetectedAgent[]> {
+  const agents = ["agy", "claude", "codex", "gemini"];
+  const results: DetectedAgent[] = [];
+  for (const a of agents) {
+    let installed = false;
+    try {
+      execSync(`which ${a}`, { stdio: "ignore" });
+      installed = true;
+    } catch {}
+    if (!installed) continue;
+
+    let available = false;
+    const backend = BUILTIN_AGENTS[a];
+    if (backend) {
+      try { available = await backend.isAvailable(); }
+      catch { available = false; }
+    } else {
+      available = installed;
+    }
+    results.push({ name: a, installed, available });
+  }
+  return results;
+}
+
+/** Auto-select preference order when no user input. */
+const AGENT_PREFERENCE = ["agy", "claude", "codex", "gemini"];
+
+/**
+ * Build a schema-compliant agents config block.
  * Must match GwrkConfigSchema.agents (define, implement, registry, fallbackOrder).
  */
-function buildAgentConfig(detected: string[]): Record<string, unknown> {
-  // Prefer agy, then claude, then first detected
-  const preferred = detected.find(a => a === "agy")
-    || detected.find(a => a === "claude")
-    || detected[0]
-    || "agy";
-
+function buildAgentConfig(
+  agents: DetectedAgent[],
+  defaultAgent: string,
+  fallbackOrder: string[],
+): Record<string, unknown> {
   const registry: Record<string, unknown> = {};
-  for (const agent of detected) {
-    registry[agent] = {
-      name: agent,
+  for (const agent of agents.filter(a => a.available)) {
+    registry[agent.name] = {
+      name: agent.name,
       type: "local-cli",
-      command: agent,
+      command: agent.name,
       discoveryMethod: "manual",
       quotaProbe: { method: "optimistic", cacheTTLMinutes: 5 },
-      maxConcurrent: agent === "agy" ? 2 : 1,
+      maxConcurrent: agent.name === "agy" ? 2 : 1,
       models: [],
     };
   }
 
   return {
-    define: preferred,
-    implement: preferred,
+    define: defaultAgent,
+    implement: defaultAgent,
     registry,
-    fallbackOrder: detected,
+    fallbackOrder: [defaultAgent, ...fallbackOrder.filter(a => a !== defaultAgent)],
   };
 }
 
@@ -236,18 +261,36 @@ export const initAction = async (options: any): Promise<void> => {
   const extensions = await detectExtensions();
   const detectedAgents = await detectAgents();
 
-  // Load any existing config so re-init is non-destructive: preserve project
-  // identity the user already set, and migrate a legacy tracked `agents` block
-  // (or an existing personal one) instead of re-detecting from scratch.
+  // Load existing config so re-init is non-destructive for project identity.
+  // Agent config is always re-probed — a stale agents block pointing at an
+  // uninstalled backend (e.g. gemini after EOL) caused silent misconfiguration.
   const existingTracked = readJsonSafe(path.join(cwd, ".gwrkrc.json")) ?? {};
   const existingLocal = readJsonSafe(path.join(cwd, ".gwrkrc.local.json")) ?? {};
   const existingProject = existingTracked.project ?? {};
-  const existingAgents = existingLocal.agents ?? existingTracked.agents;
   const existingSlack = existingLocal.project?.slack ?? existingProject.slack;
   const existingStack =
     existingProject.stack && Object.keys(existingProject.stack).length > 0
       ? existingProject.stack
       : undefined;
+
+  // Determine agent selection (always re-probe, never carry forward stale config)
+  const availableAgents = detectedAgents.filter(a => a.available);
+  const availableNames = availableAgents.map(a => a.name);
+
+  // Seed defaults from existing config if the agent is still available;
+  // otherwise fall back to preference order.
+  const existingAgents = existingLocal.agents ?? existingTracked.agents;
+  const existingDefault = existingAgents?.define;
+  const defaultFromExisting = existingDefault && availableNames.includes(existingDefault)
+    ? existingDefault
+    : undefined;
+  const autoDefault = defaultFromExisting
+    || AGENT_PREFERENCE.find(a => availableNames.includes(a))
+    || availableNames[0]
+    || "agy";
+
+  let selectedDefault = autoDefault;
+  let selectedFallback = availableNames.filter(a => a !== selectedDefault);
 
   // 4. Interactive Wizard
   let config: any = {
@@ -259,9 +302,9 @@ export const initAction = async (options: any): Promise<void> => {
       architecture: existingProject.architecture ?? "unknown",
       conventions: existingProject.conventions ?? "unknown"
     },
-    agents: existingAgents ?? buildAgentConfig(detectedAgents),
+    agents: buildAgentConfig(detectedAgents, selectedDefault, selectedFallback),
     extensions: Object.fromEntries(
-      extensions.filter(e => e.detected).map(e => [e.id, {}])
+      (extensions || []).filter(e => e.detected).map(e => [e.id, {}])
     )
   };
   
@@ -303,7 +346,47 @@ export const initAction = async (options: any): Promise<void> => {
         "ℹ️  Note: If gwrk encounters file permission errors, ensure your Terminal has 'Full Disk Access' in macOS System Settings > Privacy & Security (TCC).\n"
       );
     }
-    
+
+    // Agent selection
+    if (detectedAgents.length > 0) {
+      process.stdout.write("\nDetected agent backends:\n");
+      for (const a of detectedAgents) {
+        const icon = a.available ? "✅" : "❌";
+        const status = a.available ? "Available" : "Installed but unavailable";
+        process.stdout.write(`  ${icon} ${a.name.padEnd(12)} ${status}\n`);
+      }
+      process.stdout.write("\n");
+
+      if (availableAgents.length > 0) {
+        selectedDefault = await prompt(
+          `Default agent [${availableNames.join("/")}]`,
+          autoDefault,
+        );
+        // Validate selection
+        if (!availableNames.includes(selectedDefault)) {
+          process.stdout.write(`⚠️ '${selectedDefault}' is not available. Using ${autoDefault}.\n`);
+          selectedDefault = autoDefault;
+        }
+
+        const remainingAgents = availableNames.filter(a => a !== selectedDefault);
+        if (remainingAgents.length > 0) {
+          const fallbackInput = await prompt(
+            "Fallback order (comma-separated)",
+            remainingAgents.join(","),
+          );
+          selectedFallback = fallbackInput.split(",").map(s => s.trim()).filter(a => availableNames.includes(a));
+        } else {
+          selectedFallback = [];
+        }
+
+        config.agents = buildAgentConfig(detectedAgents, selectedDefault, selectedFallback);
+      } else {
+        process.stdout.write("⚠️ No available agent backends. Install agy, claude, or codex.\n");
+      }
+    } else {
+      process.stdout.write("⚠️ No agent backends detected. Install agy, claude, or codex.\n");
+    }
+
     const slackChannel = await prompt("Slack channel for project notifications (leave blank to skip)", existingSlack?.channelId);
     if (slackChannel) {
       config.project.slack = { channelId: slackChannel };
@@ -340,7 +423,6 @@ export const initAction = async (options: any): Promise<void> => {
     "docs/architecture",
     "docs/decisions",
     ".gwrk/rules",
-    ".specify/templates"
   ];
   for (const d of dirs) {
     const dirPath = path.join(cwd, d);
