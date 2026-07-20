@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0-alpha.0](https://github.com/gforge-esc/gwrk/compare/cli-v1.2.1-alpha.0...cli-v1.3.0-alpha.0) (2026-07-20)
+
+
+### Features
+
+* **init:** agent selection with availability probing ([#122](https://github.com/gforge-esc/gwrk/issues/122)) ([d5027f2](https://github.com/gforge-esc/gwrk/commit/d5027f2dbd0c45bfe6ceeb5ac38a3d66867b8795))
+
 ## [1.2.1-alpha.0](https://github.com/gforge-esc/gwrk/compare/cli-v1.2.0-alpha.0...cli-v1.2.1-alpha.0) (2026-07-18)
 
 
