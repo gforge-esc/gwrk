@@ -17,6 +17,7 @@ vi.mock('../db/plan.js', () => ({
   deleteEdge: vi.fn(),
   updateFeatureStatus: vi.fn(),
   updateFeatureName: vi.fn(),
+  updateFeatureSpTotal: vi.fn(),
   listFeatures: vi.fn(() => []),
   listPhases: vi.fn(() => []),
   listAllEdges: vi.fn(() => []),

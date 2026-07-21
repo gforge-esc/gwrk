@@ -133,6 +133,23 @@ export function updateFeatureName(
 }
 
 /**
+ * Update a feature's story-point total without triggering ON DELETE CASCADE.
+ */
+export function updateFeatureSpTotal(
+  id: string,
+  spTotal: number,
+  projectId: string,
+  db?: Database.Database,
+): void {
+  const conn = db ?? getDb();
+  conn
+    .prepare(
+      "UPDATE plan_features SET sp_total = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?",
+    )
+    .run(spTotal, id, projectId);
+}
+
+/**
  * Insert or replace a phase.
  */
 export function insertPhase(

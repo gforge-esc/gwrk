@@ -126,6 +126,11 @@ export class PlanStore {
           db.updateFeatureStatus(res.featureId, res.status, this.projectId);
           reconciled.push(`${res.featureId}: ${existing.status} → ${res.status}`);
         }
+        // Refresh sp_total from disk (tasks.json). Only when we have an
+        // estimate — absent tasks.json must not zero an existing total.
+        if (res.spTotal !== undefined && res.spTotal !== existing.sp_total) {
+          db.updateFeatureSpTotal(res.featureId, res.spTotal, this.projectId);
+        }
       } else {
         db.insertFeature(
           {

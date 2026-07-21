@@ -265,6 +265,39 @@ describe("PlanStore.initFromSpecs Integration (plan_phases population)", () => {
     expect(phases[1]).toMatchObject({ seq: 2, sp_estimate: 5 });
   });
 
+  it("should set and refresh feature sp_total from tasks.json across runs", () => {
+    const dir = path.join(tempDir, "specs", "feat-sp");
+    fs.mkdirSync(path.join(dir, ".gwrk"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "spec.md"), "# Spec");
+    fs.writeFileSync(path.join(dir, "plan.md"), "### Phase 1 — Foo\n### Phase 2 — Bar");
+    fs.writeFileSync(path.join(dir, ".gwrk/tasks.json"), JSON.stringify({
+      phases: [
+        { id: "phase-01", tasks: [{ id: "T001", sp: 2 }] },
+        { id: "phase-02", tasks: [{ id: "T002", sp: 3 }] },
+      ],
+    }));
+
+    const store = new PlanStore(projectId);
+    const specsDir = path.join(tempDir, "specs");
+    store.initFromSpecs(specsDir);
+    expect(planDb.getFeature("feat-sp", projectId, db)?.sp_total).toBe(5);
+
+    // Re-estimate on disk -> re-init must refresh the existing feature's sp_total
+    fs.writeFileSync(path.join(dir, ".gwrk/tasks.json"), JSON.stringify({
+      phases: [
+        { id: "phase-01", tasks: [{ id: "T001", sp: 8 }] },
+        { id: "phase-02", tasks: [{ id: "T002", sp: 3 }] },
+      ],
+    }));
+    store.initFromSpecs(specsDir);
+    expect(planDb.getFeature("feat-sp", projectId, db)?.sp_total).toBe(11);
+
+    // And the per-phase sp_estimate reflects tasks.json
+    const phases = planDb.listPhases("feat-sp", projectId, db);
+    expect(phases[0]).toMatchObject({ seq: 1, sp_estimate: 8 });
+    expect(phases[1]).toMatchObject({ seq: 2, sp_estimate: 3 });
+  });
+
   it("should refresh an existing feature's status when its docs advance on disk", () => {
     // First scan: spec.md only -> SPECIFIED
     const dir = path.join(tempDir, "specs", "feat-advance");
