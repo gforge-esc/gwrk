@@ -4,10 +4,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { extractPhases } from "./phase-extractor.js";
 
 interface ReadinessPhase {
   number: number;
   title: string;
+  sp: number;
 }
 
 export interface ReadinessResult {
@@ -22,24 +24,64 @@ export interface ReadinessResult {
 }
 
 /**
- * Parse phase headings from a plan.md file.
- * Matches: ### Phase N: Title
+ * Parse implementation phases from a plan.md file.
+ *
+ * Delegates to the shared {@link extractPhases} extractor, which recognizes
+ * both `### Phase N — Title (K SP)` headings and phase-declaration list items
+ * and captures story points. Kept as a thin adapter to the scanner's
+ * `ReadinessPhase` shape.
  */
 function parsePlanPhases(planContent: string): ReadinessPhase[] {
-  const phases: ReadinessPhase[] = [];
-  const lines = planContent.split("\n");
+  return extractPhases(planContent).map((p) => ({
+    number: p.seq,
+    title: p.title,
+    sp: p.sp,
+  }));
+}
 
-  for (const line of lines) {
-    const match = line.match(/^###\s+Phase\s+(\d+):\s+(.+)/);
-    if (match) {
-      phases.push({
-        number: Number.parseInt(match[1], 10),
-        title: match[2].trim(),
-      });
+interface TaskWithSp {
+  sp?: number;
+}
+interface TasksPhase {
+  id?: string;
+  tasks?: TaskWithSp[];
+}
+interface TasksFile {
+  phases?: TasksPhase[];
+  tasks?: TaskWithSp[];
+}
+
+/**
+ * Sum story points from a parsed tasks.json into a feature total and a
+ * per-phase-seq map. Handles the nested `gwrk define tasks` shape
+ * (`phases[].tasks[].sp`, phase id like "phase-01") and the legacy flat shape
+ * (`tasks[].sp`, no phase mapping).
+ */
+function parseTasksSp(data: TasksFile): {
+  total: number;
+  bySeq: Map<number, number>;
+} {
+  const bySeq = new Map<number, number>();
+  let total = 0;
+
+  if (Array.isArray(data.phases)) {
+    for (const phase of data.phases) {
+      const seqMatch = phase.id?.match(/(\d+)/);
+      const phaseSp = (phase.tasks ?? []).reduce(
+        (sum, t) => sum + (t.sp ?? 0),
+        0,
+      );
+      total += phaseSp;
+      if (seqMatch) {
+        const seq = Number.parseInt(seqMatch[1], 10);
+        bySeq.set(seq, (bySeq.get(seq) ?? 0) + phaseSp);
+      }
     }
+  } else if (Array.isArray(data.tasks)) {
+    total = data.tasks.reduce((sum, t) => sum + (t.sp ?? 0), 0);
   }
 
-  return phases;
+  return { total, bySeq };
 }
 
 /**
@@ -84,27 +126,33 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
       status = "PLANNED";
     }
 
+    // Parse story points from tasks.json (the authoritative estimate once
+    // tasks are defined). Supports both the nested `gwrk define tasks` shape
+    // ({ phases: [{ id, tasks: [{ sp }] }] }) and the legacy flat shape
+    // ({ tasks: [{ sp }] }).
     let spTotal: number | undefined;
+    let spByPhaseSeq = new Map<number, number>();
     if (hasTasks) {
       try {
         const tasksData = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
-        if (tasksData.tasks && Array.isArray(tasksData.tasks)) {
-          spTotal = tasksData.tasks.reduce(
-            (sum: number, task: { sp?: number }) => sum + (task.sp || 0),
-            0,
-          );
-        }
+        const parsed = parseTasksSp(tasksData);
+        spTotal = parsed.total;
+        spByPhaseSeq = parsed.bySeq;
       } catch (e) {
         // Ignore parse errors, spTotal remains undefined
       }
     }
 
-    // Parse phases from plan.md
+    // Parse phases from plan.md, then enrich each phase's SP from tasks.json
+    // (tasks.json wins when present; the plan's (K SP) is the fallback).
     let phases: ReadinessPhase[] = [];
     if (hasPlan) {
       try {
         const planContent = fs.readFileSync(planPath, "utf-8");
-        phases = parsePlanPhases(planContent);
+        phases = parsePlanPhases(planContent).map((p) => ({
+          ...p,
+          sp: spByPhaseSeq.get(p.number) ?? p.sp,
+        }));
       } catch {
         // Non-fatal — phases stays empty
       }
