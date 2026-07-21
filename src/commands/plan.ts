@@ -15,6 +15,52 @@ import { createOutput, resolveFormat } from "../utils/output.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
+/**
+ * Resolve a `plan dep add/remove` invocation into the canonical edge to store
+ * plus a plain-English confirmation. gwrk stores edges as `prerequisite →
+ * dependent` (the solver runs `from` first). The `--needs` form makes the
+ * dependency direction explicit — `dep add <feature> --needs <prerequisite>`
+ * reads naturally and can't be pointed backwards. The positional form is kept
+ * for compatibility but echoes the resolved order and hints at `--needs`.
+ */
+export function resolveDepEdge(
+  from: string,
+  to: string | undefined,
+  needs: string | undefined,
+  edgeType: string,
+): {
+  edge: { from_id: string; to_id: string; edge_type: string };
+  message: string;
+} {
+  if (needs !== undefined) {
+    if (to !== undefined) {
+      throw new CommandError(
+        "Pass either a positional <to> or --needs, not both.",
+        1,
+      );
+    }
+    // "<from> depends on <needs>": needs is the prerequisite (ships first).
+    return {
+      edge: { from_id: needs, to_id: from, edge_type: edgeType },
+      message: `${from} depends on ${needs} — ${needs} ships before ${from}`,
+    };
+  }
+  if (to === undefined) {
+    throw new CommandError(
+      "Specify the dependency. Recommended: `dep add <feature> --needs <prerequisite>`. " +
+        "Positional form is `dep add <prerequisite> <dependent>`.",
+      1,
+    );
+  }
+  // Positional: keep the historical prerequisite → dependent convention.
+  return {
+    edge: { from_id: from, to_id: to, edge_type: edgeType },
+    message:
+      `${from} → ${to} (${from} is the prerequisite; ships before ${to}). ` +
+      `Tip: use \`dep add ${to} --needs ${from}\` to be explicit.`,
+  };
+}
+
 export const planCommand = new Command("plan")
   .description(
     "Build Plan Orchestrator (DAG) — query and manage the project spine",
@@ -445,33 +491,41 @@ planCommand
   });
 
 planCommand
-  .command("dep <action> <from> <to>")
-  .description("Manage dependency edges (add/remove)")
+  .command("dep <action> <from> [to]")
+  .description(
+    "Manage dependency edges (add/remove). Direction is prerequisite → dependent. " +
+      "Recommended: `dep add <feature> --needs <prerequisite>`.",
+  )
   .option("--type <edgeType>", "Edge type", "DEPENDS_ON")
+  .option(
+    "--needs <prerequisite>",
+    "Declare that <from> depends on <prerequisite> (unambiguous direction)",
+  )
   .action(async (action, from, to, options) => {
     await withSignal("plan dep", async () => {
       const projectId = resolveProjectId(process.cwd());
       const store = new PlanStore(projectId);
 
-      if (action === "add") {
-        store.addEdge({
-          from_id: from,
-          to_id: to,
-          edge_type: options.type,
-        });
-        console.log(
-          `${color.GREEN}✓${color.RESET} Added ${options.type} edge: ${color.BOLD}${from}${color.RESET} → ${color.BOLD}${to}${color.RESET}`,
-        );
-      } else if (action === "remove") {
-        store.removeEdge(from, to, options.type);
-        console.log(
-          `${color.GREEN}✓${color.RESET} Removed ${options.type} edge: ${color.BOLD}${from}${color.RESET} → ${color.BOLD}${to}${color.RESET}`,
-        );
-      } else {
+      if (action !== "add" && action !== "remove") {
         throw new CommandError(
           `Unknown action '${action}'. Use 'add' or 'remove'.`,
           1,
         );
+      }
+
+      const { edge, message } = resolveDepEdge(
+        from,
+        to,
+        options.needs,
+        options.type,
+      );
+
+      if (action === "add") {
+        store.addEdge(edge);
+        console.log(`${color.GREEN}✓${color.RESET} Added edge: ${message}`);
+      } else {
+        store.removeEdge(edge.from_id, edge.to_id, edge.edge_type);
+        console.log(`${color.GREEN}✓${color.RESET} Removed edge: ${message}`);
       }
     });
   });
