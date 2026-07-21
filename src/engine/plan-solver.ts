@@ -50,10 +50,28 @@ export class PlanSolver {
       }
     }
 
-    // 3. Add implicit SEQUENCE edges from phase.seq if not already present
-    // Actually, plan.md says we have SEQUENCE edges in plan_edges table.
-    // But we should also respect the 'seq' order within a feature if no explicit edges exist?
-    // Let's stick to the edges table for now as per FR-001.
+    // 3. Add implicit intra-feature SEQUENCE edges from phase.seq.
+    // Phases within a feature run in order (phase-01 → phase-02 → …). Without
+    // these, every phase but the cross-feature targets has no predecessor, so
+    // the solver reports nearly all phases "ready" at once and inverts wave
+    // order. Synthesized deterministically from seq; skipped when an explicit
+    // edge already connects the pair.
+    const phasesByFeature = new Map<string, PlanPhase[]>();
+    for (const phase of this.phases) {
+      const list = phasesByFeature.get(phase.feature_id) ?? [];
+      list.push(phase);
+      phasesByFeature.set(phase.feature_id, list);
+    }
+    for (const featurePhases of phasesByFeature.values()) {
+      const ordered = [...featurePhases].sort((a, b) => a.seq - b.seq);
+      for (let i = 0; i < ordered.length - 1; i++) {
+        const from = ordered[i].id;
+        const to = ordered[i + 1].id;
+        if (from !== to && !this.graph.hasEdge(from, to)) {
+          this.graph.mergeDirectedEdge(from, to, { type: "SEQUENCE" });
+        }
+      }
+    }
   }
 
   private resolveIds(id: string, preference: "first" | "last"): string[] {
