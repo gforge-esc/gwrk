@@ -66,8 +66,8 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
       {
         featureId: 'feat-a', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
         phases: [
-          { number: 1, title: 'Foundation' },
-          { number: 2, title: 'Integration' },
+          { number: 1, title: 'Foundation', sp: 0 },
+          { number: 2, title: 'Integration', sp: 0 },
         ],
       }
     ]);
@@ -93,8 +93,8 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
       {
         featureId: 'feat-b', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
         phases: [
-          { number: 1, title: 'Foundation' },
-          { number: 2, title: 'Polish' },
+          { number: 1, title: 'Foundation', sp: 0 },
+          { number: 2, title: 'Polish', sp: 0 },
         ],
       }
     ]);
@@ -115,28 +115,33 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     );
   });
 
-  it('FR-017: should not clobber existing phases on re-init', () => {
+  it('FR-017: should re-sync existing phases from the doc while preserving runtime status', () => {
     vi.spyOn(store, 'scanReadiness').mockReturnValue([
       {
         featureId: 'feat-c', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
         phases: [
-          { number: 1, title: 'Foundation' },
-          { number: 2, title: 'New Phase' },
+          { number: 1, title: 'Foundation', sp: 5 },
+          { number: 2, title: 'New Phase', sp: 3 },
         ],
       }
     ]);
-    
+
     vi.mocked(db.getFeature).mockReturnValue({ id: 'feat-c', name: 'feat-c', status: 'DEFINED', sp_total: 0 });
-    // Phase 1 already exists in DB, phase 2 does not
+    // Phase 1 already exists in DB (shipped), phase 2 does not
     vi.mocked(db.getPhase)
       .mockReturnValueOnce({ id: 'feat-c/phase-01', feature_id: 'feat-c', name: 'Foundation', status: 'SHIPPED', health: 'CLEAN', sp_estimate: 5, seq: 1 })
       .mockReturnValueOnce(undefined);
-    
+
     const report = store.initFromSpecs('/mock/specs');
-    expect(report.phasesInserted).toBe(1); // Only phase-02
-    expect(db.insertPhase).toHaveBeenCalledTimes(1);
+    expect(report.phasesInserted).toBe(1); // Only phase-02 is NEW
+    // Both phases are written: phase-01 re-synced (status preserved), phase-02 inserted
+    expect(db.insertPhase).toHaveBeenCalledTimes(2);
     expect(db.insertPhase).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'feat-c/phase-02', name: 'New Phase' }),
+      expect.objectContaining({ id: 'feat-c/phase-01', status: 'SHIPPED', sp_estimate: 5, name: 'Foundation' }),
+      "test-project",
+    );
+    expect(db.insertPhase).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'feat-c/phase-02', name: 'New Phase', status: 'PLANNED', sp_estimate: 3 }),
       "test-project",
     );
   });
@@ -166,7 +171,7 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     vi.spyOn(store, 'scanReadiness').mockReturnValue([
       {
         featureId: 'feat-done', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
-        phases: [{ number: 1, title: 'Phase 1' }, { number: 2, title: 'Phase 2' }],
+        phases: [{ number: 1, title: 'Phase 1', sp: 0 }, { number: 2, title: 'Phase 2', sp: 0 }],
       }
     ]);
 
@@ -192,7 +197,7 @@ describe('src/engine/plan-store.ts (FR-013/017)', () => {
     vi.spyOn(store, 'scanReadiness').mockReturnValue([
       {
         featureId: 'feat-wip', level: 2, status: 'DEFINED', hasSpec: true, hasPlan: true, hasTasks: false, spTotal: 0,
-        phases: [{ number: 1, title: 'Done' }, { number: 2, title: 'Todo' }],
+        phases: [{ number: 1, title: 'Done', sp: 0 }, { number: 2, title: 'Todo', sp: 0 }],
       }
     ]);
 

@@ -4,10 +4,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { extractPhases } from "./phase-extractor.js";
 
 interface ReadinessPhase {
   number: number;
   title: string;
+  sp: number;
 }
 
 export interface ReadinessResult {
@@ -22,24 +24,19 @@ export interface ReadinessResult {
 }
 
 /**
- * Parse phase headings from a plan.md file.
- * Matches: ### Phase N: Title
+ * Parse implementation phases from a plan.md file.
+ *
+ * Delegates to the shared {@link extractPhases} extractor, which recognizes
+ * both `### Phase N — Title (K SP)` headings and phase-declaration list items
+ * and captures story points. Kept as a thin adapter to the scanner's
+ * `ReadinessPhase` shape.
  */
 function parsePlanPhases(planContent: string): ReadinessPhase[] {
-  const phases: ReadinessPhase[] = [];
-  const lines = planContent.split("\n");
-
-  for (const line of lines) {
-    const match = line.match(/^###\s+Phase\s+(\d+):\s+(.+)/);
-    if (match) {
-      phases.push({
-        number: Number.parseInt(match[1], 10),
-        title: match[2].trim(),
-      });
-    }
-  }
-
-  return phases;
+  return extractPhases(planContent).map((p) => ({
+    number: p.seq,
+    title: p.title,
+    sp: p.sp,
+  }));
 }
 
 /**

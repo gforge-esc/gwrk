@@ -85,9 +85,28 @@ describe('src/engine/readiness-scanner.ts (FR-018)', () => {
     const results = scanReadiness(tempDir);
     const res = results.find(r => r.featureId === 'feat-phases');
     expect(res?.phases).toHaveLength(3);
-    expect(res?.phases[0]).toEqual({ number: 1, title: 'Foundation' });
-    expect(res?.phases[1]).toEqual({ number: 2, title: 'Integration' });
-    expect(res?.phases[2]).toEqual({ number: 3, title: 'Polish' });
+    expect(res?.phases[0]).toEqual({ number: 1, title: 'Foundation', sp: 0 });
+    expect(res?.phases[1]).toEqual({ number: 2, title: 'Integration', sp: 0 });
+    expect(res?.phases[2]).toEqual({ number: 3, title: 'Polish', sp: 0 });
+  });
+
+  it('should parse em-dash phase headings and capture SP', () => {
+    const dir = path.join(tempDir, 'feat-emdash');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'spec.md'), '# Spec');
+    fs.writeFileSync(path.join(dir, 'plan.md'), [
+      '## 4. Phases',
+      '',
+      '### Phase 1 — Config and air-gap (foundation) (7 SP)',
+      '### Phase 2 — Redacted read composer (5 SP)',
+    ].join('\n'));
+
+    const results = scanReadiness(tempDir);
+    const res = results.find(r => r.featureId === 'feat-emdash');
+    expect(res?.phases).toEqual([
+      { number: 1, title: 'Config and air-gap (foundation)', sp: 7 },
+      { number: 2, title: 'Redacted read composer', sp: 5 },
+    ]);
   });
 
   it('should return empty phases when plan.md has no Phase headings', () => {
