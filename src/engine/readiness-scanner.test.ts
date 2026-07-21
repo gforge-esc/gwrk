@@ -90,6 +90,47 @@ describe('src/engine/readiness-scanner.ts (FR-018)', () => {
     expect(res?.phases[2]).toEqual({ number: 3, title: 'Polish', sp: 0 });
   });
 
+  it('should derive feature spTotal and per-phase sp from nested tasks.json', () => {
+    const dir = path.join(tempDir, 'feat-tasks-sp');
+    fs.mkdirSync(path.join(dir, '.gwrk'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'spec.md'), '# Spec');
+    // plan headings carry NO (K SP) — SP must come from tasks.json
+    fs.writeFileSync(path.join(dir, 'plan.md'), [
+      '### Phase 1 — Foundation',
+      '### Phase 2 — Integration',
+    ].join('\n'));
+    fs.writeFileSync(path.join(dir, '.gwrk/tasks.json'), JSON.stringify({
+      featureId: 'feat-tasks-sp',
+      phases: [
+        { id: 'phase-01', title: 'Foundation', tasks: [{ id: 'T001', sp: 2 }] },
+        { id: 'phase-02', title: 'Integration', tasks: [{ id: 'T002', sp: 3 }, { id: 'T003', sp: 1 }] },
+      ],
+    }));
+
+    const results = scanReadiness(tempDir);
+    const res = results.find(r => r.featureId === 'feat-tasks-sp');
+    expect(res?.spTotal).toBe(6);
+    expect(res?.phases).toEqual([
+      { number: 1, title: 'Foundation', sp: 2 },
+      { number: 2, title: 'Integration', sp: 4 },
+    ]);
+  });
+
+  it('should let tasks.json sp win over a plan (K SP) when both are present', () => {
+    const dir = path.join(tempDir, 'feat-sp-precedence');
+    fs.mkdirSync(path.join(dir, '.gwrk'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'spec.md'), '# Spec');
+    fs.writeFileSync(path.join(dir, 'plan.md'), '### Phase 1 — Foo (9 SP)');
+    fs.writeFileSync(path.join(dir, '.gwrk/tasks.json'), JSON.stringify({
+      phases: [{ id: 'phase-01', tasks: [{ id: 'T001', sp: 2 }] }],
+    }));
+
+    const results = scanReadiness(tempDir);
+    const res = results.find(r => r.featureId === 'feat-sp-precedence');
+    expect(res?.phases[0]).toEqual({ number: 1, title: 'Foo', sp: 2 });
+    expect(res?.spTotal).toBe(2);
+  });
+
   it('should parse em-dash phase headings and capture SP', () => {
     const dir = path.join(tempDir, 'feat-emdash');
     fs.mkdirSync(dir, { recursive: true });
