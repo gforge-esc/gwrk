@@ -12,6 +12,18 @@ import {
 } from "../utils/parser-plan.js";
 import { scanReadiness } from "./readiness-scanner.js";
 
+/**
+ * Ordering of the definition-frontier statuses that disk readiness owns.
+ * Implementation statuses (IN_PROGRESS/SHIPPED/VERIFIED/CLOSED/DONE) are
+ * intentionally absent — they are owned by ship runs, not file presence, so
+ * disk readiness never advances into or downgrades out of them.
+ */
+const DEFINITION_RANK: Record<string, number> = {
+  PLANNED: 0,
+  SPECIFIED: 1,
+  DEFINED: 2,
+};
+
 export class PlanStore {
   constructor(private readonly projectId: string) {}
 
@@ -104,6 +116,16 @@ export class PlanStore {
         if (existing.name !== res.featureId && existing.name !== res.featureId) {
           db.updateFeatureName(res.featureId, res.featureId, this.projectId);
         }
+        // Refresh status from disk readiness when the docs have advanced the
+        // definition frontier (PLANNED → SPECIFIED → DEFINED). Never downgrade,
+        // and never overwrite an implementation status (IN_PROGRESS/SHIPPED/…)
+        // which is owned by ship runs, not by file presence.
+        const cur = DEFINITION_RANK[existing.status];
+        const disk = DEFINITION_RANK[res.status];
+        if (cur !== undefined && disk !== undefined && disk > cur) {
+          db.updateFeatureStatus(res.featureId, res.status, this.projectId);
+          reconciled.push(`${res.featureId}: ${existing.status} → ${res.status}`);
+        }
       } else {
         db.insertFeature(
           {
@@ -128,14 +150,24 @@ export class PlanStore {
         const shippedByRun = shippedPhases.has(shipKey);
 
         if (existingPhase) {
-          // Reconcile status: if runs say shipped but graph says PLANNED, update
-          if (shippedByRun && existingPhase.status === "PLANNED") {
-            db.insertPhase(
-              { ...existingPhase, status: "SHIPPED" },
-              this.projectId,
-            );
-          }
-          continue; // Don't clobber other phase data
+          // Idempotent-but-not-static: doc-derived fields (name/sp/seq) track
+          // plan.md; runtime fields (status/health) are preserved, with ship
+          // enrichment (PLANNED → SHIPPED when a run says so).
+          const status =
+            shippedByRun && existingPhase.status === "PLANNED"
+              ? "SHIPPED"
+              : existingPhase.status;
+          db.insertPhase(
+            {
+              ...existingPhase,
+              name: phase.title,
+              sp_estimate: phase.sp,
+              seq: phase.number,
+              status,
+            },
+            this.projectId,
+          );
+          continue;
         }
 
         const status = shippedByRun ? "SHIPPED" : "PLANNED";
@@ -147,7 +179,7 @@ export class PlanStore {
             name: phase.title,
             status,
             health: "CLEAN",
-            sp_estimate: 0,
+            sp_estimate: phase.sp,
             seq: phase.number,
           },
           this.projectId,
