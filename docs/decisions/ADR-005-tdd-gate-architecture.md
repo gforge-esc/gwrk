@@ -292,3 +292,42 @@ We replace hardcoded `vitest` assumptions with a `toolchain-mapper` utility that
 - `generateVitestGates()` → `generateDeterministicGates()`
 - `pnpm vitest run` and `.test.ts` assumptions removed from `plan-to-tasks.ts`, `gate-gen.ts`, and `ship-orchestrator.ts`.
 - Gwrk is now capable of managing TDD gates for polyglot monorepos and multiple language ecosystems natively.
+
+---
+
+## 10. Amendment: Executable Ground Truth (2026-07-22)
+
+> **Status:** Decided · **Date:** 2026-07-22
+> **Amends:** §2.4, §8.2, §8.3, and 000-tdd-infrastructure FR-001/003/008/009
+> **Author:** David Gonzalez
+> **Motivation:** Two features (002, 006) reached GO/PR while non-functional — Prisma-7 adapter missing, integration suites cancelled, phase runtime never exercised. Root cause: gwrk gates verify *artifact presence + LLM judgment* (files exist, strings present, failure-count didn't worsen, a reviewer approved) instead of *executing the feature and observing tests go RED→GREEN*. "Looks done" and "is done" are indistinguishable to the machine.
+
+### 10.1 The gaps this closes
+
+- **Liveness is undefined.** TEST_GATE compares a scraped failure *count* to a baseline; a suite that discovers 0 tests, cancels, or fails to load registers ~0 failures → "no regression." Not-running is indistinguishable from passing.
+- **RED is asserted, never evidenced.** FR-003 requires RED-before-impl but nothing captures the failing run as the precondition for accepting GREEN.
+- **FR-008 is too weak to fire.** The pre-flight test check only matches *co-located* `.test.ts` or a path *mentioned* in task text; separate `tests/` trees slip through and a mere mention satisfies it.
+- **`test -f` was "abolished" (§2.4/§5) but still emitted.** `plan-to-tasks` defaults to `test -f <file>`; the orchestrator tolerates "hollow (test -f)" gates.
+- **Runtime deferral is sanctioned.** `[integration]` ACs may be deferred to later phases; nothing requires them to execute in their owning phase.
+- **Reviews can substitute for tests.** An LLM CODE_REVIEW/UAT_REVIEW `GO` advances a phase whose tests never ran.
+
+### 10.2 Decision — five invariants
+
+1. **Liveness (`testsRun > 0`).** A gate MUST prove ≥1 test executed. Structured results `{ testsRun, passed, failed }` are the currency, never output greps. `testsRun == 0` for a phase that declares acceptance criteria is a **FAIL**, not a pass.
+2. **Executed tests are authoritative.** The phase's mapped tests running and passing is the gate for "works." CODE_REVIEW/UAT_REVIEW remain (they may NO-GO on design), but they can never GO a phase whose tests did not run and pass — the executional gate runs first and blocks.
+3. **RED evidence.** The phase's newly-activated tests MUST be observed failing before IMPLEMENT, recorded in the run manifest. GREEN without a recorded prior RED is invalid.
+4. **FR-008 is profile-aware and existence-based.** Test discovery uses the project profile's convention (co-located OR a `tests/` tree OR a declared target) and is satisfied by a test that *exists and maps to the phase's ACs*, never by a mention. No mapped test for a phase with source deliverables ⇒ `[BLOCKED]`, exit 1.
+5. **No hollow gates.** `test -f`/mention-only gates are build failures (FR-001, finally enforced). Fallback is an honest failing gate, never existence.
+
+### 10.3 Task boundaries (this PR)
+
+| Task | Bucket | Scope |
+|---|---|---|
+| T1 | B,C | `test-runner.ts`: structured `{testsRun,passed,failed}` via profile toolchain (parse, not scrape) |
+| T2 | A | `gwrk test <feature> [--phase N]` (FR-009) built on T1 |
+| T3 | B,C | Executional TEST_GATE: `testsRun>0 && no net-new failures`; phase with mapped tests must run+pass |
+| T4 | A | FR-008 discovery profile-aware + existence-based; ACTIVATE_TESTS blocks, not skips |
+| T5 | A | Kill `test -f` default in `plan-to-tasks`; honest-fail fallback (FR-001) |
+| T6 | B | RED evidence: capture pre-impl failing run, persist to manifest, require RED→GREEN |
+
+Runtime/service standup for `[integration]` suites remains the *project's* responsibility (its declared test target does the docker/db setup); gwrk's obligation is to run that target and refuse `testsRun==0`. Standing up services *inside* gwrk is out of scope and tracked separately.
