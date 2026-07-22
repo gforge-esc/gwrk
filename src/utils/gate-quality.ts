@@ -13,17 +13,21 @@ export function isHollowGate(gateContent: string): boolean {
   const lines = gateContent
     .split("\n")
     .map((l) => l.trim())
-    .filter(
-      (l) =>
-        l.length > 0 &&
-        !l.startsWith("#") &&
-        !l.startsWith("set ") &&
-        !l.startsWith("echo "),
-    );
+    .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("set "));
 
+  // Hollow = every meaningful line is a no-op: a bare echo, or a file-existence
+  // check. Such a gate can pass without exercising any behavior. A gate that
+  // echoes AND runs a real command (make/pnpm/node/…) is not hollow; nor is an
+  // honest failing gate (`exit 1`).
   return (
     lines.length > 0 &&
-    lines.every((l) => l.startsWith("test -f") || l.startsWith("[ -f"))
+    lines.every(
+      (l) =>
+        l.startsWith("echo ") ||
+        l === "echo" ||
+        l.startsWith("test -f") ||
+        l.startsWith("[ -f"),
+    )
   );
 }
 

@@ -331,3 +331,12 @@ We replace hardcoded `vitest` assumptions with a `toolchain-mapper` utility that
 | T6 | B | RED evidence: capture pre-impl failing run, persist to manifest, require RED→GREEN |
 
 Runtime/service standup for `[integration]` suites remains the *project's* responsibility (its declared test target does the docker/db setup); gwrk's obligation is to run that target and refuse `testsRun==0`. Standing up services *inside* gwrk is out of scope and tracked separately.
+
+### 10.4 Amendment: discovery + echo-gate hardening (2026-07-22)
+
+Applying §10 to a real project (out-of-tree `tests/`, gwrk-authored echo gates) surfaced two engagement gaps, now closed:
+
+- **Out-of-tree discovery.** `getPhaseTestFiles` (T3's input) matched only co-located tests, so the liveness gate never found suites under a `tests/` tree. It now uses `discoverTestsForSources` (existing mentions + co-located + `tests/`-tree by basename). File-path extraction (`extractFilePaths`) strips markdown backticks/quotes — plans wrap paths as `` `src/x.js` ``, which previously broke extension matching and silently disabled discovery.
+- **Echo-only gates are hollow.** `isHollowGate` now flags gates whose every meaningful line is a bare `echo` or `test -f` (not just `test -f`). A gate that only prints (`echo "Phase 1 ✅ SHIPPED"`) can pass without exercising anything — the exact auto-pass vector behind the shipped-but-broken phases.
+
+**Still open (tracked):** compiling a plan's `Done-When` integration commands (e.g. `make test:db`) into runnable gates so TEST_GATE executes the real integration target and applies liveness. Until then, an echo gate fails (hollow) and forces a real gate, but gwrk does not yet *auto-run* the plan's integration target.

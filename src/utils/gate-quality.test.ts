@@ -32,4 +32,14 @@ describe("isHollowGate (FR-001 — no file-existence-only gates)", () => {
   it("does not flag an empty/comment-only script", () => {
     expect(isHollowGate("#!/bin/bash\n# nothing here")).toBe(false);
   });
+
+  it("flags an echo-only gate (does nothing but print) — the auto-pass vector", () => {
+    expect(isHollowGate('#!/bin/bash\necho "Phase 1: Schema ✅ SHIPPED"')).toBe(true);
+  });
+
+  it("does not flag a gate that echoes AND runs a real assertion", () => {
+    expect(
+      isHollowGate('echo "running"\nmake test:db\necho "PASS"'),
+    ).toBe(false);
+  });
 });
