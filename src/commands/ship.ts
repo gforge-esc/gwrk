@@ -19,6 +19,7 @@ import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { getTestExtension } from "../utils/toolchain-mapper.js";
 import { phaseHasTests } from "../utils/test-discovery.js";
+import { extractFilePaths } from "../utils/file-extract.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
 
@@ -169,13 +170,9 @@ async function shipPhase(
     if (phaseData) {
       const files: string[] = [];
       for (const task of phaseData.tasks) {
-        const text = `${task.title} ${task.description ?? ""}`;
-        const matches = text.matchAll(
-          /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
+        files.push(
+          ...extractFilePaths(`${task.title} ${task.description ?? ""}`),
         );
-        for (const match of matches) {
-          files.push(match[0].replace(/[,;.]$/, ""));
-        }
       }
 
       const mentionedTests = files.filter(

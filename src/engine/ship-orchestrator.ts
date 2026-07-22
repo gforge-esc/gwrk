@@ -45,6 +45,7 @@ import {
 import { activatePhaseTests } from "./test-activator.js";
 import { isHollowGate } from "../utils/gate-quality.js";
 import { parseTestOutput } from "./test-runner.js";
+import { extractFilePaths } from "../utils/file-extract.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -960,11 +961,7 @@ export class ShipOrchestrator extends EventEmitter {
 
       for (const task of phase.tasks) {
         const text = `${task.title} ${task.description ?? ""}`;
-        const matches = text.matchAll(
-          /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
-        );
-        for (const match of matches) {
-          const filePath = match[0].replace(/[,;.]$/, "");
+        for (const filePath of extractFilePaths(text)) {
           if (filePath.endsWith(testExt)) {
             testFiles.add(filePath);
           } else if (filePath.endsWith(sourceExt) || filePath.endsWith(".js") || filePath.endsWith(".ts")) {
