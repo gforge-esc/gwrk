@@ -44,6 +44,7 @@ import {
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
 import { isHollowGate } from "../utils/gate-quality.js";
+import { parseTestOutput } from "./test-runner.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -823,9 +824,31 @@ export class ShipOrchestrator extends EventEmitter {
   private async stageTestGate(): Promise<ShipStageResult> {
     console.log("  ▸ TEST_GATE");
     const phaseTestFiles = await this.getPhaseTestFiles();
+
+    // ADR-005 §10.2.1 — Liveness: when a phase maps to test files, those tests
+    // MUST actually execute and pass. A suite that discovered nothing or whose
+    // tests all cancelled (testsRun === 0) is a FAIL, never "no regression".
     if (phaseTestFiles.length > 0) {
       console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+      const r = await this.runTestSuite(phaseTestFiles);
+      if (r.testsRun === 0) {
+        console.log(
+          "  ✗ TEST_GATE: phase tests executed 0 tests (none discovered / all cancelled) — not a pass",
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      if (r.failCount > 0) {
+        console.log(
+          `  ✗ TEST_GATE: ${r.failCount} failing test(s) in phase suite (${r.testsRun} ran)`,
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      console.log(
+        `  ✓ tests: ${r.passed} passed, 0 failed (${r.testsRun} ran)`,
+      );
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
+
     const { failCount, output } = await this.runTestSuite(phaseTestFiles);
     const baseline = this.state.testBaseline ?? 0;
 
@@ -862,9 +885,11 @@ export class ShipOrchestrator extends EventEmitter {
    *  When phaseTestFiles are available, runs only those files instead of
    *  the full suite. This prevents cross-phase RED test contamination.
    */
-  private async runTestSuite(phaseTestFiles?: string[]): Promise<{ failCount: number; output: string }> {
+  private async runTestSuite(
+    phaseTestFiles?: string[],
+  ): Promise<{ failCount: number; testsRun: number; passed: number; output: string }> {
     const profile = await detectProfile(this.config.cwd);
-    
+
     // If we have phase-scoped test files, run only those
     let command = "pnpm test";
     if (phaseTestFiles && phaseTestFiles.length > 0) {
@@ -878,20 +903,20 @@ export class ShipOrchestrator extends EventEmitter {
       }
     }
 
+    let output: string;
     try {
-      const result = execSync(command, {
+      output = execSync(command, {
         cwd: this.config.cwd,
         stdio: "pipe",
         timeout: 120_000,
-      });
-      return { failCount: 0, output: result.toString() };
+      }).toString();
     } catch (err: unknown) {
       const stdout = (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
       const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
-      const combined = `${stdout}\n${stderr}`.trim();
-      const failMatch = combined.match(/(\d+)\s+failed/);
-      return { failCount: failMatch ? parseInt(failMatch[1], 10) : 1, output: combined };
+      output = `${stdout}\n${stderr}`.trim();
     }
+    const { testsRun, passed, failed } = parseTestOutput(output);
+    return { failCount: failed, testsRun, passed, output };
   }
 
   /**
