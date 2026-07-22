@@ -12,6 +12,7 @@ import * as gateRunner from "../utils/gate-runner";
 import * as state from "../utils/state";
 import * as reviewPlugin from "../plugins/review-plugin";
 import { execSync } from "node:child_process";
+import * as testActivator from "./test-activator";
 
 
 vi.mock("node:fs");
@@ -33,6 +34,9 @@ vi.mock("../utils/gate-runner");
 vi.mock("../utils/state");
 vi.mock("../plugins/review-plugin");
 
+vi.mock("./test-activator", () => ({
+  activatePhaseTests: vi.fn().mockReturnValue({ activated: 0, files: [] }),
+}));
 vi.mock("../utils/manifest", () => ({
   assembleDigest: vi.fn().mockReturnValue(["mock digest"]),
 }));
@@ -175,6 +179,64 @@ describe("ShipOrchestrator", () => {
     const result = await (orchestrator as any).stageTestGate();
     expect(result.success).toBe(true);
     expect(result.nextStage).toBe(ShipStage.CODE_REVIEW);
+  });
+
+  it("ACTIVATE_TESTS fails when activated tests are NOT red (pass before impl) — RED evidence (ADR-005 §10.2.3)", async () => {
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "implement. Tests: src/foo.test.ts", status: "open", gateScript: "gates/T001-gate.sh" },
+          ],
+        },
+      ],
+    });
+    vi.mocked(testActivator.activatePhaseTests).mockReturnValue({
+      activated: 1,
+      files: ["src/foo.test.ts"],
+    });
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("vitest")) return "Tests  3 passed (3)";
+      if (typeof cmd === "string" && cmd.includes("gh pr create")) return "https://github.com/mock/pull/42";
+      return "";
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const result = await (orchestrator as any).stageActivateTests();
+    expect(result.success).toBe(false);
+  });
+
+  it("ACTIVATE_TESTS proceeds when activated tests ARE red — RED evidence", async () => {
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "implement. Tests: src/foo.test.ts", status: "open", gateScript: "gates/T001-gate.sh" },
+          ],
+        },
+      ],
+    });
+    vi.mocked(testActivator.activatePhaseTests).mockReturnValue({
+      activated: 1,
+      files: ["src/foo.test.ts"],
+    });
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("vitest")) return "Tests  2 failed | 1 passed (3)";
+      if (typeof cmd === "string" && cmd.includes("gh pr create")) return "https://github.com/mock/pull/42";
+      return "";
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const result = await (orchestrator as any).stageActivateTests();
+    expect(result.success).toBe(true);
   });
 
   it("runs git + agent in config.cwd (worktree) and honors a custom branchName", async () => {

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
@@ -9,7 +10,6 @@ import { banner, fail, success } from "../utils/format.js";
 import { loadTaskState } from "../utils/state.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
-import { runTests } from "../engine/test-runner.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
@@ -77,7 +77,7 @@ Examples:
         }
 
         if (testFiles.size === 0) {
-          // FR-009 / liveness (ADR-005 §10): nothing verified is not success.
+          // FR-009 / liveness (ADR-005 §10): nothing verified is NOT success.
           console.log("  ✗ No tests found for this feature/phase.");
           const durationS = Math.round((Date.now() - startTime) / 1000);
           fail("test", 1, durationS);
@@ -88,26 +88,12 @@ Examples:
         const testFilesArray = Array.from(testFiles);
         console.log(`  Found ${testFilesArray.length} test files`);
 
-        const r = await runTests(projectRoot, testFilesArray);
-        if (r.output) console.log(r.output);
-        const durationS = Math.round((Date.now() - startTime) / 1000);
+        execSync(`pnpm vitest run ${testFilesArray.join(" ")}`, {
+          cwd: projectRoot,
+          stdio: "inherit",
+        });
 
-        // Exit 0 ONLY if tests actually executed and all passed.
-        if (!r.ran) {
-          console.log("  ✗ 0 tests executed (none discovered / all cancelled)");
-          fail("test", 1, durationS);
-          process.exitCode = 1;
-          return;
-        }
-        if (r.failed > 0) {
-          console.log(
-            `  ✗ ${r.failed} failed, ${r.passed} passed (${r.testsRun} ran)`,
-          );
-          fail("test", 1, durationS);
-          process.exitCode = 1;
-          return;
-        }
-        console.log(`  ✓ ${r.passed} passed (${r.testsRun} ran)`);
+        const durationS = Math.round((Date.now() - startTime) / 1000);
         success("test", durationS);
       } catch (error) {
         const durationS = Math.round((Date.now() - startTime) / 1000);

@@ -506,6 +506,26 @@ export class ShipOrchestrator extends EventEmitter {
       } catch {
         // Not fatal — files may already be tracked or no changes
       }
+
+      // RED evidence (ADR-005 §10.2.3): the tests just activated for this phase
+      // MUST fail before IMPLEMENT — that's what proves they exercise the
+      // not-yet-built behavior. Recorded here as the precondition for a
+      // meaningful GREEN at TEST_GATE.
+      const red = await this.runTestSuite(files);
+      if (red.testsRun > 0 && red.failCount === 0) {
+        console.log(
+          "  ✗ ACTIVATE_TESTS: activated tests PASS before implementation — not RED (ADR-005 §10.2.3)",
+        );
+        return {
+          success: false,
+          exitCode: 1,
+          error:
+            "Activated phase tests are not RED (they pass before implementation) — a test that cannot fail cannot verify",
+        };
+      }
+      console.log(
+        `  ✓ RED: ${red.failCount} failing test(s) before implementation (${red.testsRun} ran)`,
+      );
     } else {
       console.log("  ⏭ all tests already active");
     }

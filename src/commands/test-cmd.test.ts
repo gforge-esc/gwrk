@@ -165,8 +165,8 @@ describe("testCommand", () => {
       expect(mockExecSync).not.toHaveBeenCalled();
     });
 
-    it("prints 'No tests found' and exits 0 when phase has no test files", async () => {
-      // FR-009: no-test-file case — exits 0 with message, no vitest invocation
+    it("prints 'No tests found' and exits 1 when phase has no test files", async () => {
+      // FR-009 / liveness (ADR-005 §10): nothing verified is NOT success.
       mockExecSync.mockReturnValue(Buffer.from(""));
 
       const noTestTasks = {
@@ -191,12 +191,15 @@ describe("testCommand", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
+      process.exitCode = 0;
       await testCommand.parseAsync([FEATURE], { from: "user" });
 
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("No tests found"),
       );
       expect(mockExecSync).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+      process.exitCode = 0;
     });
   });
 });
