@@ -10,6 +10,10 @@ import { banner, fail, success } from "../utils/format.js";
 import { loadTaskState } from "../utils/state.js";
 
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { getTestExtension } from "../utils/toolchain-mapper.js";
+import { extractFilePaths } from "../utils/file-extract.js";
+import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
@@ -44,7 +48,10 @@ Examples:
 
       try {
         const taskState = loadTaskState(featureDir);
-        const testFiles = new Set<string>();
+        const profile = await detectProfile(projectRoot);
+        const testExt = getTestExtension(profile);
+        const mentionedTests: string[] = [];
+        const sourceFiles: string[] = [];
 
         for (const phase of taskState.phases) {
           if (
@@ -55,26 +62,26 @@ Examples:
           }
 
           for (const task of phase.tasks) {
-            const text = `${task.title} ${task.description ?? ""}`;
-            const matches = text.matchAll(
-              /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
-            );
-            for (const match of matches) {
-              const f = match[0].replace(/[,;.]$/, "");
-              if (f.includes(".test.ts") || f.includes(".test.js")) {
-                testFiles.add(f);
-              } else if (
-                (f.endsWith(".ts") || f.endsWith(".js")) &&
-                !f.includes(".test.")
-              ) {
-                const testFile = f.replace(/\.(ts|js)$/, ".test.$1");
-                if (fs.existsSync(path.join(projectRoot, testFile))) {
-                  testFiles.add(testFile);
-                }
-              }
+            for (const f of extractFilePaths(
+              `${task.title} ${task.description ?? ""}`,
+            )) {
+              if (f.includes(".test.")) mentionedTests.push(f);
+              else if (f.endsWith(".ts") || f.endsWith(".js"))
+                sourceFiles.push(f);
             }
           }
         }
+
+        // Same discovery the ship gate uses: mentioned + co-located + tests/ tree.
+        const testFiles = new Set(
+          discoverTestsForSources({
+            sourceFiles,
+            mentionedTests,
+            testExt,
+            fileExists: (rel) => fs.existsSync(path.join(projectRoot, rel)),
+            testsTreeFiles: listTestsTree(projectRoot),
+          }),
+        );
 
         if (testFiles.size === 0) {
           // FR-009 / liveness (ADR-005 §10): nothing verified is NOT success.
