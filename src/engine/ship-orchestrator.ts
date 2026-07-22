@@ -46,6 +46,7 @@ import { activatePhaseTests } from "./test-activator.js";
 import { isHollowGate } from "../utils/gate-quality.js";
 import { parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
+import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -956,33 +957,30 @@ export class ShipOrchestrator extends EventEmitter {
       const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
       if (!phase) return [];
 
-      const testFiles = new Set<string>();
+      const mentionedTests: string[] = [];
       const sourceFiles: string[] = [];
 
       for (const task of phase.tasks) {
         const text = `${task.title} ${task.description ?? ""}`;
         for (const filePath of extractFilePaths(text)) {
           if (filePath.endsWith(testExt)) {
-            testFiles.add(filePath);
+            mentionedTests.push(filePath);
           } else if (filePath.endsWith(sourceExt) || filePath.endsWith(".js") || filePath.endsWith(".ts")) {
             sourceFiles.push(filePath);
           }
         }
       }
 
-      // Fallback: find co-located test files for source files
-      if (testFiles.size === 0) {
-        for (const src of sourceFiles) {
-          const testPath = src.endsWith(sourceExt)
-            ? src.slice(0, -sourceExt.length) + testExt
-            : src.replace(/\.(js|ts)$/, testExt);
-          if (fs.existsSync(path.join(this.config.cwd, testPath))) {
-            testFiles.add(testPath);
-          }
-        }
-      }
-
-      return [...testFiles];
+      // Discover covering tests: existing mentions, co-located, AND out-of-tree
+      // tests/ suites (matched by source basename) — so the liveness gate can
+      // actually run tests that live outside the source tree.
+      return discoverTestsForSources({
+        sourceFiles,
+        mentionedTests,
+        testExt,
+        fileExists: (rel) => fs.existsSync(path.join(this.config.cwd, rel)),
+        testsTreeFiles: listTestsTree(this.config.cwd),
+      });
     } catch {
       return [];
     }

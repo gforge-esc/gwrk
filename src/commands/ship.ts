@@ -18,7 +18,7 @@ import {
 import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { getTestExtension } from "../utils/toolchain-mapper.js";
-import { phaseHasTests } from "../utils/test-discovery.js";
+import { phaseHasTests, listTestsTree } from "../utils/test-discovery.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
@@ -92,29 +92,6 @@ function recordHistory(...args: Parameters<typeof dbRecordHistory>): void {
  * Ship a single phase through the full lifecycle.
  * Returns the exit code (0 = success, non-zero = failure).
  */
-/** Recursively list test files under a top-level `tests/` tree (relative paths). */
-function listTestsTree(cwd: string): string[] {
-  const root = path.join(cwd, "tests");
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) walk(full);
-      else if (/\.(test|spec)\.[jt]s$|_test\.(go|py)$|test_.*\.py$/.test(e.name)) {
-        out.push(path.relative(cwd, full));
-      }
-    }
-  };
-  if (fs.existsSync(root)) walk(root);
-  return out;
-}
-
 async function shipPhase(
   featureInput: string,
   phase: string,

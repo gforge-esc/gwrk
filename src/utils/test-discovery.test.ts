@@ -3,9 +3,59 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { phaseHasTests } from "./test-discovery.js";
+import { phaseHasTests, discoverTestsForSources } from "./test-discovery.js";
 
 const exists = (set: string[]) => (p: string) => set.includes(p);
+
+describe("discoverTestsForSources (T3 discovery — returns the actual test files)", () => {
+  it("returns a co-located test that exists", () => {
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/config/env.js"],
+        mentionedTests: [],
+        testExt: ".test.js",
+        fileExists: exists(["src/config/env.test.js"]),
+        testsTreeFiles: [],
+      }),
+    ).toEqual(["src/config/env.test.js"]);
+  });
+
+  it("returns an out-of-tree test whose basename matches a source", () => {
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/lib/db/auth.js"],
+        mentionedTests: [],
+        testExt: ".test.js",
+        fileExists: exists([]),
+        testsTreeFiles: ["tests/db/auth.test.js", "tests/db/other.test.js"],
+      }),
+    ).toEqual(["tests/db/auth.test.js"]);
+  });
+
+  it("returns an existing mentioned test", () => {
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/lib/db/auth.js"],
+        mentionedTests: ["tests/auth/auth.test.js"],
+        testExt: ".test.js",
+        fileExists: exists(["tests/auth/auth.test.js"]),
+        testsTreeFiles: [],
+      }),
+    ).toEqual(["tests/auth/auth.test.js"]);
+  });
+
+  it("returns empty when nothing maps", () => {
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/lib/db/auth.js"],
+        mentionedTests: [],
+        testExt: ".test.js",
+        fileExists: exists([]),
+        testsTreeFiles: ["tests/db/unrelated.test.js"],
+      }),
+    ).toEqual([]);
+  });
+});
 
 describe("phaseHasTests (FR-008 — existence-based, profile-aware discovery)", () => {
   it("blocks when source files exist but no test does", () => {
