@@ -16,6 +16,9 @@ import {
   startRun as dbStartRun,
 } from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { getTestExtension } from "../utils/toolchain-mapper.js";
+import { phaseHasTests } from "../utils/test-discovery.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
 
@@ -88,6 +91,29 @@ function recordHistory(...args: Parameters<typeof dbRecordHistory>): void {
  * Ship a single phase through the full lifecycle.
  * Returns the exit code (0 = success, non-zero = failure).
  */
+/** Recursively list test files under a top-level `tests/` tree (relative paths). */
+function listTestsTree(cwd: string): string[] {
+  const root = path.join(cwd, "tests");
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(test|spec)\.[jt]s$|_test\.(go|py)$|test_.*\.py$/.test(e.name)) {
+        out.push(path.relative(cwd, full));
+      }
+    }
+  };
+  if (fs.existsSync(root)) walk(root);
+  return out;
+}
+
 async function shipPhase(
   featureInput: string,
   phase: string,
@@ -152,7 +178,7 @@ async function shipPhase(
         }
       }
 
-      const testFilesMentioned = files.filter(
+      const mentionedTests = files.filter(
         (f) => f.includes(".test.ts") || f.includes(".test.js"),
       );
       const sourceFiles = files.filter(
@@ -162,16 +188,19 @@ async function shipPhase(
           !f.includes(".d.ts"),
       );
 
-      // Check filesystem for matching test files if not explicitly in tasks
-      const matchingTestsOnDisk = sourceFiles
-        .map((f) => f.replace(/\.(ts|js)$/, ".test.$1"))
-        .filter((f) => fs.existsSync(path.join(cwd, f)));
+      // FR-008 (ADR-005 §10.2.4): existence-based, profile-aware discovery.
+      // A *mentioned* test only counts if it exists; tests in a separate
+      // tests/ tree count too (no false block for out-of-tree suites).
+      const profile = await detectProfile(cwd);
+      const hasTests = phaseHasTests({
+        sourceFiles,
+        mentionedTests,
+        testExt: getTestExtension(profile),
+        fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
+        testsTreeFiles: listTestsTree(cwd),
+      });
 
-      if (
-        testFilesMentioned.length === 0 &&
-        matchingTestsOnDisk.length === 0 &&
-        sourceFiles.length > 0
-      ) {
+      if (!hasTests) {
         blocked(`[BLOCKED] No test files found for ${phaseId}`);
         throw new CommandError(`No test files found for ${phaseId}`, 1);
       }
