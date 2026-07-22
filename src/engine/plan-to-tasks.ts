@@ -16,6 +16,7 @@ import path from "node:path";
 import type { Phase, Task, TaskState } from "../utils/state.js";
 import type { ProjectProfile } from "./prompt-conditioner.js";
 import { getTestExtension, getTestCommand } from "../utils/toolchain-mapper.js";
+import { unauthoredGate } from "../utils/gate-quality.js";
 
 /**
  * Deterministic plan.md → tasks.json generator.
@@ -199,7 +200,7 @@ function generateTaskState(
 
       const gateScript = relatedTest
         ? getTestCommand(profile, [relatedTest.path])
-        : `test -f ${f.path}`;
+        : unauthoredGate(f.path);
 
       const existing = existingTasks.find(
         (et) => et.title === title && !matchedExistingIds.has(et.id),
@@ -231,7 +232,7 @@ function generateTaskState(
           title,
           description: `${f.action} ${f.path}. ${f.description}`,
           status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
-          gateScript: `test -f ${f.path}`,
+          gateScript: unauthoredGate(f.path),
           sp: 1,
           completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
         });

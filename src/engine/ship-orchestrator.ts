@@ -43,6 +43,7 @@ import {
   type ShipStageResult,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
+import { isHollowGate } from "../utils/gate-quality.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -551,17 +552,26 @@ export class ShipOrchestrator extends EventEmitter {
       } else {
         // Strategy 3: gateScript as inline shell command
         gateLabel = `(inline) ${task.gateScript.substring(0, 60)}`;
-        try {
-          const output = execSync(task.gateScript, {
-            cwd: this.config.cwd,
-            stdio: "pipe",
-            timeout: 30_000,
-            encoding: "utf-8",
-          });
-          gateResult = { passed: true, output: output || "" };
-        } catch (err: unknown) {
-          const stderr = (err as { stderr?: string })?.stderr || "";
-          gateResult = { passed: false, output: stderr || String(err) };
+        if (isHollowGate(task.gateScript)) {
+          // FR-001 (ADR-005 §10.2.5): file-existence-only gates aren't verification.
+          gateResult = {
+            passed: false,
+            output:
+              "FAIL: hollow gate (test -f only) — not a functional assertion (FR-001)",
+          };
+        } else {
+          try {
+            const output = execSync(task.gateScript, {
+              cwd: this.config.cwd,
+              stdio: "pipe",
+              timeout: 30_000,
+              encoding: "utf-8",
+            });
+            gateResult = { passed: true, output: output || "" };
+          } catch (err: unknown) {
+            const stderr = (err as { stderr?: string })?.stderr || "";
+            gateResult = { passed: false, output: stderr || String(err) };
+          }
         }
       }
 
