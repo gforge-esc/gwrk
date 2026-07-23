@@ -16,6 +16,10 @@ import {
   startRun as dbStartRun,
 } from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { getTestExtension } from "../utils/toolchain-mapper.js";
+import { phaseHasTests, listTestsTree } from "../utils/test-discovery.js";
+import { extractFilePaths } from "../utils/file-extract.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
 
@@ -143,16 +147,12 @@ async function shipPhase(
     if (phaseData) {
       const files: string[] = [];
       for (const task of phaseData.tasks) {
-        const text = `${task.title} ${task.description ?? ""}`;
-        const matches = text.matchAll(
-          /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
+        files.push(
+          ...extractFilePaths(`${task.title} ${task.description ?? ""}`),
         );
-        for (const match of matches) {
-          files.push(match[0].replace(/[,;.]$/, ""));
-        }
       }
 
-      const testFilesMentioned = files.filter(
+      const mentionedTests = files.filter(
         (f) => f.includes(".test.ts") || f.includes(".test.js"),
       );
       const sourceFiles = files.filter(
@@ -162,16 +162,19 @@ async function shipPhase(
           !f.includes(".d.ts"),
       );
 
-      // Check filesystem for matching test files if not explicitly in tasks
-      const matchingTestsOnDisk = sourceFiles
-        .map((f) => f.replace(/\.(ts|js)$/, ".test.$1"))
-        .filter((f) => fs.existsSync(path.join(cwd, f)));
+      // FR-008 (ADR-005 §10.2.4): existence-based, profile-aware discovery.
+      // A *mentioned* test only counts if it exists; tests in a separate
+      // tests/ tree count too (no false block for out-of-tree suites).
+      const profile = await detectProfile(cwd);
+      const hasTests = phaseHasTests({
+        sourceFiles,
+        mentionedTests,
+        testExt: getTestExtension(profile),
+        fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
+        testsTreeFiles: listTestsTree(cwd),
+      });
 
-      if (
-        testFilesMentioned.length === 0 &&
-        matchingTestsOnDisk.length === 0 &&
-        sourceFiles.length > 0
-      ) {
+      if (!hasTests) {
         blocked(`[BLOCKED] No test files found for ${phaseId}`);
         throw new CommandError(`No test files found for ${phaseId}`, 1);
       }

@@ -43,6 +43,10 @@ import {
   type ShipStageResult,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
+import { isHollowGate } from "../utils/gate-quality.js";
+import { parseTestOutput } from "./test-runner.js";
+import { extractFilePaths } from "../utils/file-extract.js";
+import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
 
 // ANSI helpers for progress output
 const DIM = "\x1b[2m";
@@ -504,6 +508,41 @@ export class ShipOrchestrator extends EventEmitter {
       } catch {
         // Not fatal — files may already be tracked or no changes
       }
+
+      // RED evidence (ADR-005 §10.2.3): the tests just activated for this phase
+      // MUST fail before IMPLEMENT — that's what proves they exercise the
+      // not-yet-built behavior. Recorded here as the precondition for a
+      // meaningful GREEN at TEST_GATE.
+      const red = await this.runTestSuite(files);
+      if (red.testsRun === 0) {
+        // Liveness (ADR-005 §10.2.1): a test that never ran cannot be RED. A
+        // suite that discovered nothing or all-cancelled must NO-GO here — not
+        // pass vacuously — so the same hole TEST_GATE closes can't sneak in
+        // through ACTIVATE_TESTS.
+        console.log(
+          "  ✗ ACTIVATE_TESTS: activated tests executed 0 tests — cannot establish RED (ADR-005 §10.2.1)",
+        );
+        return {
+          success: false,
+          exitCode: 1,
+          error:
+            "Activated phase tests ran 0 tests — RED cannot be established (a test that cannot run cannot verify)",
+        };
+      }
+      if (red.testsRun > 0 && red.failCount === 0) {
+        console.log(
+          "  ✗ ACTIVATE_TESTS: activated tests PASS before implementation — not RED (ADR-005 §10.2.3)",
+        );
+        return {
+          success: false,
+          exitCode: 1,
+          error:
+            "Activated phase tests are not RED (they pass before implementation) — a test that cannot fail cannot verify",
+        };
+      }
+      console.log(
+        `  ✓ RED: ${red.failCount} failing test(s) before implementation (${red.testsRun} ran)`,
+      );
     } else {
       console.log("  ⏭ all tests already active");
     }
@@ -551,17 +590,26 @@ export class ShipOrchestrator extends EventEmitter {
       } else {
         // Strategy 3: gateScript as inline shell command
         gateLabel = `(inline) ${task.gateScript.substring(0, 60)}`;
-        try {
-          const output = execSync(task.gateScript, {
-            cwd: this.config.cwd,
-            stdio: "pipe",
-            timeout: 30_000,
-            encoding: "utf-8",
-          });
-          gateResult = { passed: true, output: output || "" };
-        } catch (err: unknown) {
-          const stderr = (err as { stderr?: string })?.stderr || "";
-          gateResult = { passed: false, output: stderr || String(err) };
+        if (isHollowGate(task.gateScript)) {
+          // FR-001 (ADR-005 §10.2.5): file-existence-only gates aren't verification.
+          gateResult = {
+            passed: false,
+            output:
+              "FAIL: hollow gate (test -f only) — not a functional assertion (FR-001)",
+          };
+        } else {
+          try {
+            const output = execSync(task.gateScript, {
+              cwd: this.config.cwd,
+              stdio: "pipe",
+              timeout: 30_000,
+              encoding: "utf-8",
+            });
+            gateResult = { passed: true, output: output || "" };
+          } catch (err: unknown) {
+            const stderr = (err as { stderr?: string })?.stderr || "";
+            gateResult = { passed: false, output: stderr || String(err) };
+          }
         }
       }
 
@@ -813,9 +861,31 @@ export class ShipOrchestrator extends EventEmitter {
   private async stageTestGate(): Promise<ShipStageResult> {
     console.log("  ▸ TEST_GATE");
     const phaseTestFiles = await this.getPhaseTestFiles();
+
+    // ADR-005 §10.2.1 — Liveness: when a phase maps to test files, those tests
+    // MUST actually execute and pass. A suite that discovered nothing or whose
+    // tests all cancelled (testsRun === 0) is a FAIL, never "no regression".
     if (phaseTestFiles.length > 0) {
       console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
+      const r = await this.runTestSuite(phaseTestFiles);
+      if (r.testsRun === 0) {
+        console.log(
+          "  ✗ TEST_GATE: phase tests executed 0 tests (none discovered / all cancelled) — not a pass",
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      if (r.failCount > 0) {
+        console.log(
+          `  ✗ TEST_GATE: ${r.failCount} failing test(s) in phase suite (${r.testsRun} ran)`,
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      console.log(
+        `  ✓ tests: ${r.passed} passed, 0 failed (${r.testsRun} ran)`,
+      );
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
+
     const { failCount, output } = await this.runTestSuite(phaseTestFiles);
     const baseline = this.state.testBaseline ?? 0;
 
@@ -852,9 +922,11 @@ export class ShipOrchestrator extends EventEmitter {
    *  When phaseTestFiles are available, runs only those files instead of
    *  the full suite. This prevents cross-phase RED test contamination.
    */
-  private async runTestSuite(phaseTestFiles?: string[]): Promise<{ failCount: number; output: string }> {
+  private async runTestSuite(
+    phaseTestFiles?: string[],
+  ): Promise<{ failCount: number; testsRun: number; passed: number; output: string }> {
     const profile = await detectProfile(this.config.cwd);
-    
+
     // If we have phase-scoped test files, run only those
     let command = "pnpm test";
     if (phaseTestFiles && phaseTestFiles.length > 0) {
@@ -868,20 +940,20 @@ export class ShipOrchestrator extends EventEmitter {
       }
     }
 
+    let output: string;
     try {
-      const result = execSync(command, {
+      output = execSync(command, {
         cwd: this.config.cwd,
         stdio: "pipe",
         timeout: 120_000,
-      });
-      return { failCount: 0, output: result.toString() };
+      }).toString();
     } catch (err: unknown) {
       const stdout = (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
       const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
-      const combined = `${stdout}\n${stderr}`.trim();
-      const failMatch = combined.match(/(\d+)\s+failed/);
-      return { failCount: failMatch ? parseInt(failMatch[1], 10) : 1, output: combined };
+      output = `${stdout}\n${stderr}`.trim();
     }
+    const { testsRun, passed, failed } = parseTestOutput(output);
+    return { failCount: failed, testsRun, passed, output };
   }
 
   /**
@@ -900,37 +972,30 @@ export class ShipOrchestrator extends EventEmitter {
       const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
       if (!phase) return [];
 
-      const testFiles = new Set<string>();
+      const mentionedTests: string[] = [];
       const sourceFiles: string[] = [];
 
       for (const task of phase.tasks) {
         const text = `${task.title} ${task.description ?? ""}`;
-        const matches = text.matchAll(
-          /(?:src|tests|docs|scripts|packages)\/[^\s),]+/g,
-        );
-        for (const match of matches) {
-          const filePath = match[0].replace(/[,;.]$/, "");
+        for (const filePath of extractFilePaths(text)) {
           if (filePath.endsWith(testExt)) {
-            testFiles.add(filePath);
+            mentionedTests.push(filePath);
           } else if (filePath.endsWith(sourceExt) || filePath.endsWith(".js") || filePath.endsWith(".ts")) {
             sourceFiles.push(filePath);
           }
         }
       }
 
-      // Fallback: find co-located test files for source files
-      if (testFiles.size === 0) {
-        for (const src of sourceFiles) {
-          const testPath = src.endsWith(sourceExt)
-            ? src.slice(0, -sourceExt.length) + testExt
-            : src.replace(/\.(js|ts)$/, testExt);
-          if (fs.existsSync(path.join(this.config.cwd, testPath))) {
-            testFiles.add(testPath);
-          }
-        }
-      }
-
-      return [...testFiles];
+      // Discover covering tests: existing mentions, co-located, AND out-of-tree
+      // tests/ suites (matched by source basename) — so the liveness gate can
+      // actually run tests that live outside the source tree.
+      return discoverTestsForSources({
+        sourceFiles,
+        mentionedTests,
+        testExt,
+        fileExists: (rel) => fs.existsSync(path.join(this.config.cwd, rel)),
+        testsTreeFiles: listTestsTree(this.config.cwd),
+      });
     } catch {
       return [];
     }
