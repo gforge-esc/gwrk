@@ -7,6 +7,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { recordHistory } from "../db/runs.js";
 import { runGate } from "../utils/gate-runner.js";
+import { isHollowGate } from "../utils/gate-quality.js";
 import { color, fail, success } from "../utils/format.js";
 import {
   getCurrentBranch,
@@ -111,22 +112,7 @@ Examples:
       // FR-001: Reject gates that contain only `test -f` assertions
       if (fs.existsSync(gateScript)) {
         const gateContent = fs.readFileSync(gateScript, "utf-8");
-        const lines = gateContent
-          .split("\n")
-          .map((l) => l.trim())
-          .filter(
-            (l) =>
-              l.length > 0 &&
-              !l.startsWith("#") &&
-              !l.startsWith("set ") &&
-              !l.startsWith("echo "),
-          );
-
-        const hasOnlyTestF =
-          lines.length > 0 &&
-          lines.every((l) => l.startsWith("test -f") || l.startsWith("[ -f"));
-
-        if (hasOnlyTestF) {
+        if (isHollowGate(gateContent)) {
           throw new CommandError(
             `FAIL: ${taskId} — gate contains only test -f, not a functional assertion`,
             1,
