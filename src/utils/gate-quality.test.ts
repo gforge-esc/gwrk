@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { isHollowGate } from "./gate-quality.js";
+import { isHollowGate, unauthoredGate } from "./gate-quality.js";
 
 describe("isHollowGate (FR-001 — no file-existence-only gates)", () => {
   it("flags a gate whose only assertion is test -f", () => {
@@ -41,5 +41,16 @@ describe("isHollowGate (FR-001 — no file-existence-only gates)", () => {
     expect(
       isHollowGate('echo "running"\nmake test:db\necho "PASS"'),
     ).toBe(false);
+  });
+
+  it("does not flag a single-line echo that forces a non-zero exit (honest fail)", () => {
+    // `echo "..."; exit 1` can never pass — it's an honest failing gate, not a
+    // hollow one, even though the line begins with `echo`.
+    expect(isHollowGate('echo "FAIL: no test for src/foo.ts"; exit 1')).toBe(false);
+  });
+
+  it("does not flag the honest-failing gate that unauthoredGate emits", () => {
+    // The exact string plan-to-tasks writes for a source file with no test.
+    expect(isHollowGate(unauthoredGate("src/foo.ts"))).toBe(false);
   });
 });

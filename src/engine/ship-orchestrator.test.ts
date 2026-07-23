@@ -239,6 +239,37 @@ describe("ShipOrchestrator", () => {
     expect(result.success).toBe(true);
   });
 
+  it("ACTIVATE_TESTS fails when activated tests execute 0 tests — RED requires liveness (ADR-005 §10.2.1)", async () => {
+    vi.mocked(state.loadTaskState).mockReturnValue({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            { id: "T001", title: "Task 1", description: "implement. Tests: src/foo.test.ts", status: "open", gateScript: "gates/T001-gate.sh" },
+          ],
+        },
+      ],
+    });
+    vi.mocked(testActivator.activatePhaseTests).mockReturnValue({
+      activated: 1,
+      files: ["src/foo.test.ts"],
+    });
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      // Suite discovers/executes nothing — testsRun 0. A test that never ran
+      // cannot be RED, so ACTIVATE_TESTS must NO-GO, not pass vacuously.
+      if (typeof cmd === "string" && cmd.includes("vitest")) return "No test files found, exiting with code 1";
+      if (typeof cmd === "string" && cmd.includes("gh pr create")) return "https://github.com/mock/pull/42";
+      return "";
+    });
+
+    const orchestrator = new ShipOrchestrator(config);
+    const result = await (orchestrator as any).stageActivateTests();
+    expect(result.success).toBe(false);
+  });
+
   it("runs git + agent in config.cwd (worktree) and honors a custom branchName", async () => {
     vi.mocked(agent.dispatchToAgent).mockResolvedValue({
       exitCode: 0,

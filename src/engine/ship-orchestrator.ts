@@ -514,6 +514,21 @@ export class ShipOrchestrator extends EventEmitter {
       // not-yet-built behavior. Recorded here as the precondition for a
       // meaningful GREEN at TEST_GATE.
       const red = await this.runTestSuite(files);
+      if (red.testsRun === 0) {
+        // Liveness (ADR-005 §10.2.1): a test that never ran cannot be RED. A
+        // suite that discovered nothing or all-cancelled must NO-GO here — not
+        // pass vacuously — so the same hole TEST_GATE closes can't sneak in
+        // through ACTIVATE_TESTS.
+        console.log(
+          "  ✗ ACTIVATE_TESTS: activated tests executed 0 tests — cannot establish RED (ADR-005 §10.2.1)",
+        );
+        return {
+          success: false,
+          exitCode: 1,
+          error:
+            "Activated phase tests ran 0 tests — RED cannot be established (a test that cannot run cannot verify)",
+        };
+      }
       if (red.testsRun > 0 && red.failCount === 0) {
         console.log(
           "  ✗ ACTIVATE_TESTS: activated tests PASS before implementation — not RED (ADR-005 §10.2.3)",

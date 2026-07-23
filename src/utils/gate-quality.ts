@@ -15,6 +15,11 @@ export function isHollowGate(gateContent: string): boolean {
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("set "));
 
+  // A gate that forces a non-zero exit can never pass — it's an honest failing
+  // gate, not a hollow one. Catches both the two-line form (`echo …\nexit 1`)
+  // and the inline form unauthoredGate emits (`echo …; exit 1`).
+  if (lines.some((l) => /\bexit\s+[1-9]/.test(l))) return false;
+
   // Hollow = every meaningful line is a no-op: a bare echo, or a file-existence
   // check. Such a gate can pass without exercising any behavior. A gate that
   // echoes AND runs a real command (make/pnpm/node/…) is not hollow; nor is an
