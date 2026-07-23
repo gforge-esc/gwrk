@@ -9,3 +9,6 @@ specs/**/.gwrk/runs/*.json merge=binary
 
 # History (deprecated, will be removed): append-only union merge.
 specs/**/.gwrk/history.jsonl merge=union
+
+# Rendered HTML reference reports — stored via Git LFS.
+docs/reference/*.html filter=lfs diff=lfs merge=lfs -text
