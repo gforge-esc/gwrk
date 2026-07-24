@@ -55,7 +55,7 @@
           "id": "T004",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. document the canonical output shape: `####` headings, fenced bash Done-When blocks (the only executable form), em-dash file lines with the three actions, Type-flexible Test Strategy table",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts",
           "sp": 1
         }
