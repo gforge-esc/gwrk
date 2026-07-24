@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. in §4a `#### Done When` guidance: add the exit-based-assertion rule (reference \"exit code\"/\"exit status\", show a bare-command example as the canonical assertion), name and forbid the `<cmd> | grep -q <pattern>` antipattern, state the failure reason, and document the capture-to-file-then-`grep -q <file>` safe alternative",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts\ngrep -qiE 'exit code|exit status' src/plugins/builtins/workflows/gwrk-plan/PROMPT.md\ngrep -qiE 'grep -q' src/plugins/builtins/workflows/gwrk-plan/PROMPT.md\ngrep -qiE 'forbid|never|do not|antipattern' src/plugins/builtins/workflows/gwrk-plan/PROMPT.md",
           "sp": 1
         }
