@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0-alpha.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.3.1-alpha.1...cli-v1.4.0-alpha.1) (2026-07-24)
+
+
+### Features
+
+* promote develop → main — 021 polyglot toolchain + gemini retirement ([#145](https://github.com/gforge-esc/gwrk/issues/145)) ([2f270d6](https://github.com/gforge-esc/gwrk/commit/2f270d61e4ce9c87ec4b328916bbdaf1b94a56c7))
+
 ## [1.3.1-alpha.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.3.0-alpha.1...cli-v1.3.1-alpha.1) (2026-07-23)
 
 
