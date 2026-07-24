@@ -199,7 +199,7 @@ function generateTaskState(
       );
 
       const gateScript = relatedTest
-        ? getTestCommand(profile, [relatedTest.path])
+        ? (getTestCommand(profile, [relatedTest.path]) ?? unauthoredGate(f.path))
         : unauthoredGate(f.path);
 
       const existing = existingTasks.find(
@@ -294,6 +294,8 @@ function generateTaskState(
       tasks,
       sp_estimate: spEstimate,
       doneWhen: p.doneWhen.length > 0 ? p.doneWhen : undefined,
+      testTargets:
+        p.testTargets && p.testTargets.length > 0 ? p.testTargets : undefined,
     };
   });
 

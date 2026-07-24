@@ -37,10 +37,10 @@
 - [ ] FR-019: dispatchToAgent() facade
 - [ ] FR-020: Exit code normalization
 - [ ] FR-021: Context delivery via stdin piping
-- [ ] FR-022: Mapped build command skip/execution ⭐ **REWORK**
-- [ ] FR-023: Mapped test command skip/execution ⭐ **REWORK**
-- [ ] FR-024: GwrkConfigSchema build/test extensions ⭐ **REWORK**
-- [ ] FR-025: Schema-compliant agent config generation ⭐ **REWORK**
+- [x] FR-022: Mapped build command skip/execution (getBuildCommand — 021-polyglot-toolchain / ADR-005 §11)
+- [x] FR-023: Mapped test command skip/execution (getTestCommand → null — 021-polyglot-toolchain / ADR-005 §11)
+- [x] FR-024: GwrkConfigSchema build/test + extensions (ToolchainConfigSchema — 021-polyglot-toolchain / ADR-005 §11)
+- [ ] FR-025: Schema-compliant agent config generation ⭐ **REWORK** (not in 021 scope)
 
 ## Technical Constraints
 - [ ] TC-001: Air-Gapped

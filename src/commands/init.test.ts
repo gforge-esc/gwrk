@@ -151,6 +151,32 @@ describe("Init Command Tests", () => {
       expect(config.project.architecture).toBe("Hexagonal");
     });
 
+    it("021 FR-008: persists project.toolchain with resolved test/source extensions", async () => {
+      // Bare package.json (no typescript dep) → JavaScript → .test.js / .js
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "js-app" }));
+      const mockRl = {
+        question: vi.fn()
+          .mockResolvedValueOnce("n")        // server?
+          .mockResolvedValueOnce("js-app")   // name
+          .mockResolvedValueOnce("y")        // profile correct
+          .mockResolvedValueOnce("flat")     // layout
+          .mockResolvedValueOnce("Layered")  // architecture
+          .mockResolvedValueOnce("TDD")      // conventions
+          .mockResolvedValueOnce("n")        // skip workstation
+          .mockResolvedValueOnce("")         // default agent
+          .mockResolvedValueOnce("")         // fallback
+          .mockResolvedValueOnce(""),        // slack
+        close: vi.fn(),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRl as any);
+
+      await initAction({});
+
+      const config = JSON.parse(fs.readFileSync(path.join(tempDir, ".gwrkrc.json"), "utf-8"));
+      expect(config.project.toolchain?.testExtension).toBe(".test.js");
+      expect(config.project.toolchain?.sourceExtension).toBe(".js");
+    });
+
     it("US-001: should be idempotent and offer to update existing config", async () => {
       // Setup fake root config to trigger idempotency
       fs.writeFileSync(path.join(tempDir, ".gwrkrc.json"), JSON.stringify({ project: { name: "root" } }));

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { parseTestOutput } from "./test-runner.js";
+import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 
 describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
   it("parses a vitest summary and ignores the 'Test Files' line", () => {
@@ -55,5 +55,32 @@ describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
       passed: 0,
       failed: 0,
     });
+  });
+});
+
+describe("isIntegrationTestCommand (021 FR-009 / ADR-005 §10.4)", () => {
+  it.each([
+    "make test:auth",
+    "make test",
+    "make integration-test",
+    "pytest tests/",
+    "go test ./...",
+    "node --test",
+    "npm test",
+    "pnpm test",
+    "vitest run",
+  ])("treats %j as an integration test command", (cmd) => {
+    expect(isIntegrationTestCommand(cmd)).toBe(true);
+  });
+
+  it.each([
+    "test -f src/foo.js",
+    'echo "done"',
+    "npm run build",
+    "pnpm build",
+    "tsc --noEmit",
+    "curl -s http://localhost | jq -e .ok",
+  ])("does not treat %j as an integration test command", (cmd) => {
+    expect(isIntegrationTestCommand(cmd)).toBe(false);
   });
 });

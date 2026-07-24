@@ -41,11 +41,22 @@ export function discoverTestsForSources(opts: {
   testExt: string;
   fileExists: (relPath: string) => boolean;
   testsTreeFiles: string[];
+  /** Explicit test files a phase points at (plan Test Strategy) — the "declared
+   * target" arm (ADR-005 §10.2 Invariant 4 / §11). Existence-checked; lets a
+   * behavior-named out-of-tree suite map to a phase without a basename match. */
+  declaredTargets?: string[];
 }): string[] {
-  const { sourceFiles, mentionedTests, testExt, fileExists, testsTreeFiles } =
-    opts;
+  const {
+    sourceFiles,
+    mentionedTests,
+    testExt,
+    fileExists,
+    testsTreeFiles,
+    declaredTargets,
+  } = opts;
   const found = new Set<string>();
 
+  for (const t of declaredTargets ?? []) if (fileExists(t)) found.add(t);
   for (const t of mentionedTests) if (fileExists(t)) found.add(t);
 
   for (const src of sourceFiles) {
@@ -84,11 +95,23 @@ export function phaseHasTests(opts: {
   testExt: string;
   fileExists: (relPath: string) => boolean;
   testsTreeFiles: string[];
+  /** Explicit test files a phase points at (plan Test Strategy) — the "declared
+   * target" arm (ADR-005 §10.2 Invariant 4 / §11). Existence-based. */
+  declaredTargets?: string[];
 }): boolean {
-  const { sourceFiles, mentionedTests, testExt, fileExists, testsTreeFiles } =
-    opts;
+  const {
+    sourceFiles,
+    mentionedTests,
+    testExt,
+    fileExists,
+    testsTreeFiles,
+    declaredTargets,
+  } = opts;
 
   if (sourceFiles.length === 0) return true; // nothing to gate
+
+  // 0. A declared target only counts if it actually exists.
+  if ((declaredTargets ?? []).some((t) => fileExists(t))) return true;
 
   // 1. A mentioned test only counts if it actually exists.
   if (mentionedTests.some((t) => fileExists(t))) return true;
