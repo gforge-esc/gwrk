@@ -294,6 +294,8 @@ function generateTaskState(
       tasks,
       sp_estimate: spEstimate,
       doneWhen: p.doneWhen.length > 0 ? p.doneWhen : undefined,
+      testTargets:
+        p.testTargets && p.testTargets.length > 0 ? p.testTargets : undefined,
     };
   });
 
