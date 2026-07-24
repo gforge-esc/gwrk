@@ -73,7 +73,7 @@
           "id": "T005",
           "title": "Create plan-gate-validator.ts",
           "description": "NEW src/engine/plan-gate-validator.ts. `validatePlanGates(featureDir, featureId, opts?)`: parse `plan.md`, classify each phase source-bearing vs not, apply `isHollowGate` to each source-bearing phase's resolved gate, return a `PlanGateReport { ok, violations }`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
           "sp": 2
         },
@@ -81,7 +81,7 @@
           "id": "T006",
           "title": "Modify define-plan.ts",
           "description": "MODIFY src/commands/define-plan.ts. after `orchestrator.runLoop` succeeds and before `commitAllClean`, call `validatePlanGates`; on `ok === false` throw a `CommandError` (exit 1) whose message names each offending `phase-NN` and points to `docs/grounding/023-plan-format-contract.md`. Tests: src/commands/define-plan.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
           "sp": 1
         },
@@ -89,7 +89,7 @@
           "id": "T007",
           "title": "Create plan-stub.md",
           "description": "NEW specs/_fixtures/plan-format/plan-stub.md. a source-bearing phase whose `#### Done When` is prose-only (no fenced bash block) — the FR-006 negative fixture",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
           "sp": 2
         }
