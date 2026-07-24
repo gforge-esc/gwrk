@@ -15,7 +15,7 @@ export class ClaudeAdapter implements AgentBackend {
    * Claude Code runs with `--output-format stream-json`, emitting one JSON
    * event per line. The runner renders these into a readable .runs/*.log
    * transcript and persists the raw stream to a .jsonl sidecar. Backends that
-   * emit plain prose (agy/codex/gemini) leave this unset and are logged as-is.
+   * emit plain prose (agy/codex) leave this unset and are logged as-is.
    */
   readonly emitsStreamJson = true;
 

@@ -43,7 +43,7 @@ export class ModelSelector {
       // If review model is in cooldown, fall through to normal selection
     }
 
-    // 2. No configured models: a local CLI (claude, gemini) picks its own
+    // 2. No configured models: a local CLI (claude, agy) picks its own
     // default. Use a flagless virtual model so the bare command runs, rather
     // than treating the backend as "all models in cooldown".
     if (backend.models.length === 0) {

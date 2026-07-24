@@ -12,14 +12,14 @@ import { classifyTask } from "../server/task-classifier.js";
  * Resolves the preferred model for a task type from the agent registry.
  *
  * This bridges the gap between the config-based backend selection
- * (agents.define = "gemini") and the tier-aware model selection
+ * (agents.define = "agy") and the tier-aware model selection
  * (define → THINKING → gemini-3.1-pro-preview).
  *
  * Used by define commands (spec, plan, tests) to select thinking models
  * and by ship/implement to select fast models.
  *
  * @param taskType - The task type string (e.g. "define", "implement", "review")
- * @param backendName - The backend name from config (e.g. "gemini")
+ * @param backendName - The backend name from config (e.g. "agy")
  * @param projectRoot - The project root directory
  * @returns The resolved model name, or undefined if no model matched
  */

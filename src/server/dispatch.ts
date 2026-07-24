@@ -195,8 +195,6 @@ export class DispatchQueue {
         // worktree teardown; ship on the per-feature-phase branch.
         stateRoot: this.projectRoot,
         branchName: shipBranch,
-        geminiModel: this.config.agents.gemini?.model,
-        geminiFailbackModels: this.config.agents.gemini?.failbackModels,
       });
 
       const exitCode = await orchestrator.run();
