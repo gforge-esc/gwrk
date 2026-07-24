@@ -1,0 +1,71 @@
+{
+  "featureId": "023-plan-format-contract",
+  "createdAt": "2026-07-24T17:10:47.962Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "65e47f8c346a9c738be7da1a0012c5e78df92f78aff8a4bf13330b164725f2fd",
+      "modifiedAt": "2026-07-24T16:42:01.752Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Parser grammar alignment (canonical format + backward compatibility)",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Parser grammar alignment (canonical format + backward compatibility)",
+          "description": "Complete phase 1: Parser grammar alignment (canonical format + backward compatibility)",
+          "status": "open",
+          "gateScript": "echo \"Phase 1: Parser grammar alignment (canonical format + backward compatibility)\"",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Generator emits the canonical format",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "Generator emits the canonical format",
+          "description": "Complete phase 2: Generator emits the canonical format",
+          "status": "open",
+          "gateScript": "echo \"Phase 2: Generator emits the canonical format\"",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "`define plan` self-validation (fail loudly on stub gates)",
+      "tasks": [
+        {
+          "id": "T003",
+          "title": "`define plan` self-validation (fail loudly on stub gates)",
+          "description": "Complete phase 3: `define plan` self-validation (fail loudly on stub gates)",
+          "status": "open",
+          "gateScript": "echo \"Phase 3: `define plan` self-validation (fail loudly on stub gates)\"",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 2,
+      "testTargets": [
+        "src/commands/define-plan.test.ts"
+      ]
+    }
+  ]
+}
