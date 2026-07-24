@@ -38,6 +38,11 @@ interface ParsedPhase {
   doneWhen: string[];
   testTargets: string[];
   isCompleted: boolean;
+  /**
+   * FR-001: verbatim contents of a fenced-bash `#### Done When` block, used as
+   * the phase's executable gate. Undefined for prose-bullet Done-When bodies.
+   */
+  gateScript?: string;
 }
 
 function parsePlanMarkdown(planContent: string): ParsedPhase[] {
@@ -46,6 +51,10 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
 
   let currentPhase: ParsedPhase | null = null;
   let section: "none" | "files" | "done_when" | "test_strategy" = "none";
+  // FR-001: capture a fenced-bash `#### Done When` body verbatim as the phase's
+  // executable gate. `inDoneWhenFence` is true while inside that block.
+  let inDoneWhenFence = false;
+  let doneWhenFenceLines: string[] = [];
 
   for (const line of lines) {
     // ### Phase N: Title  (separator may be a colon, em-dash, en-dash, or hyphen)
@@ -66,10 +75,29 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
         isCompleted,
       };
       section = "none";
+      // A new phase always starts outside any Done-When fence; drop a prior
+      // phase's unclosed fence state so it can't bleed across the boundary.
+      inDoneWhenFence = false;
+      doneWhenFenceLines = [];
       continue;
     }
 
     if (!currentPhase) continue;
+
+    // FR-001: while inside a fenced-bash Done-When block, capture lines verbatim
+    // until the closing fence, then store them as the phase's executable gate.
+    // Runs before the section/heading logic so gate contents survive untouched.
+    if (inDoneWhenFence) {
+      if (/^```/.test(line)) {
+        currentPhase.gateScript = doneWhenFenceLines.join("\n").trim();
+        inDoneWhenFence = false;
+        doneWhenFenceLines = [];
+        section = "none";
+      } else {
+        doneWhenFenceLines.push(line);
+      }
+      continue;
+    }
 
     // **Files (N):** or #### Files — enter file section
     if (line.match(/^\*\*Files\s*(\(\d+\))?:\*\*/) || line.match(/^####\s+Files\s*$/i)) {
@@ -110,6 +138,28 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
 
     // Parse file lines: - `path` (ACTION: description)
     if (section === "files") {
+      // FR-002: em-dash canonical form — `path` — **action** — description,
+      // action ∈ {create, amend, delete}. Normalize to the tokens the generator
+      // already understands: create → NEW (new-file task, sp 2), amend → MODIFY,
+      // delete → DELETE (both existing-file tasks, sp 1). Description optional.
+      const emDashMatch = line.match(
+        /^-\s+`([^`]+)`\s+[—–]\s+\*\*(create|amend|delete)\*\*\s*(?:[—–]\s*(.*))?$/i,
+      );
+      if (emDashMatch) {
+        const rawAction = emDashMatch[2].toLowerCase();
+        const action =
+          rawAction === "create"
+            ? "NEW"
+            : rawAction === "delete"
+              ? "DELETE"
+              : "MODIFY";
+        currentPhase.files.push({
+          path: emDashMatch[1],
+          action,
+          description: (emDashMatch[3] ?? "").trim(),
+        });
+        continue;
+      }
       const fileMatch = line.match(
         /^-\s+`([^`]+)`\s+\((\w+):\s*(.*?)\)$/,
       );
@@ -146,6 +196,13 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
 
     // Parse done-when lines: - `command` or - text
     if (section === "done_when") {
+      // FR-001: an opening code fence begins verbatim executable-gate capture;
+      // the block contents (handled at the top of the loop) become the gate.
+      if (/^```/.test(line)) {
+        inDoneWhenFence = true;
+        doneWhenFenceLines = [];
+        continue;
+      }
       const doneMatch = line.match(/^-\s+(.+)/);
       if (doneMatch) {
         currentPhase.doneWhen.push(doneMatch[1].trim());
@@ -154,8 +211,12 @@ function parsePlanMarkdown(planContent: string): ParsedPhase[] {
 
     // Parse test strategy table for test targets
     if (section === "test_strategy") {
-      // | TR-001 | Unit | `path` | assertion |
-      const trMatch = line.match(/\|\s*TR-\d+\s*\|\s*\w+\s*\|\s*`([^`]+)`/);
+      // FR-003: Type-flexible — the Type token may be bare (`Unit`,
+      // `integration`) or bracketed (`[integration]`); the backticked Target is
+      // captured either way. | TR-001 | [integration] | `path` | assertion |
+      const trMatch = line.match(
+        /\|\s*TR-\d+\s*\|\s*\[?\w+\]?\s*\|\s*`([^`]+)`/,
+      );
       if (trMatch) {
         currentPhase.testTargets.push(trMatch[1]);
       }
@@ -260,6 +321,16 @@ function generateTaskState(
         sp: 2,
         completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
       });
+    }
+
+    // FR-001: a fenced-bash `#### Done When` block is the phase's executable
+    // gate. Surface it on every task so the real behavioral gate runs instead of
+    // a per-file unauthored/hollow stub — the fix for the `echo "Phase N"`
+    // false-green. Prose-bullet Done-When bodies leave `gateScript` unset and
+    // task gates are derived exactly as before.
+    if (p.gateScript) {
+      const phaseGate = p.gateScript;
+      tasks = tasks.map((t) => ({ ...t, gateScript: phaseGate }));
     }
 
     // Reconciliation: Find tasks that were in this phase in existingState but are now gone
