@@ -44,7 +44,7 @@ import {
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
 import { isHollowGate } from "../utils/gate-quality.js";
-import { parseTestOutput } from "./test-runner.js";
+import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
 
@@ -836,6 +836,12 @@ export class ShipOrchestrator extends EventEmitter {
    */
   private async stageTestGate(): Promise<ShipStageResult> {
     console.log("  ▸ TEST_GATE");
+
+    // ADR-005 §10.4 — a phase's integration Done-When targets (e.g. `make
+    // test:auth`) run here under liveness, before the file-mapped suite.
+    const integrationNoGo = await this.runIntegrationGate();
+    if (integrationNoGo) return integrationNoGo;
+
     const phaseTestFiles = await this.getPhaseTestFiles();
 
     // ADR-005 §10.2.1 — Liveness: when a phase maps to test files, those tests
@@ -901,6 +907,57 @@ export class ShipOrchestrator extends EventEmitter {
       saveTaskState(featureDir, taskState);
     }
     return this.handleNoGo("TEST_GATE");
+  }
+
+  /**
+   * Run a phase's integration Done-When targets (e.g. `make test:auth`) as
+   * executional gates under liveness (ADR-005 §10.4). A target that fails or
+   * executes 0 tests is a NO-GO — an opaque wrapper that hides its structured
+   * counts honest-fails rather than false-passing. Returns null when there are
+   * no such targets or all pass.
+   */
+  private async runIntegrationGate(): Promise<ShipStageResult | null> {
+    let doneWhen: string[] = [];
+    try {
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      doneWhen = phase?.doneWhen ?? [];
+    } catch {
+      return null;
+    }
+    const commands = doneWhen.filter(isIntegrationTestCommand);
+    if (commands.length === 0) return null;
+
+    for (const cmd of commands) {
+      console.log(`    integration: ${cmd}`);
+      let output: string;
+      try {
+        output = execSync(cmd, {
+          cwd: this.config.cwd,
+          stdio: "pipe",
+          timeout: 300_000,
+        }).toString();
+      } catch (err: unknown) {
+        const e = err as { stdout?: Buffer; stderr?: Buffer };
+        output = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+      }
+      const { testsRun, passed, failed } = parseTestOutput(output);
+      if (testsRun === 0) {
+        console.log(
+          `  ✗ TEST_GATE: integration target ran 0 tests (\`${cmd}\`) — liveness fail (ADR-005 §10.2.1)`,
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      if (failed > 0) {
+        console.log(
+          `  ✗ TEST_GATE: ${failed} failing in integration target \`${cmd}\` (${testsRun} ran)`,
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      console.log(`  ✓ integration: ${cmd} — ${passed} passed (${testsRun} ran)`);
+    }
+    return null;
   }
 
   /** Run test suite, return failure count and output.
