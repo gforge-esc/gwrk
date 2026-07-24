@@ -8,6 +8,7 @@ import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
+import { validatePlanGates } from "../engine/plan-gate-validator.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
@@ -159,6 +160,21 @@ Examples:
 
         if (opts.dryRun) {
           return;
+        }
+
+        // FR-006 (contract §2): before the clean commit, verify the generated
+        // plan has no source-bearing phase resolving to a stub gate (no
+        // executable fenced-bash Done-When). Fail loudly with error-as-navigation
+        // (ADR-004) so a false-green plan never lands.
+        const gateReport = validatePlanGates(featureDir, feature);
+        if (!gateReport.ok) {
+          const detail = gateReport.violations
+            .map(
+              (v) =>
+                `define plan: ${v.phaseId} "${v.title}" resolves to a stub gate (no executable Done-When). Author a fenced bash Done-When block. See docs/grounding/023-plan-format-contract.md.`,
+            )
+            .join("\n");
+          throw new CommandError(detail, 1);
         }
 
         const durationS = Math.round((Date.now() - startTime) / 1000);

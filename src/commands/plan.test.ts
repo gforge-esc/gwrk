@@ -114,6 +114,36 @@ outputSchema:
   });
 
   it("should successfully execute plan workflow E2E", async () => {
+    const featureDir = path.join(tempDir, "specs", "test-feature");
+    // Simulate the plan agent writing a valid plan.md (a source-bearing phase
+    // with a fenced-bash Done When → non-stub gate). FR-006 (023) makes
+    // `define plan` self-validate the generated plan before writing the
+    // manifest; without a valid plan the run aborts and never reaches
+    // writeManifest. This mirrors the real new-mode happy path.
+    vi.mocked(agent.dispatchToAgent).mockImplementation(async () => {
+      fs.writeFileSync(
+        path.join(featureDir, "plan.md"),
+        [
+          "# Implementation Plan: test-feature",
+          "",
+          "### Phase 1: Implement the thing",
+          "",
+          "#### Done When",
+          "```bash",
+          "pnpm run build",
+          "```",
+          "",
+        ].join("\n"),
+      );
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({ summary: "ok", intents: [] }),
+        stderr: "",
+        durationS: 1,
+        logPath: "mock.log",
+      };
+    });
+
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
 
     // Verify dispatchToAgent was called with correct workflow
@@ -121,7 +151,6 @@ outputSchema:
       workflow: "gwrk-plan"
     }));
 
-    const featureDir = path.join(tempDir, "specs", "test-feature");
     expect(mockWriteManifest).toHaveBeenCalledWith(
       featureDir,
       expect.objectContaining({

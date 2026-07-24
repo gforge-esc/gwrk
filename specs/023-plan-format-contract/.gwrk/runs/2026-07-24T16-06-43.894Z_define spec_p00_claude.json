@@ -1,0 +1,19 @@
+{
+  "runId": "2026-07-24T16:06:43.894Z_define_p00",
+  "feature": "023-plan-format-contract",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-07-24T16:06:43.894Z",
+  "finishedAt": "2026-07-24T16:13:32.330Z",
+  "durationS": 408,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 269,
+  "linesDeleted": 0,
+  "gitCommit": "2e632cbec814612921229cbd7942682c3ee04d8c",
+  "gitBranch": "feat/022-plan-format-contract",
+  "digest": []
+}
