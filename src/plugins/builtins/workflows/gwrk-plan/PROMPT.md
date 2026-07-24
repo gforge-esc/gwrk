@@ -185,6 +185,48 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 [/type]
 </output_rules>
 
+### 4a. Canonical output format (MANDATORY — parser contract)
+
+The `plan.md` you emit is a **contract with the deterministic `plan-to-tasks` parser**
+(`src/engine/plan-to-tasks.ts`). Author every phase in exactly the shape below so each
+source-bearing phase resolves to a **runnable gate**, never an `echo "Phase N: …"` stub.
+Reference: `docs/grounding/023-plan-format-contract.md`.
+
+<canonical_output_format>
+- **Section headings** use `####` (h4), never the `**bold:**` form:
+  `#### Test Strategy`, `#### Done When`. The `**Section:**` form is NOT canonical.
+
+- **File lines** use the em-dash form — a backticked path, a bold action, then a
+  description, each separated by an em dash. `action ∈ {create, amend, delete}`
+  (`create` → new-file task, `amend` → modify task, `delete` → delete task):
+
+  - `path/to/new.ts` — **create** — what this new file does
+  - `path/to/existing.ts` — **amend** — what you add to it
+  - `path/to/stale.ts` — **delete** — why it is removed
+
+  The parser captures the backticked path and the bold action. Do NOT use the legacy
+  paren form `` - `path` (ACTION: desc) `` for new plans.
+
+- **Test Strategy** is a table `| TR-### | Type | Target | Assertion |` where
+  `Type ∈ {unit, integration, gate}` (bare `integration` or bracketed `[integration]`
+  are both accepted) and `Target` is a backticked test file or command:
+
+  | TR-### | Type | Target | Assertion |
+  |---|---|---|---|
+  | TR-001 | integration | `path/to/phase.test.ts` | observable behavior asserted |
+
+- **Done When** body is a fenced `bash` code block — the **ONLY** executable form. Its
+  lines become the phase's `gateScript` verbatim, so they MUST be real commands that exit
+  non-zero on failure. A prose `- bullet` body is descriptive-only (kept for backward
+  compatibility) — do NOT use it for new plans:
+
+#### Done When
+```bash
+pnpm run build
+pnpm vitest run path/to/phase.test.ts
+```
+</canonical_output_format>
+
 ### 5. Generate `data-model.md` (if entities exist in spec)
 
 - Define SQLite schema additions (SQL CREATE TABLE statements).
