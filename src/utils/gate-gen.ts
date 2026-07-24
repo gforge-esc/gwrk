@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Phase, Task } from "./state.js";
 import type { ProjectProfile } from "../engine/prompt-conditioner.js";
-import { getTestCommand, getLintCommand } from "./toolchain-mapper.js";
+import { getTestCommand, getLintCommand, TEST_INVOCATION_VERBS } from "./toolchain-mapper.js";
 
 // ─── GateBrief interfaces (ADR-005) ──────────────────────────────────────────
 // The brief is a structured manifest of what needs gating.
@@ -234,9 +234,10 @@ echo "────────────────────────�
 
 const FUNCTIONAL_VERBS = [
   "pnpm build",
-  "pnpm vitest",
   "pnpm test",
-  "vitest run",
+  // Polyglot test harnesses (ADR-005 §11): vitest, jest, pytest, cargo test,
+  // go test, node --test, make — so a legitimate non-vitest gate isn't hollow.
+  ...TEST_INVOCATION_VERBS,
   "grep -q",
   "jq ",
   "curl ",
@@ -250,7 +251,7 @@ const FUNCTIONAL_VERBS = [
  *
  * Returns an array of violation strings. Empty array = gate is valid.
  */
-function lintGateScript(content: string): string[] {
+export function lintGateScript(content: string): string[] {
   const violations: string[] = [];
   const lines = content
     .split("\n")
