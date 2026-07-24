@@ -187,8 +187,8 @@ Fill every `{{PLACEHOLDER}}` token. Do not invent sections or skip any.
 
 ### 4a. Canonical output format (MANDATORY — parser contract)
 
-The `plan.md` you emit is a **contract with the deterministic `plan-to-tasks` parser**
-(`src/engine/plan-to-tasks.ts`). Author every phase in exactly the shape below so each
+The `plan.md` you emit is a **contract with the deterministic `plan-to-tasks` parser**.
+Author every phase in exactly the shape below so each
 source-bearing phase resolves to a **runnable gate**, never an `echo "Phase N: …"` stub.
 Reference: `docs/grounding/023-plan-format-contract.md`.
 
