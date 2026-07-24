@@ -31,7 +31,7 @@ import { unauthoredGate } from "../utils/gate-quality.js";
  * Emits schema-compliant TaskState. No LLM.
  */
 
-interface ParsedPhase {
+export interface ParsedPhase {
   number: number;
   title: string;
   files: { path: string; action: string; description: string }[];
@@ -45,7 +45,7 @@ interface ParsedPhase {
   gateScript?: string;
 }
 
-function parsePlanMarkdown(planContent: string): ParsedPhase[] {
+export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
   const phases: ParsedPhase[] = [];
   const lines = planContent.split("\n");
 
