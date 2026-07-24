@@ -137,7 +137,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 #### FR-006 Error States
 | Condition | stderr contains | Exit code |
 |---|---|---|
-| Source-bearing phase resolves to a hollow/echo stub gate | `define plan: phase-NN "<title>" resolves to a stub gate (no executable Done-When). Author a fenced \`\`\`bash Done-When block. See docs/grounding/022-plan-format-contract.md.` | 1 |
+| Source-bearing phase resolves to a hollow/echo stub gate | `define plan: phase-NN "<title>" resolves to a stub gate (no executable Done-When). Author a fenced \`\`\`bash Done-When block. See docs/grounding/023-plan-format-contract.md.` | 1 |
 | Generated `plan.md` cannot be parsed (no phases) | `No phases found in <path>. Expected '### Phase N: Title' headings.` | 1 |
 
 ---
