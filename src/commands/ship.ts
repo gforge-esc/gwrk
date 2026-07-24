@@ -172,6 +172,7 @@ async function shipPhase(
         testExt: getTestExtension(profile),
         fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
         testsTreeFiles: listTestsTree(cwd),
+        declaredTargets: phaseData.testTargets ?? [],
       });
 
       if (!hasTests) {

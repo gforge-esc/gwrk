@@ -999,6 +999,7 @@ export class ShipOrchestrator extends EventEmitter {
         testExt,
         fileExists: (rel) => fs.existsSync(path.join(this.config.cwd, rel)),
         testsTreeFiles: listTestsTree(this.config.cwd),
+        declaredTargets: phase.testTargets ?? [],
       });
     } catch {
       return [];
