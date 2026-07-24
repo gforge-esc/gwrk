@@ -1,0 +1,21 @@
+{
+  "runId": "2026-07-24T18:24:24.746Z_ship_p02",
+  "feature": "023-plan-format-contract",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "claude",
+  "model": "default",
+  "startedAt": "2026-07-24T18:24:24.746Z",
+  "finishedAt": "2026-07-24T18:32:59.632Z",
+  "durationS": 515,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "ad0224b2c7d8c7e241e534f20337708350ad5891",
+  "gitBranch": "feat/023-plan-format-contract",
+  "digest": []
+}

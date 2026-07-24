@@ -1,0 +1,103 @@
+{
+  "featureId": "023-plan-format-contract",
+  "createdAt": "2026-07-24T18:17:48.934Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "65e47f8c346a9c738be7da1a0012c5e78df92f78aff8a4bf13330b164725f2fd",
+      "modifiedAt": "2026-07-24T16:42:01.752Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Parser grammar alignment (canonical format + backward compatibility)",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify plan-to-tasks.ts",
+          "description": "MODIFY src/engine/plan-to-tasks.ts. add fenced-bash Done-When capture → verbatim `gateScript`; em-dash file-line regex + create/amend/delete action normalization; Type-flexible (`\\w+` or `[bracketed]`) Test Strategy row regex; preserve paren-form + prose-bullet grammar. Tests: src/engine/plan-to-tasks.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/engine/plan-to-tasks.test.ts\njq -r '.phases[2].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q 'make test:db'\n! jq -r '.phases[].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q '^echo \"Phase'",
+          "sp": 1
+        },
+        {
+          "id": "T002",
+          "title": "Create plan.md",
+          "description": "NEW specs/_fixtures/plan-format/plan.md. SEAM fixture mirroring 002-metric-model phase-03: em-dash Files block + fenced bash Done-When (`make dev:up && make db:migrate && make test:db`); Phase 3 is the source-bearing phase asserted by TR-007/VR-004. Tests: src/engine/plan-to-tasks.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/engine/plan-to-tasks.test.ts\njq -r '.phases[2].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q 'make test:db'\n! jq -r '.phases[].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q '^echo \"Phase'",
+          "sp": 2
+        },
+        {
+          "id": "T003",
+          "title": "Create plan-legacy.md",
+          "description": "NEW specs/_fixtures/plan-format/plan-legacy.md. golden `####`+prose-bullet plan with a paren-form file line, for the TR-004 no-regression snapshot",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/engine/plan-to-tasks.test.ts\njq -r '.phases[2].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q 'make test:db'\n! jq -r '.phases[].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q '^echo \"Phase'",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts",
+        "src/engine/plan-to-tasks.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Generator emits the canonical format",
+      "tasks": [
+        {
+          "id": "T004",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. document the canonical output shape: `####` headings, fenced bash Done-When blocks (the only executable form), em-dash file lines with the three actions, Type-flexible Test Strategy table",
+          "status": "completed",
+          "gateScript": "pnpm run build\npnpm vitest run src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 1,
+      "testTargets": [
+        "src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "`define plan` self-validation (fail loudly on stub gates)",
+      "tasks": [
+        {
+          "id": "T005",
+          "title": "Create plan-gate-validator.ts",
+          "description": "NEW src/engine/plan-gate-validator.ts. `validatePlanGates(featureDir, featureId, opts?)`: parse `plan.md`, classify each phase source-bearing vs not, apply `isHollowGate` to each source-bearing phase's resolved gate, return a `PlanGateReport { ok, violations }`",
+          "status": "completed",
+          "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T006",
+          "title": "Modify define-plan.ts",
+          "description": "MODIFY src/commands/define-plan.ts. after `orchestrator.runLoop` succeeds and before `commitAllClean`, call `validatePlanGates`; on `ok === false` throw a `CommandError` (exit 1) whose message names each offending `phase-NN` and points to `docs/grounding/023-plan-format-contract.md`. Tests: src/commands/define-plan.test.ts",
+          "status": "completed",
+          "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T007",
+          "title": "Create plan-stub.md",
+          "description": "NEW specs/_fixtures/plan-format/plan-stub.md. a source-bearing phase whose `#### Done When` is prose-only (no fenced bash block) — the FR-006 negative fixture",
+          "status": "completed",
+          "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 5,
+      "testTargets": [
+        "src/commands/define-plan.test.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "runId": "2026-07-24T16:49:13.452Z_define_all",
+  "feature": "023-plan-format-contract",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-07-24T16:49:13.452Z",
+  "finishedAt": "2026-07-24T17:10:12.697Z",
+  "durationS": 1259,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 7,
+  "linesAdded": 591,
+  "linesDeleted": 0,
+  "gitCommit": "9b7f28accd61468ae2cce7a2dbce6091bd3fd18f",
+  "gitBranch": "feat/023-plan-format-contract",
+  "digest": []
+}
