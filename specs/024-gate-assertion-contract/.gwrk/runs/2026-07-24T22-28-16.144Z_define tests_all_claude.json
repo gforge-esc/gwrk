@@ -1,0 +1,19 @@
+{
+  "runId": "2026-07-24T22:28:16.144Z_define_all",
+  "feature": "024-gate-assertion-contract",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-07-24T22:28:16.144Z",
+  "finishedAt": "2026-07-24T22:37:49.534Z",
+  "durationS": 573,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 5,
+  "linesAdded": 361,
+  "linesDeleted": 0,
+  "gitCommit": "61744175576322a855ac46010888280d62fcd55c",
+  "gitBranch": "feat/gate-assertion-contract",
+  "digest": []
+}
