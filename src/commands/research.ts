@@ -79,7 +79,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
       const workflowName = `gwrk-research-${methodology}`;
 
       // Resolve the configured agent + model for define-pillar work.
-      // Without this the dispatcher falls back to its hardcoded "gemini"
+      // Without this the dispatcher falls back to its hardcoded "agy"
       // default and fails on projects configured for another backend.
       const config = loadConfig(process.cwd());
       const backend = config.agents.define;

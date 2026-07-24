@@ -24,8 +24,8 @@ vi.mock("../utils/config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
     agents: {
       throttleMs: 0,
-      define: "gemini",
-      implement: "gemini"
+      define: "agy",
+      implement: "agy"
     },
     project: { name: "test" },
     server: { port: 18790, host: "localhost" },
@@ -204,7 +204,7 @@ describe("Phase 9: Enforcement Skills", () => {
       await dispatchToAgent({
         type: "implement",
         prompt: "test",
-        agent: "gemini",
+        agent: "agy",
         stdin: "Rules:\n{{enforcement}}"
       });
 

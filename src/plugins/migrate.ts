@@ -102,8 +102,7 @@ async function migrateSkill(
         output: "stdout",
       };
       manifest.runtime = {
-        preferredAgent: "gemini",
-        preferredModel: "gemini-2.0-flash",
+        preferredAgent: "agy",
       };
     } else {
       // Compound
@@ -118,8 +117,7 @@ async function migrateSkill(
         optional: [],
       };
       manifest.runtime = {
-        preferredAgent: "gemini",
-        preferredModel: "gemini-2.0-flash",
+        preferredAgent: "agy",
       };
     }
 

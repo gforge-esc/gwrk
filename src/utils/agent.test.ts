@@ -26,8 +26,8 @@ vi.mock('./config.js', () => ({
   loadConfig: vi.fn().mockReturnValue({
     agents: {
       throttleMs: 0,
-      define: 'gemini',
-      implement: 'gemini'
+      define: 'agy',
+      implement: 'agy'
     }
   })
 }));
@@ -61,7 +61,7 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     await dispatchToAgent({
       workflow: 'gwrk-implement',
       workDir: '/fake/root',
-      agent: 'gemini',
+      agent: 'agy',
       stdin: '<code_quality></code_quality>'
     });
 
@@ -115,7 +115,7 @@ describe('ADR-008: Command Safety Posture', () => {
       await dispatchToAgent({
         workflow: 'gwrk-implement',
         workDir: '/fake/root',
-        agent: 'gemini',
+        agent: 'agy',
         stdin: 'Implement this feature'
       });
 
@@ -148,7 +148,7 @@ describe('ADR-008: Command Safety Posture', () => {
       await dispatchToAgent({
         workflow: 'gwrk-implement',
         workDir: '/fake/root',
-        agent: 'gemini',
+        agent: 'agy',
         stdin: '<command_safety>Custom rules</command_safety>\nDo the work'
       });
 
@@ -189,7 +189,7 @@ describe('ADR-008: Command Safety Posture', () => {
       await dispatchToAgent({
         workflow: 'gwrk-implement',
         workDir: '/fake/root',
-        agent: 'gemini',
+        agent: 'agy',
         stdin: 'Test prompt'
       });
 
@@ -225,7 +225,7 @@ describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
     await dispatchToAgent({
       workflow: 'gwrk-implement',
       workDir: '/fake/root',
-      agent: 'gemini',
+      agent: 'agy',
       stdin: 'Test extension context'
     });
 
