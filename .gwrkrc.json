@@ -1,6 +1,14 @@
 {
   "project": {
-    "name": "gwrk"
+    "name": "gwrk",
+    "type": "pnpm-monorepo",
+    "stack": {
+      "language": "TypeScript",
+      "buildSystem": "pnpm"
+    },
+    "layout": "monorepo",
+    "architecture": "Layered",
+    "conventions": "TDD"
   },
   "server": {
     "port": 18790,
