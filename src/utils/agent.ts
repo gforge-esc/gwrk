@@ -82,7 +82,7 @@ interface DispatchOptions {
    * When true, the backend's stdout is a stream-json event stream: render it
    * into a readable .runs/*.log transcript and mirror the raw stream to a
    * .jsonl sidecar. When false/undefined, stdout is logged verbatim (the prior
-   * behavior — preserved for prose backends like agy/codex/gemini).
+   * behavior — preserved for prose backends like agy/codex).
    */
   emitsStreamJson?: boolean;
 }
@@ -532,7 +532,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     // Ignore config errors here, allow dispatch to proceed
   }
 
-  const agentName = (task.agent ?? "gemini") as string;
+  const agentName = (task.agent ?? "agy") as string;
   const registry = new AgentBackendRegistry(new PluginLoader());
   const adapter = await registry.getAgentBackend(agentName);
 

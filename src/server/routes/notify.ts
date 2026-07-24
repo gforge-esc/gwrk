@@ -28,7 +28,7 @@ export async function notifyRoutes(server: FastifyInstance) {
         id: "notify-event", // dummy
         featureId: payload.feature,
         phaseId: payload.phase || "unknown",
-        backend: (payload.backend as AgentBackendId) || "gemini",
+        backend: (payload.backend as AgentBackendId) || "agy",
         status: "running", // default
         branchName: payload.branch || "main",
         attempts: [],
