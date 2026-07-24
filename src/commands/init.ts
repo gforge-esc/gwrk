@@ -96,7 +96,7 @@ export interface DetectedAgent {
  * are probed — ollama/gh have no AgentBackend implementation.
  */
 export async function detectAgents(): Promise<DetectedAgent[]> {
-  const agents = ["agy", "claude", "codex", "gemini"];
+  const agents = ["agy", "claude", "codex"];
   const results: DetectedAgent[] = [];
   for (const a of agents) {
     let installed = false;
@@ -120,7 +120,7 @@ export async function detectAgents(): Promise<DetectedAgent[]> {
 }
 
 /** Auto-select preference order when no user input. */
-const AGENT_PREFERENCE = ["agy", "claude", "codex", "gemini"];
+const AGENT_PREFERENCE = ["agy", "claude", "codex"];
 
 /**
  * Build a schema-compliant agents config block.

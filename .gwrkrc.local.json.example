@@ -1,12 +1,12 @@
 {
   "agents": {
-    "define": "gemini",
-    "implement": "gemini",
+    "define": "agy",
+    "implement": "agy",
     "throttleMs": 15000,
     "registry": {
-      "gemini": {
+      "agy": {
         "type": "local-cli",
-        "command": "gemini",
+        "command": "agy",
         "discoveryMethod": "manual",
         "quotaProbe": {
           "method": "optimistic",
@@ -16,6 +16,6 @@
         "models": []
       }
     },
-    "fallbackOrder": ["gemini"]
+    "fallbackOrder": ["agy"]
   }
 }

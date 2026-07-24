@@ -86,8 +86,8 @@ describe("Three-layer config loading", () => {
     );
     const config = loadConfig(tmpDir);
     expect(config.project.name).toBe("test-project");
-    expect(config.agents.define).toBe("gemini");
-    expect(config.agents.implement).toBe("gemini");
+    expect(config.agents.define).toBe("agy");
+    expect(config.agents.implement).toBe("agy");
   });
 
   it("should merge .gwrkrc.local.json over project config", () => {
@@ -166,7 +166,7 @@ describe("Three-layer config loading", () => {
     fs.copyFileSync(examplePath, path.join(tmpDir, ".gwrkrc.local.json"));
 
     const config = loadConfig(tmpDir);
-    expect(config.agents.registry?.gemini?.name).toBe("gemini");
+    expect(config.agents.registry?.agy?.name).toBe("agy");
   });
 
   it("should throw if .gwrkrc.json is missing", () => {

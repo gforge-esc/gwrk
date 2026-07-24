@@ -116,8 +116,8 @@ export const GwrkConfigSchema = z.object({
   // in define/implement when the whole block is absent.
   agents: z
     .object({
-      define: AgentBackendSchema.default("gemini"),
-      implement: AgentBackendSchema.default("gemini"),
+      define: AgentBackendSchema.default("agy"),
+      implement: AgentBackendSchema.default("agy"),
       throttleMs: z.number().int().min(0).optional(),
       fallbackOrder: z.array(z.string()).optional(),
       registry: z.record(z.string(), AgentBackendConfigSchema).optional(),
