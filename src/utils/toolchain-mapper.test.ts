@@ -118,5 +118,12 @@ describe("getBuildCommand (021 FR-004 — string | null)", () => {
       expect(getBuildCommand(p({}), empty)).toBeNull();
       fs.rmSync(empty, { recursive: true, force: true });
     });
+    it("package.json with no build script → null (commits to node; no fall-through to a co-present Cargo.toml)", () => {
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-node-nobuild-"));
+      fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "x" }));
+      fs.writeFileSync(path.join(d, "Cargo.toml"), "[package]");
+      expect(getBuildCommand(p({}), d)).toBeNull();
+      fs.rmSync(d, { recursive: true, force: true });
+    });
   });
 });

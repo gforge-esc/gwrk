@@ -111,6 +111,8 @@ export function getBuildCommand(
   // Inference (relocated from ship-orchestrator's private resolveBuildCommand).
   const pkgPath = path.join(cwd, "package.json");
   if (fs.existsSync(pkgPath)) {
+    // A Node project: decide from package.json and commit to it — do not fall
+    // through to cargo/go (matches the prior resolveBuildCommand semantics).
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
       if (pkg?.scripts?.build) {
@@ -119,8 +121,9 @@ export function getBuildCommand(
         return "npm run build";
       }
     } catch {
-      // unparseable package.json → fall through to non-node inference
+      // unparseable package.json
     }
+    return null; // Node project with no usable build script → skip the build gate
   }
   if (fs.existsSync(path.join(cwd, "Cargo.toml"))) return "cargo build";
   if (fs.existsSync(path.join(cwd, "go.mod"))) return "go build ./...";

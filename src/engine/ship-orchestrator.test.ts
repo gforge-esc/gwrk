@@ -521,10 +521,17 @@ describe("ShipOrchestrator", () => {
     const { execSync } = await import("node:child_process");
     const mockExecSync = vi.mocked(execSync);
 
-    // No package.json in the project (early phase of a cold-start project).
-    vi.mocked(fs.existsSync).mockImplementation(
-      (p: fs.PathLike) => !String(p).endsWith("package.json"),
-    );
+    // No build system at all (early phase of a cold-start project): no
+    // package.json, and no cargo/go markers either — getBuildCommand is now
+    // polyglot (ADR-005 §11), so "no build" must exclude those too.
+    vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) => {
+      const s = String(p);
+      return (
+        !s.endsWith("package.json") &&
+        !s.endsWith("Cargo.toml") &&
+        !s.endsWith("go.mod")
+      );
+    });
 
     const buildCalls: string[] = [];
     mockExecSync.mockImplementation((cmd: string, ..._args: unknown[]) => {
