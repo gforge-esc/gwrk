@@ -121,12 +121,6 @@ export const GwrkConfigSchema = z.object({
       throttleMs: z.number().int().min(0).optional(),
       fallbackOrder: z.array(z.string()).optional(),
       registry: z.record(z.string(), AgentBackendConfigSchema).optional(),
-      gemini: z
-        .object({
-          model: z.string().optional(),
-          failbackModels: z.array(z.string()).optional(),
-        })
-        .optional(),
     })
     .default({}),
   server: z

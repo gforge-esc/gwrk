@@ -89,8 +89,6 @@ export interface ShipRunConfig {
   dryRun?: boolean;
   selectedModel?: string;
   selectedCommand?: string;
-  geminiModel?: string;
-  geminiFailbackModels?: string[];
 }
 
 /**

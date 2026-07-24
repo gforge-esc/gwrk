@@ -201,7 +201,7 @@ async function discoverGates(
 }
 
 async function detectAgents(): Promise<string[]> {
-  const agents = ["gemini", "claude", "codex"];
+  const agents = ["agy", "claude", "codex"];
   const detected: string[] = [];
 
   await Promise.all(

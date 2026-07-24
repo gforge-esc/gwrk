@@ -38,3 +38,5 @@ scripts/dev/
 # random files
 *.err
 *.out
+# agent worktrees / local session state
+.claude/

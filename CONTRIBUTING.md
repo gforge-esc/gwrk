@@ -12,7 +12,7 @@ gwrk is in active alpha ([latest release](https://github.com/gforge-esc/gwrk/rel
 
 - **Node.js** >= 20
 - **pnpm** >= 9
-- At least one AI agent CLI installed: `agy`, `claude`, `gemini`, or `codex`
+- At least one AI agent CLI installed: `agy`, `claude`, or `codex`
 
 ### Setup
 
@@ -130,7 +130,7 @@ src/
   engine/         # Core computation (pulse, compression, orchestrators)
   plugins/        # Plugin system (loader, manifests, runtime)
     builtins/     # Built-in plugins shipped with gwrk
-      agents/     # L1: Agent backend adapters (claude, codex, gemini)
+      agents/     # L1: Agent backend adapters (claude, codex)
       workflows/  # L2.5: Core workflow plugins (specify, plan, implement, ...)
   db/             # SQLite schema + migrations
   utils/          # Shared utilities (config, git, agent dispatch)

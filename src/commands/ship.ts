@@ -261,8 +261,6 @@ async function shipPhase(
           dryRun: !!opts.dryRun,
           selectedModel,
           selectedCommand,
-          geminiModel: gwrkConfig.agents.gemini?.model,
-          geminiFailbackModels: gwrkConfig.agents.gemini?.failbackModels,
         },
         existingState,
       );
@@ -458,7 +456,7 @@ Exit codes:
 Examples:
   gwrk ship 001 1
   gwrk ship 001-cli-core --dry-run
-  gwrk ship 001 --agent gemini
+  gwrk ship 001 --agent claude
 `,
   )
   .argument("<feature>", "Feature ID")
@@ -468,7 +466,7 @@ Examples:
   .option("--ci-timeout <n>", "CI wait timeout in minutes", "30")
   .option(
     "--agent <agent>",
-    "Override the default agent (e.g., gemini, claude, codex)",
+    "Override the default agent (e.g., agy, claude, codex)",
   )
   .option("--format <format>", "Output format (json)")
 
