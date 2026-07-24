@@ -16,9 +16,10 @@
           "id": "T001",
           "title": "Parser grammar alignment (canonical format + backward compatibility)",
           "description": "Complete phase 1: Parser grammar alignment (canonical format + backward compatibility)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "echo \"Phase 1: Parser grammar alignment (canonical format + backward compatibility)\"",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-07-24T00:00:00.000Z"
         }
       ],
       "sp_estimate": 2,
