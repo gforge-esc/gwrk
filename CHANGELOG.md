@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.1-alpha.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.3.0-alpha.1...cli-v1.3.1-alpha.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **plan:** promote develop -&gt; main as 1.3.0-alpha.2 (plan-graph fixes) ([#133](https://github.com/gforge-esc/gwrk/issues/133)) ([acc0449](https://github.com/gforge-esc/gwrk/commit/acc04495f96ef3665ebe067e0f4f8db2e06ba39e))
+* **tdd:** promote executable ground truth to main ([#136](https://github.com/gforge-esc/gwrk/issues/136)) ([#137](https://github.com/gforge-esc/gwrk/issues/137)) ([ad20928](https://github.com/gforge-esc/gwrk/commit/ad20928329e95a54a3dcdadba47659359b2e28be))
+
+## [1.3.0-alpha.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.3.0-alpha.0...cli-v1.3.0-alpha.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* cut release 1.3.0-alpha.1 for orphaned [#124](https://github.com/gforge-esc/gwrk/issues/124) ([#128](https://github.com/gforge-esc/gwrk/issues/128)) ([070dfeb](https://github.com/gforge-esc/gwrk/commit/070dfebfa4ffdff24bac3304f25d628406049464))
+
 ## [1.3.0-alpha.0](https://github.com/gforge-esc/gwrk/compare/cli-v1.2.1-alpha.0...cli-v1.3.0-alpha.0) (2026-07-20)
 
 
