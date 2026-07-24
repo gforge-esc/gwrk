@@ -187,11 +187,11 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 ## 4. Functional Requirements
 
-- **FR-001**: Every `gates/T*-gate.sh` MUST contain a functional assertion — `pnpm vitest run <file>`, `pnpm biome check <file>`, `pnpm tsc --noEmit`, `curl ... | jq -e`, or `bash -n <file>`. A gate containing only `test -f` MUST be treated as a build failure. The target state (ADR-005 §8) is deterministic vitest invocations for all test-backed tasks. (Implements: US-001)
+- **FR-001**: Every `gates/T*-gate.sh` MUST contain a functional assertion — **the project profile's test command** (`pnpm vitest run <file>`, `pytest`, `go test`, `node --test`, …), a lint/typecheck (`biome`/`ruff`/`tsc --noEmit`), `curl ... | jq -e`, or `bash -n <file>`. A gate containing only `test -f` or a bare `echo` MUST be treated as a build failure. The target state (ADR-005 §8/§11) is deterministic, **profile-driven** test invocations for all test-backed tasks. (Implements: US-001)
 
 - **FR-002**: `gwrk define tasks <feature>` MUST read `gap-matrix.md` (if it exists) and call `generateVitestGates()` to produce deterministic vitest gate scripts for all test-backed rows. For tasks NOT covered by the gap matrix, it MUST fall back to LLM dispatch via `dispatchAgent()` with a structured `GateBrief` + contracts context (ADR-005 §2.3). Contracts are required — if `contracts/` is missing or empty, the command exits 1 with corrective guidance. The `# AUTHORED` marker on an existing gate preserves it through reconcile. `--no-llm` flag skips LLM gate authoring but still generates deterministic vitest gates from the gap matrix. (Implements: US-002, ADR-005 §8)
 
-- **FR-003**: `gwrk define tests <feature> [phase]` MUST produce both `gap-matrix.md` AND RED vitest test files. The gap matrix is the coverage audit; the test files are the verification instruments. Tests MUST fail pre-implementation (RED). Every `describe` block MUST reference a `FR-###` ID. Tests MUST use Fastify `inject()` for API routes and Vitest mocks for side-effects. (Implements: US-003)
+- **FR-003**: `gwrk define tests <feature> [phase]` MUST produce both `gap-matrix.md` AND RED test files **in the project's test convention** (extension resolved from `ProjectProfile`: `.test.ts` / `.test.js` / `_test.go` / `test_*.py`). The gap matrix is the coverage audit; the test files are the verification instruments. Tests MUST fail pre-implementation (RED). Every `describe` block MUST reference a `FR-###` ID. For TS/JS API projects, tests use Fastify `inject()` and Vitest mocks (an example convention, not a universal mandate). (Implements: US-003; amended by ADR-005 §11)
 
 - **FR-004**: Every phase with an API surface MUST have a `contracts/<route>.md` file defining: request schema (TypeScript interface), response schema (success + error), side-effects, and edge cases — authored before `gwrk define tests` runs. (Implements: US-004)
 
@@ -201,9 +201,9 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 
 - **FR-007**: All currently-failing 003-slack vitest tests MUST pass. Phase 7–9 gate scripts MUST invoke `pnpm vitest run` not `test -f`. (Implements: US-007)
 
-- **FR-008**: `gwrk ship <feature> <phase>` MUST exit 1 with `[BLOCKED] No test files found for <phase>` if no `.test.ts` files exist for the phase's deliverable files. This pre-flight check is **active immediately** — not a flag, not a config option, not a later phase. (Implements: US-008)
+- **FR-008**: `gwrk ship <feature> <phase>` MUST exit 1 with `[BLOCKED] No test files found for <phase>` when no test maps to the phase's source deliverables. A mapping is **(a)** a co-located test using the **profile's test extension** (resolved from `ProjectProfile`, e.g. `.test.ts` / `.test.js` / `_test.go` / `test_*.py`), **(b)** a test under a `tests/` tree, or **(c)** a **declared target** (`phase.testTargets`). Discovery is **profile-aware and existence-based** — a mere mention never satisfies it. This pre-flight check is **active immediately** — not a flag, not a config option, not a later phase. (Implements: US-008; amended by ADR-005 §10.2 / §11)
 
-- **FR-009**: `gwrk test <feature> [--phase <N>]` MUST run `pnpm vitest run` scoped to test files matching the feature's deliverable paths, report pass/fail counts, and exit 0 only if all tests pass. (Implements: US-009)
+- **FR-009**: `gwrk test <feature> [--phase <N>]` MUST run **the profile's test command** scoped to test files matching the feature's deliverable paths, report pass/fail counts, and exit 0 only if all tests pass — and exit 1 when zero tests are discovered (a no-test "success" is a false green). (Implements: US-009; amended by ADR-005 §11)
 
 - **FR-010**: `gwrk define tests <feature>` MUST produce `specs/<feature>/gap-matrix.md` — a structured markdown table mapping every FR-###, US-###, TR-###, and SC-### from the spec to a test type (`unit`/`functional`/`e2e`/`structural`), a test file path, and an existence status (`✅`/`❌`). The gap matrix schema is defined in `contracts/gap-matrix.md`. (Implements: US-003, ADR-005 §8.2)
 

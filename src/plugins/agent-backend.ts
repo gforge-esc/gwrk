@@ -9,7 +9,7 @@ import type { TaskDispatch, TaskResult } from "../utils/agent.js";
  */
 export interface AgentBackend {
   /**
-   * The unique name of this agent backend (e.g., "gemini", "claude").
+   * The unique name of this agent backend (e.g., "agy", "claude").
    */
   readonly name: string;
 

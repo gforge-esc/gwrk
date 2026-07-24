@@ -88,8 +88,7 @@ async function createAtomicSkill(
       output: "stdout",
     },
     runtime: {
-      preferredAgent: "gemini",
-      preferredModel: "gemini-2.0-flash",
+      preferredAgent: "agy",
     },
   };
 

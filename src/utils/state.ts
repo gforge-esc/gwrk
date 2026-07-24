@@ -38,6 +38,9 @@ const PhaseSchema = z.object({
   tasks: z.array(TaskSchema).min(1),
   sp_estimate: z.number().int().nonnegative().default(0),
   doneWhen: z.array(z.string()).optional(),
+  /** Declared test targets for this phase — explicit test files parsed from the
+   * plan's Test Strategy table. The "declared target" discovery arm (ADR-005 §11). */
+  testTargets: z.array(z.string()).optional(),
   // New optional fields (Phase 3.4)
   objective: z.string().optional(),
   scope: z

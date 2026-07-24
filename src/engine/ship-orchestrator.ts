@@ -33,7 +33,7 @@ import {
   loadTaskState,
   saveTaskState,
 } from "../utils/state.js";
-import { getTestCommand, getTestExtension, getSourceExtension } from "../utils/toolchain-mapper.js";
+import { getBuildCommand, getTestCommand, getTestExtension, getSourceExtension } from "../utils/toolchain-mapper.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 import {
@@ -44,7 +44,7 @@ import {
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
 import { isHollowGate } from "../utils/gate-quality.js";
-import { parseTestOutput } from "./test-runner.js";
+import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
 
@@ -781,40 +781,16 @@ export class ShipOrchestrator extends EventEmitter {
    * Runs after IMPLEMENT and before TEST_GATE. If `pnpm build` fails,
    * the iteration retries — preventing broken builds from reaching review.
    */
-  /**
-   * Resolve the project's build command, or null if it has no build to gate on.
-   * Returns null when there is no package.json or no `build` script; otherwise
-   * picks the package manager from the lockfile (pnpm/yarn/npm).
-   */
-  private resolveBuildCommand(): string | null {
-    const pkgPath = path.join(this.config.cwd, "package.json");
-    if (!fs.existsSync(pkgPath)) return null;
-    let pkg: { scripts?: Record<string, string> };
-    try {
-      pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    } catch {
-      return null;
-    }
-    if (!pkg.scripts?.build) return null;
-    if (fs.existsSync(path.join(this.config.cwd, "pnpm-lock.yaml"))) {
-      return "pnpm build";
-    }
-    if (fs.existsSync(path.join(this.config.cwd, "yarn.lock"))) {
-      return "yarn build";
-    }
-    return "npm run build";
-  }
-
   private async stageBuildCheck(): Promise<ShipStageResult> {
     console.log("  ▸ BUILD_CHECK");
 
-    // Early phases of a cold-start project may have no build system yet (the
-    // Node app is bootstrapped in a later phase). Only gate on a build when the
-    // project actually has one, and use its package manager rather than
-    // assuming pnpm.
-    const buildCommand = this.resolveBuildCommand();
+    // Resolve the project's build command from its profile/toolchain (ADR-005
+    // §11 / 004 FR-022). null = no build toolchain (cold-start Node phase, or an
+    // explicit toolchain.build:null) → skip the gate rather than assume pnpm.
+    const profile = await detectProfile(this.config.cwd);
+    const buildCommand = getBuildCommand(profile, this.config.cwd);
     if (!buildCommand) {
-      console.log("  ⏭ no build script — skipping build gate");
+      console.log("  ✓ build skipped (no build toolchain)");
       return { success: true, exitCode: 0, nextStage: ShipStage.TEST_GATE };
     }
 
@@ -860,6 +836,12 @@ export class ShipOrchestrator extends EventEmitter {
    */
   private async stageTestGate(): Promise<ShipStageResult> {
     console.log("  ▸ TEST_GATE");
+
+    // ADR-005 §10.4 — a phase's integration Done-When targets (e.g. `make
+    // test:auth`) run here under liveness, before the file-mapped suite.
+    const integrationNoGo = await this.runIntegrationGate();
+    if (integrationNoGo) return integrationNoGo;
+
     const phaseTestFiles = await this.getPhaseTestFiles();
 
     // ADR-005 §10.2.1 — Liveness: when a phase maps to test files, those tests
@@ -868,6 +850,10 @@ export class ShipOrchestrator extends EventEmitter {
     if (phaseTestFiles.length > 0) {
       console.log(`    scoped to: ${phaseTestFiles.join(", ")}`);
       const r = await this.runTestSuite(phaseTestFiles);
+      if (r.skipped) {
+        console.log("  ✓ tests skipped (no test toolchain)");
+        return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+      }
       if (r.testsRun === 0) {
         console.log(
           "  ✗ TEST_GATE: phase tests executed 0 tests (none discovered / all cancelled) — not a pass",
@@ -886,7 +872,12 @@ export class ShipOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
 
-    const { failCount, output } = await this.runTestSuite(phaseTestFiles);
+    const wholeSuite = await this.runTestSuite(phaseTestFiles);
+    if (wholeSuite.skipped) {
+      console.log("  ✓ tests skipped (no test toolchain)");
+      return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+    }
+    const { failCount, output } = wholeSuite;
     const baseline = this.state.testBaseline ?? 0;
 
     if (failCount === 0) {
@@ -918,26 +909,81 @@ export class ShipOrchestrator extends EventEmitter {
     return this.handleNoGo("TEST_GATE");
   }
 
+  /**
+   * Run a phase's integration Done-When targets (e.g. `make test:auth`) as
+   * executional gates under liveness (ADR-005 §10.4). A target that fails or
+   * executes 0 tests is a NO-GO — an opaque wrapper that hides its structured
+   * counts honest-fails rather than false-passing. Returns null when there are
+   * no such targets or all pass.
+   */
+  private async runIntegrationGate(): Promise<ShipStageResult | null> {
+    let doneWhen: string[] = [];
+    try {
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      doneWhen = phase?.doneWhen ?? [];
+    } catch {
+      return null;
+    }
+    const commands = doneWhen.filter(isIntegrationTestCommand);
+    if (commands.length === 0) return null;
+
+    for (const cmd of commands) {
+      console.log(`    integration: ${cmd}`);
+      let output: string;
+      try {
+        output = execSync(cmd, {
+          cwd: this.config.cwd,
+          stdio: "pipe",
+          timeout: 300_000,
+        }).toString();
+      } catch (err: unknown) {
+        const e = err as { stdout?: Buffer; stderr?: Buffer };
+        output = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+      }
+      const { testsRun, passed, failed } = parseTestOutput(output);
+      if (testsRun === 0) {
+        console.log(
+          `  ✗ TEST_GATE: integration target ran 0 tests (\`${cmd}\`) — liveness fail (ADR-005 §10.2.1)`,
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      if (failed > 0) {
+        console.log(
+          `  ✗ TEST_GATE: ${failed} failing in integration target \`${cmd}\` (${testsRun} ran)`,
+        );
+        return this.handleNoGo("TEST_GATE");
+      }
+      console.log(`  ✓ integration: ${cmd} — ${passed} passed (${testsRun} ran)`);
+    }
+    return null;
+  }
+
   /** Run test suite, return failure count and output.
    *  When phaseTestFiles are available, runs only those files instead of
    *  the full suite. This prevents cross-phase RED test contamination.
    */
   private async runTestSuite(
     phaseTestFiles?: string[],
-  ): Promise<{ failCount: number; testsRun: number; passed: number; output: string }> {
+  ): Promise<{ failCount: number; testsRun: number; passed: number; output: string; skipped?: boolean }> {
     const profile = await detectProfile(this.config.cwd);
 
-    // If we have phase-scoped test files, run only those
-    let command = "pnpm test";
-    if (phaseTestFiles && phaseTestFiles.length > 0) {
-      command = getTestCommand(profile, phaseTestFiles);
-    } else {
-      command = getTestCommand(profile, []);
-      if (command.includes("vitest run")) {
-        command = "pnpm vitest run";
-      } else if (command.includes("jest")) {
-        command = "npx jest";
-      }
+    // Resolve the profile's test command. `null` = project declares no test
+    // toolchain → skip (ADR-005 §11); the TEST_GATE stage turns this into a
+    // GO-with-message rather than a testsRun==0 failure (Phase 05).
+    const scoped = phaseTestFiles && phaseTestFiles.length > 0;
+    const resolved = scoped
+      ? getTestCommand(profile, phaseTestFiles)
+      : getTestCommand(profile, []);
+    if (resolved === null) {
+      return { failCount: 0, testsRun: 0, passed: 0, output: "(no test toolchain — skipped)", skipped: true };
+    }
+    let command = resolved;
+    if (!scoped) {
+      // Whole-suite run: drop the empty file list the mapper leaves behind.
+      if (command.includes("vitest run")) command = "pnpm vitest run";
+      else if (command.includes("jest")) command = "npx jest";
     }
 
     let output: string;
@@ -995,6 +1041,7 @@ export class ShipOrchestrator extends EventEmitter {
         testExt,
         fileExists: (rel) => fs.existsSync(path.join(this.config.cwd, rel)),
         testsTreeFiles: listTestsTree(this.config.cwd),
+        declaredTargets: phase.testTargets ?? [],
       });
     } catch {
       return [];
@@ -1447,8 +1494,8 @@ _Generated by gwrk ship_`;
       "1. ONLY modify files explicitly listed in the plan below as (Modify) or (New).",
       "2. For (Modify) files: ADD to the existing code. Do NOT delete or rewrite existing exports, functions, or imports.",
       "3. For (New) files: Create the file from scratch.",
-      "4. After ALL changes, run `pnpm build` and fix any TypeScript compilation errors.",
-      "5. Run `pnpm vitest run` on the relevant test files to verify your changes.",
+      "4. After ALL changes, run the project's build and fix any compilation errors (BUILD_CHECK enforces this).",
+      "5. Run the project's test command on the relevant test files to verify your changes (TEST_GATE enforces this).",
       "",
       `Tasks:\n${taskList}`,
       planContext,
@@ -1622,10 +1669,6 @@ _Generated by gwrk ship_`;
         prompt: diagnosisPrompt,
         featureDir: `specs/${this.config.featureId}`,
         quiet: true,
-        env: {
-          // Force thinking model if available
-          GEMINI_MODEL: "gemini-2.5-pro",
-        },
       });
 
       if (result.exitCode === 0 && result.stdout) {
@@ -1662,9 +1705,8 @@ _Generated by gwrk ship_`;
   }
 
   /**
-   * Dispatch with graceful model failback.
-   * If a selected model/command is provided in config, use it.
-   * Otherwise, fall back to gemini-specific failback logic (legacy).
+   * Dispatch with the Router-selected model when provided; otherwise the backend
+   * runs with its own default model.
    */
   private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
     const env: Record<string, string> = { ...task.env };
@@ -1672,7 +1714,6 @@ _Generated by gwrk ship_`;
 
     // 1. Use Router-selected model if available (FR-008/009)
     if (model) {
-      if (this.config.backend === "gemini") env.GEMINI_MODEL = model;
       if (this.config.backend === "claude") env.CLAUDE_MODEL = model;
       if (this.config.backend === "codex") env.CODEX_MODEL = model;
       console.log(`    🤖 Router model: ${model}`);
@@ -1683,24 +1724,6 @@ _Generated by gwrk ship_`;
     // shipping this points the agent at the per-feature worktree.
     const workDir = task.workDir ?? this.config.cwd;
     const result = await dispatchToAgent({ ...task, model, env, workDir });
-
-    // 3. Legacy Gemini-specific failback if router didn't provide a selection
-    //    and the primary attempt failed.
-    if (result.exitCode !== 0 && this.config.backend === "gemini" && !model) {
-      const failbackModels = this.config.geminiFailbackModels ?? [];
-      for (const fbModel of failbackModels) {
-        console.log(
-          `    ⚠ Primary model failed (exit ${result.exitCode}), failing back to ${fbModel}`,
-        );
-        const fbResult = await dispatchToAgent({
-          ...task,
-          model: fbModel,
-          env: { ...env, GEMINI_MODEL: fbModel },
-          workDir,
-        });
-        if (fbResult.exitCode === 0) return fbResult;
-      }
-    }
 
     return result;
   }

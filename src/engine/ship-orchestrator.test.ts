@@ -521,10 +521,17 @@ describe("ShipOrchestrator", () => {
     const { execSync } = await import("node:child_process");
     const mockExecSync = vi.mocked(execSync);
 
-    // No package.json in the project (early phase of a cold-start project).
-    vi.mocked(fs.existsSync).mockImplementation(
-      (p: fs.PathLike) => !String(p).endsWith("package.json"),
-    );
+    // No build system at all (early phase of a cold-start project): no
+    // package.json, and no cargo/go markers either — getBuildCommand is now
+    // polyglot (ADR-005 §11), so "no build" must exclude those too.
+    vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) => {
+      const s = String(p);
+      return (
+        !s.endsWith("package.json") &&
+        !s.endsWith("Cargo.toml") &&
+        !s.endsWith("go.mod")
+      );
+    });
 
     const buildCalls: string[] = [];
     mockExecSync.mockImplementation((cmd: string, ..._args: unknown[]) => {
@@ -595,5 +602,48 @@ describe("ShipOrchestrator", () => {
 
     expect(exitCode).toBe(1);
     expect((orchestrator as any).state.stage).toBe(ShipStage.CIRCUIT_BREAK);
+  });
+
+  describe("runIntegrationGate (021 FR-009 / ADR-005 §10.4)", () => {
+    const phaseWithDoneWhen = (doneWhen: string[]) => ({
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      phases: [
+        {
+          id: "phase-01",
+          title: "P1",
+          tasks: [{ id: "T001", title: "t", description: "", status: "open" }],
+          doneWhen,
+        },
+      ],
+    });
+
+    it("passes (null) when an integration target runs tests that pass", async () => {
+      vi.mocked(state.loadTaskState).mockReturnValue(phaseWithDoneWhen(["make test:auth"]) as any);
+      vi.mocked(execSync).mockReturnValue("Tests  5 passed (5)" as any);
+      const orchestrator = new ShipOrchestrator(config);
+      expect(await (orchestrator as any).runIntegrationGate()).toBeNull();
+    });
+
+    it("NO-GO when the integration target executes 0 tests (opaque wrapper / hidden counts)", async () => {
+      vi.mocked(state.loadTaskState).mockReturnValue(phaseWithDoneWhen(["make test:auth"]) as any);
+      vi.mocked(execSync).mockReturnValue("Done. Nothing to report." as any);
+      const orchestrator = new ShipOrchestrator(config);
+      const iterBefore = (orchestrator as any).state.iteration;
+      const result = await (orchestrator as any).runIntegrationGate();
+      // Intervened (non-null), did NOT advance to review, and routed to a NO-GO
+      // retry (handleNoGo bumps the iteration counter).
+      expect(result).not.toBeNull();
+      expect(result?.nextStage).not.toBe(ShipStage.CODE_REVIEW);
+      expect((orchestrator as any).state.iteration).toBeGreaterThan(iterBefore);
+    });
+
+    it("dormant (null) when the phase has no integration Done-When target", async () => {
+      vi.mocked(state.loadTaskState).mockReturnValue(
+        phaseWithDoneWhen(["echo done", "test -f src/x.js"]) as any,
+      );
+      const orchestrator = new ShipOrchestrator(config);
+      expect(await (orchestrator as any).runIntegrationGate()).toBeNull();
+    });
   });
 });

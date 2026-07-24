@@ -15,6 +15,9 @@ export interface TestRunResult {
   exitCode: number;
   command: string;
   output: string;
+  /** True when the project declares no test toolchain (`toolchain.test === null`)
+   * — the caller treats this as a skip, not a `testsRun == 0` failure. */
+  skipped?: boolean;
 }
 
 /**
@@ -53,6 +56,25 @@ export function parseTestOutput(output: string): {
 }
 
 /**
+ * Whether a shell command (e.g. a plan `Done-When` entry) is a runnable test
+ * invocation that TEST_GATE should execute under liveness (ADR-005 §10.4).
+ * Matches make test-targets and common harnesses; excludes build/lint/echo and
+ * bare `test -f` existence checks.
+ */
+export function isIntegrationTestCommand(cmd: string): boolean {
+  const c = cmd.trim();
+  return [
+    /\bmake\s+[\w:-]*test/, // make test, make test:auth, make integration-test
+    /\bpytest\b/,
+    /\bgo\s+test\b/,
+    /\bnode\s+--test\b/,
+    /\bvitest\b/,
+    /\bjest\b/,
+    /\b(?:npm|pnpm|yarn)\s+(?:run\s+)?test\b/, // npm test / pnpm test (not `run build`)
+  ].some((re) => re.test(c));
+}
+
+/**
  * Run the profile's test command over `files` and return structured results.
  * Never throws on test failure — a non-zero exit is captured and parsed.
  */
@@ -63,6 +85,19 @@ export async function runTests(
 ): Promise<TestRunResult> {
   const profile = await detectProfile(cwd);
   const command = getTestCommand(profile, files, grepPattern);
+  if (command === null) {
+    // No test toolchain declared → nothing to run (skip; ADR-005 §11 / 004 FR-023).
+    return {
+      testsRun: 0,
+      passed: 0,
+      failed: 0,
+      ran: false,
+      exitCode: 0,
+      command: "",
+      output: "",
+      skipped: true,
+    };
+  }
 
   let output: string;
   let exitCode = 0;

@@ -20,6 +20,39 @@ export const SlackConfigSchema = z.object({
 
 export type SlackConfig = z.infer<typeof SlackConfigSchema>;
 
+/**
+ * Test harnesses gwrk knows how to invoke (drives getTestCommand's per-harness
+ * flag syntax). ADR-005 §11 / 021-polyglot-toolchain.
+ */
+export const TEST_HARNESSES = [
+  "vitest",
+  "jest",
+  "pytest",
+  "cargo-test",
+  "go-test",
+  "node-test",
+] as const;
+
+/**
+ * Project test/build toolchain (ADR-005 §11, 004 DM-003/FR-024). Shared by
+ * `project.toolchain` and `workspaces[].toolchain`, and re-used by
+ * `detectProfile` to validate the `.gwrkrc.json` override instead of a raw merge.
+ *
+ * Semantics: `undefined` = infer from language/filesystem; `null` = skip that
+ * gate; a value = use it. `testCommand` (free-form) wins over the `test` enum.
+ */
+export const ToolchainConfigSchema = z
+  .object({
+    primary: z.enum(["biome", "eslint", "ruff"]).optional(),
+    formatter: z.enum(["prettier", "biome", "black"]).optional(),
+    test: z.enum(TEST_HARNESSES).nullable().optional(),
+    testCommand: z.string().optional(),
+    build: z.string().nullable().optional(),
+    testExtension: z.string().optional(),
+    sourceExtension: z.string().optional(),
+  })
+  .optional();
+
 export const GwrkConfigSchema = z.object({
   project: z.object({
     name: z.string().min(1),
@@ -32,10 +65,12 @@ export const GwrkConfigSchema = z.object({
         languages: z.array(z.string()).optional(),
         framework: z.string().optional(),
         buildSystem: z.string().optional(),
+        /** @deprecated use `project.toolchain.test` (ADR-005 §11). Read by nobody. */
         testFramework: z.string().optional(),
         packageManager: z.string().optional(),
       })
       .optional(),
+    toolchain: ToolchainConfigSchema,
     layout: z
       .union([
         z.string(),
@@ -81,17 +116,11 @@ export const GwrkConfigSchema = z.object({
   // in define/implement when the whole block is absent.
   agents: z
     .object({
-      define: AgentBackendSchema.default("gemini"),
-      implement: AgentBackendSchema.default("gemini"),
+      define: AgentBackendSchema.default("agy"),
+      implement: AgentBackendSchema.default("agy"),
       throttleMs: z.number().int().min(0).optional(),
       fallbackOrder: z.array(z.string()).optional(),
       registry: z.record(z.string(), AgentBackendConfigSchema).optional(),
-      gemini: z
-        .object({
-          model: z.string().optional(),
-          failbackModels: z.array(z.string()).optional(),
-        })
-        .optional(),
     })
     .default({}),
   server: z
@@ -203,6 +232,7 @@ export const GwrkConfigSchema = z.object({
           })
           .optional(),
         layout: z.string().optional(),
+        toolchain: ToolchainConfigSchema,
       }),
     )
     .optional(),

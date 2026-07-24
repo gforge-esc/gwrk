@@ -130,3 +130,45 @@ describe("phaseHasTests (FR-008 — existence-based, profile-aware discovery)", 
     ).toBe(true);
   });
 });
+
+describe("declared targets (021 FR-005 / ADR-005 §10.2 Invariant 4)", () => {
+  it("discoverTestsForSources includes an existing declared target with no basename match", () => {
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/lib/auth/session.js"],
+        mentionedTests: [],
+        testExt: ".test.js",
+        fileExists: exists(["tests/auth/human-flow.test.js"]),
+        // basename 'human-flow' ≠ source 'session' → tree match misses; declared target rescues it
+        testsTreeFiles: ["tests/auth/human-flow.test.js"],
+        declaredTargets: ["tests/auth/human-flow.test.js"],
+      }),
+    ).toContain("tests/auth/human-flow.test.js");
+  });
+
+  it("phaseHasTests: an existing declared target satisfies the gate (no false block)", () => {
+    expect(
+      phaseHasTests({
+        sourceFiles: ["src/lib/auth/session.js"],
+        mentionedTests: [],
+        testExt: ".test.js",
+        fileExists: exists(["tests/auth/human-flow.test.js"]),
+        testsTreeFiles: [],
+        declaredTargets: ["tests/auth/human-flow.test.js"],
+      }),
+    ).toBe(true);
+  });
+
+  it("phaseHasTests: a declared target that does NOT exist does not satisfy (existence-based)", () => {
+    expect(
+      phaseHasTests({
+        sourceFiles: ["src/lib/auth/session.js"],
+        mentionedTests: [],
+        testExt: ".test.js",
+        fileExists: exists([]),
+        testsTreeFiles: [],
+        declaredTargets: ["tests/auth/missing.test.js"],
+      }),
+    ).toBe(false);
+  });
+});

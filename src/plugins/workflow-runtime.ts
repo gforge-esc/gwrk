@@ -31,7 +31,7 @@ export function extractJsonFromOutput(stdout: string): unknown {
   // Each line is a standalone JSON event (system / assistant / user / result);
   // the real contract lives in the `result` string of the terminal
   // {"type":"result"} event. Only the claude backend emits this shape, so this
-  // branch is inert for agy/codex/gemini — their output carries no per-line
+  // branch is inert for agy/codex — their output carries no per-line
   // result events, so lastResultPayload stays undefined and we fall through.
   const streamLines = trimmed.split("\n");
   if (streamLines.length > 1) {

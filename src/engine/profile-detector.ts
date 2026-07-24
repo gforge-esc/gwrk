@@ -8,6 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { ToolchainConfigSchema } from "../utils/config.js";
 import type { ProjectProfile } from "./prompt-conditioner.js";
 
 export type { ProjectProfile };
@@ -284,7 +285,13 @@ export async function detectProfile(
           profile.stack = { ...profile.stack, ...rc.project.stack };
         }
         if (rc.project.toolchain) {
-          profile.toolchain = { ...profile.toolchain, ...rc.project.toolchain };
+          // Validate the override through the shared schema (ADR-005 §11) instead
+          // of blind-spreading raw JSON. An invalid override is ignored (detection
+          // stands), never crashes profile resolution.
+          const parsed = ToolchainConfigSchema.safeParse(rc.project.toolchain);
+          if (parsed.success && parsed.data) {
+            profile.toolchain = { ...profile.toolchain, ...parsed.data };
+          }
         }
       }
     }

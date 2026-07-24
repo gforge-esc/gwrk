@@ -30,7 +30,7 @@ describe("discoverProject", () => {
       if (p.toString().endsWith(".gwrkrc.json")) {
         return JSON.stringify({
           project: { name: "test-app" },
-          agents: { define: "gemini", implement: "claude" }
+          agents: { define: "agy", implement: "claude" }
         });
       }
       return "";
@@ -61,6 +61,6 @@ describe("discoverProject", () => {
     expect(result.project.git.clean).toBe(true);
     expect(result.specs.length).toBe(1);
     expect(result.specs[0].id).toBe("001");
-    expect(result.config.agents).toContain("gemini");
+    expect(result.config.agents).toContain("agy");
   });
 });

@@ -97,7 +97,7 @@ export async function selectBackend(
     // History check failed (maybe DB not initialized), continue to other methods
   }
 
-  // 3. Task-specific mapping from config (e.g. agents.define: "gemini")
+  // 3. Task-specific mapping from config (e.g. agents.define: "agy")
   const agentsConfig = config.agents as any;
   let taskBackendName = agentsConfig?.[task.type];
 
@@ -117,8 +117,8 @@ export async function selectBackend(
   // 5. Fallback order from config
   const fallbackOrder = agentsConfig?.fallbackOrder || [
     "agy",
-    "gemini",
     "claude",
+    "codex",
   ];
   for (const name of fallbackOrder) {
     try {

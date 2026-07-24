@@ -194,6 +194,6 @@ export const implementCommand = new Command("implement")
   .option("--dry-run", "Dry run mode")
   .option(
     "--agent <agent>",
-    "Override the default agent (e.g., gemini, claude, codex)",
+    "Override the default agent (e.g., agy, claude, codex)",
   )
   .action(implementAction);

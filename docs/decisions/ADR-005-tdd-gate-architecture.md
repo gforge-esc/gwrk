@@ -277,7 +277,9 @@ Low cost. Reverting means removing `generateVitestGates()` and routing all gate 
 
 ### 9.1 Context
 
-§8 established deterministic gates using `pnpm vitest run`. However, hardcoding vitest blocks `gwrk` from being used as a daily driver on non-TypeScript projects (e.g. Python, Go, Rust). The F014 Plugin System originally considered a heavy `toolchain` extension plugin to solve this, but this proved unnecessary as `.gwrkrc.json` already provides a robust, project-specific override mechanism.
+§8 established deterministic gates using `pnpm vitest run`. However, hardcoding vitest blocks `gwrk` from being used as a daily driver on non-TypeScript projects (e.g. **JavaScript**, Python, Go, Rust). The F014 Plugin System originally considered a heavy `toolchain` extension plugin to solve this, but this proved unnecessary as `.gwrkrc.json` already provides a robust, project-specific override mechanism.
+
+> **Correction (§11, 2026-07-23):** this decision was under-delivered. JavaScript was never actually handled (`getTestExtension` defaulted every non-Python/Go/Rust language — including JS — to `.test.ts`), and the "`.gwrkrc.json` override" was never schematized in `GwrkConfigSchema` — it survived only via a raw `JSON.parse` in `detectProfile` that bypasses Zod. §11 (feature 021-polyglot-toolchain) completes §9: JavaScript is first-class and `project.toolchain` is a validated schema.
 
 ### 9.2 Decision: `ProjectProfile` Driven Commands
 
@@ -292,6 +294,8 @@ We replace hardcoded `vitest` assumptions with a `toolchain-mapper` utility that
 - `generateVitestGates()` → `generateDeterministicGates()`
 - `pnpm vitest run` and `.test.ts` assumptions removed from `plan-to-tasks.ts`, `gate-gen.ts`, and `ship-orchestrator.ts`.
 - Gwrk is now capable of managing TDD gates for polyglot monorepos and multiple language ecosystems natively.
+
+> **Correction (§11, 2026-07-23):** the second bullet was aspirational, not true. Only `plan-to-tasks.ts` was cleaned; `gate-gen.ts` (`discoverTestFile`, `generateFilesystemGates`, artifact-assertion verbs) and `ship-orchestrator.ts` (vitest override in `runTestSuite`, the IMPLEMENT agent prompt) still hardcoded `pnpm vitest run`/`.test.ts`. Completed in 021-polyglot-toolchain (§11).
 
 ---
 
@@ -316,7 +320,7 @@ We replace hardcoded `vitest` assumptions with a `toolchain-mapper` utility that
 1. **Liveness (`testsRun > 0`).** A gate MUST prove ≥1 test executed. Structured results `{ testsRun, passed, failed }` are the currency, never output greps. `testsRun == 0` for a phase that declares acceptance criteria is a **FAIL**, not a pass.
 2. **Executed tests are authoritative.** The phase's mapped tests running and passing is the gate for "works." CODE_REVIEW/UAT_REVIEW remain (they may NO-GO on design), but they can never GO a phase whose tests did not run and pass — the executional gate runs first and blocks.
 3. **RED evidence.** The phase's newly-activated tests MUST be observed failing before IMPLEMENT, recorded in the run manifest. GREEN without a recorded prior RED is invalid.
-4. **FR-008 is profile-aware and existence-based.** Test discovery uses the project profile's convention (co-located OR a `tests/` tree OR a declared target) and is satisfied by a test that *exists and maps to the phase's ACs*, never by a mention. No mapped test for a phase with source deliverables ⇒ `[BLOCKED]`, exit 1.
+4. **FR-008 is profile-aware and existence-based.** Test discovery uses the project profile's convention (co-located OR a `tests/` tree OR a declared target) and is satisfied by a test that *exists and maps to the phase's ACs*, never by a mention. No mapped test for a phase with source deliverables ⇒ `[BLOCKED]`, exit 1. *(The "declared target" arm — a phase pointing at an explicit test file or integration command when tests are neither co-located nor basename-discoverable — was specified here but not built until §11 / 021-polyglot-toolchain; §10.4's shipped impl was co-located + `tests/`-tree by basename only.)*
 5. **No hollow gates.** `test -f`/mention-only gates are build failures (FR-001, finally enforced). Fallback is an honest failing gate, never existence.
 
 ### 10.3 Task boundaries (this PR)
@@ -339,4 +343,29 @@ Applying §10 to a real project (out-of-tree `tests/`, gwrk-authored echo gates)
 - **Out-of-tree discovery.** `getPhaseTestFiles` (T3's input) matched only co-located tests, so the liveness gate never found suites under a `tests/` tree. It now uses `discoverTestsForSources` (existing mentions + co-located + `tests/`-tree by basename). File-path extraction (`extractFilePaths`) strips markdown backticks/quotes — plans wrap paths as `` `src/x.js` ``, which previously broke extension matching and silently disabled discovery.
 - **Echo-only gates are hollow.** `isHollowGate` now flags gates whose every meaningful line is a bare `echo` or `test -f` (not just `test -f`). A gate that only prints (`echo "Phase 1 ✅ SHIPPED"`) can pass without exercising anything — the exact auto-pass vector behind the shipped-but-broken phases.
 
-**Still open (tracked):** compiling a plan's `Done-When` integration commands (e.g. `make test:db`) into runnable gates so TEST_GATE executes the real integration target and applies liveness. Until then, an echo gate fails (hollow) and forces a real gate, but gwrk does not yet *auto-run* the plan's integration target.
+**Still open (tracked):** compiling a plan's `Done-When` integration commands (e.g. `make test:db`) into runnable gates so TEST_GATE executes the real integration target and applies liveness. Until then, an echo gate fails (hollow) and forces a real gate, but gwrk does not yet *auto-run* the plan's integration target. → **Addressed in §11** (021-polyglot-toolchain).
+
+---
+
+## 11. Amendment: Polyglot test-toolchain — JavaScript + schematized toolchain + declared targets (2026-07-23)
+
+> **Status:** Decided · **Date:** 2026-07-23
+> **Amends:** §9.1, §9.3, §10.2 (Invariant 4), §10.4, and 000-tdd-infrastructure FR-001/003/008/009
+> **Feature:** 021-polyglot-toolchain
+> **Author:** David Gonzalez
+> **Motivation:** Shipping a JavaScript project (data-dashboard: `.test.js`, behavior-named out-of-tree suites, integration via `make test:*`) exposed that §9's polyglot promise was under-delivered. `getTestExtension` had no JavaScript branch (every non-Python/Go/Rust language defaulted to `.test.ts`), so a co-located `env.test.js` was invisible and `ship` `[BLOCKED]`; the `.gwrkrc.json` toolchain override §9 relied on was never in `GwrkConfigSchema` (it survived only via a raw `JSON.parse` bypassing Zod); and §10.2's "declared target" discovery arm and §10.4's integration auto-run were never built. The bug hid because the resolver (`getTestExtension`) had zero test coverage and every discovery test injected the extension directly.
+
+### 11.1 Decision
+
+Test-toolchain support stays in the **`ProjectProfile` / `GwrkConfig` / `toolchain-mapper` layer** — *not* a plugin (ADR-006 scopes plugins to agent backends; the Extension kind is locked to context injection). This completes §9 rather than re-architecting it.
+
+1. **Schematized `project.toolchain`** (validated by `GwrkConfigSchema`, closing 004 FR-024): `test` (harness enum, nullable — `null` = skip), `testCommand` (free-form, wins over `test` — e.g. `make test:auth`, `node --test`), `build` (nullable string — `null` = skip), `testExtension`/`sourceExtension` (consulted before language inference). Mirrored on `ProjectProfile.toolchain`. The `node-test` harness is added. `detectProfile` merges the override through `ToolchainConfigSchema.safeParse`, not raw JSON.
+2. **JavaScript is first-class**: `.js` source, `.test.js`/`.spec.js` tests; `getTestExtension`/`getSourceExtension` gain a `javascript` branch and honor the schematized extension override.
+3. **Single honest resolver**: `getTestCommand` returns `string | null` (no test toolchain ⇒ skip, 004 FR-023); new `getBuildCommand` returns `string | null` (004 FR-022). No `.test.ts`/`pnpm vitest run` literals outside a documented default fallback (completes §9.3).
+4. **Declared-target discovery** (completes §10.2 Invariant 4): a phase may point at explicit test files via `phase.testTargets` (sourced from the plan's Test Strategy table), checked existence-based before basename matching — so behavior-named out-of-tree suites map to a phase without renaming.
+5. **Integration auto-run** (closes §10.4): a phase's `Done-When` integration commands (`make test:*`, etc.) compile to an executional gate that runs in TEST_GATE under liveness (`testsRun > 0`). Standing up Docker/DB remains the project's responsibility (§10.3); gwrk runs the declared target and refuses `testsRun == 0`. Opaque wrappers that hide structured counts must emit TAP/structured output or the gate honest-fails.
+6. **Per-workspace toolchain** for polyglot monorepos: `workspaces[].toolchain` is schematized and consulted by `resolveWorkspaceProfile` (implements the R010 proposal).
+
+### 11.2 Coverage note
+
+The load-bearing regression test is a **seam test**: it drives `detectProfile → getTestExtension → phaseHasTests` for a real JavaScript fixture with **no injected extension** — the exact path the prior unit tests bypassed by hand-passing `testExt`.

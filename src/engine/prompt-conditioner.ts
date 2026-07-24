@@ -17,11 +17,17 @@ export interface ProjectProfile {
     buildSystem?: string;
   };
   layout?: string;
-  /** Toolchain signals (formatter, linter, test runner) */
+  /** Toolchain signals (formatter, linter, test runner). Extended for polyglot
+   * support (ADR-005 §11): declarable test/source extension + free-form/skippable
+   * test & build commands. `test: null` = skip; `build: null` = skip. */
   toolchain?: {
     primary?: "biome" | "eslint" | "ruff";
     formatter?: "prettier" | "biome" | "black";
-    test?: "vitest" | "jest" | "pytest" | "cargo-test" | "go-test";
+    test?: "vitest" | "jest" | "pytest" | "cargo-test" | "go-test" | "node-test" | null;
+    testCommand?: string;
+    build?: string | null;
+    testExtension?: string;
+    sourceExtension?: string;
   };
   /** True when gwrk is operating on its own codebase (self-development) */
   _isGwrk?: boolean;

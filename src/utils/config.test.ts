@@ -86,8 +86,8 @@ describe("Three-layer config loading", () => {
     );
     const config = loadConfig(tmpDir);
     expect(config.project.name).toBe("test-project");
-    expect(config.agents.define).toBe("gemini");
-    expect(config.agents.implement).toBe("gemini");
+    expect(config.agents.define).toBe("agy");
+    expect(config.agents.implement).toBe("agy");
   });
 
   it("should merge .gwrkrc.local.json over project config", () => {
@@ -166,7 +166,7 @@ describe("Three-layer config loading", () => {
     fs.copyFileSync(examplePath, path.join(tmpDir, ".gwrkrc.local.json"));
 
     const config = loadConfig(tmpDir);
-    expect(config.agents.registry?.gemini?.name).toBe("gemini");
+    expect(config.agents.registry?.agy?.name).toBe("agy");
   });
 
   it("should throw if .gwrkrc.json is missing", () => {
@@ -293,6 +293,67 @@ describe("FR-001: Workspace Configuration Schema (020-polyglot-monorepo)", () =>
     expect(parsed.project.type).toBe("gwrk-native");
     expect(parsed.project.stack?.testFramework).toBe("vitest");
     expect(parsed.project.architecture).toBe("docs/architecture.md");
+  });
+
+  it("TR-003 (021 FR-001): validates project.toolchain and rejects wrong types", () => {
+    const valid = {
+      project: {
+        name: "js-project",
+        stack: { language: "JavaScript" },
+        toolchain: {
+          test: "vitest",
+          testCommand: "make test:auth",
+          build: null,
+          testExtension: ".test.js",
+          sourceExtension: ".js",
+        },
+      },
+      agents: {},
+    };
+    const parsed = GwrkConfigSchema.parse(valid);
+    expect(parsed.project.toolchain?.testExtension).toBe(".test.js");
+    expect(parsed.project.toolchain?.build).toBeNull();
+    expect(parsed.project.toolchain?.test).toBe("vitest");
+    expect(parsed.project.toolchain?.testCommand).toBe("make test:auth");
+
+    // null test = skip is allowed
+    expect(() =>
+      GwrkConfigSchema.parse({
+        project: { name: "p", toolchain: { test: null } },
+        agents: {},
+      }),
+    ).not.toThrow();
+
+    // wrong type rejected (ZodError, FR-024)
+    expect(() =>
+      GwrkConfigSchema.parse({
+        project: { name: "p", toolchain: { build: 123 } },
+        agents: {},
+      }),
+    ).toThrow();
+
+    // unknown harness rejected (test is an enum, not a free string)
+    expect(() =>
+      GwrkConfigSchema.parse({
+        project: { name: "p", toolchain: { test: "mocha" } },
+        agents: {},
+      }),
+    ).toThrow();
+  });
+
+  it("021 FR-010: validates per-workspace toolchain", () => {
+    const cfg = {
+      project: { name: "mono" },
+      agents: {},
+      workspaces: {
+        api: {
+          stack: { language: "Python" },
+          toolchain: { test: "pytest", testExtension: ".py" },
+        },
+      },
+    };
+    const parsed = GwrkConfigSchema.parse(cfg);
+    expect(parsed.workspaces?.api.toolchain?.test).toBe("pytest");
   });
 
   it("US-001: should throw error for invalid workspace configuration", () => {

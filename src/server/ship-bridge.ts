@@ -24,7 +24,7 @@ export class ShipBridge {
       id: "pending",
       featureId: "unknown",
       phaseId: "unknown",
-      backend: "gemini" as any,
+      backend: "agy" as any,
       status: "running",
       branchName: getCurrentBranch(cwd),
       attempts: [],

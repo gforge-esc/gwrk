@@ -8,6 +8,7 @@ import os from "node:os";
 import { execSync } from "node:child_process";
 import { Command } from "commander";
 import { detectProfile } from "../engine/profile-detector.js";
+import { getSourceExtension, getTestExtension } from "../utils/toolchain-mapper.js";
 import { detectExtensions } from "../engine/extension-detector.js";
 import { syncRegistry } from "../engine/registry.js";
 import { setupSlack } from "./setup-slack.js";
@@ -95,7 +96,7 @@ export interface DetectedAgent {
  * are probed — ollama/gh have no AgentBackend implementation.
  */
 export async function detectAgents(): Promise<DetectedAgent[]> {
-  const agents = ["agy", "claude", "codex", "gemini"];
+  const agents = ["agy", "claude", "codex"];
   const results: DetectedAgent[] = [];
   for (const a of agents) {
     let installed = false;
@@ -119,7 +120,7 @@ export async function detectAgents(): Promise<DetectedAgent[]> {
 }
 
 /** Auto-select preference order when no user input. */
-const AGENT_PREFERENCE = ["agy", "claude", "codex", "gemini"];
+const AGENT_PREFERENCE = ["agy", "claude", "codex"];
 
 /**
  * Build a schema-compliant agents config block.
@@ -300,7 +301,15 @@ export const initAction = async (options: any): Promise<void> => {
       stack: existingStack ?? profile.stack,
       layout: existingProject.layout ?? profile.layout,
       architecture: existingProject.architecture ?? "unknown",
-      conventions: existingProject.conventions ?? "unknown"
+      conventions: existingProject.conventions ?? "unknown",
+      // Persist the detected toolchain plus the resolved test/source extensions
+      // so the language convention (e.g. JS → .test.js) is explicit and durable
+      // rather than re-inferred on every run (ADR-005 §11 / 004 FR-025).
+      toolchain: existingProject.toolchain ?? {
+        ...(profile.toolchain ?? {}),
+        testExtension: getTestExtension(profile),
+        sourceExtension: getSourceExtension(profile),
+      },
     },
     agents: buildAgentConfig(detectedAgents, selectedDefault, selectedFallback),
     extensions: Object.fromEntries(
@@ -457,6 +466,7 @@ export const initAction = async (options: any): Promise<void> => {
     layout: config.project.layout,
     architecture: config.project.architecture,
     conventions: config.project.conventions,
+    toolchain: config.project.toolchain,
   };
   delete projectConfig.agents;
 

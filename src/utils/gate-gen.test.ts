@@ -7,7 +7,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates } from "./gate-gen.js";
+import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript } from "./gate-gen.js";
 import type { GateBrief } from "./gate-gen.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -439,6 +439,33 @@ describe("discoverTestFile (FM-1)", () => {
 
   it("should return null for empty string", () => {
     expect(discoverTestFile("")).toBeNull();
+  });
+});
+
+describe("lintGateScript (021 FR-007 — polyglot functional verbs)", () => {
+  it("does not flag a pytest gate as hollow", () => {
+    const gate = [
+      "#!/bin/bash",
+      "set -euo pipefail",
+      "test -f src/foo.py || { echo FAIL >&2; exit 1; }",
+      "pytest tests/foo.py -v || { echo FAIL >&2; exit 1; }",
+      'echo "PASS"',
+    ].join("\n");
+    expect(lintGateScript(gate)).toEqual([]);
+  });
+
+  it("does not flag a `make test:auth` gate as hollow", () => {
+    const gate = [
+      "set -euo pipefail",
+      "make test:auth || { echo FAIL >&2; exit 1; }",
+      'echo "PASS"',
+    ].join("\n");
+    expect(lintGateScript(gate)).toEqual([]);
+  });
+
+  it("still flags a test -f-only gate as hollow (regression guard)", () => {
+    const gate = ["set -euo pipefail", "test -f src/foo.py", 'echo "PASS"'].join("\n");
+    expect(lintGateScript(gate)).toContain("test -f as sole assertion (hollow gate)");
   });
 });
 
