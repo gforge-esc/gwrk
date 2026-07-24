@@ -4,7 +4,7 @@
 **Created**: 2026-07-24
 **Status**: Draft
 **Input**: Align gwrk's plan→tasks parser with the canonical plan authoring format so a phase's Done-When compiles to an executable gate instead of an echo stub; update the `gwrk-plan` generator to emit that format; and make `define` validate its own output — failing loudly when a source-bearing phase resolves to a stub gate.
-**Authoritative source**: [`docs/grounding/022-plan-format-contract.md`](../../docs/grounding/022-plan-format-contract.md) (verified problem, evidence, canonical format, scope, acceptance). *Note: the grounding brief is numbered 022; this spec is authored at 023 per the feature request.*
+**Authoritative source**: [`docs/grounding/023-plan-format-contract.md`](../../docs/grounding/023-plan-format-contract.md) (verified problem, evidence, canonical format, scope, acceptance).
 
 ---
 

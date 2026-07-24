@@ -1,4 +1,4 @@
-# Grounding: 022 — Plan Format Contract (executable gates)
+# Grounding: 023 — Plan Format Contract (executable gates)
 
 Reference brief for `gwrk define spec`. Captures the verified problem, evidence, and
 the agreed design. The spec should be authored from this; do not re-derive from scratch.
