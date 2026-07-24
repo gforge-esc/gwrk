@@ -1,0 +1,75 @@
+{
+  "featureId": "024-gate-assertion-contract",
+  "createdAt": "2026-07-24T22:44:49.321Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "cc77c268b2f929902b61e69275b893a0e9ab77a3e43a2a2717181e45c7738d94",
+      "modifiedAt": "2026-07-24T22:26:00.819Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Generator emits exit-based Done-When assertions and forbids output-as-pass (FR-001, FR-002)",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify PROMPT.md",
+          "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. in §4a `#### Done When` guidance: add the exit-based-assertion rule (reference \"exit code\"/\"exit status\", show a bare-command example as the canonical assertion), name and forbid the `<cmd> | grep -q <pattern>` antipattern, state the failure reason, and document the capture-to-file-then-`grep -q <file>` safe alternative",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts\ngrep -qiE 'exit code|exit status' src/plugins/builtins/workflows/gwrk-plan/PROMPT.md\ngrep -qiE 'grep -q' src/plugins/builtins/workflows/gwrk-plan/PROMPT.md\ngrep -qiE 'forbid|never|do not|antipattern' src/plugins/builtins/workflows/gwrk-plan/PROMPT.md",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 1,
+      "testTargets": [
+        "src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts",
+        "src/plugins/builtins/workflows/gwrk-plan/prompt-contract.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "`define plan` lint rejects the output-as-pass antipattern (FR-003)",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "Modify plan-gate-validator.ts",
+          "description": "MODIFY src/engine/plan-gate-validator.ts. extend `PlanGateViolation` with `kind: \"hollow\" | \"output-as-pass\"` and optional `offendingLine`; after the existing `isHollowGate` check, for each source-bearing phase scan `phase.gateScript` lines for `/\\|\\s*grep\\b[^|]*-q/` and push an `output-as-pass` violation carrying the offending line; hollow-stub detection and its report shape are unchanged (LLM-free, no network/DB — TC-001, TC-004)",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T003",
+          "title": "Modify define-plan.ts",
+          "description": "MODIFY src/commands/define-plan.ts. branch the violation→message mapping by `kind`: keep the 023 `resolves to a stub gate … 023-plan-format-contract.md` message for `hollow`; for `output-as-pass` emit the FR-003 corrective message naming the phase, title, and offending line and citing `specs/024-gate-assertion-contract/spec.md`; throw `CommandError` (exit 1) when `report.ok === false`. Tests: src/commands/define-plan.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T004",
+          "title": "Create plan-output-as-pass.md",
+          "description": "NEW specs/_fixtures/gate-assertion/plan-output-as-pass.md. positive/SEAM fixture: a plan whose source-bearing Phase 3 fenced-bash `#### Done When` contains `make test:db 2>&1 | grep -q 'db/definitions'` (the data-dashboard `002-metric-model` case that PASSES under Layer 2 `set -e` yet is a false green)",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T005",
+          "title": "Create plan-exit-based.md",
+          "description": "NEW specs/_fixtures/gate-assertion/plan-exit-based.md. negative fixture: a plan whose Phase 3 Done-When asserts exit-based (`make test:db`, `pnpm vitest run x.test.ts`) and separately uses `grep -q 'schemaVersion' package.json` (file argument, no pipe from a command) — MUST NOT be flagged",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/commands/define-plan.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 6,
+      "testTargets": [
+        "src/commands/define-plan.test.ts",
+        "src/commands/define-plan.test.ts",
+        "src/commands/define-plan.test.ts"
+      ]
+    }
+  ]
+}
