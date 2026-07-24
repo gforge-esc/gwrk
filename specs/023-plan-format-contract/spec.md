@@ -226,3 +226,21 @@ No new CLI commands. One existing command gains a failure mode:
 | Command | Type | New behavior | Exit codes | Error-as-navigation | `--format json` |
 |---|---|---|---|---|---|
 | `gwrk define plan <feature>` | generator / mutator | FR-006 self-validation of generated `plan.md` | `0` valid; `1` stub-gate detected (or unparseable) | stderr names the offending `phase-NN` and points to the canonical-format grounding brief | independent of validation; validation failures surface on stderr and via the standard `[exit:N \| Xs]` signal wrapper |
+
+---
+
+## 13. Patch — Execution-Layer Gate Enforcement (post-merge)
+
+**Context.** 023 fixed the *extraction* layer: a phase's fenced-bash `#### Done When` block compiles into the phase `gateScript` verbatim (FR-001). A follow-on defect surfaced in the *execution* layer while re-gating data-dashboard `002-metric-model`: `gwrk gate 002` reported **3/3 PASS** on a phase whose gate runs `make test:db`, even though the code was broken and `make test:db` fails 0/2.
+
+**Root cause.** `runGateCheck` (`src/commands/gate.ts`) ran the multi-line gateScript via `execSync` (`sh -c`) with no `set -e`. PASS/FAIL was decided solely by the **last** command's exit code, so a failing assertion (`make test:db`) was masked by a passing trailing line (`make config:inspect | grep -q 'config:inspect PASSED'`).
+
+**Fix.**
+- **FR-007**: `runGateCheck` MUST execute an inline gateScript so a non-zero exit from *any* command fails the gate, not only the last. Implemented by running the script under `bash` with `set -e` prepended.
+- **TR-009** (`src/commands/gate.test.ts`): a multi-line inline gate FAILs when an earlier command fails even if the last passes; PASSes when every command passes; and does NOT false-fail a passing `cmd | grep -q` assertion.
+
+**Note — `pipefail` omitted (deliberate).** `set -o pipefail` was tried and rejected: gate assertions commonly use `producer | grep -q pattern`, and `grep -q` closing the pipe early SIGPIPEs the producer (exit 141), which under `pipefail` false-fails a *true* assertion. `-u` (nounset) is likewise omitted so gates referencing optional shell vars are not falsely failed. Only `errexit` is enabled.
+
+**Relationship to FR-001.** FR-001 guarantees the gate *contains* the real command; FR-007 guarantees the runner *enforces* every command. Both are required.
+
+**Known follow-up (assertion layer, out of scope here).** FR-007 enforces command *exit codes*. A gate that asserts by grepping a command's *output* instead of checking its exit — e.g. `make test:db 2>&1 | grep -q 'db/definitions'` — can still false-pass, because the pattern may appear in the command's *error* output (observed on data-dashboard 002: the failing `make test:db` error text contains the test path, so `grep -q` matches). The fix belongs at the gate-authoring / `gwrk-plan` generator layer: assert on the command's exit (`make test:db`) rather than grepping its output. Tracked separately.
