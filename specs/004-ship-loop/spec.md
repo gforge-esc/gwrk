@@ -230,7 +230,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 - **FR-021**: System MUST deliver agent prompt context via standard input piping. (Implements: US-001)
 - **FR-022**: System MUST map a project's build command from the `ProjectProfile` using `getBuildCommand()`, skipping compilation with a standard message if the command is `null`. (Implements: US-012)
 - **FR-023**: System MUST execute and assert tests using the mapped test command, skipping execution with a standard message if the mapped test command is `null`. (Implements: US-012)
-- **FR-024**: System MUST extend `GwrkConfigSchema` to validate `project.toolchain.build` and `project.toolchain.test` properties as optional, nullable strings. (Implements: US-012)
+- **FR-024**: System MUST extend `GwrkConfigSchema` to validate `project.toolchain` (and per-workspace `workspaces[].toolchain`): `build` (optional, nullable string — `null` skips build), `test` (optional, nullable **harness enum** — `null` skips tests), `testCommand` (optional free-form string; wins over `test`), and `testExtension`/`sourceExtension` (optional strings). Validation MUST reject wrong types (`ZodError`, exit 1). (Implements: US-012; amended by ADR-005 §11 — `test` is a harness enum, not a free string, so the mapper can select per-harness invocation syntax; the free-form escape hatch is `testCommand`.)
 - **FR-025**: System MUST generate a schema-compliant `agents` block inside `.gwrkrc.json` during `gwrk init` containing correct Zod properties. (Implements: US-013)
 
 #### FR-002 Error States
@@ -287,15 +287,20 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
     };
   }
   ```
-- **DM-003**: `.gwrkrc.json` configuration Zod schema updated to support `project.toolchain`:
+- **DM-003**: `.gwrkrc.json` configuration Zod schema updated to support `project.toolchain` (amended by ADR-005 §11 — `test` is a harness enum so `toolchain-mapper` can pick per-harness flag syntax; `testCommand` is the free-form escape hatch for e.g. `make test:auth`):
   ```typescript
-  const ToolchainSchema = z.object({
-    primary: z.string().optional(),
-    formatter: z.string().optional(),
-    build: z.string().nullable().optional(),
-    test: z.string().nullable().optional()
+  const TEST_HARNESSES = ["vitest","jest","pytest","cargo-test","go-test","node-test"] as const;
+  const ToolchainConfigSchema = z.object({
+    primary: z.enum(["biome","eslint","ruff"]).optional(),
+    formatter: z.enum(["prettier","biome","black"]).optional(),
+    test: z.enum(TEST_HARNESSES).nullable().optional(),   // null = skip; undefined = infer
+    testCommand: z.string().optional(),                    // free-form; WINS over `test`
+    build: z.string().nullable().optional(),               // null = skip; undefined = infer
+    testExtension: z.string().optional(),                  // e.g. ".test.js"
+    sourceExtension: z.string().optional(),                // e.g. ".js"
   }).optional();
   ```
+  The same schema is reused for `workspaces[].toolchain` (per-workspace polyglot monorepo support).
 - **DM-005**: `ExecutionManifest` schema committed to `specs/<feature>/.gwrk/runs/`.
 
 ---

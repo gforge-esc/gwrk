@@ -15,6 +15,9 @@ export interface TestRunResult {
   exitCode: number;
   command: string;
   output: string;
+  /** True when the project declares no test toolchain (`toolchain.test === null`)
+   * — the caller treats this as a skip, not a `testsRun == 0` failure. */
+  skipped?: boolean;
 }
 
 /**
@@ -63,6 +66,19 @@ export async function runTests(
 ): Promise<TestRunResult> {
   const profile = await detectProfile(cwd);
   const command = getTestCommand(profile, files, grepPattern);
+  if (command === null) {
+    // No test toolchain declared → nothing to run (skip; ADR-005 §11 / 004 FR-023).
+    return {
+      testsRun: 0,
+      passed: 0,
+      failed: 0,
+      ran: false,
+      exitCode: 0,
+      command: "",
+      output: "",
+      skipped: true,
+    };
+  }
 
   let output: string;
   let exitCode = 0;

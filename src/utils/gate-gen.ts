@@ -508,6 +508,11 @@ export function generateDeterministicGates(
       .map(([file, acs]) => {
         const grepPattern = acs.join("|");
         const cmd = getTestCommand(profile, [file], grepPattern);
+        if (cmd === null) {
+          // Project declares no test toolchain → honest-fail rather than emit
+          // a "null" invocation (ADR-005 §11 / §10.2.5).
+          return `echo "FAIL: ${gateId} — no test toolchain configured (${file})" >&2; exit 1`;
+        }
         return `${cmd} \\
   || { echo "FAIL: ${gateId} — test failed for ${file}" >&2; exit 1; }`;
       })

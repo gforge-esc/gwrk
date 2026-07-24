@@ -199,7 +199,7 @@ function generateTaskState(
       );
 
       const gateScript = relatedTest
-        ? getTestCommand(profile, [relatedTest.path])
+        ? (getTestCommand(profile, [relatedTest.path]) ?? unauthoredGate(f.path))
         : unauthoredGate(f.path);
 
       const existing = existingTasks.find(

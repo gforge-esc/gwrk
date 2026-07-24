@@ -96,9 +96,12 @@ interface GwrkConfig {
     layout?: { ... };
     architecture?: { ... };
     conventions?: { ... };
+    toolchain?: ToolchainConfig;  // per-workspace test/build convention (ADR-005 §11, 021-polyglot-toolchain)
   }>;
 }
 ```
+
+> **Amended (021-polyglot-toolchain, ADR-005 §11):** each workspace may declare its own `toolchain` (test harness/command, build command, test/source extension) — the shape defined in 004-ship-loop DM-003. `resolveWorkspaceProfile` consults it so a polyglot monorepo gates each workspace in its own language. This realizes the R010 per-workspace-toolchain proposal.
 
 ---
 

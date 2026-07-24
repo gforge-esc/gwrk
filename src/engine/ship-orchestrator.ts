@@ -927,17 +927,21 @@ export class ShipOrchestrator extends EventEmitter {
   ): Promise<{ failCount: number; testsRun: number; passed: number; output: string }> {
     const profile = await detectProfile(this.config.cwd);
 
-    // If we have phase-scoped test files, run only those
-    let command = "pnpm test";
-    if (phaseTestFiles && phaseTestFiles.length > 0) {
-      command = getTestCommand(profile, phaseTestFiles);
-    } else {
-      command = getTestCommand(profile, []);
-      if (command.includes("vitest run")) {
-        command = "pnpm vitest run";
-      } else if (command.includes("jest")) {
-        command = "npx jest";
-      }
+    // Resolve the profile's test command. `null` = project declares no test
+    // toolchain → skip (ADR-005 §11); the TEST_GATE stage turns this into a
+    // GO-with-message rather than a testsRun==0 failure (Phase 05).
+    const scoped = phaseTestFiles && phaseTestFiles.length > 0;
+    const resolved = scoped
+      ? getTestCommand(profile, phaseTestFiles)
+      : getTestCommand(profile, []);
+    if (resolved === null) {
+      return { failCount: 0, testsRun: 0, passed: 0, output: "(no test toolchain — skipped)" };
+    }
+    let command = resolved;
+    if (!scoped) {
+      // Whole-suite run: drop the empty file list the mapper leaves behind.
+      if (command.includes("vitest run")) command = "pnpm vitest run";
+      else if (command.includes("jest")) command = "npx jest";
     }
 
     let output: string;
