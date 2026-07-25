@@ -162,16 +162,17 @@ Examples:
           return;
         }
 
-        // FR-006 (contract §2): before the clean commit, verify the generated
-        // plan has no source-bearing phase resolving to a stub gate (no
-        // executable fenced-bash Done-When). Fail loudly with error-as-navigation
-        // (ADR-004) so a false-green plan never lands.
+        // Before the clean commit, verify the generated plan has no gate defect
+        // and fail loudly with error-as-navigation (ADR-004) so a false-green
+        // plan never lands. Two kinds: 023 FR-006 hollow stubs, and 024 FR-003
+        // output-as-pass assertions. Message branches by `kind`.
         const gateReport = validatePlanGates(featureDir, feature);
         if (!gateReport.ok) {
           const detail = gateReport.violations
-            .map(
-              (v) =>
-                `define plan: ${v.phaseId} "${v.title}" resolves to a stub gate (no executable Done-When). Author a fenced bash Done-When block. See docs/grounding/023-plan-format-contract.md.`,
+            .map((v) =>
+              v.kind === "output-as-pass"
+                ? `define plan: ${v.phaseId} "${v.title}" Done-When asserts on output, not exit ('${v.offendingLine}'). Assert on the command's exit code (run it directly); to check a token, capture output to a file then grep the file. See specs/024-gate-assertion-contract/spec.md.`
+                : `define plan: ${v.phaseId} "${v.title}" resolves to a stub gate (no executable Done-When). Author a fenced bash Done-When block. See docs/grounding/023-plan-format-contract.md.`,
             )
             .join("\n");
           throw new CommandError(detail, 1);
