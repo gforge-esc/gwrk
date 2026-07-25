@@ -225,6 +225,32 @@ Reference: `docs/grounding/023-plan-format-contract.md`.
 pnpm run build
 pnpm vitest run path/to/phase.test.ts
 ```
+
+- **Assert on exit codes, never on output text (assertion contract).** Every Done-When
+  line that verifies a command — a build, test, or runner that already exits non-zero on
+  failure (`make`, `pnpm`, `node`, `vitest`, …) — MUST prove success by **running it
+  directly**, so that command's **exit code** decides the gate. Under Layer 2's `set -e`
+  a non-zero exit then propagates as a real failure. The bare-command form shown above is
+  the canonical assertion; do NOT present matching a command's output text as proof that
+  it succeeded.
+
+- **Forbidden — the output-as-pass antipattern.** Never write `<cmd> | grep -q <pattern>`
+  (nor `<cmd> 2>&1 | grep -q <pattern>`) in a Done-When block. **Why it lies:** on failure
+  the searched-for pattern can still appear in the command's error output, and because
+  Layer 2 uses `set -e` **without** `pipefail`, only the trailing `grep -q`'s exit status
+  decides the pipeline — the producer's non-zero exit is masked, yielding a false green.
+
+  **Safe alternative.** Run the command bare and let its exit code fail the gate, or — when
+  you genuinely must inspect output — capture it to a file as a separate step (whose own
+  non-zero exit `set -e` still enforces), then `grep -q` that file:
+
+  ```bash
+  pnpm vitest run path/to/phase.test.ts > out.log
+  grep -q "expected pattern" out.log
+  ```
+
+  A bare `grep -q <pattern> <file>` that reads a file (never a pipe from a command) stays
+  allowed.
 </canonical_output_format>
 
 ### 5. Generate `data-model.md` (if entities exist in spec)

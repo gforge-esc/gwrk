@@ -18,14 +18,24 @@ import type { ProjectProfile } from "./prompt-conditioner.js";
  * (TC-001) — pure over the plan text.
  */
 
-/** One source-bearing phase whose resolved gate is a hollow stub. */
+/** One source-bearing phase with a gate defect. */
 export interface PlanGateViolation {
   /** e.g. "phase-03" */
   phaseId: string;
   /** phase title */
   title: string;
-  /** the resolved (hollow) gate */
+  /** the resolved gate */
   gateScript: string;
+  /**
+   * Discriminator: a hollow stub (023 FR-006) or an output-as-pass assertion
+   * (024 FR-003). Defaults to "hollow" for the 023 path.
+   */
+  kind: "hollow" | "output-as-pass";
+  /**
+   * For "output-as-pass": the fenced-bash Done-When line that pipes a command
+   * into `grep -q` (the antipattern). Absent for "hollow".
+   */
+  offendingLine?: string;
 }
 
 export interface PlanGateReport {
@@ -81,11 +91,20 @@ export function validatePlanGates(
 
   const violations: PlanGateViolation[] = [];
 
+  // 024 FR-003: an output-as-pass assertion pipes a command into `grep -q`, so
+  // under Layer 2 (`set -e`, no `pipefail`) only the trailing grep's exit decides
+  // pass/fail — a failing producer whose error text contains the pattern still
+  // passes. Requires a leading `|`, so a bare `grep -q <pattern> <file>` (file
+  // argument) and exit-based commands never match.
+  const OUTPUT_AS_PASS = /\|\s*grep\b[^|]*-q/;
+
   for (const phase of parsed) {
     const hasDoneWhen =
       phase.gateScript !== undefined || phase.doneWhen.length > 0;
     const sourceBearing = phase.files.length > 0 || hasDoneWhen;
     if (!sourceBearing) continue;
+
+    const phaseId = `phase-${String(phase.number).padStart(2, "0")}`;
 
     // Resolve the phase gate exactly as `generateTaskState` does: a fenced-bash
     // `#### Done When` block IS the executable gate; without one the phase
@@ -93,12 +112,31 @@ export function validatePlanGates(
     const resolvedGate =
       phase.gateScript ?? `echo "Phase ${phase.number}: ${phase.title}"`;
 
+    // 023 FR-006 — hollow stub.
     if (isHollowGate(resolvedGate)) {
       violations.push({
-        phaseId: `phase-${String(phase.number).padStart(2, "0")}`,
+        phaseId,
         title: phase.title,
         gateScript: resolvedGate,
+        kind: "hollow",
       });
+    }
+
+    // 024 FR-003 — output-as-pass lint over the fenced-bash Done-When lines.
+    if (phase.gateScript) {
+      for (const raw of phase.gateScript.split("\n")) {
+        const line = raw.trim();
+        if (OUTPUT_AS_PASS.test(line)) {
+          violations.push({
+            phaseId,
+            title: phase.title,
+            gateScript: resolvedGate,
+            kind: "output-as-pass",
+            offendingLine: line,
+          });
+          break; // one output-as-pass violation per phase (first offending line)
+        }
+      }
     }
   }
 
