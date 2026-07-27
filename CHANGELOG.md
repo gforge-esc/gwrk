@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.0-alpha.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.0...cli-v1.4.0-alpha.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* use which-only for extension detection, never invoke binaries ([#153](https://github.com/gforge-esc/gwrk/issues/153)) ([9774f86](https://github.com/gforge-esc/gwrk/commit/9774f86a))
+
+
+### Features
+
+* **gate-assertion-contract:** Phase 1 ([#151](https://github.com/gforge-esc/gwrk/issues/151)) ([3d549b5](https://github.com/gforge-esc/gwrk/commit/3d549b56))
+* **gate-assertion-contract:** Phase 2 ([#152](https://github.com/gforge-esc/gwrk/issues/152)) ([f22b1fb](https://github.com/gforge-esc/gwrk/commit/f22b1fb9))
+* **plan-format-contract:** Phase 1 ([#147](https://github.com/gforge-esc/gwrk/issues/147)) ([03910cc](https://github.com/gforge-esc/gwrk/commit/03910cc0))
+* **023:** enforce every command in inline gate execution (set -e) ([#150](https://github.com/gforge-esc/gwrk/issues/150)) ([a873961](https://github.com/gforge-esc/gwrk/commit/a8739610))
+
 ## [1.4.0-alpha.0](https://github.com/gforge-esc/gwrk/compare/cli-v1.3.1-alpha.1...cli-v1.4.0-alpha.0) (2026-07-24)
 
 
