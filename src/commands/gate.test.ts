@@ -111,3 +111,44 @@ describe("FR-006: First-Class Gate Checking", () => {
 		expect(cliSource).toContain("gateCommand");
 	});
 });
+
+// 023 patch (execution layer): a multi-line inline gate must fail if ANY
+// command fails, not only the last. Before this fix, execSync ran the script
+// under `sh` with no `set -e`, so PASS/FAIL was decided solely by the last
+// command's exit code. A gate whose real assertion (e.g. `make test:db`)
+// failed but whose final line (e.g. `config:inspect`) passed reported PASS — a
+// false green (observed on data-dashboard 002-metric-model).
+describe("023 patch: inline gate execution enforces every command", () => {
+	const testFeature = "000-gate-enforce";
+
+	it("FAILs when an earlier command fails even if the last one passes", async () => {
+		const result = await runGateCheck(
+			"T-enforce-1",
+			testFeature,
+			"false\ntrue",
+		);
+		expect(result.result).toBe("FAIL");
+		expect(result.exitCode).not.toBe(0);
+	});
+
+	it("does NOT false-fail a passing `cmd | grep -q` assertion", async () => {
+		// A producer that emits the match then keeps writing must PASS. Under
+		// `pipefail`, grep -q closing the pipe early SIGPIPEs the producer
+		// (exit 141) and false-fails a true assertion; `set -e` alone avoids it.
+		const result = await runGateCheck(
+			"T-enforce-2",
+			testFeature,
+			"{ echo db/definitions; echo more_tap_output; } | grep -q db/definitions",
+		);
+		expect(result.result).toBe("PASS");
+	});
+
+	it("PASSes when every command in a multi-line gate passes", async () => {
+		const result = await runGateCheck(
+			"T-enforce-3",
+			testFeature,
+			"echo one\ntrue\necho two",
+		);
+		expect(result.result).toBe("PASS");
+	});
+});

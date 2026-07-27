@@ -263,11 +263,22 @@ export async function runGateCheck(
   const start = performance.now();
   try {
     const { execSync } = await import("node:child_process");
-    const output = execSync(gateScript, {
+    // Run under bash with `set -e` so a multi-line gate fails if ANY command
+    // fails, not only the last one. execSync's default `sh -c` returns the LAST
+    // command's exit code, which masked a failing assertion behind a passing
+    // trailing line — a false green. 023 execution-layer fix.
+    //
+    // `pipefail` is deliberately NOT enabled: gate assertions commonly use
+    // `producer | grep -q pattern`, and `grep -q` closing the pipe early
+    // SIGPIPEs the producer (exit 141); under pipefail that false-fails a true
+    // assertion. With `set -e` only, a pipeline's status is its last command's,
+    // which is the assertion result the author intended.
+    const output = execSync(`set -e\n${gateScript}`, {
       cwd: projectRoot,
       stdio: "pipe",
       timeout: 30_000,
       encoding: "utf-8",
+      shell: "/bin/bash",
     });
     const durationMs = Math.round(performance.now() - start);
     return {
