@@ -45,13 +45,12 @@ export async function detectExtensions(): Promise<ExtensionInfo[]> {
 
   for (const ext of extensions) {
     try {
-      // Check if command exists in PATH
-      const version = execSync(`${ext.command} --version`, { stdio: "pipe" })
-        .toString()
-        .trim();
+      // Existence check only — never invoke the binary directly.
+      // Some commands (e.g. `obsidian`) resolve to a GUI app launcher
+      // on macOS; even a short timeout still briefly opens the app.
+      execSync(`which ${ext.command}`, { stdio: "ignore" });
       ext.detected = true;
-      ext.version = version;
-    } catch (error) {
+    } catch {
       ext.detected = false;
     }
   }
