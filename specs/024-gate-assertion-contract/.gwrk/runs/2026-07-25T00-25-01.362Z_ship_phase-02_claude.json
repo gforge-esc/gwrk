@@ -1,0 +1,21 @@
+{
+  "runId": "2026-07-25T00:25:01.362Z_ship_p02",
+  "feature": "024-gate-assertion-contract",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "claude",
+  "model": "default",
+  "startedAt": "2026-07-25T00:25:01.362Z",
+  "finishedAt": "2026-07-25T00:35:05.812Z",
+  "durationS": 604,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "872c59a5e443011d1f152d5315abb889a934432d",
+  "gitBranch": "feat/024-gate-assertion-contract",
+  "digest": []
+}
