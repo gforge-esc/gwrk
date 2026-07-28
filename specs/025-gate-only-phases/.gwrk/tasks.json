@@ -36,7 +36,7 @@
           "id": "T002",
           "title": "Modify ship-orchestrator.ts",
           "description": "MODIFY src/engine/ship-orchestrator.ts. add a private `runDoneWhenGate()` that runs `phase.doneWhen` under `set -e` (reusing the `gate.ts:276` execution shape; imports only, no change to `test-runner.ts`); call it from the test-less branch of `stageTestGate` (pass iff exit 0, else `handleNoGo(\"TEST_GATE\")` naming the offending line); keep the `:857` test-driven `testsRun === 0` NO-GO and the `stageActivateTests` `:486`/`:517` behavior intact. Tests: src/engine/ship-orchestrator.review.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/engine/ship-orchestrator.review.test.ts\npnpm run test:ci",
           "sp": 1
         }
