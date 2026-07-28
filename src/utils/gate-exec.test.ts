@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import * as gateRunner from "./gate-runner.js";
 import { runTaskGate } from "./gate-exec.js";
+import { parsePlanMarkdown } from "../engine/plan-to-tasks.js";
 
 // runGate is the file-exec adapter; mock it so file-based strategies don't hit
 // the disk. Inline strategy runs real bash (like gate.test.ts) — do NOT mock
@@ -129,5 +130,47 @@ describe("runTaskGate — the shared gate execution port", () => {
     );
     expect(r.passed).toBe(false);
     expect(r.strategy).toBe("missing");
+  });
+});
+
+// SEAM (026): a fenced `#### Done When` block compiles to task.gateScript, and
+// the shared runner executes THAT — no injected doneWhen, no vacuous skip. This
+// is the exact path the 025 field bug bypassed (tests mocked phase.doneWhen).
+describe("SEAM: fenced Done-When → task.gateScript → runTaskGate", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const PLAN = [
+    "### Phase 1: Config readers",
+    "",
+    "**Files (1):**",
+    "- `src/config/env.js` — **create** — reader",
+    "",
+    "#### Done When",
+    "```bash",
+    "true",
+    'echo "config gate ran"',
+    "```",
+    "",
+  ].join("\n");
+
+  it("puts the fenced block on the phase gate (not phase.doneWhen)", () => {
+    const phases = parsePlanMarkdown(PLAN);
+    expect(phases).toHaveLength(1);
+    // The executable gate is captured as gateScript; doneWhen stays prose-empty.
+    expect(phases[0].gateScript).toContain('echo "config gate ran"');
+    expect(phases[0].doneWhen).toEqual([]);
+  });
+
+  it("the shared runner executes that compiled gate (real bash)", async () => {
+    const phases = parsePlanMarkdown(PLAN);
+    const gateScript = phases[0].gateScript as string;
+    // Simulate plan-to-tasks copying the fenced gate onto a task.
+    const r = await runTaskGate(
+      { id: "T001", gateScript },
+      { featureDir: "/mock/specs/026", cwd: process.cwd() },
+    );
+    expect(r.strategy).toBe("inline");
+    expect(r.passed).toBe(true);
+    expect(r.output).toContain("config gate ran");
   });
 });
