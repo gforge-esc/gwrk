@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { Command } from "commander";
-import { runGate } from "../utils/gate-runner.js";
+import { runTaskGate } from "../utils/gate-exec.js";
 import { banner, color, fail, success } from "../utils/format.js";
 import { resolveFormat } from "../utils/output.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
@@ -170,10 +170,10 @@ export async function runGateCheck(
 
   const featureDir = path.join(projectRoot, "specs", normalizedFeature);
 
-  // Gate resolution priority:
-  // 1. gates/{taskId}-gate.sh (canonical file path)
-  // 2. task.gateScript as file path (relative to feature dir)
-  // 3. task.gateScript as inline shell command (echo, test, grep, etc.)
+  // 026: gate resolution + execution is owned by the shared `runTaskGate` port
+  // (convention file → gateScript-as-path → inline `set -e`; hollow / unauthored
+  // gates rejected). `gwrk gate` keeps its CLI-only anti-pattern pre-flight and
+  // its GateCheckResult wrapping.
   const conventionPath = path.join(
     "specs",
     normalizedFeature,
@@ -182,9 +182,8 @@ export async function runGateCheck(
   );
   const absoluteConventionPath = path.join(projectRoot, conventionPath);
 
-  // Strategy 1: Canonical gate file in gates/ directory
+  // Anti-pattern pre-flight, scoped to the convention gate file (CLI-only, as before).
   if (fs.existsSync(absoluteConventionPath)) {
-    // ── Anti-pattern pre-flight ──
     const violations = preFlightCheck(taskId, normalizedFeature, projectRoot);
     if (violations.length > 0) {
       const violationMsg = violations
@@ -201,23 +200,9 @@ export async function runGateCheck(
         durationMs: 0,
       };
     }
-
-    const start = performance.now();
-    const result = await runGate(absoluteConventionPath, { cwd: projectRoot });
-    const durationMs = Math.round(performance.now() - start);
-    return {
-      taskId,
-      feature: normalizedFeature,
-      gatePath: conventionPath,
-      result: result.passed ? "PASS" : "FAIL",
-      exitCode: result.exitCode,
-      stdout: result.output,
-      stderr: "",
-      durationMs,
-    };
   }
 
-  // If no gateScript provided, try loading it from tasks.json
+  // If no gateScript provided, try loading it from tasks.json.
   if (!gateScript) {
     try {
       const state = loadTaskState(featureDir);
@@ -229,86 +214,35 @@ export async function runGateCheck(
         }
       }
     } catch {
-      // No tasks.json — fall through to not found
+      // No tasks.json — fall through to not found.
     }
   }
 
-  if (!gateScript) {
+  if (!fs.existsSync(absoluteConventionPath) && !gateScript) {
     throw new CommandError(
       `Gate script not found: ${conventionPath}. Run 'gwrk gate <feature>' to check gates.`,
       1,
     );
   }
 
-  // Strategy 2: gateScript as file path (relative to feature dir)
-  const absoluteScriptPath = path.join(featureDir, gateScript);
-  if (fs.existsSync(absoluteScriptPath)) {
-    const start = performance.now();
-    const result = await runGate(absoluteScriptPath, { cwd: projectRoot });
-    const durationMs = Math.round(performance.now() - start);
-    return {
-      taskId,
-      feature: normalizedFeature,
-      gatePath: gateScript,
-      result: result.passed ? "PASS" : "FAIL",
-      exitCode: result.exitCode,
-      stdout: result.output,
-      stderr: "",
-      durationMs,
-    };
-  }
-
-  // Strategy 3: gateScript as inline shell command
-  // Commands like: echo "Phase 1: ... ✅ SHIPPED", test -f src/foo.ts
   const start = performance.now();
-  try {
-    const { execSync } = await import("node:child_process");
-    // Run under bash with `set -e` so a multi-line gate fails if ANY command
-    // fails, not only the last one. execSync's default `sh -c` returns the LAST
-    // command's exit code, which masked a failing assertion behind a passing
-    // trailing line — a false green. 023 execution-layer fix.
-    //
-    // `pipefail` is deliberately NOT enabled: gate assertions commonly use
-    // `producer | grep -q pattern`, and `grep -q` closing the pipe early
-    // SIGPIPEs the producer (exit 141); under pipefail that false-fails a true
-    // assertion. With `set -e` only, a pipeline's status is its last command's,
-    // which is the assertion result the author intended.
-    const output = execSync(`set -e\n${gateScript}`, {
-      cwd: projectRoot,
-      stdio: "pipe",
-      timeout: 30_000,
-      encoding: "utf-8",
-      shell: "/bin/bash",
-    });
-    const durationMs = Math.round(performance.now() - start);
-    return {
-      taskId,
-      feature: normalizedFeature,
-      gatePath: `(inline) ${gateScript.substring(0, 60)}`,
-      result: "PASS",
-      exitCode: 0,
-      stdout: output || "",
-      stderr: "",
-      durationMs,
-    };
-  } catch (err: unknown) {
-    const durationMs = Math.round(performance.now() - start);
-    const stderr = (err as { stderr?: string })?.stderr || "";
-    const exitCode =
-      typeof (err as { status?: number })?.status === "number"
-        ? (err as { status: number }).status
-        : 1;
-    return {
-      taskId,
-      feature: normalizedFeature,
-      gatePath: `(inline) ${gateScript.substring(0, 60)}`,
-      result: "FAIL",
-      exitCode,
-      stdout: "",
-      stderr: stderr || String(err),
-      durationMs,
-    };
-  }
+  const r = await runTaskGate(
+    { id: taskId, gateScript: gateScript ?? "" },
+    { featureDir, cwd: projectRoot },
+  );
+  const durationMs = Math.round(performance.now() - start);
+  // Preserve the CLI's `specs/<feature>/gates/…` label for the convention path.
+  const gatePath = r.strategy === "convention" ? conventionPath : r.gatePath;
+  return {
+    taskId,
+    feature: normalizedFeature,
+    gatePath,
+    result: r.passed ? "PASS" : "FAIL",
+    exitCode: r.exitCode,
+    stdout: r.output,
+    stderr: "",
+    durationMs,
+  };
 }
 
 /**

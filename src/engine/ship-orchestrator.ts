@@ -43,7 +43,8 @@ import {
   type ShipStageResult,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
-import { isHollowGate, getPhaseVerificationGate } from "../utils/gate-quality.js";
+import { getPhaseVerificationGate } from "../utils/gate-quality.js";
+import { runTaskGate, runInlineGate, type TaskGateResult } from "../utils/gate-exec.js";
 import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
@@ -563,55 +564,24 @@ export class ShipOrchestrator extends EventEmitter {
     if (!postFlightPhase) return null;
 
     let reopenedCount = 0;
+    // 026: a fenced Done-When compiles the same gateScript onto every task in a
+    // phase — run each distinct gate once.
+    const gateCache = new Map<string, TaskGateResult>();
     for (const task of postFlightPhase.tasks) {
       if (task.status !== "completed" || !task.gateScript) continue;
 
-      // Gate resolution: 3 strategies (must match gwrk gate CLI)
-      // 1. Gate file in gates/ directory (canonical)
-      const conventionPath = path.join(
-        featureDir, "gates", `${task.id}-gate.sh`,
-      );
-      // 2. gateScript as file path relative to feature dir
-      const scriptPath = path.join(featureDir, task.gateScript);
-
-      let gateResult: { passed: boolean; output: string };
-      let gateLabel: string;
-
-      if (fs.existsSync(conventionPath)) {
-        // Strategy 1: canonical gate file
-        gateLabel = `gates/${task.id}-gate.sh`;
-        const result = await runGate(conventionPath, { cwd: this.config.cwd });
-        gateResult = { passed: result.passed, output: result.output };
-      } else if (fs.existsSync(scriptPath)) {
-        // Strategy 2: gateScript as file path
-        gateLabel = task.gateScript;
-        const result = await runGate(scriptPath, { cwd: this.config.cwd });
-        gateResult = { passed: result.passed, output: result.output };
-      } else {
-        // Strategy 3: gateScript as inline shell command
-        gateLabel = `(inline) ${task.gateScript.substring(0, 60)}`;
-        if (isHollowGate(task.gateScript)) {
-          // FR-001 (ADR-005 §10.2.5): file-existence-only gates aren't verification.
-          gateResult = {
-            passed: false,
-            output:
-              "FAIL: hollow gate (test -f only) — not a functional assertion (FR-001)",
-          };
-        } else {
-          try {
-            const output = execSync(task.gateScript, {
-              cwd: this.config.cwd,
-              stdio: "pipe",
-              timeout: 30_000,
-              encoding: "utf-8",
-            });
-            gateResult = { passed: true, output: output || "" };
-          } catch (err: unknown) {
-            const stderr = (err as { stderr?: string })?.stderr || "";
-            gateResult = { passed: false, output: stderr || String(err) };
-          }
-        }
+      // 026: one shared runner (convention file → gateScript-as-path → inline
+      // `set -e`; hollow/unauthored rejected), identical to `gwrk gate`.
+      let result = gateCache.get(task.gateScript);
+      if (!result) {
+        result = await runTaskGate(task, {
+          featureDir,
+          cwd: this.config.cwd,
+        });
+        gateCache.set(task.gateScript, result);
       }
+      const gateResult = { passed: result.passed, output: result.output };
+      const gateLabel = result.gatePath;
 
       if (!gateResult.passed) {
         task.status = "open";
@@ -1030,49 +1000,15 @@ export class ShipOrchestrator extends EventEmitter {
     offendingLine: string;
     output: string;
   } {
-    try {
-      const output = execSync(`set -e\n${script}`, {
-        cwd: this.config.cwd,
-        stdio: "pipe",
-        timeout: 120_000,
-        encoding: "utf-8",
-        shell: "/bin/bash",
-      });
-      return { passed: true, offendingLine: "", output: String(output ?? "") };
-    } catch (err: unknown) {
-      const e = err as { stdout?: Buffer | string; stderr?: Buffer | string };
-      const output = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
-      // `set -e` aborts at the first failing command; name it. A single-line
-      // gate is that line; for a multi-line gate, probe each independently
-      // (bare-clone gates are read-only assertions) to find the first failure.
-      const lines = script
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("set "));
-      const offendingLine =
-        lines.length <= 1
-          ? lines[0] ?? script
-          : this.firstFailingGateLine(lines) ?? lines[0];
-      return { passed: false, offendingLine, output };
-    }
-  }
-
-  /** Best-effort: the first gate line that fails on its own (or null). */
-  private firstFailingGateLine(lines: string[]): string | null {
-    for (const line of lines) {
-      try {
-        execSync(`set -e\n${line}`, {
-          cwd: this.config.cwd,
-          stdio: "pipe",
-          timeout: 120_000,
-          encoding: "utf-8",
-          shell: "/bin/bash",
-        });
-      } catch {
-        return line;
-      }
-    }
-    return null;
+    // 026: delegate to the one shared inline executor (gate-exec) so TEST_GATE's
+    // phase-gate path runs a gate identically to `gwrk gate`, post-flight, and
+    // harvest.
+    const r = runInlineGate(script, this.config.cwd);
+    return {
+      passed: r.passed,
+      offendingLine: r.offendingLine ?? "",
+      output: r.output,
+    };
   }
 
   /** Run test suite, return failure count and output.
@@ -1274,20 +1210,30 @@ export class ShipOrchestrator extends EventEmitter {
 
     // Gate-driven verdict: run gates directly, don't trust agent edits.
     // "Gates are truth, tasks.json status is bookkeeping." (gwrk-review-code.md L59)
+    // 026: run each task's gate through the shared runner. An INLINE gateScript
+    // now actually executes — previously it was `join`ed to a path that never
+    // exists and skipped, so the verdict was a vacuous GO for every real phase.
+    // A shared phase gate runs once.
     let failedCount = 0;
+    const gateCache = new Map<string, TaskGateResult>();
     for (const task of phase.tasks) {
       if (!task.gateScript) continue;
-      const gatePath = path.join(featureDir, task.gateScript);
-      if (!fs.existsSync(gatePath)) continue;
 
-      const gateResult = await runGate(gatePath, { cwd: this.config.cwd });
+      let gateResult = gateCache.get(task.gateScript);
+      if (!gateResult) {
+        gateResult = await runTaskGate(task, {
+          featureDir,
+          cwd: this.config.cwd,
+        });
+        gateCache.set(task.gateScript, gateResult);
+      }
       if (gateResult.passed) {
         if (task.status !== "completed") {
           task.status = "completed";
           task.completedAt = new Date().toISOString();
         }
       } else {
-        console.log(`    ⚠ Gate FAILED: ${task.id} (${gatePath})`);
+        console.log(`    ⚠ Gate FAILED: ${task.id} (${gateResult.gatePath})`);
         console.log(`      exit: ${gateResult.exitCode}`);
         console.log(`      output: ${gateResult.output.slice(0, 500)}`);
         task.status = "open";
