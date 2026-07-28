@@ -176,8 +176,21 @@ async function shipPhase(
       });
 
       if (!hasTests) {
-        blocked(`[BLOCKED] No test files found for ${phaseId}`);
-        throw new CommandError(`No test files found for ${phaseId}`, 1);
+        // 025 Path A — gate-only phase: a phase whose verification is an
+        // executable Done-When gate (schema / migration / config), not a unit
+        // test. If it declares a non-empty Done-When, it is verified by that
+        // gate (asserted at TEST_GATE, 025 Fix B; honest per 023/024), so
+        // pre-flight must not hard-block on "no test files". The block is
+        // preserved for a source phase that declares neither a test nor a gate.
+        const isGateOnly = (phaseData.doneWhen ?? []).length > 0;
+        if (isGateOnly) {
+          console.log(
+            `  ✓ ${phaseId}: gate-only phase — verified by Done-When gate, no unit test required`,
+          );
+        } else {
+          blocked(`[BLOCKED] No test files found for ${phaseId}`);
+          throw new CommandError(`No test files found for ${phaseId}`, 1);
+        }
       }
     }
   }

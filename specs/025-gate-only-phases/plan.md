@@ -82,8 +82,9 @@ Make TEST_GATE positively verify a test-less gate-only phase, and confine livene
 
 Add orchestrator-harness Vitest tests (stubbed phase + Done-When runner) with the spec's exact `-t` names.
 
-**Files (2):**
+**Files (3):**
 - `src/engine/ship-orchestrator.ts` — **amend** — add a private `runDoneWhenGate()` that runs `phase.doneWhen` under `set -e` (reusing the `gate.ts:276` execution shape; imports only, no change to `test-runner.ts`); call it from the test-less branch of `stageTestGate` (pass iff exit 0, else `handleNoGo("TEST_GATE")` naming the offending line); keep the `:857` test-driven `testsRun === 0` NO-GO and the `stageActivateTests` `:486`/`:517` behavior intact
+- `src/commands/ship.ts` — **amend** — Path A (pre-flight): the `phaseHasTests` block runs BEFORE the orchestrator, so a config phase (source file, no test) is hard-blocked at `~:178` before Fix B can run. Apply the same discriminator: when `phaseHasTests` is false but the phase declares a non-empty `doneWhen`, it is a gate-only phase — log and proceed (TEST_GATE/Fix B asserts it) instead of blocking. The block is preserved when the phase declares neither a test nor a Done-When gate (regression guard, `doneWhen: []`).
 - `src/engine/ship-orchestrator.review.test.ts` — **amend** — add TR-004 (test-less phase: green Done-When → GO, red Done-When → NO-GO with the failing line), TR-005 (`stageActivateTests`: test-less → `{ success: true }` no RED-liveness NO-GO; test-driven 0-tests → `{ success: false }`), TR-006 (the Run #2207 SEAM: co-located `env.test.js` runs and no `scoped to: .env.example`; pure-schema phase passes via green Done-When), TR-007 (guard: a real `foo.test.js` running 0 tests still NO-GOs, `getPhaseTestFiles()` non-empty)
 
 **Requirements Addressed:** FR-004, FR-005, FR-006, US-003, US-004, US-005, TC-001, TC-002, TC-004, SC-001, SC-002, SC-003, SC-004, VR-001, VR-002, VR-004, VR-005, VR-006, Agent-Native §12

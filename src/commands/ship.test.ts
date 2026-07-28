@@ -300,6 +300,61 @@ describe("shipCommand", () => {
     existsSpy.mockRestore();
   });
 
+  it("025 Path A: a gate-only phase (Done-When gate, no test) proceeds past pre-flight", async () => {
+    // A gate-provable phase: a source deliverable with NO discoverable test,
+    // but a non-empty executable Done-When. Pre-flight must treat it as
+    // gate-only and proceed — the Done-When is its verification, not a unit
+    // test. (TEST_GATE then asserts it via 025 Fix B.)
+    const mockState = {
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            {
+              id: "T001",
+              title: "Implement src/config/zzgateonly.js",
+              description: "config reader",
+              status: "open",
+              gateScript: "gates/T001-gate.sh",
+            },
+          ],
+          doneWhen: ['grep -q "model User" prisma/schema.prisma'],
+        },
+      ],
+    };
+    vi.mocked(stateModule.loadTaskState).mockReturnValue(mockState as any);
+
+    // No colocated / tree test exists for the source basename.
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
+      if (typeof p === "string" && (p.endsWith(".test.ts") || p.endsWith(".test.js"))) return false;
+      return true;
+    });
+
+    const blockedSpy = vi.mocked(uiModule.blocked);
+    mockRun.mockResolvedValue(undefined);
+
+    process.exitCode = 0;
+    // --legacy runs pre-flight, then routes into the mocked runner, isolating
+    // the pre-flight decision from the full orchestrator.
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1", "--legacy"]);
+
+    // Pre-flight must NOT block a gate-only phase...
+    expect(blockedSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("No test files found"),
+    );
+    // ...and execution must proceed into the ship loop.
+    const wudCalls = mockRun.mock.calls.filter(
+      (call) => typeof call[0] === "string" && call[0].includes("work-until-done.sh"),
+    );
+    expect(wudCalls.length).toBe(1);
+
+    existsSpy.mockRestore();
+  });
+
   it("should exit 1 without side effects when feature spec.md does not exist", async () => {
     // Mock fs.existsSync: spec.md returns false, everything else returns true
     const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
