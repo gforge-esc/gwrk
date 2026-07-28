@@ -855,6 +855,27 @@ export class ShipOrchestrator extends EventEmitter {
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
       }
       if (r.testsRun === 0) {
+        // The profile runner found no tests. Before NO-Going on liveness, check
+        // whether the phase has an authored Done-When gate. A phase can map a
+        // test file whose real runner is NOT the profile default — e.g. a
+        // node:test suite run in Docker via `make test:db`, which `pnpm vitest
+        // run` reports as 0 tests. The gate carries the correct runner, so run
+        // it (parity with `gwrk gate`) rather than false-NO-Going a green phase.
+        // If there is no authored gate, 0 tests is a genuine liveness fail.
+        const phaseGate = this.getPhaseGate();
+        if (phaseGate) {
+          const gate = this.runGateScript(phaseGate);
+          if (gate.passed) {
+            console.log(
+              `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId}) — profile runner found 0 tests; verified via the phase gate`,
+            );
+            return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+          }
+          console.log(
+            `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
+          );
+          return this.handleNoGo("TEST_GATE");
+        }
         console.log(
           "  ✗ TEST_GATE: phase tests executed 0 tests (none discovered / all cancelled) — not a pass",
         );
