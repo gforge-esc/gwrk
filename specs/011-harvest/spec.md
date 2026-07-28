@@ -1,5 +1,12 @@
 # Feature Specification: 011 Harvest (Done, Done!)
 
+> **026 addendum — harvest re-verifies gates.** This spec never documented that `harvestFeature`
+> calls `reconcileGates`, which re-runs each phase's gate post-merge and records the "done-done"
+> evidence to SQLite. As of 026 that reconciliation runs through the one shared `runTaskGate`
+> (inline-capable, cwd-pinned to the trunk checkout, deduped per phase) — previously it was
+> path-only and recorded ENOENT/127 false-FAILs for every inline gate. Harvest does NOT reopen a
+> completed task on a post-merge gate failure; it records the failure as evidence.
+
 **Feature Branch**: `feat/011-harvest`
 **Created**: 2026-03-14
 **Updated**: 2026-05-15 (v2 — add GitHub Issues as post-ship feedback source)

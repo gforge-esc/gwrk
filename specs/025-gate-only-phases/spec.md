@@ -1,8 +1,15 @@
 # Feature Specification: 025 Gate-Only Phases
 
+> **⚠ 026 CORRECTION.** Every reference below to `phase.doneWhen` as the gate to run is WRONG.
+> A phase's executable Done-When is compiled onto `task.gateScript` (fenced block), not
+> `phase.doneWhen` (prose-only, empty on every real feature). Fix B as literally specced would
+> run an empty script. The shipped code (#159 + feature 026) reads the phase gate via
+> `getPhaseVerificationGate` (`task.gateScript`, prose `doneWhen` fallback) and runs it through the
+> one shared `runTaskGate`. Read this spec with `phase.doneWhen` → "the phase's resolved gate".
+
 **Feature Branch**: `025-gate-only-phases`
 **Created**: 2026-07-27
-**Status**: Draft
+**Status**: Draft (superseded on the gate-field question by 026)
 **Input**: `gwrk ship`'s TEST_GATE crashes and then blind-passes gate-only phases (schema/migration/config). Fix A: stop classifying non-test files (the Test-Strategy Target column, e.g. `.env.example` / `prisma/schema.prisma`) as tests in test-discovery. Fix B: verify a gate-only phase by running its Done-When gate (pass iff exit 0), and skip RED-liveness at ACTIVATE_TESTS for test-less phases — keeping liveness honest for test-driven phases. Full problem, evidence, both fixes, must-not-regress guards, acceptance tests, and a deferred TEST_GATE/gwrk-gate convergence are in the referenced brief.
 **Authoritative source**: [`docs/ISSUE-ship-testgate-gate-only-phases.md`](../../docs/ISSUE-ship-testgate-gate-only-phases.md) — the pinpointed root-cause brief (repro: data-dashboard `004-github-project-adapter`, Run #2207). Every symptom, file/line, fix, guard, and acceptance test below is drawn from that brief and verified against the current source.
 

@@ -7,6 +7,13 @@ revision: 2
 
 # Feature Specification: 004 Ship Loop (Reworked)
 
+> **026 addendum — the CODE_REVIEW/UAT verdict is a gate runner.** The review verdict is decided by
+> `readVerdict()` ("gates are truth", ADR-007), which re-runs each task's gate and returns NO-GO on
+> any failure — this was previously specified only in ADR-007 and a code comment, with no FR here. As
+> of 026 `readVerdict()` runs the gate through the one shared `runTaskGate` (inline-capable), so an
+> inline `task.gateScript` actually executes instead of being skipped as a missing file (the prior
+> vacuous-GO). This is a first-class ship requirement (026 FR-003/FR-006).
+
 **Feature Branch**: `develop`
 **Created**: 2026-03-05
 **Revised**: 2026-06-19 (Rework v2 - Profile-aware Build/Test Skipping & Schema-compliant Agent Init)
