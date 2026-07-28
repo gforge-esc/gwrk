@@ -1,0 +1,53 @@
+{
+  "featureId": "025-gate-only-phases",
+  "createdAt": "2026-07-28T02:45:15.380Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "f199c06f7791a078354c2b3a01f7452cbb41a137fa2a47e9e18159ca6ef28a3f",
+      "modifiedAt": "2026-07-28T02:26:07.697Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Fix A — test-discovery classifies only real test files (FR-001, FR-002, FR-003)",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify test-discovery.ts",
+          "description": "MODIFY src/utils/test-discovery.ts. export `isTestFile(relPath, testExt?)` built from the `:23` regex; refactor `listTestsTree` to use it; add the `&& isTestFile(t, testExt)` conjunct to the declared-target arms in `discoverTestsForSources` (`:59`) and `phaseHasTests` (`:114`); leave all other arms and the exported signatures unchanged. Tests: src/utils/test-discovery.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/utils/test-discovery.test.ts\ngrep -qE 'export function isTestFile' src/utils/test-discovery.ts\ntest \"$(grep -cE 'isTestFile\\(' src/utils/test-discovery.ts)\" -ge 2",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 1,
+      "testTargets": [
+        "src/utils/test-discovery.test.ts",
+        "src/utils/test-discovery.test.ts",
+        "src/utils/test-discovery.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Fix B — TEST_GATE verifies test-less phases by Done-When; ACTIVATE_TESTS scopes RED-liveness (FR-004, FR-005, FR-006)",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "Modify ship-orchestrator.ts",
+          "description": "MODIFY src/engine/ship-orchestrator.ts. add a private `runDoneWhenGate()` that runs `phase.doneWhen` under `set -e` (reusing the `gate.ts:276` execution shape; imports only, no change to `test-runner.ts`); call it from the test-less branch of `stageTestGate` (pass iff exit 0, else `handleNoGo(\"TEST_GATE\")` naming the offending line); keep the `:857` test-driven `testsRun === 0` NO-GO and the `stageActivateTests` `:486`/`:517` behavior intact. Tests: src/engine/ship-orchestrator.review.test.ts",
+          "status": "open",
+          "gateScript": "pnpm run build\npnpm vitest run src/engine/ship-orchestrator.review.test.ts\npnpm run test:ci",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 1,
+      "testTargets": [
+        "src/engine/ship-orchestrator.review.test.ts",
+        "src/engine/ship-orchestrator.review.test.ts",
+        "src/engine/ship-orchestrator.review.test.ts",
+        "src/engine/ship-orchestrator.review.test.ts"
+      ]
+    }
+  ]
+}
