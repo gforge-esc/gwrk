@@ -18,11 +18,21 @@ interface GateResult {
  * Runs a gate script and returns a structured result.
  *
  * @param scriptPath - Absolute or relative path to the gate script
+ * @param opts.cwd - Working directory to run the gate in. MUST be passed by
+ *   ship (`this.config.cwd`) and gate (`projectRoot`): a gate's relative commands
+ *   (`node --test tests/…`, `make …`, `grep … src/`) resolve against cwd, and
+ *   under `--worktree` the phase's files live in the sandbox, not the process's
+ *   cwd. Omitting it inherits `process.cwd()` and false-fails a green phase.
  * @returns Promise<GateResult>
  */
-export async function runGate(scriptPath: string): Promise<GateResult> {
+export async function runGate(
+  scriptPath: string,
+  opts?: { cwd?: string },
+): Promise<GateResult> {
   try {
-    const { stdout, stderr } = await execFilePromise(scriptPath);
+    const { stdout, stderr } = await execFilePromise(scriptPath, [], {
+      cwd: opts?.cwd,
+    });
     const output = [stdout, stderr]
       .filter(Boolean)
       .map((s) => s.trim())

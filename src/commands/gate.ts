@@ -203,7 +203,7 @@ export async function runGateCheck(
     }
 
     const start = performance.now();
-    const result = await runGate(absoluteConventionPath);
+    const result = await runGate(absoluteConventionPath, { cwd: projectRoot });
     const durationMs = Math.round(performance.now() - start);
     return {
       taskId,
@@ -244,7 +244,7 @@ export async function runGateCheck(
   const absoluteScriptPath = path.join(featureDir, gateScript);
   if (fs.existsSync(absoluteScriptPath)) {
     const start = performance.now();
-    const result = await runGate(absoluteScriptPath);
+    const result = await runGate(absoluteScriptPath, { cwd: projectRoot });
     const durationMs = Math.round(performance.now() - start);
     return {
       taskId,

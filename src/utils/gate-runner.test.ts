@@ -17,7 +17,8 @@ vi.mock("node:child_process", async () => {
 describe("gate-runner", () => {
   describe("runGate", () => {
     it("should return passed: true when exit code is 0", async () => {
-      vi.mocked(child_process.execFile).mockImplementation((_file, _callback: any) => {
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        const _callback = _args[_args.length - 1] as any;
         _callback(null, { stdout: "PASS", stderr: "" });
         return {} as any;
       });
@@ -29,7 +30,8 @@ describe("gate-runner", () => {
     });
 
     it("should return passed: false when exit code is non-zero", async () => {
-      vi.mocked(child_process.execFile).mockImplementation((_file, _callback: any) => {
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        const _callback = _args[_args.length - 1] as any;
         const error = new Error("Command failed");
         (error as any).code = 1;
         (error as any).stdout = "";
@@ -45,7 +47,8 @@ describe("gate-runner", () => {
     });
 
     it("should return exitCode 127 when script is not found", async () => {
-      vi.mocked(child_process.execFile).mockImplementation((_file, _callback: any) => {
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        const _callback = _args[_args.length - 1] as any;
         const error = new Error("spawn ENOENT");
         (error as any).code = "ENOENT";
         _callback(error, { stdout: "", stderr: "" });
@@ -59,13 +62,33 @@ describe("gate-runner", () => {
     });
 
     it("should combine stdout and stderr in output", async () => {
-      vi.mocked(child_process.execFile).mockImplementation((_file, _callback: any) => {
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        const _callback = _args[_args.length - 1] as any;
         _callback(null, { stdout: "OUT", stderr: "ERR" });
         return {} as any;
       });
 
       const result = await runGate("test-gate.sh");
       expect(result.output).toBe("OUT\nERR");
+    });
+
+    it("runs the gate in the supplied cwd (regression: --worktree false-NO-GO)", async () => {
+      // A gate's relative commands resolve against cwd. Under --worktree the
+      // phase's files live in the sandbox, not process.cwd(). runGate MUST pass
+      // the caller's cwd through to execFile, or a green phase false-NO-GOs.
+      let seenOpts: any;
+      vi.mocked(child_process.execFile).mockImplementation((..._args: any[]) => {
+        // execFile(file, args, options, callback)
+        seenOpts = _args[2];
+        const _callback = _args[_args.length - 1] as any;
+        _callback(null, { stdout: "PASS", stderr: "" });
+        return {} as any;
+      });
+
+      const result = await runGate("gate.sh", { cwd: "/sandbox/worktree" });
+
+      expect(result.passed).toBe(true);
+      expect(seenOpts).toMatchObject({ cwd: "/sandbox/worktree" });
     });
   });
 });
