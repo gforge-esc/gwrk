@@ -16,7 +16,7 @@
           "id": "T001",
           "title": "Modify test-discovery.ts",
           "description": "MODIFY src/utils/test-discovery.ts. export `isTestFile(relPath, testExt?)` built from the `:23` regex; refactor `listTestsTree` to use it; add the `&& isTestFile(t, testExt)` conjunct to the declared-target arms in `discoverTestsForSources` (`:59`) and `phaseHasTests` (`:114`); leave all other arms and the exported signatures unchanged. Tests: src/utils/test-discovery.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/utils/test-discovery.test.ts\ngrep -qE 'export function isTestFile' src/utils/test-discovery.ts\ntest \"$(grep -cE 'isTestFile\\(' src/utils/test-discovery.ts)\" -ge 2",
           "sp": 1
         }
