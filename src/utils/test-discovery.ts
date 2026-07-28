@@ -5,6 +5,22 @@
 import fs from "node:fs";
 import path from "node:path";
 
+/** The single multi-language test-file basename pattern (TC-005). `.test`/`.spec`
+ * for JS/TS, `_test.go`/`_test.py` and `test_*.py` for Go/Python. */
+const TEST_FILE_RE = /\.(test|spec)\.[jt]s$|_test\.(go|py)$|test_.*\.py$/;
+
+/**
+ * The one definition of "what is a test file" (FR-003, TC-005). Returns true when
+ * the path's basename matches {@link TEST_FILE_RE} or — when a profile test
+ * extension is supplied — the path ends with that `testExt`. Pure path/regex
+ * check; never invokes a binary (TC-006).
+ */
+export function isTestFile(relPath: string, testExt?: string): boolean {
+  if (TEST_FILE_RE.test(path.basename(relPath))) return true;
+  if (testExt && relPath.endsWith(testExt)) return true;
+  return false;
+}
+
 /** Recursively list test files under a top-level `tests/` tree (relative paths). */
 export function listTestsTree(cwd: string): string[] {
   const root = path.join(cwd, "tests");
@@ -20,7 +36,7 @@ export function listTestsTree(cwd: string): string[] {
     for (const e of entries) {
       const full = path.join(dir, e.name);
       if (e.isDirectory()) walk(full);
-      else if (/\.(test|spec)\.[jt]s$|_test\.(go|py)$|test_.*\.py$/.test(e.name)) {
+      else if (isTestFile(e.name)) {
         out.push(path.relative(cwd, full));
       }
     }
@@ -56,7 +72,8 @@ export function discoverTestsForSources(opts: {
   } = opts;
   const found = new Set<string>();
 
-  for (const t of declaredTargets ?? []) if (fileExists(t)) found.add(t);
+  for (const t of declaredTargets ?? [])
+    if (fileExists(t) && isTestFile(t, testExt)) found.add(t);
   for (const t of mentionedTests) if (fileExists(t)) found.add(t);
 
   for (const src of sourceFiles) {
@@ -110,8 +127,9 @@ export function phaseHasTests(opts: {
 
   if (sourceFiles.length === 0) return true; // nothing to gate
 
-  // 0. A declared target only counts if it actually exists.
-  if ((declaredTargets ?? []).some((t) => fileExists(t))) return true;
+  // 0. A declared target only counts if it exists AND is a real test file.
+  if ((declaredTargets ?? []).some((t) => fileExists(t) && isTestFile(t, testExt)))
+    return true;
 
   // 1. A mentioned test only counts if it actually exists.
   if (mentionedTests.some((t) => fileExists(t))) return true;

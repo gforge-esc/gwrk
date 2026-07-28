@@ -1,0 +1,19 @@
+{
+  "runId": "2026-07-28T02:03:50.653Z_define_p00",
+  "feature": "025-gate-only-phases",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-07-28T02:03:50.653Z",
+  "finishedAt": "2026-07-28T02:11:53.547Z",
+  "durationS": 483,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 341,
+  "linesDeleted": 0,
+  "gitCommit": "dd97db6c981a777e1c4f1fecb9ba5d3c437287fd",
+  "gitBranch": "develop",
+  "digest": []
+}

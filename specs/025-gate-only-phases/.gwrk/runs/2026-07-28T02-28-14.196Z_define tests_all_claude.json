@@ -1,0 +1,19 @@
+{
+  "runId": "2026-07-28T02:28:14.196Z_define_all",
+  "feature": "025-gate-only-phases",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-07-28T02:28:14.196Z",
+  "finishedAt": "2026-07-28T02:44:39.200Z",
+  "durationS": 985,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 461,
+  "linesDeleted": 1,
+  "gitCommit": "d70cf8589d0a4869ddbda6248fc5d4c79ce92613",
+  "gitBranch": "develop",
+  "digest": []
+}
