@@ -43,7 +43,7 @@ import {
   type ShipStageResult,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
-import { isHollowGate } from "../utils/gate-quality.js";
+import { isHollowGate, getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
@@ -874,17 +874,17 @@ export class ShipOrchestrator extends EventEmitter {
 
     // 025 Fix B (FR-004) — a test-less phase is a gate-only phase (schema /
     // migration / config): its verification IS its Done-When gate, not a test
-    // runner. Run the FULL Done-When under `set -e` (gate.ts:276 shape) and pass
-    // iff exit 0 — an honest verification that replaces the weak no-regression
-    // baseline for gate-only phases. This runs the whole Done-When, not only the
-    // `isIntegrationTestCommand` subset runIntegrationGate covers, so grep /
-    // config:inspect gates are actually asserted. Liveness (testsRun > 0) is NOT
-    // applied: a config gate asserts by exit code, not test count. A test-less
-    // phase with NO Done-When keeps the baseline pass below (strengthen, never
-    // weaken).
-    const doneWhen = this.getPhaseDoneWhen();
-    if (doneWhen.length > 0) {
-      const gate = this.runDoneWhenGate(doneWhen);
+    // runner. The canonical `#### Done When` fenced block compiles onto
+    // task.gateScript (NOT phase.doneWhen, which is empty for the fenced form),
+    // so read the phase's real gate from the compiled task state. Run it under
+    // `set -e` (gate.ts:276 shape) and pass iff exit 0 — an honest verification
+    // that replaces the weak no-regression baseline for gate-only phases.
+    // Liveness (testsRun > 0) is NOT applied: a config gate asserts by exit code,
+    // not test count. A test-less phase with NO real gate keeps the baseline pass
+    // below (strengthen, never weaken).
+    const phaseGate = this.getPhaseGate();
+    if (phaseGate) {
+      const gate = this.runGateScript(phaseGate);
       if (gate.passed) {
         console.log(`  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId})`);
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
@@ -983,30 +983,32 @@ export class ShipOrchestrator extends EventEmitter {
     return null;
   }
 
-  /** Read the current phase's Done-When lines (empty on any load failure). */
-  private getPhaseDoneWhen(): string[] {
+  /** The current phase's executable verification gate, or null (see
+   * {@link getPhaseVerificationGate}). Reads the compiled task state: the real
+   * gate lives in task.gateScript (the fenced `#### Done When`), with a fallback
+   * to prose-bullet phase.doneWhen. Null on any load failure. */
+  private getPhaseGate(): string | null {
     try {
       const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
       const taskState = loadTaskState(featureDir);
       const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
-      return phase?.doneWhen ?? [];
+      return phase ? getPhaseVerificationGate(phase) : null;
     } catch {
-      return [];
+      return null;
     }
   }
 
   /**
-   * 025 Fix B — run a test-less phase's FULL Done-When as one `set -e` gate
-   * (the same execution shape as `gate.ts:276`, joining lines with newlines so
-   * inter-line shell state like `cd` is preserved). Passes iff the gate exits 0.
-   * On failure, names the offending line so a NO-GO reads as navigation (ADR-004).
+   * 025 Fix B — run a test-less phase's gate as one `set -e` script (the same
+   * execution shape as `gate.ts:276`; the script is already multi-line, so
+   * inter-line shell state like `cd` is preserved). Passes iff it exits 0. On
+   * failure, names the offending line so a NO-GO reads as navigation (ADR-004).
    */
-  private runDoneWhenGate(doneWhen: string[]): {
+  private runGateScript(script: string): {
     passed: boolean;
     offendingLine: string;
     output: string;
   } {
-    const script = doneWhen.join("\n");
     try {
       const output = execSync(`set -e\n${script}`, {
         cwd: this.config.cwd,
@@ -1022,17 +1024,21 @@ export class ShipOrchestrator extends EventEmitter {
       // `set -e` aborts at the first failing command; name it. A single-line
       // gate is that line; for a multi-line gate, probe each independently
       // (bare-clone gates are read-only assertions) to find the first failure.
+      const lines = script
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("set "));
       const offendingLine =
-        doneWhen.length === 1
-          ? doneWhen[0]
-          : this.firstFailingDoneWhenLine(doneWhen) ?? script;
+        lines.length <= 1
+          ? lines[0] ?? script
+          : this.firstFailingGateLine(lines) ?? lines[0];
       return { passed: false, offendingLine, output };
     }
   }
 
-  /** Best-effort: the first Done-When line that fails on its own (or null). */
-  private firstFailingDoneWhenLine(doneWhen: string[]): string | null {
-    for (const line of doneWhen) {
+  /** Best-effort: the first gate line that fails on its own (or null). */
+  private firstFailingGateLine(lines: string[]): string | null {
+    for (const line of lines) {
       try {
         execSync(`set -e\n${line}`, {
           cwd: this.config.cwd,

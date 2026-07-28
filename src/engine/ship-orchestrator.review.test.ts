@@ -227,6 +227,47 @@ describe("TR-004 (FR-004, US-003): TEST_GATE verifies a test-less phase by its D
     // handleNoGo routes a NO-GO through DIAGNOSE before retry.
     expect(result.nextStage).toBe(ShipStage.DIAGNOSE);
   });
+
+  it("test-less phase passes via its compiled task.gateScript (empty doneWhen — the real 004 shape)", async () => {
+    // The canonical form: the fenced `#### Done When` compiled onto
+    // task.gateScript; phase.doneWhen is EMPTY. This is exactly the real
+    // data-dashboard shape that Fix B originally missed by reading doneWhen.
+    const orch = new ShipOrchestrator(cfg as any);
+    vi.spyOn(orch as any, "getPhaseTestFiles").mockResolvedValue([]);
+    vi.spyOn(orch as any, "runTestSuite").mockResolvedValue({
+      failCount: 0,
+      testsRun: 0,
+      passed: 0,
+      output: "",
+    });
+    vi.mocked(stateUtils.loadTaskState).mockReturnValue({
+      phases: [
+        {
+          id: "phase-1",
+          tasks: [
+            {
+              id: "T1",
+              title: "config+schema",
+              status: "completed",
+              gateScript:
+                'grep -qE "^GITHUB_TOKEN=" .env.example\nmake config:inspect | tail -1 | grep -q PASSED',
+            },
+          ],
+          // no doneWhen — the real gate lives in task.gateScript
+        },
+      ],
+    } as any);
+    vi.mocked(execSync).mockReturnValue(Buffer.from(""));
+    const logs = collectLogs();
+
+    // @ts-ignore - private
+    const result = await orch.stageTestGate();
+
+    expect(logs()).toContain("Done-When gate passed");
+    expect(logs()).not.toMatch(/scoped to:/);
+    expect(result.success).toBe(true);
+    expect(result.nextStage).toBe(ShipStage.CODE_REVIEW);
+  });
 });
 
 describe("TR-005 (FR-005, US-004): ACTIVATE_TESTS scopes RED-liveness to test-driven phases", () => {

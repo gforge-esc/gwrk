@@ -1,25 +1,34 @@
 # HANDOFF — First-class "gate-only" phases (ship + gate)
 
-> **RESOLVED (feature 025, PR #157).** Both surfaces are closed:
-> - **Path B** (orchestrator test-liveness gate) — closed by 025 Fix B: a test-less
->   phase with a Done-When gate is now verified by running it under `set -e` (pass iff
->   exit 0) in `stageTestGate`, instead of NO-Going on `testsRun === 0`.
-> - **Path A** (ship pre-flight hard block) — closed by the same discriminator in
->   `ship.ts`: when `phaseHasTests` is false but the phase declares a non-empty
->   `doneWhen`, it proceeds as a gate-only phase (logged) instead of `[BLOCKED]`.
+> **RESOLVED (feature 025, PRs #157, #158, and the field-fix follow-up).** Both surfaces are closed:
+> - **Path B** (orchestrator test-liveness gate) — a test-less phase is verified by running
+>   its executable gate under `set -e` (pass iff exit 0) in `stageTestGate`, instead of
+>   NO-Going on `testsRun === 0`.
+> - **Path A** (ship pre-flight hard block) — the same discriminator in `ship.ts`: when
+>   `phaseHasTests` is false but the phase has a real gate, it proceeds (logged) instead of
+>   `[BLOCKED]`.
 >
-> **Approach taken: inference, not the explicit `[gate]` marker below.** The discriminator
-> is "maps no test **and** declares a non-empty Done-When gate." This keeps ONE rule across
-> pre-flight and TEST_GATE, needs no `PhaseSchema` field and no plan re-authoring, and the
-> regression guard is preserved (a source phase with `doneWhen: []` still blocks — see
-> `ship.test.ts`). The §3a objection (silent reclassification of a forgotten-test phase) is
-> mitigated because the Done-When gate must be honest (023 anti-hollow + 024 anti-output-as-pass)
-> and the reclassification is logged. The explicit `verification: "gate"` marker in §3 remains a
-> valid FUTURE hardening if that risk ever bites in practice; it was intentionally deferred.
+> **Approach taken: inference, not the explicit `[gate]` marker below.** The discriminator is
+> `getPhaseVerificationGate(phase) !== null` — one rule across pre-flight and TEST_GATE, no
+> `PhaseSchema` field, no plan re-authoring.
+>
+> **IMPORTANT field correction.** The first cut (#157/#158) read `phase.doneWhen`, but the
+> canonical `#### Done When` fenced block compiles onto **`task.gateScript`**, not
+> `phase.doneWhen` (which is empty on every real feature — verified across all 12 dashboard
+> features). So on real data the fix was inert (pre-flight still blocked; Fix B blind-passed).
+> The follow-up reads the real gate from the compiled task state via `getPhaseVerificationGate`
+> (in `gate-quality.ts`): the one authored, non-hollow, non-unauthored `task.gateScript` the
+> phase's tasks share, falling back to prose-bullet `doneWhen`. The tests originally passed only
+> because they mocked `doneWhen` — the wrong field; the follow-up adds tests that use the real
+> `task.gateScript` shape.
+>
+> The regression guard holds: a source phase whose only gate is the unauthored placeholder
+> (`echo "FAIL: no test maps to …"; exit 1`) or a hollow `echo`-only gate still blocks. The
+> explicit `verification: "gate"` marker in §3 remains a valid FUTURE hardening; deferred.
 >
 > The remainder of this doc is preserved as the original analysis.
 
-**Status:** ✅ resolved (025 / PR #157) · **Area:** `ship` pre-flight + `ship-orchestrator` test-liveness gate
+**Status:** ✅ resolved (025 / #157 / #158 / field-fix) · **Area:** `ship` pre-flight + `ship-orchestrator` test-liveness gate
 **Lineage:** sequel to the *test-discovery counts non-test targets* fix (already applied — see
 `test-discovery.ts:76` / `:131`, the `fileExists(t) && isTestFile(t, testExt)` guard). That fix was
 correct. This handoff addresses the gap it **exposed**, not a regression to undo.
