@@ -443,3 +443,89 @@ describe("TR-007 (GUARD, FR-006): a real test suite that runs 0 tests still NO-G
     expect(mapped.length).toBeGreaterThan(0);
   });
 });
+
+describe("TR-008 (runner mismatch): test-backed phase whose profile runner finds 0 tests falls back to the authored gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(detectProfile).mockResolvedValue({
+      type: "gwrk-native",
+      stack: { language: "javascript" },
+      layout: "flat",
+    } as any);
+  });
+
+  // The real data-dashboard shape: a node:test suite run in Docker via
+  // `make test:db`. getPhaseTestFiles maps the .test.js file, but `pnpm vitest
+  // run` on it reports 0 tests. The phase's real runner lives in task.gateScript.
+  const makeGatePhase = () =>
+    ({
+      phases: [
+        {
+          id: "phase-1",
+          tasks: [
+            {
+              id: "T1",
+              title: "listByLifecycle read",
+              status: "completed",
+              gateScript:
+                "grep -q 'listByLifecycle' src/lib/db/definitions.js\nmake test:db",
+            },
+          ],
+        },
+      ],
+    }) as any;
+
+  it("falls back to the authored gate (green) → GO, not a 0-tests NO-GO", async () => {
+    const orch = new ShipOrchestrator(cfg as any);
+    // Profile runner discovers the file but reports 0 tests (vitest on node:test).
+    vi.spyOn(orch as any, "getPhaseTestFiles").mockResolvedValue([
+      "tests/db/definitions.test.js",
+    ]);
+    vi.spyOn(orch as any, "runTestSuite").mockResolvedValue({
+      failCount: 0,
+      testsRun: 0,
+      passed: 0,
+      output: "No test files found",
+    });
+    vi.mocked(stateUtils.loadTaskState).mockReturnValue(makeGatePhase());
+    // The authored gate (make test:db) exits 0.
+    vi.mocked(execSync).mockReturnValue(Buffer.from(""));
+    const logs = collectLogs();
+
+    // @ts-ignore - private
+    const result = await orch.stageTestGate();
+
+    expect(logs()).toContain("Done-When gate passed");
+    expect(result.success).toBe(true);
+    expect(result.nextStage).toBe(ShipStage.CODE_REVIEW);
+  });
+
+  it("falls back to the authored gate (red) → NO-GO", async () => {
+    const orch = new ShipOrchestrator(cfg as any);
+    vi.spyOn(orch as any, "getPhaseTestFiles").mockResolvedValue([
+      "tests/db/definitions.test.js",
+    ]);
+    vi.spyOn(orch as any, "runTestSuite").mockResolvedValue({
+      failCount: 0,
+      testsRun: 0,
+      passed: 0,
+      output: "No test files found",
+    });
+    vi.mocked(stateUtils.loadTaskState).mockReturnValue(makeGatePhase());
+    // The authored gate fails.
+    vi.mocked(execSync).mockImplementation(() => {
+      const e: any = new Error("gate failed");
+      e.status = 1;
+      e.stdout = Buffer.from("");
+      e.stderr = Buffer.from("make test:db: 1 failing");
+      throw e;
+    });
+    const logs = collectLogs();
+
+    // @ts-ignore - private
+    const result = await orch.stageTestGate();
+
+    expect(logs()).toContain("Done-When gate failed");
+    expect(result.nextStage).toBe(ShipStage.DIAGNOSE);
+  });
+});

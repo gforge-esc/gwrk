@@ -137,7 +137,9 @@ describe("ShipOrchestrator", () => {
           id: "phase-01",
           title: "Phase 1",
           tasks: [
-            { id: "T001", title: "Task 1", description: "implement. Tests: src/foo.test.ts", status: "open", gateScript: "gates/T001-gate.sh" },
+            // No authored gate (unauthored placeholder): 0 tests with no real
+            // gate is a genuine liveness fail, so NO-GO must stand.
+            { id: "T001", title: "Task 1", description: "implement. Tests: src/foo.test.ts", status: "open", gateScript: 'echo "FAIL: no test maps to src/foo.ts — author one (FR-001, ADR-005 §10)"; exit 1' },
           ],
         },
       ],
