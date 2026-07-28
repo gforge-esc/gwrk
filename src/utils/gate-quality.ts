@@ -40,3 +40,45 @@ export function isHollowGate(gateContent: string): boolean {
 export function unauthoredGate(filePath: string): string {
   return `echo "FAIL: no test maps to ${filePath} — author one (FR-001, ADR-005 §10)"; exit 1`;
 }
+
+/** True when a gate is the {@link unauthoredGate} placeholder — a guaranteed
+ * failure meaning "no test was authored", not a real verification gate. */
+export function isUnauthoredGate(gateContent: string): boolean {
+  return /no test maps to .+ — author one/.test(gateContent);
+}
+
+/**
+ * 025 — a gate-only phase's executable verification gate, or null if it has none.
+ *
+ * The canonical `#### Done When` fenced block compiles onto EVERY task's
+ * `gateScript` (plan-to-tasks §FR-001, line 333), so the phase gate is the one
+ * authored gateScript its tasks share. Prefer that; fall back to prose-bullet
+ * `doneWhen` lines (the legacy authoring form). Hollow (`echo`/`test -f` only)
+ * and {@link unauthoredGate} placeholder gates do NOT count as verification —
+ * a phase whose only gate is one of those is not gate-only and must still block.
+ *
+ * Reads only the compiled task state (no schema change, no re-`define`), so it
+ * works on existing tasks.json where `phase.doneWhen` is empty but the real
+ * gate lives in `task.gateScript`.
+ */
+export function getPhaseVerificationGate(phase: {
+  tasks?: { gateScript?: string }[];
+  doneWhen?: string[];
+}): string | null {
+  const taskGates = (phase.tasks ?? [])
+    .map((t) => t.gateScript)
+    .filter((g): g is string => typeof g === "string" && g.trim().length > 0);
+  const distinct = [...new Set(taskGates)];
+  const authored = distinct.filter(
+    (g) => !isHollowGate(g) && !isUnauthoredGate(g),
+  );
+  // A fenced Done-When is applied identically to every task, so a real gate-only
+  // phase yields exactly one authored gate. Two-or-more distinct authored gates
+  // means per-file gates (a test-driven shape), not a single phase gate.
+  if (authored.length === 1) return authored[0];
+
+  const prose = (phase.doneWhen ?? []).filter((l) => l.trim().length > 0);
+  if (prose.length > 0) return prose.join("\n");
+
+  return null;
+}

@@ -19,6 +19,7 @@ import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { getTestExtension } from "../utils/toolchain-mapper.js";
 import { phaseHasTests, listTestsTree } from "../utils/test-discovery.js";
+import { getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
@@ -178,11 +179,14 @@ async function shipPhase(
       if (!hasTests) {
         // 025 Path A — gate-only phase: a phase whose verification is an
         // executable Done-When gate (schema / migration / config), not a unit
-        // test. If it declares a non-empty Done-When, it is verified by that
-        // gate (asserted at TEST_GATE, 025 Fix B; honest per 023/024), so
-        // pre-flight must not hard-block on "no test files". The block is
-        // preserved for a source phase that declares neither a test nor a gate.
-        const isGateOnly = (phaseData.doneWhen ?? []).length > 0;
+        // test. The canonical `#### Done When` fenced block compiles onto
+        // task.gateScript (NOT phase.doneWhen, which is empty for the fenced
+        // form), so read the phase's real gate from the compiled task state —
+        // hollow/unauthored placeholder gates do not count. If a real gate
+        // exists it is verified there (honest per 023/024), so pre-flight must
+        // not hard-block on "no test files". The block is preserved for a source
+        // phase that declares neither a test nor a real gate.
+        const isGateOnly = getPhaseVerificationGate(phaseData) !== null;
         if (isGateOnly) {
           console.log(
             `  ✓ ${phaseId}: gate-only phase — verified by Done-When gate, no unit test required`,

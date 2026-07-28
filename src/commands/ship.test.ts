@@ -270,7 +270,11 @@ describe("shipCommand", () => {
               title: "Implement src/commands/ship.ts",
               description: "test",
               status: "open",
-              gateScript: "gates/T001-gate.sh",
+              // Forgot-test phase: plan-to-tasks emits the unauthored placeholder
+              // (a guaranteed-fail gate), which is NOT real verification, so
+              // pre-flight must still block.
+              gateScript:
+                'echo "FAIL: no test maps to src/commands/ship.ts — author one (FR-001, ADR-005 §10)"; exit 1',
             },
           ],
           doneWhen: [],
@@ -300,11 +304,12 @@ describe("shipCommand", () => {
     existsSpy.mockRestore();
   });
 
-  it("025 Path A: a gate-only phase (Done-When gate, no test) proceeds past pre-flight", async () => {
-    // A gate-provable phase: a source deliverable with NO discoverable test,
-    // but a non-empty executable Done-When. Pre-flight must treat it as
-    // gate-only and proceed — the Done-When is its verification, not a unit
-    // test. (TEST_GATE then asserts it via 025 Fix B.)
+  it("025 Path A (canonical): a phase whose task.gateScript is an authored Done-When proceeds past pre-flight", async () => {
+    // The canonical shape: a source deliverable with NO discoverable test, whose
+    // fenced `#### Done When` compiled onto task.gateScript (an inline, non-hollow
+    // executable gate). phase.doneWhen is EMPTY — this is exactly the real
+    // data-dashboard 004 phase-01 case that regressed. Pre-flight must read the
+    // task gate and proceed.
     const mockState = {
       featureId: "004-ship-loop",
       createdAt: new Date().toISOString(),
@@ -319,16 +324,16 @@ describe("shipCommand", () => {
               title: "Implement src/config/zzgateonly.js",
               description: "config reader",
               status: "open",
-              gateScript: "gates/T001-gate.sh",
+              gateScript:
+                'grep -qE "^GITHUB_TOKEN=" .env.example\nmake config:inspect | tail -1 | grep -q "config:inspect PASSED"',
             },
           ],
-          doneWhen: ['grep -q "model User" prisma/schema.prisma'],
+          // Empty — the real gate lives in task.gateScript, not here.
         },
       ],
     };
     vi.mocked(stateModule.loadTaskState).mockReturnValue(mockState as any);
 
-    // No colocated / tree test exists for the source basename.
     const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
       if (typeof p === "string" && (p.endsWith(".test.ts") || p.endsWith(".test.js"))) return false;
       return true;
@@ -338,15 +343,61 @@ describe("shipCommand", () => {
     mockRun.mockResolvedValue(undefined);
 
     process.exitCode = 0;
-    // --legacy runs pre-flight, then routes into the mocked runner, isolating
-    // the pre-flight decision from the full orchestrator.
     await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1", "--legacy"]);
 
-    // Pre-flight must NOT block a gate-only phase...
     expect(blockedSpy).not.toHaveBeenCalledWith(
       expect.stringContaining("No test files found"),
     );
-    // ...and execution must proceed into the ship loop.
+    const wudCalls = mockRun.mock.calls.filter(
+      (call) => typeof call[0] === "string" && call[0].includes("work-until-done.sh"),
+    );
+    expect(wudCalls.length).toBe(1);
+
+    existsSpy.mockRestore();
+  });
+
+  it("025 Path A (prose fallback): a phase whose only gate is a doneWhen prose bullet proceeds", async () => {
+    // Legacy authoring: Done-When as prose bullets → phase.doneWhen. The task
+    // gate is the unauthored placeholder (no fenced block), so the phase gate
+    // comes from the doneWhen fallback.
+    const mockState = {
+      featureId: "004-ship-loop",
+      createdAt: new Date().toISOString(),
+      generatedFrom: { plan: { hash: "abc", modifiedAt: "now" } },
+      phases: [
+        {
+          id: "phase-01",
+          title: "Phase 1",
+          tasks: [
+            {
+              id: "T001",
+              title: "Implement src/config/zzgateonly.js",
+              description: "config reader",
+              status: "open",
+              gateScript:
+                'echo "FAIL: no test maps to src/config/zzgateonly.js — author one (FR-001, ADR-005 §10)"; exit 1',
+            },
+          ],
+          doneWhen: ['grep -q "model User" prisma/schema.prisma'],
+        },
+      ],
+    };
+    vi.mocked(stateModule.loadTaskState).mockReturnValue(mockState as any);
+
+    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
+      if (typeof p === "string" && (p.endsWith(".test.ts") || p.endsWith(".test.js"))) return false;
+      return true;
+    });
+
+    const blockedSpy = vi.mocked(uiModule.blocked);
+    mockRun.mockResolvedValue(undefined);
+
+    process.exitCode = 0;
+    await program.parseAsync(["node", "test", "ship", "004-ship-loop", "1", "--legacy"]);
+
+    expect(blockedSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("No test files found"),
+    );
     const wudCalls = mockRun.mock.calls.filter(
       (call) => typeof call[0] === "string" && call[0].includes("work-until-done.sh"),
     );
