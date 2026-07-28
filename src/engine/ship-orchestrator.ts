@@ -580,12 +580,12 @@ export class ShipOrchestrator extends EventEmitter {
       if (fs.existsSync(conventionPath)) {
         // Strategy 1: canonical gate file
         gateLabel = `gates/${task.id}-gate.sh`;
-        const result = await runGate(conventionPath);
+        const result = await runGate(conventionPath, { cwd: this.config.cwd });
         gateResult = { passed: result.passed, output: result.output };
       } else if (fs.existsSync(scriptPath)) {
         // Strategy 2: gateScript as file path
         gateLabel = task.gateScript;
-        const result = await runGate(scriptPath);
+        const result = await runGate(scriptPath, { cwd: this.config.cwd });
         gateResult = { passed: result.passed, output: result.output };
       } else {
         // Strategy 3: gateScript as inline shell command
@@ -670,7 +670,7 @@ export class ShipOrchestrator extends EventEmitter {
     for (const task of openTasks) {
       const gatePath = path.join(featureDir, task.gateScript);
       if (fs.existsSync(gatePath)) {
-        const gateResult = await runGate(gatePath);
+        const gateResult = await runGate(gatePath, { cwd: this.config.cwd });
         if (gateResult.passed) {
           console.log(`  ✓ pre-flight PASS: ${task.id}`);
           // Mark task as completed in state
@@ -1259,7 +1259,7 @@ export class ShipOrchestrator extends EventEmitter {
       const gatePath = path.join(featureDir, task.gateScript);
       if (!fs.existsSync(gatePath)) continue;
 
-      const gateResult = await runGate(gatePath);
+      const gateResult = await runGate(gatePath, { cwd: this.config.cwd });
       if (gateResult.passed) {
         if (task.status !== "completed") {
           task.status = "completed";
