@@ -1,0 +1,19 @@
+{
+  "runId": "2026-07-28T02:45:15.361Z_define_all",
+  "feature": "025-gate-only-phases",
+  "phase": "all",
+  "command": "define tasks",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-07-28T02:45:15.361Z",
+  "finishedAt": "2026-07-28T02:45:15.525Z",
+  "durationS": 0,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 84,
+  "linesDeleted": 0,
+  "gitCommit": "e19ce62b9ca472adf7c3d23c80a09eff87f9b81c",
+  "gitBranch": "develop",
+  "digest": []
+}
