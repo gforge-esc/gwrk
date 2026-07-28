@@ -1,0 +1,19 @@
+{
+  "runId": "2026-07-28T02:20:26.153Z_define_p00",
+  "feature": "025-gate-only-phases",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-07-28T02:20:26.153Z",
+  "finishedAt": "2026-07-28T02:26:08.022Z",
+  "durationS": 342,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 270,
+  "linesDeleted": 0,
+  "gitCommit": "202bbaa7621b2381d69ec8f826c91df4a5615f6c",
+  "gitBranch": "develop",
+  "digest": []
+}
