@@ -77,6 +77,12 @@ private async stageCodeReview(): Promise<StageResult> {
 
 **Gate-driven verdict authority is preserved.** After `WorkflowRuntime` returns the JSON result (containing the agent's `verdict` and `reopenedTasks`), the orchestrator still runs `readVerdict()` which executes gate scripts and uses their pass/fail results as the authoritative verdict. The agent's verdict is advisory. Gates are truth.
 
+> **026 correction.** "Gates are truth" only became literally true in feature 026. Before it,
+> `readVerdict()` resolved a gate as `join(featureDir, gateScript)` and skipped it when that path did
+> not exist — so an INLINE `task.gateScript` (the canonical fenced Done-When) was never executed and
+> every real phase got a vacuous GO. `readVerdict()` now runs the gate through the one shared
+> `runTaskGate` (inline-capable, `set -e`), which is what makes the agent's verdict genuinely advisory.
+
 ### 2.2 `.agents/` Deprecation & Removal
 
 The `.agents/` directory is deprecated. `gwrk` MUST function correctly if `.agents/` is deleted.

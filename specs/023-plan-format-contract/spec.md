@@ -147,7 +147,7 @@ _Leverages shared RBAC. No feature-specific roles. See RP-000._
 _No new database entities. See DM-000._
 
 This feature operates on the existing `TaskState`/`PhaseSchema` contract (ADR-003). It populates fields already present on `Phase`:
-- `phase.doneWhen` — now also fed by fenced-bash Done-When blocks (FR-001).
+- `task.gateScript` — fed by fenced-bash Done-When blocks (FR-001), compiled onto every task in the phase. `phase.doneWhen` carries ONLY prose-bullet bodies. **(026 correction: the original wording here — "`phase.doneWhen` … also fed by fenced-bash blocks" — was false and seeded the 025 field bug; fenced blocks feed `task.gateScript`. Read the phase gate via `getPhaseVerificationGate`, never raw `phase.doneWhen`.)**
 - `phase.testTargets` — added by [021 FR-005](../021-polyglot-toolchain/spec.md); FR-003 populates it from Type-flexible Test Strategy rows.
 
 No schema change is required.
