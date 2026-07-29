@@ -7,6 +7,15 @@ revision: 3
 
 # Feature Specification: 000 TDD Infrastructure
 
+> **⚠ 026 correction.** This spec's file-based gate model (`gates/T*-gate.sh` with a `#!/bin/bash`
+> shebang, `grep -rl "^test -f" specs/*/gates/`, "gates are `bash` … in `gates/`") predates 023's
+> inline gates. As of 023/026 `task.gateScript` may be **either a file path OR inline shell content**
+> (the fenced `#### Done When` block). All runners resolve both via the shared `runTaskGate`
+> (`src/utils/gate-exec.ts`). The FR-001 hollow-gate rule (`test -f` / bare `echo` = build failure)
+> now holds at **runtime** in every gate runner (via `isHollowGate` inside `runTaskGate`), not only at
+> define-time. Status below ("In Progress") is stale — ADR-005 §10/§11 treats these FRs as amended
+> and shipped.
+
 **Feature Branch**: `000-tdd-infrastructure`
 **Created**: 2026-03-12
 **Revised**: 2026-03-16

@@ -27,7 +27,7 @@ const TaskSchema = z.object({
   title: z.string().min(1),
   description: z.string(),
   status: TaskStatusSchema,
-  gateScript: z.string(),                       // "gates/T001-gate.sh"
+  gateScript: z.string(),                       // path ("gates/T001-gate.sh") OR inline shell (fenced Done-When) — 026
   completedAt: z.string().datetime().optional(), // ISO 8601
 });
 

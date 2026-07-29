@@ -103,6 +103,13 @@ Build Server (HarvestWatcher Daemon):
 
 The ship loop's role is strictly to prepare code, commit, and push. It **does not** run harvest. Harvest runs asynchronously via the `HarvestWatcher` background daemon or via manual `gwrk harvest` invocation.
 
+> **026 correction.** Harvest does more than upsert manifests into the ledger: it **re-executes each
+> phase's gate** on the merged trunk (`reconcileGates`, `src/engine/reconcile-gates.ts`) and records
+> the pass/fail as the "done-done" evidence. As of 026 that reconciliation runs through the shared
+> `runTaskGate` (inline-capable, cwd-pinned to the checkout, deduped per phase); previously it was
+> path-only and recorded ENOENT/127 false-FAILs for every inline gate. Harvest does not reopen a
+> completed task on a post-merge gate failure — it records the failure as evidence.
+
 ---
 
 ## 5. Full Logs

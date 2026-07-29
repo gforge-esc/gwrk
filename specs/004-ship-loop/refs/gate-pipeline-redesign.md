@@ -1,5 +1,12 @@
 # Ship Pipeline Redesign: Full Cascade Fix
 
+> **⚠ 026 correction.** This doc marks `readVerdict()` / `runGate()` / `gate-runner.ts` as
+> **Unchanged**, and describes `readVerdict` as running `execFile(scriptPath)`. Feature 026 changed
+> exactly this: `readVerdict` was file-only and skipped inline gates (vacuous GO); it now routes
+> through the shared `runTaskGate` (`src/utils/gate-exec.ts`), which runs inline gates under
+> `set -e`. Line refs like `ship-orchestrator.ts L758–808` are stale (readVerdict moved). Treat the
+> "Unchanged" rows below as superseded by 026.
+
 **Date**: 2026-05-29  
 **Scope**: All 5 failure modes from the [ship failure diagnosis](file:///Users/gonzo/.gemini/antigravity/brain/58996657-e293-43da-9c22-d5396b02962d/artifacts/ship_failure_diagnosis.md)  
 **References**: ADR-001 §6, ADR-005 §1–§8, ADR-007 §2.1, F004 FR-003, F014 `projectType`

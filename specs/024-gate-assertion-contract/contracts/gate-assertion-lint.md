@@ -53,7 +53,7 @@ The 023 hollow-stub violation (fields `phaseId`/`title`/`gateScript`) is preserv
 
 - **Does (extended)**: parse `plan.md` via `parsePlanMarkdown`; for each **source-bearing phase** (declares ≥1 file line AND/OR a `#### Done When` section):
   1. **Hollow check (023 FR-006, unchanged)**: evaluate `isHollowGate(resolvedGate)`; on true push a `{ kind: "hollow", … }` violation.
-  2. **Output-as-pass lint (024 FR-003, NEW)**: for each line of the phase's fenced-bash `#### Done When` block (i.e. `phase.gateScript`), test the shape `/\|\s*grep\b[^|]*-q/`. On match push a `{ kind: "output-as-pass", phaseId, title, gateScript, offendingLine: <the line, trimmed> }` violation.
+  2. **Output-as-pass lint (024 FR-003, NEW)**: for each line of the phase's fenced-bash `#### Done When` block (compiled onto each task's `gateScript`; there is no persisted `phase.gateScript` — 026), test the shape `/\|\s*grep\b[^|]*-q/`. On match push a `{ kind: "output-as-pass", phaseId, title, gateScript, offendingLine: <the line, trimmed> }` violation.
 - **Detection shape**: `\|\s*grep\b[^|]*-q` — a pipe into a `grep` invocation carrying the quiet flag. Requires a leading `|`.
 - **MUST NOT flag**:
   - A `grep -q <pattern> <file>` line with **no leading pipe from a command** (file argument form) — the regex requires `\|` and does not match.
