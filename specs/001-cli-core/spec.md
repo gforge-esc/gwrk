@@ -466,7 +466,7 @@ interface Task {
   title: string;
   description: string;
   status: "open" | "in_progress" | "completed";
-  gateScript: string;         // "gates/T001-gate.sh"
+  gateScript: string;         // path ("gates/T001-gate.sh") OR inline shell (fenced Done-When). 026: resolved by runTaskGate.
   completedAt?: string;
 }
 ```

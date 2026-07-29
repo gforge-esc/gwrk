@@ -99,33 +99,36 @@ definitional layer no longer contradicts the runtime.
 
 ## 9. Drift ledger (the definitional blessing — comprehensive)
 
-Each item is a spec/ADR/doc statement that contradicts the one-runner reality. `[fixed]` = corrected
-in this feature; `[ledger]` = tracked for a follow-up doc pass (wording/status/line-ref only, not
-bug-seeding).
+Each item is a spec/ADR/doc statement that contradicted the one-runner reality. All are now
+`[fixed]` — the bug-seeding lies were corrected with the 026 code; the wording/status/line-ref drift
+was corrected in the follow-up doc pass (this section's original `[ledger]` items).
 
-**ADR-005** — §6 runner inventory omits `readVerdict`/`reconcileGates` `[ledger]`; §10.2 Invariant 2
-implies one executional gate guards CODE_REVIEW `[ledger]`; §10.2.1 liveness scoped only to TEST_GATE
-`[ledger]`; §5/§9.3 "removed/abolished" claims unreliable, re-verify `[ledger]`.
+**ADR-005** — §12 amendment added: §6 runner inventory now names `readVerdict`/`reconcileGates`; §10.2
+Invariant 2 corrected (CODE_REVIEW gate is `readVerdict`, runs inline via the shared runner); §10.2.1
+liveness scope noted (TEST_GATE-only; extension is OQ-001); §5/§9.3 "removed/abolished" claims flagged
+unreliable `[fixed]`.
 
-**ADR-007** — §2.1/§4 "gates are truth" via `readVerdict` is only true once it runs inline `[fixed]`.
+**ADR-007** — §2.1/§4 "gates are truth" via `readVerdict` corrected (only true once it runs inline) `[fixed]`.
 
-**ADR-003** — harvest re-executes gates (`reconcileGates`), not only a manifest→DB upsert `[ledger]`.
+**ADR-003** — 026 correction note: harvest re-executes gates (`reconcileGates`), not only a
+manifest→DB upsert `[fixed]`.
 
-**000-tdd-infrastructure** — `gateScript` is a file OR inline; hollow rule holds at runtime, not only
-define-time; status header stale `[ledger]`.
+**000-tdd-infrastructure** — 026 banner: `gateScript` is a file OR inline; hollow rule holds at
+runtime; status header flagged stale `[fixed]`.
 
-**001-cli-core** — `gateScript` documented as file-path-only; reconcile to "path OR inline" `[ledger]`.
+**001-cli-core** — `gateScript` field comment reconciled to "path OR inline" (spec + data-model) `[fixed]`.
 
-**004-ship-loop** — no FR for the review-verdict gate (`readVerdict`); add one `[ledger]`; gap-matrix
-names retired `work-until-done.sh` `[ledger]`.
+**004-ship-loop** — 026 addendum (the review-verdict gate is first-class); gap-matrix `work-until-done.sh`
+→ `ShipOrchestrator`; refs `gate-pipeline-redesign.md` / `ship-failure-diagnosis.md` banners correcting
+the "readVerdict unchanged" + stale line refs `[fixed]`.
 
-**011-harvest** — gate reconciliation entirely unspecified; add an FR `[ledger]`.
+**011-harvest** — 026 addendum documenting the harvest reconciliation gate `[fixed]`.
 
-**023-plan-format-contract** — §5 "`phase.doneWhen` fed by fenced blocks" is FALSE (fenced → each
-task's `gateScript`); "becomes the phase's gateScript" → "each task's gateScript" `[fixed]`.
+**023-plan-format-contract** — §5 "`phase.doneWhen` fed by fenced blocks" corrected (fenced → each
+task's `gateScript`) `[fixed]`.
 
-**024-gate-assertion-contract** — "execution layer == `runGateCheck`" false premise; there are
-multiple execution layers, now one shared runner `[ledger]`.
+**024-gate-assertion-contract** — 026 banner (multiple execution layers, now one shared runner) +
+`contracts/gate-assertion-lint.md` `phase.gateScript` → each task's `gateScript` `[fixed]`.
 
 **025-gate-only-phases** — FR-004/US-003 read `phase.doneWhen`; must read `task.gateScript` via the
 shared runner `[fixed]`.

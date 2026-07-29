@@ -369,3 +369,33 @@ Test-toolchain support stays in the **`ProjectProfile` / `GwrkConfig` / `toolcha
 ### 11.2 Coverage note
 
 The load-bearing regression test is a **seam test**: it drives `detectProfile → getTestExtension → phaseHasTests` for a real JavaScript fixture with **no injected extension** — the exact path the prior unit tests bypassed by hand-passing `testExt`.
+
+---
+
+## 12. Amendment (feature 026 — gate runner convergence)
+
+**Date:** 2026-07-29 · **Supersedes:** the single-implicit-runner framing throughout §2, §5, §6, §10.
+
+This ADR presented one implicit gate-execution model. In reality gates ran at ~6 points with 3
+resolution strategies, and two of them (`readVerdict` at CODE_REVIEW/UAT, `reconcileGates` at
+harvest) were **file-only** — they resolved `join(featureDir, gateScript)` and skipped inline
+gates, so an inline `task.gateScript` (the canonical fenced Done-When) was never executed. Feature
+026 collapses all of them onto one `runTaskGate` port. Corrections to this ADR:
+
+1. **§6 runner inventory is incomplete.** It lists `run-all-gates.sh` and `gwrk gate-check` but omits
+   `readVerdict` (the CODE_REVIEW/UAT verdict) and `reconcileGates` (harvest "done-done"), which are
+   the runners that actually decided ship-review and post-merge outcomes. As of 026 all gate runners
+   — `gwrk gate`, ship pre-flight/TEST_GATE/CODE_REVIEW/post-flight, and harvest — route through the
+   single `runTaskGate` (`src/utils/gate-exec.ts`).
+2. **§10.2 Invariant 2 ("the executional gate runs first and blocks")** described TEST_GATE only. The
+   CODE_REVIEW verdict is `readVerdict`, a *different* runner; until 026 it skipped inline gates and
+   vacuous-GO'd every real phase. It now runs the phase gate through `runTaskGate`, so "gates are
+   truth" (ADR-007) is literally true at review time.
+3. **§10.2.1 liveness (`testsRun > 0`)** is enforced inside TEST_GATE / `runIntegrationGate` only.
+   `readVerdict`, post-flight, and harvest assert pass/fail by exit code, not test count. Extending
+   liveness to gate-invoked test commands is tracked as 026 OQ-001 (a follow-on feature).
+4. **§5 / §9.3 "removed / abolished" claims remain unreliable** (this ADR already self-flags one at
+   §11 and §3.14). Re-verify any "X was removed" statement against source; several were aspirational.
+5. **The gate is `task.gateScript`, not `phase.doneWhen`.** `phase.doneWhen` carries prose bullets
+   and is empty on every real feature; the fenced Done-When compiles onto each task's `gateScript`.
+   Read it via `getPhaseVerificationGate`. (This is the field error 025 inherited from 023 §5.)

@@ -1,5 +1,11 @@
 # Ship Pipeline Failure Diagnosis — 014-plugin-system (Phase 9 & Phase 6)
 
+> **⚠ 026 correction.** The "gates are truth / `readVerdict` overrides agent GO" doctrine here
+> predates inline gates: until 026, `readVerdict` skipped an inline `task.gateScript` as a missing
+> file, so for real phases it did NOT override — it vacuous-GO'd. 026 routes `readVerdict` through the
+> shared `runTaskGate` so the gate actually runs. The `ship-orchestrator.ts L758-808` coordinates are
+> stale (readVerdict has since moved).
+
 **Date**: 2026-05-29 | **Feature**: 014-plugin-system | **Runs**: #6002, #6094, #6155  
 **Total wasted compute**: ~6 ship runs × 3 iterations × ~10 min = ~3 hours of agent time
 
