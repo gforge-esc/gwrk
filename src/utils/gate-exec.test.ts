@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import * as gateRunner from "./gate-runner.js";
-import { runTaskGate } from "./gate-exec.js";
+import { runTaskGate, runInlineGate } from "./gate-exec.js";
 import { parsePlanMarkdown } from "../engine/plan-to-tasks.js";
 
 // runGate is the file-exec adapter; mock it so file-based strategies don't hit
@@ -172,5 +172,46 @@ describe("SEAM: fenced Done-When → task.gateScript → runTaskGate", () => {
     expect(r.strategy).toBe("inline");
     expect(r.passed).toBe(true);
     expect(r.output).toContain("config gate ran");
+  });
+});
+
+// 027 — gate-invoked-test liveness. A gate that exits 0 but whose invoked test
+// runner reports a recognized 0-test summary is a false green. Conservative:
+// only fails on a recognized 0-count; opaque output and no-test gates pass.
+describe("027 liveness: gate-invoked test command that runs 0 tests", () => {
+  const CWD = process.cwd();
+
+  it("FAILS when an invoked runner reports a recognized 0-test summary", () => {
+    // Line 3 mentions `node --test` (an integration command); output is a node
+    // TAP summary with zero tests.
+    const r = runInlineGate(
+      "echo '# pass 0'\necho '# fail 0'\necho 'node --test ran'",
+      CWD,
+    );
+    expect(r.passed).toBe(false);
+    expect(r.offendingLine).toMatch(/0 tests/);
+  });
+
+  it("PASSES when the invoked runner reports N>0 tests", () => {
+    const r = runInlineGate(
+      "echo '# pass 3'\necho '# fail 0'\necho 'node --test ran'",
+      CWD,
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("PASSES (no false-fail) when the invoked runner's output is opaque", () => {
+    // `make test:db` is an integration command, but the output has no
+    // recognizable test summary — an opaque wrapper must not be liveness-failed.
+    const r = runInlineGate(
+      "echo 'building'\necho 'make test:db invoked'",
+      CWD,
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("PASSES a gate with no test invocation regardless of output", () => {
+    const r = runInlineGate("echo 'grep passed check'\ntrue", CWD);
+    expect(r.passed).toBe(true);
   });
 });

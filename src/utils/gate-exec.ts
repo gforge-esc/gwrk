@@ -7,6 +7,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { runGate } from "./gate-runner.js";
 import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
+import {
+  hasRecognizedTestSummary,
+  isIntegrationTestCommand,
+  parseTestOutput,
+} from "../engine/test-runner.js";
 
 /**
  * 026 — the ONE gate execution port. Every driver (`gwrk gate`, ship pre-flight /
@@ -129,17 +134,43 @@ export function runInlineGate(
 ): TaskGateResult {
   const gatePath = label ?? `(inline) ${script.substring(0, 60)}`;
   try {
-    const output = execSync(`set -e\n${script}`, {
-      cwd,
-      stdio: "pipe",
-      timeout: timeoutMs,
-      encoding: "utf-8",
-      shell: "/bin/bash",
-    });
+    const output = String(
+      execSync(`set -e\n${script}`, {
+        cwd,
+        stdio: "pipe",
+        timeout: timeoutMs,
+        encoding: "utf-8",
+        shell: "/bin/bash",
+      }) ?? "",
+    );
+    // 027 — gate-invoked-test liveness. A gate exited 0, but if it INVOKED a test
+    // runner whose RECOGNIZED summary reports 0 tests, that is a false green
+    // (`make test:*` that ran nothing still exits 0). Fail it. Conservative:
+    // only when a runner is invoked AND a recognized summary is present AND it
+    // shows 0 tests — an opaque wrapper (no recognizable summary) is never
+    // false-failed; a gate with no test invocation is untouched.
+    const invokesTest = script
+      .split("\n")
+      .some((l) => isIntegrationTestCommand(l));
+    if (
+      invokesTest &&
+      hasRecognizedTestSummary(output) &&
+      parseTestOutput(output).testsRun === 0
+    ) {
+      return {
+        passed: false,
+        exitCode: 1,
+        output,
+        strategy: "inline",
+        gatePath,
+        offendingLine:
+          "liveness: a test command ran but executed 0 tests (ADR-005 §10.2.1)",
+      };
+    }
     return {
       passed: true,
       exitCode: 0,
-      output: String(output ?? ""),
+      output,
       strategy: "inline",
       gatePath,
     };
