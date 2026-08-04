@@ -1094,6 +1094,36 @@ EOF
 
 ---
 
+### Task 7: Never shadow an authored inline gate (added during execution)
+
+Surfaced by the Task 1-4 replay, not by the original analysis: with columns
+resolved correctly, gate generation started producing convention files for
+009/010/011 — and `runTaskGate` strategy 1 makes those *override* the inline
+`gateScript`. The generated `pnpm vitest run tests/cockpit/today.test.js` would
+have replaced a multi-assertion `node --test --test-reporter=tap` gate. Fixing
+the parser is what made this reachable, so the guard belongs in the same PR.
+
+**Files:**
+- Modify: `src/utils/gate-gen.ts` (add `hasSubstantiveInlineGate`, import
+  `isHollowGate`/`isUnauthoredGate` from `./gate-quality.js`, add a `tasksById`
+  map and the skip in the group loop)
+- Test: `src/utils/gate-gen.test.ts`
+
+**Interfaces:**
+- Consumes: `GateGenResult` (Task 3); `isHollowGate` / `isUnauthoredGate` from
+  `src/utils/gate-quality.ts`.
+- Produces: `hasSubstantiveInlineGate(task: Task, featureDir: string): boolean`
+  (module-private).
+
+Mirrors `runTaskGate`'s own definition of inline: a `gateScript` that does not
+resolve to a file, is not a bare `.sh` path, and is neither hollow nor
+unauthored. Hollow and unauthored gateScripts are still generated over.
+
+Verified: all six data-dashboard features generate 0 files and 0 runners, every
+inline gate preserved, 177 uncovered rows reported as skipped.
+
+---
+
 ## Final verification
 
 - [ ] `npm run build` — clean
