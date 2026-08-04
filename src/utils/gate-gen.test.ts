@@ -909,3 +909,98 @@ describe("GapMatrixHeaderError is fatal-shaped (028)", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 });
+
+describe("generateDeterministicGates — never shadow a real inline gate (028)", () => {
+  let tempDir: string;
+  let featureDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-shadow-"));
+    featureDir = path.join(tempDir, "specs", "009-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function matrix(): string {
+    const p = path.join(featureDir, "gap-matrix.md");
+    fs.writeFileSync(
+      p,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | has a real inline gate | unit | tests/a.test.js | ✅ | T001 |
+| FR-002 | has only a path gateScript | unit | tests/b.test.js | ✅ | T002 |
+`,
+    );
+    return p;
+  }
+
+  // runTaskGate strategy 1 (convention file) beats strategy 3 (inline), so
+  // writing T001-gate.sh would REPLACE the authored inline gate with a weaker
+  // generated one — and gwrk would report the weaker verdict.
+  it("skips a task whose gateScript is a substantive inline gate", () => {
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T001",
+            title: "Task 1",
+            description: "tests/a.test.js",
+            status: "open" as const,
+            gateScript: [
+              'test -f "src/lib/today.js"',
+              "grep -qE 'export .*composeToday' src/lib/today.js",
+              "node --test --test-reporter=tap tests/a.test.js 2>&1 | grep -qE '# fail 0'",
+            ].join("\n"),
+          },
+          {
+            id: "T002",
+            title: "Task 2",
+            description: "tests/b.test.js",
+            status: "open" as const,
+            gateScript: "gates/T002-gate.sh",
+          },
+        ],
+      },
+    ];
+
+    const result = generateDeterministicGates(featureDir, matrix(), phases);
+
+    // T001 keeps its inline gate — no file written.
+    expect(fs.existsSync(path.join(featureDir, "gates", "T001-gate.sh"))).toBe(
+      false,
+    );
+    // T002 only names a (nonexistent) path, so generating is still correct.
+    expect(fs.existsSync(path.join(featureDir, "gates", "T002-gate.sh"))).toBe(
+      true,
+    );
+    expect(result.generated).toBeGreaterThan(0);
+  });
+
+  it("still generates when the inline gateScript is hollow", () => {
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T001",
+            title: "Task 1",
+            description: "tests/a.test.js",
+            status: "open" as const,
+            gateScript: 'echo "TODO: author a gate"',
+          },
+        ],
+      },
+    ];
+
+    generateDeterministicGates(featureDir, matrix(), phases);
+
+    expect(fs.existsSync(path.join(featureDir, "gates", "T001-gate.sh"))).toBe(
+      true,
+    );
+  });
+});

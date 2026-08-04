@@ -11,6 +11,7 @@ import path from "node:path";
 import type { Phase, Task } from "./state.js";
 import type { ProjectProfile } from "../engine/prompt-conditioner.js";
 import { getTestCommand, getLintCommand, TEST_INVOCATION_VERBS } from "./toolchain-mapper.js";
+import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
 
 // ─── GateBrief interfaces (ADR-005) ──────────────────────────────────────────
 // The brief is a structured manifest of what needs gating.
@@ -396,6 +397,26 @@ function isSeparatorRow(trimmed: string): boolean {
   return /^\|[\s:|-]*\|?$/.test(trimmed) && trimmed.includes("-");
 }
 
+/**
+ * hasSubstantiveInlineGate — does this task already carry a real inline gate?
+ *
+ * runTaskGate resolves strategy 1 (the convention file `gates/<id>-gate.sh`)
+ * BEFORE strategy 3 (the inline `gateScript`), so writing a generated file for a
+ * task that already has an authored inline gate silently REPLACES the richer
+ * gate with the weaker one — and gwrk then reports the weaker verdict. Mirrors
+ * runTaskGate's own definition of "inline": a gateScript that does not resolve
+ * to a file, is not a bare script path, and is neither hollow nor unauthored.
+ */
+function hasSubstantiveInlineGate(task: Task, featureDir: string): boolean {
+  const gs = (task.gateScript ?? "").trim();
+  if (!gs) return false;
+  // Strategy 2 — gateScript names an existing file, so it is not inline.
+  if (fs.existsSync(path.join(featureDir, gs))) return false;
+  // A bare `.sh` path that merely does not exist yet is still not inline shell.
+  if (!/[\n;&|]/.test(gs) && /^[\w./-]+\.sh$/.test(gs)) return false;
+  return !isHollowGate(gs) && !isUnauthoredGate(gs);
+}
+
 const BEHAVIORAL_TEST_TYPES = [
   "unit",
   "functional",
@@ -522,8 +543,12 @@ export function generateDeterministicGates(
   }
 
   const validTaskIds = new Set<string>();
+  const tasksById = new Map<string, Task>();
   for (const phase of phases) {
-    for (const task of phase.tasks) validTaskIds.add(task.id);
+    for (const task of phase.tasks) {
+      validTaskIds.add(task.id);
+      tasksById.set(task.id, task);
+    }
   }
   const invalidGateIds = new Set<string>();
 
@@ -593,6 +618,12 @@ export function generateDeterministicGates(
     // (/^T\d+-gate\.sh$/) and no task's gateScript ever resolves to.
     if (!validTaskIds.has(row.gate)) {
       invalidGateIds.add(row.gate);
+      skipped++;
+      continue;
+    }
+    // Never shadow an authored inline gate with a generated convention file.
+    const ownerTask = tasksById.get(row.gate);
+    if (ownerTask && hasSubstantiveInlineGate(ownerTask, featureDir)) {
       skipped++;
       continue;
     }
