@@ -369,6 +369,38 @@ function isSeparatorRow(trimmed: string): boolean {
   return /^\|[\s:|-]*\|?$/.test(trimmed) && trimmed.includes("-");
 }
 
+const BEHAVIORAL_TEST_TYPES = [
+  "unit",
+  "functional",
+  "integration",
+  "e2e",
+] as const;
+
+/**
+ * normalizeTestType — map an authored Test Type cell onto the canonical enum.
+ *
+ * Authored matrices use compound and decorated values (`unit + gate`,
+ * `gate + integration`, `` `[integration]` ``). The first recognized behavioral
+ * type wins. A cell naming no behavioral type (bare `gate`, empty, a restated
+ * header) is `structural` — which generateDeterministicGates skips and counts,
+ * rather than the row disappearing before it can be audited.
+ */
+export function normalizeTestType(raw: string): GapMatrixRow["testType"] {
+  const tokens = raw
+    .toLowerCase()
+    .replace(/[`*[\]()]/g, "")
+    .split(/[+,/]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  for (const token of tokens) {
+    if ((BEHAVIORAL_TEST_TYPES as readonly string[]).includes(token)) {
+      return token as GapMatrixRow["testType"];
+    }
+  }
+  return "structural";
+}
+
 /**
  * parseGapMatrix — read and parse a gap-matrix.md file.
  *
@@ -422,14 +454,7 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
     if (cells.every((c, i) => c.toLowerCase() === header[i].toLowerCase()))
       continue;
 
-    const testType = at(cells, "Test Type") as GapMatrixRow["testType"];
-    if (
-      !["unit", "functional", "integration", "e2e", "structural"].includes(
-        testType,
-      )
-    ) {
-      continue;
-    }
+    const testType = normalizeTestType(at(cells, "Test Type"));
 
     rows.push({
       ac: at(cells, "AC"),

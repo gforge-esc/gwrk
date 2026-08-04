@@ -7,7 +7,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript, GapMatrixHeaderError } from "./gate-gen.js";
+import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript, GapMatrixHeaderError, normalizeTestType } from "./gate-gen.js";
 import type { GateBrief } from "./gate-gen.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -726,5 +726,53 @@ describe("parseGapMatrix — column-name resolution (028 regression)", () => {
   it("still returns [] for a missing file and for a file with no table", () => {
     expect(parseGapMatrix(path.join(tempDir, "nope.md"))).toEqual([]);
     expect(parseGapMatrix(write("# Gap Matrix\n\nNo table here.\n"))).toEqual([]);
+  });
+});
+
+describe("normalizeTestType (028 — compound authored vocabulary)", () => {
+  it("takes the behavioral type out of a compound value", () => {
+    expect(normalizeTestType("unit + gate")).toBe("unit");
+    expect(normalizeTestType("gate + integration")).toBe("integration");
+    expect(normalizeTestType("unit + gate + integration")).toBe("unit");
+    expect(normalizeTestType("gate + unit")).toBe("unit");
+  });
+
+  it("strips markdown decoration", () => {
+    expect(normalizeTestType("`[integration]`")).toBe("integration");
+    expect(normalizeTestType("**unit**")).toBe("unit");
+  });
+
+  it("falls back to structural when no behavioral type is named", () => {
+    expect(normalizeTestType("gate")).toBe("structural");
+    expect(normalizeTestType("")).toBe("structural");
+    expect(normalizeTestType("Test Type")).toBe("structural");
+  });
+
+  it("passes bare canonical values through", () => {
+    for (const t of ["unit", "functional", "integration", "e2e", "structural"]) {
+      expect(normalizeTestType(t)).toBe(t);
+    }
+  });
+});
+
+describe("parseGapMatrix — compound Test Type rows survive (028)", () => {
+  it("keeps a `unit + gate` row as a unit row", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gap-matrix-tt-"));
+    const p = path.join(tempDir, "gap-matrix.md");
+    fs.writeFileSync(
+      p,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | compound | unit + gate | tests/a.test.js | ✅ | T001 |
+| FR-002 | gate only | gate | tests/b.test.js | ✅ | T002 |
+`,
+    );
+
+    const rows = parseGapMatrix(p);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[1].testType).toBe("structural");
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 });
