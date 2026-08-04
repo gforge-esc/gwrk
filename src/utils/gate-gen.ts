@@ -192,6 +192,20 @@ function extractIdentifiers(description: string): string[] {
 
 export function generateRunner(gatesDir: string): void {
   const runnerPath = path.join(gatesDir, "run-all-gates.sh");
+
+  const gateFiles = fs.existsSync(gatesDir)
+    ? fs.readdirSync(gatesDir).filter((f) => /^T\d+-gate\.sh$/.test(f))
+    : [];
+
+  // No convention gate files → no runner. A runner over an empty glob ends on
+  // `[ $FAILED -eq 0 ]` with TOTAL=0 and exits 0, handing every consumer
+  // (the review PROMPTs, a human running it by hand) a vacuous pass. Consumers
+  // all guard on `-f`, so absence degrades correctly; a lie does not.
+  if (gateFiles.length === 0) {
+    if (fs.existsSync(runnerPath)) fs.unlinkSync(runnerPath);
+    return;
+  }
+
   fs.writeFileSync(
     runnerPath,
     `#!/bin/bash
@@ -224,6 +238,10 @@ done
 echo "────────────────────────────────────────"
 echo "  $PASSED passed, $FAILED failed / $TOTAL total"
 echo "────────────────────────────────────────"
+if [ "$TOTAL" -eq 0 ]; then
+    echo "❌ FAIL — no T*-gate.sh found next to this runner; refusing to report a pass over zero gates." >&2
+    exit 1
+fi
 [ $FAILED -eq 0 ]
 `,
     { mode: 0o755 },

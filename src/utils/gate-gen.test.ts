@@ -7,8 +7,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript, GapMatrixHeaderError, normalizeTestType } from "./gate-gen.js";
+import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript, GapMatrixHeaderError, normalizeTestType, generateRunner } from "./gate-gen.js";
 import type { GateBrief } from "./gate-gen.js";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -819,5 +820,63 @@ describe("generateDeterministicGates — gate id must be a task id (028)", () =>
     );
 
     fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+});
+
+describe("generateRunner — no vacuous green (028)", () => {
+  let gatesDir: string;
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-runner-"));
+    gatesDir = path.join(tempDir, "gates");
+    fs.mkdirSync(gatesDir, { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const runnerPath = () => path.join(gatesDir, "run-all-gates.sh");
+
+  it("does not emit a runner when there are no gate files", () => {
+    generateRunner(gatesDir);
+    expect(fs.existsSync(runnerPath())).toBe(false);
+  });
+
+  it("removes a stale runner when the gate files are gone", () => {
+    fs.writeFileSync(runnerPath(), "#!/bin/bash\nexit 0\n", { mode: 0o755 });
+    generateRunner(gatesDir);
+    expect(fs.existsSync(runnerPath())).toBe(false);
+  });
+
+  it("emits a runner when at least one gate file exists", () => {
+    fs.writeFileSync(
+      path.join(gatesDir, "T001-gate.sh"),
+      "#!/bin/bash\nexit 0\n",
+      { mode: 0o755 },
+    );
+    generateRunner(gatesDir);
+    expect(fs.existsSync(runnerPath())).toBe(true);
+  });
+
+  it("emits a runner that fails when its glob finds nothing", () => {
+    fs.writeFileSync(
+      path.join(gatesDir, "T001-gate.sh"),
+      "#!/bin/bash\nexit 0\n",
+      { mode: 0o755 },
+    );
+    generateRunner(gatesDir);
+
+    // Simulate the state that produced the vacuous pass: runner present,
+    // gate files gone. Stub the build pre-flight so only the glob is under test.
+    fs.unlinkSync(path.join(gatesDir, "T001-gate.sh"));
+    const body = fs
+      .readFileSync(runnerPath(), "utf-8")
+      .replace(/if pnpm build[^\n]*/, "if true; then");
+    fs.writeFileSync(runnerPath(), body, { mode: 0o755 });
+
+    const r = spawnSync("bash", [runnerPath()], { encoding: "utf-8" });
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/no T\*-gate\.sh/);
   });
 });
