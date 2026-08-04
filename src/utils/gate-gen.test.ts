@@ -776,3 +776,48 @@ describe("parseGapMatrix — compound Test Type rows survive (028)", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 });
+
+describe("generateDeterministicGates — gate id must be a task id (028)", () => {
+  it("skips a gate id that no task owns and reports it", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-id-"));
+    const featureDir = path.join(tempDir, "specs", "009-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+    const matrixPath = path.join(featureDir, "gap-matrix.md");
+    fs.writeFileSync(
+      matrixPath,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | bogus gate id | unit | tests/a.test.js | ✅ | 2, 3 |
+| FR-002 | real gate id | unit | tests/b.test.js | ✅ | T001 |
+`,
+    );
+
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T001",
+            title: "Task 1",
+            description: "tests/b.test.js",
+            status: "open" as const,
+            gateScript: "gates/T001-gate.sh",
+          },
+        ],
+      },
+    ];
+
+    const result = generateDeterministicGates(featureDir, matrixPath, phases);
+
+    expect(result.invalidGateIds).toContain("2, 3");
+    expect(fs.existsSync(path.join(featureDir, "gates", "2, 3-gate.sh"))).toBe(
+      false,
+    );
+    expect(fs.existsSync(path.join(featureDir, "gates", "T001-gate.sh"))).toBe(
+      true,
+    );
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+});

@@ -337,6 +337,15 @@ const GAP_MATRIX_COLUMNS = [
   "Gate",
 ] as const;
 
+/** Outcome of a gate-generation pass. `invalidGateIds` are gap-matrix Gate
+ *  values that match no task id — reported so a mis-authored matrix is visible
+ *  instead of yielding an orphan `<id>-gate.sh` no task ever runs. */
+export interface GateGenResult {
+  generated: number;
+  skipped: number;
+  invalidGateIds: string[];
+}
+
 /** Thrown when a gap-matrix table exists but lacks a required column. Fatal by
  *  design — a silently mis-parsed matrix generates no gates and reports success. */
 export class GapMatrixHeaderError extends Error {
@@ -486,13 +495,19 @@ export function generateDeterministicGates(
   gapMatrixPath: string,
   phases: Phase[],
   profile: ProjectProfile = { type: "unknown" }
-): { generated: number; skipped: number } {
+): GateGenResult {
   const rows = parseGapMatrix(gapMatrixPath);
   const gatesDir = path.join(featureDir, "gates");
 
   if (!fs.existsSync(gatesDir)) {
     fs.mkdirSync(gatesDir, { recursive: true });
   }
+
+  const validTaskIds = new Set<string>();
+  for (const phase of phases) {
+    for (const task of phase.tasks) validTaskIds.add(task.id);
+  }
+  const invalidGateIds = new Set<string>();
 
   let generated = 0;
   let skipped = 0;
@@ -552,6 +567,14 @@ export function generateDeterministicGates(
       continue;
     }
     if (row.testType === "structural") {
+      skipped++;
+      continue;
+    }
+    // A Gate value must name a real task. Writing `${gateId}-gate.sh` for
+    // anything else produces an orphan file that lintAllGates never matches
+    // (/^T\d+-gate\.sh$/) and no task's gateScript ever resolves to.
+    if (!validTaskIds.has(row.gate)) {
+      invalidGateIds.add(row.gate);
       skipped++;
       continue;
     }
@@ -642,7 +665,7 @@ echo "PASS: ${gateId} — tests pass + lint clean"
     generated += gateRows.length;
   }
 
-  return { generated, skipped };
+  return { generated, skipped, invalidGateIds: [...invalidGateIds] };
 }
 
 // ─── Filesystem-convention gate generation (FM-1/2/3 fallback) ───────────────
@@ -686,7 +709,7 @@ export function discoverTestFile(sourceFile: string): string | null {
 export function generateFilesystemGates(
   featureDir: string,
   phases: Phase[],
-): { generated: number; skipped: number } {
+): GateGenResult {
   const gatesDir = path.join(featureDir, "gates");
 
   if (!fs.existsSync(gatesDir)) {
@@ -828,5 +851,5 @@ echo "PASS: ${testStrategyTask.id} — ${testStrategyTask.title}"
     }
   }
 
-  return { generated, skipped };
+  return { generated, skipped, invalidGateIds: [] };
 }
