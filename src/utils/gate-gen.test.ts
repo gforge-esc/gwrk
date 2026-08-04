@@ -880,3 +880,32 @@ describe("generateRunner — no vacuous green (028)", () => {
     expect(`${r.stdout}${r.stderr}`).toMatch(/no T\*-gate\.sh/);
   });
 });
+
+describe("GapMatrixHeaderError is fatal-shaped (028)", () => {
+  it("is an Error carrying the offending header and missing columns", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gap-hdr-"));
+    const p = path.join(tempDir, "gap-matrix.md");
+    fs.writeFileSync(
+      p,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists |
+|----|---------------------|-----------|-----------|-------------|
+| FR-001 | no gate col | unit | tests/a.test.js | ✅ |
+`,
+    );
+
+    let caught: unknown;
+    try {
+      parseGapMatrix(p);
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught).toBeInstanceOf(GapMatrixHeaderError);
+    const err = caught as GapMatrixHeaderError;
+    expect(err.missing).toEqual(["Gate"]);
+    expect(err.header).toContain("Test Exists");
+    expect(err.message).toContain("expected:");
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+});
