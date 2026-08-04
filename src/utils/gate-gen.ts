@@ -318,22 +318,74 @@ interface GapMatrixRow {
   testType: "unit" | "functional" | "integration" | "e2e" | "structural";
   testFile: string | null; // relative path or null if "—"
   testExists: boolean; // ✅ = true, ❌ = false
-  gate: string | null; // e.g., "T001" or null if "—"
+  gate: string | null; // e.g., "T001" or null if "—" / empty
+}
+
+/**
+ * The canonical gap-matrix columns (contracts/gap-matrix.md).
+ *
+ * Matched by NAME, never by position: an authored matrix may legitimately carry
+ * extra columns (`Phase` is common) in any order. Positional parsing is what
+ * produced `2, 3-gate.sh` — a `Phase` value read as a gate id.
+ */
+const GAP_MATRIX_COLUMNS = [
+  "AC",
+  "Acceptance Criterion",
+  "Test Type",
+  "Test File",
+  "Test Exists",
+  "Gate",
+] as const;
+
+/** Thrown when a gap-matrix table exists but lacks a required column. Fatal by
+ *  design — a silently mis-parsed matrix generates no gates and reports success. */
+export class GapMatrixHeaderError extends Error {
+  constructor(
+    readonly header: string[],
+    readonly missing: string[],
+  ) {
+    super(
+      `unrecognized gap-matrix header — missing required column(s): ${missing.join(", ")}\n` +
+        `    got:      | ${header.join(" | ")} |\n` +
+        `    expected: | ${GAP_MATRIX_COLUMNS.join(" | ")} |  (extra columns are allowed, in any order)`,
+    );
+    this.name = "GapMatrixHeaderError";
+  }
+}
+
+/** Split a markdown table row into cells, PRESERVING empty cells. Dropping them
+ *  (the pre-028 behaviour) silently shifts every column to its left. */
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+}
+
+/** A `|---|:--:|---|` separator row. */
+function isSeparatorRow(trimmed: string): boolean {
+  return /^\|[\s:|-]*\|?$/.test(trimmed) && trimmed.includes("-");
 }
 
 /**
  * parseGapMatrix — read and parse a gap-matrix.md file.
  *
- * Parses the markdown table format defined in contracts/gap-matrix.md.
- * Returns an array of GapMatrixRow objects.
+ * Resolves the required columns by name from the header row, then reads every
+ * data row at those indices. Rows whose width differs from the header belong to
+ * a different table in the same document and are skipped.
+ *
+ * Returns [] when the file is absent or contains no gap-matrix table.
+ * Throws GapMatrixHeaderError when a table is present but a required column is
+ * missing — never returns a partial parse.
  */
 export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
   if (!fs.existsSync(gapMatrixPath)) {
     return [];
   }
 
-  const content = fs.readFileSync(gapMatrixPath, "utf-8");
-  const lines = content.split("\n");
+  const lines = fs.readFileSync(gapMatrixPath, "utf-8").split("\n");
 
   // Find the table — look for the header row with "AC" column
   const headerIdx = lines.findIndex(
@@ -341,49 +393,55 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
   );
   if (headerIdx === -1) return [];
 
-  // Skip header and separator rows
-  const dataLines = lines.slice(headerIdx + 2).filter((line) => {
+  const header = splitTableRow(lines[headerIdx]);
+
+  const columnIndex = new Map<string, number>();
+  const missing: string[] = [];
+  for (const col of GAP_MATRIX_COLUMNS) {
+    const i = header.findIndex((h) => h.toLowerCase() === col.toLowerCase());
+    if (i === -1) missing.push(col);
+    else columnIndex.set(col, i);
+  }
+  if (missing.length > 0) throw new GapMatrixHeaderError(header, missing);
+
+  const at = (cells: string[], col: string): string =>
+    cells[columnIndex.get(col) as number] ?? "";
+  const orNull = (v: string): string | null =>
+    v === "" || v === "—" || v === "-" ? null : v;
+
+  const rows: GapMatrixRow[] = [];
+  for (const line of lines.slice(headerIdx + 1)) {
     const trimmed = line.trim();
-    return trimmed.startsWith("|") && !trimmed.startsWith("|--");
-  });
+    if (!trimmed.startsWith("|")) continue;
+    if (isSeparatorRow(trimmed)) continue;
 
-  return dataLines
-    .map((line) => {
-      const cells = line
-        .split("|")
-        .map((c) => c.trim())
-        .filter((c) => c.length > 0);
+    const cells = splitTableRow(line);
+    // A row of a different width belongs to another table in this document.
+    if (cells.length !== header.length) continue;
+    // A repeated header row (authored matrices sometimes restate it per phase).
+    if (cells.every((c, i) => c.toLowerCase() === header[i].toLowerCase()))
+      continue;
 
-      if (cells.length < 6) return null;
-
-      const [ac, criterion, testTypeRaw, testFileRaw, testExistsRaw, gateRaw] =
-        cells;
-
-      const testType = testTypeRaw as GapMatrixRow["testType"];
-      if (
-        !["unit", "functional", "integration", "e2e", "structural"].includes(
-          testType,
-        )
-      ) {
-        return null;
-      }
-
-      return {
-        ac: ac.trim(),
-        criterion: criterion.trim(),
+    const testType = at(cells, "Test Type") as GapMatrixRow["testType"];
+    if (
+      !["unit", "functional", "integration", "e2e", "structural"].includes(
         testType,
-        testFile:
-          testFileRaw.trim() === "—" || testFileRaw.trim() === "-"
-            ? null
-            : testFileRaw.trim(),
-        testExists: testExistsRaw.trim() === "✅",
-        gate:
-          gateRaw.trim() === "—" || gateRaw.trim() === "-"
-            ? null
-            : gateRaw.trim(),
-      };
-    })
-    .filter((row): row is GapMatrixRow => row !== null);
+      )
+    ) {
+      continue;
+    }
+
+    rows.push({
+      ac: at(cells, "AC"),
+      criterion: at(cells, "Acceptance Criterion"),
+      testType,
+      testFile: orNull(at(cells, "Test File")),
+      testExists: at(cells, "Test Exists") === "✅",
+      gate: orNull(at(cells, "Gate")),
+    });
+  }
+
+  return rows;
 }
 
 // ─── Deterministic vitest gate generation (ADR-005 §8) ───────────────────────

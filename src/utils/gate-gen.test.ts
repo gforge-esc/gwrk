@@ -7,7 +7,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript } from "./gate-gen.js";
+import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript, GapMatrixHeaderError } from "./gate-gen.js";
 import type { GateBrief } from "./gate-gen.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -599,5 +599,132 @@ describe("generateFilesystemGates (FM-1/2/3)", () => {
     const result = generateFilesystemGates(tempDir, phases);
     expect(result.skipped).toBe(1);
     expect(result.generated).toBe(0);
+  });
+});
+
+describe("parseGapMatrix — column-name resolution (028 regression)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gap-matrix-cols-"));
+  });
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function write(md: string): string {
+    const p = path.join(tempDir, "gap-matrix.md");
+    fs.writeFileSync(p, md);
+    return p;
+  }
+
+  // 005/007/010 shape: canonical 6 columns, Gate column empty on every row.
+  // Previously: the empty cell was filtered out, leaving 5 cells, tripping
+  // `cells.length < 6` — the row vanished.
+  it("keeps a canonical row whose Gate cell is empty", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | some criterion | unit | tests/a.test.js | ✅ |  |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ac).toBe("FR-001");
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[0].testFile).toBe("tests/a.test.js");
+    expect(rows[0].testExists).toBe(true);
+    expect(rows[0].gate).toBeNull();
+  });
+
+  // 009 shape: extra `Phase` column sits BETWEEN Test Exists and Gate. The
+  // Phase value ("2, 3") used to be read as the gate id, producing the file
+  // `2, 3-gate.sh`.
+  it("does not mistake a trailing Phase column for the Gate column", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Phase | Gate |
+|----|---------------------|-----------|-----------|-------------|-------|------|
+| FR-008 | some criterion | unit | tests/today.test.js | ✅ | 2, 3 |  |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].gate).toBeNull();
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[0].testFile).toBe("tests/today.test.js");
+  });
+
+  // 008/011 shape: extra `Phase` column sits at index 2, so the fixed-index
+  // destructure read it as Test Type ("1 + 3") and failed the whitelist.
+  it("does not mistake a leading Phase column for Test Type", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Phase | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-------|-----------|-----------|-------------|------|
+| FR-002 | some criterion | 1 + 3 | unit | tests/b.test.js | ✅ | T002 |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[0].testFile).toBe("tests/b.test.js");
+    expect(rows[0].gate).toBe("T002");
+  });
+
+  it("ignores rows from a foreign table of different width", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | real row | unit | tests/a.test.js | ✅ | T001 |
+
+## RED status
+
+| Suite | Phase | Result | Why it is RED |
+|-------|-------|--------|---------------|
+| ragb.test.js | 2 | # fail 1 | _lib/ragb.js absent |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ac).toBe("FR-001");
+  });
+
+  it("ignores a repeated header row inside the table", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | real row | unit | tests/a.test.js | ✅ | T001 |
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+| FR-002 | after the repeat | unit | tests/b.test.js | ✅ | T002 |
+`,
+      ),
+    );
+
+    expect(rows.map((r) => r.ac)).toEqual(["FR-001", "FR-002"]);
+  });
+
+  it("throws GapMatrixHeaderError naming the missing column", () => {
+    const p = write(
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists |
+|----|---------------------|-----------|-----------|-------------|
+| FR-001 | no gate column at all | unit | tests/a.test.js | ✅ |
+`,
+    );
+
+    expect(() => parseGapMatrix(p)).toThrow(GapMatrixHeaderError);
+    expect(() => parseGapMatrix(p)).toThrow(/Gate/);
+  });
+
+  it("still returns [] for a missing file and for a file with no table", () => {
+    expect(parseGapMatrix(path.join(tempDir, "nope.md"))).toEqual([]);
+    expect(parseGapMatrix(write("# Gap Matrix\n\nNo table here.\n"))).toEqual([]);
   });
 });
