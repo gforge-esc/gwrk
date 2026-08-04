@@ -36,7 +36,11 @@ Verified non-causes (do **not** "fix" these):
 - `npm run test:ci` sets `GWRK_SKIP_INTEGRATION=1`. Known-failing locally: 3 tests in `server.test.ts`. Any *other* failure is a real regression.
 - The installed `gwrk` runs compiled `dist/`, so nothing in this plan changes real `gwrk` behavior until `npm run build`.
 - Imports use `.js` specifiers even for `.ts` sources (ESM + `moduleResolution: node16`).
-- Run `npm run lint` (biome) before each commit.
+- Run `npm run lint` (biome) before each commit. **`develop` is not lint-clean —
+  baseline is 339 errors across 270 files, and `gate-gen.ts` carries 1 pre-existing
+  finding (import order + formatting in untouched code).** The bar is therefore
+  *"introduces no new findings"*, not zero. Verify by comparing counts against
+  `origin/develop`; do not mass-reformat untouched code to chase a clean run.
 - **Do not touch `src/utils/gate-exec.ts`.** Strategy order (convention file → `gateScript` path → inline) is out of scope; the gates/ channel stays.
 
 ## File Structure
