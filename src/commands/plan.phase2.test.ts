@@ -13,8 +13,15 @@ const mockCriticalPath = {
   path: [{ id: "F01-P1", name: "Mock phase", sp_estimate: 2, status: "PLANNED" }],
   warnings: ["⚠️ F02-P1 has no SP estimate"]
 };
-const mockWaves = [
+// Remaining-work waves (the `plan waves` default) vs. the plan of record
+// including shipped history (`--all`). Distinct contents so the command's
+// routing is observable: swapping the two calls must fail a test.
+const mockRemainingWaves = [
   [{ id: "F01-P1", name: "Wave 1 phase", sp_estimate: 2, status: "PLANNED" }]
+];
+const mockWaves = [
+  [{ id: "F00-P1", name: "Already shipped phase", sp_estimate: 2, status: "SHIPPED" }],
+  ...mockRemainingWaves
 ];
 
 vi.mock("../engine/plan-store.js", () => ({
@@ -23,7 +30,8 @@ vi.mock("../engine/plan-store.js", () => ({
     getSolver: async () => ({
       getReadyQueue: () => mockReadyQueue,
       getCriticalPath: () => mockCriticalPath,
-      getTopologicalWaves: () => mockWaves
+      getTopologicalWaves: () => mockWaves,
+      getRemainingWaves: () => mockRemainingWaves
     })
   }))
 }));
@@ -63,5 +71,17 @@ describe("gwrk plan subcommands (Phase 2)", () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Parallel Execution Waves"));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Wave 1"));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("F01-P1"));
+  });
+
+  it("US-015: plan waves defaults to remaining work, omitting shipped phases", async () => {
+    await program.parseAsync(['node', 'test', 'plan', 'waves']);
+    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
+    expect(out).not.toContain("Already shipped phase");
+  });
+
+  it("US-015: plan waves --all shows the plan of record including shipped history", async () => {
+    await program.parseAsync(['node', 'test', 'plan', 'waves', '--all']);
+    const out = logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
+    expect(out).toContain("Already shipped phase");
   });
 });
