@@ -11,6 +11,7 @@ import path from "node:path";
 import type { Phase, Task } from "./state.js";
 import type { ProjectProfile } from "../engine/prompt-conditioner.js";
 import { getTestCommand, getLintCommand, TEST_INVOCATION_VERBS } from "./toolchain-mapper.js";
+import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
 
 // ─── GateBrief interfaces (ADR-005) ──────────────────────────────────────────
 // The brief is a structured manifest of what needs gating.
@@ -192,6 +193,20 @@ function extractIdentifiers(description: string): string[] {
 
 export function generateRunner(gatesDir: string): void {
   const runnerPath = path.join(gatesDir, "run-all-gates.sh");
+
+  const gateFiles = fs.existsSync(gatesDir)
+    ? fs.readdirSync(gatesDir).filter((f) => /^T\d+-gate\.sh$/.test(f))
+    : [];
+
+  // No convention gate files → no runner. A runner over an empty glob ends on
+  // `[ $FAILED -eq 0 ]` with TOTAL=0 and exits 0, handing every consumer
+  // (the review PROMPTs, a human running it by hand) a vacuous pass. Consumers
+  // all guard on `-f`, so absence degrades correctly; a lie does not.
+  if (gateFiles.length === 0) {
+    if (fs.existsSync(runnerPath)) fs.unlinkSync(runnerPath);
+    return;
+  }
+
   fs.writeFileSync(
     runnerPath,
     `#!/bin/bash
@@ -224,6 +239,10 @@ done
 echo "────────────────────────────────────────"
 echo "  $PASSED passed, $FAILED failed / $TOTAL total"
 echo "────────────────────────────────────────"
+if [ "$TOTAL" -eq 0 ]; then
+    echo "❌ FAIL — no T*-gate.sh found next to this runner; refusing to report a pass over zero gates." >&2
+    exit 1
+fi
 [ $FAILED -eq 0 ]
 `,
     { mode: 0o755 },
@@ -318,22 +337,135 @@ interface GapMatrixRow {
   testType: "unit" | "functional" | "integration" | "e2e" | "structural";
   testFile: string | null; // relative path or null if "—"
   testExists: boolean; // ✅ = true, ❌ = false
-  gate: string | null; // e.g., "T001" or null if "—"
+  gate: string | null; // e.g., "T001" or null if "—" / empty
+}
+
+/**
+ * The canonical gap-matrix columns (contracts/gap-matrix.md).
+ *
+ * Matched by NAME, never by position: an authored matrix may legitimately carry
+ * extra columns (`Phase` is common) in any order. Positional parsing is what
+ * produced `2, 3-gate.sh` — a `Phase` value read as a gate id.
+ */
+const GAP_MATRIX_COLUMNS = [
+  "AC",
+  "Acceptance Criterion",
+  "Test Type",
+  "Test File",
+  "Test Exists",
+  "Gate",
+] as const;
+
+/** Outcome of a gate-generation pass. `invalidGateIds` are gap-matrix Gate
+ *  values that match no task id — reported so a mis-authored matrix is visible
+ *  instead of yielding an orphan `<id>-gate.sh` no task ever runs. */
+export interface GateGenResult {
+  generated: number;
+  skipped: number;
+  invalidGateIds: string[];
+}
+
+/** Thrown when a gap-matrix table exists but lacks a required column. Fatal by
+ *  design — a silently mis-parsed matrix generates no gates and reports success. */
+export class GapMatrixHeaderError extends Error {
+  constructor(
+    readonly header: string[],
+    readonly missing: string[],
+  ) {
+    super(
+      `unrecognized gap-matrix header — missing required column(s): ${missing.join(", ")}\n` +
+        `    got:      | ${header.join(" | ")} |\n` +
+        `    expected: | ${GAP_MATRIX_COLUMNS.join(" | ")} |  (extra columns are allowed, in any order)`,
+    );
+    this.name = "GapMatrixHeaderError";
+  }
+}
+
+/** Split a markdown table row into cells, PRESERVING empty cells. Dropping them
+ *  (the pre-028 behaviour) silently shifts every column to its left. */
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+}
+
+/** A `|---|:--:|---|` separator row. */
+function isSeparatorRow(trimmed: string): boolean {
+  return /^\|[\s:|-]*\|?$/.test(trimmed) && trimmed.includes("-");
+}
+
+/**
+ * hasSubstantiveInlineGate — does this task already carry a real inline gate?
+ *
+ * runTaskGate resolves strategy 1 (the convention file `gates/<id>-gate.sh`)
+ * BEFORE strategy 3 (the inline `gateScript`), so writing a generated file for a
+ * task that already has an authored inline gate silently REPLACES the richer
+ * gate with the weaker one — and gwrk then reports the weaker verdict. Mirrors
+ * runTaskGate's own definition of "inline": a gateScript that does not resolve
+ * to a file, is not a bare script path, and is neither hollow nor unauthored.
+ */
+function hasSubstantiveInlineGate(task: Task, featureDir: string): boolean {
+  const gs = (task.gateScript ?? "").trim();
+  if (!gs) return false;
+  // Strategy 2 — gateScript names an existing file, so it is not inline.
+  if (fs.existsSync(path.join(featureDir, gs))) return false;
+  // A bare `.sh` path that merely does not exist yet is still not inline shell.
+  if (!/[\n;&|]/.test(gs) && /^[\w./-]+\.sh$/.test(gs)) return false;
+  return !isHollowGate(gs) && !isUnauthoredGate(gs);
+}
+
+const BEHAVIORAL_TEST_TYPES = [
+  "unit",
+  "functional",
+  "integration",
+  "e2e",
+] as const;
+
+/**
+ * normalizeTestType — map an authored Test Type cell onto the canonical enum.
+ *
+ * Authored matrices use compound and decorated values (`unit + gate`,
+ * `gate + integration`, `` `[integration]` ``). The first recognized behavioral
+ * type wins. A cell naming no behavioral type (bare `gate`, empty, a restated
+ * header) is `structural` — which generateDeterministicGates skips and counts,
+ * rather than the row disappearing before it can be audited.
+ */
+export function normalizeTestType(raw: string): GapMatrixRow["testType"] {
+  const tokens = raw
+    .toLowerCase()
+    .replace(/[`*[\]()]/g, "")
+    .split(/[+,/]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  for (const token of tokens) {
+    if ((BEHAVIORAL_TEST_TYPES as readonly string[]).includes(token)) {
+      return token as GapMatrixRow["testType"];
+    }
+  }
+  return "structural";
 }
 
 /**
  * parseGapMatrix — read and parse a gap-matrix.md file.
  *
- * Parses the markdown table format defined in contracts/gap-matrix.md.
- * Returns an array of GapMatrixRow objects.
+ * Resolves the required columns by name from the header row, then reads every
+ * data row at those indices. Rows whose width differs from the header belong to
+ * a different table in the same document and are skipped.
+ *
+ * Returns [] when the file is absent or contains no gap-matrix table.
+ * Throws GapMatrixHeaderError when a table is present but a required column is
+ * missing — never returns a partial parse.
  */
 export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
   if (!fs.existsSync(gapMatrixPath)) {
     return [];
   }
 
-  const content = fs.readFileSync(gapMatrixPath, "utf-8");
-  const lines = content.split("\n");
+  const lines = fs.readFileSync(gapMatrixPath, "utf-8").split("\n");
 
   // Find the table — look for the header row with "AC" column
   const headerIdx = lines.findIndex(
@@ -341,49 +473,48 @@ export function parseGapMatrix(gapMatrixPath: string): GapMatrixRow[] {
   );
   if (headerIdx === -1) return [];
 
-  // Skip header and separator rows
-  const dataLines = lines.slice(headerIdx + 2).filter((line) => {
+  const header = splitTableRow(lines[headerIdx]);
+
+  const columnIndex = new Map<string, number>();
+  const missing: string[] = [];
+  for (const col of GAP_MATRIX_COLUMNS) {
+    const i = header.findIndex((h) => h.toLowerCase() === col.toLowerCase());
+    if (i === -1) missing.push(col);
+    else columnIndex.set(col, i);
+  }
+  if (missing.length > 0) throw new GapMatrixHeaderError(header, missing);
+
+  const at = (cells: string[], col: string): string =>
+    cells[columnIndex.get(col) as number] ?? "";
+  const orNull = (v: string): string | null =>
+    v === "" || v === "—" || v === "-" ? null : v;
+
+  const rows: GapMatrixRow[] = [];
+  for (const line of lines.slice(headerIdx + 1)) {
     const trimmed = line.trim();
-    return trimmed.startsWith("|") && !trimmed.startsWith("|--");
-  });
+    if (!trimmed.startsWith("|")) continue;
+    if (isSeparatorRow(trimmed)) continue;
 
-  return dataLines
-    .map((line) => {
-      const cells = line
-        .split("|")
-        .map((c) => c.trim())
-        .filter((c) => c.length > 0);
+    const cells = splitTableRow(line);
+    // A row of a different width belongs to another table in this document.
+    if (cells.length !== header.length) continue;
+    // A repeated header row (authored matrices sometimes restate it per phase).
+    if (cells.every((c, i) => c.toLowerCase() === header[i].toLowerCase()))
+      continue;
 
-      if (cells.length < 6) return null;
+    const testType = normalizeTestType(at(cells, "Test Type"));
 
-      const [ac, criterion, testTypeRaw, testFileRaw, testExistsRaw, gateRaw] =
-        cells;
+    rows.push({
+      ac: at(cells, "AC"),
+      criterion: at(cells, "Acceptance Criterion"),
+      testType,
+      testFile: orNull(at(cells, "Test File")),
+      testExists: at(cells, "Test Exists") === "✅",
+      gate: orNull(at(cells, "Gate")),
+    });
+  }
 
-      const testType = testTypeRaw as GapMatrixRow["testType"];
-      if (
-        !["unit", "functional", "integration", "e2e", "structural"].includes(
-          testType,
-        )
-      ) {
-        return null;
-      }
-
-      return {
-        ac: ac.trim(),
-        criterion: criterion.trim(),
-        testType,
-        testFile:
-          testFileRaw.trim() === "—" || testFileRaw.trim() === "-"
-            ? null
-            : testFileRaw.trim(),
-        testExists: testExistsRaw.trim() === "✅",
-        gate:
-          gateRaw.trim() === "—" || gateRaw.trim() === "-"
-            ? null
-            : gateRaw.trim(),
-      };
-    })
-    .filter((row): row is GapMatrixRow => row !== null);
+  return rows;
 }
 
 // ─── Deterministic vitest gate generation (ADR-005 §8) ───────────────────────
@@ -403,13 +534,23 @@ export function generateDeterministicGates(
   gapMatrixPath: string,
   phases: Phase[],
   profile: ProjectProfile = { type: "unknown" }
-): { generated: number; skipped: number } {
+): GateGenResult {
   const rows = parseGapMatrix(gapMatrixPath);
   const gatesDir = path.join(featureDir, "gates");
 
   if (!fs.existsSync(gatesDir)) {
     fs.mkdirSync(gatesDir, { recursive: true });
   }
+
+  const validTaskIds = new Set<string>();
+  const tasksById = new Map<string, Task>();
+  for (const phase of phases) {
+    for (const task of phase.tasks) {
+      validTaskIds.add(task.id);
+      tasksById.set(task.id, task);
+    }
+  }
+  const invalidGateIds = new Set<string>();
 
   let generated = 0;
   let skipped = 0;
@@ -469,6 +610,20 @@ export function generateDeterministicGates(
       continue;
     }
     if (row.testType === "structural") {
+      skipped++;
+      continue;
+    }
+    // A Gate value must name a real task. Writing `${gateId}-gate.sh` for
+    // anything else produces an orphan file that lintAllGates never matches
+    // (/^T\d+-gate\.sh$/) and no task's gateScript ever resolves to.
+    if (!validTaskIds.has(row.gate)) {
+      invalidGateIds.add(row.gate);
+      skipped++;
+      continue;
+    }
+    // Never shadow an authored inline gate with a generated convention file.
+    const ownerTask = tasksById.get(row.gate);
+    if (ownerTask && hasSubstantiveInlineGate(ownerTask, featureDir)) {
       skipped++;
       continue;
     }
@@ -559,7 +714,7 @@ echo "PASS: ${gateId} — tests pass + lint clean"
     generated += gateRows.length;
   }
 
-  return { generated, skipped };
+  return { generated, skipped, invalidGateIds: [...invalidGateIds] };
 }
 
 // ─── Filesystem-convention gate generation (FM-1/2/3 fallback) ───────────────
@@ -603,7 +758,7 @@ export function discoverTestFile(sourceFile: string): string | null {
 export function generateFilesystemGates(
   featureDir: string,
   phases: Phase[],
-): { generated: number; skipped: number } {
+): GateGenResult {
   const gatesDir = path.join(featureDir, "gates");
 
   if (!fs.existsSync(gatesDir)) {
@@ -745,5 +900,5 @@ echo "PASS: ${testStrategyTask.id} — ${testStrategyTask.title}"
     }
   }
 
-  return { generated, skipped };
+  return { generated, skipped, invalidGateIds: [] };
 }
