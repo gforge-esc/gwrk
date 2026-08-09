@@ -436,7 +436,13 @@ export class ShipOrchestrator extends EventEmitter {
 
       // 4. Determine verdict from gates (not agent edits).
       //    Gates are truth, agent verdict is advisory. (ADR-007)
-      const verdict = await this.readVerdict();
+      //
+      //    Advisory is not the same as discarded. Source mutations were just
+      //    reverted, so tasks.json is the review agent's only surviving
+      //    channel: a task it moved completed → open is its NO-GO. Compute
+      //    that before readVerdict, which rewrites the same file.
+      const reopenedByReview = this.detectReviewReopens(featureDir, beforeState);
+      const verdict = await this.readVerdict(reopenedByReview);
       this.state.reviewVerdict = verdict;
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
@@ -474,6 +480,80 @@ export class ShipOrchestrator extends EventEmitter {
     return stages[currentIndex + 1] || ShipStage.DONE;
   }
 
+  /**
+   * Refuse to start work that PR_CI could not push.
+   *
+   * PR_CI pushes at the very end, so a stale remote branch used to surface only
+   * after the implement, code-review and UAT agents had all run — a rejected
+   * `git push` discarding ~20 minutes of work. Every input is known now.
+   *
+   * Behind-only is recoverable and recovered here (fast-forward). Diverged is
+   * not: choosing between the two histories is the operator's call, so stop and
+   * say exactly what to run.
+   *
+   * @returns a failing stage result to abort with, or null to continue.
+   */
+  private ensurePushable(branchName: string): ShipStageResult | null {
+    const remoteRef = `refs/remotes/origin/${branchName}`;
+    const git = (cmd: string) =>
+      execSync(cmd, { cwd: this.config.cwd, encoding: "utf-8" }).trim();
+
+    try {
+      // Refresh the remote-tracking ref explicitly; the ambient one may predate
+      // another machine's push. A missing remote branch is the normal
+      // first-ship case, so a failure here is not fatal.
+      try {
+        git(
+          `git fetch origin +refs/heads/${branchName}:${remoteRef} --quiet`,
+        );
+      } catch {
+        /* no such remote branch, or offline — fall through to the check */
+      }
+
+      try {
+        git(`git rev-parse --verify --quiet ${remoteRef}`);
+      } catch {
+        return null; // No remote counterpart: the first push creates it.
+      }
+
+      const behind = Number(
+        git(`git rev-list --count ${branchName}..origin/${branchName}`) || "0",
+      );
+      if (behind === 0) return null;
+
+      const ahead = Number(
+        git(`git rev-list --count origin/${branchName}..${branchName}`) || "0",
+      );
+
+      if (ahead === 0) {
+        console.log(
+          `  Branch ${branchName} is ${behind} commit(s) behind origin — fast-forwarding`,
+        );
+        git(`git merge --ff-only origin/${branchName}`);
+        return null;
+      }
+
+      return {
+        success: false,
+        exitCode: 1,
+        error:
+          `Branch ${branchName} has diverged from origin/${branchName} ` +
+          `(${ahead} local, ${behind} remote). PR_CI could not push, so the run is stopping ` +
+          "now instead of after the agents have run.\n" +
+          "  Reconcile first, then re-run:\n" +
+          `    git merge origin/${branchName}        # keep both histories\n` +
+          `    git push origin --delete ${branchName} # or discard the stale remote branch`,
+      };
+    } catch (err: unknown) {
+      // The check itself failing must not block a ship — PR_CI still guards the
+      // push. Say so rather than proceeding silently.
+      console.warn(
+        `  ⚠ Could not compare ${branchName} with origin: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
+  }
+
   private async stageBranchSetup(): Promise<ShipStageResult> {
     console.log("  ▸ BRANCH_SETUP");
     // FR-002: Dirty tree fail fast
@@ -492,6 +572,8 @@ export class ShipOrchestrator extends EventEmitter {
     // The develop merge happens at PR merge time, not during ship.
     if (currentBranch === branchName) {
       console.log(`  Branch ${branchName} — already checked out`);
+      const pushable = this.ensurePushable(branchName);
+      if (pushable) return pushable;
       this.state.branchName = branchName;
       if (this.state.iteration === 1) await this.captureTestBaseline();
       return { success: true, exitCode: 0 };
@@ -499,6 +581,10 @@ export class ShipOrchestrator extends EventEmitter {
 
     try {
       await createBranch(this.config.cwd, branchName, "develop");
+      // A fresh branch off develop plus a stale remote of the same name is
+      // exactly the 005 case — check before any agent runs, not at PR_CI.
+      const pushable = this.ensurePushable(branchName);
+      if (pushable) return pushable;
       this.state.branchName = branchName;
       if (this.state.iteration === 1) await this.captureTestBaseline();
       return { success: true, exitCode: 0 };
@@ -512,8 +598,10 @@ export class ShipOrchestrator extends EventEmitter {
             cwd: this.config.cwd,
             stdio: ["ignore", "ignore", "pipe"],
           });
-          this.state.branchName = branchName;
           console.log(`  Branch ${branchName} exists — checked out`);
+          const pushable = this.ensurePushable(branchName);
+          if (pushable) return pushable;
+          this.state.branchName = branchName;
           if (this.state.iteration === 1) await this.captureTestBaseline();
           return { success: true, exitCode: 0 };
         } catch (checkoutErr: unknown) {
@@ -1256,7 +1344,47 @@ export class ShipOrchestrator extends EventEmitter {
    * If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
    * Otherwise → GO.
    */
-  private async readVerdict(): Promise<"GO" | "NO-GO"> {
+  /**
+   * Tasks the review agent moved from `completed` to `open` during this run.
+   *
+   * `revertSourceMutations()` throws away everything the agent wrote except
+   * tasks.json, so re-opening a task is how a review agent registers a defect.
+   * Compare against the pre-dispatch snapshot rather than trusting the current
+   * file alone: a task that was already open before review carries no verdict.
+   */
+  private detectReviewReopens(
+    featureDir: string,
+    beforeState: { phases: Phase[] },
+  ): Set<string> {
+    try {
+      const after = loadTaskState(featureDir);
+      const before = beforeState.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
+      const now = after.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
+      if (!before || !now) return new Set();
+
+      const wasCompleted = new Set(
+        before.tasks
+          .filter((t: Task) => t.status === "completed")
+          .map((t: Task) => t.id),
+      );
+      return new Set(
+        now.tasks
+          .filter((t: Task) => t.status === "open" && wasCompleted.has(t.id))
+          .map((t: Task) => t.id),
+      );
+    } catch {
+      // An unreadable tasks.json is readVerdict's problem to report, not ours.
+      return new Set();
+    }
+  }
+
+  private async readVerdict(
+    reopenedByReview: Set<string> = new Set(),
+  ): Promise<"GO" | "NO-GO"> {
     const featureDir = path.join(
       this.config.cwd,
       "specs",
@@ -1275,6 +1403,7 @@ export class ShipOrchestrator extends EventEmitter {
     // exists and skipped, so the verdict was a vacuous GO for every real phase.
     // A shared phase gate runs once.
     let failedCount = 0;
+    const divergentTasks: string[] = [];
     const gateCache = new Map<string, TaskGateResult>();
     for (const task of phase.tasks) {
       if (!task.gateScript) continue;
@@ -1288,7 +1417,19 @@ export class ShipOrchestrator extends EventEmitter {
         gateCache.set(task.gateScript, gateResult);
       }
       if (gateResult.passed) {
-        if (task.status !== "completed") {
+        if (reopenedByReview.has(task.id)) {
+          // Green gate over a defect the reviewer reproduced. Completing the
+          // task here is exactly what shipped 005 Phase 1 with a live bug while
+          // the console read GO. Keep the finding: a passing gate covering a
+          // review re-open means the GATE has a coverage hole, and this is the
+          // only moment the system can know that.
+          console.log(
+            `    ⚠ REVIEW/GATE DIVERGENCE: ${task.id} — gate PASSES but review re-opened the task`,
+          );
+          divergentTasks.push(task.id);
+          task.completedAt = undefined;
+          task.description = `${task.description || ""}\n\nREVIEW/GATE DIVERGENCE (${task.id}, gate: ${task.gateScript}):\nThe review agent re-opened this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.`.trim();
+        } else if (task.status !== "completed") {
           task.status = "completed";
           task.completedAt = new Date().toISOString();
         }
@@ -1307,6 +1448,17 @@ export class ShipOrchestrator extends EventEmitter {
 
     // Persist reconciled state
     saveTaskState(featureDir, taskState);
+
+    if (divergentTasks.length > 0) {
+      this.state.reviewGateDivergence = divergentTasks;
+      console.log(
+        `    ✗ ${divergentTasks.length} task(s) pass their gate but were re-opened by review: ${divergentTasks.join(", ")}`,
+      );
+      console.log(
+        "      Treating as NO-GO. A green gate over a review finding is a gate coverage hole, not a cleared finding.",
+      );
+      return "NO-GO";
+    }
 
     if (failedCount > 0) {
       this.state.gateResult = "FAIL";

@@ -217,6 +217,10 @@ export const GwrkConfigSchema = z.object({
   worktree: z
     .object({
       setup: z.string().optional(), // e.g. "make worktree:init"
+      // Counterpart to `setup`, run inside the worktree before it is removed
+      // (e.g. "make worktree:down"). A stack still bind-mounting the worktree
+      // holds node_modules, and `git worktree remove --force` then fails EPERM.
+      teardown: z.string().optional(),
     })
     .optional(),
   workspaces: z

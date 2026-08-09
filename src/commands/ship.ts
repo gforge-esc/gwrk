@@ -775,6 +775,7 @@ Examples:
             // Ship owns commit/push/PR via PR_CI — destroy only removes the tree.
             await sandbox.destroySandbox(worktreeDir, feature, {
               autoCommitPush: false,
+              teardown: config.worktree?.teardown,
             });
           }
         }
