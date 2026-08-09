@@ -293,15 +293,22 @@ planCommand
 
 planCommand
   .command("waves")
-  .description("Show mathematically computed parallel execution waves")
+  .description(
+    "Show parallel execution waves for remaining work (--all for the whole plan)",
+  )
   .option("--json", "Output in JSON format")
+  .option("--all", "Include shipped phases — the plan of record, not current work")
   .action(async (options, command) => {
     await withSignal("plan waves", async () => {
       const projectId = resolveProjectId(process.cwd());
       const store = new PlanStore(projectId);
       guardEmpty(store);
       const solver = await store.getSolver();
-      const waves = solver.getTopologicalWaves();
+      // Default to remaining work: a wave list that opens on phases shipped
+      // months ago cannot answer "what can I ship in parallel now".
+      const waves = options.all
+        ? solver.getTopologicalWaves()
+        : solver.getRemainingWaves();
       const out = options.json ? createOutput("json") : resolveFormat(command);
 
       if (out.isJson) {
@@ -310,7 +317,14 @@ planCommand
       }
 
       const { BOLD, CYAN, RESET, DIM } = color;
-      console.log(`${BOLD}Parallel Execution Waves${RESET}\n`);
+      console.log(
+        `${BOLD}Parallel Execution Waves${RESET}${options.all ? `${DIM} (entire plan)${RESET}` : `${DIM} (remaining work)${RESET}`}\n`,
+      );
+
+      if (waves.length === 0) {
+        console.log("All build plan items complete.");
+        return;
+      }
 
       waves.forEach((wave, i) => {
         console.log(`${BOLD}${CYAN}Wave ${i + 1}${RESET}`);
@@ -321,6 +335,12 @@ planCommand
         }
         console.log("");
       });
+
+      if (!options.all) {
+        console.log(
+          `${DIM}Wave 1 is dependency-ready, not necessarily parallel-safe: check for shared migrations, overlapping deliverables, and single-instance test resources before running two at once.${RESET}`,
+        );
+      }
     });
   });
 

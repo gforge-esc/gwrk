@@ -17,10 +17,38 @@ Methods for interacting with the SQLite build plan graph.
   - FR-005: Per-feature, per-phase status report
 - `getReadyQueue(): PlanPhase[]`
   - FR-003: Kahn's algorithm — phases with all deps DONE, sorted by critical path priority
+  - Dependency-ready is NOT parallel-safe. It models declared edges only, never
+    shared migrations, overlapping deliverables, or single-instance test
+    resources. Callers presenting it as a concurrent work set must say so.
 - `getCriticalPath(): { path: PlanPhase[], warnings: string[] }`
   - FR-004: CPM forward/backward pass. Warnings include SP-missing nodes (FR-018).
+- `getRemainingWaves(): PlanPhase[][]`
+  - Topological waves over phases that are NOT terminal — the operational view
+    behind `gwrk plan waves`. A terminal predecessor is satisfied, so it leaves
+    the subgraph rather than counting as a blocker; wave 1 therefore matches
+    `getReadyQueue()` membership.
+  - Throws on a dependency cycle among pending phases. Kahn's algorithm emits
+    nothing for a cycle, and returning the partial set would silently drop work.
 - `getTopologicalWaves(): PlanPhase[][]`
-  - FR-002: `graphology-dag` topologicalGenerations
+  - FR-002: `graphology-dag` topologicalGenerations, over the ENTIRE plan
+    including shipped phases — the plan of record, used by the build-plan
+    renderer's Wave Strategy table. Use `getRemainingWaves()` for current work.
+
+### Status Consistency
+
+The three readers above MUST agree on which statuses satisfy a dependency:
+`DONE`, `SHIPPED`, `VERIFIED`, `CLOSED` (one `TERMINAL_STATUSES` set). They
+previously disagreed — the ready queue filtered them, wave computation did not,
+so `plan waves` opened on work shipped months earlier.
+
+A feature-level edge binds the prerequisite feature's LAST phase to EVERY phase
+of the dependent feature, not only its first. Binding only the first left phases
+2..N with no cross-feature constraint as soon as phase 1 read `SHIPPED`. The
+intra-feature `SEQUENCE` chain implies the constraint transitively for an honest
+graph, but `plan init` promotes `PLANNED → SHIPPED` from ship-run existence
+rather than from a passing gate, so the chain is precisely what cannot be
+trusted. The added edges are transitively redundant: wave indices and the
+critical path are unchanged, and only readiness tightens.
 - `isEmpty(): boolean`
   - FR-019: Guard check for empty graph — all subcommands call this first
 
