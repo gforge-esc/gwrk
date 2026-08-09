@@ -63,6 +63,16 @@ export interface ShipRunConfig {
 1. **BRANCH_SETUP**: 
    - Checks if working tree is clean. Fail fast if dirty.
    - Creates/switches to `feat/<featureId>` branch from `develop`.
+   - MUST verify the branch is pushable before any agent runs (`ensurePushable`).
+     PR_CI pushes only at the end, so a stale remote branch otherwise surfaces
+     after implement + code review + UAT have all run and discards the run.
+     - No `origin/<branch>` → proceed; the first push creates it.
+     - Behind only → fast-forward (`git merge --ff-only`) and proceed.
+     - Diverged (behind AND ahead) → fail the stage, naming the branch, both
+       counts, and the reconciliation commands. Choosing between two histories
+       is the operator's call, not the orchestrator's.
+     - The comparison itself failing is non-fatal (warn and proceed) — PR_CI
+       still guards the push.
 2. **ACTIVATE_TESTS**:
    - Initializes baseline test results for regression checking.
 3. **IMPLEMENT**:
@@ -88,6 +98,29 @@ export interface ShipRunConfig {
    - Dispatches `review-uat` workflow.
    - If verdict is `GO` → transitions to `PR_CI`.
    - If verdict is `NO-GO` → increments iteration and loops back to `IMPLEMENT`.
+
+### Review/Gate Divergence (both review stages)
+
+ADR-007 makes gates truth and the agent verdict advisory. **Advisory is not
+discarded.** `revertSourceMutations()` throws away everything a review agent
+wrote except `tasks.json`, so moving a task `completed → open` is how a review
+agent registers a defect.
+
+`readVerdict()` therefore receives the set of tasks the review agent re-opened
+during this run (diffed against the pre-dispatch snapshot, so a task already
+open before review carries no verdict), and:
+
+- Gate PASSES + task re-opened by review → **DIVERGENCE**. The task MUST NOT be
+  marked `completed`. Record the task ids on `ShipState.reviewGateDivergence`,
+  annotate the task description so DIAGNOSE sees the cause, and return `NO-GO`.
+- Gate PASSES + task untouched by review → complete it (unchanged).
+- Gate FAILS → the existing NO-GO path, unchanged. A failing gate is not a
+  divergence: gate and review agree.
+
+A green gate covering a review finding means the GATE has a coverage hole. That
+is the only moment the system can detect one, so it is reported rather than
+resolved in the gate's favour. Marking such a task complete is what shipped
+005-dashboard-api Phase 1 with a reproduced defect while the console read `GO`.
 8. **PR_CI**:
    - Creates GitHub PR targeting `develop`.
    - Polls for CI completion using `gh pr checks`.

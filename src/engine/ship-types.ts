@@ -58,6 +58,12 @@ export interface ShipState {
   prUrl?: string;
   gateResult?: "PASS" | "FAIL";
   reviewVerdict?: "GO" | "NO-GO";
+  /**
+   * Tasks whose gate PASSED but which a review agent re-opened in this run.
+   * A green gate over a review finding means the gate has a coverage hole —
+   * recorded so the failure survives past the console line.
+   */
+  reviewGateDivergence?: string[];
 }
 
 /**

@@ -38,6 +38,14 @@ interface DestroyOptions {
    * its own PR_CI stage — so destroy only removes the worktree.
    */
   autoCommitPush?: boolean;
+  /**
+   * Command run inside the worktree to release whatever `setup` started, before
+   * the tree is removed — from `.gwrkrc` `worktree.teardown`, e.g.
+   * `make worktree:down`. Without it a compose stack bind-mounting the worktree
+   * keeps holding node_modules and `git worktree remove --force` fails EPERM,
+   * stranding both the directory and the stack.
+   */
+  teardown?: string;
 }
 
 export class SandboxManager {
@@ -138,8 +146,23 @@ export class SandboxManager {
   ): Promise<void> {
     if (!fs.existsSync(workDir)) return;
 
-    const { autoCommitPush = true } = options;
+    const { autoCommitPush = true, teardown } = options;
     const projectRoot = path.dirname(path.dirname(this.runsDir));
+
+    // 0. Release what `setup` started, while the worktree still exists.
+    //    Best-effort: a failing teardown must not strand the worktree forever,
+    //    so removal proceeds either way — but say so, because the usual cause
+    //    (a still-running stack holding node_modules) makes removal fail next.
+    if (teardown) {
+      try {
+        execSync(teardown, { cwd: workDir, stdio: "pipe" });
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.warn(
+          `  ⚠ worktree teardown ("${teardown}") failed in ${workDir}: ${err.message}`,
+        );
+      }
+    }
 
     try {
       // 1. Check if there are changes
