@@ -251,6 +251,39 @@ export class PlanSolver {
   }
 
   /**
+   * Phases recorded as finished whose predecessors are not.
+   *
+   * `plan verify` compares specs/ against the graph; nothing compared the graph
+   * against itself, so a phase could read SHIPPED while its prerequisites read
+   * PLANNED and no command would mention it. `010-reporting-email/phase-01` is
+   * SHIPPED on data-dashboard while all of `007-audience-redaction` is PLANNED.
+   *
+   * An inversion is always one of two real problems: a status promoted without
+   * evidence (`plan init` promotes from ship-run EXISTENCE, not a passing gate),
+   * or a missing dependency edge. Both need a human, and readiness now depends on
+   * these statuses being honest, so an unreported inversion propagates.
+   */
+  getStatusInversions(): { phaseId: string; blockedBy: string[] }[] {
+    const inversions: { phaseId: string; blockedBy: string[] }[] = [];
+
+    for (const phase of this.phases) {
+      if (!isTerminal(phase)) continue;
+
+      const blockedBy = this.graph
+        .inNeighbors(phase.id)
+        .filter((predId: string) => {
+          const pred = this.phaseMap.get(predId);
+          return pred !== undefined && !isTerminal(pred);
+        })
+        .sort();
+
+      if (blockedBy.length > 0) inversions.push({ phaseId: phase.id, blockedBy });
+    }
+
+    return inversions;
+  }
+
+  /**
    * Topological waves over the work that is NOT yet finished — the operational
    * "what can run concurrently now" view behind `gwrk plan waves`.
    *

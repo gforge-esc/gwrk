@@ -71,6 +71,21 @@ critical path are unchanged, and only readiness tightens.
 - `verifyPlan(): PlanVerifyResult[]`
   - FR-006: Drift detection against code state and gate results
   - MUST report features in `specs/` missing from graph and vice versa
+- `PlanSolver.getStatusInversions(): { phaseId, blockedBy }[]`
+  - Graph **self**-consistency: a phase in a terminal status whose direct
+    predecessors are not. `DriftDetector` compares specs/ against the graph and
+    cannot see edges, so this is the solver's to answer.
+  - An inversion is always one of two real problems: a status promoted without
+    evidence (`plan init` promotes `PLANNED → SHIPPED` from ship-run **existence**,
+    not a passing gate), or a missing dependency edge. `010-reporting-email/phase-01`
+    reads SHIPPED on data-dashboard while all of `007-audience-redaction` reads
+    PLANNED.
+  - Reported by `gwrk plan verify`. It matters more since readiness tightened
+    (#167): later phases are released on the strength of a predecessor's status,
+    so an unreported inversion propagates.
+  - `gwrk plan verify` MUST keep emitting the literal string **"No drift"** on the
+    fully-clean path — data-dashboard's `ship-feature.sh` greps for it to decide
+    whether the plan is sound. Inversions suppress that line.
 
 ## Interface: `ReadinessScanner`
 
