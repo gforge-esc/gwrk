@@ -123,8 +123,29 @@ resolved in the gate's favour. Marking such a task complete is what shipped
 005-dashboard-api Phase 1 with a reproduced defect while the console read `GO`.
 8. **PR_CI**:
    - Creates GitHub PR targeting `develop`.
-   - Polls for CI completion using `gh pr checks`.
+   - Polls for CI completion using `gh pr checks` (see below).
    - Transitions to `DONE`.
+
+### Waiting for checks (`waitForChecks`)
+
+The wait escalates, and only the last step may conclude there is nothing to
+wait for:
+
+```
+gh pr checks --required   →  "no required checks reported"  →  retry without --required
+                          →  "no checks reported"           →  skip, logged
+```
+
+- A repo WITH branch protection waits on its required checks.
+- A repo WITHOUT protection still waits on every check it has. `--required`
+  exits 1 with `no **required** checks reported`, which does not contain the
+  substring `no checks reported` — the old single-level guard missed it and
+  failed PR_CI instantly on green CI.
+- Only a repo with no checks at all skips, and it says so.
+
+Widening the guard without the fallback is NOT an acceptable fix: it would make
+gwrk skip CI on every unprotected repo and report success — the vacuous-green
+class 026/027 exist to close. Any genuine check failure at either level throws.
 
 ## Recovery Semantics (FR-008)
 

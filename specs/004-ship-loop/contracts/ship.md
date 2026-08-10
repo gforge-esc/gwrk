@@ -43,6 +43,22 @@ Top-level `gwrk ship <feature> [phase]` command.
 
 **FR-013**: When `phase` is omitted, read all phases from `tasks.json` via `loadTaskState()`, ship each sequentially, stop on first non-zero exit.
 
+**FR-013a — shipped-drift guard.** tasks.json and the build plan graph are two
+records of the same fact and can disagree. Before shipping a no-phase selection,
+compare it against the graph (`findShippedDrift`). If any selected phase is
+`DONE`/`SHIPPED`/`VERIFIED`/`CLOSED` in the graph, **refuse the run**, listing
+each conflicting phase with both statuses and the three ways out (ship one phase
+explicitly, fix tasks.json, or `--force`).
+
+Neither record may silently overrule the other: tasks.json's completion flags are
+destroyed by a `define tasks` regeneration, and the graph's `SHIPPED` is promoted
+from ship-run existence rather than a passing gate. On 005-dashboard-api the two
+disagreed about four phases and the run re-implemented an already-merged phase,
+opening a PR with zero source changes.
+
+A phase absent from the graph is not drift — an unseeded feature must stay
+shippable. A missing or empty graph must not block shipping.
+
 **FR-014**: Before dispatching each phase, check `phaseData.tasks.every(t => t.status === "completed")`. If all complete → skip with log message `⏭  Phase NN: all tasks complete — skipping`. **Currently checks only "completed", spec also requires "cancelled" to count as skippable.**
 
 **FR-015**: Wrap terminal output in `[exit:N | Xs]` format per ADR-004. Support `--format json`. **Currently missing entirely.**

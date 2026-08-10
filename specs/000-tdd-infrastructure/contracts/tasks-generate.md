@@ -46,6 +46,23 @@ Skips steps 5b–5c (LLM dispatch). Still runs step 5a (deterministic vitest gat
 | `--force` | ✅ Overwritten | ✅ Re-generated | ✅ Re-authored (preserves `# AUTHORED`) | ✅ Yes |
 | `--reconcile` | ✅ Merged | ✅ Audited | ✅ Authored + audited | ✅ Yes |
 
+### Completion status is preserved unconditionally
+
+Regenerating `tasks.json` MUST NOT reset a task that still exists to `open`.
+`planToTasks` always loads the existing `tasks.json` and carries `status` and
+`completedAt` forward for tasks matched **by title**; a task whose title changed
+is different work and correctly resets to `open`.
+
+This is not `--reconcile` behaviour and must not be gated on it. It previously
+was, so a plain `gwrk define tasks` wiped every completion flag. Because
+`gwrk ship <feature>` selects phases from `tasks.json`, that reads as unshipped
+work: on 005-dashboard-api it made four already-merged phases look unbuilt and
+the next run re-implemented one of them, producing a PR with zero source changes.
+
+`--reconcile` still governs the distinct behaviour of carrying tasks that
+`plan.md` no longer mentions forward as `cancelled`, which does destroy nothing
+and is genuinely opt-in.
+
 
 ### Agent Dispatch (ADR-004 pattern from `plan.ts`)
 

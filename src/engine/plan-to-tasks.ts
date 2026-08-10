@@ -236,6 +236,12 @@ function generateTaskState(
   planPath: string,
   existingState?: TaskState,
   profile: ProjectProfile = { type: "unknown" },
+  /**
+   * Carry tasks that plan.md no longer mentions forward as `cancelled`.
+   * Status preservation for tasks that DO still exist is unconditional and
+   * does not depend on this.
+   */
+  reconcile = false,
 ): TaskState {
   let taskCounter = 1;
   const existingTasks = existingState
@@ -334,7 +340,7 @@ function generateTaskState(
     }
 
     // Reconciliation: Find tasks that were in this phase in existingState but are now gone
-    if (existingState) {
+    if (reconcile && existingState) {
       const existingPhase = existingState.phases.find((ep) => ep.id === phaseId);
       if (existingPhase) {
         const removedTasks = existingPhase.tasks.filter(
@@ -372,7 +378,7 @@ function generateTaskState(
 
   // Reconciliation: Catch any remaining matchedExistingIds that weren't in any matched phase
   // (e.g. if a phase was entirely removed)
-  if (existingState) {
+  if (reconcile && existingState) {
     const orphanTasks = existingTasks.filter(
       (et) => !matchedExistingIds.has(et.id),
     );
@@ -425,16 +431,27 @@ export function planToTasks(
     throw new Error(`Plan not found at ${planPath}`);
   }
 
+  // ALWAYS load the existing tasks.json, not just under --reconcile.
+  //
+  // Two behaviours were bundled behind that flag. Preserving the status of a
+  // task that still exists is not reconciliation — it is not destroying
+  // evidence — and regenerating without it silently reset every completed task
+  // to `open`. Since `gwrk ship <feature>` selects phases from tasks.json, that
+  // reads as unshipped work: 005-dashboard-api re-implemented an already-merged
+  // phase for ~20 minutes and produced a PR with zero source changes.
+  //
+  // Carrying tasks that plan.md no longer mentions forward as `cancelled` IS
+  // reconciliation, and stays opt-in below.
   let existingState: TaskState | undefined;
-  if (options.reconcile) {
-    const tasksPath = path.join(featureDir, ".gwrk", "tasks.json");
-    if (fs.existsSync(tasksPath)) {
-      try {
-        const content = fs.readFileSync(tasksPath, "utf-8");
-        existingState = JSON.parse(content) as TaskState;
-      } catch (err) {
-        console.warn(`Warning: Could not load existing tasks for reconciliation: ${err}`);
-      }
+  const existingTasksPath = path.join(featureDir, ".gwrk", "tasks.json");
+  if (fs.existsSync(existingTasksPath)) {
+    try {
+      const content = fs.readFileSync(existingTasksPath, "utf-8");
+      existingState = JSON.parse(content) as TaskState;
+    } catch (err) {
+      console.warn(
+        `Warning: Could not load existing tasks — completion status will be reset: ${err}`,
+      );
     }
   }
 
@@ -447,7 +464,14 @@ export function planToTasks(
     );
   }
 
-  const state = generateTaskState(featureId, parsed, planPath, existingState, options.profile);
+  const state = generateTaskState(
+    featureId,
+    parsed,
+    planPath,
+    existingState,
+    options.profile,
+    options.reconcile ?? false,
+  );
 
   // Write via saveTaskState for Zod validation
   const gwrkDir = path.join(featureDir, ".gwrk");
