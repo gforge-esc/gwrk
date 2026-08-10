@@ -1,6 +1,15 @@
 # Changelog
 
-## [1.4.0-alpha.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.0...cli-v1.4.0-alpha.1) (2026-07-27)
+## 1.4.0-alpha.1 (2026-07-27) — never tagged
+
+> This version was written into `package.json` and this file by hand, without a
+> matching tag or GitHub Release, and `.release-please-manifest.json` was not
+> updated — so release-please still considered `1.4.0-alpha.0` current. The
+> manifest has since been advanced to `1.4.0-alpha.1` to adopt this as the
+> released state, which means **no `cli-v1.4.0-alpha.1` tag will ever exist** and
+> the next cut is `1.4.0-alpha.2`. The changes below first reached a tagged
+> release there. The compare link was removed because it pointed at that
+> non-existent tag.
 
 
 ### Bug Fixes
