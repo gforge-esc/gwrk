@@ -15,6 +15,14 @@ Methods for interacting with the SQLite build plan graph.
 
 - `getPlanStatus(): { features: PlanFeature[], phases: PlanPhase[] }`
   - FR-005: Per-feature, per-phase status report
+- `getShippedPhases(projectId): Set<"<feature>:<phase>">`
+  - The set `plan init` uses to promote `PLANNED → SHIPPED`.
+  - MUST require `exit_code = 0`. A ship run that **died** must not record its
+    phase as shipped — `005-dashboard-api/phase-07` was promoted off a run that
+    exited 1 on a transient GitHub error, and only the opt-in audit pass caught
+    it. `= 0` also excludes in-flight runs, whose `exit_code` is still NULL.
+  - A phase whose earlier attempt failed and whose later attempt succeeded still
+    counts: re-shipping after a failure is the normal recovery path.
 - `getReadyQueue(): PlanPhase[]`
   - FR-003: Kahn's algorithm — phases with all deps DONE, sorted by critical path priority
   - Dependency-ready is NOT parallel-safe. It models declared edges only, never

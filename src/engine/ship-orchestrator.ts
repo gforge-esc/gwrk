@@ -85,6 +85,42 @@ function withSpinner<T>(label: string, fn: () => T): T {
 }
 
 /**
+ * `withSpinner` for an awaited operation. Needed once the CI wait became async
+ * to accommodate retry backoff — the sync version would resolve the promise
+ * instantly and clear the spinner before the work finished.
+ */
+async function withSpinnerAsync<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let idx = 0;
+  const start = Date.now();
+  const interval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    const frame = SPINNER[idx % SPINNER.length];
+    idx++;
+    process.stdout.write(
+      `\r${DIM}    ${frame} ${label}... ${elapsed}s${RESET}  `,
+    );
+  }, 150);
+
+  try {
+    const result = await fn();
+    clearInterval(interval);
+    process.stdout.write(
+      `\r\x1b[K    ✓ ${label} (${Math.floor((Date.now() - start) / 1000)}s)\n`,
+    );
+    return result;
+  } catch (err) {
+    clearInterval(interval);
+    process.stdout.write(
+      `\r\x1b[K    ✗ ${label} (${Math.floor((Date.now() - start) / 1000)}s)\n`,
+    );
+    throw err;
+  }
+}
+
+/**
  * One phase carried by a pull request, as recorded in its body marker.
  *
  * `gate`/`review` are absent for phases recovered from a pre-marker PR title,
@@ -99,6 +135,29 @@ interface PrPhaseRecord {
 
 /** Machine-readable span marker, invisible in rendered markdown. */
 const PR_MARKER = /<!-- gwrk:pr (.*?) -->/;
+
+/**
+ * Errors that are GitHub's problem, not a verdict about the code.
+ *
+ * Run #2631 finished everything — both reviews, the PR, CI green in 9s — then
+ * exited 1 on GitHub's own 502-class GraphQL error. These are worth another
+ * attempt; a CI verdict never is, because retrying it doubles the wait and can
+ * mask a genuine red.
+ */
+const TRANSIENT_GH_PATTERNS = [
+  /Something went wrong while executing your query/i, // GraphQL 502-class
+  /\bHTTP (50[0234])\b/, // 500/502/503/504
+  /\b(Bad Gateway|Service Unavailable|Gateway Time-?out)\b/i,
+  /secondary rate limit/i,
+  /API rate limit exceeded/i,
+  /\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE)\b/,
+  /socket hang up/i,
+  /\bserver error\b/i,
+];
+
+function isTransientGhError(message: string): boolean {
+  return TRANSIENT_GH_PATTERNS.some((re) => re.test(message));
+}
 
 /** `phase-04` → `4`. */
 function phaseNumOf(phaseId: string): string {
@@ -1596,19 +1655,52 @@ ${marker}`;
    * Only the last step skips, and it says so. Any genuine check failure at
    * either level throws.
    */
-  private waitForChecks(prNumber: string): void {
-    const check = (required: boolean) =>
-      execSync(
-        `gh pr checks "${prNumber}" --watch${required ? " --required" : ""} --interval 30`,
-        {
-          cwd: this.config.cwd,
-          encoding: "utf-8",
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
+  /** Overridable in tests so the backoff does not slow the suite. */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Run a `gh pr checks` query, retrying only GitHub's own transient failures.
+   *
+   * Backoff is short because the caller is `--watch`, which already blocks for
+   * minutes; the point is to survive a blip, not to wait out an outage.
+   */
+  private async checksWithRetry(
+    prNumber: string,
+    required: boolean,
+  ): Promise<string> {
+    const delays = [3000, 10000, 30000];
+    let attempt = 0;
+
+    for (;;) {
+      try {
+        return execSync(
+          `gh pr checks "${prNumber}" --watch${required ? " --required" : ""} --interval 30`,
+          {
+            cwd: this.config.cwd,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!isTransientGhError(msg) || attempt >= delays.length) throw err;
+        const wait = delays[attempt];
+        attempt++;
+        console.log(
+          `    ⚠ GitHub returned a transient error — retrying in ${wait / 1000}s (${attempt}/${delays.length})`,
+        );
+        await this.sleep(wait);
+      }
+    }
+  }
+
+  private async waitForChecks(prNumber: string): Promise<void> {
+    const check = (required: boolean) => this.checksWithRetry(prNumber, required);
 
     try {
-      withSpinner("waiting for required CI", () => check(true));
+      await withSpinnerAsync("waiting for required CI", () => check(true));
       return;
     } catch (requiredErr: unknown) {
       const msg =
@@ -1624,7 +1716,7 @@ ${marker}`;
     }
 
     try {
-      withSpinner("waiting for CI", () => check(false));
+      await withSpinnerAsync("waiting for CI", () => check(false));
     } catch (anyErr: unknown) {
       const msg = anyErr instanceof Error ? anyErr.message : String(anyErr);
       if (msg.includes("no checks reported")) {
@@ -1827,7 +1919,7 @@ ${marker}`;
         console.log(`    PR #${prNumber} ready`);
         // gh pr checks blocks until finished, returning non-zero if failed.
         // If no required checks are configured, treat as pass.
-        this.waitForChecks(prNumber);
+        await this.waitForChecks(prNumber);
         return { success: true, exitCode: 0, nextStage: ShipStage.DONE };
       }
 
