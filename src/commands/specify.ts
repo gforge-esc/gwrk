@@ -25,6 +25,7 @@ import { resolveFeature } from "../utils/resolve-feature.js";
 import { scaffoldFeature } from "../utils/scaffold-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { withParentFlags } from "../utils/command-flags.js";
 
 export const specifyCommand = new Command("spec")
   .description("Create or refine a feature specification")
@@ -67,7 +68,11 @@ Arguments:
       featureArg: string | undefined,
       prompt: string | undefined,
       opts: { refs?: string; dryRun?: boolean },
+      command: Command,
     ) => {
+      // --refs and --dry-run are declared on BOTH `define` and here, so commander
+      // binds them to the parent and this command's own opts() arrives empty.
+      opts = withParentFlags(opts, command);
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
         const config = loadConfig(cwd);
@@ -181,7 +186,12 @@ Arguments:
 
         const mode = isRework ? "rework" : "new";
 
-        const runId = startRun({
+        // A preview must leave no trace: `startRun` used to fire before anything
+        // consulted --dry-run, leaving a run row that never finishes (NULL
+        // exit_code). `runs` is what harvest correlates against and what
+        // getShippedPhases reads, so a row for work that never happened is
+        // false evidence. -1 is the same sentinel a failed ledger write uses.
+        const runId = opts.dryRun ? -1 : startRun({
           feature_id: feature,
           command: "define spec",
           agent_backend: backend,
@@ -197,7 +207,7 @@ Arguments:
                 Prompt: `"${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}"`,
               }
             : {}),
-          "Run ID": `${runId}`,
+          "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
           ...(opts.refs ? { Refs: opts.refs } : {}),
         });
 

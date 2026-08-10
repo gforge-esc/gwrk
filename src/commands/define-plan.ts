@@ -25,6 +25,7 @@ import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { withParentFlags } from "../utils/command-flags.js";
 
 export const definePlanCommand = new Command("plan")
   .description("Create or amend an implementation plan for a feature")
@@ -42,7 +43,10 @@ Examples:
   .argument("[prompt]", "Amendment instructions (when plan.md already exists)")
   .option("--refs <path>", "Path to additional reference docs")
   .option("--dry-run", "Print the command without executing")
-  .action(async (featureArg, prompt: string | undefined, opts: { refs?: string; dryRun?: boolean }) => {
+  .action(async (featureArg, prompt: string | undefined, opts: { refs?: string; dryRun?: boolean }, command: Command) => {
+    // --refs/--dry-run are also declared on `define`; without this merge commander
+    // binds them to the parent and they are silently dropped here.
+    opts = withParentFlags(opts, command);
     await withSignal("define plan", async () => {
       const projectRoot = process.cwd();
       const feature = resolveFeature(featureArg, projectRoot);
@@ -116,7 +120,12 @@ Examples:
         ].join("\n");
       }
 
-      const runId = startRun({
+      // A preview must leave no trace: `startRun` used to fire before anything
+      // consulted --dry-run, leaving a run row that never finishes (NULL
+      // exit_code). `runs` is what harvest correlates against and what
+      // getShippedPhases reads, so a row for work that never happened is
+      // false evidence. -1 is the same sentinel a failed ledger write uses.
+      const runId = opts.dryRun ? -1 : startRun({
         feature_id: feature,
         command: "define plan",
         agent_backend: backend,
@@ -127,7 +136,7 @@ Examples:
         Feature: feature,
         Agent: backend,
         Mode: mode,
-        "Run ID": `${runId}`,
+        "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
         ...(opts.refs ? { Refs: opts.refs } : {}),
       });
 

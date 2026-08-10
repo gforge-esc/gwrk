@@ -86,7 +86,12 @@ Examples:
         const model = resolveModelForTask("define", backend, cwd);
 
         const startedAt = new Date().toISOString();
-        const runId = startRun({
+        // A preview must leave no trace: `startRun` used to fire before anything
+        // consulted --dry-run, leaving a run row that never finishes (NULL
+        // exit_code). `runs` is what harvest correlates against and what
+        // getShippedPhases reads, so a row for work that never happened is
+        // false evidence. -1 is the same sentinel a failed ledger write uses.
+        const runId = opts.dryRun ? -1 : startRun({
           feature_id: feature,
           command: "define",
           agent_backend: backend,
@@ -96,7 +101,7 @@ Examples:
         banner("define", {
           Feature: feature,
           Agent: backend,
-          "Run ID": `${runId}`,
+          "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
           ...(opts.refs ? { Refs: opts.refs } : {}),
         });
 
