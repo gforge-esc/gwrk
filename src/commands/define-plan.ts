@@ -15,7 +15,7 @@ import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
 import {
-  commitAllClean,
+  commitPaths,
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
@@ -230,8 +230,10 @@ Examples:
           );
         }
 
-        // Define must always leave a clean working tree
-        commitAllClean(projectRoot, `chore(${feature}): define plan execution manifest`);
+        // Commit ONLY the manifest we just wrote — never the caller's tree.
+        commitPaths(projectRoot, `chore(${feature}): define plan execution manifest`, [
+          path.join("specs", feature, ".gwrk", "runs"),
+        ]);
 
         const planStore = new PlanStore(resolveProjectId(projectRoot));
         planStore.handleDefineComplete({

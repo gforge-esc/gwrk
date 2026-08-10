@@ -54,6 +54,19 @@ vi.mock("../utils/resolve-feature.js", () => ({
 vi.mock("../utils/project-id.js", () => ({
   resolveProjectId: vi.fn().mockReturnValue("proj"),
 }));
+// Never let a test reach the real commit path. Before commitPaths was scoped,
+// the non-dry-run case below committed this repo's working tree via `git add -A`.
+vi.mock("../utils/git.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  commitPaths: vi.fn(),
+  getCurrentCommit: vi.fn().mockReturnValue("abc1234"),
+  getCurrentBranch: vi.fn().mockReturnValue("develop"),
+  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+}));
+vi.mock("../utils/manifest.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  writeManifest: vi.fn(),
+}));
 vi.mock("../utils/output.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   readStdin: vi.fn().mockResolvedValue(""),

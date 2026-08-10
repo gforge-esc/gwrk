@@ -15,7 +15,7 @@ import { readStdin } from "../utils/output.js";
 import { resolveModelForTask } from "../utils/resolve-model.js";
 
 import {
-  commitAllClean,
+  commitPaths,
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
@@ -286,8 +286,10 @@ Arguments:
             );
           }
 
-          // Define must always leave a clean working tree
-          commitAllClean(cwd, `chore(${feature}): define spec execution manifest`);
+          // Commit ONLY the manifest we just wrote — never the caller's tree.
+          commitPaths(cwd, `chore(${feature}): define spec execution manifest`, [
+            path.join("specs", feature, ".gwrk", "runs"),
+          ]);
 
           const planStore = new PlanStore(resolveProjectId(cwd));
           planStore.handleDefineComplete({
