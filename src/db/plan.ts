@@ -427,8 +427,13 @@ export function getShippedPhases(
   const conn = db ?? getDb();
   const rows = conn
     .prepare(
+      // exit_code = 0 is load-bearing. `plan init` promotes PLANNED → SHIPPED
+      // from this set, so counting a run that DIED records work as shipped that
+      // never landed — 005-dashboard-api/phase-07 was promoted off a run that
+      // exited 1 on a transient GitHub error. `= 0` also excludes in-flight runs,
+      // whose exit_code is still NULL.
       `SELECT DISTINCT feature_id, phase_id FROM runs
-       WHERE command = 'ship' AND project_id = ?
+       WHERE command = 'ship' AND project_id = ? AND exit_code = 0
        AND feature_id IS NOT NULL AND phase_id IS NOT NULL`,
     )
     .all(projectId) as { feature_id: string; phase_id: string }[];

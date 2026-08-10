@@ -147,6 +147,24 @@ Widening the guard without the fallback is NOT an acceptable fix: it would make
 gwrk skip CI on every unprotected repo and report success — the vacuous-green
 class 026/027 exist to close. Any genuine check failure at either level throws.
 
+#### Transient GitHub failures are retried, verdicts are not
+
+Each `gh pr checks` invocation retries on errors that are recognisably GitHub's
+infrastructure rather than a statement about the code: GraphQL 502-class
+("Something went wrong while executing your query"), HTTP 500/502/503/504,
+primary and secondary rate limits, and dropped connections
+(`ECONNRESET`/`ETIMEDOUT`/`EAI_AGAIN`/`ENOTFOUND`/`EPIPE`/socket hang up).
+Backoff is 3s → 10s → 30s, then the error propagates.
+
+A CI **verdict** is never retried. Retrying one would double an already-long
+wait and could mask a genuine red.
+
+The classification matters because the caller has already spent the run: #2631
+completed implement, both reviews through a NO-GO/iterate cycle, opened the PR
+and passed CI in 9s, then exited 1 on GitHub's own GraphQL error. Retry composes
+with the escalation above — a blip on the `--required` query still falls through
+to the all-checks wait once it clears.
+
 ## Recovery Semantics (FR-008)
 
 - State is persisted to `.runs/<featureId>_<phaseId>.state` after every stage transition.
