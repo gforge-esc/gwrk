@@ -220,6 +220,16 @@ export const GwrkConfigSchema = z.object({
       // Counterpart to `setup`, run inside the worktree before it is removed
       // (e.g. "make worktree:down"). A stack still bind-mounting the worktree
       // holds node_modules, and `git worktree remove --force` then fails EPERM.
+      //
+      // `gwrk sandbox prune` also runs it for orphans — sandboxes whose worktree
+      // vanished without teardown (SIGKILL, crash). There the worktree is gone,
+      // so teardown MUST target the sandbox through the identity gwrk exports
+      // rather than the working directory:
+      //   GWRK_SANDBOX_ID   stable id, also the worktree basename
+      //   GWRK_SANDBOX_DIR  the (possibly deleted) worktree path
+      //   GWRK_FEATURE_ID   the feature being shipped
+      // e.g. `docker compose -p gwrk-$GWRK_SANDBOX_ID down -v`, with `setup`
+      // pinning COMPOSE_PROJECT_NAME to the same value.
       teardown: z.string().optional(),
     })
     .optional(),

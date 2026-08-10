@@ -19,6 +19,7 @@ import { serverCommand } from "./commands/server.js";
 import { shipCommand } from "./commands/ship.js";
 import { skillCommand } from "./commands/skill.js";
 import { statusCommand } from "./commands/status.js";
+import { sandboxCommand } from "./commands/sandbox.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { testCommand } from "./commands/test.js";
 import { processForAgent } from "./utils/agent-layer.js";
@@ -124,6 +125,7 @@ program.addCommand(planCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
+program.addCommand(sandboxCommand); // Sandbox: inspect + reap ship worktree sandboxes
 program.addCommand(deviceCommand);
 program.addCommand(skillCommand);
 program.addCommand(pluginCommand);
