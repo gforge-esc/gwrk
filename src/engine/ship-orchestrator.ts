@@ -48,38 +48,42 @@ import { runTaskGate, runInlineGate, type TaskGateResult } from "../utils/gate-e
 import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
+import { startProgress } from "../utils/progress.js";
 
-// ANSI helpers for progress output
-const DIM = "\x1b[2m";
-const RESET = "\x1b[0m";
-const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/**
+ * Start the progress indicator shared by both spinner wrappers. Animates on a
+ * terminal, heartbeats once a minute when stdout is redirected to a log.
+ */
+function startStageProgress(label: string) {
+  return startProgress({
+    label,
+    write: (chunk) => process.stdout.write(chunk),
+    isTTY: process.stdout.isTTY === true,
+    indent: "    ",
+    frameMs: 150,
+    formatElapsed: (seconds) => `${seconds}s`,
+  });
+}
 
 /**
  * Run a synchronous blocking operation with a visible spinner.
  * Clears the spinner line on completion and prints the result.
  */
 function withSpinner<T>(label: string, fn: () => T): T {
-  let idx = 0;
   const start = Date.now();
-  const interval = setInterval(() => {
+  const progress = startStageProgress(label);
+  const settle = (mark: string) => {
+    progress.stop();
     const elapsed = Math.floor((Date.now() - start) / 1000);
-    const frame = SPINNER[idx % SPINNER.length];
-    idx++;
-    process.stdout.write(
-      `\r${DIM}    ${frame} ${label}... ${elapsed}s${RESET}  `,
-    );
-  }, 150);
+    process.stdout.write(`    ${mark} ${label} (${elapsed}s)\n`);
+  };
 
   try {
     const result = fn();
-    clearInterval(interval);
-    const elapsed = Math.floor((Date.now() - start) / 1000);
-    process.stdout.write(`\r\x1b[K    ✓ ${label} (${elapsed}s)\n`);
+    settle("✓");
     return result;
   } catch (err) {
-    clearInterval(interval);
-    const elapsed = Math.floor((Date.now() - start) / 1000);
-    process.stdout.write(`\r\x1b[K    ✗ ${label} (${elapsed}s)\n`);
+    settle("✗");
     throw err;
   }
 }
@@ -93,29 +97,20 @@ async function withSpinnerAsync<T>(
   label: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  let idx = 0;
   const start = Date.now();
-  const interval = setInterval(() => {
+  const progress = startStageProgress(label);
+  const settle = (mark: string) => {
+    progress.stop();
     const elapsed = Math.floor((Date.now() - start) / 1000);
-    const frame = SPINNER[idx % SPINNER.length];
-    idx++;
-    process.stdout.write(
-      `\r${DIM}    ${frame} ${label}... ${elapsed}s${RESET}  `,
-    );
-  }, 150);
+    process.stdout.write(`    ${mark} ${label} (${elapsed}s)\n`);
+  };
 
   try {
     const result = await fn();
-    clearInterval(interval);
-    process.stdout.write(
-      `\r\x1b[K    ✓ ${label} (${Math.floor((Date.now() - start) / 1000)}s)\n`,
-    );
+    settle("✓");
     return result;
   } catch (err) {
-    clearInterval(interval);
-    process.stdout.write(
-      `\r\x1b[K    ✗ ${label} (${Math.floor((Date.now() - start) / 1000)}s)\n`,
-    );
+    settle("✗");
     throw err;
   }
 }

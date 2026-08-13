@@ -232,3 +232,83 @@ describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {
     expect(capturedStdin).toContain('<external_context>');
   });
 });
+
+describe("quiet-mode progress against a redirected stdout", () => {
+  /** Hold the child open long enough that a 200ms spinner would have ticked. */
+  function mockLongRunningChild(ms: number) {
+    vi.mocked(spawn).mockImplementation(() => {
+      const mockChild = new EventEmitter() as any;
+      mockChild.stdin = new PassThrough();
+      mockChild.stdout = new PassThrough();
+      mockChild.stderr = new PassThrough();
+      setTimeout(() => {
+        mockChild.stdout.end();
+        mockChild.stderr.end();
+        mockChild.emit('close', 0);
+      }, ms);
+      return mockChild;
+    });
+  }
+
+  async function captureStdout(isTTY: boolean, run: () => Promise<unknown>) {
+    const original = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', {
+      value: isTTY,
+      configurable: true,
+    });
+    const written: string[] = [];
+    const spy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation((chunk: any) => {
+        written.push(typeof chunk === 'string' ? chunk : chunk.toString());
+        return true;
+      });
+
+    try {
+      await run();
+    } finally {
+      spy.mockRestore();
+      Object.defineProperty(process.stdout, 'isTTY', {
+        value: original,
+        configurable: true,
+      });
+    }
+    return written.join('');
+  }
+
+  // A 68-minute stage once left 20,284 carriage-returned frames in a
+  // redirected ship log — `\r` overwrites a terminal, not a file.
+  it('writes no carriage returns when stdout is not a TTY', async () => {
+    mockLongRunningChild(700);
+
+    const out = await captureStdout(false, () =>
+      dispatchToAgent({
+        workflow: 'gwrk-implement',
+        workDir: '/fake/root',
+        agent: 'agy',
+        stdin: 'anything',
+        quiet: true,
+      }),
+    );
+
+    expect(out).not.toContain('\r');
+    expect(out).toContain('agent done');
+  });
+
+  it('still animates in place when stdout is a TTY', async () => {
+    mockLongRunningChild(700);
+
+    const out = await captureStdout(true, () =>
+      dispatchToAgent({
+        workflow: 'gwrk-implement',
+        workDir: '/fake/root',
+        agent: 'agy',
+        stdin: 'anything',
+        quiet: true,
+      }),
+    );
+
+    expect(out).toContain('\r');
+    expect(out).toContain('agent running');
+  });
+});
