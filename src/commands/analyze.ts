@@ -11,6 +11,7 @@ import { banner, fail, success } from "../utils/format.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { withParentFlags } from "../utils/command-flags.js";
 
 /**
  * gwrk define analyze <feature> — Internal definition stage (hidden)
@@ -19,7 +20,9 @@ export const analyzeCommand = new Command("analyze")
   .description("Analyze consistency for a feature specification and plan")
   .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
   .option("--dry-run", "Print the command without executing")
-  .action(async (featureArg: string, opts: { dryRun?: boolean }) => {
+  .action(async (featureArg: string, opts: { dryRun?: boolean }, command: Command) => {
+    // --dry-run is also declared on `define`, which would otherwise swallow it.
+    opts = withParentFlags(opts, command);
     await withSignal("define analyze", async () => {
       const projectRoot = process.cwd();
       const feature = resolveFeature(featureArg, projectRoot);
@@ -28,7 +31,12 @@ export const analyzeCommand = new Command("analyze")
       const backend = config.agents.define;
       const model = resolveModelForTask("define", backend, projectRoot);
 
-      const runId = startRun({
+      // A preview must leave no trace: `startRun` used to fire before anything
+      // consulted --dry-run, leaving a run row that never finishes (NULL
+      // exit_code). `runs` is what harvest correlates against and what
+      // getShippedPhases reads, so a row for work that never happened is
+      // false evidence. -1 is the same sentinel a failed ledger write uses.
+      const runId = opts.dryRun ? -1 : startRun({
         feature_id: feature,
         command: "define analyze",
         agent_backend: backend,
@@ -38,7 +46,7 @@ export const analyzeCommand = new Command("analyze")
       banner("define analyze", {
         Feature: feature,
         Agent: backend,
-        "Run ID": `${runId}`,
+        "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
       });
 
       const startTime = Date.now();

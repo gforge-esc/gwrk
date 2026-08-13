@@ -378,20 +378,39 @@ export function commitFiles(
 }
 
 /**
- * Commits all staged+unstaged changes to leave a clean working tree.
- * Used by define subcommands after writing execution manifests.
- * No-op if tree is already clean.
+ * Commit ONLY the given paths. Used by define subcommands to record the
+ * execution manifest they just wrote.
+ *
+ * This replaced a `git add -A` version, which committed the caller's entire
+ * working tree under a "…execution manifest" message. Every real
+ * `gwrk define spec` / `define plan` therefore swept up whatever else the
+ * developer had uncommitted — observed twice, absorbing unrelated source edits
+ * into commits nobody authored. `--no-verify` made it worse by skipping the
+ * hooks that might have objected.
+ *
+ * Staging is scoped and the hooks now run, matching what `ship.ts` already does
+ * (`git add <manifestDir>`). No-op when the given paths have nothing to stage,
+ * so an unrelated dirty tree neither blocks nor joins the commit.
  */
-export function commitAllClean(repoPath: string, message: string): void {
-  if (isWorkingTreeClean(repoPath)) return;
+export function commitPaths(
+  repoPath: string,
+  message: string,
+  paths: string[],
+): void {
+  if (paths.length === 0) return;
   try {
-    execFileSync("git", ["add", "-A"], {
+    execFileSync("git", ["add", "--", ...paths], {
       cwd: repoPath,
       stdio: ["ignore", "ignore", "pipe"],
     });
+    const staged = execFileSync("git", ["diff", "--cached", "--name-only"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+    }).trim();
+    if (!staged) return;
     execFileSync(
       "git",
-      ["commit", "--no-verify", "-m", message],
+      ["commit", "-m", message],
       {
         cwd: repoPath,
         stdio: ["ignore", "ignore", "pipe"],

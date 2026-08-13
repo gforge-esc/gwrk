@@ -34,6 +34,7 @@ import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { withParentFlags } from "../utils/command-flags.js";
 import { loadTaskState } from "../utils/state.js";
 
 /**
@@ -79,7 +80,10 @@ Examples:
         phase?: string;
         dryRun?: boolean;
       },
+      command: Command,
     ) => {
+      // Also declared on `define`; commander binds it to the parent otherwise.
+      opts = withParentFlags(opts, command);
       await withSignal(`define tasks ${featureArg}`, async () => {
         const projectRoot = process.cwd();
         // Resolve prefix: "003" → "003-slack"
@@ -139,7 +143,12 @@ Examples:
         const config = loadConfig(projectRoot);
         const backend = config.agents.define;
 
-        const runId = startRun({
+        // A preview must leave no trace: `startRun` used to fire before anything
+        // consulted --dry-run, leaving a run row that never finishes (NULL
+        // exit_code). `runs` is what harvest correlates against and what
+        // getShippedPhases reads, so a row for work that never happened is
+        // false evidence. -1 is the same sentinel a failed ledger write uses.
+        const runId = opts.dryRun ? -1 : startRun({
           feature_id: feature,
           command: "define tasks",
           agent_backend: backend,
