@@ -220,7 +220,7 @@ still assert the broad version. Closing that gap *is* the remedy.
 | WS | Scope | Kind | Blocks | Effort |
 |---|---|---|---|---|
 | **W1** ✅ | Fix the code-review prompts + the scope context (D1, D9, D10) — **done**, see §5a | **Definitional** | everything | S |
-| **W2** | Code backstops: D2, D5, D6 + unit tests | **Manual fix** | — | S |
+| **W2** ✅ | Code backstops: D2, D5, D6 + unit tests — **done**, see §5b | **Manual fix** | — | S |
 | **W3** | Durable findings channel (D3) + one-way JSON ratchet (D4) | **Manual fix** | W1 | M |
 | **W4** | ADR-007 §78 correction block | **Definitional cascade** | W1 | XS |
 | **W5** | Spec record `028-review-finding-liveness` + build-plan graph | **Definitional cascade** | W1-W3 | S |
@@ -367,6 +367,33 @@ npm run build && npm run test:ci
 npx vitest run src/engine/ship-orchestrator.review-gate-divergence.test.ts \
                src/engine/ship-orchestrator.review.test.ts
 ```
+
+### §5b — W2 as landed (2026-08-17, `e588d1f`)
+
+`src/engine/ship-orchestrator.ts`:
+
+| Change | Defect |
+|---|---|
+| `readVerdict`'s loop no longer `continue`s past an ungated task before consulting `reopenedByReview`. A re-open on a task with no `gateScript` now returns **NO-GO** and appends a `REVIEW FINDING (…, no gate)` note. | **D2** |
+| New `ungatedFindings` branch prints which tasks were re-opened with no gate to check them, and why that is NO-GO. | D2 |
+| DIAGNOSE's context regex now also matches `REVIEW/GATE DIVERGENCE`, `REVIEW FINDING`, `REVIEW FAIL`. | **D5** |
+| When the context is review-driven, the diagnosis prompt says the build is green, and asks for a gate or test alongside each fix — "a finding that survives its own fix is a finding that will recur". Persona widened from "TypeScript build diagnostician" to "build and code-review diagnostician". | D5 |
+| `readVerdict`'s doc comment now states the real rule instead of "any open task → NO-GO", which the code never did and must not (a task can be open because nobody implemented it yet). | **D6** |
+
+New `src/engine/ship-orchestrator.review-finding-liveness.test.ts` — 11 tests:
+
+- **D2**: ungated re-open → NO-GO; task stays open; note recorded; **untouched ungated task still GO**
+  (no false positive); no gate is run for a task that has none.
+- **D5**: both note formats reach the diagnostician; an open task with no finding still skips.
+- **D10 regression guard**: the code-review scope context still carries `VERDICT CHANNEL`, no longer
+  carries "note them in your summary but do NOT change its status", and still forbids touching other
+  phases — i.e. the earlier-phase infinite-loop guard survived the fix.
+
+The D10 tests passed on first run, which is the check that W1 actually landed in the dispatched prompt
+rather than only in the file. D2 and D5 failed first, then passed.
+
+Verification: `npm run test:ci` → **1272 passed, 3 failed** (up from 1261; +11 new). The 3 are the same
+pre-existing `src/commands/server.test.ts` daemon-spawn failures confirmed against clean `develop`.
 
 ### W3 — Durable findings + one-way JSON ratchet
 
