@@ -1,6 +1,7 @@
 # CODE_REVIEW reports GO over a blocking finding — diagnosis and remedy plan
 
-> **Status:** Diagnosed, verified against source and git history · **Date:** 2026-08-17
+> **Status:** In progress on `fix/review-finding-liveness` → [PR #176](https://github.com/gforge-esc/gwrk/pull/176)
+> (open across all workstreams; D10/D1/D9 landed, D2/D5/D6 in W2) · **Date:** 2026-08-17
 > **Reported by:** an agent working in `~/Projects/Data/data-dashboard` (not a gwrk maintainer)
 > **Verified in:** `gwrk` @ `develop` (18efd1a, v1.4.0-alpha.1) and `data-dashboard` @ `origin/feat/{008,010}`
 > **Severity:** High — burns the entire iteration budget on defects the loop already found
@@ -304,7 +305,7 @@ diff src/plugins/builtins/reviews/review-code-webapp/PROMPT.md \
      dist/plugins/builtins/reviews/review-code-webapp/PROMPT.md && echo "prompt is live"
 ```
 
-### §5a — W1 as landed (2026-08-17, branch `fix/review-finding-liveness`)
+### §5a — W1 as landed (2026-08-17, `a57a68f` on `fix/review-finding-liveness`, [PR #176](https://github.com/gforge-esc/gwrk/pull/176))
 
 `src/engine/ship-orchestrator.ts` — `stageCodeReview` scope context (**D10**):
 
