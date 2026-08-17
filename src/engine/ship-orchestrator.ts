@@ -489,7 +489,9 @@ export class ShipOrchestrator extends EventEmitter {
       this.revertSourceMutations();
 
       // 4. Determine verdict from gates (not agent edits).
-      //    Gates are truth, agent verdict is advisory. (ADR-007)
+      //    Gate authority is one-way (ADR-007 + 028 correction): a green gate
+      //    closes a task the reviewer raised no finding against, and never a task
+      //    it reproduced a defect on.
       //
       //    Advisory is not the same as discarded. Source mutations were just
       //    reverted, so tasks.json is the review agent's only surviving
@@ -1343,9 +1345,24 @@ export class ShipOrchestrator extends EventEmitter {
     const scopedPrompt = [
       `Phase ${this.config.phaseId} Code Review`,
       "",
-      "SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks.",
-      "Do NOT re-open tasks from earlier phases that are already completed.",
-      "If a completed task's implementation has issues, note them in your summary but do NOT change its status.",
+      `SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks (${this.config.phaseId}).`,
+      "Do NOT touch tasks belonging to any OTHER phase — not their status, not their descriptions.",
+      "For a task in an earlier phase with issues: note it in your summary only, and leave its status alone.",
+      "",
+      // The verdict channel, stated where the agent cannot miss it. This block is
+      // appended after PROMPT.md, so it is the last thing the agent reads — which is
+      // why its predecessor ("note them in your summary but do NOT change its
+      // status", unqualified by phase) silently disabled code review as a gate.
+      // Every task in the current phase is `completed` by the time review runs, so
+      // that sentence read as "never re-open anything" and four blocking findings
+      // across runs #2727/#2728 were written down, committed, and discarded.
+      `VERDICT CHANNEL: when you find a blocking defect in a task of THIS phase (${this.config.phaseId}),`,
+      'set that task\'s status to "open" in tasks.json and append a REVIEW FAIL note.',
+      "That status flip IS your NO-GO. The orchestrator reads it — not your prose, not your commit",
+      "subject, not the verdict field of your JSON. A finding left on a completed task is discarded and",
+      "the phase advances to UAT as if you had approved it.",
+      "This holds even when the task's gate passes: a green gate over a defect you reproduced is a gate",
+      "coverage hole, and re-opening the task is how you report it.",
       "",
       "Review Steps:",
       steps,
@@ -1451,7 +1468,10 @@ export class ShipOrchestrator extends EventEmitter {
     if (!phase) return "NO-GO";
 
     // Gate-driven verdict: run gates directly, don't trust agent edits.
-    // "Gates are truth, tasks.json status is bookkeeping." (gwrk-review-code.md L59)
+    // Gate authority is one-way — see the "one-way" callout in
+    // src/plugins/builtins/reviews/review-code-{cli,webapp}/PROMPT.md Step 2.
+    // (The old citation here, "gates are truth, tasks.json status is bookkeeping",
+    // was the doctrine that let a green gate close a reproduced defect.)
     // 026: run each task's gate through the shared runner. An INLINE gateScript
     // now actually executes — previously it was `join`ed to a path that never
     // exists and skipped, so the verdict was a vacuous GO for every real phase.
