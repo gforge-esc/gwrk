@@ -1,0 +1,19 @@
+{
+  "runId": "2026-08-20T23:20:24.779Z_define_p00",
+  "feature": "029-decision-records",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-08-20T23:20:24.779Z",
+  "finishedAt": "2026-08-20T23:35:30.419Z",
+  "durationS": 906,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 3,
+  "linesAdded": 1532,
+  "linesDeleted": 0,
+  "gitCommit": "efd594b416d47a0cf9c1c99a904ba58606ae4565",
+  "gitBranch": "feat/decision-records",
+  "digest": []
+}
