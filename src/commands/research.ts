@@ -67,7 +67,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
   let output = `Scaffolded research initiative at ${result.directory}`;
 
   if (args.run) {
-    const timer = startTimer();
+    const timer = startTimer("research");
     try {
       // Read the brief.md content to pass to the workflow
       const briefPath = path.resolve(result.directory, "brief.md");
