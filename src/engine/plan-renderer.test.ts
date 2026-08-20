@@ -74,3 +74,51 @@ describe('PlanRenderer', () => {
     expect(md).toContain('| 2 | Commands | SHIPPED ✅ | 15 |'); // SHIPPED also gets ✅ in my current PlanRenderer logic
   });
 });
+
+/**
+ * 029 Decision Records — RED tests for TR-012 (FR-016).
+ *
+ * @phase 07
+ * @status active
+ *
+ * `plan-renderer.ts:38` enumerates ADR-001 through ADR-006 and stops there.
+ * One index link replaces the enumeration. Per the 023 plan-format contract
+ * only the HEADER changes — no phase, task or `Requirements Addressed:` grammar
+ * is touched, which the last assertion here pins.
+ */
+describe('029 FR-016: the build plan header links the decision index (US-007)', () => {
+  const mockFeatures = [{ id: 'F0', name: 'Extraction', status: 'DONE', sp_total: 3 }];
+  const mockPhases = [
+    { id: 'F0-P1', feature_id: 'F0', name: 'Bootstrap', status: 'DONE', seq: 1, sp_estimate: 10 },
+  ];
+  const mockSolver = {
+    getCriticalPath: vi.fn().mockReturnValue({ path: mockPhases, warnings: [], slackMap: {} }),
+    getTopologicalWaves: vi.fn().mockReturnValue([[mockPhases[0]]]),
+  } as unknown as PlanSolver;
+
+  function render(): string {
+    return new PlanRenderer(mockFeatures, mockPhases, [], mockSolver).render();
+  }
+
+  it('FR-016: links the decision index instead of enumerating ADRs', () => {
+    const md = render();
+
+    expect(md).toContain('.gwrk/decisions/index.md');
+    // No per-ADR enumeration: the list that stopped at ADR-006 is gone.
+    expect(md).not.toMatch(/\[ADR-00\d\]\(docs\/decisions\//);
+    expect((md.match(/ADR-00\d/g) ?? []).length).toBe(0);
+  });
+
+  it('FR-016: carries no dead file:// link', () => {
+    expect(render()).not.toContain('file:///Users/gonzo');
+  });
+
+  it('FR-016: moves no other header field (023 plan-format contract)', () => {
+    const md = render();
+
+    expect(md).toContain('# 000 Build Plan — gwrk');
+    expect(md).toMatch(/^> \*\*Status:\*\* Authoritative · \*\*Date:\*\* \d{4}-\d{2}-\d{2}$/m);
+    expect(md).toMatch(/^> \*\*Anchored to:\*\*/m);
+    expect(md).toMatch(/^> \*\*Decisions:\*\*/m);
+  });
+});

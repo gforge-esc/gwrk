@@ -63,3 +63,28 @@ describe("CLI UX: Help Text Examples (Phase 11)", () => {
     });
   }
 });
+
+/**
+ * 029 Decision Records — RED test for TR-009 (FR-001).
+ *
+ * @phase 02
+ * @status active
+ *
+ * `define adr` belongs in `commandsWithExamples` above once it ships; it lives
+ * in its own skipped block until then because the loop there generates active
+ * `it()` calls, which the phase activator cannot gate.
+ */
+describe("029 TR-009: define adr help text (US-022)", () => {
+  it("FR-001: gwrk define adr --help shows 'Examples:' section (US-022)", () => {
+    expect(
+      helpText(findCommand("define adr")),
+      "Command 'gwrk define adr' is missing 'Examples:' section in help",
+    ).toMatch(/Examples:/i);
+  });
+
+  it("FR-001: gwrk define --help lists adr in its own Examples: block", () => {
+    // FR-001 requires `adr` added to the PARENT `define` Examples block too, so
+    // the subcommand is discoverable from one level up.
+    expect(helpText(findCommand("define"))).toMatch(/Examples:[\s\S]*\badr\b/i);
+  });
+});
