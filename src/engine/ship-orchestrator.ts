@@ -489,7 +489,9 @@ export class ShipOrchestrator extends EventEmitter {
       this.revertSourceMutations();
 
       // 4. Determine verdict from gates (not agent edits).
-      //    Gates are truth, agent verdict is advisory. (ADR-007)
+      //    Gate authority is one-way (ADR-007 + 028 correction): a green gate
+      //    closes a task the reviewer raised no finding against, and never a task
+      //    it reproduced a defect on.
       //
       //    Advisory is not the same as discarded. Source mutations were just
       //    reverted, so tasks.json is the review agent's only surviving
@@ -1343,9 +1345,24 @@ export class ShipOrchestrator extends EventEmitter {
     const scopedPrompt = [
       `Phase ${this.config.phaseId} Code Review`,
       "",
-      "SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks.",
-      "Do NOT re-open tasks from earlier phases that are already completed.",
-      "If a completed task's implementation has issues, note them in your summary but do NOT change its status.",
+      `SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks (${this.config.phaseId}).`,
+      "Do NOT touch tasks belonging to any OTHER phase — not their status, not their descriptions.",
+      "For a task in an earlier phase with issues: note it in your summary only, and leave its status alone.",
+      "",
+      // The verdict channel, stated where the agent cannot miss it. This block is
+      // appended after PROMPT.md, so it is the last thing the agent reads — which is
+      // why its predecessor ("note them in your summary but do NOT change its
+      // status", unqualified by phase) silently disabled code review as a gate.
+      // Every task in the current phase is `completed` by the time review runs, so
+      // that sentence read as "never re-open anything" and four blocking findings
+      // across runs #2727/#2728 were written down, committed, and discarded.
+      `VERDICT CHANNEL: when you find a blocking defect in a task of THIS phase (${this.config.phaseId}),`,
+      'set that task\'s status to "open" in tasks.json and append a REVIEW FAIL note.',
+      "That status flip IS your NO-GO. The orchestrator reads it — not your prose, not your commit",
+      "subject, not the verdict field of your JSON. A finding left on a completed task is discarded and",
+      "the phase advances to UAT as if you had approved it.",
+      "This holds even when the task's gate passes: a green gate over a defect you reproduced is a gate",
+      "coverage hole, and re-opening the task is how you report it.",
       "",
       "Review Steps:",
       steps,
@@ -1395,8 +1412,13 @@ export class ShipOrchestrator extends EventEmitter {
 
   /**
    * Read the verdict from task state after a review dispatch.
-   * If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
-   * Otherwise → GO.
+   *
+   * NOT "any open task → NO-GO", which this comment used to claim and the code
+   * has never done — a task can be open because nobody has implemented it yet.
+   * The verdict comes from what this run can establish: each task's gate, and
+   * the tasks the review agent re-opened. NO-GO if a gate fails, if a re-opened
+   * task's gate passes anyway (a coverage hole), or if a re-opened task has no
+   * gate at all. Otherwise GO.
    */
   /**
    * Tasks the review agent moved from `completed` to `open` during this run.
@@ -1451,16 +1473,36 @@ export class ShipOrchestrator extends EventEmitter {
     if (!phase) return "NO-GO";
 
     // Gate-driven verdict: run gates directly, don't trust agent edits.
-    // "Gates are truth, tasks.json status is bookkeeping." (gwrk-review-code.md L59)
+    // Gate authority is one-way — see the "one-way" callout in
+    // src/plugins/builtins/reviews/review-code-{cli,webapp}/PROMPT.md Step 2.
+    // (The old citation here, "gates are truth, tasks.json status is bookkeeping",
+    // was the doctrine that let a green gate close a reproduced defect.)
     // 026: run each task's gate through the shared runner. An INLINE gateScript
     // now actually executes — previously it was `join`ed to a path that never
     // exists and skipped, so the verdict was a vacuous GO for every real phase.
     // A shared phase gate runs once.
     let failedCount = 0;
     const divergentTasks: string[] = [];
+    const ungatedFindings: string[] = [];
     const gateCache = new Map<string, TaskGateResult>();
     for (const task of phase.tasks) {
-      if (!task.gateScript) continue;
+      if (!task.gateScript) {
+        // No gate means no mechanical baseline, so the reviewer's judgement is
+        // the only verdict this task will ever get. Skipping the task outright
+        // — as this loop used to — threw that judgement away and returned a
+        // vacuous GO. Common whenever a phase expresses Done-When as fenced
+        // prose instead of per-task gates.
+        if (reopenedByReview.has(task.id)) {
+          console.log(
+            `    ⚠ REVIEW FINDING: ${task.id} — re-opened by review, and no gate covers it`,
+          );
+          ungatedFindings.push(task.id);
+          task.completedAt = undefined;
+          task.description =
+            `${task.description || ""}\n\nREVIEW FINDING (${task.id}, no gate):\nThe review agent re-opened this task and it has no gateScript, so nothing mechanical can confirm or refute the finding. Read the REVIEW FAIL note above, fix it, and add a gate that would catch it before completing.`.trim();
+        }
+        continue;
+      }
 
       let gateResult = gateCache.get(task.gateScript);
       if (!gateResult) {
@@ -1510,6 +1552,16 @@ export class ShipOrchestrator extends EventEmitter {
       );
       console.log(
         "      Treating as NO-GO. A green gate over a review finding is a gate coverage hole, not a cleared finding.",
+      );
+      return "NO-GO";
+    }
+
+    if (ungatedFindings.length > 0) {
+      console.log(
+        `    ✗ ${ungatedFindings.length} task(s) re-opened by review with no gate to check them: ${ungatedFindings.join(", ")}`,
+      );
+      console.log(
+        "      Treating as NO-GO. An ungated task's review IS its verdict — there is nothing else to consult.",
       );
       return "NO-GO";
     }
@@ -2093,8 +2145,13 @@ ${marker}`;
     const errorContext: string[] = [];
     for (const task of phase.tasks) {
       if (task.status === "open" && task.description) {
+        // Review findings count as context too. On the review path BUILD_CHECK
+        // and TEST_GATE have both passed — that is the entire point of the
+        // divergence warning — so matching only build/test failures meant
+        // DIAGNOSE printed "no error context" on every review-driven NO-GO and
+        // spent a stage contributing nothing.
         const errorMatch = task.description.match(
-          /(?:BUILD_CHECK FAILED|TEST_GATE REGRESSION|POST-FLIGHT GATE FAIL)[\s\S]*$/,
+          /(?:BUILD_CHECK FAILED|TEST_GATE REGRESSION|POST-FLIGHT GATE FAIL|REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL)[\s\S]*$/,
         );
         if (errorMatch) {
           errorContext.push(`Task ${task.id}: ${errorMatch[0]}`);
@@ -2122,14 +2179,29 @@ ${marker}`;
       currentErrors = stderr;
     }
 
+    // A review-driven NO-GO reaches here with the build green — the finding is
+    // something no gate covers. Say so, or the diagnostician looks for compiler
+    // errors that do not exist and returns nothing.
+    const reviewDriven = errorContext.some((c) =>
+      /REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL/.test(c),
+    );
+
     // Build the diagnosis prompt — concise, targeted, no agent narration
     const diagnosisPrompt = [
-      "You are a TypeScript build diagnostician. Analyze these errors and produce SPECIFIC fix instructions.",
+      "You are a build and code-review diagnostician. Analyze the findings below and produce SPECIFIC fix instructions.",
       "",
       "## Current Build/Test Errors",
-      currentErrors || "(build passes — check test failures in task descriptions below)",
+      currentErrors || "(build passes — the findings below are what failed)",
       "",
-      "## Error Context from Failed Gates",
+      reviewDriven ? "## Review Findings (build and gates are GREEN)" : "## Error Context from Failed Gates",
+      ...(reviewDriven
+        ? [
+            "A reviewer reproduced these defects while every gate passed, so no gate covers them.",
+            "Each FIX must repair the defect the reviewer named. Where a gate or test would have caught",
+            "it, add one — a finding that survives its own fix is a finding that will recur.",
+            "",
+          ]
+        : []),
       ...errorContext,
       "",
       "## Instructions",
