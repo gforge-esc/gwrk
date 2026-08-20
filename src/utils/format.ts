@@ -17,6 +17,8 @@
  *   - Duration on every completion/failure banner
  */
 
+import { type ProgressHandle, startProgress } from "./progress.js";
+
 // ANSI escape codes — matches scripts/dev/agent-run.sh exactly
 const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
@@ -126,19 +128,28 @@ export function dryRun(command: string, agent?: string): void {
   );
 }
 
-/** Elapsed time heartbeat — prints every 30s so user knows the command is alive */
-export function startTimer(): NodeJS.Timeout {
-  const start = Date.now();
-  return setInterval(() => {
-    const elapsed = Math.round((Date.now() - start) / 1000);
-    const mins = Math.floor(elapsed / 60);
-    const secs = elapsed % 60;
-    const display = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-    process.stderr.write(`${DIM}  ⏱ ${display} elapsed${RESET}\n`);
-  }, 30_000);
+/**
+ * Liveness indicator for a long-running command, on stderr so it never
+ * pollutes a command's stdout payload.
+ *
+ * Delegates to {@link startProgress} so it adapts to its sink like every other
+ * gwrk progress indicator: one line repainting in place on a terminal, and a
+ * sparse newline-terminated heartbeat once redirected. It used to write a
+ * newline-terminated line every 30s unconditionally, which scrolled a column
+ * of 24 stamps down the terminal across a 12-minute research run.
+ */
+export function startTimer(label = "working"): ProgressHandle {
+  return startProgress({
+    label,
+    write: (chunk) => process.stderr.write(chunk),
+    isTTY: process.stderr.isTTY === true,
+    indent: "  ",
+    frameMs: 150,
+    formatElapsed: humanDuration,
+  });
 }
 
 /** Stop the heartbeat timer */
-export function stopTimer(timer: NodeJS.Timeout): void {
-  clearInterval(timer);
+export function stopTimer(timer: ProgressHandle): void {
+  timer.stop();
 }
