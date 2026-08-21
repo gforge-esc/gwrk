@@ -23,24 +23,24 @@
 |----|---------------------|-----------|-----------|-------------|------|
 | TR-001 | Scope context contains `VERDICT CHANNEL` and names the status flip as the NO-GO | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | TR-002 | Scope context still forbids touching tasks from other phases (infinite-loop guard) | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
-| TR-003 | Both code-review `PROMPT.md` files satisfy FR-003(a–h) + FR-004, and are byte-identical | unit | src/plugins/builtins/reviews/review-prompts.test.ts | ✅ | |
+| TR-003 | Both code-review `PROMPT.md` files satisfy FR-003(a–h) + FR-004, and are byte-identical | unit | src/engine/review-prompts.test.ts | ✅ | |
 | TR-004 | Re-open on a gateless task → NO-GO, stays open, `REVIEW FINDING (<id>, no gate)` recorded | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | TR-005 | Untouched gateless task still yields GO; no gate run for a task that has none | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | TR-006 | Both review-note formats reach DIAGNOSE; an open task with no finding still skips | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | TR-007 | `readVerdict`'s doc comment states the real rule; the "any open task → NO-GO" claim is gone | unit | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | FR-001 | `VERDICT CHANNEL` block names the status flip as the NO-GO; D10 sentence absent | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | FR-002 | Cross-phase guard preserved explicitly (status **and** description) | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
-| FR-003 | Prompt contract (a)–(h) on both files; TC-007 byte-identity | unit | src/plugins/builtins/reviews/review-prompts.test.ts | ✅ | |
-| FR-004 | Every `.phases[]` selector uses `$pid`/`$PHASE_ID`; read-back verification present | unit | src/plugins/builtins/reviews/review-prompts.test.ts | ✅ | |
+| FR-003 | Prompt contract (a)–(h) on both files; TC-007 byte-identity | unit | src/engine/review-prompts.test.ts | ✅ | |
+| FR-004 | Every `.phases[]` selector uses `$pid`/`$PHASE_ID`; read-back verification present | unit | src/engine/review-prompts.test.ts | ✅ | |
 | FR-005 | `readVerdict` consults findings before any `continue`; gateless re-open → NO-GO | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | FR-006 | DIAGNOSE regex matches `REVIEW/GATE DIVERGENCE`, `REVIEW FINDING`, `REVIEW FAIL` | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | FR-007 | `readVerdict` doc comment describes what the code does, not the stale promise | unit | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
-| US-001 | A code review reproducing a blocking defect reports NO-GO | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts, src/plugins/builtins/reviews/review-prompts.test.ts | ✅ | |
+| US-001 | A code review reproducing a blocking defect reports NO-GO | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts, src/engine/review-prompts.test.ts | ✅ | |
 | US-002 | Re-open on a task with no `gateScript` → NO-GO, not a vacuous GO | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | US-003 | The earlier-phase infinite-loop guard survives the fix | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | US-006 | DIAGNOSE receives the review finding as error context | integration | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
 | US-007 | The doctrine is corrected wherever it is written down (`readVerdict` half) | unit | src/engine/ship-orchestrator.review-finding-liveness.test.ts | ✅ | |
-| TC-007 | The two code-review prompts remain byte-identical | unit | src/plugins/builtins/reviews/review-prompts.test.ts | ✅ | |
+| TC-007 | The two code-review prompts remain byte-identical | unit | src/engine/review-prompts.test.ts | ✅ | |
 
 ### Deferred to later phases (❌ in this phase, by plan design)
 
@@ -102,15 +102,25 @@ bare `grep -q` against the test source.
 
 | Check | Result |
 |---|---|
-| `npm run build` | exit 0 |
-| `npx biome check` on both test files | clean |
-| `npx vitest run src/plugins/builtins/reviews/review-prompts.test.ts` | 57 passed |
-| `npx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts` | 13 passed (was 11) |
-| VR-003 — the three review suites + the new prompt suite | 117 passed / 7 files |
-| T001 `gateScript` (all 20 assertions, `bash -euo pipefail`) | exit 0 |
-| T002 `gateScript` | byte-identical to T001 → exit 0 |
+| `npm run build` (+ `postbuild` → `dist/`) | exit 0 |
+| `npx vitest run src/engine/review-prompts.test.ts` | 117 passed (the FR-003/FR-004 contract × `src/` × `dist/` × 2 prompts, + TC-005/TC-007) |
+| `npx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts` | 21 passed (was 13) |
+| `npm run test:ci` | 1402 passed, 4 failed — all 4 the known `server.test.ts` (×3) / `status.test.ts` (×1) live-state quarantine, unrelated to this phase |
+| `gates/T001-gate.sh` = `gates/T002-gate.sh` = `gateScript` = plan Done-When → `gates/phase-01-contract.sh` | exit 0 |
+| `npx biome check` on the changed sources | 3 pre-existing formatting errors in `ship-orchestrator.ts`, identical count at `HEAD`; both test files are under biome's `src/engine/*.test.ts` ignore |
+
+### Mutation checks (the gate must fail on the thing it claims to catch)
+
+| Mutation | Result |
+|---|---|
+| Restore `dist/.../review-code-cli/PROMPT.md` from `a57a68f^` without rebuilding | 25 of 117 fail (previously: 70/70 green) |
+| Insert the D9 doctrine into `<verdict_criteria>` of both twins (so `diff -q` still passes) | 4 fail — `src` and `dist`, both prompts (previously: 57/57 green) |
+| Delete `REVIEW FINDING\|` from the two DIAGNOSE regexes | suite fails, gate exit 1 (previously: 70/70 green, gate exit 0) |
+| Revert `loadTaskStateReturns` to call-counting | 3 fail — every `stageCodeReview` / `stageUatReview` case, i.e. the false GO |
+| Detach the FR-007 doc block from `readVerdict` | suite fails, gate exit 1; the old presence-only grep still passes |
 
 `gwrk ship` was not run and the daemon was not used (TC-004, VR-009).
 
-> The 7-file / duplicate-test counts are the known nested-worktree artifact the plan records under
-> Deferred Items: `.claude/worktrees/fix-spinner-elapsed-inplace/` is collected by vitest.
+> The earlier run's 7-file / duplicate-test counts were the nested-worktree artifact the plan records
+> under Deferred Items (`.claude/worktrees/fix-spinner-elapsed-inplace/` collected by vitest). This
+> checkout has no nested worktree, so the counts above are unduplicated.

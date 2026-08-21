@@ -27,7 +27,7 @@ Every row below was checked against the working tree, not inferred from the spec
 | Prompt byte-identity (TC-007) | `review-code-cli` vs `review-code-webapp` | `diff -q` clean |
 | Gateless-re-open branch + `REVIEW FINDING (<id>, no gate)` | `src/engine/ship-orchestrator.ts:1495-1502`, `:1561` | present (W2) |
 | Widened DIAGNOSE regex | `src/engine/ship-orchestrator.ts:2154`, `:2186` | present (W2) |
-| `readVerdict` doc comment states the real rule | `src/engine/ship-orchestrator.ts:1414-1422` | present (W2) — **FR-007's code is done; only TR-007 is missing** |
+| `readVerdict` doc comment states the real rule | `src/engine/ship-orchestrator.ts:1414-1422` | present (W2) — **but detached**: the block sat two `/** */` above `readVerdict`, immediately followed by `detectReviewReopens`' own doc, so `readVerdict` had no doc comment at all and JSDoc attributed the correction to the wrong method. This pass reattaches it and TR-007 asserts adjacency, not presence. |
 | `028 correction` in ADR-007 | `docs/decisions/ADR-007-single-dispatch-path.md` | **absent — W4 outstanding** |
 | `review-prompts.test.ts` | `src/plugins/builtins/reviews/` | **absent — TR-003 outstanding** |
 | VR-003 baseline | 3 named review suites | **green today: 6 files, 58 tests passed** |
@@ -58,12 +58,14 @@ This feature exists because a verification channel reported success over a real 
 
 ### Phase 01: Regression guards for the landed W1/W2 contract
 
-FR-001…FR-007 are live code with no protection against a "simplification" reverting them — which is precisely how D10 shipped. This phase authors the two missing test surfaces (TR-003, TR-007) and pins the prompt and orchestrator invariants as executable assertions. No production code changes: if any assertion here fails, W1/W2 have regressed on `develop` and that is the finding.
+FR-001…FR-007 are live code with no protection against a "simplification" reverting them — which is precisely how D10 shipped. This phase authors the two missing test surfaces (TR-003, TR-007) and pins the prompt and orchestrator invariants as executable assertions. No behavioural production change: the only edit to `src/engine/ship-orchestrator.ts` moves the FR-007 doc block so it is attached to `readVerdict` instead of orphaned above `detectReviewReopens`. If any assertion here fails, W1/W2 have regressed on `develop` and that is the finding.
 
 #### Files
 
-- `src/plugins/builtins/reviews/review-prompts.test.ts` — **create** — TR-003: reads both code-review `PROMPT.md` files and asserts the FR-003(a–h) and FR-004 contract on each — no phase-wide `(.tasks[].status) = "completed"`, `Gate authority is one-way` present, the MUST-flip-status contract inside `<scope_constraints>`, every `.phases[]` selector uses `$pid`/`$PHASE_ID` and none a bare number, the read-back verification present, `APPEND ONLY` present, the JSON-Intent-Format warning present, the inverted anti-patterns present — plus byte-identity of the two files (TC-007)
-- `src/engine/ship-orchestrator.review-finding-liveness.test.ts` — **amend** — TR-007: read `src/engine/ship-orchestrator.ts` and assert `readVerdict`'s doc comment states the real rule and no longer claims "any open task → NO-GO"
+- `src/engine/review-prompts.test.ts` — **create** — outside `src/plugins/builtins/`, which `postbuild` copies verbatim into `dist/` and `files: ["dist/"]` publishes (TC-005); resolves both `PROMPT.md` paths from the repo root and runs the contract over `src/` **and** `dist/` as a matrix, because `PluginLoader` dispatches the `dist/` copy — TR-003: reads both code-review `PROMPT.md` files and asserts the FR-003(a–h) and FR-004 contract on each — no phase-wide `(.tasks[].status) = "completed"`, `Gate authority is one-way` present, the MUST-flip-status contract inside `<scope_constraints>`, every `.phases[]` selector uses `$pid`/`$PHASE_ID` and none a bare number, the read-back verification present, `APPEND ONLY` present, the JSON-Intent-Format warning present, the inverted anti-patterns present — plus byte-identity of the two files (TC-007)
+- `src/engine/ship-orchestrator.review-finding-liveness.test.ts` — **amend** — TR-007: read `src/engine/ship-orchestrator.ts` and assert `readVerdict`'s doc comment states the real rule and no longer claims "any open task → NO-GO"; TR-012: drive `stageCodeReview` / `stageUatReview` (each reads tasks.json BEFORE dispatching, so the state mock keys off the dispatch, not off a call count); TR-006: the third note format `REVIEW FINDING (<id>, no gate)` and the review-driven DIAGNOSE prompt
+- `src/engine/ship-orchestrator.ts` — **amend** — move the FR-007 doc block so it immediately precedes `private async readVerdict` (no behaviour change)
+- `specs/028-review-finding-liveness/gates/phase-01-contract.sh` — **create** — the one baseline both tasks share; `gates/T001-gate.sh`, `gates/T002-gate.sh` and both `gateScript` fields delegate to it
 
 **Requirements Addressed:** FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007 (all landed — this phase makes them regression-guarded), US-001, US-002, US-003, US-006, US-007, TC-007
 
@@ -88,7 +90,7 @@ FR-001…FR-007 are live code with no protection against a "simplification" reve
 |---|---|---|---|
 | TR-001 | integration | `src/engine/ship-orchestrator.review-finding-liveness.test.ts` | existing: scope context contains `VERDICT CHANNEL` and names the status flip as the NO-GO (`"tells the review agent that re-opening the task is the NO-GO"`) |
 | TR-002 | integration | `src/engine/ship-orchestrator.review-finding-liveness.test.ts` | existing: scope context still forbids touching other phases' tasks (`"still forbids touching tasks from other phases"`) |
-| TR-003 | unit | `src/plugins/builtins/reviews/review-prompts.test.ts` | new: both prompts satisfy FR-003(a–h) and FR-004, and are byte-identical |
+| TR-003 | unit | `src/engine/review-prompts.test.ts` | new: both prompts satisfy FR-003(a–h) and FR-004, and are byte-identical |
 | TR-004 | integration | `src/engine/ship-orchestrator.review-finding-liveness.test.ts` | existing: a re-open on a gateless task yields NO-GO, stays open, records a `REVIEW FINDING (<id>, no gate)` note |
 | TR-005 | integration | `src/engine/ship-orchestrator.review-finding-liveness.test.ts` | existing: an untouched gateless task still yields GO and runs no gate (no false positive) |
 | TR-006 | integration | `src/engine/ship-orchestrator.review-finding-liveness.test.ts` | existing: both review note formats reach DIAGNOSE; an open task with no finding still skips |
@@ -96,26 +98,24 @@ FR-001…FR-007 are live code with no protection against a "simplification" reve
 
 #### Done When
 ```bash
-npm run build
-npx vitest run src/plugins/builtins/reviews/review-prompts.test.ts
-npx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts
-diff -q src/plugins/builtins/reviews/review-code-cli/PROMPT.md src/plugins/builtins/reviews/review-code-webapp/PROMPT.md
-grep -q 'Gate authority is one-way' src/plugins/builtins/reviews/review-code-cli/PROMPT.md
-grep -q 'Gate authority is one-way' src/plugins/builtins/reviews/review-code-webapp/PROMPT.md
-grep -q 'APPEND ONLY' src/plugins/builtins/reviews/review-code-cli/PROMPT.md
-grep -q 'VERDICT CHANNEL' src/engine/ship-orchestrator.ts
-grep -q 'Do NOT touch tasks belonging to any OTHER phase' src/engine/ship-orchestrator.ts
-grep -q 'REVIEW FINDING|REVIEW FAIL' src/engine/ship-orchestrator.ts
-grep -q 'NOT "any open task → NO-GO"' src/engine/ship-orchestrator.ts
-# Negative assertions use the if-form: `! grep -q` is exempt from `set -e` and can never fail a gate.
-if grep -q 'tasks\[\].status) = "completed"' src/plugins/builtins/reviews/review-code-cli/PROMPT.md; then echo 'FAIL: D1 phase-wide force-complete is back in review-code-cli' >&2; exit 1; fi
-if grep -q 'tasks\[\].status) = "completed"' src/plugins/builtins/reviews/review-code-webapp/PROMPT.md; then echo 'FAIL: D1 phase-wide force-complete is back in review-code-webapp' >&2; exit 1; fi
-if grep -q 'note them in your summary but do NOT change its status' src/engine/ship-orchestrator.ts; then echo 'FAIL: the D10 sentence is back in the scope context' >&2; exit 1; fi
-# Named-case existence: a `-t` filter exits 0 on no match, so assert against the test source instead.
-grep -q 'tells the review agent that re-opening the task is the NO-GO' src/engine/ship-orchestrator.review-finding-liveness.test.ts
-grep -q "no longer tells it to leave a completed task's status alone" src/engine/ship-orchestrator.review-finding-liveness.test.ts
-grep -q 'still forbids touching tasks from other phases' src/engine/ship-orchestrator.review-finding-liveness.test.ts
-grep -q "readVerdict's doc comment states the real rule" src/engine/ship-orchestrator.review-finding-liveness.test.ts
+# One baseline for both tasks. `runTaskGate` strategy 1 always prefers the
+# convention file `gates/<id>-gate.sh` over a task's declared `gateScript`
+# (src/utils/gate-exec.ts:64-74), so a gateScript that repeats the assertions is
+# dead text — the executed artifact is the file. Both Phase 01 gate files, both
+# `gateScript` fields, and this block therefore run the same script:
+#
+#   build + postbuild (dist/ is what PluginLoader dispatches — TC-005)
+#   both suites; the prompt contract over src/ AND dist/ as a matrix
+#   diff -q cli vs webapp (TC-007), and src vs dist for each
+#   no *.test.ts published inside dist/plugins/builtins/reviews
+#   the D1 / D9 / D10 negatives on every live copy of the prompt
+#   VERDICT CHANNEL, the cross-phase guard, `REVIEW FINDING` and `REVIEW FAIL`
+#     as two separate `grep -q` (in BRE `|` is a literal, so one alternation
+#     asserts only that the file contains that regex source)
+#   the FR-007 doc block asserted ATTACHED to `private async readVerdict`
+#   named-case existence for every case in both suites, plus the two
+#     shape guards (no call-counting state mock, no section-scoped D9 negative)
+bash specs/028-review-finding-liveness/gates/phase-01-contract.sh
 ```
 
 ### Phase 02: Description-diff finding detection (FR-008, D3 detection)
@@ -372,7 +372,7 @@ Manual steps (recorded, not gated — each needs SQLite or is a process constrai
 npm run build
 npx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts src/engine/ship-orchestrator.review-gate-divergence.test.ts src/engine/ship-orchestrator.review.test.ts
 npx vitest run src/engine/ship-orchestrator.findings-ledger.test.ts
-npx vitest run src/plugins/builtins/reviews/review-prompts.test.ts
+npx vitest run src/engine/review-prompts.test.ts
 diff -q src/plugins/builtins/reviews/review-code-cli/PROMPT.md dist/plugins/builtins/reviews/review-code-cli/PROMPT.md
 diff -q src/plugins/builtins/reviews/review-code-webapp/PROMPT.md dist/plugins/builtins/reviews/review-code-webapp/PROMPT.md
 diff -q src/plugins/builtins/reviews/review-code-cli/PROMPT.md src/plugins/builtins/reviews/review-code-webapp/PROMPT.md

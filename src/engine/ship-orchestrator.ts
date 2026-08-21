@@ -1411,16 +1411,6 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
-   * Read the verdict from task state after a review dispatch.
-   *
-   * NOT "any open task → NO-GO", which this comment used to claim and the code
-   * has never done — a task can be open because nobody has implemented it yet.
-   * The verdict comes from what this run can establish: each task's gate, and
-   * the tasks the review agent re-opened. NO-GO if a gate fails, if a re-opened
-   * task's gate passes anyway (a coverage hole), or if a re-opened task has no
-   * gate at all. Otherwise GO.
-   */
-  /**
    * Tasks the review agent moved from `completed` to `open` during this run.
    *
    * `revertSourceMutations()` throws away everything the agent wrote except
@@ -1458,6 +1448,16 @@ export class ShipOrchestrator extends EventEmitter {
     }
   }
 
+  /**
+   * Read the verdict from task state after a review dispatch.
+   *
+   * NOT "any open task → NO-GO", which this comment used to claim and the code
+   * has never done — a task can be open because nobody has implemented it yet.
+   * The verdict comes from what this run can establish: each task's gate, and
+   * the tasks the review agent re-opened. NO-GO if a gate fails, if a re-opened
+   * task's gate passes anyway (a coverage hole), or if a re-opened task has no
+   * gate at all. Otherwise GO.
+   */
   private async readVerdict(
     reopenedByReview: Set<string> = new Set(),
   ): Promise<"GO" | "NO-GO"> {

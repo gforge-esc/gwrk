@@ -21,7 +21,7 @@
  * whole contract, on both prompts, so a future "simplification" cannot quietly
  * re-author the defect the way D10 shipped.
  *
- * Two rules govern how the assertions are written:
+ * Three rules govern how the assertions are written:
  *
  * 1. **Executable forms are asserted against fenced code only.** Prose must be
  *    free to quote a forbidden construction in order to forbid it — the
@@ -31,6 +31,15 @@
  * 2. **Prose is asserted against flattened text.** The prompts are hard-wrapped
  *    at ~100 columns and quoted with `>`, so a sentence-level assertion on the
  *    raw file matches by accident of line breaks.
+ * 3. **Negatives are asserted against the whole prompt.** A banned doctrine is
+ *    banned wherever it appears. Scoping a negative to the section it was
+ *    deleted from leaves the same sentence free to reappear in
+ *    `<verdict_criteria>`, where the agent reads it with MORE authority.
+ *
+ * The suite lives in `src/engine/` rather than beside the prompts: `postbuild`
+ * copies `src/plugins/builtins/` into `dist/` verbatim, and `files: ["dist/"]`
+ * publishes it, so a test file under that tree ships to users inside the tree
+ * `PluginLoader.listPlugins` scans.
  *
  * See docs/code-review-verdict-defect.md and specs/028-review-finding-liveness/.
  */
@@ -41,17 +50,49 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, "..", "..");
 
-const PROMPTS = [
-  {
-    name: "review-code-cli",
-    file: path.join(HERE, "review-code-cli", "PROMPT.md"),
-  },
-  {
-    name: "review-code-webapp",
-    file: path.join(HERE, "review-code-webapp", "PROMPT.md"),
-  },
-] as const;
+/**
+ * Both roots, because both are live (TC-005). `PluginLoader` builds its
+ * built-in base from `import.meta.dirname` (src/plugins/loader.ts:274), which
+ * for the compiled entry point is `dist/plugins/builtins` — the copy every real
+ * `gwrk ship` review dispatches. `npm run postbuild` refreshes it from `src/`,
+ * so the two are equal after a build and can diverge without one: restore a
+ * pre-`a57a68f` `dist/.../PROMPT.md` and the D1 force-complete is live again
+ * while a `src/`-only contract stays green. Assert the artifact that runs.
+ */
+const ROOTS = ["src", "dist"] as const;
+const PLUGINS = ["review-code-cli", "review-code-webapp"] as const;
+
+const promptPath = (root: string, plugin: string): string =>
+  path.join(
+    REPO_ROOT,
+    root,
+    "plugins",
+    "builtins",
+    "reviews",
+    plugin,
+    "PROMPT.md",
+  );
+
+const PROMPTS = ROOTS.flatMap((root) =>
+  PLUGINS.map((plugin) => ({
+    name: `${root}/${plugin}`,
+    file: promptPath(root, plugin),
+  })),
+);
+
+/** `dist/` is a build output — say so instead of failing with a bare ENOENT. */
+function readPrompt(file: string): string {
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `${path.relative(REPO_ROOT, file)} is missing — run \`npm run build\`. ` +
+        "postbuild copies src/plugins/builtins into dist/, and the runtime " +
+        "dispatches the dist copy, so this contract covers both.",
+    );
+  }
+  return fs.readFileSync(file, "utf-8");
+}
 
 /** Strip `>` blockquote markers and collapse hard wraps. Formatting, not content. */
 const flatten = (s: string): string =>
@@ -87,7 +128,7 @@ const statusWrites = (code: string): string[] =>
   code.split("\n").filter((l) => /\.status\s*=\s*"(?:completed|open)"/.test(l));
 
 for (const { name, file } of PROMPTS) {
-  const PROMPT = fs.readFileSync(file, "utf-8");
+  const PROMPT = readPrompt(file);
   const FLAT = flatten(PROMPT);
   const CODE = fencedCode(PROMPT);
 
@@ -275,11 +316,17 @@ for (const { name, file } of PROMPTS) {
       expect(anti).toMatch(/Overwriting a task `description`/);
     });
 
-    it("no longer names task status as the wrong verdict channel", () => {
+    it("no longer names task status as the wrong verdict channel, anywhere", () => {
       // NEGATIVE, D9 verbatim (a57a68f^): "❌ Using tasks.json status as primary
       // verdict when gates exist (gates are truth)" — the anti-pattern that told
       // the agent its only real channel was a mistake to use.
-      expect(anti).not.toMatch(/Using tasks\.json status as primary verdict/);
+      //
+      // Asserted against FLAT, not `anti`: scoped to `## Anti-Patterns`, the
+      // same sentence could reappear in <verdict_criteria> or
+      // <closed_loop_contract> — where the agent reads it as doctrine rather
+      // than as one bullet in a list — with all cases still green.
+      expect(FLAT).not.toMatch(/Using tasks\.json status as primary verdict/);
+      expect(FLAT).not.toMatch(/gates are truth/i);
     });
   });
 
@@ -323,8 +370,70 @@ for (const { name, file } of PROMPTS) {
 }
 
 describe("TC-007 — the two code-review prompts stay byte-identical", () => {
-  it("is a byte-for-byte match", () => {
-    const [cli, webapp] = PROMPTS.map(({ file }) => fs.readFileSync(file));
+  it("is a byte-for-byte match in src/", () => {
+    const [cli, webapp] = PLUGINS.map((p) =>
+      fs.readFileSync(promptPath("src", p)),
+    );
     expect(webapp.equals(cli)).toBe(true);
+  });
+
+  it("is a byte-for-byte match in dist/", () => {
+    const [cli, webapp] = PLUGINS.map((p) =>
+      fs.readFileSync(promptPath("dist", p)),
+    );
+    expect(webapp.equals(cli)).toBe(true);
+  });
+});
+
+describe("TC-005 — the dispatched prompt is the one under contract", () => {
+  // The contract above runs over both roots, so a stale `dist/` fails it on
+  // content. This pins the cheaper, blunter property too: after a build the
+  // dispatched bytes ARE the reviewed bytes. A drift here means `postbuild`
+  // stopped copying, which no content assertion would name.
+  for (const plugin of PLUGINS) {
+    it(`dist/${plugin}/PROMPT.md matches src/`, () => {
+      const src = fs.readFileSync(promptPath("src", plugin));
+      const dist = fs.readFileSync(promptPath("dist", plugin));
+      expect(dist.equals(src)).toBe(true);
+    });
+  }
+
+  it("publishes no test source inside the copied reviews tree", () => {
+    // `postbuild` copies src/plugins/builtins/* into dist/ verbatim and
+    // `files: ["dist/"]` publishes it, so a `.test.ts` beside a PROMPT.md ships
+    // to users — uncompiled, importing `vitest`, inside the tree
+    // `PluginLoader.listPlugins` scans. This suite used to live there.
+    // (Sibling built-in trees leak test sources the same way; that predates
+    // this feature and is not this phase's to fix.)
+    const distReviews = path.join(
+      REPO_ROOT,
+      "dist",
+      "plugins",
+      "builtins",
+      "reviews",
+    );
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const p = path.join(dir, e.name);
+        return e.isDirectory() ? walk(p) : [p];
+      });
+    const shipped = walk(distReviews)
+      .filter((f) => f.endsWith(".test.ts"))
+      .map((f) => path.relative(REPO_ROOT, f));
+    expect(shipped).toEqual([]);
+
+    // And the source it would be copied from is gone for good.
+    expect(
+      fs.existsSync(
+        path.join(
+          REPO_ROOT,
+          "src",
+          "plugins",
+          "builtins",
+          "reviews",
+          "review-prompts.test.ts",
+        ),
+      ),
+    ).toBe(false);
   });
 });
