@@ -6,7 +6,7 @@
  * 029 Decision Records — RED tests for TR-002 (FR-004, FR-005).
  *
  * @phase 01
- * @status red
+ * @status active
  *
  * Every `it.skip` here is un-skipped by ship's ACTIVATE_TESTS stage
  * (`src/engine/test-activator.ts`) when phase-01 starts, which is also where
@@ -138,7 +138,7 @@ const ADR_007 = [
 ].join("\n");
 
 describe("029 FR-004: the nine existing records parse unchanged (US-002)", () => {
-  it.skip("FR-004: recovers the number from the filename when the H1 omits it", async () => {
+  it("FR-004: recovers the number from the filename when the H1 omits it", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_001, "ADR-001-task-tracking.md");
@@ -151,7 +151,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(parseRecord(ADR_003, "ADR-003-state-contract.md").number).toBe("003");
   });
 
-  it.skip("FR-004: tolerates trailing double-space hard breaks", async () => {
+  it("FR-004: tolerates trailing double-space hard breaks", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_001, "ADR-001-task-tracking.md");
@@ -163,7 +163,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(record.header.date).not.toMatch(/\s$/);
   });
 
-  it.skip("FR-004: returns empty relations rather than throwing", async () => {
+  it("FR-004: returns empty relations rather than throwing", async () => {
     const { parseRecord } = await load();
 
     // ADR-001 carries neither `Supersedes` nor `Depends on`.
@@ -175,7 +175,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(record.header.constraint).toBeNull();
   });
 
-  it.skip("FR-004: splits two fields separated by the middle dot", async () => {
+  it("FR-004: splits two fields separated by the middle dot", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_001, "ADR-001-task-tracking.md");
@@ -188,7 +188,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(record.header.scope).toBe("gwrk core architecture");
   });
 
-  it.skip("FR-004: preserves a 240-character Decision value", async () => {
+  it("FR-004: preserves a 240-character Decision value", async () => {
     const { parseRecord } = await load();
 
     const long = `Option ${"x".repeat(233)}`;
@@ -213,7 +213,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(record.header.decision).toHaveLength(240);
   });
 
-  it.skip("FR-004: parses a parenthetically qualified Supersedes with the qualifier verbatim", async () => {
+  it("FR-004: parses a parenthetically qualified Supersedes with the qualifier verbatim", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_002, "ADR-002-sqlite-execution-ledger.md");
@@ -224,7 +224,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(record.header.supersedes[0].raw).toContain("storage mechanism only");
   });
 
-  it.skip("FR-004: parses a free-text Supersedes without inventing a target", async () => {
+  it("FR-004: parses a free-text Supersedes without inventing a target", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_003, "ADR-003-state-contract.md");
@@ -237,7 +237,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(record.header.supersedes[0].qualifier).toContain("Learning Loop Extraction");
   });
 
-  it.skip("FR-004: parses Depends on into a list", async () => {
+  it("FR-004: parses Depends on into a list", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -246,7 +246,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(record.header.dependsOn.join(" ")).toContain("ADR-006");
   });
 
-  it.skip("FR-004: throws when no blockquote header follows the H1", async () => {
+  it("FR-004: throws when no blockquote header follows the H1", async () => {
     const { parseRecord } = await load();
 
     const headerless = `# ${adr("042")}: Headerless\n\n## 1. Context\n\nBody.\n`;
@@ -257,7 +257,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     );
   });
 
-  it.skip("FR-004: parses the Constraint field when present and leaves it null when absent", async () => {
+  it("FR-004: parses the Constraint field when present and leaves it null when absent", async () => {
     const { parseRecord } = await load();
 
     const withField = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -269,7 +269,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(without.header.constraint).toBeNull();
   });
 
-  it.skip("FR-004: parses the ## Amendments registry into amendments", async () => {
+  it("FR-004: parses the ## Amendments registry into amendments", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -282,7 +282,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
     expect(parseRecord(ADR_001, "ADR-001-task-tracking.md").amendments).toEqual([]);
   });
 
-  it.skip("FR-004: uses fixtures, never the live corpus", async () => {
+  it("FR-004: uses fixtures, never the live corpus", async () => {
     // Self-assertion (TR-002): this suite must not read the checked-in corpus.
     // The needle is assembled from parts so this assertion cannot match itself.
     const corpusDir = ["docs", "decisions"].join("/");
@@ -296,7 +296,7 @@ describe("029 FR-004: the nine existing records parse unchanged (US-002)", () =>
 });
 
 describe("029 FR-005: heading-tree extraction and section addressing (US-002, US-009)", () => {
-  it.skip("FR-005: extracts the heading tree with dotted addresses and depths", async () => {
+  it("FR-005: extracts the heading tree with dotted addresses and depths", async () => {
     const { parseRecord } = await load();
 
     const record = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -324,7 +324,7 @@ describe("029 FR-005: heading-tree extraction and section addressing (US-002, US
     expect(flat.find((h) => h.address === "2.1")?.depth).toBe(3);
   });
 
-  it.skip("FR-005: records a bodyEnd one past the last line of the section body", async () => {
+  it("FR-005: records a bodyEnd one past the last line of the section body", async () => {
     const { parseRecord, resolveSection } = await load();
 
     const record = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -343,7 +343,7 @@ describe("029 FR-005: heading-tree extraction and section addressing (US-002, US
     );
   });
 
-  it.skip("FR-005: resolveSection returns null for an unresolvable address", async () => {
+  it("FR-005: resolveSection returns null for an unresolvable address", async () => {
     const { parseRecord, resolveSection } = await load();
 
     const record = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -352,7 +352,7 @@ describe("029 FR-005: heading-tree extraction and section addressing (US-002, US
     expect(resolveSection(record, "4")).toBeNull();
   });
 
-  it.skip("FR-005: resolveSection never falls back to a line number", async () => {
+  it("FR-005: resolveSection never falls back to a line number", async () => {
     const { parseRecord, resolveSection } = await load();
 
     const record = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -362,7 +362,7 @@ describe("029 FR-005: heading-tree extraction and section addressing (US-002, US
     expect(resolveSection(record, "78")).toBeNull();
   });
 
-  it.skip("FR-005: listSectionAddresses lists every resolvable address in document order", async () => {
+  it("FR-005: listSectionAddresses lists every resolvable address in document order", async () => {
     const { parseRecord, listSectionAddresses } = await load();
 
     const record = parseRecord(ADR_007, "ADR-007-single-dispatch-path.md");
@@ -373,7 +373,7 @@ describe("029 FR-005: heading-tree extraction and section addressing (US-002, US
     expect(addresses).not.toContain("Amendments");
   });
 
-  it.skip("FR-005: keeps both headings of a duplicate-address fixture and still resolves the address", async () => {
+  it("FR-005: keeps both headings of a duplicate-address fixture and still resolves the address", async () => {
     const { parseRecord, resolveSection } = await load();
 
     // ADR-001 carries two `## 7.` headings pre-reconciliation. The parser must
@@ -391,7 +391,7 @@ describe("029 FR-005: heading-tree extraction and section addressing (US-002, US
 });
 
 describe("029 FR-004: parseCorpus filters on the suffix and the pattern", () => {
-  it.skip("FR-004: reads only ADR-NNN-*.md entries and returns them sorted ascending", async () => {
+  it("FR-004: reads only ADR-NNN-*.md entries and returns them sorted ascending", async () => {
     const { parseCorpus } = await load();
     const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -414,7 +414,7 @@ describe("029 FR-004: parseCorpus filters on the suffix and the pattern", () => 
     expect(records.map((r) => r.id)).not.toContain("ADR-005");
   });
 
-  it.skip("FR-004: returns an empty list for a directory that does not exist", async () => {
+  it("FR-004: returns an empty list for a directory that does not exist", async () => {
     const { parseCorpus } = await load();
     const nodePath = (await import("node:path")).default;
 
