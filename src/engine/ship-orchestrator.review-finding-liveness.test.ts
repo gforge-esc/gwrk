@@ -293,3 +293,77 @@ describe("D10 — the code-review scope context carries the verdict channel", ()
     expect(dispatchedPrompts().join("\n")).toMatch(/OTHER phase/);
   });
 });
+
+describe("FR-007 — the doctrine is not written down in its broad form", () => {
+  /**
+   * TR-007. `node:fs` is auto-mocked for this file, so read the real source
+   * through `importActual` — the point of this case is the bytes on disk.
+   *
+   * This is a doc-comment contract, and it earns its place: the comment above
+   * `readVerdict` used to promise "if any tasks in the phase are open → NO-GO",
+   * which the code has never done. A maintainer reading it would conclude the
+   * re-open channel was already load-bearing and stop looking — which is how
+   * three recurrences of this defect were each re-authored from the definitional
+   * layer rather than from the code.
+   */
+  const readOrchestratorSource = async (): Promise<string> => {
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    return realFs.readFileSync(
+      new URL("./ship-orchestrator.ts", import.meta.url),
+      "utf-8",
+    );
+  };
+
+  /** Strip the leading ` * ` of each comment line and collapse hard wraps. */
+  const flatten = (s: string): string =>
+    s
+      .replace(/^\s*\*\s?/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  it("readVerdict's doc comment states the real rule", async () => {
+    const src = await readOrchestratorSource();
+
+    const block = (src.match(/\/\*\*[\s\S]*?\*\//g) ?? []).find((b) =>
+      b.includes('NOT "any open task → NO-GO"'),
+    );
+    expect(block).toBeDefined();
+
+    const doc = flatten(block as string);
+
+    // The correction is explicit, and says why the old claim was wrong.
+    expect(doc).toMatch(/NOT "any open task → NO-GO"/);
+    expect(doc).toMatch(
+      /a task can be open because nobody has implemented it yet/,
+    );
+
+    // It describes the two signals the code actually reads.
+    expect(doc).toMatch(
+      /each task's gate, and the tasks the review agent re-opened/,
+    );
+
+    // And all three NO-GO conditions, including the coverage hole — the case
+    // the broad "gates are truth" doctrine resolves the wrong way.
+    expect(doc).toMatch(/NO-GO if a gate fails/);
+    expect(doc).toMatch(/gate passes anyway \(a coverage hole\)/);
+    expect(doc).toMatch(/re-opened task has no gate at all/);
+  });
+
+  it("no longer promises that any open task is a NO-GO", async () => {
+    // NEGATIVE. The sentence being guarded against is verbatim from e588d1f^:
+    //
+    //   If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
+    //
+    // US-007 AS-2 words this grep as `.open. .*` — a mandatory space after the
+    // quoted word, where the real text has a comma. That pattern matches
+    // nothing, in either direction, so as an assertion it can only ever pass.
+    // Written that way it is the same false-green shape as the defect under
+    // repair, so the gap is closed here: no mandatory separator, and the span
+    // may cross the comment's hard wrap.
+    const src = await readOrchestratorSource();
+
+    expect(src).not.toMatch(
+      /If any tasks? in the phase (?:are|is) .open.[\s\S]{0,160}NO-GO/,
+    );
+  });
+});

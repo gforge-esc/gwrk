@@ -1,0 +1,19 @@
+{
+  "runId": "2026-08-20T23:49:06.612Z_define_all",
+  "feature": "028-review-finding-liveness",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-08-20T23:49:06.612Z",
+  "finishedAt": "2026-08-20T23:59:16.171Z",
+  "durationS": 610,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 14,
+  "linesAdded": 2914,
+  "linesDeleted": 0,
+  "gitCommit": "72ba3e7c07d39182d9e92b99d342eab04f9c9c28",
+  "gitBranch": "feat/decision-records",
+  "digest": []
+}

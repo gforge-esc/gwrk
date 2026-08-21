@@ -461,4 +461,75 @@ describe("Init Command Tests", () => {
       expect(updatedConfig.workspaces["packages/web"].type).toBe("nodejs");
     });
   });
+
+  /**
+   * 029 Decision Records — RED tests for TR-013 (FR-017).
+   *
+   * @phase 06
+   * @status red
+   *
+   * `init.ts:429-441` already creates `docs/decisions`. FR-017 generates the
+   * index there when the directory is non-empty, so a fresh clone's first
+   * dispatch is grounded without a separate `--reindex` run.
+   */
+  describe.skip("029 FR-017: gwrk init generates the decision index (US-008)", () => {
+    const INDEX_REL = path.join(".gwrk", "decisions", "index.md");
+
+    function seedRecord(): void {
+      const dir = path.join(tempDir, "docs", "decisions");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "ADR-001-task-tracking.md"),
+        [
+          "# ADR-001: Task Tracking",
+          "",
+          "> **Status:** Decided · **Date:** 2026-02-26",
+          "> **Decision:** Option B (Roll Our Own)",
+          "> **Constraint:** Every task MUST be closed by a gate.",
+          "> **Author:** David Gonzalez · **Decision Scope:** gwrk core architecture",
+          "",
+          "## 1. Context",
+          "",
+          "Body.",
+          "",
+        ].join("\n"),
+      );
+    }
+
+    it("FR-017: generates the decision index when docs/decisions is non-empty", async () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test" }));
+      seedRecord();
+
+      await initAction({ nonInteractive: true });
+
+      const indexPath = path.join(tempDir, INDEX_REL);
+      expect(fs.existsSync(indexPath)).toBe(true);
+      const body = fs.readFileSync(indexPath, "utf-8");
+      expect(body).toContain("| ADR | Scope | Status | Constraint |");
+      expect(body).toContain("ADR-001");
+    });
+
+    it("FR-017: writes no index when docs/decisions is empty", async () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test" }));
+
+      await initAction({ nonInteractive: true });
+
+      // init scaffolds the directory itself, so "empty" is the normal case for
+      // a fresh project — and an index of nothing is worse than no index.
+      expect(fs.existsSync(path.join(tempDir, "docs", "decisions"))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, INDEX_REL))).toBe(false);
+    });
+
+    it("FR-017: does not fail init when a record is unparseable", async () => {
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "test" }));
+      const dir = path.join(tempDir, "docs", "decisions");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "ADR-002-broken.md"), "# ADR-002: Broken\n\nNo header.\n");
+
+      // TC-014 bare-clone operable: init must still produce .gwrkrc.json.
+      await initAction({ nonInteractive: true });
+
+      expect(fs.existsSync(path.join(tempDir, ".gwrkrc.json"))).toBe(true);
+    });
+  });
 });
