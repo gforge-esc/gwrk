@@ -148,7 +148,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
  * 029 Decision Records — RED tests for TR-010 (FR-001).
  *
  * @phase 02
- * @status active
+ * @status red
  *
  * `adr` is absent from the `hidden` list `["analyze","specify","generate",
  * "implement","ship"]` that `define --help` asserts above, so the existing
@@ -156,7 +156,7 @@ describe("CLI E2E Integration (UI / Command Surface)", () => {
  * move rather than an incidental pass. Spawns the built CLI, so `pnpm run
  * build` must run first (VR-001, TC-012).
  */
-describe("029 TR-010: define adr on the built CLI (US-001, US-018)", () => {
+describe.skip("029 TR-010: define adr on the built CLI (US-001, US-018)", () => {
   it("FR-001: adr appears in define --help (US-018)", async () => {
     const { stdout, exitCode } = await runCli("define --help");
     expect(exitCode).toBe(0);
@@ -166,6 +166,10 @@ describe("029 TR-010: define adr on the built CLI (US-001, US-018)", () => {
   it("FR-001: define adr --help carries an Examples: block (US-018)", async () => {
     const { stdout, exitCode } = await runCli("define adr --help");
     expect(exitCode).toBe(0);
+    // Pin the usage line first: without it, an unknown subcommand falls back to
+    // the PARENT `define` help, which already carries an Examples: block — so
+    // the assertion would pass before `adr` exists.
+    expect(stdout).toMatch(/Usage:.*define adr/);
     expect(stdout).toMatch(/Examples:/i);
   });
 

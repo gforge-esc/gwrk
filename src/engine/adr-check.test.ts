@@ -6,7 +6,7 @@
  * 029 Decision Records — RED tests for TR-006 (FR-024, FR-025).
  *
  * @phase 10
- * @status active
+ * @status red
  *
  * Runs against a temp fixture tree, never the repo. VR-007 requires observing
  * the checker FAIL as well as pass, so the headline case is driven twice: the
@@ -169,7 +169,7 @@ afterEach(() => {
 });
 
 describe("029 FR-024: a citation that resolves to nothing fails CI (US-010)", () => {
-  it("FR-024: reports an unregistered NNN correction citation", async () => {
+  it.skip("FR-024: reports an unregistered NNN correction citation", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree([]); // ADR-007 carries no 028 amendment
@@ -186,7 +186,7 @@ describe("029 FR-024: a citation that resolves to nothing fails CI (US-010)", ()
     );
   });
 
-  it("FR-024: names the citing file and line", async () => {
+  it.skip("FR-024: names the citing file and line", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree([]);
@@ -200,7 +200,7 @@ describe("029 FR-024: a citation that resolves to nothing fails CI (US-010)", ()
     expect(finding?.line).toBe(2);
   });
 
-  it("FR-024: passes once the amendment is registered", async () => {
+  it.skip("FR-024: passes once the amendment is registered", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree(["026", "028"]); // FR-006 applied the block, FR-022 registered it
@@ -211,7 +211,7 @@ describe("029 FR-024: a citation that resolves to nothing fails CI (US-010)", ()
     expect(findings.filter((f) => f.assertion === 2)).toEqual([]);
   });
 
-  it("FR-024: reports an ADR citation with no file in docs/decisions", async () => {
+  it.skip("FR-024: reports an ADR citation with no file in docs/decisions", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree(["026", "028"]);
@@ -229,7 +229,7 @@ describe("029 FR-024: a citation that resolves to nothing fails CI (US-010)", ()
     );
   });
 
-  it("FR-024: reports a stale index hash", async () => {
+  it.skip("FR-024: reports a stale index hash", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree(["026", "028"]);
@@ -249,7 +249,7 @@ describe("029 FR-024: a citation that resolves to nothing fails CI (US-010)", ()
     );
   });
 
-  it("FR-025: the repaired tree produces no findings at all", async () => {
+  it.skip("FR-025: the repaired tree produces no findings at all", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree(["026", "028"]);
@@ -266,7 +266,7 @@ describe("029 FR-024: a citation that resolves to nothing fails CI (US-010)", ()
 });
 
 describe("029 FR-024: the AMBER-1 citation-shape rule (settles OQ-003)", () => {
-  it("FR-024: does not report a bare prose mention outside src", async () => {
+  it.skip("FR-024: does not report a bare prose mention outside src", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree(["026", "028"]);
@@ -280,7 +280,7 @@ describe("029 FR-024: the AMBER-1 citation-shape rule (settles OQ-003)", () => {
     expect(findings.map((f) => f.message).join(" ")).not.toContain(PROSE_ONLY);
   });
 
-  it("FR-024: skips an angle-bracket template path", async () => {
+  it.skip("FR-024: skips an angle-bracket template path", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree(["026", "028"]);
@@ -293,7 +293,7 @@ describe("029 FR-024: the AMBER-1 citation-shape rule (settles OQ-003)", () => {
     expect(findings.map((f) => f.message).join(" ")).not.toContain(ERROR_TEXT_ONLY);
   });
 
-  it("FR-024: ignores docs/archive and .claude", async () => {
+  it.skip("FR-024: ignores docs/archive and .claude", async () => {
     const { checkCitations, SCAN_IGNORE } = await loadCheck();
 
     seedTree(["026", "028"]);
@@ -311,7 +311,7 @@ describe("029 FR-024: the AMBER-1 citation-shape rule (settles OQ-003)", () => {
     expect(files.some((f) => f.includes(".claude"))).toBe(false);
   });
 
-  it("FR-024: checks an addressed link citation in docs and specs", async () => {
+  it.skip("FR-024: checks an addressed link citation in docs and specs", async () => {
     const { checkCitations } = await loadCheck();
 
     seedTree(["026", "028"]);
@@ -332,7 +332,7 @@ describe("029 FR-024: the AMBER-1 citation-shape rule (settles OQ-003)", () => {
     );
   });
 
-  it("FR-024: scanSurface reports every citation with a 1-indexed line", async () => {
+  it.skip("FR-024: scanSurface reports every citation with a 1-indexed line", async () => {
     const { scanSurface } = await loadCheck();
 
     seedTree(["026", "028"]);

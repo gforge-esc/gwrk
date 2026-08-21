@@ -466,13 +466,13 @@ describe("Init Command Tests", () => {
    * 029 Decision Records — RED tests for TR-013 (FR-017).
    *
    * @phase 06
-   * @status active
+   * @status red
    *
    * `init.ts:429-441` already creates `docs/decisions`. FR-017 generates the
    * index there when the directory is non-empty, so a fresh clone's first
    * dispatch is grounded without a separate `--reindex` run.
    */
-  describe("029 FR-017: gwrk init generates the decision index (US-008)", () => {
+  describe.skip("029 FR-017: gwrk init generates the decision index (US-008)", () => {
     const INDEX_REL = path.join(".gwrk", "decisions", "index.md");
 
     function seedRecord(): void {

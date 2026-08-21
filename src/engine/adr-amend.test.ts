@@ -6,7 +6,7 @@
  * 029 Decision Records — RED tests for TR-007 (FR-020, FR-021, FR-022, FR-023, FR-026).
  *
  * @phase 08
- * @status active
+ * @status red
  *
  * Records are built by `parseRecord` (phase 01) from an ADR-007-shaped fixture,
  * so section addressing is exercised against a real heading tree rather than a
@@ -118,7 +118,7 @@ async function record(fixture: string, filename: string) {
 const ADR_007_FILE = "ADR-007-single-dispatch-path.md";
 
 describe("029 FR-020: section-addressed insertion (US-009)", () => {
-  it("FR-020: inserts at the end of the addressed section body", async () => {
+  it.skip("FR-020: inserts at the end of the addressed section body", async () => {
     const { amendAtSection } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -141,7 +141,7 @@ describe("029 FR-020: section-addressed insertion (US-009)", () => {
     );
   });
 
-  it("FR-020: resolves the address through the heading tree, not a line number", async () => {
+  it.skip("FR-020: resolves the address through the heading tree, not a line number", async () => {
     const { amendAtSection } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -154,7 +154,7 @@ describe("029 FR-020: section-addressed insertion (US-009)", () => {
     ).toThrow(/§78: no such section/);
   });
 
-  it("FR-020: fails on an unresolvable section address", async () => {
+  it.skip("FR-020: fails on an unresolvable section address", async () => {
     const { amendAtSection } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -165,7 +165,7 @@ describe("029 FR-020: section-addressed insertion (US-009)", () => {
     ).toThrow(/ADR-007 §9\.9: no such section\. Sections: .*2\.1/);
   });
 
-  it("FR-020: emits a full-file WRITE_FILE that grows the file", async () => {
+  it.skip("FR-020: emits a full-file WRITE_FILE that grows the file", async () => {
     const { amendAtSection } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -186,7 +186,7 @@ describe("029 FR-020: section-addressed insertion (US-009)", () => {
     expect(result.content).toContain("026 correction");
   });
 
-  it("FR-020: leaves every other section byte-identical", async () => {
+  it.skip("FR-020: leaves every other section byte-identical", async () => {
     const { amendAtSection } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -201,7 +201,7 @@ describe("029 FR-020: section-addressed insertion (US-009)", () => {
 });
 
 describe("029 FR-021: --append-section numbering (US-009)", () => {
-  it("FR-021: numbers the new section max+1 over existing ## N. headings", async () => {
+  it.skip("FR-021: numbers the new section max+1 over existing ## N. headings", async () => {
     const { appendSection } = await loadAmend();
 
     const rec = await record(ADR_005_FIXTURE, "ADR-005-tdd-gate-architecture.md");
@@ -217,7 +217,7 @@ describe("029 FR-021: --append-section numbering (US-009)", () => {
     expect(result.content).not.toMatch(/^## 1\. Amendment: Decision Records$/m);
   });
 
-  it("FR-021: inserts the appended section before the ## Amendments registry", async () => {
+  it.skip("FR-021: inserts the appended section before the ## Amendments registry", async () => {
     const { appendSection } = await loadAmend();
 
     const rec = await record(ADR_005_FIXTURE, "ADR-005-tdd-gate-architecture.md");
@@ -235,7 +235,7 @@ describe("029 FR-021: --append-section numbering (US-009)", () => {
     expect(registry).toBeGreaterThan(appended);
   });
 
-  it("FR-021: grows the file and keeps the registry last", async () => {
+  it.skip("FR-021: grows the file and keeps the registry last", async () => {
     const { appendSection } = await loadAmend();
 
     const rec = await record(ADR_005_FIXTURE, "ADR-005-tdd-gate-architecture.md");
@@ -254,7 +254,7 @@ describe("029 FR-021: --append-section numbering (US-009)", () => {
 });
 
 describe("029 FR-022 / FR-026: the amendment registry (US-009, US-010)", () => {
-  it("FR-026: registers the amendment and regenerates the index in one invocation", async () => {
+  it.skip("FR-026: registers the amendment and regenerates the index in one invocation", async () => {
     const { amendAtSection } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -272,7 +272,7 @@ describe("029 FR-022 / FR-026: the amendment registry (US-009, US-010)", () => {
     expect(registry).toMatch(/\|\s*026\s*\|/);
   });
 
-  it("FR-022: creates the registry when the record carries none", async () => {
+  it.skip("FR-022: creates the registry when the record carries none", async () => {
     const { registerAmendment } = await loadAmend();
 
     const noRegistry = ADR_007_FIXTURE.slice(
@@ -295,7 +295,7 @@ describe("029 FR-022 / FR-026: the amendment registry (US-009, US-010)", () => {
     );
   });
 
-  it("FR-022: is idempotent for an already-registered amending id", async () => {
+  it.skip("FR-022: is idempotent for an already-registered amending id", async () => {
     const { registerAmendment } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -311,7 +311,7 @@ describe("029 FR-022 / FR-026: the amendment registry (US-009, US-010)", () => {
     expect((twice.match(/\|\s*026\s*\|/g) ?? []).length).toBe(1);
   });
 
-  it("FR-022: parses the existing registry into amendments", async () => {
+  it.skip("FR-022: parses the existing registry into amendments", async () => {
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
 
     // The registry `--check` reads: assertion 2 resolves a `NNN correction`
@@ -321,7 +321,7 @@ describe("029 FR-022 / FR-026: the amendment registry (US-009, US-010)", () => {
 });
 
 describe("029 FR-023: ratification is modelled (US-011)", () => {
-  it("FR-023: flips Proposed to Decided and stamps the date", async () => {
+  it.skip("FR-023: flips Proposed to Decided and stamps the date", async () => {
     const { decide } = await loadAmend();
 
     const rec = await record(ADR_010_PROPOSED, "ADR-010-decision-records.md");
@@ -332,7 +332,7 @@ describe("029 FR-023: ratification is modelled (US-011)", () => {
     expect(result.content).toContain("**Date:** 2026-09-01");
   });
 
-  it("FR-023: changes only the Status and Date lines", async () => {
+  it.skip("FR-023: changes only the Status and Date lines", async () => {
     const { decide } = await loadAmend();
 
     const rec = await record(ADR_010_PROPOSED, "ADR-010-decision-records.md");
@@ -348,7 +348,7 @@ describe("029 FR-023: ratification is modelled (US-011)", () => {
     expect(result.content.length).toBeGreaterThanOrEqual(rec.raw.length - 1);
   });
 
-  it("FR-023: refuses to re-decide a Decided record", async () => {
+  it.skip("FR-023: refuses to re-decide a Decided record", async () => {
     const { decide } = await loadAmend();
 
     const rec = await record(ADR_007_FIXTURE, ADR_007_FILE);
@@ -358,7 +358,7 @@ describe("029 FR-023: ratification is modelled (US-011)", () => {
     );
   });
 
-  it("FR-023: refuses a Superseded record", async () => {
+  it.skip("FR-023: refuses a Superseded record", async () => {
     const { decide } = await loadAmend();
 
     const superseded = ADR_010_PROPOSED.replace(

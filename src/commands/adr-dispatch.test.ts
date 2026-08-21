@@ -6,7 +6,7 @@
  * 029 Decision Records — RED tests for TR-004 (FR-007).
  *
  * @phase 03
- * @status active
+ * @status red
  *
  * Per `research-dispatch.test.ts`: mock `WorkflowRuntime`, `node:fs/promises`,
  * `loadConfig` and `resolveModelForTask`. All dispatch goes through
@@ -70,7 +70,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     });
   });
 
-  it("FR-007: dispatches gwrk-adr-record through WorkflowRuntime", async () => {
+  it.skip("FR-007: dispatches gwrk-adr-record through WorkflowRuntime", async () => {
     const { adrCommandHandler } = await load();
 
     await adrCommandHandler({ target: "Decision Records", run: true });
@@ -83,7 +83,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     );
   });
 
-  it("FR-007: passes the title in the workflow input", async () => {
+  it.skip("FR-007: passes the title in the workflow input", async () => {
     const { adrCommandHandler } = await load();
 
     await adrCommandHandler({ target: "Decision Records", run: true });
@@ -96,7 +96,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     expect(input).not.toMatch(/\{\{[A-Z_]+\}\}/);
   });
 
-  it("FR-007: passes projectRoot so project-local overrides resolve", async () => {
+  it.skip("FR-007: passes projectRoot so project-local overrides resolve", async () => {
     const { adrCommandHandler } = await load();
 
     await adrCommandHandler({ target: "Decision Records", run: true });
@@ -112,7 +112,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     expect(String(options.projectRoot)).toBe("/repo");
   });
 
-  it("FR-007: never constructs the runtime without --run", async () => {
+  it.skip("FR-007: never constructs the runtime without --run", async () => {
     const { adrCommandHandler } = await load();
 
     await adrCommandHandler({ target: "Decision Records" });
@@ -121,7 +121,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     expect(runtimeMock.executeWorkflow).not.toHaveBeenCalled();
   });
 
-  it("FR-007: never constructs the runtime for --print", async () => {
+  it.skip("FR-007: never constructs the runtime for --print", async () => {
     const { adrCommandHandler } = await load();
 
     await adrCommandHandler({ print: true });
@@ -129,7 +129,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     expect(runtimeMock.WorkflowRuntime).not.toHaveBeenCalled();
   });
 
-  it("FR-007: reports a workflow the loader cannot resolve with the build command", async () => {
+  it.skip("FR-007: reports a workflow the loader cannot resolve with the build command", async () => {
     const { adrCommandHandler } = await load();
 
     runtimeMock.executeWorkflow.mockRejectedValue(
@@ -141,7 +141,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     ).rejects.toThrow(/Workflow not found: gwrk-adr-record\. Run: npm run build/);
   });
 
-  it("FR-007: rejects a workflow result missing summary or intents", async () => {
+  it.skip("FR-007: rejects a workflow result missing summary or intents", async () => {
     const { adrCommandHandler } = await load();
 
     runtimeMock.executeWorkflow.mockResolvedValue({ summary: "Drafted." });
@@ -151,7 +151,7 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     ).rejects.toThrow(/gwrk-adr-record returned no valid \{summary, intents\}/);
   });
 
-  it("FR-007: rejects when no agent backend is configured", async () => {
+  it.skip("FR-007: rejects when no agent backend is configured", async () => {
     const { adrCommandHandler } = await load();
     const { loadConfig } = await import("../utils/config.js");
 

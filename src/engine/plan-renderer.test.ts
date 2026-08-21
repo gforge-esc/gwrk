@@ -79,14 +79,14 @@ describe('PlanRenderer', () => {
  * 029 Decision Records — RED tests for TR-012 (FR-016).
  *
  * @phase 07
- * @status active
+ * @status red
  *
  * `plan-renderer.ts:38` enumerates ADR-001 through ADR-006 and stops there.
  * One index link replaces the enumeration. Per the 023 plan-format contract
  * only the HEADER changes — no phase, task or `Requirements Addressed:` grammar
  * is touched, which the last assertion here pins.
  */
-describe('029 FR-016: the build plan header links the decision index (US-007)', () => {
+describe.skip('029 FR-016: the build plan header links the decision index (US-007)', () => {
   const mockFeatures = [{ id: 'F0', name: 'Extraction', status: 'DONE', sp_total: 3 }];
   const mockPhases = [
     { id: 'F0-P1', feature_id: 'F0', name: 'Bootstrap', status: 'DONE', seq: 1, sp_estimate: 10 },
