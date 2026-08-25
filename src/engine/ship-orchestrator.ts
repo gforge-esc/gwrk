@@ -34,6 +34,7 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { getBuildCommand, getTestCommand, getTestExtension, getSourceExtension } from "../utils/toolchain-mapper.js";
+import { appendFinding, findingsPath } from "./findings-ledger.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
 import {
@@ -574,6 +575,11 @@ export class ShipOrchestrator extends EventEmitter {
       //    a `REVIEW FAIL (` block it appended and left on a completed task.
       //    Compute both before readVerdict, which rewrites the same file.
       const reviewFindings = this.detectReviewReopens(featureDir, beforeState);
+      // Record every finding in the append-only ledger BEFORE readVerdict runs.
+      // Ordering is load-bearing at both ends: after the revert, so this
+      // dispatch's entries cannot be thrown away by it; before readVerdict, so
+      // they are on disk even if gate execution later throws.
+      this.recordFindings(featureDir, workflowName, reviewFindings);
       const verdict = await this.readVerdict(reviewFindings);
       this.state.reviewVerdict = verdict;
       console.log(
@@ -1548,6 +1554,53 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
+   * Write every finding this dispatch raised into the append-only ledger.
+   *
+   * tasks.json is the channel the agent has; it is not a store of record. Its
+   * `description` is rewritten wholesale by every later agent, and twice that
+   * rewrite deleted a live finding outright (`48c3ea6`, `5b29881`). The ledger
+   * is the copy that a later rewrite cannot reach — see
+   * {@link appendFinding}.
+   *
+   * `text` is the description as it stands after the dispatch, which is where
+   * the agent's own `REVIEW FAIL (` block lives. A status-flip finding on a
+   * task with an empty description gets a synthesised line instead: an empty
+   * `text` fails `FindingSchema`, and refusing to record a real finding because
+   * the agent left the description blank would be the exact silence this
+   * feature exists to remove.
+   */
+  private recordFindings(
+    featureDir: string,
+    workflowName: string,
+    findings: ReviewFindings,
+  ): void {
+    if (findings.all.size === 0) return;
+
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    const byId = new Map<string, Task>(
+      (phase?.tasks ?? []).map((t: Task) => [t.id, t] as [string, Task]),
+    );
+    const stage = workflowName.includes("uat") ? "uat-review" : "code-review";
+    const recordedAt = new Date().toISOString();
+
+    for (const taskId of findings.all) {
+      const description = byId.get(taskId)?.description?.trim();
+      appendFinding(featureDir, {
+        taskId,
+        phaseId: this.config.phaseId,
+        stage,
+        text:
+          description ||
+          `REVIEW FINDING (${taskId}): raised by ${workflowName} with no description recorded.`,
+        recordedAt,
+      });
+    }
+  }
+
+  /**
    * Read the verdict from task state after a review dispatch.
    *
    * NOT "any open task → NO-GO", which this comment used to claim and the code
@@ -1731,6 +1784,7 @@ export class ShipOrchestrator extends EventEmitter {
       this.config.featureId,
     );
     const tasksJsonPath = path.join(featureDir, ".gwrk", "tasks.json");
+    const ledgerPath = findingsPath(featureDir);
 
     // Snapshot tasks.json — this carries the review verdict and must be preserved
     let tasksJsonContent: string | null = null;
@@ -1738,6 +1792,18 @@ export class ShipOrchestrator extends EventEmitter {
       tasksJsonContent = fs.readFileSync(tasksJsonPath, "utf-8");
     } catch {
       // No tasks.json to preserve — proceed with full restore
+    }
+
+    // Snapshot the findings ledger for the same reason, through the same
+    // mechanism. `.gwrk/findings.jsonl` is not git-ignored, so while untracked
+    // it is precisely what the `git clean -fd` below deletes — and the entries
+    // at risk are EARLIER iterations', already on disk when this dispatch
+    // reverts. Losing them would reintroduce D3 through a different door.
+    let ledgerContent: string | null = null;
+    try {
+      ledgerContent = fs.readFileSync(ledgerPath, "utf-8");
+    } catch {
+      // No ledger yet — nothing recorded on this feature so far
     }
 
     try {
@@ -1763,6 +1829,13 @@ export class ShipOrchestrator extends EventEmitter {
     // Restore tasks.json with review verdict state
     if (tasksJsonContent) {
       fs.writeFileSync(tasksJsonPath, tasksJsonContent, "utf-8");
+    }
+
+    // Restore the ledger. `git clean -fd` can take the whole `.gwrk/` directory
+    // when nothing tracked remains in it, so recreate the parent before writing.
+    if (ledgerContent) {
+      fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+      fs.writeFileSync(ledgerPath, ledgerContent, "utf-8");
     }
   }
 
