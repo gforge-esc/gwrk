@@ -212,9 +212,9 @@ with no allowlist entry.
 pnpm run build
 npx vitest run src/engine/adr-scaffold.test.ts src/commands/adr.test.ts
 npx vitest run src/cli.ux.test.ts src/cli.e2e.test.ts src/cli.option-collisions.test.ts
-node dist/index.js define --help > .adr-help.log
+node dist/cli.js define --help > .adr-help.log
 grep -qE '^[[:space:]]+adr\b' .adr-help.log
-node dist/index.js define adr --help > .adr-sub-help.log
+node dist/cli.js define adr --help > .adr-sub-help.log
 grep -q 'Examples:' .adr-sub-help.log
 rm -f .adr-help.log .adr-sub-help.log
 ```
@@ -362,13 +362,13 @@ stale (DM-002).
 ```bash
 pnpm run build
 npx vitest run src/engine/adr-index.test.ts
-node dist/index.js define adr --reindex
+node dist/cli.js define adr --reindex
 test -f .gwrk/decisions/index.md
 grep -q '| ADR | Scope | Status | Constraint |' .gwrk/decisions/index.md
 test "$(grep -cE '^\| ADR-0[0-9]{2} ' .gwrk/decisions/index.md)" = 9
 grep -q 'ADR-006' .gwrk/decisions/index.md
 grep -q 'ADR-007' .gwrk/decisions/index.md
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --reindex --check
 ```
 
 ---
@@ -540,7 +540,7 @@ grep -A 20 '^## Amendments' docs/decisions/ADR-007-single-dispatch-path.md > .ad
 grep -q '026' .adr-registry.log
 grep -q '028' .adr-registry.log
 rm -f .adr-registry.log
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --reindex --check
 ```
 
 ---
@@ -548,7 +548,7 @@ node dist/index.js define adr --reindex --check
 ### Phase 9: ADR-010, written by the command this feature ships
 
 SC-003: the feature records its own decision using its own machinery. The record is produced by running
-the shipped CLI — `node dist/index.js define adr "Decision Records" --run` — then finished by hand, so
+the shipped CLI — `node dist/cli.js define adr "Decision Records" --run` — then finished by hand, so
 the scaffolder, the template, the `Constraint:` convention, the registry section and the post-write
 reindex are all exercised end to end on the real corpus rather than on fixtures.
 
@@ -588,9 +588,9 @@ test -f docs/decisions/ADR-010-decision-records.md
 awk 'NR==1{exit !/^# ADR-010: /}' docs/decisions/ADR-010-decision-records.md
 grep -q '^> \*\*Constraint:\*\*' docs/decisions/ADR-010-decision-records.md
 grep -q '^## Amendments' docs/decisions/ADR-010-decision-records.md
-node dist/index.js define adr --reindex
+node dist/cli.js define adr --reindex
 grep -q 'ADR-010' .gwrk/decisions/index.md
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --reindex --check
 npx vitest run src/engine/adr-index.test.ts
 ```
 
@@ -609,7 +609,7 @@ Phase 8 — catches it. Assertion 1 follows AMBER-1's scan rule. VR-007 requires
 - `src/engine/adr-check.test.ts` — **create** — fixture tree: unregistered `028 correction` exits 1 naming `file:line`, exits 0 once registered; unresolvable `ADR-099`; index-hash mismatch (TR-006)
 - `src/commands/adr.ts` — **amend** — `--check` with `--format json` support; error-as-navigation messages (FR-024)
 - `src/engine/ship-orchestrator.ts` — **amend** — correct the `ADR-007 + 028 correction` citation at `:492` to the registered amendment address (FR-025)
-- `.github/workflows/ci.yml` — **amend** — run `node dist/index.js define adr --check` after Build, before Test
+- `.github/workflows/ci.yml` — **amend** — run `node dist/cli.js define adr --check` after Build, before Test
 
 **Requirements Addressed:** FR-024, FR-025 · US-010 · TC-005 · SC-007 · VR-007
 
@@ -639,7 +639,7 @@ Phase 8 — catches it. Assertion 1 follows AMBER-1's scan rule. VR-007 requires
 ```bash
 pnpm run build
 npx vitest run src/engine/adr-check.test.ts
-node dist/index.js define adr --check
+node dist/cli.js define adr --check
 grep -q '028 correction' docs/decisions/ADR-007-single-dispatch-path.md
 grep -rq 'define adr --check' .github/workflows/
 npx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts
@@ -696,8 +696,8 @@ grep -q '.gwrk/decisions/index.md' src/plugins/builtins/workflows/gwrk-constitut
 if grep -q 'invariants from .spec.md. files match implementation' src/plugins/builtins/workflows/gwrk-constitution/PROMPT.md; then exit 1; fi
 grep -q '.gwrk/decisions/index.md' src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md
 grep -q 'ADR' src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md
-node dist/index.js define adr --check
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --check
+node dist/cli.js define adr --reindex --check
 pnpm test:ci
 ```
 

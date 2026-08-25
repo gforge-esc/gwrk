@@ -61,7 +61,7 @@ how D1 shipped.
 |---|---|---|---|---|---|
 | `gwrk define adr "<title>"` | generator | record written, index regenerated | collision, no project root, empty title | N/A — writes a file; path on stdout | 2 (index from 5) |
 | `gwrk define adr "<title>" --run` | generator (dispatching) | workflow returned `{summary, intents}` | workflow missing, schema violation, no backend | N/A | 3 |
-| `gwrk define adr --print` | query | template printed to stdout, nothing written | no project root | supported | 2 |
+| `gwrk define adr --print` | query | template printed to stdout, nothing written | no project root | N/A — emits the markdown template | 2 |
 | `gwrk define adr --reindex` | generator | index written | unparseable header | N/A | 5 |
 | `gwrk define adr --reindex --check` | verifier | hash matches | stale, absent, unparseable | supported | 5 |
 | `gwrk define adr <id> --amend --at <s>` | mutator | inserted, registered, reindexed | unresolvable address or id, would shrink | N/A | 8 |
@@ -73,6 +73,12 @@ how D1 shipped.
 Every failure message is **error-as-navigation**: it names the offending path or id and, where one
 exists, the corrective command. Full message text is contracted in
 [`adr-engine.md`](./adr-engine.md) §3, §4, §5, §6.
+
+`--format json` is a **verifier** affordance: the `{ok, findings}` shape below is the only JSON shape
+this contract defines, and `--print` is classified a query, not a verifier. `--print` therefore emits the
+markdown template on stdout and declares no `--format`; the flag arrives with the first verifier
+invocation (`--reindex --check`, Phase 5). Phase 2 declares `--print` only, per plan.md Phase 2 > Files
+and TR-003.
 
 **`--format json` shape** (verifier invocations):
 
