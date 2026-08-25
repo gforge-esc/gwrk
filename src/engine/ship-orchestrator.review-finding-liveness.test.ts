@@ -365,6 +365,190 @@ describe("D10 — the code-review scope context carries the verdict channel", ()
 });
 
 /**
+ * TR-008. The channel all four missed NO-GOs actually used.
+ *
+ * Each of them wrote `REVIEW FAIL (code): …` into a task description and left
+ * `status: "completed"`. The VERDICT CHANNEL block asks for the status flip,
+ * but the note is what a review agent reliably produces — so a detector that
+ * reads only the flip reads all four findings as silence, which is exactly what
+ * it did. The description diff is the second signal.
+ *
+ * It is count-based, not presence-based, and both halves of that matter: a
+ * `REVIEW FAIL (` block already in the pre-dispatch snapshot belongs to an
+ * earlier iteration and must not re-fire, while a description that already
+ * carried one must still fire when a second block lands on it — the ordinary
+ * shape of iteration 2 of a NO-GO loop.
+ */
+describe("FR-008/TR-008 — a description-only finding is a finding", () => {
+  const gated = { gateScript: "gates/T006-gate.sh" };
+  const FINDING =
+    "REVIEW FAIL (code): an 8-bit body is put on the wire without negotiating 8BITMIME.";
+  const SECOND_FINDING =
+    "REVIEW FAIL (code): the retry loop swallows a permanent 5xx and reports success.";
+
+  const gatePasses = () =>
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "ok",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+
+  /** tasks.json as `readVerdict` last persisted it. */
+  const savedTask = () => {
+    const calls = vi.mocked(stateUtils.saveTaskState).mock.calls;
+    const last = calls[calls.length - 1][1] as ReturnType<typeof stateWith>;
+    return last.phases[0].tasks[0];
+  };
+
+  it("treats a newly appended REVIEW FAIL block as a finding", async () => {
+    // Green gate, status never moved. The description diff is the only thing
+    // that could have raised this, so the divergence naming T006 IS the proof.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewGateDivergence).toEqual(["T006"]);
+  });
+
+  it("re-opens the task so DIAGNOSE can see the finding it blocked on", async () => {
+    // DIAGNOSE collects error context from OPEN tasks only. A description-only
+    // finding left `completed` would be a NO-GO whose cause the next stage
+    // never reads — a loop that blocks without ever saying why.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    expect(savedTask().status).toBe("open");
+  });
+
+  it("names the mechanism that raised it, not just that something did", async () => {
+    // "The agent ignored the VERDICT CHANNEL block" and "the agent followed it"
+    // are different bugs with different fixes, and the verdict output is the
+    // only place a maintainer can tell them apart.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    expect(savedTask().description).toMatch(/status left unchanged/);
+  });
+
+  it("reports NO-GO on a description-only finding", async () => {
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+
+  it("reports NO-GO when a description-only finding lands on a gateless task", async () => {
+    // The two holes compounded: no gate AND no status flip. `readVerdict` must
+    // consult the findings BEFORE the gateless `continue`, or this task is
+    // skipped twice over and the phase ships with the defect live.
+    loadTaskStateReturns(
+      stateWith("completed", { description: "seed" }),
+      stateWith("completed", { description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+    expect(gateExec.runTaskGate).not.toHaveBeenCalled();
+  });
+
+  it("does not re-fire on a pre-existing REVIEW FAIL block", async () => {
+    // The block is on disk before the dispatch, so it is a previous iteration's
+    // finding that IMPLEMENT already answered. Presence-based detection would
+    // pin the phase at NO-GO forever; the count is what makes it terminate.
+    gatePasses();
+    const carried = `seed\n\n${FINDING}`;
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: carried }),
+      stateWith("completed", { ...gated, description: carried }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("GO");
+    expect(savedTask().status).toBe("completed");
+  });
+
+  it("fires again when a second block lands on a description that already carried one", async () => {
+    // The other half of count-based detection, and the reason presence alone is
+    // not merely conservative but wrong: iteration 2 of a NO-GO loop appends to
+    // a description that already carries iteration 1's block.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+      stateWith("completed", {
+        ...gated,
+        description: `seed\n\n${FINDING}\n\n${SECOND_FINDING}`,
+      }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+
+  it("still calls a status flip a re-open, not a description-only finding", async () => {
+    // The channels stay distinguishable. A task that flipped completed → open
+    // AND carries a note is the prompt being followed — reporting it as the
+    // description-only channel would send a maintainer after a prompt defect
+    // that is not there.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("open", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+    expect(savedTask().description).toMatch(/re-opened by review/);
+    expect(savedTask().description).not.toMatch(/status left unchanged/);
+  });
+});
+
+/**
  * TR-012. The cases above call `executeReviewWorkflow` directly; `gwrk ship`
  * never does. It runs `stageCodeReview` / `stageUatReview`, and each reads
  * tasks.json BEFORE dispatching — to build its phase-task list and its
