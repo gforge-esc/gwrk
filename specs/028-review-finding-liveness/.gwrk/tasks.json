@@ -69,7 +69,7 @@
           "id": "T004",
           "title": "Create findings-ledger.ts",
           "description": "NEW src/engine/findings-ledger.ts. `findingsPath`, `appendFinding` (`fs.appendFileSync`, one JSON object per line — no read-modify-write, so an existing entry cannot be rewritten through the normal path), `readFindings` (tolerates malformed lines by skipping them, never throws). Tests: src/engine/ship-orchestrator.findings-ledger.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "npm run build\nnpx vitest run src/engine/ship-orchestrator.findings-ledger.test.ts\nnpx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts\ntest -f src/engine/findings-ledger.ts\ngrep -q 'appendFileSync' src/engine/findings-ledger.ts\ngrep -q 'findings.jsonl' src/engine/ship-orchestrator.ts\ngrep -q 'a recorded finding survives a description overwrite' src/engine/ship-orchestrator.findings-ledger.test.ts\ngrep -q 'the ledger is append-only' src/engine/ship-orchestrator.findings-ledger.test.ts\n# TC-008: no SQLite in the verdict path.\nif grep -q 'better-sqlite3' src/engine/findings-ledger.ts; then echo 'FAIL: the ledger must not require SQLite (TC-008)' >&2; exit 1; fi",
           "sp": 2
         },
@@ -77,7 +77,7 @@
           "id": "T005",
           "title": "Modify ship-orchestrator.ts",
           "description": "MODIFY src/engine/ship-orchestrator.ts. append one ledger entry per finding from `ReviewFindings`; snapshot and restore `.gwrk/findings.jsonl` in `revertSourceMutations()` alongside `tasks.json`. Tests: src/engine/ship-orchestrator.findings-ledger.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "npm run build\nnpx vitest run src/engine/ship-orchestrator.findings-ledger.test.ts\nnpx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts\ntest -f src/engine/findings-ledger.ts\ngrep -q 'appendFileSync' src/engine/findings-ledger.ts\ngrep -q 'findings.jsonl' src/engine/ship-orchestrator.ts\ngrep -q 'a recorded finding survives a description overwrite' src/engine/ship-orchestrator.findings-ledger.test.ts\ngrep -q 'the ledger is append-only' src/engine/ship-orchestrator.findings-ledger.test.ts\n# TC-008: no SQLite in the verdict path.\nif grep -q 'better-sqlite3' src/engine/findings-ledger.ts; then echo 'FAIL: the ledger must not require SQLite (TC-008)' >&2; exit 1; fi",
           "sp": 1
         }
