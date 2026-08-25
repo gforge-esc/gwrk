@@ -108,15 +108,25 @@ const stateWith = (
   ],
 });
 
-/** Call 1 is the pre-dispatch snapshot; later calls are the post-review state. */
+/**
+ * `before` until the review agent runs, `after` once it has.
+ *
+ * Keyed off the dispatch, not off a call count. "Call 1 is the pre-dispatch
+ * snapshot" only holds for a direct `executeReviewWorkflow` call:
+ * `stageCodeReview` reads tasks.json first to build its phase-task list, so a
+ * counting mock hands `beforeState` the AFTER state, `detectReviewReopens`
+ * diffs after-vs-after, and a real re-open reports GO — through the exact path
+ * `gwrk ship` uses. The dispatch is the event that separates the two states, so
+ * that is what the mock keys on.
+ */
 function loadTaskStateReturns(
   before: ReturnType<typeof stateWith>,
   after: ReturnType<typeof stateWith>,
 ) {
-  let call = 0;
   vi.mocked(stateUtils.loadTaskState).mockImplementation((() => {
-    call++;
-    return (call === 1 ? before : after) as never;
+    const dispatched =
+      vi.mocked(agentUtils.dispatchToAgent).mock.calls.length > 0;
+    return (dispatched ? after : before) as never;
   }) as never);
 }
 
@@ -237,6 +247,66 @@ describe("D5 — DIAGNOSE reads review findings as error context", () => {
     expect(dispatchedPrompts().join("\n")).toMatch(/8BITMIME/);
   });
 
+  it("diagnoses a task carrying a REVIEW FINDING note", async () => {
+    // The third of FR-006's three formats, and the newest: `readVerdict`
+    // writes it for a re-opened task with no gateScript. Nothing else in the
+    // suite covered it, so dropping `REVIEW FINDING|` from the filter left
+    // every test green while the gateless finding — the case where review is
+    // the ONLY verdict — went back to "no error context to diagnose".
+    const withNote = stateWith("open", {
+      description:
+        "seed\n\nREVIEW FINDING (T006, no gate):\nThe review agent re-opened this task and it has no gateScript, so nothing mechanical can confirm or refute the finding.",
+    });
+    vi.mocked(stateUtils.loadTaskState).mockReturnValue(withNote as never);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageDiagnose();
+
+    expect(dispatchedPrompts().join("\n")).toMatch(/no gateScript/);
+  });
+
+  it("tells the diagnostician the build is green and asks for a gate per fix", async () => {
+    // TR-006. The filter matching is half the fix: a diagnostician handed a
+    // green build under the heading "Error Context from Failed Gates" hunts
+    // for compiler errors that do not exist and returns nothing.
+    const withNote = stateWith("open", {
+      gateScript: "gates/T006-gate.sh",
+      description:
+        "seed\n\nREVIEW FAIL (code): an 8-bit body is put on the wire without negotiating 8BITMIME.",
+    });
+    vi.mocked(stateUtils.loadTaskState).mockReturnValue(withNote as never);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageDiagnose();
+
+    const prompt = dispatchedPrompts().join("\n");
+    expect(prompt).toMatch(/You are a build and code-review diagnostician/);
+    expect(prompt).toMatch(/## Review Findings \(build and gates are GREEN\)/);
+    expect(prompt).toMatch(
+      /a finding that survives its own fix is a finding that will recur/,
+    );
+  });
+
+  it("keeps the failed-gate heading when the context is a real build failure", async () => {
+    // NEGATIVE control for the case above: the review wording must not leak
+    // onto the build/test path, where the errors are real and the gates red.
+    const withNote = stateWith("open", {
+      gateScript: "gates/T006-gate.sh",
+      description: "seed\n\nBUILD_CHECK FAILED: TS2304 cannot find name 'foo'.",
+    });
+    vi.mocked(stateUtils.loadTaskState).mockReturnValue(withNote as never);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageDiagnose();
+
+    const prompt = dispatchedPrompts().join("\n");
+    expect(prompt).toMatch(/## Error Context from Failed Gates/);
+    expect(prompt).not.toMatch(/build and gates are GREEN/);
+  });
+
   it("still skips when an open task carries no finding at all", async () => {
     const noNote = stateWith("open", { gateScript: "gates/T006-gate.sh" });
     vi.mocked(stateUtils.loadTaskState).mockReturnValue(noNote as never);
@@ -294,6 +364,109 @@ describe("D10 — the code-review scope context carries the verdict channel", ()
   });
 });
 
+/**
+ * TR-012. The cases above call `executeReviewWorkflow` directly; `gwrk ship`
+ * never does. It runs `stageCodeReview` / `stageUatReview`, and each reads
+ * tasks.json BEFORE dispatching — to build its phase-task list and its
+ * Done-When. That extra read is what made the first version of this suite
+ * miss the defect entirely: with a call-counting mock the pre-dispatch snapshot
+ * went to the stage, `beforeState` got the post-review state, and a re-open
+ * diffed to the empty set. Identical state, opposite verdict, depending only on
+ * which door you came through. So drive the doors.
+ */
+describe("FR-008/TR-012 — a re-open survives the entry points `gwrk ship` uses", () => {
+  const gated = { gateScript: "gates/T006-gate.sh" };
+
+  const gatePasses = () =>
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "ok",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+
+  it("reports NO-GO through stageCodeReview when the gate still passes", async () => {
+    // Runs #2727 / #2728, end to end: green gate, reproduced defect, re-open.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", gated),
+      stateWith("open", gated),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+
+  it("reports NO-GO through stageCodeReview when the re-opened task has no gate", async () => {
+    loadTaskStateReturns(stateWith("completed"), stateWith("open"));
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+
+  it("reports NO-GO through stageUatReview too", async () => {
+    // UAT was never broken — it is the control. If this one goes red the
+    // regression is in the shared path, not in the code-review scope context.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", gated),
+      stateWith("open", gated),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageUatReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+
+  it("still reports GO through stageCodeReview when review re-opens nothing", async () => {
+    gatePasses();
+    const untouched = stateWith("completed", gated);
+    loadTaskStateReturns(untouched, untouched);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("GO");
+  });
+
+  it("reads the pre-dispatch state before the agent runs, not after", async () => {
+    // The mechanism, asserted directly: whatever the stage reads first must be
+    // the snapshot the diff is taken against. A counting mock cannot express
+    // this, which is why the entry-point cases above were needed to find it.
+    gatePasses();
+    const seen: string[] = [];
+    vi.mocked(stateUtils.loadTaskState).mockImplementation((() => {
+      const dispatched =
+        vi.mocked(agentUtils.dispatchToAgent).mock.calls.length > 0;
+      seen.push(dispatched ? "after" : "before");
+      return (dispatched
+        ? stateWith("open", gated)
+        : stateWith("completed", gated)) as never;
+    }) as never);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    expect(seen.filter((s) => s === "before").length).toBeGreaterThan(1);
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+});
+
 describe("FR-007 — the doctrine is not written down in its broad form", () => {
   /**
    * TR-007. `node:fs` is auto-mocked for this file, so read the real source
@@ -324,12 +497,25 @@ describe("FR-007 — the doctrine is not written down in its broad form", () => 
   it("readVerdict's doc comment states the real rule", async () => {
     const src = await readOrchestratorSource();
 
-    const block = (src.match(/\/\*\*[\s\S]*?\*\//g) ?? []).find((b) =>
-      b.includes('NOT "any open task → NO-GO"'),
+    // Attached, not merely present. Scanning every `/** */` in the file for the
+    // text accepts it anywhere — and it sat two blocks up, above
+    // `detectReviewReopens`, so `readVerdict` had NO doc comment at all: an IDE
+    // hover showed nothing and JSDoc attributed the correction to the wrong
+    // method. A doc-comment contract that does not check attachment is
+    // documenting a location, not a function.
+    // `(?:(?!\*\/)[\s\S])*` cannot cross a `*/`, so this matches ONE block.
+    const attached = src.match(
+      /\/\*\*(?:(?!\*\/)[\s\S])*\*\/\s*private async readVerdict\b/,
     );
-    expect(block).toBeDefined();
+    expect(
+      attached,
+      "the doc block must immediately precede `private async readVerdict`",
+    ).not.toBeNull();
 
-    const doc = flatten(block as string);
+    const block = (attached as RegExpMatchArray)[0];
+    expect(block).toContain('NOT "any open task → NO-GO"');
+
+    const doc = flatten(block);
 
     // The correction is explicit, and says why the old claim was wrong.
     expect(doc).toMatch(/NOT "any open task → NO-GO"/);
