@@ -441,6 +441,20 @@ describe("discoverTestFile (FM-1)", () => {
   it("should return null for empty string", () => {
     expect(discoverTestFile("")).toBeNull();
   });
+
+  // 028 T008: a doc target must NOT be returned as its own test file. The
+  // `.ts|.js → .test.$1` replace is a no-op on any other extension, so without
+  // the extension guard an existing .md/.sql/.sh path came back unchanged and
+  // generateFilesystemGates emitted `vitest run <doc>` — a gate that can never
+  // exit 0 because the path matches no test include.
+  it("should return null for a non-ts/js file that exists (doc targets)", () => {
+    for (const name of ["ADR-007.md", "schema.sql", "deploy.sh", "ci.yml", "pkg.json"]) {
+      const docFile = path.join(tempDir, name);
+      fs.writeFileSync(docFile, "content");
+
+      expect(discoverTestFile(docFile)).toBeNull();
+    }
+  });
 });
 
 describe("lintGateScript (021 FR-007 — polyglot functional verbs)", () => {

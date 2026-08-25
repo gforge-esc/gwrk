@@ -733,6 +733,14 @@ export function discoverTestFile(sourceFile: string): string | null {
     return fs.existsSync(sourceFile) ? sourceFile : null;
   }
 
+  // Only a .ts/.js source has a conventional test twin. For any other
+  // extension the replace below is a no-op, so `testFile === sourceFile` and
+  // the existsSync check passes on the source itself — handing back a .md/.sql/
+  // .sh file as its own "test file" and producing a `vitest run <doc>` gate that
+  // can never exit 0. Documentation targets must fall through to the
+  // file-existence gate instead.
+  if (!/\.(ts|js)$/.test(sourceFile)) return null;
+
   // Convention: foo.ts → foo.test.ts
   const testFile = sourceFile.replace(/\.(ts|js)$/, ".test.$1");
   if (fs.existsSync(testFile)) {
