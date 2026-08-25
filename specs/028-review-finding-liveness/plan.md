@@ -263,16 +263,26 @@ TC-006 forbids this growing teeth in the other direction, permanently. That is e
 
 #### Done When
 ```bash
-npm run build
-npx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts
-npx vitest run src/engine/ship-orchestrator.review-gate-divergence.test.ts
-test -f src/engine/returned-verdict.ts
-# TC-006 enforced in the signature: a returned GO must be unrepresentable.
-grep -q '"NO-GO" | undefined' src/engine/returned-verdict.ts
-grep -q 'parseReturnedVerdict' src/engine/ship-orchestrator.ts
-grep -q 'a returned NO-GO forces NO-GO' src/engine/ship-orchestrator.review-finding-liveness.test.ts
-grep -q 'a returned GO never overrides re-open evidence' src/engine/ship-orchestrator.review-finding-liveness.test.ts
-grep -q 'an absent or unparseable verdict does not fail the run' src/engine/ship-orchestrator.review-finding-liveness.test.ts
+# One baseline for both tasks, for the reason Phase 01 gives: `runTaskGate`
+# strategy 1 always prefers the convention file `gates/<id>-gate.sh` over a
+# task's declared `gateScript` (src/utils/gate-exec.ts:64-74), so the FILE is
+# the executed artifact and everything else is dead text. Both Phase 04 gate
+# files, both `gateScript` fields, and this block therefore run the same script:
+#
+#   build (dist/ is what `gwrk ship` dispatches AND what the parser check loads)
+#   both suites
+#   test -f the parser; the `"NO-GO" | undefined` signature (TC-006)
+#   `parseReturnedVerdict` wired into the orchestrator
+#   the three named TR-010 cases, asserted against the test source
+#   ...then the section none of the above can stand in for: the BUILT parser is
+#   fed the stdout shapes the adapters actually emit — stream-json `result` and
+#   `assistant` text events, a clipped `result` event, bare prose for agy/codex
+#   — plus the TC-006 GO negatives, the TC-002 junk negatives, and the
+#   false-positive pair a review agent produces every run (a `tool_result`
+#   carrying spec.md bytes, a `tool_use` grepping for the literal string). The
+#   static assertions above ALL passed over a parser that fired on 0 of the 21
+#   real transcripts carrying an agent-returned NO-GO; nothing static could.
+bash specs/028-review-finding-liveness/gates/phase-04-contract.sh
 ```
 
 ### Phase 05: The doctrine correction (FR-011, W4)

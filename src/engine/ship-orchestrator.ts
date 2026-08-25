@@ -1800,15 +1800,19 @@ export class ShipOrchestrator extends EventEmitter {
     computed: "GO" | "NO-GO",
     stdout: string,
   ): "GO" | "NO-GO" {
-    if (computed === "NO-GO") return computed;
     if (parseReturnedVerdict(stdout) !== "NO-GO") return computed;
 
-    // Name the source. This is the one NO-GO with no failing gate and no
-    // re-opened task behind it, so an operator reading the log would otherwise
-    // have nothing to attribute it to.
+    // Name the source, whichever way `computed` landed. When it is already
+    // NO-GO the returned verdict changes nothing, but it is a second signal
+    // saying the same thing — and an operator reading the log is better off
+    // knowing the agent agreed than inferring it from a re-opened task alone.
     console.log(
       '    ✗ RETURNED VERDICT: the review agent returned "verdict": "NO-GO" in its structured output',
     );
+    if (computed === "NO-GO") return computed;
+
+    // This is the one NO-GO with no failing gate and no re-opened task behind
+    // it, so without this line there is nothing for an operator to act on.
     console.log(
       "      Treating as NO-GO. Gates passed and no task carries a finding, so this verdict rests on the agent's returned output alone — read its summary for what it found.",
     );
