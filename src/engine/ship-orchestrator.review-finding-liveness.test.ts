@@ -739,6 +739,123 @@ describe("FR-007 — the doctrine is not written down in its broad form", () => 
 });
 
 /**
+ * FR-011 / W4. The ADR is the definitional layer the review prompts encode.
+ *
+ * ADR-007 §2.1 is where "The agent's verdict is advisory. Gates are truth."
+ * was first written down, and every prompt that force-completed a task on a
+ * green gate is downstream of that sentence. The file already carries a `026
+ * correction` blockquote for the last time the doctrine outran the code; this
+ * is the same treatment for 028, and it is a test rather than prose because
+ * the three prior recurrences of this defect were each re-authored from the
+ * definitional layer *after* the code had already been fixed.
+ *
+ * `node:fs` is auto-mocked for this file, so the ADR is read through
+ * `importActual` — the point of these cases is the bytes on disk.
+ */
+describe("FR-011/W4 — ADR-007 carries the doctrine correction", () => {
+  const readAdrSource = async (): Promise<string> => {
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    return realFs.readFileSync(
+      new URL(
+        "../../docs/decisions/ADR-007-single-dispatch-path.md",
+        import.meta.url,
+      ),
+      "utf-8",
+    );
+  };
+
+  /** The contiguous `>`-prefixed block opening with `**<label>.**`. */
+  const quoteBlock = (src: string, label: string): string[] => {
+    const lines = src.split("\n");
+    const start = lines.findIndex((l) => l.startsWith(`> **${label}.**`));
+    if (start === -1) return [];
+    let end = start;
+    while (end + 1 < lines.length && lines[end + 1].startsWith(">")) end += 1;
+    return lines.slice(start, end + 1);
+  };
+
+  /** Strip the `> ` quote prefix and collapse the block's hard wraps. */
+  const flatten = (block: string[]): string =>
+    block
+      .map((l) => l.replace(/^>\s?/, ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  it("ADR-007 carries the 028 one-way correction", async () => {
+    const src = await readAdrSource();
+
+    const block = quoteBlock(src, "028 correction");
+    expect(
+      block.length,
+      "ADR-007 must carry an `028 correction` blockquote",
+    ).toBeGreaterThan(0);
+
+    const doc = flatten(block);
+
+    // One-way, and named as such. The direction IS the correction.
+    expect(doc).toMatch(/"Gates are truth" is one-way/);
+
+    // Both halves. Asserting only the prohibition would pass on a block that
+    // revoked gate authority outright — the opposite over-correction, and one
+    // that would strand every task no reviewer ever looked at.
+    expect(doc).toMatch(/may close a task the reviewer raised no finding on/);
+    expect(doc).toMatch(
+      /never close a task the reviewer reproduced a defect on/,
+    );
+
+    // The combination, and what the code already does with it.
+    expect(doc).toMatch(/coverage hole \(`readVerdict` treats it as NO-GO\)/);
+
+    // What actually went wrong, with the evidence. Stripped of the count and
+    // the run numbers this reads as a hypothetical rather than a post-mortem.
+    expect(doc).toMatch(/force `status: completed` whenever gates passed/);
+    expect(doc).toMatch(
+      /four blocking code-review findings across runs #2727\/#2728/,
+    );
+
+    // And the citation, so a reader lands on the diagnosis instead of
+    // re-deriving it — which is how 028 became the third recurrence.
+    expect(doc).toContain("docs/code-review-verdict-defect.md");
+  });
+
+  it("places the 028 correction under the doctrine it corrects, after 026", async () => {
+    const src = await readAdrSource();
+
+    // Attached, not merely present. `grep -q '028 correction'` — the shape of
+    // this task's own gate — passes just as happily on a block appended to the
+    // references section, where nobody reading "Gates are truth" would ever
+    // meet it. Position is what makes a correction load-bearing: 026 earned
+    // its place directly under the sentence it narrows, and 028 inherits it.
+    const doctrine = src.indexOf(
+      "The agent's verdict is advisory. Gates are truth.",
+    );
+    const c026 = src.indexOf("> **026 correction.**");
+    const c028 = src.indexOf("> **028 correction.**");
+    const nextSection = src.indexOf("### 2.2");
+
+    expect(
+      doctrine,
+      "§2.1 must still state the doctrine being corrected",
+    ).toBeGreaterThan(-1);
+    expect(
+      nextSection,
+      "§2.2 must still follow, bounding the section",
+    ).toBeGreaterThan(-1);
+    expect(c026, "the 026 correction must still be there").toBeGreaterThan(
+      doctrine,
+    );
+    expect(c028, "the 028 correction goes after the 026 block").toBeGreaterThan(
+      c026,
+    );
+    expect(
+      c028,
+      "and before §2.2, inside the section it corrects",
+    ).toBeLessThan(nextSection);
+  });
+});
+
+/**
  * TR-010. The returned JSON verdict, as a one-way ratchet (FR-010, D4).
  *
  * Run #2728 iteration 2 is the case every other channel in this file misses:
