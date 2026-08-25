@@ -6,7 +6,7 @@
  * 029 Decision Records — RED tests for TR-001 (FR-002, FR-003, FR-019).
  *
  * @phase 02
- * @status red
+ * @status active
  *
  * `node:fs/promises` is mocked wholesale (TR-001) and backed by an in-memory
  * tree so the three flaws of the research allocator are asserted directly:
@@ -168,14 +168,14 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     configMock.loadConfig.mockReturnValue({ project: { name: "gwrk" } });
   });
 
-  it.skip("FR-002: allocates max+1 over the existing corpus", async () => {
+  it("FR-002: allocates max+1 over the existing corpus", async () => {
     const { allocateNumber } = await load();
 
     // Nine records on disk → the next number is 010, zero-padded to three.
     await expect(allocateNumber(DECISIONS)).resolves.toBe("010");
   });
 
-  it.skip("FR-002: filters on the .md suffix and the ADR-NNN pattern", async () => {
+  it("FR-002: filters on the .md suffix and the ADR-NNN pattern", async () => {
     const { allocateNumber } = await load();
 
     seedCorpus([
@@ -197,7 +197,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     await expect(allocateNumber(DECISIONS)).resolves.toBe("004");
   });
 
-  it.skip("FR-002: allocates 001 into an empty corpus", async () => {
+  it("FR-002: allocates 001 into an empty corpus", async () => {
     const { allocateNumber } = await load();
 
     seedCorpus([]);
@@ -205,7 +205,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     await expect(allocateNumber(DECISIONS)).resolves.toBe("001");
   });
 
-  it.skip("FR-002: discovers the project root by walking parents for .gwrkrc.json", async () => {
+  it("FR-002: discovers the project root by walking parents for .gwrkrc.json", async () => {
     const { findProjectRoot } = await load();
 
     seedCorpus();
@@ -217,7 +217,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     await expect(findProjectRoot(ROOT)).resolves.toBe(ROOT);
   });
 
-  it.skip("FR-002: fails with the corrective command when no .gwrkrc.json is in any parent", async () => {
+  it("FR-002: fails with the corrective command when no .gwrkrc.json is in any parent", async () => {
     const { findProjectRoot } = await load();
 
     tree.files.clear();
@@ -229,7 +229,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     );
   });
 
-  it.skip("FR-002: fails loudly on a same-number different-slug collision", async () => {
+  it("FR-002: fails loudly on a same-number different-slug collision", async () => {
     const { scaffold } = await load();
 
     seedCorpus([...nineRecords(), "ADR-010-something-else.md"]);
@@ -241,7 +241,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     );
   });
 
-  it.skip("FR-002: does not write when the number is taken", async () => {
+  it("FR-002: does not write when the number is taken", async () => {
     const { scaffold } = await load();
     const writeFile = await writeFileMock();
 
@@ -251,7 +251,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     expect(writeFile).not.toHaveBeenCalled();
   });
 
-  it.skip("FR-002: fails on an empty title without writing", async () => {
+  it("FR-002: fails on an empty title without writing", async () => {
     const { scaffold } = await load();
     const writeFile = await writeFileMock();
 
@@ -262,7 +262,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     expect(writeFile).not.toHaveBeenCalled();
   });
 
-  it.skip("FR-002: writes the allocated path and returns it", async () => {
+  it("FR-002: writes the allocated path and returns it", async () => {
     const { scaffold } = await load();
     const writeFile = await writeFileMock();
 
@@ -278,7 +278,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     );
   });
 
-  it.skip("FR-002: surfaces an unwritable decisions directory with its errno", async () => {
+  it("FR-002: surfaces an unwritable decisions directory with its errno", async () => {
     const { scaffold } = await load();
     const fsp = await import("node:fs/promises");
 
@@ -299,7 +299,7 @@ describe("029 FR-003: the section-numbered template (US-001)", () => {
     configMock.loadConfig.mockReturnValue({ project: { name: "gwrk" } });
   });
 
-  it.skip("FR-003: writes the section-numbered template with Status Proposed", async () => {
+  it("FR-003: writes the section-numbered template with Status Proposed", async () => {
     const { scaffold } = await load();
     const writeFile = await writeFileMock();
 
@@ -323,7 +323,7 @@ describe("029 FR-003: the section-numbered template (US-001)", () => {
     expect(body).toContain("\n## 7. References");
   });
 
-  it.skip("FR-003: stamps today's date, not a hardcoded one", async () => {
+  it("FR-003: stamps today's date, not a hardcoded one", async () => {
     const { renderTemplate } = await load();
 
     const body = renderTemplate({
@@ -335,7 +335,7 @@ describe("029 FR-003: the section-numbered template (US-001)", () => {
     expect(body).toContain("> **Date:** 2026-08-20");
   });
 
-  it.skip("FR-003: uses the four-row Decision Record table used by 004-009", async () => {
+  it("FR-003: uses the four-row Decision Record table used by 004-009", async () => {
     const { renderTemplate } = await load();
 
     const body = renderTemplate({
@@ -352,7 +352,7 @@ describe("029 FR-003: the section-numbered template (US-001)", () => {
     expect(table).toMatch(/\|\s*Risk\s*\|/);
   });
 
-  it.skip("FR-003: ends with a literal unnumbered ## Amendments registry, starting empty", async () => {
+  it("FR-003: ends with a literal unnumbered ## Amendments registry, starting empty", async () => {
     const { renderTemplate } = await load();
 
     const body = renderTemplate({
@@ -372,7 +372,7 @@ describe("029 FR-003: the section-numbered template (US-001)", () => {
     expect(afterRegistry).not.toMatch(/^\| 0\d\d /m);
   });
 
-  it.skip("FR-003: slugifies the title without leaking punctuation into the filename", async () => {
+  it("FR-003: slugifies the title without leaking punctuation into the filename", async () => {
     const { scaffold } = await load();
     const writeFile = await writeFileMock();
 
@@ -389,7 +389,7 @@ describe("029 FR-019: project.architecture.decisions is the configuration point 
     seedCorpus();
   });
 
-  it.skip("FR-019: honours project.architecture.decisions from loadConfig", async () => {
+  it("FR-019: honours project.architecture.decisions from loadConfig", async () => {
     const { resolveDecisionsDir } = await load();
 
     configMock.loadConfig.mockReturnValue({
@@ -399,7 +399,7 @@ describe("029 FR-019: project.architecture.decisions is the configuration point 
     await expect(resolveDecisionsDir(ROOT)).resolves.toBe("/repo/docs/adr");
   });
 
-  it.skip("FR-019: defaults to docs/decisions when architecture is the bare string form", async () => {
+  it("FR-019: defaults to docs/decisions when architecture is the bare string form", async () => {
     const { resolveDecisionsDir } = await load();
 
     // `architecture` is z.union([z.string(), z.object({doc, decisions})]) — a
@@ -409,7 +409,7 @@ describe("029 FR-019: project.architecture.decisions is the configuration point 
     await expect(resolveDecisionsDir(ROOT)).resolves.toBe(DECISIONS);
   });
 
-  it.skip("FR-019: defaults to docs/decisions when the field is absent", async () => {
+  it("FR-019: defaults to docs/decisions when the field is absent", async () => {
     const { resolveDecisionsDir } = await load();
 
     configMock.loadConfig.mockReturnValue({ project: { name: "gwrk" } });
@@ -417,7 +417,7 @@ describe("029 FR-019: project.architecture.decisions is the configuration point 
     await expect(resolveDecisionsDir(ROOT)).resolves.toBe(DECISIONS);
   });
 
-  it.skip("FR-019: defaults to docs/decisions rather than throwing when loadConfig fails", async () => {
+  it("FR-019: defaults to docs/decisions rather than throwing when loadConfig fails", async () => {
     const { resolveDecisionsDir } = await load();
 
     configMock.loadConfig.mockImplementation(() => {
