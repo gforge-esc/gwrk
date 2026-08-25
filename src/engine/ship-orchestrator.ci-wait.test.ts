@@ -97,12 +97,36 @@ async function runPrCi(
   (orchestrator as unknown as { state: Record<string, unknown> }).state.branchName =
     "feat/005-dashboard-api";
 
+  // The absence poll sleeps between attempts; keep the suite instant.
+  const sleeps: number[] = [];
+  (orchestrator as unknown as { sleep: (ms: number) => Promise<void> }).sleep = (
+    ms: number,
+  ) => {
+    sleeps.push(ms);
+    return Promise.resolve();
+  };
+
   const result = await (
     orchestrator as unknown as { stagePrCi: () => Promise<{ success: boolean }> }
   ).stagePrCi();
 
-  return { result, checkCommands };
+  return { result, checkCommands, sleeps };
 }
+
+/** `gh pr checks` on a PR whose check runs GitHub has not registered yet. */
+const ABSENT = "no checks reported on the 'feat/x' branch";
+/** `gh pr checks --required` on a base branch with no protection rule. */
+const NONE_REQUIRED = "no required checks reported on the 'feat/x' branch";
+
+/** Fail the first `n` calls with `message`, then behave like `then`. */
+const absentThen = (n: number, then: () => string, message = ABSENT) => {
+  let calls = 0;
+  return () => {
+    calls++;
+    if (calls <= n) ghError(message);
+    return then();
+  };
+};
 
 describe("PR_CI check waiting", () => {
   beforeEach(() => {
@@ -158,5 +182,55 @@ describe("PR_CI check waiting", () => {
 
     expect(result.success).toBe(false);
     expect(checkCommands).toHaveLength(1);
+  });
+
+  it("waits for check runs GitHub has not registered yet", async () => {
+    // PR_CI queries checks seconds after creating the PR. Until GitHub
+    // registers the first run, gh exits 1 with "no checks reported" — absence,
+    // not a verdict. Re-query instead of failing the run.
+    const { result, checkCommands, sleeps } = await runPrCi(
+      absentThen(1, () => "required checks pass"),
+    );
+
+    expect(result.success).toBe(true);
+    expect(checkCommands).toHaveLength(2);
+    expect(checkCommands.every((c) => c.includes("--required"))).toBe(true);
+    expect(sleeps).toHaveLength(1);
+  });
+
+  it("gates on a check that appears late and then fails", async () => {
+    // Absence must not soften into a pass once the check finally reports red.
+    const { result } = await runPrCi(
+      absentThen(2, () => ghError("Some checks were not successful")),
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it("escalates to all checks once the absence window closes", async () => {
+    // A repo with no CI at all must still reach the skip, but only after the
+    // poll has given GitHub a fair chance to register something.
+    const { result, checkCommands } = await runPrCi(
+      () => ghError(ABSENT),
+      () => ghError(ABSENT),
+    );
+
+    const required = checkCommands.filter((c) => c.includes("--required"));
+    expect(required.length).toBeGreaterThan(1);
+    expect(checkCommands.some((c) => !c.includes("--required"))).toBe(true);
+    expect(result.success).toBe(true);
+  });
+
+  it("does not poll when the base branch merely has no required checks", async () => {
+    // "no required checks reported" is a configuration fact, not absence.
+    // Escalate immediately; polling would add a pointless delay to every ship.
+    const { result, checkCommands, sleeps } = await runPrCi(
+      () => ghError(NONE_REQUIRED),
+      () => "all checks passing",
+    );
+
+    expect(result.success).toBe(true);
+    expect(checkCommands).toHaveLength(2);
+    expect(sleeps).toHaveLength(0);
   });
 });
