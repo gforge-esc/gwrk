@@ -1,8 +1,8 @@
-# ADR: Task Storage & Execution Ledger — Flat JSON → SQLite
+# ADR-002: Task Storage & Execution Ledger — Flat JSON → SQLite
 
 > **Status:** Decided · **Date:** 2026-03-05
 > **Decision:** SQLite via `better-sqlite3` (global `~/.gwrk/gwrk.db`)
-> **Supersedes:** [ADR-001](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) (storage mechanism only)
+> **Supersedes:** [ADR-001](./ADR-001-task-tracking.md) (storage mechanism only)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk core architecture
 
 ---
@@ -59,7 +59,7 @@ ADR-001 correctly argued that `.gwrk/tasks.json` follows the branch automaticall
 
 ### The Learning Loop Extraction
 
-> **Updated by [ADR-003](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md):** Agents do NOT write to SQLite directly. Instead, agents write git-native **execution manifests** (`specs/<feature>/.gwrk/runs/*.json`) that are committed alongside code. The build server harvests these manifests into SQLite via `gwrk harvest`. This supports fully distributed execution where agents only have git access.
+> **Updated by [ADR-003](./ADR-003-state-contract.md):** Agents do NOT write to SQLite directly. Instead, agents write git-native **execution manifests** (`specs/<feature>/.gwrk/runs/*.json`) that are committed alongside code. The build server harvests these manifests into SQLite via `gwrk harvest`. This supports fully distributed execution where agents only have git access.
 
 For local runs (where SQLite is available), `ship.ts` and `define.ts` also write directly to `gwrk.db` for immediate feedback. The harvest process is idempotent and deduplicates by `runId`.
 

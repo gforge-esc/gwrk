@@ -1,4 +1,4 @@
-# ADR: Task Tracking — Beads (bd + Dolt) vs. Roll Our Own
+# ADR-001: Task Tracking — Beads (bd + Dolt) vs. Roll Our Own
 
 > **Status:** Decided · **Date:** 2026-02-26  
 > **Decision:** Option B (Roll Our Own — Flat JSON/JSONL)  
@@ -212,7 +212,7 @@ Tasks will live alongside the specs in `specs/<feature>/.gwrk/tasks.json`. This 
 
 ---
 
-## 7. Next Steps
+## 8. Next Steps
 
 1. Implement `gwrk tasks` CLI commands in Phase 1.
 2. Update `gwrk specify` to bootstrap the `.gwrk/tasks.json` file.
