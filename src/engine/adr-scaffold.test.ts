@@ -193,7 +193,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     configMock.loadConfig.mockReturnValue({ project: { name: "gwrk" } });
   });
 
-  it("FR-002: allocates max+1 over the existing corpus", async () => {
+  it("FR-002: allocates max plus 1 over the existing corpus", async () => {
     const { allocateNumber } = await load();
 
     // Nine records on disk → the next number is 010, zero-padded to three.

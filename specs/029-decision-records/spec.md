@@ -81,7 +81,7 @@ As an engineer who has just settled an architectural question, I run `gwrk defin
 
 **Acceptance Scenarios**:
 1. **Given** a corpus of ADR-001 through ADR-009, **When** `gwrk define adr "Decision Records"` runs, **Then**:
-   - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: allocates max+1 over the existing corpus"` exits 0
+   - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: allocates max plus 1 over the existing corpus"` exits 0
    - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-003: writes the section-numbered template with Status Proposed"` exits 0
 2. **Given** `ADR-010-something-else.md` already on disk, **When** the same command runs, **Then**:
    - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: fails loudly on a same-number different-slug collision"` exits 0
@@ -92,8 +92,8 @@ As an engineer who has just settled an architectural question, I run `gwrk defin
    - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: filters on the .md suffix and the ADR-NNN pattern"` exits 0
 5. **Given** the shipped CLI, **When** `define --help` is inspected, **Then**:
    - `npx vitest run src/cli.e2e.test.ts -t "US-018"` exits 0
-   - `node dist/index.js define --help | grep -qE '^\s+adr\b'` exits 0
-   - `node dist/index.js define adr --help | grep -q 'Examples:'` exits 0
+   - `node dist/cli.js define --help | grep -qE '^\s+adr\b'` exits 0
+   - `node dist/cli.js define adr --help | grep -q 'Examples:'` exits 0
 
 ### US-002 - The nine existing records parse unchanged (Priority: P0)
 As the `adr-parser`, I read every one of the nine records on disk and return its status, decision, dependencies and supersession relations plus its heading tree, tolerating the four documented header inconsistencies — because a parser that only reads records it wrote is a parser with nine blind spots.
@@ -254,7 +254,7 @@ As an engineer applying a correction, I run `gwrk define adr ADR-007 --amend --a
 2. **Given** `--at 9.9`, **When** the command runs, **Then**:
    - `npx vitest run src/engine/adr-amend.test.ts -t "FR-020: fails on an unresolvable section address"` exits 0
 3. **Given** `--append-section`, **When** the command runs, **Then**:
-   - `npx vitest run src/engine/adr-amend.test.ts -t "FR-021: numbers the new section max+1 over existing ## N. headings"` exits 0
+   - `npx vitest run src/engine/adr-amend.test.ts -t "FR-021: numbers the new section max plus 1 over existing ## N. headings"` exits 0
 4. **Given** any amendment, **When** the intent is emitted, **Then**:
    - `npx vitest run src/engine/adr-amend.test.ts -t "FR-020: emits a full-file WRITE_FILE that grows the file"` exits 0
    - `npx vitest run src/engine/adr-amend.test.ts -t "FR-026: registers the amendment and regenerates the index in one invocation"` exits 0
@@ -279,7 +279,7 @@ As CI, I run `gwrk define adr --check` and it exits non-zero on the phantom `028
 3. **Given** an `ADR-099` citation, **When** `--check` runs, **Then**:
    - `npx vitest run src/engine/adr-check.test.ts -t "FR-024: reports an ADR citation with no file in docs/decisions"` exits 0
 4. **Given** the repaired tree, **When** `--check` runs against it, **Then**:
-   - `node dist/index.js define adr --check` exits 0
+   - `node dist/cli.js define adr --check` exits 0
    - `grep -q '028 correction' docs/decisions/ADR-007-single-dispatch-path.md` exits 0
    - `grep -q 'Gate authority is one-way\|is one-way' docs/decisions/ADR-007-single-dispatch-path.md` exits 0
 5. **Given** CI, **When** the workflow is inspected, **Then**:
@@ -514,7 +514,7 @@ Two structural notes, both load-bearing:
 
 ## 9. Verification Requirements
 
-- **VR-001**: `npm run build` MUST be run before any assertion that invokes `node dist/index.js` or inspects `dist/plugins/builtins/`. Real `gwrk` runs compiled `dist/`, so a source-only change is unverified (TC-012).
+- **VR-001**: `npm run build` MUST be run before any assertion that invokes `node dist/cli.js` or inspects `dist/plugins/builtins/`. Real `gwrk` runs compiled `dist/`, so a source-only change is unverified (TC-012).
 - **VR-002**: `npx vitest run src/engine/adr-scaffold.test.ts src/engine/adr-parser.test.ts src/engine/adr-index.test.ts src/engine/adr-check.test.ts src/engine/adr-amend.test.ts src/commands/adr.test.ts src/commands/adr-dispatch.test.ts src/utils/agent.grounding-decisions.test.ts` MUST exit 0.
 - **VR-003**: `npm run test:ci` MUST exit 0, confirming no regression in `cli.option-collisions.test.ts` (nine entries, unchanged), `cli.consistency.test.ts`, or `drift-detector.test.ts`.
 - **VR-004**: The three-line MPL header MUST be present in every new `.ts` file, verified by inspection — the pre-commit hook is not installed in this clone.

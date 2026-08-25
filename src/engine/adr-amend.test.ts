@@ -201,7 +201,7 @@ describe("029 FR-020: section-addressed insertion (US-009)", () => {
 });
 
 describe("029 FR-021: --append-section numbering (US-009)", () => {
-  it.skip("FR-021: numbers the new section max+1 over existing ## N. headings", async () => {
+  it.skip("FR-021: numbers the new section max plus 1 over existing ## N. headings", async () => {
     const { appendSection } = await loadAmend();
 
     const rec = await record(ADR_005_FIXTURE, "ADR-005-tdd-gate-architecture.md");
