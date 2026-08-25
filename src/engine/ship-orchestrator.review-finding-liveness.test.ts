@@ -737,3 +737,172 @@ describe("FR-007 — the doctrine is not written down in its broad form", () => 
     );
   });
 });
+
+/**
+ * TR-010. The returned JSON verdict, as a one-way ratchet (FR-010, D4).
+ *
+ * Run #2728 iteration 2 is the case every other channel in this file misses:
+ * the agent returned `"verdict": "NO-GO"` in its structured output, every gate
+ * was green, and it wrote nothing to tasks.json — so there was no re-open to
+ * detect and no `REVIEW FAIL (` block to find. `ReviewResult.verdict` has been
+ * declared at review-plugin.ts:45 the whole time and read by nobody, and the
+ * console printed GO.
+ *
+ * The direction is the point, and TC-006 fixes it permanently: NO-GO ratchets,
+ * GO is ignored, and unreadable output changes nothing and kills nothing.
+ */
+describe("FR-010/TR-010 — the returned JSON verdict ratchets one way", () => {
+  const gated = { gateScript: "gates/T006-gate.sh" };
+
+  const gatePasses = () =>
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "ok",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+
+  /** What the review agent printed. The only channel these cases exercise. */
+  const agentReturns = (stdout: string) =>
+    vi
+      .mocked(agentUtils.dispatchToAgent)
+      .mockResolvedValue({ exitCode: 0, stdout, stderr: "" } as never);
+
+  /** Green gates, nothing touched in tasks.json — evidence says GO. */
+  const cleanRun = () => {
+    gatePasses();
+    const untouched = stateWith("completed", gated);
+    loadTaskStateReturns(untouched, untouched);
+  };
+
+  /** Drive a review and hand back the verdict it settled on. */
+  async function verdictOf(): Promise<string> {
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+    // @ts-ignore private
+    await orchestrator.executeReviewWorkflow("review-code-webapp", "scope");
+    // @ts-ignore private
+    return orchestrator.state.reviewVerdict;
+  }
+
+  it("a returned NO-GO forces NO-GO", async () => {
+    // AS-1. Green gates, no re-opens, and the agent's word is the only signal
+    // there is. Before FR-010 this printed GO.
+    cleanRun();
+    agentReturns(
+      '{"summary":"auth bypass in the session guard","verdict":"NO-GO","reopenedTasks":[],"intents":[]}',
+    );
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("names the returned verdict as the source", async () => {
+    // This NO-GO has no failing gate and no re-opened task behind it, so
+    // without attribution the log gives an operator nothing to act on.
+    cleanRun();
+    agentReturns('{"verdict":"NO-GO","summary":"see above"}');
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await verdictOf();
+    const printed = log.mock.calls.map((c) => String(c[0])).join("\n");
+    log.mockRestore();
+
+    expect(printed).toMatch(/RETURNED VERDICT/);
+  });
+
+  it("a returned GO never overrides re-open evidence", async () => {
+    // AS-2 and the load-bearing half of TC-006. The agent re-opened the task
+    // and then claimed GO; the evidence wins, permanently.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", gated),
+      stateWith("open", gated),
+    );
+    agentReturns('{"summary":"all clear","verdict":"GO","reopenedTasks":[]}');
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("a returned GO never overrides a failing gate", async () => {
+    // The other evidence channel, same rule. A returned GO is not consulted,
+    // so there is nothing for it to override with.
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: false,
+      exitCode: 1,
+      output: "1 failing",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+    const untouched = stateWith("completed", gated);
+    loadTaskStateReturns(untouched, untouched);
+    agentReturns('{"verdict":"GO"}');
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("a returned GO on a clean run leaves the GO alone", async () => {
+    // The ratchet only tightens — it must not invent a NO-GO either.
+    cleanRun();
+    agentReturns('{"summary":"clean","verdict":"GO","reopenedTasks":[]}');
+
+    expect(await verdictOf()).toBe("GO");
+  });
+
+  it("an absent or unparseable verdict does not fail the run", async () => {
+    // AS-3 and the rest of TC-006: a badly formatted summary must not be a new
+    // way for a run to die, and must not move the verdict either way.
+    for (const stdout of [
+      "",
+      "Review complete. Everything looks fine to me.",
+      "{{{ not json at all",
+      '{"summary":"no verdict field here"}',
+      '{"verdict":"MAYBE"}',
+    ]) {
+      cleanRun();
+      agentReturns(stdout);
+
+      expect(await verdictOf()).toBe("GO");
+    }
+  });
+
+  it("reads a verdict out of a fenced JSON block", async () => {
+    cleanRun();
+    agentReturns(
+      'Here is my review.\n\n```json\n{\n  "summary": "leaks the token",\n  "verdict": "NO-GO",\n  "reopenedTasks": []\n}\n```\n',
+    );
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("reads a verdict out of truncated output", async () => {
+    // The case that rules out a JSON.parse-only reader. Agent stdout gets
+    // clipped, and a verdict this legible must not be lost to a missing brace.
+    cleanRun();
+    agentReturns('{"verdict": "NO-GO", "summary": "the gate does not cover');
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("is not tripped by an agent quoting the JSON Intent Format spec", async () => {
+    // NEGATIVE. The review prompts gloss the field as: `verdict`: "GO" if all
+    // checks pass and all tasks remain completed, "NO-GO" otherwise. An agent
+    // restating that has raised no finding, and a spurious NO-GO costs a whole
+    // DIAGNOSE → IMPLEMENT loop.
+    cleanRun();
+    agentReturns(
+      'My output must contain `verdict`: "GO" if all checks pass and all tasks remain completed, "NO-GO" otherwise.\n\n{"verdict": "GO"}',
+    );
+
+    expect(await verdictOf()).toBe("GO");
+  });
+
+  it("ratchets after the gate computation, never instead of it", async () => {
+    // Ordering is the contract: evidence is computed in full first, and the
+    // agent's word only tightens what it arrived at. A returned NO-GO must
+    // therefore not short-circuit the gates — their side effects on tasks.json
+    // are what DIAGNOSE reads next.
+    cleanRun();
+    agentReturns('{"verdict":"NO-GO"}');
+
+    expect(await verdictOf()).toBe("NO-GO");
+    expect(gateExec.runTaskGate).toHaveBeenCalled();
+  });
+});

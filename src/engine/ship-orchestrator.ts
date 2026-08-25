@@ -37,6 +37,7 @@ import { getBuildCommand, getTestCommand, getTestExtension, getSourceExtension }
 import { appendFinding, findingsPath } from "./findings-ledger.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
+import { parseReturnedVerdict } from "./returned-verdict.js";
 import {
   type ShipRunConfig,
   ShipStage,
@@ -580,7 +581,14 @@ export class ShipOrchestrator extends EventEmitter {
       // dispatch's entries cannot be thrown away by it; before readVerdict, so
       // they are on disk even if gate execution later throws.
       this.recordFindings(featureDir, workflowName, reviewFindings);
-      const verdict = await this.readVerdict(reviewFindings);
+      // 5. The returned JSON verdict, last and one-way (FR-010). It runs AFTER
+      //    the gate + re-open computation on purpose: evidence is computed
+      //    first and in full, and the agent's word is only ever allowed to
+      //    tighten the result it arrived at.
+      const verdict = this.ratchetOnReturnedVerdict(
+        await this.readVerdict(reviewFindings),
+        result.stdout,
+      );
       this.state.reviewVerdict = verdict;
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
@@ -1764,6 +1772,47 @@ export class ShipOrchestrator extends EventEmitter {
     }
     this.state.gateResult = "PASS";
     return "GO";
+  }
+
+  /**
+   * Let the review agent's returned JSON verdict tighten the computed one, and
+   * only tighten it (FR-010).
+   *
+   * `computed` is what {@link readVerdict} established from evidence this run
+   * can check: gates it ran itself, and findings the agent left in tasks.json.
+   * That stays authoritative. The returned verdict is consulted afterwards for
+   * the single case evidence cannot reach — run #2728 iteration 2, where the
+   * agent said NO-GO in its structured output, wrote nothing to tasks.json, and
+   * every gate passed. Before this, that verdict was read by nobody and the
+   * console printed GO over it.
+   *
+   * The one-way shape is TC-006 and it is permanent. It is enforced upstream in
+   * {@link parseReturnedVerdict}'s `"NO-GO" | undefined` return type rather than
+   * by the early return below — a returned GO is not "ignored here", it is not
+   * expressible. This function cannot loosen `computed` because it has nothing
+   * to loosen it with.
+   *
+   * A parse that finds nothing returns `computed` untouched, and the parser
+   * never throws, so unreadable agent output is not a new way for a run to die
+   * (TC-002).
+   */
+  private ratchetOnReturnedVerdict(
+    computed: "GO" | "NO-GO",
+    stdout: string,
+  ): "GO" | "NO-GO" {
+    if (computed === "NO-GO") return computed;
+    if (parseReturnedVerdict(stdout) !== "NO-GO") return computed;
+
+    // Name the source. This is the one NO-GO with no failing gate and no
+    // re-opened task behind it, so an operator reading the log would otherwise
+    // have nothing to attribute it to.
+    console.log(
+      '    ✗ RETURNED VERDICT: the review agent returned "verdict": "NO-GO" in its structured output',
+    );
+    console.log(
+      "      Treating as NO-GO. Gates passed and no task carries a finding, so this verdict rests on the agent's returned output alone — read its summary for what it found.",
+    );
+    return "NO-GO";
   }
 
   /**
