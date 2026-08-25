@@ -28,6 +28,8 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ShipOrchestrator } from "./ship-orchestrator.js";
+import { ShipStage, type ShipStageResult } from "./ship-types.js";
+import { stripAnsi } from "../utils/agent-layer.js";
 import * as reviewPlugin from "../plugins/review-plugin.js";
 import * as stateUtils from "../utils/state.js";
 import * as gateExec from "../utils/gate-exec.js";
@@ -1168,5 +1170,252 @@ describe("FR-010/TR-010 — the returned JSON verdict ratchets one way", () => {
     );
 
     expect(await verdictOf()).toBe("GO");
+  });
+});
+
+/**
+ * TR-012. The whole seam, in the exact runs #2727/#2728 shape.
+ *
+ * Every block above proves one channel in isolation — a verdict value, a saved
+ * task, a prompt line. None of them proves what an operator actually watched
+ * happen: the console printed `review-code-webapp: GO` and the loop walked on
+ * to UAT while four reproduced defects sat in the very tasks the review agent
+ * had just written them into. So this block asserts only the two observable
+ * outputs of the seam, read the way the operator reads them: the line on the
+ * terminal, and the stage the loop goes to next.
+ *
+ * One gated task, gate GREEN — the setup both runs had, and the reason the
+ * defect survived. Every mechanical check agreed the phase was done, so the
+ * review agent's finding was the only dissenting signal in the system.
+ *
+ * Both variants of that finding are driven, because the prompt asks for one and
+ * agents reliably produce the other:
+ *   (a) FR-005 — the REVIEW FAIL note plus the `completed` → `open` status flip;
+ *   (b) FR-008 — the note alone, status left `completed`, which is what all four
+ *       missed NO-GOs actually did.
+ * They must be indistinguishable here. The GO case at the end is what keeps
+ * "indistinguishable" from being satisfiable by a NO-GO-always regression.
+ */
+describe("TR-012 — the exact runs #2727/#2728 shape, both variants", () => {
+  const gated = { gateScript: "gates/T006-gate.sh" };
+  const FINDING =
+    "REVIEW FAIL (code): an 8-bit body is put on the wire without negotiating 8BITMIME.";
+
+  const gatePasses = () =>
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "ok",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+
+  /**
+   * The review agent appends its finding to the task description; `flip` is
+   * whether it also does what the VERDICT CHANNEL block asks and re-opens the
+   * task. Everything else about the two runs is identical, which is the claim.
+   */
+  const reviewAppendsFinding = (flip: boolean) =>
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith(flip ? "open" : "completed", {
+        ...gated,
+        description: `seed\n\n${FINDING}`,
+      }),
+    );
+
+  /**
+   * Run a stage with `console.log` captured and ANSI stripped.
+   *
+   * The verdict line is the operator-facing output of this entire seam and the
+   * only place runs #2727/#2728 reported themselves, so it is asserted off the
+   * terminal rather than through `state.reviewVerdict` — a NO-GO that never
+   * prints is not the bug this feature exists to close.
+   */
+  async function withConsole<T>(
+    fn: () => Promise<T>,
+  ): Promise<{ result: T; lines: string[] }> {
+    const lines: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((...args: unknown[]) => {
+        lines.push(stripAnsi(args.map(String).join(" ")).trim());
+      });
+    try {
+      return { result: await fn(), lines };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  /** The `<workflow>: <verdict>` line `executeReviewWorkflow` prints, if any. */
+  const verdictLines = (lines: string[]) =>
+    lines.filter((l) => /^\S+: (GO|NO-GO)$/.test(l));
+
+  /**
+   * The stage `run()` would move to next, decided the way `run()` decides it
+   * (ship-orchestrator.ts:437-443): a returned `nextStage` wins, otherwise the
+   * loop advances linearly. The linear step comes from the orchestrator's own
+   * `getNextStage`, so this mirrors only the branch under test and never
+   * re-states the stage order that branch is being compared against.
+   */
+  const stageAfter = (
+    orchestrator: ShipOrchestrator,
+    result: ShipStageResult,
+    from: ShipStage,
+  ): ShipStage =>
+    result.nextStage ??
+    (
+      orchestrator as unknown as { getNextStage(stage: ShipStage): ShipStage }
+    ).getNextStage(from);
+
+  it("prints `<workflow>: NO-GO` when the finding arrives with a status flip", async () => {
+    gatePasses();
+    reviewAppendsFinding(true);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-code-webapp: NO-GO"]);
+  });
+
+  it("prints `<workflow>: NO-GO` when the note is the only signal", async () => {
+    // Variant (b) — the one that actually happened. Same green gate, same
+    // note, status never moved, and the line must be byte-for-byte the line
+    // variant (a) prints. Anything less is the four findings again.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-code-webapp: NO-GO"]);
+  });
+
+  it("reaches that NO-GO over a gate that passed, not around one that failed", async () => {
+    // The setup this whole block rests on, asserted rather than assumed: the
+    // gate ran and it was green. `reviewGateDivergence` is written in exactly
+    // one branch of readVerdict — the one where `gateResult.passed` is true and
+    // the task carries a finding — so it is the proof that the NO-GO came from
+    // the divergence and not from some gate quietly failing in the mock.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(gateExec.runTaskGate).toHaveBeenCalled();
+    // @ts-ignore private
+    expect(orchestrator.state.gateResult).not.toBe("FAIL");
+    // @ts-ignore private
+    expect(orchestrator.state.reviewGateDivergence).toEqual(["T006"]);
+  });
+
+  it("routes to DIAGNOSE instead of advancing to UAT — status flipped", async () => {
+    gatePasses();
+    reviewAppendsFinding(true);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { result } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(stageAfter(orchestrator, result, ShipStage.CODE_REVIEW)).toBe(
+      ShipStage.DIAGNOSE,
+    );
+  });
+
+  it("routes to DIAGNOSE instead of advancing to UAT — note only", async () => {
+    // "The phase advances to UAT as if you had approved it" is what the VERDICT
+    // CHANNEL block warns the agent about, and it is what the loop did. The
+    // stage the loop takes next is where that sentence is either true or false.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { result } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(stageAfter(orchestrator, result, ShipStage.CODE_REVIEW)).toBe(
+      ShipStage.DIAGNOSE,
+    );
+  });
+
+  it("spends an iteration of the retry budget rather than passing the phase", async () => {
+    // The NO-GO path is a loop, not a stop: handleNoGo charges the finding to
+    // the iteration budget on its way to DIAGNOSE. A verdict that printed
+    // NO-GO but left the budget untouched would never circuit-break either.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+    // @ts-ignore private
+    const before = orchestrator.state.iteration;
+
+    await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    // @ts-ignore private
+    expect(orchestrator.state.iteration).toBe(before + 1);
+  });
+
+  it("names the workflow that ran, not a constant — stageUatReview", async () => {
+    // `<workflow>` is interpolated, so a code-review-shaped assertion alone
+    // cannot tell "prints the workflow name" from "prints review-code-webapp".
+    // UAT was never broken; if this line is wrong the seam is wrong for both.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { result, lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageUatReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-uat-webapp: NO-GO"]);
+    expect(stageAfter(orchestrator, result, ShipStage.UAT_REVIEW)).toBe(
+      ShipStage.DIAGNOSE,
+    );
+  });
+
+  it("prints GO and advances to UAT when neither channel fired", async () => {
+    // Without this case every assertion above is satisfied by a NO-GO-always
+    // regression, and it is also what pins `stageAfter`'s other branch: a GO
+    // returns no `nextStage`, so the loop takes the linear step — to UAT, the
+    // exact advance the two variants above must not be able to reach.
+    gatePasses();
+    const untouched = stateWith("completed", {
+      ...gated,
+      description: "seed",
+    });
+    loadTaskStateReturns(untouched, untouched);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+    // @ts-ignore private
+    const before = orchestrator.state.iteration;
+
+    const { result, lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-code-webapp: GO"]);
+    expect(result.nextStage).toBeUndefined();
+    expect(stageAfter(orchestrator, result, ShipStage.CODE_REVIEW)).toBe(
+      ShipStage.UAT_REVIEW,
+    );
+    // @ts-ignore private
+    expect(orchestrator.state.iteration).toBe(before);
   });
 });
