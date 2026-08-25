@@ -21,6 +21,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 
+import { adrCommand } from "./adr.js";
 import { analyzeCommand } from "./analyze.js";
 import { definePlanCommand } from "./define-plan.js";
 import { researchCommand } from "./research.js";
@@ -60,6 +61,7 @@ Examples:
   gwrk define spec 001
   gwrk define plan 001
   gwrk define tasks 001
+  gwrk define adr "Decision Records"
 `,
   )
   .argument("[feature]", "Feature ID (e.g. 001-cli-core)")
@@ -202,6 +204,7 @@ defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
 defineCommand.addCommand(analyzeCommand, { hidden: true }); // gwrk define analyze (internal)
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
 defineCommand.addCommand(researchCommand); // gwrk define research
+defineCommand.addCommand(adrCommand); // gwrk define adr
 
 const ontologyCommand = new Command("ontology")
   .description(

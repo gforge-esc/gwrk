@@ -161,6 +161,31 @@ async function writeFileMock() {
   return vi.mocked(fsp.writeFile);
 }
 
+/**
+ * Puts the corpus into the one state in which the allocated number is taken.
+ *
+ * Max+1 over a listing is free by construction against that same listing — no
+ * allocation rule (max+1, first-gap, count+1) can return a number a static
+ * fixture already holds. The taken number is therefore reachable only through
+ * TC-015's accepted race: no locking, so a concurrent run lands the record
+ * between this run's allocation read and its existence check. The next
+ * `readdir` returns the corpus the allocation is computed from and plants
+ * `entry` for every read after it, which is precisely that interleaving.
+ */
+async function plantConcurrentWriter(entry: string): Promise<void> {
+  const fsp = await import("node:fs/promises");
+  const readdir = fsp.readdir as unknown as {
+    mockImplementationOnce(fn: (p: unknown) => Promise<string[]>): void;
+  };
+  readdir.mockImplementationOnce(async (p: unknown) => {
+    const key = String(p);
+    const entries = tree.dirs.get(key) ?? [];
+    tree.dirs.set(key, [...entries, entry]);
+    tree.files.set(`${key}/${entry}`, `# ${entry}\n`);
+    return entries;
+  });
+}
+
 describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -232,7 +257,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
   it("FR-002: fails loudly on a same-number different-slug collision", async () => {
     const { scaffold } = await load();
 
-    seedCorpus([...nineRecords(), "ADR-010-something-else.md"]);
+    await plantConcurrentWriter("ADR-010-something-else.md");
 
     // Silently writing a sibling at a taken number is the second flaw of the
     // research allocator. The message names the conflicting path.
@@ -245,7 +270,7 @@ describe("029 FR-002: allocation and project-root discovery (US-001)", () => {
     const { scaffold } = await load();
     const writeFile = await writeFileMock();
 
-    seedCorpus([...nineRecords(), "ADR-010-something-else.md"]);
+    await plantConcurrentWriter("ADR-010-something-else.md");
     await expect(scaffold("Decision Records", { cwd: ROOT })).rejects.toThrow();
 
     expect(writeFile).not.toHaveBeenCalled();
