@@ -19,9 +19,9 @@ spec's phase boundaries stay verifiable:
 | 3 — Amend and check | 8, 9, 10 | D13 is closed by a mechanism, not a memory (SC-007) |
 | 4 — Audit | 11 | Semantic contradiction gets reported (SC-010) |
 
-Two departures from the spec's literal text are taken deliberately and recorded in
-§Resolved Ambiguities below: the FR-024 scan rule (settles OQ-003) and the `## Amendments` heading
-form. One correction applies to every phase gate in this document and is not optional.
+Three departures from the spec's literal text are taken deliberately and recorded in
+§Resolved Ambiguities below: the FR-024 scan rule (settles OQ-003), the `## Amendments` heading form,
+and the atomic number claim TC-015's literal wording forbids. One correction applies to every phase gate in this document and is not optional.
 
 ---
 
@@ -97,6 +97,33 @@ denotes ordinal position in the template listing, not a numbered heading — exe
 over prose ordinals. FR-021's max+1 scan sees only `## N.` headings, so the registry does not disturb
 numbering: ADR-005's next appended section is `## 13.` (after its existing §8–§12), inserted *before*
 the registry.
+
+### 🟡 AMBER-3 — TC-015's no-lockfile prohibition cannot deliver FR-002's outcome
+
+TC-015 as written says "No locking", and names FR-002's existence check as what makes the second of two
+concurrent runs fail loudly. Those two clauses contradict each other.
+
+Measured on a real filesystem, 5 out of 5 two-process races produced two records at the same number:
+
+- Both runs finish their re-read before either writes, so each sees the number free.
+- `writeFile` with `flag: "wx"` refuses only an identical filename. A second slug at the same number
+  sails past it.
+- The result is `ADR-002-alpha-one.md` beside `ADR-002-beta-two.md`, both runs exiting 0. That is the
+  silent-sibling flaw FR-002 exists to correct.
+
+**Resolution**: FR-002's stated outcome wins over TC-015's stated mechanism. The number is taken in one
+atomic step before the write. That step is a `.ADR-NNN.claim` published by `fs.link`, which the kernel
+grants to exactly one writer. The claim is released in a `finally` on the way out. `allocateNumber`
+counts a claimed number as held, so a claim a crashed run left behind costs the corpus one number
+rather than wedging it.
+
+TC-015's proportionality argument still forbids four things, and none of them are added here: a lock
+manager, a daemon, a timeout, a retry loop. One `link` call and one `unlink`. Nothing waits.
+
+Verified 5/5 on a real filesystem after the change: exactly one `ADR-002` lands, the loser exits 1 with
+`ADR-002 already exists: docs/decisions/ADR-002-<slug>.md`, and no claim or stage file survives.
+Regression-gated by the non-mocked suite in `src/engine/adr-scaffold.test.ts` (TR-001) and by the
+Phase 2 Done-When consistency check, which fails if this departure is ever undocumented again.
 
 ### Adopted spec recommendations
 
@@ -194,7 +221,7 @@ with no allowlist entry.
 | ADR-004 (agent-native output) | `withSignal("define adr", …)` emits `[exit:N \| Xs]`. D12 records that `define research` omits this; FR-001 forbids copying that omission |
 | TC-013 no option collisions | Neither `--refs` nor `--dry-run` declared; baseline stays at nine with no allowlist entry |
 | TC-002 fail-fast config | `loadConfig` read with no `.default()`; missing project root exits 1 with the FR-002 message |
-| TC-015 no locking | Concurrent runs compute the same number; the existence check makes the second fail loudly |
+| TC-015 no lock manager (AMBER-3) | Number taken by an atomic `.ADR-NNN.claim`, released on exit; no lock manager, daemon, timeout or retry loop |
 | VR-004 MPL header | Required by hand on `adr-scaffold.ts` and `adr.ts` |
 | compile-gate | Always |
 
@@ -217,6 +244,12 @@ grep -qE '^[[:space:]]+adr\b' .adr-help.log
 node dist/cli.js define adr --help > .adr-sub-help.log
 grep -q 'Examples:' .adr-sub-help.log
 rm -f .adr-help.log .adr-sub-help.log
+grep -q 'fs.link' src/engine/adr-scaffold.ts
+grep -q 'AMBER-3' specs/029-decision-records/plan.md
+grep -q 'ADR-NNN.claim' specs/029-decision-records/spec.md
+grep -q 'ADR-NNN.claim' specs/029-decision-records/contracts/adr-engine.md
+if grep -rq 'No lockin[g]' specs/029-decision-records/spec.md specs/029-decision-records/contracts specs/029-decision-records/checklists; then exit 1; fi
+if grep -qi 'no lockfil[e]' specs/029-decision-records/plan.md; then exit 1; fi
 ```
 
 ---
@@ -840,7 +873,7 @@ _No mockups exist for this feature._ The surface is a CLI command plus two gener
 | TC-012 builtins ship through the build | 3, 7, 11 | Honoured — `pnpm run build` precedes every `dist/` assertion |
 | TC-013 no option collisions | 2 | Honoured — no `--refs`, no `--dry-run`, no allowlist entry |
 | TC-014 bare-clone operable | 1, 2, 5, 8, 10 | Honoured — no SQLite, no build server |
-| TC-015 no locking | 2 | Honoured — existence check, no lockfile |
+| TC-015 no lock manager | 2 | Departure recorded as AMBER-3 — atomic claim released on exit; no lock manager, daemon, timeout or retry loop |
 | TC-016 fail-open grounding | 6 | Honoured — inherited verbatim from the three existing rows |
 
 ### Data Model, Roles, Success and Verification

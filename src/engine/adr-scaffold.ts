@@ -27,6 +27,10 @@ import { loadConfig } from "../utils/config.js";
  * kernel grants to exactly one writer and released on the way out. No daemon, no
  * timeout, no retry loop.
  *
+ * That claim is a documented departure from TC-015's original no-lockfile
+ * wording, recorded as AMBER-3 in `plan.md` > Resolved Ambiguities and carried
+ * into FR-002, TC-015 and the engine contract.
+ *
  * Bare-clone operable (TC-014): no SQLite, no build server, no network.
  */
 

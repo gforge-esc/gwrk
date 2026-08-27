@@ -153,8 +153,10 @@ bare string means the architecture doc, so `decisions` is only present on the ob
 
 ### `allocateNumber(decisionsDir: string): Promise<string>`
 
-Max+1 over entries matching `/^ADR-(\d{3})-/`, zero-padded to three. No locking (TC-015): two concurrent
-runs compute the same number and `scaffold`'s existence check makes the second fail loudly.
+Max+1 over the numbers currently **held**, zero-padded to three. A number is held by a record matching
+`/^ADR-(\d{3})-/` **or** by a live `.ADR-NNN.claim` (TC-015, plan AMBER-3). Counting claims is what stops
+a claim a crashed run left behind from wedging its number forever. The next run steps over it to the
+following number. No lock manager, no daemon, no timeout, no retry loop.
 
 ### `renderTemplate(input: { number: string; title: string; date: string }): string`
 
@@ -192,12 +194,21 @@ export interface AdrScaffoldResult {
 }
 ```
 
-Order of operations: `findProjectRoot` → `resolveDecisionsDir` → `allocateNumber` → **existence check**
-→ `mkdir` → `writeFile`.
+Order of operations: `findProjectRoot` → `resolveDecisionsDir` → `allocateNumber` → `mkdir` →
+**claim** → **existence check** → `writeFile` → **release**.
+
+The claim is `.ADR-NNN.claim`, published by an atomic `fs.link` the kernel grants to exactly one writer,
+and released in a `finally` (TC-015, plan AMBER-3). Two runs that computed the same number cannot both
+reach the write, and the loser names the winner's path, which the claim's contents carry.
+
+The existence check runs **after** the claim, never before. A run that completed between this run's
+allocation read and its claim released its own claim on the way out, so its record is only visible to a
+read taken after the claim succeeds. A crash leaves one visible `.ADR-NNN.claim` that costs the corpus
+one number and blocks nothing.
 
 | Condition | stderr contains | Exit |
 |---|---|---|
-| `ADR-NNN-*.md` exists at the computed number | `ADR-010 already exists: docs/decisions/ADR-010-<slug>.md` | 1 |
+| A record or a live claim holds the computed number | `ADR-010 already exists: docs/decisions/ADR-010-<slug>.md` | 1 |
 | No `.gwrkrc.json` in any parent | `Not a gwrk project: no .gwrkrc.json found in <cwd> or any parent. Run: gwrk init` | 1 |
 | Empty title | `Title is required: gwrk define adr "<title>"` | 1 |
 | `docs/decisions/` unwritable | `Cannot write docs/decisions/: <errno>` | 1 |
