@@ -19,7 +19,17 @@
  * which reports `Tests  no tests` and trips the ADR-005 §10.2.1 liveness check.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import os from "node:os";
+import path from "node:path";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 /** In-memory tree shared by both fs mocks. Keys are absolute POSIX paths. */
 const tree = vi.hoisted(() => ({
@@ -33,6 +43,29 @@ const enoent = (p: string) => {
   };
   err.code = "ENOENT";
   return err;
+};
+
+const eexist = (p: string) => {
+  const err = new Error(`EEXIST: file already exists, open '${p}'`) as Error & {
+    code: string;
+  };
+  err.code = "EEXIST";
+  return err;
+};
+
+/** Creating a file puts its basename in the parent listing, as a real one does. */
+const linkIntoParent = (key: string): void => {
+  const parent = key.slice(0, key.lastIndexOf("/"));
+  const name = key.slice(key.lastIndexOf("/") + 1);
+  const entries = tree.dirs.get(parent);
+  if (entries && !entries.includes(name)) tree.dirs.set(parent, [...entries, name]);
+};
+
+const unlinkFromParent = (key: string): void => {
+  const parent = key.slice(0, key.lastIndexOf("/"));
+  const name = key.slice(key.lastIndexOf("/") + 1);
+  const entries = tree.dirs.get(parent);
+  if (entries) tree.dirs.set(parent, entries.filter((entry) => entry !== name));
 };
 
 vi.mock("node:fs/promises", () => {
@@ -60,14 +93,61 @@ vi.mock("node:fs/promises", () => {
     const key = String(p);
     if (!tree.files.has(key) && !tree.dirs.has(key)) throw enoent(key);
   });
-  const writeFile = vi.fn(async (p: unknown, content: unknown) => {
-    tree.files.set(String(p), String(content));
-  });
+  const writeFile = vi.fn(
+    async (p: unknown, content: unknown, options?: unknown) => {
+      const key = String(p);
+      const flag = (options as { flag?: string } | undefined)?.flag ?? "";
+      if (flag.includes("x") && tree.files.has(key)) throw eexist(key);
+      tree.files.set(key, String(content));
+      linkIntoParent(key);
+    },
+  );
   const mkdir = vi.fn(async (p: unknown) => {
     if (!tree.dirs.has(String(p))) tree.dirs.set(String(p), []);
     return undefined;
   });
-  const api = { readdir, readFile, stat, access, writeFile, mkdir };
+  const open = vi.fn(async (p: unknown, flags?: unknown) => {
+    const key = String(p);
+    if (String(flags ?? "").includes("x") && tree.files.has(key)) {
+      throw eexist(key);
+    }
+    tree.files.set(key, "");
+    linkIntoParent(key);
+    return {
+      writeFile: vi.fn(async (content: unknown) => {
+        tree.files.set(key, String(content));
+      }),
+      close: vi.fn(async () => undefined),
+    };
+  });
+  // The mechanism the number claim rests on: link refuses an existing target,
+  // and publishes a file that already has its contents.
+  const link = vi.fn(async (existing: unknown, next: unknown) => {
+    const from = String(existing);
+    const to = String(next);
+    if (tree.files.has(to) || tree.dirs.has(to)) throw eexist(to);
+    const content = tree.files.get(from);
+    if (content === undefined) throw enoent(from);
+    tree.files.set(to, content);
+    linkIntoParent(to);
+  });
+  const unlink = vi.fn(async (p: unknown) => {
+    const key = String(p);
+    if (!tree.files.has(key)) throw enoent(key);
+    tree.files.delete(key);
+    unlinkFromParent(key);
+  });
+  const api = {
+    readdir,
+    readFile,
+    stat,
+    access,
+    writeFile,
+    mkdir,
+    open,
+    link,
+    unlink,
+  };
   return { ...api, default: api };
 });
 
@@ -451,5 +531,127 @@ describe("029 FR-019: project.architecture.decisions is the configuration point 
 
     // TC-014 bare-clone operable: authoring must not require a readable config.
     await expect(resolveDecisionsDir(ROOT)).resolves.toBe(DECISIONS);
+  });
+});
+
+/**
+ * The mocked suite above cannot catch the concurrent-allocation defect: an
+ * in-memory tree driven by `mockImplementationOnce` forces one interleaving,
+ * and the one it forces is not the one two real runs produce. Two real runs both
+ * finish reading the corpus before either writes, so a check-then-write allocator
+ * lets BOTH through and lands two records at the same number.
+ *
+ * This block therefore drops the mocks and drives real `scaffold()` calls
+ * against a real temp directory. `vi.doUnmock` is not hoisted, so it takes
+ * effect from here on — which is why this is the last block in the file.
+ */
+describe("029 FR-002: concurrent allocation on a real filesystem (US-001, TC-015)", () => {
+  let realFs: typeof import("node:fs/promises");
+  let root = "";
+  let decisions = "";
+
+  beforeAll(async () => {
+    realFs = (await vi.importActual(
+      "node:fs/promises",
+    )) as typeof import("node:fs/promises");
+    vi.doUnmock("node:fs/promises");
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+  });
+
+  beforeEach(async () => {
+    configMock.loadConfig.mockReturnValue({ project: { name: "gwrk" } });
+    root = await realFs.mkdtemp(path.join(os.tmpdir(), "gwrk-adr-race-"));
+    decisions = path.join(root, "docs", "decisions");
+    await realFs.mkdir(decisions, { recursive: true });
+    await realFs.writeFile(
+      path.join(root, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "gwrk" } }),
+    );
+    await realFs.writeFile(
+      path.join(decisions, "ADR-001-task-tracking.md"),
+      "# ADR-001: Task Tracking\n",
+    );
+  });
+
+  afterEach(async () => {
+    await realFs.rm(root, { recursive: true, force: true });
+  });
+
+  const records = async (): Promise<string[]> =>
+    (await realFs.readdir(decisions))
+      .filter((name) => /^ADR-\d{3}-.*\.md$/.test(name))
+      .sort();
+
+  it("FR-002: two overlapping runs land exactly one record at the number", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    const settled = await Promise.allSettled([
+      scaffold("Alpha One", { cwd: root }),
+      scaffold("Beta Two", { cwd: root }),
+    ]);
+
+    // The invariant, whichever run wins: never two records at one number.
+    const written = await records();
+    expect(written.filter((name) => name.startsWith("ADR-002-"))).toHaveLength(1);
+    expect(new Set(written.map((name) => name.slice(0, 7))).size).toBe(
+      written.length,
+    );
+
+    // Both computed 002, so exactly one is refused, naming the winner's path.
+    const rejected = settled.filter((result) => result.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(String((rejected[0] as PromiseRejectedResult).reason)).toMatch(
+      /ADR-002 already exists: docs\/decisions\/ADR-002-(alpha-one|beta-two)\.md/,
+    );
+    expect(written).toHaveLength(2);
+    expect(written[0]).toBe("ADR-001-task-tracking.md");
+  });
+
+  it("FR-002: neither run leaves a claim or a stage file behind", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    await Promise.allSettled([
+      scaffold("Alpha One", { cwd: root }),
+      scaffold("Beta Two", { cwd: root }),
+    ]);
+
+    // Records only: `docs/decisions/` stays a directory a human can read.
+    const leftovers = (await realFs.readdir(decisions)).filter(
+      (name) => !/^ADR-\d{3}-.*\.md$/.test(name),
+    );
+    expect(leftovers).toEqual([]);
+  });
+
+  it("FR-002: a claim a crashed run left behind costs one number, not the command", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    // What a SIGKILL between claim and release leaves on disk.
+    await realFs.writeFile(
+      path.join(decisions, ".ADR-002.claim"),
+      "ADR-002-never-written.md",
+    );
+
+    const result = await scaffold("Alpha One", { cwd: root });
+
+    expect(result.id).toBe("ADR-003");
+    expect(await records()).toEqual([
+      "ADR-001-task-tracking.md",
+      "ADR-003-alpha-one.md",
+    ]);
+  });
+
+  it("FR-002: a sequential second run allocates the next number", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    const first = await scaffold("Alpha One", { cwd: root });
+    const second = await scaffold("Beta Two", { cwd: root });
+
+    expect([first.id, second.id]).toEqual(["ADR-002", "ADR-003"]);
+    expect(await records()).toEqual([
+      "ADR-001-task-tracking.md",
+      "ADR-002-alpha-one.md",
+      "ADR-003-beta-two.md",
+    ]);
   });
 });
