@@ -112,6 +112,29 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     expect(String(options.projectRoot)).toBe("/repo");
   });
 
+  it("FR-002: reads config from the project root, not the working directory", async () => {
+    const { adrCommandHandler } = await load();
+    const { loadConfig } = await import("../utils/config.js");
+    const { resolveModelForTask } = await import("../utils/resolve-model.js");
+
+    // `loadConfig` joins its argument with `.gwrkrc.json` and does not walk
+    // parents, so handing it `cwd` breaks `--run` from every subdirectory
+    // (US-001 AC-3, SC-001). `resolveModelForTask` fails silently the same way:
+    // its registry read is caught, so a project-local model just vanishes.
+    await adrCommandHandler({
+      target: "Decision Records",
+      run: true,
+      cwd: "/repo/src/deep",
+    });
+
+    expect(vi.mocked(loadConfig)).toHaveBeenCalledWith("/repo");
+    expect(vi.mocked(resolveModelForTask)).toHaveBeenCalledWith(
+      "define",
+      "claude",
+      "/repo",
+    );
+  });
+
   it("FR-007: never constructs the runtime without --run", async () => {
     const { adrCommandHandler } = await load();
 

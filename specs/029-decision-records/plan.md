@@ -299,6 +299,9 @@ test -f dist/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml
 test -f dist/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md
 grep -q 'required: \[summary, intents\]' src/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml
 if grep -qE '\{\{[A-Z_]+\}\}' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md; then exit 1; fi
+grep -q '## 7. References' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md
+grep -q '## Amendments' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md
+pnpm exec biome check src/commands/adr.ts
 test ! -f .gwrk/decisions/index.md
 npx vitest run src/engine/adr-parser.test.ts src/engine/adr-scaffold.test.ts src/commands/adr.test.ts
 ```

@@ -93,18 +93,24 @@ async function draftRecord(
   title: string,
   cwd: string,
 ): Promise<string> {
+  // The root walk comes first. `loadConfig` joins its argument with
+  // `.gwrkrc.json` and never walks parents, so handing it `cwd` would break
+  // `--run` from every subdirectory (FR-002, US-001 AC-3, SC-001). The walk
+  // also owns the not-a-project error, which must precede any config read.
+  const projectRoot = await findProjectRoot(cwd);
+
   // The backend is resolved from config, not defaulted here (ADR-006). Checked
   // before the runtime is constructed so a missing backend costs no dispatch.
-  const config = loadConfig(cwd);
+  const config = loadConfig(projectRoot);
   const backend = config.agents?.define;
   if (!backend) {
     throw new CommandError(
       "No agent backend available. Run: gwrk plugin list agents",
     );
   }
-  const model = resolveModelForTask("define", backend, cwd);
-
-  const projectRoot = await findProjectRoot(cwd);
+  // Same root, same reason: `resolveModelForTask` swallows its registry read
+  // error, so a subdirectory would silently drop a project-local model.
+  const model = resolveModelForTask("define", backend, projectRoot);
 
   // No substitution engine exists (TC-008), so the record's identity arrives as
   // appended text. `research.ts` appends `<research_context>` the same way.
