@@ -67,7 +67,7 @@
           "id": "T006",
           "title": "Create adr-scaffold.ts",
           "description": "NEW src/engine/adr-scaffold.ts. root discovery, max+1 allocation, §4.1 template rendering, `project.architecture.decisions` honoured with a `docs/decisions` default (FR-002, FR-003, FR-019). Tests: src/engine/adr-scaffold.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\nnpx vitest run src/engine/adr-scaffold.test.ts src/commands/adr.test.ts\nnpx vitest run src/cli.ux.test.ts src/cli.e2e.test.ts src/cli.option-collisions.test.ts\nnode dist/cli.js define --help > .adr-help.log\ngrep -qE '^[[:space:]]+adr\\b' .adr-help.log\nnode dist/cli.js define adr --help > .adr-sub-help.log\ngrep -q 'Examples:' .adr-sub-help.log\nrm -f .adr-help.log .adr-sub-help.log",
           "sp": 2
         },
@@ -75,7 +75,7 @@
           "id": "T007",
           "title": "Create adr.ts",
           "description": "NEW src/commands/adr.ts. exported `Command` + `adrCommandHandler`, `Examples:` help block, action wrapped in `withSignal(\"define adr\", …)`, `--print` (FR-001, FR-008). Tests: src/engine/adr-scaffold.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\nnpx vitest run src/engine/adr-scaffold.test.ts src/commands/adr.test.ts\nnpx vitest run src/cli.ux.test.ts src/cli.e2e.test.ts src/cli.option-collisions.test.ts\nnode dist/cli.js define --help > .adr-help.log\ngrep -qE '^[[:space:]]+adr\\b' .adr-help.log\nnode dist/cli.js define adr --help > .adr-sub-help.log\ngrep -q 'Examples:' .adr-sub-help.log\nrm -f .adr-help.log .adr-sub-help.log",
           "sp": 2
         },
@@ -83,7 +83,7 @@
           "id": "T008",
           "title": "Modify define.ts",
           "description": "MODIFY src/commands/define.ts. register `adrCommand` alongside `researchCommand`; add `adr` to the parent `define` `Examples:` block",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\nnpx vitest run src/engine/adr-scaffold.test.ts src/commands/adr.test.ts\nnpx vitest run src/cli.ux.test.ts src/cli.e2e.test.ts src/cli.option-collisions.test.ts\nnode dist/cli.js define --help > .adr-help.log\ngrep -qE '^[[:space:]]+adr\\b' .adr-help.log\nnode dist/cli.js define adr --help > .adr-sub-help.log\ngrep -q 'Examples:' .adr-sub-help.log\nrm -f .adr-help.log .adr-sub-help.log",
           "sp": 1
         }
