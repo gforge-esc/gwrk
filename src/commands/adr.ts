@@ -10,7 +10,10 @@ import {
   resolveDecisionsDir,
   scaffold,
 } from "../engine/adr-scaffold.js";
-import { withSignal } from "../utils/signal.js";
+import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { loadConfig } from "../utils/config.js";
+import { resolveModelForTask } from "../utils/resolve-model.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
  * 029 Decision Records — `gwrk define adr` (FR-001, FR-008).
@@ -36,12 +39,17 @@ export interface AdrArgs {
   target?: string;
   /** Print the template to stdout and write nothing. */
   print?: boolean;
+  /** Draft the scaffolded record with the `gwrk-adr-record` workflow. */
+  run?: boolean;
   /** Where the project-root walk starts. Defaults to the working directory. */
   cwd?: string;
 }
 
 /** Stands in for the title in a `--print` dump, which names no record. */
 const TITLE_PLACEHOLDER = "<title>";
+
+/** The one workflow this feature adds. Dispatched only under `--run` (SC-010). */
+const RECORD_WORKFLOW = "gwrk-adr-record";
 
 export async function adrCommandHandler(args: AdrArgs): Promise<string> {
   const cwd = args.cwd ?? process.cwd();
@@ -62,7 +70,87 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
   }
 
   const result = await scaffold(args.target ?? "", { cwd });
-  return result.filePath;
+
+  // Without `--run` the record stands as scaffolded and no runtime is
+  // constructed (contract §3).
+  if (!args.run) {
+    return result.filePath;
+  }
+
+  const title = (args.target ?? "").trim();
+  return `${result.filePath}\n${await draftRecord(result, title, cwd)}`;
+}
+
+/**
+ * Dispatches `gwrk-adr-record` for a record that has already been scaffolded
+ * (FR-007, contract §3). Returns the workflow's summary line.
+ *
+ * All dispatch goes through `WorkflowRuntime.executeWorkflow`, never a raw
+ * spawn (ADR-007).
+ */
+async function draftRecord(
+  result: { filePath: string; id: string },
+  title: string,
+  cwd: string,
+): Promise<string> {
+  // The backend is resolved from config, not defaulted here (ADR-006). Checked
+  // before the runtime is constructed so a missing backend costs no dispatch.
+  const config = loadConfig(cwd);
+  const backend = config.agents?.define;
+  if (!backend) {
+    throw new CommandError(
+      "No agent backend available. Run: gwrk plugin list agents",
+    );
+  }
+  const model = resolveModelForTask("define", backend, cwd);
+
+  const projectRoot = await findProjectRoot(cwd);
+
+  // No substitution engine exists (TC-008), so the record's identity arrives as
+  // appended text. `research.ts` appends `<research_context>` the same way.
+  const workflowInput = [
+    `Draft the architecture decision record titled "${title}".`,
+    ``,
+    `<decision_context>`,
+    `Title: ${title}`,
+    `Id: ${result.id}`,
+    `Record: ${result.filePath}`,
+    `</decision_context>`,
+  ].join("\n");
+
+  // `projectRoot` is passed deliberately. `define research --run` omits it and
+  // so falls back to a default PluginLoader with no projectDir, which makes
+  // project-local workflow overrides invisible.
+  const runtime = new WorkflowRuntime();
+  let workflowResult;
+  try {
+    workflowResult = await runtime.executeWorkflow(
+      RECORD_WORKFLOW,
+      workflowInput,
+      { agent: backend, model, projectRoot },
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    // The builtin ships through the build, so an unresolvable workflow means
+    // `dist/` is stale rather than that the name is wrong (TC-012).
+    if (/not found/i.test(message)) {
+      throw new CommandError(
+        `Workflow not found: ${RECORD_WORKFLOW}. Run: npm run build`,
+      );
+    }
+    throw error;
+  }
+
+  if (
+    typeof workflowResult?.summary !== "string" ||
+    !Array.isArray(workflowResult.intents)
+  ) {
+    throw new CommandError(
+      `${RECORD_WORKFLOW} returned no valid {summary, intents}`,
+    );
+  }
+
+  return workflowResult.summary;
 }
 
 /**
@@ -88,14 +176,19 @@ Examples:
 
   Preview the template without writing anything:
     gwrk define adr --print
+
+  Scaffold the record and draft it with an agent:
+    gwrk define adr "Decision Records" --run
 `)
   .argument("[title]", "Title of the decision (e.g. 'Decision Records')")
   .option("--print", "Print the template to stdout without writing a record")
-  .action(async (title: string | undefined, opts: { print?: boolean }) => {
+  .option("--run", "Draft the scaffolded record with the gwrk-adr-record workflow")
+  .action(async (title: string | undefined, opts: { print?: boolean; run?: boolean }) => {
     await withSignal("define adr", async () => {
       const output = await adrCommandHandler({
         target: title,
         print: opts.print,
+        run: opts.run,
       });
       console.log(output);
     });
