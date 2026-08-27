@@ -163,3 +163,46 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
     expect(runtimeMock.executeWorkflow).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * FR-003/FR-007: the prompt must describe the record `renderTemplate()` writes.
+ * Step 6 has the workflow emit a full-file `WRITE_FILE`, so any section the
+ * prompt fails to name is a section the drafted record drops — and `--amend`
+ * (FR-022) then has no `## Amendments` registry to resolve against.
+ *
+ * `node:fs` is not mocked here; only `node:fs/promises` is.
+ */
+describe("029 FR-003: PROMPT.md agrees with renderTemplate()", () => {
+  const promptPath = new URL(
+    "../plugins/builtins/workflows/gwrk-adr-record/PROMPT.md",
+    import.meta.url,
+  );
+
+  it("names every `## ` heading the scaffold emits", async () => {
+    const { readFileSync } = await import("node:fs");
+    const scaffoldModule = await vi.importActual<
+      typeof import("../engine/adr-scaffold.js")
+    >("../engine/adr-scaffold.js");
+
+    const template = scaffoldModule.renderTemplate({
+      number: "010",
+      title: "Decision Records",
+      date: "2026-08-27",
+    });
+    const headings = template
+      .split("\n")
+      .filter((line) => line.startsWith("## "))
+      .map((line) => line.slice(3).trim());
+
+    expect(headings).toContain("7. References");
+    expect(headings).toContain("Amendments");
+
+    const prompt = readFileSync(promptPath, "utf8");
+    // Match the `## Heading` form, not the bare name: the prompt mentions
+    // "Amendments" in prose regardless of whether it names the registry.
+    const missing = headings.filter(
+      (heading) => !prompt.includes(`## ${heading}`),
+    );
+    expect(missing).toEqual([]);
+  });
+});

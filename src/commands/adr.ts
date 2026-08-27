@@ -110,19 +110,19 @@ async function draftRecord(
   // appended text. `research.ts` appends `<research_context>` the same way.
   const workflowInput = [
     `Draft the architecture decision record titled "${title}".`,
-    ``,
-    `<decision_context>`,
+    "",
+    "<decision_context>",
     `Title: ${title}`,
     `Id: ${result.id}`,
     `Record: ${result.filePath}`,
-    `</decision_context>`,
+    "</decision_context>",
   ].join("\n");
 
   // `projectRoot` is passed deliberately. `define research --run` omits it and
   // so falls back to a default PluginLoader with no projectDir, which makes
   // project-local workflow overrides invisible.
   const runtime = new WorkflowRuntime();
-  let workflowResult;
+  let workflowResult: Awaited<ReturnType<WorkflowRuntime["executeWorkflow"]>>;
   try {
     workflowResult = await runtime.executeWorkflow(
       RECORD_WORKFLOW,
@@ -182,14 +182,22 @@ Examples:
 `)
   .argument("[title]", "Title of the decision (e.g. 'Decision Records')")
   .option("--print", "Print the template to stdout without writing a record")
-  .option("--run", "Draft the scaffolded record with the gwrk-adr-record workflow")
-  .action(async (title: string | undefined, opts: { print?: boolean; run?: boolean }) => {
-    await withSignal("define adr", async () => {
-      const output = await adrCommandHandler({
-        target: title,
-        print: opts.print,
-        run: opts.run,
+  .option(
+    "--run",
+    "Draft the scaffolded record with the gwrk-adr-record workflow",
+  )
+  .action(
+    async (
+      title: string | undefined,
+      opts: { print?: boolean; run?: boolean },
+    ) => {
+      await withSignal("define adr", async () => {
+        const output = await adrCommandHandler({
+          target: title,
+          print: opts.print,
+          run: opts.run,
+        });
+        console.log(output);
       });
-      console.log(output);
-    });
-  });
+    },
+  );

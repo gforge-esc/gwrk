@@ -5,8 +5,9 @@
 
 ## Purpose
 Draft an architecture decision record from a title. The record is scaffolded before
-you run, so the file already exists with its number, its `Status: Proposed` header
-and its six empty sections. Your job is to fill those sections.
+you run, so the file already exists with its number, its `Status: Proposed` header,
+its seven numbered sections and an empty `## Amendments` registry. Your job is to
+fill those sections.
 
 The title and the target path arrive as appended context, not as substituted
 tokens. Read the `<decision_context>` block at the end of this prompt for both.
@@ -15,6 +16,9 @@ tokens. Read the `<decision_context>` block at the end of this prompt for both.
 - MUST fill the scaffolded record only. Write no other file.
 - MUST keep `Status: Proposed`. Ratification is a human judgment.
 - MUST keep the section numbering and headings the scaffold wrote.
+- MUST reproduce `## 7. References` and the trailing unnumbered `## Amendments`
+  heading with its empty three-column table. The registry is written by
+  `--amend`, never by you. Emit it empty.
 - MUST NOT renumber the record or invent a different path.
 - MUST NOT implement production code.
 
@@ -31,6 +35,7 @@ tokens. Read the `<decision_context>` block at the end of this prompt for both.
    - `## 4. Alternatives Rejected` — each alternative with the reason it lost.
    - `## 5. Impact on Existing Code` — the files and behaviours this changes.
    - `## 6. Consequences` — what becomes easier and what becomes harder.
+   - `## 7. References` — specs, research and prior records this decision rests on.
 5. Fill the header fields you can support from evidence: `Decision`, `Constraint`,
    `Depends on`, `Supersedes`, `Decision Scope`. Leave a field empty rather than
    guessing at it.
