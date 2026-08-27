@@ -1,0 +1,21 @@
+{
+  "runId": "2026-08-25T01:58:04.443Z_ship_p02",
+  "feature": "028-review-finding-liveness",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "claude",
+  "model": "default",
+  "startedAt": "2026-08-25T01:58:04.443Z",
+  "finishedAt": "2026-08-25T02:50:31.668Z",
+  "durationS": 3147,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "f280ab6b952409e43dee6afb18ed29dc602a37f4",
+  "gitBranch": "feat/028-review-finding-liveness",
+  "digest": []
+}

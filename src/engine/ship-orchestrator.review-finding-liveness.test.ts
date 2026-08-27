@@ -28,6 +28,8 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ShipOrchestrator } from "./ship-orchestrator.js";
+import { ShipStage, type ShipStageResult } from "./ship-types.js";
+import { stripAnsi } from "../utils/agent-layer.js";
 import * as reviewPlugin from "../plugins/review-plugin.js";
 import * as stateUtils from "../utils/state.js";
 import * as gateExec from "../utils/gate-exec.js";
@@ -365,6 +367,190 @@ describe("D10 — the code-review scope context carries the verdict channel", ()
 });
 
 /**
+ * TR-008. The channel all four missed NO-GOs actually used.
+ *
+ * Each of them wrote `REVIEW FAIL (code): …` into a task description and left
+ * `status: "completed"`. The VERDICT CHANNEL block asks for the status flip,
+ * but the note is what a review agent reliably produces — so a detector that
+ * reads only the flip reads all four findings as silence, which is exactly what
+ * it did. The description diff is the second signal.
+ *
+ * It is count-based, not presence-based, and both halves of that matter: a
+ * `REVIEW FAIL (` block already in the pre-dispatch snapshot belongs to an
+ * earlier iteration and must not re-fire, while a description that already
+ * carried one must still fire when a second block lands on it — the ordinary
+ * shape of iteration 2 of a NO-GO loop.
+ */
+describe("FR-008/TR-008 — a description-only finding is a finding", () => {
+  const gated = { gateScript: "gates/T006-gate.sh" };
+  const FINDING =
+    "REVIEW FAIL (code): an 8-bit body is put on the wire without negotiating 8BITMIME.";
+  const SECOND_FINDING =
+    "REVIEW FAIL (code): the retry loop swallows a permanent 5xx and reports success.";
+
+  const gatePasses = () =>
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "ok",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+
+  /** tasks.json as `readVerdict` last persisted it. */
+  const savedTask = () => {
+    const calls = vi.mocked(stateUtils.saveTaskState).mock.calls;
+    const last = calls[calls.length - 1][1] as ReturnType<typeof stateWith>;
+    return last.phases[0].tasks[0];
+  };
+
+  it("treats a newly appended REVIEW FAIL block as a finding", async () => {
+    // Green gate, status never moved. The description diff is the only thing
+    // that could have raised this, so the divergence naming T006 IS the proof.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewGateDivergence).toEqual(["T006"]);
+  });
+
+  it("re-opens the task so DIAGNOSE can see the finding it blocked on", async () => {
+    // DIAGNOSE collects error context from OPEN tasks only. A description-only
+    // finding left `completed` would be a NO-GO whose cause the next stage
+    // never reads — a loop that blocks without ever saying why.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    expect(savedTask().status).toBe("open");
+  });
+
+  it("names the mechanism that raised it, not just that something did", async () => {
+    // "The agent ignored the VERDICT CHANNEL block" and "the agent followed it"
+    // are different bugs with different fixes, and the verdict output is the
+    // only place a maintainer can tell them apart.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    expect(savedTask().description).toMatch(/status left unchanged/);
+  });
+
+  it("reports NO-GO on a description-only finding", async () => {
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+
+  it("reports NO-GO when a description-only finding lands on a gateless task", async () => {
+    // The two holes compounded: no gate AND no status flip. `readVerdict` must
+    // consult the findings BEFORE the gateless `continue`, or this task is
+    // skipped twice over and the phase ships with the defect live.
+    loadTaskStateReturns(
+      stateWith("completed", { description: "seed" }),
+      stateWith("completed", { description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+    expect(gateExec.runTaskGate).not.toHaveBeenCalled();
+  });
+
+  it("does not re-fire on a pre-existing REVIEW FAIL block", async () => {
+    // The block is on disk before the dispatch, so it is a previous iteration's
+    // finding that IMPLEMENT already answered. Presence-based detection would
+    // pin the phase at NO-GO forever; the count is what makes it terminate.
+    gatePasses();
+    const carried = `seed\n\n${FINDING}`;
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: carried }),
+      stateWith("completed", { ...gated, description: carried }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("GO");
+    expect(savedTask().status).toBe("completed");
+  });
+
+  it("fires again when a second block lands on a description that already carried one", async () => {
+    // The other half of count-based detection, and the reason presence alone is
+    // not merely conservative but wrong: iteration 2 of a NO-GO loop appends to
+    // a description that already carries iteration 1's block.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: `seed\n\n${FINDING}` }),
+      stateWith("completed", {
+        ...gated,
+        description: `seed\n\n${FINDING}\n\n${SECOND_FINDING}`,
+      }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+  });
+
+  it("still calls a status flip a re-open, not a description-only finding", async () => {
+    // The channels stay distinguishable. A task that flipped completed → open
+    // AND carries a note is the prompt being followed — reporting it as the
+    // description-only channel would send a maintainer after a prompt defect
+    // that is not there.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith("open", { ...gated, description: `seed\n\n${FINDING}` }),
+    );
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    // @ts-ignore private
+    await orchestrator.stageCodeReview();
+
+    // @ts-ignore private
+    expect(orchestrator.state.reviewVerdict).toBe("NO-GO");
+    expect(savedTask().description).toMatch(/re-opened by review/);
+    expect(savedTask().description).not.toMatch(/status left unchanged/);
+  });
+});
+
+/**
  * TR-012. The cases above call `executeReviewWorkflow` directly; `gwrk ship`
  * never does. It runs `stageCodeReview` / `stageUatReview`, and each reads
  * tasks.json BEFORE dispatching — to build its phase-task list and its
@@ -551,5 +737,685 @@ describe("FR-007 — the doctrine is not written down in its broad form", () => 
     expect(src).not.toMatch(
       /If any tasks? in the phase (?:are|is) .open.[\s\S]{0,160}NO-GO/,
     );
+  });
+});
+
+/**
+ * FR-011 / W4. The ADR is the definitional layer the review prompts encode.
+ *
+ * ADR-007 §2.1 is where "The agent's verdict is advisory. Gates are truth."
+ * was first written down, and every prompt that force-completed a task on a
+ * green gate is downstream of that sentence. The file already carries a `026
+ * correction` blockquote for the last time the doctrine outran the code; this
+ * is the same treatment for 028, and it is a test rather than prose because
+ * the three prior recurrences of this defect were each re-authored from the
+ * definitional layer *after* the code had already been fixed.
+ *
+ * `node:fs` is auto-mocked for this file, so the ADR is read through
+ * `importActual` — the point of these cases is the bytes on disk.
+ */
+describe("FR-011/W4 — ADR-007 carries the doctrine correction", () => {
+  const readAdrSource = async (): Promise<string> => {
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    return realFs.readFileSync(
+      new URL(
+        "../../docs/decisions/ADR-007-single-dispatch-path.md",
+        import.meta.url,
+      ),
+      "utf-8",
+    );
+  };
+
+  /** The contiguous `>`-prefixed block opening with `**<label>.**`. */
+  const quoteBlock = (src: string, label: string): string[] => {
+    const lines = src.split("\n");
+    const start = lines.findIndex((l) => l.startsWith(`> **${label}.**`));
+    if (start === -1) return [];
+    let end = start;
+    while (end + 1 < lines.length && lines[end + 1].startsWith(">")) end += 1;
+    return lines.slice(start, end + 1);
+  };
+
+  /** Strip the `> ` quote prefix and collapse the block's hard wraps. */
+  const flatten = (block: string[]): string =>
+    block
+      .map((l) => l.replace(/^>\s?/, ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  it("ADR-007 carries the 028 one-way correction", async () => {
+    const src = await readAdrSource();
+
+    const block = quoteBlock(src, "028 correction");
+    expect(
+      block.length,
+      "ADR-007 must carry an `028 correction` blockquote",
+    ).toBeGreaterThan(0);
+
+    const doc = flatten(block);
+
+    // One-way, and named as such. The direction IS the correction.
+    expect(doc).toMatch(/"Gates are truth" is one-way/);
+
+    // Both halves. Asserting only the prohibition would pass on a block that
+    // revoked gate authority outright — the opposite over-correction, and one
+    // that would strand every task no reviewer ever looked at.
+    expect(doc).toMatch(/may close a task the reviewer raised no finding on/);
+    expect(doc).toMatch(
+      /never close a task the reviewer reproduced a defect on/,
+    );
+
+    // The combination, and what the code already does with it.
+    expect(doc).toMatch(/coverage hole \(`readVerdict` treats it as NO-GO\)/);
+
+    // What actually went wrong, with the evidence. Stripped of the count and
+    // the run numbers this reads as a hypothetical rather than a post-mortem.
+    expect(doc).toMatch(/force `status: completed` whenever gates passed/);
+    expect(doc).toMatch(
+      /four blocking code-review findings across runs #2727\/#2728/,
+    );
+
+    // And the citation, so a reader lands on the diagnosis instead of
+    // re-deriving it — which is how 028 became the third recurrence.
+    expect(doc).toContain("docs/code-review-verdict-defect.md");
+  });
+
+  it("places the 028 correction under the doctrine it corrects, after 026", async () => {
+    const src = await readAdrSource();
+
+    // Attached, not merely present. `grep -q '028 correction'` — the shape of
+    // this task's own gate — passes just as happily on a block appended to the
+    // references section, where nobody reading "Gates are truth" would ever
+    // meet it. Position is what makes a correction load-bearing: 026 earned
+    // its place directly under the sentence it narrows, and 028 inherits it.
+    const doctrine = src.indexOf(
+      "The agent's verdict is advisory. Gates are truth.",
+    );
+    const c026 = src.indexOf("> **026 correction.**");
+    const c028 = src.indexOf("> **028 correction.**");
+    const nextSection = src.indexOf("### 2.2");
+
+    expect(
+      doctrine,
+      "§2.1 must still state the doctrine being corrected",
+    ).toBeGreaterThan(-1);
+    expect(
+      nextSection,
+      "§2.2 must still follow, bounding the section",
+    ).toBeGreaterThan(-1);
+    expect(c026, "the 026 correction must still be there").toBeGreaterThan(
+      doctrine,
+    );
+    expect(c028, "the 028 correction goes after the 026 block").toBeGreaterThan(
+      c026,
+    );
+    expect(
+      c028,
+      "and before §2.2, inside the section it corrects",
+    ).toBeLessThan(nextSection);
+  });
+});
+
+/**
+ * TR-010. The returned JSON verdict, as a one-way ratchet (FR-010, D4).
+ *
+ * Run #2728 iteration 2 is the case every other channel in this file misses:
+ * the agent returned `"verdict": "NO-GO"` in its structured output, every gate
+ * was green, and it wrote nothing to tasks.json — so there was no re-open to
+ * detect and no `REVIEW FAIL (` block to find. `ReviewResult.verdict` has been
+ * declared at review-plugin.ts:45 the whole time and read by nobody, and the
+ * console printed GO.
+ *
+ * The direction is the point, and TC-006 fixes it permanently: NO-GO ratchets,
+ * GO is ignored, and unreadable output changes nothing and kills nothing.
+ *
+ * Every case here is driven through `dispatchToAgent`'s real return shape.
+ * `TaskResult.stdout` is whatever the backend wrote, verbatim: `agent.ts` pushes
+ * raw lines into `stdoutLines` and resolves `stdout: stdoutLines.join("\n")`,
+ * and `ClaudeAdapter.parseResult` hands that straight back. On the claude
+ * backend — `emitsStreamJson`, dispatched with `--output-format stream-json` —
+ * that means the agent's JSON is a STRING VALUE inside an event envelope, so
+ * every inner quote arrives backslash-escaped. An earlier version of this suite
+ * mocked a bare `'{"verdict":"NO-GO"}'`, a shape no adapter emits, and so
+ * proved a behaviour production did not have. The fixtures below emit what the
+ * adapters emit, and the two shapes are run as a matrix.
+ */
+describe("FR-010/TR-010 — the returned JSON verdict ratchets one way", () => {
+  const gated = { gateScript: "gates/T006-gate.sh" };
+
+  const gatePasses = () =>
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "ok",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+
+  /** Raw stdout, exactly as `dispatchToAgent` resolves it. */
+  const agentReturns = (stdout: string) =>
+    vi
+      .mocked(agentUtils.dispatchToAgent)
+      .mockResolvedValue({ exitCode: 0, stdout, stderr: "" } as never);
+
+  /**
+   * The claude backend: one JSON event per line, the agent's own text carried
+   * as a string value inside `assistant` text blocks and the terminal `result`
+   * event. `JSON.stringify` does the escaping the CLI does.
+   */
+  const streamJson = (agentText: string) =>
+    [
+      JSON.stringify({ type: "system", subtype: "init", session_id: "s1" }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          type: "message",
+          content: [{ type: "text", text: agentText }],
+        },
+      }),
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: agentText,
+      }),
+    ].join("\n");
+
+  /** agy and codex leave `emitsStreamJson` unset and print plain prose. */
+  const plainProse = (agentText: string) => agentText;
+
+  const BACKENDS = [
+    { name: "claude/stream-json", stdoutFor: streamJson },
+    { name: "agy,codex/plain prose", stdoutFor: plainProse },
+  ];
+
+  /** Green gates, nothing touched in tasks.json — evidence says GO. */
+  const cleanRun = () => {
+    gatePasses();
+    const untouched = stateWith("completed", gated);
+    loadTaskStateReturns(untouched, untouched);
+  };
+
+  /** Drive a review stage and hand back the verdict it settled on. */
+  async function verdictOf(workflow = "review-code-webapp"): Promise<string> {
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+    // @ts-ignore private
+    await orchestrator.executeReviewWorkflow(workflow, "scope");
+    // @ts-ignore private
+    return orchestrator.state.reviewVerdict;
+  }
+
+  for (const backend of BACKENDS) {
+    it(`a returned NO-GO forces NO-GO — ${backend.name}`, async () => {
+      // AS-1. Green gates, no re-opens, and the agent's word is the only signal
+      // there is. Before FR-010 this printed GO.
+      cleanRun();
+      agentReturns(
+        backend.stdoutFor(
+          '{"summary":"auth bypass in the session guard","verdict":"NO-GO","reopenedTasks":[],"intents":[]}',
+        ),
+      );
+
+      expect(await verdictOf()).toBe("NO-GO");
+    });
+
+    it(`a returned GO never overrides re-open evidence — ${backend.name}`, async () => {
+      // AS-2 and the load-bearing half of TC-006. The agent re-opened the task
+      // and then claimed GO; the evidence wins, permanently.
+      gatePasses();
+      loadTaskStateReturns(
+        stateWith("completed", gated),
+        stateWith("open", gated),
+      );
+      agentReturns(
+        backend.stdoutFor(
+          '{"summary":"all clear","verdict":"GO","reopenedTasks":[]}',
+        ),
+      );
+
+      expect(await verdictOf()).toBe("NO-GO");
+    });
+
+    it(`a returned GO never overrides a failing gate — ${backend.name}`, async () => {
+      // The other evidence channel, same rule. A returned GO is not consulted,
+      // so there is nothing for it to override with.
+      vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+        passed: false,
+        exitCode: 1,
+        output: "1 failing",
+        gatePath: "gates/T006-gate.sh",
+      } as never);
+      const untouched = stateWith("completed", gated);
+      loadTaskStateReturns(untouched, untouched);
+      agentReturns(backend.stdoutFor('{"verdict":"GO"}'));
+
+      expect(await verdictOf()).toBe("NO-GO");
+    });
+
+    it(`a returned GO on a clean run leaves the GO alone — ${backend.name}`, async () => {
+      // The ratchet only tightens — it must not invent a NO-GO either.
+      cleanRun();
+      agentReturns(
+        backend.stdoutFor(
+          '{"summary":"clean","verdict":"GO","reopenedTasks":[]}',
+        ),
+      );
+
+      expect(await verdictOf()).toBe("GO");
+    });
+
+    it(`an absent or unparseable verdict does not fail the run — ${backend.name}`, async () => {
+      // AS-3 and the rest of TC-006: a badly formatted summary must not be a
+      // new way for a run to die, and must not move the verdict either way.
+      for (const agentText of [
+        "",
+        "Review complete. Everything looks fine to me.",
+        "{{{ not json at all",
+        '{"summary":"no verdict field here"}',
+        '{"verdict":"MAYBE"}',
+      ]) {
+        cleanRun();
+        agentReturns(backend.stdoutFor(agentText));
+
+        expect(await verdictOf()).toBe("GO");
+      }
+    });
+
+    it(`reads a verdict out of a fenced JSON block — ${backend.name}`, async () => {
+      cleanRun();
+      agentReturns(
+        backend.stdoutFor(
+          'Here is my review.\n\n```json\n{\n  "summary": "leaks the token",\n  "verdict": "NO-GO",\n  "reopenedTasks": []\n}\n```\n',
+        ),
+      );
+
+      expect(await verdictOf()).toBe("NO-GO");
+    });
+
+    it(`is not tripped by an agent quoting the JSON Intent Format spec — ${backend.name}`, async () => {
+      // NEGATIVE. The review prompts gloss the field as: `verdict`: "GO" if all
+      // checks pass and all tasks remain completed, "NO-GO" otherwise. An agent
+      // restating that has raised no finding, and a spurious NO-GO costs a
+      // whole DIAGNOSE → IMPLEMENT loop.
+      cleanRun();
+      agentReturns(
+        backend.stdoutFor(
+          'My output must contain `verdict`: "GO" if all checks pass and all tasks remain completed, "NO-GO" otherwise.\n\n{"verdict": "GO"}',
+        ),
+      );
+
+      expect(await verdictOf()).toBe("GO");
+    });
+
+    it(`the ratchet is live for the uat-review stage too — ${backend.name}`, async () => {
+      // Both stages go through `executeReviewWorkflow`, and UAT is the stage
+      // that was already looping correctly — it must not regress into GO when
+      // the agent's word is the only signal.
+      cleanRun();
+      agentReturns(backend.stdoutFor('{"verdict":"NO-GO"}'));
+
+      expect(await verdictOf("review-uat-webapp")).toBe("NO-GO");
+    });
+  }
+
+  it("reads a verdict out of truncated output — plain prose", async () => {
+    // The case that rules out a JSON.parse-only reader. Agent stdout gets
+    // clipped, and a verdict this legible must not be lost to a missing brace.
+    cleanRun();
+    agentReturns('{"verdict": "NO-GO", "summary": "the gate does not cover');
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("reads a verdict out of truncated output — clipped result envelope", async () => {
+    // Same rule one layer down, and the likelier half of it: the `result` event
+    // is last and largest, so on the claude backend it is what gets clipped.
+    // The verdict is still legible in the escaped payload.
+    cleanRun();
+    agentReturns(
+      '{"type":"result","subtype":"success","result":"{\\"verdict\\": \\"NO-GO\\", \\"summary\\": \\"the gate does not cover',
+    );
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("names the returned verdict as the source", async () => {
+    // This NO-GO has no failing gate and no re-opened task behind it, so
+    // without attribution the log gives an operator nothing to act on.
+    cleanRun();
+    agentReturns(streamJson('{"verdict":"NO-GO","summary":"see above"}'));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await verdictOf();
+    const printed = log.mock.calls.map((c) => String(c[0])).join("\n");
+    log.mockRestore();
+
+    expect(printed).toMatch(/RETURNED VERDICT/);
+  });
+
+  it("names the returned verdict even when a re-open already forced NO-GO", async () => {
+    // A genuine returned NO-GO alongside a re-open is a second corroborating
+    // signal. The verdict is the same either way, but suppressing the line
+    // hides half of why the run stopped from the operator reading the log.
+    gatePasses();
+    loadTaskStateReturns(
+      stateWith("completed", gated),
+      stateWith("open", gated),
+    );
+    agentReturns(streamJson('{"verdict":"NO-GO","reopenedTasks":["T006"]}'));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const verdict = await verdictOf();
+    const printed = log.mock.calls.map((c) => String(c[0])).join("\n");
+    log.mockRestore();
+
+    expect(verdict).toBe("NO-GO");
+    expect(printed).toMatch(/RETURNED VERDICT/);
+  });
+
+  it("ratchets after the gate computation, never instead of it", async () => {
+    // Ordering is the contract: evidence is computed in full first, and the
+    // agent's word only tightens what it arrived at. A returned NO-GO must
+    // therefore not short-circuit the gates — their side effects on tasks.json
+    // are what DIAGNOSE reads next.
+    cleanRun();
+    agentReturns(streamJson('{"verdict":"NO-GO"}'));
+
+    expect(await verdictOf()).toBe("NO-GO");
+    expect(gateExec.runTaskGate).toHaveBeenCalled();
+  });
+
+  // ── Pinned to bytes captured from real runs. The synthesised fixtures above
+  //    model the envelope; these three ARE the envelope, lifted out of
+  //    .runs/*.jsonl transcripts, so a future change to the escaping the CLI
+  //    emits cannot pass here by agreeing with our own model of it.
+
+  it("fires on a result envelope captured from a real transcript", async () => {
+    // .runs/2026-07-24T17-29-56_gwrk-implement_023-plan-format-contract.jsonl,
+    // line 228 — a genuine agent-returned NO-GO, `result` field narrowed to the
+    // fenced block around the verdict and otherwise byte-for-byte.
+    cleanRun();
+    agentReturns(
+      "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"```json\\n{\\n  \\\"summary\\\": \\\"Phase 01 UAT: build clean and all 25 plan-to-tasks tests green (US-001..US-004 -t acceptance filters pass), but Phase-1 'Done When' cmd 3 fails (exit 1) and cmd 4 passes vacuously — both, plus spec US-001 AC#1 bullet 2 and §9 VR-004, reference specs/_fixtures/plan-format/.gwrk/tasks.json, which is not committed. Parser behavior verified correct by materializing output (gate = 'make dev:up && make db:migrate && make test:db' verbatim, no echo stub). NO-GO: acceptance criteria as written are not executable against committed repo state. Phase-01 adds no CLI surface; help output unchanged.\\\",\\n  \\\"verdict\\\": \\\"NO-GO\\\",\\n  \\\"reopenedTasks\\\": [\\\"T001\\\"]\\n}\\n```\",\"session_id\":\"b6d6f1c7-2b72-4a00-8594-6f32a9fe7e68\",\"uuid\":\"ca287aa7-ede1-44d0-80b9-2c3075953769\"}",
+    );
+
+    expect(await verdictOf()).toBe("NO-GO");
+  });
+
+  it("is not tripped by a tool_use block searching for the verdict string", async () => {
+    // NEGATIVE, and captured from this feature's own run:
+    // .runs/2026-08-25T03-26-03_gwrk-implement_028-review-finding-liveness.jsonl
+    // line 104 — an agent grepping the repo for `"verdict": "NO-GO"`. The
+    // search term is not a finding, and a `tool_use` input is not something the
+    // agent said.
+    cleanRun();
+    agentReturns(
+      "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-opus-5\",\"id\":\"msg_011CeNkm7Mhdn63LA1P4EkPT\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_01CUnZh2trPkPpEt2q4rZ9HV\",\"name\":\"Bash\",\"input\":{\"command\":\"grep -rn '\\\\\"verdict\\\\\": *\\\\\"NO-GO\\\\\"\\\\\\\\|\\\\\"verdict\\\\\":\\\\\"NO-GO\\\\\"' --include='*.md' --include='*.ts' --include='*.sh' --include='*.json' . 2>/dev/null | grep -v node_modules | grep -v '^\\\\\\\\./dist' | head -30\",\"description\":\"Search for literal verdict NO-GO strings\"},\"caller\":{\"type\":\"direct\"}}]},\"session_id\":\"c44a518e-b0ea-42b0-babc-2a32071d36f9\",\"uuid\":\"a20a6433-8dff-472d-ac1f-72d0aedd1ed4\"}",
+    );
+
+    expect(await verdictOf()).toBe("GO");
+  });
+
+  it("is not tripped by a tool_result carrying spec.md bytes", async () => {
+    // NEGATIVE, and the reason this parser reads the envelope instead of
+    // widening the regex to tolerate escapes. A review agent reads spec.md and
+    // plan.md every run, and both contain `"verdict": "NO-GO"` verbatim
+    // (spec.md:174,181,247,286,331,344; plan.md:230,236). Those bytes come back
+    // as a `user` / `tool_result` event — the transcript quoting a file, not
+    // the agent returning a verdict.
+    cleanRun();
+    agentReturns(
+      "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"tool_use_id\":\"toolu_01X\",\"type\":\"tool_result\",\"content\":\"   174\\t- `verdict`: \\\"NO-GO\\\" when a finding is reproduced\\n   181\\t  \\\"verdict\\\": \\\"NO-GO\\\",\\n\"}]},\"session_id\":\"c44a518e-b0ea-42b0-babc-2a32071d36f9\"}",
+    );
+
+    expect(await verdictOf()).toBe("GO");
+  });
+});
+
+/**
+ * TR-012. The whole seam, in the exact runs #2727/#2728 shape.
+ *
+ * Every block above proves one channel in isolation — a verdict value, a saved
+ * task, a prompt line. None of them proves what an operator actually watched
+ * happen: the console printed `review-code-webapp: GO` and the loop walked on
+ * to UAT while four reproduced defects sat in the very tasks the review agent
+ * had just written them into. So this block asserts only the two observable
+ * outputs of the seam, read the way the operator reads them: the line on the
+ * terminal, and the stage the loop goes to next.
+ *
+ * One gated task, gate GREEN — the setup both runs had, and the reason the
+ * defect survived. Every mechanical check agreed the phase was done, so the
+ * review agent's finding was the only dissenting signal in the system.
+ *
+ * Both variants of that finding are driven, because the prompt asks for one and
+ * agents reliably produce the other:
+ *   (a) FR-005 — the REVIEW FAIL note plus the `completed` → `open` status flip;
+ *   (b) FR-008 — the note alone, status left `completed`, which is what all four
+ *       missed NO-GOs actually did.
+ * They must be indistinguishable here. The GO case at the end is what keeps
+ * "indistinguishable" from being satisfiable by a NO-GO-always regression.
+ */
+describe("TR-012 — the exact runs #2727/#2728 shape, both variants", () => {
+  const gated = { gateScript: "gates/T006-gate.sh" };
+  const FINDING =
+    "REVIEW FAIL (code): an 8-bit body is put on the wire without negotiating 8BITMIME.";
+
+  const gatePasses = () =>
+    vi.mocked(gateExec.runTaskGate).mockResolvedValue({
+      passed: true,
+      exitCode: 0,
+      output: "ok",
+      gatePath: "gates/T006-gate.sh",
+    } as never);
+
+  /**
+   * The review agent appends its finding to the task description; `flip` is
+   * whether it also does what the VERDICT CHANNEL block asks and re-opens the
+   * task. Everything else about the two runs is identical, which is the claim.
+   */
+  const reviewAppendsFinding = (flip: boolean) =>
+    loadTaskStateReturns(
+      stateWith("completed", { ...gated, description: "seed" }),
+      stateWith(flip ? "open" : "completed", {
+        ...gated,
+        description: `seed\n\n${FINDING}`,
+      }),
+    );
+
+  /**
+   * Run a stage with `console.log` captured and ANSI stripped.
+   *
+   * The verdict line is the operator-facing output of this entire seam and the
+   * only place runs #2727/#2728 reported themselves, so it is asserted off the
+   * terminal rather than through `state.reviewVerdict` — a NO-GO that never
+   * prints is not the bug this feature exists to close.
+   */
+  async function withConsole<T>(
+    fn: () => Promise<T>,
+  ): Promise<{ result: T; lines: string[] }> {
+    const lines: string[] = [];
+    const spy = vi
+      .spyOn(console, "log")
+      .mockImplementation((...args: unknown[]) => {
+        lines.push(stripAnsi(args.map(String).join(" ")).trim());
+      });
+    try {
+      return { result: await fn(), lines };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  /** The `<workflow>: <verdict>` line `executeReviewWorkflow` prints, if any. */
+  const verdictLines = (lines: string[]) =>
+    lines.filter((l) => /^\S+: (GO|NO-GO)$/.test(l));
+
+  /**
+   * The stage `run()` would move to next, decided the way `run()` decides it
+   * (ship-orchestrator.ts:437-443): a returned `nextStage` wins, otherwise the
+   * loop advances linearly. The linear step comes from the orchestrator's own
+   * `getNextStage`, so this mirrors only the branch under test and never
+   * re-states the stage order that branch is being compared against.
+   */
+  const stageAfter = (
+    orchestrator: ShipOrchestrator,
+    result: ShipStageResult,
+    from: ShipStage,
+  ): ShipStage =>
+    result.nextStage ??
+    (
+      orchestrator as unknown as { getNextStage(stage: ShipStage): ShipStage }
+    ).getNextStage(from);
+
+  it("prints `<workflow>: NO-GO` when the finding arrives with a status flip", async () => {
+    gatePasses();
+    reviewAppendsFinding(true);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-code-webapp: NO-GO"]);
+  });
+
+  it("prints `<workflow>: NO-GO` when the note is the only signal", async () => {
+    // Variant (b) — the one that actually happened. Same green gate, same
+    // note, status never moved, and the line must be byte-for-byte the line
+    // variant (a) prints. Anything less is the four findings again.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-code-webapp: NO-GO"]);
+  });
+
+  it("reaches that NO-GO over a gate that passed, not around one that failed", async () => {
+    // The setup this whole block rests on, asserted rather than assumed: the
+    // gate ran and it was green. `reviewGateDivergence` is written in exactly
+    // one branch of readVerdict — the one where `gateResult.passed` is true and
+    // the task carries a finding — so it is the proof that the NO-GO came from
+    // the divergence and not from some gate quietly failing in the mock.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(gateExec.runTaskGate).toHaveBeenCalled();
+    // @ts-ignore private
+    expect(orchestrator.state.gateResult).not.toBe("FAIL");
+    // @ts-ignore private
+    expect(orchestrator.state.reviewGateDivergence).toEqual(["T006"]);
+  });
+
+  it("routes to DIAGNOSE instead of advancing to UAT — status flipped", async () => {
+    gatePasses();
+    reviewAppendsFinding(true);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { result } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(stageAfter(orchestrator, result, ShipStage.CODE_REVIEW)).toBe(
+      ShipStage.DIAGNOSE,
+    );
+  });
+
+  it("routes to DIAGNOSE instead of advancing to UAT — note only", async () => {
+    // "The phase advances to UAT as if you had approved it" is what the VERDICT
+    // CHANNEL block warns the agent about, and it is what the loop did. The
+    // stage the loop takes next is where that sentence is either true or false.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { result } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(stageAfter(orchestrator, result, ShipStage.CODE_REVIEW)).toBe(
+      ShipStage.DIAGNOSE,
+    );
+  });
+
+  it("spends an iteration of the retry budget rather than passing the phase", async () => {
+    // The NO-GO path is a loop, not a stop: handleNoGo charges the finding to
+    // the iteration budget on its way to DIAGNOSE. A verdict that printed
+    // NO-GO but left the budget untouched would never circuit-break either.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+    // @ts-ignore private
+    const before = orchestrator.state.iteration;
+
+    await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    // @ts-ignore private
+    expect(orchestrator.state.iteration).toBe(before + 1);
+  });
+
+  it("names the workflow that ran, not a constant — stageUatReview", async () => {
+    // `<workflow>` is interpolated, so a code-review-shaped assertion alone
+    // cannot tell "prints the workflow name" from "prints review-code-webapp".
+    // UAT was never broken; if this line is wrong the seam is wrong for both.
+    gatePasses();
+    reviewAppendsFinding(false);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+
+    const { result, lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageUatReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-uat-webapp: NO-GO"]);
+    expect(stageAfter(orchestrator, result, ShipStage.UAT_REVIEW)).toBe(
+      ShipStage.DIAGNOSE,
+    );
+  });
+
+  it("prints GO and advances to UAT when neither channel fired", async () => {
+    // Without this case every assertion above is satisfied by a NO-GO-always
+    // regression, and it is also what pins `stageAfter`'s other branch: a GO
+    // returns no `nextStage`, so the loop takes the linear step — to UAT, the
+    // exact advance the two variants above must not be able to reach.
+    gatePasses();
+    const untouched = stateWith("completed", {
+      ...gated,
+      description: "seed",
+    });
+    loadTaskStateReturns(untouched, untouched);
+    const orchestrator = new ShipOrchestrator(mockConfig as never);
+    // @ts-ignore private
+    const before = orchestrator.state.iteration;
+
+    const { result, lines } = await withConsole(() =>
+      // @ts-ignore private
+      orchestrator.stageCodeReview(),
+    );
+
+    expect(verdictLines(lines)).toEqual(["review-code-webapp: GO"]);
+    expect(result.nextStage).toBeUndefined();
+    expect(stageAfter(orchestrator, result, ShipStage.CODE_REVIEW)).toBe(
+      ShipStage.UAT_REVIEW,
+    );
+    // @ts-ignore private
+    expect(orchestrator.state.iteration).toBe(before);
   });
 });

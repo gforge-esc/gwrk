@@ -34,8 +34,10 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { getBuildCommand, getTestCommand, getTestExtension, getSourceExtension } from "../utils/toolchain-mapper.js";
+import { appendFinding, findingsPath } from "./findings-ledger.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
+import { parseReturnedVerdict } from "./returned-verdict.js";
 import {
   type ShipRunConfig,
   ShipStage,
@@ -130,6 +132,63 @@ interface PrPhaseRecord {
 
 /** Machine-readable span marker, invisible in rendered markdown. */
 const PR_MARKER = /<!-- gwrk:pr (.*?) -->/;
+
+/**
+ * The marker a review agent appends to a task description to record a blocking
+ * finding — `REVIEW FAIL (code): …` / `REVIEW FAIL (uat): …`, the format the
+ * review PROMPT.md files ask for.
+ */
+const REVIEW_FAIL_MARKER = "REVIEW FAIL (";
+
+/** How many `REVIEW FAIL (` blocks a description carries. */
+function countReviewFailBlocks(description: string | undefined): number {
+  if (!description) return 0;
+  let count = 0;
+  let from = 0;
+  for (;;) {
+    const at = description.indexOf(REVIEW_FAIL_MARKER, from);
+    if (at === -1) return count;
+    count++;
+    from = at + REVIEW_FAIL_MARKER.length;
+  }
+}
+
+/**
+ * What a review dispatch raised, and through which channel it raised it.
+ *
+ * `revertSourceMutations()` discards everything the agent wrote except
+ * tasks.json, so tasks.json holds every channel the agent has. Two exist:
+ *
+ * - **status flip** (`reopened`) — `completed` → `open`. What the VERDICT
+ *   CHANNEL block in the scope context asks for.
+ * - **description-only** (`descriptionOnly`) — a `REVIEW FAIL (` block appended
+ *   while the status stayed put. What all four missed NO-GOs actually did, and
+ *   what a status-only detector reads as silence.
+ *
+ * The verdict consults `all` and does not care which channel carried it; the
+ * split exists so the console line can name the mechanism, since "the agent
+ * ignored the prompt" and "the agent followed it" are different bugs.
+ */
+export interface ReviewFindings {
+  /** Tasks the agent moved `completed` → `open` during this dispatch. */
+  reopened: Set<string>;
+  /**
+   * Tasks that gained a `REVIEW FAIL (` block during this dispatch while their
+   * status stayed where it was. Disjoint from `reopened`.
+   */
+  descriptionOnly: Set<string>;
+  /** The union of both channels. This is what a verdict reads. */
+  all: Set<string>;
+}
+
+/** A dispatch that raised nothing — also the shape returned on a read failure. */
+function noReviewFindings(): ReviewFindings {
+  return {
+    reopened: new Set<string>(),
+    descriptionOnly: new Set<string>(),
+    all: new Set<string>(),
+  };
+}
 
 /**
  * Errors that are GitHub's problem, not a verdict about the code.
@@ -513,10 +572,23 @@ export class ShipOrchestrator extends EventEmitter {
       //
       //    Advisory is not the same as discarded. Source mutations were just
       //    reverted, so tasks.json is the review agent's only surviving
-      //    channel: a task it moved completed → open is its NO-GO. Compute
-      //    that before readVerdict, which rewrites the same file.
-      const reopenedByReview = this.detectReviewReopens(featureDir, beforeState);
-      const verdict = await this.readVerdict(reopenedByReview);
+      //    channel — through either door: a task it moved completed → open, or
+      //    a `REVIEW FAIL (` block it appended and left on a completed task.
+      //    Compute both before readVerdict, which rewrites the same file.
+      const reviewFindings = this.detectReviewReopens(featureDir, beforeState);
+      // Record every finding in the append-only ledger BEFORE readVerdict runs.
+      // Ordering is load-bearing at both ends: after the revert, so this
+      // dispatch's entries cannot be thrown away by it; before readVerdict, so
+      // they are on disk even if gate execution later throws.
+      this.recordFindings(featureDir, workflowName, reviewFindings);
+      // 5. The returned JSON verdict, last and one-way (FR-010). It runs AFTER
+      //    the gate + re-open computation on purpose: evidence is computed
+      //    first and in full, and the agent's word is only ever allowed to
+      //    tighten the result it arrived at.
+      const verdict = this.ratchetOnReturnedVerdict(
+        await this.readVerdict(reviewFindings),
+        result.stdout,
+      );
       this.state.reviewVerdict = verdict;
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
@@ -1429,17 +1501,27 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
-   * Tasks the review agent moved from `completed` to `open` during this run.
+   * Findings the review agent registered during this run, by channel.
    *
    * `revertSourceMutations()` throws away everything the agent wrote except
-   * tasks.json, so re-opening a task is how a review agent registers a defect.
-   * Compare against the pre-dispatch snapshot rather than trusting the current
-   * file alone: a task that was already open before review carries no verdict.
+   * tasks.json, so tasks.json is where a review agent registers a defect. Two
+   * channels are read, and both are diffed against the pre-dispatch snapshot
+   * rather than trusting the current file alone:
+   *
+   * - a task moved `completed` → `open` (a task already open before review
+   *   carries no verdict — nobody may have implemented it yet);
+   * - a `REVIEW FAIL (` block newly appended to a task's description (one
+   *   already on disk belongs to an earlier iteration and must not re-fire).
+   *
+   * The description diff is **count-based, not presence-based**. Presence would
+   * re-fire on the earlier iteration's block forever; a count also fires
+   * correctly when a second finding lands on a description that already carried
+   * one, which is the ordinary shape of iteration 2 of a NO-GO loop.
    */
   private detectReviewReopens(
     featureDir: string,
     beforeState: { phases: Phase[] },
-  ): Set<string> {
+  ): ReviewFindings {
     try {
       const after = loadTaskState(featureDir);
       const before = beforeState.phases.find(
@@ -1448,21 +1530,81 @@ export class ShipOrchestrator extends EventEmitter {
       const now = after.phases.find(
         (p: Phase) => p.id === this.config.phaseId,
       );
-      if (!before || !now) return new Set();
+      if (!before || !now) return noReviewFindings();
 
-      const wasCompleted = new Set(
-        before.tasks
-          .filter((t: Task) => t.status === "completed")
-          .map((t: Task) => t.id),
+      const wasById = new Map<string, Task>(
+        before.tasks.map((t: Task) => [t.id, t] as [string, Task]),
       );
-      return new Set(
-        now.tasks
-          .filter((t: Task) => t.status === "open" && wasCompleted.has(t.id))
-          .map((t: Task) => t.id),
-      );
+
+      const findings = noReviewFindings();
+      for (const task of now.tasks) {
+        const was = wasById.get(task.id);
+        if (task.status === "open" && was?.status === "completed") {
+          findings.reopened.add(task.id);
+        } else if (
+          countReviewFailBlocks(task.description) >
+          countReviewFailBlocks(was?.description)
+        ) {
+          // The agent wrote the defect down and left the status alone — the
+          // exact shape of the four findings that reached GO anyway.
+          findings.descriptionOnly.add(task.id);
+        }
+      }
+      findings.all = new Set([
+        ...findings.reopened,
+        ...findings.descriptionOnly,
+      ]);
+      return findings;
     } catch {
       // An unreadable tasks.json is readVerdict's problem to report, not ours.
-      return new Set();
+      return noReviewFindings();
+    }
+  }
+
+  /**
+   * Write every finding this dispatch raised into the append-only ledger.
+   *
+   * tasks.json is the channel the agent has; it is not a store of record. Its
+   * `description` is rewritten wholesale by every later agent, and twice that
+   * rewrite deleted a live finding outright (`48c3ea6`, `5b29881`). The ledger
+   * is the copy that a later rewrite cannot reach — see
+   * {@link appendFinding}.
+   *
+   * `text` is the description as it stands after the dispatch, which is where
+   * the agent's own `REVIEW FAIL (` block lives. A status-flip finding on a
+   * task with an empty description gets a synthesised line instead: an empty
+   * `text` fails `FindingSchema`, and refusing to record a real finding because
+   * the agent left the description blank would be the exact silence this
+   * feature exists to remove.
+   */
+  private recordFindings(
+    featureDir: string,
+    workflowName: string,
+    findings: ReviewFindings,
+  ): void {
+    if (findings.all.size === 0) return;
+
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    const byId = new Map<string, Task>(
+      (phase?.tasks ?? []).map((t: Task) => [t.id, t] as [string, Task]),
+    );
+    const stage = workflowName.includes("uat") ? "uat-review" : "code-review";
+    const recordedAt = new Date().toISOString();
+
+    for (const taskId of findings.all) {
+      const description = byId.get(taskId)?.description?.trim();
+      appendFinding(featureDir, {
+        taskId,
+        phaseId: this.config.phaseId,
+        stage,
+        text:
+          description ||
+          `REVIEW FINDING (${taskId}): raised by ${workflowName} with no description recorded.`,
+        recordedAt,
+      });
     }
   }
 
@@ -1475,9 +1617,15 @@ export class ShipOrchestrator extends EventEmitter {
    * the tasks the review agent re-opened. NO-GO if a gate fails, if a re-opened
    * task's gate passes anyway (a coverage hole), or if a re-opened task has no
    * gate at all. Otherwise GO.
+   *
+   * "Re-opened" is read through {@link ReviewFindings}, which carries both
+   * channels a review agent has: the status flip the prompt asks for, and a
+   * `REVIEW FAIL (` block appended to a description with the status left alone.
+   * Every branch below consults `findings.all`; the `reopened`/`descriptionOnly`
+   * split only decides which mechanism the console line names.
    */
   private async readVerdict(
-    reopenedByReview: Set<string> = new Set(),
+    findings: ReviewFindings = noReviewFindings(),
   ): Promise<"GO" | "NO-GO"> {
     const featureDir = path.join(
       this.config.cwd,
@@ -1489,6 +1637,12 @@ export class ShipOrchestrator extends EventEmitter {
       (p: Phase) => p.id === this.config.phaseId,
     );
     if (!phase) return "NO-GO";
+
+    if (findings.descriptionOnly.size > 0) {
+      console.log(
+        `    ⚠ ${findings.descriptionOnly.size} finding(s) arrived as a REVIEW FAIL block with the task status left unchanged: ${[...findings.descriptionOnly].join(", ")}`,
+      );
+    }
 
     // Gate-driven verdict: run gates directly, don't trust agent edits.
     // Gate authority is one-way — see the "one-way" callout in
@@ -1504,20 +1658,34 @@ export class ShipOrchestrator extends EventEmitter {
     const ungatedFindings: string[] = [];
     const gateCache = new Map<string, TaskGateResult>();
     for (const task of phase.tasks) {
+      // Read before anything can `continue` past it. The gateless skip below
+      // used to sit ABOVE this read, so a finding on a task with no gate — the
+      // one case where review is the only verdict there will ever be — fell
+      // into a vacuous GO.
+      const hasFinding = findings.all.has(task.id);
+      const mechanism = findings.descriptionOnly.has(task.id)
+        ? "REVIEW FAIL block appended, status left unchanged"
+        : "re-opened by review";
+
       if (!task.gateScript) {
         // No gate means no mechanical baseline, so the reviewer's judgement is
         // the only verdict this task will ever get. Skipping the task outright
         // — as this loop used to — threw that judgement away and returned a
         // vacuous GO. Common whenever a phase expresses Done-When as fenced
         // prose instead of per-task gates.
-        if (reopenedByReview.has(task.id)) {
+        if (hasFinding) {
           console.log(
-            `    ⚠ REVIEW FINDING: ${task.id} — re-opened by review, and no gate covers it`,
+            `    ⚠ REVIEW FINDING: ${task.id} — ${mechanism}, and no gate covers it`,
           );
           ungatedFindings.push(task.id);
+          // Materialise the finding as a status the rest of the loop can see:
+          // DIAGNOSE only collects error context from OPEN tasks, so a
+          // description-only finding left `completed` would be a NO-GO whose
+          // cause the next stage never reads.
+          task.status = "open";
           task.completedAt = undefined;
           task.description =
-            `${task.description || ""}\n\nREVIEW FINDING (${task.id}, no gate):\nThe review agent re-opened this task and it has no gateScript, so nothing mechanical can confirm or refute the finding. Read the REVIEW FAIL note above, fix it, and add a gate that would catch it before completing.`.trim();
+            `${task.description || ""}\n\nREVIEW FINDING (${task.id}, no gate, ${mechanism}):\nThe review agent raised a finding on this task and it has no gateScript, so nothing mechanical can confirm or refute the finding. Read the REVIEW FAIL note above, fix it, and add a gate that would catch it before completing.`.trim();
         }
         continue;
       }
@@ -1531,18 +1699,22 @@ export class ShipOrchestrator extends EventEmitter {
         gateCache.set(task.gateScript, gateResult);
       }
       if (gateResult.passed) {
-        if (reopenedByReview.has(task.id)) {
+        if (hasFinding) {
           // Green gate over a defect the reviewer reproduced. Completing the
           // task here is exactly what shipped 005 Phase 1 with a live bug while
           // the console read GO. Keep the finding: a passing gate covering a
-          // review re-open means the GATE has a coverage hole, and this is the
+          // review finding means the GATE has a coverage hole, and this is the
           // only moment the system can know that.
           console.log(
-            `    ⚠ REVIEW/GATE DIVERGENCE: ${task.id} — gate PASSES but review re-opened the task`,
+            `    ⚠ REVIEW/GATE DIVERGENCE: ${task.id} — gate PASSES but review raised a finding (${mechanism})`,
           );
           divergentTasks.push(task.id);
+          // Same reason as the gateless branch: the finding has to be visible
+          // to DIAGNOSE, and a green gate must never close a task a reviewer
+          // reproduced a defect on (ADR-007, one-way).
+          task.status = "open";
           task.completedAt = undefined;
-          task.description = `${task.description || ""}\n\nREVIEW/GATE DIVERGENCE (${task.id}, gate: ${task.gateScript}):\nThe review agent re-opened this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.`.trim();
+          task.description = `${task.description || ""}\n\nREVIEW/GATE DIVERGENCE (${task.id}, gate: ${task.gateScript}, ${mechanism}):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.`.trim();
         } else if (task.status !== "completed") {
           task.status = "completed";
           task.completedAt = new Date().toISOString();
@@ -1566,7 +1738,7 @@ export class ShipOrchestrator extends EventEmitter {
     if (divergentTasks.length > 0) {
       this.state.reviewGateDivergence = divergentTasks;
       console.log(
-        `    ✗ ${divergentTasks.length} task(s) pass their gate but were re-opened by review: ${divergentTasks.join(", ")}`,
+        `    ✗ ${divergentTasks.length} task(s) pass their gate but carry a review finding: ${divergentTasks.join(", ")}`,
       );
       console.log(
         "      Treating as NO-GO. A green gate over a review finding is a gate coverage hole, not a cleared finding.",
@@ -1576,7 +1748,7 @@ export class ShipOrchestrator extends EventEmitter {
 
     if (ungatedFindings.length > 0) {
       console.log(
-        `    ✗ ${ungatedFindings.length} task(s) re-opened by review with no gate to check them: ${ungatedFindings.join(", ")}`,
+        `    ✗ ${ungatedFindings.length} task(s) carry a review finding with no gate to check them: ${ungatedFindings.join(", ")}`,
       );
       console.log(
         "      Treating as NO-GO. An ungated task's review IS its verdict — there is nothing else to consult.",
@@ -1603,6 +1775,51 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
+   * Let the review agent's returned JSON verdict tighten the computed one, and
+   * only tighten it (FR-010).
+   *
+   * `computed` is what {@link readVerdict} established from evidence this run
+   * can check: gates it ran itself, and findings the agent left in tasks.json.
+   * That stays authoritative. The returned verdict is consulted afterwards for
+   * the single case evidence cannot reach — run #2728 iteration 2, where the
+   * agent said NO-GO in its structured output, wrote nothing to tasks.json, and
+   * every gate passed. Before this, that verdict was read by nobody and the
+   * console printed GO over it.
+   *
+   * The one-way shape is TC-006 and it is permanent. It is enforced upstream in
+   * {@link parseReturnedVerdict}'s `"NO-GO" | undefined` return type rather than
+   * by the early return below — a returned GO is not "ignored here", it is not
+   * expressible. This function cannot loosen `computed` because it has nothing
+   * to loosen it with.
+   *
+   * A parse that finds nothing returns `computed` untouched, and the parser
+   * never throws, so unreadable agent output is not a new way for a run to die
+   * (TC-002).
+   */
+  private ratchetOnReturnedVerdict(
+    computed: "GO" | "NO-GO",
+    stdout: string,
+  ): "GO" | "NO-GO" {
+    if (parseReturnedVerdict(stdout) !== "NO-GO") return computed;
+
+    // Name the source, whichever way `computed` landed. When it is already
+    // NO-GO the returned verdict changes nothing, but it is a second signal
+    // saying the same thing — and an operator reading the log is better off
+    // knowing the agent agreed than inferring it from a re-opened task alone.
+    console.log(
+      '    ✗ RETURNED VERDICT: the review agent returned "verdict": "NO-GO" in its structured output',
+    );
+    if (computed === "NO-GO") return computed;
+
+    // This is the one NO-GO with no failing gate and no re-opened task behind
+    // it, so without this line there is nothing for an operator to act on.
+    console.log(
+      "      Treating as NO-GO. Gates passed and no task carries a finding, so this verdict rests on the agent's returned output alone — read its summary for what it found.",
+    );
+    return "NO-GO";
+  }
+
+  /**
    * Discard source file mutations left by review agents.
    *
    * Review agents in YOLO mode can modify source files during review
@@ -1620,6 +1837,7 @@ export class ShipOrchestrator extends EventEmitter {
       this.config.featureId,
     );
     const tasksJsonPath = path.join(featureDir, ".gwrk", "tasks.json");
+    const ledgerPath = findingsPath(featureDir);
 
     // Snapshot tasks.json — this carries the review verdict and must be preserved
     let tasksJsonContent: string | null = null;
@@ -1627,6 +1845,18 @@ export class ShipOrchestrator extends EventEmitter {
       tasksJsonContent = fs.readFileSync(tasksJsonPath, "utf-8");
     } catch {
       // No tasks.json to preserve — proceed with full restore
+    }
+
+    // Snapshot the findings ledger for the same reason, through the same
+    // mechanism. `.gwrk/findings.jsonl` is not git-ignored, so while untracked
+    // it is precisely what the `git clean -fd` below deletes — and the entries
+    // at risk are EARLIER iterations', already on disk when this dispatch
+    // reverts. Losing them would reintroduce D3 through a different door.
+    let ledgerContent: string | null = null;
+    try {
+      ledgerContent = fs.readFileSync(ledgerPath, "utf-8");
+    } catch {
+      // No ledger yet — nothing recorded on this feature so far
     }
 
     try {
@@ -1652,6 +1882,13 @@ export class ShipOrchestrator extends EventEmitter {
     // Restore tasks.json with review verdict state
     if (tasksJsonContent) {
       fs.writeFileSync(tasksJsonPath, tasksJsonContent, "utf-8");
+    }
+
+    // Restore the ledger. `git clean -fd` can take the whole `.gwrk/` directory
+    // when nothing tracked remains in it, so recreate the parent before writing.
+    if (ledgerContent) {
+      fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+      fs.writeFileSync(ledgerPath, ledgerContent, "utf-8");
     }
   }
 
