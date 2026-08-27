@@ -115,3 +115,79 @@ against the contract text, so a departure of this kind can never turn the phase 
   `ADR-NNN already exists: docs/decisions/.ADR-NNN.claim` for a number that is free.
 - **Repo lint baseline is still red** at 357 biome errors, none of them in the four phase files.
   Unchanged from the first pass, and unrelated to this phase.
+
+---
+
+## Pass 3 — after `dd55b14` (AMBER-3 recorded)
+
+**Verdict: GO.** T006, T007, T008 stay completed. The Pass 2 finding is closed.
+
+### The Pass 2 finding is resolved
+
+Pass 2 blocked T006 because every commitment naming TC-015 asserted "no locking" about code that
+publishes a `.ADR-NNN.claim`. The mechanism was correct; the documents disagreed with it.
+
+| Commitment | Now reads |
+|---|---|
+| `plan.md:101` | AMBER-3 records why check-then-write cannot deliver FR-002's outcome |
+| `spec.md:464` | TC-015 permits the atomic claim, still bans manager, daemon, timeout, retry |
+| `spec.md:338` | FR-002 names the `.ADR-NNN.claim` |
+| `contracts/adr-engine.md:157,198` | A claimed number counts as held; the order of operations is the one the code runs |
+| `plan.md:224,876` | The two "no lockfile" traceability rows corrected |
+| `checklists/requirements.md:27,95` | FR-002 and TC-015 rows follow |
+
+The gate closed its own coverage hole. The T006 gateScript now fails if `adr-scaffold.ts` contains
+`fs.link` while any commitment still says "No locking".
+
+### Mechanical baseline
+
+| Check | Result |
+|---|---|
+| `pnpm build` | pass |
+| `gates/run-all-gates.sh` | 11 of 11 pass |
+| T006 gateScript, all 15 lines | exit 0 |
+| `adr-scaffold.test.ts` + `adr.test.ts` | 30 pass |
+| `cli.ux` + `cli.e2e` + `cli.option-collisions` | 27 pass |
+| biome on the three phase source files | 1 error, pre-existing on `develop` |
+| `any` types in phase source | none |
+| MPL headers on the two new files | present |
+
+### Race, re-measured on the built CLI
+
+Two processes, five repetitions: exactly one `ADR-002` every time, loser exits 1 naming the winner's
+real path, no claim or stage file left behind.
+
+Five processes, eight repetitions: one winner and four losers every time, no duplicate number, no
+leftovers. Each loser named the winner's actual filename.
+
+### Contract §3 error states, re-verified
+
+| Condition | Observed |
+|---|---|
+| Taken number under race | `exit:1` · `ADR-002 already exists: docs/decisions/ADR-002-alpha-one.md` |
+| No `.gwrkrc.json` in any parent | `exit:1` · `Not a gwrk project: … Run: gwrk init` |
+| Empty title, and no title | `exit:1` · `Title is required: gwrk define adr "<title>"` |
+| `docs/decisions/` unwritable | `exit:1` · `Cannot write docs/decisions/: EACCES` |
+
+### Plan Phase 2 acceptance, file by file
+
+All seven planned files delivered. `adr` is registered on `defineCommand` and appears in the parent
+`Examples:` block. FR-019 honoured in all three config shapes: `architecture.decisions` object form
+writes to `docs/adr`, the bare-string form defaults to `docs/decisions`, and an unparseable
+`.gwrkrc.json` still writes rather than throwing (TC-014).
+
+`cli.ux.test.ts` carries `define adr` in its own describe block rather than in `commandsWithExamples`.
+The comment at `:73` gives the reason: the loop generates active `it()` calls the phase activator
+cannot gate. TR-009's assertion is met either way.
+
+### Non-blocking observations, carried forward
+
+- **A third racer can be told a path that will never exist.** If run B claims a number after run A
+  released it, and B is then refused by the existence check, a run C refused by B's claim reports B's
+  filename. Needs three concurrent runs and a narrow window. Not reproduced in 40 attempts.
+- **The orphan `.stage` file and the `src/cli.ts:171-183` plan-file omission** are unchanged from
+  Pass 2. The `cli.ts` exemption re-verified as correct and narrow: it matches the exact command path
+  `define adr` only, and a non-project directory still exits 1.
+- **Repo lint baseline is still 357 biome errors.** The single error in the three phase source files
+  is a `define.ts` ternary that is byte-identical on `origin/develop`. Not introduced here, and not
+  auto-fixed, because the fix would touch lines outside this phase.
