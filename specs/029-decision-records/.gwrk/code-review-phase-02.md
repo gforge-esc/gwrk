@@ -38,3 +38,80 @@ The rendered template was fed to the Phase 1 parser. It parses clean: `number 01
 - **Empty slug.** A punctuation-only title writes `ADR-NNN-.md`. Numbering stays correct on the next run. Unspecified.
 - **Table header cosmetics.** `## 3. Decision Record` renders `| Field | Value |` where research §4.1 shows `| | |`. The four row labels match the contract, so no fourth table shape is introduced.
 - **For Phase 10.** `src/commands/adr.test.ts` carries bare `ADR-010` strings. FR-024 assertion 1 treats every bare `ADR-\d{3}` under `src/` as a citation that must resolve, and ADR-010 arrives in Phase 9. Correctly sequenced today; it becomes a failure only if Phase 9 slips past Phase 10.
+
+---
+
+## Code Review — Phase 2, second pass (after the UAT concurrency fix)
+
+**Verdict: NO-GO.** T006 stays open. The UAT defect is fixed and verified. The mechanism that fixes it
+contradicts TC-015, and no commitment records the departure.
+
+### The UAT finding is closed
+
+Two `gwrk define adr` processes racing against a one-record corpus, five iterations:
+
+| Run | Records at 002 | Winner | Loser exit | Litter left |
+|---|---|---|---|---|
+| 1-5 | 1 every time | alternates | 1 | none |
+
+The loser's stderr is the contracted string: `ADR-002 already exists: docs/decisions/ADR-002-beta-two.md`.
+`docs/decisions/` holds records only afterwards — no claim, no stage file. The mocked suite gained a
+real-filesystem block (`adr-scaffold.test.ts:548-656`) that drives overlapping `scaffold()` calls, which
+is what the previous pass lacked.
+
+### Mechanical baseline
+
+| Check | Result |
+|---|---|
+| `pnpm build` (`tsc` + postbuild) | pass |
+| `adr-scaffold.test.ts` + `adr.test.ts` | 30 pass |
+| `cli.ux` + `cli.e2e` + `cli.option-collisions` | 27 pass |
+| `define --help` lists `adr`, `define adr --help` has `Examples:` | pass |
+| `gates/T008-gate.sh` | pass |
+| `biome check` on the four phase files | 0 errors |
+
+### The blocking finding
+
+```mermaid
+flowchart LR
+  spec["spec.md TC-015<br/>no lockfile"] -- "forbids" --> claim[".ADR-NNN.claim<br/>atomic fs.link"]
+  fr002["spec.md FR-002<br/>second run fails loudly"] -- "requires" --> claim
+  claim -- "shipped in" --> code["adr-scaffold.ts"]
+  code -- "contradicts" --> contract["adr-engine.md §3<br/>no locking, other order"]
+```
+
+TC-015 forbids the only mechanism that delivers FR-002. Check-then-write cannot serialise two writers:
+both finish reading before either writes. The implementation resolved the contradiction correctly and
+recorded it only in a source comment at `adr-scaffold.ts:22-28`.
+
+Four commitments now describe code that does something else:
+
+| File | Line | Says | Code does |
+|---|---|---|---|
+| `spec.md` | 464 | no lockfile | publishes `.ADR-NNN.claim` |
+| `contracts/adr-engine.md` | 156 | max+1 over records, no locking | claims count as held |
+| `contracts/adr-engine.md` | 195 | allocate, check, mkdir, write | mkdir, claim, check, write |
+| `plan.md` | 197, 843 | honoured, no lockfile | has one |
+
+Remediation is documentation, not code. The full instruction is on T006 in `tasks.json`, and it opens by
+saying the claim mechanism must not be reverted.
+
+### Gate coverage hole
+
+The T006 gateScript passes in full over this finding. Nothing in it compares the shipped mechanism
+against the contract text, so a departure of this kind can never turn the phase red.
+
+### Non-blocking observations
+
+- **`src/cli.ts:171-183` is outside the plan's seven Phase 2 files.** The `preAction` hook ran
+  `loadConfig(process.cwd())` on every non-`init` command, which would defeat the parent walk before
+  `findProjectRoot` runs. The exemption is correct and narrow, and `define adr` from a non-project
+  directory still exits 1 with the FR-002 message. It belongs in the plan's file list.
+- **A crash between staging and linking leaves an orphan `.ADR-NNN.<pid>-<n>.stage`.** Neither
+  `RECORD_FILE` nor `CLAIM_FILE` matches it, so nothing ever removes it. The leftover-claim test covers
+  the claim, not the stage file.
+- **`conflictingPath` can name a file that does not exist.** If the winner publishes its claim and then
+  its `writeFile` fails, the `finally` releases the claim and the loser reports
+  `ADR-NNN already exists: docs/decisions/.ADR-NNN.claim` for a number that is free.
+- **Repo lint baseline is still red** at 357 biome errors, none of them in the four phase files.
+  Unchanged from the first pass, and unrelated to this phase.
