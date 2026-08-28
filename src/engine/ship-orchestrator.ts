@@ -231,6 +231,34 @@ const ABSENCE_POLL_ATTEMPTS = 8;
 /** Delay between absence re-queries. Eight of these span two minutes. */
 const ABSENCE_POLL_MS = 15_000;
 
+/**
+ * The agent's answer, whatever channel the adapter wrapped it in.
+ *
+ * ClaudeAdapter runs with `--output-format stream-json` unconditionally, so its
+ * stdout is newline-delimited JSON events and the prose sits inside the
+ * trailing `result` event. codex and agy write prose directly. A caller that
+ * scans stdout for a line prefix sees nothing at all under stream-json, so
+ * unwrap first and fall back to the raw text.
+ */
+function agentAnswerText(stdout: string): string {
+  let answer: string | undefined;
+
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+    try {
+      const event = JSON.parse(trimmed) as { type?: string; result?: unknown };
+      if (event.type === "result" && typeof event.result === "string") {
+        answer = event.result;
+      }
+    } catch {
+      // A partial or non-JSON line is not an event. Keep scanning.
+    }
+  }
+
+  return answer ?? stdout;
+}
+
 /** `phase-04` → `4`. */
 function phaseNumOf(phaseId: string): string {
   return phaseId.replace("phase-", "").replace(/^0+/, "") || "0";
@@ -2504,8 +2532,10 @@ ${marker}`;
       });
 
       if (result.exitCode === 0 && result.stdout) {
-        // Extract FIX: lines from the diagnosis output
-        const fixLines = result.stdout
+        // Extract FIX: lines from the diagnosis output. Unwrap first: under
+        // stream-json every stdout line is a JSON event, so a raw prefix scan
+        // matches nothing and discards a complete answer.
+        const fixLines = agentAnswerText(result.stdout)
           .split("\n")
           .filter((line: string) => line.trim().startsWith("FIX:"))
           .map((line: string) => line.trim());
