@@ -1,0 +1,21 @@
+{
+  "runId": "2026-08-28T17:55:01.793Z_ship_p02",
+  "feature": "029-decision-records",
+  "phase": "phase-02",
+  "command": "ship",
+  "agent": "claude",
+  "model": "default",
+  "startedAt": "2026-08-28T17:55:01.793Z",
+  "finishedAt": "2026-08-28T18:12:10.683Z",
+  "durationS": 1029,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "2471ef3d27f889e51813a886ab194593320547d8",
+  "gitBranch": "feat/029-decision-records",
+  "digest": []
+}
