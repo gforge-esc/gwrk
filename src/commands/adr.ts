@@ -102,8 +102,17 @@ async function draftRecord(
   // The backend is resolved from config, not defaulted here (ADR-006). Checked
   // before the runtime is constructed so a missing backend costs no dispatch.
   const config = loadConfig(projectRoot);
-  const backend = config.agents?.define;
-  if (!backend) {
+  const agents = config.agents;
+  const backend = agents?.define;
+
+  // The guard tests the registry, not the name. `agents.define` carries
+  // `.default("agy")` in the schema, so a config with no `agents` block still
+  // parses to a backend name and a name-only guard never fires. What dispatch
+  // needs is a registry entry `loadRegistry` can resolve. Without one,
+  // `resolveModelForTask` below reaches `loadRegistry`, which reports the
+  // problem with `process.exit(1)`. That is past every catch, and past the
+  // `[exit:N | Xs]` line FR-001 mandates (contract §3).
+  if (!backend || !agents?.registry?.[backend] || !agents.fallbackOrder) {
     throw new CommandError(
       "No agent backend available. Run: gwrk plugin list agents",
     );

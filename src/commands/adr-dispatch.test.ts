@@ -43,8 +43,16 @@ const scaffoldMock = vi.hoisted(() => ({
 }));
 vi.mock("../engine/adr-scaffold.js", () => scaffoldMock);
 
+// The default stands in for a project whose registry can actually resolve
+// `agents.define`. A name with no registry entry behind it is the failing case,
+// covered by its own test below.
+const configuredAgents = vi.hoisted(() => ({
+  define: "claude",
+  registry: { claude: { name: "claude", models: [] } },
+  fallbackOrder: ["claude"],
+}));
 vi.mock("../utils/config.js", () => ({
-  loadConfig: vi.fn(() => ({ agents: { define: "claude" } })),
+  loadConfig: vi.fn(() => ({ agents: configuredAgents })),
 }));
 vi.mock("../utils/resolve-model.js", () => ({
   resolveModelForTask: vi.fn(() => "claude-opus-4-8"),
@@ -184,6 +192,69 @@ describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
       adrCommandHandler({ target: "Decision Records", run: true }),
     ).rejects.toThrow(/No agent backend available\. Run: gwrk plugin list agents/);
     expect(runtimeMock.executeWorkflow).not.toHaveBeenCalled();
+  });
+
+  // The mocked `loadConfig` above can return `{agents:{}}`; the real one cannot.
+  // `agents.define` carries `.default("agy")`, so every parsed config names a
+  // backend and a guard on the name alone never fires. This case drives the
+  // REAL `loadConfig` against a fixture that declares no `agents` block, which
+  // is the shape an initialized project ships by default.
+  it("FR-007: rejects a config with no agent registry, without exiting the process", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "adr-dispatch-"));
+    fs.writeFileSync(
+      path.join(fixture, ".gwrkrc.json"),
+      JSON.stringify({ project: { name: "fixture" } }),
+    );
+    // Layer 3 of `loadConfig` reads `$GWRK_HOME/config.json`. Point it at an
+    // empty directory so this machine's global config cannot supply a registry.
+    const gwrkHome = fs.mkdtempSync(path.join(os.tmpdir(), "adr-home-"));
+    const priorHome = process.env.GWRK_HOME;
+    process.env.GWRK_HOME = gwrkHome;
+
+    const { adrCommandHandler } = await load();
+    const { loadConfig } = await import("../utils/config.js");
+    const actualConfig =
+      await vi.importActual<typeof import("../utils/config.js")>(
+        "../utils/config.js",
+      );
+    vi.mocked(loadConfig).mockImplementation(actualConfig.loadConfig);
+    scaffoldMock.findProjectRoot.mockResolvedValue(fixture);
+
+    // `loadRegistry` reports a missing registry with `process.exit(1)`, which no
+    // catch can intercept and which skips the `[exit:N | Xs]` line FR-001
+    // mandates. The guard must fire before anything reaches it.
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(((code?: number) => {
+        throw new Error(`process.exit(${code})`);
+      }) as never);
+
+    try {
+      await expect(
+        adrCommandHandler({ target: "Decision Records", run: true }),
+      ).rejects.toThrow(
+        /No agent backend available\. Run: gwrk plugin list agents/,
+      );
+      expect(exit).not.toHaveBeenCalled();
+      expect(runtimeMock.executeWorkflow).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+      vi.mocked(loadConfig).mockImplementation(
+        () => ({ agents: configuredAgents }) as never,
+      );
+      if (priorHome === undefined) {
+        process.env.GWRK_HOME = undefined;
+        delete process.env.GWRK_HOME;
+      } else {
+        process.env.GWRK_HOME = priorHome;
+      }
+      fs.rmSync(fixture, { recursive: true, force: true });
+      fs.rmSync(gwrkHome, { recursive: true, force: true });
+    }
   });
 });
 
