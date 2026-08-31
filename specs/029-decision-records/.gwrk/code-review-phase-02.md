@@ -1,55 +1,59 @@
-## Code Review — Phase 2 (Scaffolder and `gwrk define adr`) — GO
+# Code Review — Phase 2: Scaffolder and `gwrk define adr`
 
-The pass-3 blocking finding is fixed. No new blocking finding. T006 completed.
+**Verdict: GO.** All three tasks pass. No blocking findings.
 
-| Task | Gate | Finding | Status |
-|---|---|---|---|
-| T006 `adr-scaffold.ts` | passes | none | completed |
-| T007 `adr.ts` | passes | none | completed |
-| T008 `define.ts` | passes | none | completed |
+## Mechanical baseline
 
-### The config error now propagates
-
-`resolveDecisionsDir` at `src/engine/adr-scaffold.ts:240-262` re-throws every `loadConfig` error whose message does not match `CONFIG_ABSENT` (`:70`). Only an absent `.gwrkrc.json` falls back to `docs/decisions`.
-
-Reproduced against a temp project whose `.gwrkrc.json` sets `decisions` to `docs/adr` and omits the required `project.name`.
-
-| Invocation | Exit | Written |
+| Check | Result | Detail |
 |---|---|---|
-| `define adr "Bad"` | 1, names `project.name Required` | nothing |
-| `define adr --print` | 1, same error | nothing |
-| `define adr "Bad" --run` | 1, same error | nothing |
+| Build | PASS | `pnpm build`, `tsc` clean |
+| Gates | PASS | `run-all-gates.sh` 11/11 |
+| Phase tests | PASS | 65/65 across 5 files |
+| Lint | PASS | Phase files clean under biome |
 
-The split verdict is closed. `scaffold` and `draftRecord` reach the same `loadConfig` and now agree, so `--run` can no longer write a record to the default directory and then exit 1.
+Repo-wide `pnpm lint` reports 357 errors. Every one is in files outside this phase and predates it. No auto-fix applied.
 
-### Verified working
+## Prior findings, re-verified
 
-| Check | Result |
-|---|---|
-| FR-019 configured dir | valid config wrote `docs/adr/ADR-001-configured-dir.md`, no `docs/decisions` |
-| US-001 AC-3 subdirectory walk | `ADR-002` from `a/b/c` landed in the configured dir |
-| FR-002 concurrent allocation | 5/5 races landed exactly one record, loser exited 1 naming the winner |
-| FR-002 claim and stage litter | none left behind in any run |
-| T006 gate | exit 0, including the new invalid-config assertion |
-| T007 gate, T008-gate.sh | exit 0 |
-| Phase unit tests | 39/39 green across `adr-scaffold`, `adr`, `define` |
-| Build and typecheck | `tsc` clean |
-| Lint on phase files | biome clean |
+| Finding | Task | State |
+|---|---|---|
+| `--print` stamped a UTC date | T007 | Fixed |
+| Concurrent runs both wrote at one number | T006 | Fixed |
 
-### New test coverage closes the gate hole
+The `--print` date fix landed exactly as the note specified. `todayLocal()` is exported from `src/engine/adr-scaffold.ts:365` and imported by `src/commands/adr.ts:11`. Both call sites now render from one helper. `src/commands/adr.test.ts:98-119` asserts the `date:` call argument under a faked clock at `2026-08-31T04:00Z` with `TZ=America/Denver`, and gets `2026-08-30`.
 
-`src/engine/adr-scaffold.test.ts` splits the old mocked test into absent-defaults plus two present-but-invalid rejects. A new non-mocked `029 FR-019/TC-002: real config resolution` block drives real `scaffold()` calls against real temp projects for configured-dir, schema-invalid and malformed-JSON.
+The concurrency fix is the `.ADR-NNN.claim` published by `fs.link`.
 
-The T006 gateScript now scaffolds against a temp project with a schema-invalid config carrying a `decisions` field and fails on exit 0 or on a created `docs/decisions`. It also fails on a literal `catch {}` and requires AMBER-4 in `plan.md` and `contracts/adr-engine.md`.
+## Reproduced against the built CLI
 
-### Documentation
+I ran these myself rather than reading the tests.
 
-AMBER-4 is recorded in `plan.md:128` Resolved Ambiguities, the TC-002 governance row, the traceability table, and the `resolveDecisionsDir` contract at `contracts/adr-engine.md:154-160`.
+| Probe | Expected | Observed |
+|---|---|---|
+| 8 concurrent `define adr` in one empty project | one record, no duplicate number | 1 exit 0, 7 exit 1, one `ADR-001` |
+| Loser message | names the winner's path | `ADR-001 already exists: docs/decisions/ADR-001-race-candidate-6.md` |
+| Leftover litter after the race | none | no `.claim`, no `.stage` |
+| Stale `.ADR-001.claim`, no records | next run steps to 002 | wrote `ADR-002-after-crash.md`, exit 0 |
+| `chmod 555 docs/decisions` | `Cannot write docs/decisions/: EACCES` | exact match, exit 1 |
+| No `.gwrkrc.json` in any parent | `Not a gwrk project: … Run: gwrk init` | exact match, exit 1 |
+| `define adr` with no title | `Title is required: gwrk define adr "<title>"` | exact match, exit 1 |
+| Write and `--print` from `a/b/` | resolves the real project root | both resolved, numbers continued |
+| Scaffolded record through `parseRecord` | header and §1-§7 tree resolve | parsed, `status: Proposed`, addresses `1`…`7` |
 
-### Non-blocking observation, carried forward
+The round-trip through the Phase 1 parser is the check the plan's Phase 2 dependency line asks for. The template the scaffolder writes is the shape the parser reads.
 
-A title of only non-alphanumeric characters still slugifies to nothing and writes `ADR-001-.md`. `gwrk define adr "日本語"` exits 0 with an empty slug. No spec text covers this. Worth a decision before the Phase 5 index reads the corpus.
+## Contract conformance
 
-### Pre-existing, outside this phase
+`scaffold()` follows the order `adr-engine.md` §3 contracts: root discovery, decisions dir, allocation, mkdir, claim, existence check, write, release. All four error rows in that section reproduce with the exact contracted text.
 
-`pnpm lint` reports 357 errors repo-wide. None are in the phase-02 files.
+`renderTemplate` emits the ten §4.1 elements in order, with `## Amendments` last, literal and unnumbered per AMBER-2.
+
+`--print` declares no `--format`, per `adr-command.md` §2. Phase 2 declares `--print` only.
+
+Neither `--refs` nor `--dry-run` is declared. `cli.option-collisions.test.ts` still passes with no allowlist entry.
+
+No `any` in either new source file. MPL headers present on both, per VR-004.
+
+## Non-blocking observation
+
+A title of pure punctuation produces an empty slug. `gwrk define adr "!!! ???"` writes `docs/decisions/ADR-001-.md`. The filename still matches FR-002's `/^ADR-(\d{3})-/`, the record parses, and no spec clause requires a non-empty slug. Recording it because a later phase's index rendering may want a fallback slug. Not a Phase 2 defect and not re-opened.
