@@ -214,6 +214,39 @@ function isTransientGhError(message: string): boolean {
 }
 
 /**
+ * The environment failing, not the agent failing.
+ *
+ * A review that reports NO-GO is a verdict and must stand; retrying it would
+ * re-roll a red into a green. A review that never got to report anything was
+ * interrupted, and is worth another attempt. These patterns name the second
+ * case only, so nothing here may match ordinary agent prose.
+ *
+ * Run #5471 lost 029 phase-03 to the first entry: the Mac slept on battery
+ * 8m45s into CODE_REVIEW, having already committed IMPLEMENT and passed both
+ * post-flight gates.
+ */
+const TRANSIENT_AGENT_PATTERNS = [
+  /computer went to sleep/i, // host suspended mid-response
+  /\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE)\b/,
+  /socket hang up/i,
+  /connection (reset|closed) by peer/i,
+  /\bHTTP (50[0234])\b/,
+  /\b(Bad Gateway|Service Unavailable|Gateway Time-?out)\b/i,
+  /\b(overloaded_error|rate_limit_error)\b/i,
+];
+
+function isTransientAgentFailure(result: {
+  stdout?: string;
+  stderr?: string;
+}): boolean {
+  const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  return TRANSIENT_AGENT_PATTERNS.some((re) => re.test(text));
+}
+
+/** Attempts after the first before a transient dispatch is allowed to fail. */
+const AGENT_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
+
+/**
  * `gh pr checks` exits 1 with this when the PR has no check runs at all. On a
  * PR created seconds ago that means "not registered yet", not "none exist".
  */
@@ -2584,8 +2617,29 @@ ${marker}`;
     // 2. Dispatch — run the agent in the ship working tree (cwd), not
     // process.cwd(). Identical for the primary checkout; under worktree-isolated
     // shipping this points the agent at the per-feature worktree.
+    //
+    // Retry only what the environment broke. An agent that ran and returned a
+    // verdict is answered once; an agent the host suspended or the network cut
+    // off never answered at all, and failing the phase on that discards work
+    // every earlier stage already proved good.
     const workDir = task.workDir ?? this.config.cwd;
-    const result = await dispatchToAgent({ ...task, model, env, workDir });
+
+    let result = await dispatchToAgent({ ...task, model, env, workDir });
+
+    for (
+      let attempt = 0;
+      result.exitCode !== 0 &&
+      isTransientAgentFailure(result) &&
+      attempt < AGENT_RETRY_DELAYS_MS.length;
+      attempt++
+    ) {
+      const wait = AGENT_RETRY_DELAYS_MS[attempt];
+      console.log(
+        `    ⚠ agent dispatch interrupted by the environment — retrying in ${wait / 1000}s (${attempt + 1}/${AGENT_RETRY_DELAYS_MS.length})`,
+      );
+      await this.sleep(wait);
+      result = await dispatchToAgent({ ...task, model, env, workDir });
+    }
 
     return result;
   }
