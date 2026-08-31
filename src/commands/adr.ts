@@ -9,6 +9,7 @@ import {
   renderTemplate,
   resolveDecisionsDir,
   scaffold,
+  todayLocal,
 } from "../engine/adr-scaffold.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
 import { loadConfig } from "../utils/config.js";
@@ -56,7 +57,9 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
 
   // `--print` is a query (contract §2): the template to stdout, nothing
   // written. It still resolves the project so the number it prints is the
-  // number the next write would take, rather than a fiction.
+  // number the next write would take, rather than a fiction. The date comes
+  // from the same `todayLocal` the write path uses, for the same reason: a
+  // preview that disagrees with the next write is a fiction too (AMBER-5).
   if (args.print) {
     const projectRoot = await findProjectRoot(cwd);
     const decisionsDir = await resolveDecisionsDir(projectRoot);
@@ -65,7 +68,7 @@ export async function adrCommandHandler(args: AdrArgs): Promise<string> {
     return renderTemplate({
       number,
       title: args.target?.trim() || TITLE_PLACEHOLDER,
-      date: new Date().toISOString().slice(0, 10),
+      date: todayLocal(),
     });
   }
 

@@ -33,7 +33,13 @@ const scaffoldMock = vi.hoisted(() => ({
   resolveDecisionsDir: vi.fn(),
   allocateNumber: vi.fn(),
 }));
-vi.mock("../engine/adr-scaffold.js", () => scaffoldMock);
+// The engine is mocked per-export rather than wholesale so `todayLocal` stays
+// real. The `--print` date case asserts the command reaches the same helper the
+// write path uses, which a stubbed date would hide (AMBER-5).
+vi.mock("../engine/adr-scaffold.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/adr-scaffold.js")>()),
+  ...scaffoldMock,
+}));
 
 const load = () => import("./adr.js");
 
@@ -87,6 +93,30 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     expect(output).toContain("> **Status:** Proposed");
     expect(output).toMatch(/^## Amendments$/m);
     expect(scaffoldMock.scaffold).not.toHaveBeenCalled();
+  });
+
+  it("FR-003: --print stamps the author's local date, not the UTC one", async () => {
+    const { adrCommandHandler } = await load();
+
+    // 2026-08-31T04:00Z is 2026-08-30 22:00 in America/Denver. A UTC stamp
+    // prints tomorrow, so the preview disagrees with the record the next write
+    // produces one second later (AMBER-5).
+    const priorTz = process.env.TZ;
+    process.env.TZ = "America/Denver";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T04:00:00Z"));
+
+    try {
+      await adrCommandHandler({ print: true });
+
+      expect(scaffoldMock.renderTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({ date: "2026-08-30" }),
+      );
+    } finally {
+      vi.useRealTimers();
+      if (priorTz === undefined) delete process.env.TZ;
+      else process.env.TZ = priorTz;
+    }
   });
 
   it("FR-001: rejects an empty title with the corrective command", async () => {

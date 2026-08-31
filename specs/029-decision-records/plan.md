@@ -166,13 +166,23 @@ Corpus ordering also stops being monotonic. A record authored at 19:00 on the 30
 at 09:00 on the 31st, and `Date:` is the only ordering signal a reader has once numbers are allocated by
 a race.
 
-**Resolution**: FR-003 means the author's local calendar date. `scaffold()` builds `YYYY-MM-DD` from
-`getFullYear` / `getMonth` / `getDate`. `toISOString()` is banned for human-facing dates in this module,
-and a T006 gate line fails on it.
+**Resolution**: FR-003 means the author's local calendar date. `adr-scaffold.ts` exports one
+`todayLocal()` helper that builds `YYYY-MM-DD` from `getFullYear` / `getMonth` / `getDate`. Both callers
+use it: `scaffold()` for the write and `adrCommandHandler`'s `--print` for the preview. One helper is
+what stops the two from drifting apart. `toISOString()` is banned for human-facing dates in
+`adr-scaffold.ts` and `adr.ts` alike, and a T006 gate line fails on either file.
 
-Regression-gated by a non-mocked test that fakes a clock under `TZ=America/Denver` at an instant whose
-UTC date has already rolled over, and by a T006 gate line that runs the built CLI under
-`TZ=America/Denver` and compares the written `> **Date:**` value against `date +%Y-%m-%d`.
+Regression-gated three ways. A non-mocked test fakes a clock under `TZ=America/Denver` at an instant
+whose UTC date has already rolled over. A handler test asserts the `date` argument `--print` hands
+`renderTemplate` under that same faked clock. A T006 gate block runs the built CLI under
+`TZ=America/Denver` and compares the written `> **Date:**` against `date +%Y-%m-%d`.
+
+The `--print` gate block runs under `Pacific/Kiritimati` (UTC+14) and `Etc/GMT+12` (UTC-12) rather than
+`America/Denver`, because a fixed zone only diverges from UTC for part of the day and the gate would
+pass by luck outside that window. At every instant at least one of those two zones is on a different
+calendar date from UTC, so a UTC stamp always fails. Each round also asserts the printed value equals
+what the write path writes in the same directory, which catches drift between the two callers whatever
+the hour.
 
 **Out of scope, filed**: `src/engine/plan-renderer.ts:33` carries the same UTC-for-a-human-date call.
 Not Phase 2 work; recorded here as follow-up.
@@ -274,7 +284,7 @@ with no allowlist entry.
 | TC-013 no option collisions | Neither `--refs` nor `--dry-run` declared; baseline stays at nine with no allowlist entry |
 | TC-002 fail-fast config (AMBER-4) | `loadConfig` read with no `.default()`; missing project root exits 1 with the FR-002 message; a present-but-invalid `.gwrkrc.json` exits 1 naming the config error rather than defaulting |
 | TC-015 no lock manager (AMBER-3) | Number taken by an atomic `.ADR-NNN.claim`, released on exit; no lock manager, daemon, timeout or retry loop |
-| FR-003 local date (AMBER-5) | `> **Date:**` is the author's local calendar date; `toISOString()` banned for human-facing dates in `adr-scaffold.ts` |
+| FR-003 local date (AMBER-5) | `> **Date:**` is the author's local calendar date; `toISOString()` banned for human-facing dates in `adr-scaffold.ts` and `adr.ts`, so `--print` and the write path stamp one value |
 | VR-004 MPL header | Required by hand on `adr-scaffold.ts` and `adr.ts` |
 | compile-gate | Always |
 
@@ -313,7 +323,7 @@ ADRCODE=0
 ( cd "$ADRTMP" && node "$ADRCLI" define adr "Gate Invalid Config" ) || ADRCODE=$?
 if [ "$ADRCODE" -eq 0 ] || [ -d "$ADRTMP/docs/decisions" ]; then rm -rf "$ADRTMP"; exit 1; fi
 rm -rf "$ADRTMP"
-if grep -q 'toISOString().slice(0, 10)' src/engine/adr-scaffold.ts; then exit 1; fi
+if grep -q 'toISOString().slice(0, 10)' src/engine/adr-scaffold.ts src/commands/adr.ts; then exit 1; fi
 grep -q 'AMBER-5' specs/029-decision-records/plan.md
 grep -q 'AMBER-5' specs/029-decision-records/contracts/adr-engine.md
 ADRTZ=America/Denver
@@ -325,6 +335,18 @@ ADRTZWRITTEN=$(grep -m1 '^> \*\*Date:\*\*' "$ADRTZFILE" | sed 's/.*Date:\*\* *//
 ADRTZEXPECT=$(TZ=$ADRTZ date +%Y-%m-%d)
 rm -rf "$ADRTZTMP"
 if [ -z "$ADRTZWRITTEN" ] || [ "$ADRTZWRITTEN" != "$ADRTZEXPECT" ]; then exit 1; fi
+for ADRTZP in Pacific/Kiritimati Etc/GMT+12; do
+  ADRTZPTMP=$(mktemp -d)
+  printf '%s' '{"project":{"name":"gate-tz-print"}}' > "$ADRTZPTMP/.gwrkrc.json"
+  ADRTZPEXPECT=$(TZ=$ADRTZP date +%Y-%m-%d)
+  ADRTZPRINTED=$( cd "$ADRTZPTMP" && TZ=$ADRTZP node "$ADRCLI" define adr --print | grep -m1 '^> \*\*Date:\*\*' | sed 's/.*Date:\*\* *//' )
+  ( cd "$ADRTZPTMP" && TZ=$ADRTZP node "$ADRCLI" define adr "Gate TZ Print" ) > /dev/null || { rm -rf "$ADRTZPTMP"; exit 1; }
+  ADRTZPFILE=$(ls "$ADRTZPTMP"/docs/decisions/ADR-001-*.md 2>/dev/null | head -1)
+  ADRTZPWRITTEN=$(grep -m1 '^> \*\*Date:\*\*' "$ADRTZPFILE" | sed 's/.*Date:\*\* *//')
+  rm -rf "$ADRTZPTMP"
+  if [ -z "$ADRTZPRINTED" ] || [ "$ADRTZPRINTED" != "$ADRTZPEXPECT" ]; then exit 1; fi
+  if [ "$ADRTZPRINTED" != "$ADRTZPWRITTEN" ]; then exit 1; fi
+done
 ```
 
 ---

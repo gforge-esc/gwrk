@@ -188,9 +188,12 @@ Emits the §4.1 template:
 9. `## 7. References`
 10. `## Amendments` — **last, literal, unnumbered**, starting empty as the registry `--check` reads.
 
-> **Date note (plan AMBER-5).** `date` is the author's local calendar date. `scaffold()` builds it from
-> `getFullYear` / `getMonth` / `getDate`, never `toISOString()`, which stamps tomorrow for every author
-> west of Greenwich after their evening UTC rollover.
+> **Date note (plan AMBER-5).** `date` is the author's local calendar date. The module exports one
+> `todayLocal()` helper that builds it from `getFullYear` / `getMonth` / `getDate`, never
+> `toISOString()`, which stamps tomorrow for every author west of Greenwich after their evening UTC
+> rollover. Every caller that renders the template uses that helper, `scaffold()` for the write and
+> `gwrk define adr --print` for the preview, so a preview cannot show a different day from the record
+> the next write produces.
 
 > **Heading-form note (plan AMBER-2).** FR-003 lists the registry as "§8", but FR-022's and US-009's
 > executable assertions grep `^## Amendments`. The literal unnumbered heading is authoritative;
