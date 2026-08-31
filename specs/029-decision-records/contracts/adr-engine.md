@@ -151,6 +151,14 @@ nothing), defaulting to `docs/decisions`. Handles the `z.union([z.string(), z.ob
 bare string means the architecture doc, so `decisions` is only present on the object form. One
 `loadConfig` call turns a declared-but-dead seam into the configuration point (FR-019).
 
+A **missing** `.gwrkrc.json` returns the `docs/decisions` default (TC-014). A `.gwrkrc.json` that is
+present but invalid **MUST** reject with the config error (TC-002, plan AMBER-4). That covers malformed
+JSON and any schema violation. Neither is swallowed. `scaffold` runs `findProjectRoot` first, and that only
+returns a root holding a `.gwrkrc.json`, so the absent-file branch is unreachable from `scaffold` and
+every error it can see is a fail-fast condition. Swallowing them writes the record to the default
+directory while `draftRecord` (`commands/adr.ts`), calling the same `loadConfig` unguarded, exits 1 on
+the same config.
+
 ### `allocateNumber(decisionsDir: string): Promise<string>`
 
 Max+1 over the numbers currently **held**, zero-padded to three. A number is held by a record matching

@@ -522,15 +522,40 @@ describe("029 FR-019: project.architecture.decisions is the configuration point 
     await expect(resolveDecisionsDir(ROOT)).resolves.toBe(DECISIONS);
   });
 
-  it("FR-019: defaults to docs/decisions rather than throwing when loadConfig fails", async () => {
+  it("FR-019: defaults to docs/decisions when .gwrkrc.json is absent", async () => {
     const { resolveDecisionsDir } = await load();
 
     configMock.loadConfig.mockImplementation(() => {
-      throw new Error("Configuration file .gwrkrc.json not found");
+      throw new Error(
+        "Configuration file .gwrkrc.json not found at /repo/.gwrkrc.json",
+      );
     });
 
-    // TC-014 bare-clone operable: authoring must not require a readable config.
+    // TC-014 bare-clone operable: an absent config still authors a decision.
     await expect(resolveDecisionsDir(ROOT)).resolves.toBe(DECISIONS);
+  });
+
+  it("TC-002: rejects when .gwrkrc.json is present but invalid", async () => {
+    const { resolveDecisionsDir } = await load();
+
+    // The only errors reachable from `scaffold` — `findProjectRoot` runs first
+    // and guarantees the file exists. Swallowing this writes to the wrong
+    // directory and contradicts `draftRecord`, which never guarded it (AMBER-4).
+    configMock.loadConfig.mockImplementation(() => {
+      throw new Error("Invalid .gwrkrc.json: project.name Required");
+    });
+
+    await expect(resolveDecisionsDir(ROOT)).rejects.toThrow(/project\.name/);
+  });
+
+  it("TC-002: rejects when .gwrkrc.json holds invalid JSON", async () => {
+    const { resolveDecisionsDir } = await load();
+
+    configMock.loadConfig.mockImplementation(() => {
+      throw new Error("Configuration error: invalid JSON in .gwrkrc.json");
+    });
+
+    await expect(resolveDecisionsDir(ROOT)).rejects.toThrow(/invalid JSON/);
   });
 });
 
@@ -653,5 +678,108 @@ describe("029 FR-002: concurrent allocation on a real filesystem (US-001, TC-015
       "ADR-002-alpha-one.md",
       "ADR-003-beta-two.md",
     ]);
+  });
+});
+
+/**
+ * AMBER-4: which `loadConfig` failures reach the user.
+ *
+ * The suites above mock `../utils/config.js`, so they can assert what
+ * `resolveDecisionsDir` does with a thrown error but never which errors a real
+ * config produces. That gap is what let a bare `catch {}` ship: it was justified
+ * as TC-014 bare-clone tolerance, and the mocked test fed it the one error
+ * `scaffold` can never see, because `findProjectRoot` runs first and only
+ * returns a root that holds a `.gwrkrc.json`.
+ *
+ * This block drops the config mock as well as the fs mocks and drives real
+ * `scaffold()` calls against real temp projects.
+ */
+describe("029 FR-019/TC-002: real config resolution", () => {
+  let realFs: typeof import("node:fs/promises");
+  let root = "";
+
+  beforeAll(async () => {
+    realFs = (await vi.importActual(
+      "node:fs/promises",
+    )) as typeof import("node:fs/promises");
+    vi.doUnmock("node:fs/promises");
+    vi.doUnmock("node:fs");
+    vi.doUnmock("../utils/config.js");
+    vi.resetModules();
+  });
+
+  beforeEach(async () => {
+    root = await realFs.mkdtemp(path.join(os.tmpdir(), "gwrk-adr-config-"));
+  });
+
+  afterEach(async () => {
+    await realFs.rm(root, { recursive: true, force: true });
+  });
+
+  const writeConfig = async (config: unknown): Promise<void> => {
+    await realFs.writeFile(
+      path.join(root, ".gwrkrc.json"),
+      JSON.stringify(config),
+    );
+  };
+
+  /** Every `ADR-NNN-*.md` anywhere under the temp root, relative to it. */
+  const allRecords = async (dir = root): Promise<string[]> => {
+    const found: string[] = [];
+    for (const entry of await realFs.readdir(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) found.push(...(await allRecords(full)));
+      else if (/^ADR-\d{3}-.*\.md$/.test(entry.name))
+        found.push(path.relative(root, full));
+    }
+    return found;
+  };
+
+  it("FR-019: writes to the configured decisions directory", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    await writeConfig({
+      project: { name: "gwrk", architecture: { decisions: "docs/adr" } },
+    });
+
+    const result = await scaffold("Configured Dir", { cwd: root });
+
+    expect(path.relative(root, result.filePath)).toBe(
+      path.join("docs", "adr", "ADR-001-configured-dir.md"),
+    );
+    expect(await allRecords()).toEqual([
+      path.join("docs", "adr", "ADR-001-configured-dir.md"),
+    ]);
+    await expect(
+      realFs.access(path.join(root, "docs", "decisions")),
+    ).rejects.toThrow();
+  });
+
+  it("TC-002: a schema-invalid config rejects instead of defaulting", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    // Valid JSON, valid `decisions`, missing the required `project.name`. The
+    // bare catch returned `docs/decisions` here and exited 0, ignoring the
+    // configured `docs/adr` with no message.
+    await writeConfig({ project: { architecture: { decisions: "docs/adr" } } });
+
+    await expect(scaffold("Configured Dir", { cwd: root })).rejects.toThrow(
+      /Configuration error in \.gwrkrc\.json/,
+    );
+    await expect(
+      realFs.access(path.join(root, "docs", "decisions")),
+    ).rejects.toThrow();
+    expect(await allRecords()).toEqual([]);
+  });
+
+  it("TC-002: a config holding invalid JSON rejects instead of defaulting", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    await realFs.writeFile(path.join(root, ".gwrkrc.json"), "{ not json");
+
+    await expect(scaffold("Broken Json", { cwd: root })).rejects.toThrow(
+      /invalid JSON/,
+    );
+    expect(await allRecords()).toEqual([]);
   });
 });

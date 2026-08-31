@@ -64,6 +64,12 @@ const PROJECT_MARKER = ".gwrkrc.json";
 const DEFAULT_DECISIONS_DIR = path.join("docs", "decisions");
 
 /**
+ * The one `loadConfig` failure that is not a TC-002 fail-fast condition. Matched
+ * on the message `utils/config.ts` throws when `.gwrkrc.json` is absent.
+ */
+const CONFIG_ABSENT = /Configuration file \.gwrkrc\.json not found/;
+
+/**
  * The `.md` suffix AND the record pattern (FR-002). A raw readdir is the first
  * flaw of the research allocator: a stray `notes.txt`, a `README.md` or a
  * directory would all skew the allocation.
@@ -224,8 +230,13 @@ export async function findProjectRoot(cwd: string): Promise<string> {
  *
  * `architecture` is `z.union([z.string(), z.object({doc, decisions})])`: a bare
  * string names the architecture doc, so `decisions` exists only on the object
- * form. An unreadable config falls back to the default rather than throwing —
- * authoring a decision must not require a readable config (TC-014).
+ * form.
+ *
+ * Only an absent `.gwrkrc.json` falls back to the default (TC-014). A config
+ * that is present but invalid rejects with the config error (TC-002), matching
+ * `draftRecord` in `src/commands/adr.ts`, which calls the same `loadConfig`
+ * unguarded. Swallowing it would write the record to the wrong directory and
+ * split the verdict between the two callers (AMBER-4).
  */
 export async function resolveDecisionsDir(
   projectRoot: string,
@@ -239,8 +250,13 @@ export async function resolveDecisionsDir(
     if (architecture && typeof architecture === "object") {
       configured = architecture.decisions;
     }
-  } catch {
-    // TC-014 bare-clone operable.
+  } catch (error: unknown) {
+    // `scaffold` runs `findProjectRoot` first, which only returns a root that
+    // holds a `.gwrkrc.json`, so the absent-file branch is unreachable from
+    // there. It stays for direct callers. Every other error is a TC-002
+    // fail-fast condition and propagates.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!CONFIG_ABSENT.test(message)) throw error;
   }
 
   return path.join(projectRoot, configured || DEFAULT_DECISIONS_DIR);

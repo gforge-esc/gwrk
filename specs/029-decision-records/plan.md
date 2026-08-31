@@ -125,6 +125,35 @@ Verified 5/5 on a real filesystem after the change: exactly one `ADR-002` lands,
 Regression-gated by the non-mocked suite in `src/engine/adr-scaffold.test.ts` (TR-001) and by the
 Phase 2 Done-When consistency check, which fails if this departure is ever undocumented again.
 
+### 🟡 AMBER-4 — TC-014's bare-clone tolerance covers an absent config, not an invalid one
+
+`resolveDecisionsDir` shipped a bare `catch {}` around `loadConfig`, justified in the source as TC-014
+bare-clone tolerance. It never handled that case.
+
+`scaffold` calls `findProjectRoot` first, and that only returns a root holding a `.gwrkrc.json`. By the
+time `resolveDecisionsDir` runs, the file is guaranteed present. The catch could only ever fire on
+malformed JSON or a schema violation, and both are TC-002 fail-fast conditions. A bare clone carries the
+committed `.gwrkrc.json` and parses fine, so TC-014 was never at stake.
+
+Measured on the built CLI with a `.gwrkrc.json` setting `decisions` to `docs/adr` and omitting the
+required `project.name`:
+
+- `gwrk define adr "Configured Dir"` exited 0 and wrote `docs/decisions/ADR-001-configured-dir.md`,
+  ignoring the configured directory with no message.
+- `gwrk define adr "Split Brain" --run` wrote the record to the wrong directory **and then** exited 1
+  with the schema error, because `draftRecord` calls the same `loadConfig` unguarded.
+
+One command, one config, two contradictory answers about one `loadConfig` call.
+
+**Resolution**: TC-002 fail-fast wins. The catch is narrowed to the file-absent message alone. Malformed
+JSON and schema violations propagate, and `scaffold` surfaces them as exit 1 naming the config error,
+matching `draftRecord`. TC-014's tolerance is preserved for the one case it describes: a direct
+`resolveDecisionsDir` call against a root with no `.gwrkrc.json` still returns `docs/decisions`.
+
+Regression-gated by the non-mocked block in `src/engine/adr-scaffold.test.ts`, which drives real
+`scaffold()` calls against temp projects, and by a T006 gate line that scaffolds against a
+schema-invalid config and fails on exit 0.
+
 ### Adopted spec recommendations
 
 - **OQ-002** — `Superseded` stays **derived-only**; no status flip is written into a header until a
@@ -220,7 +249,7 @@ with no allowlist entry.
 |---|---|
 | ADR-004 (agent-native output) | `withSignal("define adr", …)` emits `[exit:N \| Xs]`. D12 records that `define research` omits this; FR-001 forbids copying that omission |
 | TC-013 no option collisions | Neither `--refs` nor `--dry-run` declared; baseline stays at nine with no allowlist entry |
-| TC-002 fail-fast config | `loadConfig` read with no `.default()`; missing project root exits 1 with the FR-002 message |
+| TC-002 fail-fast config (AMBER-4) | `loadConfig` read with no `.default()`; missing project root exits 1 with the FR-002 message; a present-but-invalid `.gwrkrc.json` exits 1 naming the config error rather than defaulting |
 | TC-015 no lock manager (AMBER-3) | Number taken by an atomic `.ADR-NNN.claim`, released on exit; no lock manager, daemon, timeout or retry loop |
 | VR-004 MPL header | Required by hand on `adr-scaffold.ts` and `adr.ts` |
 | compile-gate | Always |
@@ -863,7 +892,7 @@ _No mockups exist for this feature._ The surface is a CLI command plus two gener
 | Spec Item | Phase | Status |
 |---|---|---|
 | TC-001 air-gapped | All | Honoured — no network call introduced |
-| TC-002 fail-fast config | 2 | Honoured — `loadConfig`, no `.default()` |
+| TC-002 fail-fast config | 2 | Honoured — `loadConfig`, no `.default()`; invalid config rejects (AMBER-4) |
 | TC-003 TypeScript only | All | Honoured — every new module is `.ts`, ESM |
 | TC-004 no fifth carrier | 5, 6, 7 | Honoured — index derived; one pointer line in `.gwrk/agent-context.md` |
 | TC-005 document, not requirement | 10 | Honoured — citation resolver only, no plan-graph coupling |
@@ -875,7 +904,7 @@ _No mockups exist for this feature._ The surface is a CLI command plus two gener
 | TC-011 nothing named "cascade" | 3 | Honoured — `gwrk-adr-record`; `gwrk-cascade-sync` untouched |
 | TC-012 builtins ship through the build | 3, 7, 11 | Honoured — `pnpm run build` precedes every `dist/` assertion |
 | TC-013 no option collisions | 2 | Honoured — no `--refs`, no `--dry-run`, no allowlist entry |
-| TC-014 bare-clone operable | 1, 2, 5, 8, 10 | Honoured — no SQLite, no build server |
+| TC-014 bare-clone operable | 1, 2, 5, 8, 10 | Honoured — no SQLite, no build server; scoped to an absent config (AMBER-4) |
 | TC-015 no lock manager | 2 | Departure recorded as AMBER-3 — atomic claim released on exit; no lock manager, daemon, timeout or retry loop |
 | TC-016 fail-open grounding | 6 | Honoured — inherited verbatim from the three existing rows |
 
