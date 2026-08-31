@@ -34,12 +34,17 @@ vi.mock("../plugins/workflow-runtime.js", () => ({
   WorkflowRuntime: runtimeMock.WorkflowRuntime,
 }));
 
+// A factory mock replaces the module wholesale, so every export `adr.ts`
+// imports must appear here or the import throws at call time. Phase 2 added
+// `todayLocal` to the scaffold and imported it in `adr.ts`; this file belongs to
+// Phase 3, so the Phase 2 gate never ran it and the omission reached CI.
 const scaffoldMock = vi.hoisted(() => ({
   scaffold: vi.fn(),
   renderTemplate: vi.fn(() => "# ADR-010: Decision Records\n"),
   findProjectRoot: vi.fn(),
   resolveDecisionsDir: vi.fn(),
   allocateNumber: vi.fn(),
+  todayLocal: vi.fn(() => "2026-08-31"),
 }));
 vi.mock("../engine/adr-scaffold.js", () => scaffoldMock);
 
