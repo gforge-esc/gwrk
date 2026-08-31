@@ -38,7 +38,10 @@ export interface AdrSupersession {
 /** The blockquote header block that follows the H1 (TC-007 — not YAML frontmatter). */
 export interface AdrHeader {
   status: AdrStatus;
-  /** ISO date as written, e.g. "2026-02-26". */
+  /**
+   * The author's local calendar date as written, `YYYY-MM-DD`, e.g. "2026-02-26".
+   * Never a UTC-derived date (AMBER-5).
+   */
   date: string;
   /** Up to 240 characters, preserved verbatim; the index truncates for display (FR-004). */
   decision: string;
@@ -151,17 +154,28 @@ nothing), defaulting to `docs/decisions`. Handles the `z.union([z.string(), z.ob
 bare string means the architecture doc, so `decisions` is only present on the object form. One
 `loadConfig` call turns a declared-but-dead seam into the configuration point (FR-019).
 
+A **missing** `.gwrkrc.json` returns the `docs/decisions` default (TC-014). A `.gwrkrc.json` that is
+present but invalid **MUST** reject with the config error (TC-002, plan AMBER-4). That covers malformed
+JSON and any schema violation. Neither is swallowed. `scaffold` runs `findProjectRoot` first, and that only
+returns a root holding a `.gwrkrc.json`, so the absent-file branch is unreachable from `scaffold` and
+every error it can see is a fail-fast condition. Swallowing them writes the record to the default
+directory while `draftRecord` (`commands/adr.ts`), calling the same `loadConfig` unguarded, exits 1 on
+the same config.
+
 ### `allocateNumber(decisionsDir: string): Promise<string>`
 
-Max+1 over entries matching `/^ADR-(\d{3})-/`, zero-padded to three. No locking (TC-015): two concurrent
-runs compute the same number and `scaffold`'s existence check makes the second fail loudly.
+Max+1 over the numbers currently **held**, zero-padded to three. A number is held by a record matching
+`/^ADR-(\d{3})-/` **or** by a live `.ADR-NNN.claim` (TC-015, plan AMBER-3). Counting claims is what stops
+a claim a crashed run left behind from wedging its number forever. The next run steps over it to the
+following number. No lock manager, no daemon, no timeout, no retry loop.
 
 ### `renderTemplate(input: { number: string; title: string; date: string }): string`
 
 Emits the §4.1 template:
 
 1. `# ADR-<NNN>: <title>`
-2. Blockquote header — `> **Status:** Proposed`, `> **Date:** <today>`, `> **Decision:**`,
+2. Blockquote header — `> **Status:** Proposed`, `> **Date:** <today, local calendar date>`,
+   `> **Decision:**`,
    `> **Constraint:**`, optional `> **Depends on:**` / `> **Supersedes:**`,
    `> **Author:** … · **Decision Scope:** …`
 3. `## 1. Context`
@@ -173,6 +187,13 @@ Emits the §4.1 template:
 8. `## 6. Consequences`
 9. `## 7. References`
 10. `## Amendments` — **last, literal, unnumbered**, starting empty as the registry `--check` reads.
+
+> **Date note (plan AMBER-5).** `date` is the author's local calendar date. The module exports one
+> `todayLocal()` helper that builds it from `getFullYear` / `getMonth` / `getDate`, never
+> `toISOString()`, which stamps tomorrow for every author west of Greenwich after their evening UTC
+> rollover. Every caller that renders the template uses that helper, `scaffold()` for the write and
+> `gwrk define adr --print` for the preview, so a preview cannot show a different day from the record
+> the next write produces.
 
 > **Heading-form note (plan AMBER-2).** FR-003 lists the registry as "§8", but FR-022's and US-009's
 > executable assertions grep `^## Amendments`. The literal unnumbered heading is authoritative;
@@ -192,12 +213,21 @@ export interface AdrScaffoldResult {
 }
 ```
 
-Order of operations: `findProjectRoot` → `resolveDecisionsDir` → `allocateNumber` → **existence check**
-→ `mkdir` → `writeFile`.
+Order of operations: `findProjectRoot` → `resolveDecisionsDir` → `allocateNumber` → `mkdir` →
+**claim** → **existence check** → `writeFile` → **release**.
+
+The claim is `.ADR-NNN.claim`, published by an atomic `fs.link` the kernel grants to exactly one writer,
+and released in a `finally` (TC-015, plan AMBER-3). Two runs that computed the same number cannot both
+reach the write, and the loser names the winner's path, which the claim's contents carry.
+
+The existence check runs **after** the claim, never before. A run that completed between this run's
+allocation read and its claim released its own claim on the way out, so its record is only visible to a
+read taken after the claim succeeds. A crash leaves one visible `.ADR-NNN.claim` that costs the corpus
+one number and blocks nothing.
 
 | Condition | stderr contains | Exit |
 |---|---|---|
-| `ADR-NNN-*.md` exists at the computed number | `ADR-010 already exists: docs/decisions/ADR-010-<slug>.md` | 1 |
+| A record or a live claim holds the computed number | `ADR-010 already exists: docs/decisions/ADR-010-<slug>.md` | 1 |
 | No `.gwrkrc.json` in any parent | `Not a gwrk project: no .gwrkrc.json found in <cwd> or any parent. Run: gwrk init` | 1 |
 | Empty title | `Title is required: gwrk define adr "<title>"` | 1 |
 | `docs/decisions/` unwritable | `Cannot write docs/decisions/: <errno>` | 1 |

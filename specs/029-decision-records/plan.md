@@ -19,9 +19,9 @@ spec's phase boundaries stay verifiable:
 | 3 — Amend and check | 8, 9, 10 | D13 is closed by a mechanism, not a memory (SC-007) |
 | 4 — Audit | 11 | Semantic contradiction gets reported (SC-010) |
 
-Two departures from the spec's literal text are taken deliberately and recorded in
-§Resolved Ambiguities below: the FR-024 scan rule (settles OQ-003) and the `## Amendments` heading
-form. One correction applies to every phase gate in this document and is not optional.
+Three departures from the spec's literal text are taken deliberately and recorded in
+§Resolved Ambiguities below: the FR-024 scan rule (settles OQ-003), the `## Amendments` heading form,
+and the atomic number claim TC-015's literal wording forbids. One correction applies to every phase gate in this document and is not optional.
 
 ---
 
@@ -97,6 +97,95 @@ denotes ordinal position in the template listing, not a numbered heading — exe
 over prose ordinals. FR-021's max+1 scan sees only `## N.` headings, so the registry does not disturb
 numbering: ADR-005's next appended section is `## 13.` (after its existing §8–§12), inserted *before*
 the registry.
+
+### 🟡 AMBER-3 — TC-015's no-lockfile prohibition cannot deliver FR-002's outcome
+
+TC-015 as written says "No locking", and names FR-002's existence check as what makes the second of two
+concurrent runs fail loudly. Those two clauses contradict each other.
+
+Measured on a real filesystem, 5 out of 5 two-process races produced two records at the same number:
+
+- Both runs finish their re-read before either writes, so each sees the number free.
+- `writeFile` with `flag: "wx"` refuses only an identical filename. A second slug at the same number
+  sails past it.
+- The result is `ADR-002-alpha-one.md` beside `ADR-002-beta-two.md`, both runs exiting 0. That is the
+  silent-sibling flaw FR-002 exists to correct.
+
+**Resolution**: FR-002's stated outcome wins over TC-015's stated mechanism. The number is taken in one
+atomic step before the write. That step is a `.ADR-NNN.claim` published by `fs.link`, which the kernel
+grants to exactly one writer. The claim is released in a `finally` on the way out. `allocateNumber`
+counts a claimed number as held, so a claim a crashed run left behind costs the corpus one number
+rather than wedging it.
+
+TC-015's proportionality argument still forbids four things, and none of them are added here: a lock
+manager, a daemon, a timeout, a retry loop. One `link` call and one `unlink`. Nothing waits.
+
+Verified 5/5 on a real filesystem after the change: exactly one `ADR-002` lands, the loser exits 1 with
+`ADR-002 already exists: docs/decisions/ADR-002-<slug>.md`, and no claim or stage file survives.
+Regression-gated by the non-mocked suite in `src/engine/adr-scaffold.test.ts` (TR-001) and by the
+Phase 2 Done-When consistency check, which fails if this departure is ever undocumented again.
+
+### 🟡 AMBER-4 — TC-014's bare-clone tolerance covers an absent config, not an invalid one
+
+`resolveDecisionsDir` shipped a bare `catch {}` around `loadConfig`, justified in the source as TC-014
+bare-clone tolerance. It never handled that case.
+
+`scaffold` calls `findProjectRoot` first, and that only returns a root holding a `.gwrkrc.json`. By the
+time `resolveDecisionsDir` runs, the file is guaranteed present. The catch could only ever fire on
+malformed JSON or a schema violation, and both are TC-002 fail-fast conditions. A bare clone carries the
+committed `.gwrkrc.json` and parses fine, so TC-014 was never at stake.
+
+Measured on the built CLI with a `.gwrkrc.json` setting `decisions` to `docs/adr` and omitting the
+required `project.name`:
+
+- `gwrk define adr "Configured Dir"` exited 0 and wrote `docs/decisions/ADR-001-configured-dir.md`,
+  ignoring the configured directory with no message.
+- `gwrk define adr "Split Brain" --run` wrote the record to the wrong directory **and then** exited 1
+  with the schema error, because `draftRecord` calls the same `loadConfig` unguarded.
+
+One command, one config, two contradictory answers about one `loadConfig` call.
+
+**Resolution**: TC-002 fail-fast wins. The catch is narrowed to the file-absent message alone. Malformed
+JSON and schema violations propagate, and `scaffold` surfaces them as exit 1 naming the config error,
+matching `draftRecord`. TC-014's tolerance is preserved for the one case it describes: a direct
+`resolveDecisionsDir` call against a root with no `.gwrkrc.json` still returns `docs/decisions`.
+
+Regression-gated by the non-mocked block in `src/engine/adr-scaffold.test.ts`, which drives real
+`scaffold()` calls against temp projects, and by a T006 gate line that scaffolds against a
+schema-invalid config and fails on exit 0.
+
+### 🟡 AMBER-5 — FR-003's "today's date" is the author's local date, not UTC
+
+`scaffold()` stamped the record with `new Date().toISOString().slice(0, 10)`. `toISOString()` is UTC.
+
+Measured on the built CLI at 2026-08-30 20:59 MDT: `gwrk define adr "Timezone Probe"` wrote
+`> **Date:** 2026-08-31`, one day ahead of the author's today. Every record authored after 18:00 in
+America/Denver is stamped tomorrow, a six-to-seven hour window each day.
+
+Corpus ordering also stops being monotonic. A record authored at 19:00 on the 30th outranks one authored
+at 09:00 on the 31st, and `Date:` is the only ordering signal a reader has once numbers are allocated by
+a race.
+
+**Resolution**: FR-003 means the author's local calendar date. `adr-scaffold.ts` exports one
+`todayLocal()` helper that builds `YYYY-MM-DD` from `getFullYear` / `getMonth` / `getDate`. Both callers
+use it: `scaffold()` for the write and `adrCommandHandler`'s `--print` for the preview. One helper is
+what stops the two from drifting apart. `toISOString()` is banned for human-facing dates in
+`adr-scaffold.ts` and `adr.ts` alike, and a T006 gate line fails on either file.
+
+Regression-gated three ways. A non-mocked test fakes a clock under `TZ=America/Denver` at an instant
+whose UTC date has already rolled over. A handler test asserts the `date` argument `--print` hands
+`renderTemplate` under that same faked clock. A T006 gate block runs the built CLI under
+`TZ=America/Denver` and compares the written `> **Date:**` against `date +%Y-%m-%d`.
+
+The `--print` gate block runs under `Pacific/Kiritimati` (UTC+14) and `Etc/GMT+12` (UTC-12) rather than
+`America/Denver`, because a fixed zone only diverges from UTC for part of the day and the gate would
+pass by luck outside that window. At every instant at least one of those two zones is on a different
+calendar date from UTC, so a UTC stamp always fails. Each round also asserts the printed value equals
+what the write path writes in the same directory, which catches drift between the two callers whatever
+the hour.
+
+**Out of scope, filed**: `src/engine/plan-renderer.ts:33` carries the same UTC-for-a-human-date call.
+Not Phase 2 work; recorded here as follow-up.
 
 ### Adopted spec recommendations
 
@@ -193,15 +282,16 @@ with no allowlist entry.
 |---|---|
 | ADR-004 (agent-native output) | `withSignal("define adr", …)` emits `[exit:N \| Xs]`. D12 records that `define research` omits this; FR-001 forbids copying that omission |
 | TC-013 no option collisions | Neither `--refs` nor `--dry-run` declared; baseline stays at nine with no allowlist entry |
-| TC-002 fail-fast config | `loadConfig` read with no `.default()`; missing project root exits 1 with the FR-002 message |
-| TC-015 no locking | Concurrent runs compute the same number; the existence check makes the second fail loudly |
+| TC-002 fail-fast config (AMBER-4) | `loadConfig` read with no `.default()`; missing project root exits 1 with the FR-002 message; a present-but-invalid `.gwrkrc.json` exits 1 naming the config error rather than defaulting |
+| TC-015 no lock manager (AMBER-3) | Number taken by an atomic `.ADR-NNN.claim`, released on exit; no lock manager, daemon, timeout or retry loop |
+| FR-003 local date (AMBER-5) | `> **Date:**` is the author's local calendar date; `toISOString()` banned for human-facing dates in `adr-scaffold.ts` and `adr.ts`, so `--print` and the write path stamp one value |
 | VR-004 MPL header | Required by hand on `adr-scaffold.ts` and `adr.ts` |
 | compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | unit | `src/engine/adr-scaffold.test.ts` | max+1 over an ADR-001…009 fixture; `.md`-suffix-and-pattern filter against a readdir containing directories and stray files; loud failure naming the conflicting path with `writeFile` never called; root discovery by walking parents for `.gwrkrc.json`; `project.architecture.decisions` honoured, `docs/decisions` default |
+| TR-001 | unit | `src/engine/adr-scaffold.test.ts` | max+1 over an ADR-001…009 fixture; `.md`-suffix-and-pattern filter against a readdir containing directories and stray files; loud failure naming the conflicting path with `writeFile` never called; root discovery by walking parents for `.gwrkrc.json`; `project.architecture.decisions` honoured, `docs/decisions` default; non-mocked: the TC-015 race, real config resolution (AMBER-4), and a faked clock under `TZ=America/Denver` asserting the local date, not the UTC one (AMBER-5) |
 | TR-003 | unit | `src/commands/adr.test.ts` | `adrCommandHandler` returns the written path; `--print` emits the template and writes nothing |
 | TR-009 | unit | `src/cli.ux.test.ts` | `gwrk define adr --help` contains an `Examples:` section |
 | TR-010 | integration | `src/cli.e2e.test.ts` | `adr` appears in `define --help` from the built CLI |
@@ -212,11 +302,51 @@ with no allowlist entry.
 pnpm run build
 npx vitest run src/engine/adr-scaffold.test.ts src/commands/adr.test.ts
 npx vitest run src/cli.ux.test.ts src/cli.e2e.test.ts src/cli.option-collisions.test.ts
-node dist/index.js define --help > .adr-help.log
+node dist/cli.js define --help > .adr-help.log
 grep -qE '^[[:space:]]+adr\b' .adr-help.log
-node dist/index.js define adr --help > .adr-sub-help.log
+node dist/cli.js define adr --help > .adr-sub-help.log
 grep -q 'Examples:' .adr-sub-help.log
 rm -f .adr-help.log .adr-sub-help.log
+grep -q 'fs.link' src/engine/adr-scaffold.ts
+grep -q 'AMBER-3' specs/029-decision-records/plan.md
+grep -q 'ADR-NNN.claim' specs/029-decision-records/spec.md
+grep -q 'ADR-NNN.claim' specs/029-decision-records/contracts/adr-engine.md
+if grep -rq 'No lockin[g]' specs/029-decision-records/spec.md specs/029-decision-records/contracts specs/029-decision-records/checklists; then exit 1; fi
+if grep -qi 'no lockfil[e]' specs/029-decision-records/plan.md; then exit 1; fi
+grep -q 'AMBER-4' specs/029-decision-records/plan.md
+grep -q 'AMBER-4' specs/029-decision-records/contracts/adr-engine.md
+if grep -q 'catch {}' src/engine/adr-scaffold.ts; then exit 1; fi
+ADRCLI="$PWD/dist/cli.js"
+ADRTMP=$(mktemp -d)
+printf '%s' '{"project":{"architecture":{"decisions":"docs/adr"}}}' > "$ADRTMP/.gwrkrc.json"
+ADRCODE=0
+( cd "$ADRTMP" && node "$ADRCLI" define adr "Gate Invalid Config" ) || ADRCODE=$?
+if [ "$ADRCODE" -eq 0 ] || [ -d "$ADRTMP/docs/decisions" ]; then rm -rf "$ADRTMP"; exit 1; fi
+rm -rf "$ADRTMP"
+if grep -q 'toISOString().slice(0, 10)' src/engine/adr-scaffold.ts src/commands/adr.ts; then exit 1; fi
+grep -q 'AMBER-5' specs/029-decision-records/plan.md
+grep -q 'AMBER-5' specs/029-decision-records/contracts/adr-engine.md
+ADRTZ=America/Denver
+ADRTZTMP=$(mktemp -d)
+printf '%s' '{"project":{"name":"gate-tz"}}' > "$ADRTZTMP/.gwrkrc.json"
+( cd "$ADRTZTMP" && TZ=$ADRTZ node "$ADRCLI" define adr "Gate TZ" ) || { rm -rf "$ADRTZTMP"; exit 1; }
+ADRTZFILE=$(ls "$ADRTZTMP"/docs/decisions/ADR-001-*.md 2>/dev/null | head -1)
+ADRTZWRITTEN=$(grep -m1 '^> \*\*Date:\*\*' "$ADRTZFILE" | sed 's/.*Date:\*\* *//')
+ADRTZEXPECT=$(TZ=$ADRTZ date +%Y-%m-%d)
+rm -rf "$ADRTZTMP"
+if [ -z "$ADRTZWRITTEN" ] || [ "$ADRTZWRITTEN" != "$ADRTZEXPECT" ]; then exit 1; fi
+for ADRTZP in Pacific/Kiritimati Etc/GMT+12; do
+  ADRTZPTMP=$(mktemp -d)
+  printf '%s' '{"project":{"name":"gate-tz-print"}}' > "$ADRTZPTMP/.gwrkrc.json"
+  ADRTZPEXPECT=$(TZ=$ADRTZP date +%Y-%m-%d)
+  ADRTZPRINTED=$( cd "$ADRTZPTMP" && TZ=$ADRTZP node "$ADRCLI" define adr --print | grep -m1 '^> \*\*Date:\*\*' | sed 's/.*Date:\*\* *//' )
+  ( cd "$ADRTZPTMP" && TZ=$ADRTZP node "$ADRCLI" define adr "Gate TZ Print" ) > /dev/null || { rm -rf "$ADRTZPTMP"; exit 1; }
+  ADRTZPFILE=$(ls "$ADRTZPTMP"/docs/decisions/ADR-001-*.md 2>/dev/null | head -1)
+  ADRTZPWRITTEN=$(grep -m1 '^> \*\*Date:\*\*' "$ADRTZPFILE" | sed 's/.*Date:\*\* *//')
+  rm -rf "$ADRTZPTMP"
+  if [ -z "$ADRTZPRINTED" ] || [ "$ADRTZPRINTED" != "$ADRTZPEXPECT" ]; then exit 1; fi
+  if [ "$ADRTZPRINTED" != "$ADRTZPWRITTEN" ]; then exit 1; fi
+done
 ```
 
 ---
@@ -266,6 +396,9 @@ test -f dist/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml
 test -f dist/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md
 grep -q 'required: \[summary, intents\]' src/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml
 if grep -qE '\{\{[A-Z_]+\}\}' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md; then exit 1; fi
+grep -q '## 7. References' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md
+grep -q '## Amendments' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md
+pnpm exec biome check src/commands/adr.ts
 test ! -f .gwrk/decisions/index.md
 npx vitest run src/engine/adr-parser.test.ts src/engine/adr-scaffold.test.ts src/commands/adr.test.ts
 ```
@@ -362,13 +495,13 @@ stale (DM-002).
 ```bash
 pnpm run build
 npx vitest run src/engine/adr-index.test.ts
-node dist/index.js define adr --reindex
+node dist/cli.js define adr --reindex
 test -f .gwrk/decisions/index.md
 grep -q '| ADR | Scope | Status | Constraint |' .gwrk/decisions/index.md
 test "$(grep -cE '^\| ADR-0[0-9]{2} ' .gwrk/decisions/index.md)" = 9
 grep -q 'ADR-006' .gwrk/decisions/index.md
 grep -q 'ADR-007' .gwrk/decisions/index.md
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --reindex --check
 ```
 
 ---
@@ -540,7 +673,7 @@ grep -A 20 '^## Amendments' docs/decisions/ADR-007-single-dispatch-path.md > .ad
 grep -q '026' .adr-registry.log
 grep -q '028' .adr-registry.log
 rm -f .adr-registry.log
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --reindex --check
 ```
 
 ---
@@ -548,7 +681,7 @@ node dist/index.js define adr --reindex --check
 ### Phase 9: ADR-010, written by the command this feature ships
 
 SC-003: the feature records its own decision using its own machinery. The record is produced by running
-the shipped CLI — `node dist/index.js define adr "Decision Records" --run` — then finished by hand, so
+the shipped CLI — `node dist/cli.js define adr "Decision Records" --run` — then finished by hand, so
 the scaffolder, the template, the `Constraint:` convention, the registry section and the post-write
 reindex are all exercised end to end on the real corpus rather than on fixtures.
 
@@ -588,9 +721,9 @@ test -f docs/decisions/ADR-010-decision-records.md
 awk 'NR==1{exit !/^# ADR-010: /}' docs/decisions/ADR-010-decision-records.md
 grep -q '^> \*\*Constraint:\*\*' docs/decisions/ADR-010-decision-records.md
 grep -q '^## Amendments' docs/decisions/ADR-010-decision-records.md
-node dist/index.js define adr --reindex
+node dist/cli.js define adr --reindex
 grep -q 'ADR-010' .gwrk/decisions/index.md
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --reindex --check
 npx vitest run src/engine/adr-index.test.ts
 ```
 
@@ -609,7 +742,7 @@ Phase 8 — catches it. Assertion 1 follows AMBER-1's scan rule. VR-007 requires
 - `src/engine/adr-check.test.ts` — **create** — fixture tree: unregistered `028 correction` exits 1 naming `file:line`, exits 0 once registered; unresolvable `ADR-099`; index-hash mismatch (TR-006)
 - `src/commands/adr.ts` — **amend** — `--check` with `--format json` support; error-as-navigation messages (FR-024)
 - `src/engine/ship-orchestrator.ts` — **amend** — correct the `ADR-007 + 028 correction` citation at `:492` to the registered amendment address (FR-025)
-- `.github/workflows/ci.yml` — **amend** — run `node dist/index.js define adr --check` after Build, before Test
+- `.github/workflows/ci.yml` — **amend** — run `node dist/cli.js define adr --check` after Build, before Test
 
 **Requirements Addressed:** FR-024, FR-025 · US-010 · TC-005 · SC-007 · VR-007
 
@@ -639,7 +772,7 @@ Phase 8 — catches it. Assertion 1 follows AMBER-1's scan rule. VR-007 requires
 ```bash
 pnpm run build
 npx vitest run src/engine/adr-check.test.ts
-node dist/index.js define adr --check
+node dist/cli.js define adr --check
 grep -q '028 correction' docs/decisions/ADR-007-single-dispatch-path.md
 grep -rq 'define adr --check' .github/workflows/
 npx vitest run src/engine/ship-orchestrator.review-finding-liveness.test.ts
@@ -696,8 +829,8 @@ grep -q '.gwrk/decisions/index.md' src/plugins/builtins/workflows/gwrk-constitut
 if grep -q 'invariants from .spec.md. files match implementation' src/plugins/builtins/workflows/gwrk-constitution/PROMPT.md; then exit 1; fi
 grep -q '.gwrk/decisions/index.md' src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md
 grep -q 'ADR' src/plugins/builtins/workflows/gwrk-analyze/PROMPT.md
-node dist/index.js define adr --check
-node dist/index.js define adr --reindex --check
+node dist/cli.js define adr --check
+node dist/cli.js define adr --reindex --check
 pnpm test:ci
 ```
 
@@ -773,7 +906,7 @@ _No mockups exist for this feature._ The surface is a CLI command plus two gener
 |---|---|---|
 | FR-001 | 2 | Planned |
 | FR-002 | 2 | Planned |
-| FR-003 | 2 | Planned |
+| FR-003 | 2 | Planned (local calendar date per AMBER-5) |
 | FR-004 | 1 | Planned |
 | FR-005 | 1 | Planned |
 | FR-006 | 1 | Planned |
@@ -827,7 +960,7 @@ _No mockups exist for this feature._ The surface is a CLI command plus two gener
 | Spec Item | Phase | Status |
 |---|---|---|
 | TC-001 air-gapped | All | Honoured — no network call introduced |
-| TC-002 fail-fast config | 2 | Honoured — `loadConfig`, no `.default()` |
+| TC-002 fail-fast config | 2 | Honoured — `loadConfig`, no `.default()`; invalid config rejects (AMBER-4) |
 | TC-003 TypeScript only | All | Honoured — every new module is `.ts`, ESM |
 | TC-004 no fifth carrier | 5, 6, 7 | Honoured — index derived; one pointer line in `.gwrk/agent-context.md` |
 | TC-005 document, not requirement | 10 | Honoured — citation resolver only, no plan-graph coupling |
@@ -839,8 +972,8 @@ _No mockups exist for this feature._ The surface is a CLI command plus two gener
 | TC-011 nothing named "cascade" | 3 | Honoured — `gwrk-adr-record`; `gwrk-cascade-sync` untouched |
 | TC-012 builtins ship through the build | 3, 7, 11 | Honoured — `pnpm run build` precedes every `dist/` assertion |
 | TC-013 no option collisions | 2 | Honoured — no `--refs`, no `--dry-run`, no allowlist entry |
-| TC-014 bare-clone operable | 1, 2, 5, 8, 10 | Honoured — no SQLite, no build server |
-| TC-015 no locking | 2 | Honoured — existence check, no lockfile |
+| TC-014 bare-clone operable | 1, 2, 5, 8, 10 | Honoured — no SQLite, no build server; scoped to an absent config (AMBER-4) |
+| TC-015 no lock manager | 2 | Departure recorded as AMBER-3 — atomic claim released on exit; no lock manager, daemon, timeout or retry loop |
 | TC-016 fail-open grounding | 6 | Honoured — inherited verbatim from the three existing rows |
 
 ### Data Model, Roles, Success and Verification

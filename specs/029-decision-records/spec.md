@@ -81,7 +81,7 @@ As an engineer who has just settled an architectural question, I run `gwrk defin
 
 **Acceptance Scenarios**:
 1. **Given** a corpus of ADR-001 through ADR-009, **When** `gwrk define adr "Decision Records"` runs, **Then**:
-   - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: allocates max+1 over the existing corpus"` exits 0
+   - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: allocates max plus 1 over the existing corpus"` exits 0
    - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-003: writes the section-numbered template with Status Proposed"` exits 0
 2. **Given** `ADR-010-something-else.md` already on disk, **When** the same command runs, **Then**:
    - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: fails loudly on a same-number different-slug collision"` exits 0
@@ -92,8 +92,8 @@ As an engineer who has just settled an architectural question, I run `gwrk defin
    - `npx vitest run src/engine/adr-scaffold.test.ts -t "FR-002: filters on the .md suffix and the ADR-NNN pattern"` exits 0
 5. **Given** the shipped CLI, **When** `define --help` is inspected, **Then**:
    - `npx vitest run src/cli.e2e.test.ts -t "US-018"` exits 0
-   - `node dist/index.js define --help | grep -qE '^\s+adr\b'` exits 0
-   - `node dist/index.js define adr --help | grep -q 'Examples:'` exits 0
+   - `node dist/cli.js define --help | grep -qE '^\s+adr\b'` exits 0
+   - `node dist/cli.js define adr --help | grep -q 'Examples:'` exits 0
 
 ### US-002 - The nine existing records parse unchanged (Priority: P0)
 As the `adr-parser`, I read every one of the nine records on disk and return its status, decision, dependencies and supersession relations plus its heading tree, tolerating the four documented header inconsistencies — because a parser that only reads records it wrote is a parser with nine blind spots.
@@ -254,7 +254,7 @@ As an engineer applying a correction, I run `gwrk define adr ADR-007 --amend --a
 2. **Given** `--at 9.9`, **When** the command runs, **Then**:
    - `npx vitest run src/engine/adr-amend.test.ts -t "FR-020: fails on an unresolvable section address"` exits 0
 3. **Given** `--append-section`, **When** the command runs, **Then**:
-   - `npx vitest run src/engine/adr-amend.test.ts -t "FR-021: numbers the new section max+1 over existing ## N. headings"` exits 0
+   - `npx vitest run src/engine/adr-amend.test.ts -t "FR-021: numbers the new section max plus 1 over existing ## N. headings"` exits 0
 4. **Given** any amendment, **When** the intent is emitted, **Then**:
    - `npx vitest run src/engine/adr-amend.test.ts -t "FR-020: emits a full-file WRITE_FILE that grows the file"` exits 0
    - `npx vitest run src/engine/adr-amend.test.ts -t "FR-026: registers the amendment and regenerates the index in one invocation"` exits 0
@@ -279,7 +279,7 @@ As CI, I run `gwrk define adr --check` and it exits non-zero on the phantom `028
 3. **Given** an `ADR-099` citation, **When** `--check` runs, **Then**:
    - `npx vitest run src/engine/adr-check.test.ts -t "FR-024: reports an ADR citation with no file in docs/decisions"` exits 0
 4. **Given** the repaired tree, **When** `--check` runs against it, **Then**:
-   - `node dist/index.js define adr --check` exits 0
+   - `node dist/cli.js define adr --check` exits 0
    - `grep -q '028 correction' docs/decisions/ADR-007-single-dispatch-path.md` exits 0
    - `grep -q 'Gate authority is one-way\|is one-way' docs/decisions/ADR-007-single-dispatch-path.md` exits 0
 5. **Given** CI, **When** the workflow is inspected, **Then**:
@@ -335,8 +335,8 @@ One clarification, because §1.11 is explicit that it must be stated rather than
 ### Phase 1 — Author
 
 - **FR-001**: System MUST expose `gwrk define adr` as an exported `Command` in its own module `src/commands/adr.ts`, registered on `defineCommand` alongside `researchCommand`, with an `Examples:` help block and `adr` added to the parent `define` `Examples:` block. The action MUST wrap its work in `withSignal("define adr", …)` so the `[exit:N | Xs]` line ADR-004 requires is emitted — D12 records that `define research` skips this, and `define adr` MUST NOT copy it. (Implements: US-001)
-- **FR-002**: System MUST allocate `ADR-NNN`, zero-padded to three, as max+1 over `docs/decisions/` entries matching `/^ADR-(\d{3})-/`, fixing the three flaws of the research allocator: filter on the `.md` suffix **and** the pattern rather than a raw readdir; **fail** naming the conflicting path if `ADR-NNN-*.md` already exists at the computed number, rather than silently writing a sibling; and discover the project root by walking parents for `.gwrkrc.json`, as `init.ts` does, rather than joining `process.cwd()` with literals. No locking — two concurrent runs both compute the same number and the existence check makes the second fail loudly. (Implements: US-001)
-- **FR-003**: System MUST write the §4.1 template: the blockquote header (`Status: Proposed`, today's date, `Decision:`, `Constraint:`, optional `Depends on:` / `Supersedes:`, `Author:` · `Decision Scope:`), then numbered sections §1 Context, §2 Decision with numbered assertion sub-headings, §3 Decision Record (the four-row `Position`/`Confidence`/`Reversibility`/`Risk` table used by 004–009, not a fourth shape), §4 Alternatives Rejected, §5 Impact on Existing Code, §6 Consequences, §7 References, §8 Amendments — the last starting empty as the registry `--check` reads. (Implements: US-001)
+- **FR-002**: System MUST allocate `ADR-NNN`, zero-padded to three, as max+1 over `docs/decisions/` entries matching `/^ADR-(\d{3})-/`, fixing the three flaws of the research allocator: filter on the `.md` suffix **and** the pattern rather than a raw readdir; **fail** naming the conflicting path if `ADR-NNN-*.md` already exists at the computed number, rather than silently writing a sibling; and discover the project root by walking parents for `.gwrkrc.json`, as `init.ts` does, rather than joining `process.cwd()` with literals. No lock manager. The number is taken by an atomic `.ADR-NNN.claim` before the write, so of two runs racing at the same number exactly one writes and the other fails loudly (TC-015, plan AMBER-3). (Implements: US-001)
+- **FR-003**: System MUST write the §4.1 template: the blockquote header (`Status: Proposed`, today's date in the author's local timezone (`YYYY-MM-DD`, not UTC), `Decision:`, `Constraint:`, optional `Depends on:` / `Supersedes:`, `Author:` · `Decision Scope:`), then numbered sections §1 Context, §2 Decision with numbered assertion sub-headings, §3 Decision Record (the four-row `Position`/`Confidence`/`Reversibility`/`Risk` table used by 004–009, not a fourth shape), §4 Alternatives Rejected, §5 Impact on Existing Code, §6 Consequences, §7 References, §8 Amendments — the last starting empty as the registry `--check` reads. (Implements: US-001)
 - **FR-004**: System MUST parse the blockquote header the nine records already use, tolerating every documented corpus inconsistency: two H1 styles (`# ADR: <title>` in 001–002 with the number only in the filename, `# ADR-00N: <title>` in 003–009); ADR-001's trailing double-space hard breaks; ADR-001's absent `Supersedes` and `Depends on`; `·` separating two fields on one line (`Status` with `Date`, `Author` with `Decision Scope`); and `Decision:` values up to 240 characters, which the index truncates. (Implements: US-002)
 - **FR-005**: System MUST extract each record's heading tree, so a section address resolves to a heading that exists and an address that does not (`ADR-007 §9.9`) is reported unresolvable. (Implements: US-002, US-009)
 - **FR-006**: System MUST reconcile the corpus in place — no file rewritten, nothing deleted or reordered — with migration edits 1–5: H1 → `# ADR-00N: <title>` (001, 002); `Status: Proposed` → `Decided` (006, 007), because ADR-008 and ADR-009 both declare `Depends on: ADR-007` and ADR-006 is cited from `agent-backend.ts`, `manifest.ts`, `agent-registry.ts` and `agent.ts`; a relative `Supersedes` link replacing the dead `file:///Users/gonzo/…` (002); deduplication of the two `## 7.` headings so section addressing is unambiguous (001); and the W4 `028 correction` block, whose markdown already exists at [`docs/code-review-verdict-defect.md:422-431`](../../docs/code-review-verdict-defect.md), applied to 007. (Implements: US-002, US-010)
@@ -461,14 +461,14 @@ Two structural notes, both load-bearing:
 - **TC-012**: **Builtins ship through the build.** A builtin needs `manifest.yaml` plus `PROMPT.md`, and `postbuild` copies the tree. Real `gwrk` runs `dist/`, so `npm run build` is not optional for any prompt or manifest change in this feature.
 - **TC-013**: **No option collisions.** `define adr` declares neither `--refs` nor `--dry-run`. The dry-run affordance is `--print`. The nine-entry baseline in `cli.option-collisions.test.ts` MUST remain nine, and no allowlist entry may be added — that test asserts set equality of discovered collisions and never that `withParentFlags` is called, so an allowlist entry alone turns CI green on a broken flag.
 - **TC-014**: **Bare-clone operable.** Authoring, parsing, indexing, amending and checking are discovery-class operations that MUST work from a bare git clone — no SQLite, no build server. Nothing in this feature may require either.
-- **TC-015**: **No locking.** Numbering matches research and specs: two concurrent runs both compute the same number, and FR-002's existence check makes the second fail loudly. A lockfile is out of proportion to a human-paced command.
+- **TC-015**: **No lock manager.** Numbering allocates max+1, and the second of two concurrent runs MUST fail loudly (FR-002). An existence check alone cannot deliver that outcome. Both runs finish reading before either writes, so both see the number free, and `wx` on the record only refuses an identical filename. Numbering therefore takes the number in one atomic step before the write. That step is a `.ADR-NNN.claim` published by `fs.link` and released on the way out. A number a claim holds counts as held. Still out of proportion to a human-paced command, and still banned: a lock manager, a daemon, a timeout, a retry loop, any wait. Recorded as plan AMBER-3.
 - **TC-016**: **Fail-open grounding, deliberately inherited.** A missing index is skipped silently and an unreadable one warns dimly while dispatch continues — matching the three existing rows. Detection of absence belongs to `--reindex --check`, not to dispatch.
 
 ---
 
 ## 7. Testing Requirements
 
-- **TR-001**: `src/engine/adr-scaffold.test.ts` — mock `node:fs/promises` wholesale. Assert `mkdir`/`writeFile` arguments; max+1 numbering over an `ADR-001`…`ADR-009` fixture; the `.md`-suffix-and-pattern filter against a readdir result containing directories and stray files; loud failure naming the conflicting path on a same-number different-slug collision, with `writeFile` never called; project-root discovery by walking parents for `.gwrkrc.json`; and `project.architecture.decisions` honoured with a `docs/decisions` default. Vitest. (FR-002, FR-003, FR-019)
+- **TR-001**: `src/engine/adr-scaffold.test.ts` — mock `node:fs/promises` wholesale for the unit assertions, plus one non-mocked suite against a real temp directory for the TC-015 race. Assert `mkdir`/`writeFile` arguments; max+1 numbering over an `ADR-001`…`ADR-009` fixture; the `.md`-suffix-and-pattern filter against a readdir result containing directories and stray files; loud failure naming the conflicting path on a same-number different-slug collision, with `writeFile` never called; project-root discovery by walking parents for `.gwrkrc.json`; and `project.architecture.decisions` honoured with a `docs/decisions` default. The non-mocked suite drives two overlapping `scaffold()` calls and asserts exactly one record lands at the number, the loser rejects naming the winner's path, and no claim or stage file survives. It also fakes a clock under `TZ=America/Denver` at a UTC instant whose calendar date has already rolled over (`2026-08-31T04:00Z`, local `2026-08-30`) and asserts the record carries the local date, not the UTC one (AMBER-5). Vitest. (FR-002, FR-003, FR-019)
 - **TR-002**: `src/engine/adr-parser.test.ts` — fixtures reproducing **all four** documented header inconsistencies (two H1 styles, ADR-001's hard breaks, ADR-001's absent relations, `·` field separation), plus a 240-character `Decision:` value and heading-tree extraction including a duplicate-heading fixture. Fixtures, **never** `docs/decisions/`: a corpus-coupled suite breaks when ADR-010 lands, and `retry: 1` in `vitest.config.ts` would surface that as flake. Vitest. (FR-004, FR-005)
 - **TR-003**: `src/commands/adr.test.ts` — handler-level, per `research.test.ts`: import `adrCommandHandler`, mock the engine, assert the returned string. `console.log` stays in the action. Covers `--print`, `--decide` on a `Proposed` record, refusal on an already-`Decided` one, and the index regeneration that follows `--decide`. Vitest. (FR-001, FR-023, FR-026)
 - **TR-004**: `src/commands/adr-dispatch.test.ts` — per `research-dispatch.test.ts`: mock `WorkflowRuntime`, `node:fs/promises`, `loadConfig`, `resolveModelForTask`. Assert `executeWorkflow` receives `gwrk-adr-record`, an input containing the title, `{agent, model}`, and `projectRoot`; assert the runtime is never constructed without `--run`; assert `--audit` dispatches `gwrk-constitution` with an appended `<decision_context>` block. Vitest. (FR-007, FR-027)
@@ -514,7 +514,7 @@ Two structural notes, both load-bearing:
 
 ## 9. Verification Requirements
 
-- **VR-001**: `npm run build` MUST be run before any assertion that invokes `node dist/index.js` or inspects `dist/plugins/builtins/`. Real `gwrk` runs compiled `dist/`, so a source-only change is unverified (TC-012).
+- **VR-001**: `npm run build` MUST be run before any assertion that invokes `node dist/cli.js` or inspects `dist/plugins/builtins/`. Real `gwrk` runs compiled `dist/`, so a source-only change is unverified (TC-012).
 - **VR-002**: `npx vitest run src/engine/adr-scaffold.test.ts src/engine/adr-parser.test.ts src/engine/adr-index.test.ts src/engine/adr-check.test.ts src/engine/adr-amend.test.ts src/commands/adr.test.ts src/commands/adr-dispatch.test.ts src/utils/agent.grounding-decisions.test.ts` MUST exit 0.
 - **VR-003**: `npm run test:ci` MUST exit 0, confirming no regression in `cli.option-collisions.test.ts` (nine entries, unchanged), `cli.consistency.test.ts`, or `drift-detector.test.ts`.
 - **VR-004**: The three-line MPL header MUST be present in every new `.ts` file, verified by inspection — the pre-commit hook is not installed in this clone.

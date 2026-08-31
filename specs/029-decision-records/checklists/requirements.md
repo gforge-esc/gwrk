@@ -24,7 +24,7 @@
 
 ### Phase 1 — Author
 - [ ] FR-001 `gwrk define adr` exported `Command` in its own module, registered on `defineCommand`, `Examples:` block, wrapped in `withSignal` (US-001) — must not copy D12
-- [ ] FR-002 `ADR-NNN` max+1, zero-padded; `.md`+pattern filter; loud collision failure; project-root discovery via `.gwrkrc.json`; no locking (US-001) — fixes the three research-allocator flaws
+- [ ] FR-002 `ADR-NNN` max+1, zero-padded; `.md`+pattern filter; loud collision failure; project-root discovery via `.gwrkrc.json`; atomic claim, no lock manager (US-001) — fixes the three research-allocator flaws
 - [ ] FR-003 §4.1 template: blockquote header, numbered §1–§8, four-row `Decision Record` table, empty `## 8. Amendments` (US-001)
 - [ ] FR-004 Parses the blockquote header with all four documented tolerances + 240-char `Decision:` (US-002)
 - [ ] FR-005 Extracts the heading tree so a section address resolves or reports unresolvable (US-002, US-009)
@@ -91,8 +91,8 @@
 - [ ] TC-011 Nothing named "cascade" — `gwrk-cascade-sync` collision (§0.5)
 - [ ] TC-012 Builtins ship through `npm run build`; real `gwrk` runs `dist/` — VR-001
 - [ ] TC-013 No option collisions; baseline stays nine; **no allowlist entry** (that is how D1 shipped)
-- [ ] TC-014 Bare-clone operable — no SQLite, no build server
-- [ ] TC-015 No locking — existence check makes the second concurrent run fail loudly
+- [ ] TC-014 Bare-clone operable — no SQLite, no build server; covers an absent `.gwrkrc.json` only, an invalid one fails fast under TC-002 (plan AMBER-4)
+- [ ] TC-015 No lock manager — an atomic `.ADR-NNN.claim` makes the second concurrent run fail loudly (plan AMBER-3)
 - [ ] TC-016 Fail-open grounding, deliberately inherited; detection belongs to `--reindex --check`
 
 ## Quality Gate

@@ -6,7 +6,7 @@
  * 029 Decision Records — RED tests for TR-003 (FR-001, FR-008).
  *
  * @phase 02
- * @status red
+ * @status active
  *
  * Handler-level, per `research.test.ts`: import `adrCommandHandler`, mock the
  * engine, assert the returned string. `console.log` stays in the action so the
@@ -33,7 +33,13 @@ const scaffoldMock = vi.hoisted(() => ({
   resolveDecisionsDir: vi.fn(),
   allocateNumber: vi.fn(),
 }));
-vi.mock("../engine/adr-scaffold.js", () => scaffoldMock);
+// The engine is mocked per-export rather than wholesale so `todayLocal` stays
+// real. The `--print` date case asserts the command reaches the same helper the
+// write path uses, which a stubbed date would hide (AMBER-5).
+vi.mock("../engine/adr-scaffold.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/adr-scaffold.js")>()),
+  ...scaffoldMock,
+}));
 
 const load = () => import("./adr.js");
 
@@ -65,7 +71,7 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     scaffoldMock.allocateNumber.mockResolvedValue("010");
   });
 
-  it.skip("FR-001: returns the written path for a title argument", async () => {
+  it("FR-001: returns the written path for a title argument", async () => {
     const { adrCommandHandler } = await load();
 
     const output = await adrCommandHandler({ target: "Decision Records" });
@@ -77,7 +83,7 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     expect(output).toContain("ADR-010-decision-records.md");
   });
 
-  it.skip("FR-001: --print emits the template and writes nothing", async () => {
+  it("FR-001: --print emits the template and writes nothing", async () => {
     const { adrCommandHandler } = await load();
 
     const output = await adrCommandHandler({ print: true });
@@ -89,7 +95,31 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     expect(scaffoldMock.scaffold).not.toHaveBeenCalled();
   });
 
-  it.skip("FR-001: rejects an empty title with the corrective command", async () => {
+  it("FR-003: --print stamps the author's local date, not the UTC one", async () => {
+    const { adrCommandHandler } = await load();
+
+    // 2026-08-31T04:00Z is 2026-08-30 22:00 in America/Denver. A UTC stamp
+    // prints tomorrow, so the preview disagrees with the record the next write
+    // produces one second later (AMBER-5).
+    const priorTz = process.env.TZ;
+    process.env.TZ = "America/Denver";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T04:00:00Z"));
+
+    try {
+      await adrCommandHandler({ print: true });
+
+      expect(scaffoldMock.renderTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({ date: "2026-08-30" }),
+      );
+    } finally {
+      vi.useRealTimers();
+      if (priorTz === undefined) delete process.env.TZ;
+      else process.env.TZ = priorTz;
+    }
+  });
+
+  it("FR-001: rejects an empty title with the corrective command", async () => {
     const { adrCommandHandler } = await load();
 
     scaffoldMock.scaffold.mockRejectedValue(
@@ -101,7 +131,7 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     );
   });
 
-  it.skip("FR-001: surfaces the collision message rather than swallowing it", async () => {
+  it("FR-001: surfaces the collision message rather than swallowing it", async () => {
     const { adrCommandHandler } = await load();
 
     scaffoldMock.scaffold.mockRejectedValue(
@@ -115,14 +145,14 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     ).rejects.toThrow(/ADR-010 already exists: /);
   });
 
-  it.skip("FR-001: exports a commander Command named adr with an Examples: help block", async () => {
+  it("FR-001: exports a commander Command named adr with an Examples: help block", async () => {
     const { adrCommand } = await load();
 
     expect(adrCommand.name()).toBe("adr");
     expect(adrCommand.helpInformation()).toMatch(/Examples:/i);
   });
 
-  it.skip("FR-001: wraps the action in withSignal so the [exit:N | Xs] line is emitted", async () => {
+  it("FR-001: wraps the action in withSignal so the [exit:N | Xs] line is emitted", async () => {
     // ADR-004 agent-native output. D12 records that `define research` skips
     // this; FR-001 explicitly forbids copying that omission. Asserted on the
     // source because withSignal sets process.exitCode instead of throwing, so
@@ -138,7 +168,7 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     expect(source).toContain('withSignal("define adr"');
   });
 
-  it.skip("FR-008: declares neither --refs nor --dry-run, and offers --print instead", async () => {
+  it("FR-008: declares neither --refs nor --dry-run, and offers --print instead", async () => {
     const { adrCommand } = await load();
 
     const flags = adrCommand.options.map((o) => o.long ?? o.short ?? "");
