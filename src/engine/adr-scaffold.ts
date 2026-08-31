@@ -48,7 +48,10 @@ export interface AdrScaffoldResult {
 export interface AdrTemplateInput {
   number: string;
   title: string;
-  /** ISO date, stamped by the caller so the template is a pure function. */
+  /**
+   * Local calendar date, `YYYY-MM-DD`, stamped by the caller so the template
+   * is a pure function.
+   */
   date: string;
 }
 
@@ -356,6 +359,18 @@ export function renderTemplate(input: AdrTemplateInput): string {
 }
 
 /**
+ * FR-003's "today's date" is the author's local calendar date, not UTC.
+ * `toISOString()` stamps tomorrow for every author west of Greenwich after
+ * their evening UTC rollover, so the components are read locally.
+ */
+function todayLocal(now: Date = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Order of operations: root discovery → decisions dir → allocation → mkdir →
  * claim → existence check → write → release.
  *
@@ -423,7 +438,7 @@ export async function scaffold(
     const body = renderTemplate({
       number,
       title: trimmed,
-      date: new Date().toISOString().slice(0, 10),
+      date: todayLocal(),
     });
 
     try {

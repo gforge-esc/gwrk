@@ -428,7 +428,7 @@ describe("029 FR-003: the section-numbered template (US-001)", () => {
     expect(body).toContain("\n## 7. References");
   });
 
-  it("FR-003: stamps today's date, not a hardcoded one", async () => {
+  it("FR-003: renders the caller-supplied date", async () => {
     const { renderTemplate } = await load();
 
     const body = renderTemplate({
@@ -438,6 +438,23 @@ describe("029 FR-003: the section-numbered template (US-001)", () => {
     });
 
     expect(body).toContain("> **Date:** 2026-08-20");
+  });
+
+  it("FR-003: stamps the local calendar date, not the UTC one", async () => {
+    const { scaffold } = await load();
+    const writeFile = await writeFileMock();
+
+    await scaffold("Decision Records", { cwd: ROOT });
+    const body = String(writeFile.mock.calls[0][1]);
+
+    const now = new Date();
+    const local = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    expect(body).toContain(`> **Date:** ${local}`);
   });
 
   it("FR-003: uses the four-row Decision Record table used by 004-009", async () => {
@@ -664,6 +681,29 @@ describe("029 FR-002: concurrent allocation on a real filesystem (US-001, TC-015
       "ADR-001-task-tracking.md",
       "ADR-003-alpha-one.md",
     ]);
+  });
+
+  it("FR-003: stamps the author's local date when UTC has already rolled over", async () => {
+    const { scaffold } = await import("./adr-scaffold.js");
+
+    // 2026-08-31T04:00Z is 2026-08-30 22:00 in America/Denver. `toISOString()`
+    // writes tomorrow here; the author's calendar says the 30th.
+    const priorTz = process.env.TZ;
+    process.env.TZ = "America/Denver";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T04:00:00Z"));
+
+    try {
+      const result = await scaffold("Timezone Probe", { cwd: root });
+      const body = await realFs.readFile(result.filePath, "utf-8");
+
+      expect(body).toContain("> **Date:** 2026-08-30");
+      expect(body).not.toContain("> **Date:** 2026-08-31");
+    } finally {
+      vi.useRealTimers();
+      if (priorTz === undefined) delete process.env.TZ;
+      else process.env.TZ = priorTz;
+    }
   });
 
   it("FR-002: a sequential second run allocates the next number", async () => {

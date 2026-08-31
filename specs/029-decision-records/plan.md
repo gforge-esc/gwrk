@@ -154,6 +154,29 @@ Regression-gated by the non-mocked block in `src/engine/adr-scaffold.test.ts`, w
 `scaffold()` calls against temp projects, and by a T006 gate line that scaffolds against a
 schema-invalid config and fails on exit 0.
 
+### 🟡 AMBER-5 — FR-003's "today's date" is the author's local date, not UTC
+
+`scaffold()` stamped the record with `new Date().toISOString().slice(0, 10)`. `toISOString()` is UTC.
+
+Measured on the built CLI at 2026-08-30 20:59 MDT: `gwrk define adr "Timezone Probe"` wrote
+`> **Date:** 2026-08-31`, one day ahead of the author's today. Every record authored after 18:00 in
+America/Denver is stamped tomorrow, a six-to-seven hour window each day.
+
+Corpus ordering also stops being monotonic. A record authored at 19:00 on the 30th outranks one authored
+at 09:00 on the 31st, and `Date:` is the only ordering signal a reader has once numbers are allocated by
+a race.
+
+**Resolution**: FR-003 means the author's local calendar date. `scaffold()` builds `YYYY-MM-DD` from
+`getFullYear` / `getMonth` / `getDate`. `toISOString()` is banned for human-facing dates in this module,
+and a T006 gate line fails on it.
+
+Regression-gated by a non-mocked test that fakes a clock under `TZ=America/Denver` at an instant whose
+UTC date has already rolled over, and by a T006 gate line that runs the built CLI under
+`TZ=America/Denver` and compares the written `> **Date:**` value against `date +%Y-%m-%d`.
+
+**Out of scope, filed**: `src/engine/plan-renderer.ts:33` carries the same UTC-for-a-human-date call.
+Not Phase 2 work; recorded here as follow-up.
+
 ### Adopted spec recommendations
 
 - **OQ-002** — `Superseded` stays **derived-only**; no status flip is written into a header until a
@@ -251,13 +274,14 @@ with no allowlist entry.
 | TC-013 no option collisions | Neither `--refs` nor `--dry-run` declared; baseline stays at nine with no allowlist entry |
 | TC-002 fail-fast config (AMBER-4) | `loadConfig` read with no `.default()`; missing project root exits 1 with the FR-002 message; a present-but-invalid `.gwrkrc.json` exits 1 naming the config error rather than defaulting |
 | TC-015 no lock manager (AMBER-3) | Number taken by an atomic `.ADR-NNN.claim`, released on exit; no lock manager, daemon, timeout or retry loop |
+| FR-003 local date (AMBER-5) | `> **Date:**` is the author's local calendar date; `toISOString()` banned for human-facing dates in `adr-scaffold.ts` |
 | VR-004 MPL header | Required by hand on `adr-scaffold.ts` and `adr.ts` |
 | compile-gate | Always |
 
 #### Test Strategy
 | TR-### | Type | Target | Assertion |
 |---|---|---|---|
-| TR-001 | unit | `src/engine/adr-scaffold.test.ts` | max+1 over an ADR-001…009 fixture; `.md`-suffix-and-pattern filter against a readdir containing directories and stray files; loud failure naming the conflicting path with `writeFile` never called; root discovery by walking parents for `.gwrkrc.json`; `project.architecture.decisions` honoured, `docs/decisions` default |
+| TR-001 | unit | `src/engine/adr-scaffold.test.ts` | max+1 over an ADR-001…009 fixture; `.md`-suffix-and-pattern filter against a readdir containing directories and stray files; loud failure naming the conflicting path with `writeFile` never called; root discovery by walking parents for `.gwrkrc.json`; `project.architecture.decisions` honoured, `docs/decisions` default; non-mocked: the TC-015 race, real config resolution (AMBER-4), and a faked clock under `TZ=America/Denver` asserting the local date, not the UTC one (AMBER-5) |
 | TR-003 | unit | `src/commands/adr.test.ts` | `adrCommandHandler` returns the written path; `--print` emits the template and writes nothing |
 | TR-009 | unit | `src/cli.ux.test.ts` | `gwrk define adr --help` contains an `Examples:` section |
 | TR-010 | integration | `src/cli.e2e.test.ts` | `adr` appears in `define --help` from the built CLI |
@@ -279,6 +303,28 @@ grep -q 'ADR-NNN.claim' specs/029-decision-records/spec.md
 grep -q 'ADR-NNN.claim' specs/029-decision-records/contracts/adr-engine.md
 if grep -rq 'No lockin[g]' specs/029-decision-records/spec.md specs/029-decision-records/contracts specs/029-decision-records/checklists; then exit 1; fi
 if grep -qi 'no lockfil[e]' specs/029-decision-records/plan.md; then exit 1; fi
+grep -q 'AMBER-4' specs/029-decision-records/plan.md
+grep -q 'AMBER-4' specs/029-decision-records/contracts/adr-engine.md
+if grep -q 'catch {}' src/engine/adr-scaffold.ts; then exit 1; fi
+ADRCLI="$PWD/dist/cli.js"
+ADRTMP=$(mktemp -d)
+printf '%s' '{"project":{"architecture":{"decisions":"docs/adr"}}}' > "$ADRTMP/.gwrkrc.json"
+ADRCODE=0
+( cd "$ADRTMP" && node "$ADRCLI" define adr "Gate Invalid Config" ) || ADRCODE=$?
+if [ "$ADRCODE" -eq 0 ] || [ -d "$ADRTMP/docs/decisions" ]; then rm -rf "$ADRTMP"; exit 1; fi
+rm -rf "$ADRTMP"
+if grep -q 'toISOString().slice(0, 10)' src/engine/adr-scaffold.ts; then exit 1; fi
+grep -q 'AMBER-5' specs/029-decision-records/plan.md
+grep -q 'AMBER-5' specs/029-decision-records/contracts/adr-engine.md
+ADRTZ=America/Denver
+ADRTZTMP=$(mktemp -d)
+printf '%s' '{"project":{"name":"gate-tz"}}' > "$ADRTZTMP/.gwrkrc.json"
+( cd "$ADRTZTMP" && TZ=$ADRTZ node "$ADRCLI" define adr "Gate TZ" ) || { rm -rf "$ADRTZTMP"; exit 1; }
+ADRTZFILE=$(ls "$ADRTZTMP"/docs/decisions/ADR-001-*.md 2>/dev/null | head -1)
+ADRTZWRITTEN=$(grep -m1 '^> \*\*Date:\*\*' "$ADRTZFILE" | sed 's/.*Date:\*\* *//')
+ADRTZEXPECT=$(TZ=$ADRTZ date +%Y-%m-%d)
+rm -rf "$ADRTZTMP"
+if [ -z "$ADRTZWRITTEN" ] || [ "$ADRTZWRITTEN" != "$ADRTZEXPECT" ]; then exit 1; fi
 ```
 
 ---
@@ -838,7 +884,7 @@ _No mockups exist for this feature._ The surface is a CLI command plus two gener
 |---|---|---|
 | FR-001 | 2 | Planned |
 | FR-002 | 2 | Planned |
-| FR-003 | 2 | Planned |
+| FR-003 | 2 | Planned (local calendar date per AMBER-5) |
 | FR-004 | 1 | Planned |
 | FR-005 | 1 | Planned |
 | FR-006 | 1 | Planned |

@@ -38,7 +38,10 @@ export interface AdrSupersession {
 /** The blockquote header block that follows the H1 (TC-007 — not YAML frontmatter). */
 export interface AdrHeader {
   status: AdrStatus;
-  /** ISO date as written, e.g. "2026-02-26". */
+  /**
+   * The author's local calendar date as written, `YYYY-MM-DD`, e.g. "2026-02-26".
+   * Never a UTC-derived date (AMBER-5).
+   */
   date: string;
   /** Up to 240 characters, preserved verbatim; the index truncates for display (FR-004). */
   decision: string;
@@ -171,7 +174,8 @@ following number. No lock manager, no daemon, no timeout, no retry loop.
 Emits the §4.1 template:
 
 1. `# ADR-<NNN>: <title>`
-2. Blockquote header — `> **Status:** Proposed`, `> **Date:** <today>`, `> **Decision:**`,
+2. Blockquote header — `> **Status:** Proposed`, `> **Date:** <today, local calendar date>`,
+   `> **Decision:**`,
    `> **Constraint:**`, optional `> **Depends on:**` / `> **Supersedes:**`,
    `> **Author:** … · **Decision Scope:** …`
 3. `## 1. Context`
@@ -183,6 +187,10 @@ Emits the §4.1 template:
 8. `## 6. Consequences`
 9. `## 7. References`
 10. `## Amendments` — **last, literal, unnumbered**, starting empty as the registry `--check` reads.
+
+> **Date note (plan AMBER-5).** `date` is the author's local calendar date. `scaffold()` builds it from
+> `getFullYear` / `getMonth` / `getDate`, never `toISOString()`, which stamps tomorrow for every author
+> west of Greenwich after their evening UTC rollover.
 
 > **Heading-form note (plan AMBER-2).** FR-003 lists the registry as "§8", but FR-022's and US-009's
 > executable assertions grep `^## Amendments`. The literal unnumbered heading is authoritative;
