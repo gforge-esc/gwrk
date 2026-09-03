@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-05-22
 > **Decision:** All workflow dispatch (define, ship, review) flows through `WorkflowRuntime`. The `.agents/` directory is deprecated — `src/plugins/builtins/` is the canonical source for workflows, skills, rules, and review prompts.
+> **Constraint:** Code MUST NOT spawn an agent CLI directly; dispatch MUST go through `WorkflowRuntime`.
 > **Depends on:** ADR-006 (Plugin Agent Backends), F014 (Plugin System), F004 (Ship Loop)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk dispatch architecture, governance file authority, `.agents/` lifecycle
 

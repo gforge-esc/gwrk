@@ -140,73 +140,82 @@
           "id": "T012",
           "title": "Modify ADR-001-task-tracking.md",
           "description": "MODIFY docs/decisions/ADR-001-task-tracking.md. add `> **Constraint:**` (Hard Gate Architecture is live; storage mechanism only is superseded)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.622Z"
         },
         {
           "id": "T013",
           "title": "Modify ADR-002-sqlite-execution-ledger.md",
           "description": "MODIFY docs/decisions/ADR-002-sqlite-execution-ledger.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.622Z"
         },
         {
           "id": "T014",
           "title": "Modify ADR-003-state-contract.md",
           "description": "MODIFY docs/decisions/ADR-003-state-contract.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.624Z"
         },
         {
           "id": "T015",
           "title": "Modify ADR-004-agent-native-output.md",
           "description": "MODIFY docs/decisions/ADR-004-agent-native-output.md. add `> **Constraint:**` (every command MUST emit `[exit:N | Xs]`)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.625Z"
         },
         {
           "id": "T016",
           "title": "Modify ADR-005-tdd-gate-architecture.md",
           "description": "MODIFY docs/decisions/ADR-005-tdd-gate-architecture.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.625Z"
         },
         {
           "id": "T017",
           "title": "Modify ADR-006-plugin-agent-backends.md",
           "description": "MODIFY docs/decisions/ADR-006-plugin-agent-backends.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.627Z"
         },
         {
           "id": "T018",
           "title": "Modify ADR-007-single-dispatch-path.md",
           "description": "MODIFY docs/decisions/ADR-007-single-dispatch-path.md. add `> **Constraint:**` (MUST NOT spawn an agent CLI directly; dispatch MUST go through `WorkflowRuntime`)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.628Z"
         },
         {
           "id": "T019",
           "title": "Modify ADR-008-command-safety-posture.md",
           "description": "MODIFY docs/decisions/ADR-008-command-safety-posture.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.639Z"
         },
         {
           "id": "T020",
           "title": "Modify ADR-009-domain-ontology-information-hierarchy-ux.md",
           "description": "MODIFY docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.640Z"
         }
       ],
       "sp_estimate": 9,
