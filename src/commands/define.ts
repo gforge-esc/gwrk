@@ -11,7 +11,6 @@ import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import { banner, dryRun as dryRunFmt, fail, success } from "../utils/format.js";
 import {
@@ -21,6 +20,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 
+import { adrCommand } from "./adr.js";
 import { analyzeCommand } from "./analyze.js";
 import { definePlanCommand } from "./define-plan.js";
 import { researchCommand } from "./research.js";
@@ -33,8 +33,9 @@ import { defineOntologyCommand } from "./define-ontology.js";
 
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
+import { withParentFlags } from "../utils/command-flags.js";
 
 /**
  * gwrk define — The Definition Pillar (Clarity)
@@ -60,6 +61,7 @@ Examples:
   gwrk define spec 001
   gwrk define plan 001
   gwrk define tasks 001
+  gwrk define adr "Decision Records"
 `,
   )
   .argument("[feature]", "Feature ID (e.g. 001-cli-core)")
@@ -81,12 +83,15 @@ Examples:
         const cwd = process.cwd();
         // Resolve prefix: "003" → "003-slack"
         const feature = resolveFeature(featureArg, cwd);
-        const config = loadConfig(cwd);
-        const backend = config.agents.define;
-        const model = resolveModelForTask("define", backend, cwd);
+        const { backend, model } = resolveAgent("define", cwd);
 
         const startedAt = new Date().toISOString();
-        const runId = startRun({
+        // A preview must leave no trace: `startRun` used to fire before anything
+        // consulted --dry-run, leaving a run row that never finishes (NULL
+        // exit_code). `runs` is what harvest correlates against and what
+        // getShippedPhases reads, so a row for work that never happened is
+        // false evidence. -1 is the same sentinel a failed ledger write uses.
+        const runId = opts.dryRun ? -1 : startRun({
           feature_id: feature,
           command: "define",
           agent_backend: backend,
@@ -96,7 +101,7 @@ Examples:
         banner("define", {
           Feature: feature,
           Agent: backend,
-          "Run ID": `${runId}`,
+          "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
           ...(opts.refs ? { Refs: opts.refs } : {}),
         });
 
@@ -197,14 +202,39 @@ defineCommand.addCommand(tasksGenerateCommand); // gwrk define tasks
 defineCommand.addCommand(analyzeCommand, { hidden: true }); // gwrk define analyze (internal)
 defineCommand.addCommand(testsGenerateCommand); // gwrk define tests
 defineCommand.addCommand(researchCommand); // gwrk define research
+defineCommand.addCommand(adrCommand); // gwrk define adr
 
 const ontologyCommand = new Command("ontology")
   .description(
     "Define project domain ontology (classes, properties, relations)",
   )
+  .addHelpText(
+    "after",
+    `
+Examples:
+
+  Scaffold the ontology files:
+    gwrk define ontology
+
+  Construct domain.md from the project:
+    gwrk define ontology --run
+
+  Ground the construction in a folder of discovery notes:
+    gwrk define ontology --run --refs discovery
+
+  --refs takes a file or a directory. A directory is read recursively.
+`,
+  )
   .option("--run", "Execute automated construction workflow")
+  .option("--refs <path>", "Reference file or directory to ground construction")
   .option("--agent <agent>", "Override agent")
   .option("--model <model>", "Override model")
-  .action(defineOntologyCommand);
+  // `--refs` is declared on `define` too, and commander binds it to that
+  // intermediate parent because `define` has its own argument and action.
+  // Without this merge the flag reaches the parent and vanishes, which is the
+  // defect `define research --refs` still carries.
+  .action((opts, command) =>
+    defineOntologyCommand(withParentFlags(opts, command)),
+  );
 
 defineCommand.addCommand(ontologyCommand);

@@ -1,0 +1,21 @@
+{
+  "runId": "2026-07-28T02:57:52.085Z_ship_p01",
+  "feature": "025-gate-only-phases",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "claude",
+  "model": "default",
+  "startedAt": "2026-07-28T02:57:52.085Z",
+  "finishedAt": "2026-07-28T03:07:34.682Z",
+  "durationS": 582,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 1,
+  "linesDeleted": 1,
+  "gitCommit": "3ce6b7d9451833117ad5c49b4b2d838f0ef11c50",
+  "gitBranch": "feat/025-gate-only-phases",
+  "digest": []
+}

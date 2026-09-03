@@ -38,13 +38,174 @@ interface DestroyOptions {
    * its own PR_CI stage — so destroy only removes the worktree.
    */
   autoCommitPush?: boolean;
+  /**
+   * Command run inside the worktree to release whatever `setup` started, before
+   * the tree is removed — from `.gwrkrc` `worktree.teardown`, e.g.
+   * `make worktree:down`. Without it a compose stack bind-mounting the worktree
+   * keeps holding node_modules and `git worktree remove --force` fails EPERM,
+   * stranding both the directory and the stack.
+   */
+  teardown?: string;
+}
+
+/**
+ * One sandbox gwrk created, recorded so it stays findable after its worktree is
+ * removed — including when the exit path never ran at all.
+ */
+export interface SandboxRecord {
+  /** Stable identity, also the worktree basename. */
+  id: string;
+  workDir: string;
+  featureId: string;
+  createdAt: string;
+}
+
+export interface PruneResult {
+  /** Orphans released and forgotten. */
+  pruned: string[];
+  /** Sandboxes whose worktree still exists — a run may own them. */
+  kept: string[];
+  /** Orphans whose teardown failed; their records are retained for a retry. */
+  failed: string[];
 }
 
 export class SandboxManager {
   private runsDir: string;
+  private projectRoot: string;
+  /**
+   * Registry of created sandboxes. Deliberately OUTSIDE `.runs/sandboxes/`, so
+   * it is never mistaken for a worktree by anything scanning that directory.
+   */
+  private registryPath: string;
 
   constructor(projectRoot: string = process.cwd()) {
+    this.projectRoot = projectRoot;
     this.runsDir = path.join(projectRoot, ".runs", "sandboxes");
+    this.registryPath = path.join(projectRoot, ".runs", "sandbox-registry.json");
+  }
+
+  /**
+   * The identity gwrk hands to `setup` and `teardown`.
+   *
+   * A project that names its resources from these (e.g.
+   * `COMPOSE_PROJECT_NAME=gwrk-$GWRK_SANDBOX_ID`) stays reapable after the
+   * worktree is gone. A project that lets the tool infer a name from the
+   * directory does not — which is how ~40 containers outlived their sandboxes.
+   */
+  private hookEnv(id: string, workDir: string, featureId: string) {
+    return {
+      ...process.env,
+      GWRK_SANDBOX_ID: id,
+      GWRK_SANDBOX_DIR: workDir,
+      GWRK_FEATURE_ID: featureId,
+    };
+  }
+
+  private readRegistry(): SandboxRecord[] {
+    try {
+      if (!fs.existsSync(this.registryPath)) return [];
+      const parsed = JSON.parse(fs.readFileSync(this.registryPath, "utf-8"));
+      return Array.isArray(parsed) ? (parsed as SandboxRecord[]) : [];
+    } catch {
+      // A corrupt registry must not block sandbox creation; it self-heals on
+      // the next write.
+      return [];
+    }
+  }
+
+  private writeRegistry(records: SandboxRecord[]): void {
+    try {
+      const dir = path.dirname(this.registryPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        this.registryPath,
+        JSON.stringify(records, null, 2),
+        "utf-8",
+      );
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      console.warn(`  ⚠ could not update sandbox registry: ${err.message}`);
+    }
+  }
+
+  private recordSandbox(record: SandboxRecord): void {
+    const records = this.readRegistry().filter((r) => r.id !== record.id);
+    records.push(record);
+    this.writeRegistry(records);
+  }
+
+  private forgetSandbox(workDir: string): void {
+    const id = path.basename(workDir);
+    const records = this.readRegistry();
+    if (!records.some((r) => r.id === id)) return;
+    this.writeRegistry(records.filter((r) => r.id !== id));
+  }
+
+  /**
+   * Release sandboxes whose worktree no longer exists.
+   *
+   * `destroySandbox` covers the ordinary exit. This covers everything that
+   * skips it — SIGKILL, a crashed process, a machine that slept — which is the
+   * only way an unreapable stack can appear once identity is stable.
+   *
+   * Teardown runs from the project root, since the worktree is gone by
+   * definition; the project must therefore target the sandbox through
+   * `GWRK_SANDBOX_ID` rather than the working directory.
+   */
+  async pruneOrphans(
+    opts: { teardown?: string; dryRun?: boolean } = {},
+  ): Promise<PruneResult> {
+    const result: PruneResult = { pruned: [], kept: [], failed: [] };
+    const records = this.readRegistry();
+
+    const survivors: SandboxRecord[] = [];
+    for (const record of records) {
+      if (fs.existsSync(record.workDir)) {
+        result.kept.push(record.id);
+        survivors.push(record);
+        continue;
+      }
+
+      result.pruned.push(record.id);
+      if (opts.dryRun) {
+        survivors.push(record);
+        continue;
+      }
+
+      if (opts.teardown) {
+        try {
+          execSync(opts.teardown, {
+            cwd: this.projectRoot,
+            env: this.hookEnv(record.id, record.workDir, record.featureId),
+            stdio: "pipe",
+          });
+        } catch (e: unknown) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          console.warn(
+            `  ⚠ teardown failed for orphan ${record.id}: ${err.message}`,
+          );
+          // Keep the record so a later prune can retry rather than losing the
+          // only handle on the leaked resources.
+          result.pruned.pop();
+          result.failed.push(record.id);
+          survivors.push(record);
+          continue;
+        }
+      }
+    }
+
+    if (!opts.dryRun && (result.pruned.length > 0 || result.failed.length > 0)) {
+      this.writeRegistry(survivors);
+    }
+    return result;
+  }
+
+  /** Every sandbox gwrk has recorded, live or orphaned. */
+  listRecords(): (SandboxRecord & { orphaned: boolean })[] {
+    return this.readRegistry().map((r) => ({
+      ...r,
+      orphaned: !fs.existsSync(r.workDir),
+    }));
   }
 
   async checkGit(): Promise<boolean> {
@@ -117,9 +278,22 @@ export class SandboxManager {
     // `git worktree add` copies only committed files, so an untracked .env /
     // node_modules must be created here (ADR-005). Non-fatal: a project without
     // a setup command still gets a usable worktree.
+    // Record before setup runs: if setup starts a stack and then throws, the
+    // sandbox is already leaking and must be prunable.
+    this.recordSandbox({
+      id: sandboxName,
+      workDir,
+      featureId,
+      createdAt: new Date().toISOString(),
+    });
+
     if (opts.setup) {
       try {
-        execSync(opts.setup, { cwd: workDir, stdio: "pipe" });
+        execSync(opts.setup, {
+          cwd: workDir,
+          env: this.hookEnv(sandboxName, workDir, featureId),
+          stdio: "pipe",
+        });
       } catch (e: unknown) {
         const err = e instanceof Error ? e : new Error(String(e));
         console.error(
@@ -138,8 +312,27 @@ export class SandboxManager {
   ): Promise<void> {
     if (!fs.existsSync(workDir)) return;
 
-    const { autoCommitPush = true } = options;
+    const { autoCommitPush = true, teardown } = options;
     const projectRoot = path.dirname(path.dirname(this.runsDir));
+
+    // 0. Release what `setup` started, while the worktree still exists.
+    //    Best-effort: a failing teardown must not strand the worktree forever,
+    //    so removal proceeds either way — but say so, because the usual cause
+    //    (a still-running stack holding node_modules) makes removal fail next.
+    if (teardown) {
+      try {
+        execSync(teardown, {
+          cwd: workDir,
+          env: this.hookEnv(path.basename(workDir), workDir, featureId),
+          stdio: "pipe",
+        });
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.warn(
+          `  ⚠ worktree teardown ("${teardown}") failed in ${workDir}: ${err.message}`,
+        );
+      }
+    }
 
     try {
       // 1. Check if there are changes
@@ -185,6 +378,8 @@ export class SandboxManager {
         cwd: projectRoot,
         stdio: "pipe",
       });
+      // 6. Forget it — the ordinary exit path; pruneOrphans covers the rest.
+      this.forgetSandbox(workDir);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       console.error(

@@ -1,6 +1,6 @@
 # ADR-007: Single Dispatch Path & `.agents/` Deprecation
 
-> **Status:** Proposed · **Date:** 2026-05-22
+> **Status:** Decided · **Date:** 2026-05-22
 > **Decision:** All workflow dispatch (define, ship, review) flows through `WorkflowRuntime`. The `.agents/` directory is deprecated — `src/plugins/builtins/` is the canonical source for workflows, skills, rules, and review prompts.
 > **Depends on:** ADR-006 (Plugin Agent Backends), F014 (Plugin System), F004 (Ship Loop)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk dispatch architecture, governance file authority, `.agents/` lifecycle
@@ -76,6 +76,19 @@ private async stageCodeReview(): Promise<StageResult> {
 **The `IMPLEMENT` stage keeps raw dispatch.** Implementing agents need native tool access (file creation, git operations, test execution). They don't return structured JSON — they modify the filesystem directly. The raw `dispatchWithFailback()` path remains correct for implementation.
 
 **Gate-driven verdict authority is preserved.** After `WorkflowRuntime` returns the JSON result (containing the agent's `verdict` and `reopenedTasks`), the orchestrator still runs `readVerdict()` which executes gate scripts and uses their pass/fail results as the authoritative verdict. The agent's verdict is advisory. Gates are truth.
+
+> **026 correction.** "Gates are truth" only became literally true in feature 026. Before it,
+> `readVerdict()` resolved a gate as `join(featureDir, gateScript)` and skipped it when that path did
+> not exist — so an INLINE `task.gateScript` (the canonical fenced Done-When) was never executed and
+> every real phase got a vacuous GO. `readVerdict()` now runs the gate through the one shared
+> `runTaskGate` (inline-capable, `set -e`), which is what makes the agent's verdict genuinely advisory.
+
+> **028 correction.** "Gates are truth" is one-way. A gate may close a task the reviewer raised no
+> finding on; it may never close a task the reviewer reproduced a defect on — that combination is a
+> gate coverage hole (`readVerdict` treats it as NO-GO). The review prompts asserted the broad version
+> and instructed agents to force `status: completed` whenever gates passed, which silently discarded
+> four blocking code-review findings across runs #2727/#2728. See D1 in
+> `docs/code-review-verdict-defect.md`.
 
 ### 2.2 `.agents/` Deprecation & Removal
 

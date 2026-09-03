@@ -1,6 +1,6 @@
 # ADR-006: Plugin Agent Backends
 
-> **Status:** Proposed · **Date:** 2026-03-17
+> **Status:** Decided · **Date:** 2026-03-17
 > **Decision:** Agent backends are F014 plugins that present a clean service interface to gwrk core, hiding all CLI-specific nuance behind a normalized dispatch contract.
 > **Depends on:** ADR-004 (Agent-Native Output), 013-Agent-Native-Interface, 014-Plugin-System
 > **Author:** Antigravity · **Decision Scope:** gwrk plugin system, agent dispatch, task execution

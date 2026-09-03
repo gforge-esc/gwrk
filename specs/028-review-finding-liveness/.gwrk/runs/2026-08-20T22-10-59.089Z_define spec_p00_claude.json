@@ -1,0 +1,19 @@
+{
+  "runId": "2026-08-20T22:10:59.089Z_define_p00",
+  "feature": "028-review-finding-liveness",
+  "phase": "p00",
+  "command": "define spec",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-08-20T22:10:59.089Z",
+  "finishedAt": "2026-08-20T22:20:03.921Z",
+  "durationS": 545,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 2,
+  "linesAdded": 533,
+  "linesDeleted": 0,
+  "gitCommit": "120b51c38df90d0a8ad581588f4c1fbf7fd5d6f2",
+  "gitBranch": "develop",
+  "digest": []
+}

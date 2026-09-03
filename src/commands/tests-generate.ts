@@ -10,7 +10,6 @@ import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
   extractPhaseFiles,
@@ -20,7 +19,6 @@ import {
 } from "../utils/parser.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
 import { loadTaskState } from "../utils/state.js";
 
 import {
@@ -30,6 +28,8 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { withParentFlags } from "../utils/command-flags.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 /**
  * gwrk define tests <feature> [options] — Generate RED test files from spec/plan
@@ -63,7 +63,10 @@ Examples:
       featureArg: string,
       phaseArg: string | undefined,
       options: { phase?: string; force?: boolean; dryRun?: boolean },
+      command: Command,
     ) => {
+      // Also declared on `define`; commander binds it to the parent otherwise.
+      options = withParentFlags(options, command);
       await withSignal(`define tests ${featureArg}`, async () => {
         const projectRoot = process.cwd();
         // Resolve prefix: "001" → "001-cli-core"
@@ -138,11 +141,14 @@ Examples:
         const startTime = Date.now();
         const startedAt = new Date().toISOString();
 
-        const config = loadConfig(projectRoot);
-        const backend = config.agents.define;
-        const model = resolveModelForTask("define", backend, projectRoot);
+        const { backend, model } = resolveAgent("define", projectRoot);
 
-        const runId = startRun({
+        // A preview must leave no trace: `startRun` used to fire before anything
+        // consulted --dry-run, leaving a run row that never finishes (NULL
+        // exit_code). `runs` is what harvest correlates against and what
+        // getShippedPhases reads, so a row for work that never happened is
+        // false evidence. -1 is the same sentinel a failed ledger write uses.
+        const runId = options.dryRun ? -1 : startRun({
           feature_id: feature,
           command: "define tests",
           agent_backend: backend,

@@ -18,6 +18,7 @@ import { PluginLoader } from "../plugins/loader.js";
 import { resolveEnforcementSkills } from "../plugins/skill-runtime.js";
 import { formatResultError, renderStreamStdoutLine } from "./agent-log.js";
 import { type AgentBackendId, loadConfig } from "./config.js";
+import { startProgress } from "./progress.js";
 import { resolveProjectId } from "./project-id.js";
 
 // ANSI — must match format.ts
@@ -228,22 +229,16 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       stdio: ["pipe", "pipe", "pipe"],
     });
 
-    // Quiet mode: spinner instead of streaming output
-    const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-    let spinnerIdx = 0;
-    let spinnerInterval: ReturnType<typeof setInterval> | undefined;
-    if (opts.quiet) {
-      spinnerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
-        const mins = Math.floor(elapsed / 60);
-        const secs = elapsed % 60;
-        const frame = SPINNER_FRAMES[spinnerIdx % SPINNER_FRAMES.length];
-        spinnerIdx++;
-        process.stdout.write(
-          `\r${DIM}${frame} agent running... ${mins}m ${secs}s${RESET}  `,
-        );
-      }, 200);
-    }
+    // Quiet mode: progress indicator instead of streaming output. Animates
+    // only on a terminal — redirected to a log it heartbeats once a minute.
+    const progress = opts.quiet
+      ? startProgress({
+          label: "agent running",
+          write: (chunk) => process.stdout.write(chunk),
+          isTTY: process.stdout.isTTY === true,
+          frameMs: 200,
+        })
+      : undefined;
 
     if (stdin && child.stdin) {
       child.stdin.write(stdin);
@@ -337,10 +332,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       if (resolved) return;
       resolved = true;
 
-      if (spinnerInterval) {
-        clearInterval(spinnerInterval);
-        process.stdout.write("\r\x1b[K");
-      }
+      progress?.stop();
       const elapsed = Math.floor((Date.now() - startEpoch) / 1000);
       const mins = Math.floor(elapsed / 60);
       const secs = elapsed % 60;

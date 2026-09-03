@@ -15,12 +15,48 @@ Methods for interacting with the SQLite build plan graph.
 
 - `getPlanStatus(): { features: PlanFeature[], phases: PlanPhase[] }`
   - FR-005: Per-feature, per-phase status report
+- `getShippedPhases(projectId): Set<"<feature>:<phase>">`
+  - The set `plan init` uses to promote `PLANNED → SHIPPED`.
+  - MUST require `exit_code = 0`. A ship run that **died** must not record its
+    phase as shipped — `005-dashboard-api/phase-07` was promoted off a run that
+    exited 1 on a transient GitHub error, and only the opt-in audit pass caught
+    it. `= 0` also excludes in-flight runs, whose `exit_code` is still NULL.
+  - A phase whose earlier attempt failed and whose later attempt succeeded still
+    counts: re-shipping after a failure is the normal recovery path.
 - `getReadyQueue(): PlanPhase[]`
   - FR-003: Kahn's algorithm — phases with all deps DONE, sorted by critical path priority
+  - Dependency-ready is NOT parallel-safe. It models declared edges only, never
+    shared migrations, overlapping deliverables, or single-instance test
+    resources. Callers presenting it as a concurrent work set must say so.
 - `getCriticalPath(): { path: PlanPhase[], warnings: string[] }`
   - FR-004: CPM forward/backward pass. Warnings include SP-missing nodes (FR-018).
+- `getRemainingWaves(): PlanPhase[][]`
+  - Topological waves over phases that are NOT terminal — the operational view
+    behind `gwrk plan waves`. A terminal predecessor is satisfied, so it leaves
+    the subgraph rather than counting as a blocker; wave 1 therefore matches
+    `getReadyQueue()` membership.
+  - Throws on a dependency cycle among pending phases. Kahn's algorithm emits
+    nothing for a cycle, and returning the partial set would silently drop work.
 - `getTopologicalWaves(): PlanPhase[][]`
-  - FR-002: `graphology-dag` topologicalGenerations
+  - FR-002: `graphology-dag` topologicalGenerations, over the ENTIRE plan
+    including shipped phases — the plan of record, used by the build-plan
+    renderer's Wave Strategy table. Use `getRemainingWaves()` for current work.
+
+### Status Consistency
+
+The three readers above MUST agree on which statuses satisfy a dependency:
+`DONE`, `SHIPPED`, `VERIFIED`, `CLOSED` (one `TERMINAL_STATUSES` set). They
+previously disagreed — the ready queue filtered them, wave computation did not,
+so `plan waves` opened on work shipped months earlier.
+
+A feature-level edge binds the prerequisite feature's LAST phase to EVERY phase
+of the dependent feature, not only its first. Binding only the first left phases
+2..N with no cross-feature constraint as soon as phase 1 read `SHIPPED`. The
+intra-feature `SEQUENCE` chain implies the constraint transitively for an honest
+graph, but `plan init` promotes `PLANNED → SHIPPED` from ship-run existence
+rather than from a passing gate, so the chain is precisely what cannot be
+trusted. The added edges are transitively redundant: wave indices and the
+critical path are unchanged, and only readiness tightens.
 - `isEmpty(): boolean`
   - FR-019: Guard check for empty graph — all subcommands call this first
 
@@ -43,6 +79,21 @@ Methods for interacting with the SQLite build plan graph.
 - `verifyPlan(): PlanVerifyResult[]`
   - FR-006: Drift detection against code state and gate results
   - MUST report features in `specs/` missing from graph and vice versa
+- `PlanSolver.getStatusInversions(): { phaseId, blockedBy }[]`
+  - Graph **self**-consistency: a phase in a terminal status whose direct
+    predecessors are not. `DriftDetector` compares specs/ against the graph and
+    cannot see edges, so this is the solver's to answer.
+  - An inversion is always one of two real problems: a status promoted without
+    evidence (`plan init` promotes `PLANNED → SHIPPED` from ship-run **existence**,
+    not a passing gate), or a missing dependency edge. `010-reporting-email/phase-01`
+    reads SHIPPED on data-dashboard while all of `007-audience-redaction` reads
+    PLANNED.
+  - Reported by `gwrk plan verify`. It matters more since readiness tightened
+    (#167): later phases are released on the strength of a predecessor's status,
+    so an unreported inversion propagates.
+  - `gwrk plan verify` MUST keep emitting the literal string **"No drift"** on the
+    fully-clean path — data-dashboard's `ship-feature.sh` greps for it to decide
+    whether the plan is sound. Inversions suppress that line.
 
 ## Interface: `ReadinessScanner`
 

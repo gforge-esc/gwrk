@@ -9,13 +9,11 @@ import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
 
 import {
-  commitAllClean,
+  commitPaths,
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
@@ -25,6 +23,8 @@ import { resolveFeature } from "../utils/resolve-feature.js";
 import { scaffoldFeature } from "../utils/scaffold-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { withParentFlags } from "../utils/command-flags.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 export const specifyCommand = new Command("spec")
   .description("Create or refine a feature specification")
@@ -67,12 +67,14 @@ Arguments:
       featureArg: string | undefined,
       prompt: string | undefined,
       opts: { refs?: string; dryRun?: boolean },
+      command: Command,
     ) => {
+      // --refs and --dry-run are declared on BOTH `define` and here, so commander
+      // binds them to the parent and this command's own opts() arrives empty.
+      opts = withParentFlags(opts, command);
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
-        const config = loadConfig(cwd);
-        const backend = config.agents.define;
-        const model = resolveModelForTask("define", backend, cwd);
+        const { backend, model } = resolveAgent("define", cwd);
         const specsDir = path.join(cwd, "specs");
 
         // Read prompt/stdin BEFORE resolution — we need the prompt to decide
@@ -181,7 +183,12 @@ Arguments:
 
         const mode = isRework ? "rework" : "new";
 
-        const runId = startRun({
+        // A preview must leave no trace: `startRun` used to fire before anything
+        // consulted --dry-run, leaving a run row that never finishes (NULL
+        // exit_code). `runs` is what harvest correlates against and what
+        // getShippedPhases reads, so a row for work that never happened is
+        // false evidence. -1 is the same sentinel a failed ledger write uses.
+        const runId = opts.dryRun ? -1 : startRun({
           feature_id: feature,
           command: "define spec",
           agent_backend: backend,
@@ -197,7 +204,7 @@ Arguments:
                 Prompt: `"${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}"`,
               }
             : {}),
-          "Run ID": `${runId}`,
+          "Run ID": opts.dryRun ? "dry-run" : `${runId}`,
           ...(opts.refs ? { Refs: opts.refs } : {}),
         });
 
@@ -276,8 +283,10 @@ Arguments:
             );
           }
 
-          // Define must always leave a clean working tree
-          commitAllClean(cwd, `chore(${feature}): define spec execution manifest`);
+          // Commit ONLY the manifest we just wrote — never the caller's tree.
+          commitPaths(cwd, `chore(${feature}): define spec execution manifest`, [
+            path.join("specs", feature, ".gwrk", "runs"),
+          ]);
 
           const planStore = new PlanStore(resolveProjectId(cwd));
           planStore.handleDefineComplete({

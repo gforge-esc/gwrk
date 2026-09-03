@@ -1,5 +1,13 @@
 # Feature Specification: 024 Gate Assertion Contract
 
+> **026 correction.** This spec treats "the execution layer" as `runGateCheck` alone ("this feature
+> MUST NOT modify `runGateCheck` … those semantics are owned by 023 §13"). There were actually three
+> execution layers; `readVerdict` and `reconcileGates` never ran inline gates at all, so 024's
+> exit-code assertion lint was only meaningful in the one runner that did. As of 026 there is a single
+> `runTaskGate` and the assertion contract applies wherever a gate runs. Also: `phase.gateScript` is
+> not a persisted field — the fenced block compiles onto each **task's** `gateScript`; read a phase's
+> gate via `getPhaseVerificationGate`.
+
 **Feature Branch**: `024-gate-assertion-contract`
 **Created**: 2026-07-24
 **Status**: Draft

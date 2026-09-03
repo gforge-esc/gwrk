@@ -10,7 +10,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { finishRun, startRun } from "../db/runs.js";
-import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import { banner, color, dryRun, fail, success } from "../utils/format.js";
 import { runGate } from "../utils/gate-runner.js";
@@ -25,6 +24,7 @@ import {
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 
@@ -40,8 +40,7 @@ export const implementAction = async (
     const specDir = path.join(cwd, "specs", feature);
     const scriptPath = path.join(cwd, "scripts/dev/agent-run.sh");
 
-    const config = loadConfig(cwd);
-    const backend = opts.agent || config.agents.implement;
+    const { backend } = resolveAgent("implement", cwd, { agent: opts.agent });
 
     const phaseId = `phase-${phase.padStart(2, "0")}`;
     const tasks = loadTaskState(specDir);

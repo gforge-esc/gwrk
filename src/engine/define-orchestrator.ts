@@ -17,6 +17,7 @@ import {
   generateFilesystemGates,
   generateRunner,
   generateDeterministicGates,
+  type GateGenResult,
 } from "../utils/gate-gen.js";
 import { detectProfile } from "./profile-detector.js";
 import {
@@ -411,8 +412,8 @@ export class DefineOrchestrator extends EventEmitter {
       // ── Deterministic gate generation ──
       try {
         const gapMatrixPath = path.join(featureDir, "gap-matrix.md");
-        let gateResult: { generated: number; skipped: number };
-        
+        let gateResult: GateGenResult;
+
         if (fs.existsSync(gapMatrixPath)) {
           console.log("  ▸ generating deterministic gates from gap-matrix.md");
           gateResult = generateDeterministicGates(featureDir, gapMatrixPath, state.phases, profile);
@@ -423,10 +424,20 @@ export class DefineOrchestrator extends EventEmitter {
 
         const gatesDir = path.join(featureDir, "gates");
         if (fs.existsSync(gatesDir)) generateRunner(gatesDir);
-        
+
         console.log(`  ✓ gates: ${gateResult.generated} generated, ${gateResult.skipped} skipped`);
+        if (gateResult.invalidGateIds.length > 0) {
+          console.warn(
+            `  ⚠ gap-matrix Gate values matching no task id (no gate written): ${gateResult.invalidGateIds.join(", ")}`,
+          );
+        }
       } catch (gateError) {
-        console.warn(`  ⚠ gate generation failed: ${gateError}`);
+        // Deliberately fatal. A mis-authored or mis-parsed gap matrix generates
+        // ZERO gates; downgrading that to a warning is how a feature ships with
+        // no executable gates while define reports success.
+        const msg = gateError instanceof Error ? gateError.message : String(gateError);
+        console.error(`  ✗ gate generation failed: ${msg}`);
+        return { success: false, exitCode: 1, error: `gate generation failed: ${msg}` };
       }
 
       return { success: true, exitCode: 0 };

@@ -34,8 +34,10 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { getBuildCommand, getTestCommand, getTestExtension, getSourceExtension } from "../utils/toolchain-mapper.js";
+import { appendFinding, findingsPath } from "./findings-ledger.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
+import { parseReturnedVerdict } from "./returned-verdict.js";
 import {
   type ShipRunConfig,
   ShipStage,
@@ -43,44 +45,295 @@ import {
   type ShipStageResult,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
-import { isHollowGate } from "../utils/gate-quality.js";
+import { getPhaseVerificationGate } from "../utils/gate-quality.js";
+import { runTaskGate, runInlineGate, type TaskGateResult } from "../utils/gate-exec.js";
 import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
+import { startProgress } from "../utils/progress.js";
 
-// ANSI helpers for progress output
-const DIM = "\x1b[2m";
-const RESET = "\x1b[0m";
-const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/**
+ * Start the progress indicator shared by both spinner wrappers. Animates on a
+ * terminal, heartbeats once a minute when stdout is redirected to a log.
+ */
+function startStageProgress(label: string) {
+  return startProgress({
+    label,
+    write: (chunk) => process.stdout.write(chunk),
+    isTTY: process.stdout.isTTY === true,
+    indent: "    ",
+    frameMs: 150,
+    formatElapsed: (seconds) => `${seconds}s`,
+  });
+}
 
 /**
  * Run a synchronous blocking operation with a visible spinner.
  * Clears the spinner line on completion and prints the result.
  */
 function withSpinner<T>(label: string, fn: () => T): T {
-  let idx = 0;
   const start = Date.now();
-  const interval = setInterval(() => {
+  const progress = startStageProgress(label);
+  const settle = (mark: string) => {
+    progress.stop();
     const elapsed = Math.floor((Date.now() - start) / 1000);
-    const frame = SPINNER[idx % SPINNER.length];
-    idx++;
-    process.stdout.write(
-      `\r${DIM}    ${frame} ${label}... ${elapsed}s${RESET}  `,
-    );
-  }, 150);
+    process.stdout.write(`    ${mark} ${label} (${elapsed}s)\n`);
+  };
 
   try {
     const result = fn();
-    clearInterval(interval);
-    const elapsed = Math.floor((Date.now() - start) / 1000);
-    process.stdout.write(`\r\x1b[K    ✓ ${label} (${elapsed}s)\n`);
+    settle("✓");
     return result;
   } catch (err) {
-    clearInterval(interval);
-    const elapsed = Math.floor((Date.now() - start) / 1000);
-    process.stdout.write(`\r\x1b[K    ✗ ${label} (${elapsed}s)\n`);
+    settle("✗");
     throw err;
   }
+}
+
+/**
+ * `withSpinner` for an awaited operation. Needed once the CI wait became async
+ * to accommodate retry backoff — the sync version would resolve the promise
+ * instantly and clear the spinner before the work finished.
+ */
+async function withSpinnerAsync<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const start = Date.now();
+  const progress = startStageProgress(label);
+  const settle = (mark: string) => {
+    progress.stop();
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    process.stdout.write(`    ${mark} ${label} (${elapsed}s)\n`);
+  };
+
+  try {
+    const result = await fn();
+    settle("✓");
+    return result;
+  } catch (err) {
+    settle("✗");
+    throw err;
+  }
+}
+
+/**
+ * One phase carried by a pull request, as recorded in its body marker.
+ *
+ * `gate`/`review` are absent for phases recovered from a pre-marker PR title,
+ * where the verdicts were never written down. Absent means "not recorded" —
+ * never "passed".
+ */
+interface PrPhaseRecord {
+  id: string;
+  gate?: "PASS" | "FAIL";
+  review?: "GO" | "NO-GO";
+}
+
+/** Machine-readable span marker, invisible in rendered markdown. */
+const PR_MARKER = /<!-- gwrk:pr (.*?) -->/;
+
+/**
+ * The marker a review agent appends to a task description to record a blocking
+ * finding — `REVIEW FAIL (code): …` / `REVIEW FAIL (uat): …`, the format the
+ * review PROMPT.md files ask for.
+ */
+const REVIEW_FAIL_MARKER = "REVIEW FAIL (";
+
+/** How many `REVIEW FAIL (` blocks a description carries. */
+function countReviewFailBlocks(description: string | undefined): number {
+  if (!description) return 0;
+  let count = 0;
+  let from = 0;
+  for (;;) {
+    const at = description.indexOf(REVIEW_FAIL_MARKER, from);
+    if (at === -1) return count;
+    count++;
+    from = at + REVIEW_FAIL_MARKER.length;
+  }
+}
+
+/**
+ * What a review dispatch raised, and through which channel it raised it.
+ *
+ * `revertSourceMutations()` discards everything the agent wrote except
+ * tasks.json, so tasks.json holds every channel the agent has. Two exist:
+ *
+ * - **status flip** (`reopened`) — `completed` → `open`. What the VERDICT
+ *   CHANNEL block in the scope context asks for.
+ * - **description-only** (`descriptionOnly`) — a `REVIEW FAIL (` block appended
+ *   while the status stayed put. What all four missed NO-GOs actually did, and
+ *   what a status-only detector reads as silence.
+ *
+ * The verdict consults `all` and does not care which channel carried it; the
+ * split exists so the console line can name the mechanism, since "the agent
+ * ignored the prompt" and "the agent followed it" are different bugs.
+ */
+export interface ReviewFindings {
+  /** Tasks the agent moved `completed` → `open` during this dispatch. */
+  reopened: Set<string>;
+  /**
+   * Tasks that gained a `REVIEW FAIL (` block during this dispatch while their
+   * status stayed where it was. Disjoint from `reopened`.
+   */
+  descriptionOnly: Set<string>;
+  /** The union of both channels. This is what a verdict reads. */
+  all: Set<string>;
+}
+
+/** A dispatch that raised nothing — also the shape returned on a read failure. */
+function noReviewFindings(): ReviewFindings {
+  return {
+    reopened: new Set<string>(),
+    descriptionOnly: new Set<string>(),
+    all: new Set<string>(),
+  };
+}
+
+/**
+ * Errors that are GitHub's problem, not a verdict about the code.
+ *
+ * Run #2631 finished everything — both reviews, the PR, CI green in 9s — then
+ * exited 1 on GitHub's own 502-class GraphQL error. These are worth another
+ * attempt; a CI verdict never is, because retrying it doubles the wait and can
+ * mask a genuine red.
+ */
+const TRANSIENT_GH_PATTERNS = [
+  /Something went wrong while executing your query/i, // GraphQL 502-class
+  /\bHTTP (50[0234])\b/, // 500/502/503/504
+  /\b(Bad Gateway|Service Unavailable|Gateway Time-?out)\b/i,
+  /secondary rate limit/i,
+  /API rate limit exceeded/i,
+  /\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE)\b/,
+  /socket hang up/i,
+  /\bserver error\b/i,
+];
+
+function isTransientGhError(message: string): boolean {
+  return TRANSIENT_GH_PATTERNS.some((re) => re.test(message));
+}
+
+/**
+ * The environment failing, not the agent failing.
+ *
+ * A review that reports NO-GO is a verdict and must stand; retrying it would
+ * re-roll a red into a green. A review that never got to report anything was
+ * interrupted, and is worth another attempt. These patterns name the second
+ * case only, so nothing here may match ordinary agent prose.
+ *
+ * Run #5471 lost 029 phase-03 to the first entry: the Mac slept on battery
+ * 8m45s into CODE_REVIEW, having already committed IMPLEMENT and passed both
+ * post-flight gates.
+ */
+const TRANSIENT_AGENT_PATTERNS = [
+  /computer went to sleep/i, // host suspended mid-response
+  /\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE)\b/,
+  /socket hang up/i,
+  /connection (reset|closed) by peer/i,
+  /\bHTTP (50[0234])\b/,
+  /\b(Bad Gateway|Service Unavailable|Gateway Time-?out)\b/i,
+  /\b(overloaded_error|rate_limit_error)\b/i,
+];
+
+function isTransientAgentFailure(result: {
+  stdout?: string;
+  stderr?: string;
+}): boolean {
+  const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  return TRANSIENT_AGENT_PATTERNS.some((re) => re.test(text));
+}
+
+/** Attempts after the first before a transient dispatch is allowed to fail. */
+const AGENT_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
+
+/**
+ * `gh pr checks` exits 1 with this when the PR has no check runs at all. On a
+ * PR created seconds ago that means "not registered yet", not "none exist".
+ */
+const CHECKS_ABSENT = /\bno checks reported\b/i;
+
+/**
+ * `gh pr checks --required` exits 1 with this when the base branch carries no
+ * protection rule. A configuration fact, knowable immediately, never a race.
+ */
+const NO_REQUIRED_CHECKS = /\bno required checks reported\b/i;
+
+/** How many times to re-query before accepting that a PR has no checks. */
+const ABSENCE_POLL_ATTEMPTS = 8;
+
+/** Delay between absence re-queries. Eight of these span two minutes. */
+const ABSENCE_POLL_MS = 15_000;
+
+/**
+ * The agent's answer, whatever channel the adapter wrapped it in.
+ *
+ * ClaudeAdapter runs with `--output-format stream-json` unconditionally, so its
+ * stdout is newline-delimited JSON events and the prose sits inside the
+ * trailing `result` event. codex and agy write prose directly. A caller that
+ * scans stdout for a line prefix sees nothing at all under stream-json, so
+ * unwrap first and fall back to the raw text.
+ */
+function agentAnswerText(stdout: string): string {
+  let answer: string | undefined;
+
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+    try {
+      const event = JSON.parse(trimmed) as { type?: string; result?: unknown };
+      if (event.type === "result" && typeof event.result === "string") {
+        answer = event.result;
+      }
+    } catch {
+      // A partial or non-JSON line is not an event. Keep scanning.
+    }
+  }
+
+  return answer ?? stdout;
+}
+
+/** `phase-04` → `4`. */
+function phaseNumOf(phaseId: string): string {
+  return phaseId.replace("phase-", "").replace(/^0+/, "") || "0";
+}
+
+/**
+ * Name the phases a PR carries: `Phase 4`, `Phases 1–4` when contiguous,
+ * `Phases 1, 3, 4` when a merge or a skip broke the run.
+ */
+function prPhaseLabel(phases: PrPhaseRecord[]): string {
+  const nums = phases.map((p) => Number(phaseNumOf(p.id))).sort((a, b) => a - b);
+  if (nums.length === 1) return `Phase ${nums[0]}`;
+  const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+  return contiguous
+    ? `Phases ${nums[0]}–${nums[nums.length - 1]}`
+    : `Phases ${nums.join(", ")}`;
+}
+
+/**
+ * Recover a span from a PR body written before the marker existed, so
+ * upgrading gwrk mid-feature extends that PR instead of restarting its count.
+ */
+function inferSpanFromBody(body: string): PrPhaseRecord[] {
+  const range = body.match(/Phases\s+(\d+)\s*[–-]\s*(\d+)/);
+  if (range) {
+    const [from, to] = [Number(range[1]), Number(range[2])];
+    return Array.from({ length: to - from + 1 }, (_, i) => ({
+      id: `phase-${String(from + i).padStart(2, "0")}`,
+    }));
+  }
+  const list = body.match(/Phases\s+([\d,\s]+)/);
+  if (list) {
+    return list[1]
+      .split(",")
+      .map((n) => n.trim())
+      .filter(Boolean)
+      .map((n) => ({ id: `phase-${n.padStart(2, "0")}` }));
+  }
+  const single = body.match(/Phase\s+(\d+)/);
+  return single
+    ? [{ id: `phase-${single[1].padStart(2, "0")}` }]
+    : [];
 }
 
 export class ShipOrchestrator extends EventEmitter {
@@ -374,8 +627,29 @@ export class ShipOrchestrator extends EventEmitter {
       this.revertSourceMutations();
 
       // 4. Determine verdict from gates (not agent edits).
-      //    Gates are truth, agent verdict is advisory. (ADR-007)
-      const verdict = await this.readVerdict();
+      //    Gate authority is one-way (ADR-007 + 028 correction): a green gate
+      //    closes a task the reviewer raised no finding against, and never a task
+      //    it reproduced a defect on.
+      //
+      //    Advisory is not the same as discarded. Source mutations were just
+      //    reverted, so tasks.json is the review agent's only surviving
+      //    channel — through either door: a task it moved completed → open, or
+      //    a `REVIEW FAIL (` block it appended and left on a completed task.
+      //    Compute both before readVerdict, which rewrites the same file.
+      const reviewFindings = this.detectReviewReopens(featureDir, beforeState);
+      // Record every finding in the append-only ledger BEFORE readVerdict runs.
+      // Ordering is load-bearing at both ends: after the revert, so this
+      // dispatch's entries cannot be thrown away by it; before readVerdict, so
+      // they are on disk even if gate execution later throws.
+      this.recordFindings(featureDir, workflowName, reviewFindings);
+      // 5. The returned JSON verdict, last and one-way (FR-010). It runs AFTER
+      //    the gate + re-open computation on purpose: evidence is computed
+      //    first and in full, and the agent's word is only ever allowed to
+      //    tighten the result it arrived at.
+      const verdict = this.ratchetOnReturnedVerdict(
+        await this.readVerdict(reviewFindings),
+        result.stdout,
+      );
       this.state.reviewVerdict = verdict;
       console.log(
         `    ${workflowName}: ${verdict === "GO" ? "\x1b[32mGO\x1b[0m" : "\x1b[31mNO-GO\x1b[0m"}`,
@@ -413,6 +687,80 @@ export class ShipOrchestrator extends EventEmitter {
     return stages[currentIndex + 1] || ShipStage.DONE;
   }
 
+  /**
+   * Refuse to start work that PR_CI could not push.
+   *
+   * PR_CI pushes at the very end, so a stale remote branch used to surface only
+   * after the implement, code-review and UAT agents had all run — a rejected
+   * `git push` discarding ~20 minutes of work. Every input is known now.
+   *
+   * Behind-only is recoverable and recovered here (fast-forward). Diverged is
+   * not: choosing between the two histories is the operator's call, so stop and
+   * say exactly what to run.
+   *
+   * @returns a failing stage result to abort with, or null to continue.
+   */
+  private ensurePushable(branchName: string): ShipStageResult | null {
+    const remoteRef = `refs/remotes/origin/${branchName}`;
+    const git = (cmd: string) =>
+      execSync(cmd, { cwd: this.config.cwd, encoding: "utf-8" }).trim();
+
+    try {
+      // Refresh the remote-tracking ref explicitly; the ambient one may predate
+      // another machine's push. A missing remote branch is the normal
+      // first-ship case, so a failure here is not fatal.
+      try {
+        git(
+          `git fetch origin +refs/heads/${branchName}:${remoteRef} --quiet`,
+        );
+      } catch {
+        /* no such remote branch, or offline — fall through to the check */
+      }
+
+      try {
+        git(`git rev-parse --verify --quiet ${remoteRef}`);
+      } catch {
+        return null; // No remote counterpart: the first push creates it.
+      }
+
+      const behind = Number(
+        git(`git rev-list --count ${branchName}..origin/${branchName}`) || "0",
+      );
+      if (behind === 0) return null;
+
+      const ahead = Number(
+        git(`git rev-list --count origin/${branchName}..${branchName}`) || "0",
+      );
+
+      if (ahead === 0) {
+        console.log(
+          `  Branch ${branchName} is ${behind} commit(s) behind origin — fast-forwarding`,
+        );
+        git(`git merge --ff-only origin/${branchName}`);
+        return null;
+      }
+
+      return {
+        success: false,
+        exitCode: 1,
+        error:
+          `Branch ${branchName} has diverged from origin/${branchName} ` +
+          `(${ahead} local, ${behind} remote). PR_CI could not push, so the run is stopping ` +
+          "now instead of after the agents have run.\n" +
+          "  Reconcile first, then re-run:\n" +
+          `    git merge origin/${branchName}        # keep both histories\n` +
+          `    git push origin --delete ${branchName} # or discard the stale remote branch`,
+      };
+    } catch (err: unknown) {
+      // The check itself failing must not block a ship — PR_CI still guards the
+      // push. Say so rather than proceeding silently.
+      console.warn(
+        `  ⚠ Could not compare ${branchName} with origin: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
+  }
+
   private async stageBranchSetup(): Promise<ShipStageResult> {
     console.log("  ▸ BRANCH_SETUP");
     // FR-002: Dirty tree fail fast
@@ -431,6 +779,8 @@ export class ShipOrchestrator extends EventEmitter {
     // The develop merge happens at PR merge time, not during ship.
     if (currentBranch === branchName) {
       console.log(`  Branch ${branchName} — already checked out`);
+      const pushable = this.ensurePushable(branchName);
+      if (pushable) return pushable;
       this.state.branchName = branchName;
       if (this.state.iteration === 1) await this.captureTestBaseline();
       return { success: true, exitCode: 0 };
@@ -438,6 +788,10 @@ export class ShipOrchestrator extends EventEmitter {
 
     try {
       await createBranch(this.config.cwd, branchName, "develop");
+      // A fresh branch off develop plus a stale remote of the same name is
+      // exactly the 005 case — check before any agent runs, not at PR_CI.
+      const pushable = this.ensurePushable(branchName);
+      if (pushable) return pushable;
       this.state.branchName = branchName;
       if (this.state.iteration === 1) await this.captureTestBaseline();
       return { success: true, exitCode: 0 };
@@ -451,8 +805,10 @@ export class ShipOrchestrator extends EventEmitter {
             cwd: this.config.cwd,
             stdio: ["ignore", "ignore", "pipe"],
           });
-          this.state.branchName = branchName;
           console.log(`  Branch ${branchName} exists — checked out`);
+          const pushable = this.ensurePushable(branchName);
+          if (pushable) return pushable;
+          this.state.branchName = branchName;
           if (this.state.iteration === 1) await this.captureTestBaseline();
           return { success: true, exitCode: 0 };
         } catch (checkoutErr: unknown) {
@@ -563,55 +919,24 @@ export class ShipOrchestrator extends EventEmitter {
     if (!postFlightPhase) return null;
 
     let reopenedCount = 0;
+    // 026: a fenced Done-When compiles the same gateScript onto every task in a
+    // phase — run each distinct gate once.
+    const gateCache = new Map<string, TaskGateResult>();
     for (const task of postFlightPhase.tasks) {
       if (task.status !== "completed" || !task.gateScript) continue;
 
-      // Gate resolution: 3 strategies (must match gwrk gate CLI)
-      // 1. Gate file in gates/ directory (canonical)
-      const conventionPath = path.join(
-        featureDir, "gates", `${task.id}-gate.sh`,
-      );
-      // 2. gateScript as file path relative to feature dir
-      const scriptPath = path.join(featureDir, task.gateScript);
-
-      let gateResult: { passed: boolean; output: string };
-      let gateLabel: string;
-
-      if (fs.existsSync(conventionPath)) {
-        // Strategy 1: canonical gate file
-        gateLabel = `gates/${task.id}-gate.sh`;
-        const result = await runGate(conventionPath);
-        gateResult = { passed: result.passed, output: result.output };
-      } else if (fs.existsSync(scriptPath)) {
-        // Strategy 2: gateScript as file path
-        gateLabel = task.gateScript;
-        const result = await runGate(scriptPath);
-        gateResult = { passed: result.passed, output: result.output };
-      } else {
-        // Strategy 3: gateScript as inline shell command
-        gateLabel = `(inline) ${task.gateScript.substring(0, 60)}`;
-        if (isHollowGate(task.gateScript)) {
-          // FR-001 (ADR-005 §10.2.5): file-existence-only gates aren't verification.
-          gateResult = {
-            passed: false,
-            output:
-              "FAIL: hollow gate (test -f only) — not a functional assertion (FR-001)",
-          };
-        } else {
-          try {
-            const output = execSync(task.gateScript, {
-              cwd: this.config.cwd,
-              stdio: "pipe",
-              timeout: 30_000,
-              encoding: "utf-8",
-            });
-            gateResult = { passed: true, output: output || "" };
-          } catch (err: unknown) {
-            const stderr = (err as { stderr?: string })?.stderr || "";
-            gateResult = { passed: false, output: stderr || String(err) };
-          }
-        }
+      // 026: one shared runner (convention file → gateScript-as-path → inline
+      // `set -e`; hollow/unauthored rejected), identical to `gwrk gate`.
+      let result = gateCache.get(task.gateScript);
+      if (!result) {
+        result = await runTaskGate(task, {
+          featureDir,
+          cwd: this.config.cwd,
+        });
+        gateCache.set(task.gateScript, result);
       }
+      const gateResult = { passed: result.passed, output: result.output };
+      const gateLabel = result.gatePath;
 
       if (!gateResult.passed) {
         task.status = "open";
@@ -670,7 +995,7 @@ export class ShipOrchestrator extends EventEmitter {
     for (const task of openTasks) {
       const gatePath = path.join(featureDir, task.gateScript);
       if (fs.existsSync(gatePath)) {
-        const gateResult = await runGate(gatePath);
+        const gateResult = await runGate(gatePath, { cwd: this.config.cwd });
         if (gateResult.passed) {
           console.log(`  ✓ pre-flight PASS: ${task.id}`);
           // Mark task as completed in state
@@ -855,6 +1180,27 @@ export class ShipOrchestrator extends EventEmitter {
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
       }
       if (r.testsRun === 0) {
+        // The profile runner found no tests. Before NO-Going on liveness, check
+        // whether the phase has an authored Done-When gate. A phase can map a
+        // test file whose real runner is NOT the profile default — e.g. a
+        // node:test suite run in Docker via `make test:db`, which `pnpm vitest
+        // run` reports as 0 tests. The gate carries the correct runner, so run
+        // it (parity with `gwrk gate`) rather than false-NO-Going a green phase.
+        // If there is no authored gate, 0 tests is a genuine liveness fail.
+        const phaseGate = this.getPhaseGate();
+        if (phaseGate) {
+          const gate = this.runGateScript(phaseGate);
+          if (gate.passed) {
+            console.log(
+              `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId}) — profile runner found 0 tests; verified via the phase gate`,
+            );
+            return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+          }
+          console.log(
+            `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
+          );
+          return this.handleNoGo("TEST_GATE");
+        }
         console.log(
           "  ✗ TEST_GATE: phase tests executed 0 tests (none discovered / all cancelled) — not a pass",
         );
@@ -870,6 +1216,29 @@ export class ShipOrchestrator extends EventEmitter {
         `  ✓ tests: ${r.passed} passed, 0 failed (${r.testsRun} ran)`,
       );
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+    }
+
+    // 025 Fix B (FR-004) — a test-less phase is a gate-only phase (schema /
+    // migration / config): its verification IS its Done-When gate, not a test
+    // runner. The canonical `#### Done When` fenced block compiles onto
+    // task.gateScript (NOT phase.doneWhen, which is empty for the fenced form),
+    // so read the phase's real gate from the compiled task state. Run it under
+    // `set -e` (gate.ts:276 shape) and pass iff exit 0 — an honest verification
+    // that replaces the weak no-regression baseline for gate-only phases.
+    // Liveness (testsRun > 0) is NOT applied: a config gate asserts by exit code,
+    // not test count. A test-less phase with NO real gate keeps the baseline pass
+    // below (strengthen, never weaken).
+    const phaseGate = this.getPhaseGate();
+    if (phaseGate) {
+      const gate = this.runGateScript(phaseGate);
+      if (gate.passed) {
+        console.log(`  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId})`);
+        return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+      }
+      console.log(
+        `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
+      );
+      return this.handleNoGo("TEST_GATE");
     }
 
     const wholeSuite = await this.runTestSuite(phaseTestFiles);
@@ -958,6 +1327,43 @@ export class ShipOrchestrator extends EventEmitter {
       console.log(`  ✓ integration: ${cmd} — ${passed} passed (${testsRun} ran)`);
     }
     return null;
+  }
+
+  /** The current phase's executable verification gate, or null (see
+   * {@link getPhaseVerificationGate}). Reads the compiled task state: the real
+   * gate lives in task.gateScript (the fenced `#### Done When`), with a fallback
+   * to prose-bullet phase.doneWhen. Null on any load failure. */
+  private getPhaseGate(): string | null {
+    try {
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const taskState = loadTaskState(featureDir);
+      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      return phase ? getPhaseVerificationGate(phase) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 025 Fix B — run a test-less phase's gate as one `set -e` script (the same
+   * execution shape as `gate.ts:276`; the script is already multi-line, so
+   * inter-line shell state like `cd` is preserved). Passes iff it exits 0. On
+   * failure, names the offending line so a NO-GO reads as navigation (ADR-004).
+   */
+  private runGateScript(script: string): {
+    passed: boolean;
+    offendingLine: string;
+    output: string;
+  } {
+    // 026: delegate to the one shared inline executor (gate-exec) so TEST_GATE's
+    // phase-gate path runs a gate identically to `gwrk gate`, post-flight, and
+    // harvest.
+    const r = runInlineGate(script, this.config.cwd);
+    return {
+      passed: r.passed,
+      offendingLine: r.offendingLine ?? "",
+      output: r.output,
+    };
   }
 
   /** Run test suite, return failure count and output.
@@ -1090,9 +1496,24 @@ export class ShipOrchestrator extends EventEmitter {
     const scopedPrompt = [
       `Phase ${this.config.phaseId} Code Review`,
       "",
-      "SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks.",
-      "Do NOT re-open tasks from earlier phases that are already completed.",
-      "If a completed task's implementation has issues, note them in your summary but do NOT change its status.",
+      `SCOPE CONSTRAINT: Only evaluate code changes made for THIS phase's tasks (${this.config.phaseId}).`,
+      "Do NOT touch tasks belonging to any OTHER phase — not their status, not their descriptions.",
+      "For a task in an earlier phase with issues: note it in your summary only, and leave its status alone.",
+      "",
+      // The verdict channel, stated where the agent cannot miss it. This block is
+      // appended after PROMPT.md, so it is the last thing the agent reads — which is
+      // why its predecessor ("note them in your summary but do NOT change its
+      // status", unqualified by phase) silently disabled code review as a gate.
+      // Every task in the current phase is `completed` by the time review runs, so
+      // that sentence read as "never re-open anything" and four blocking findings
+      // across runs #2727/#2728 were written down, committed, and discarded.
+      `VERDICT CHANNEL: when you find a blocking defect in a task of THIS phase (${this.config.phaseId}),`,
+      'set that task\'s status to "open" in tasks.json and append a REVIEW FAIL note.',
+      "That status flip IS your NO-GO. The orchestrator reads it — not your prose, not your commit",
+      "subject, not the verdict field of your JSON. A finding left on a completed task is discarded and",
+      "the phase advances to UAT as if you had approved it.",
+      "This holds even when the task's gate passes: a green gate over a defect you reproduced is a gate",
+      "coverage hole, and re-opening the task is how you report it.",
       "",
       "Review Steps:",
       steps,
@@ -1141,11 +1562,132 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
-   * Read the verdict from task state after a review dispatch.
-   * If any tasks in the phase are "open", the review agent re-opened them → NO-GO.
-   * Otherwise → GO.
+   * Findings the review agent registered during this run, by channel.
+   *
+   * `revertSourceMutations()` throws away everything the agent wrote except
+   * tasks.json, so tasks.json is where a review agent registers a defect. Two
+   * channels are read, and both are diffed against the pre-dispatch snapshot
+   * rather than trusting the current file alone:
+   *
+   * - a task moved `completed` → `open` (a task already open before review
+   *   carries no verdict — nobody may have implemented it yet);
+   * - a `REVIEW FAIL (` block newly appended to a task's description (one
+   *   already on disk belongs to an earlier iteration and must not re-fire).
+   *
+   * The description diff is **count-based, not presence-based**. Presence would
+   * re-fire on the earlier iteration's block forever; a count also fires
+   * correctly when a second finding lands on a description that already carried
+   * one, which is the ordinary shape of iteration 2 of a NO-GO loop.
    */
-  private async readVerdict(): Promise<"GO" | "NO-GO"> {
+  private detectReviewReopens(
+    featureDir: string,
+    beforeState: { phases: Phase[] },
+  ): ReviewFindings {
+    try {
+      const after = loadTaskState(featureDir);
+      const before = beforeState.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
+      const now = after.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
+      if (!before || !now) return noReviewFindings();
+
+      const wasById = new Map<string, Task>(
+        before.tasks.map((t: Task) => [t.id, t] as [string, Task]),
+      );
+
+      const findings = noReviewFindings();
+      for (const task of now.tasks) {
+        const was = wasById.get(task.id);
+        if (task.status === "open" && was?.status === "completed") {
+          findings.reopened.add(task.id);
+        } else if (
+          countReviewFailBlocks(task.description) >
+          countReviewFailBlocks(was?.description)
+        ) {
+          // The agent wrote the defect down and left the status alone — the
+          // exact shape of the four findings that reached GO anyway.
+          findings.descriptionOnly.add(task.id);
+        }
+      }
+      findings.all = new Set([
+        ...findings.reopened,
+        ...findings.descriptionOnly,
+      ]);
+      return findings;
+    } catch {
+      // An unreadable tasks.json is readVerdict's problem to report, not ours.
+      return noReviewFindings();
+    }
+  }
+
+  /**
+   * Write every finding this dispatch raised into the append-only ledger.
+   *
+   * tasks.json is the channel the agent has; it is not a store of record. Its
+   * `description` is rewritten wholesale by every later agent, and twice that
+   * rewrite deleted a live finding outright (`48c3ea6`, `5b29881`). The ledger
+   * is the copy that a later rewrite cannot reach — see
+   * {@link appendFinding}.
+   *
+   * `text` is the description as it stands after the dispatch, which is where
+   * the agent's own `REVIEW FAIL (` block lives. A status-flip finding on a
+   * task with an empty description gets a synthesised line instead: an empty
+   * `text` fails `FindingSchema`, and refusing to record a real finding because
+   * the agent left the description blank would be the exact silence this
+   * feature exists to remove.
+   */
+  private recordFindings(
+    featureDir: string,
+    workflowName: string,
+    findings: ReviewFindings,
+  ): void {
+    if (findings.all.size === 0) return;
+
+    const taskState = loadTaskState(featureDir);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
+    const byId = new Map<string, Task>(
+      (phase?.tasks ?? []).map((t: Task) => [t.id, t] as [string, Task]),
+    );
+    const stage = workflowName.includes("uat") ? "uat-review" : "code-review";
+    const recordedAt = new Date().toISOString();
+
+    for (const taskId of findings.all) {
+      const description = byId.get(taskId)?.description?.trim();
+      appendFinding(featureDir, {
+        taskId,
+        phaseId: this.config.phaseId,
+        stage,
+        text:
+          description ||
+          `REVIEW FINDING (${taskId}): raised by ${workflowName} with no description recorded.`,
+        recordedAt,
+      });
+    }
+  }
+
+  /**
+   * Read the verdict from task state after a review dispatch.
+   *
+   * NOT "any open task → NO-GO", which this comment used to claim and the code
+   * has never done — a task can be open because nobody has implemented it yet.
+   * The verdict comes from what this run can establish: each task's gate, and
+   * the tasks the review agent re-opened. NO-GO if a gate fails, if a re-opened
+   * task's gate passes anyway (a coverage hole), or if a re-opened task has no
+   * gate at all. Otherwise GO.
+   *
+   * "Re-opened" is read through {@link ReviewFindings}, which carries both
+   * channels a review agent has: the status flip the prompt asks for, and a
+   * `REVIEW FAIL (` block appended to a description with the status left alone.
+   * Every branch below consults `findings.all`; the `reopened`/`descriptionOnly`
+   * split only decides which mechanism the console line names.
+   */
+  private async readVerdict(
+    findings: ReviewFindings = noReviewFindings(),
+  ): Promise<"GO" | "NO-GO"> {
     const featureDir = path.join(
       this.config.cwd,
       "specs",
@@ -1157,22 +1699,89 @@ export class ShipOrchestrator extends EventEmitter {
     );
     if (!phase) return "NO-GO";
 
-    // Gate-driven verdict: run gates directly, don't trust agent edits.
-    // "Gates are truth, tasks.json status is bookkeeping." (gwrk-review-code.md L59)
-    let failedCount = 0;
-    for (const task of phase.tasks) {
-      if (!task.gateScript) continue;
-      const gatePath = path.join(featureDir, task.gateScript);
-      if (!fs.existsSync(gatePath)) continue;
+    if (findings.descriptionOnly.size > 0) {
+      console.log(
+        `    ⚠ ${findings.descriptionOnly.size} finding(s) arrived as a REVIEW FAIL block with the task status left unchanged: ${[...findings.descriptionOnly].join(", ")}`,
+      );
+    }
 
-      const gateResult = await runGate(gatePath);
+    // Gate-driven verdict: run gates directly, don't trust agent edits.
+    // Gate authority is one-way — see the "one-way" callout in
+    // src/plugins/builtins/reviews/review-code-{cli,webapp}/PROMPT.md Step 2.
+    // (The old citation here, "gates are truth, tasks.json status is bookkeeping",
+    // was the doctrine that let a green gate close a reproduced defect.)
+    // 026: run each task's gate through the shared runner. An INLINE gateScript
+    // now actually executes — previously it was `join`ed to a path that never
+    // exists and skipped, so the verdict was a vacuous GO for every real phase.
+    // A shared phase gate runs once.
+    let failedCount = 0;
+    const divergentTasks: string[] = [];
+    const ungatedFindings: string[] = [];
+    const gateCache = new Map<string, TaskGateResult>();
+    for (const task of phase.tasks) {
+      // Read before anything can `continue` past it. The gateless skip below
+      // used to sit ABOVE this read, so a finding on a task with no gate — the
+      // one case where review is the only verdict there will ever be — fell
+      // into a vacuous GO.
+      const hasFinding = findings.all.has(task.id);
+      const mechanism = findings.descriptionOnly.has(task.id)
+        ? "REVIEW FAIL block appended, status left unchanged"
+        : "re-opened by review";
+
+      if (!task.gateScript) {
+        // No gate means no mechanical baseline, so the reviewer's judgement is
+        // the only verdict this task will ever get. Skipping the task outright
+        // — as this loop used to — threw that judgement away and returned a
+        // vacuous GO. Common whenever a phase expresses Done-When as fenced
+        // prose instead of per-task gates.
+        if (hasFinding) {
+          console.log(
+            `    ⚠ REVIEW FINDING: ${task.id} — ${mechanism}, and no gate covers it`,
+          );
+          ungatedFindings.push(task.id);
+          // Materialise the finding as a status the rest of the loop can see:
+          // DIAGNOSE only collects error context from OPEN tasks, so a
+          // description-only finding left `completed` would be a NO-GO whose
+          // cause the next stage never reads.
+          task.status = "open";
+          task.completedAt = undefined;
+          task.description =
+            `${task.description || ""}\n\nREVIEW FINDING (${task.id}, no gate, ${mechanism}):\nThe review agent raised a finding on this task and it has no gateScript, so nothing mechanical can confirm or refute the finding. Read the REVIEW FAIL note above, fix it, and add a gate that would catch it before completing.`.trim();
+        }
+        continue;
+      }
+
+      let gateResult = gateCache.get(task.gateScript);
+      if (!gateResult) {
+        gateResult = await runTaskGate(task, {
+          featureDir,
+          cwd: this.config.cwd,
+        });
+        gateCache.set(task.gateScript, gateResult);
+      }
       if (gateResult.passed) {
-        if (task.status !== "completed") {
+        if (hasFinding) {
+          // Green gate over a defect the reviewer reproduced. Completing the
+          // task here is exactly what shipped 005 Phase 1 with a live bug while
+          // the console read GO. Keep the finding: a passing gate covering a
+          // review finding means the GATE has a coverage hole, and this is the
+          // only moment the system can know that.
+          console.log(
+            `    ⚠ REVIEW/GATE DIVERGENCE: ${task.id} — gate PASSES but review raised a finding (${mechanism})`,
+          );
+          divergentTasks.push(task.id);
+          // Same reason as the gateless branch: the finding has to be visible
+          // to DIAGNOSE, and a green gate must never close a task a reviewer
+          // reproduced a defect on (ADR-007, one-way).
+          task.status = "open";
+          task.completedAt = undefined;
+          task.description = `${task.description || ""}\n\nREVIEW/GATE DIVERGENCE (${task.id}, gate: ${task.gateScript}, ${mechanism}):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.`.trim();
+        } else if (task.status !== "completed") {
           task.status = "completed";
           task.completedAt = new Date().toISOString();
         }
       } else {
-        console.log(`    ⚠ Gate FAILED: ${task.id} (${gatePath})`);
+        console.log(`    ⚠ Gate FAILED: ${task.id} (${gateResult.gatePath})`);
         console.log(`      exit: ${gateResult.exitCode}`);
         console.log(`      output: ${gateResult.output.slice(0, 500)}`);
         task.status = "open";
@@ -1186,6 +1795,27 @@ export class ShipOrchestrator extends EventEmitter {
 
     // Persist reconciled state
     saveTaskState(featureDir, taskState);
+
+    if (divergentTasks.length > 0) {
+      this.state.reviewGateDivergence = divergentTasks;
+      console.log(
+        `    ✗ ${divergentTasks.length} task(s) pass their gate but carry a review finding: ${divergentTasks.join(", ")}`,
+      );
+      console.log(
+        "      Treating as NO-GO. A green gate over a review finding is a gate coverage hole, not a cleared finding.",
+      );
+      return "NO-GO";
+    }
+
+    if (ungatedFindings.length > 0) {
+      console.log(
+        `    ✗ ${ungatedFindings.length} task(s) carry a review finding with no gate to check them: ${ungatedFindings.join(", ")}`,
+      );
+      console.log(
+        "      Treating as NO-GO. An ungated task's review IS its verdict — there is nothing else to consult.",
+      );
+      return "NO-GO";
+    }
 
     if (failedCount > 0) {
       this.state.gateResult = "FAIL";
@@ -1206,6 +1836,51 @@ export class ShipOrchestrator extends EventEmitter {
   }
 
   /**
+   * Let the review agent's returned JSON verdict tighten the computed one, and
+   * only tighten it (FR-010).
+   *
+   * `computed` is what {@link readVerdict} established from evidence this run
+   * can check: gates it ran itself, and findings the agent left in tasks.json.
+   * That stays authoritative. The returned verdict is consulted afterwards for
+   * the single case evidence cannot reach — run #2728 iteration 2, where the
+   * agent said NO-GO in its structured output, wrote nothing to tasks.json, and
+   * every gate passed. Before this, that verdict was read by nobody and the
+   * console printed GO over it.
+   *
+   * The one-way shape is TC-006 and it is permanent. It is enforced upstream in
+   * {@link parseReturnedVerdict}'s `"NO-GO" | undefined` return type rather than
+   * by the early return below — a returned GO is not "ignored here", it is not
+   * expressible. This function cannot loosen `computed` because it has nothing
+   * to loosen it with.
+   *
+   * A parse that finds nothing returns `computed` untouched, and the parser
+   * never throws, so unreadable agent output is not a new way for a run to die
+   * (TC-002).
+   */
+  private ratchetOnReturnedVerdict(
+    computed: "GO" | "NO-GO",
+    stdout: string,
+  ): "GO" | "NO-GO" {
+    if (parseReturnedVerdict(stdout) !== "NO-GO") return computed;
+
+    // Name the source, whichever way `computed` landed. When it is already
+    // NO-GO the returned verdict changes nothing, but it is a second signal
+    // saying the same thing — and an operator reading the log is better off
+    // knowing the agent agreed than inferring it from a re-opened task alone.
+    console.log(
+      '    ✗ RETURNED VERDICT: the review agent returned "verdict": "NO-GO" in its structured output',
+    );
+    if (computed === "NO-GO") return computed;
+
+    // This is the one NO-GO with no failing gate and no re-opened task behind
+    // it, so without this line there is nothing for an operator to act on.
+    console.log(
+      "      Treating as NO-GO. Gates passed and no task carries a finding, so this verdict rests on the agent's returned output alone — read its summary for what it found.",
+    );
+    return "NO-GO";
+  }
+
+  /**
    * Discard source file mutations left by review agents.
    *
    * Review agents in YOLO mode can modify source files during review
@@ -1223,6 +1898,7 @@ export class ShipOrchestrator extends EventEmitter {
       this.config.featureId,
     );
     const tasksJsonPath = path.join(featureDir, ".gwrk", "tasks.json");
+    const ledgerPath = findingsPath(featureDir);
 
     // Snapshot tasks.json — this carries the review verdict and must be preserved
     let tasksJsonContent: string | null = null;
@@ -1230,6 +1906,18 @@ export class ShipOrchestrator extends EventEmitter {
       tasksJsonContent = fs.readFileSync(tasksJsonPath, "utf-8");
     } catch {
       // No tasks.json to preserve — proceed with full restore
+    }
+
+    // Snapshot the findings ledger for the same reason, through the same
+    // mechanism. `.gwrk/findings.jsonl` is not git-ignored, so while untracked
+    // it is precisely what the `git clean -fd` below deletes — and the entries
+    // at risk are EARLIER iterations', already on disk when this dispatch
+    // reverts. Losing them would reintroduce D3 through a different door.
+    let ledgerContent: string | null = null;
+    try {
+      ledgerContent = fs.readFileSync(ledgerPath, "utf-8");
+    } catch {
+      // No ledger yet — nothing recorded on this feature so far
     }
 
     try {
@@ -1255,6 +1943,172 @@ export class ShipOrchestrator extends EventEmitter {
     // Restore tasks.json with review verdict state
     if (tasksJsonContent) {
       fs.writeFileSync(tasksJsonPath, tasksJsonContent, "utf-8");
+    }
+
+    // Restore the ledger. `git clean -fd` can take the whole `.gwrk/` directory
+    // when nothing tracked remains in it, so recreate the parent before writing.
+    if (ledgerContent) {
+      fs.mkdirSync(path.dirname(ledgerPath), { recursive: true });
+      fs.writeFileSync(ledgerPath, ledgerContent, "utf-8");
+    }
+  }
+
+  /**
+   * Render the PR body for every phase the PR carries, and append the span
+   * marker the next phase reads back.
+   *
+   * Task checkboxes come from tasks.json, and each phase reports the verdicts
+   * actually recorded for it — a phase recovered from a pre-marker PR says so
+   * rather than borrowing this phase's GO.
+   */
+  private buildPrBody(
+    title: string,
+    carried: PrPhaseRecord[],
+    taskState: { phases: Phase[] },
+  ): string {
+    const sections = carried
+      .map((rec) => {
+        const phase = taskState.phases.find((p: Phase) => p.id === rec.id);
+        const tasks =
+          phase?.tasks
+            .map(
+              (t: Task) =>
+                `- [${t.status === "completed" ? "x" : " "}] ${t.title}`,
+            )
+            .join("\n") || "- See tasks.json for task list";
+        const heading = phase?.title
+          ? `### Phase ${phaseNumOf(rec.id)} — ${phase.title}`
+          : `### Phase ${phaseNumOf(rec.id)}`;
+        return `${heading}\n${tasks}\n\nGates: ${rec.gate ?? "not recorded"} · Review: ${rec.review ?? "not recorded"}`;
+      })
+      .join("\n\n");
+
+    const preamble =
+      carried.length > 1
+        ? `Shipped by one \`gwrk ship\` run. Each phase below landed on this branch in sequence; this PR carries all ${carried.length}.`
+        : "Shipped by `gwrk ship`.";
+
+    const marker = `<!-- gwrk:pr ${JSON.stringify({ phases: carried })} -->`;
+
+    return `## ${title}
+
+${preamble}
+
+${sections}
+
+---
+_Generated by gwrk ship_
+${marker}`;
+  }
+
+  /** Overridable in tests so the backoff does not slow the suite. */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Run a `gh pr checks` query, retrying only GitHub's own transient failures.
+   *
+   * Backoff is short because the caller is `--watch`, which already blocks for
+   * minutes; the point is to survive a blip, not to wait out an outage.
+   */
+  private async checksWithRetry(
+    prNumber: string,
+    required: boolean,
+  ): Promise<string> {
+    const delays = [3000, 10000, 30000];
+    let attempt = 0;
+
+    for (;;) {
+      try {
+        return execSync(
+          `gh pr checks "${prNumber}" --watch${required ? " --required" : ""} --interval 30`,
+          {
+            cwd: this.config.cwd,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!isTransientGhError(msg) || attempt >= delays.length) throw err;
+        const wait = delays[attempt];
+        attempt++;
+        console.log(
+          `    ⚠ GitHub returned a transient error — retrying in ${wait / 1000}s (${attempt}/${delays.length})`,
+        );
+        await this.sleep(wait);
+      }
+    }
+  }
+
+  /**
+   * Block until the PR's CI is green, distinguishing three failures `gh pr
+   * checks` reports through the same exit code:
+   *
+   *   absence      no check runs exist yet        → re-query
+   *   none required  base branch is unprotected   → wait on ALL checks
+   *   red          a check reported failure       → throw
+   *
+   *   required → absent? → re-query → none required? → ALL → none at all? → skip
+   *
+   * Absence is a race, not a verdict. PR_CI queries seconds after creating the
+   * PR, before GitHub has registered the first run, and `--watch` exits rather
+   * than waiting for one to appear. Only the last rung skips, and it says so.
+   *
+   * Widening a guard to treat absence as skippable would be worse than failing:
+   * gwrk would green-light every PR whose checks are slow to register, which is
+   * the vacuous-green class 026/027 exist to close.
+   */
+  private async waitForChecks(prNumber: string): Promise<void> {
+    const check = (required: boolean) => this.checksWithRetry(prNumber, required);
+
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await withSpinnerAsync("waiting for required CI", () => check(true));
+        return;
+      } catch (requiredErr: unknown) {
+        const msg =
+          requiredErr instanceof Error
+            ? requiredErr.message
+            : String(requiredErr);
+
+        if (NO_REQUIRED_CHECKS.test(msg)) {
+          console.log(
+            "    No required checks on the base branch — waiting on all checks instead.",
+          );
+          console.log(
+            "      (Add branch protection to make the required-check gate meaningful.)",
+          );
+          break;
+        }
+
+        // Anything else that is not absence is a real verdict.
+        if (!CHECKS_ABSENT.test(msg)) throw requiredErr;
+
+        if (attempt >= ABSENCE_POLL_ATTEMPTS) {
+          console.log(
+            `    Still no check runs after ${attempt} queries — waiting on all checks instead.`,
+          );
+          break;
+        }
+
+        console.log(
+          `    No check runs registered yet — re-querying in ${ABSENCE_POLL_MS / 1000}s (${attempt}/${ABSENCE_POLL_ATTEMPTS}).`,
+        );
+        await this.sleep(ABSENCE_POLL_MS);
+      }
+    }
+
+    try {
+      await withSpinnerAsync("waiting for CI", () => check(false));
+    } catch (anyErr: unknown) {
+      const msg = anyErr instanceof Error ? anyErr.message : String(anyErr);
+      if (CHECKS_ABSENT.test(msg)) {
+        console.log("  No CI checks configured — skipping CI wait.");
+        return;
+      }
+      throw anyErr; // Re-throw real CI failures
     }
   }
 
@@ -1319,51 +2173,88 @@ export class ShipOrchestrator extends EventEmitter {
       let prNumber =
         prListRaw !== "null" && prListRaw !== "" ? prListRaw : null;
 
+      // ── PR identity ──
+      // `gwrk ship <feature>` ships every open phase on one branch (FR-013)
+      // and runs PR_CI per phase, so phases 2..N land on the PR phase 1 opened.
+      // The contract scopes the PR to the RUN (contracts/pr.md), so reusing it
+      // is right — but its title and body must name every phase it carries,
+      // not just whichever phase created it.
+      //
+      // The span lives in a body marker rather than ShipState: state is
+      // per-phase (.runs/<feature>_<phase>.state) and cannot cross phases, and
+      // reading it back off the PR also survives crash-resume and the
+      // re-minting that follows a mid-feature merge closing the previous PR.
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
+      const taskState = loadTaskState(featureDir);
+      const formattedSpec = specName.replace(/^\d+-/, "");
+
+      // PR_CI is only reached once the gate passed and both reviews returned
+      // GO, and both fields are overwritten on every attempt — so these are
+      // this phase's real, current verdicts.
+      const thisPhase: PrPhaseRecord = {
+        id: this.config.phaseId,
+        gate: this.state.gateResult ?? "PASS",
+        review: this.state.reviewVerdict ?? "GO",
+      };
+
+      let carried: PrPhaseRecord[] = [];
+      if (prNumber) {
+        let existingBody = "";
+        try {
+          existingBody = execSync(
+            `gh pr view ${prNumber} --json body --jq '.body'`,
+            { cwd: this.config.cwd, encoding: "utf-8" },
+          ).trim();
+        } catch {
+          /* best-effort — an unreadable body just restarts the span */
+        }
+        const marker = existingBody.match(PR_MARKER);
+        if (marker) {
+          try {
+            carried = JSON.parse(marker[1]).phases ?? [];
+          } catch {
+            /* corrupt marker — fall back to the title */
+          }
+        }
+        if (carried.length === 0) carried = inferSpanFromBody(existingBody);
+      }
+      // Re-shipping a phase updates its record rather than double-listing it.
+      carried = carried.filter((p) => p.id !== thisPhase.id);
+      carried.push(thisPhase);
+      carried.sort((a, b) => Number(phaseNumOf(a.id)) - Number(phaseNumOf(b.id)));
+
+      const prTitle = `feat(${formattedSpec}): ${prPhaseLabel(carried)}`;
+      const prBody = this.buildPrBody(prTitle, carried, taskState);
+      const prBodyPath = path.join("/tmp", `gwrk-pr-body-${Date.now()}.md`);
+      fs.writeFileSync(prBodyPath, prBody, "utf-8");
+
+      if (prNumber) {
+        // Keep the PR honest about its contents as each phase lands.
+        try {
+          withSpinner(`updating PR #${prNumber} → ${prPhaseLabel(carried)}`, () =>
+            execSync(
+              `gh pr edit ${prNumber} --title "${prTitle}" --body-file "${prBodyPath}"`,
+              { cwd: this.config.cwd, encoding: "utf-8" },
+            ),
+          );
+        } catch (editErr: unknown) {
+          // A stale title is not worth failing a green phase over.
+          const editMsg =
+            editErr instanceof Error ? editErr.message : String(editErr);
+          console.warn(`    ⚠ Could not update PR #${prNumber}: ${editMsg}`);
+        }
+      }
+
       if (!prNumber) {
-        // Read tasks.json to build PR body
-        const featureDir = path.join(
-          this.config.cwd,
-          "specs",
-          this.config.featureId,
-        );
-        const taskState = loadTaskState(featureDir);
-        const phase = taskState.phases.find(
-          (p: Phase) => p.id === this.config.phaseId,
-        );
-
-        const tasksList =
-          phase?.tasks
-            .map(
-              (t: Task) =>
-                `- [${t.status === "completed" ? "x" : " "}] ${t.title}`,
-            )
-            .join("\n") || "- See tasks.json for task list";
-        const phaseNum = this.config.phaseId
-          .replace("phase-", "")
-          .replace(/^0+/, "");
-        const formattedSpec = specName.replace(/^\d+-/, "");
-
-        const prBody = `## feat(${formattedSpec}): Phase ${phaseNum}
-
-### Tasks Completed
-${tasksList}
-
-### Verification
-- [x] All tasks verified via Hard Gates
-- [x] Code review: GO
-- [x] UAT: GO
-
----
-_Generated by gwrk ship_`;
-
-        const prBodyPath = path.join("/tmp", `gwrk-pr-body-${Date.now()}.md`);
-        fs.writeFileSync(prBodyPath, prBody, "utf-8");
-
         let createOutput: string;
         try {
           createOutput = withSpinner("creating PR", () =>
             execSync(
-              `gh pr create --title "feat(${formattedSpec}): Phase ${phaseNum}" --body-file "${prBodyPath}" --base develop`,
+              `gh pr create --title "${prTitle}" --body-file "${prBodyPath}" --base develop`,
               { cwd: this.config.cwd, encoding: "utf-8" },
             ),
           );
@@ -1413,25 +2304,7 @@ _Generated by gwrk ship_`;
         console.log(`    PR #${prNumber} ready`);
         // gh pr checks blocks until finished, returning non-zero if failed.
         // If no required checks are configured, treat as pass.
-        try {
-          withSpinner("waiting for CI", () =>
-            execSync(
-              `gh pr checks "${prNumber}" --watch --required --interval 30`,
-              {
-                cwd: this.config.cwd,
-                encoding: "utf-8",
-                stdio: ["ignore", "pipe", "pipe"],
-              },
-            ),
-          );
-        } catch (ciErr: unknown) {
-          const ciMsg = ciErr instanceof Error ? ciErr.message : String(ciErr);
-          if (ciMsg.includes("no checks reported")) {
-            console.log("  No CI checks configured — skipping CI wait.");
-          } else {
-            throw ciErr; // Re-throw real CI failures
-          }
-        }
+        await this.waitForChecks(prNumber);
         return { success: true, exitCode: 0, nextStage: ShipStage.DONE };
       }
 
@@ -1610,8 +2483,13 @@ _Generated by gwrk ship_`;
     const errorContext: string[] = [];
     for (const task of phase.tasks) {
       if (task.status === "open" && task.description) {
+        // Review findings count as context too. On the review path BUILD_CHECK
+        // and TEST_GATE have both passed — that is the entire point of the
+        // divergence warning — so matching only build/test failures meant
+        // DIAGNOSE printed "no error context" on every review-driven NO-GO and
+        // spent a stage contributing nothing.
         const errorMatch = task.description.match(
-          /(?:BUILD_CHECK FAILED|TEST_GATE REGRESSION|POST-FLIGHT GATE FAIL)[\s\S]*$/,
+          /(?:BUILD_CHECK FAILED|TEST_GATE REGRESSION|POST-FLIGHT GATE FAIL|REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL)[\s\S]*$/,
         );
         if (errorMatch) {
           errorContext.push(`Task ${task.id}: ${errorMatch[0]}`);
@@ -1639,14 +2517,29 @@ _Generated by gwrk ship_`;
       currentErrors = stderr;
     }
 
+    // A review-driven NO-GO reaches here with the build green — the finding is
+    // something no gate covers. Say so, or the diagnostician looks for compiler
+    // errors that do not exist and returns nothing.
+    const reviewDriven = errorContext.some((c) =>
+      /REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL/.test(c),
+    );
+
     // Build the diagnosis prompt — concise, targeted, no agent narration
     const diagnosisPrompt = [
-      "You are a TypeScript build diagnostician. Analyze these errors and produce SPECIFIC fix instructions.",
+      "You are a build and code-review diagnostician. Analyze the findings below and produce SPECIFIC fix instructions.",
       "",
       "## Current Build/Test Errors",
-      currentErrors || "(build passes — check test failures in task descriptions below)",
+      currentErrors || "(build passes — the findings below are what failed)",
       "",
-      "## Error Context from Failed Gates",
+      reviewDriven ? "## Review Findings (build and gates are GREEN)" : "## Error Context from Failed Gates",
+      ...(reviewDriven
+        ? [
+            "A reviewer reproduced these defects while every gate passed, so no gate covers them.",
+            "Each FIX must repair the defect the reviewer named. Where a gate or test would have caught",
+            "it, add one — a finding that survives its own fix is a finding that will recur.",
+            "",
+          ]
+        : []),
       ...errorContext,
       "",
       "## Instructions",
@@ -1672,8 +2565,10 @@ _Generated by gwrk ship_`;
       });
 
       if (result.exitCode === 0 && result.stdout) {
-        // Extract FIX: lines from the diagnosis output
-        const fixLines = result.stdout
+        // Extract FIX: lines from the diagnosis output. Unwrap first: under
+        // stream-json every stdout line is a JSON event, so a raw prefix scan
+        // matches nothing and discards a complete answer.
+        const fixLines = agentAnswerText(result.stdout)
           .split("\n")
           .filter((line: string) => line.trim().startsWith("FIX:"))
           .map((line: string) => line.trim());
@@ -1722,8 +2617,29 @@ _Generated by gwrk ship_`;
     // 2. Dispatch — run the agent in the ship working tree (cwd), not
     // process.cwd(). Identical for the primary checkout; under worktree-isolated
     // shipping this points the agent at the per-feature worktree.
+    //
+    // Retry only what the environment broke. An agent that ran and returned a
+    // verdict is answered once; an agent the host suspended or the network cut
+    // off never answered at all, and failing the phase on that discards work
+    // every earlier stage already proved good.
     const workDir = task.workDir ?? this.config.cwd;
-    const result = await dispatchToAgent({ ...task, model, env, workDir });
+
+    let result = await dispatchToAgent({ ...task, model, env, workDir });
+
+    for (
+      let attempt = 0;
+      result.exitCode !== 0 &&
+      isTransientAgentFailure(result) &&
+      attempt < AGENT_RETRY_DELAYS_MS.length;
+      attempt++
+    ) {
+      const wait = AGENT_RETRY_DELAYS_MS[attempt];
+      console.log(
+        `    ⚠ agent dispatch interrupted by the environment — retrying in ${wait / 1000}s (${attempt + 1}/${AGENT_RETRY_DELAYS_MS.length})`,
+      );
+      await this.sleep(wait);
+      result = await dispatchToAgent({ ...task, model, env, workDir });
+    }
 
     return result;
   }

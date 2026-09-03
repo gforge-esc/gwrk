@@ -19,6 +19,7 @@ import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { getTestExtension } from "../utils/toolchain-mapper.js";
 import { phaseHasTests, listTestsTree } from "../utils/test-discovery.js";
+import { getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
@@ -58,6 +59,7 @@ import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { pillarBackend } from "../utils/resolve-agent.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
@@ -176,8 +178,24 @@ async function shipPhase(
       });
 
       if (!hasTests) {
-        blocked(`[BLOCKED] No test files found for ${phaseId}`);
-        throw new CommandError(`No test files found for ${phaseId}`, 1);
+        // 025 Path A — gate-only phase: a phase whose verification is an
+        // executable Done-When gate (schema / migration / config), not a unit
+        // test. The canonical `#### Done When` fenced block compiles onto
+        // task.gateScript (NOT phase.doneWhen, which is empty for the fenced
+        // form), so read the phase's real gate from the compiled task state —
+        // hollow/unauthored placeholder gates do not count. If a real gate
+        // exists it is verified there (honest per 023/024), so pre-flight must
+        // not hard-block on "no test files". The block is preserved for a source
+        // phase that declares neither a test nor a real gate.
+        const isGateOnly = getPhaseVerificationGate(phaseData) !== null;
+        if (isGateOnly) {
+          console.log(
+            `  ✓ ${phaseId}: gate-only phase — verified by Done-When gate, no unit test required`,
+          );
+        } else {
+          blocked(`[BLOCKED] No test files found for ${phaseId}`);
+          throw new CommandError(`No test files found for ${phaseId}`, 1);
+        }
       }
     }
   }
@@ -440,6 +458,44 @@ export async function dispatchPhaseWork(
  * Full autonomous lifecycle: branch → implement → review → PR → CI → done.
  * Phase is optional — when omitted, ships all phases of the feature sequentially.
  */
+/** Statuses that mean a phase is finished, matching the plan solver. */
+const TERMINAL_PLAN_STATUSES = new Set([
+  "DONE",
+  "SHIPPED",
+  "VERIFIED",
+  "CLOSED",
+]);
+
+/**
+ * Selected phases that the build plan already records as finished.
+ *
+ * `gwrk ship <feature>` with no phase argument selects from tasks.json, whose
+ * completion flags a `define tasks` regeneration can wipe. When that happens a
+ * shipped phase reads as open and is rebuilt for nothing — 005-dashboard-api
+ * spent ~20 minutes re-implementing phase 02 and opened a PR with zero source
+ * changes. Reporting the overlap lets the caller stop instead.
+ *
+ * A phase the graph has never heard of is not drift: features that were never
+ * seeded must still be shippable.
+ *
+ * @param phases phase numbers as selected from tasks.json, e.g. ["2", "03"]
+ * @param graphStatuses phase id → plan status, e.g. "005-x/phase-02" → "SHIPPED"
+ * @returns the conflicting phase ids, in selection order
+ */
+export function findShippedDrift(
+  featureId: string,
+  phases: string[],
+  graphStatuses: Map<string, string>,
+): string[] {
+  const drift: string[] = [];
+  for (const phase of phases) {
+    const id = `${featureId}/phase-${phase.padStart(2, "0")}`;
+    const status = graphStatuses.get(id);
+    if (status && TERMINAL_PLAN_STATUSES.has(status)) drift.push(id);
+  }
+  return drift;
+}
+
 export const shipCommand = new Command("ship")
   .description("Ship: autonomous branch→implement→review→PR→CI loop")
   .addHelpText(
@@ -632,6 +688,54 @@ Examples:
             return;
           }
 
+          // tasks.json and the plan graph are two records of the same fact and
+          // can disagree — regenerating tasks.json wipes completion flags, so
+          // shipped phases read as open and get rebuilt for nothing. Neither is
+          // authoritative enough to overrule the other (the graph's SHIPPED is
+          // promoted from ship-run existence, not a passing gate), so surface
+          // the conflict instead of silently believing one side.
+          if (!opts.force) {
+            try {
+              const graphStatuses = new Map<string, string>(
+                new PlanStore(resolveProjectId(cwd))
+                  .getPlanStatus()
+                  .features.flatMap((f) =>
+                    f.phases.map((p) => [p.id, p.status] as [string, string]),
+                  ),
+              );
+              const drift = findShippedDrift(feature, phases, graphStatuses);
+              if (drift.length > 0) {
+                console.error(
+                  `${YELLOW}⚠${RESET} tasks.json and the build plan disagree about ${drift.length} phase(s):`,
+                );
+                for (const id of drift) {
+                  console.error(`    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`);
+                }
+                console.error(
+                  "  Shipping would re-implement work the plan already records as shipped.",
+                );
+                console.error("  Resolve, then re-run:");
+                console.error(
+                  `    gwrk ship ${feature} <phase>   # ship one phase explicitly, bypassing selection`,
+                );
+                console.error(
+                  "    …or mark the tasks completed in tasks.json if the graph is right",
+                );
+                console.error(
+                  `    …or gwrk ship ${feature} --force   # if tasks.json is right and the graph is stale`,
+                );
+                throw new CommandError(
+                  `Refusing to re-ship ${drift.length} phase(s) the build plan records as shipped`,
+                  1,
+                );
+              }
+            } catch (driftErr) {
+              // A missing/empty graph must not block shipping — only a real
+              // conflict does.
+              if (driftErr instanceof CommandError) throw driftErr;
+            }
+          }
+
           console.log(
             `${GREEN}▶${RESET} Shipping feature ${feature}: ${phases.length} phases${DIM} (${phases.map((p) => `P${p}`).join(", ")})${RESET}`,
           );
@@ -661,7 +765,7 @@ Examples:
               );
             } catch {
               console.log(
-                `  🤖 Router default: ${config.agents.implement} (agents.implement)`,
+                `  🤖 Router default: ${pillarBackend(config, "implement")} (agents.implement)`,
               );
             }
           }
@@ -700,7 +804,7 @@ Examples:
             featureId: feature,
             phaseId: "all",
             taskId: "ship",
-            backend: (opts.agent as AgentBackendId) || config.agents.implement,
+            backend: pillarBackend(config, "implement", opts.agent as string) as AgentBackendId,
             projectRoot: cwd,
             baseBranch: "develop",
             branchName: shipBranch,
@@ -758,6 +862,7 @@ Examples:
             // Ship owns commit/push/PR via PR_CI — destroy only removes the tree.
             await sandbox.destroySandbox(worktreeDir, feature, {
               autoCommitPush: false,
+              teardown: config.worktree?.teardown,
             });
           }
         }

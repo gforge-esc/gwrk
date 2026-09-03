@@ -7,8 +7,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript } from "./gate-gen.js";
+import { generateGateBrief, parseGapMatrix, generateDeterministicGates, discoverTestFile, generateFilesystemGates, lintGateScript, GapMatrixHeaderError, normalizeTestType, generateRunner } from "./gate-gen.js";
 import type { GateBrief } from "./gate-gen.js";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -440,6 +441,20 @@ describe("discoverTestFile (FM-1)", () => {
   it("should return null for empty string", () => {
     expect(discoverTestFile("")).toBeNull();
   });
+
+  // 028 T008: a doc target must NOT be returned as its own test file. The
+  // `.ts|.js → .test.$1` replace is a no-op on any other extension, so without
+  // the extension guard an existing .md/.sql/.sh path came back unchanged and
+  // generateFilesystemGates emitted `vitest run <doc>` — a gate that can never
+  // exit 0 because the path matches no test include.
+  it("should return null for a non-ts/js file that exists (doc targets)", () => {
+    for (const name of ["ADR-007.md", "schema.sql", "deploy.sh", "ci.yml", "pkg.json"]) {
+      const docFile = path.join(tempDir, name);
+      fs.writeFileSync(docFile, "content");
+
+      expect(discoverTestFile(docFile)).toBeNull();
+    }
+  });
 });
 
 describe("lintGateScript (021 FR-007 — polyglot functional verbs)", () => {
@@ -599,5 +614,407 @@ describe("generateFilesystemGates (FM-1/2/3)", () => {
     const result = generateFilesystemGates(tempDir, phases);
     expect(result.skipped).toBe(1);
     expect(result.generated).toBe(0);
+  });
+});
+
+describe("parseGapMatrix — column-name resolution (028 regression)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gap-matrix-cols-"));
+  });
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function write(md: string): string {
+    const p = path.join(tempDir, "gap-matrix.md");
+    fs.writeFileSync(p, md);
+    return p;
+  }
+
+  // 005/007/010 shape: canonical 6 columns, Gate column empty on every row.
+  // Previously: the empty cell was filtered out, leaving 5 cells, tripping
+  // `cells.length < 6` — the row vanished.
+  it("keeps a canonical row whose Gate cell is empty", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | some criterion | unit | tests/a.test.js | ✅ |  |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ac).toBe("FR-001");
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[0].testFile).toBe("tests/a.test.js");
+    expect(rows[0].testExists).toBe(true);
+    expect(rows[0].gate).toBeNull();
+  });
+
+  // 009 shape: extra `Phase` column sits BETWEEN Test Exists and Gate. The
+  // Phase value ("2, 3") used to be read as the gate id, producing the file
+  // `2, 3-gate.sh`.
+  it("does not mistake a trailing Phase column for the Gate column", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Phase | Gate |
+|----|---------------------|-----------|-----------|-------------|-------|------|
+| FR-008 | some criterion | unit | tests/today.test.js | ✅ | 2, 3 |  |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].gate).toBeNull();
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[0].testFile).toBe("tests/today.test.js");
+  });
+
+  // 008/011 shape: extra `Phase` column sits at index 2, so the fixed-index
+  // destructure read it as Test Type ("1 + 3") and failed the whitelist.
+  it("does not mistake a leading Phase column for Test Type", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Phase | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-------|-----------|-----------|-------------|------|
+| FR-002 | some criterion | 1 + 3 | unit | tests/b.test.js | ✅ | T002 |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[0].testFile).toBe("tests/b.test.js");
+    expect(rows[0].gate).toBe("T002");
+  });
+
+  it("ignores rows from a foreign table of different width", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | real row | unit | tests/a.test.js | ✅ | T001 |
+
+## RED status
+
+| Suite | Phase | Result | Why it is RED |
+|-------|-------|--------|---------------|
+| ragb.test.js | 2 | # fail 1 | _lib/ragb.js absent |
+`,
+      ),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ac).toBe("FR-001");
+  });
+
+  it("ignores a repeated header row inside the table", () => {
+    const rows = parseGapMatrix(
+      write(
+        `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | real row | unit | tests/a.test.js | ✅ | T001 |
+| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+| FR-002 | after the repeat | unit | tests/b.test.js | ✅ | T002 |
+`,
+      ),
+    );
+
+    expect(rows.map((r) => r.ac)).toEqual(["FR-001", "FR-002"]);
+  });
+
+  it("throws GapMatrixHeaderError naming the missing column", () => {
+    const p = write(
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists |
+|----|---------------------|-----------|-----------|-------------|
+| FR-001 | no gate column at all | unit | tests/a.test.js | ✅ |
+`,
+    );
+
+    expect(() => parseGapMatrix(p)).toThrow(GapMatrixHeaderError);
+    expect(() => parseGapMatrix(p)).toThrow(/Gate/);
+  });
+
+  it("still returns [] for a missing file and for a file with no table", () => {
+    expect(parseGapMatrix(path.join(tempDir, "nope.md"))).toEqual([]);
+    expect(parseGapMatrix(write("# Gap Matrix\n\nNo table here.\n"))).toEqual([]);
+  });
+});
+
+describe("normalizeTestType (028 — compound authored vocabulary)", () => {
+  it("takes the behavioral type out of a compound value", () => {
+    expect(normalizeTestType("unit + gate")).toBe("unit");
+    expect(normalizeTestType("gate + integration")).toBe("integration");
+    expect(normalizeTestType("unit + gate + integration")).toBe("unit");
+    expect(normalizeTestType("gate + unit")).toBe("unit");
+  });
+
+  it("strips markdown decoration", () => {
+    expect(normalizeTestType("`[integration]`")).toBe("integration");
+    expect(normalizeTestType("**unit**")).toBe("unit");
+  });
+
+  it("falls back to structural when no behavioral type is named", () => {
+    expect(normalizeTestType("gate")).toBe("structural");
+    expect(normalizeTestType("")).toBe("structural");
+    expect(normalizeTestType("Test Type")).toBe("structural");
+  });
+
+  it("passes bare canonical values through", () => {
+    for (const t of ["unit", "functional", "integration", "e2e", "structural"]) {
+      expect(normalizeTestType(t)).toBe(t);
+    }
+  });
+});
+
+describe("parseGapMatrix — compound Test Type rows survive (028)", () => {
+  it("keeps a `unit + gate` row as a unit row", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gap-matrix-tt-"));
+    const p = path.join(tempDir, "gap-matrix.md");
+    fs.writeFileSync(
+      p,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | compound | unit + gate | tests/a.test.js | ✅ | T001 |
+| FR-002 | gate only | gate | tests/b.test.js | ✅ | T002 |
+`,
+    );
+
+    const rows = parseGapMatrix(p);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].testType).toBe("unit");
+    expect(rows[1].testType).toBe("structural");
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+});
+
+describe("generateDeterministicGates — gate id must be a task id (028)", () => {
+  it("skips a gate id that no task owns and reports it", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-id-"));
+    const featureDir = path.join(tempDir, "specs", "009-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+    const matrixPath = path.join(featureDir, "gap-matrix.md");
+    fs.writeFileSync(
+      matrixPath,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | bogus gate id | unit | tests/a.test.js | ✅ | 2, 3 |
+| FR-002 | real gate id | unit | tests/b.test.js | ✅ | T001 |
+`,
+    );
+
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T001",
+            title: "Task 1",
+            description: "tests/b.test.js",
+            status: "open" as const,
+            gateScript: "gates/T001-gate.sh",
+          },
+        ],
+      },
+    ];
+
+    const result = generateDeterministicGates(featureDir, matrixPath, phases);
+
+    expect(result.invalidGateIds).toContain("2, 3");
+    expect(fs.existsSync(path.join(featureDir, "gates", "2, 3-gate.sh"))).toBe(
+      false,
+    );
+    expect(fs.existsSync(path.join(featureDir, "gates", "T001-gate.sh"))).toBe(
+      true,
+    );
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+});
+
+describe("generateRunner — no vacuous green (028)", () => {
+  let gatesDir: string;
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-runner-"));
+    gatesDir = path.join(tempDir, "gates");
+    fs.mkdirSync(gatesDir, { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const runnerPath = () => path.join(gatesDir, "run-all-gates.sh");
+
+  it("does not emit a runner when there are no gate files", () => {
+    generateRunner(gatesDir);
+    expect(fs.existsSync(runnerPath())).toBe(false);
+  });
+
+  it("removes a stale runner when the gate files are gone", () => {
+    fs.writeFileSync(runnerPath(), "#!/bin/bash\nexit 0\n", { mode: 0o755 });
+    generateRunner(gatesDir);
+    expect(fs.existsSync(runnerPath())).toBe(false);
+  });
+
+  it("emits a runner when at least one gate file exists", () => {
+    fs.writeFileSync(
+      path.join(gatesDir, "T001-gate.sh"),
+      "#!/bin/bash\nexit 0\n",
+      { mode: 0o755 },
+    );
+    generateRunner(gatesDir);
+    expect(fs.existsSync(runnerPath())).toBe(true);
+  });
+
+  it("emits a runner that fails when its glob finds nothing", () => {
+    fs.writeFileSync(
+      path.join(gatesDir, "T001-gate.sh"),
+      "#!/bin/bash\nexit 0\n",
+      { mode: 0o755 },
+    );
+    generateRunner(gatesDir);
+
+    // Simulate the state that produced the vacuous pass: runner present,
+    // gate files gone. Stub the build pre-flight so only the glob is under test.
+    fs.unlinkSync(path.join(gatesDir, "T001-gate.sh"));
+    const body = fs
+      .readFileSync(runnerPath(), "utf-8")
+      .replace(/if pnpm build[^\n]*/, "if true; then");
+    fs.writeFileSync(runnerPath(), body, { mode: 0o755 });
+
+    const r = spawnSync("bash", [runnerPath()], { encoding: "utf-8" });
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/no T\*-gate\.sh/);
+  });
+});
+
+describe("GapMatrixHeaderError is fatal-shaped (028)", () => {
+  it("is an Error carrying the offending header and missing columns", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gap-hdr-"));
+    const p = path.join(tempDir, "gap-matrix.md");
+    fs.writeFileSync(
+      p,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists |
+|----|---------------------|-----------|-----------|-------------|
+| FR-001 | no gate col | unit | tests/a.test.js | ✅ |
+`,
+    );
+
+    let caught: unknown;
+    try {
+      parseGapMatrix(p);
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught).toBeInstanceOf(GapMatrixHeaderError);
+    const err = caught as GapMatrixHeaderError;
+    expect(err.missing).toEqual(["Gate"]);
+    expect(err.header).toContain("Test Exists");
+    expect(err.message).toContain("expected:");
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+});
+
+describe("generateDeterministicGates — never shadow a real inline gate (028)", () => {
+  let tempDir: string;
+  let featureDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-shadow-"));
+    featureDir = path.join(tempDir, "specs", "009-x");
+    fs.mkdirSync(featureDir, { recursive: true });
+  });
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function matrix(): string {
+    const p = path.join(featureDir, "gap-matrix.md");
+    fs.writeFileSync(
+      p,
+      `| AC | Acceptance Criterion | Test Type | Test File | Test Exists | Gate |
+|----|---------------------|-----------|-----------|-------------|------|
+| FR-001 | has a real inline gate | unit | tests/a.test.js | ✅ | T001 |
+| FR-002 | has only a path gateScript | unit | tests/b.test.js | ✅ | T002 |
+`,
+    );
+    return p;
+  }
+
+  // runTaskGate strategy 1 (convention file) beats strategy 3 (inline), so
+  // writing T001-gate.sh would REPLACE the authored inline gate with a weaker
+  // generated one — and gwrk would report the weaker verdict.
+  it("skips a task whose gateScript is a substantive inline gate", () => {
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T001",
+            title: "Task 1",
+            description: "tests/a.test.js",
+            status: "open" as const,
+            gateScript: [
+              'test -f "src/lib/today.js"',
+              "grep -qE 'export .*composeToday' src/lib/today.js",
+              "node --test --test-reporter=tap tests/a.test.js 2>&1 | grep -qE '# fail 0'",
+            ].join("\n"),
+          },
+          {
+            id: "T002",
+            title: "Task 2",
+            description: "tests/b.test.js",
+            status: "open" as const,
+            gateScript: "gates/T002-gate.sh",
+          },
+        ],
+      },
+    ];
+
+    const result = generateDeterministicGates(featureDir, matrix(), phases);
+
+    // T001 keeps its inline gate — no file written.
+    expect(fs.existsSync(path.join(featureDir, "gates", "T001-gate.sh"))).toBe(
+      false,
+    );
+    // T002 only names a (nonexistent) path, so generating is still correct.
+    expect(fs.existsSync(path.join(featureDir, "gates", "T002-gate.sh"))).toBe(
+      true,
+    );
+    expect(result.generated).toBeGreaterThan(0);
+  });
+
+  it("still generates when the inline gateScript is hollow", () => {
+    const phases = [
+      {
+        id: "phase-01",
+        title: "Phase 1",
+        tasks: [
+          {
+            id: "T001",
+            title: "Task 1",
+            description: "tests/a.test.js",
+            status: "open" as const,
+            gateScript: 'echo "TODO: author a gate"',
+          },
+        ],
+      },
+    ];
+
+    generateDeterministicGates(featureDir, matrix(), phases);
+
+    expect(fs.existsSync(path.join(featureDir, "gates", "T001-gate.sh"))).toBe(
+      true,
+    );
   });
 });

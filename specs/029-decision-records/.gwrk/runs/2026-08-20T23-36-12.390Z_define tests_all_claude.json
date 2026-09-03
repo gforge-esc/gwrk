@@ -1,0 +1,19 @@
+{
+  "runId": "2026-08-20T23:36:12.390Z_define_all",
+  "feature": "029-decision-records",
+  "phase": "all",
+  "command": "define tests",
+  "agent": "claude",
+  "model": "unknown",
+  "startedAt": "2026-08-20T23:36:12.390Z",
+  "finishedAt": "2026-08-21T00:04:55.744Z",
+  "durationS": 1723,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 15,
+  "linesAdded": 340,
+  "linesDeleted": 141,
+  "gitCommit": "2fd869db1c3521b5043e1ee22999a5b231b0efe1",
+  "gitBranch": "feat/decision-records",
+  "digest": []
+}

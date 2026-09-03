@@ -5,7 +5,7 @@
 import path from "node:path";
 import { recordGateResult } from "../db/gates.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { runGate } from "../utils/gate-runner.js";
+import { runTaskGate, type TaskGateResult } from "../utils/gate-exec.js";
 import {
   type TaskState,
   loadTaskState,
@@ -49,6 +49,11 @@ export async function reconcileGates(
   let failed = 0;
   let total = 0;
 
+  // 026: a fenced Done-When compiles the SAME gateScript onto every task in a
+  // phase. Run each distinct gate once so a Docker integration gate (e.g.
+  // `make test:db`) is not re-run per task post-merge.
+  const gateCache = new Map<string, TaskGateResult>();
+
   for (const phase of targetPhases) {
     for (const task of phase.tasks) {
       // Skip cancelled tasks
@@ -58,9 +63,18 @@ export async function reconcileGates(
       }
 
       total++;
-      const gatePath = path.join(featureDir, task.gateScript);
-
-      const gateResult = await runGate(gatePath);
+      // 026: verify through the shared gate runner (inline-capable, cwd-pinned)
+      // so harvest's "done-done" evidence matches `gwrk gate` and ship. The old
+      // path-only `runGate(join(featureDir, gateScript))` recorded ENOENT/127
+      // false-FAILs for every inline gate.
+      let gateResult = gateCache.get(task.gateScript);
+      if (!gateResult) {
+        gateResult = await runTaskGate(task, {
+          featureDir,
+          cwd: projectPath,
+        });
+        gateCache.set(task.gateScript, gateResult);
+      }
 
       // Record evidence to SQLite (survives tasks.json regeneration)
       recordGateResult(

@@ -19,6 +19,7 @@ import { serverCommand } from "./commands/server.js";
 import { shipCommand } from "./commands/ship.js";
 import { skillCommand } from "./commands/skill.js";
 import { statusCommand } from "./commands/status.js";
+import { sandboxCommand } from "./commands/sandbox.js";
 import { tasksCommand } from "./commands/tasks.js";
 import { testCommand } from "./commands/test.js";
 import { processForAgent } from "./utils/agent-layer.js";
@@ -124,6 +125,7 @@ program.addCommand(planCommand);
 program.addCommand(dbCommand);
 program.addCommand(serverCommand);
 program.addCommand(statusCommand);
+program.addCommand(sandboxCommand); // Sandbox: inspect + reap ship worktree sandboxes
 program.addCommand(deviceCommand);
 program.addCommand(skillCommand);
 program.addCommand(pluginCommand);
@@ -166,7 +168,20 @@ program.hook("preAction", (thisCommand, actionCommand) => {
     process.exit(2);
   }
 
-  if (actionCommand.name() !== "init") {
+  // Commands that resolve the project root themselves are exempt from the
+  // cwd-anchored preflight. `loadConfig` joins its argument with
+  // `.gwrkrc.json` and never walks parents, so preflighting it against
+  // `process.cwd()` makes every command root-only. `init` has no project yet;
+  // `define adr` walks parents for the marker (adr-scaffold.ts `findProjectRoot`)
+  // and must work from any subdirectory (FR-002, US-001 scenario 3), so
+  // preflighting it here would defeat the walk before the handler runs.
+  const commandPath = [actionCommand.parent?.name(), actionCommand.name()]
+    .filter(Boolean)
+    .join(" ");
+  const resolvesOwnRoot =
+    actionCommand.name() === "init" || commandPath === "define adr";
+
+  if (!resolvesOwnRoot) {
     // This will process.exit(1) if config is missing or invalid
     loadConfig(process.cwd());
   }

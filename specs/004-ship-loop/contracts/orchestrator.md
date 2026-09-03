@@ -63,6 +63,16 @@ export interface ShipRunConfig {
 1. **BRANCH_SETUP**: 
    - Checks if working tree is clean. Fail fast if dirty.
    - Creates/switches to `feat/<featureId>` branch from `develop`.
+   - MUST verify the branch is pushable before any agent runs (`ensurePushable`).
+     PR_CI pushes only at the end, so a stale remote branch otherwise surfaces
+     after implement + code review + UAT have all run and discards the run.
+     - No `origin/<branch>` → proceed; the first push creates it.
+     - Behind only → fast-forward (`git merge --ff-only`) and proceed.
+     - Diverged (behind AND ahead) → fail the stage, naming the branch, both
+       counts, and the reconciliation commands. Choosing between two histories
+       is the operator's call, not the orchestrator's.
+     - The comparison itself failing is non-fatal (warn and proceed) — PR_CI
+       still guards the push.
 2. **ACTIVATE_TESTS**:
    - Initializes baseline test results for regression checking.
 3. **IMPLEMENT**:
@@ -88,10 +98,72 @@ export interface ShipRunConfig {
    - Dispatches `review-uat` workflow.
    - If verdict is `GO` → transitions to `PR_CI`.
    - If verdict is `NO-GO` → increments iteration and loops back to `IMPLEMENT`.
+
+### Review/Gate Divergence (both review stages)
+
+ADR-007 makes gates truth and the agent verdict advisory. **Advisory is not
+discarded.** `revertSourceMutations()` throws away everything a review agent
+wrote except `tasks.json`, so moving a task `completed → open` is how a review
+agent registers a defect.
+
+`readVerdict()` therefore receives the set of tasks the review agent re-opened
+during this run (diffed against the pre-dispatch snapshot, so a task already
+open before review carries no verdict), and:
+
+- Gate PASSES + task re-opened by review → **DIVERGENCE**. The task MUST NOT be
+  marked `completed`. Record the task ids on `ShipState.reviewGateDivergence`,
+  annotate the task description so DIAGNOSE sees the cause, and return `NO-GO`.
+- Gate PASSES + task untouched by review → complete it (unchanged).
+- Gate FAILS → the existing NO-GO path, unchanged. A failing gate is not a
+  divergence: gate and review agree.
+
+A green gate covering a review finding means the GATE has a coverage hole. That
+is the only moment the system can detect one, so it is reported rather than
+resolved in the gate's favour. Marking such a task complete is what shipped
+005-dashboard-api Phase 1 with a reproduced defect while the console read `GO`.
 8. **PR_CI**:
    - Creates GitHub PR targeting `develop`.
-   - Polls for CI completion using `gh pr checks`.
+   - Polls for CI completion using `gh pr checks` (see below).
    - Transitions to `DONE`.
+
+### Waiting for checks (`waitForChecks`)
+
+The wait escalates, and only the last step may conclude there is nothing to
+wait for:
+
+```
+gh pr checks --required   →  "no required checks reported"  →  retry without --required
+                          →  "no checks reported"           →  skip, logged
+```
+
+- A repo WITH branch protection waits on its required checks.
+- A repo WITHOUT protection still waits on every check it has. `--required`
+  exits 1 with `no **required** checks reported`, which does not contain the
+  substring `no checks reported` — the old single-level guard missed it and
+  failed PR_CI instantly on green CI.
+- Only a repo with no checks at all skips, and it says so.
+
+Widening the guard without the fallback is NOT an acceptable fix: it would make
+gwrk skip CI on every unprotected repo and report success — the vacuous-green
+class 026/027 exist to close. Any genuine check failure at either level throws.
+
+#### Transient GitHub failures are retried, verdicts are not
+
+Each `gh pr checks` invocation retries on errors that are recognisably GitHub's
+infrastructure rather than a statement about the code: GraphQL 502-class
+("Something went wrong while executing your query"), HTTP 500/502/503/504,
+primary and secondary rate limits, and dropped connections
+(`ECONNRESET`/`ETIMEDOUT`/`EAI_AGAIN`/`ENOTFOUND`/`EPIPE`/socket hang up).
+Backoff is 3s → 10s → 30s, then the error propagates.
+
+A CI **verdict** is never retried. Retrying one would double an already-long
+wait and could mask a genuine red.
+
+The classification matters because the caller has already spent the run: #2631
+completed implement, both reviews through a NO-GO/iterate cycle, opened the PR
+and passed CI in 9s, then exited 1 on GitHub's own GraphQL error. Retry composes
+with the escalation above — a blip on the `--required` query still falls through
+to the all-checks wait once it clears.
 
 ## Recovery Semantics (FR-008)
 

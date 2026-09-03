@@ -9,8 +9,7 @@ import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { Command } from "commander";
 import { success, info, startTimer, stopTimer } from "../utils/format.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
-import { loadConfig } from "../utils/config.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 /**
  * FR-R006-001: Command handler for 'gwrk define research <initiative>'
@@ -67,7 +66,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
   let output = `Scaffolded research initiative at ${result.directory}`;
 
   if (args.run) {
-    const timer = startTimer();
+    const timer = startTimer("research");
     try {
       // Read the brief.md content to pass to the workflow
       const briefPath = path.resolve(result.directory, "brief.md");
@@ -81,9 +80,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
       // Resolve the configured agent + model for define-pillar work.
       // Without this the dispatcher falls back to its hardcoded "agy"
       // default and fails on projects configured for another backend.
-      const config = loadConfig(process.cwd());
-      const backend = config.agents.define;
-      const model = resolveModelForTask("define", backend, process.cwd());
+      const { backend, model } = resolveAgent("define", process.cwd());
 
       info(
         `Executing methodology workflow: ${workflowName} (agent: ${backend}${model ? `, model: ${model}` : ""})...`,

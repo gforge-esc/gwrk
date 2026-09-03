@@ -13,7 +13,7 @@
 | US-009 | Phase-Skip for Completed Phases | unit | src/commands/ship.test.ts | ✅ | T014 |
 | US-010 | Staging Validation (rejects out-of-scope) | functional | src/scripts-e2e.test.ts | ✅ | T016 |
 | US-011 | Structured failureContext on CIRCUIT_BREAK | e2e | src/scripts-e2e.test.ts | ✅ | T018 |
-| FR-001 | `gwrk ship` delegates to `work-until-done.sh` | unit | src/commands/ship.test.ts | ✅ | T001 |
+| FR-001 | `gwrk ship` delegates to the `ShipOrchestrator` state machine (026: `work-until-done.sh` is retired) | unit | src/commands/ship.test.ts | ✅ | T001 |
 | FR-002 | Branch creation from develop + dirty tree guard | functional | src/scripts-e2e.test.ts | ✅ | T002 |
 | FR-003 | Pre-flight gate passing skips task | functional | src/scripts-e2e.test.ts | ✅ | T003 |
 | FR-004 | State machine: IMPLEMENT → REVIEW → DONE | e2e | src/scripts-e2e.test.ts | ✅ | T004 |

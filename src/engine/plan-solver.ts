@@ -9,6 +9,18 @@ import { topologicalSort } from "graphology-dag";
 import type { PlanEdge, PlanFeature, PlanPhase } from "../db/plan.js";
 
 /**
+ * Statuses that satisfy a dependency — the phase is finished, so anything
+ * waiting on it is released. Held in one place because the solver's readers
+ * previously disagreed: the ready queue filtered these, the wave computation
+ * did not, so `plan waves` opened on work shipped months earlier.
+ */
+const TERMINAL_STATUSES = new Set(["DONE", "SHIPPED", "VERIFIED", "CLOSED"]);
+
+function isTerminal(phase: PlanPhase): boolean {
+  return TERMINAL_STATUSES.has(phase.status);
+}
+
+/**
  * Build Plan Solver engine.
  * Computes topological sorts, ready queue, and critical path.
  */
@@ -33,10 +45,19 @@ export class PlanSolver {
       this.phaseMap.set(phase.id, phase);
     }
 
-    // 2. Add edges
+    // 2. Add edges.
+    //
+    // A feature-level edge binds the prerequisite's LAST phase to EVERY phase
+    // of the dependent feature, not just its first. Binding only the first left
+    // phases 2..N with no cross-feature constraint the moment phase 1 read
+    // SHIPPED. The intra-feature SEQUENCE chain implies it transitively for an
+    // honest graph — but `plan init` promotes PLANNED → SHIPPED from ship-run
+    // existence rather than from a passing gate, so the chain is precisely what
+    // cannot be trusted. The extra edges are transitively redundant, so wave
+    // indices and the critical path are unchanged; only readiness tightens.
     for (const edge of this.edges) {
       const fromIds = this.resolveIds(edge.from_id, "last");
-      const toIds = this.resolveIds(edge.to_id, "first");
+      const toIds = this.resolveIds(edge.to_id, "all");
 
       for (const from of fromIds) {
         for (const to of toIds) {
@@ -74,7 +95,10 @@ export class PlanSolver {
     }
   }
 
-  private resolveIds(id: string, preference: "first" | "last"): string[] {
+  private resolveIds(
+    id: string,
+    preference: "first" | "last" | "all",
+  ): string[] {
     // If id is a phase, return [id]
     if (this.phaseMap.has(id)) {
       return [id];
@@ -87,6 +111,9 @@ export class PlanSolver {
 
     if (featurePhases.length === 0) return [];
 
+    if (preference === "all") {
+      return featurePhases.map((p) => p.id);
+    }
     if (preference === "first") {
       return [featurePhases[0].id];
     }
@@ -107,12 +134,7 @@ export class PlanSolver {
     const readyPhases: PlanPhase[] = [];
 
     for (const phase of this.phases) {
-      if (
-        phase.status === "DONE" ||
-        phase.status === "SHIPPED" ||
-        phase.status === "VERIFIED" ||
-        phase.status === "CLOSED"
-      ) {
+      if (isTerminal(phase)) {
         continue;
       }
 
@@ -120,13 +142,7 @@ export class PlanSolver {
       const predecessors = this.graph.inNeighbors(phase.id);
       const allDone = predecessors.every((predId: string) => {
         const pred = this.phaseMap.get(predId);
-        return (
-          pred &&
-          (pred.status === "DONE" ||
-            pred.status === "SHIPPED" ||
-            pred.status === "VERIFIED" ||
-            pred.status === "CLOSED")
-        );
+        return pred !== undefined && isTerminal(pred);
       });
 
       if (allDone) {
@@ -235,7 +251,101 @@ export class PlanSolver {
   }
 
   /**
-   * Compute topological waves (generations).
+   * Phases recorded as finished whose predecessors are not.
+   *
+   * `plan verify` compares specs/ against the graph; nothing compared the graph
+   * against itself, so a phase could read SHIPPED while its prerequisites read
+   * PLANNED and no command would mention it. `010-reporting-email/phase-01` is
+   * SHIPPED on data-dashboard while all of `007-audience-redaction` is PLANNED.
+   *
+   * An inversion is always one of two real problems: a status promoted without
+   * evidence (`plan init` promotes from ship-run EXISTENCE, not a passing gate),
+   * or a missing dependency edge. Both need a human, and readiness now depends on
+   * these statuses being honest, so an unreported inversion propagates.
+   */
+  getStatusInversions(): { phaseId: string; blockedBy: string[] }[] {
+    const inversions: { phaseId: string; blockedBy: string[] }[] = [];
+
+    for (const phase of this.phases) {
+      if (!isTerminal(phase)) continue;
+
+      const blockedBy = this.graph
+        .inNeighbors(phase.id)
+        .filter((predId: string) => {
+          const pred = this.phaseMap.get(predId);
+          return pred !== undefined && !isTerminal(pred);
+        })
+        .sort();
+
+      if (blockedBy.length > 0) inversions.push({ phaseId: phase.id, blockedBy });
+    }
+
+    return inversions;
+  }
+
+  /**
+   * Topological waves over the work that is NOT yet finished — the operational
+   * "what can run concurrently now" view behind `gwrk plan waves`.
+   *
+   * A terminal predecessor is satisfied, so it is excluded from the subgraph
+   * rather than counted as a blocker. Wave 1 is therefore the genuine
+   * parallel-ready set and matches `getReadyQueue()`'s membership.
+   *
+   * Use `getTopologicalWaves()` instead for the plan of record (the rendered
+   * build plan), which documents every wave including shipped history.
+   *
+   * @throws if pending phases form a dependency cycle — Kahn's algorithm emits
+   * nothing for one, and returning the partial set would silently drop work.
+   */
+  getRemainingWaves(): PlanPhase[][] {
+    const pending = this.phases.filter((p) => !isTerminal(p));
+    const pendingIds = new Set(pending.map((p) => p.id));
+
+    const waves: PlanPhase[][] = [];
+    const inDegree = new Map<string, number>();
+    let queue: string[] = [];
+
+    for (const phase of pending) {
+      const blockers = this.graph
+        .inNeighbors(phase.id)
+        .filter((id: string) => pendingIds.has(id));
+      inDegree.set(phase.id, blockers.length);
+      if (blockers.length === 0) queue.push(phase.id);
+    }
+
+    let emitted = 0;
+    while (queue.length > 0) {
+      const waveIds = [...queue];
+      waves.push(waveIds.map((id) => this.getPhase(id)));
+      emitted += waveIds.length;
+      queue = [];
+
+      for (const id of waveIds) {
+        this.graph.forEachOutNeighbor(id, (neighbor: string) => {
+          if (!pendingIds.has(neighbor)) return;
+          const deg = (inDegree.get(neighbor) ?? 0) - 1;
+          inDegree.set(neighbor, deg);
+          if (deg === 0) queue.push(neighbor);
+        });
+      }
+    }
+
+    if (emitted !== pending.length) {
+      const stranded = pending
+        .filter((p) => (inDegree.get(p.id) ?? 0) > 0)
+        .map((p) => p.id);
+      throw new Error(
+        `Dependency cycle among pending phases — cannot order: ${stranded.join(", ")}`,
+      );
+    }
+
+    return waves;
+  }
+
+  /**
+   * Compute topological waves (generations) across the ENTIRE plan, including
+   * phases already shipped. This is the plan of record used by the build-plan
+   * renderer; for current work use `getRemainingWaves()`.
    */
   getTopologicalWaves(): PlanPhase[][] {
     const waves: PlanPhase[][] = [];

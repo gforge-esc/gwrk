@@ -13,6 +13,7 @@ import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchAttempt, DispatchRecord, TaskRecord } from "./types.js";
+import { pillarBackend } from "../utils/resolve-agent.js";
 
 export interface DispatchRequest {
   featureId: string;
@@ -82,7 +83,7 @@ export class DispatchQueue {
           id,
           status: "pending",
           sandboxDir: "",
-          backend: request.backend || this.config.agents.implement,
+          backend: pillarBackend(this.config, "implement", request.backend),
         });
       }
     } else if (request.taskId) {
@@ -90,7 +91,7 @@ export class DispatchQueue {
         id: request.taskId,
         status: "pending",
         sandboxDir: "",
-        backend: request.backend || this.config.agents.implement,
+        backend: pillarBackend(this.config, "implement", request.backend),
       });
     }
 
@@ -98,7 +99,7 @@ export class DispatchQueue {
       id: crypto.randomUUID(),
       featureId: request.featureId,
       phaseId: request.phaseId,
-      backend: request.backend || this.config.agents.implement,
+      backend: pillarBackend(this.config, "implement", request.backend),
       status: "queued",
       branchName: this.shipBranch(request.featureId, request.phaseId),
       attempts: [],

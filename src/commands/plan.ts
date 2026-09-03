@@ -293,15 +293,22 @@ planCommand
 
 planCommand
   .command("waves")
-  .description("Show mathematically computed parallel execution waves")
+  .description(
+    "Show parallel execution waves for remaining work (--all for the whole plan)",
+  )
   .option("--json", "Output in JSON format")
+  .option("--all", "Include shipped phases — the plan of record, not current work")
   .action(async (options, command) => {
     await withSignal("plan waves", async () => {
       const projectId = resolveProjectId(process.cwd());
       const store = new PlanStore(projectId);
       guardEmpty(store);
       const solver = await store.getSolver();
-      const waves = solver.getTopologicalWaves();
+      // Default to remaining work: a wave list that opens on phases shipped
+      // months ago cannot answer "what can I ship in parallel now".
+      const waves = options.all
+        ? solver.getTopologicalWaves()
+        : solver.getRemainingWaves();
       const out = options.json ? createOutput("json") : resolveFormat(command);
 
       if (out.isJson) {
@@ -310,7 +317,14 @@ planCommand
       }
 
       const { BOLD, CYAN, RESET, DIM } = color;
-      console.log(`${BOLD}Parallel Execution Waves${RESET}\n`);
+      console.log(
+        `${BOLD}Parallel Execution Waves${RESET}${options.all ? `${DIM} (entire plan)${RESET}` : `${DIM} (remaining work)${RESET}`}\n`,
+      );
+
+      if (waves.length === 0) {
+        console.log("All build plan items complete.");
+        return;
+      }
 
       waves.forEach((wave, i) => {
         console.log(`${BOLD}${CYAN}Wave ${i + 1}${RESET}`);
@@ -321,6 +335,12 @@ planCommand
         }
         console.log("");
       });
+
+      if (!options.all) {
+        console.log(
+          `${DIM}Wave 1 is dependency-ready, not necessarily parallel-safe: check for shared migrations, overlapping deliverables, and single-instance test resources before running two at once.${RESET}`,
+        );
+      }
     });
   });
 
@@ -344,8 +364,14 @@ planCommand
       const projectRoot = process.cwd();
       const results = detector.verify(projectRoot);
 
+      // The detector compares specs/ against the graph. It cannot see the
+      // graph's own edges, so ask the solver whether the statuses are
+      // self-consistent: a phase recorded finished before its predecessors is
+      // either a status promoted without evidence or a missing edge.
+      const inversions = (await store.getSolver()).getStatusInversions();
+
       if (options.json) {
-        console.log(JSON.stringify(results, null, 2));
+        console.log(JSON.stringify({ results, inversions }, null, 2));
         return;
       }
 
@@ -357,7 +383,29 @@ planCommand
       );
       const clean = results.filter((r) => r.status === "CLEAN");
 
-      if (drifted.length === 0 && missing.length === 0) {
+      if (inversions.length > 0) {
+        console.log(
+          `\n${color.RED}Status Inversions (${inversions.length}):${color.RESET}`,
+        );
+        console.log(
+          `${color.DIM}  A phase recorded finished before the work it depends on.${color.RESET}`,
+        );
+        for (const inv of inversions) {
+          console.log(
+            `  ${color.RED}✗${color.RESET} ${inv.phaseId} is finished but waits on: ${inv.blockedBy.join(", ")}`,
+          );
+        }
+        console.log(
+          `${color.DIM}  Either the status was promoted without a passing gate, or an edge is missing.${color.RESET}`,
+        );
+      }
+
+      // Keep this exact wording: ship-feature.sh greps for "No drift".
+      if (
+        drifted.length === 0 &&
+        missing.length === 0 &&
+        inversions.length === 0
+      ) {
         console.log(
           `${color.GREEN}✓${color.RESET} No drift detected. ${clean.length} phase(s) clean.`,
         );

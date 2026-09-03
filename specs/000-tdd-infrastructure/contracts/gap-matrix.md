@@ -14,16 +14,23 @@ The gap matrix is a structured coverage audit that maps every acceptance criteri
 |----|---------------------|-----------|-----------|-------------|------|
 ```
 
+**Columns are matched by name, not by position.** Extra columns (`Phase` is
+common) may appear anywhere; column order may vary. All six named columns above
+MUST be present — a table missing one is a hard error (`GapMatrixHeaderError`),
+not a partial parse. Rows whose cell count differs from the header belong to a
+different table in the same document and are ignored, so a document may carry
+additional tables.
+
 ### Column Definitions
 
 | Column | Type | Description |
 |--------|------|-------------|
 | AC | `string` | Acceptance criterion ID: `FR-###`, `US-###`, `TR-###`, or `SC-###` |
 | Acceptance Criterion | `string` | Human-readable description from spec |
-| Test Type | `enum` | `unit` \| `functional` \| `e2e` \| `structural` |
+| Test Type | `enum` | `unit` \| `functional` \| `integration` \| `e2e` \| `structural`. Compound and decorated values are accepted (`unit + gate`, `gate + integration`, `` `[integration]` ``) — the first named behavioral type wins; a cell naming none (e.g. bare `gate`) is read as `structural` |
 | Test File | `string \| —` | Relative path to test file, or `—` if none exists |
 | Test Exists | `enum` | `✅` (file exists AND has matching describe/it block) \| `❌` (missing) |
-| Gate | `string` | Task ID (`T###`) that this criterion gates, or `—` if not yet mapped |
+| Gate | `string` | Task ID (`T###`) that this criterion gates, or `—`/empty if not yet mapped. A value matching no task ID in `tasks.json` is reported and generates no gate |
 
 ### Test Type Classification
 
@@ -53,6 +60,13 @@ The gap matrix is a structured coverage audit that maps every acceptance criteri
    - `structural` → fallback assertion gate (transitional, not target state)
 5. Gap matrix is regenerated on every `gwrk define tests` invocation (not append-only)
 6. Gap matrix does NOT replace the spec — it is a derivative audit artifact
+7. Columns are resolved by name; empty cells are preserved (never filtered), so
+   an empty `Gate` cell cannot shift the other columns
+8. A `Gate` value that matches no task ID in `tasks.json` generates no gate file
+   and is reported by `define` as an unmatched gate id
+9. `gates/run-all-gates.sh` is emitted only when at least one `T###-gate.sh`
+   exists beside it, and exits non-zero if its glob is ever empty — it must
+   never report a pass over zero gates
 
 ## Consumers
 

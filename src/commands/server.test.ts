@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as server from "../server/index.js";
 import * as pidUtils from "../server/pid.js";
 import * as configUtils from "../utils/config.js";
+import * as deviceUtils from "../utils/device.js";
 import { serverCommand } from "./server.js";
 
 vi.mock("../server/index.js", async (importOriginal) => {
@@ -55,6 +56,12 @@ describe("serverCommand", () => {
 
     vi.spyOn(pidUtils, "readPid").mockReturnValue(undefined);
     vi.spyOn(pidUtils, "isPidRunning").mockReturnValue(false);
+
+    // `server start` refuses outright on a remote-role device, and `isRemote`
+    // reads ~/.gwrk/device.json. Unmocked, every assertion below depends on
+    // whose machine runs the suite: green in CI, red on any device registered
+    // with `gwrk init` as remote. Pin the role so the suite tests the command.
+    vi.spyOn(deviceUtils, "isRemote").mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -100,6 +107,24 @@ describe("serverCommand", () => {
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining("gwrk server started"),
       );
+    });
+
+    it("refuses to start on a remote-role device", async () => {
+      // Coverage the pinned role would otherwise drop. Asserted explicitly so
+      // it holds on a server-role box and in CI, not only where the ambient
+      // device happens to be remote.
+      vi.spyOn(deviceUtils, "isRemote").mockReturnValue(true);
+      const stderrSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      process.exitCode = 0;
+      await serverCommand.parseAsync(["start", "-f"], { from: "user" });
+
+      expect(process.exitCode).toBe(1);
+      expect(vi.mocked(server.startServer)).not.toHaveBeenCalled();
+      const stderr = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderr).toContain("registered as a remote device");
     });
   });
 

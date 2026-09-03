@@ -56,6 +56,26 @@ export function parseTestOutput(output: string): {
 }
 
 /**
+ * 027 — whether `output` contains a RECOGNIZED test-runner summary (node TAP
+ * `# pass`/`# fail`, a vitest/jest `Tests` line, or a pytest-style `N passed`/
+ * `N failed`). Used to make gate liveness conservative: only when a summary is
+ * recognized do we trust `parseTestOutput`'s counts enough to fail on
+ * `testsRun === 0`. Opaque output (no recognizable summary) returns false, so an
+ * opaque wrapper is never false-failed on liveness.
+ */
+export function hasRecognizedTestSummary(output: string): boolean {
+  if (/^#\s*(pass|fail)\s+\d+/m.test(output)) return true; // node --test TAP
+  if (
+    output
+      .split("\n")
+      .some((l) => /^\s*Tests[:\s]/.test(l) && !/Test\s+Files/.test(l))
+  )
+    return true; // vitest / jest
+  if (/\d+\s+(passed|failed)/.test(output)) return true; // pytest / generic
+  return false;
+}
+
+/**
  * Whether a shell command (e.g. a plan `Done-When` entry) is a runnable test
  * invocation that TEST_GATE should execute under liveness (ADR-005 §10.4).
  * Matches make test-targets and common harnesses; excludes build/lint/echo and
