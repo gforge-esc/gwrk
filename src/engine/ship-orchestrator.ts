@@ -1215,6 +1215,10 @@ export class ShipOrchestrator extends EventEmitter {
       console.log(
         `  ✓ tests: ${r.passed} passed, 0 failed (${r.testsRun} ran)`,
       );
+
+      const regression = await this.checkFullSuiteRegression();
+      if (regression) return regression;
+
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
 
@@ -1464,6 +1468,63 @@ export class ShipOrchestrator extends EventEmitter {
     const { failCount } = await this.runTestSuite(phaseTestFiles);
     this.state.testBaseline = failCount;
     console.log(`  ✓ baseline: ${failCount} pre-existing failure(s)`);
+
+    // A second, whole-repo baseline. TEST_GATE compares against it to catch a
+    // break this phase caused outside its own scope. With no scope the run
+    // above already covered the repo, so reuse it rather than paying twice.
+    if (phaseTestFiles.length === 0) {
+      this.state.fullSuiteBaseline = failCount;
+      return;
+    }
+    const whole = await this.runTestSuite([]);
+    this.state.fullSuiteBaseline = whole.skipped ? 0 : whole.failCount;
+    console.log(
+      `  ✓ baseline: ${this.state.fullSuiteBaseline} pre-existing failure(s) repo-wide`,
+    );
+  }
+
+  /**
+   * Catch a break the phase caused outside the suites it maps to.
+   *
+   * TEST_GATE's scoped run is the phase's own signal. CI is the repo's. A phase
+   * that edits a shared file can pass the first and fail the second, and the run
+   * only discovers it after PR_CI has pushed and waited on GitHub.
+   *
+   * 029 phase-02 added `todayLocal` to adr-scaffold.ts and imported it in
+   * adr.ts, breaking a factory mock in adr-dispatch.test.ts. That file belongs
+   * to phase-03, so the phase-02 gate never ran it: 69 passed at the gate, one
+   * failed in CI.
+   *
+   * Only failures this phase INTRODUCED count. A suite already red when the
+   * phase started is the branch's problem, and holding the phase for it would
+   * make every phase after a breakage unshippable.
+   *
+   * Returns a NO-GO result, or null when there is no regression.
+   */
+  private async checkFullSuiteRegression(): Promise<ShipStageResult | null> {
+    const baseline = this.state.fullSuiteBaseline;
+    if (baseline === undefined) return null;
+
+    const whole = await this.runTestSuite([]);
+    if (whole.skipped || whole.testsRun === 0) return null;
+    if (whole.failCount <= baseline) {
+      console.log(
+        `  ✓ repo-wide: ${whole.failCount} failure(s), baseline ${baseline} — no regression outside the phase`,
+      );
+      return null;
+    }
+
+    const introduced = whole.failCount - baseline;
+    console.log(
+      `  ✗ TEST_GATE: ${introduced} new failure(s) outside this phase's suites (${whole.failCount} repo-wide, baseline ${baseline}).`,
+    );
+    console.log(
+      "    The phase's own tests pass. CI runs everything and would fail on these.",
+    );
+    const tail = whole.output.split("\n").slice(-20).join("\n");
+    if (tail.trim()) console.log(tail);
+
+    return this.handleNoGo("TEST_GATE");
   }
 
   private async stageCodeReview(): Promise<ShipStageResult> {
