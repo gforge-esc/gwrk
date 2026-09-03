@@ -10,7 +10,6 @@ import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { validatePlanGates } from "../engine/plan-gate-validator.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
@@ -23,9 +22,9 @@ import {
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { withParentFlags } from "../utils/command-flags.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 export const definePlanCommand = new Command("plan")
   .description("Create or amend an implementation plan for a feature")
@@ -69,9 +68,7 @@ Examples:
         throw new CommandError(msg, 1);
       }
 
-      const config = loadConfig(projectRoot);
-      const backend = config.agents.define;
-      const model = resolveModelForTask("define", backend, projectRoot);
+      const { backend, model } = resolveAgent("define", projectRoot);
 
       // TC-007: Read stdin if piped (discovery JSON)
       let contextContent: string | undefined;
