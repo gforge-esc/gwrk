@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.1...cli-v1.4.0-alpha.2) (2026-09-03)
+
+
+### Miscellaneous Chores
+
+* **main:** cut 1.4.0-alpha.2 ([dc28b89](https://github.com/gforge-esc/gwrk/commit/dc28b89dec9f07607ea9fe06dd00ffbd1369c64c))
+
 ## 1.4.0-alpha.1 (2026-07-27) — never tagged
 
 > This version was written into `package.json` and this file by hand, without a

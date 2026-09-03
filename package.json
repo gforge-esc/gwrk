@@ -1,6 +1,6 @@
 {
   "name": "@gwrk/cli",
-  "version": "1.4.0-alpha.1",
+  "version": "1.4.0-alpha.2",
   "type": "module",
   "bin": {
     "gwrk": "./dist/cli.js"
