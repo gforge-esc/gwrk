@@ -37,6 +37,7 @@ const HANDLED = new Set([
   "define tests --dry-run",
   "define analyze --dry-run",
   "define research --refs",
+  "define ontology --refs",
 ]);
 
 /**

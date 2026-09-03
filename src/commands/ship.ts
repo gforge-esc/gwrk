@@ -59,6 +59,7 @@ import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { pillarBackend } from "../utils/resolve-agent.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
@@ -764,7 +765,7 @@ Examples:
               );
             } catch {
               console.log(
-                `  🤖 Router default: ${config.agents.implement} (agents.implement)`,
+                `  🤖 Router default: ${pillarBackend(config, "implement")} (agents.implement)`,
               );
             }
           }
@@ -803,7 +804,7 @@ Examples:
             featureId: feature,
             phaseId: "all",
             taskId: "ship",
-            backend: (opts.agent as AgentBackendId) || config.agents.implement,
+            backend: pillarBackend(config, "implement", opts.agent as string) as AgentBackendId,
             projectRoot: cwd,
             baseBranch: "develop",
             branchName: shipBranch,

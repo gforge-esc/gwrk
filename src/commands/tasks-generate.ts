@@ -18,7 +18,6 @@ import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
   generateDeterministicGates,
@@ -36,6 +35,7 @@ import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { withParentFlags } from "../utils/command-flags.js";
 import { loadTaskState } from "../utils/state.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 /**
  * gwrk define tasks <feature> — Decompose plan → tasks.json + gates
@@ -140,8 +140,7 @@ Examples:
         const startTime = Date.now();
         const startedAt = new Date().toISOString();
 
-        const config = loadConfig(projectRoot);
-        const backend = config.agents.define;
+        const { backend } = resolveAgent("define", projectRoot);
 
         // A preview must leave no trace: `startRun` used to fire before anything
         // consulted --dry-run, leaving a run row that never finishes (NULL

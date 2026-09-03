@@ -11,7 +11,6 @@ import { Command } from "commander";
 import { finishRun, recordHistory, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { run } from "../utils/exec.js";
 import { banner, dryRun as dryRunFmt, fail, success } from "../utils/format.js";
 import {
@@ -34,8 +33,9 @@ import { defineOntologyCommand } from "./define-ontology.js";
 
 import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
+import { withParentFlags } from "../utils/command-flags.js";
 
 /**
  * gwrk define — The Definition Pillar (Clarity)
@@ -83,9 +83,7 @@ Examples:
         const cwd = process.cwd();
         // Resolve prefix: "003" → "003-slack"
         const feature = resolveFeature(featureArg, cwd);
-        const config = loadConfig(cwd);
-        const backend = config.agents.define;
-        const model = resolveModelForTask("define", backend, cwd);
+        const { backend, model } = resolveAgent("define", cwd);
 
         const startedAt = new Date().toISOString();
         // A preview must leave no trace: `startRun` used to fire before anything
@@ -210,9 +208,33 @@ const ontologyCommand = new Command("ontology")
   .description(
     "Define project domain ontology (classes, properties, relations)",
   )
+  .addHelpText(
+    "after",
+    `
+Examples:
+
+  Scaffold the ontology files:
+    gwrk define ontology
+
+  Construct domain.md from the project:
+    gwrk define ontology --run
+
+  Ground the construction in a folder of discovery notes:
+    gwrk define ontology --run --refs discovery
+
+  --refs takes a file or a directory. A directory is read recursively.
+`,
+  )
   .option("--run", "Execute automated construction workflow")
+  .option("--refs <path>", "Reference file or directory to ground construction")
   .option("--agent <agent>", "Override agent")
   .option("--model <model>", "Override model")
-  .action(defineOntologyCommand);
+  // `--refs` is declared on `define` too, and commander binds it to that
+  // intermediate parent because `define` has its own argument and action.
+  // Without this merge the flag reaches the parent and vanishes, which is the
+  // defect `define research --refs` still carries.
+  .action((opts, command) =>
+    defineOntologyCommand(withParentFlags(opts, command)),
+  );
 
 defineCommand.addCommand(ontologyCommand);

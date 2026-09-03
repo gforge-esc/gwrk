@@ -45,8 +45,16 @@ vi.mock('../plugins/workflow-runtime.js', () => {
 
 // Mock config + model resolution — research now resolves the configured
 // agent (agents.define) and its model rather than defaulting to gemini.
+// The registry has to be present: `resolveAgent` skips model resolution without
+// one, because `loadRegistry` process.exits on a config that lacks it.
 vi.mock('../utils/config.js', () => ({
-  loadConfig: vi.fn(() => ({ agents: { define: 'claude' } })),
+  loadConfig: vi.fn(() => ({
+    agents: {
+      define: 'claude',
+      registry: { claude: { name: 'claude', models: [] } },
+      fallbackOrder: ['claude'],
+    },
+  })),
 }));
 vi.mock('../utils/resolve-model.js', () => ({
   resolveModelForTask: vi.fn(() => 'claude-opus-4-8'),

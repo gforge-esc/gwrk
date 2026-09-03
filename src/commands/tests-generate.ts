@@ -10,7 +10,6 @@ import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
   extractPhaseFiles,
@@ -20,7 +19,6 @@ import {
 } from "../utils/parser.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
 import { loadTaskState } from "../utils/state.js";
 
 import {
@@ -31,6 +29,7 @@ import {
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { withParentFlags } from "../utils/command-flags.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 /**
  * gwrk define tests <feature> [options] — Generate RED test files from spec/plan
@@ -142,9 +141,7 @@ Examples:
         const startTime = Date.now();
         const startedAt = new Date().toISOString();
 
-        const config = loadConfig(projectRoot);
-        const backend = config.agents.define;
-        const model = resolveModelForTask("define", backend, projectRoot);
+        const { backend, model } = resolveAgent("define", projectRoot);
 
         // A preview must leave no trace: `startRun` used to fire before anything
         // consulted --dry-run, leaving a run row that never finishes (NULL

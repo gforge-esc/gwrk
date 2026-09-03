@@ -9,10 +9,8 @@ import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { loadConfig } from "../utils/config.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
-import { resolveModelForTask } from "../utils/resolve-model.js";
 
 import {
   commitPaths,
@@ -26,6 +24,7 @@ import { scaffoldFeature } from "../utils/scaffold-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { withParentFlags } from "../utils/command-flags.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 
 export const specifyCommand = new Command("spec")
   .description("Create or refine a feature specification")
@@ -75,9 +74,7 @@ Arguments:
       opts = withParentFlags(opts, command);
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
-        const config = loadConfig(cwd);
-        const backend = config.agents.define;
-        const model = resolveModelForTask("define", backend, cwd);
+        const { backend, model } = resolveAgent("define", cwd);
         const specsDir = path.join(cwd, "specs");
 
         // Read prompt/stdin BEFORE resolution — we need the prompt to decide
