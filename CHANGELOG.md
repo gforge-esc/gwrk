@@ -1,15 +1,27 @@
 # Changelog
 
-## 1.4.0-alpha.1 (2026-07-27) — never tagged
+## [1.4.0-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.1...cli-v1.4.0-alpha.2) (2026-09-03)
+
+
+### Miscellaneous Chores
+
+* **main:** cut 1.4.0-alpha.2 ([dc28b89](https://github.com/gforge-esc/gwrk/commit/dc28b89dec9f07607ea9fe06dd00ffbd1369c64c))
+
+## 1.4.0-alpha.1 (2026-07-27) — tagged retroactively 2026-09-03
 
 > This version was written into `package.json` and this file by hand, without a
 > matching tag or GitHub Release, and `.release-please-manifest.json` was not
-> updated — so release-please still considered `1.4.0-alpha.0` current. The
-> manifest has since been advanced to `1.4.0-alpha.1` to adopt this as the
-> released state, which means **no `cli-v1.4.0-alpha.1` tag will ever exist** and
-> the next cut is `1.4.0-alpha.2`. The changes below first reached a tagged
-> release there. The compare link was removed because it pointed at that
-> non-existent tag.
+> updated, so release-please still considered `1.4.0-alpha.0` current. The
+> manifest was then advanced to `1.4.0-alpha.1` to adopt this as the released
+> state, and an earlier revision of this note said no `cli-v1.4.0-alpha.1` tag
+> would ever exist.
+>
+> That decision was self-defeating. Release-please resolves the previous release
+> by tag, so a manifest version with no tag left it unable to collect commits
+> since the last release. It restarted the prerelease counter and proposed
+> `1.4.0-alpha.0`, a downgrade. The tag now exists at `4dfe454`, which is
+> release-please's own release commit for this version, and `1.4.0-alpha.2` cut
+> cleanly from it.
 
 
 ### Bug Fixes
