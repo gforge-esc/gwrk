@@ -2,10 +2,56 @@
 
 ## [1.4.0-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.1...cli-v1.4.0-alpha.2) (2026-09-03)
 
+> Itemised by hand from the merge log. Promotes to main are squash merges, which collapse every commit on develop into one, so release-please could only see the promote commit itself. 33 pull requests landed between `cli-v1.4.0-alpha.1` (2026-07-27) and this release.
+
+### Features
+
+* **decision records**: `gwrk define adr` authors a numbered ADR, allocated max+1 over `docs/decisions/`, working from any subdirectory. `--run` drafts it with the `gwrk-adr-record` workflow ([#186](https://github.com/gforge-esc/gwrk/issues/186)) ([8adabb4](https://github.com/gforge-esc/gwrk/commit/8adabb4))
+* **decision records**: ADR parser plus corpus reconciliation across ADR-001, 002, 006 and 007 ([#181](https://github.com/gforge-esc/gwrk/issues/181)) ([e4f2dbf](https://github.com/gforge-esc/gwrk/commit/e4f2dbf))
+* **review-finding liveness**: a findings ledger and a returned-verdict channel, so a review finding survives a green gate ([#184](https://github.com/gforge-esc/gwrk/issues/184)) ([4130dbe](https://github.com/gforge-esc/gwrk/commit/4130dbe))
+* **review-finding liveness**: gate authority is one-way, amending ADR-007 §78 ([#182](https://github.com/gforge-esc/gwrk/issues/182)) ([9dd943c](https://github.com/gforge-esc/gwrk/commit/9dd943c))
+* **sandbox**: stable sandbox identity plus `gwrk sandbox prune` ([#170](https://github.com/gforge-esc/gwrk/issues/170)) ([29e1d14](https://github.com/gforge-esc/gwrk/commit/29e1d14))
+* **027**: gate-invoked-test liveness, resolving 026 OQ-001 ([#164](https://github.com/gforge-esc/gwrk/issues/164)) ([f4becce](https://github.com/gforge-esc/gwrk/commit/f4becce))
+* **026**: gate-runner convergence, one runner and specs that match it ([#162](https://github.com/gforge-esc/gwrk/issues/162)) ([7e2b965](https://github.com/gforge-esc/gwrk/commit/7e2b965))
+* **025**: gate-only phase verification in ship TEST_GATE, and unblocked at pre-flight ([#157](https://github.com/gforge-esc/gwrk/issues/157)) ([5de1156](https://github.com/gforge-esc/gwrk/commit/5de1156))
+
+### Bug Fixes — ship loop
+
+* **ship**: PR_CI waits for check runs to appear instead of failing on a PR GitHub has not registered yet ([#183](https://github.com/gforge-esc/gwrk/issues/183)) ([50f9244](https://github.com/gforge-esc/gwrk/commit/50f9244))
+* **ship**: an agent the environment interrupted is retried; one that returned a verdict is not ([#188](https://github.com/gforge-esc/gwrk/issues/188)) ([4e14b4f](https://github.com/gforge-esc/gwrk/commit/4e14b4f))
+* **ship**: DIAGNOSE reads the stream-json channel its agent writes on, so its fix instructions reach the implementer ([#187](https://github.com/gforge-esc/gwrk/issues/187)) ([a5410da](https://github.com/gforge-esc/gwrk/commit/a5410da))
+* **ship**: a blocking code-review finding reaches the verdict ([#176](https://github.com/gforge-esc/gwrk/issues/176)) ([5cd80cb](https://github.com/gforge-esc/gwrk/commit/5cd80cb))
+* **ship**: a green gate no longer erases a review finding, and unpushable branches fail first ([#168](https://github.com/gforge-esc/gwrk/issues/168)) ([adc5b69](https://github.com/gforge-esc/gwrk/commit/adc5b69))
+* **ship**: GitHub transience is retried, and a failed run stops recording SHIPPED ([#173](https://github.com/gforge-esc/gwrk/issues/173)) ([bfa2b3e](https://github.com/gforge-esc/gwrk/commit/bfa2b3e))
+* **ship**: the CI wait degrades instead of failing, and shipped work stops being re-shipped ([#169](https://github.com/gforge-esc/gwrk/issues/169)) ([5cf0b07](https://github.com/gforge-esc/gwrk/commit/5cf0b07))
+* **ship**: a PR names every phase it carries, not just the one that opened it ([#166](https://github.com/gforge-esc/gwrk/issues/166)) ([1633821](https://github.com/gforge-esc/gwrk/commit/1633821))
+* **ship**: TEST_GATE falls back to the phase gate when the profile runner finds no tests ([#161](https://github.com/gforge-esc/gwrk/issues/161)) ([3af0659](https://github.com/gforge-esc/gwrk/commit/3af0659))
+* **ship**: gate cwd pinned in `runGate`, so `--worktree` ships stop false-NO-GOing ([#160](https://github.com/gforge-esc/gwrk/issues/160)) ([d5f45f9](https://github.com/gforge-esc/gwrk/commit/d5f45f9))
+
+### Bug Fixes — cli, config, plan, gates
+
+* **config**: one resolver decides the agent for every command, and `define ontology` finally reads it. `--refs` on `define ontology` now accepts a file or a directory ([#190](https://github.com/gforge-esc/gwrk/issues/190)) ([d8f741c](https://github.com/gforge-esc/gwrk/commit/d8f741c))
+* **cli**: `--dry-run` and `--refs` no longer vanish on define subcommands ([#174](https://github.com/gforge-esc/gwrk/issues/174)) ([0347ecd](https://github.com/gforge-esc/gwrk/commit/0347ecd))
+* **cli**: the elapsed indicator repaints in place again ([#178](https://github.com/gforge-esc/gwrk/issues/178)) ([5e0c80e](https://github.com/gforge-esc/gwrk/commit/5e0c80e))
+* **cli**: the spinner no longer floods redirected ship logs ([#175](https://github.com/gforge-esc/gwrk/issues/175)) ([18efd1a](https://github.com/gforge-esc/gwrk/commit/18efd1a))
+* **gate-gen**: gap-matrix columns read by name rather than position, closing the vacuous-green surfaces ([#165](https://github.com/gforge-esc/gwrk/issues/165)) ([96306a0](https://github.com/gforge-esc/gwrk/commit/96306a0))
+* **plan**: `verify` no longer reports a phase finished before the work it depends on ([#171](https://github.com/gforge-esc/gwrk/issues/171)) ([d0a11af](https://github.com/gforge-esc/gwrk/commit/d0a11af))
+* **plan**: `waves` shows remaining work, and feature deps bind every phase ([#167](https://github.com/gforge-esc/gwrk/issues/167)) ([7566667](https://github.com/gforge-esc/gwrk/commit/7566667))
+* **025**: the gate-only phase gate is read from `task.gateScript`, not `phase.doneWhen` ([#159](https://github.com/gforge-esc/gwrk/issues/159)) ([093ce48](https://github.com/gforge-esc/gwrk/commit/093ce48))
+
+### Tests
+
+* **server**: the device role is pinned, so the suite stops depending on the host machine ([#185](https://github.com/gforge-esc/gwrk/issues/185)) ([d71d9e4](https://github.com/gforge-esc/gwrk/commit/d71d9e4))
+
+### Documentation
+
+* R012 research on first-class ADRs, plus the 028 review-finding-liveness record ([#177](https://github.com/gforge-esc/gwrk/issues/177)) ([cee5ada](https://github.com/gforge-esc/gwrk/commit/cee5ada))
+* **026**: the drift-ledger doc pass ([#163](https://github.com/gforge-esc/gwrk/issues/163)) ([0aec809](https://github.com/gforge-esc/gwrk/commit/0aec809))
 
 ### Miscellaneous Chores
 
-* **main:** cut 1.4.0-alpha.2 ([dc28b89](https://github.com/gforge-esc/gwrk/commit/dc28b89dec9f07607ea9fe06dd00ffbd1369c64c))
+* definition artifacts and RED tests for 028 review-finding-liveness and 029 decision records ([#179](https://github.com/gforge-esc/gwrk/issues/179)) ([d4163f1](https://github.com/gforge-esc/gwrk/commit/d4163f1))
+* **release**: 1.4.0-alpha.1 adopted as the released state ([#172](https://github.com/gforge-esc/gwrk/issues/172)) ([83d301d](https://github.com/gforge-esc/gwrk/commit/83d301d))
 
 ## 1.4.0-alpha.1 (2026-07-27) — tagged retroactively 2026-09-03
 
