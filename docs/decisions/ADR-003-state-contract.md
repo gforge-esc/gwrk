@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-03-08
 > **Decision:** Git-native execution manifests + build-server-side SQLite harvest
+> **Constraint:** Agents MUST report execution telemetry by committing a git-native run manifest under `specs/<feature>/.gwrk/runs/`, and MUST NOT write to `gwrk.db` directly.
 > **Supersedes:** Partial aspects of ADR-002 §3 (Learning Loop Extraction)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk state architecture
 

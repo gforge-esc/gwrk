@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-03-16
 > **Decision:** Gates are LLM-authored from contracts. No heuristic fallback. No stubs.
+> **Constraint:** Gates MUST be authored against a contract and MUST NOT be heuristically generated, stubbed, or left asserting file existence in place of behaviour.
 > **Depends on:** ADR-001 (Hard Gate Architecture), ADR-004 (Agent-Native Output Protocol)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk gate generation, TDD enforcement, define pipeline
 

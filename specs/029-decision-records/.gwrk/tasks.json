@@ -120,9 +120,10 @@
           "id": "T011",
           "title": "Modify adr.ts",
           "description": "MODIFY src/commands/adr.ts. `--run` dispatches `gwrk-adr-record` via `WorkflowRuntime.executeWorkflow` with the title, `{agent, model}` and `projectRoot` (FR-007). Tests: src/commands/adr-dispatch.test.ts\n\nREVIEW FAIL (code): `pnpm lint` fails on adr.ts — implicit `any` in the dispatch path — FR-007.\n  WHERE: src/commands/adr.ts:113, :114, :118, :125, and :185-195 (formatter)\n  EXPECTED: `pnpm lint` (`biome check`) exits 0 on src/commands/adr.ts, as it did before this phase. Verified: the HEAD~1 version of this file produces zero biome lint diagnostics.\n  ACTUAL: Four lint errors plus a formatter diff, all inside the Phase 3 addition:\n    - :125 `lint/suspicious/noImplicitAnyLet` — `let workflowResult;` has no type annotation and no initializer, so it is implicitly `any`. This is the non-test critical dispatch path, and it defeats the type check on the `workflowResult?.summary` / `workflowResult.intents` guard at :144-151. NOT auto-fixable.\n    - :113, :114, :118 `lint/style/noUnusedTemplateLiteral` — backtick literals with no interpolation in the `workflowInput` array. `biome lint --write` does NOT fix these (biome 1.9.4 classes the fix unsafe); they need `--unsafe` or a hand edit.\n    - :185-195 formatter — `.option(\"--run\", \"Draft the scaffolded record with the gwrk-adr-record workflow\")` and the `.action(async (title: string | undefined, opts: {...}) => {` signature both exceed the line width and must be wrapped.\n  FIX: Change :125 to `let workflowResult: Awaited<ReturnType<WorkflowRuntime[\"executeWorkflow\"]>>;` (or declare it as the imported `WorkflowResult` type). Change the three empty backtick literals at :113, :114, :118 to `\"\"`. Run `pnpm exec biome format --write src/commands/adr.ts` for the wrapping. Re-verify with `pnpm exec biome check src/commands/adr.ts`.\n  GATE: Phase 3 Done-When block (task gateScript) — NOT covered. The gate runs `pnpm run build` (tsc only) and vitest. `let x;` is an evolving-any that tsc accepts under `strict`, so the compile gate cannot see it, and no gate line runs biome. The gate is green over this defect. Add `pnpm exec biome check src/commands/adr.ts` to the Done-When block.\n  REF: plan.md Phase 3 > Files > `src/commands/adr.ts`; biome.json (`linter.rules.recommended: true`, `suspicious.noExplicitAny: \"error\"`)\n\nREVIEW/GATE DIVERGENCE (T011, gate: pnpm run build\nnpx vitest run src/commands/adr-dispatch.test.ts\ntest -f dist/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml\ntest -f dist/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md\ngrep -q 'required: \\[summary, intents\\]' src/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml\nif grep -qE '\\{\\{[A-Z_]+\\}\\}' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md; then exit 1; fi\ntest ! -f .gwrk/decisions/index.md\nnpx vitest run src/engine/adr-parser.test.ts src/engine/adr-scaffold.test.ts src/commands/adr.test.ts, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nREVIEW FAIL (code): `--run` calls loadConfig with the working directory, not the project root — FR-007, FR-002, SC-001.\n  WHERE: src/commands/adr.ts:98 and :105 (`draftRecord`), relative to :107\n  EXPECTED: The project root walk resolves BEFORE the config read, and both config lookups receive it:\n      const projectRoot = await findProjectRoot(cwd);\n      const config = loadConfig(projectRoot);\n      const backend = config.agents?.define;\n      ...\n      const model = resolveModelForTask(\"define\", backend, projectRoot);\n    `loadConfig(projectRoot)` reads `path.join(projectRoot, \".gwrkrc.json\")` and does NOT walk parents (src/utils/config.ts:315-321). `findProjectRoot` (src/engine/adr-scaffold.ts:201-218) is the walk FR-002 mandates, and it is already imported and already called at :107.\n  ACTUAL: :98 `const config = loadConfig(cwd);` and :105 `resolveModelForTask(\"define\", backend, cwd)` both take the raw working directory. `const projectRoot = await findProjectRoot(cwd);` is computed at :107, two statements too late, and is used only for the `executeWorkflow` options.\n  REPRODUCED: project at /tmp/adrrepro with `.gwrkrc.json` carrying `agents.define: \"claude\"`; handler driven with `cwd` = /tmp/adrrepro/sub/deeper and `run: true`.\n    - scaffold succeeded and wrote /tmp/adrrepro/docs/decisions/ADR-001-repro-from-subdir.md (the walk works)\n    - the handler then threw: `Configuration file .gwrkrc.json not found at /tmp/adrrepro/sub/deeper/.gwrkrc.json. Run 'gwrk init' to initialize this project.`\n    - direct probe of the built `loadConfig`: `/tmp/adrrepro` -> OK (agents.define = claude); `/tmp/adrrepro/sub/deeper` -> THROW, same message.\n  IMPACT: `gwrk define adr \"<title>\" --run` fails from every subdirectory of the project. US-001 acceptance scenario 3 (spec.md:89) and SC-001 (spec.md:500) both require the command to work from any subdirectory, and FR-002 (spec.md:338) exists specifically to fix the research allocator's habit of joining `process.cwd()` with literals — this reintroduces it one layer up. The failure is also partial-state and mis-signposted: the record IS written, then the user is told to run `gwrk init` on an already-initialized project. That message is a fourth error state absent from the FR-007 Error States table (spec.md:354-359). `resolveModelForTask` carries the same defect silently: `loadRegistry(cwd)` is caught and returns `undefined` (src/utils/resolve-model.ts:26-37), so a project-local model registry is invisible from a subdirectory and `model` is dropped from the dispatch — the exact class of invisibility this phase passes `projectRoot` to `executeWorkflow` to avoid.\n  FIX: In `draftRecord` (src/commands/adr.ts:91-154), hoist `const projectRoot = await findProjectRoot(cwd);` from :107 to above :98, then change :98 to `loadConfig(projectRoot)` and :105 to `resolveModelForTask(\"define\", backend, projectRoot)`. Delete the now-duplicate :107. Order is load-bearing: the root walk must throw its own `Not a gwrk project: no .gwrkrc.json found in <cwd> or any parent. Run: gwrk init` (the declared error state at spec.md:350) before any config read.\n  GATE: Phase 3 Done-When block (task gateScript) — NOT covered, gate is GREEN over this defect. Verified: all ten gate lines pass and all 59 tests in the four phase suites pass. `src/commands/adr-dispatch.test.ts:44-51` mocks BOTH `../engine/adr-scaffold.js` (so `findProjectRoot` returns a constant \"/repo\") and `../utils/config.js` (so `loadConfig` is `vi.fn(() => ({agents:{define:\"claude\"}}))`, which ignores its argument entirely). No mock can observe which path the real `loadConfig` receives. Add an assertion that `loadConfig` and `resolveModelForTask` are each called with the value `findProjectRoot` returned, not with `cwd`:\n    expect(vi.mocked(loadConfig)).toHaveBeenCalledWith(\"/repo\");\n    expect(vi.mocked(resolveModelForTask)).toHaveBeenCalledWith(\"define\", \"claude\", \"/repo\");\n  drive it with `adrCommandHandler({ target: \"Decision Records\", run: true, cwd: \"/repo/src/deep\" })` so cwd and projectRoot differ.\n  REF: plan.md Phase 3 > Files > `src/commands/adr.ts`; spec.md FR-007 (:343), FR-002 (:338), US-001 AC-3 (:89), SC-001 (:500), FR-007 Error States (:354); contracts/adr-command.md §3\n\nREVIEW/GATE DIVERGENCE (T011, gate: pnpm run build\nnpx vitest run src/commands/adr-dispatch.test.ts\ntest -f dist/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml\ntest -f dist/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md\ngrep -q 'required: \\[summary, intents\\]' src/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml\nif grep -qE '\\{\\{[A-Z_]+\\}\\}' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md; then exit 1; fi\ngrep -q '## 7. References' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md\ngrep -q '## Amendments' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md\npnpm exec biome check src/commands/adr.ts\ntest ! -f .gwrk/decisions/index.md\nnpx vitest run src/engine/adr-parser.test.ts src/engine/adr-scaffold.test.ts src/commands/adr.test.ts, REVIEW FAIL block appended, status left unchanged):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nREVIEW FAIL (code): the FR-007 \"no configured backend\" error state is unreachable; that path hard-exits instead — FR-007, FR-001.\n  WHERE: src/commands/adr.ts:104-113\n  EXPECTED: contracts/adr-command.md §3 row 3 — stderr `No agent backend available. Run: gwrk plugin list agents`, exit 1, raised as `CommandError` so `withSignal` still emits the `[exit:1 | Xs]` line FR-001 mandates.\n  ACTUAL: `loadConfig` can never return a falsy `agents.define`. src/utils/config.ts:117-125 declares `agents: z.object({ define: AgentBackendSchema.default(\"agy\"), ... }).default({})`, so a `.gwrkrc.json` with no `agents` block still resolves to `{define:\"agy\", implement:\"agy\"}`. The guard at :106 is dead code. Control reaches :113 `resolveModelForTask(\"define\", backend, projectRoot)` -> `loadRegistry` (src/server/agent-registry.ts:115-125), which `console.error`s `Missing required config: agents.registry or agents.fallbackOrder` and calls `process.exit(1)`. `process.exit` is not throwable, so the `catch` at src/utils/resolve-model.ts:56 cannot see it and `withSignal` never runs.\n  REPRODUCED: project /tmp/adrrepro3 with `.gwrkrc.json` = {\"project\":{\"name\":\"adrrepro3\"}}; driven against dist/ as `adrCommandHandler({target:\"Probe\", run:true, cwd:\"/tmp/adrrepro3/sub/deep\"})`.\n    - stderr: `Missing required config: agents.registry or agents.fallbackOrder`\n    - process exit code 1; no `[exit:1 | Xs]` line; neither the `OK:` nor the `THREW:` branch of the driver printed, so the handler neither returned nor threw\n    - /tmp/adrrepro3/docs/decisions/ADR-001-probe.md was written first — partial state, the same shape as the resolved projectRoot finding\n    - reproduced identically with an explicit empty `\"agents\": {}` (/tmp/adrrepro2); direct probe of the built loadConfig on that project returns agents = {\"define\":\"agy\",\"implement\":\"agy\"}\n  IMPACT: on `--run`, the contracted message and its `gwrk plugin list agents` navigation never reach a user. The phase's primary path instead exits hard with a message naming neither the record just written nor `define adr`, and skips the `[exit:N | Xs]` line — the exact omission FR-001 forbids copying from `define research`. This machine's config layers (.gwrkrc.json, ~/.gwrk/config.json) carry no `agents.registry`, so this is the default outcome on an otherwise-initialized project.\n  FIX: in `draftRecord`, replace the dead guard with one that tests what dispatch actually needs, before `resolveModelForTask` runs:\n      const backend = config.agents?.define;\n      if (!backend || !config.agents?.registry?.[backend]) {\n        throw new CommandError(\"No agent backend available. Run: gwrk plugin list agents\");\n      }\n    Keep `CommandError` so `withSignal` emits the exit line. Do NOT edit src/server/agent-registry.ts: its `process.exit` is shared with five other callers (research.ts, specify.ts, define.ts, define-plan.ts, analyze.ts) and is outside this phase's file list.\n  GATE: Phase 3 Done-When block (task gateScript) — NOT covered; all ten lines pass. src/commands/adr-dispatch.test.ts:46-48 mocks `loadConfig` as `vi.fn(() => ({agents:{define:\"claude\"}}))`, and the \"rejects when no agent backend is configured\" case at :177-187 forces `{agents:{}}` — a shape the real `loadConfig` cannot return. The test therefore proves a branch production never reaches, and no test exercises the real `loadConfig`/`resolveModelForTask`. Add a case that drives the handler with the REAL `loadConfig` against a fixture `.gwrkrc.json` carrying no `agents` block and asserts the `CommandError` message rather than a process exit.\n  REF: plan.md Phase 3 > Files > `src/commands/adr.ts`; spec.md FR-007 (:343), FR-007 Error States (:354-359), FR-001 (:337); contracts/adr-command.md §3",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\nnpx vitest run src/commands/adr-dispatch.test.ts\ntest -f dist/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml\ntest -f dist/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md\ngrep -q 'required: \\[summary, intents\\]' src/plugins/builtins/workflows/gwrk-adr-record/manifest.yaml\nif grep -qE '\\{\\{[A-Z_]+\\}\\}' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md; then exit 1; fi\ngrep -q '## 7. References' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md\ngrep -q '## Amendments' src/plugins/builtins/workflows/gwrk-adr-record/PROMPT.md\npnpm exec biome check src/commands/adr.ts\ntest ! -f .gwrk/decisions/index.md\nnpx vitest run src/engine/adr-parser.test.ts src/engine/adr-scaffold.test.ts src/commands/adr.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T22:23:53.303Z"
         }
       ],
       "sp_estimate": 5,
@@ -139,73 +140,82 @@
           "id": "T012",
           "title": "Modify ADR-001-task-tracking.md",
           "description": "MODIFY docs/decisions/ADR-001-task-tracking.md. add `> **Constraint:**` (Hard Gate Architecture is live; storage mechanism only is superseded)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.622Z"
         },
         {
           "id": "T013",
           "title": "Modify ADR-002-sqlite-execution-ledger.md",
           "description": "MODIFY docs/decisions/ADR-002-sqlite-execution-ledger.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.622Z"
         },
         {
           "id": "T014",
           "title": "Modify ADR-003-state-contract.md",
           "description": "MODIFY docs/decisions/ADR-003-state-contract.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.624Z"
         },
         {
           "id": "T015",
           "title": "Modify ADR-004-agent-native-output.md",
           "description": "MODIFY docs/decisions/ADR-004-agent-native-output.md. add `> **Constraint:**` (every command MUST emit `[exit:N | Xs]`)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.625Z"
         },
         {
           "id": "T016",
           "title": "Modify ADR-005-tdd-gate-architecture.md",
           "description": "MODIFY docs/decisions/ADR-005-tdd-gate-architecture.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.625Z"
         },
         {
           "id": "T017",
           "title": "Modify ADR-006-plugin-agent-backends.md",
           "description": "MODIFY docs/decisions/ADR-006-plugin-agent-backends.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.627Z"
         },
         {
           "id": "T018",
           "title": "Modify ADR-007-single-dispatch-path.md",
           "description": "MODIFY docs/decisions/ADR-007-single-dispatch-path.md. add `> **Constraint:**` (MUST NOT spawn an agent CLI directly; dispatch MUST go through `WorkflowRuntime`)",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.628Z"
         },
         {
           "id": "T019",
           "title": "Modify ADR-008-command-safety-posture.md",
           "description": "MODIFY docs/decisions/ADR-008-command-safety-posture.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.639Z"
         },
         {
           "id": "T020",
           "title": "Modify ADR-009-domain-ontology-information-hierarchy-ux.md",
           "description": "MODIFY docs/decisions/ADR-009-domain-ontology-information-hierarchy-ux.md. add `> **Constraint:**`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "for f in docs/decisions/ADR-00*.md; do grep -q '^> \\*\\*Constraint:\\*\\*' \"$f\"; done\nif grep -rqE '^> \\*\\*Status:\\*\\* (Accepted|Rejected|Deprecated)' docs/decisions/; then exit 1; fi\npnpm run build\nnpx vitest run src/engine/adr-parser.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-09-03T23:52:40.640Z"
         }
       ],
       "sp_estimate": 9,

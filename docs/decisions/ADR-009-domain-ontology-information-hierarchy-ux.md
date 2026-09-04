@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-06-02
 > **Decision:** Projects MAY declare three layers of knowledge that gwrk injects into agent prompts: domain ontology (what things mean), information hierarchy (what matters first), and UX posture (how actors experience the system). These are project-owned documents, not gwrk builtins.
+> **Constraint:** Dispatch MUST inject the project's domain ontology, information hierarchy, and UX posture when those files exist, and gwrk MUST NOT ship default content in their place.
 > **Depends on:** F014 (Plugin System), ADR-007 (Single Dispatch Path), ADR-008 (Command Safety Posture)
 > **Author:** David Gonzalez · **Decision Scope:** Agent grounding, prompt context, project perspective
 

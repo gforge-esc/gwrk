@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-06-02
 > **Decision:** All agent-dispatched workflows MUST operate under a command safety posture: no interactive commands, no unbounded processes, explicit conflict detection, and deterministic recovery from hung sub-commands. This is an architectural constraint, not a prompt fix.
+> **Constraint:** Every agent-dispatched sub-command MUST run non-interactively under a bounded timeout, and MUST NOT be able to block on an editor, a pager, or a prompt.
 > **Depends on:** ADR-007 (Single Dispatch Path), F004 (Ship Loop), F014 (Plugin System)
 > **Author:** David Gonzalez · **Decision Scope:** Agent execution model, prompt architecture, workflow safety
 
