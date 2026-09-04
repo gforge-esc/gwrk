@@ -1,0 +1,19 @@
+{
+  "runId": "2026-09-04T17:22:51.761Z_ship_p05",
+  "feature": "029-decision-records",
+  "phase": "phase-05",
+  "command": "ship",
+  "agent": "claude",
+  "model": "default",
+  "startedAt": "2026-09-04T17:22:51.761Z",
+  "finishedAt": "2026-09-04T17:22:53.121Z",
+  "durationS": 1,
+  "exitCode": 1,
+  "attempt": 1,
+  "filesChanged": 11,
+  "linesAdded": 43,
+  "linesDeleted": 20,
+  "gitCommit": "b8724c0593fa5226b17fdf4b7911135a01b15acf",
+  "gitBranch": "feat/029-decision-records",
+  "digest": []
+}
