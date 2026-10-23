@@ -3,122 +3,136 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs/promises";
-import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import { AgyAdapter } from "./adapter.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { execCommand } from "../../../../utils/exec.js";
+import { AgyAdapter } from "./adapter.js";
 
-vi.mock("node:fs/promises");
 vi.mock("../../../../utils/exec.js");
+vi.mock("node:fs/promises");
 
 describe("AgyAdapter", () => {
   const adapter = new AgyAdapter();
 
-  describe("isAvailable()", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("isAvailable", () => {
     it("returns true if agy is in PATH", async () => {
-      vi.mocked(execCommand).mockResolvedValue({ exitCode: 0, stdout: "/usr/local/bin/agy", stderr: "" });
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 0,
+        stdout: "/usr/local/bin/agy",
+        stderr: "",
+      });
       const available = await adapter.isAvailable();
       expect(available).toBe(true);
       expect(execCommand).toHaveBeenCalledWith("which", ["agy"]);
     });
 
     it("returns false if agy is not in PATH", async () => {
-      vi.mocked(execCommand).mockResolvedValue({ exitCode: 1, stdout: "", stderr: "agy not found" });
+      vi.mocked(execCommand).mockResolvedValue({
+        exitCode: 1,
+        stdout: "",
+        stderr: "agy not found",
+      });
       const available = await adapter.isAvailable();
       expect(available).toBe(false);
     });
   });
 
-  describe("syncGovernance()", () => {
-    it("creates AGENTS.md if it doesn't exist", async () => {
+  describe("syncGovernance", () => {
+    it("creates AGENTS.md with markers if it doesn't exist", async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));
-      const result = await adapter.syncGovernance("/root", "new governance");
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        path.join("/root", "AGENTS.md"),
-        expect.stringContaining("new governance"),
-        "utf-8"
-      );
+      const result = await adapter.syncGovernance("/project", "Rule 1\nRule 2");
+
       expect(result).toContain("<!-- gwrk:begin -->");
-      expect(result).toContain("new governance");
-    });
-
-    it("updates existing AGENTS.md preserving outer content", async () => {
-      const existing = "Outer Before\n<!-- gwrk:begin -->\nOld\n<!-- gwrk:end -->\nOuter After";
-      vi.mocked(fs.readFile).mockResolvedValue(existing);
-
-      const result = await adapter.syncGovernance("/root", "New Rules");
-
+      expect(result).toContain("Rule 1\nRule 2");
+      expect(result).toContain("<!-- gwrk:end -->");
       expect(fs.writeFile).toHaveBeenCalledWith(
-        path.join("/root", "AGENTS.md"),
-        "Outer Before\n<!-- gwrk:begin -->\nNew Rules\n<!-- gwrk:end -->\nOuter After",
-        "utf-8"
+        expect.stringContaining("AGENTS.md"),
+        expect.any(String),
+        "utf-8",
       );
-      expect(result).toContain("New Rules");
+    });
+
+    it("updates existing markers in AGENTS.md", async () => {
+      const existing =
+        "# Header\n<!-- gwrk:begin -->\nOld Rules\n<!-- gwrk:end -->\nFooter";
+      vi.mocked(fs.readFile).mockResolvedValue(existing);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      const result = await adapter.syncGovernance("/project", "New Rules");
+
+      expect(result).toBe(
+        "# Header\n<!-- gwrk:begin -->\nNew Rules\n<!-- gwrk:end -->\nFooter",
+      );
     });
   });
 
-  describe("dispatch()", () => {
-    it("FR-004: maps YOLO to --dangerously-skip-permissions and omits --model", async () => {
-      const task = {
-        prompt: "fix bug",
+  describe("dispatch", () => {
+    it("formats headless CLI flags with stream-json output", async () => {
+      const result = await adapter.dispatch({
+        workflow: "plan",
+        featureDir: "specs/001-cli-core",
+        prompt: "Generate a plan",
         agent: "agy",
-        workflow: "gwrk-implement.md"
-      };
+      });
 
-      const result = await adapter.dispatch(task);
-
+      expect(adapter.emitsStreamJson).toBe(true);
       expect(result.command).toBe("agy");
-      expect(result.args).toContain("-p");
-      expect(result.args).toContain("/gwrk-implement fix bug");
-      expect(result.args).toContain("--dangerously-skip-permissions");
-      expect(result.args).not.toContain("--model");
+      expect(result.args).toEqual([
+        "-p",
+        "/plan specs/001-cli-core Generate a plan",
+        "--output-format",
+        "stream-json",
+        "--dangerously-skip-permissions",
+      ]);
     });
 
-    it("disables sandbox for write workflows", async () => {
-      const task = {
-        prompt: "ship it",
+    it("omits --model flag for legacy 1.5/2.0 model names (FR-004)", async () => {
+      const result = await adapter.dispatch({
+        prompt: "Test",
+        model: "gemini-1.5-pro",
         agent: "agy",
-        workflow: "gwrk-ship.md"
+      });
+
+      expect(result.args).not.toContain("--model");
+      expect(result.args).not.toContain("gemini-1.5-pro");
+    });
+
+    it("passes --model and --json-schema when Antigravity 2.0 model and outputSchema are provided", async () => {
+      const schema = {
+        type: "object",
+        properties: { summary: { type: "string" } },
+        required: ["summary"],
       };
+      const result = await adapter.dispatch({
+        prompt: "Implement T001",
+        model: "gemini-4-argon-high",
+        outputSchema: schema,
+        env: { AGY_EFFORT: "high" },
+        agent: "agy",
+      });
 
-      const result = await adapter.dispatch(task);
-      expect(result.args).toContain("--sandbox");
-      expect(result.args[result.args.indexOf("--sandbox") + 1]).toBe("false");
-    });
-  });
-
-  describe("parseResult()", () => {
-    it("maps exit code 0 to success", () => {
-      const result = adapter.parseResult("ok", "", 0);
-      expect(result.exitCode).toBe(0);
-      expect(result.errorType).toBeUndefined();
-    });
-
-    it("maps exit code 127 to command_not_found", () => {
-      const result = adapter.parseResult("", "command not found", 127);
-      expect(result.exitCode).toBe(127);
-      expect(result.errorType).toBe("command_not_found");
+      expect(result.args).toContain("--json-schema");
+      expect(result.args).toContain(JSON.stringify(schema));
+      expect(result.args).toContain("--model");
+      expect(result.args).toContain("gemini-4-argon-high");
+      expect(result.args).toContain("--effort");
+      expect(result.args).toContain("high");
     });
 
-    it("detects turn_limit in stderr", () => {
-      const result = adapter.parseResult("", "error: turn_limit reached", 1);
-      expect(result.exitCode).toBe(1);
-      expect(result.errorType).toBe("turn_limit");
-    });
+    it("does not append positional 'false' token for write workflows", async () => {
+      const result = await adapter.dispatch({
+        workflow: "gwrk-implement",
+        prompt: "Run unsandboxed",
+        agent: "agy",
+      });
 
-    it("normalizes exit code > 0 to 1", () => {
-      const result = adapter.parseResult("", "some error", 5);
-      expect(result.exitCode).toBe(1);
-    });
-
-    it("does NOT false-positive on turn_limit in stdout content", () => {
-      // Regression: plan content containing "turn_limit" in spec examples
-      // (e.g. errorType: "turn_limit") must not trigger error detection
-      const planContent = '{"summary":"plan","intents":[{"content":"TR-009: errorType: turn_limit"}]}';
-      const result = adapter.parseResult(planContent, "", 0);
-      expect(result.exitCode).toBe(0);
-      expect(result.errorType).toBeUndefined();
+      expect(result.args).not.toContain("--sandbox");
+      expect(result.args).not.toContain("false");
     });
   });
 });

@@ -233,6 +233,66 @@ describe("SandboxManager (Git Worktree)", () => {
     );
   });
 
+  it("Issue #180: fails with worktree collision details when branch is already checked out", async () => {
+    (fs.existsSync as Mock).mockReturnValue(false);
+    (execSync as Mock).mockImplementation((cmd: string) => {
+      if (cmd.includes("git worktree list --porcelain")) {
+        return (
+          "worktree /test/root/.runs/sandboxes/stale-worktree\n" +
+          "HEAD abcdef1234567890\n" +
+          "branch refs/heads/feat/001-platform-foundation\n\n"
+        );
+      }
+      return "";
+    });
+
+    await expect(
+      sandboxManager.createSandbox({
+        featureId: "001-platform-foundation",
+        phaseId: "all",
+        taskId: "ship",
+        backend: "claude",
+        projectRoot: "/test/root",
+        branchName: "feat/001-platform-foundation",
+      }),
+    ).rejects.toThrow(
+      /already checked out at '\/test\/root\/\.runs\/sandboxes\/stale-worktree'/,
+    );
+
+    expect(execSync).not.toHaveBeenCalledWith(
+      expect.stringContaining("git worktree add -b feat/001-platform-foundation"),
+      expect.any(Object),
+    );
+  });
+
+  it("Issue #180: preserves underlying git error when existing branch checkout fails without running -b fallback", async () => {
+    (fs.existsSync as Mock).mockReturnValue(false);
+    (execSync as Mock).mockImplementation((cmd: string) => {
+      if (cmd.startsWith("git worktree add ")) {
+        throw new Error(
+          "fatal: 'feat/001-platform-foundation' is already used by worktree at '/test/root'",
+        );
+      }
+      return "";
+    });
+
+    await expect(
+      sandboxManager.createSandbox({
+        featureId: "001-platform-foundation",
+        phaseId: "all",
+        taskId: "ship",
+        backend: "claude",
+        projectRoot: "/test/root",
+        branchName: "feat/001-platform-foundation",
+      }),
+    ).rejects.toThrow(/is already used by worktree at '\/test\/root'/);
+
+    expect(execSync).not.toHaveBeenCalledWith(
+      expect.stringContaining("git worktree add -b feat/001-platform-foundation"),
+      expect.any(Object),
+    );
+  });
+
   it("PR-5: destroy with autoCommitPush=false only removes the worktree (ship owns the PR)", async () => {
     const workDir = "/test/root/.runs/sandboxes/f1-T1-uuid";
     (fs.existsSync as Mock).mockReturnValue(true);

@@ -247,30 +247,64 @@ export class SandboxManager {
       branchExists = false;
     }
 
-    try {
-      if (branchExists) {
+    if (branchExists) {
+      let worktreeListOutput = "";
+      try {
+        worktreeListOutput = String(
+          execSync("git worktree list --porcelain", {
+            cwd: projectRoot,
+            encoding: "utf-8",
+            stdio: "pipe",
+          }) ?? "",
+        );
+      } catch {
+        worktreeListOutput = "";
+      }
+
+      const targetRef = `refs/heads/${branchName}`;
+      for (const block of worktreeListOutput.split("\n\n")) {
+        const lines = block.trim().split("\n");
+        let wtPath = "";
+        let wtBranch = "";
+        for (const line of lines) {
+          if (line.startsWith("worktree ")) wtPath = line.slice(9).trim();
+          if (line.startsWith("branch ")) wtBranch = line.slice(7).trim();
+        }
+        if (wtPath && wtBranch === targetRef) {
+          throw new Error(
+            `Failed to create git worktree: branch '${branchName}' is already checked out at '${wtPath}'. Run 'git worktree remove ${wtPath}' or switch branches in that checkout.`,
+          );
+        }
+      }
+
+      try {
         execSync(`git worktree add ${workDir} ${branchName}`, {
           cwd: projectRoot,
           stdio: "pipe",
         });
-      } else {
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        throw new Error(`Failed to create git worktree: ${err.message}`);
+      }
+    } else {
+      try {
         // Ensure the base branch exists; otherwise fall back to current HEAD.
         execSync(`git branch --list ${baseBranch}`, { cwd: projectRoot });
         execSync(`git worktree add -b ${branchName} ${workDir} ${baseBranch}`, {
           cwd: projectRoot,
           stdio: "pipe",
         });
-      }
-    } catch (e: unknown) {
-      // Fallback to current branch if baseBranch doesn't exist (though it should in gwrk flow)
-      try {
-        execSync(`git worktree add -b ${branchName} ${workDir}`, {
-          cwd: projectRoot,
-          stdio: "pipe",
-        });
-      } catch (e2: unknown) {
-        const err2 = e2 instanceof Error ? e2 : new Error(String(e2));
-        throw new Error(`Failed to create git worktree: ${err2.message}`);
+      } catch {
+        // Fallback to current branch if baseBranch doesn't exist (though it should in gwrk flow)
+        try {
+          execSync(`git worktree add -b ${branchName} ${workDir}`, {
+            cwd: projectRoot,
+            stdio: "pipe",
+          });
+        } catch (e2: unknown) {
+          const err2 = e2 instanceof Error ? e2 : new Error(String(e2));
+          throw new Error(`Failed to create git worktree: ${err2.message}`);
+        }
       }
     }
 

@@ -16,8 +16,14 @@ const MAX_CONTEXT_CHARS = 10000;
 interface ActiveExtension {
   name: string;
   adapter: ContextProvider;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
 }
+
+const EXTENSION_ALIASES: Record<string, string> = {
+  obsidian: "obsidian-vault",
+};
+
+const CLI_PROBE_ONLY_EXTENSIONS = new Set(["github", "docker", "slack"]);
 
 /**
  * Discovers and loads enabled extension plugins for the project.
@@ -42,8 +48,13 @@ export async function discoverExtensions(
   const activeExtensions: ActiveExtension[] = [];
 
   for (const name of extensionNames) {
+    const extConfig = enabledExtensions[name];
+    if (extConfig && typeof extConfig === "object" && extConfig.enabled === false) {
+      continue;
+    }
+    const pluginName = EXTENSION_ALIASES[name] ?? name;
     try {
-      const loaded = await loader.resolvePlugin(name);
+      const loaded = await loader.resolvePlugin(pluginName);
       if (loaded.manifest.type !== "extension") continue;
 
       const manifest = loaded.manifest as ExtensionManifest;
@@ -57,15 +68,19 @@ export async function discoverExtensions(
 
         if (typeof adapter.resolveContext === "function") {
           activeExtensions.push({
-            name,
+            name: pluginName,
             adapter: adapter as ContextProvider,
-            config: enabledExtensions[name],
+            config: extConfig ?? {},
           });
         }
       } catch (err) {
-        console.error(`Failed to load adapter for extension '${name}':`, err);
+        console.error(`Failed to load adapter for extension '${pluginName}':`, err);
       }
-    } catch (err) {
+    } catch {
+      // Skip CLI tool probe keys (github, docker, slack) written by legacy init
+      if (CLI_PROBE_ONLY_EXTENSIONS.has(name)) {
+        continue;
+      }
       // TC-018: Silent Fail for missing or invalid extensions
       console.warn(`Extension '${name}' enabled in config but not found.`);
     }
