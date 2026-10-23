@@ -564,7 +564,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = task.workDir || projectRoot;
-  const groundingFiles: Array<{ path: string; tag: string }> = [
+  const groundingFiles = [
     {
       path: path.join(workDir, ".gwrk/ontology/domain.md"),
       tag: "domain_ontology",
@@ -576,6 +576,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     {
       path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
       tag: "ux_posture",
+    },
+    {
+      path: path.join(workDir, ".gwrk/decisions/index.md"),
+      tag: "architecture_decisions",
     },
   ];
 

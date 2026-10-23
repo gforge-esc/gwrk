@@ -45,6 +45,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Check ADR citations and index
+        run: node dist/cli.js define adr --check
+
       - name: Configure Git for tests
         run: |
           git config --global user.name "github-actions[bot]"

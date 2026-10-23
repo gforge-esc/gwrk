@@ -1,13 +1,13 @@
 # gwrk: Architecture & Workflow Specification
 
 > **Status:** Authoritative · **Date:** 2026-03-19 (v5.0)
-> **Anchored to:** [GWRK-PRD-PRFAQ.md](file:///Users/gonzo/Code/gwrk/docs/GWRK-PRD-PRFAQ.md), [ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md), [ADR-002-sqlite-execution-ledger.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md), [ADR-003-state-contract.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md), [ADR-004-agent-native-output.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md), [ADR-005-tdd-gate-architecture.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md), [ADR-006-plugin-agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md)
+> **Anchored to:** [GWRK-PRD-PRFAQ.md](../product/GWRK-PRD-PRFAQ.md), [Decision Index](../../.gwrk/decisions/index.md)
 
 ---
 
-> **Update 2026-03-19 (v5.0):** R001 + R002 research integration. §1 overview diagram: Docker Sandbox Manager → Worktree Sandbox Manager (R001). §4 project structure: added `.runs/sandboxes/`, `src/plugins/builtins/agents/`. §6.1 added §6.1.1 Parallel Dispatch (F005 worktree tiers). §6.2 sandbox refs updated to worktrees. §7.2 expanded with `dispatchMode`, built-in compilation model, `BUILTIN_AGENTS` registry. §7.3 added boundary markers, bootstrap mechanism. §7.5 added built-in → user-override resolution, `.gwrk-source.json`. §8 updated parallelism config (R001 resource gating). §10 Docker → Git worktrees. §14 added `.gwrk/agent-context.md`, `gwrk plugin create agent`. Derived from [parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md), [agent-backend-plugin-design.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md).
+> **Update 2026-03-19 (v5.0):** R001 + R002 research integration. §1 overview diagram: Docker Sandbox Manager → Worktree Sandbox Manager (R001). §4 project structure: added `.runs/sandboxes/`, `src/plugins/builtins/agents/`. §6.1 added §6.1.1 Parallel Dispatch (F005 worktree tiers). §6.2 sandbox refs updated to worktrees. §7.2 expanded with `dispatchMode`, built-in compilation model, `BUILTIN_AGENTS` registry. §7.3 added boundary markers, bootstrap mechanism. §7.5 added built-in → user-override resolution, `.gwrk-source.json`. §8 updated parallelism config (R001 resource gating). §10 Docker → Git worktrees. §14 added `.gwrk/agent-context.md`, `gwrk plugin create agent`. Derived from [parallel-dispatch-architecture.md](../reference/parallel-dispatch-architecture.md), [agent-backend-plugin-design.md](../reference/agent-backend-plugin-design.md).
 >
-> **Update 2026-03-17 (v4.1):** OpenClaw integration audit. Added §6.5 Event Bus & Scheduler (F015 — WebSocket hybrid architecture, Zod-typed event frames, cron scheduler), expanded §6.2 Ship Loop with active interrupt model (`dispatch:cancel`), added §7.6 Plugin Supply-Chain Guardrails, added dispatch idempotency guard to §11, updated §10 tech stack with `@fastify/websocket` and `@fastify/schedule`. Derived from [openclaw-research-report.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md).
+> **Update 2026-03-17 (v4.1):** OpenClaw integration audit. Added §6.5 Event Bus & Scheduler (F015 — WebSocket hybrid architecture, Zod-typed event frames, cron scheduler), expanded §6.2 Ship Loop with active interrupt model (`dispatch:cancel`), added §7.6 Plugin Supply-Chain Guardrails, added dispatch idempotency guard to §11, updated §10 tech stack with `@fastify/websocket` and `@fastify/schedule`. Derived from [openclaw-research-report.md](../reference/openclaw-research-report.md).
 >
 > **Update 2026-03-17 (v4.0):** Aligned with all six ADRs and keystone features 000-TDD, 004 Ship Loop, 013 Agent-Native Interface, and 014 Plugin System. Key changes: added Agent-Native Output Protocol (§3), Plugin Architecture (§7), TDD Triad Model (§5.3–5.5), updated Project Structure (§4), Construction Pipeline (§5), Ship Loop dispatch boundary (§6.2), and Config Contract (§8). Previous v3.1 anchored only ADR-001, ADR-002, and ADR-006.
 
@@ -15,22 +15,17 @@
 
 | Document | Path | Relevance |
 |---|---|---|
-| Build Plan | [specs/000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md) | Feature dependency graph, wave strategy, effort |
-| ADR-001 Task Tracking | [docs/decisions/ADR-001-task-tracking.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-001-task-tracking.md) | Hard Gate Architecture |
-| ADR-002 SQLite Ledger | [docs/decisions/ADR-002-sqlite-execution-ledger.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-002-sqlite-execution-ledger.md) | Execution ledger schema |
-| ADR-003 State Contract | [docs/decisions/ADR-003-state-contract.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-003-state-contract.md) | Two-tier state: git manifests + SQLite harvest |
-| ADR-004 Agent-Native Output | [docs/decisions/ADR-004-agent-native-output.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-004-agent-native-output.md) | Signal protocol, Layer 2, command classification |
-| ADR-005 TDD Gate Architecture | [docs/decisions/ADR-005-tdd-gate-architecture.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-005-tdd-gate-architecture.md) | LLM-authored gates, Triad Model, deterministic vitest gates |
-| ADR-006 Plugin Agent Backends | [docs/decisions/ADR-006-plugin-agent-backends.md](file:///Users/gonzo/Code/gwrk/docs/decisions/ADR-006-plugin-agent-backends.md) | AgentBackend interface, stdin delivery, exit normalization |
-| F000-TDD Spec | [specs/000-tdd-infrastructure/spec.md](file:///Users/gonzo/Code/gwrk/specs/000-tdd-infrastructure/spec.md) | TDD mandate, gap matrix, deterministic gates |
-| F004 Ship Loop Spec | [specs/004-ship-loop/spec.md](file:///Users/gonzo/Code/gwrk/specs/004-ship-loop/spec.md) | Autonomous execution kernel, dispatch boundary |
-| F013 Agent-Native Spec | [specs/013-agent-native-interface/spec.md](file:///Users/gonzo/Code/gwrk/specs/013-agent-native-interface/spec.md) | Signal protocol, discovery, gate-check, Layer 2 |
-| F014 Plugin System Spec | [specs/014-plugin-system/spec.md](file:///Users/gonzo/Code/gwrk/specs/014-plugin-system/spec.md) | Three-layer plugin architecture, skills, manifests |
-| Plugin Strategy Audit | [docs/reference/plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md) | F008→F014 P4 absorption analysis |
-| Skills Architecture | [docs/reference/skills-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/skills-architecture.md) | Two-tier skill hierarchy |
-| OpenClaw Research Report | [docs/reference/openclaw-research-report.md](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md) | Plugin architecture, WebSocket hybrid, adoption dynamics, reconciled integration decisions |
-| Parallel Dispatch Architecture (R001) | [docs/reference/parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md) | Worktree sandboxes, merge strategy, resource gating, Codex Cloud scoping |
-| Agent Backend Plugin Design (R002) | [docs/reference/agent-backend-plugin-design.md](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md) | Agent manifest schema, adapter lifecycle, plugin packaging, built-in compilation model |
+| Build Plan | [specs/000-build-plan.md](../../specs/000-build-plan.md) | Feature dependency graph, wave strategy, effort |
+| Architecture Decisions | [.gwrk/decisions/index.md](../../.gwrk/decisions/index.md) | Authoritative index of all recorded ADRs (`docs/decisions/`) |
+| F000-TDD Spec | [specs/000-tdd-infrastructure/spec.md](../../specs/000-tdd-infrastructure/spec.md) | TDD mandate, gap matrix, deterministic gates |
+| F004 Ship Loop Spec | [specs/004-ship-loop/spec.md](../../specs/004-ship-loop/spec.md) | Autonomous execution kernel, dispatch boundary |
+| F013 Agent-Native Spec | [specs/013-agent-native-interface/spec.md](../../specs/013-agent-native-interface/spec.md) | Signal protocol, discovery, gate-check, Layer 2 |
+| F014 Plugin System Spec | [specs/014-plugin-system/spec.md](../../specs/014-plugin-system/spec.md) | Three-layer plugin architecture, skills, manifests |
+| Plugin Strategy Audit | [docs/reference/plugin-strategy-audit.md](../reference/plugin-strategy-audit.md) | F008→F014 P4 absorption analysis |
+| Skills Architecture | [docs/reference/skills-architecture.md](../reference/skills-architecture.md) | Two-tier skill hierarchy |
+| OpenClaw Research Report | [docs/reference/openclaw-research-report.md](../reference/openclaw-research-report.md) | Plugin architecture, WebSocket hybrid, adoption dynamics, reconciled integration decisions |
+| Parallel Dispatch Architecture (R001) | [docs/reference/parallel-dispatch-architecture.md](../reference/parallel-dispatch-architecture.md) | Worktree sandboxes, merge strategy, resource gating, Codex Cloud scoping |
+| Agent Backend Plugin Design (R002) | [docs/reference/agent-backend-plugin-design.md](../reference/agent-backend-plugin-design.md) | Agent manifest schema, adapter lifecycle, plugin packaging, built-in compilation model |
 
 ---
 
@@ -203,7 +198,7 @@ gwrk/
 ├── .gemini/settings.json          # Gemini CLI model routing + tool config
 ├── .claude/settings.json          # Claude Code model preferences + permissions
 ├── docs/                          # Architecture, PRD, ADRs
-│   ├── decisions/                 # ADR-001 through ADR-006
+│   ├── decisions/                 # ADRs (indexed at .gwrk/decisions/index.md)
 │   └── reference/                 # Agent backend research, plugin strategy audit
 ├── scripts/dev/                   # Shell orchestrators
 │   ├── work-until-done.sh         # Phase orchestrator (ship loop core)
@@ -451,7 +446,7 @@ When a phase contains multiple independent tasks, the orchestrator dispatches th
 | 2 | All local CLIs | Git worktree | sync (spawn + await) |
 | 3 | Codex Cloud | Codex-managed container | async (GitHub @codex) |
 
-Merge serialization feeds Ship Loop (004). Harvest (011) is independent — triggered only when the Ship Loop's PR is merged. See [parallel-dispatch-architecture.md](file:///Users/gonzo/Code/gwrk/docs/reference/parallel-dispatch-architecture.md).
+Merge serialization feeds Ship Loop (004). Harvest (011) is independent — triggered only when the Ship Loop's PR is merged. See [parallel-dispatch-architecture.md](../reference/parallel-dispatch-architecture.md).
 
 ### 6.2 Ship Loop (Feature 004)
 
@@ -498,7 +493,7 @@ Ship Loop (004) produces the PR and logs. Harvest (011) consumes them after merg
 
 ### 6.5 Event Bus & Scheduler (Feature 015 — Decided, Not Built)
 
-> **Source:** [openclaw-research-report.md §2/§6.2/§7](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md). Registered in build plan v9 (2026-03-15), 8 SP, Wave 5.
+> **Source:** [openclaw-research-report.md §2/§6.2/§7](../reference/openclaw-research-report.md). Registered in build plan v9 (2026-03-15), 8 SP, Wave 5.
 
 **Architecture decision: Hybrid HTTP + WebSocket.** HTTP for commands/queries (preserves `curl` CLI compatibility). WebSocket for events/streaming (real-time monitoring without polling). Primary rationale: for a single-user local service on macOS, WebSocket overhead is effectively zero — no load balancer, no proxy traversal, no TLS complexity (localhost), ~50KB memory for one persistent connection.
 
@@ -525,7 +520,7 @@ Ship Loop (004) produces the PR and logs. Harvest (011) consumes them after merg
 
 ### 6.4 Agent Router (→ F014 Phase 4)
 
-> **Retirement (2026-03-17):** F008 (Agent Router) folded into F014 Phase 4: Routing Intelligence. The agent registry conflicted with F014's plugin registry. Quota probing is CLI-specific knowledge that belongs in AgentBackend adapter plugins (ADR-006). See [plugin-strategy-audit.md](file:///Users/gonzo/Code/gwrk/docs/reference/plugin-strategy-audit.md).
+> **Retirement (2026-03-17):** F008 (Agent Router) folded into F014 Phase 4: Routing Intelligence. The agent registry conflicted with F014's plugin registry. Quota probing is CLI-specific knowledge that belongs in AgentBackend adapter plugins (ADR-006). See [plugin-strategy-audit.md](../reference/plugin-strategy-audit.md).
 
 **Current routing heuristics** (survive as `src/engine/router.ts`, consumed by F014 P4):
 
@@ -594,7 +589,7 @@ export const BUILTIN_AGENTS = {
 } as const;
 ```
 
-User-installed adapters in `~/.gwrk/plugins/agents/<name>/` override built-ins (Map `.set()` overwrites). See [agent-backend-plugin-design.md §Q6](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md).
+User-installed adapters in `~/.gwrk/plugins/agents/<name>/` override built-ins (Map `.set()` overwrites). See [agent-backend-plugin-design.md §Q6](../reference/agent-backend-plugin-design.md).
 
 ### 7.3 Durable Governance (ADR-006 §2.2)
 
@@ -647,11 +642,11 @@ src/plugins/builtins/agents/           # Built-in adapters (compiled with gwrk)
 
 **Resolution order:** Built-in (`src/plugins/builtins/`) → user-installed (`~/.gwrk/plugins/`) → local override (`.gwrk/plugins.yaml`). User-installed adapters override built-ins with the same name. Local disable overrides everything.
 
-**Plugin authoring:** `gwrk plugin create agent <name>` scaffolds a new agent backend plugin directory. `gwrk plugin install <path|url>` installs from local directory or git URL with optional `#<ref>` version pinning. See [agent-backend-plugin-design.md §Q6](file:///Users/gonzo/Code/gwrk/docs/reference/agent-backend-plugin-design.md).
+**Plugin authoring:** `gwrk plugin create agent <name>` scaffolds a new agent backend plugin directory. `gwrk plugin install <path|url>` installs from local directory or git URL with optional `#<ref>` version pinning. See [agent-backend-plugin-design.md §Q6](../reference/agent-backend-plugin-design.md).
 
 ### 7.6 Plugin Supply-Chain Guardrails
 
-> **Source:** [openclaw-research-report.md §2.6/§7](file:///Users/gonzo/Code/gwrk/docs/reference/openclaw-research-report.md), OpenClaw integration audit (2026-03-17).
+> **Source:** [openclaw-research-report.md §2.6/§7](../reference/openclaw-research-report.md), OpenClaw integration audit (2026-03-17).
 
 Layer 1 (AgentBackend) and future Layer 3 plugins include executable TypeScript. Supply-chain risks:
 
@@ -813,7 +808,7 @@ A separate Vite SPA served by the daemon was the original plan. Replaced by Slac
 
 ## 13. Implementation Features
 
-See [specs/000-build-plan.md](file:///Users/gonzo/Code/gwrk/specs/000-build-plan.md) for the authoritative feature build sequence.
+See [specs/000-build-plan.md](../../specs/000-build-plan.md) for the authoritative feature build sequence.
 
 ---
 

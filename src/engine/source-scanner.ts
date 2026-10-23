@@ -9,6 +9,7 @@ interface SourceMaterial {
   specs: string[];
   architecture: string;
   patterns: string[];
+  decisions: string[];
 }
 
 /**
@@ -19,6 +20,7 @@ export async function scan(projectRoot: string): Promise<SourceMaterial> {
     specs: [],
     architecture: "",
     patterns: [],
+    decisions: [],
   };
 
   // 1. Scan specs/ directory
@@ -54,14 +56,14 @@ export async function scan(projectRoot: string): Promise<SourceMaterial> {
     }
   }
 
-  // 3. Scan for patterns (e.g. from ADRs or specific docs)
+  // 3. Scan for architecture decisions (FR-015)
   const decisionsDir = path.join(projectRoot, "docs", "decisions");
   try {
     const adrs = await fs.readdir(decisionsDir);
     for (const adr of adrs) {
       if (adr.endsWith(".md")) {
         const content = await fs.readFile(path.join(decisionsDir, adr), "utf-8");
-        material.patterns.push(content);
+        material.decisions.push(content);
       }
     }
   } catch {

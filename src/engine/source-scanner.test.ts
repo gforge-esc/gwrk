@@ -36,7 +36,7 @@ describe("FR-L25-011: Source Material Scanner", () => {
 
     expect(result.specs).toContain("Spec Content");
     expect(result.architecture).toBe("Arch Content");
-    expect(result.patterns).toContain("ADR Content");
+    expect(result.decisions).toContain("ADR Content");
   });
 
   it("FR-L25-011: should handle missing directories gracefully", async () => {
@@ -53,14 +53,14 @@ describe("FR-L25-011: Source Material Scanner", () => {
  * 029 Decision Records — RED tests for TR-011 (FR-015).
  *
  * @phase 06
- * @status red
+ * @status active
  *
  * Nine architecture decisions arriving at the ontology workflow labelled as
  * code patterns is the mislabelling this closes. `material.decisions` is an
  * ADDITIVE field: `material.patterns` survives with a narrower population, so
  * every other reader keeps compiling.
  */
-describe.skip("029 FR-015: decisions get their own material field (US-007)", () => {
+describe("029 FR-015: decisions get their own material field (US-007)", () => {
   const root = "/root";
 
   beforeEach(() => {

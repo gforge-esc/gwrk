@@ -150,6 +150,13 @@ Reference applicable governance rules from `.gwrk/rules/`:
 Reference the project's own governance rules and standards.
 [/type]
 
+#### G. Recorded Decision Contradiction
+
+Read `.gwrk/decisions/index.md` (and `<architecture_decisions>` when present in grounding context):
+- Check whether any requirement in `spec.md`, architectural choice in `plan.md`, or task in `tasks.json` contradicts a recorded ADR `Constraint` in `.gwrk/decisions/index.md`.
+- Check that any explicit `ADR-NNN` citation in `spec.md` or `plan.md` matches the scope and status in `.gwrk/decisions/index.md`.
+- Semantic contradiction requires engineering judgment, so report contradictions as **HIGH** findings in the report table rather than blocking via a mechanical gate.
+
 <severity_criteria>
 | Level | Criteria |
 |-------|----------|

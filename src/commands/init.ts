@@ -439,6 +439,18 @@ export const initAction = async (options: any): Promise<void> => {
       fs.mkdirSync(dirPath, { recursive: true });
     }
   }
+
+  // FR-017: generate the decision index when docs/decisions/ is non-empty
+  try {
+    const { parseCorpus } = await import("../engine/adr-parser.js");
+    const { writeIndex } = await import("../engine/adr-index.js");
+    const records = await parseCorpus(path.join(cwd, "docs", "decisions"));
+    if (records.length > 0) {
+      await writeIndex(cwd, records);
+    }
+  } catch {
+    // TC-014 bare-clone operable: do not fail init when a record is unparseable
+  }
   
   const globalPluginDirs = [
     path.join(os.homedir(), ".gwrk", "plugins", "skills"),
