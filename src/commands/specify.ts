@@ -24,6 +24,7 @@ import { scaffoldFeature } from "../utils/scaffold-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { withParentFlags } from "../utils/command-flags.js";
+import { readRefsContent } from "../utils/read-refs.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
 
 export const specifyCommand = new Command("spec")
@@ -160,7 +161,7 @@ Arguments:
           effectivePrompt = `Create a NEW spec for feature ${feature}.\n\nDescription: ${effectiveInput}`;
         }
 
-        // Inject refs as authoritative source material.
+        // Inject refs as authoritative source material (file or directory/vault).
         if (opts.refs) {
           const resolvedRefs = path.resolve(opts.refs);
           if (!fs.existsSync(resolvedRefs)) {
@@ -169,7 +170,7 @@ Arguments:
               1,
             );
           }
-          const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
+          const refsContent = readRefsContent(resolvedRefs);
           effectivePrompt = [
             `<reference_document source="${opts.refs}" authority="primary">`,
             refsContent,

@@ -1,0 +1,18 @@
+type: channel
+name: telegram
+version: 1.0.0
+description: "Telegram Bot API control plane and notification channel for gwrk"
+transport: polling
+commands:
+  - status
+  - research
+  - adr
+  - define
+  - ship
+  - dispatch
+  - pulse
+  - effort
+  - logs
+  - approve
+  - reject
+  - pause

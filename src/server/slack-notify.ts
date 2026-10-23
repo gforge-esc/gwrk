@@ -6,6 +6,7 @@ import { loadConfig } from "../utils/config.js";
 import type { SlackMessage } from "./slack-messages.js";
 import { type SlackEvent, presenceManager } from "./slack-presence.js";
 import { getSlackApp } from "./slack.js";
+import { loadTelegramConfig, notifyTelegram } from "./telegram-notify.js";
 
 /**
  * Dispatches a Slack notification.
@@ -42,6 +43,11 @@ export async function notifySlack(
   } else {
     // Webhook fallback — fire-and-forget, no interactive elements
     await sendViaWebhook(message);
+  }
+
+  // Forward to Telegram when configured (dual-channel control plane)
+  if (loadTelegramConfig()) {
+    await notifyTelegram(message);
   }
 }
 

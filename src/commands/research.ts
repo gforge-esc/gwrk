@@ -9,6 +9,7 @@ import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { Command } from "commander";
 import { success, info, startTimer, stopTimer } from "../utils/format.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { readRefsContent } from "../utils/read-refs.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
 
 /**
@@ -89,7 +90,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
       // Build workflow input: refs (if provided) + brief content + directory context
       let workflowInput = briefContent;
 
-      // Inject --refs as authoritative source material (same pattern as specify.ts)
+      // Inject --refs as authoritative source material (file or directory/vault)
       if (args.refs) {
         const resolvedRefs = path.resolve(args.refs);
         if (!fsSync.existsSync(resolvedRefs)) {
@@ -97,7 +98,7 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
             `Reference file not found: ${args.refs}\nResolved to: ${resolvedRefs}`,
           );
         }
-        const refsContent = fsSync.readFileSync(resolvedRefs, "utf-8");
+        const refsContent = readRefsContent(resolvedRefs);
         workflowInput = [
           `<reference_document source="${args.refs}" authority="primary">`,
           refsContent,

@@ -19,6 +19,7 @@ import { notifyRoutes } from "./routes/notify.js";
 import { statusRoutes } from "./routes/status.js";
 import { SandboxManager } from "./sandbox.js";
 import { getSlackApp, startSlackApp, stopSlackApp } from "./slack.js";
+import { startTelegramBot, stopTelegramBot } from "./telegram.js";
 
 import { loadRegistry } from "./agent-registry.js";
 import { BackendSelector } from "./backend-selector.js";
@@ -132,6 +133,7 @@ export async function startServer(
     planHeartbeat.stop();
     harvestWatcher.stop();
     await stopSlackApp();
+    await stopTelegramBot();
     lifecycle.stop();
     network.stop();
     monitor.stopPolling();
@@ -166,6 +168,15 @@ export async function startServer(
       sandbox,
       lifecycle,
       network,
+      git,
+      projectRoot,
+      config,
+    });
+
+    // Start Telegram if configured
+    await startTelegramBot({
+      queue,
+      monitor,
       git,
       projectRoot,
       config,
