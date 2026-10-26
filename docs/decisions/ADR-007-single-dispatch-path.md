@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-05-22
 > **Decision:** All workflow dispatch (define, ship, review) flows through `WorkflowRuntime`. The `.agents/` directory is deprecated — `src/plugins/builtins/` is the canonical source for workflows, skills, rules, and review prompts.
+> **Constraint:** Code MUST NOT spawn an agent CLI directly; dispatch MUST go through `WorkflowRuntime`.
 > **Depends on:** ADR-006 (Plugin Agent Backends), F014 (Plugin System), F004 (Ship Loop)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk dispatch architecture, governance file authority, `.agents/` lifecycle
 
@@ -237,3 +238,13 @@ This is content migration, not architectural change. The PROMPT.md format and ma
 - [.agents/ Directory Removal Plan](../reference/agents-directory-removal.md) — Dependency map and file-by-file migration plan.
 - F014 spec: L48 ("ending the reliance on personal `.agents/` directories"), FR-L25-003, TC-011.
 - F004 plan Phase 8: "ShipOrchestrator no longer hardcodes workflow paths — resolves via ReviewPlugin."
+
+---
+
+## Amendments
+
+| Amending | At | Summary |
+|---|---|---|
+| 026 | 2.1 | readVerdict() runs gates through shared runTaskGate so gates are truth at review time. |
+| 028 | 2.1 | Gate authority is one-way; a green gate never closes a task with a reproduced review finding. |
+

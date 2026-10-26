@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-02-26  
 > **Decision:** Option B (Roll Our Own — Flat JSON/JSONL)  
+> **Constraint:** Every task MUST carry a gate script that exits 0 before `gwrk tasks done` records it complete, and an agent MUST NOT record completion any other way.  
 > **Author:** David Gonzalez · **Decision Scope:** gwrk core architecture
 
 ---

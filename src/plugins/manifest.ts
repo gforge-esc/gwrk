@@ -244,6 +244,16 @@ const ExtensionManifestSchema = PluginBaseSchema.extend({
 });
 
 /**
+ * Channel Manifest (Comms Control Plane — Slack, Telegram)
+ */
+const ChannelManifestSchema = PluginBaseSchema.extend({
+  type: z.literal("channel"),
+  transport: z.enum(["socket", "webhook", "polling", "hybrid"]),
+  commands: z.array(z.string()).default([]),
+  adapter: z.string().optional(),
+});
+
+/**
  * Any Plugin Manifest (Union of all types)
  * We use z.union instead of z.discriminatedUnion at the top level because
  * SkillManifestSchema is itself a discriminated union, and members of
@@ -255,6 +265,7 @@ export const AnyManifestSchema = z.union([
   WorkflowManifestSchema,
   ReviewManifestSchema,
   ExtensionManifestSchema,
+  ChannelManifestSchema,
 ]);
 
 export type AtomicSkillManifest = z.infer<typeof AtomicSkillManifestSchema>;
@@ -267,4 +278,5 @@ type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type WorkflowManifest = z.infer<typeof WorkflowManifestSchema>;
 export type ReviewManifest = z.infer<typeof ReviewManifestSchema>;
 export type ExtensionManifest = z.infer<typeof ExtensionManifestSchema>;
+export type ChannelManifest = z.infer<typeof ChannelManifestSchema>;
 export type AnyManifest = z.infer<typeof AnyManifestSchema>;

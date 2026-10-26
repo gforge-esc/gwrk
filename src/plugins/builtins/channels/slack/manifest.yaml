@@ -1,0 +1,18 @@
+type: channel
+name: slack
+version: 1.0.0
+description: "Slack Socket Mode and Webhook control plane for gwrk"
+transport: hybrid
+commands:
+  - status
+  - research
+  - adr
+  - define
+  - ship
+  - dispatch
+  - pulse
+  - effort
+  - logs
+  - approve
+  - reject
+  - pause

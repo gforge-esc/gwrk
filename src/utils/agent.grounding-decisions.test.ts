@@ -6,7 +6,7 @@
  * 029 Decision Records — RED tests for TR-008 (FR-013).
  *
  * @phase 06
- * @status red
+ * @status active
  *
  * `dispatchToAgent({ dryRun: true })` returns the fully assembled stdin payload
  * (agent.ts:621), so the grounding block is asserted without spawning an agent.
@@ -113,7 +113,7 @@ afterEach(() => {
 });
 
 describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => {
-  it.skip("FR-013: injects architecture_decisions when the index exists", async () => {
+  it("FR-013: injects architecture_decisions when the index exists", async () => {
     writeIndexFixture(workDir);
 
     const prompt = await assembledPrompt(workDir);
@@ -131,7 +131,7 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     expect(prompt).toContain("TASK PROMPT");
   });
 
-  it.skip("FR-013: skips silently when the index is absent", async () => {
+  it("FR-013: skips silently when the index is absent", async () => {
     const capture = captureStdout();
 
     try {
@@ -155,7 +155,7 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     }
   });
 
-  it.skip("FR-013: dispatch continues when the index is unreadable", async () => {
+  it("FR-013: dispatch continues when the index is unreadable", async () => {
     // A directory at the index path: existsSync passes, the read throws.
     mkdirSync(indexPath(workDir), { recursive: true });
     const capture = captureStdout();
@@ -180,7 +180,7 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     }
   });
 
-  it.skip("FR-013: injects uniformly, with no stage or scope filter", async () => {
+  it("FR-013: injects uniformly, with no stage or scope filter", async () => {
     writeIndexFixture(workDir);
 
     // SC-004: IMPLEMENT and all four review stages receive it — they carry
@@ -204,7 +204,7 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     expect(new Set(blocks).size).toBe(1);
   });
 
-  it.skip("FR-013: the grounding array carries exactly four entries and no scope filter", async () => {
+  it("FR-013: the grounding array carries exactly four entries and no scope filter", async () => {
     // Asserted on the source so a scope or stage filter cannot be introduced
     // later without this failing (contract §4). `resolveEnforcementSkills`
     // takes (projectRoot, scope, profile); the grounding loop must not.
@@ -223,7 +223,7 @@ describe("029 FR-013: every dispatch learns what it may not do (US-004)", () => 
     expect(literal).not.toMatch(/\bstage\b/);
   });
 
-  it.skip("FR-013: the index is read from workDir, not the process working directory", async () => {
+  it("FR-013: the index is read from workDir, not the process working directory", async () => {
     const other = mkdtempSync(path.join(tmpdir(), "gwrk-adr-grounding-other-"));
     try {
       writeIndexFixture(

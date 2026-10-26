@@ -1,22 +1,26 @@
 type: agent
 name: agy
-version: 1.0.0
+version: 1.1.0
 description: "Antigravity CLI backend"
 dispatchMode: local-cli
 contextFileName: AGENTS.md
 
 invocation:
   command: agy
-  args: []
+  args: ["--output-format", "stream-json"]
   headlessFlag: "-p"
   yoloFlag: "--dangerously-skip-permissions"
 
 capabilities:
   - stdin
   - context-file
+  - stream-json
+  - json-schema
 
 models:
-  default: gemini-2.0-flash
+  default: gemini-4-argon-high
+  fast: gemini-3.8-flash-high
+  review: claude-opus-5-5-high
 
 exitCodeMap:
   "0":

@@ -114,6 +114,7 @@ export async function defineOntologyCommand(options: {
 
       // Prepare input for the workflow. Refs lead: they are authoritative, and
       // the scanned material is context the agent reads in their light.
+      const decisions = material.decisions ?? [];
       const grounding = `
 # Grounding Material
 
@@ -122,6 +123,9 @@ ${material.architecture || "None found."}
 
 ## Specifications
 ${material.specs.length > 0 ? material.specs.join("\n\n---\n\n") : "None found."}
+
+## Architecture Decisions
+${decisions.length > 0 ? decisions.join("\n\n---\n\n") : "None found."}
 
 ## Code Patterns
 ${material.patterns.length > 0 ? material.patterns.join("\n\n---\n\n") : "None found."}

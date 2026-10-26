@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-03-13
 > **Decision:** Dual-mode CLI output with operational signal protocol and Layer 2 presentation
+> **Constraint:** Every command MUST emit the operational signal `[exit:N | Xs]` on completion, and `--agent` mode MUST NOT change the output format beyond its protective transforms.
 > **Depends on:** ADR-002 (SQLite execution ledger), ADR-003 (execution manifests)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk CLI contract for agent consumption
 

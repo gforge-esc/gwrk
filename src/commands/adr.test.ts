@@ -26,6 +26,23 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const fsMock = vi.hoisted(() => ({
+  writeFile: vi.fn(),
+}));
+vi.mock("node:fs/promises", () => ({
+  default: fsMock,
+  ...fsMock,
+}));
+
+const runtimeMock = vi.hoisted(() => {
+  const executeWorkflow = vi.fn();
+  const WorkflowRuntime = vi.fn(() => ({ executeWorkflow }));
+  return { executeWorkflow, WorkflowRuntime };
+});
+vi.mock("../plugins/workflow-runtime.js", () => ({
+  WorkflowRuntime: runtimeMock.WorkflowRuntime,
+}));
+
 const scaffoldMock = vi.hoisted(() => ({
   scaffold: vi.fn(),
   renderTemplate: vi.fn(),
@@ -40,6 +57,23 @@ vi.mock("../engine/adr-scaffold.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../engine/adr-scaffold.js")>()),
   ...scaffoldMock,
 }));
+
+const indexMock = vi.hoisted(() => ({
+  writeIndex: vi.fn(),
+  checkIndex: vi.fn(),
+  buildIndex: vi.fn(),
+  renderIndex: vi.fn(),
+  hashCorpus: vi.fn(),
+}));
+vi.mock("../engine/adr-index.js", () => indexMock);
+
+const parserMock = vi.hoisted(() => ({
+  parseCorpus: vi.fn(),
+  parseRecord: vi.fn(),
+  resolveSection: vi.fn(),
+  listSectionAddresses: vi.fn(),
+}));
+vi.mock("../engine/adr-parser.js", () => parserMock);
 
 const load = () => import("./adr.js");
 
@@ -69,6 +103,8 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     scaffoldMock.findProjectRoot.mockResolvedValue("/repo");
     scaffoldMock.resolveDecisionsDir.mockResolvedValue("/repo/docs/decisions");
     scaffoldMock.allocateNumber.mockResolvedValue("010");
+    parserMock.parseCorpus.mockResolvedValue([]);
+    indexMock.writeIndex.mockResolvedValue("/repo/.gwrk/decisions/index.md");
   });
 
   it("FR-001: returns the written path for a title argument", async () => {
@@ -180,5 +216,115 @@ describe("029 FR-001: gwrk define adr command surface (US-001)", () => {
     expect(flags).not.toContain("--dry-run");
     // The dry-run affordance ships as `--print`, avoiding the parent's flag.
     expect(flags).toContain("--print");
+  });
+});
+
+describe("029 FR-023: gwrk define adr <id> --decide (US-011)", () => {
+  const proposedRaw = [
+    "# ADR-010: Decision Records",
+    "",
+    "> **Status:** Proposed · **Date:** 2026-08-20",
+    "> **Decision:** ADRs become a first-class gwrk artifact",
+    "> **Constraint:** Every recorded decision MUST reach a dispatch through the index.",
+    "",
+    "## 1. Context",
+    "",
+    "Body.",
+    "",
+    "## Amendments",
+    "",
+  ].join("\n");
+
+  function makeRecord(status: "Proposed" | "Decided" | "Superseded", raw = proposedRaw) {
+    return {
+      number: "010",
+      id: "ADR-010",
+      title: "Decision Records",
+      filePath: "/repo/docs/decisions/ADR-010-decision-records.md",
+      header: {
+        status,
+        date: "2026-08-20",
+        decision: "ADRs become a first-class gwrk artifact",
+        constraint: "Every recorded decision MUST reach a dispatch through the index.",
+        scope: "gwrk definition pipeline",
+        author: "David Gonzalez",
+        dependsOn: [],
+        supersedes: [],
+      },
+      headings: [],
+      amendments: [],
+      raw,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    scaffoldMock.findProjectRoot.mockResolvedValue("/repo");
+    scaffoldMock.resolveDecisionsDir.mockResolvedValue("/repo/docs/decisions");
+    parserMock.parseCorpus.mockResolvedValue([makeRecord("Proposed")]);
+    indexMock.writeIndex.mockResolvedValue("/repo/.gwrk/decisions/index.md");
+    fsMock.writeFile.mockResolvedValue(undefined);
+  });
+
+  it("FR-023: flips Proposed to Decided and stamps the date", async () => {
+    const { adrCommandHandler } = await load();
+
+    const output = await adrCommandHandler({
+      target: "ADR-010",
+      decide: true,
+    });
+
+    expect(output).toContain("ADR-010-decision-records.md");
+    expect(fsMock.writeFile).toHaveBeenCalledTimes(1);
+    const [writtenPath, writtenContent] = fsMock.writeFile.mock.calls[0];
+    expect(writtenPath).toBe("/repo/docs/decisions/ADR-010-decision-records.md");
+    expect(writtenContent).toContain("**Status:** Decided");
+    expect(writtenContent).not.toContain("**Status:** Proposed");
+  });
+
+  it("FR-023: dispatches no workflow", async () => {
+    const { adrCommandHandler } = await load();
+
+    await adrCommandHandler({
+      target: "ADR-010",
+      decide: true,
+    });
+
+    expect(runtimeMock.WorkflowRuntime).not.toHaveBeenCalled();
+    expect(runtimeMock.executeWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("FR-026: regenerates the index after --decide", async () => {
+    const { adrCommandHandler } = await load();
+
+    await adrCommandHandler({
+      target: "ADR-010",
+      decide: true,
+    });
+
+    expect(indexMock.writeIndex).toHaveBeenCalledWith(
+      "/repo",
+      expect.any(Array),
+    );
+  });
+
+  it("FR-023: refuses to re-decide a Decided record", async () => {
+    const { adrCommandHandler } = await load();
+    parserMock.parseCorpus.mockResolvedValue([makeRecord("Decided")]);
+
+    await expect(
+      adrCommandHandler({ target: "ADR-010", decide: true }),
+    ).rejects.toThrow(/ADR-010 is already Decided \(2026-08-20\)/);
+    expect(fsMock.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("FR-023: refuses a Superseded record", async () => {
+    const { adrCommandHandler } = await load();
+    parserMock.parseCorpus.mockResolvedValue([makeRecord("Superseded")]);
+
+    await expect(
+      adrCommandHandler({ target: "ADR-010", decide: true }),
+    ).rejects.toThrow(/ADR-010 is Superseded; --decide does not apply/);
+    expect(fsMock.writeFile).not.toHaveBeenCalled();
   });
 });

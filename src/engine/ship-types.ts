@@ -54,6 +54,14 @@ export interface ShipState {
   failureContext: FailureContext | null;
   branchName?: string;
   testBaseline?: number;
+  /**
+   * Whole-repo failure count before IMPLEMENT touched anything.
+   *
+   * Separate from {@link testBaseline}, which counts only the suites the phase
+   * maps to. TEST_GATE compares against this to catch a break the phase caused
+   * OUTSIDE its own scope, which its scoped run cannot see and CI will.
+   */
+  fullSuiteBaseline?: number;
   prNumber?: number;
   prUrl?: string;
   gateResult?: "PASS" | "FAIL";

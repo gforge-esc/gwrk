@@ -58,10 +58,7 @@ Database Standards:
 - **DB Access Constraint**: `gwrk project discover` and all discovery commands MUST work without SQLite access (repository-only). Build-server commands that need SQLite MUST fail fast if unavailable.
 
 Decisions:
-- [ADR-001](docs/decisions/ADR-001-task-tracking.md) — Gate architecture
-- [ADR-002](docs/decisions/ADR-002-sqlite-execution-ledger.md) — SQLite execution ledger
-- [ADR-003](docs/decisions/ADR-003-state-contract.md) — Execution state contract
-- [ADR-004](docs/decisions/ADR-004-agent-native-output.md) — Agent-native output protocol
+- Read `.gwrk/decisions/index.md` (also injected via `<architecture_decisions>`) for all recorded architecture decisions and constraints.
 </architecture_reference>
 [/type]
 
@@ -144,7 +141,7 @@ Determine which governance rules and skills apply to this feature. Read each app
 | CLI commands, output | `docs/decisions/ADR-004-agent-native-output.md` | — |
 | Fixtures, test data | `.gwrk/rules/seeding-governance.md` | — |
 | Environment variables, config | `.gwrk/rules/workspace.md` | — |
-| Architecture decisions | `~/.gwrk/plugins/skills/decision-forge/SKILL.md` | `decision-forge` |
+| Architecture decisions | `.gwrk/decisions/index.md` | — |
 | Spec quality | `~/.gwrk/plugins/skills/specify-sharpen/SKILL.md` | `specify-sharpen` |
 | Any code changes | — | `compile-gate` (always implicit) |
 [/type]

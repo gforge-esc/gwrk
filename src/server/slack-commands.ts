@@ -748,6 +748,204 @@ const handlers: Record<string, SlashCommandHandler> = {
       };
     }
   },
+
+  research: async (args, context) => {
+    const initiative = args.join(" ").trim();
+    if (!initiative) {
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: ":warning: Initiative name or prefix required. Usage: `/gwrk research <initiative>`",
+            },
+          },
+        ],
+      };
+    }
+
+    const child = spawn("gwrk", ["define", "research", initiative, "--run"], {
+      cwd: context.projectRoot,
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+
+    return {
+      response_type: "in_channel",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `🔬 Dispatching research initiative *${initiative}*...`,
+          },
+        },
+      ],
+    };
+  },
+
+  adr: async (args, context) => {
+    const sub = args[0] || "list";
+
+    if (sub === "list") {
+      const indexPath = path.join(context.projectRoot, ".gwrk", "decisions", "index.md");
+      if (!fs.existsSync(indexPath)) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "No decision index found at `.gwrk/decisions/index.md`. Run `gwrk define adr --reindex`.",
+              },
+            },
+          ],
+        };
+      }
+      const content = fs.readFileSync(indexPath, "utf-8").trim();
+      return {
+        response_type: "ephemeral",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: content.slice(0, 2900),
+            },
+          },
+        ],
+      };
+    }
+
+    if (sub === "check") {
+      try {
+        const { adrCommandHandler } = await import("../commands/adr.js");
+        const msg = await adrCommandHandler({
+          check: true,
+          cwd: context.projectRoot,
+        });
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `✅ ${msg}`,
+              },
+            },
+          ],
+        };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            { type: "section", text: { type: "mrkdwn", text: `⚠️ ${msg}` } },
+          ],
+        };
+      }
+    }
+
+    if (sub === "decide") {
+      const adrId = args[1];
+      if (!adrId) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: ":warning: ADR ID required. Usage: `/gwrk adr decide ADR-010`",
+              },
+            },
+          ],
+        };
+      }
+      try {
+        const { adrCommandHandler } = await import("../commands/adr.js");
+        const msg = await adrCommandHandler({
+          target: adrId,
+          decide: true,
+          cwd: context.projectRoot,
+        });
+        return {
+          response_type: "in_channel",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `🏛️ ${msg}`,
+              },
+            },
+          ],
+        };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            { type: "section", text: { type: "mrkdwn", text: `:warning: ${msg}` } },
+          ],
+        };
+      }
+    }
+
+    if (sub === "record") {
+      const title = args.slice(1).join(" ").trim();
+      if (!title) {
+        return {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: ":warning: Title required. Usage: `/gwrk adr record <title>`",
+              },
+            },
+          ],
+        };
+      }
+      const child = spawn("gwrk", ["define", "adr", title, "--run"], {
+        cwd: context.projectRoot,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return {
+        response_type: "in_channel",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `🏛️ Dispatching ADR authoring for *${title}*...`,
+            },
+          },
+        ],
+      };
+    }
+
+    return {
+      response_type: "ephemeral",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `:warning: Unknown adr subcommand \`${sub}\`. Use: \`list\`, \`check\`, \`decide <ADR-NNN>\`, or \`record <title>\`.`,
+          },
+        },
+      ],
+    };
+  },
 };
 
 export async function handleSlashCommand(
@@ -773,9 +971,13 @@ export async function handleSlashCommand(
           text: {
             type: "mrkdwn",
             text: [
+              "*Clarity & Architecture*",
+              "  `/gwrk research <initiative>` — scaffold & run first-principles research",
+              "  `/gwrk adr [list|check|decide <ADR-NNN>|record <title>]` — manage architecture decisions",
+              "  `/gwrk define <feature> [spec|plan|tasks|tests]` — define a feature artifact",
+              "",
               "*Ship & Build*",
               "  `/gwrk ship <feature> <phase>` — ship a phase (branch → implement → review → PR)",
-              "  `/gwrk define <feature> [spec|plan|tasks|tests]` — define a feature artifact",
               "  `/gwrk dispatch <feature> <phase>` — enqueue a dispatch",
               "",
               "*Observe*",

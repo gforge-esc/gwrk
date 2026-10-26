@@ -27,6 +27,7 @@ Before specifying, check if these files exist and load them for context:
 - `specs/000-build-plan.md` — Dependency graph, critical path
 - `docs/grounding/agent-native-cli.md` — Agent-native design imperatives
 - `docs/decisions/ADR-004-agent-native-output.md` — Output protocol contract
+- `.gwrk/decisions/index.md` — Architecture decision index and constraints
 [/type]
 
 [type: generic]

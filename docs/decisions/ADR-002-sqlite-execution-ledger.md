@@ -2,6 +2,7 @@
 
 > **Status:** Decided · **Date:** 2026-03-05
 > **Decision:** SQLite via `better-sqlite3` (global `~/.gwrk/gwrk.db`)
+> **Constraint:** Task state MUST be read from and written to the git-tracked `tasks.json`, and `~/.gwrk/gwrk.db` MUST NOT be treated as the source of truth for task state.
 > **Supersedes:** [ADR-001](./ADR-001-task-tracking.md) (storage mechanism only)
 > **Author:** David Gonzalez · **Decision Scope:** gwrk core architecture
 

@@ -8,9 +8,19 @@ import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
 import { execCommand } from "../../../../utils/exec.js";
 import type { AgentBackend } from "../../../agent-backend.js";
 
+const AGY_2_MODEL_PATTERN =
+  /^(gemini-4-|gemini-3\.8-|claude-(opus|sonnet)-5-5-|gpt-oss-)/;
+
 export class AgyAdapter implements AgentBackend {
   readonly name = "agy";
   readonly nativeWriter = true;
+
+  /**
+   * Antigravity 2.0 CLI supports `--output-format stream-json`, emitting
+   * structured event lines that the runner turns into a live `.runs/*.log`
+   * transcript and `.jsonl` sidecar.
+   */
+  readonly emitsStreamJson = true;
 
   async isAvailable(): Promise<boolean> {
     const res = await execCommand("which", ["agy"]);
@@ -56,34 +66,45 @@ export class AgyAdapter implements AgentBackend {
     const command = "agy";
     const args: string[] = [];
 
-    // agy -p "/plan specs/001-cli-core" --dangerously-skip-permissions
     let slashCmd = "";
     if (task.workflow) {
       slashCmd = `/${path.basename(task.workflow, ".md")}`;
     }
 
-    if (task.featureDir) slashCmd += ` ${task.featureDir}`;
-    if (task.prompt) slashCmd += ` ${task.prompt}`;
+    if (task.featureDir) {
+      slashCmd += `${slashCmd ? " " : ""}${task.featureDir}`;
+    }
+    if (task.prompt) {
+      slashCmd += `${slashCmd ? " " : ""}${task.prompt}`;
+    }
 
     if (slashCmd) {
       args.push("-p", slashCmd);
     }
 
+    args.push("--output-format", "stream-json");
+
+    if (task.outputSchema) {
+      args.push("--json-schema", JSON.stringify(task.outputSchema));
+    }
+
+    // Pass --model when AGY_MODEL is explicitly set or task.model names a valid
+    // Antigravity 2.0 model ID; omit legacy 1.5/2.0 model names (FR-004).
+    const explicitModel =
+      task.env?.AGY_MODEL ||
+      (task.model && AGY_2_MODEL_PATTERN.test(task.model) ? task.model : undefined);
+    if (explicitModel) {
+      args.push("--model", explicitModel);
+    }
+
+    const effort = task.env?.AGY_EFFORT;
+    if (effort) {
+      args.push("--effort", effort);
+    }
+
     // YOLO mode for all agentic dispatches
     // FR-004: Map YOLO mode to --dangerously-skip-permissions
     args.push("--dangerously-skip-permissions");
-
-    // Sandbox: disabled only for write workflows that must modify source code.
-    const writeWorkflows = ["gwrk-implement", "gwrk-ship", "implement", "ship"];
-    const isWriteWorkflow = task.workflow
-      ? writeWorkflows.some((w) => task.workflow?.includes(w) ?? false)
-      : false;
-
-    if (isWriteWorkflow) {
-      args.push("--sandbox", "false");
-    }
-
-    // FR-004: Omit --model flag for agy
 
     return {
       command,
