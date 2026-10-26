@@ -1,0 +1,35 @@
+type: agent
+name: codex
+version: 1.0.0
+description: "OpenAI Codex CLI backend"
+dispatchMode: local-cli
+contextFileName: AGENTS.md
+
+invocation:
+  command: codex
+  args: ["exec", "--full-auto"]
+  yoloFlag: "--dangerously-bypass-approvals-and-sandbox"
+
+capabilities:
+  - stdin
+  - context-file
+
+models:
+  default: gpt-5-codex
+  fast: gpt-5-codex-mini
+  review: gpt-5-codex
+
+exitCodeMap:
+  "0":
+    exitCode: 0
+  "1":
+    exitCode: 1
+  "2":
+    exitCode: 2
+  "127":
+    exitCode: 127
+    errorType: command_not_found
+
+managedConfig:
+  - path: ".gwrkrc.json"
+    keys: ["agents.codex"]

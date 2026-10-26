@@ -27,15 +27,14 @@ import type { WorkflowManifest, JsonIntent } from "./manifest.js";
 export function extractJsonFromOutput(stdout: string): unknown {
   const trimmed = stdout.trim();
 
-  // Step 0a: Unwrap a Claude Code `--output-format stream-json` event stream.
+  // Step 0a: Unwrap a `--output-format stream-json` event stream.
   // Each line is a standalone JSON event (system / assistant / user / result);
-  // the real contract lives in the `result` string of the terminal
-  // {"type":"result"} event. Only the claude backend emits this shape, so this
-  // branch is inert for agy/codex — their output carries no per-line
-  // result events, so lastResultPayload stays undefined and we fall through.
+  // the real contract lives in `structured_output` (when `--json-schema` is active)
+  // or in the `result` string of the terminal {"type":"result"} event.
   const streamLines = trimmed.split("\n");
   if (streamLines.length > 1) {
     let lastResultPayload: string | undefined;
+    let lastStructuredOutput: Record<string, unknown> | undefined;
     for (const raw of streamLines) {
       const line = raw.trim();
       if (!line.startsWith("{") || !line.endsWith("}")) continue;
@@ -45,14 +44,23 @@ export function extractJsonFromOutput(stdout: string): unknown {
       } catch {
         continue; // not a complete JSON event line (prose, fragment) — ignore
       }
-      if (
-        evt &&
-        typeof evt === "object" &&
-        evt.type === "result" &&
-        typeof evt.result === "string"
-      ) {
-        lastResultPayload = evt.result; // last wins (agent self-correction)
+      if (evt && typeof evt === "object" && evt.type === "result") {
+        if (
+          evt.structured_output &&
+          typeof evt.structured_output === "object"
+        ) {
+          lastStructuredOutput = evt.structured_output as Record<
+            string,
+            unknown
+          >;
+        }
+        if (typeof evt.result === "string") {
+          lastResultPayload = evt.result; // last wins (agent self-correction)
+        }
       }
+    }
+    if (lastStructuredOutput !== undefined) {
+      return lastStructuredOutput;
     }
     if (lastResultPayload !== undefined) {
       // Recurse into the payload and let any failure propagate — do NOT fall
@@ -62,11 +70,9 @@ export function extractJsonFromOutput(stdout: string): unknown {
     }
   }
 
-  // Step 0b: Unwrap Claude Code's single `--output-format json` envelope. Its
-  // real payload is a string in the `result` field (typically wrapped in prose
-  // and a ```json fence), so recurse into it. Without this, the balanced-brace
-  // scan below matches the envelope's own outer braces and returns the wrapper
-  // object — which has no `summary`/`intents` — failing schema validation.
+  // Step 0b: Unwrap a single `--output-format json` envelope. Its real payload
+  // lives in `structured_output` (under `--json-schema`) or as a string in the
+  // `result` field, so return or recurse into it.
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     let envelope: Record<string, unknown> | undefined;
     try {
@@ -75,18 +81,16 @@ export function extractJsonFromOutput(stdout: string): unknown {
       // Not a single well-formed JSON value — fall through to fence/brace scan.
       envelope = undefined;
     }
-    if (
-      envelope &&
-      typeof envelope === "object" &&
-      envelope.type === "result" &&
-      typeof envelope.result === "string"
-    ) {
-      // This IS a Claude Code result envelope: the real payload lives in
-      // `result`. Recurse into it and let any failure propagate. Do NOT fall
-      // back to brace-scanning the wrapper — that would match the envelope's
-      // own outer braces and return a wrapper object with no summary/intents,
-      // masking the true failure (e.g. the agent returned prose, not a contract).
-      return extractJsonFromOutput(envelope.result);
+    if (envelope && typeof envelope === "object" && envelope.type === "result") {
+      if (
+        envelope.structured_output &&
+        typeof envelope.structured_output === "object"
+      ) {
+        return envelope.structured_output;
+      }
+      if (typeof envelope.result === "string") {
+        return extractJsonFromOutput(envelope.result);
+      }
     }
   }
 
