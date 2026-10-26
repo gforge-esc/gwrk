@@ -305,8 +305,8 @@ export class WorkflowRuntime {
     const manifest = plugin.manifest as WorkflowManifest;
     const pluginPath = plugin.path;
 
-    // Load the workflow prompt from PROMPT.md in the plugin directory
-    const promptPath = path.join(pluginPath, "PROMPT.md");
+    // Load the workflow prompt from manifest.prompt or PROMPT.md in the plugin directory
+    const promptPath = path.resolve(pluginPath, manifest.prompt || "PROMPT.md");
     let basePrompt = "";
     try {
       basePrompt = await readFile(promptPath, "utf-8");
@@ -316,6 +316,15 @@ export class WorkflowRuntime {
       throw new Error(
         `Workflow '${name}' is missing PROMPT.md in ${pluginPath}`,
       );
+    }
+
+    // Resolve <!-- @include <relative-path> --> directives so workflows can share
+    // a single canonical methodology prompt without duplicating prose.
+    const includeRegex = /<!--\s*@include\s+([^\s]+)\s*-->/g;
+    for (const match of [...basePrompt.matchAll(includeRegex)]) {
+      const includeTarget = path.resolve(path.dirname(promptPath), match[1]);
+      const includedContent = await readFile(includeTarget, "utf-8");
+      basePrompt = basePrompt.replace(match[0], includedContent);
     }
 
     // Phase 13: Project-aware prompt conditioning

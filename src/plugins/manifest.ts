@@ -196,6 +196,7 @@ export interface JsonIntent {
  */
 const WorkflowManifestSchema = PluginBaseSchema.extend({
   type: z.literal("workflow"),
+  prompt: z.string().optional(),
   outputSchema: z.record(z.any()), // JSON Schema
   /**
    * When true, the outputSchema is passed to adapters that enforce structured
