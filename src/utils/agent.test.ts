@@ -311,4 +311,42 @@ describe("quiet-mode progress against a redirected stdout", () => {
     expect(out).toContain('\r');
     expect(out).toContain('agent running');
   });
+
+  it('forwards model and env (--model, --effort) to spawned claude args and closes stdin when empty', async () => {
+    let capturedArgs: string[] = [];
+    let stdinEnded = false;
+
+    vi.mocked(spawn).mockImplementation((_cmd: any, args: any) => {
+      capturedArgs = args ?? [];
+      const mockChild = new EventEmitter() as any;
+      const stdin = new PassThrough();
+      stdin.on('finish', () => {
+        stdinEnded = true;
+      });
+      mockChild.stdin = stdin;
+      mockChild.stdout = new PassThrough();
+      mockChild.stderr = new PassThrough();
+      setTimeout(() => {
+        mockChild.stdout.end();
+        mockChild.stderr.end();
+        mockChild.emit('close', 0);
+      }, 20);
+      return mockChild;
+    });
+
+    await dispatchToAgent({
+      workflow: 'gwrk-implement',
+      workDir: '/fake/root',
+      agent: 'claude',
+      model: 'claude-opus-4-6',
+      env: { CLAUDE_EFFORT: 'high' },
+      prompt: 'implement feature',
+    });
+
+    expect(capturedArgs).toContain('--model');
+    expect(capturedArgs).toContain('claude-opus-4-6');
+    expect(capturedArgs).toContain('--effort');
+    expect(capturedArgs).toContain('high');
+    expect(stdinEnded).toBe(true);
+  });
 });

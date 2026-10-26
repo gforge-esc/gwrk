@@ -14,8 +14,19 @@
         },
         "maxConcurrent": 2,
         "models": []
+      },
+      "claude": {
+        "type": "local-cli",
+        "command": "claude",
+        "discoveryMethod": "manual",
+        "quotaProbe": {
+          "method": "optimistic",
+          "cacheTTLMinutes": 5
+        },
+        "maxConcurrent": 1,
+        "models": []
       }
     },
-    "fallbackOrder": ["agy"]
+    "fallbackOrder": ["agy", "claude"]
   }
 }
