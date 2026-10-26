@@ -564,7 +564,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
 
   // ADR-009: Inject project knowledge documents (grounding)
   const workDir = task.workDir || projectRoot;
-  const groundingFiles: Array<{ path: string; tag: string }> = [
+  const groundingFiles = [
     {
       path: path.join(workDir, ".gwrk/ontology/domain.md"),
       tag: "domain_ontology",
@@ -576,6 +576,10 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     {
       path: path.join(workDir, ".gwrk/perspective/ux-posture.md"),
       tag: "ux_posture",
+    },
+    {
+      path: path.join(workDir, ".gwrk/decisions/index.md"),
+      tag: "architecture_decisions",
     },
   ];
 
@@ -605,7 +609,22 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   // Layer 3: External Context Injection (Phase 21)
-  const extContext = await resolveExtensionContext(workDir);
+  const rawKeywordSource = [task.featureDir ?? "", task.prompt ?? ""]
+    .join(" ")
+    .replace(/^specs\//, "")
+    .replace(/^\d+-/, " ");
+  const extKeywords = Array.from(
+    new Set(
+      rawKeywordSource
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((token) => token.length >= 3),
+    ),
+  ).slice(0, 12);
+  const extContext =
+    extKeywords.length > 0
+      ? await resolveExtensionContext(workDir, extKeywords)
+      : await resolveExtensionContext(workDir);
   if (extContext.length > 0) {
     const contextContent = extContext
       .map((res) => `<${res.source}>\n${res.content}\n</${res.source}>`)

@@ -627,7 +627,7 @@ export class ShipOrchestrator extends EventEmitter {
       this.revertSourceMutations();
 
       // 4. Determine verdict from gates (not agent edits).
-      //    Gate authority is one-way (ADR-007 + 028 correction): a green gate
+      //    Gate authority is one-way (ADR-007 §2.1 + 028 correction): a green gate
       //    closes a task the reviewer raised no finding against, and never a task
       //    it reproduced a defect on.
       //

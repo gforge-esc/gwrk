@@ -400,3 +400,16 @@ gates, so an inline `task.gateScript` (the canonical fenced Done-When) was never
 5. **The gate is `task.gateScript`, not `phase.doneWhen`.** `phase.doneWhen` carries prose bullets
    and is empty on every real feature; the fenced Done-When compiles onto each task's `gateScript`.
    Read it via `getPhaseVerificationGate`. (This is the field error 025 inherited from 023 §5.)
+
+---
+
+## Amendments
+
+| Amending | At | Summary |
+|---|---|---|
+| 2026-03-16 | 8 | Deterministic Vitest Gates (2026-03-16) |
+| 2026-06-16 | 9 | Profile-Driven Gates (2026-06-16) |
+| 2026-07-22 | 10 | Executable Ground Truth (2026-07-22) |
+| 021 | 11 | Polyglot test-toolchain: JavaScript, schematized toolchain, declared targets (2026-07-23) |
+| 026 | 12 | Gate runner convergence (2026-07-29) |
+

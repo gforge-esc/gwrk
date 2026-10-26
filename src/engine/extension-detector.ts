@@ -48,7 +48,11 @@ export async function detectExtensions(): Promise<ExtensionInfo[]> {
       // Existence check only — never invoke the binary directly.
       // Some commands (e.g. `obsidian`) resolve to a GUI app launcher
       // on macOS; even a short timeout still briefly opens the app.
-      execSync(`which ${ext.command}`, { stdio: "ignore" });
+      if (ext.id === "obsidian") {
+        execSync("which obsidian-cli || which obsidian", { stdio: "ignore" });
+      } else {
+        execSync(`which ${ext.command}`, { stdio: "ignore" });
+      }
       ext.detected = true;
     } catch {
       ext.detected = false;

@@ -21,6 +21,6 @@ export interface ContextProvider {
   resolveContext(params: {
     keywords: string[];
     projectRoot: string;
-    config: Record<string, any>;
+    config: Record<string, unknown>;
   }): Promise<ContextResult[]>;
 }

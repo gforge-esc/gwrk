@@ -59,6 +59,32 @@ describe("TR-017: Extension Schema and Runtime (Phase 19)", () => {
     expect(mockResolvePlugin).toHaveBeenCalledWith("test-ext");
   });
 
+  it("Issue #91: maps 'obsidian' alias to 'obsidian-vault' and ignores CLI-only probe keys", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(loadConfig).mockReturnValue({
+      extensions: {
+        obsidian: { enabled: true },
+        github: { enabled: true },
+        docker: { enabled: true },
+        slack: { enabled: true },
+      },
+    } as any);
+
+    const mockResolvePlugin = vi.fn().mockRejectedValue(new Error("Not found"));
+    vi.mocked(PluginLoader).mockImplementation(() => ({
+      resolvePlugin: mockResolvePlugin,
+    }) as any);
+
+    await discoverExtensions(projectRoot);
+    expect(mockResolvePlugin).toHaveBeenCalledWith("obsidian-vault");
+    // github, docker, slack should not emit missing-plugin warnings
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Extension 'obsidian' enabled in config but not found.",
+    );
+    warnSpy.mockRestore();
+  });
+
   it("FR-L3-003 / FR-L3-004 / US-027: resolveExtensionContext aggregates context safely", async () => {
     // Mock config with no extensions to verify safe empty aggregation
     vi.mocked(loadConfig).mockReturnValue({

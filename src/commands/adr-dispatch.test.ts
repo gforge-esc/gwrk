@@ -63,6 +63,23 @@ vi.mock("../utils/resolve-model.js", () => ({
   resolveModelForTask: vi.fn(() => "claude-opus-4-8"),
 }));
 
+const indexMock = vi.hoisted(() => ({
+  writeIndex: vi.fn(async () => "/repo/.gwrk/decisions/index.md"),
+  checkIndex: vi.fn(),
+  buildIndex: vi.fn(),
+  renderIndex: vi.fn(),
+  hashCorpus: vi.fn(),
+}));
+vi.mock("../engine/adr-index.js", () => indexMock);
+
+const parserMock = vi.hoisted(() => ({
+  parseCorpus: vi.fn(async () => []),
+  parseRecord: vi.fn(),
+  resolveSection: vi.fn(),
+  listSectionAddresses: vi.fn(),
+}));
+vi.mock("../engine/adr-parser.js", () => parserMock);
+
 const load = () => import("./adr.js");
 
 describe("029 FR-007: --run dispatches gwrk-adr-record (US-003)", () => {
@@ -303,5 +320,49 @@ describe("029 FR-003: PROMPT.md agrees with renderTemplate()", () => {
       (heading) => !prompt.includes(`## ${heading}`),
     );
     expect(missing).toEqual([]);
+  });
+});
+
+describe("029 FR-027: --audit dispatches gwrk-constitution (US-012)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    scaffoldMock.findProjectRoot.mockResolvedValue("/repo");
+    scaffoldMock.resolveDecisionsDir.mockResolvedValue("/repo/docs/decisions");
+    runtimeMock.executeWorkflow.mockResolvedValue({
+      summary: "Corpus audit clean.",
+      intents: [],
+    });
+  });
+
+  it("FR-027: dispatches gwrk-constitution for --audit", async () => {
+    const { adrCommandHandler } = await load();
+
+    const output = await adrCommandHandler({ audit: true });
+
+    expect(runtimeMock.WorkflowRuntime).toHaveBeenCalled();
+    expect(runtimeMock.executeWorkflow).toHaveBeenCalledWith(
+      "gwrk-constitution",
+      expect.any(String),
+      expect.objectContaining({
+        agent: "claude",
+        model: "claude-opus-4-8",
+        projectRoot: "/repo",
+      }),
+    );
+    expect(output).toContain("Corpus audit clean.");
+    expect(scaffoldMock.scaffold).not.toHaveBeenCalled();
+  });
+
+  it("FR-027: appends a decision_context block naming the corpus and the index", async () => {
+    const { adrCommandHandler } = await load();
+
+    await adrCommandHandler({ audit: true });
+    const input = String(runtimeMock.executeWorkflow.mock.calls[0][1]);
+
+    expect(input).toContain("<decision_context>");
+    expect(input).toContain("docs/decisions/");
+    expect(input).toContain(".gwrk/decisions/index.md");
+    expect(input).toContain("</decision_context>");
+    expect(input).not.toMatch(/\{\{[A-Z_]+\}\}/);
   });
 });

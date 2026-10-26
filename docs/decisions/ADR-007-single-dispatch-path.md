@@ -238,3 +238,13 @@ This is content migration, not architectural change. The PROMPT.md format and ma
 - [.agents/ Directory Removal Plan](../reference/agents-directory-removal.md) — Dependency map and file-by-file migration plan.
 - F014 spec: L48 ("ending the reliance on personal `.agents/` directories"), FR-L25-003, TC-011.
 - F004 plan Phase 8: "ShipOrchestrator no longer hardcodes workflow paths — resolves via ReviewPlugin."
+
+---
+
+## Amendments
+
+| Amending | At | Summary |
+|---|---|---|
+| 026 | 2.1 | readVerdict() runs gates through shared runTaskGate so gates are truth at review time. |
+| 028 | 2.1 | Gate authority is one-way; a green gate never closes a task with a reproduced review finding. |
+
