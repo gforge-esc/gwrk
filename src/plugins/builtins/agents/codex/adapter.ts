@@ -63,7 +63,8 @@ export class CodexAdapter implements AgentBackend {
     if (task.featureDir) args.push(task.featureDir);
     if (task.prompt) args.push(task.prompt);
 
-    const model = task.model || task.env?.CODEX_MODEL;
+    const rawModel = task.model || task.env?.CODEX_MODEL;
+    const model = rawModel && rawModel !== "default" ? rawModel : undefined;
     if (model) {
       args.push("--model", model);
     }
