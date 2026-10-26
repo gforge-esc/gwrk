@@ -1,0 +1,42 @@
+type: agent
+name: claude
+version: 1.1.0
+description: "Claude Code CLI backend"
+dispatchMode: local-cli
+contextFileName: CLAUDE.md
+
+invocation:
+  command: claude
+  args: ["--output-format", "stream-json", "--verbose"]
+  headlessFlag: "-p"
+  yoloFlag: "--dangerously-skip-permissions"
+
+capabilities:
+  - stdin
+  - context-file
+  - stream-json
+  - json-schema
+  - effort
+
+models:
+  default: sonnet
+  fast: sonnet
+  review: opus
+
+exitCodeMap:
+  "0":
+    exitCode: 0
+  "1":
+    exitCode: 1
+  "2":
+    exitCode: 2
+  "126":
+    exitCode: 1
+    errorType: permission_denied
+  "127":
+    exitCode: 127
+    errorType: command_not_found
+
+managedConfig:
+  - path: ".gwrkrc.json"
+    keys: ["agents.claude"]

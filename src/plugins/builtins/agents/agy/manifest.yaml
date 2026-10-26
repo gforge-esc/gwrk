@@ -16,6 +16,7 @@ capabilities:
   - context-file
   - stream-json
   - json-schema
+  - effort
 
 models:
   default: gemini-4-argon-high
