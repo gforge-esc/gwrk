@@ -79,6 +79,16 @@ describe("ClaudeAdapter", () => {
       expect(effortIdx).toBeGreaterThan(-1);
       expect(result.args[effortIdx + 1]).toBe("high");
     });
+
+    it("omits --model when ModelSelector returns the virtual 'default' sentinel for models: []", async () => {
+      const result = await adapter.dispatch({
+        prompt: "implement",
+        agent: "claude",
+        model: "default",
+        env: { CLAUDE_MODEL: "default" },
+      });
+      expect(result.args).not.toContain("--model");
+    });
   });
 
   describe("parseResult() & manifest parity", () => {
