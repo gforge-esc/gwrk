@@ -125,4 +125,44 @@ describe("029 FR-015: decisions get their own material field (US-007)", () => {
 
     expect(result.decisions).toEqual(["ADR-001 body"]);
   });
+
+  it("Issue #201: ranks newest specs first, caps oversized material, and combines multiple architecture files", async () => {
+    vi.mocked(fs.readdir).mockImplementation(async (p: string) => {
+      if (p === path.join(root, "specs")) {
+        return ["001-old", "029-newest", "014-middle"] as any;
+      }
+      if (p === path.join(root, "docs", "decisions")) {
+        return ["ADR-001.md"] as any;
+      }
+      throw new Error("ENOENT");
+    });
+
+    const hugeSpec = `# 029 Spec\n${"A".repeat(5000)}`;
+    const middleSpec = `# 014 Spec\n${"B".repeat(200)}`;
+    vi.mocked(fs.readFile).mockImplementation(async (p: string) => {
+      if (p === path.join(root, "specs", "029-newest", "spec.md")) return hugeSpec;
+      if (p === path.join(root, "specs", "014-middle", "spec.md")) return middleSpec;
+      if (p === path.join(root, "specs", "001-old", "spec.md")) return "# 001 Spec";
+      if (p === path.join(root, "docs", "architecture.md")) return "Docs Arch";
+      if (p === path.join(root, "README.md")) return "Root Readme";
+      if (p === path.join(root, "docs", "decisions", "ADR-001.md")) return "ADR-001";
+      throw new Error("ENOENT");
+    });
+
+    const result = await scan(root, {
+      maxPerSpecChars: 500,
+      maxSpecsChars: 600,
+    });
+
+    // Newest spec (029) is ranked first and truncated to maxPerSpecChars
+    expect(result.specs[0]).toContain("# 029 Spec");
+    expect(result.specs[0]).toContain("...[truncated]");
+    expect(result.specs[0].length).toBeLessThanOrEqual(520);
+    // Total specs budget stops after 014-middle so 001-old is excluded
+    expect(result.specs).toHaveLength(2);
+    expect(result.specs[1]).toContain("# 014 Spec");
+    // Both docs/architecture.md and README.md are combined
+    expect(result.architecture).toContain("Docs Arch");
+    expect(result.architecture).toContain("Root Readme");
+  });
 });

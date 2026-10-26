@@ -22,11 +22,11 @@ gwrk doesn't think for you. The better your judgment, the better it performs.
 
 ---
 
-## The Ontology: Six Primitives
+## The Operating Model: Six Core Concepts
 
-gwrk operates on six kinds of things. Understanding them is understanding the product.
+gwrk operates on six core concepts (distinct from the Five Primitives of formal ontology construction: Classes, Properties, Relations, Individuals, and Axioms). Understanding these six concepts is understanding the product.
 
-| Primitive | What It Is | What It Is Not |
+| Concept | What It Is | What It Is Not |
 |-----------|-----------|----------------|
 | **Initiative** | A unit of work with a lifecycle: discovered → defined → shipped → delivered | Not a ticket. Not a task. An initiative has phases, gates, and a compression ratio at the end. |
 | **Commitment** | A written artifact that binds execution — `spec.md`, `plan.md`, `tasks.json`, gate scripts | Not a conversation. Not a narrative. If it's not in the repo, it doesn't exist. |
