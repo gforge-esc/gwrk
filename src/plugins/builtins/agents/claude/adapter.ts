@@ -10,12 +10,13 @@ import type { AgentBackend } from "../../../agent-backend.js";
 
 export class ClaudeAdapter implements AgentBackend {
   readonly name = "claude";
+  readonly nativeWriter = true;
 
   /**
    * Claude Code runs with `--output-format stream-json`, emitting one JSON
    * event per line. The runner renders these into a readable .runs/*.log
    * transcript and persists the raw stream to a .jsonl sidecar. Backends that
-   * emit plain prose (agy/codex) leave this unset and are logged as-is.
+   * emit plain prose (codex) leave this unset and are logged as-is.
    */
   readonly emitsStreamJson = true;
 
@@ -90,6 +91,11 @@ export class ClaudeAdapter implements AgentBackend {
       args.push("--model", model);
     }
 
+    const effort = task.env?.CLAUDE_EFFORT || task.env?.GWRK_EFFORT;
+    if (effort) {
+      args.push("--effort", effort);
+    }
+
     args.push("--dangerously-skip-permissions");
 
     return {
@@ -104,12 +110,20 @@ export class ClaudeAdapter implements AgentBackend {
     let exitCode = rawExitCode;
     let errorType: string | undefined;
 
-    // Normalization from spec:
-    // Claude 126 exit code to gwrk 1 (permission_denied)
-    if (rawExitCode === 126) {
+    // Normalization from spec (ADR-004/ADR-006):
+    // Claude 126 exit code to gwrk 1 (permission_denied), 127 to command_not_found
+    if (rawExitCode === 127) {
+      errorType = "command_not_found";
+    } else if (rawExitCode === 126) {
       exitCode = 1;
       errorType = "permission_denied";
-    } else if (rawExitCode > 2 && rawExitCode !== 127) {
+    } else if (
+      stderr.includes("turn_limit") ||
+      stdout.includes("error_max_turns")
+    ) {
+      exitCode = 1;
+      errorType = "turn_limit";
+    } else if (rawExitCode > 2) {
       exitCode = 1;
     }
 

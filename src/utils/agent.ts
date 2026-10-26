@@ -73,6 +73,8 @@ interface DispatchOptions {
   workflowPath: string;
   featureDir?: string;
   prompt?: string;
+  model?: string;
+  env?: Record<string, string>;
   approvalMode?: "yolo" | "auto" | "plan";
   contextPath?: string;
   workDir?: string;
@@ -104,6 +106,8 @@ export async function buildCommand(
   const task: TaskDispatch = {
     prompt: opts.prompt,
     agent: agentName,
+    model: opts.model,
+    env: opts.env,
     workflow: opts.workflowPath,
     featureDir: opts.featureDir,
     stdin: opts.stdin,
@@ -224,6 +228,7 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
       env: {
         ...process.env,
         ...SAFE_AGENT_ENV,
+        ...(opts.env ?? {}),
         ...(opts.contextPath ? { GWRK_CONTEXT: opts.contextPath } : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
@@ -240,8 +245,10 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
         })
       : undefined;
 
-    if (stdin && child.stdin) {
-      child.stdin.write(stdin);
+    if (child.stdin) {
+      if (stdin) {
+        child.stdin.write(stdin);
+      }
       child.stdin.end();
     }
 
@@ -651,6 +658,8 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     workflowPath: await resolveWorkflowPath(task.workflow ?? "gwrk-implement"),
     featureDir: task.featureDir,
     prompt: task.prompt,
+    model: task.model,
+    env: dispatch.env ?? task.env,
     workDir: task.workDir,
     outputSchema: task.outputSchema,
     emitsStreamJson: adapter.emitsStreamJson,

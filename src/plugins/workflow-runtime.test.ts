@@ -142,6 +142,24 @@ describe('WorkflowRuntime tolerant JSON extraction', () => {
     expect(result).toEqual({ summary: 'second', intents: [] });
   });
 
+  it('extracts structured_output from Claude Code 2.1.x result events when result is empty or prose', () => {
+    const stream = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 's1' }),
+      JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: '',
+        structured_output: { summary: 'from structured_output', intents: [] },
+        session_id: 's1',
+      }),
+    ].join('\n');
+    expect(extractJsonFromOutput(stream)).toEqual({
+      summary: 'from structured_output',
+      intents: [],
+    });
+  });
+
   it('does NOT misfire on multi-line non-stream output (agy/codex/gemini regression guard)', () => {
     // agy/codex/gemini emit plain prose (no {type:"result"} events). Multi-line
     // output with a fenced contract must still extract via the fence path — the

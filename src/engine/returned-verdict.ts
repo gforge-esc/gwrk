@@ -149,7 +149,12 @@ function spokenText(line: string): string[] | undefined {
   if (!STREAM_EVENT_TYPES.has(parsed.type)) return undefined;
 
   if (parsed.type === "result") {
-    return typeof parsed.result === "string" ? [parsed.result] : [];
+    const out: string[] = [];
+    if (typeof parsed.result === "string") out.push(parsed.result);
+    if (isRecord(parsed.structured_output)) {
+      out.push(JSON.stringify(parsed.structured_output));
+    }
+    return out;
   }
   if (parsed.type === "assistant") {
     const message = parsed.message;
