@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { recordHistory } from "../db/runs.js";
+import { runTaskGate } from "../utils/gate-exec.js";
 import { runGate } from "../utils/gate-runner.js";
 import { isHollowGate } from "../utils/gate-quality.js";
 import { color, fail, success } from "../utils/format.js";
@@ -108,6 +109,8 @@ Examples:
       }
 
       const gateScript = path.join(featureDir, task.gateScript);
+      const isFileGate =
+        fs.existsSync(gateScript) || task.gateScript.startsWith("gates/");
 
       // FR-001: Reject gates that contain only `test -f` assertions
       if (fs.existsSync(gateScript)) {
@@ -120,7 +123,9 @@ Examples:
         }
       }
 
-      const result = await runGate(gateScript);
+      const result = isFileGate
+        ? await runGate(gateScript)
+        : await runTaskGate(task, { featureDir, cwd: projectRoot });
 
       if (!result.passed) {
         if (result.exitCode === 127) {
