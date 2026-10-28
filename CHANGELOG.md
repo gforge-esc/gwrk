@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.5.0-alpha.2...cli-v1.5.1-alpha.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **agents:** omit --model when ModelSelector returns virtual 'default' sentinel ([#207](https://github.com/gforge-esc/gwrk/issues/207)) ([58bced5](https://github.com/gforge-esc/gwrk/commit/58bced56221421efd82789d81849d8196d5d545a))
+* **config:** remove the stale .gwrkrc.local.example.json template ([#211](https://github.com/gforge-esc/gwrk/issues/211)) ([1f838bf](https://github.com/gforge-esc/gwrk/commit/1f838bf692fd435469f468db4035a1167985a369))
+
 ## [1.5.0-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.2...cli-v1.5.0-alpha.2) (2026-10-26)
 
 
