@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.5.1-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.5.0-alpha.2...cli-v1.5.1-alpha.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **agents:** omit --model when ModelSelector returns virtual 'default' sentinel ([#207](https://github.com/gforge-esc/gwrk/issues/207)) ([58bced5](https://github.com/gforge-esc/gwrk/commit/58bced56221421efd82789d81849d8196d5d545a))
+* **config:** remove the stale .gwrkrc.local.example.json template ([#211](https://github.com/gforge-esc/gwrk/issues/211)) ([1f838bf](https://github.com/gforge-esc/gwrk/commit/1f838bf692fd435469f468db4035a1167985a369))
+
+## [1.5.0-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.2...cli-v1.5.0-alpha.2) (2026-10-26)
+
+
+### Features
+
+* **agents:** bring ClaudeAdapter to full capability parity with AgyAdapter ([#205](https://github.com/gforge-esc/gwrk/issues/205)) ([516c484](https://github.com/gforge-esc/gwrk/commit/516c4845be33ce01da4877baca03717fdd2122ac))
+* ship 028/029 decision records, vault-to-clarity pipeline, and Telegram/Slack control plane ([#199](https://github.com/gforge-esc/gwrk/issues/199)) ([b583a06](https://github.com/gforge-esc/gwrk/commit/b583a06bb5c54dfeaa6a7af202eed0cb54c25c1f))
+
+
+### Bug Fixes
+
+* **ontology:** unify construct and research prompts, cap source scanner, and validate domain.md ([#201](https://github.com/gforge-esc/gwrk/issues/201)) ([#203](https://github.com/gforge-esc/gwrk/issues/203)) ([f893bc9](https://github.com/gforge-esc/gwrk/commit/f893bc9d4df59ce9cb14c288758a755a23bfda21))
+
 ## [1.4.0-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.4.0-alpha.1...cli-v1.4.0-alpha.2) (2026-09-03)
 
 > Itemised by hand from the merge log. Promotes to main are squash merges, which collapse every commit on develop into one, so release-please could only see the promote commit itself. 33 pull requests landed between `cli-v1.4.0-alpha.1` (2026-07-27) and this release.
