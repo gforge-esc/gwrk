@@ -6,9 +6,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { z } from "zod";
-import { DEFAULT_LOC_RATES } from "../engine/effort-defaults.js";
-import { resolveRoleMultipliers } from "../engine/roles.js";
-import { AgentBackendConfigSchema } from "../server/agent-registry.js";
+import { AgentBackendConfigSchema } from "../domain/agent-config.js";
+import { DEFAULT_LOC_RATES, resolveRoleMultipliers } from "../domain/effort.js";
 
 const AgentBackendSchema = z.string();
 export type AgentBackendId = string;

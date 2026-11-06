@@ -89,6 +89,20 @@ describe("ClaudeAdapter", () => {
       });
       expect(result.args).not.toContain("--model");
     });
+
+    it("delivers multi-line workflow prompts via stdin and does not append positional featureDir", async () => {
+      const result = await adapter.dispatch({
+        workflow: "gwrk-implement",
+        featureDir: "specs/031-unified-agent-port",
+        prompt: "# Implement\nWrite the code",
+        stdin: "<command_safety>Safe</command_safety>",
+        agent: "claude",
+      });
+
+      expect(result.args).not.toContain("specs/031-unified-agent-port");
+      expect(result.stdin).toContain("# Implement\nWrite the code");
+      expect(result.stdin).toContain("<command_safety>Safe</command_safety>");
+    });
   });
 
   describe("parseResult() & manifest parity", () => {

@@ -22,7 +22,7 @@ interface ReviewPlugin {
   name: string;
   version: string;
   description: string;
-  projectType: "cli" | "webapp";
+  projectType: ReviewManifest["projectType"];
 
   /**
    * The workflow names (plugins) to use for reviews.

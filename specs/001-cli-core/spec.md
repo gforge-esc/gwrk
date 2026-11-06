@@ -416,7 +416,7 @@ As a PE, I want my project data (plans, runs, stats) to be isolated by project i
 - **FR-041**: ⭐ **NEW (2026-06-14)** `gwrk plugin search <query>` — Search the local registry at `~/.gwrk/registry/` for matching plugin manifests. (US-031)
 - **FR-042**: ⭐ **NEW (2026-06-14)** `gwrk plugin install <id|url>` — Resolve plugin ID from registry or use direct URL. Clone to `~/.gwrk/plugins/`. Validate `manifest.yaml`. (US-031)
 - **FR-043**: ⭐ **NEW (2026-06-14)** `gwrk plugin update [id]` — Update installed plugins via `git pull`. (US-031)
-- **FR-044**: ⭐ **NEW (2026-06-14)** `gwrk init` Workstation Provisioning MUST clone `https://github.com/gwrk-org/gwrk-plugins` to `~/.gwrk/registry/` if not present, and `git pull` if present. (US-001)
+- **FR-044**: ⭐ **NEW (2026-06-14)** `gwrk init` Workstation Provisioning MUST clone `https://github.com/gforge-esc/gwrk-plugins` to `~/.gwrk/registry/` if not present, and `git pull` if present. (US-001)
 - **FR-045**: ⭐ **NEW (2026-06-14)** `gwrk init` Extension Discovery MUST check for installed CLIs (e.g. `obsidian-cli`) and populate the `extensions` block in `.gwrkrc.json`. (US-032)
 
 ### Error States

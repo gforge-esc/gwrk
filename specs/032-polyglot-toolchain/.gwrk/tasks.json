@@ -1,0 +1,21 @@
+{
+  "featureId": "032-polyglot-toolchain",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "ToolchainPort, Test Discovery, Runner, and Activator",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Implement ToolchainPort and remove TypeScript/Vitest hardcodings across test, gate-gen, discovery, runner, and ship",
+          "status": "completed",
+          "sp": 8,
+          "classification": "change",
+          "gateScript": "pnpm vitest run src/utils/test-discovery.test.ts src/engine/test-runner.test.ts src/utils/gate-gen.test.ts src/utils/toolchain-mapper.test.ts",
+          "description": "Implement ToolchainPort and remove TypeScript/Vitest hardcodings across test, gate-gen, discovery, runner, and ship"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-02T22:20:00.000Z"
+}

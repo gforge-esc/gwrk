@@ -12,8 +12,8 @@ interface:
     0: Success
     1: Failed
 runtime:
-  preferredAgent: gemini
-  preferredModel: gemini-2.0-flash
+  preferredAgent: agy
+  preferredModel: default
 tags:
   - reasoning
   - storytelling

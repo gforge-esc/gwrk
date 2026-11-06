@@ -8,6 +8,7 @@ import { getCompressionRecord, recordCompression } from "../db/compression.js";
 import { finishRun, listRuns, recordRun } from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
+import { loadManifests } from "../utils/manifest.js";
 import { parsePlan } from "../utils/parser.js";
 import {
   computeCompression,
@@ -191,16 +192,32 @@ export async function harvestFeature(
       `No matching pending run found for harvest: feature=${featureId}, phase=${phaseId}, PR=${prNumber}. Backfilling run record.`,
     );
     try {
+      const featureDir = path.join(projectPath, "specs", featureId);
+      const latestManifest = loadManifests(featureDir)
+        .filter((m) => m.command === "ship" && (!phaseId || m.phase === phaseId))
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+
       const backfillId = recordRun({
         feature_id: featureId,
-        phase_id: phaseId || undefined,
+        phase_id: phaseId || latestManifest?.phase || undefined,
         project_id: projectId,
         command: "ship",
+        agent_backend: latestManifest?.agent,
+        model: latestManifest?.model,
         status: "merged",
+        exit_code: latestManifest?.exitCode ?? 0,
+        started_at: latestManifest?.startedAt,
+        finished_at: mergedAt || latestManifest?.finishedAt,
+        duration_s: latestManifest?.durationS,
+        attempt: latestManifest?.attempt ?? 1,
+        gate_result: latestManifest?.gateResult,
+        review_verdict: latestManifest?.reviewVerdict,
+        files_changed: latestManifest?.filesChanged,
+        lines_added: latestManifest?.linesAdded,
+        lines_deleted: latestManifest?.linesDeleted,
         merge_commit_sha: mergeCommitSha,
         pr_number: prNumber || undefined,
         pr_url: record.prUrl || undefined,
-        finished_at: mergedAt,
       });
       console.log(`Backfilled run record for ${featureId} ${phaseId} (Run ID: ${backfillId})`);
     } catch (dbErr) {

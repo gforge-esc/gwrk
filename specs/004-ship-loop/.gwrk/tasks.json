@@ -19,7 +19,8 @@
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
           "completedAt": "2026-03-17T13:00:16.772Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T002",
@@ -28,7 +29,8 @@
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
           "completedAt": "2026-03-17T13:00:16.791Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T003",
@@ -37,7 +39,8 @@
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
           "completedAt": "2026-03-17T13:00:16.813Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T004",
@@ -46,7 +49,8 @@
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
           "completedAt": "2026-03-17T13:00:17.675Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T005",
@@ -55,7 +59,8 @@
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
           "completedAt": "2026-03-18T02:51:02.205Z",
-          "classification": "change"
+          "classification": "change",
+          "sp": 2
         },
         {
           "id": "T006",
@@ -64,7 +69,8 @@
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
           "completedAt": "2026-03-18T02:51:03.222Z",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         }
       ],
       "doneWhen": [
@@ -85,7 +91,8 @@
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
           "completedAt": "2026-03-17T13:00:18.630Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T008",
@@ -94,7 +101,8 @@
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
           "completedAt": "2026-03-17T13:00:18.645Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T009",
@@ -103,7 +111,8 @@
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
           "completedAt": "2026-03-17T13:00:18.668Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T010",
@@ -112,7 +121,8 @@
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
           "completedAt": "2026-03-18T02:51:06.763Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T011",
@@ -121,7 +131,8 @@
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
           "completedAt": "2026-03-18T02:51:10.621Z",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         }
       ],
       "doneWhen": [
@@ -142,7 +153,8 @@
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
           "completedAt": "2026-03-17T13:00:24.878Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T013",
@@ -151,7 +163,8 @@
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
           "completedAt": "2026-03-18T02:51:14.447Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T014",
@@ -160,7 +173,8 @@
           "status": "completed",
           "gateScript": "gates/T014-gate.sh",
           "completedAt": "2026-03-17T13:00:27.509Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T015",
@@ -169,7 +183,8 @@
           "status": "completed",
           "gateScript": "gates/T015-gate.sh",
           "completedAt": "2026-03-18T02:51:14.463Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T016",
@@ -178,7 +193,8 @@
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
           "completedAt": "2026-03-18T02:51:14.477Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T017",
@@ -187,7 +203,8 @@
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
           "completedAt": "2026-03-17T13:00:27.545Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T018",
@@ -196,7 +213,8 @@
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
           "completedAt": "2026-03-17T13:00:27.556Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T019",
@@ -205,7 +223,8 @@
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
           "completedAt": "2026-03-17T13:00:27.567Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T020",
@@ -214,7 +233,8 @@
           "status": "completed",
           "gateScript": "gates/T020-gate.sh",
           "completedAt": "2026-03-17T13:00:27.578Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T021",
@@ -223,7 +243,8 @@
           "status": "completed",
           "gateScript": "gates/T021-gate.sh",
           "completedAt": "2026-03-17T13:00:27.588Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T022",
@@ -232,7 +253,8 @@
           "status": "completed",
           "gateScript": "gates/T022-gate.sh",
           "completedAt": "2026-03-18T02:51:19.359Z",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         }
       ],
       "doneWhen": [
@@ -253,7 +275,8 @@
           "status": "completed",
           "gateScript": "gates/T023-gate.sh",
           "completedAt": "2026-03-18T02:51:19.372Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T024",
@@ -262,7 +285,8 @@
           "status": "completed",
           "gateScript": "gates/T024-gate.sh",
           "completedAt": "2026-03-18T02:51:20.489Z",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T025",
@@ -271,7 +295,8 @@
           "status": "completed",
           "gateScript": "gates/T025-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-18T14:44:00.000Z"
+          "completedAt": "2026-03-18T14:44:00.000Z",
+          "sp": 3
         },
         {
           "id": "T026",
@@ -280,7 +305,8 @@
           "status": "completed",
           "gateScript": "gates/T026-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-18T14:44:00.000Z"
+          "completedAt": "2026-03-18T14:44:00.000Z",
+          "sp": 3
         },
         {
           "id": "T027",
@@ -289,7 +315,8 @@
           "status": "completed",
           "gateScript": "gates/T027-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-18T14:44:00.000Z"
+          "completedAt": "2026-03-18T14:44:00.000Z",
+          "sp": 3
         },
         {
           "id": "T028",
@@ -298,7 +325,8 @@
           "status": "completed",
           "gateScript": "gates/T028-gate.sh",
           "classification": "noop",
-          "completedAt": "2026-03-18T14:44:00.000Z"
+          "completedAt": "2026-03-18T14:44:00.000Z",
+          "sp": 1
         }
       ],
       "doneWhen": [
@@ -321,7 +349,8 @@
           "status": "completed",
           "gateScript": "gates/T029-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-31T14:30:00.000Z"
+          "completedAt": "2026-03-31T14:30:00.000Z",
+          "sp": 3
         },
         {
           "id": "T030",
@@ -330,7 +359,8 @@
           "status": "completed",
           "gateScript": "gates/T030-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-31T14:40:00.000Z"
+          "completedAt": "2026-03-31T14:40:00.000Z",
+          "sp": 3
         },
         {
           "id": "T031",
@@ -339,7 +369,8 @@
           "status": "completed",
           "gateScript": "gates/T031-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-31T14:50:00.000Z"
+          "completedAt": "2026-03-31T14:50:00.000Z",
+          "sp": 3
         },
         {
           "id": "T032",
@@ -348,7 +379,8 @@
           "status": "completed",
           "gateScript": "gates/T032-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-31T14:55:00.000Z"
+          "completedAt": "2026-03-31T14:55:00.000Z",
+          "sp": 3
         },
         {
           "id": "T033",
@@ -357,7 +389,8 @@
           "status": "completed",
           "gateScript": "gates/T033-gate.sh",
           "classification": "greenfield",
-          "completedAt": "2026-03-31T15:00:00.000Z"
+          "completedAt": "2026-03-31T15:00:00.000Z",
+          "sp": 3
         },
         {
           "id": "T034",
@@ -366,7 +399,8 @@
           "status": "completed",
           "gateScript": "gates/T034-gate.sh",
           "classification": "change",
-          "completedAt": "2026-03-31T15:10:00.000Z"
+          "completedAt": "2026-03-31T15:10:00.000Z",
+          "sp": 2
         },
         {
           "id": "T035",
@@ -375,7 +409,8 @@
           "status": "completed",
           "gateScript": "gates/T035-gate.sh",
           "classification": "noop",
-          "completedAt": "2026-03-31T15:15:00.000Z"
+          "completedAt": "2026-03-31T15:15:00.000Z",
+          "sp": 1
         }
       ],
       "doneWhen": [

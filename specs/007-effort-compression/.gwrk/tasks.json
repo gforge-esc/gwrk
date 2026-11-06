@@ -16,41 +16,46 @@
           "id": "T001",
           "title": "Create effort.ts",
           "description": "NEW src/engine/effort.ts. effort engine — story extraction, role bracketing, hour computation, report generation. Tests: src/engine/effort.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/effort.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T002",
           "title": "Create spec-parser.ts",
           "description": "NEW src/engine/spec-parser.ts. markdown parser that extracts US-### blocks with SP values and role assignments from spec.md. Tests: src/engine/spec-parser.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/spec-parser.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T003",
           "title": "Create types.ts",
           "description": "NEW src/engine/types.ts. shared TypeScript interfaces for EffortReport, RoleBreakdown, StoryEstimate, CompressionReport, DeliveryActuals, CompressionRatios, CompressionSummary, LeadingIndicators",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/types.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T004",
           "title": "Create roles.ts",
           "description": "NEW src/engine/roles.ts. canonical role multiplier defaults — RE=6, TS=4, PM=2, PE=1.5, DE=5 — and config override resolution",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/roles.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T005",
           "title": "Create report-writer.ts",
           "description": "NEW src/engine/report-writer.ts. generates effort markdown report to `docs/assessments/effort-<feature>-YYYY-MM-DD.md`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/report-writer.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 10,
@@ -72,33 +77,37 @@
           "id": "T006",
           "title": "Create compression.ts",
           "description": "NEW src/engine/compression.ts. compression engine — ratio computation, leading indicators, summary generation, SQLite persistence. Tests: src/engine/compression.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/compression.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T007",
           "title": "Create git-timestamps.ts",
           "description": "NEW src/engine/git-timestamps.ts. extracts spec creation date, first/last impl commit, PR merge time from Git log and `gh` CLI. Tests: src/engine/git-timestamps.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/git-timestamps.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T008",
           "title": "Create commit-cluster.ts",
           "description": "NEW src/engine/commit-cluster.ts. clusters commits by gap threshold, computes active coding time. Tests: src/engine/commit-cluster.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/commit-cluster.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T009",
           "title": "Create compression.ts",
           "description": "NEW src/db/compression.ts. SQLite adapters for `compression` table — insert, query, aggregate. Tests: src/engine/compression.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/compression.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 8,
@@ -117,33 +126,37 @@
           "id": "T010",
           "title": "Create effort.ts",
           "description": "NEW src/commands/effort.ts. Commander command — loads config, calls effort engine, writes report. Tests: src/commands/effort.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/commands/effort.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T011",
           "title": "Create compression.ts",
           "description": "NEW src/commands/compression.ts. Commander command — calls compression engine, formats output, persistence. Tests: src/commands/compression.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/commands/compression.test.ts",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T012",
           "title": "Modify cli.ts",
           "description": "MODIFY src/cli.ts. register `measure effort` and `measure compression` subcommands",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/cli.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T013",
           "title": "Modify config.ts",
           "description": "MODIFY src/utils/config.ts. extend `GwrkConfigSchema` with `effort.roles` and `compression.sessionGapMinutes`. Tests: src/utils/config.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/utils/config.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 6,
@@ -169,9 +182,10 @@
           "id": "T015",
           "title": "Modify compression.ts",
           "description": "MODIFY src/engine/compression.ts. add `computeForecastFromLOC` deriving SP from git numstat and spec/plan/research LOC. Tests: src/engine/compression.test.ts\n\nREVIEW FAIL (UAT): US-001 / TR-004 fallback behavior not satisfied.\n  EXPECTED: CLI commands (effort, compression) automatically fallback to LOC-derived SP when spec has no explicit SP.\n  ACTUAL: src/commands/effort.ts is missing; measure compression command does not call computeForecastFromLOC; src/commands/effort.test.ts is forced RED.\n  FIX: Implement src/commands/effort.ts and update src/commands/compression.ts to use the fallback engine.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/compression.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T016",
@@ -197,25 +211,28 @@
           "id": "T017",
           "title": "Modify harvest.ts",
           "description": "MODIFY src/engine/harvest.ts. wire LOC fallback into `harvestFeature` when plan has no SP",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/harvest.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T018",
           "title": "Modify compression.ts",
           "description": "MODIFY src/engine/compression.ts. include define-run elapsed from DB `runs` table in actuals. Tests: src/commands/compression.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/commands/compression.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T019",
           "title": "Modify compression.ts",
           "description": "MODIFY src/commands/compression.ts. surface both Point and Full compression in CLI text and JSON output. Tests: src/commands/compression.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/commands/compression.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 3,

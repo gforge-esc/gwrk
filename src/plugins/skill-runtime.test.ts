@@ -115,6 +115,38 @@ describe('FR-014: resolveEnforcementSkills', () => {
     expect(skills).toContain('GWRK Conventions');
   });
 
+  it('ADR-012: filters global enforcement skill by framework when framework does not match profile', async () => {
+    vi.mocked(PluginLoader.prototype.listPlugins).mockResolvedValue([
+      { name: 'fastapi-standards', type: 'skill', tier: 'enforcement', version: '1.0.0', description: 'desc', status: 'active' }
+    ]);
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: {
+        name: 'fastapi-standards',
+        type: 'skill',
+        tier: 'enforcement',
+        version: '1.0.0',
+        description: 'desc',
+        language: 'Python',
+        framework: 'FastAPI',
+      },
+      path: '/Users/test/.gwrk/plugins/skills/fastapi-standards',
+      status: 'active'
+    });
+    vi.mocked(fsp.readFile).mockResolvedValue('# FastAPI Standards');
+
+    const djangoSkills = await resolveEnforcementSkills('/fake/root', 'all', {
+      type: 'python',
+      stack: { language: 'Python', framework: 'Django' },
+    });
+    expect(djangoSkills).not.toContain('FastAPI Standards');
+
+    const fastapiSkills = await resolveEnforcementSkills('/fake/root', 'all', {
+      type: 'python',
+      stack: { language: 'Python', framework: 'FastAPI' },
+    });
+    expect(fastapiSkills).toContain('FastAPI Standards');
+  });
+
   it('TR-P10-003: contains no legacy .agents/ path references', async () => {
     const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
     const source = realFs.readFileSync('src/plugins/skill-runtime.ts', 'utf8');

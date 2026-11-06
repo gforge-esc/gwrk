@@ -37,7 +37,13 @@ export class DriftDetector {
     if (fs.existsSync(specsDir)) {
       const specEntries = fs.readdirSync(specsDir, { withFileTypes: true });
       const specFeatureIds = specEntries
-        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .filter(
+          (e) =>
+            e.isDirectory() &&
+            !e.name.startsWith(".") &&
+            !e.name.startsWith("_") &&
+            e.name !== "000-tdd-infrastructure",
+        )
         .map((e) => e.name);
 
       const graphFeatureIds = new Set(this.plan.features.map((f) => f.id));

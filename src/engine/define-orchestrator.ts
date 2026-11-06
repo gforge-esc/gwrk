@@ -11,6 +11,8 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { isPolyglotTestFile } from "../ports/toolchain-port.js";
+import { readRefsContent } from "../utils/read-refs.js";
 import { loadTaskState } from "../utils/state.js";
 import { planToTasks } from "./plan-to-tasks.js";
 import {
@@ -91,7 +93,9 @@ export class DefineOrchestrator extends EventEmitter {
             if (!fs.existsSync(srcDir)) return false;
             const allFiles = fs.readdirSync(srcDir);
             return allFiles.some(
-              (f) => f.includes(this.config.featureId) && f.endsWith(".test.ts"),
+              (f) =>
+                f.includes(this.config.featureId) &&
+                (f.endsWith(".test.ts") || isPolyglotTestFile(f)),
             );
           } catch {
             return false;
@@ -261,7 +265,7 @@ export class DefineOrchestrator extends EventEmitter {
     if (!fs.existsSync(resolvedRefs)) return "";
 
     try {
-      const content = fs.readFileSync(resolvedRefs, "utf-8");
+      const content = readRefsContent(resolvedRefs);
       return [
         `<reference_document source="${this.config.refs}" authority="primary">`,
         content,

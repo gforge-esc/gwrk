@@ -8,7 +8,7 @@
   - **develop / main**: `pnpm build` + `pnpm test` (~25s). Full gate. No broken code on protected branches.
   - **Lint**: Advisory until the 82 pre-existing errors are cleaned up. Then promoted to develop/main tier.
   - Escape hatch: `git commit --no-verify` (human-only, never used by agents).
-- **`gwrk ship` is HUMAN-ONLY**: NEVER run `gwrk ship` from an agent session. It dispatches sub-agents that burn API tokens uncontrollably. The agent's role is to prepare code, fix issues, commit, and push — then tell the human to run `gwrk ship`. The ONLY exception is test scenarios where ship behavior is being validated. To confirm setup without running the loop, use `gwrk ship <feature> --dry-run`; it reports the backend it would build with and touches neither git nor the agent.
+- **Guarded `gwrk ship` Execution**: Never run multi-phase `gwrk ship` loops synchronously. After `031-unified-agent-port` is active, agents may run single-phase `gwrk ship <feature> <phase> --worktree --max-iterations 2` as an async background task (`WaitMsBeforeAsync: 500`) using reactive wakeup and `manage_task` to monitor or terminate stalled runs. To confirm setup without running the loop, use `gwrk ship <feature> --dry-run`.
 
 ## Config layering
 

@@ -40,6 +40,22 @@ export function parseTestOutput(output: string): {
     return { testsRun: passed + failed, passed, failed };
   }
 
+  // go test verbose output: "--- PASS: TestFoo" / "--- FAIL: TestBar" or package "ok  pkg 0.01s"
+  const goPassMatches = output.match(/^\s*---\s*PASS:/gm);
+  const goFailMatches = output.match(/^\s*---\s*FAIL:/gm);
+  if (goPassMatches || goFailMatches) {
+    const passed = goPassMatches ? goPassMatches.length : 0;
+    const failed = goFailMatches ? goFailMatches.length : 0;
+    return { testsRun: passed + failed, passed, failed };
+  }
+  const goPkgOk = output.match(/^ok\s+\S+\s+[\d.]+s/gm);
+  const goPkgFail = output.match(/^FAIL\s+\S+\s+[\d.]+s/gm);
+  if (goPkgOk || goPkgFail) {
+    const passed = goPkgOk ? goPkgOk.length : 0;
+    const failed = goPkgFail ? goPkgFail.length : 0;
+    return { testsRun: passed + failed, passed, failed };
+  }
+
   // vitest/jest print a "Tests" summary line distinct from "Test Files".
   // Prefer it so we count tests, not files. pytest has no such line, so we
   // fall back to scanning the whole output.
@@ -71,7 +87,9 @@ export function hasRecognizedTestSummary(output: string): boolean {
       .some((l) => /^\s*Tests[:\s]/.test(l) && !/Test\s+Files/.test(l))
   )
     return true; // vitest / jest
-  if (/\d+\s+(passed|failed)/.test(output)) return true; // pytest / generic
+  if (/\d+\s+(passed|failed)/.test(output)) return true; // pytest / cargo / generic
+  if (/^\s*---\s*(PASS|FAIL):/m.test(output)) return true; // go test -v
+  if (/^(?:ok|FAIL)\s+\S+\s+[\d.]+s/m.test(output)) return true; // go test package summary
   return false;
 }
 
@@ -87,6 +105,7 @@ export function isIntegrationTestCommand(cmd: string): boolean {
     /\bmake\s+[\w:-]*test/, // make test, make test:auth, make integration-test
     /\bpytest\b/,
     /\bgo\s+test\b/,
+    /\bcargo\s+test\b/,
     /\bnode\s+--test\b/,
     /\bvitest\b/,
     /\bjest\b/,

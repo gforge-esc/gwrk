@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs";
+import { isRemote } from "../utils/device.js";
 import { CommandError } from "../utils/signal.js";
 import { 
   loadSlackConfig, 
@@ -22,6 +23,13 @@ export interface SlackSetupResult {
  * Refactored to be callable from init flow.
  */
 export const setupSlack = async (options: any): Promise<SlackSetupResult> => {
+  if (isRemote()) {
+    throw new CommandError(
+      "This machine is registered as a remote device. Slack Socket Mode runs on the server only.\n" +
+        "To change this machine's role: gwrk init --server",
+      1,
+    );
+  }
   const existingConfig = loadSlackConfig();
 
   const botToken = options.botToken || process.env.SLACK_BOT_TOKEN || (options.verify ? existingConfig?.botToken : undefined);

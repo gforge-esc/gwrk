@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type Database from "better-sqlite3";
-import type { CompressionReport } from "../engine/types.js";
+import type { CompressionReport } from "../domain/types.js";
 import { getDb } from "./index.js";
 
 /**

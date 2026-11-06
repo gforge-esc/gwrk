@@ -6,6 +6,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
+export const ExecutionUsageSchema = z.object({
+  inputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
+  totalTokens: z.number().optional(),
+  costUsd: z.number().optional(),
+});
+
+export type ExecutionUsage = z.infer<typeof ExecutionUsageSchema>;
+
 export const ExecutionManifestSchema = z.object({
   runId: z.string(),
   feature: z.string(),
@@ -13,6 +22,9 @@ export const ExecutionManifestSchema = z.object({
   command: z.string(),
   agent: z.string(),
   model: z.string(),
+  deviceId: z.string().optional(),
+  hostname: z.string().optional(),
+  usage: ExecutionUsageSchema.optional(),
   startedAt: z.string().datetime(),
   finishedAt: z.string().datetime(),
   durationS: z.number(),

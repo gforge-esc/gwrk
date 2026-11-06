@@ -1,0 +1,23 @@
+{
+  "featureId": "030-dogfood-spine",
+  "createdAt": "2026-11-02T22:20:00.000Z",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Readiness Scanner, Drift Detector, and Build Plan Reconciliation",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Update readiness-scanner.ts, plan-store.ts, drift-detector.ts, and regenerate 000-build-plan.md",
+          "description": "Update readiness-scanner.ts, plan-store.ts, drift-detector.ts, and regenerate 000-build-plan.md",
+          "status": "completed",
+          "gateScript": "pnpm vitest run src/engine/readiness-scanner.test.ts src/engine/plan-store-init.test.ts src/engine/drift-detector.test.ts",
+          "sp": 5,
+          "completedAt": "2026-11-02T22:20:00.000Z",
+          "classification": "change"
+        }
+      ],
+      "sp_estimate": 0
+    }
+  ]
+}

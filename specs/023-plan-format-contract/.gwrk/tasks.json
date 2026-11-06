@@ -16,25 +16,28 @@
           "id": "T001",
           "title": "Modify plan-to-tasks.ts",
           "description": "MODIFY src/engine/plan-to-tasks.ts. add fenced-bash Done-When capture → verbatim `gateScript`; em-dash file-line regex + create/amend/delete action normalization; Type-flexible (`\\w+` or `[bracketed]`) Test Strategy row regex; preserve paren-form + prose-bullet grammar. Tests: src/engine/plan-to-tasks.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/engine/plan-to-tasks.test.ts\njq -r '.phases[2].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q 'make test:db'\n! jq -r '.phases[].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q '^echo \"Phase'",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T002",
           "title": "Create plan.md",
           "description": "NEW specs/_fixtures/plan-format/plan.md. SEAM fixture mirroring 002-metric-model phase-03: em-dash Files block + fenced bash Done-When (`make dev:up && make db:migrate && make test:db`); Phase 3 is the source-bearing phase asserted by TR-007/VR-004. Tests: src/engine/plan-to-tasks.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/engine/plan-to-tasks.test.ts\njq -r '.phases[2].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q 'make test:db'\n! jq -r '.phases[].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q '^echo \"Phase'",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T003",
           "title": "Create plan-legacy.md",
           "description": "NEW specs/_fixtures/plan-format/plan-legacy.md. golden `####`+prose-bullet plan with a paren-form file line, for the TR-004 no-regression snapshot",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm run build\npnpm vitest run src/engine/plan-to-tasks.test.ts\njq -r '.phases[2].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q 'make test:db'\n! jq -r '.phases[].tasks[].gateScript' specs/_fixtures/plan-format/.gwrk/tasks.json | grep -q '^echo \"Phase'",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 5,

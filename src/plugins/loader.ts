@@ -51,7 +51,7 @@ export interface PluginSummary {
   status: "active" | "disabled";
 }
 
-interface LoadedPlugin<T = AnyManifest> {
+export interface LoadedPlugin<T = AnyManifest> {
   manifest: T;
   path: string;
   status: "active" | "disabled";

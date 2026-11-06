@@ -6,18 +6,18 @@ Test-toolchain support lives in the `ProjectProfile` / `GwrkConfig` / `toolchain
 
 ## Phases
 
-| Phase | Scope | FRs | Status |
-|---|---|---|---|
-| 01 | Spec reconciliation: ADR-005 §11 + §9/§10 corrections; 000-tdd FR-001/003/008/009; 004 FR-024/DM-003; 020 DM-001; this spec | — | ✅ `00cbdf2` |
-| 02 | `ToolchainConfigSchema` + `TEST_HARNESSES`; `project.toolchain` + `workspaces[].toolchain` (Zod); widen `ProjectProfile.toolchain`; validated `detectProfile` merge | FR-001, FR-010 | ✅ `00cbdf2` |
-| 03 | Mapper: JS extension + override; `getTestCommand → string\|null`; `getBuildCommand`; `TEST_INVOCATION_VERBS`; SEAM test | FR-002/003/004 | ✅ `00cbdf2` |
-| 04 | `PhaseSchema.testTargets` (persisted); `declaredTargets` in `phaseHasTests`/`discoverTestsForSources` | FR-005 | ✅ `e1c0e81` |
-| 05a | Wire `declaredTargets` into ship pre-flight + `getPhaseTestFiles` | FR-005/006 | ✅ `d92bcc0` |
-| 05b | BUILD_CHECK → `getBuildCommand` + skip message; TEST_GATE null-skip; prompt de-hardcode | FR-004/006 | ✅ `bacf76f` |
-| 06 | Polyglot hollow-gate lint (`FUNCTIONAL_VERBS` ← `TEST_INVOCATION_VERBS`) | FR-007 | ✅ `3d164ef` |
-| 07 | `gwrk init` persists `project.toolchain` (resolved extensions) | FR-008 | ✅ `dbd7b41` |
-| 08 | Integration `Done-When` auto-run gate under liveness (`isIntegrationTestCommand` + `runIntegrationGate`) | FR-009 | ✅ `74c26a7` |
-| 09 | Docs close-out: this plan, 004 status flip, gap-matrix | — | ✅ (this commit) |
+## Phase 1 — Spec Reconciliation and Toolchain Config Schema (3 SP)
+- `src/utils/config.ts` (MODIFY: Add `ToolchainConfigSchema` and `TEST_HARNESSES`)
+- `src/engine/profile-detector.ts` (MODIFY: Merge validated toolchain config)
+
+## Phase 2 — Toolchain Mapper and Build/Test Commands (5 SP)
+- `src/utils/toolchain-mapper.ts` (MODIFY: Add `getTestCommand`, `getBuildCommand`, and `TEST_INVOCATION_VERBS`)
+- `src/utils/test-discovery.ts` (MODIFY: Support `declaredTargets` in `phaseHasTests`)
+
+## Phase 3 — Ship Orchestrator and Gate Quality Integration (5 SP)
+- `src/engine/ship-orchestrator.ts` (MODIFY: Route `BUILD_CHECK` and `TEST_GATE` through toolchain mapper)
+- `src/utils/gate-quality.ts` (MODIFY: Wire `TEST_INVOCATION_VERBS` into hollow-gate check)
+- `src/commands/init.ts` (MODIFY: Persist `project.toolchain` resolved extensions)
 
 ## Verification
 

@@ -9,7 +9,7 @@ import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { detectDefaultBranch } from "../utils/git.js";
+import { detectDefaultBranch, syncTrunkForHarvest } from "../utils/git.js";
 import type { App } from "@slack/bolt";
 
 export class HarvestWatcher {
@@ -111,6 +111,7 @@ export class HarvestWatcher {
         };
 
         try {
+          syncTrunkForHarvest(this.projectRoot, baseBranch);
           await harvestFeature(this.projectRoot, record);
           console.log(`HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`);
         } catch (err) {

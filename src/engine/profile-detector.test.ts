@@ -198,4 +198,36 @@ describe("TR-016: Toolchain Detection (Phase 16)", () => {
     expect((profile as any).toolchain?.primary).toBe("biome");
     expect((profile as any).toolchain?.test).toBe("vitest");
   });
+
+  it("ADR-012: detects Python FastAPI, Go Gin, and Rust Axum frameworks", async () => {
+    const pyDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-py-"));
+    const goDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-go-"));
+    const rsDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-rs-"));
+    try {
+      fs.writeFileSync(
+        path.join(pyDir, "pyproject.toml"),
+        '[project]\ndependencies = ["fastapi>=0.110.0"]',
+      );
+      const pyProfile = await detectProfile(pyDir);
+      expect(pyProfile.stack?.framework).toBe("FastAPI");
+
+      fs.writeFileSync(
+        path.join(goDir, "go.mod"),
+        "module example.com/api\nrequire github.com/gin-gonic/gin v1.9.1",
+      );
+      const goProfile = await detectProfile(goDir);
+      expect(goProfile.stack?.framework).toBe("Gin");
+
+      fs.writeFileSync(
+        path.join(rsDir, "Cargo.toml"),
+        '[package]\nname = "app"\n[dependencies]\naxum = "0.7"',
+      );
+      const rsProfile = await detectProfile(rsDir);
+      expect(rsProfile.stack?.framework).toBe("Axum");
+    } finally {
+      fs.rmSync(pyDir, { recursive: true, force: true });
+      fs.rmSync(goDir, { recursive: true, force: true });
+      fs.rmSync(rsDir, { recursive: true, force: true });
+    }
+  });
 });

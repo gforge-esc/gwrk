@@ -31,6 +31,14 @@ vi.mock("../server/slack-notify.js", () => ({
   notifySlack: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../engine/plan-store.js", () => ({
+  PlanStore: vi.fn().mockImplementation(() => ({
+    getPlanStatus: () => ({ features: [] }),
+    markPhaseShipped: vi.fn(),
+    reconcileFeatureStatus: vi.fn(),
+  })),
+}));
+
 vi.mock("../utils/config.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../utils/config.js")>();
   return {

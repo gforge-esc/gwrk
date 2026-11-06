@@ -1,0 +1,66 @@
+{
+  "featureId": "026-gate-runner-convergence",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Spec De-Drift and Gate Quality Accessors",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "getPhaseVerificationGate and isUnauthoredGate",
+          "status": "completed",
+          "sp": 2,
+          "classification": "change",
+          "description": "getPhaseVerificationGate and isUnauthoredGate",
+          "gateScript": "pnpm build"
+        }
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Unified Gate Execution Port",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "Implement runTaskGate and runInlineGate in gate-exec.ts",
+          "status": "completed",
+          "sp": 3,
+          "classification": "greenfield",
+          "description": "Implement runTaskGate and runInlineGate in gate-exec.ts",
+          "gateScript": "pnpm build"
+        }
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Migrate Verdict Drivers",
+      "tasks": [
+        {
+          "id": "T003",
+          "title": "Route gate.ts, ship-orchestrator.ts, and reconcile-gates.ts through runTaskGate",
+          "status": "completed",
+          "sp": 3,
+          "classification": "change",
+          "description": "Route gate.ts, ship-orchestrator.ts, and reconcile-gates.ts through runTaskGate",
+          "gateScript": "pnpm build"
+        }
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Read Unification and Seam Verification",
+      "tasks": [
+        {
+          "id": "T004",
+          "title": "Add seam tests in gate-exec.test.ts",
+          "status": "completed",
+          "sp": 2,
+          "classification": "change",
+          "description": "Add seam tests in gate-exec.test.ts",
+          "gateScript": "pnpm build"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-02T22:20:00.000Z"
+}

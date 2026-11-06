@@ -1,0 +1,7 @@
+type: skill
+name: go-standards
+version: 1.0.0
+description: Go coding standards and toolchain compliance
+tier: enforcement
+scope: implementation
+language: Go

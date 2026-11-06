@@ -8,7 +8,7 @@
 
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { resolveProjectId } from "../utils/project-id.js";
+import { resolveProjectId } from "../domain/project-id.js";
 import { getDb } from "./index.js";
 
 export interface RunRecord {
@@ -41,6 +41,49 @@ export interface RunRecord {
 /**
  * Start a new run record. Returns the run ID.
  */
+function ensureProjectRow(
+  conn: Database.Database,
+  requestedProjectId?: string | null,
+): string | null {
+  const projectId = requestedProjectId ?? resolveProjectId(process.cwd());
+  if (!projectId) return null;
+
+  const byId = conn
+    .prepare("SELECT id FROM projects WHERE id = ?")
+    .get(projectId) as { id: string } | undefined;
+  if (byId) return projectId;
+
+  const byPath = conn
+    .prepare("SELECT id FROM projects WHERE path = ?")
+    .get(process.cwd()) as { id: string } | undefined;
+  if (byPath) {
+    if (!requestedProjectId) {
+      return byPath.id;
+    }
+    conn
+      .prepare(
+        "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
+      )
+      .run({
+        id: projectId,
+        name: path.basename(process.cwd()),
+        path: `${process.cwd()}#${projectId}`,
+      });
+    return projectId;
+  }
+
+  conn
+    .prepare(
+      "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
+    )
+    .run({
+      id: projectId,
+      name: path.basename(process.cwd()),
+      path: process.cwd(),
+    });
+  return projectId;
+}
+
 export function startRun(
   run: Pick<
     RunRecord,
@@ -54,36 +97,7 @@ export function startRun(
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
-  // Auto-resolve a stable project_id from cwd if not provided. Uses the shared
-  // resolver (git-remote/worktree aware) so runs recorded from a worktree
-  // correlate with the same project as the primary checkout.
-  let projectId = run.project_id ?? resolveProjectId(process.cwd());
-
-  // Ensure a projects row exists for this run's project_id to satisfy the FK.
-  //
-  // projects.path is UNIQUE, so if a row already exists for this cwd under a
-  // DIFFERENT id (e.g. the repo's `origin` remote changed, which changes the
-  // resolved id) a plain INSERT OR IGNORE would be silently skipped and the
-  // runs insert below would fail the FK. Reconcile by path instead: reuse the
-  // existing row's id so history stays correlated and the FK always holds.
-  if (projectId && !run.project_id) {
-    const existing = conn
-      .prepare("SELECT id FROM projects WHERE path = ?")
-      .get(process.cwd()) as { id: string } | undefined;
-    if (existing) projectId = existing.id;
-  }
-
-  if (projectId) {
-    conn
-      .prepare(
-        "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
-      )
-      .run({
-        id: projectId,
-        name: path.basename(process.cwd()),
-        path: process.cwd(),
-      });
-  }
+  const projectId = ensureProjectRow(conn, run.project_id);
 
   const result = conn
     .prepare(
@@ -165,11 +179,15 @@ export function finishRun(
  */
 export function recordRun(
   run: Omit<RunRecord, "id" | "started_at" | "finished_at"> & {
+    started_at?: string;
     finished_at?: string;
   },
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
+  const projectId = run.project_id
+    ? ensureProjectRow(conn, run.project_id)
+    : null;
   const result = conn
     .prepare(
       `INSERT INTO runs (
@@ -178,7 +196,7 @@ export function recordRun(
          gate_result, review_verdict, retry_reason,
          files_changed, lines_added, lines_deleted, log_file,
          pr_number, pr_url, status, merge_commit_sha,
-         finished_at
+         started_at, finished_at
        )
        VALUES (
          @feature_id, @phase_id, @project_id, @command, @agent_backend,
@@ -186,13 +204,13 @@ export function recordRun(
          @gate_result, @review_verdict, @retry_reason,
          @files_changed, @lines_added, @lines_deleted, @log_file,
          @pr_number, @pr_url, @status, @merge_commit_sha,
-         COALESCE(@finished_at, datetime('now'))
+         COALESCE(@started_at, datetime('now')), COALESCE(@finished_at, datetime('now'))
        )`,
     )
     .run({
       feature_id: run.feature_id,
       phase_id: run.phase_id ?? null,
-      project_id: run.project_id ?? null,
+      project_id: projectId,
       command: run.command,
       agent_backend: run.agent_backend ?? null,
       model: run.model ?? null,
@@ -211,6 +229,7 @@ export function recordRun(
       pr_url: run.pr_url ?? null,
       status: run.status ?? null,
       merge_commit_sha: run.merge_commit_sha ?? null,
+      started_at: run.started_at ?? null,
       finished_at: run.finished_at ?? null,
     });
   return Number(result.lastInsertRowid);
