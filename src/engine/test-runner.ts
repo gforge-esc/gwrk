@@ -40,6 +40,27 @@ export function parseTestOutput(output: string): {
     return { testsRun: passed + failed, passed, failed };
   }
 
+  // go test -json NDJSON events: {"Action":"pass","Test":"TestFoo"} / {"Action":"fail","Test":"TestBar"}
+  const jsonLines = output
+    .split("\n")
+    .filter((l) => l.trim().startsWith("{") && l.includes('"Action"') && l.includes('"Test"'));
+  if (jsonLines.length > 0) {
+    let passed = 0;
+    let failed = 0;
+    for (const line of jsonLines) {
+      try {
+        const parsed = JSON.parse(line) as { Action?: string; Test?: string };
+        if (parsed.Test && parsed.Action === "pass") passed++;
+        else if (parsed.Test && parsed.Action === "fail") failed++;
+      } catch {
+        // Ignore non-JSON lines
+      }
+    }
+    if (passed > 0 || failed > 0) {
+      return { testsRun: passed + failed, passed, failed };
+    }
+  }
+
   // go test verbose output: "--- PASS: TestFoo" / "--- FAIL: TestBar" or package "ok  pkg 0.01s"
   const goPassMatches = output.match(/^\s*---\s*PASS:/gm);
   const goFailMatches = output.match(/^\s*---\s*FAIL:/gm);
@@ -53,6 +74,22 @@ export function parseTestOutput(output: string): {
   if (goPkgOk || goPkgFail) {
     const passed = goPkgOk ? goPkgOk.length : 0;
     const failed = goPkgFail ? goPkgFail.length : 0;
+    return { testsRun: passed + failed, passed, failed };
+  }
+
+  // cargo test multi-binary output: "test result: ok. N passed; M failed; ..."
+  const cargoResultLines = output
+    .split("\n")
+    .filter((l) => /^\s*test result:\s+(?:ok|FAILED)\./i.test(l));
+  if (cargoResultLines.length > 0) {
+    let passed = 0;
+    let failed = 0;
+    for (const line of cargoResultLines) {
+      const pMatch = line.match(/(\d+)\s+passed/);
+      const fMatch = line.match(/(\d+)\s+failed/);
+      if (pMatch) passed += Number.parseInt(pMatch[1], 10);
+      if (fMatch) failed += Number.parseInt(fMatch[1], 10);
+    }
     return { testsRun: passed + failed, passed, failed };
   }
 
@@ -90,6 +127,8 @@ export function hasRecognizedTestSummary(output: string): boolean {
   if (/\d+\s+(passed|failed)/.test(output)) return true; // pytest / cargo / generic
   if (/^\s*---\s*(PASS|FAIL):/m.test(output)) return true; // go test -v
   if (/^(?:ok|FAIL)\s+\S+\s+[\d.]+s/m.test(output)) return true; // go test package summary
+  if (/"Action"\s*:\s*"(?:pass|fail)"/.test(output) && /"Test"\s*:/.test(output))
+    return true; // go test -json
   return false;
 }
 

@@ -42,8 +42,12 @@ export const TEST_HARNESSES = [
  */
 export const ToolchainConfigSchema = z
   .object({
-    primary: z.enum(["biome", "eslint", "ruff"]).optional(),
-    formatter: z.enum(["prettier", "biome", "black"]).optional(),
+    primary: z
+      .enum(["biome", "eslint", "ruff", "golangci-lint", "clippy", "cargo"])
+      .optional(),
+    formatter: z
+      .enum(["prettier", "biome", "black", "rustfmt", "gofmt"])
+      .optional(),
     test: z.enum(TEST_HARNESSES).nullable().optional(),
     testCommand: z.string().optional(),
     build: z.string().nullable().optional(),

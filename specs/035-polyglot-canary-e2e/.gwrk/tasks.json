@@ -1,0 +1,21 @@
+{
+  "featureId": "035-polyglot-canary-e2e",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Polyglot Canary Suite & Test Output Parser Hardening",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Add polyglot canary E2E suite and extend test output parser for go test -json and multi-binary cargo test",
+          "status": "completed",
+          "sp": 3,
+          "classification": "greenfield",
+          "gateScript": "pnpm vitest run src/polyglot-canary.e2e.test.ts src/engine/test-runner.test.ts",
+          "description": "Add polyglot canary E2E suite and extend test output parser for go test -json and multi-binary cargo test"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-05T18:53:00.000Z"
+}

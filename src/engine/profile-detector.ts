@@ -80,38 +80,35 @@ export async function detectProfile(
     return profile;
   }
 
-  // pnpm workspace detection
+  // pnpm workspace / lockfile or package.json detection
   if (
     files.includes("pnpm-workspace.yaml") ||
-    files.includes("pnpm-lock.yaml")
+    files.includes("pnpm-lock.yaml") ||
+    files.includes("package.json")
   ) {
-    signals.push({
-      language: "TypeScript",
-      type: "pnpm-monorepo",
-      buildSystem: "pnpm",
-    });
-  } else if (files.includes("package.json")) {
-    // Node.js / TypeScript / React / Next.js / Express
+    const isPnpm =
+      files.includes("pnpm-workspace.yaml") || files.includes("pnpm-lock.yaml");
     const signal: LanguageSignal = {
-      language: "JavaScript",
-      type: "nodejs",
-      buildSystem: "npm",
+      language: isPnpm ? "TypeScript" : "JavaScript",
+      type: isPnpm ? "pnpm-monorepo" : "nodejs",
+      buildSystem: isPnpm ? "pnpm" : "npm",
     };
 
     try {
-      const pkg = JSON.parse(
-        fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
-      );
-      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-      if (deps.typescript) {
-        signal.language = "TypeScript";
+      const pkgPath = path.join(projectRoot, "package.json");
+      if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (deps.typescript) {
+          signal.language = "TypeScript";
+        }
+        if (deps.next) signal.framework = "Next.js";
+        else if (deps.react) signal.framework = "React";
+        else if (deps.fastify) signal.framework = "Fastify";
+        else if (deps.express) signal.framework = "Express";
+        else if (deps["@nestjs/core"]) signal.framework = "NestJS";
+        else if (deps.hono) signal.framework = "Hono";
       }
-      if (deps.next) signal.framework = "Next.js";
-      else if (deps.react) signal.framework = "React";
-      else if (deps.fastify) signal.framework = "Fastify";
-      else if (deps.express) signal.framework = "Express";
-      else if (deps["@nestjs/core"]) signal.framework = "NestJS";
-      else if (deps.hono) signal.framework = "Hono";
     } catch {
       // Ignore parse errors
     }
@@ -242,15 +239,36 @@ export async function detectProfile(
   if (files.includes("ruff.toml") || files.includes(".ruff.toml")) {
     toolchain.primary = "ruff";
   } else if (files.includes(".black") || files.includes("pyproject.toml")) {
-    // Simple black check: check for tool.black in pyproject.toml if we really wanted to be thorough,
-    // but filesystem-only means we just check for the presence of markers.
     if (files.includes("pyproject.toml")) {
       try {
         const content = fs.readFileSync(path.join(projectRoot, "pyproject.toml"), "utf-8");
         if (content.includes("[tool.black]")) toolchain.formatter = "black";
         if (content.includes("[tool.ruff]")) toolchain.primary = "ruff";
+        if (content.includes("[tool.pytest") || /\bpytest\b/.test(content)) {
+          toolchain.test = "pytest";
+        }
       } catch {}
     }
+  }
+
+  if (
+    files.includes(".golangci.yml") ||
+    files.includes(".golangci.yaml") ||
+    files.includes(".golangci.toml") ||
+    files.includes(".golangci.json")
+  ) {
+    toolchain.primary = "golangci-lint";
+  }
+
+  if (files.includes("clippy.toml") || files.includes(".clippy.toml")) {
+    toolchain.primary = "clippy";
+  } else if (files.includes("Cargo.toml") && !toolchain.primary) {
+    try {
+      const cargoContent = fs.readFileSync(path.join(projectRoot, "Cargo.toml"), "utf-8");
+      if (cargoContent.includes("[lints.clippy]") || cargoContent.includes("clippy")) {
+        toolchain.primary = "clippy";
+      }
+    } catch {}
   }
 
   // Test Runner
@@ -273,12 +291,21 @@ export async function detectProfile(
     toolchain.test = "go-test";
   }
 
-  // Also check package.json for test signals
-  if (!toolchain.test && files.includes("package.json")) {
+  // Also check package.json for test and linter signals
+  if (files.includes("package.json")) {
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
-      if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest) toolchain.test = "vitest";
-      else if (pkg.devDependencies?.jest || pkg.dependencies?.jest) toolchain.test = "jest";
+      if (!toolchain.test) {
+        if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest) toolchain.test = "vitest";
+        else if (pkg.devDependencies?.jest || pkg.dependencies?.jest) toolchain.test = "jest";
+      }
+      if (!toolchain.primary) {
+        if (pkg.devDependencies?.["@biomejs/biome"] || pkg.dependencies?.["@biomejs/biome"]) {
+          toolchain.primary = "biome";
+        } else if (pkg.devDependencies?.eslint || pkg.dependencies?.eslint) {
+          toolchain.primary = "eslint";
+        }
+      }
     } catch {}
   }
   

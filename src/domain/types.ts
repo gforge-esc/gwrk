@@ -14,8 +14,8 @@ export interface ProjectProfile {
   };
   layout?: string;
   toolchain?: {
-    primary?: "biome" | "eslint" | "ruff";
-    formatter?: "prettier" | "biome" | "black";
+    primary?: "biome" | "eslint" | "ruff" | "golangci-lint" | "clippy" | "cargo";
+    formatter?: "prettier" | "biome" | "black" | "rustfmt" | "gofmt";
     test?: "vitest" | "jest" | "pytest" | "cargo-test" | "go-test" | "node-test" | null;
     testCommand?: string;
     build?: string | null;

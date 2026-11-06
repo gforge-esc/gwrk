@@ -136,6 +136,7 @@ export function getLintCommand(
     case "ruff":
       return `ruff check ${files.join(" ")}`;
     case "cargo":
+    case "clippy":
       return "cargo clippy";
     case "golangci-lint":
       return `golangci-lint run ${files.join(" ")}`;

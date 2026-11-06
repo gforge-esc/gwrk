@@ -871,13 +871,21 @@ export function generateFilesystemGates(
       // K.TO-BE §3: Validate file exists at generation time.
       // Catches hallucinated/stale filenames from task descriptions
       // before they become gates that fail at ship time.
-      if (!fs.existsSync(primaryFile)) {
+      const featureProjectRoot = path.resolve(featureDir, "../..");
+      const resolvedPrimary = fs.existsSync(primaryFile)
+        ? primaryFile
+        : path.join(featureProjectRoot, primaryFile);
+      if (!fs.existsSync(resolvedPrimary)) {
         skipped++;
         continue;
       }
 
       // Discover corresponding test file
-      const testFile = discoverTestFile(primaryFile);
+      const rawTestFile = discoverTestFile(resolvedPrimary);
+      const testFile =
+        rawTestFile && resolvedPrimary !== primaryFile
+          ? path.relative(featureProjectRoot, rawTestFile).replace(/\\/g, "/")
+          : rawTestFile;
       if (!testFile) {
         // No test file found — generate a file-existence gate as minimum
         const gateContent = `#!/bin/bash
