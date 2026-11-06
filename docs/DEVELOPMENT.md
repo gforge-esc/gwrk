@@ -134,4 +134,4 @@ gwrk uses Google's `release-please` to automate version bumping, changelog gener
 - Merging code into `main` will trigger a **Release PR**.
 - Merging the Release PR will automatically cut a GitHub Release and attach the npm tarball.
 
-> **TODO (GA Release)**: The repository is currently locked to the `-alpha` prerelease sequence. When ready for General Availability (1.0.0), remove the `prerelease` and `prerelease-type` fields from `.release-please-config.json`.
+> **TODO (GA Release)**: The repository is currently locked to the `-beta` prerelease sequence. When ready for General Availability (1.0.0), remove the `prerelease` and `prerelease-type` fields from `.release-please-config.json`.
