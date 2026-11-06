@@ -12,7 +12,7 @@ const KEBAB_CASE_REGEX = /^[a-z0-9-]+$/;
 /**
  * Shared regex for semver validation
  */
-const SEMVER_REGEX = /^\d+\.\d+\.\d+$/;
+const SEMVER_REGEX = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 /**
  * Base schema for all plugins
@@ -29,6 +29,8 @@ const PluginBaseSchema = z.object({
   name: z.string().min(1).regex(KEBAB_CASE_REGEX),
   version: z.string().regex(SEMVER_REGEX),
   description: z.string().min(1),
+  disabled: z.boolean().optional(),
+  minGwrkVersion: z.string().regex(SEMVER_REGEX).optional(),
 });
 
 export type PluginBase = z.infer<typeof PluginBaseSchema>;

@@ -15,6 +15,8 @@ vi.mock("../engine/registry.js", () => ({
   installPlugin: vi.fn(),
   updatePlugin: vi.fn(),
   syncRegistry: vi.fn(),
+  generateRegistryIndex: vi.fn(),
+  doctorPlugins: vi.fn(),
 }));
 
 describe('Plugin Commands', () => {

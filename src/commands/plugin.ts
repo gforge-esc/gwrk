@@ -20,7 +20,13 @@ import { seedSkills } from "../plugins/seed.js";
 import { color } from "../utils/format.js";
 import { withSignal } from "../utils/signal.js";
 import { syncContextCommand } from "./sync-context.js";
-import { searchPlugins, installPlugin as registryInstallPlugin, updatePlugin } from "../engine/registry.js";
+import {
+  doctorPlugins,
+  generateRegistryIndex,
+  installPlugin as registryInstallPlugin,
+  searchPlugins,
+  updatePlugin,
+} from "../engine/registry.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
@@ -157,23 +163,51 @@ export async function listPlugins(
 /**
  * FR-005: Disable/Enable a plugin per project.
  */
-export async function togglePlugin(name: string, enabled: boolean) {
+export async function togglePlugin(
+  name: string,
+  enabled: boolean,
+  options: { global?: boolean } = {},
+) {
+  const loader = new PluginLoader();
+  const plugin = await loader.resolvePlugin(name);
+
+  if (options.global) {
+    const globalConfigPath = path.join(os.homedir(), ".gwrk", "config.json");
+    await fs.mkdir(path.dirname(globalConfigPath), { recursive: true });
+    let globalCfg: Record<string, any> = {};
+    try {
+      globalCfg = JSON.parse(await fs.readFile(globalConfigPath, "utf-8")) || {};
+    } catch {
+      globalCfg = {};
+    }
+    if (!globalCfg.plugins) globalCfg.plugins = {};
+    globalCfg.plugins[plugin.manifest.name] = { enabled };
+    await fs.writeFile(
+      globalConfigPath,
+      `${JSON.stringify(globalCfg, null, 2)}\n`,
+      "utf-8",
+    );
+    return;
+  }
+
   const projectRoot = process.cwd();
   const configDir = path.join(projectRoot, ".gwrk");
   const configPath = path.join(configDir, "plugins.yaml");
 
   // Check if in a gwrk project
-  if (!fs.stat(path.join(projectRoot, ".gwrkrc.json")).catch(() => null)) {
+  if (!(await fs.stat(path.join(projectRoot, ".gwrkrc.json")).catch(() => null))) {
     throw new Error(
       "Not a gwrk project. Run 'gwrk init' to add gwrk to this project.",
     );
   }
 
-  // Resolve plugin to check type
-  const loader = new PluginLoader();
-  const plugin = await loader.resolvePlugin(name);
-
-  if (plugin.manifest.type === "skill" || plugin.manifest.type === "agent") {
+  const manifestRecord = plugin.manifest as unknown as Record<string, unknown>;
+  const isEnforcementSkill =
+    plugin.manifest.type === "skill" && manifestRecord.tier === "enforcement";
+  if (
+    (plugin.manifest.type === "skill" && !isEnforcementSkill) ||
+    plugin.manifest.type === "agent"
+  ) {
     if (!enabled)
       throw new Error(
         `${plugin.manifest.type === "skill" ? "Skills" : `${plugin.manifest.type}s`} are global-only and cannot be disabled per-project.`,
@@ -290,27 +324,70 @@ export const pluginCommand = new Command("plugin")
   )
   .addCommand(
     new Command("disable")
-      .description("Disable a plugin in the current project")
+      .description("Disable a plugin in the current project or globally")
       .argument("<name>", "Name of the plugin")
-      .action(async (name) => {
+      .option("-g, --global", "Disable globally in ~/.gwrk/config.json")
+      .action(async (name, options) => {
         await withSignal("plugin disable", async () => {
-          await togglePlugin(name, false);
+          await togglePlugin(name, false, options);
           console.log(
-            `${GREEN}Disabled plugin '${name}' for this project.${RESET}`,
+            `${GREEN}Disabled plugin '${name}' ${options.global ? "globally" : "for this project"}.${RESET}`,
           );
         });
       }),
   )
   .addCommand(
     new Command("enable")
-      .description("Enable a plugin in the current project")
+      .description("Enable a plugin in the current project or globally")
       .argument("<name>", "Name of the plugin")
-      .action(async (name) => {
+      .option("-g, --global", "Enable globally in ~/.gwrk/config.json")
+      .action(async (name, options) => {
         await withSignal("plugin enable", async () => {
-          await togglePlugin(name, true);
+          await togglePlugin(name, true, options);
           console.log(
-            `${GREEN}Enabled plugin '${name}' for this project.${RESET}`,
+            `${GREEN}Enabled plugin '${name}' ${options.global ? "globally" : "for this project"}.${RESET}`,
           );
+        });
+      }),
+  )
+  .addCommand(
+    new Command("index")
+      .description("Generate registry.json catalog with SemVer and SHA-256 digests")
+      .argument("[dir]", "Path to registry root directory")
+      .action(async (dir) => {
+        await withSignal("plugin index", async () => {
+          const targetDir = dir ? path.resolve(dir) : undefined;
+          const catalog = await generateRegistryIndex(targetDir);
+          const count = Object.keys(catalog.plugins).length;
+          console.log(
+            `${GREEN}Indexed ${count} plugin(s) into registry.json.${RESET}`,
+          );
+        });
+      }),
+  )
+  .addCommand(
+    new Command("doctor")
+      .description("Verify installed plugin manifests and SHA-256 lockfile digests")
+      .action(async () => {
+        await withSignal("plugin doctor", async () => {
+          const report = await doctorPlugins();
+          if (report.entries.length === 0) {
+            console.log(`${DIM}No installed plugins found in ~/.gwrk/plugins.${RESET}`);
+            return;
+          }
+          for (const entry of report.entries) {
+            const badge =
+              entry.status === "ok"
+                ? `${GREEN}✓${RESET}`
+                : `${RED}✗${RESET}`;
+            const detail = entry.message ? ` (${entry.message})` : "";
+            console.log(
+              `  ${badge} ${entry.name.padEnd(22)} v${entry.version} [${entry.status}]${detail}`,
+            );
+          }
+          if (!report.healthy) {
+            throw new Error("One or more installed plugins failed integrity verification.");
+          }
         });
       }),
   )
