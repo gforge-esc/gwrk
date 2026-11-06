@@ -4,8 +4,8 @@
 
 import path from "node:path";
 import { recordGateResult } from "../db/gates.js";
+import { type TaskGateResult, runTaskGate } from "../utils/gate-exec.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { runTaskGate, type TaskGateResult } from "../utils/gate-exec.js";
 import {
   type TaskState,
   loadTaskState,

@@ -21,26 +21,12 @@ export interface ReadinessResult {
   hasTasks: boolean;
   spTotal?: number;
   phases: ReadinessPhase[];
-}
-
-/**
- * Parse implementation phases from a plan.md file.
- *
- * Delegates to the shared {@link extractPhases} extractor, which recognizes
- * both `### Phase N — Title (K SP)` headings and phase-declaration list items
- * and captures story points. Kept as a thin adapter to the scanner's
- * `ReadinessPhase` shape.
- */
-function parsePlanPhases(planContent: string): ReadinessPhase[] {
-  return extractPhases(planContent).map((p) => ({
-    number: p.seq,
-    title: p.title,
-    sp: p.sp,
-  }));
+  shippedPhaseSeqs?: number[];
 }
 
 interface TaskWithSp {
   sp?: number;
+  status?: string;
 }
 interface TasksPhase {
   id?: string;
@@ -60,28 +46,44 @@ interface TasksFile {
 function parseTasksSp(data: TasksFile): {
   total: number;
   bySeq: Map<number, number>;
+  completedSeqs: Set<number>;
 } {
   const bySeq = new Map<number, number>();
+  const completedSeqs = new Set<number>();
   let total = 0;
 
   if (Array.isArray(data.phases)) {
     for (const phase of data.phases) {
       const seqMatch = phase.id?.match(/(\d+)/);
-      const phaseSp = (phase.tasks ?? []).reduce(
-        (sum, t) => sum + (t.sp ?? 0),
-        0,
-      );
+      const tasks = phase.tasks ?? [];
+      const phaseSp = tasks.reduce((sum, t) => sum + (t.sp ?? 0), 0);
       total += phaseSp;
       if (seqMatch) {
         const seq = Number.parseInt(seqMatch[1], 10);
         bySeq.set(seq, (bySeq.get(seq) ?? 0) + phaseSp);
+        if (
+          tasks.length > 0 &&
+          tasks.every(
+            (t) => t.status === "completed" || t.status === "cancelled",
+          )
+        ) {
+          completedSeqs.add(seq);
+        }
       }
     }
   } else if (Array.isArray(data.tasks)) {
     total = data.tasks.reduce((sum, t) => sum + (t.sp ?? 0), 0);
   }
 
-  return { total, bySeq };
+  return { total, bySeq, completedSeqs };
+}
+
+function parsePlanPhases(planContent: string): ReadinessPhase[] {
+  return extractPhases(planContent).map((p) => ({
+    number: p.seq,
+    title: p.title,
+    sp: p.sp,
+  }));
 }
 
 /**
@@ -97,7 +99,11 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    if (entry.name.startsWith(".") || entry.name === "000-tdd-infrastructure")
+    if (
+      entry.name.startsWith(".") ||
+      entry.name.startsWith("_") ||
+      entry.name === "000-tdd-infrastructure"
+    )
       continue;
 
     const featureId = entry.name;
@@ -132,29 +138,80 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
     // ({ tasks: [{ sp }] }).
     let spTotal: number | undefined;
     let spByPhaseSeq = new Map<number, number>();
+    let completedSeqs = new Set<number>();
     if (hasTasks) {
       try {
         const tasksData = JSON.parse(fs.readFileSync(tasksPath, "utf-8"));
         const parsed = parseTasksSp(tasksData);
         spTotal = parsed.total;
         spByPhaseSeq = parsed.bySeq;
+        completedSeqs = parsed.completedSeqs;
+        // If every task in tasks.json is completed/cancelled, all plan phases are shipped
+        const allTasksComplete =
+          Array.isArray(tasksData.phases) &&
+          tasksData.phases.length > 0 &&
+          tasksData.phases.every(
+            (p: TasksPhase) =>
+              (p.tasks ?? []).length > 0 &&
+              (p.tasks ?? []).every(
+                (t) => t.status === "completed" || t.status === "cancelled",
+              ),
+          );
+        if (allTasksComplete && hasPlan) {
+          try {
+            const planContent = fs.readFileSync(planPath, "utf-8");
+            for (const p of parsePlanPhases(planContent)) {
+              completedSeqs.add(p.number);
+            }
+          } catch {
+            // Non-fatal
+          }
+        }
       } catch (e) {
         // Ignore parse errors, spTotal remains undefined
       }
     }
 
+    // Also inspect .gwrk/runs/*_ship_phase-NN_*.json for exitCode === 0
+    const runsDir = path.join(featureDir, ".gwrk", "runs");
+    if (fs.existsSync(runsDir)) {
+      try {
+        for (const rf of fs.readdirSync(runsDir)) {
+          const match = rf.match(/_ship_phase-(\d+)_.*\.json$/);
+          if (!match) continue;
+          const runData = JSON.parse(
+            fs.readFileSync(path.join(runsDir, rf), "utf-8"),
+          );
+          if (runData.exitCode === 0) {
+            completedSeqs.add(Number.parseInt(match[1], 10));
+          }
+        }
+      } catch {
+        // Ignore unreadable run manifests
+      }
+    }
+
     // Parse phases from plan.md, then enrich each phase's SP from tasks.json
-    // (tasks.json wins when present; the plan's (K SP) is the fallback).
+    // (tasks.json wins when present and > 0; the plan's (K SP) is the fallback).
     let phases: ReadinessPhase[] = [];
     if (hasPlan) {
       try {
         const planContent = fs.readFileSync(planPath, "utf-8");
-        phases = parsePlanPhases(planContent).map((p) => ({
-          ...p,
-          sp: spByPhaseSeq.get(p.number) ?? p.sp,
-        }));
+        phases = parsePlanPhases(planContent).map((p) => {
+          const taskSp = spByPhaseSeq.get(p.number);
+          return {
+            ...p,
+            sp: taskSp !== undefined && taskSp > 0 ? taskSp : p.sp,
+          };
+        });
       } catch {
         // Non-fatal — phases stays empty
+      }
+      if (!spTotal || spTotal === 0) {
+        const planSpSum = phases.reduce((sum, p) => sum + p.sp, 0);
+        if (planSpSum > 0) {
+          spTotal = planSpSum;
+        }
       }
     }
 
@@ -167,9 +224,11 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
       hasTasks,
       spTotal,
       phases,
+      ...(completedSeqs.size > 0
+        ? { shippedPhaseSeqs: Array.from(completedSeqs).sort((a, b) => a - b) }
+        : {}),
     });
   }
 
   return results;
 }
-

@@ -18,7 +18,8 @@
           "description": "REWRITE: Replace Docker/Dockerode with Git worktree lifecycle. See contracts/sandbox.md.",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "classification": "refactor"
+          "classification": "refactor",
+          "sp": 2
         },
         {
           "id": "T002",
@@ -26,7 +27,8 @@
           "description": "EXISTS: Already written for worktree model. Verify alignment with rewritten sandbox.ts.",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         },
         {
           "id": "T003",
@@ -34,7 +36,8 @@
           "description": "MODIFY: Update `SandboxInfo` to reflect worktree paths instead of container IDs. Add `TaskRecord`.",
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "classification": "change"
+          "classification": "change",
+          "sp": 2
         },
         {
           "id": "T004",
@@ -42,7 +45,8 @@
           "description": "MODIFY: Update `DispatchQueue` to use the refactored `SandboxManager`.",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "classification": "change"
+          "classification": "change",
+          "sp": 2
         },
         {
           "id": "T005",
@@ -50,7 +54,8 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         }
       ],
       "doneWhen": [
@@ -65,9 +70,11 @@
           "id": "T006",
           "title": "Implement src/server/dispatch-orchestrator.ts",
           "description": "NEW: Implement `DispatchOrchestrator` for parallel task execution, concurrency management, and 429 backoff.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T006-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T007",
@@ -75,7 +82,8 @@
           "description": "EXISTS: Already written. Verify alignment with new orchestrator.",
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         },
         {
           "id": "T008",
@@ -83,7 +91,8 @@
           "description": "MODIFY: Integrate `DispatchOrchestrator` into the phase implementation loop.",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
-          "classification": "greenfield"
+          "classification": "greenfield",
+          "sp": 3
         },
         {
           "id": "T009",
@@ -91,7 +100,8 @@
           "description": "VERIFY: parallelism settings already typed. Confirm maxClones and maxConcurrent defaults.",
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         },
         {
           "id": "T010",
@@ -99,7 +109,8 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
-          "classification": "noop"
+          "classification": "noop",
+          "sp": 1
         }
       ],
       "doneWhen": [

@@ -88,6 +88,11 @@ interface DispatchOptions {
    * behavior — preserved for prose backends like agy/codex).
    */
   emitsStreamJson?: boolean;
+  prebuiltDispatch?: {
+    command: string;
+    args: string[];
+    stdin?: string;
+  };
 }
 
 /** Build the command + args for a given backend. Exported for testability. */
@@ -166,7 +171,8 @@ async function dispatchAgent(opts: DispatchOptions): Promise<{
   const workflowContent = fs.existsSync(workflowFile)
     ? fs.readFileSync(workflowFile, "utf-8")
     : "";
-  const { command, args, stdin } = await buildCommand(opts, workflowContent);
+  const { command, args, stdin } =
+    opts.prebuiltDispatch ?? (await buildCommand(opts, workflowContent));
 
   // Set up .runs/ log file
   const runsDir = path.join(projectRoot, ".runs");
@@ -435,8 +441,16 @@ export interface TaskDispatch {
  */
 export interface TaskResult {
   exitCode: number;
+  rawExitCode?: number;
   errorType?: string;
   stdout: string;
+  unwrappedStdout?: string;
+  structuredOutput?: Record<string, unknown>;
+  usage?: {
+    tokensIn?: number;
+    tokensOut?: number;
+    costUsd?: number;
+  };
   stderr: string;
   durationS: number;
   logPath?: string;
@@ -536,11 +550,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const adapter = await registry.getAgentBackend(agentName);
 
   const startTime = Date.now();
-  const dispatch = await adapter.dispatch(task);
+  let stdinPayload = task.stdin ?? "";
 
   // FR-014: Inject enforcement skills
-  const hasEnforcementPlaceholder = dispatch.stdin.includes("{{enforcement}}");
-  const hasCodeQualitySection = dispatch.stdin.includes("<code_quality>");
+  const hasEnforcementPlaceholder = stdinPayload.includes("{{enforcement}}");
+  const hasCodeQualitySection = stdinPayload.includes("<code_quality>");
 
   if (hasEnforcementPlaceholder || hasCodeQualitySection) {
     const scope =
@@ -559,10 +573,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     );
 
     if (hasEnforcementPlaceholder) {
-      dispatch.stdin = dispatch.stdin.replace("{{enforcement}}", enforcement);
+      stdinPayload = stdinPayload.replace("{{enforcement}}", enforcement);
     } else if (hasCodeQualitySection) {
-      // Inject into the section if no placeholder but tag exists
-      dispatch.stdin = dispatch.stdin.replace(
+      stdinPayload = stdinPayload.replace(
         /<code_quality>([\s\S]*?)<\/code_quality>/,
         `<code_quality>\n${enforcement}\n</code_quality>`,
       );
@@ -612,7 +625,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   if (grounding) {
-    dispatch.stdin = `${grounding}${dispatch.stdin}`;
+    stdinPayload = `${grounding}${stdinPayload}`;
   }
 
   // Layer 3: External Context Injection (Phase 21)
@@ -636,18 +649,38 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     const contextContent = extContext
       .map((res) => `<${res.source}>\n${res.content}\n</${res.source}>`)
       .join("\n\n");
-    dispatch.stdin = `${dispatch.stdin}\n\n<external_context>\n${contextContent}\n</external_context>`;
+    stdinPayload = `${stdinPayload}\n\n<external_context>\n${contextContent}\n</external_context>`;
   }
 
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
-  if (dispatch.stdin && !dispatch.stdin.includes("<command_safety>")) {
-    dispatch.stdin = `${COMMAND_SAFETY_BLOCK}\n\n${dispatch.stdin}`;
+  if (
+    (stdinPayload || task.prompt) &&
+    !stdinPayload.includes("<command_safety>")
+  ) {
+    stdinPayload = stdinPayload
+      ? `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`
+      : COMMAND_SAFETY_BLOCK;
+  }
+
+  const dispatch = await adapter.dispatch({
+    ...task,
+    stdin: stdinPayload || task.stdin,
+  });
+  if (
+    stdinPayload &&
+    dispatch.stdin &&
+    !dispatch.stdin.includes(stdinPayload)
+  ) {
+    dispatch.stdin = `${stdinPayload}\n${dispatch.stdin}`;
+  } else if (!dispatch.stdin && stdinPayload) {
+    dispatch.stdin = stdinPayload;
   }
 
   if (task.dryRun) {
     return {
       exitCode: 0,
-      stdout: dispatch.stdin,
+      stdout: dispatch.stdin ?? "",
+      unwrappedStdout: dispatch.stdin ?? "",
       stderr: "",
       durationS: 0,
     };
@@ -663,6 +696,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     workDir: task.workDir,
     outputSchema: task.outputSchema,
     emitsStreamJson: adapter.emitsStreamJson,
+    prebuiltDispatch: {
+      command: dispatch.command,
+      args: dispatch.args,
+      stdin: dispatch.stdin,
+    },
   };
 
   const {

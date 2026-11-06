@@ -54,9 +54,11 @@ describe("getShippedPhases", () => {
     db = getTestDb();
     // runs.project_id references projects(id).
     for (const id of [PROJECT, "other-project"]) {
-      db.prepare(
-        "INSERT INTO projects (id, name, path) VALUES (?, ?, ?)",
-      ).run(id, id, `/tmp/${id}`);
+      db.prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)").run(
+        id,
+        id,
+        `/tmp/${id}`,
+      );
     }
   });
 
@@ -82,7 +84,12 @@ describe("getShippedPhases", () => {
   });
 
   it("still ignores non-ship commands", () => {
-    run({ feature: "005-dashboard-api", phase: "phase-01", command: "define", exitCode: 0 });
+    run({
+      feature: "005-dashboard-api",
+      phase: "phase-01",
+      command: "define",
+      exitCode: 0,
+    });
 
     expect(getShippedPhases(PROJECT, db)).toEqual(new Set());
   });

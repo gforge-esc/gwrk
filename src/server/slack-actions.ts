@@ -238,16 +238,15 @@ export async function registerSlackActions(app: App, context: CommandContext) {
     // Resolve PR URL: payload prNumber → runs table → gh pr list fallback
     let reviewUrl = "";
     const prNumber =
-      payloadPrNumber ||
-      findOpenPr(featureId, projectId, phaseId)?.pr_number;
-
+      payloadPrNumber || findOpenPr(featureId, projectId, phaseId)?.pr_number;
 
     if (prNumber) {
       try {
-        reviewUrl = execSync(
-          `gh pr view ${prNumber} --json url -q .url`,
-          { cwd: context.projectRoot, encoding: "utf-8", timeout: 10_000 },
-        ).trim();
+        reviewUrl = execSync(`gh pr view ${prNumber} --json url -q .url`, {
+          cwd: context.projectRoot,
+          encoding: "utf-8",
+          timeout: 10_000,
+        }).trim();
       } catch {
         // PR might not exist anymore
       }

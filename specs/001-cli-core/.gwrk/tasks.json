@@ -177,9 +177,10 @@
           "id": "T010",
           "title": "Modify init.ts",
           "description": "MODIFY src/commands/init.ts. Add interactive profile wizard, absorb setup.ts workstation steps, add `--non-interactive` and `--agent` flags, add registry cloning and extension discovery\n\nREVIEW FAIL (code): LINT — FR-001.\n  WHERE: src/commands/init.ts:76, 85, 120, 129\n  EXPECTED: Specific types for options, config, and reduce accumulator.\n  ACTUAL: use of 'any'\n  FIX: Replace 'any' with proper types (e.g. from commander or custom interfaces).\n\nREVIEW FAIL (code): IMPLEMENTATION — US-001.\n  WHERE: src/commands/init.ts:149\n  EXPECTED: Provisioning steps including SSH key generation if missing.\n  ACTUAL: Only checks for existence of SSH keys.\n  FIX: Implement SSH key generation logic as per US-001.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/init.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T011",
@@ -194,9 +195,10 @@
           "id": "T012",
           "title": "Modify setup-slack.ts",
           "description": "MODIFY src/commands/setup-slack.ts. Refactor to be callable from init flow, not standalone\n\nREVIEW FAIL (code): LINT — FR-001.\n  WHERE: src/commands/setup-slack.ts:24\n  EXPECTED: Specific types for options.\n  ACTUAL: use of 'any'\n  FIX: Replace 'any' with proper types.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/setup-slack.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T013",
@@ -231,7 +233,7 @@
           "id": "T014",
           "title": "CLI UX Polish",
           "description": "Complete phase 11: CLI UX Polish\n\nUAT REVIEW (2026-06-16): NO-GO\n- 20 FAILED TESTS: Regressions in parser-plan, pulse, effort, and registry. Multiple 'is not a function' errors (parsePlan, parseGitLog, bucketByWeek, scanSpecProgress).\n- SURFACE POLLUTION: 'gwrk project gates' still exists, violating US-018/Phase 11 criteria.\n- DOC MISPLACEMENT: 'docs/governance/cli-grammar.md' is missing (found at 'docs/grounding/cli-grammar.md').\n- UNVERIFIED CONTRACT: 'src/commands/tests-generate-contract.test.ts' contains skipped tests due to API surface mismatch.\n\nREMEDIATION:\n1. Fix regressions in src/utils/parser-plan.ts and src/engine/pulse.ts (restore missing exports).\n2. Implement missing logic in src/engine/effort.ts and src/engine/registry.ts.\n3. Remove 'gates' subcommand from src/commands/project.ts.\n4. Move 'docs/grounding/cli-grammar.md' to 'docs/governance/cli-grammar.md' or update tests/governance.test.ts to match requirement.\n5. Rewrite tests-generate-contract.test.ts to verify P12 quiet/tolerant contract.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "`gwrk <any-command-with-args> --help` shows an `Examples:` section",
           "sp": 2,
           "completedAt": "2026-06-16T20:54:36.363Z"
@@ -257,41 +259,46 @@
           "id": "T015",
           "title": "Modify tests-generate.ts",
           "description": "MODIFY src/commands/tests-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()`. Detect agent-native success by checking for committed test files even when JSON parsing fails.. Tests: src/commands/tests-generate-contract.test.ts\n\nUAT REVIEW (2026-06-16): FAIL\n- src/commands/tests-generate-contract.test.ts is skipped because it attempts to call non-exported functions.\n- Integration with WorkflowRuntime tolerant mode is unverified due to test instability.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/commands/tests-generate-contract.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T016",
           "title": "Modify specify.ts",
           "description": "MODIFY src/commands/specify.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.\n\nUAT REVIEW (2026-06-16): FAIL\n- Verification blocked by project-wide regressions (23 test failures).",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/specify.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T017",
           "title": "Modify define-plan.ts",
           "description": "MODIFY src/commands/define-plan.ts. Pass `quiet: true` to `runtime.executeWorkflow()`.\n\nUAT REVIEW (2026-06-16): FAIL\n- Verification blocked by project-wide regressions (23 test failures).",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/define-plan.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T018",
           "title": "Modify tasks-generate.ts",
           "description": "MODIFY src/commands/tasks-generate.ts. Pass `quiet: true` to `runtime.executeWorkflow()` for gate authoring dispatch.\n\nUAT REVIEW (2026-06-16): FAIL\n- Verification blocked by project-wide regressions (23 test failures).",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/tasks-generate.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T019",
           "title": "Modify workflow-runtime.ts",
           "description": "MODIFY src/plugins/workflow-runtime.ts. Make `extractJsonFromOutput()` failure non-fatal when the agent committed artifacts. Add `tolerant` mode that returns a synthetic success result when the agent did native work.. Tests: src/plugins/workflow-runtime.test.ts\n\nUAT REVIEW (2026-06-16): FAIL\n- src/plugins/workflow-runtime-phase12.test.ts fails: 'Workflow output failed schema constraint: Expected JSON object'.\n- Root cause: hasArtifacts check uses unmocked git status, which returns empty in clean CI/test environments.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/plugins/workflow-runtime.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 5,
@@ -381,97 +388,109 @@
           "id": "T026",
           "title": "Modify index.ts",
           "description": "MODIFY src/db/index.ts. Add `project_id` to `safeAddColumn` for the 8 target tables\n\nUAT REVIEW (2026-06-16): NO-GO\n- 22 FAILED TESTS: Significant regressions across parser-plan, pulse, and effort engines.\n- MISSING EXPORTS: src/utils/parser-plan.ts (parsePlan), src/engine/pulse.ts (parseGitLog, bucketByWeek, scanSpecProgress).\n- SURFACE POLLUTION: 'gwrk project gates' still exists, violating Phase 11 criteria.\n- UNIMPLEMENTED: Effort engine fallback and report generation still throw 'Not implemented'.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/db/index.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T027",
           "title": "Modify plan.ts",
           "description": "MODIFY src/db/plan.ts. Scope all query functions by `projectId`. Tests: src/engine/plan-store-scoping.test.ts\n\nUAT REVIEW (2026-06-16): NO-GO\n- Blocked by 22 project-wide test failures.",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/plan-store-scoping.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T028",
           "title": "Modify runs.ts",
           "description": "MODIFY src/db/runs.ts. Scope `listRuns` and `getStats` by `projectId`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/db/runs.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T029",
           "title": "Modify gates.ts",
           "description": "MODIFY src/db/gates.ts. Scope `getGateResults` and `recordGateResult`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/db/gates.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T030",
           "title": "Modify compression.ts",
           "description": "MODIFY src/db/compression.ts. Scope `listCompressionRecords`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/db/compression.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T031",
           "title": "Modify issues.ts",
           "description": "MODIFY src/db/issues.ts. Scope `listIssues` and `upsertIssue`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/db/issues.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T032",
           "title": "Modify plugins.ts",
           "description": "MODIFY src/db/plugins.ts. Scope `getRoutingHistory`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/db/plugins.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T033",
           "title": "Modify plan-store.ts",
           "description": "MODIFY src/engine/plan-store.ts. Constructor accepts `projectId`, pass to DB layer. Tests: src/engine/plan-store-scoping.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/plan-store-scoping.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T034",
           "title": "Modify drift-detector.ts",
           "description": "MODIFY src/engine/drift-detector.ts. Scope drift checks by `projectId`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/engine/drift-detector.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T035",
           "title": "Modify plan.ts",
           "description": "MODIFY src/commands/plan.ts. Derive `projectId` and pass to `PlanStore`. Tests: src/engine/plan-store-scoping.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/plan-store-scoping.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T036",
           "title": "Modify stats.ts",
           "description": "MODIFY src/commands/stats.ts. Derive `projectId` and pass to DB layer",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/stats.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T037",
           "title": "Modify runs.ts",
           "description": "MODIFY src/commands/runs.ts. Derive `projectId` and pass to DB layer",
-          "status": "open",
+          "status": "completed",
           "gateScript": "test -f src/commands/runs.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 12,

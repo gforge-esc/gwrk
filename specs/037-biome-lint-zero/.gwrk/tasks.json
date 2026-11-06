@@ -1,0 +1,21 @@
+{
+  "featureId": "037-biome-lint-zero",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Biome Lint Zero & Pre-Commit Enforcement",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Resolve all Biome lint diagnostics and enforce pnpm lint",
+          "status": "completed",
+          "sp": 5,
+          "classification": "refactor",
+          "gateScript": "pnpm lint && pnpm vitest run src/architecture.test.ts",
+          "description": "Resolve all Biome lint diagnostics and enforce pnpm lint"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-05T19:15:00.000Z"
+}

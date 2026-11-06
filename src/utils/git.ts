@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -319,6 +320,38 @@ export async function syncBranch(
 }
 
 /**
+ * Fetches origin/<baseBranch> and fast-forwards the local checkout when clean
+ * on baseBranch, or updates the local baseBranch ref otherwise. Non-fatal when
+ * offline or running in a non-git test fixture.
+ */
+export function syncTrunkForHarvest(
+  repoPath: string,
+  baseBranch = "develop",
+): void {
+  if (!fs.existsSync(path.join(repoPath, ".git"))) return;
+  try {
+    execFileSync("git", ["fetch", "origin", baseBranch], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    const current = getCurrentBranch(repoPath);
+    if (current === baseBranch && isWorkingTreeClean(repoPath)) {
+      execFileSync("git", ["merge", "--ff-only", `origin/${baseBranch}`], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    } else if (current !== baseBranch) {
+      execFileSync("git", ["fetch", "origin", `${baseBranch}:${baseBranch}`], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    }
+  } catch {
+    // Non-fatal: offline or local repository without origin remote
+  }
+}
+
+/**
  * Checks if the working tree is clean.
  */
 export function isWorkingTreeClean(repoPath: string): boolean {
@@ -408,14 +441,10 @@ export function commitPaths(
       encoding: "utf-8",
     }).trim();
     if (!staged) return;
-    execFileSync(
-      "git",
-      ["commit", "-m", message],
-      {
-        cwd: repoPath,
-        stdio: ["ignore", "ignore", "pipe"],
-      },
-    );
+    execFileSync("git", ["commit", "-m", message], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
   } catch (e) {
     const err = e as { stderr?: Buffer | string; stdout?: Buffer | string };
     const stderr = err.stderr?.toString() || "";
@@ -461,7 +490,9 @@ export function deleteRemoteBranch(
     // Log error but don't fail, as per FR-H08
     const msg = e instanceof Error ? e.message : String(e);
     // Suppress the massive stack trace and buffer output from execFileSync
-    const cleanMsg = msg.split('\n')[0]; 
-    console.error(`Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`);
+    const cleanMsg = msg.split("\n")[0];
+    console.error(
+      `Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`,
+    );
   }
 }

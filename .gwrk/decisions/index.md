@@ -13,6 +13,8 @@
 | ADR-008 | Agent execution model, prompt architecture, workflow safety | Decided | Every agent-dispatched sub-command MUST run non-interactively under a bounded timeout, and MUST NOT be able to block on an editor, a pager, or a prompt. |
 | ADR-009 | Agent grounding, prompt context, project perspective | Decided | Dispatch MUST inject the project's domain ontology, information hierarchy, and UX posture when those files exist, and gwrk MUST NOT ship default content in their place. |
 | ADR-010 | gwrk definition, grounding, and verification pipeline | Decided | Every recorded architecture decision MUST live in `docs/decisions/` and reach every agent dispatch through the derived index at `.gwrk/decisions/index.md` without introducing a fifth governance carrier. |
+| ADR-011 | gwrk core architecture, agent routing, polyglot toolchain, and plugin runtime | Decided | Domain and application modules MUST depend only on `src/domain/` and `src/ports/`, and MUST NOT import infrastructure adapters, duplicate agent registries, or hardcode TypeScript toolchain commands. |
+| ADR-012 | gwrk plugin registry and polyglot framework packs | Decided | External agent backends MUST implement `AgentPort` via `adapter.js` and `manifest.yaml`, and framework enforcement skills MUST declare both `language` and `framework` in `manifest.yaml`. |
 
-<!-- hash: 6e27ade0a84b4b0a -->
-<!-- rows: {"ADR-001":"669780d3520b3b57","ADR-002":"63f29c31b5b55d0d","ADR-003":"50e02a0a2729c8b6","ADR-004":"2fb3e461a2b72eaa","ADR-005":"3c70a7962a73059b","ADR-006":"7b0862d65a60ef86","ADR-007":"7d1c2ec5964d229c","ADR-008":"6a4ed1c389384d7a","ADR-009":"a52614336734852d","ADR-010":"d41e52a39d4186db"} -->
+<!-- hash: 77ff4555299fdf1a -->
+<!-- rows: {"ADR-001":"669780d3520b3b57","ADR-002":"63f29c31b5b55d0d","ADR-003":"50e02a0a2729c8b6","ADR-004":"2fb3e461a2b72eaa","ADR-005":"3c70a7962a73059b","ADR-006":"7b0862d65a60ef86","ADR-007":"7d1c2ec5964d229c","ADR-008":"6a4ed1c389384d7a","ADR-009":"a52614336734852d","ADR-010":"d41e52a39d4186db","ADR-011":"9fc50fab6c83591a","ADR-012":"9d0517207f0bffab"} -->

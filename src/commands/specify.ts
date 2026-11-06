@@ -12,6 +12,7 @@ import { PlanStore } from "../engine/plan-store.js";
 import { banner, fail, success } from "../utils/format.js";
 import { readStdin } from "../utils/output.js";
 
+import { withParentFlags } from "../utils/command-flags.js";
 import {
   commitPaths,
   getCurrentBranch,
@@ -19,13 +20,12 @@ import {
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
-import { scaffoldFeature } from "../utils/scaffold-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { CommandError, withSignal } from "../utils/signal.js";
-import { withParentFlags } from "../utils/command-flags.js";
 import { readRefsContent } from "../utils/read-refs.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
+import { scaffoldFeature } from "../utils/scaffold-feature.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const specifyCommand = new Command("spec")
   .description("Create or refine a feature specification")
@@ -59,8 +59,14 @@ Arguments:
   and the feature name is auto-generated from it.
 `,
   )
-  .argument("[feature-name-or-id]", "Feature name/slug (new) or feature ID (existing). Omit to auto-generate from description.")
-  .argument("[description]", "Feature description (new) or rework instructions (existing)")
+  .argument(
+    "[feature-name-or-id]",
+    "Feature name/slug (new) or feature ID (existing). Omit to auto-generate from description.",
+  )
+  .argument(
+    "[description]",
+    "Feature description (new) or rework instructions (existing)",
+  )
   .option("--refs <path>", "Path to additional reference docs")
   .option("--dry-run", "Print the command without executing")
   .action(
@@ -72,6 +78,7 @@ Arguments:
     ) => {
       // --refs and --dry-run are declared on BOTH `define` and here, so commander
       // binds them to the parent and this command's own opts() arrives empty.
+      // biome-ignore lint/style/noParameterAssign: merge parent commander flags
       opts = withParentFlags(opts, command);
       await withSignal("define spec", async () => {
         const cwd = process.cwd();
@@ -117,9 +124,10 @@ Arguments:
                 feature = featureArg;
               } else {
                 const result = scaffoldFeature(specsDir, effectiveInput, {
-                  shortName: featureArg.replace(/^\d+-/, "").length > 0
-                    ? featureArg
-                    : undefined,
+                  shortName:
+                    featureArg.replace(/^\d+-/, "").length > 0
+                      ? featureArg
+                      : undefined,
                   number: /^\d+$/.test(featureArg)
                     ? undefined // auto-number, featureArg is just a bare number with no slug
                     : undefined,
@@ -140,10 +148,13 @@ Arguments:
         const specDir = path.join(cwd, "specs", feature);
         const specFile = path.join(specDir, "spec.md");
         const specExists = fs.existsSync(specFile);
-        const specHasContent = specExists && fs.readFileSync(specFile, "utf-8").trim().length > 0;
+        const specHasContent =
+          specExists && fs.readFileSync(specFile, "utf-8").trim().length > 0;
         // Template-only files don't count as "rework" — only files that have been
         // through at least one spec generation pass.
-        const isRework = specHasContent && !fs.readFileSync(specFile, "utf-8").includes("{{FEATURE_NUMBER}}");
+        const isRework =
+          specHasContent &&
+          !fs.readFileSync(specFile, "utf-8").includes("{{FEATURE_NUMBER}}");
 
         // Build the effective prompt
         let effectivePrompt: string;
@@ -174,11 +185,11 @@ Arguments:
           effectivePrompt = [
             `<reference_document source="${opts.refs}" authority="primary">`,
             refsContent,
-            `</reference_document>`,
-            ``,
+            "</reference_document>",
+            "",
             effectivePrompt,
-            ``,
-            `CRITICAL REMINDER: The <reference_document> above is the AUTHORITATIVE source of requirements. Every screen name, role, data source, acceptance criterion, and technical constraint from the reference document MUST appear verbatim in the spec. Do NOT substitute generic defaults for specific names defined in the reference document.`,
+            "",
+            "CRITICAL REMINDER: The <reference_document> above is the AUTHORITATIVE source of requirements. Every screen name, role, data source, acceptance criterion, and technical constraint from the reference document MUST appear verbatim in the spec. Do NOT substitute generic defaults for specific names defined in the reference document.",
           ].join("\n");
         }
 
@@ -189,12 +200,14 @@ Arguments:
         // exit_code). `runs` is what harvest correlates against and what
         // getShippedPhases reads, so a row for work that never happened is
         // false evidence. -1 is the same sentinel a failed ledger write uses.
-        const runId = opts.dryRun ? -1 : startRun({
-          feature_id: feature,
-          command: "define spec",
-          agent_backend: backend,
-          workflow: "specify",
-        });
+        const runId = opts.dryRun
+          ? -1
+          : startRun({
+              feature_id: feature,
+              command: "define spec",
+              agent_backend: backend,
+              workflow: "specify",
+            });
 
         banner("define spec", {
           Agent: backend,
@@ -214,26 +227,33 @@ Arguments:
         let finished = false;
 
         try {
-          const orchestrator = new DefineOrchestrator({
-            featureId: feature,
-            backend,
-            model,
-            cwd,
-            refs: opts.refs,
-            dryRun: opts.dryRun,
-            quiet: true,
-          }, {
-            stage: DefineStage.SPECIFY,
-            featureId: feature,
-            startedAt,
-            runId: `define-spec-${feature}-${Date.now()}`,
-            backend,
+          const orchestrator = new DefineOrchestrator(
+            {
+              featureId: feature,
+              backend,
+              model,
+              cwd,
+              refs: opts.refs,
+              dryRun: opts.dryRun,
+              quiet: true,
+            },
+            {
+              stage: DefineStage.SPECIFY,
+              featureId: feature,
+              startedAt,
+              runId: `define-spec-${feature}-${Date.now()}`,
+              backend,
+            },
+          );
+
+          const exitCode = await orchestrator.runLoop(effectivePrompt, {
+            stopAfterOne: true,
           });
 
-          const exitCode = await orchestrator.runLoop(effectivePrompt, { stopAfterOne: true });
-
           if (exitCode !== 0) {
-            throw new Error(`Workflow execution failed with exit code ${exitCode}`);
+            throw new Error(
+              `Workflow execution failed with exit code ${exitCode}`,
+            );
           }
 
           if (opts.dryRun) {
@@ -285,9 +305,11 @@ Arguments:
           }
 
           // Commit ONLY the manifest we just wrote — never the caller's tree.
-          commitPaths(cwd, `chore(${feature}): define spec execution manifest`, [
-            path.join("specs", feature, ".gwrk", "runs"),
-          ]);
+          commitPaths(
+            cwd,
+            `chore(${feature}): define spec execution manifest`,
+            [path.join("specs", feature, ".gwrk", "runs")],
+          );
 
           const planStore = new PlanStore(resolveProjectId(cwd));
           planStore.handleDefineComplete({

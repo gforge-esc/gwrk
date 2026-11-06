@@ -1,7 +1,11 @@
-import { test, expect } from "@playwright/test";
-import { execa } from "execa";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { expect, test } from "@playwright/test";
+import { execa } from "execa";
 
 test.describe("Phase 18: Ontology Construction Workflow", () => {
   const tempDir = path.join(process.cwd(), ".test-runs/ontology-phase-18");
@@ -11,7 +15,9 @@ test.describe("Phase 18: Ontology Construction Workflow", () => {
   });
 
   test("US-020: gwrk define ontology scaffolds project structure", async () => {
-    await execa("node", ["dist/cli.js", "define", "ontology"], { cwd: tempDir });
+    await execa("node", ["dist/cli.js", "define", "ontology"], {
+      cwd: tempDir,
+    });
 
     const domainPath = path.join(tempDir, ".gwrk/ontology/domain.md");
     const hierarchyPath = path.join(tempDir, ".gwrk/perspective/hierarchy.md");
@@ -24,11 +30,19 @@ test.describe("Phase 18: Ontology Construction Workflow", () => {
     // Setup grounding material
     const docsDir = path.join(tempDir, "docs/grounding");
     await fs.mkdir(docsDir, { recursive: true });
-    await fs.writeFile(path.join(docsDir, "architecture.md"), "# Architecture\nCore concept: PluginLoader.");
+    await fs.writeFile(
+      path.join(docsDir, "architecture.md"),
+      "# Architecture\nCore concept: PluginLoader.",
+    );
 
-    await execa("node", ["dist/cli.js", "define", "ontology", "--run"], { cwd: tempDir });
+    await execa("node", ["dist/cli.js", "define", "ontology", "--run"], {
+      cwd: tempDir,
+    });
 
-    const domainContent = await fs.readFile(path.join(tempDir, ".gwrk/ontology/domain.md"), "utf-8");
+    const domainContent = await fs.readFile(
+      path.join(tempDir, ".gwrk/ontology/domain.md"),
+      "utf-8",
+    );
 
     // ADR-009 / FR-L25-012: Verify Five Primitives structure
     expect(domainContent).toContain("## Classes");

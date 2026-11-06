@@ -96,5 +96,5 @@ export function computeEffort(
 }
 
 export const runEffortCLI = async (featureId: string): Promise<void> => {
-  throw new Error('Not implemented');
+  throw new Error("Not implemented");
 };

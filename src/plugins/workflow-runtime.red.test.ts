@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { WorkflowRuntime } from "./workflow-runtime.js";
-import * as agentModule from "../utils/agent.js";
 import { readFile } from "node:fs/promises";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as agentModule from "../utils/agent.js";
+import { WorkflowRuntime } from "./workflow-runtime.js";
 
 vi.mock("../utils/agent.js", () => ({
   dispatchToAgent: vi.fn(),
@@ -15,7 +15,9 @@ vi.mock("../utils/git.js", () => ({
   isDirty: vi.fn(),
   getCurrentCommit: vi.fn().mockReturnValue("abc123"),
   getCurrentBranch: vi.fn().mockReturnValue("develop"),
-  getDiffStats: vi.fn().mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
+  getDiffStats: vi
+    .fn()
+    .mockReturnValue({ filesChanged: 0, linesAdded: 0, linesDeleted: 0 }),
 }));
 
 vi.mock("node:fs/promises", () => ({

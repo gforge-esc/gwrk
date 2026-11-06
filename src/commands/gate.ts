@@ -6,8 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { Command } from "commander";
-import { runTaskGate } from "../utils/gate-exec.js";
 import { banner, color, fail, success } from "../utils/format.js";
+import { runTaskGate } from "../utils/gate-exec.js";
 import { resolveFormat } from "../utils/output.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
@@ -209,6 +209,7 @@ export async function runGateCheck(
       for (const phase of state.phases) {
         const task = phase.tasks.find((t) => t.id === taskId);
         if (task?.gateScript) {
+          // biome-ignore lint/style/noParameterAssign: fallback gateScript resolved from tasks.json
           gateScript = task.gateScript;
           break;
         }
@@ -446,7 +447,11 @@ Examples:
                 `  ${color.DIM}▸${color.RESET} ${task.id}... `,
               );
             }
-            const result = await runGateCheck(task.id, normalizedFeature, task.gateScript);
+            const result = await runGateCheck(
+              task.id,
+              normalizedFeature,
+              task.gateScript,
+            );
             results.push(result);
             phaseResults.push(result);
 

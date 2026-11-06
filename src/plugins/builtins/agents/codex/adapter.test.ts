@@ -1,0 +1,46 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, expect, it } from "vitest";
+import { CodexAdapter } from "./adapter.js";
+
+describe("CodexAdapter", () => {
+  const adapter = new CodexAdapter();
+
+  it("declares nativeWriter = true so ShipOrchestrator recognizes disk edits", () => {
+    expect(adapter.nativeWriter).toBe(true);
+    expect(adapter.emitsStreamJson).toBe(false);
+  });
+
+  it("delivers multi-line or stdin-backed prompts via stdin with '-' arg", async () => {
+    const result = await adapter.dispatch({
+      agent: "codex",
+      prompt: "Line 1\nLine 2",
+      stdin: "<command_safety>Rules</command_safety>",
+      model: "gpt-5-codex",
+    });
+
+    expect(result.command).toBe("codex");
+    expect(result.args).toEqual([
+      "exec",
+      "--full-auto",
+      "--model",
+      "gpt-5-codex",
+      "-",
+    ]);
+    expect(result.stdin).toContain("Line 1\nLine 2");
+    expect(result.stdin).toContain("<command_safety>Rules</command_safety>");
+  });
+
+  it("normalizes exit codes in parseResult", () => {
+    expect(adapter.parseResult("", "command not found", 127)).toMatchObject({
+      exitCode: 127,
+      errorType: "command_not_found",
+    });
+    expect(adapter.parseResult("done", "", 0)).toMatchObject({
+      exitCode: 0,
+      unwrappedStdout: "done",
+    });
+  });
+});

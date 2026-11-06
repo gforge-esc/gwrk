@@ -36,7 +36,10 @@ export function normalizeTelegramCommand(rawText: string): string | null {
   const trimmed = rawText.trim();
   if (!trimmed.startsWith("/")) return null;
 
-  const withoutBotHandle = trimmed.replace(/^\/([a-zA-Z0-9_]+)@[a-zA-Z0-9_]+/, "/$1");
+  const withoutBotHandle = trimmed.replace(
+    /^\/([a-zA-Z0-9_]+)@[a-zA-Z0-9_]+/,
+    "/$1",
+  );
   if (withoutBotHandle === "/gwrk" || withoutBotHandle.startsWith("/gwrk ")) {
     return withoutBotHandle.slice(5).trim() || "help";
   }

@@ -8,7 +8,7 @@
 
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { resolveProjectId } from "../utils/project-id.js";
+import { resolveProjectId } from "../domain/project-id.js";
 import { getDb } from "./index.js";
 
 export interface RunRecord {
@@ -36,44 +36,43 @@ export interface RunRecord {
   pr_url?: string;
   status?: string;
   merge_commit_sha?: string;
+  device_id?: string;
+  hostname?: string;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
+}
+
+export interface RunTelemetrySummary {
+  tokensIn: number;
+  tokensOut: number;
+  totalTokens: number;
+  costUsd: number;
+  devices: string[];
 }
 
 /**
  * Start a new run record. Returns the run ID.
  */
-export function startRun(
-  run: Pick<
-    RunRecord,
-    | "feature_id"
-    | "phase_id"
-    | "command"
-    | "agent_backend"
-    | "workflow"
-    | "project_id"
-  >,
-  db?: Database.Database,
-): number {
-  const conn = db ?? getDb();
-  // Auto-resolve a stable project_id from cwd if not provided. Uses the shared
-  // resolver (git-remote/worktree aware) so runs recorded from a worktree
-  // correlate with the same project as the primary checkout.
-  let projectId = run.project_id ?? resolveProjectId(process.cwd());
+function ensureProjectRow(
+  conn: Database.Database,
+  requestedProjectId?: string | null,
+): string | null {
+  const projectId = requestedProjectId ?? resolveProjectId(process.cwd());
+  if (!projectId) return null;
 
-  // Ensure a projects row exists for this run's project_id to satisfy the FK.
-  //
-  // projects.path is UNIQUE, so if a row already exists for this cwd under a
-  // DIFFERENT id (e.g. the repo's `origin` remote changed, which changes the
-  // resolved id) a plain INSERT OR IGNORE would be silently skipped and the
-  // runs insert below would fail the FK. Reconcile by path instead: reuse the
-  // existing row's id so history stays correlated and the FK always holds.
-  if (projectId && !run.project_id) {
-    const existing = conn
-      .prepare("SELECT id FROM projects WHERE path = ?")
-      .get(process.cwd()) as { id: string } | undefined;
-    if (existing) projectId = existing.id;
-  }
+  const byId = conn
+    .prepare("SELECT id FROM projects WHERE id = ?")
+    .get(projectId) as { id: string } | undefined;
+  if (byId) return projectId;
 
-  if (projectId) {
+  const byPath = conn
+    .prepare("SELECT id FROM projects WHERE path = ?")
+    .get(process.cwd()) as { id: string } | undefined;
+  if (byPath) {
+    if (!requestedProjectId) {
+      return byPath.id;
+    }
     conn
       .prepare(
         "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
@@ -81,14 +80,51 @@ export function startRun(
       .run({
         id: projectId,
         name: path.basename(process.cwd()),
-        path: process.cwd(),
+        path: `${process.cwd()}#${projectId}`,
       });
+    return projectId;
   }
+
+  conn
+    .prepare(
+      "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
+    )
+    .run({
+      id: projectId,
+      name: path.basename(process.cwd()),
+      path: process.cwd(),
+    });
+  return projectId;
+}
+
+export function startRun(
+  run: Pick<
+    RunRecord,
+    | "feature_id"
+    | "phase_id"
+    | "command"
+    | "agent_backend"
+    | "model"
+    | "workflow"
+    | "project_id"
+    | "device_id"
+    | "hostname"
+  >,
+  db?: Database.Database,
+): number {
+  const conn = db ?? getDb();
+  const projectId = ensureProjectRow(conn, run.project_id);
 
   const result = conn
     .prepare(
-      `INSERT INTO runs (feature_id, phase_id, project_id, command, agent_backend, workflow)
-       VALUES (@feature_id, @phase_id, @project_id, @command, @agent_backend, @workflow)`,
+      `INSERT INTO runs (
+         feature_id, phase_id, project_id, command, agent_backend,
+         model, workflow, device_id, hostname
+       )
+       VALUES (
+         @feature_id, @phase_id, @project_id, @command, @agent_backend,
+         @model, @workflow, @device_id, @hostname
+       )`,
     )
     .run({
       feature_id: run.feature_id,
@@ -96,7 +132,10 @@ export function startRun(
       project_id: projectId,
       command: run.command,
       agent_backend: run.agent_backend ?? null,
+      model: run.model ?? null,
       workflow: run.workflow ?? null,
+      device_id: run.device_id ?? null,
+      hostname: run.hostname ?? null,
     });
   return Number(result.lastInsertRowid);
 }
@@ -121,6 +160,11 @@ export function finishRun(
       | "files_changed"
       | "lines_added"
       | "lines_deleted"
+      | "device_id"
+      | "hostname"
+      | "tokens_in"
+      | "tokens_out"
+      | "cost_usd"
     >
   >,
   db?: Database.Database,
@@ -140,7 +184,12 @@ export function finishRun(
          pr_url = COALESCE(@pr_url, pr_url),
          files_changed = @files_changed,
          lines_added = @lines_added,
-         lines_deleted = @lines_deleted
+         lines_deleted = @lines_deleted,
+         device_id = COALESCE(@device_id, device_id),
+         hostname = COALESCE(@hostname, hostname),
+         tokens_in = COALESCE(@tokens_in, tokens_in),
+         tokens_out = COALESCE(@tokens_out, tokens_out),
+         cost_usd = COALESCE(@cost_usd, cost_usd)
        WHERE id = @id`,
     )
     .run({
@@ -157,6 +206,11 @@ export function finishRun(
       files_changed: update.files_changed ?? null,
       lines_added: update.lines_added ?? null,
       lines_deleted: update.lines_deleted ?? null,
+      device_id: update.device_id ?? null,
+      hostname: update.hostname ?? null,
+      tokens_in: update.tokens_in ?? null,
+      tokens_out: update.tokens_out ?? null,
+      cost_usd: update.cost_usd ?? null,
     });
 }
 
@@ -165,11 +219,15 @@ export function finishRun(
  */
 export function recordRun(
   run: Omit<RunRecord, "id" | "started_at" | "finished_at"> & {
+    started_at?: string;
     finished_at?: string;
   },
   db?: Database.Database,
 ): number {
   const conn = db ?? getDb();
+  const projectId = run.project_id
+    ? ensureProjectRow(conn, run.project_id)
+    : null;
   const result = conn
     .prepare(
       `INSERT INTO runs (
@@ -178,7 +236,8 @@ export function recordRun(
          gate_result, review_verdict, retry_reason,
          files_changed, lines_added, lines_deleted, log_file,
          pr_number, pr_url, status, merge_commit_sha,
-         finished_at
+         device_id, hostname, tokens_in, tokens_out, cost_usd,
+         started_at, finished_at
        )
        VALUES (
          @feature_id, @phase_id, @project_id, @command, @agent_backend,
@@ -186,13 +245,14 @@ export function recordRun(
          @gate_result, @review_verdict, @retry_reason,
          @files_changed, @lines_added, @lines_deleted, @log_file,
          @pr_number, @pr_url, @status, @merge_commit_sha,
-         COALESCE(@finished_at, datetime('now'))
+         @device_id, @hostname, @tokens_in, @tokens_out, @cost_usd,
+         COALESCE(@started_at, datetime('now')), COALESCE(@finished_at, datetime('now'))
        )`,
     )
     .run({
       feature_id: run.feature_id,
       phase_id: run.phase_id ?? null,
-      project_id: run.project_id ?? null,
+      project_id: projectId,
       command: run.command,
       agent_backend: run.agent_backend ?? null,
       model: run.model ?? null,
@@ -211,9 +271,67 @@ export function recordRun(
       pr_url: run.pr_url ?? null,
       status: run.status ?? null,
       merge_commit_sha: run.merge_commit_sha ?? null,
+      device_id: run.device_id ?? null,
+      hostname: run.hostname ?? null,
+      tokens_in: run.tokens_in ?? null,
+      tokens_out: run.tokens_out ?? null,
+      cost_usd: run.cost_usd ?? null,
+      started_at: run.started_at ?? null,
       finished_at: run.finished_at ?? null,
     });
   return Number(result.lastInsertRowid);
+}
+
+/**
+ * Aggregate token usage, USD cost, and workstation provenance for a feature/phase.
+ */
+export function getFeatureRunTelemetry(
+  featureId: string,
+  projectId: string,
+  phaseId?: string,
+  db?: Database.Database,
+): RunTelemetrySummary {
+  const conn = db ?? getDb();
+  let query =
+    "SELECT tokens_in, tokens_out, cost_usd, device_id, hostname FROM runs WHERE feature_id = ? AND project_id = ?";
+  const args: string[] = [featureId, projectId];
+
+  if (phaseId) {
+    query += " AND phase_id = ?";
+    args.push(phaseId);
+  }
+
+  const rows = conn.prepare(query).all(...args) as Array<{
+    tokens_in: number | null;
+    tokens_out: number | null;
+    cost_usd: number | null;
+    device_id: string | null;
+    hostname: string | null;
+  }>;
+
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let costUsd = 0;
+  const deviceSet = new Set<string>();
+
+  for (const row of rows) {
+    tokensIn += row.tokens_in ?? 0;
+    tokensOut += row.tokens_out ?? 0;
+    costUsd += row.cost_usd ?? 0;
+    if (row.device_id) {
+      deviceSet.add(row.device_id);
+    } else if (row.hostname) {
+      deviceSet.add(row.hostname);
+    }
+  }
+
+  return {
+    tokensIn,
+    tokensOut,
+    totalTokens: tokensIn + tokensOut,
+    costUsd,
+    devices: Array.from(deviceSet).sort(),
+  };
 }
 
 /**

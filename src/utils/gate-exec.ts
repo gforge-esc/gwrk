@@ -5,13 +5,13 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { runGate } from "./gate-runner.js";
-import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
 import {
   hasRecognizedTestSummary,
   isIntegrationTestCommand,
   parseTestOutput,
 } from "../engine/test-runner.js";
+import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
+import { runGate } from "./gate-runner.js";
 
 /**
  * 026 — the ONE gate execution port. Every driver (`gwrk gate`, ship pre-flight /
@@ -119,7 +119,12 @@ export async function runTaskGate(
       gatePath: label,
     };
   }
-  return runInlineGate(gateScript, cwd, opts.timeoutMs ?? GATE_TIMEOUT_MS, label);
+  return runInlineGate(
+    gateScript,
+    cwd,
+    opts.timeoutMs ?? GATE_TIMEOUT_MS,
+    label,
+  );
 }
 
 /**
@@ -180,7 +185,8 @@ export function runInlineGate(
       stdout?: Buffer | string;
       stderr?: Buffer | string;
     };
-    const output = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+    const output =
+      `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
     const exitCode = typeof e.status === "number" ? e.status : 1;
     return {
       passed: false,

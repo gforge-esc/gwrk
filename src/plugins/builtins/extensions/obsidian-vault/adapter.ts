@@ -6,13 +6,17 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ContextProvider, ContextResult } from "../../../context-provider.js";
+import type {
+  ContextProvider,
+  ContextResult,
+} from "../../../context-provider.js";
 
 const IGNORED_DIRS = new Set([".obsidian", ".trash", ".git", "node_modules"]);
 const MAX_NOTE_CHARS = 4000;
 
 function resolveVaultDirectory(config: Record<string, unknown>): string | null {
-  const rawVaultPath = typeof config.vaultPath === "string" ? config.vaultPath.trim() : "";
+  const rawVaultPath =
+    typeof config.vaultPath === "string" ? config.vaultPath.trim() : "";
   if (rawVaultPath) {
     return rawVaultPath;
   }
@@ -36,7 +40,10 @@ function resolveVaultDirectory(config: Record<string, unknown>): string | null {
         vaults?: Record<string, { path?: string }>;
       };
       for (const entry of Object.values(parsed.vaults ?? {})) {
-        if (entry?.path && path.basename(entry.path).toLowerCase() === vaultName.toLowerCase()) {
+        if (
+          entry?.path &&
+          path.basename(entry.path).toLowerCase() === vaultName.toLowerCase()
+        ) {
           if (fs.existsSync(entry.path)) {
             return entry.path;
           }
@@ -76,7 +83,10 @@ function resolveVaultDirectory(config: Record<string, unknown>): string | null {
   return null;
 }
 
-async function collectMarkdownFiles(dir: string, acc: string[] = []): Promise<string[]> {
+async function collectMarkdownFiles(
+  dir: string,
+  acc: string[] = [],
+): Promise<string[]> {
   let entries: fs.Dirent[];
   try {
     entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -166,7 +176,10 @@ export class ObsidianAdapter implements ContextProvider {
         if (matched === 0) {
           continue;
         }
-        relevance = Math.min(1.0, Number((matched / normalizedKeywords.length).toFixed(2)));
+        relevance = Math.min(
+          1.0,
+          Number((matched / normalizedKeywords.length).toFixed(2)),
+        );
       }
 
       const snippet =
@@ -181,7 +194,9 @@ export class ObsidianAdapter implements ContextProvider {
       });
     }
 
-    results.sort((a, b) => b.relevance - a.relevance || a.source.localeCompare(b.source));
+    results.sort(
+      (a, b) => b.relevance - a.relevance || a.source.localeCompare(b.source),
+    );
     return results;
   }
 }

@@ -11,7 +11,11 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { PluginLoader } from "./loader.js";
-import type { ReviewManifest, ReviewStep, WorkflowManifest } from "./manifest.js";
+import type {
+  ReviewManifest,
+  ReviewStep,
+  WorkflowManifest,
+} from "./manifest.js";
 import { WorkflowRuntime } from "./workflow-runtime.js";
 
 /**
@@ -22,7 +26,7 @@ interface ReviewPlugin {
   name: string;
   version: string;
   description: string;
-  projectType: "cli" | "webapp";
+  projectType: ReviewManifest["projectType"];
 
   /**
    * The workflow names (plugins) to use for reviews.

@@ -40,6 +40,64 @@ export function parseTestOutput(output: string): {
     return { testsRun: passed + failed, passed, failed };
   }
 
+  // go test -json NDJSON events: {"Action":"pass","Test":"TestFoo"} / {"Action":"fail","Test":"TestBar"}
+  const jsonLines = output
+    .split("\n")
+    .filter(
+      (l) =>
+        l.trim().startsWith("{") &&
+        l.includes('"Action"') &&
+        l.includes('"Test"'),
+    );
+  if (jsonLines.length > 0) {
+    let passed = 0;
+    let failed = 0;
+    for (const line of jsonLines) {
+      try {
+        const parsed = JSON.parse(line) as { Action?: string; Test?: string };
+        if (parsed.Test && parsed.Action === "pass") passed++;
+        else if (parsed.Test && parsed.Action === "fail") failed++;
+      } catch {
+        // Ignore non-JSON lines
+      }
+    }
+    if (passed > 0 || failed > 0) {
+      return { testsRun: passed + failed, passed, failed };
+    }
+  }
+
+  // go test verbose output: "--- PASS: TestFoo" / "--- FAIL: TestBar" or package "ok  pkg 0.01s"
+  const goPassMatches = output.match(/^\s*---\s*PASS:/gm);
+  const goFailMatches = output.match(/^\s*---\s*FAIL:/gm);
+  if (goPassMatches || goFailMatches) {
+    const passed = goPassMatches ? goPassMatches.length : 0;
+    const failed = goFailMatches ? goFailMatches.length : 0;
+    return { testsRun: passed + failed, passed, failed };
+  }
+  const goPkgOk = output.match(/^ok\s+\S+\s+[\d.]+s/gm);
+  const goPkgFail = output.match(/^FAIL\s+\S+\s+[\d.]+s/gm);
+  if (goPkgOk || goPkgFail) {
+    const passed = goPkgOk ? goPkgOk.length : 0;
+    const failed = goPkgFail ? goPkgFail.length : 0;
+    return { testsRun: passed + failed, passed, failed };
+  }
+
+  // cargo test multi-binary output: "test result: ok. N passed; M failed; ..."
+  const cargoResultLines = output
+    .split("\n")
+    .filter((l) => /^\s*test result:\s+(?:ok|FAILED)\./i.test(l));
+  if (cargoResultLines.length > 0) {
+    let passed = 0;
+    let failed = 0;
+    for (const line of cargoResultLines) {
+      const pMatch = line.match(/(\d+)\s+passed/);
+      const fMatch = line.match(/(\d+)\s+failed/);
+      if (pMatch) passed += Number.parseInt(pMatch[1], 10);
+      if (fMatch) failed += Number.parseInt(fMatch[1], 10);
+    }
+    return { testsRun: passed + failed, passed, failed };
+  }
+
   // vitest/jest print a "Tests" summary line distinct from "Test Files".
   // Prefer it so we count tests, not files. pytest has no such line, so we
   // fall back to scanning the whole output.
@@ -71,7 +129,14 @@ export function hasRecognizedTestSummary(output: string): boolean {
       .some((l) => /^\s*Tests[:\s]/.test(l) && !/Test\s+Files/.test(l))
   )
     return true; // vitest / jest
-  if (/\d+\s+(passed|failed)/.test(output)) return true; // pytest / generic
+  if (/\d+\s+(passed|failed)/.test(output)) return true; // pytest / cargo / generic
+  if (/^\s*---\s*(PASS|FAIL):/m.test(output)) return true; // go test -v
+  if (/^(?:ok|FAIL)\s+\S+\s+[\d.]+s/m.test(output)) return true; // go test package summary
+  if (
+    /"Action"\s*:\s*"(?:pass|fail)"/.test(output) &&
+    /"Test"\s*:/.test(output)
+  )
+    return true; // go test -json
   return false;
 }
 
@@ -87,6 +152,7 @@ export function isIntegrationTestCommand(cmd: string): boolean {
     /\bmake\s+[\w:-]*test/, // make test, make test:auth, make integration-test
     /\bpytest\b/,
     /\bgo\s+test\b/,
+    /\bcargo\s+test\b/,
     /\bnode\s+--test\b/,
     /\bvitest\b/,
     /\bjest\b/,
@@ -122,13 +188,26 @@ export async function runTests(
   let output: string;
   let exitCode = 0;
   try {
-    output = execSync(command, { cwd, stdio: "pipe", timeout: 300_000 }).toString();
+    output = execSync(command, {
+      cwd,
+      stdio: "pipe",
+      timeout: 300_000,
+    }).toString();
   } catch (err: unknown) {
     const e = err as { stdout?: Buffer; stderr?: Buffer; status?: number };
-    output = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+    output =
+      `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
     exitCode = e.status ?? 1;
   }
 
   const { testsRun, passed, failed } = parseTestOutput(output);
-  return { testsRun, passed, failed, ran: testsRun > 0, exitCode, command, output };
+  return {
+    testsRun,
+    passed,
+    failed,
+    ran: testsRun > 0,
+    exitCode,
+    command,
+    output,
+  };
 }

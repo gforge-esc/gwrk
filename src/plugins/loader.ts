@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
+import { loadManifestFromSkillMarkdown } from "../utils/manifest-loader.js";
 import { type AnyManifest, AnyManifestSchema } from "./manifest.js";
 
 export class PluginNotFoundError extends Error {
@@ -51,7 +52,7 @@ export interface PluginSummary {
   status: "active" | "disabled";
 }
 
-interface LoadedPlugin<T = AnyManifest> {
+export interface LoadedPlugin<T = AnyManifest> {
   manifest: T;
   path: string;
   status: "active" | "disabled";
@@ -68,17 +69,112 @@ export class PluginLoader {
   }
 
   private async loadLocalConfig(): Promise<{
+    inherits?: boolean;
+    entries?: string[];
     disable?: string[];
     override?: Record<string, string>;
+    plugins?: Record<string, { enabled?: boolean }>;
+    fromJson?: boolean;
   }> {
     if (!this.projectDir) return {};
-    const configPath = path.join(this.projectDir, ".gwrk", "plugins.yaml");
+    const yamlPath = path.join(this.projectDir, ".gwrk", "plugins.yaml");
+    const jsonPath = path.join(this.projectDir, ".gwrk", "plugins.json");
+    let yamlCfg: {
+      disable?: string[];
+      override?: Record<string, string>;
+      plugins?: Record<string, { enabled?: boolean }>;
+    } = {};
+    try {
+      const content = await fs.readFile(yamlPath, "utf-8");
+      yamlCfg = parse(content) || {};
+    } catch {
+      // Optional
+    }
+    try {
+      const jsonContent = await fs.readFile(jsonPath, "utf-8");
+      const jsonCfg = JSON.parse(jsonContent) || {};
+      return {
+        inherits: jsonCfg.inherits,
+        entries: Array.isArray(jsonCfg.entries) ? jsonCfg.entries : undefined,
+        disable: [...(yamlCfg.disable || []), ...(jsonCfg.disable || [])],
+        override: { ...(yamlCfg.override || {}), ...(jsonCfg.override || {}) },
+        plugins: { ...(yamlCfg.plugins || {}), ...(jsonCfg.plugins || {}) },
+        fromJson: true,
+      };
+    } catch {
+      return yamlCfg;
+    }
+  }
+
+  private async loadGlobalConfig(): Promise<{
+    plugins?: Record<string, { enabled?: boolean }>;
+  }> {
+    const configPath = path.join(os.homedir(), ".gwrk", "config.json");
     try {
       const content = await fs.readFile(configPath, "utf-8");
-      return parse(content) || {};
+      return JSON.parse(content) || {};
     } catch {
       return {};
     }
+  }
+
+  private evaluateDisabledStatus(
+    manifest: AnyManifest,
+    typeFolder: string,
+    localConfig: {
+      disable?: string[];
+      plugins?: Record<string, { enabled?: boolean }>;
+      fromJson?: boolean;
+    },
+    globalConfig: {
+      plugins?: Record<string, { enabled?: boolean }>;
+    },
+    isResolveContext = false,
+  ): boolean {
+    const fullName = `${typeFolder}/${manifest.name}`;
+    const altFullName = `${manifest.type}s/${manifest.name}`;
+
+    // 1. Explicit project-level plugins.<name>.enabled (AGY style)
+    const projEntry =
+      localConfig.plugins?.[manifest.name] ??
+      localConfig.plugins?.[fullName] ??
+      localConfig.plugins?.[altFullName];
+    if (typeof projEntry?.enabled === "boolean") {
+      return !projEntry.enabled;
+    }
+
+    // 2. Project disable list
+    const disabledSet = new Set(localConfig.disable || []);
+    if (
+      disabledSet.has(fullName) ||
+      disabledSet.has(manifest.name) ||
+      disabledSet.has(altFullName)
+    ) {
+      if (
+        isResolveContext &&
+        !localConfig.fromJson &&
+        (typeFolder === "skills" || typeFolder === "agents")
+      ) {
+        return false;
+      }
+      return true;
+    }
+
+    // 3. Global ~/.gwrk/config.json plugins.<name>.enabled
+    const globalEntry =
+      globalConfig.plugins?.[manifest.name] ??
+      globalConfig.plugins?.[fullName] ??
+      globalConfig.plugins?.[altFullName];
+    if (typeof globalEntry?.enabled === "boolean") {
+      return !globalEntry.enabled;
+    }
+
+    // 4. Manifest default (disabled: true in manifest.yaml)
+    if (manifest.disabled === true) {
+      return true;
+    }
+
+    return false;
   }
 
   // T002-gate compatibility alias
@@ -93,7 +189,7 @@ export class PluginLoader {
 
   async listPlugins(options: ListOptions = {}): Promise<PluginSummary[]> {
     const config = await this.loadLocalConfig();
-    const disabledSet = new Set(config.disable || []);
+    const globalConfig = await this.loadGlobalConfig();
     const plugins: PluginSummary[] = [];
 
     const types = [
@@ -107,6 +203,7 @@ export class PluginLoader {
     ];
 
     const visitedPaths = new Set<string>();
+    const visitedNames = new Set<string>();
 
     const scanDir = async (base: string) => {
       for (const typeFolder of types) {
@@ -119,11 +216,17 @@ export class PluginLoader {
             try {
               const manifest = await this.loadManifest(pluginPath);
               visitedPaths.add(pluginPath);
-              const fullName = `${typeFolder}/${manifest.name}`;
-              const isDisabled =
-                disabledSet.has(fullName) ||
-                disabledSet.has(manifest.name) ||
-                disabledSet.has(`${manifest.type}s/${manifest.name}`);
+              if (visitedNames.has(`${manifest.type}:${manifest.name}`))
+                continue;
+              visitedNames.add(`${manifest.type}:${manifest.name}`);
+
+              const isDisabled = this.evaluateDisabledStatus(
+                manifest,
+                typeFolder,
+                config,
+                globalConfig,
+                false,
+              );
 
               if (options.activeOnly && isDisabled) continue;
               if (!options.includeDisabled && isDisabled && !options.activeOnly)
@@ -176,8 +279,21 @@ export class PluginLoader {
       await scanDir(projectPluginBase);
     }
 
-    // Scan user global dir first (to allow overrides)
-    await scanDir(this.globalDir);
+    // Scan .gwrk/plugins.json entries directories (AGY style)
+    if (config.entries && config.entries.length > 0) {
+      for (const entryDir of config.entries) {
+        const resolvedEntry =
+          this.projectDir && !path.isAbsolute(entryDir)
+            ? path.resolve(this.projectDir, entryDir)
+            : entryDir;
+        await scanDir(resolvedEntry);
+      }
+    }
+
+    // Scan user global dir (unless inherits === false in .gwrk/plugins.json)
+    if (config.inherits !== false) {
+      await scanDir(this.globalDir);
+    }
 
     // Scan built-ins
     // @ts-ignore
@@ -189,16 +305,9 @@ export class PluginLoader {
 
   async resolvePlugin(name: string): Promise<LoadedPlugin> {
     const config = await this.loadLocalConfig();
+    const globalConfig = await this.loadGlobalConfig();
 
-    // 1. Check local disable
-    const disabledSet = new Set(config.disable || []);
-    // We check name as is, or prefixed with type if we can find it.
-    // But since we don't know the type yet, we might need to check if it's in the disable list.
-    // The test TC-009 says disable: [domains/writing].
-    // If name is 'writing', should it be disabled?
-    // Let's check all type folders for 'name' and see if any are disabled.
-
-    // 2. Check local override
+    // 1. Check local override
     if (config.override?.[name]) {
       const overridePath = config.override[name];
       const manifest = await this.loadManifest(overridePath);
@@ -220,72 +329,71 @@ export class PluginLoader {
     ];
     const visitedPaths = new Set<string>();
 
-    // 3. Scan project-local .gwrk/plugins/ directory (FR-L25-006)
-    if (this.projectDir) {
-      const projectPluginBase = path.join(this.projectDir, ".gwrk", "plugins");
+    const tryResolveFromBase = async (
+      base: string,
+      checkDisabled: boolean,
+    ): Promise<LoadedPlugin | null> => {
       for (const type of types) {
-        const pluginPath = path.join(projectPluginBase, type, name);
+        const pluginPath = path.join(base, type, name);
+        if (visitedPaths.has(pluginPath)) continue;
         try {
           const manifest = await this.loadManifest(pluginPath);
           visitedPaths.add(pluginPath);
+          if (
+            checkDisabled &&
+            this.evaluateDisabledStatus(
+              manifest,
+              type,
+              config,
+              globalConfig,
+              true,
+            )
+          ) {
+            throw new PluginDisabledError(name);
+          }
           return {
             manifest,
             path: pluginPath,
             status: "active",
           };
-        } catch {
+        } catch (e) {
+          if (e instanceof PluginDisabledError) throw e;
           // Continue to next type
         }
       }
+      return null;
+    };
+
+    // 2. Scan project-local .gwrk/plugins/ directory (FR-L25-006)
+    if (this.projectDir) {
+      const projectPluginBase = path.join(this.projectDir, ".gwrk", "plugins");
+      const found = await tryResolveFromBase(projectPluginBase, true);
+      if (found) return found;
     }
 
-    // 4. Scan global directory
-    for (const type of types) {
-      const pluginPath = path.join(this.globalDir, type, name);
-      try {
-        const manifest = await this.loadManifest(pluginPath);
-        visitedPaths.add(pluginPath);
-        const fullName = `${type}/${name}`;
-        if (
-          disabledSet.has(fullName) ||
-          disabledSet.has(name) ||
-          disabledSet.has(`${type}s/${name}`)
-        ) {
-          // Check if it's a global-only type that cannot be disabled
-          if (type === "skills" || type === "agents") {
-            // Ignore disable for these types (FR-005)
-          } else {
-            throw new PluginDisabledError(name);
-          }
-        }
-        return {
-          manifest,
-          path: pluginPath,
-          status: "active",
-        };
-      } catch (e) {
-        if (e instanceof PluginDisabledError) throw e;
-        // Continue to next type
+    // 3. Scan .gwrk/plugins.json entries directories
+    if (config.entries && config.entries.length > 0) {
+      for (const entryDir of config.entries) {
+        const resolvedEntry =
+          this.projectDir && !path.isAbsolute(entryDir)
+            ? path.resolve(this.projectDir, entryDir)
+            : entryDir;
+        const found = await tryResolveFromBase(resolvedEntry, true);
+        if (found) return found;
       }
+    }
+
+    // 4. Scan global directory (unless inherits === false)
+    if (config.inherits !== false) {
+      const found = await tryResolveFromBase(this.globalDir, true);
+      if (found) return found;
     }
 
     // 5. Built-ins
     // @ts-ignore - import.meta.dirname exists in Node 20.11+
     const builtInBase = path.join(import.meta.dirname, "builtins");
-    for (const type of types) {
-      const pluginPath = path.join(builtInBase, type, name);
-      if (visitedPaths.has(pluginPath)) continue;
-      try {
-        const manifest = await this.loadManifest(pluginPath);
-        return {
-          manifest,
-          path: pluginPath,
-          status: "active",
-        };
-      } catch (e) {
-        // Continue
-      }
-    }
+    const foundBuiltIn = await tryResolveFromBase(builtInBase, true);
+    if (foundBuiltIn) return foundBuiltIn;
 
     // 6. Not found
     throw new PluginNotFoundError(name);
@@ -310,6 +418,8 @@ export class PluginLoader {
         e instanceof PluginDisabledError
       )
         throw e;
+      const fromSkillMd = await loadManifestFromSkillMarkdown(pluginDir);
+      if (fromSkillMd) return fromSkillMd;
       throw new Error(`Could not load manifest from ${manifestPath}`);
     }
   }

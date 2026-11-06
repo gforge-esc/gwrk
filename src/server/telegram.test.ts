@@ -54,8 +54,10 @@ describe("Telegram Control Plane & Notifications", () => {
   });
 
   afterEach(() => {
+    // biome-ignore lint/performance/noDelete: env cleanup in test
     if (oldToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
     else process.env.TELEGRAM_BOT_TOKEN = oldToken;
+    // biome-ignore lint/performance/noDelete: env cleanup in test
     if (oldChat === undefined) delete process.env.TELEGRAM_CHAT_ID;
     else process.env.TELEGRAM_CHAT_ID = oldChat;
   });
@@ -70,7 +72,9 @@ describe("Telegram Control Plane & Notifications", () => {
 
   it("normalizes /gwrk and direct slash commands for Telegram", () => {
     expect(normalizeTelegramCommand("/gwrk status")).toBe("status");
-    expect(normalizeTelegramCommand("/gwrk@my_bot adr check")).toBe("adr check");
+    expect(normalizeTelegramCommand("/gwrk@my_bot adr check")).toBe(
+      "adr check",
+    );
     expect(normalizeTelegramCommand("/research cold-start")).toBe(
       "research cold-start",
     );
@@ -100,7 +104,9 @@ describe("Telegram Control Plane & Notifications", () => {
     expect(statusReply).toContain("*System Resources:* CPU 12.5%, MEM 34.0%");
 
     const adrReply = await handleTelegramCommand("/adr check", context);
-    expect(adrReply).toContain("All ADR citations and decision index verified.");
+    expect(adrReply).toContain(
+      "All ADR citations and decision index verified.",
+    );
   });
 
   it("posts notifications to Telegram Bot API via fetch", async () => {

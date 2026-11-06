@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Command } from "commander";
+import { isPidRunning, readPid } from "../server/pid.js";
 import { loadDevice } from "../utils/device.js";
-import { readPid, isPidRunning } from "../server/pid.js";
-import { withSignal, CommandError } from "../utils/signal.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 export const deviceCommand = new Command("device")
   .description("Show device identity and role")

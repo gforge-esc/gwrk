@@ -5,7 +5,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { IssueRecord } from "../db/issues.js";
-import { notifySlack } from "../server/slack-notify.js";
+import {
+  type NotificationPort,
+  getNotificationPort,
+} from "../ports/notification-port.js";
 
 export function associateIssueWithFeature(issue: {
   title: string;
@@ -51,22 +54,33 @@ export function associateIssueWithFeature(issue: {
   return undefined;
 }
 
-export async function notifyIssueOpened(issue: IssueRecord): Promise<void> {
+export async function notifyIssueOpened(
+  issue: IssueRecord,
+  notifier?: NotificationPort,
+): Promise<void> {
   const link = issue.html_url ? ` (<${issue.html_url}|view on GitHub>)` : "";
   const text = `📌 Issue #${issue.issue_number} opened for *${issue.feature_id}*: ${issue.title}${link}`;
+  const blocks = [
+    {
+      type: "section" as const,
+      text: {
+        type: "mrkdwn" as const,
+        text,
+      },
+    },
+  ];
 
+  const port = notifier ?? getNotificationPort();
+  if (port) {
+    await port.notify({ text, blocks });
+    return;
+  }
+
+  const { notifySlack } = await import("../server/slack-notify.js");
   await notifySlack(
     {
       text,
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text,
-          },
-        },
-      ],
+      blocks,
     },
     undefined,
     {},

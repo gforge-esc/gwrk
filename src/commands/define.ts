@@ -31,11 +31,11 @@ import { testsGenerateCommand } from "./tests-generate.js";
 
 import { defineOntologyCommand } from "./define-ontology.js";
 
+import { withParentFlags } from "../utils/command-flags.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
-import { resolveAgent } from "../utils/resolve-agent.js";
-import { withParentFlags } from "../utils/command-flags.js";
 
 /**
  * gwrk define — The Definition Pillar (Clarity)
@@ -91,12 +91,14 @@ Examples:
         // exit_code). `runs` is what harvest correlates against and what
         // getShippedPhases reads, so a row for work that never happened is
         // false evidence. -1 is the same sentinel a failed ledger write uses.
-        const runId = opts.dryRun ? -1 : startRun({
-          feature_id: feature,
-          command: "define",
-          agent_backend: backend,
-          workflow: "define-orchestrator",
-        });
+        const runId = opts.dryRun
+          ? -1
+          : startRun({
+              feature_id: feature,
+              command: "define",
+              agent_backend: backend,
+              workflow: "define-orchestrator",
+            });
 
         banner("define", {
           Feature: feature,
@@ -124,6 +126,10 @@ Examples:
           });
 
           exitCode = await orchestrator.run();
+
+          if (opts.dryRun) {
+            return;
+          }
 
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: exitCode, duration_s: durationS });

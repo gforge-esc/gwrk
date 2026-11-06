@@ -18,7 +18,7 @@
           "description": "Modify: Add `/webhook/github` endpoint, verify signature, filter PR events, track phase completion, and call `harvestFeature`",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T04:13:37.781Z",
           "classification": "greenfield"
         },
@@ -28,7 +28,7 @@
           "description": "Modify: Update `harvestFeature` with idempotency guard against duplicate runs",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T04:13:37.802Z",
           "classification": "greenfield"
         },
@@ -38,7 +38,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-05-18T04:13:37.822Z",
           "classification": "noop"
         }
@@ -59,7 +59,7 @@
           "description": "Modify: Implement `finalizeLogs` and `cleanupBranch`",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T04:13:37.837Z",
           "classification": "greenfield"
         },
@@ -69,7 +69,7 @@
           "description": "Modify: Implement `finishRun` to finalize SQLite record with merge commit sha and status",
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-22T13:53:57.417Z",
           "classification": "greenfield"
         },
@@ -79,7 +79,7 @@
           "description": "Modify: No CLI changes needed, keeping within 10 file limit",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T04:13:38.931Z",
           "classification": "greenfield"
         },
@@ -89,7 +89,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-05-18T04:13:38.942Z",
           "classification": "noop"
         }
@@ -111,7 +111,7 @@
           "description": "Modify: Fix test stubs and finalize `computeCompression` logic using `CommitCluster`.",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-31T19:41:49.737Z",
           "classification": "greenfield"
         },
@@ -121,7 +121,7 @@
           "description": "Modify: Expose method to insert a new compression record",
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T04:13:39.858Z",
           "classification": "greenfield"
         },
@@ -131,7 +131,7 @@
           "description": "Modify: Wire in `computeCompression` inside `harvestFeature`.",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-31T19:41:49.754Z",
           "classification": "greenfield"
         },
@@ -141,7 +141,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-05-31T19:33:32.143Z",
           "classification": "noop"
         }
@@ -163,7 +163,7 @@
           "description": "Modify: Wire `notifyDoneDone` to format and post the summary to the `003-slack` module API",
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-06-01T01:47:49.305Z",
           "classification": "greenfield"
         },
@@ -173,7 +173,7 @@
           "description": "Modify: Ensure no slack notification is dispatched directly from the webhook to satisfy FR-H11",
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-22T13:53:59.113Z",
           "classification": "greenfield"
         },
@@ -183,7 +183,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T014-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-06-01T01:47:50.194Z",
           "classification": "noop"
         }
@@ -203,7 +203,7 @@
           "description": "Modify: Add support for GitHub `issues` events opened/closed/labeled and feature association logic",
           "status": "completed",
           "gateScript": "gates/T015-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T04:47:11.631Z",
           "classification": "greenfield"
         },
@@ -213,7 +213,7 @@
           "description": "New: Table for post-ship issues",
           "status": "completed",
           "gateScript": "gates/T016-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "classification": "greenfield"
         },
         {
@@ -222,7 +222,7 @@
           "description": "New: DB access layer for saving/updating issues",
           "status": "completed",
           "gateScript": "gates/T017-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "classification": "greenfield"
         },
         {
@@ -231,7 +231,7 @@
           "description": "New: Logic to format and trigger Slack notifications via `003-slack`",
           "status": "completed",
           "gateScript": "gates/T018-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T04:47:11.640Z",
           "classification": "greenfield"
         },
@@ -241,7 +241,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T019-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-05-18T04:47:11.644Z",
           "classification": "noop"
         }

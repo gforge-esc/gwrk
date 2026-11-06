@@ -49,7 +49,7 @@ Exit codes:
               .filter((d) => fs.statSync(path.join(specsDir, d)).isDirectory())
           : [];
 
-        const statusData: any = {
+        const statusData: Record<string, unknown> = {
           project: {
             name: config.project.name,
             root: projectRoot,

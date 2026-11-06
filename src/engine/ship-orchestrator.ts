@@ -20,20 +20,54 @@ import {
 } from "../plugins/review-plugin.js";
 
 import {
+  buildDiagnosisPrompt,
+  extractFixLines,
+  extractOpenTaskErrors,
+} from "../application/ship/index.js";
+import {
   type TaskDispatch,
   type TaskResult,
   dispatchToAgent,
 } from "../utils/agent.js";
+import { loadDevice } from "../utils/device.js";
+import { extractFilePaths } from "../utils/file-extract.js";
+import {
+  type TaskGateResult,
+  runInlineGate,
+  runTaskGate,
+} from "../utils/gate-exec.js";
+import { getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { runGate } from "../utils/gate-runner.js";
-import { createBranch, getCurrentBranch, isDirty, syncBranch } from "../utils/git.js";
-import { assembleDigest } from "../utils/manifest.js";
+import {
+  createBranch,
+  getCurrentBranch,
+  getCurrentCommit,
+  getDiffStats,
+  isDirty,
+  syncBranch,
+} from "../utils/git.js";
+import {
+  assembleDigest,
+  generateRunId,
+  writeManifest,
+} from "../utils/manifest.js";
+import { startProgress } from "../utils/progress.js";
 import {
   type Phase,
   type Task,
   loadTaskState,
   saveTaskState,
 } from "../utils/state.js";
-import { getBuildCommand, getTestCommand, getTestExtension, getSourceExtension } from "../utils/toolchain-mapper.js";
+import {
+  discoverTestsForSources,
+  listTestsTree,
+} from "../utils/test-discovery.js";
+import {
+  getBuildCommand,
+  getSourceExtension,
+  getTestCommand,
+  getTestExtension,
+} from "../utils/toolchain-mapper.js";
 import { appendFinding, findingsPath } from "./findings-ledger.js";
 import { detectProfile } from "./profile-detector.js";
 import { conditionPrompt } from "./prompt-conditioner.js";
@@ -41,16 +75,11 @@ import { parseReturnedVerdict } from "./returned-verdict.js";
 import {
   type ShipRunConfig,
   ShipStage,
-  type ShipState,
   type ShipStageResult,
+  type ShipState,
 } from "./ship-types.js";
 import { activatePhaseTests } from "./test-activator.js";
-import { getPhaseVerificationGate } from "../utils/gate-quality.js";
-import { runTaskGate, runInlineGate, type TaskGateResult } from "../utils/gate-exec.js";
 import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
-import { extractFilePaths } from "../utils/file-extract.js";
-import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
-import { startProgress } from "../utils/progress.js";
 
 /**
  * Start the progress indicator shared by both spinner wrappers. Animates on a
@@ -273,23 +302,10 @@ const ABSENCE_POLL_MS = 15_000;
  * scans stdout for a line prefix sees nothing at all under stream-json, so
  * unwrap first and fall back to the raw text.
  */
+import { unwrapStreamJson } from "../ports/agent-port.js";
+
 function agentAnswerText(stdout: string): string {
-  let answer: string | undefined;
-
-  for (const line of stdout.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) continue;
-    try {
-      const event = JSON.parse(trimmed) as { type?: string; result?: unknown };
-      if (event.type === "result" && typeof event.result === "string") {
-        answer = event.result;
-      }
-    } catch {
-      // A partial or non-JSON line is not an event. Keep scanning.
-    }
-  }
-
-  return answer ?? stdout;
+  return unwrapStreamJson(stdout).text;
 }
 
 /** `phase-04` → `4`. */
@@ -302,7 +318,9 @@ function phaseNumOf(phaseId: string): string {
  * `Phases 1, 3, 4` when a merge or a skip broke the run.
  */
 function prPhaseLabel(phases: PrPhaseRecord[]): string {
-  const nums = phases.map((p) => Number(phaseNumOf(p.id))).sort((a, b) => a - b);
+  const nums = phases
+    .map((p) => Number(phaseNumOf(p.id)))
+    .sort((a, b) => a - b);
   if (nums.length === 1) return `Phase ${nums[0]}`;
   const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
   return contiguous
@@ -331,9 +349,7 @@ function inferSpanFromBody(body: string): PrPhaseRecord[] {
       .map((n) => ({ id: `phase-${n.padStart(2, "0")}` }));
   }
   const single = body.match(/Phase\s+(\d+)/);
-  return single
-    ? [{ id: `phase-${single[1].padStart(2, "0")}` }]
-    : [];
+  return single ? [{ id: `phase-${single[1].padStart(2, "0")}` }] : [];
 }
 
 export class ShipOrchestrator extends EventEmitter {
@@ -394,6 +410,7 @@ export class ShipOrchestrator extends EventEmitter {
     stage: ShipStage;
     gateResult?: "PASS" | "FAIL";
     reviewVerdict?: "GO" | "NO-GO";
+    usage?: ShipState["usage"];
   } {
     return {
       prNumber: this.state.prNumber,
@@ -401,6 +418,7 @@ export class ShipOrchestrator extends EventEmitter {
       stage: this.state.stage,
       gateResult: this.state.gateResult,
       reviewVerdict: this.state.reviewVerdict,
+      usage: this.state.usage,
     };
   }
 
@@ -428,11 +446,18 @@ export class ShipOrchestrator extends EventEmitter {
       const branchName = this.branchName();
       const currentBranch = getCurrentBranch(this.config.cwd);
       if (currentBranch !== branchName) {
-        console.log(`  ⚠ Resuming from state but currently on ${currentBranch}. Checking out ${branchName}...`);
+        console.log(
+          `  ⚠ Resuming from state but currently on ${currentBranch}. Checking out ${branchName}...`,
+        );
         try {
-          execSync(`git checkout ${branchName}`, { cwd: this.config.cwd, stdio: "ignore" });
+          execSync(`git checkout ${branchName}`, {
+            cwd: this.config.cwd,
+            stdio: "ignore",
+          });
         } catch (err: unknown) {
-          console.error(`  ✗ Failed to checkout ${branchName}. Please checkout manually and retry.`);
+          console.error(
+            `  ✗ Failed to checkout ${branchName}. Please checkout manually and retry.`,
+          );
           return 1;
         }
       }
@@ -521,13 +546,13 @@ export class ShipOrchestrator extends EventEmitter {
       this.emit("plan:ship:complete", eventData);
       this.emit("ship:complete", eventData);
 
-
-
       // State file exists for crash recovery during a run. Once complete,
       // it's stale — delete it so the next invocation starts fresh.
       try {
         fs.unlinkSync(this.getStatePath());
-      } catch { /* already gone */ }
+      } catch {
+        /* already gone */
+      }
 
       return 0;
     }
@@ -710,9 +735,7 @@ export class ShipOrchestrator extends EventEmitter {
       // another machine's push. A missing remote branch is the normal
       // first-ship case, so a failure here is not fatal.
       try {
-        git(
-          `git fetch origin +refs/heads/${branchName}:${remoteRef} --quiet`,
-        );
+        git(`git fetch origin +refs/heads/${branchName}:${remoteRef} --quiet`);
       } catch {
         /* no such remote branch, or offline — fall through to the check */
       }
@@ -743,13 +766,7 @@ export class ShipOrchestrator extends EventEmitter {
       return {
         success: false,
         exitCode: 1,
-        error:
-          `Branch ${branchName} has diverged from origin/${branchName} ` +
-          `(${ahead} local, ${behind} remote). PR_CI could not push, so the run is stopping ` +
-          "now instead of after the agents have run.\n" +
-          "  Reconcile first, then re-run:\n" +
-          `    git merge origin/${branchName}        # keep both histories\n` +
-          `    git push origin --delete ${branchName} # or discard the stale remote branch`,
+        error: `Branch ${branchName} has diverged from origin/${branchName} (${ahead} local, ${behind} remote). PR_CI could not push, so the run is stopping now instead of after the agents have run.\n  Reconcile first, then re-run:\n    git merge origin/${branchName}        # keep both histories\n    git push origin --delete ${branchName} # or discard the stale remote branch`,
       };
     } catch (err: unknown) {
       // The check itself failing must not block a ship — PR_CI still guards the
@@ -813,7 +830,9 @@ export class ShipOrchestrator extends EventEmitter {
           return { success: true, exitCode: 0 };
         } catch (checkoutErr: unknown) {
           const checkoutMsg =
-            checkoutErr instanceof Error ? checkoutErr.message : String(checkoutErr);
+            checkoutErr instanceof Error
+              ? checkoutErr.message
+              : String(checkoutErr);
           return {
             success: false,
             exitCode: 1,
@@ -851,7 +870,9 @@ export class ShipOrchestrator extends EventEmitter {
     );
 
     if (activated > 0) {
-      console.log(`  ✓ activated ${activated} test file(s): ${files.join(", ")}`);
+      console.log(
+        `  ✓ activated ${activated} test file(s): ${files.join(", ")}`,
+      );
       try {
         execSync(
           `git add ${files.join(" ")} && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore: activate ${this.config.phaseId} tests"`,
@@ -911,7 +932,9 @@ export class ShipOrchestrator extends EventEmitter {
    * in the current phase. If any fail, re-opens the task and returns a
    * failure result. Returns null if all gates pass.
    */
-  private async runPostFlightGates(featureDir: string): Promise<ShipStageResult | null> {
+  private async runPostFlightGates(
+    featureDir: string,
+  ): Promise<ShipStageResult | null> {
     const postFlightState = loadTaskState(featureDir);
     const postFlightPhase = postFlightState.phases.find(
       (p: Phase) => p.id === this.config.phaseId,
@@ -942,9 +965,7 @@ export class ShipOrchestrator extends EventEmitter {
         task.status = "open";
         task.completedAt = undefined;
         reopenedCount++;
-        console.log(
-          `  ✗ post-flight FAIL: ${task.id} — ${gateLabel}`,
-        );
+        console.log(`  ✗ post-flight FAIL: ${task.id} — ${gateLabel}`);
         const failNote = `\n\nPOST-FLIGHT GATE FAIL: ${gateLabel} exited non-zero.\n  OUTPUT: ${gateResult.output.slice(0, 200)}`;
         task.description = (task.description || "") + failNote;
       } else {
@@ -1131,21 +1152,30 @@ export class ShipOrchestrator extends EventEmitter {
       // Capture both streams — tools write build errors to stdout as often as
       // stderr, and an empty capture leaves DIAGNOSE with nothing to work with.
       const e = err as { stdout?: Buffer; stderr?: Buffer };
-      const combined = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+      const combined =
+        `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
       const lastLines =
-        combined.split("\n").slice(-15).join("\n") || "(no build output captured)";
+        combined.split("\n").slice(-15).join("\n") ||
+        "(no build output captured)";
       console.log(`  ✗ build FAILED:\n${lastLines}`);
 
       // Re-open tasks so the retry agent has work to do
-      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
       const taskState = loadTaskState(featureDir);
-      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      const phase = taskState.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
       if (phase) {
         for (const task of phase.tasks) {
           if (task.status === "completed") {
             task.status = "open";
             task.completedAt = undefined;
-            task.description = `${task.description || ""}\n\nBUILD_CHECK FAILED:\n${lastLines}`.trim();
+            task.description =
+              `${task.description || ""}\n\nBUILD_CHECK FAILED:\n${lastLines}`.trim();
           }
         }
         saveTaskState(featureDir, taskState);
@@ -1194,7 +1224,11 @@ export class ShipOrchestrator extends EventEmitter {
             console.log(
               `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId}) — profile runner found 0 tests; verified via the phase gate`,
             );
-            return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
+            return {
+              success: true,
+              exitCode: 0,
+              nextStage: ShipStage.CODE_REVIEW,
+            };
           }
           console.log(
             `  ✗ TEST_GATE: Done-When gate failed for ${this.config.phaseId} ('${gate.offendingLine}')`,
@@ -1236,7 +1270,9 @@ export class ShipOrchestrator extends EventEmitter {
     if (phaseGate) {
       const gate = this.runGateScript(phaseGate);
       if (gate.passed) {
-        console.log(`  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId})`);
+        console.log(
+          `  ✓ TEST_GATE: Done-When gate passed (${this.config.phaseId})`,
+        );
         return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
       }
       console.log(
@@ -1258,23 +1294,34 @@ export class ShipOrchestrator extends EventEmitter {
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
     if (failCount <= baseline) {
-      console.log(`  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`);
+      console.log(
+        `  ✓ tests: ${failCount} failure(s) — baseline was ${baseline}, no regression`,
+      );
       return { success: true, exitCode: 0, nextStage: ShipStage.CODE_REVIEW };
     }
 
     const regressionCount = failCount - baseline;
     const lastLines = output.split("\n").slice(-20).join("\n");
-    console.log(`  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`);
+    console.log(
+      `  ✗ TEST_GATE: ${regressionCount} new failure(s) (${failCount} total, baseline ${baseline}):\n${lastLines}`,
+    );
 
-    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
     if (phase) {
       for (const task of phase.tasks) {
         if (task.status === "completed") {
           task.status = "open";
           task.completedAt = undefined;
-          task.description = `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
+          task.description =
+            `${task.description || ""}\n\nTEST_GATE REGRESSION (${regressionCount} new):\n${lastLines}`.trim();
         }
       }
       saveTaskState(featureDir, taskState);
@@ -1292,9 +1339,15 @@ export class ShipOrchestrator extends EventEmitter {
   private async runIntegrationGate(): Promise<ShipStageResult | null> {
     let doneWhen: string[] = [];
     try {
-      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
       const taskState = loadTaskState(featureDir);
-      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      const phase = taskState.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
       doneWhen = phase?.doneWhen ?? [];
     } catch {
       return null;
@@ -1313,7 +1366,8 @@ export class ShipOrchestrator extends EventEmitter {
         }).toString();
       } catch (err: unknown) {
         const e = err as { stdout?: Buffer; stderr?: Buffer };
-        output = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+        output =
+          `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
       }
       const { testsRun, passed, failed } = parseTestOutput(output);
       if (testsRun === 0) {
@@ -1328,7 +1382,9 @@ export class ShipOrchestrator extends EventEmitter {
         );
         return this.handleNoGo("TEST_GATE");
       }
-      console.log(`  ✓ integration: ${cmd} — ${passed} passed (${testsRun} ran)`);
+      console.log(
+        `  ✓ integration: ${cmd} — ${passed} passed (${testsRun} ran)`,
+      );
     }
     return null;
   }
@@ -1339,9 +1395,15 @@ export class ShipOrchestrator extends EventEmitter {
    * to prose-bullet phase.doneWhen. Null on any load failure. */
   private getPhaseGate(): string | null {
     try {
-      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
       const taskState = loadTaskState(featureDir);
-      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      const phase = taskState.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
       return phase ? getPhaseVerificationGate(phase) : null;
     } catch {
       return null;
@@ -1374,9 +1436,13 @@ export class ShipOrchestrator extends EventEmitter {
    *  When phaseTestFiles are available, runs only those files instead of
    *  the full suite. This prevents cross-phase RED test contamination.
    */
-  private async runTestSuite(
-    phaseTestFiles?: string[],
-  ): Promise<{ failCount: number; testsRun: number; passed: number; output: string; skipped?: boolean }> {
+  private async runTestSuite(phaseTestFiles?: string[]): Promise<{
+    failCount: number;
+    testsRun: number;
+    passed: number;
+    output: string;
+    skipped?: boolean;
+  }> {
     const profile = await detectProfile(this.config.cwd);
 
     // Resolve the profile's test command. `null` = project declares no test
@@ -1387,7 +1453,13 @@ export class ShipOrchestrator extends EventEmitter {
       ? getTestCommand(profile, phaseTestFiles)
       : getTestCommand(profile, []);
     if (resolved === null) {
-      return { failCount: 0, testsRun: 0, passed: 0, output: "(no test toolchain — skipped)", skipped: true };
+      return {
+        failCount: 0,
+        testsRun: 0,
+        passed: 0,
+        output: "(no test toolchain — skipped)",
+        skipped: true,
+      };
     }
     let command = resolved;
     if (!scoped) {
@@ -1404,8 +1476,10 @@ export class ShipOrchestrator extends EventEmitter {
         timeout: 120_000,
       }).toString();
     } catch (err: unknown) {
-      const stdout = (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
-      const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const stdout =
+        (err as { stdout?: Buffer })?.stdout?.toString().trim() || "";
+      const stderr =
+        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
       output = `${stdout}\n${stderr}`.trim();
     }
     const { testsRun, passed, failed } = parseTestOutput(output);
@@ -1423,9 +1497,15 @@ export class ShipOrchestrator extends EventEmitter {
       const testExt = getTestExtension(profile);
       const sourceExt = getSourceExtension(profile);
 
-      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
       const taskState = loadTaskState(featureDir);
-      const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+      const phase = taskState.phases.find(
+        (p: Phase) => p.id === this.config.phaseId,
+      );
       if (!phase) return [];
 
       const mentionedTests: string[] = [];
@@ -1436,7 +1516,11 @@ export class ShipOrchestrator extends EventEmitter {
         for (const filePath of extractFilePaths(text)) {
           if (filePath.endsWith(testExt)) {
             mentionedTests.push(filePath);
-          } else if (filePath.endsWith(sourceExt) || filePath.endsWith(".js") || filePath.endsWith(".ts")) {
+          } else if (
+            filePath.endsWith(sourceExt) ||
+            filePath.endsWith(".js") ||
+            filePath.endsWith(".ts")
+          ) {
             sourceFiles.push(filePath);
           }
         }
@@ -1649,9 +1733,7 @@ export class ShipOrchestrator extends EventEmitter {
       const before = beforeState.phases.find(
         (p: Phase) => p.id === this.config.phaseId,
       );
-      const now = after.phases.find(
-        (p: Phase) => p.id === this.config.phaseId,
-      );
+      const now = after.phases.find((p: Phase) => p.id === this.config.phaseId);
       if (!before || !now) return noReviewFindings();
 
       const wasById = new Map<string, Task>(
@@ -1836,7 +1918,8 @@ export class ShipOrchestrator extends EventEmitter {
           // reproduced a defect on (ADR-007, one-way).
           task.status = "open";
           task.completedAt = undefined;
-          task.description = `${task.description || ""}\n\nREVIEW/GATE DIVERGENCE (${task.id}, gate: ${task.gateScript}, ${mechanism}):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.`.trim();
+          task.description =
+            `${task.description || ""}\n\nREVIEW/GATE DIVERGENCE (${task.id}, gate: ${task.gateScript}, ${mechanism}):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.`.trim();
         } else if (task.status !== "completed") {
           task.status = "completed";
           task.completedAt = new Date().toISOString();
@@ -1849,7 +1932,8 @@ export class ShipOrchestrator extends EventEmitter {
         task.completedAt = undefined;
         // Inject gate output so DIAGNOSE can analyze the failure
         const gateSnippet = gateResult.output.slice(0, 500);
-        task.description = `${task.description || ""}\n\nPOST-FLIGHT GATE FAIL (${task.id}, gate: ${task.gateScript}):\nexit: ${gateResult.exitCode}\n${gateSnippet}`.trim();
+        task.description =
+          `${task.description || ""}\n\nPOST-FLIGHT GATE FAIL (${task.id}, gate: ${task.gateScript}):\nexit: ${gateResult.exitCode}\n${gateSnippet}`.trim();
         failedCount++;
       }
     }
@@ -2122,7 +2206,8 @@ ${marker}`;
    * the vacuous-green class 026/027 exist to close.
    */
   private async waitForChecks(prNumber: string): Promise<void> {
-    const check = (required: boolean) => this.checksWithRetry(prNumber, required);
+    const check = (required: boolean) =>
+      this.checksWithRetry(prNumber, required);
 
     for (let attempt = 1; ; attempt++) {
       try {
@@ -2177,6 +2262,68 @@ ${marker}`;
     console.log("  ▸ PR_CI");
     const branchName = this.state.branchName;
     const specName = this.config.featureId;
+
+    // Write pre-PR execution manifest so the PR commit carries it for remote harvest
+    try {
+      const featureDir = path.join(
+        this.config.cwd,
+        "specs",
+        this.config.featureId,
+      );
+      if (fs.existsSync(featureDir)) {
+        const finishedAt = new Date().toISOString();
+        const durationS = Math.max(
+          0,
+          Math.round(
+            (Date.now() - new Date(this.state.startedAt).getTime()) / 1000,
+          ),
+        );
+        const gitCommit = getCurrentCommit(this.config.cwd);
+        const gitBranch = branchName || getCurrentBranch(this.config.cwd);
+        const diff = getDiffStats(this.config.cwd, `${gitCommit}~1`);
+        const phaseNum = this.config.phaseId
+          .replace("phase-", "")
+          .replace(/^0+/, "");
+        const device = loadDevice();
+
+        writeManifest(featureDir, {
+          runId: generateRunId(
+            this.state.startedAt,
+            "ship",
+            this.config.phaseId,
+          ),
+          feature: this.config.featureId,
+          phase: this.config.phaseId,
+          command: "ship",
+          agent: this.config.backend,
+          model: this.config.selectedModel || "unknown",
+          ...(device?.id ? { deviceId: device.id } : {}),
+          ...(device?.hostname ? { hostname: device.hostname } : {}),
+          ...(this.state.usage ? { usage: this.state.usage } : {}),
+          startedAt: this.state.startedAt,
+          finishedAt,
+          durationS,
+          exitCode: 0,
+          attempt: this.state.iteration,
+          gateResult: this.state.gateResult ?? "PASS",
+          reviewVerdict: this.state.reviewVerdict ?? "GO",
+          filesChanged: diff.filesChanged,
+          linesAdded: diff.linesAdded,
+          linesDeleted: diff.linesDeleted,
+          gitCommit,
+          gitBranch,
+          digest: assembleDigest(
+            path.join(
+              this.config.cwd,
+              ".runs",
+              `${this.config.featureId}_p${phaseNum}.events`,
+            ),
+          ),
+        });
+      }
+    } catch {
+      // Non-fatal: ship.ts post-run fallback also writes manifest
+    }
 
     // ── Git housekeeping: commit any uncommitted changes and push ──
     // Review agents may modify files via native tools without committing.
@@ -2286,7 +2433,9 @@ ${marker}`;
       // Re-shipping a phase updates its record rather than double-listing it.
       carried = carried.filter((p) => p.id !== thisPhase.id);
       carried.push(thisPhase);
-      carried.sort((a, b) => Number(phaseNumOf(a.id)) - Number(phaseNumOf(b.id)));
+      carried.sort(
+        (a, b) => Number(phaseNumOf(a.id)) - Number(phaseNumOf(b.id)),
+      );
 
       const prTitle = `feat(${formattedSpec}): ${prPhaseLabel(carried)}`;
       const prBody = this.buildPrBody(prTitle, carried, taskState);
@@ -2296,11 +2445,13 @@ ${marker}`;
       if (prNumber) {
         // Keep the PR honest about its contents as each phase lands.
         try {
-          withSpinner(`updating PR #${prNumber} → ${prPhaseLabel(carried)}`, () =>
-            execSync(
-              `gh pr edit ${prNumber} --title "${prTitle}" --body-file "${prBodyPath}"`,
-              { cwd: this.config.cwd, encoding: "utf-8" },
-            ),
+          withSpinner(
+            `updating PR #${prNumber} → ${prPhaseLabel(carried)}`,
+            () =>
+              execSync(
+                `gh pr edit ${prNumber} --title "${prTitle}" --body-file "${prBodyPath}"`,
+                { cwd: this.config.cwd, encoding: "utf-8" },
+              ),
           );
         } catch (editErr: unknown) {
           // A stale title is not worth failing a green phase over.
@@ -2361,7 +2512,9 @@ ${marker}`;
             `gh pr view ${prNumber} --json url --jq '.url'`,
             { cwd: this.config.cwd, encoding: "utf-8" },
           ).trim();
-        } catch { /* best-effort URL resolution */ }
+        } catch {
+          /* best-effort URL resolution */
+        }
         console.log(`    PR #${prNumber} ready`);
         // gh pr checks blocks until finished, returning non-zero if failed.
         // If no required checks are configured, treat as pass.
@@ -2531,9 +2684,15 @@ ${marker}`;
    */
   private async stageDiagnose(): Promise<ShipStageResult> {
     console.log("  ▸ DIAGNOSE");
-    const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+    const featureDir = path.join(
+      this.config.cwd,
+      "specs",
+      this.config.featureId,
+    );
     const taskState = loadTaskState(featureDir);
-    const phase = taskState.phases.find((p: Phase) => p.id === this.config.phaseId);
+    const phase = taskState.phases.find(
+      (p: Phase) => p.id === this.config.phaseId,
+    );
 
     if (!phase) {
       // No phase data — skip diagnosis, proceed to implement
@@ -2541,22 +2700,7 @@ ${marker}`;
     }
 
     // Collect error context from open tasks (appended by BUILD_CHECK/TEST_GATE)
-    const errorContext: string[] = [];
-    for (const task of phase.tasks) {
-      if (task.status === "open" && task.description) {
-        // Review findings count as context too. On the review path BUILD_CHECK
-        // and TEST_GATE have both passed — that is the entire point of the
-        // divergence warning — so matching only build/test failures meant
-        // DIAGNOSE printed "no error context" on every review-driven NO-GO and
-        // spent a stage contributing nothing.
-        const errorMatch = task.description.match(
-          /(?:BUILD_CHECK FAILED|TEST_GATE REGRESSION|POST-FLIGHT GATE FAIL|REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL)[\s\S]*$/,
-        );
-        if (errorMatch) {
-          errorContext.push(`Task ${task.id}: ${errorMatch[0]}`);
-        }
-      }
-    }
+    const errorContext = extractOpenTaskErrors(phase.tasks);
 
     if (errorContext.length === 0) {
       console.log("    ⏭ no error context to diagnose");
@@ -2566,55 +2710,24 @@ ${marker}`;
     // Run a fresh build/test to capture current error state
     let currentErrors = "";
     try {
-      execSync("pnpm build", {
-        cwd: this.config.cwd,
-        stdio: "pipe",
-        timeout: 60_000,
-      });
+      const diagProfile = await detectProfile(this.config.cwd);
+      const buildCmd = getBuildCommand(diagProfile, this.config.cwd);
+      if (buildCmd) {
+        execSync(buildCmd, {
+          cwd: this.config.cwd,
+          stdio: "pipe",
+          timeout: 60_000,
+        });
+      }
       // Build passes now? Some iteration may have partially fixed things.
       // Still run diagnosis on test failures if any.
     } catch (err: unknown) {
-      const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
+      const stderr =
+        (err as { stderr?: Buffer })?.stderr?.toString().trim() || "";
       currentErrors = stderr;
     }
 
-    // A review-driven NO-GO reaches here with the build green — the finding is
-    // something no gate covers. Say so, or the diagnostician looks for compiler
-    // errors that do not exist and returns nothing.
-    const reviewDriven = errorContext.some((c) =>
-      /REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL/.test(c),
-    );
-
-    // Build the diagnosis prompt — concise, targeted, no agent narration
-    const diagnosisPrompt = [
-      "You are a build and code-review diagnostician. Analyze the findings below and produce SPECIFIC fix instructions.",
-      "",
-      "## Current Build/Test Errors",
-      currentErrors || "(build passes — the findings below are what failed)",
-      "",
-      reviewDriven ? "## Review Findings (build and gates are GREEN)" : "## Error Context from Failed Gates",
-      ...(reviewDriven
-        ? [
-            "A reviewer reproduced these defects while every gate passed, so no gate covers them.",
-            "Each FIX must repair the defect the reviewer named. Where a gate or test would have caught",
-            "it, add one — a finding that survives its own fix is a finding that will recur.",
-            "",
-          ]
-        : []),
-      ...errorContext,
-      "",
-      "## Instructions",
-      "For each error, produce ONE line in this exact format:",
-      "FIX: <file_path> — <what to do>",
-      "",
-      "Examples:",
-      "FIX: src/commands/plugin.ts — Add missing import: `import { type PluginSummary } from '../plugins/loader.js'`",
-      "FIX: src/utils/config.ts — Change `extensions` type from `string[]` to `Record<string, ExtensionConfig>`",
-      "FIX: src/engine/profile-detector.ts — Remove duplicate export of `detectProfile`",
-      "",
-      "Be SPECIFIC. Name the exact file, the exact import, the exact type. Do NOT explain why.",
-      "Do NOT produce code blocks. Just FIX: lines.",
-    ].join("\n");
+    const diagnosisPrompt = buildDiagnosisPrompt(errorContext, currentErrors);
 
     try {
       // Dispatch to thinking model — no tool access, reasoning only
@@ -2626,17 +2739,13 @@ ${marker}`;
       });
 
       if (result.exitCode === 0 && result.stdout) {
-        // Extract FIX: lines from the diagnosis output. Unwrap first: under
-        // stream-json every stdout line is a JSON event, so a raw prefix scan
-        // matches nothing and discards a complete answer.
-        const fixLines = agentAnswerText(result.stdout)
-          .split("\n")
-          .filter((line: string) => line.trim().startsWith("FIX:"))
-          .map((line: string) => line.trim());
+        const fixLines = extractFixLines(result.stdout);
 
         if (fixLines.length > 0) {
           const fixBlock = `\n\nDIAGNOSIS (iteration ${this.state.iteration}):\n${fixLines.join("\n")}`;
-          console.log(`    ✓ diagnosis produced ${fixLines.length} fix instruction(s)`);
+          console.log(
+            `    ✓ diagnosis produced ${fixLines.length} fix instruction(s)`,
+          );
 
           // Inject fix instructions into open task descriptions
           for (const task of phase.tasks) {
@@ -2649,11 +2758,15 @@ ${marker}`;
           console.log("    ⚠ diagnosis produced no FIX: lines");
         }
       } else {
-        console.log(`    ⚠ diagnosis dispatch failed (exit ${result.exitCode}), proceeding to IMPLEMENT anyway`);
+        console.log(
+          `    ⚠ diagnosis dispatch failed (exit ${result.exitCode}), proceeding to IMPLEMENT anyway`,
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.log(`    ⚠ diagnosis error: ${msg}, proceeding to IMPLEMENT anyway`);
+      console.log(
+        `    ⚠ diagnosis error: ${msg}, proceeding to IMPLEMENT anyway`,
+      );
     }
 
     // Always proceed to IMPLEMENT — diagnosis is advisory, not blocking
@@ -2700,6 +2813,20 @@ ${marker}`;
       );
       await this.sleep(wait);
       result = await dispatchToAgent({ ...task, model, env, workDir });
+    }
+
+    if (result.usage) {
+      const prev = this.state.usage ?? {};
+      const inTok = (prev.inputTokens ?? 0) + (result.usage.tokensIn ?? 0);
+      const outTok = (prev.outputTokens ?? 0) + (result.usage.tokensOut ?? 0);
+      this.state.usage = {
+        inputTokens: inTok,
+        outputTokens: outTok,
+        totalTokens: inTok + outTok,
+        ...(result.usage.costUsd !== undefined || prev.costUsd !== undefined
+          ? { costUsd: (prev.costUsd ?? 0) + (result.usage.costUsd ?? 0) }
+          : {}),
+      };
     }
 
     return result;

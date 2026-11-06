@@ -2,20 +2,461 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { getLocRate } from "./effort-defaults.js";
+import type {
+  CommitCluster,
+  CompressionRatios,
+  CompressionReport,
+  CompressionSummary,
+  DeliveryActuals,
+  EffortForecast,
+  TelemetryMetrics,
+} from "./types.js";
+
 /**
- * Compression engine stubs — FR-007 scope (not yet implemented).
- * computeCompression and gatherDeliveryActuals are called by harvest.ts
- * and commands/compression.ts. They fail silently in try/catch wrappers.
+ * Clusters timestamps into work sessions.
+ * (FR-H05)
  */
-export function computeCompression(_forecast: any, _actuals?: any): any {
-  throw new Error('Not implemented: computeCompression (FR-007)');
+function clusterCommits(
+  timestamps: number[],
+  gapMinutes: number,
+): CommitCluster[] {
+  if (timestamps.length === 0) return [];
+
+  const sorted = [...timestamps].sort((a, b) => a - b);
+  const gapMs = gapMinutes * 60 * 1000;
+  const clusters: CommitCluster[] = [];
+
+  let currentStart = sorted[0] as number;
+  let currentEnd = sorted[0] as number;
+  let commitCount = 1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const ts = sorted[i] as number;
+    if (ts - currentEnd > gapMs) {
+      const durationMinutes = Math.max((currentEnd - currentStart) / 60000, 5);
+      clusters.push({
+        id: `session-${clusters.length + 1}`,
+        start: new Date(currentStart).toISOString(),
+        end: new Date(currentEnd).toISOString(),
+        durationMinutes,
+        commitCount,
+      });
+
+      currentStart = ts;
+      currentEnd = ts;
+      commitCount = 1;
+    } else {
+      currentEnd = ts;
+      commitCount++;
+    }
+  }
+
+  const durationMinutes = Math.max((currentEnd - currentStart) / 60000, 5);
+  clusters.push({
+    id: `session-${clusters.length + 1}`,
+    start: new Date(currentStart).toISOString(),
+    end: new Date(currentEnd).toISOString(),
+    durationMinutes,
+    commitCount,
+  });
+
+  return clusters;
 }
-export function gatherDeliveryActuals(_featDir: string, _days?: number, _prNumber?: number): any {
-  throw new Error('Not implemented: gatherDeliveryActuals (FR-007)');
+
+/**
+ * Computes an EffortForecast from LOC when explicit SPs are missing.
+ * Derives SP from git numstat (implementation) and spec/plan/research files (definitional).
+ * (FR-016, FR-017, FR-019)
+ */
+export function computeForecastFromLOC(
+  featureDir: string,
+  profile = "TS",
+  hoursPerSP = 4,
+): EffortForecast {
+  const locRate = getLocRate(profile);
+  const deRate = getLocRate("DE");
+
+  let implLoc = 0;
+  let deLoc = 0;
+
+  try {
+    const parentDir = path.dirname(featureDir);
+    const featureBase = path.basename(featureDir);
+    const numstat = execFileSync(
+      "git",
+      ["log", "--numstat", "--format=", "--", featureBase],
+      {
+        cwd: parentDir,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).toString();
+
+    const lines = numstat.split("\n");
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 3) {
+        const added = Number.parseInt(parts[0] || "0", 10);
+        if (!Number.isNaN(added)) {
+          implLoc += added;
+        }
+      }
+    }
+  } catch {
+    // No commits yet
+  }
+
+  const deFiles = ["spec.md", "plan.md", "research.md"];
+  for (const file of deFiles) {
+    const filePath = path.join(featureDir, file);
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8");
+      deLoc += content.split("\n").filter((l) => l.trim()).length;
+    }
+  }
+
+  const implSP = implLoc / locRate;
+  const deSP = deLoc / deRate;
+  const totalSP = Math.ceil(implSP + deSP);
+
+  const estimatedHours = totalSP * hoursPerSP * 1.25;
+  const estimatedDays = Math.ceil(estimatedHours / 8);
+
+  return {
+    totalSP,
+    roles: [{ role: profile, sp: totalSP }],
+    estimatedHours,
+    estimatedDays,
+  };
 }
-export function computeForecastFromLOC(_featDir: string): any {
-  throw new Error('Not implemented: computeForecastFromLOC (FR-007)');
+
+/**
+ * Computes compression ratios for a feature phase.
+ * (FR-H04, FR-H05)
+ */
+export function computeCompression(
+  forecast: EffortForecast,
+  actuals: DeliveryActuals,
+): CompressionRatios {
+  if (
+    !forecast ||
+    !actuals ||
+    typeof actuals.activeCodingMinutes !== "number"
+  ) {
+    throw new Error("Invalid forecast or actuals for compression calculation");
+  }
+  const actualHours = actuals.activeCodingMinutes / 60;
+  const pointCompression =
+    actualHours > 0
+      ? forecast.estimatedHours / actualHours
+      : Number.POSITIVE_INFINITY;
+
+  const actualDays = actuals.deliveryWindowHours / 24;
+  const totalCompression =
+    actualDays > 0
+      ? forecast.estimatedDays / actualDays
+      : Number.POSITIVE_INFINITY;
+
+  return {
+    pointCompression,
+    totalCompression,
+    dormancyDays: actuals.dormancyDays,
+  };
 }
-export function generateSummary(_reports?: any): any {
-  throw new Error('Not implemented: generateSummary (FR-007)');
+
+export function computeTelemetryMetrics(
+  forecast: EffortForecast,
+  raw: {
+    tokensIn: number;
+    tokensOut: number;
+    totalTokens?: number;
+    costUsd: number;
+    devices?: string[];
+  },
+): TelemetryMetrics {
+  const totalTokens = raw.totalTokens ?? raw.tokensIn + raw.tokensOut;
+  const sp = forecast.totalSP;
+  return {
+    tokensIn: raw.tokensIn,
+    tokensOut: raw.tokensOut,
+    totalTokens,
+    costUsd: raw.costUsd,
+    tokensPerSp: sp > 0 ? totalTokens / sp : 0,
+    costPerSp: sp > 0 ? raw.costUsd / sp : 0,
+    ...(raw.devices ? { devices: raw.devices } : {}),
+  };
+}
+
+export function generateSummary(
+  reports: CompressionReport[],
+): CompressionSummary {
+  if (!Array.isArray(reports)) {
+    throw new Error("reports array is required for generateSummary");
+  }
+  const summary: CompressionSummary = {
+    projectName: "Unknown",
+    generatedAt: new Date().toISOString(),
+    features: reports,
+    totals: {
+      totalSP: 0,
+      totalEstimatedHours: 0,
+      totalActualCodingHours: 0,
+      avgPointCompression: 0,
+      avgTotalCompression: 0,
+      avgFirstPassRate: 0,
+      avgAvgAttempts: 0,
+      avgLinesPerSP: 0,
+      avgFilesPerSP: 0,
+      avgToolCallsPerSP: 0,
+      totalContracts: 0,
+      totalGates: 0,
+      totalTokensIn: 0,
+      totalTokensOut: 0,
+      totalCostUsd: 0,
+      avgTokensPerSP: 0,
+      avgCostPerSP: 0,
+    },
+    best: { featureId: "", pointCompression: 0 },
+    worst: { featureId: "", pointCompression: Number.POSITIVE_INFINITY },
+    trend: "stable",
+  };
+
+  if (reports.length === 0) return summary;
+
+  let totalPointCompression = 0;
+  let totalTotalCompression = 0;
+
+  let indicatorsCount = 0;
+  let totalFirstPassRate = 0;
+  let totalAvgAttempts = 0;
+  let totalLines = 0;
+  let totalFiles = 0;
+  let totalToolCalls = 0;
+  let totalSPForIndicators = 0;
+
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
+  let totalCostUsd = 0;
+  let totalSPForTelemetry = 0;
+
+  for (const r of reports) {
+    summary.totals.totalSP += r.forecast.totalSP;
+    summary.totals.totalEstimatedHours += r.forecast.estimatedHours;
+    summary.totals.totalActualCodingHours += r.actuals.activeCodingMinutes / 60;
+
+    totalPointCompression += r.compression.pointCompression;
+    totalTotalCompression += r.compression.totalCompression;
+
+    if (r.indicators) {
+      indicatorsCount++;
+      totalFirstPassRate += r.indicators.convergence.firstPassRate;
+      totalAvgAttempts += r.indicators.convergence.avgAttempts;
+
+      totalLines += r.indicators.density.linesPerSP * r.forecast.totalSP;
+      totalFiles += r.indicators.density.filesPerSP * r.forecast.totalSP;
+      totalToolCalls +=
+        r.indicators.density.toolCallsPerSP * r.forecast.totalSP;
+      totalSPForIndicators += r.forecast.totalSP;
+
+      summary.totals.totalContracts =
+        (summary.totals.totalContracts || 0) +
+        r.indicators.specQuality.contractCount;
+      summary.totals.totalGates =
+        (summary.totals.totalGates || 0) + r.indicators.specQuality.gateCount;
+    }
+
+    if (r.telemetry) {
+      totalTokensIn += r.telemetry.tokensIn;
+      totalTokensOut += r.telemetry.tokensOut;
+      totalCostUsd += r.telemetry.costUsd;
+      totalSPForTelemetry += r.forecast.totalSP;
+    }
+
+    if (r.compression.pointCompression > summary.best.pointCompression) {
+      summary.best = {
+        featureId: r.featureId,
+        pointCompression: r.compression.pointCompression,
+      };
+    }
+    if (r.compression.pointCompression < summary.worst.pointCompression) {
+      summary.worst = {
+        featureId: r.featureId,
+        pointCompression: r.compression.pointCompression,
+      };
+    }
+  }
+
+  const count = reports.length;
+  summary.totals.avgPointCompression = totalPointCompression / count;
+  summary.totals.avgTotalCompression = totalTotalCompression / count;
+
+  if (indicatorsCount > 0) {
+    summary.totals.avgFirstPassRate = totalFirstPassRate / indicatorsCount;
+    summary.totals.avgAvgAttempts = totalAvgAttempts / indicatorsCount;
+
+    if (totalSPForIndicators > 0) {
+      summary.totals.avgLinesPerSP = totalLines / totalSPForIndicators;
+      summary.totals.avgFilesPerSP = totalFiles / totalSPForIndicators;
+      summary.totals.avgToolCallsPerSP = totalToolCalls / totalSPForIndicators;
+    }
+  }
+
+  summary.totals.totalTokensIn = totalTokensIn;
+  summary.totals.totalTokensOut = totalTokensOut;
+  summary.totals.totalCostUsd = totalCostUsd;
+  if (totalSPForTelemetry > 0) {
+    summary.totals.avgTokensPerSP =
+      (totalTokensIn + totalTokensOut) / totalSPForTelemetry;
+    summary.totals.avgCostPerSP = totalCostUsd / totalSPForTelemetry;
+  }
+
+  const sorted = [...reports].sort(
+    (a, b) =>
+      new Date(a.actuals.firstImplCommit).getTime() -
+      new Date(b.actuals.firstImplCommit).getTime(),
+  );
+
+  if (sorted.length > 1) {
+    const mid = Math.floor(sorted.length / 2);
+    const firstHalf = sorted.slice(0, mid);
+    const secondHalf = sorted.slice(mid);
+
+    const firstHalfAvg =
+      firstHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) /
+      firstHalf.length;
+    const secondHalfAvg =
+      secondHalf.reduce((sum, r) => sum + r.compression.pointCompression, 0) /
+      secondHalf.length;
+
+    if (secondHalfAvg > firstHalfAvg * 1.05) {
+      summary.trend = "improving";
+    } else if (secondHalfAvg < firstHalfAvg * 0.95) {
+      summary.trend = "declining";
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Gathers delivery actuals securely from the filesystem and git.
+ */
+export function gatherDeliveryActuals(
+  featureDir: string,
+  sessionGapMinutes = 30,
+  prNumber?: number,
+): DeliveryActuals {
+  const specPath = path.join(featureDir, "spec.md");
+  if (!fs.existsSync(featureDir)) {
+    throw new Error(`Feature directory not found: ${featureDir}`);
+  }
+
+  let specCreatedAtStr = new Date().toISOString();
+  if (fs.existsSync(specPath)) {
+    const stats = fs.statSync(specPath);
+    const birthTime =
+      stats.birthtime.getTime() > 0 ? stats.birthtime : stats.mtime;
+    specCreatedAtStr = birthTime.toISOString();
+  }
+
+  let gitLogOut = "";
+  try {
+    const parentDir = path.dirname(featureDir);
+    gitLogOut = execFileSync(
+      "git",
+      ["log", "--reverse", "--format=%aI", "--", featureDir],
+      {
+        cwd: parentDir,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    )
+      .toString()
+      .trim();
+  } catch {
+    // No commits yet
+  }
+
+  const lines = gitLogOut
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    throw new Error(
+      `No implementation commits found for feature '${path.basename(featureDir)}'`,
+    );
+  }
+
+  const timestamps = lines
+    .map((l) => new Date(l).getTime())
+    .sort((a, b) => a - b);
+
+  if (timestamps.length === 0) {
+    throw new Error(
+      `No valid timestamps found for feature '${path.basename(featureDir)}'`,
+    );
+  }
+
+  const firstTimestamp = timestamps[0] as number;
+  const lastTimestamp = timestamps[timestamps.length - 1] as number;
+
+  const firstImplCommit = new Date(firstTimestamp).toISOString();
+  const lastImplCommit = new Date(lastTimestamp).toISOString();
+
+  const clusters = clusterCommits(timestamps, sessionGapMinutes);
+  const sessionCount = clusters.length;
+  const activeCodingMinutes = clusters.reduce(
+    (sum, c) => sum + c.durationMinutes,
+    0,
+  );
+
+  const specCreatedTime = new Date(specCreatedAtStr).getTime();
+  const firstImplTime = firstTimestamp;
+
+  let dormancyDays = (firstImplTime - specCreatedTime) / (1000 * 60 * 60 * 24);
+  if (dormancyDays < 0) dormancyDays = 0;
+
+  let prMergedAtStr = lastImplCommit;
+  try {
+    const parentDir = path.dirname(featureDir);
+    const args = ["pr", "view", "--json", "mergedAt", "--jq", ".mergedAt"];
+    if (prNumber) {
+      args.splice(2, 0, String(prNumber));
+    }
+
+    const ghOut = execFileSync("gh", args, {
+      cwd: parentDir,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+    if (ghOut && ghOut !== "null") {
+      prMergedAtStr = ghOut;
+    }
+  } catch {
+    // Fallback to lastImplCommit
+  }
+
+  const firstCommitDate = new Date(firstImplCommit);
+  const finishDate = new Date(prMergedAtStr);
+  let deliveryWindowHours =
+    (finishDate.getTime() - firstCommitDate.getTime()) / (1000 * 60 * 60);
+  if (deliveryWindowHours < 0.1) deliveryWindowHours = 0.1;
+
+  return {
+    specCreatedAt: specCreatedAtStr,
+    firstImplCommit,
+    lastImplCommit,
+    prMergedAt: prMergedAtStr,
+    dormancyDays: Math.floor(dormancyDays),
+    activeCodingMinutes,
+    sessionCount,
+    deliveryWindowHours,
+    clusters,
+  };
 }

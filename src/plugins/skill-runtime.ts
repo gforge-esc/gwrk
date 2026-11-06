@@ -41,22 +41,49 @@ export async function assemblePrompt(
   input: string,
   loader: PluginLoader,
   options: SkillOptions = {},
+  skillDir?: string,
 ): Promise<string> {
-  if (manifest.tier === "atomic") {
-    return `${manifest.prompt}\n\nInput:\n${input}`;
+  const readSkillMarkdown = async (
+    dir?: string,
+  ): Promise<string | undefined> => {
+    if (!dir) return undefined;
+    try {
+      const md = await fs.readFile(path.join(dir, "SKILL.md"), "utf-8");
+      return typeof md === "string" && md.trim().length > 0
+        ? md.trim()
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  if (manifest.tier === "atomic" || manifest.tier === "domain") {
+    const mdBody = await readSkillMarkdown(skillDir);
+    const basePrompt = manifest.prompt ?? manifest.description;
+    const body = mdBody ? `${basePrompt}\n\n${mdBody}` : basePrompt;
+    return `${body}\n\nInput:\n${input}`;
   }
 
   if (manifest.tier === "enforcement") {
-    return `Enforcement Skill: ${manifest.description}\n\nInput:\n${input}`;
+    const mdBody = await readSkillMarkdown(skillDir);
+    const body = mdBody
+      ? `Enforcement Skill: ${manifest.description}\n\n${mdBody}`
+      : `Enforcement Skill: ${manifest.description}`;
+    return `${body}\n\nInput:\n${input}`;
   }
 
   // Compound skill: assemble all passes
   let fullPrompt = `Compound Skill: ${manifest.description}\n\n`;
+  const compoundMd = await readSkillMarkdown(skillDir);
+  if (compoundMd) {
+    fullPrompt += `${compoundMd}\n\n`;
+  }
 
   for (const pass of manifest.passes) {
     const loadedSkill = await loader.resolvePlugin(pass.skill);
     const skillManifest = loadedSkill.manifest as AtomicSkillManifest;
-    fullPrompt += `Pass: ${pass.name}\nGoal: ${pass.summary}\nPrompt: ${skillManifest.prompt}\n\n`;
+    const passMd = await readSkillMarkdown(loadedSkill.path);
+    fullPrompt += `Pass: ${pass.name}\nGoal: ${pass.summary}\nPrompt: ${skillManifest.prompt}${passMd ? `\nInstructions:\n${passMd}` : ""}\n\n`;
   }
 
   fullPrompt += `Original Input:\n${input}`;
@@ -116,7 +143,13 @@ export async function executeSkill(
   }
 
   const input = options.input || "";
-  const prompt = await assemblePrompt(manifest, input, loader, options);
+  const prompt = await assemblePrompt(
+    manifest,
+    input,
+    loader,
+    options,
+    loaded.path,
+  );
 
   // FR-006: Determine agent and model via router
   const projectRoot = loaderOptions.projectDir || process.cwd();
@@ -200,10 +233,20 @@ export async function resolveEnforcementSkills(
       }
 
       // Filter by language/framework (R007: profile-aware enforcement routing)
-      // Only filter BUILTIN enforcement skills; project-local and global always load.
-      const isBuiltin = loaded.path.includes("builtins");
+      const isProjectLocal =
+        loaded.path.startsWith(path.resolve(projectRoot)) ||
+        loaded.path.includes("/project/local/");
+      const isBuiltinOrFrameworkSkill =
+        loaded.path.includes("builtins") ||
+        Boolean(manifest.framework) ||
+        [
+          "typescript-standards",
+          "python-standards",
+          "rust-standards",
+          "go-standards",
+        ].includes(manifest.name);
 
-      if (isBuiltin && profile) {
+      if (!isProjectLocal && isBuiltinOrFrameworkSkill && profile) {
         // Language filtering
         if (manifest.language && profile.stack?.language) {
           const manifestLang = manifest.language.toLowerCase();

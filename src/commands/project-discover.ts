@@ -19,7 +19,7 @@ export const projectDiscoverCommand = new Command("discover")
       const result = await discoverProject(process.cwd());
 
       if (options.format === "json") {
-        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         return;
       }
 
@@ -29,26 +29,23 @@ export const projectDiscoverCommand = new Command("discover")
       process.stdout.write(
         `Git: ${result.project.git.branch} (${result.project.git.clean ? "clean" : "dirty"}) — ${result.project.git.lastCommit}\n`,
       );
-      process.stdout.write(`\n`);
+      process.stdout.write("\n");
 
       process.stdout.write(`Specs (${result.specs.length}):\n`);
       for (const s of result.specs) {
-        const tasks =
-          s.hasTasks
-            ? ` [${s.tasksComplete}/${s.tasksComplete + s.tasksOpen} tasks]`
-            : "";
+        const tasks = s.hasTasks
+          ? ` [${s.tasksComplete}/${s.tasksComplete + s.tasksOpen} tasks]`
+          : "";
         process.stdout.write(`  ${s.id} ${s.name} — ${s.status}${tasks}\n`);
       }
-      process.stdout.write(`\n`);
+      process.stdout.write("\n");
 
       process.stdout.write(`Gates: ${result.gates.total} total\n`);
       process.stdout.write(
         `Config: slack=${result.config.hasSlack} server=${result.config.hasServer}\n`,
       );
       if (result.config.agents.length > 0) {
-        process.stdout.write(
-          `Agents: ${result.config.agents.join(", ")}\n`,
-        );
+        process.stdout.write(`Agents: ${result.config.agents.join(", ")}\n`);
       }
     });
   });

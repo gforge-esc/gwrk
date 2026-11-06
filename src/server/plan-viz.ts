@@ -31,7 +31,8 @@ export function generatePlanVizHtml(
     let color = "#a0aec0"; // gray (PLANNED)
     if (f.status === "DONE" || f.status === "SHIPPED") color = "#48bb78";
     else if (f.status === "IN_PROGRESS") color = "#ed8936";
-    else if (f.status === "SPECIFIED" || f.status === "DEFINED") color = "#4299e1";
+    else if (f.status === "SPECIFIED" || f.status === "DEFINED")
+      color = "#4299e1";
 
     nodes.push({
       id: f.id,
@@ -55,7 +56,8 @@ export function generatePlanVizHtml(
       id: p.id,
       label: p.name,
       type: "phase",
-      status: p.status + (p.health && p.health !== "GREEN" ? ` [${p.health}]` : ""),
+      status:
+        p.status + (p.health && p.health !== "GREEN" ? ` [${p.health}]` : ""),
       color,
       radius: 7,
       featureId: p.feature_id,
@@ -70,7 +72,10 @@ export function generatePlanVizHtml(
   }> = [];
 
   for (const e of edges) {
-    if (nodes.some((n) => n.id === e.from_id) && nodes.some((n) => n.id === e.to_id)) {
+    if (
+      nodes.some((n) => n.id === e.from_id) &&
+      nodes.some((n) => n.id === e.to_id)
+    ) {
       links.push({ source: e.from_id, target: e.to_id, type: e.edge_type });
     }
   }

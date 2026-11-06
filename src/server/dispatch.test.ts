@@ -75,7 +75,12 @@ describe("DispatchQueue (unified ship engine)", () => {
       getResult: mockGetResult,
     }));
 
-    queue = new DispatchQueue(mockConfig, mockMonitor, mockSandbox, projectRoot);
+    queue = new DispatchQueue(
+      mockConfig,
+      mockMonitor,
+      mockSandbox,
+      projectRoot,
+    );
   });
 
   it("enqueues a feature-phase on a per-phase ship branch", () => {

@@ -25,6 +25,9 @@ import type { Command } from "commander";
  * The subcommand's own values win where present, so an explicitly-parsed flag is
  * never overridden by an ancestor's default.
  */
-export function withParentFlags<T extends object>(opts: T, command: Command): T {
+export function withParentFlags<T extends object>(
+  opts: T,
+  command: Command,
+): T {
   return { ...(command.optsWithGlobals() as T), ...opts };
 }

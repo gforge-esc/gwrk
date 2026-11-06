@@ -30,7 +30,9 @@ interface LanguageSignal {
 export async function detectProfile(
   projectRoot: string,
 ): Promise<ProjectProfile> {
-  const profile: ProjectProfile & { stack: NonNullable<ProjectProfile["stack"]> } = {
+  const profile: ProjectProfile & {
+    stack: NonNullable<ProjectProfile["stack"]>;
+  } = {
     type: "unknown",
     stack: {},
     layout: "flat",
@@ -80,34 +82,35 @@ export async function detectProfile(
     return profile;
   }
 
-  // pnpm workspace detection
+  // pnpm workspace / lockfile or package.json detection
   if (
     files.includes("pnpm-workspace.yaml") ||
-    files.includes("pnpm-lock.yaml")
+    files.includes("pnpm-lock.yaml") ||
+    files.includes("package.json")
   ) {
-    signals.push({
-      language: "TypeScript",
-      type: "pnpm-monorepo",
-      buildSystem: "pnpm",
-    });
-  } else if (files.includes("package.json")) {
-    // Node.js / TypeScript / React / Next.js / Express
+    const isPnpm =
+      files.includes("pnpm-workspace.yaml") || files.includes("pnpm-lock.yaml");
     const signal: LanguageSignal = {
-      language: "JavaScript",
-      type: "nodejs",
-      buildSystem: "npm",
+      language: isPnpm ? "TypeScript" : "JavaScript",
+      type: isPnpm ? "pnpm-monorepo" : "nodejs",
+      buildSystem: isPnpm ? "pnpm" : "npm",
     };
 
     try {
-      const pkg = JSON.parse(
-        fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
-      );
-      if (pkg.devDependencies?.typescript || pkg.dependencies?.typescript) {
-        signal.language = "TypeScript";
+      const pkgPath = path.join(projectRoot, "package.json");
+      if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (deps.typescript) {
+          signal.language = "TypeScript";
+        }
+        if (deps.next) signal.framework = "Next.js";
+        else if (deps.react) signal.framework = "React";
+        else if (deps.fastify) signal.framework = "Fastify";
+        else if (deps.express) signal.framework = "Express";
+        else if (deps["@nestjs/core"]) signal.framework = "NestJS";
+        else if (deps.hono) signal.framework = "Hono";
       }
-      if (pkg.dependencies?.react) signal.framework = "React";
-      if (pkg.dependencies?.next) signal.framework = "Next.js";
-      if (pkg.dependencies?.express) signal.framework = "Express";
     } catch {
       // Ignore parse errors
     }
@@ -117,11 +120,22 @@ export async function detectProfile(
 
   // Rust detection
   if (files.includes("Cargo.toml")) {
-    signals.push({
+    const rustSignal: LanguageSignal = {
       language: "Rust",
       type: "rust",
       buildSystem: "cargo",
-    });
+    };
+    try {
+      const cargoContent = fs.readFileSync(
+        path.join(projectRoot, "Cargo.toml"),
+        "utf-8",
+      );
+      if (/\baxum\b/.test(cargoContent)) rustSignal.framework = "Axum";
+      else if (/\bactix-web\b/.test(cargoContent))
+        rustSignal.framework = "Actix";
+      else if (/\bclap\b/.test(cargoContent)) rustSignal.framework = "Clap";
+    } catch {}
+    signals.push(rustSignal);
   }
 
   // Python detection
@@ -137,16 +151,39 @@ export async function detectProfile(
     if (files.includes("poetry.lock")) signal.buildSystem = "Poetry";
     else if (files.includes("uv.lock")) signal.buildSystem = "uv";
     else if (files.includes("requirements.txt")) signal.buildSystem = "pip";
+
+    try {
+      const pyManifest = files.includes("pyproject.toml")
+        ? fs.readFileSync(path.join(projectRoot, "pyproject.toml"), "utf-8")
+        : files.includes("requirements.txt")
+          ? fs.readFileSync(path.join(projectRoot, "requirements.txt"), "utf-8")
+          : "";
+      if (/\bfastapi\b/i.test(pyManifest)) signal.framework = "FastAPI";
+      else if (/\bdjango\b/i.test(pyManifest)) signal.framework = "Django";
+      else if (/\bflask\b/i.test(pyManifest)) signal.framework = "Flask";
+    } catch {}
     signals.push(signal);
   }
 
   // Go detection
   if (files.includes("go.mod")) {
-    signals.push({
+    const goSignal: LanguageSignal = {
       language: "Go",
       type: "go",
       buildSystem: "go",
-    });
+    };
+    try {
+      const goMod = fs.readFileSync(path.join(projectRoot, "go.mod"), "utf-8");
+      if (goMod.includes("github.com/gin-gonic/gin"))
+        goSignal.framework = "Gin";
+      else if (goMod.includes("github.com/go-chi/chi"))
+        goSignal.framework = "Chi";
+      else if (goMod.includes("github.com/labstack/echo"))
+        goSignal.framework = "Echo";
+      else if (goMod.includes("github.com/gofiber/fiber"))
+        goSignal.framework = "Fiber";
+    } catch {}
+    signals.push(goSignal);
   }
 
   // 3. Resolve profile from collected signals
@@ -157,7 +194,7 @@ export async function detectProfile(
       signals.some((s) => s.type === "rust") &&
       signals.some((s) => s.type === "nodejs")
     ) {
-      const rustSignal = signals.find((s) => s.type === "rust")!;
+      const rustSignal = signals.find((s) => s.type === "rust") ?? signals[0];
       profile.type = rustSignal.type;
       profile.stack.language = rustSignal.language;
       profile.stack.buildSystem = rustSignal.buildSystem;
@@ -209,15 +246,45 @@ export async function detectProfile(
   if (files.includes("ruff.toml") || files.includes(".ruff.toml")) {
     toolchain.primary = "ruff";
   } else if (files.includes(".black") || files.includes("pyproject.toml")) {
-    // Simple black check: check for tool.black in pyproject.toml if we really wanted to be thorough,
-    // but filesystem-only means we just check for the presence of markers.
     if (files.includes("pyproject.toml")) {
       try {
-        const content = fs.readFileSync(path.join(projectRoot, "pyproject.toml"), "utf-8");
+        const content = fs.readFileSync(
+          path.join(projectRoot, "pyproject.toml"),
+          "utf-8",
+        );
         if (content.includes("[tool.black]")) toolchain.formatter = "black";
         if (content.includes("[tool.ruff]")) toolchain.primary = "ruff";
+        if (content.includes("[tool.pytest") || /\bpytest\b/.test(content)) {
+          toolchain.test = "pytest";
+        }
       } catch {}
     }
+  }
+
+  if (
+    files.includes(".golangci.yml") ||
+    files.includes(".golangci.yaml") ||
+    files.includes(".golangci.toml") ||
+    files.includes(".golangci.json")
+  ) {
+    toolchain.primary = "golangci-lint";
+  }
+
+  if (files.includes("clippy.toml") || files.includes(".clippy.toml")) {
+    toolchain.primary = "clippy";
+  } else if (files.includes("Cargo.toml") && !toolchain.primary) {
+    try {
+      const cargoContent = fs.readFileSync(
+        path.join(projectRoot, "Cargo.toml"),
+        "utf-8",
+      );
+      if (
+        cargoContent.includes("[lints.clippy]") ||
+        cargoContent.includes("clippy")
+      ) {
+        toolchain.primary = "clippy";
+      }
+    } catch {}
   }
 
   // Test Runner
@@ -240,15 +307,31 @@ export async function detectProfile(
     toolchain.test = "go-test";
   }
 
-  // Also check package.json for test signals
-  if (!toolchain.test && files.includes("package.json")) {
+  // Also check package.json for test and linter signals
+  if (files.includes("package.json")) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
-      if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest) toolchain.test = "vitest";
-      else if (pkg.devDependencies?.jest || pkg.dependencies?.jest) toolchain.test = "jest";
+      const pkg = JSON.parse(
+        fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
+      );
+      if (!toolchain.test) {
+        if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest)
+          toolchain.test = "vitest";
+        else if (pkg.devDependencies?.jest || pkg.dependencies?.jest)
+          toolchain.test = "jest";
+      }
+      if (!toolchain.primary) {
+        if (
+          pkg.devDependencies?.["@biomejs/biome"] ||
+          pkg.dependencies?.["@biomejs/biome"]
+        ) {
+          toolchain.primary = "biome";
+        } else if (pkg.devDependencies?.eslint || pkg.dependencies?.eslint) {
+          toolchain.primary = "eslint";
+        }
+      }
     } catch {}
   }
-  
+
   if (files.includes("pytest.ini") || files.includes("conftest.py")) {
     toolchain.test = "pytest";
   }
@@ -309,16 +392,20 @@ export async function detectProfile(
 export function resolveWorkspaceProfile(
   cwd: string,
   projectRoot: string,
+  // biome-ignore lint/suspicious/noExplicitAny: workspace config object
   config: any,
 ): ProjectProfile | undefined {
   if (!config.workspaces) return undefined;
 
   const relativeCwd = path.relative(projectRoot, cwd);
-  
+
   // Find the longest matching workspace path
   let bestMatch: string | undefined;
   for (const workspacePath of Object.keys(config.workspaces)) {
-    if (relativeCwd === workspacePath || relativeCwd.startsWith(`${workspacePath}${path.sep}`)) {
+    if (
+      relativeCwd === workspacePath ||
+      relativeCwd.startsWith(`${workspacePath}${path.sep}`)
+    ) {
       if (!bestMatch || workspacePath.length > bestMatch.length) {
         bestMatch = workspacePath;
       }
@@ -336,4 +423,3 @@ export function resolveWorkspaceProfile(
 
   return undefined;
 }
-

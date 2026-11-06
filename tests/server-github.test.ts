@@ -1,7 +1,11 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import crypto from "node:crypto";
 import fastify from "fastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { upsertIssue, updateIssue } from "../src/db/issues.js";
+import { updateIssue, upsertIssue } from "../src/db/issues.js";
 import { harvestFeature } from "../src/engine/harvest.js";
 import {
   associateIssueWithFeature,

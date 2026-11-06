@@ -297,7 +297,10 @@ planCommand
     "Show parallel execution waves for remaining work (--all for the whole plan)",
   )
   .option("--json", "Output in JSON format")
-  .option("--all", "Include shipped phases — the plan of record, not current work")
+  .option(
+    "--all",
+    "Include shipped phases — the plan of record, not current work",
+  )
   .action(async (options, command) => {
     await withSignal("plan waves", async () => {
       const projectId = resolveProjectId(process.cwd());

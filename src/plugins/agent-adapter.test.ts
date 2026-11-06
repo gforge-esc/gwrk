@@ -32,7 +32,10 @@ describe("FR-L1-002 / FR-L1-003 / FR-L1-010 / ADR-006: Agent Backend Adapters", 
         properties: { summary: { type: "string" } },
         required: ["summary"],
       };
-      const dispatch = await adapter.dispatch({ prompt: "p", outputSchema: schema });
+      const dispatch = await adapter.dispatch({
+        prompt: "p",
+        outputSchema: schema,
+      });
       expect(dispatch.args).toContain("--json-schema");
       const idx = dispatch.args.indexOf("--json-schema");
       expect(JSON.parse(dispatch.args[idx + 1])).toEqual(schema);

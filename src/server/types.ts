@@ -134,6 +134,8 @@ export interface NotifyPayload {
   specPath?: string;
   planPath?: string;
   phaseCount?: number;
-  pulseReport?: any; // PulseReport
-  compressionReport?: any; // CompressionReport
+  // biome-ignore lint/suspicious/noExplicitAny: PulseReport payload
+  pulseReport?: any;
+  // biome-ignore lint/suspicious/noExplicitAny: CompressionReport payload
+  compressionReport?: any;
 }

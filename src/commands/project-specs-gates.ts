@@ -18,7 +18,7 @@ export const projectSpecsCommand = new Command("specs")
       const result = await discoverProject(process.cwd());
 
       if (options.format === "json") {
-        process.stdout.write(JSON.stringify(result.specs, null, 2) + "\n");
+        process.stdout.write(`${JSON.stringify(result.specs, null, 2)}\n`);
         return;
       }
 
@@ -35,8 +35,12 @@ export const projectSpecsCommand = new Command("specs")
         return "⚪";
       };
 
-      process.stdout.write("ID   Name                         Status    Plan  Tasks\n");
-      process.stdout.write("───  ───────────────────────────  ────────  ────  ─────\n");
+      process.stdout.write(
+        "ID   Name                         Status    Plan  Tasks\n",
+      );
+      process.stdout.write(
+        "───  ───────────────────────────  ────────  ────  ─────\n",
+      );
 
       for (const s of result.specs) {
         const id = s.id.padEnd(4);
@@ -46,7 +50,9 @@ export const projectSpecsCommand = new Command("specs")
         const tasks = s.hasTasks
           ? `${s.tasksComplete}/${s.tasksComplete + s.tasksOpen}`
           : " - ";
-        process.stdout.write(`${id} ${name}  ${status}${plan.padEnd(6)}${tasks}\n`);
+        process.stdout.write(
+          `${id} ${name}  ${status}${plan.padEnd(6)}${tasks}\n`,
+        );
       }
 
       process.stdout.write(`\n${result.specs.length} specs total\n`);
@@ -59,7 +65,10 @@ export const projectSpecsCommand = new Command("specs")
  */
 export const projectGatesCommand = new Command("gates")
   .description("Show gate summary across all specs")
-  .argument("[feature]", "Filter to a specific feature (e.g. 013 or agent-native)")
+  .argument(
+    "[feature]",
+    "Filter to a specific feature (e.g. 013 or agent-native)",
+  )
   .option("--format <type>", "Output format (text, json)", "text")
   .action(async (feature: string | undefined, options: { format: string }) => {
     await withSignal("project gates", async () => {
@@ -85,7 +94,8 @@ export const projectGatesCommand = new Command("gates")
       // Count gates per spec
       const fs = await import("node:fs");
       const path = await import("node:path");
-      const perSpec: Array<{ id: string; name: string; gateCount: number }> = [];
+      const perSpec: Array<{ id: string; name: string; gateCount: number }> =
+        [];
       let total = 0;
 
       for (const s of specs) {
@@ -102,7 +112,7 @@ export const projectGatesCommand = new Command("gates")
 
       if (options.format === "json") {
         process.stdout.write(
-          JSON.stringify({ total, specs: perSpec }, null, 2) + "\n",
+          `${JSON.stringify({ total, specs: perSpec }, null, 2)}\n`,
         );
         return;
       }
@@ -118,7 +128,7 @@ export const projectGatesCommand = new Command("gates")
         return;
       }
 
-      process.stdout.write(`Gates by spec:\n`);
+      process.stdout.write("Gates by spec:\n");
       for (const s of perSpec) {
         if (s.gateCount > 0) {
           process.stdout.write(

@@ -33,6 +33,13 @@ vi.mock("../db/runs.js", () => ({
   listRuns: vi.fn(() => []),
   finishRun: vi.fn(),
   recordRun: vi.fn(() => 999),
+  getFeatureRunTelemetry: vi.fn(() => ({
+    tokensIn: 0,
+    tokensOut: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    devices: [],
+  })),
 }));
 
 vi.mock("../db/compression.js", () => ({
@@ -50,6 +57,7 @@ vi.mock("../utils/parser.js", () => ({
 
 vi.mock("./compression.js", () => ({
   computeCompression: vi.fn(),
+  computeTelemetryMetrics: vi.fn(),
   gatherDeliveryActuals: vi.fn(),
 }));
 
@@ -279,5 +287,66 @@ describe("FR-H03 & Phase-less Harvest: Backfill & Reconciliation", () => {
 
     // Should call listRuns for each phase (2 per phase: idempotency + merge check)
     expect(runsDb.listRuns).toHaveBeenCalledTimes(4);
+  });
+
+  it("ADR-003 / 038: hydrates backfilled run record from committed .gwrk/runs/*.json manifest", async () => {
+    const record = {
+      featureId,
+      phaseId: "phase-01",
+      prNumber: 108,
+      prUrl: "https://github.com/foo/bar/pull/108",
+      mergeCommitSha: "deadbeef",
+      mergedAt: "2026-11-02T23:00:00.000Z",
+      status: "merged" as const,
+    };
+
+    const runsDir = path.join(tempDir, "specs", featureId, ".gwrk", "runs");
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runsDir, "2026-11-02T22-30-00.000Z_ship_phase-01_claude.json"),
+      JSON.stringify({
+        runId: "2026-11-02T22:30:00.000Z_ship_p01",
+        feature: featureId,
+        phase: "phase-01",
+        command: "ship",
+        agent: "claude",
+        model: "claude-sonnet-4-6",
+        deviceId: "work-laptop-id",
+        hostname: "work-mbp.local",
+        usage: { inputTokens: 1200, outputTokens: 400, totalTokens: 1600, costUsd: 0.04 },
+        startedAt: "2026-11-02T22:30:00.000Z",
+        finishedAt: "2026-11-02T22:45:00.000Z",
+        durationS: 900,
+        exitCode: 0,
+        attempt: 2,
+        gateResult: "PASS",
+        reviewVerdict: "GO",
+        filesChanged: 6,
+        linesAdded: 180,
+        linesDeleted: 25,
+        gitCommit: "1234567",
+        gitBranch: `feat/${featureId}`,
+        digest: ["IMPLEMENT: completed"],
+      }),
+    );
+
+    vi.mocked(runsDb.listRuns).mockReturnValue([]);
+
+    await harvestFeature(tempDir, record as any);
+
+    expect(runsDb.recordRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feature_id: featureId,
+        phase_id: "phase-01",
+        agent_backend: "claude",
+        duration_s: 900,
+        attempt: 2,
+        files_changed: 6,
+        lines_added: 180,
+        lines_deleted: 25,
+        started_at: "2026-11-02T22:30:00.000Z",
+        status: "merged",
+      }),
+    );
   });
 });

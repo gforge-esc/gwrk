@@ -20,7 +20,7 @@ export function activatePhaseTests(
   testFiles: string[],
 ): { activated: number; files: string[] } {
   const phaseNum = phaseId.replace("phase-", "");
-  const phaseNumInt = parseInt(phaseNum, 10);
+  const phaseNumInt = Number.parseInt(phaseNum, 10);
   let activated = 0;
   const touchedFiles: string[] = [];
 
@@ -37,10 +37,19 @@ export function activatePhaseTests(
     if (!hasPhaseTag) continue;
 
     const before = content;
-    // Activate: it.skip( → it(
+    // Activate TS/JS: it.skip( → it( and describe.skip( → describe(
     content = content.replace(/\bit\.skip\(/g, "it(");
-    // Activate: describe.skip( → describe(
     content = content.replace(/\bdescribe\.skip\(/g, "describe(");
+    // Activate Python: @pytest.mark.skip(...) or @unittest.skip(...)
+    content = content.replace(
+      /^\s*@pytest\.mark\.skip(?:\([^)]*\))?\s*\n/gm,
+      "",
+    );
+    content = content.replace(/^\s*@unittest\.skip(?:\([^)]*\))?\s*\n/gm, "");
+    // Activate Rust: #[ignore] or #[ignore = "..."]
+    content = content.replace(/^\s*#\[ignore(?:\s*=\s*"[^"]*")?\]\s*\n/gm, "");
+    // Activate Go: t.Skip(...) / t.SkipNow()
+    content = content.replace(/^\s*t\.Skip(?:Now|f)?\([^)]*\)\s*\n/gm, "");
     // Update tag: @status red → @status active
     content = content.replace(/@status red/g, "@status active");
 

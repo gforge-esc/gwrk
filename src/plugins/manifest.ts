@@ -12,7 +12,7 @@ const KEBAB_CASE_REGEX = /^[a-z0-9-]+$/;
 /**
  * Shared regex for semver validation
  */
-const SEMVER_REGEX = /^\d+\.\d+\.\d+$/;
+const SEMVER_REGEX = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 /**
  * Base schema for all plugins
@@ -29,6 +29,8 @@ const PluginBaseSchema = z.object({
   name: z.string().min(1).regex(KEBAB_CASE_REGEX),
   version: z.string().regex(SEMVER_REGEX),
   description: z.string().min(1),
+  disabled: z.boolean().optional(),
+  minGwrkVersion: z.string().regex(SEMVER_REGEX).optional(),
 });
 
 export type PluginBase = z.infer<typeof PluginBaseSchema>;
@@ -54,8 +56,8 @@ const PluginInterfaceSchema = z.object({
  * Skill Runtime
  */
 const SkillRuntimeSchema = z.object({
-  preferredAgent: z.string(),
-  preferredModel: z.string(),
+  preferredAgent: z.string().default("agy"),
+  preferredModel: z.string().default("default"),
   fallbackAgent: z.string().optional(),
   maxInputTokens: z.number().optional(),
   expectedLatency: z.string().optional(),
@@ -129,12 +131,26 @@ const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
 });
 
 /**
+ * Domain Skill Manifest
+ */
+const DomainSkillManifestSchema = PluginBaseSchema.extend({
+  type: z.literal("skill"),
+  tier: z.literal("domain"),
+  category: z.string().optional(),
+  prompt: z.string().optional(),
+  interface: PluginInterfaceSchema.optional(),
+  runtime: SkillRuntimeSchema.optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+/**
  * Unified Skill Manifest (Discriminated Union on 'tier')
  */
 export const SkillManifestSchema = z.discriminatedUnion("tier", [
   AtomicSkillManifestSchema,
   CompoundSkillManifestSchema,
   EnforcementSkillManifestSchema,
+  DomainSkillManifestSchema,
 ]);
 
 /**
@@ -152,6 +168,7 @@ const InvocationSchema = z.object({
  */
 const AgentManifestSchema = PluginBaseSchema.extend({
   type: z.literal("agent"),
+  adapter: z.string().optional(),
   dispatchMode: z.enum(["local-cli", "github-integration"]),
   contextFileName: z.string(),
   invocation: InvocationSchema.optional(),
@@ -226,7 +243,7 @@ export type ReviewStep = z.infer<typeof ReviewStepSchema>;
 
 const ReviewManifestSchema = PluginBaseSchema.extend({
   type: z.literal("review"),
-  projectType: z.enum(["cli", "webapp"]),
+  projectType: z.enum(["cli", "webapp", "api", "library", "service"]),
   codeReviewWorkflow: z.string(),
   uatReviewWorkflow: z.string(),
   steps: z.object({

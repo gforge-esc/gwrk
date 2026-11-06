@@ -2,38 +2,4 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { GwrkConfig } from "../utils/config.js";
-import type { RoleConfig } from "./types.js";
-
-const DEFAULT_ROLES: RoleConfig[] = [
-  { role: "RE", roleName: "Rust / Engine Engineer", hoursPerSP: 6 },
-  { role: "TS", roleName: "TS / Fullstack Developer", hoursPerSP: 4 },
-  { role: "PM", roleName: "Product Manager", hoursPerSP: 2 },
-  { role: "PE", roleName: "Principal Engineer", hoursPerSP: 1.5 },
-  { role: "DE", roleName: "Data / Generator Engineer", hoursPerSP: 5 },
-];
-
-/**
- * Resolves role multipliers, combining defaults with any overrides in GwrkConfig.
- */
-export function resolveRoleMultipliers(config: GwrkConfig): RoleConfig[] {
-  // We need to merge config.effort.roles with DEFAULT_ROLES
-  // Since config.effort is not strictly typed yet, we use a more constrained type assertion
-  const effort = (
-    config as unknown as {
-      effort?: { roles?: Record<string, Partial<RoleConfig>> };
-    }
-  ).effort;
-  const overrides = effort?.roles || {};
-
-  return DEFAULT_ROLES.map((defaultRole) => {
-    const override = overrides[defaultRole.role];
-    if (override && typeof override.hoursPerSP === "number") {
-      return {
-        ...defaultRole,
-        hoursPerSP: override.hoursPerSP,
-      };
-    }
-    return defaultRole;
-  }).sort((a, b) => a.role.localeCompare(b.role));
-}
+export * from "../domain/effort.js";

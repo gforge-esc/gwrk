@@ -4,92 +4,120 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
+import {
+  type AgentTaskRequest as TaskDispatch,
+  type AgentTaskResult as TaskResult,
+  unwrapStreamJson,
+} from "../../../../ports/agent-port.js";
 import { execCommand } from "../../../../utils/exec.js";
-import type { AgentBackend } from "../../../agent-backend.js";
+import type {
+  AgentBackend,
+  AgentDispatch,
+  ProbeResult,
+  QuotaStatus,
+} from "../../../agent-backend.js";
 
+const MAX_INLINE_PROMPT_BYTES = 4096;
+
+/**
+ * Claude Code Agent Backend Adapter.
+ * Implements Layer 1 AgentBackend interface for the `claude` CLI.
+ */
 export class ClaudeAdapter implements AgentBackend {
   readonly name = "claude";
+  readonly displayName = "Claude Code";
+  readonly emitsStreamJson = true;
   readonly nativeWriter = true;
 
-  /**
-   * Claude Code runs with `--output-format stream-json`, emitting one JSON
-   * event per line. The runner renders these into a readable .runs/*.log
-   * transcript and persists the raw stream to a .jsonl sidecar. Backends that
-   * emit plain prose (codex) leave this unset and are logged as-is.
-   */
-  readonly emitsStreamJson = true;
-
   async isAvailable(): Promise<boolean> {
-    const res = await execCommand("which", ["claude"]);
-    return res.exitCode === 0;
-  }
-
-  async syncGovernance(
-    projectRoot: string,
-    governance: string,
-  ): Promise<string> {
-    const filePath = path.join(projectRoot, "CLAUDE.md");
-    let content = "";
     try {
-      content = await fs.readFile(filePath, "utf-8");
+      const { exitCode } = await execCommand("which", ["claude"]);
+      return exitCode === 0;
     } catch {
-      content = "# Project Context\n\n<!-- gwrk:begin -->\n<!-- gwrk:end -->";
+      return false;
     }
-
-    const beginMarker = "<!-- gwrk:begin -->";
-    const endMarker = "<!-- gwrk:end -->";
-
-    const beginIndex = content.indexOf(beginMarker);
-    const endIndex = content.indexOf(endMarker);
-
-    if (beginIndex !== -1 && endIndex !== -1 && beginIndex < endIndex) {
-      const before = content.substring(0, beginIndex + beginMarker.length);
-      const after = content.substring(endIndex);
-      content = `${before}\n${governance}\n${after}`;
-    } else {
-      content = `${content}\n\n${beginMarker}\n${governance}\n${endMarker}`;
-    }
-
-    await fs.writeFile(filePath, content, "utf-8");
-    return content;
   }
 
-  async dispatch(task: TaskDispatch): Promise<{
-    command: string;
-    args: string[];
-    stdin: string;
-    env?: Record<string, string>;
-  }> {
-    const command = "claude";
-    // `stream-json` emits one JSON event per line as work happens (system /
-    // assistant / tool_use / tool_result / result), which the runner turns into
-    // a full run transcript. `--verbose` is required by Claude Code to stream
-    // events in `-p` (print) mode. The prior `--output-format json` buffered
-    // everything into a single end-of-run blob, so runs had no reviewable log.
+  async checkQuota(): Promise<QuotaStatus> {
+    return {
+      status: "available",
+      remaining: 100,
+    };
+  }
+
+  async probe(): Promise<ProbeResult> {
+    const start = Date.now();
+    try {
+      const { exitCode, stderr } = await execCommand("claude", [
+        "-p",
+        "respond with 1",
+        "--max-turns",
+        "1",
+      ]);
+      const latencyMs = Date.now() - start;
+
+      if (exitCode === 0) {
+        return { status: "available", latencyMs };
+      }
+
+      if (stderr.includes("429") || stderr.includes("Rate limit")) {
+        return { status: "rate_limited", latencyMs, error: stderr.trim() };
+      }
+
+      if (
+        stderr.includes("401") ||
+        stderr.includes("403") ||
+        stderr.includes("authentication")
+      ) {
+        return { status: "auth_error", latencyMs, error: stderr.trim() };
+      }
+
+      return { status: "unavailable", latencyMs, error: stderr.trim() };
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : String(err);
+      return {
+        status: "unavailable",
+        latencyMs: Date.now() - start,
+        error,
+      };
+    }
+  }
+
+  async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
     const args: string[] = [
-      "-p",
-      task.prompt || "",
+      "--dangerously-skip-permissions",
       "--output-format",
       "stream-json",
       "--verbose",
     ];
 
-    // Enforce the workflow's output contract at the model level. Without this,
-    // Claude may spend its single non-interactive turn asking clarifying
-    // questions instead of emitting the {summary, intents} envelope — the run
-    // then produces no schema-conforming JSON and fails validation. `--json-schema`
-    // makes Claude channel any ambiguity *into* the schema rather than break it.
+    const rawPrompt = task.prompt ?? "";
+    const isExpandedPrompt =
+      Boolean(task.stdin) ||
+      rawPrompt.includes("\n") ||
+      Buffer.byteLength(rawPrompt, "utf-8") > MAX_INLINE_PROMPT_BYTES;
+
+    let stdinPayload = task.stdin;
+    if (isExpandedPrompt) {
+      const inlineInstruction = task.workflow
+        ? `Execute ${task.workflow} instructions from stdin`
+        : "Execute instructions from stdin";
+      args.push("-p", inlineInstruction);
+      stdinPayload =
+        task.stdin && rawPrompt
+          ? `${rawPrompt}\n\n${task.stdin}`
+          : task.stdin || rawPrompt;
+    } else if (rawPrompt) {
+      args.push("-p", rawPrompt);
+    }
+
     if (task.outputSchema) {
       args.push("--json-schema", JSON.stringify(task.outputSchema));
     }
 
-    if (task.featureDir) args.push(task.featureDir);
-
     const rawModel = task.model || task.env?.CLAUDE_MODEL;
-    const model = rawModel && rawModel !== "default" ? rawModel : undefined;
-    if (model) {
-      args.push("--model", model);
+    if (rawModel && rawModel !== "default") {
+      args.push("--model", rawModel);
     }
 
     const effort = task.env?.CLAUDE_EFFORT || task.env?.GWRK_EFFORT;
@@ -97,42 +125,93 @@ export class ClaudeAdapter implements AgentBackend {
       args.push("--effort", effort);
     }
 
-    args.push("--dangerously-skip-permissions");
-
     return {
-      command,
+      command: "claude",
       args,
-      stdin: task.stdin || "",
+      stdin: stdinPayload ?? "",
       env: task.env,
+      outputFormat: "stream-json",
     };
   }
 
-  parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
-    let exitCode = rawExitCode;
-    let errorType: string | undefined;
+  async syncGovernance(projectRoot: string, rules: string): Promise<string> {
+    const claudeMdPath = path.join(projectRoot, "CLAUDE.md");
+    const beginMarker = "<!-- gwrk:begin -->";
+    const endMarker = "<!-- gwrk:end -->";
+    const governanceBlock = `${beginMarker}\n${rules}\n${endMarker}`;
 
-    // Normalization from spec (ADR-004/ADR-006):
-    // Claude 126 exit code to gwrk 1 (permission_denied), 127 to command_not_found
-    if (rawExitCode === 127) {
-      errorType = "command_not_found";
-    } else if (rawExitCode === 126) {
-      exitCode = 1;
-      errorType = "permission_denied";
-    } else if (
-      stderr.includes("turn_limit") ||
-      stdout.includes("error_max_turns")
-    ) {
-      exitCode = 1;
-      errorType = "turn_limit";
-    } else if (rawExitCode > 2) {
-      exitCode = 1;
+    let content = "";
+    try {
+      content = await fs.readFile(claudeMdPath, "utf-8");
+    } catch {
+      const newContent = `# Project Claude Governance\n\n${governanceBlock}\n`;
+      await fs.writeFile(claudeMdPath, newContent, "utf-8");
+      return newContent;
+    }
+
+    const beginIndex = content.indexOf(beginMarker);
+    const endIndex = content.indexOf(endMarker);
+
+    let updatedContent: string;
+    if (beginIndex !== -1 && endIndex !== -1 && endIndex > beginIndex) {
+      updatedContent =
+        content.slice(0, beginIndex) +
+        governanceBlock +
+        content.slice(endIndex + endMarker.length);
+    } else {
+      updatedContent = `${content.trimEnd()}\n\n${governanceBlock}\n`;
+    }
+
+    await fs.writeFile(claudeMdPath, updatedContent, "utf-8");
+    return updatedContent;
+  }
+
+  parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
+    const unwrapped = unwrapStreamJson(stdout);
+    let errorType: TaskResult["errorType"];
+    let exitCode = rawExitCode;
+
+    if (rawExitCode !== 0) {
+      if (rawExitCode === 127 || stderr.includes("command not found")) {
+        errorType = "command_not_found";
+        exitCode = 127;
+      } else if (rawExitCode === 126 || stderr.includes("Permission denied")) {
+        errorType = "permission_denied";
+        exitCode = 1;
+      } else if (
+        unwrapped.isTurnLimit ||
+        stdout.includes("error_max_turns") ||
+        stderr.includes("error_max_turns")
+      ) {
+        errorType = "turn_limit";
+        exitCode = 1;
+      } else if (stderr.includes("429") || stderr.includes("Rate limit")) {
+        errorType = "rate_limit";
+        exitCode = 1;
+      } else if (
+        stderr.includes("401") ||
+        stderr.includes("403") ||
+        stderr.includes("auth")
+      ) {
+        errorType = "auth_failure";
+        exitCode = 1;
+      } else {
+        errorType = "unknown";
+        exitCode = 1;
+      }
     }
 
     return {
       exitCode,
-      errorType,
+      rawExitCode,
       stdout,
+      unwrappedStdout: unwrapped.text,
+      ...(unwrapped.structuredOutput
+        ? { structuredOutput: unwrapped.structuredOutput }
+        : {}),
+      ...(unwrapped.usage ? { usage: unwrapped.usage } : {}),
       stderr,
+      errorType,
       durationS: 0,
     };
   }

@@ -4,136 +4,240 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { TaskDispatch, TaskResult } from "../../../../utils/agent.js";
+import {
+  type AgentTaskRequest as TaskDispatch,
+  type AgentTaskResult as TaskResult,
+  unwrapStreamJson,
+} from "../../../../ports/agent-port.js";
 import { execCommand } from "../../../../utils/exec.js";
-import type { AgentBackend } from "../../../agent-backend.js";
+import type {
+  AgentBackend,
+  AgentDispatch,
+  ProbeResult,
+  QuotaStatus,
+} from "../../../agent-backend.js";
 
-const AGY_2_MODEL_PATTERN =
-  /^(gemini-4-|gemini-3\.8-|claude-(opus|sonnet)-5-5-|gpt-oss-)/;
+/** Legacy Gemini 1.x / 2.0 model names that Agy 2.0 rejects on `--model`. */
+const LEGACY_GEMINI_MODEL_PATTERN = /^gemini-(1\.0|1\.5|2\.0)-/;
+const MAX_INLINE_PROMPT_BYTES = 4096;
 
+/**
+ * Antigravity (agy) CLI Agent Backend Adapter.
+ * Implements Layer 1 AgentBackend interface for the `agy` CLI.
+ */
 export class AgyAdapter implements AgentBackend {
   readonly name = "agy";
+  readonly displayName = "Antigravity";
+  readonly emitsStreamJson = true;
   readonly nativeWriter = true;
 
-  /**
-   * Antigravity 2.0 CLI supports `--output-format stream-json`, emitting
-   * structured event lines that the runner turns into a live `.runs/*.log`
-   * transcript and `.jsonl` sidecar.
-   */
-  readonly emitsStreamJson = true;
-
   async isAvailable(): Promise<boolean> {
-    const res = await execCommand("which", ["agy"]);
-    return res.exitCode === 0;
-  }
-
-  async syncGovernance(
-    projectRoot: string,
-    governance: string,
-  ): Promise<string> {
-    const filePath = path.join(projectRoot, "AGENTS.md");
-    let content = "";
     try {
-      content = await fs.readFile(filePath, "utf-8");
+      const { exitCode } = await execCommand("which", ["agy"]);
+      return exitCode === 0;
     } catch {
-      content = "# Project Context\n\n<!-- gwrk:begin -->\n<!-- gwrk:end -->";
+      return false;
     }
-
-    const beginMarker = "<!-- gwrk:begin -->";
-    const endMarker = "<!-- gwrk:end -->";
-
-    const beginIndex = content.indexOf(beginMarker);
-    const endIndex = content.indexOf(endMarker);
-
-    if (beginIndex !== -1 && endIndex !== -1 && beginIndex < endIndex) {
-      const before = content.substring(0, beginIndex + beginMarker.length);
-      const after = content.substring(endIndex);
-      content = `${before}\n${governance}\n${after}`;
-    } else {
-      content = `${content}\n\n${beginMarker}\n${governance}\n${endMarker}`;
-    }
-
-    await fs.writeFile(filePath, content, "utf-8");
-    return content;
   }
 
-  async dispatch(task: TaskDispatch): Promise<{
-    command: string;
-    args: string[];
-    stdin: string;
-    env?: Record<string, string>;
-  }> {
-    const command = "agy";
-    const args: string[] = [];
+  async checkQuota(): Promise<QuotaStatus> {
+    return {
+      status: "available",
+      remaining: 100,
+    };
+  }
 
-    let slashCmd = "";
-    if (task.workflow) {
-      slashCmd = `/${path.basename(task.workflow, ".md")}`;
+  async probe(): Promise<ProbeResult> {
+    const start = Date.now();
+    try {
+      const { exitCode, stderr } = await execCommand("agy", [
+        "chat",
+        "-m",
+        "respond with 1",
+        "--mode",
+        "agent",
+      ]);
+      const latencyMs = Date.now() - start;
+
+      if (exitCode === 0) {
+        return { status: "available", latencyMs };
+      }
+
+      if (stderr.includes("429") || stderr.includes("Quota exceeded")) {
+        return { status: "rate_limited", latencyMs, error: stderr.trim() };
+      }
+
+      if (
+        stderr.includes("401") ||
+        stderr.includes("403") ||
+        stderr.includes("auth") ||
+        stderr.includes("Sign in")
+      ) {
+        return { status: "auth_error", latencyMs, error: stderr.trim() };
+      }
+
+      return { status: "unavailable", latencyMs, error: stderr.trim() };
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : String(err);
+      return {
+        status: "unavailable",
+        latencyMs: Date.now() - start,
+        error,
+      };
+    }
+  }
+
+  async dispatch(task: TaskDispatch): Promise<AgentDispatch> {
+    const rawPrompt = task.prompt ?? "";
+    const isExpandedPrompt =
+      Boolean(task.stdin) ||
+      rawPrompt.includes("\n") ||
+      Buffer.byteLength(rawPrompt, "utf-8") > MAX_INLINE_PROMPT_BYTES;
+
+    let inlinePrompt: string;
+    let stdinPayload = task.stdin;
+
+    if (isExpandedPrompt) {
+      inlinePrompt = task.workflow
+        ? `Execute ${task.workflow} instructions from stdin`
+        : "Execute instructions from stdin";
+      stdinPayload =
+        task.stdin && rawPrompt
+          ? `${rawPrompt}\n\n${task.stdin}`
+          : task.stdin || rawPrompt;
+    } else {
+      const promptParts: string[] = [];
+      if (task.workflow) {
+        promptParts.push(`/${task.workflow}`);
+      }
+      if (task.featureDir) {
+        promptParts.push(task.featureDir);
+      }
+      if (rawPrompt) {
+        promptParts.push(rawPrompt);
+      }
+      inlinePrompt = promptParts.join(" ").trim() || "Execute task";
     }
 
-    if (task.featureDir) {
-      slashCmd += `${slashCmd ? " " : ""}${task.featureDir}`;
-    }
-    if (task.prompt) {
-      slashCmd += `${slashCmd ? " " : ""}${task.prompt}`;
-    }
-
-    if (slashCmd) {
-      args.push("-p", slashCmd);
-    }
-
-    args.push("--output-format", "stream-json");
+    const args: string[] = [
+      "-p",
+      inlinePrompt,
+      "--output-format",
+      "stream-json",
+      "--dangerously-skip-permissions",
+    ];
 
     if (task.outputSchema) {
       args.push("--json-schema", JSON.stringify(task.outputSchema));
     }
 
-    // Pass --model when AGY_MODEL is explicitly set or task.model names a valid
-    // Antigravity 2.0 model ID; omit legacy 1.5/2.0 model names (FR-004).
-    const explicitModel =
-      task.env?.AGY_MODEL ||
-      (task.model && AGY_2_MODEL_PATTERN.test(task.model) ? task.model : undefined);
-    if (explicitModel) {
-      args.push("--model", explicitModel);
+    const rawModel = task.model || task.env?.AGY_MODEL;
+    const explicitEnvModel = Boolean(task.env?.AGY_MODEL);
+    if (
+      rawModel &&
+      rawModel !== "default" &&
+      (explicitEnvModel || !LEGACY_GEMINI_MODEL_PATTERN.test(rawModel))
+    ) {
+      args.push("--model", rawModel);
     }
 
-    const effort = task.env?.AGY_EFFORT;
+    const effort = task.env?.AGY_EFFORT || task.env?.GWRK_EFFORT;
     if (effort) {
       args.push("--effort", effort);
     }
 
-    // YOLO mode for all agentic dispatches
-    // FR-004: Map YOLO mode to --dangerously-skip-permissions
-    args.push("--dangerously-skip-permissions");
-
     return {
-      command,
+      command: "agy",
       args,
-      stdin: task.stdin || "",
-      env: task.env,
+      stdin: stdinPayload ?? "",
+      env: {
+        ...task.env,
+        APPROVAL_MODE: "yolo",
+      },
+      outputFormat: "stream-json",
     };
   }
 
-  parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
-    let exitCode = rawExitCode;
-    let errorType: string | undefined;
+  async syncGovernance(projectRoot: string, rules: string): Promise<string> {
+    const agentsMdPath = path.join(projectRoot, "AGENTS.md");
+    const beginMarker = "<!-- gwrk:begin -->";
+    const endMarker = "<!-- gwrk:end -->";
+    const governanceBlock = `${beginMarker}\n${rules}\n${endMarker}`;
 
-    // Normalization logic (ADR-004/ADR-006)
-    if (rawExitCode === 127) {
-      errorType = "command_not_found";
-    } else if (stderr.includes("turn_limit")) {
-      exitCode = 1;
-      errorType = "turn_limit";
-    } else if (rawExitCode !== 0) {
-      exitCode = 1;
+    let content = "";
+    try {
+      content = await fs.readFile(agentsMdPath, "utf-8");
+    } catch {
+      const newContent = `# Project Agents Governance\n\n${governanceBlock}\n`;
+      await fs.writeFile(agentsMdPath, newContent, "utf-8");
+      return newContent;
+    }
+
+    const beginIndex = content.indexOf(beginMarker);
+    const endIndex = content.indexOf(endMarker);
+
+    let updatedContent: string;
+    if (beginIndex !== -1 && endIndex !== -1 && endIndex > beginIndex) {
+      updatedContent =
+        content.slice(0, beginIndex) +
+        governanceBlock +
+        content.slice(endIndex + endMarker.length);
+    } else {
+      updatedContent = `${content.trimEnd()}\n\n${governanceBlock}\n`;
+    }
+
+    await fs.writeFile(agentsMdPath, updatedContent, "utf-8");
+    return updatedContent;
+  }
+
+  parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
+    const unwrapped = unwrapStreamJson(stdout);
+    let errorType: TaskResult["errorType"];
+    let exitCode = rawExitCode;
+
+    if (rawExitCode !== 0) {
+      if (rawExitCode === 127 || stderr.includes("command not found")) {
+        errorType = "command_not_found";
+        exitCode = 127;
+      } else if (rawExitCode === 126 || stderr.includes("Permission denied")) {
+        errorType = "permission_denied";
+        exitCode = 1;
+      } else if (
+        unwrapped.isTurnLimit ||
+        stdout.includes("error_max_turns") ||
+        stderr.includes("error_max_turns")
+      ) {
+        errorType = "turn_limit";
+        exitCode = 1;
+      } else if (stderr.includes("429") || stderr.includes("Quota exceeded")) {
+        errorType = "rate_limit";
+        exitCode = 1;
+      } else if (
+        stderr.includes("401") ||
+        stderr.includes("403") ||
+        stderr.includes("auth") ||
+        stderr.includes("Sign in")
+      ) {
+        errorType = "auth_failure";
+        exitCode = 1;
+      } else {
+        errorType = "unknown";
+        exitCode = 1;
+      }
     }
 
     return {
       exitCode,
-      errorType,
+      rawExitCode,
       stdout,
+      unwrappedStdout: unwrapped.text,
+      ...(unwrapped.structuredOutput
+        ? { structuredOutput: unwrapped.structuredOutput }
+        : {}),
+      ...(unwrapped.usage ? { usage: unwrapped.usage } : {}),
       stderr,
-      durationS: 0, // Set by caller
+      errorType,
+      durationS: 0,
     };
   }
 }

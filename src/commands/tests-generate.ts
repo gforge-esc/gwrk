@@ -17,19 +17,20 @@ import {
   extractPhaseSection,
   extractSpecSections,
 } from "../utils/parser.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { loadTaskState } from "../utils/state.js";
 
+import { isPolyglotTestFile } from "../ports/toolchain-port.js";
+import { withParentFlags } from "../utils/command-flags.js";
 import {
   getCurrentBranch,
   getCurrentCommit,
   getDiffStats,
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
-import { CommandError, withSignal } from "../utils/signal.js";
-import { withParentFlags } from "../utils/command-flags.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
  * gwrk define tests <feature> [options] — Generate RED test files from spec/plan
@@ -66,6 +67,7 @@ Examples:
       command: Command,
     ) => {
       // Also declared on `define`; commander binds it to the parent otherwise.
+      // biome-ignore lint/style/noParameterAssign: merge parent commander flags
       options = withParentFlags(options, command);
       await withSignal(`define tests ${featureArg}`, async () => {
         const projectRoot = process.cwd();
@@ -98,7 +100,8 @@ Examples:
             // Look for tests that match the feature ID or are generally feature tests
             return allFiles.some(
               (f) =>
-                f.includes(feature) && f.endsWith(".test.ts"),
+                f.includes(feature) &&
+                (f.endsWith(".test.ts") || isPolyglotTestFile(f)),
             );
           } catch {
             return false;
@@ -111,15 +114,19 @@ Examples:
         // on every feature — using it here blocked the first, legitimate
         // `define tests` run for any feature that had been specced/planned.
         // The real test-stage signals are gap-matrix.md and actual test files.
-        const testsAlreadyExist =
-          fs.existsSync(gapMatrixPath) || hasTestFiles;
+        const testsAlreadyExist = fs.existsSync(gapMatrixPath) || hasTestFiles;
 
-        if (testsAlreadyExist && !rawPhase && !options.force && !options.dryRun) {
+        if (
+          testsAlreadyExist &&
+          !rawPhase &&
+          !options.force &&
+          !options.dryRun
+        ) {
           blocked(
             `Test artifacts already exist for ${feature}. Use --force to overwrite.`,
           );
           throw new CommandError(
-            `Test artifacts already exist. Use --force to overwrite.`,
+            "Test artifacts already exist. Use --force to overwrite.",
             1,
           );
         }
@@ -148,32 +155,39 @@ Examples:
         // exit_code). `runs` is what harvest correlates against and what
         // getShippedPhases reads, so a row for work that never happened is
         // false evidence. -1 is the same sentinel a failed ledger write uses.
-        const runId = options.dryRun ? -1 : startRun({
-          feature_id: feature,
-          command: "define tests",
-          agent_backend: backend,
-          workflow: "define-tests",
-        });
+        const runId = options.dryRun
+          ? -1
+          : startRun({
+              feature_id: feature,
+              command: "define tests",
+              agent_backend: backend,
+              workflow: "define-tests",
+            });
 
         try {
-          const orchestrator = new DefineOrchestrator({
-            featureId: feature,
-            backend,
-            model,
-            cwd: projectRoot,
-            dryRun: options.dryRun,
-            quiet: true,
-            tolerant: true,
-          }, {
-            stage: DefineStage.DEFINE_TESTS,
-            featureId: feature,
-            startedAt,
-            runId: `define-tests-${feature}-${Date.now()}`,
-            backend,
-          });
+          const orchestrator = new DefineOrchestrator(
+            {
+              featureId: feature,
+              backend,
+              model,
+              cwd: projectRoot,
+              dryRun: options.dryRun,
+              quiet: true,
+              tolerant: true,
+            },
+            {
+              stage: DefineStage.DEFINE_TESTS,
+              featureId: feature,
+              startedAt,
+              runId: `define-tests-${feature}-${Date.now()}`,
+              backend,
+            },
+          );
 
           const input = `Generate tests for feature ${feature}${paddedPhase ? ` phase ${paddedPhase}` : ""}${options.force ? " --force" : ""}`;
-          const exitCode = await orchestrator.runLoop(input, { stopAfterOne: true });
+          const exitCode = await orchestrator.runLoop(input, {
+            stopAfterOne: true,
+          });
 
           if (exitCode !== 0) {
             // T015: Detect agent-native success by checking for committed test files
@@ -222,7 +236,11 @@ Examples:
             );
 
             const manifestPhase = paddedPhase || "all";
-            const manifestId = generateRunId(startedAt, "define", manifestPhase);
+            const manifestId = generateRunId(
+              startedAt,
+              "define",
+              manifestPhase,
+            );
 
             writeManifest(featureDir, {
               runId: manifestId,
@@ -271,7 +289,8 @@ Examples:
           });
         } catch (error: unknown) {
           const durationS = Math.round((Date.now() - startTime) / 1000);
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           finishRun(runId, { exit_code: 1, duration_s: durationS });
           fail("define tests", 1, durationS, runId);
           throw new CommandError(`Error generating tests: ${message}`, 1);

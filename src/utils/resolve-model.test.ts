@@ -6,8 +6,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { resolveModelForTask } from "./resolve-model.js";
 
 // Mock loadRegistry to return a controlled backend config
-vi.mock("../server/agent-registry.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../server/agent-registry.js")>();
+vi.mock("../domain/agent-config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../domain/agent-config.js")>();
   return {
     ...actual,
     loadRegistry: vi.fn(() => ({

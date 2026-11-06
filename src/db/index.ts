@@ -96,6 +96,11 @@ function runMigrations(db: Database.Database): void {
   // SQLite lacks ALTER TABLE ... ADD COLUMN IF NOT EXISTS, so we check first.
   safeAddColumn(db, "runs", "status", "TEXT");
   safeAddColumn(db, "runs", "merge_commit_sha", "TEXT");
+  safeAddColumn(db, "runs", "device_id", "TEXT");
+  safeAddColumn(db, "runs", "hostname", "TEXT");
+  safeAddColumn(db, "runs", "tokens_in", "INTEGER");
+  safeAddColumn(db, "runs", "tokens_out", "INTEGER");
+  safeAddColumn(db, "runs", "cost_usd", "REAL");
   safeAddColumn(db, "issues", "html_url", "TEXT");
 
   // Project Scoping (Phase 14)

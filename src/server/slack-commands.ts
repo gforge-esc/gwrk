@@ -7,8 +7,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { KnownBlock } from "@slack/types";
 import { findOpenPr } from "../db/runs.js";
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";
 import type { SystemMonitor } from "./monitor.js";
@@ -791,7 +791,12 @@ const handlers: Record<string, SlashCommandHandler> = {
     const sub = args[0] || "list";
 
     if (sub === "list") {
-      const indexPath = path.join(context.projectRoot, ".gwrk", "decisions", "index.md");
+      const indexPath = path.join(
+        context.projectRoot,
+        ".gwrk",
+        "decisions",
+        "index.md",
+      );
       if (!fs.existsSync(indexPath)) {
         return {
           response_type: "ephemeral",
@@ -891,7 +896,10 @@ const handlers: Record<string, SlashCommandHandler> = {
         return {
           response_type: "ephemeral",
           blocks: [
-            { type: "section", text: { type: "mrkdwn", text: `:warning: ${msg}` } },
+            {
+              type: "section",
+              text: { type: "mrkdwn", text: `:warning: ${msg}` },
+            },
           ],
         };
       }

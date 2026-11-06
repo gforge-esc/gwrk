@@ -17,16 +17,21 @@ import {
 } from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
-import { getTestExtension } from "../utils/toolchain-mapper.js";
-import { phaseHasTests, listTestsTree } from "../utils/test-discovery.js";
-import { getPhaseVerificationGate } from "../utils/gate-quality.js";
-import { extractFilePaths } from "../utils/file-extract.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import type { ShipStage, ShipState } from "../engine/ship-types.js";
+import {
+  isPolyglotSourceFile,
+  isPolyglotTestFile,
+} from "../ports/toolchain-port.js";
+import { extractFilePaths } from "../utils/file-extract.js";
+import { getPhaseVerificationGate } from "../utils/gate-quality.js";
+import { listTestsTree, phaseHasTests } from "../utils/test-discovery.js";
+import { getTestExtension } from "../utils/toolchain-mapper.js";
 
 import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
 import { type AgentBackendId, loadConfig } from "../utils/config.js";
+import { loadDevice } from "../utils/device.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -56,10 +61,10 @@ import {
 import { getBackendSelector } from "../server/index.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { pillarBackend } from "../utils/resolve-agent.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
-import { pillarBackend } from "../utils/resolve-agent.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
@@ -154,24 +159,17 @@ async function shipPhase(
         );
       }
 
-      const mentionedTests = files.filter(
-        (f) => f.includes(".test.ts") || f.includes(".test.js"),
-      );
-      const sourceFiles = files.filter(
-        (f) =>
-          (f.endsWith(".ts") || f.endsWith(".js")) &&
-          !f.includes(".test.") &&
-          !f.includes(".d.ts"),
-      );
-
       // FR-008 (ADR-005 §10.2.4): existence-based, profile-aware discovery.
-      // A *mentioned* test only counts if it exists; tests in a separate
-      // tests/ tree count too (no false block for out-of-tree suites).
       const profile = await detectProfile(cwd);
+      const testExt = getTestExtension(profile);
+      const mentionedTests = files.filter((f) =>
+        isPolyglotTestFile(f, testExt),
+      );
+      const sourceFiles = files.filter((f) => isPolyglotSourceFile(f, testExt));
       const hasTests = phaseHasTests({
         sourceFiles,
         mentionedTests,
-        testExt: getTestExtension(profile),
+        testExt,
         fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
         testsTreeFiles: listTestsTree(cwd),
         declaredTargets: phaseData.testTargets ?? [],
@@ -202,13 +200,17 @@ async function shipPhase(
 
   const startedAt = new Date().toISOString();
   const startCommit = getCurrentCommit(cwd);
+  const runDevice = loadDevice();
 
   const runId = startRun({
     feature_id: feature,
     phase_id: phaseId,
     command: "ship",
     agent_backend: backend,
+    model: selectedModel,
     workflow: "work-until-done",
+    device_id: runDevice?.id,
+    hostname: runDevice?.hostname,
   });
 
   banner("ship", {
@@ -307,6 +309,15 @@ async function shipPhase(
         status: "shipped",
         ...(result.prNumber ? { pr_number: result.prNumber } : {}),
         ...(result.prUrl ? { pr_url: result.prUrl } : {}),
+        ...(result.usage?.inputTokens !== undefined
+          ? { tokens_in: result.usage.inputTokens }
+          : {}),
+        ...(result.usage?.outputTokens !== undefined
+          ? { tokens_out: result.usage.outputTokens }
+          : {}),
+        ...(result.usage?.costUsd !== undefined
+          ? { cost_usd: result.usage.costUsd }
+          : {}),
         files_changed: stats.filesChanged,
         lines_added: stats.linesAdded,
         lines_deleted: stats.linesDeleted,
@@ -337,9 +348,19 @@ async function shipPhase(
       typeof (err as { code?: unknown }).code === "number"
         ? (err as { code: number }).code
         : 1;
+    const failedUsage = orchestrator?.getResult().usage;
     finishRun(runId, {
       exit_code: exitCode,
       duration_s: durationS,
+      ...(failedUsage?.inputTokens !== undefined
+        ? { tokens_in: failedUsage.inputTokens }
+        : {}),
+      ...(failedUsage?.outputTokens !== undefined
+        ? { tokens_out: failedUsage.outputTokens }
+        : {}),
+      ...(failedUsage?.costUsd !== undefined
+        ? { cost_usd: failedUsage.costUsd }
+        : {}),
       files_changed: stats.filesChanged,
       lines_added: stats.linesAdded,
       lines_deleted: stats.linesDeleted,
@@ -364,6 +385,7 @@ async function shipPhase(
     const manifestId = generateRunId(startedAt, "ship", phaseId);
     const featureDir = path.join(cwd, "specs", feature);
     const result = orchestrator?.getResult();
+    const device = loadDevice();
 
     writeManifest(featureDir, {
       runId: manifestId,
@@ -372,6 +394,9 @@ async function shipPhase(
       command: "ship",
       agent: backend,
       model: selectedModel || "unknown",
+      ...(device?.id ? { deviceId: device.id } : {}),
+      ...(device?.hostname ? { hostname: device.hostname } : {}),
+      ...(result?.usage ? { usage: result.usage } : {}),
       startedAt,
       finishedAt,
       durationS,
@@ -597,7 +622,7 @@ Examples:
           const phaseData = taskState.phases.find((p) => p.id === phaseId);
 
           // --force: always clear stale orchestrator state, regardless of task status
-          if (opts.force) {
+          if (opts.force && !opts.dryRun) {
             const statePath = path.join(
               cwd,
               ".runs",
@@ -608,7 +633,7 @@ Examples:
             }
           }
 
-          if (phaseData && isPhaseComplete(phaseData)) {
+          if (phaseData && isPhaseComplete(phaseData) && !opts.dryRun) {
             if (!opts.force) {
               console.error(
                 `${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`,
@@ -623,7 +648,7 @@ Examples:
             saveTaskState(specDir, taskState);
             // Commit the reset so the orchestrator sees a clean working tree
             execSync(
-              `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
+              `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
               {
                 cwd,
                 env: { ...process.env, GWRK_SHIP: "1" },
@@ -645,7 +670,7 @@ Examples:
             const phaseId = `phase-${phaseNum.padStart(2, "0")}`;
             const phaseData = taskState.phases.find((p) => p.id === phaseId);
             if (!phaseData) return true;
-            if (isPhaseComplete(phaseData)) {
+            if (isPhaseComplete(phaseData) && !opts.dryRun) {
               if (opts.force) {
                 const statePath = path.join(
                   cwd,
@@ -661,7 +686,7 @@ Examples:
                 saveTaskState(specDir, taskState);
                 // Commit the reset so the orchestrator sees a clean working tree
                 execSync(
-                  `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
+                  `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
                   {
                     cwd,
                     env: { ...process.env, GWRK_SHIP: "1" },
@@ -694,7 +719,7 @@ Examples:
           // authoritative enough to overrule the other (the graph's SHIPPED is
           // promoted from ship-run existence, not a passing gate), so surface
           // the conflict instead of silently believing one side.
-          if (!opts.force) {
+          if (!opts.force && !opts.dryRun) {
             try {
               const graphStatuses = new Map<string, string>(
                 new PlanStore(resolveProjectId(cwd))
@@ -709,7 +734,9 @@ Examples:
                   `${YELLOW}⚠${RESET} tasks.json and the build plan disagree about ${drift.length} phase(s):`,
                 );
                 for (const id of drift) {
-                  console.error(`    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`);
+                  console.error(
+                    `    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`,
+                  );
                 }
                 console.error(
                   "  Shipping would re-implement work the plan already records as shipped.",
@@ -771,8 +798,9 @@ Examples:
           }
           if (opts.worktree) {
             dryRunFmt(
-              `create worktree .runs/sandboxes/${feature}-ship-<uuid> on feat/${feature} (base develop)` +
-                (config.worktree?.setup ? `; run "${config.worktree.setup}"` : ""),
+              `create worktree .runs/sandboxes/${feature}-ship-<uuid> on feat/${feature} (base develop)${
+                config.worktree?.setup ? `; run "${config.worktree.setup}"` : ""
+              }`,
             );
           }
           const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
@@ -804,7 +832,11 @@ Examples:
             featureId: feature,
             phaseId: "all",
             taskId: "ship",
-            backend: pillarBackend(config, "implement", opts.agent as string) as AgentBackendId,
+            backend: pillarBackend(
+              config,
+              "implement",
+              opts.agent as string,
+            ) as AgentBackendId,
             projectRoot: cwd,
             baseBranch: "develop",
             branchName: shipBranch,

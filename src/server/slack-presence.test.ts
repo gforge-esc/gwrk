@@ -92,7 +92,6 @@ describe("PresenceManager", () => {
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
       presence: "active",
-      // biome-ignore lint/suspicious/noExplicitAny: complex mock
     } as any);
     await vi.runOnlyPendingTimersAsync();
 
@@ -126,7 +125,6 @@ describe("PresenceManager", () => {
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
       presence: "away",
-      // biome-ignore lint/suspicious/noExplicitAny: complex mock
     } as any);
     await vi.runOnlyPendingTimersAsync();
 
@@ -156,7 +154,6 @@ describe("PresenceManager", () => {
     mockApp.client.users.getPresence.mockResolvedValue({
       ok: true,
       presence: "active",
-      // biome-ignore lint/suspicious/noExplicitAny: complex mock
     } as any);
     await vi.runOnlyPendingTimersAsync();
 

@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { WorkflowRuntime } from "./workflow-runtime.js";
-import * as agentModule from "../utils/agent.js";
 import { readFile } from "node:fs/promises";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as agentModule from "../utils/agent.js";
+import { WorkflowRuntime } from "./workflow-runtime.js";
 
 vi.mock("../utils/agent.js", () => ({
   dispatchToAgent: vi.fn(),
@@ -49,7 +49,9 @@ describe("WorkflowRuntime (Phase 12)", () => {
       const runtime = new WorkflowRuntime(mockLoader as any);
       const result = await runtime.executeWorkflow("dummy", "input");
 
-      expect(result.summary).toContain("Agent completed successfully (native execution, no JSON intents)");
+      expect(result.summary).toContain(
+        "Agent completed successfully (native execution, no JSON intents)",
+      );
       expect(result.intents).toEqual([]);
     });
   });

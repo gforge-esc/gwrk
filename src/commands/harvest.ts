@@ -6,8 +6,10 @@ import path from "node:path";
 import { Command } from "commander";
 import { harvestFeature } from "../engine/harvest.js";
 import type { HarvestRecord } from "../engine/types.js";
+import { isRemote } from "../utils/device.js";
+import { detectDefaultBranch, syncTrunkForHarvest } from "../utils/git.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
-import { withSignal } from "../utils/signal.js";
+import { CommandError, withSignal } from "../utils/signal.js";
 
 /**
  * gwrk harvest <feature> [phase]
@@ -31,7 +33,17 @@ Examples:
   .option("--commit <sha>", "Merge commit SHA")
   .action(async (featureArg, phase, options) => {
     await withSignal(`harvest ${featureArg}`, async () => {
+      if (isRemote()) {
+        throw new CommandError(
+          "This machine is registered as a remote device. Harvest runs on the server only.\n" +
+            "To change this machine's role: gwrk init --server",
+          1,
+        );
+      }
+
       const projectRoot = process.cwd();
+      const baseBranch = detectDefaultBranch(projectRoot, "develop");
+      syncTrunkForHarvest(projectRoot, baseBranch);
       const feature = resolveFeature(featureArg, projectRoot);
 
       // Format phase uniformly to phase-0X if it's just a number

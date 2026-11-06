@@ -8,10 +8,19 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { Phase, Task } from "./state.js";
-import type { ProjectProfile } from "../engine/prompt-conditioner.js";
-import { getTestCommand, getLintCommand, TEST_INVOCATION_VERBS } from "./toolchain-mapper.js";
+import type { ProjectProfile } from "../domain/types.js";
+import {
+  getColocatedTestCandidates,
+  isPolyglotSourceFile,
+  isPolyglotTestFile,
+} from "../ports/toolchain-port.js";
 import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
+import type { Phase, Task } from "./state.js";
+import {
+  TEST_INVOCATION_VERBS,
+  getLintCommand,
+  getTestCommand,
+} from "./toolchain-mapper.js";
 
 // ─── GateBrief interfaces (ADR-005) ──────────────────────────────────────────
 // The brief is a structured manifest of what needs gating.
@@ -111,8 +120,12 @@ function buildTaskBrief(
 
   // Resolve primary file
   const rawFile =
-    text.match(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/)?.[0] ??
-    text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md))\b/)?.[0] ??
+    text.match(
+      /(?:src|tests|docs|scripts|packages|cmd|internal|pkg|crates|app|lib)\/[^\s),]+/,
+    )?.[0] ??
+    text.match(
+      /\b([\w./-]+\.(?:ts|js|py|go|rs|sql|sh|yml|yaml|json|md))\b/,
+    )?.[0] ??
     null;
   const primaryFile = rawFile?.replace(/[,;.]$/, "") ?? null;
   const resolvedFile =
@@ -152,10 +165,9 @@ function buildTaskBrief(
 }
 
 function classifyFileType(filePath: string): TaskBrief["fileType"] {
-  const base = path.basename(filePath);
   const ext = path.extname(filePath);
-  if (base.endsWith(".test.ts") || base.endsWith(".test.js")) return "test";
-  if (ext === ".ts" || ext === ".js") return "typescript";
+  if (isPolyglotTestFile(filePath)) return "test";
+  if (isPolyglotSourceFile(filePath)) return "typescript";
   if (ext === ".sh") return "shell";
   if (ext === ".md") return "markdown";
   if (ext === ".json") return "json";
@@ -213,13 +225,31 @@ export function generateRunner(gatesDir: string): void {
 # Hard Gate Runner — runs all T*-gate.sh scripts sequentially
 set -e
 
-# Pre-flight: TypeScript compilation must pass before individual gates
-echo "▸ pnpm build (compile gate)..."
-if pnpm build > /dev/null 2>&1; then
-    echo "✅ PASS"
-else
-    echo "❌ FAIL — pnpm build failed. Fix TypeScript errors before shipping." >&2
-    exit 1
+# Pre-flight: compilation gate must pass before individual gates
+if [ -f "package.json" ]; then
+    echo "▸ pnpm build (compile gate)..."
+    if pnpm build > /dev/null 2>&1; then
+        echo "✅ PASS"
+    else
+        echo "❌ FAIL — pnpm build failed. Fix TypeScript errors before shipping." >&2
+        exit 1
+    fi
+elif [ -f "Cargo.toml" ]; then
+    echo "▸ cargo check (compile gate)..."
+    if cargo check > /dev/null 2>&1; then
+        echo "✅ PASS"
+    else
+        echo "❌ FAIL — cargo check failed." >&2
+        exit 1
+    fi
+elif [ -f "go.mod" ]; then
+    echo "▸ go build ./... (compile gate)..."
+    if go build ./... > /dev/null 2>&1; then
+        echo "✅ PASS"
+    else
+        echo "❌ FAIL — go build failed." >&2
+        exit 1
+    fi
 fi
 
 PASSED=0; FAILED=0; TOTAL=0
@@ -533,7 +563,7 @@ export function generateDeterministicGates(
   featureDir: string,
   gapMatrixPath: string,
   phases: Phase[],
-  profile: ProjectProfile = { type: "unknown" }
+  profile: ProjectProfile = { type: "unknown" },
 ): GateGenResult {
   const rows = parseGapMatrix(gapMatrixPath);
   const gatesDir = path.join(featureDir, "gates");
@@ -563,7 +593,9 @@ export function generateDeterministicGates(
       const text = `${task.title} ${task.description ?? ""}`;
       const rawFile =
         text.match(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/)?.[0] ??
-        text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md|py|go|rs))\b/)?.[0] ??
+        text.match(
+          /\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md|py|go|rs))\b/,
+        )?.[0] ??
         null;
       const primaryFile = rawFile?.replace(/[,;.]$/, "") ?? null;
       if (primaryFile) {
@@ -583,7 +615,10 @@ export function generateDeterministicGates(
     let sourceFile = row.testFile.replace(/\.test\.(ts|js)$/, ".$1");
     sourceFile = sourceFile.replace(/_test\.go$/, ".go");
     if (path.basename(sourceFile).startsWith("test_")) {
-      sourceFile = path.join(path.dirname(sourceFile), path.basename(sourceFile).replace(/^test_/, ""));
+      sourceFile = path.join(
+        path.dirname(sourceFile),
+        path.basename(sourceFile).replace(/^test_/, ""),
+      );
     }
 
     const taskId = sourceFileToTaskId.get(sourceFile);
@@ -592,9 +627,16 @@ export function generateDeterministicGates(
     }
 
     // Fallback: try matching test file basename to any task
-    const testBasename = path.basename(row.testFile).replace(/\.test\.(ts|js)$/, "").replace(/_test\.go$/, "").replace(/^test_/, "").replace(/\.(py|rs)$/, "");
+    const testBasename = path
+      .basename(row.testFile)
+      .replace(/\.test\.(ts|js)$/, "")
+      .replace(/_test\.go$/, "")
+      .replace(/^test_/, "")
+      .replace(/\.(py|rs)$/, "");
     for (const [file, id] of sourceFileToTaskId) {
-      if (path.basename(file).replace(/\.(ts|js|py|go|rs)$/, "") === testBasename) {
+      if (
+        path.basename(file).replace(/\.(ts|js|py|go|rs)$/, "") === testBasename
+      ) {
         return { ...row, gate: id };
       }
     }
@@ -680,14 +722,17 @@ export function generateDeterministicGates(
         let sourceFile = testFile.replace(/\.test\.(ts|js)$/, ".$1");
         sourceFile = sourceFile.replace(/_test\.go$/, ".go");
         if (path.basename(sourceFile).startsWith("test_")) {
-          sourceFile = path.join(path.dirname(sourceFile), path.basename(sourceFile).replace(/^test_/, ""));
+          sourceFile = path.join(
+            path.dirname(sourceFile),
+            path.basename(sourceFile).replace(/^test_/, ""),
+          );
         }
         return sourceFile;
       })
       .filter((f) => fs.existsSync(path.resolve(f)));
 
     const lintCmd = getLintCommand(profile, sourceFiles);
-    const lintInvocations = lintCmd 
+    const lintInvocations = lintCmd
       ? `${lintCmd} \\
   || { echo "FAIL: ${gateId} — lint errors" >&2; exit 1; }`
       : "";
@@ -729,25 +774,49 @@ export function discoverTestFile(sourceFile: string): string | null {
   if (!sourceFile) return null;
 
   // If the file IS a test file, return it directly
-  if (sourceFile.endsWith(".test.ts") || sourceFile.endsWith(".test.js")) {
+  if (isPolyglotTestFile(sourceFile)) {
     return fs.existsSync(sourceFile) ? sourceFile : null;
   }
 
-  // Only a .ts/.js source has a conventional test twin. For any other
-  // extension the replace below is a no-op, so `testFile === sourceFile` and
-  // the existsSync check passes on the source itself — handing back a .md/.sql/
-  // .sh file as its own "test file" and producing a `vitest run <doc>` gate that
-  // can never exit 0. Documentation targets must fall through to the
-  // file-existence gate instead.
-  if (!/\.(ts|js)$/.test(sourceFile)) return null;
+  if (!isPolyglotSourceFile(sourceFile)) return null;
 
-  // Convention: foo.ts → foo.test.ts
-  const testFile = sourceFile.replace(/\.(ts|js)$/, ".test.$1");
-  if (fs.existsSync(testFile)) {
-    return testFile;
+  const ext = path.extname(sourceFile);
+  const defaultTestExt =
+    ext === ".js"
+      ? ".test.js"
+      : ext === ".py"
+        ? ".py"
+        : ext === ".go"
+          ? "_test.go"
+          : ext === ".rs"
+            ? ".rs"
+            : ".test.ts";
+
+  for (const candidate of getColocatedTestCandidates(
+    sourceFile,
+    defaultTestExt,
+  )) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
 
   return null;
+}
+
+function formatTestInvocationForFile(testFile: string): string {
+  if (testFile.endsWith(".py")) {
+    return `pytest ${testFile}`;
+  }
+  if (testFile.endsWith("_test.go")) {
+    const pkgDir = path.posix.dirname(testFile.replace(/\\/g, "/"));
+    return `go test -v ./${pkgDir === "." ? "" : pkgDir}`;
+  }
+  if (testFile.endsWith(".rs")) {
+    const stem = path.basename(testFile, ".rs");
+    return `cargo test --test ${stem}`;
+  }
+  return `pnpm vitest run ${testFile} --reporter=verbose`;
 }
 
 /**
@@ -804,8 +873,12 @@ export function generateFilesystemGates(
 
       // Extract primary file from task title/description
       const rawFile =
-        text.match(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/)?.[0] ??
-        text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md))\b/)?.[0] ??
+        text.match(
+          /(?:src|tests|docs|scripts|packages|cmd|internal|pkg|crates|app|lib)\/[^\s),]+/,
+        )?.[0] ??
+        text.match(
+          /\b([\w./-]+\.(?:ts|js|py|go|rs|sql|sh|yml|yaml|json|md))\b/,
+        )?.[0] ??
         null;
       const primaryFile = rawFile?.replace(/[,;.]$/, "") ?? null;
 
@@ -817,13 +890,21 @@ export function generateFilesystemGates(
       // K.TO-BE §3: Validate file exists at generation time.
       // Catches hallucinated/stale filenames from task descriptions
       // before they become gates that fail at ship time.
-      if (!fs.existsSync(primaryFile)) {
+      const featureProjectRoot = path.resolve(featureDir, "../..");
+      const resolvedPrimary = fs.existsSync(primaryFile)
+        ? primaryFile
+        : path.join(featureProjectRoot, primaryFile);
+      if (!fs.existsSync(resolvedPrimary)) {
         skipped++;
         continue;
       }
 
       // Discover corresponding test file
-      const testFile = discoverTestFile(primaryFile);
+      const rawTestFile = discoverTestFile(resolvedPrimary);
+      const testFile =
+        rawTestFile && resolvedPrimary !== primaryFile
+          ? path.relative(featureProjectRoot, rawTestFile).replace(/\\/g, "/")
+          : rawTestFile;
       if (!testFile) {
         // No test file found — generate a file-existence gate as minimum
         const gateContent = `#!/bin/bash
@@ -846,16 +927,17 @@ echo "PASS: ${task.id} — ${task.title}"
         phaseTestFiles.push(testFile);
       }
 
+      const testCmd = formatTestInvocationForFile(testFile);
       const gateContent = `#!/bin/bash
 set -euo pipefail
 # AUTHORED
 # Gate: ${task.id} — ${task.title}
-# Generated from filesystem convention (deterministic vitest gate)
+# Generated from filesystem convention (deterministic test gate)
 
 test -f ${primaryFile} || { echo "FAIL: ${task.id} — file not found: ${primaryFile}" >&2; exit 1; }
 
-pnpm vitest run ${testFile} --reporter=verbose \\
-  || { echo "FAIL: ${task.id} — vitest failed for ${testFile}" >&2; exit 1; }
+${testCmd} \\
+  || { echo "FAIL: ${task.id} — test failed for ${testFile}" >&2; exit 1; }
 
 echo "PASS: ${task.id} — ${task.title}"
 `;
@@ -888,7 +970,7 @@ echo "PASS: ${task.id} — ${task.title}"
       const testInvocations = phaseTestFiles
         .map(
           (f) =>
-            `pnpm vitest run ${f} --reporter=verbose \\
+            `${formatTestInvocationForFile(f)} \\
   || { echo "FAIL: ${testStrategyTask.id} — ${f} failed" >&2; exit 1; }`,
         )
         .join("\n\n");

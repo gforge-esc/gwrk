@@ -13,10 +13,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { Phase, Task, TaskState } from "../utils/state.js";
-import type { ProjectProfile } from "./prompt-conditioner.js";
-import { getTestExtension, getTestCommand } from "../utils/toolchain-mapper.js";
 import { unauthoredGate } from "../utils/gate-quality.js";
+import type { Phase, Task, TaskState } from "../utils/state.js";
+import { getTestCommand, getTestExtension } from "../utils/toolchain-mapper.js";
+import type { ProjectProfile } from "./prompt-conditioner.js";
 
 /**
  * Deterministic plan.md → tasks.json generator.
@@ -58,14 +58,15 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
 
   for (const line of lines) {
     // ### Phase N: Title  (separator may be a colon, em-dash, en-dash, or hyphen)
-    const phaseMatch = line.match(
-      /^###\s+Phase\s+(\d+)\s*[:—–-]\s+(.+)/,
-    );
+    const phaseMatch = line.match(/^###\s+Phase\s+(\d+)\s*[:—–-]\s+(.+)/);
     if (phaseMatch) {
       if (currentPhase) phases.push(currentPhase);
       const rawTitle = phaseMatch[2].trim();
       const isCompleted = rawTitle.includes("✅") || rawTitle.includes("[x]");
-      const title = rawTitle.replace(/\s*✅/, "").replace(/\s*\[x\]/, "").trim();
+      const title = rawTitle
+        .replace(/\s*✅/, "")
+        .replace(/\s*\[x\]/, "")
+        .trim();
       currentPhase = {
         number: Number.parseInt(phaseMatch[1], 10),
         title,
@@ -100,14 +101,21 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
     }
 
     // **Files (N):** or #### Files — enter file section
-    if (line.match(/^\*\*Files\s*(\(\d+\))?:\*\*/) || line.match(/^####\s+Files\s*$/i)) {
+    if (
+      line.match(/^\*\*Files\s*(\(\d+\))?:\*\*/) ||
+      line.match(/^####\s+Files\s*$/i)
+    ) {
       section = "files";
       continue;
     }
 
     // Bold sub-headings within a phase that contain file lists
     // e.g., **Rules migration:** or **Missing builtin workflows (5):**
-    if (section === "none" && currentPhase && line.match(/^\*\*[A-Z].*:\*\*\s*$/)) {
+    if (
+      section === "none" &&
+      currentPhase &&
+      line.match(/^\*\*[A-Z].*:\*\*\s*$/)
+    ) {
       section = "files";
       continue;
     }
@@ -160,9 +168,7 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
         });
         continue;
       }
-      const fileMatch = line.match(
-        /^-\s+`([^`]+)`\s+\((\w+):\s*(.*?)\)$/,
-      );
+      const fileMatch = line.match(/^-\s+`([^`]+)`\s+\((\w+):\s*(.*?)\)$/);
       if (fileMatch) {
         currentPhase.files.push({
           path: fileMatch[1],
@@ -183,7 +189,9 @@ export function parsePlanMarkdown(planContent: string): ParsedPhase[] {
       }
       // Match: - `path` (ACTION: multi-word with special chars)
       // e.g., - `some/dir/` (DELETE: entire directory tree — 39 files)
-      const extendedMatch = line.match(/^-\s+`([^`]+)`\s+\((\w+):\s*(.+)\)\s*$/);
+      const extendedMatch = line.match(
+        /^-\s+`([^`]+)`\s+\((\w+):\s*(.+)\)\s*$/,
+      );
       if (extendedMatch) {
         currentPhase.files.push({
           path: extendedMatch[1],
@@ -258,15 +266,14 @@ function generateTaskState(
 
     let tasks: Task[] = implFiles.map((f) => {
       const title = `${f.action === "NEW" ? "Create" : "Modify"} ${f.path.split("/").pop()}`;
-      
+
       // Match implementation file to test file by basename without extensions
       const implBaseName = path.basename(f.path).replace(/\.[^/.]+$/, ""); // Strip last extension
-      const relatedTest = testFiles.find((t) =>
-        t.path.includes(implBaseName)
-      );
+      const relatedTest = testFiles.find((t) => t.path.includes(implBaseName));
 
       const gateScript = relatedTest
-        ? (getTestCommand(profile, [relatedTest.path]) ?? unauthoredGate(f.path))
+        ? (getTestCommand(profile, [relatedTest.path]) ??
+          unauthoredGate(f.path))
         : unauthoredGate(f.path);
 
       const existing = existingTasks.find(
@@ -278,10 +285,15 @@ function generateTaskState(
         id: "", // Assigned later to ensure sequentiality
         title,
         description: `${f.action} ${f.path}. ${f.description}${relatedTest ? `. Tests: ${relatedTest.path}` : ""}`,
-        status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
+        status: (existing?.status ||
+          (p.isCompleted ? "completed" : "open")) as Task["status"],
         gateScript,
         sp: f.action === "NEW" ? 2 : 1,
-        completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
+        completedAt:
+          existing?.completedAt ||
+          (p.isCompleted && !existing?.status
+            ? new Date().toISOString()
+            : undefined),
       };
     });
 
@@ -298,10 +310,15 @@ function generateTaskState(
           id: "",
           title,
           description: `${f.action} ${f.path}. ${f.description}`,
-          status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
+          status: (existing?.status ||
+            (p.isCompleted ? "completed" : "open")) as Task["status"],
           gateScript: unauthoredGate(f.path),
           sp: 1,
-          completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
+          completedAt:
+            existing?.completedAt ||
+            (p.isCompleted && !existing?.status
+              ? new Date().toISOString()
+              : undefined),
         });
       }
     }
@@ -322,10 +339,15 @@ function generateTaskState(
         id: "",
         title,
         description: `Complete phase ${p.number}: ${p.title}`,
-        status: (existing?.status || (p.isCompleted ? "completed" : "open")) as Task["status"],
+        status: (existing?.status ||
+          (p.isCompleted ? "completed" : "open")) as Task["status"],
         gateScript: gate,
         sp: 2,
-        completedAt: existing?.completedAt || (p.isCompleted && !existing?.status ? new Date().toISOString() : undefined),
+        completedAt:
+          existing?.completedAt ||
+          (p.isCompleted && !existing?.status
+            ? new Date().toISOString()
+            : undefined),
       });
     }
 
@@ -341,7 +363,9 @@ function generateTaskState(
 
     // Reconciliation: Find tasks that were in this phase in existingState but are now gone
     if (reconcile && existingState) {
-      const existingPhase = existingState.phases.find((ep) => ep.id === phaseId);
+      const existingPhase = existingState.phases.find(
+        (ep) => ep.id === phaseId,
+      );
       if (existingPhase) {
         const removedTasks = existingPhase.tasks.filter(
           (et) => !matchedExistingIds.has(et.id),

@@ -1,0 +1,22 @@
+{
+  "featureId": "031-unified-agent-port",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Canonical AgentPort, Stdin Pipeline, and Unified Router",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Implement AgentPort, stdin-first adapters, stream-json unwrapping, and unified router",
+          "status": "completed",
+          "sp": 8,
+          "classification": "change",
+          "gateScript": "pnpm vitest run src/plugins/builtins/agents/ src/engine/router.test.ts src/utils/agent.test.ts",
+          "description": "Implement AgentPort, stdin-first adapters, stream-json unwrapping, and unified router",
+          "completedAt": "2026-11-02T22:31:40.114Z"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-02T22:20:00.000Z"
+}

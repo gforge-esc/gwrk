@@ -3,16 +3,63 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { getAgentContextSync, recordAgentContextSync } from "../db/plugins.js";
 import type { AgentBackend } from "./agent-backend.js";
 import { BUILTIN_AGENTS } from "./builtins/agents/index.js";
-import type { PluginLoader } from "./loader.js";
+import type { LoadedPlugin, PluginLoader } from "./loader.js";
+import type { AnyManifest } from "./manifest.js";
 
-class BackendNotFoundError extends Error {
+export class BackendNotFoundError extends Error {
   constructor(name: string) {
     super(`Agent backend '${name}' not found.`);
     this.name = "BackendNotFoundError";
   }
+}
+
+function isAgentBackendInstance(candidate: unknown): candidate is AgentBackend {
+  return (
+    Boolean(candidate) &&
+    typeof candidate === "object" &&
+    typeof (candidate as AgentBackend).name === "string" &&
+    typeof (candidate as AgentBackend).dispatch === "function" &&
+    typeof (candidate as AgentBackend).isAvailable === "function" &&
+    typeof (candidate as AgentBackend).parseResult === "function"
+  );
+}
+
+async function instantiateDynamicAgentPlugin(
+  plugin: LoadedPlugin<AnyManifest>,
+): Promise<AgentBackend | null> {
+  if (plugin.manifest.type !== "agent") return null;
+  const adapterRel = plugin.manifest.adapter || "adapter.js";
+  const candidates = [
+    path.resolve(plugin.path, adapterRel),
+    path.resolve(plugin.path, adapterRel.replace(/\.ts$/, ".js")),
+  ];
+
+  const targetPath = candidates.find((c) => fs.existsSync(c));
+  if (!targetPath) return null;
+
+  const mod = await import(pathToFileURL(targetPath).href);
+  for (const exported of [mod.default, ...Object.values(mod)]) {
+    if (isAgentBackendInstance(exported)) {
+      return exported;
+    }
+    if (typeof exported === "function") {
+      try {
+        const instance = new (exported as new () => unknown)();
+        if (isAgentBackendInstance(instance)) {
+          return instance;
+        }
+      } catch {
+        // Not a zero-arg constructor
+      }
+    }
+  }
+  return null;
 }
 
 export class AgentBackendRegistry {
@@ -30,11 +77,17 @@ export class AgentBackendRegistry {
         const plugins = await this.loader.listPlugins({ type: "agent" });
         for (const plugin of plugins) {
           if (!backends[plugin.name]) {
-            // Placeholder: resolution logic for dynamic plugins would go here.
-            // For Phase 4, we ensure built-ins and known plugins are listed.
+            const resolved = await this.loader.resolvePlugin(plugin.name);
+            const dynamicBackend =
+              await instantiateDynamicAgentPlugin(resolved);
+            if (dynamicBackend) {
+              backends[plugin.name] = dynamicBackend;
+            }
           }
         }
-      } catch (e) {}
+      } catch {
+        // Ignore loader discovery errors
+      }
     }
 
     return backends;
@@ -51,13 +104,16 @@ export class AgentBackendRegistry {
     if (this.loader) {
       try {
         const plugin = await this.loader.resolvePlugin(name);
-        if (plugin.manifest.type === "agent") {
-          // For now, user plugins would need a way to be instantiated.
-          // ADR-006 Phase 3 focused on built-ins and the interface.
-          // User-installed agent plugins might need a dynamic import or separate logic.
-          // If it's a built-in name, we return the built-in below.
+        if (
+          plugin.manifest.type === "agent" &&
+          (!plugin.path.includes("plugins/builtins/") || !BUILTIN_AGENTS[name])
+        ) {
+          const dynamicBackend = await instantiateDynamicAgentPlugin(plugin);
+          if (dynamicBackend) {
+            return dynamicBackend;
+          }
         }
-      } catch (e) {
+      } catch {
         // Not found in user plugins, continue to built-ins
       }
     }
@@ -79,11 +135,10 @@ export class AgentBackendRegistry {
     projectRoot: string,
     governance: string,
   ): Promise<void> {
-    const backends = Object.keys(BUILTIN_AGENTS);
+    const allBackends = await this.getBackends();
     const hash = crypto.createHash("sha256").update(governance).digest("hex");
 
-    for (const name of backends) {
-      const adapter = BUILTIN_AGENTS[name];
+    for (const [name, adapter] of Object.entries(allBackends)) {
       if (await adapter.isAvailable()) {
         const lastSync = getAgentContextSync(projectRoot, name);
         if (lastSync?.context_hash === hash) {

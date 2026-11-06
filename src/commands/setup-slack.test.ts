@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { setupSlack } from "./setup-slack";
+import * as deviceUtils from "../utils/device.js";
 import * as slackClient from "../utils/slack-client";
 import { CommandError } from "../utils/signal.js";
 
@@ -100,5 +101,12 @@ describe("setupSlack", () => {
 
     expect(result.socketModeOk).toBe(true);
     expect(console.log).toHaveBeenCalledWith("Socket Mode: OK");
+  });
+
+  it("should reject Slack Socket Mode setup on a remote device", async () => {
+    vi.spyOn(deviceUtils, "isRemote").mockReturnValue(true);
+    await expect(setupSlack({})).rejects.toThrow(
+      /registered as a remote device/,
+    );
   });
 });

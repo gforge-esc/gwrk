@@ -95,11 +95,12 @@ function parseMarkdownPlan(content: string): ParsedPlan {
 
     const id = idPartMatch[1];
 
-    const name = headerLine
-      .substring(id.length)
-      .replace(/^\s*[—–\-:]\s*/, "")
-      .replace(/(?:✅|⚠️|🟡|🔴|⚫|⚪).*$/, "")
-      .trim() || id;
+    const name =
+      headerLine
+        .substring(id.length)
+        .replace(/^\s*[—–\-:]\s*/, "")
+        .replace(/(?:✅|⚠️|🟡|🔴|⚫|⚪).*$/, "")
+        .trim() || id;
 
     let status = "PLANNED";
     if (headerLine.includes("✅")) status = "DONE";
@@ -113,9 +114,11 @@ function parseMarkdownPlan(content: string): ParsedPlan {
     if (statusLine) {
       const s = statusLine.toLowerCase();
       if (s.includes("complete") || s.includes("done")) status = "DONE";
-      else if (s.includes("externalized") || s.includes("closed")) status = "CLOSED";
+      else if (s.includes("externalized") || s.includes("closed"))
+        status = "CLOSED";
       else if (s.includes("shipped")) status = "SHIPPED";
-      else if (s.includes("in progress") || s.includes("in_progress")) status = "IN_PROGRESS";
+      else if (s.includes("in progress") || s.includes("in_progress"))
+        status = "IN_PROGRESS";
       else if (s.includes("defined")) status = "DEFINED";
       else if (s.includes("specified")) status = "SPECIFIED";
     }
@@ -202,7 +205,7 @@ function parseMarkdownPlan(content: string): ParsedPlan {
         if (tableMatch) {
           const phaseNum = Number.parseInt(tableMatch[1], 10);
           const phaseName = tableMatch[2]
-            .replace(/[✅⚪🔴🟡⭐]/g, "")
+            .replace(/[✅⚪🔴🟡⭐]/gu, "")
             .replace(/\*\*[^*]+\*\*/g, "")
             .trim();
           const phaseStatus = tableMatch[3].toUpperCase();
@@ -213,7 +216,10 @@ function parseMarkdownPlan(content: string): ParsedPlan {
             id: phaseId,
             feature_id: id,
             name: phaseName,
-            status: phaseStatus === "SHIPPED" || phaseStatus === "DONE" ? phaseStatus : "PLANNED",
+            status:
+              phaseStatus === "SHIPPED" || phaseStatus === "DONE"
+                ? phaseStatus
+                : "PLANNED",
             health: "CLEAN",
             sp_estimate: spEstimate,
             seq: seq++,

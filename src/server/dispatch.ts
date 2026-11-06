@@ -9,11 +9,11 @@ import type { AgentBackendId, GwrkConfig } from "../utils/config.js";
 import { MessageBuilder } from "./slack-messages.js";
 import { notifySlack } from "./slack-notify.js";
 
+import { pillarBackend } from "../utils/resolve-agent.js";
 import type { SystemMonitor } from "./monitor.js";
 import { persistDispatch } from "./persistence.js";
 import type { SandboxManager } from "./sandbox.js";
 import type { DispatchAttempt, DispatchRecord, TaskRecord } from "./types.js";
-import { pillarBackend } from "../utils/resolve-agent.js";
 
 export interface DispatchRequest {
   featureId: string;

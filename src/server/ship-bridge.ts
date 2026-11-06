@@ -24,7 +24,7 @@ export class ShipBridge {
       id: "pending",
       featureId: "unknown",
       phaseId: "unknown",
-      backend: "agy" as any,
+      backend: "agy",
       status: "running",
       branchName: getCurrentBranch(cwd),
       attempts: [],
@@ -56,6 +56,7 @@ export class ShipBridge {
         type: "phase_fail",
         feature: event.featureId,
         phase: event.phaseId,
+        // biome-ignore lint/suspicious/noExplicitAny: notification payload envelope
         payload: { ...this.record, error: event.error } as any,
         timestamp: new Date().toISOString(),
       });
@@ -71,6 +72,7 @@ export class ShipBridge {
         type: "review_ready",
         feature: event.featureId,
         phase: event.phaseId,
+        // biome-ignore lint/suspicious/noExplicitAny: notification payload envelope
         payload: this.record as any,
         timestamp: new Date().toISOString(),
       });
@@ -87,6 +89,7 @@ export class ShipBridge {
           type: "phase_fail",
           feature: event.featureId,
           phase: event.phaseId,
+          // biome-ignore lint/suspicious/noExplicitAny: notification payload envelope
           payload: { ...this.record, error: event.reason } as any,
           timestamp: new Date().toISOString(),
         },
@@ -97,6 +100,7 @@ export class ShipBridge {
       notifySlack(MessageBuilder.specReady(event.featureId, event.specPath), {
         type: "spec_ready",
         feature: event.featureId,
+        // biome-ignore lint/suspicious/noExplicitAny: notification payload envelope
         payload: event as any,
         timestamp: new Date().toISOString(),
       });
@@ -112,6 +116,7 @@ export class ShipBridge {
         {
           type: "plan_ready",
           feature: event.featureId,
+          // biome-ignore lint/suspicious/noExplicitAny: notification payload envelope
           payload: event as any,
           timestamp: new Date().toISOString(),
         },

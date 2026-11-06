@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { describe, expect, it } from "vitest";
 
 describe("T053: Review Dispatch Architecture (ADR-007)", () => {
   describe("Prompt content verification", () => {

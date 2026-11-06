@@ -15,7 +15,7 @@ export const projectInfoCommand = new Command("info")
     const profile = await detectProfile(process.cwd());
 
     if (options.format === "json") {
-      process.stdout.write(JSON.stringify(profile, null, 2) + "\n");
+      process.stdout.write(`${JSON.stringify(profile, null, 2)}\n`);
     } else {
       process.stdout.write(`Project Profile: ${profile.type}\n`);
       process.stdout.write("Source: auto-detected\n");
@@ -33,6 +33,8 @@ export const projectInfoCommand = new Command("info")
           `Toolchain: primary=${profile.toolchain.primary || "none"}, formatter=${profile.toolchain.formatter || "none"}, test=${profile.toolchain.test || "none"}\n`,
         );
       }
-      process.stdout.write(`Layout: ${typeof profile.layout === 'string' ? profile.layout : JSON.stringify(profile.layout)}\n`);
+      process.stdout.write(
+        `Layout: ${typeof profile.layout === "string" ? profile.layout : JSON.stringify(profile.layout)}\n`,
+      );
     }
   });

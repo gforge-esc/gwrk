@@ -2,23 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
 import { execSync } from "node:child_process";
-import { Command } from "commander";
-import { detectProfile } from "../engine/profile-detector.js";
-import { getSourceExtension, getTestExtension } from "../utils/toolchain-mapper.js";
-import { detectExtensions } from "../engine/extension-detector.js";
-import { syncRegistry } from "../engine/registry.js";
-import { setupSlack } from "./setup-slack.js";
-import { ensureSlackChannel } from "../server/slack-channel.js";
-import { seedSkills } from "../plugins/seed.js";
-import { BUILTIN_AGENTS } from "../plugins/builtins/agents/index.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import readline from "node:readline/promises";
-import { CommandError } from "../utils/signal.js";
-import { saveSetupState } from "../utils/setup-state.js";
+import { Command } from "commander";
+import { detectExtensions } from "../engine/extension-detector.js";
+import { detectProfile } from "../engine/profile-detector.js";
+import { syncRegistry } from "../engine/registry.js";
+import { BUILTIN_AGENTS } from "../plugins/builtins/agents/index.js";
+import { seedSkills } from "../plugins/seed.js";
+import { ensureSlackChannel } from "../server/slack-channel.js";
 import { loadDevice, saveDevice } from "../utils/device.js";
+import { saveSetupState } from "../utils/setup-state.js";
+import { CommandError } from "../utils/signal.js";
+import {
+  getSourceExtension,
+  getTestExtension,
+} from "../utils/toolchain-mapper.js";
+import { setupSlack } from "./setup-slack.js";
 
 /**
  * Find the nearest gwrk project root by searching upwards for .gwrkrc.json.
@@ -35,13 +38,18 @@ function findProjectRoot(startDir: string): string | undefined {
   return undefined;
 }
 
-async function prompt(question: string, defaultValue?: string): Promise<string> {
+async function prompt(
+  question: string,
+  defaultValue?: string,
+): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
   try {
-    const answer = await rl.question(`${question}${defaultValue ? ` (${defaultValue})` : ""}: `);
+    const answer = await rl.question(
+      `${question}${defaultValue ? ` (${defaultValue})` : ""}: `,
+    );
     return answer.trim() || defaultValue || "";
   } finally {
     rl.close();
@@ -54,7 +62,9 @@ async function confirm(question: string, defaultYes = true): Promise<boolean> {
     output: process.stdout,
   });
   try {
-    const answer = await rl.question(`${question} [${defaultYes ? "Y/n" : "y/N"}]: `);
+    const answer = await rl.question(
+      `${question} [${defaultYes ? "Y/n" : "y/N"}]: `,
+    );
     const lower = answer.toLowerCase().trim();
     if (lower === "") return defaultYes;
     return lower === "y" || lower === "yes";
@@ -109,8 +119,11 @@ export async function detectAgents(): Promise<DetectedAgent[]> {
     let available = false;
     const backend = BUILTIN_AGENTS[a];
     if (backend) {
-      try { available = await backend.isAvailable(); }
-      catch { available = false; }
+      try {
+        available = await backend.isAvailable();
+      } catch {
+        available = false;
+      }
     } else {
       available = installed;
     }
@@ -132,7 +145,7 @@ function buildAgentConfig(
   fallbackOrder: string[],
 ): Record<string, unknown> {
   const registry: Record<string, unknown> = {};
-  for (const agent of agents.filter(a => a.available)) {
+  for (const agent of agents.filter((a) => a.available)) {
     registry[agent.name] = {
       name: agent.name,
       type: "local-cli",
@@ -148,7 +161,10 @@ function buildAgentConfig(
     define: defaultAgent,
     implement: defaultAgent,
     registry,
-    fallbackOrder: [defaultAgent, ...fallbackOrder.filter(a => a !== defaultAgent)],
+    fallbackOrder: [
+      defaultAgent,
+      ...fallbackOrder.filter((a) => a !== defaultAgent),
+    ],
   };
 }
 
@@ -188,6 +204,7 @@ function ensureGitignoreEntry(cwd: string, entry: string): void {
  *   Layer 2 — Project setup (every run, idempotent)
  * Also handles workspace appending for polyglot monorepos (020).
  */
+// biome-ignore lint/suspicious/noExplicitAny: commander action options
 export const initAction = async (options: any): Promise<void> => {
   const cwd = process.cwd();
   const root = findProjectRoot(cwd);
@@ -197,6 +214,7 @@ export const initAction = async (options: any): Promise<void> => {
   // 1. Workspace Append (020)
   if (root && root !== cwd && options.workspace) {
     const configPath = path.join(root, ".gwrkrc.json");
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic JSON config mutation
     let config: any;
     try {
       config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
@@ -206,17 +224,19 @@ export const initAction = async (options: any): Promise<void> => {
 
     config.workspaces = config.workspaces || {};
     const relativePath = path.relative(root, cwd);
-    
+
     const wsProfile = await detectProfile(cwd);
-    
+
     config.workspaces[relativePath] = {
       type: wsProfile.type,
       stack: wsProfile.stack,
-      layout: wsProfile.layout
+      layout: wsProfile.layout,
     };
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    process.stdout.write(`Added workspace '${options.workspace}' at ${relativePath} to ${configPath}\n`);
+    process.stdout.write(
+      `Added workspace '${options.workspace}' at ${relativePath} to ${configPath}\n`,
+    );
     return;
   }
 
@@ -240,19 +260,26 @@ export const initAction = async (options: any): Promise<void> => {
     process.stdout.write("\n🦩 First-time gwrk setup on this machine.\n\n");
     process.stdout.write(
       "  gwrk uses a single server device for harvest, Slack, and the\n" +
-      "  autonomous daemon. All other machines are remote — they run\n" +
-      "  agents locally and push work to GitHub.\n\n",
+        "  autonomous daemon. All other machines are remote — they run\n" +
+        "  agents locally and push work to GitHub.\n\n",
     );
-    const isServerDevice = await confirm("Is this machine the gwrk server?", false);
+    const isServerDevice = await confirm(
+      "Is this machine the gwrk server?",
+      false,
+    );
     deviceRole = isServerDevice ? "server" : "remote";
   }
 
   // Save device identity (idempotent on id)
   const device = saveDevice(deviceRole);
   if (!existingDevice) {
-    process.stdout.write(`Device registered: ${device.hostname} (${deviceRole})\n`);
+    process.stdout.write(
+      `Device registered: ${device.hostname} (${deviceRole})\n`,
+    );
   } else if (existingDevice.role !== deviceRole) {
-    process.stdout.write(`Device role changed: ${existingDevice.role} → ${deviceRole}\n`);
+    process.stdout.write(
+      `Device role changed: ${existingDevice.role} → ${deviceRole}\n`,
+    );
   }
 
   // ── Layer 2: Project Setup ─────────────────────────────────────────
@@ -266,7 +293,8 @@ export const initAction = async (options: any): Promise<void> => {
   // Agent config is always re-probed — a stale agents block pointing at an
   // uninstalled backend (e.g. gemini after EOL) caused silent misconfiguration.
   const existingTracked = readJsonSafe(path.join(cwd, ".gwrkrc.json")) ?? {};
-  const existingLocal = readJsonSafe(path.join(cwd, ".gwrkrc.local.json")) ?? {};
+  const existingLocal =
+    readJsonSafe(path.join(cwd, ".gwrkrc.local.json")) ?? {};
   const existingProject = existingTracked.project ?? {};
   const existingSlack = existingLocal.project?.slack ?? existingProject.slack;
   const existingStack =
@@ -275,26 +303,29 @@ export const initAction = async (options: any): Promise<void> => {
       : undefined;
 
   // Determine agent selection (always re-probe, never carry forward stale config)
-  const availableAgents = detectedAgents.filter(a => a.available);
-  const availableNames = availableAgents.map(a => a.name);
+  const availableAgents = detectedAgents.filter((a) => a.available);
+  const availableNames = availableAgents.map((a) => a.name);
 
   // Seed defaults from existing config if the agent is still available;
   // otherwise fall back to preference order.
   const existingAgents = existingLocal.agents ?? existingTracked.agents;
   const existingDefault = existingAgents?.define;
-  const defaultFromExisting = existingDefault && availableNames.includes(existingDefault)
-    ? existingDefault
-    : undefined;
-  const autoDefault = defaultFromExisting
-    || AGENT_PREFERENCE.find(a => availableNames.includes(a))
-    || availableNames[0]
-    || "agy";
+  const defaultFromExisting =
+    existingDefault && availableNames.includes(existingDefault)
+      ? existingDefault
+      : undefined;
+  const autoDefault =
+    defaultFromExisting ||
+    AGENT_PREFERENCE.find((a) => availableNames.includes(a)) ||
+    availableNames[0] ||
+    "agy";
 
   let selectedDefault = autoDefault;
-  let selectedFallback = availableNames.filter(a => a !== selectedDefault);
+  let selectedFallback = availableNames.filter((a) => a !== selectedDefault);
 
   // 4. Interactive Wizard
-  let config: any = {
+  // biome-ignore lint/suspicious/noExplicitAny: dynamic JSON config construction
+  const config: any = {
     project: {
       name: existingProject.name ?? path.basename(cwd),
       type: existingProject.type ?? profile.type,
@@ -313,38 +344,61 @@ export const initAction = async (options: any): Promise<void> => {
     },
     agents: buildAgentConfig(detectedAgents, selectedDefault, selectedFallback),
     extensions: Object.fromEntries(
-      (extensions || []).filter(e => e.detected).map(e => [e.id, {}])
-    )
+      (extensions || []).filter((e) => e.detected).map((e) => [e.id, {}]),
+    ),
   };
-  
+
   if (existingSlack) {
     config.project.slack = existingSlack;
   }
 
   if (!isNonInteractive) {
     if (root === cwd) {
-      process.stdout.write("\n🦩 gwrk is already initialized here. Let's verify your setup.\n\n");
+      process.stdout.write(
+        "\n🦩 gwrk is already initialized here. Let's verify your setup.\n\n",
+      );
     } else {
       process.stdout.write("\n🦩 Welcome to gwrk init wizard!\n\n");
     }
-    
+
     config.project.name = await prompt("Project name", config.project.name);
-    
-    if (await confirm(`Detected profile: ${profile.type} (${profile.stack?.language || "unknown"}). Correct?`)) {
+
+    if (
+      await confirm(
+        `Detected profile: ${profile.type} (${profile.stack?.language || "unknown"}). Correct?`,
+      )
+    ) {
       // Keep detected
     } else {
-      config.project.type = await prompt("Project type (e.g. nodejs, rust, python)", config.project.type);
-      config.project.stack.language = await prompt("Primary language", config.project.stack.language);
+      config.project.type = await prompt(
+        "Project type (e.g. nodejs, rust, python)",
+        config.project.type,
+      );
+      config.project.stack.language = await prompt(
+        "Primary language",
+        config.project.stack.language,
+      );
     }
 
-    config.project.layout = await prompt("Project layout (flat, src-nested, lib-nested, monorepo)", config.project.layout);
-    config.project.architecture = await prompt("Architecture (e.g. Hexagonal, Layered, Clean)", "Layered");
-    config.project.conventions = await prompt("Conventions (e.g. TDD, ESM, functional)", "TDD");
+    config.project.layout = await prompt(
+      "Project layout (flat, src-nested, lib-nested, monorepo)",
+      config.project.layout,
+    );
+    config.project.architecture = await prompt(
+      "Architecture (e.g. Hexagonal, Layered, Clean)",
+      "Layered",
+    );
+    config.project.conventions = await prompt(
+      "Conventions (e.g. TDD, ESM, functional)",
+      "TDD",
+    );
 
     if (await confirm("Perform workstation provisioning (SSH, gh auth)?")) {
       const { ssh, gh } = detectWorkstation();
       process.stdout.write(
-        ssh ? "✅ SSH keys detected.\n" : "⚠️ No SSH keys detected in ~/.ssh/. Generate one with: ssh-keygen -t ed25519 -C \"you@example.com\"\n",
+        ssh
+          ? "✅ SSH keys detected.\n"
+          : '⚠️ No SSH keys detected in ~/.ssh/. Generate one with: ssh-keygen -t ed25519 -C "you@example.com"\n',
       );
       process.stdout.write(
         gh
@@ -352,7 +406,7 @@ export const initAction = async (options: any): Promise<void> => {
           : "⚠️ GitHub CLI (gh) not authenticated. Run 'gh auth login'.\n",
       );
       process.stdout.write(
-        "ℹ️  Note: If gwrk encounters file permission errors, ensure your Terminal has 'Full Disk Access' in macOS System Settings > Privacy & Security (TCC).\n"
+        "ℹ️  Note: If gwrk encounters file permission errors, ensure your Terminal has 'Full Disk Access' in macOS System Settings > Privacy & Security (TCC).\n",
       );
     }
 
@@ -373,33 +427,52 @@ export const initAction = async (options: any): Promise<void> => {
         );
         // Validate selection
         if (!availableNames.includes(selectedDefault)) {
-          process.stdout.write(`⚠️ '${selectedDefault}' is not available. Using ${autoDefault}.\n`);
+          process.stdout.write(
+            `⚠️ '${selectedDefault}' is not available. Using ${autoDefault}.\n`,
+          );
           selectedDefault = autoDefault;
         }
 
-        const remainingAgents = availableNames.filter(a => a !== selectedDefault);
+        const remainingAgents = availableNames.filter(
+          (a) => a !== selectedDefault,
+        );
         if (remainingAgents.length > 0) {
           const fallbackInput = await prompt(
             "Fallback order (comma-separated)",
             remainingAgents.join(","),
           );
-          selectedFallback = fallbackInput.split(",").map(s => s.trim()).filter(a => availableNames.includes(a));
+          selectedFallback = fallbackInput
+            .split(",")
+            .map((s) => s.trim())
+            .filter((a) => availableNames.includes(a));
         } else {
           selectedFallback = [];
         }
 
-        config.agents = buildAgentConfig(detectedAgents, selectedDefault, selectedFallback);
+        config.agents = buildAgentConfig(
+          detectedAgents,
+          selectedDefault,
+          selectedFallback,
+        );
       } else {
-        process.stdout.write("⚠️ No available agent backends. Install agy, claude, or codex.\n");
+        process.stdout.write(
+          "⚠️ No available agent backends. Install agy, claude, or codex.\n",
+        );
       }
     } else {
-      process.stdout.write("⚠️ No agent backends detected. Install agy, claude, or codex.\n");
+      process.stdout.write(
+        "⚠️ No agent backends detected. Install agy, claude, or codex.\n",
+      );
     }
 
-    const slackChannel = await prompt("Slack channel for project notifications (leave blank to skip)", existingSlack?.channelId);
+    const slackChannel = await prompt(
+      "Slack channel for project notifications (leave blank to skip)",
+      existingSlack?.channelId,
+    );
     if (slackChannel) {
       config.project.slack = { channelId: slackChannel };
     } else {
+      // biome-ignore lint/performance/noDelete: remove key before JSON serialization
       delete config.project.slack;
     }
   }
@@ -411,12 +484,19 @@ export const initAction = async (options: any): Promise<void> => {
   }
 
   // 6. Slack Setup (server-only)
-  if (deviceRole === "server" && (!isAgent || (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN))) {
+  if (
+    deviceRole === "server" &&
+    (!isAgent || (process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN))
+  ) {
     try {
       await setupSlack({ ...options, nonInteractive: isNonInteractive });
       if (config.project.slack?.channelId) {
-        process.stdout.write(`Provisioning Slack channel ${config.project.slack.channelId}...\n`);
-        const channelId = await ensureSlackChannel(config.project.slack.channelId);
+        process.stdout.write(
+          `Provisioning Slack channel ${config.project.slack.channelId}...\n`,
+        );
+        const channelId = await ensureSlackChannel(
+          config.project.slack.channelId,
+        );
         config.project.slack.channelId = channelId;
       }
     } catch (e) {
@@ -427,12 +507,7 @@ export const initAction = async (options: any): Promise<void> => {
   }
 
   // 7. Scaffold Directories
-  const dirs = [
-    "specs",
-    "docs/architecture",
-    "docs/decisions",
-    ".gwrk/rules",
-  ];
+  const dirs = ["specs", "docs/architecture", "docs/decisions", ".gwrk/rules"];
   for (const d of dirs) {
     const dirPath = path.join(cwd, d);
     if (!fs.existsSync(dirPath)) {
@@ -451,11 +526,11 @@ export const initAction = async (options: any): Promise<void> => {
   } catch {
     // TC-014 bare-clone operable: do not fail init when a record is unparseable
   }
-  
+
   const globalPluginDirs = [
     path.join(os.homedir(), ".gwrk", "plugins", "skills"),
     path.join(os.homedir(), ".gwrk", "plugins", "agents"),
-    path.join(os.homedir(), ".gwrk", "plugins", "workflows")
+    path.join(os.homedir(), ".gwrk", "plugins", "workflows"),
   ];
   for (const d of globalPluginDirs) {
     if (!fs.existsSync(d)) {
@@ -480,6 +555,7 @@ export const initAction = async (options: any): Promise<void> => {
     conventions: config.project.conventions,
     toolchain: config.project.toolchain,
   };
+  // biome-ignore lint/performance/noDelete: remove legacy agents block before JSON serialization
   delete projectConfig.agents;
 
   const personalConfig: Record<string, unknown> = {
@@ -535,14 +611,18 @@ export const initAction = async (options: any): Promise<void> => {
       projectId: config.project.name,
       profile: config.project,
       extensions: config.extensions,
-      agents: config.agents
+      agents: config.agents,
     };
-    process.stdout.write(JSON.stringify(output, null, 2) + "\n");
+    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
   } else {
     process.stdout.write("\n✅ gwrk initialized successfully.\n");
     process.stdout.write(`Project config written to ${configPath}\n`);
-    process.stdout.write(`Agent config written to ${localConfigPath} (gitignored — personal to your machine)\n`);
-    process.stdout.write(`Shareable template written to ${exampleConfigPath} (commit this; teammates copy it to .gwrkrc.local.json)\n`);
+    process.stdout.write(
+      `Agent config written to ${localConfigPath} (gitignored — personal to your machine)\n`,
+    );
+    process.stdout.write(
+      `Shareable template written to ${exampleConfigPath} (commit this; teammates copy it to .gwrkrc.local.json)\n`,
+    );
     process.stdout.write("Next steps:\n");
     process.stdout.write("  gwrk define spec my-feature\n");
     process.stdout.write("  gwrk status\n\n");
@@ -554,6 +634,9 @@ export const initCommand = new Command("init")
   .option("--non-interactive", "Run without interactive prompts")
   .option("--agent", "Agent-optimized init mode")
   .option("--workspace <name>", "Select a workspace profile")
-  .option("--remote", "Register this machine as a remote device (no daemon, no harvest)")
+  .option(
+    "--remote",
+    "Register this machine as a remote device (no daemon, no harvest)",
+  )
   .option("--server", "Register this machine as the gwrk server")
   .action(initAction);
