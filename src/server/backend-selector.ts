@@ -75,8 +75,8 @@ export class BackendSelector {
 
     // 3. Sort by quota descending
     availableBackends.sort((a, b) => {
-      const qA = readings.get(a.name)!.percent;
-      const qB = readings.get(b.name)!.percent;
+      const qA = readings.get(a.name)?.percent ?? 0;
+      const qB = readings.get(b.name)?.percent ?? 0;
 
       // If within 20%, use tiebreaker
       if (Math.abs(qA - qB) <= 20) {
@@ -97,7 +97,10 @@ export class BackendSelector {
 
     for (let i = 0; i < maxAttempts; i++) {
       const backend = availableBackends[i];
-      const reading = readings.get(backend.name)!;
+      const reading = readings.get(backend.name) ?? {
+        percent: 100,
+        status: "fresh" as const,
+      };
 
       // 5. Model Selection (Dimension 2)
       const { model, modelFailoverUsed } = this.modelSelector.selectModel(

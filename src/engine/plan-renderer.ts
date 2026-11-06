@@ -104,12 +104,12 @@ export class PlanRenderer {
    */
   private sanitizeGanttLabel(label: string): string {
     return label
-      .replace(/[✅⭐🔴🟡⚪⚫]/g, "")       // strip status emojis
-      .replace(/\bSHIPPED\b/g, "")             // strip SHIPPED marker
-      .replace(/&/g, "and")                     // & → and
-      .replace(/\+/g, "and")                    // + → and
-      .replace(/[^a-zA-Z0-9\s\-._]/g, "")      // strip everything else unsafe
-      .replace(/\s{2,}/g, " ")                  // collapse whitespace
+      .replace(/[✅⭐🔴🟡⚪⚫]/gu, "") // strip status emojis
+      .replace(/\bSHIPPED\b/g, "") // strip SHIPPED marker
+      .replace(/&/g, "and") // & → and
+      .replace(/\+/g, "and") // + → and
+      .replace(/[^a-zA-Z0-9\s\-._]/g, "") // strip everything else unsafe
+      .replace(/\s{2,}/g, " ") // collapse whitespace
       .trim();
   }
 
@@ -158,7 +158,7 @@ export class PlanRenderer {
       md += `### Feature ${heading} ${icon}\n\n`;
 
       if (f.status === "SHIPPED") {
-        md += `**Status:** SHIPPED ✅\n\n`;
+        md += "**Status:** SHIPPED ✅\n\n";
       } else {
         md += `**Status:** ${f.status}\n\n`;
       }

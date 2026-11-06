@@ -9,7 +9,10 @@ const TEST_BASENAME_RE =
 
 const SOURCE_EXT_RE = /\.(?:[cm]?[jt]sx?|py|go|rs)$/;
 
-export function isPolyglotTestFile(filePath: string, testExt?: string): boolean {
+export function isPolyglotTestFile(
+  filePath: string,
+  testExt?: string,
+): boolean {
   const normalized = filePath.replace(/\\/g, "/");
   const base = path.posix.basename(normalized);
   if (TEST_BASENAME_RE.test(base)) return true;

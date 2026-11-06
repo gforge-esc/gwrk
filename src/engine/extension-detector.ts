@@ -40,7 +40,7 @@ export async function detectExtensions(): Promise<ExtensionInfo[]> {
       name: "Docker CLI",
       command: "docker",
       detected: false,
-    }
+    },
   ];
 
   for (const ext of extensions) {

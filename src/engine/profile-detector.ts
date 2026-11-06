@@ -30,7 +30,9 @@ interface LanguageSignal {
 export async function detectProfile(
   projectRoot: string,
 ): Promise<ProjectProfile> {
-  const profile: ProjectProfile & { stack: NonNullable<ProjectProfile["stack"]> } = {
+  const profile: ProjectProfile & {
+    stack: NonNullable<ProjectProfile["stack"]>;
+  } = {
     type: "unknown",
     stack: {},
     layout: "flat",
@@ -129,7 +131,8 @@ export async function detectProfile(
         "utf-8",
       );
       if (/\baxum\b/.test(cargoContent)) rustSignal.framework = "Axum";
-      else if (/\bactix-web\b/.test(cargoContent)) rustSignal.framework = "Actix";
+      else if (/\bactix-web\b/.test(cargoContent))
+        rustSignal.framework = "Actix";
       else if (/\bclap\b/.test(cargoContent)) rustSignal.framework = "Clap";
     } catch {}
     signals.push(rustSignal);
@@ -171,10 +174,14 @@ export async function detectProfile(
     };
     try {
       const goMod = fs.readFileSync(path.join(projectRoot, "go.mod"), "utf-8");
-      if (goMod.includes("github.com/gin-gonic/gin")) goSignal.framework = "Gin";
-      else if (goMod.includes("github.com/go-chi/chi")) goSignal.framework = "Chi";
-      else if (goMod.includes("github.com/labstack/echo")) goSignal.framework = "Echo";
-      else if (goMod.includes("github.com/gofiber/fiber")) goSignal.framework = "Fiber";
+      if (goMod.includes("github.com/gin-gonic/gin"))
+        goSignal.framework = "Gin";
+      else if (goMod.includes("github.com/go-chi/chi"))
+        goSignal.framework = "Chi";
+      else if (goMod.includes("github.com/labstack/echo"))
+        goSignal.framework = "Echo";
+      else if (goMod.includes("github.com/gofiber/fiber"))
+        goSignal.framework = "Fiber";
     } catch {}
     signals.push(goSignal);
   }
@@ -187,7 +194,7 @@ export async function detectProfile(
       signals.some((s) => s.type === "rust") &&
       signals.some((s) => s.type === "nodejs")
     ) {
-      const rustSignal = signals.find((s) => s.type === "rust")!;
+      const rustSignal = signals.find((s) => s.type === "rust") ?? signals[0];
       profile.type = rustSignal.type;
       profile.stack.language = rustSignal.language;
       profile.stack.buildSystem = rustSignal.buildSystem;
@@ -241,7 +248,10 @@ export async function detectProfile(
   } else if (files.includes(".black") || files.includes("pyproject.toml")) {
     if (files.includes("pyproject.toml")) {
       try {
-        const content = fs.readFileSync(path.join(projectRoot, "pyproject.toml"), "utf-8");
+        const content = fs.readFileSync(
+          path.join(projectRoot, "pyproject.toml"),
+          "utf-8",
+        );
         if (content.includes("[tool.black]")) toolchain.formatter = "black";
         if (content.includes("[tool.ruff]")) toolchain.primary = "ruff";
         if (content.includes("[tool.pytest") || /\bpytest\b/.test(content)) {
@@ -264,8 +274,14 @@ export async function detectProfile(
     toolchain.primary = "clippy";
   } else if (files.includes("Cargo.toml") && !toolchain.primary) {
     try {
-      const cargoContent = fs.readFileSync(path.join(projectRoot, "Cargo.toml"), "utf-8");
-      if (cargoContent.includes("[lints.clippy]") || cargoContent.includes("clippy")) {
+      const cargoContent = fs.readFileSync(
+        path.join(projectRoot, "Cargo.toml"),
+        "utf-8",
+      );
+      if (
+        cargoContent.includes("[lints.clippy]") ||
+        cargoContent.includes("clippy")
+      ) {
         toolchain.primary = "clippy";
       }
     } catch {}
@@ -294,13 +310,20 @@ export async function detectProfile(
   // Also check package.json for test and linter signals
   if (files.includes("package.json")) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
+      const pkg = JSON.parse(
+        fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
+      );
       if (!toolchain.test) {
-        if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest) toolchain.test = "vitest";
-        else if (pkg.devDependencies?.jest || pkg.dependencies?.jest) toolchain.test = "jest";
+        if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest)
+          toolchain.test = "vitest";
+        else if (pkg.devDependencies?.jest || pkg.dependencies?.jest)
+          toolchain.test = "jest";
       }
       if (!toolchain.primary) {
-        if (pkg.devDependencies?.["@biomejs/biome"] || pkg.dependencies?.["@biomejs/biome"]) {
+        if (
+          pkg.devDependencies?.["@biomejs/biome"] ||
+          pkg.dependencies?.["@biomejs/biome"]
+        ) {
           toolchain.primary = "biome";
         } else if (pkg.devDependencies?.eslint || pkg.dependencies?.eslint) {
           toolchain.primary = "eslint";
@@ -308,7 +331,7 @@ export async function detectProfile(
       }
     } catch {}
   }
-  
+
   if (files.includes("pytest.ini") || files.includes("conftest.py")) {
     toolchain.test = "pytest";
   }
@@ -369,16 +392,20 @@ export async function detectProfile(
 export function resolveWorkspaceProfile(
   cwd: string,
   projectRoot: string,
+  // biome-ignore lint/suspicious/noExplicitAny: workspace config object
   config: any,
 ): ProjectProfile | undefined {
   if (!config.workspaces) return undefined;
 
   const relativeCwd = path.relative(projectRoot, cwd);
-  
+
   // Find the longest matching workspace path
   let bestMatch: string | undefined;
   for (const workspacePath of Object.keys(config.workspaces)) {
-    if (relativeCwd === workspacePath || relativeCwd.startsWith(`${workspacePath}${path.sep}`)) {
+    if (
+      relativeCwd === workspacePath ||
+      relativeCwd.startsWith(`${workspacePath}${path.sep}`)
+    ) {
       if (!bestMatch || workspacePath.length > bestMatch.length) {
         bestMatch = workspacePath;
       }
@@ -396,4 +423,3 @@ export function resolveWorkspaceProfile(
 
   return undefined;
 }
-

@@ -6,15 +6,12 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import {
-  IntentEngine,
-  type IntentSummary,
-} from "../engine/intent-engine.js";
+import { IntentEngine, type IntentSummary } from "../engine/intent-engine.js";
 import { detectProfile } from "../engine/profile-detector.js";
 import { conditionPrompt } from "../engine/prompt-conditioner.js";
 import { type TaskDispatch, dispatchToAgent } from "../utils/agent.js";
 import { PluginLoader, PluginNotFoundError } from "./loader.js";
-import type { WorkflowManifest, JsonIntent } from "./manifest.js";
+import type { JsonIntent, WorkflowManifest } from "./manifest.js";
 
 /**
  * Extract a JSON object from raw agent output.
@@ -81,7 +78,11 @@ export function extractJsonFromOutput(stdout: string): unknown {
       // Not a single well-formed JSON value — fall through to fence/brace scan.
       envelope = undefined;
     }
-    if (envelope && typeof envelope === "object" && envelope.type === "result") {
+    if (
+      envelope &&
+      typeof envelope === "object" &&
+      envelope.type === "result"
+    ) {
       if (
         envelope.structured_output &&
         typeof envelope.structured_output === "object"
@@ -429,7 +430,10 @@ export class WorkflowRuntime {
       // FR-029: Tolerate agents that do native work and return prose.
       // If the agent exited 0, treat prose output as synthetic success.
       // T019: Detect agent-native success by checking for committed artifacts
-      if (result.exitCode === 0 && (result.nativeWriter || options.tolerant || hasArtifacts())) {
+      if (
+        result.exitCode === 0 &&
+        (result.nativeWriter || options.tolerant || hasArtifacts())
+      ) {
         const preview = result.stdout.substring(0, 200).replace(/\n/g, " ");
         console.warn(
           `[workflow-runtime] Agent returned prose instead of JSON (tolerant mode). Preview: ${preview}…`,
@@ -524,10 +528,17 @@ export class WorkflowRuntime {
         options.allowedPaths.length > 0
       ) {
         const fp = intent.filePath;
-        const isTestFile = fp.endsWith(".test.ts") || fp.endsWith(".spec.ts") || fp.startsWith("tests/e2e/") || fp.startsWith("e2e/");
-        const isSpecArtifact = fp.startsWith("specs/") || fp.includes("gap-matrix");
+        const isTestFile =
+          fp.endsWith(".test.ts") ||
+          fp.endsWith(".spec.ts") ||
+          fp.startsWith("tests/e2e/") ||
+          fp.startsWith("e2e/");
+        const isSpecArtifact =
+          fp.startsWith("specs/") || fp.includes("gap-matrix");
         if (!isTestFile && !isSpecArtifact) {
-          const inScope = options.allowedPaths.some((allowed) => fp.endsWith(allowed) || fp.includes(allowed));
+          const inScope = options.allowedPaths.some(
+            (allowed) => fp.endsWith(allowed) || fp.includes(allowed),
+          );
           if (!inScope) {
             console.warn(
               `  ⚠ Filtered WRITE_FILE intent outside allowed scope: ${fp}`,

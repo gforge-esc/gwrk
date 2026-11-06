@@ -120,7 +120,10 @@ export class ModelSelector {
     }
 
     if (backend.models.length === 0) {
-      const defaultModel: ModelEntry = { name: "default", tier: classification };
+      const defaultModel: ModelEntry = {
+        name: "default",
+        tier: classification,
+      };
       if (!prober.isModelInCooldown(backend.name, defaultModel.name)) {
         return { model: defaultModel, modelFailoverUsed: false };
       }

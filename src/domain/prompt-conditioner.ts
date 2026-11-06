@@ -6,7 +6,10 @@ import type { ProjectProfile } from "./types.js";
 
 export type { ProjectProfile };
 
-export function conditionPrompt(prompt: string, profile: ProjectProfile): string {
+export function conditionPrompt(
+  prompt: string,
+  profile: ProjectProfile,
+): string {
   if (!profile || profile.type === "unknown") {
     return prompt;
   }

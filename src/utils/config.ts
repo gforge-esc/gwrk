@@ -263,8 +263,13 @@ export type GwrkConfig = z.infer<typeof GwrkConfigSchema>;
  * - Arrays and primitives in overlay replace base entirely.
  * - Undefined overlay values are skipped (base preserved).
  */
-// biome-ignore lint/suspicious/noExplicitAny: JSON merge utility operates on arbitrary config shapes
-export function deepMerge(base: Record<string, any>, overlay: Record<string, any>): Record<string, any> {
+export function deepMerge(
+  // biome-ignore lint/suspicious/noExplicitAny: JSON merge utility operates on arbitrary config shapes
+  base: Record<string, any>,
+  // biome-ignore lint/suspicious/noExplicitAny: JSON merge utility operates on arbitrary config shapes
+  overlay: Record<string, any>,
+  // biome-ignore lint/suspicious/noExplicitAny: JSON merge utility operates on arbitrary config shapes
+): Record<string, any> {
   const result = { ...base };
   for (const key of Object.keys(overlay)) {
     const baseVal = base[key];
@@ -289,13 +294,18 @@ export function deepMerge(base: Record<string, any>, overlay: Record<string, any
  * Attempts to read and parse a JSON file. Returns null if file doesn't exist
  * or contains invalid JSON (logged but non-fatal for overlay files).
  */
-// biome-ignore lint/suspicious/noExplicitAny: JSON config parsing
-function tryReadJson(filePath: string, label: string): Record<string, any> | null {
+function tryReadJson(
+  filePath: string,
+  label: string,
+  // biome-ignore lint/suspicious/noExplicitAny: JSON config parsing
+): Record<string, any> | null {
   if (!fs.existsSync(filePath)) return null;
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf-8"));
   } catch (error) {
-    console.error(`Warning: invalid JSON in ${label} at ${filePath}, skipping overlay`);
+    console.error(
+      `Warning: invalid JSON in ${label} at ${filePath}, skipping overlay`,
+    );
     return null;
   }
 }

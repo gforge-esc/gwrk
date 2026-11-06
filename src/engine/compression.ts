@@ -88,7 +88,11 @@ export function computeForecastFromLOC(
     const numstat = execFileSync(
       "git",
       ["log", "--numstat", "--format=", "--", featureBase],
-      { cwd: parentDir, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+      {
+        cwd: parentDir,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
     ).toString();
 
     const lines = numstat.split("\n");
@@ -137,7 +141,11 @@ export function computeCompression(
   forecast: EffortForecast,
   actuals: DeliveryActuals,
 ): CompressionRatios {
-  if (!forecast || !actuals || typeof actuals.activeCodingMinutes !== "number") {
+  if (
+    !forecast ||
+    !actuals ||
+    typeof actuals.activeCodingMinutes !== "number"
+  ) {
     throw new Error("Invalid forecast or actuals for compression calculation");
   }
   const actualHours = actuals.activeCodingMinutes / 60;
@@ -216,7 +224,8 @@ export function generateSummary(
 
       totalLines += r.indicators.density.linesPerSP * r.forecast.totalSP;
       totalFiles += r.indicators.density.filesPerSP * r.forecast.totalSP;
-      totalToolCalls += r.indicators.density.toolCallsPerSP * r.forecast.totalSP;
+      totalToolCalls +=
+        r.indicators.density.toolCallsPerSP * r.forecast.totalSP;
       totalSPForIndicators += r.forecast.totalSP;
 
       summary.totals.totalContracts =

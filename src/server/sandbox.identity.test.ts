@@ -103,7 +103,8 @@ describe("sandbox identity and orphan pruning", () => {
     });
 
     it("gives teardown the same id, so it can target what setup created", async () => {
-      const workDir = "/test/root/.runs/sandboxes/005-dashboard-api-ship-2e1346a7";
+      const workDir =
+        "/test/root/.runs/sandboxes/005-dashboard-api-ship-2e1346a7";
 
       await sandbox.destroySandbox(workDir, "005-dashboard-api", {
         autoCommitPush: false,
@@ -133,15 +134,17 @@ describe("sandbox identity and orphan pruning", () => {
     it("drops the entry once the sandbox is destroyed", async () => {
       (fs.readFileSync as Mock).mockReturnValue(
         JSON.stringify([
-          { id: "gone-1", workDir: "/test/root/.runs/sandboxes/gone-1", featureId: "F" },
+          {
+            id: "gone-1",
+            workDir: "/test/root/.runs/sandboxes/gone-1",
+            featureId: "F",
+          },
         ]),
       );
 
-      await sandbox.destroySandbox(
-        "/test/root/.runs/sandboxes/gone-1",
-        "F",
-        { autoCommitPush: false },
-      );
+      await sandbox.destroySandbox("/test/root/.runs/sandboxes/gone-1", "F", {
+        autoCommitPush: false,
+      });
 
       expect(registryWritten()).toEqual([]);
     });
@@ -149,8 +152,16 @@ describe("sandbox identity and orphan pruning", () => {
 
   describe("pruneOrphans", () => {
     const entries = [
-      { id: "live-1", workDir: "/test/root/.runs/sandboxes/live-1", featureId: "F" },
-      { id: "orphan-1", workDir: "/test/root/.runs/sandboxes/orphan-1", featureId: "F" },
+      {
+        id: "live-1",
+        workDir: "/test/root/.runs/sandboxes/live-1",
+        featureId: "F",
+      },
+      {
+        id: "orphan-1",
+        workDir: "/test/root/.runs/sandboxes/orphan-1",
+        featureId: "F",
+      },
     ];
 
     beforeEach(() => {
@@ -164,7 +175,9 @@ describe("sandbox identity and orphan pruning", () => {
     });
 
     it("tears down only the sandbox whose worktree is gone", async () => {
-      const result = await sandbox.pruneOrphans({ teardown: "make worktree:down" });
+      const result = await sandbox.pruneOrphans({
+        teardown: "make worktree:down",
+      });
 
       expect(result.pruned).toEqual(["orphan-1"]);
       expect(result.kept).toEqual(["live-1"]);
@@ -192,9 +205,11 @@ describe("sandbox identity and orphan pruning", () => {
       });
 
       expect(result.pruned).toEqual(["orphan-1"]);
-      expect((execSync as Mock).mock.calls.filter(([c]) =>
-        /worktree:down/.test(String(c)),
-      )).toHaveLength(0);
+      expect(
+        (execSync as Mock).mock.calls.filter(([c]) =>
+          /worktree:down/.test(String(c)),
+        ),
+      ).toHaveLength(0);
       expect(registryWritten()).toBeUndefined();
     });
 
@@ -210,11 +225,14 @@ describe("sandbox identity and orphan pruning", () => {
 
     it("keeps the entry when teardown fails, so it can be retried", async () => {
       (execSync as Mock).mockImplementation((cmd: string) => {
-        if (/worktree:down/.test(String(cmd))) throw new Error("compose failed");
+        if (/worktree:down/.test(String(cmd)))
+          throw new Error("compose failed");
         return "";
       });
 
-      const result = await sandbox.pruneOrphans({ teardown: "make worktree:down" });
+      const result = await sandbox.pruneOrphans({
+        teardown: "make worktree:down",
+      });
 
       expect(result.failed).toEqual(["orphan-1"]);
       expect(registryWritten()).toEqual(

@@ -34,7 +34,9 @@ describe("TR-019: Built-in Obsidian Vault Extension (Phase 20)", () => {
   });
 
   it("US-027: scans real vault markdown notes and ranks matches by keyword relevance", async () => {
-    const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "gwrk-obsidian-test-"));
+    const vaultDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "gwrk-obsidian-test-"),
+    );
     tempDirs.push(vaultDir);
 
     fs.mkdirSync(path.join(vaultDir, ".obsidian"), { recursive: true });

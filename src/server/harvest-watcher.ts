@@ -2,15 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { execCommand } from "../utils/exec.js";
-import { harvestFeature } from "../engine/harvest.js";
+import type { App } from "@slack/bolt";
 import { getCompressionRecord } from "../db/compression.js";
+import { harvestFeature } from "../engine/harvest.js";
 import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { execCommand } from "../utils/exec.js";
 import { parseFeatureBranch } from "../utils/feature-branch.js";
-import { resolveProjectId } from "../utils/project-id.js";
 import { detectDefaultBranch, syncTrunkForHarvest } from "../utils/git.js";
-import type { App } from "@slack/bolt";
+import { resolveProjectId } from "../utils/project-id.js";
 
 export class HarvestWatcher {
   private interval: NodeJS.Timeout | null = null;
@@ -44,22 +44,29 @@ export class HarvestWatcher {
       const baseBranch = detectDefaultBranch(this.projectRoot, "develop");
 
       // Execute GitHub CLI command to get merged and closed PRs
-      const result = await execCommand("gh", [
-        "pr",
-        "list",
-        "--state",
-        "all",
-        "--base",
-        baseBranch,
-        "--limit",
-        "40",
-        "--json",
-        "number,headRefName,mergedAt,mergeCommit,url,state,closedAt",
-      ], undefined, { cwd: this.projectRoot });
+      const result = await execCommand(
+        "gh",
+        [
+          "pr",
+          "list",
+          "--state",
+          "all",
+          "--base",
+          baseBranch,
+          "--limit",
+          "40",
+          "--json",
+          "number,headRefName,mergedAt,mergeCommit,url,state,closedAt",
+        ],
+        undefined,
+        { cwd: this.projectRoot },
+      );
 
       if (result.exitCode !== 0) {
         // Log at warn/debug level; don't throw to prevent daemon crash
-        console.warn(`HarvestWatcher: Failed to query GitHub CLI (exit code ${result.exitCode}): ${result.stderr.trim()}`);
+        console.warn(
+          `HarvestWatcher: Failed to query GitHub CLI (exit code ${result.exitCode}): ${result.stderr.trim()}`,
+        );
         return;
       }
 
@@ -85,7 +92,11 @@ export class HarvestWatcher {
 
         // Idempotency Guard (FR-H10): Check if already harvested
         if (phaseId) {
-          const existing = getCompressionRecord(featureId, phaseId, this.projectId);
+          const existing = getCompressionRecord(
+            featureId,
+            phaseId,
+            this.projectId,
+          );
           if (existing) {
             continue; // Already processed
           }
@@ -94,9 +105,13 @@ export class HarvestWatcher {
         const commitSha = pr.mergeCommit?.oid || "unknown";
         const isMerged = pr.state === "MERGED";
         const prStatus = isMerged ? "merged" : "closed";
-        const timestamp = isMerged ? (pr.mergedAt || new Date().toISOString()) : (pr.closedAt || new Date().toISOString());
+        const timestamp = isMerged
+          ? pr.mergedAt || new Date().toISOString()
+          : pr.closedAt || new Date().toISOString();
 
-        console.log(`HarvestWatcher: Found ${prStatus} PR #${pr.number} for ${featureId} (${phaseId || "all phases"}). Starting harvest...`);
+        console.log(
+          `HarvestWatcher: Found ${prStatus} PR #${pr.number} for ${featureId} (${phaseId || "all phases"}). Starting harvest...`,
+        );
 
         const record: HarvestRecord = {
           featureId,
@@ -113,7 +128,9 @@ export class HarvestWatcher {
         try {
           syncTrunkForHarvest(this.projectRoot, baseBranch);
           await harvestFeature(this.projectRoot, record);
-          console.log(`HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`);
+          console.log(
+            `HarvestWatcher: Completed harvest for ${featureId} (${phaseId || "all phases"})`,
+          );
         } catch (err) {
           console.error(`HarvestWatcher: Failed to harvest ${featureId}:`, err);
         }

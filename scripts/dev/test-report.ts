@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -43,7 +47,7 @@ function buildAcToFeatureMap(): Record<string, string> {
         const cells = line.split("|").map((c) => c.trim());
         if (cells.length > 2) {
           const ac = cells[1];
-          if (ac && ac.match(/^(?:FR|US|TR)-[A-Z0-9]+/i)) {
+          if (ac?.match(/^(?:FR|US|TR)-[A-Z0-9]+/i)) {
             map[ac] = feature;
           }
         }
@@ -67,7 +71,7 @@ function runVitest(): {
       maxBuffer: 1024 * 1024 * 10,
       stdio: "ignore",
     });
-  } catch (error: any) {
+  } catch {
     // vitest exits with 1 when tests fail, which is expected
   }
 
@@ -76,6 +80,7 @@ function runVitest(): {
     process.exit(1);
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: Vitest JSON reporter output
   let parsed: any;
   try {
     const jsonStr = fs.readFileSync(tmpFile, "utf-8");
@@ -168,9 +173,9 @@ function main() {
 
   for (const feature of sortedFeatures) {
     const featureFailures = grouped[feature];
-    console.log(`──────────────────────────────────────────────────`);
+    console.log("──────────────────────────────────────────────────");
     console.log(`🔴 ${feature} (${featureFailures.length} failing tests)`);
-    console.log(`──────────────────────────────────────────────────`);
+    console.log("──────────────────────────────────────────────────");
 
     // Group by test file within the feature
     const byFile: Record<string, TestFailure[]> = {};

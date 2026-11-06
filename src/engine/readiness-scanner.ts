@@ -232,4 +232,3 @@ export function scanReadiness(specsDir: string): ReadinessResult[] {
 
   return results;
 }
-

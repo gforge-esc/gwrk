@@ -11,11 +11,7 @@ import { startServer } from "../server/index.js";
 import { isPidRunning, readPid, removePid } from "../server/pid.js";
 import { loadConfig } from "../utils/config.js";
 import { isRemote } from "../utils/device.js";
-import {
-  getLogs,
-  installServer,
-  uninstallServer,
-} from "./server-install.js";
+import { getLogs, installServer, uninstallServer } from "./server-install.js";
 
 import { CommandError, withSignal } from "../utils/signal.js";
 

@@ -17,16 +17,16 @@ import {
 } from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import {
   isPolyglotSourceFile,
   isPolyglotTestFile,
 } from "../ports/toolchain-port.js";
-import { getTestExtension } from "../utils/toolchain-mapper.js";
-import { phaseHasTests, listTestsTree } from "../utils/test-discovery.js";
-import { getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { extractFilePaths } from "../utils/file-extract.js";
-import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
-import type { ShipStage, ShipState } from "../engine/ship-types.js";
+import { getPhaseVerificationGate } from "../utils/gate-quality.js";
+import { listTestsTree, phaseHasTests } from "../utils/test-discovery.js";
+import { getTestExtension } from "../utils/toolchain-mapper.js";
 
 import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
@@ -61,10 +61,10 @@ import {
 import { getBackendSelector } from "../server/index.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { resolveProjectId } from "../utils/project-id.js";
+import { pillarBackend } from "../utils/resolve-agent.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
-import { pillarBackend } from "../utils/resolve-agent.js";
 
 const { GREEN, DIM, RESET, YELLOW, RED } = color;
 
@@ -165,9 +165,7 @@ async function shipPhase(
       const mentionedTests = files.filter((f) =>
         isPolyglotTestFile(f, testExt),
       );
-      const sourceFiles = files.filter((f) =>
-        isPolyglotSourceFile(f, testExt),
-      );
+      const sourceFiles = files.filter((f) => isPolyglotSourceFile(f, testExt));
       const hasTests = phaseHasTests({
         sourceFiles,
         mentionedTests,
@@ -713,7 +711,9 @@ Examples:
                   `${YELLOW}⚠${RESET} tasks.json and the build plan disagree about ${drift.length} phase(s):`,
                 );
                 for (const id of drift) {
-                  console.error(`    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`);
+                  console.error(
+                    `    ${id}: graph=${graphStatuses.get(id)}, tasks.json=open`,
+                  );
                 }
                 console.error(
                   "  Shipping would re-implement work the plan already records as shipped.",
@@ -775,8 +775,9 @@ Examples:
           }
           if (opts.worktree) {
             dryRunFmt(
-              `create worktree .runs/sandboxes/${feature}-ship-<uuid> on feat/${feature} (base develop)` +
-                (config.worktree?.setup ? `; run "${config.worktree.setup}"` : ""),
+              `create worktree .runs/sandboxes/${feature}-ship-<uuid> on feat/${feature} (base develop)${
+                config.worktree?.setup ? `; run "${config.worktree.setup}"` : ""
+              }`,
             );
           }
           const scriptPath = path.join(cwd, "scripts/dev/work-until-done.sh");
@@ -808,7 +809,11 @@ Examples:
             featureId: feature,
             phaseId: "all",
             taskId: "ship",
-            backend: pillarBackend(config, "implement", opts.agent as string) as AgentBackendId,
+            backend: pillarBackend(
+              config,
+              "implement",
+              opts.agent as string,
+            ) as AgentBackendId,
             projectRoot: cwd,
             baseBranch: "develop",
             branchName: shipBranch,

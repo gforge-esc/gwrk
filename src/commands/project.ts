@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Command } from "commander";
-import { projectInfoCommand } from "./project-info.js";
 import { projectDiscoverCommand } from "./project-discover.js";
+import { projectInfoCommand } from "./project-info.js";
 import {
-  projectSpecsCommand,
   projectGatesCommand,
+  projectSpecsCommand,
 } from "./project-specs-gates.js";
 
 /**

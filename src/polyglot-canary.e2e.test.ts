@@ -8,12 +8,22 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { detectProfile } from "./engine/profile-detector.js";
 import { activatePhaseTests } from "./engine/test-activator.js";
-import { hasRecognizedTestSummary, parseTestOutput } from "./engine/test-runner.js";
+import {
+  hasRecognizedTestSummary,
+  parseTestOutput,
+} from "./engine/test-runner.js";
 import { resolveEnforcementSkills } from "./plugins/skill-runtime.js";
 import { discoverTestFile, generateFilesystemGates } from "./utils/gate-gen.js";
 import type { Phase } from "./utils/state.js";
-import { discoverTestsForSources, listTestsTree } from "./utils/test-discovery.js";
-import { getLintCommand, getTestCommand, getTestExtension } from "./utils/toolchain-mapper.js";
+import {
+  discoverTestsForSources,
+  listTestsTree,
+} from "./utils/test-discovery.js";
+import {
+  getLintCommand,
+  getTestCommand,
+  getTestExtension,
+} from "./utils/toolchain-mapper.js";
 
 describe("035-polyglot-canary-e2e: Full polyglot pipeline across TS, Python, Go, and Rust", () => {
   let tmpRoot: string;
@@ -34,12 +44,22 @@ describe("035-polyglot-canary-e2e: Full polyglot pipeline across TS, Python, Go,
       JSON.stringify({
         name: "canary-nextjs",
         dependencies: { next: "15.0.0", react: "19.0.0" },
-        devDependencies: { typescript: "5.7.0", vitest: "3.0.0", "@biomejs/biome": "1.9.0" },
+        devDependencies: {
+          typescript: "5.7.0",
+          vitest: "3.0.0",
+          "@biomejs/biome": "1.9.0",
+        },
       }),
     );
-    fs.writeFileSync(path.join(projectDir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    fs.writeFileSync(
+      path.join(projectDir, "pnpm-lock.yaml"),
+      "lockfileVersion: '9.0'\n",
+    );
     fs.writeFileSync(path.join(projectDir, "tsconfig.json"), "{}");
-    fs.writeFileSync(path.join(projectDir, "src", "page.ts"), "export const page = () => 'ok';\n");
+    fs.writeFileSync(
+      path.join(projectDir, "src", "page.ts"),
+      "export const page = () => 'ok';\n",
+    );
     const testFile = path.join(projectDir, "src", "page.test.ts");
     fs.writeFileSync(
       testFile,
@@ -60,11 +80,15 @@ describe("035-polyglot-canary-e2e: Full polyglot pipeline across TS, Python, Go,
     });
     expect(discovered).toContain("src/page.test.ts");
 
-    const activated = activatePhaseTests(projectDir, "phase-1", ["src/page.test.ts"]);
+    const activated = activatePhaseTests(projectDir, "phase-1", [
+      "src/page.test.ts",
+    ]);
     expect(activated.activated).toBe(1);
     expect(fs.readFileSync(testFile, "utf-8")).not.toContain("it.skip");
 
-    expect(getTestCommand(profile, ["src/page.test.ts"])).toContain("vitest run src/page.test.ts");
+    expect(getTestCommand(profile, ["src/page.test.ts"])).toContain(
+      "vitest run src/page.test.ts",
+    );
     expect(getLintCommand(profile, ["src/page.ts"])).toContain("biome check");
   });
 
@@ -86,7 +110,10 @@ line-length = 100
 `,
     );
     fs.writeFileSync(path.join(projectDir, "uv.lock"), "version = 1\n");
-    fs.writeFileSync(path.join(projectDir, "src", "routes.py"), "def health(): return {'ok': True}\n");
+    fs.writeFileSync(
+      path.join(projectDir, "src", "routes.py"),
+      "def health(): return {'ok': True}\n",
+    );
     const testFile = path.join(projectDir, "tests", "test_routes.py");
     fs.writeFileSync(
       testFile,
@@ -108,12 +135,20 @@ line-length = 100
     });
     expect(discovered).toContain("tests/test_routes.py");
 
-    const activated = activatePhaseTests(projectDir, "phase-1", ["tests/test_routes.py"]);
+    const activated = activatePhaseTests(projectDir, "phase-1", [
+      "tests/test_routes.py",
+    ]);
     expect(activated.activated).toBe(1);
-    expect(fs.readFileSync(testFile, "utf-8")).not.toContain("@pytest.mark.skip");
+    expect(fs.readFileSync(testFile, "utf-8")).not.toContain(
+      "@pytest.mark.skip",
+    );
 
-    expect(getTestCommand(profile, ["tests/test_routes.py"])).toBe("pytest tests/test_routes.py -v");
-    expect(getLintCommand(profile, ["src/routes.py"])).toBe("ruff check src/routes.py");
+    expect(getTestCommand(profile, ["tests/test_routes.py"])).toBe(
+      "pytest tests/test_routes.py -v",
+    );
+    expect(getLintCommand(profile, ["src/routes.py"])).toBe(
+      "ruff check src/routes.py",
+    );
 
     const skills = await resolveEnforcementSkills(projectDir, "all", profile);
     expect(skills).toContain("Python");
@@ -127,8 +162,14 @@ line-length = 100
       path.join(projectDir, "go.mod"),
       "module example.com/canary-gin\n\ngo 1.23\n\nrequire github.com/gin-gonic/gin v1.10.0\n",
     );
-    fs.writeFileSync(path.join(projectDir, ".golangci.yml"), "linters:\n  enable:\n    - govet\n");
-    fs.writeFileSync(path.join(projectDir, "pkg", "server", "router.go"), "package server\n");
+    fs.writeFileSync(
+      path.join(projectDir, ".golangci.yml"),
+      "linters:\n  enable:\n    - govet\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDir, "pkg", "server", "router.go"),
+      "package server\n",
+    );
     const testFile = path.join(projectDir, "pkg", "server", "router_test.go");
     fs.writeFileSync(
       testFile,
@@ -150,12 +191,20 @@ line-length = 100
     });
     expect(discovered).toContain("pkg/server/router_test.go");
 
-    const activated = activatePhaseTests(projectDir, "phase-1", ["pkg/server/router_test.go"]);
+    const activated = activatePhaseTests(projectDir, "phase-1", [
+      "pkg/server/router_test.go",
+    ]);
     expect(activated.activated).toBe(1);
-    expect(fs.readFileSync(testFile, "utf-8")).not.toContain('t.Skip("TDD red")');
+    expect(fs.readFileSync(testFile, "utf-8")).not.toContain(
+      't.Skip("TDD red")',
+    );
 
-    expect(getTestCommand(profile, ["pkg/server/router_test.go"])).toBe("go test pkg/server/router_test.go -v");
-    expect(getLintCommand(profile, ["pkg/server/router.go"])).toBe("golangci-lint run pkg/server/router.go");
+    expect(getTestCommand(profile, ["pkg/server/router_test.go"])).toBe(
+      "go test pkg/server/router_test.go -v",
+    );
+    expect(getLintCommand(profile, ["pkg/server/router.go"])).toBe(
+      "golangci-lint run pkg/server/router.go",
+    );
 
     const skills = await resolveEnforcementSkills(projectDir, "all", profile);
     expect(skills).toContain("Go");
@@ -201,7 +250,9 @@ all = "warn"
     });
     expect(discovered).toContain("src/handler_test.rs");
 
-    const activated = activatePhaseTests(projectDir, "phase-1", ["src/handler_test.rs"]);
+    const activated = activatePhaseTests(projectDir, "phase-1", [
+      "src/handler_test.rs",
+    ]);
     expect(activated.activated).toBe(1);
     expect(fs.readFileSync(testFile, "utf-8")).not.toContain("#[ignore");
 
@@ -224,7 +275,10 @@ all = "warn"
     ];
     const gateRes = generateFilesystemGates(featureDir, phases);
     expect(gateRes.generated).toBe(1);
-    const gateScript = fs.readFileSync(path.join(featureDir, "gates", "T001-gate.sh"), "utf-8");
+    const gateScript = fs.readFileSync(
+      path.join(featureDir, "gates", "T001-gate.sh"),
+      "utf-8",
+    );
     expect(gateScript).toContain("cargo test --test handler_test");
 
     const skills = await resolveEnforcementSkills(projectDir, "all", profile);
@@ -257,11 +311,38 @@ test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; 
     });
 
     const goJsonOutput = [
-      JSON.stringify({ Time: "2026-11-05T18:00:00Z", Action: "run", Package: "example.com/gin", Test: "TestHealth" }),
-      JSON.stringify({ Time: "2026-11-05T18:00:01Z", Action: "pass", Package: "example.com/gin", Test: "TestHealth", Elapsed: 0.01 }),
-      JSON.stringify({ Time: "2026-11-05T18:00:01Z", Action: "run", Package: "example.com/gin", Test: "TestAuth" }),
-      JSON.stringify({ Time: "2026-11-05T18:00:02Z", Action: "fail", Package: "example.com/gin", Test: "TestAuth", Elapsed: 0.02 }),
-      JSON.stringify({ Time: "2026-11-05T18:00:02Z", Action: "fail", Package: "example.com/gin", Elapsed: 0.03 }),
+      JSON.stringify({
+        Time: "2026-11-05T18:00:00Z",
+        Action: "run",
+        Package: "example.com/gin",
+        Test: "TestHealth",
+      }),
+      JSON.stringify({
+        Time: "2026-11-05T18:00:01Z",
+        Action: "pass",
+        Package: "example.com/gin",
+        Test: "TestHealth",
+        Elapsed: 0.01,
+      }),
+      JSON.stringify({
+        Time: "2026-11-05T18:00:01Z",
+        Action: "run",
+        Package: "example.com/gin",
+        Test: "TestAuth",
+      }),
+      JSON.stringify({
+        Time: "2026-11-05T18:00:02Z",
+        Action: "fail",
+        Package: "example.com/gin",
+        Test: "TestAuth",
+        Elapsed: 0.02,
+      }),
+      JSON.stringify({
+        Time: "2026-11-05T18:00:02Z",
+        Action: "fail",
+        Package: "example.com/gin",
+        Elapsed: 0.03,
+      }),
     ].join("\n");
 
     expect(hasRecognizedTestSummary(goJsonOutput)).toBe(true);

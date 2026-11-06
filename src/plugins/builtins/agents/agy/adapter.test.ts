@@ -139,7 +139,8 @@ describe("AgyAdapter", () => {
       const result = await adapter.dispatch({
         workflow: "gwrk-plan",
         featureDir: "specs/031-unified-agent-port",
-        prompt: "# Workflow Prompt\nStep 1: Read spec.md\nStep 2: Write plan.md",
+        prompt:
+          "# Workflow Prompt\nStep 1: Read spec.md\nStep 2: Write plan.md",
         stdin: "<command_safety>Rules</command_safety>",
         model: "claude-sonnet-4-6",
         agent: "agy",

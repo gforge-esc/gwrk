@@ -23,7 +23,12 @@ import { SandboxManager } from "./sandbox.js";
 
 vi.mock("node:child_process", () => ({ execSync: vi.fn() }));
 vi.mock("node:fs", () => ({
-  default: { existsSync: vi.fn(), mkdirSync: vi.fn(), rmSync: vi.fn(), readdirSync: vi.fn() },
+  default: {
+    existsSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    rmSync: vi.fn(),
+    readdirSync: vi.fn(),
+  },
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
   rmSync: vi.fn(),

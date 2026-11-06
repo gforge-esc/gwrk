@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import path from "node:path";
 import * as fsSync from "node:fs";
 import * as fsPromises from "node:fs/promises";
-import { ResearchScaffolder } from "../engine/research-scaffold.js";
+import path from "node:path";
 import { Command } from "commander";
-import { success, info, startTimer, stopTimer } from "../utils/format.js";
+import { ResearchScaffolder } from "../engine/research-scaffold.js";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
+import { info, startTimer, stopTimer, success } from "../utils/format.js";
 import { readRefsContent } from "../utils/read-refs.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
 
@@ -44,7 +44,9 @@ function methodologyFromBrief(briefContent: string): string | undefined {
   return line ? line[1].trim() : undefined;
 }
 
-export async function researchCommandHandler(args: ResearchArgs): Promise<string> {
+export async function researchCommandHandler(
+  args: ResearchArgs,
+): Promise<string> {
   if (!args.initiative) {
     throw new Error("Initiative name is required");
   }
@@ -55,14 +57,11 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
   // Resolve the research directory:
   // - If R0XX prefix → find existing dir (don't scaffold)
   // - If name → scaffold (idempotent — returns existing if slug matches)
-  let result;
-  if (isPrefix(args.initiative)) {
-    result = await scaffolder.resolveByPrefix(args.initiative);
-  } else {
-    result = await scaffolder.scaffold(args.initiative, {
-      methodology: args.methodology,
-    });
-  }
+  const result = isPrefix(args.initiative)
+    ? await scaffolder.resolveByPrefix(args.initiative)
+    : await scaffolder.scaffold(args.initiative, {
+        methodology: args.methodology,
+      });
 
   let output = `Scaffolded research initiative at ${result.directory}`;
 
@@ -102,8 +101,8 @@ export async function researchCommandHandler(args: ResearchArgs): Promise<string
         workflowInput = [
           `<reference_document source="${args.refs}" authority="primary">`,
           refsContent,
-          `</reference_document>`,
-          ``,
+          "</reference_document>",
+          "",
           workflowInput,
         ].join("\n");
       }
@@ -164,22 +163,33 @@ Examples:
   Available methodologies: technical (default), jtbd, ontology
 `,
   )
-  .argument("<initiative>", "Research initiative name or R0XX prefix (e.g. 'polyglot-monorepo' or 'R011')")
-  .option("--methodology <type>", "Research methodology: technical, jtbd, ontology (default: brief frontmatter, else technical)")
+  .argument(
+    "<initiative>",
+    "Research initiative name or R0XX prefix (e.g. 'polyglot-monorepo' or 'R011')",
+  )
+  .option(
+    "--methodology <type>",
+    "Research methodology: technical, jtbd, ontology (default: brief frontmatter, else technical)",
+  )
   .option("--run", "Execute the methodology plugin (reads brief.md as input)")
   .option("--refs <path>", "Path to additional reference docs")
-  .action(async (initiative: string, opts: { methodology: string, run?: boolean, refs?: string }) => {
-    try {
-      const output = await researchCommandHandler({
-        initiative,
-        methodology: opts.methodology,
-        run: opts.run,
-        refs: opts.refs,
-      });
-      console.log(output);
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
-
+  .action(
+    async (
+      initiative: string,
+      opts: { methodology: string; run?: boolean; refs?: string },
+    ) => {
+      try {
+        const output = await researchCommandHandler({
+          initiative,
+          methodology: opts.methodology,
+          run: opts.run,
+          refs: opts.refs,
+        });
+        console.log(output);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Error: ${message}`);
+        process.exit(1);
+      }
+    },
+  );

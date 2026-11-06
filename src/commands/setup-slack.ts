@@ -5,10 +5,10 @@
 import fs from "node:fs";
 import { isRemote } from "../utils/device.js";
 import { CommandError } from "../utils/signal.js";
-import { 
-  loadSlackConfig, 
-  verifySlackConfig, 
-  getEnvPath 
+import {
+  getEnvPath,
+  loadSlackConfig,
+  verifySlackConfig,
 } from "../utils/slack-client.js";
 
 export interface SlackSetupResult {
@@ -22,7 +22,15 @@ export interface SlackSetupResult {
  * Slack Setup.
  * Refactored to be callable from init flow.
  */
-export const setupSlack = async (options: any): Promise<SlackSetupResult> => {
+export const setupSlack = async (
+  options: {
+    botToken?: string;
+    appToken?: string;
+    verify?: boolean;
+    nonInteractive?: boolean;
+    agent?: boolean;
+  } = {},
+): Promise<SlackSetupResult> => {
   if (isRemote()) {
     throw new CommandError(
       "This machine is registered as a remote device. Slack Socket Mode runs on the server only.\n" +
@@ -32,10 +40,21 @@ export const setupSlack = async (options: any): Promise<SlackSetupResult> => {
   }
   const existingConfig = loadSlackConfig();
 
-  const botToken = options.botToken || process.env.SLACK_BOT_TOKEN || (options.verify ? existingConfig?.botToken : undefined);
-  const appToken = options.appToken || process.env.SLACK_APP_TOKEN || (options.verify ? existingConfig?.appToken : undefined);
+  const botToken =
+    options.botToken ||
+    process.env.SLACK_BOT_TOKEN ||
+    (options.verify ? existingConfig?.botToken : undefined);
+  const appToken =
+    options.appToken ||
+    process.env.SLACK_APP_TOKEN ||
+    (options.verify ? existingConfig?.appToken : undefined);
 
-  if (existingConfig && !options.verify && !options.botToken && !options.appToken) {
+  if (
+    existingConfig &&
+    !options.verify &&
+    !options.botToken &&
+    !options.appToken
+  ) {
     const verification = await verifySlackConfig(existingConfig);
     if (verification.socketModeOk) {
       console.log("Slack already configured");
@@ -57,7 +76,9 @@ export const setupSlack = async (options: any): Promise<SlackSetupResult> => {
         socketModeOk: false,
       };
     }
-    console.error("Slack credentials not found. Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN.");
+    console.error(
+      "Slack credentials not found. Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN.",
+    );
     throw new CommandError("Slack credentials not found", 1);
   }
 
@@ -68,7 +89,9 @@ export const setupSlack = async (options: any): Promise<SlackSetupResult> => {
 
   // Write to .env
   const envPath = getEnvPath();
-  const envDir = Buffer.from(envPath).toString().substring(0, envPath.lastIndexOf("/"));
+  const envDir = Buffer.from(envPath)
+    .toString()
+    .substring(0, envPath.lastIndexOf("/"));
   if (!fs.existsSync(envDir)) {
     fs.mkdirSync(envDir, { recursive: true });
   }
@@ -78,9 +101,13 @@ export const setupSlack = async (options: any): Promise<SlackSetupResult> => {
     envContent = fs.readFileSync(envPath, "utf-8");
   }
 
-  const lines = envContent.split("\n").filter(line => 
-    !line.startsWith("SLACK_BOT_TOKEN=") && !line.startsWith("SLACK_APP_TOKEN=")
-  );
+  const lines = envContent
+    .split("\n")
+    .filter(
+      (line) =>
+        !line.startsWith("SLACK_BOT_TOKEN=") &&
+        !line.startsWith("SLACK_APP_TOKEN="),
+    );
   lines.push(`SLACK_BOT_TOKEN=${botToken}`);
   lines.push(`SLACK_APP_TOKEN=${appToken}`);
 

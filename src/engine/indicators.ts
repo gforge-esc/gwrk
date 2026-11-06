@@ -73,7 +73,7 @@ export function computeLeadingIndicators(
     if (fs.existsSync(tasksJsonPath)) {
       const tasksJson = JSON.parse(fs.readFileSync(tasksJsonPath, "utf-8"));
       totalTasksExpected = tasksJson.phases.reduce(
-        (sum: number, p: any) => sum + (p.tasks?.length || 0),
+        (sum: number, p: { tasks?: unknown[] }) => sum + (p.tasks?.length || 0),
         0,
       );
     } else {
@@ -99,11 +99,12 @@ export function computeLeadingIndicators(
       (t) => t.first_attempt === 1 && t.attempts === 1 && t.is_completed === 1,
     ).length;
     firstPassRate = (firstPassTasks / taskCount) * 100;
-    
+
     const attemptedCount = taskStats.length;
-    avgAttempts = attemptedCount > 0 
-      ? taskStats.reduce((sum, t) => sum + t.attempts, 0) / attemptedCount
-      : 0;
+    avgAttempts =
+      attemptedCount > 0
+        ? taskStats.reduce((sum, t) => sum + t.attempts, 0) / attemptedCount
+        : 0;
   }
 
   // 2. Density
@@ -118,7 +119,10 @@ export function computeLeadingIndicators(
     WHERE feature_id = ? AND (project_id = ? OR project_id IS NULL OR project_id = '')
   `,
     )
-    .get(featureId, projectId) as { total_lines: number | null; total_files: number | null };
+    .get(featureId, projectId) as {
+    total_lines: number | null;
+    total_files: number | null;
+  };
 
   let totalLines = runStats?.total_lines || 0;
   let totalFiles = runStats?.total_files || 0;
@@ -141,7 +145,8 @@ export function computeLeadingIndicators(
           const [added, deleted, file] = line.split("\t");
           if (added && deleted && file) {
             if (added !== "-" && deleted !== "-") {
-              gitLines += parseInt(added, 10) + parseInt(deleted, 10);
+              gitLines +=
+                Number.parseInt(added, 10) + Number.parseInt(deleted, 10);
             }
             uniqueFiles.add(file);
           }
@@ -169,11 +174,12 @@ export function computeLeadingIndicators(
           // Match tool calls: [timestamp] $ tool_name OR [timestamp] > tool_name
           const matches = content.match(/^\[.*\]\s+[\$>]\s+\w+/gm);
           if (matches) toolCalls += matches.length;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }
   };
-
 
   try {
     // 1. Check active runs dir
@@ -182,7 +188,13 @@ export function computeLeadingIndicators(
     countInDir(runsDir, featureRegex);
 
     // 2. Check harvested logs dir
-    const harvestedDir = path.join(process.cwd(), "specs", featureId, ".gwrk", "runs");
+    const harvestedDir = path.join(
+      process.cwd(),
+      "specs",
+      featureId,
+      ".gwrk",
+      "runs",
+    );
     countInDir(harvestedDir);
   } catch {
     // Non-fatal
@@ -216,4 +228,3 @@ export function computeLeadingIndicators(
     },
   };
 }
-

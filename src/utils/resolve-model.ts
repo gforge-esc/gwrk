@@ -50,7 +50,9 @@ export function resolveModelForTask(
       backendConfig,
       classification,
       taskType,
-      noCooldownProber as any,
+      noCooldownProber as unknown as Parameters<
+        ModelSelector["selectModel"]
+      >[3],
     );
 
     return model?.name ?? undefined;

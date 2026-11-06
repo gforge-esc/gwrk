@@ -12,7 +12,9 @@ export interface PlanFeatureNode {
 }
 
 export interface PlanStorePort {
-  initFromSpecs(specsDir: string): Promise<{ added: number; skipped: number; phases: number }>;
+  initFromSpecs(
+    specsDir: string,
+  ): Promise<{ added: number; skipped: number; phases: number }>;
   renderToMarkdown(outputPath: string): Promise<void>;
 }
 

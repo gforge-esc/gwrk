@@ -20,10 +20,7 @@ import {
   discoverTestsForSources,
   listTestsTree,
 } from "../utils/test-discovery.js";
-import {
-  getTestCommand,
-  getTestExtension,
-} from "../utils/toolchain-mapper.js";
+import { getTestCommand, getTestExtension } from "../utils/toolchain-mapper.js";
 
 /**
  * gwrk test — Run the project's test runner scoped to a feature or phase's test files.
@@ -63,103 +60,104 @@ Examples:
       await withSignal("test", async () => {
         const phase = phaseArg || opts?.phase;
         const cwd = process.cwd();
-      const feature = resolveFeature(featureInput, cwd);
-      const specDir = path.join(cwd, "specs", feature);
+        const feature = resolveFeature(featureInput, cwd);
+        const specDir = path.join(cwd, "specs", feature);
 
-      let taskState: ReturnType<typeof loadTaskState>;
-      try {
-        taskState = loadTaskState(specDir);
-      } catch {
-        throw new CommandError(
-          `No tasks.json found for ${feature}. Run 'gwrk define tasks ${feature}' first.`,
-          1,
-        );
-      }
-
-      const phases = phase
-        ? taskState.phases.filter(
-            (p) => p.id === `phase-${phase.padStart(2, "0")}`,
-          )
-        : taskState.phases;
-
-      if (phases.length === 0) {
-        throw new CommandError(`Phase ${phase} not found in ${feature}.`, 1);
-      }
-
-      const profile = await detectProfile(cwd);
-      const testExt = getTestExtension(profile);
-
-      const mentionedTests: string[] = [];
-      const sourceFiles: string[] = [];
-      const declaredTargets: string[] = [];
-
-      for (const p of phases) {
-        if (p.testTargets) {
-          declaredTargets.push(...p.testTargets);
-        }
-        for (const task of p.tasks) {
-          const paths = extractFilePaths(
-            `${task.title} ${task.description ?? ""}`,
+        let taskState: ReturnType<typeof loadTaskState>;
+        try {
+          taskState = loadTaskState(specDir);
+        } catch {
+          throw new CommandError(
+            `No tasks.json found for ${feature}. Run 'gwrk define tasks ${feature}' first.`,
+            1,
           );
-          for (const f of paths) {
-            if (isPolyglotTestFile(f, testExt)) {
-              mentionedTests.push(f);
-            } else if (isPolyglotSourceFile(f, testExt)) {
-              sourceFiles.push(f);
+        }
+
+        const phases = phase
+          ? taskState.phases.filter(
+              (p) => p.id === `phase-${phase.padStart(2, "0")}`,
+            )
+          : taskState.phases;
+
+        if (phases.length === 0) {
+          throw new CommandError(`Phase ${phase} not found in ${feature}.`, 1);
+        }
+
+        const profile = await detectProfile(cwd);
+        const testExt = getTestExtension(profile);
+
+        const mentionedTests: string[] = [];
+        const sourceFiles: string[] = [];
+        const declaredTargets: string[] = [];
+
+        for (const p of phases) {
+          if (p.testTargets) {
+            declaredTargets.push(...p.testTargets);
+          }
+          for (const task of p.tasks) {
+            const paths = extractFilePaths(
+              `${task.title} ${task.description ?? ""}`,
+            );
+            for (const f of paths) {
+              if (isPolyglotTestFile(f, testExt)) {
+                mentionedTests.push(f);
+              } else if (isPolyglotSourceFile(f, testExt)) {
+                sourceFiles.push(f);
+              }
             }
           }
         }
-      }
 
-      const discovered = discoverTestsForSources({
-        sourceFiles,
-        mentionedTests,
-        testExt,
-        fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
-        testsTreeFiles: listTestsTree(cwd),
-        declaredTargets,
-      });
-
-      if (discovered.length === 0) {
-        console.log(
-          `  No tests found for ${feature}${phase ? ` phase ${phase}` : ""}.`,
-        );
-        blocked(
-          `No test files found for ${feature}${phase ? ` phase ${phase}` : ""}`,
-        );
-        throw new CommandError(
-          `No test files found for ${feature}. Run 'gwrk define tests ${feature}' first.`,
-          1,
-        );
-      }
-
-      const cmd =
-        getTestCommand(profile, discovered) ??
-        `pnpm vitest run ${discovered.join(" ")}`;
-
-      banner("test", {
-        Feature: feature,
-        Phase: phase ? `phase-${phase.padStart(2, "0")}` : "all",
-        Files: `${discovered.length} test file(s)`,
-      });
-
-      for (const tf of discovered) {
-        console.log(`    • ${tf}`);
-      }
-      console.log("");
-
-      const startTime = Date.now();
-      try {
-        execSync(cmd, {
-          cwd,
-          stdio: "inherit",
+        const discovered = discoverTestsForSources({
+          sourceFiles,
+          mentionedTests,
+          testExt,
+          fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
+          testsTreeFiles: listTestsTree(cwd),
+          declaredTargets,
         });
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        success("test", durationS);
-      } catch {
-        const durationS = Math.round((Date.now() - startTime) / 1000);
-        fail("test", 1, durationS);
-        throw new CommandError("Tests failed", 1);
-      }
-    });
-  });
+
+        if (discovered.length === 0) {
+          console.log(
+            `  No tests found for ${feature}${phase ? ` phase ${phase}` : ""}.`,
+          );
+          blocked(
+            `No test files found for ${feature}${phase ? ` phase ${phase}` : ""}`,
+          );
+          throw new CommandError(
+            `No test files found for ${feature}. Run 'gwrk define tests ${feature}' first.`,
+            1,
+          );
+        }
+
+        const cmd =
+          getTestCommand(profile, discovered) ??
+          `pnpm vitest run ${discovered.join(" ")}`;
+
+        banner("test", {
+          Feature: feature,
+          Phase: phase ? `phase-${phase.padStart(2, "0")}` : "all",
+          Files: `${discovered.length} test file(s)`,
+        });
+
+        for (const tf of discovered) {
+          console.log(`    • ${tf}`);
+        }
+        console.log("");
+
+        const startTime = Date.now();
+        try {
+          execSync(cmd, {
+            cwd,
+            stdio: "inherit",
+          });
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          success("test", durationS);
+        } catch {
+          const durationS = Math.round((Date.now() - startTime) / 1000);
+          fail("test", 1, durationS);
+          throw new CommandError("Tests failed", 1);
+        }
+      });
+    },
+  );

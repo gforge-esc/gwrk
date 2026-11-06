@@ -32,7 +32,8 @@ function truncateDocument(content: string, maxChars: number): string {
   }
   const sliced = content.slice(0, maxChars);
   const lastNewline = sliced.lastIndexOf("\n");
-  const cleanSlice = lastNewline > maxChars * 0.5 ? sliced.slice(0, lastNewline) : sliced;
+  const cleanSlice =
+    lastNewline > maxChars * 0.5 ? sliced.slice(0, lastNewline) : sliced;
   return `${cleanSlice}\n...[truncated]`;
 }
 
@@ -46,7 +47,8 @@ export async function scan(
   const maxArchChars = options.maxArchChars ?? DEFAULT_MAX_ARCH_CHARS;
   const maxSpecsChars = options.maxSpecsChars ?? DEFAULT_MAX_SPECS_CHARS;
   const maxPerSpecChars = options.maxPerSpecChars ?? DEFAULT_MAX_PER_SPEC_CHARS;
-  const maxDecisionsChars = options.maxDecisionsChars ?? DEFAULT_MAX_DECISIONS_CHARS;
+  const maxDecisionsChars =
+    options.maxDecisionsChars ?? DEFAULT_MAX_DECISIONS_CHARS;
   const maxPerDecisionChars =
     options.maxPerDecisionChars ?? DEFAULT_MAX_PER_DECISION_CHARS;
 

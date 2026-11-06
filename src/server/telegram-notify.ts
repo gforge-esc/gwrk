@@ -13,6 +13,7 @@ export interface TelegramConfig {
   chatId: string;
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: dynamic JSON config parsing
 function readJsonSafe(filePath: string): Record<string, any> | null {
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -44,7 +45,12 @@ export function loadTelegramConfig(
   const botToken = envToken || localTg?.botToken || globalTg?.botToken;
   const chatId = envChatId || localTg?.chatId || globalTg?.chatId;
 
-  if (typeof botToken === "string" && botToken && typeof chatId === "string" && chatId) {
+  if (
+    typeof botToken === "string" &&
+    botToken &&
+    typeof chatId === "string" &&
+    chatId
+  ) {
     return { botToken, chatId: String(chatId) };
   }
 
@@ -54,12 +60,16 @@ export function loadTelegramConfig(
 /**
  * Converts Slack Block Kit blocks into clean plain/Markdown text for Telegram.
  */
-export function formatBlocksForTelegram(blocks?: KnownBlock[], fallbackText?: string): string {
+export function formatBlocksForTelegram(
+  blocks?: KnownBlock[],
+  fallbackText?: string,
+): string {
   if (!blocks || blocks.length === 0) {
     return fallbackText || "";
   }
 
   const parts: string[] = [];
+  // biome-ignore lint/suspicious/noExplicitAny: Slack KnownBlock union traversal
   for (const block of blocks as any[]) {
     if (block.type === "header" && block.text?.text) {
       parts.push(String(block.text.text));
@@ -70,7 +80,7 @@ export function formatBlocksForTelegram(blocks?: KnownBlock[], fallbackText?: st
       if (Array.isArray(block.fields)) {
         parts.push(
           block.fields
-            .map((f: any) => f?.text)
+            .map((f: { text?: string }) => f?.text)
             .filter(Boolean)
             .join("\n"),
         );
@@ -78,7 +88,7 @@ export function formatBlocksForTelegram(blocks?: KnownBlock[], fallbackText?: st
     } else if (block.type === "context" && Array.isArray(block.elements)) {
       parts.push(
         block.elements
-          .map((e: any) => e?.text)
+          .map((e: { text?: string }) => e?.text)
           .filter(Boolean)
           .join(" · "),
       );
@@ -93,7 +103,9 @@ export function formatBlocksForTelegram(blocks?: KnownBlock[], fallbackText?: st
  * Sends a notification message via the Telegram Bot API.
  */
 export async function notifyTelegram(
-  message: SlackMessage | { text: string; blocks?: KnownBlock[]; chatId?: string },
+  message:
+    | SlackMessage
+    | { text: string; blocks?: KnownBlock[]; chatId?: string },
   projectRoot: string = process.cwd(),
 ): Promise<boolean> {
   const cfg = loadTelegramConfig(projectRoot);

@@ -81,7 +81,11 @@ export class SandboxManager {
   constructor(projectRoot: string = process.cwd()) {
     this.projectRoot = projectRoot;
     this.runsDir = path.join(projectRoot, ".runs", "sandboxes");
-    this.registryPath = path.join(projectRoot, ".runs", "sandbox-registry.json");
+    this.registryPath = path.join(
+      projectRoot,
+      ".runs",
+      "sandbox-registry.json",
+    );
   }
 
   /**
@@ -189,12 +193,14 @@ export class SandboxManager {
           result.pruned.pop();
           result.failed.push(record.id);
           survivors.push(record);
-          continue;
         }
       }
     }
 
-    if (!opts.dryRun && (result.pruned.length > 0 || result.failed.length > 0)) {
+    if (
+      !opts.dryRun &&
+      (result.pruned.length > 0 || result.failed.length > 0)
+    ) {
       this.writeRegistry(survivors);
     }
     return result;

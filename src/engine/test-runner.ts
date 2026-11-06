@@ -43,7 +43,12 @@ export function parseTestOutput(output: string): {
   // go test -json NDJSON events: {"Action":"pass","Test":"TestFoo"} / {"Action":"fail","Test":"TestBar"}
   const jsonLines = output
     .split("\n")
-    .filter((l) => l.trim().startsWith("{") && l.includes('"Action"') && l.includes('"Test"'));
+    .filter(
+      (l) =>
+        l.trim().startsWith("{") &&
+        l.includes('"Action"') &&
+        l.includes('"Test"'),
+    );
   if (jsonLines.length > 0) {
     let passed = 0;
     let failed = 0;
@@ -127,7 +132,10 @@ export function hasRecognizedTestSummary(output: string): boolean {
   if (/\d+\s+(passed|failed)/.test(output)) return true; // pytest / cargo / generic
   if (/^\s*---\s*(PASS|FAIL):/m.test(output)) return true; // go test -v
   if (/^(?:ok|FAIL)\s+\S+\s+[\d.]+s/m.test(output)) return true; // go test package summary
-  if (/"Action"\s*:\s*"(?:pass|fail)"/.test(output) && /"Test"\s*:/.test(output))
+  if (
+    /"Action"\s*:\s*"(?:pass|fail)"/.test(output) &&
+    /"Test"\s*:/.test(output)
+  )
     return true; // go test -json
   return false;
 }
@@ -180,13 +188,26 @@ export async function runTests(
   let output: string;
   let exitCode = 0;
   try {
-    output = execSync(command, { cwd, stdio: "pipe", timeout: 300_000 }).toString();
+    output = execSync(command, {
+      cwd,
+      stdio: "pipe",
+      timeout: 300_000,
+    }).toString();
   } catch (err: unknown) {
     const e = err as { stdout?: Buffer; stderr?: Buffer; status?: number };
-    output = `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
+    output =
+      `${e.stdout?.toString() ?? ""}\n${e.stderr?.toString() ?? ""}`.trim();
     exitCode = e.status ?? 1;
   }
 
   const { testsRun, passed, failed } = parseTestOutput(output);
-  return { testsRun, passed, failed, ran: testsRun > 0, exitCode, command, output };
+  return {
+    testsRun,
+    passed,
+    failed,
+    ran: testsRun > 0,
+    exitCode,
+    command,
+    output,
+  };
 }

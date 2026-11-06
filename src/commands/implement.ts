@@ -22,9 +22,9 @@ import {
 } from "../utils/state.js";
 
 import { resolveProjectId } from "../utils/project-id.js";
+import { resolveAgent } from "../utils/resolve-agent.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
-import { resolveAgent } from "../utils/resolve-agent.js";
 
 const { YELLOW, DIM, RESET, GREEN, RED } = color;
 

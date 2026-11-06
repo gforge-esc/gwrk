@@ -277,7 +277,8 @@ export class PlanSolver {
         })
         .sort();
 
-      if (blockedBy.length > 0) inversions.push({ phaseId: phase.id, blockedBy });
+      if (blockedBy.length > 0)
+        inversions.push({ phaseId: phase.id, blockedBy });
     }
 
     return inversions;

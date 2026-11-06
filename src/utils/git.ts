@@ -441,14 +441,10 @@ export function commitPaths(
       encoding: "utf-8",
     }).trim();
     if (!staged) return;
-    execFileSync(
-      "git",
-      ["commit", "-m", message],
-      {
-        cwd: repoPath,
-        stdio: ["ignore", "ignore", "pipe"],
-      },
-    );
+    execFileSync("git", ["commit", "-m", message], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
   } catch (e) {
     const err = e as { stderr?: Buffer | string; stdout?: Buffer | string };
     const stderr = err.stderr?.toString() || "";
@@ -494,7 +490,9 @@ export function deleteRemoteBranch(
     // Log error but don't fail, as per FR-H08
     const msg = e instanceof Error ? e.message : String(e);
     // Suppress the massive stack trace and buffer output from execFileSync
-    const cleanMsg = msg.split('\n')[0]; 
-    console.error(`Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`);
+    const cleanMsg = msg.split("\n")[0];
+    console.error(
+      `Failed to delete remote branch ${branch} (non-fatal): ${cleanMsg}`,
+    );
   }
 }

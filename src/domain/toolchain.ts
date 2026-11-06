@@ -93,7 +93,8 @@ export function getBuildCommand(
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
       if (pkg?.scripts?.build) {
-        if (fs.existsSync(path.join(cwd, "pnpm-lock.yaml"))) return "pnpm build";
+        if (fs.existsSync(path.join(cwd, "pnpm-lock.yaml")))
+          return "pnpm build";
         if (fs.existsSync(path.join(cwd, "yarn.lock"))) return "yarn build";
         return "npm run build";
       }

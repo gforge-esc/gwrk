@@ -125,7 +125,11 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
       isTurnLimit = true;
     }
 
-    if (evt.type === "assistant" && evt.message && typeof evt.message === "object") {
+    if (
+      evt.type === "assistant" &&
+      evt.message &&
+      typeof evt.message === "object"
+    ) {
       parsedAnyEvent = true;
       const msg = evt.message as { content?: unknown };
       if (typeof msg.content === "string") {
@@ -175,9 +179,9 @@ export function unwrapStreamJson(stdout: string): UnwrappedStreamResult {
 
   const text =
     lastResultText ??
-    ( lastStructuredOutput
+    (lastStructuredOutput
       ? JSON.stringify(lastStructuredOutput)
-      : assistantChunks.join("\n") || stdout );
+      : assistantChunks.join("\n") || stdout);
 
   return {
     text,

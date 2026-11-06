@@ -37,8 +37,8 @@ function collectMarkdownFilesSync(dir: string, acc: string[] = []): string[] {
 export function readRefsContent(resolvedRefsPath: string): string {
   try {
     return fs.readFileSync(resolvedRefsPath, "utf-8");
-  } catch (err: any) {
-    if (err?.code !== "EISDIR") {
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code !== "EISDIR") {
       throw err;
     }
   }

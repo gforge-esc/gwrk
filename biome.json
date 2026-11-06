@@ -25,6 +25,21 @@
       }
     }
   },
+  "overrides": [
+    {
+      "include": ["**/*.test.ts", "**/*.spec.ts", "tests/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

@@ -5,10 +5,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { seedSkills } from "./seed.js";
-import { AnyManifestSchema } from "./manifest.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
+import { AnyManifestSchema } from "./manifest.js";
+import { seedSkills } from "./seed.js";
 
 vi.mock("node:fs/promises");
 vi.mock("node:os");
@@ -41,16 +41,34 @@ Evaluative Modes
     await seedSkills();
 
     // Check reasoning skill
-    const analyticalManifestPath = path.join(mockHome, ".gwrk", "plugins", "skills", "analytical", "manifest.yaml");
-    const analyticalCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === analyticalManifestPath);
+    const analyticalManifestPath = path.join(
+      mockHome,
+      ".gwrk",
+      "plugins",
+      "skills",
+      "analytical",
+      "manifest.yaml",
+    );
+    const analyticalCall = vi
+      .mocked(fs.writeFile)
+      .mock.calls.find((call) => call[0] === analyticalManifestPath);
     expect(analyticalCall).toBeDefined();
     const analyticalManifest = parse(analyticalCall![1] as string);
     expect(analyticalManifest.category).toBe("reasoning");
     expect(() => AnyManifestSchema.parse(analyticalManifest)).not.toThrow();
 
     // Check evaluative skill
-    const adversarialManifestPath = path.join(mockHome, ".gwrk", "plugins", "skills", "adversarial", "manifest.yaml");
-    const adversarialCall = vi.mocked(fs.writeFile).mock.calls.find(call => call[0] === adversarialManifestPath);
+    const adversarialManifestPath = path.join(
+      mockHome,
+      ".gwrk",
+      "plugins",
+      "skills",
+      "adversarial",
+      "manifest.yaml",
+    );
+    const adversarialCall = vi
+      .mocked(fs.writeFile)
+      .mock.calls.find((call) => call[0] === adversarialManifestPath);
     expect(adversarialCall).toBeDefined();
     const adversarialManifest = parse(adversarialCall![1] as string);
     expect(adversarialManifest.category).toBe("evaluative");

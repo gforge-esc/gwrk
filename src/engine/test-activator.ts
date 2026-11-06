@@ -20,7 +20,7 @@ export function activatePhaseTests(
   testFiles: string[],
 ): { activated: number; files: string[] } {
   const phaseNum = phaseId.replace("phase-", "");
-  const phaseNumInt = parseInt(phaseNum, 10);
+  const phaseNumInt = Number.parseInt(phaseNum, 10);
   let activated = 0;
   const touchedFiles: string[] = [];
 
@@ -41,7 +41,10 @@ export function activatePhaseTests(
     content = content.replace(/\bit\.skip\(/g, "it(");
     content = content.replace(/\bdescribe\.skip\(/g, "describe(");
     // Activate Python: @pytest.mark.skip(...) or @unittest.skip(...)
-    content = content.replace(/^\s*@pytest\.mark\.skip(?:\([^)]*\))?\s*\n/gm, "");
+    content = content.replace(
+      /^\s*@pytest\.mark\.skip(?:\([^)]*\))?\s*\n/gm,
+      "",
+    );
     content = content.replace(/^\s*@unittest\.skip(?:\([^)]*\))?\s*\n/gm, "");
     // Activate Rust: #[ignore] or #[ignore = "..."]
     content = content.replace(/^\s*#\[ignore(?:\s*=\s*"[^"]*")?\]\s*\n/gm, "");

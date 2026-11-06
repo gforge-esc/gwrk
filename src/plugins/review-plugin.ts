@@ -11,7 +11,11 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 import { PluginLoader } from "./loader.js";
-import type { ReviewManifest, ReviewStep, WorkflowManifest } from "./manifest.js";
+import type {
+  ReviewManifest,
+  ReviewStep,
+  WorkflowManifest,
+} from "./manifest.js";
 import { WorkflowRuntime } from "./workflow-runtime.js";
 
 /**

@@ -228,7 +228,9 @@ describe("SandboxManager (Git Worktree)", () => {
       expect.any(Object),
     );
     expect(execSync).not.toHaveBeenCalledWith(
-      expect.stringContaining("git worktree add -b feat/001-platform-foundation"),
+      expect.stringContaining(
+        "git worktree add -b feat/001-platform-foundation",
+      ),
       expect.any(Object),
     );
   });
@@ -260,7 +262,9 @@ describe("SandboxManager (Git Worktree)", () => {
     );
 
     expect(execSync).not.toHaveBeenCalledWith(
-      expect.stringContaining("git worktree add -b feat/001-platform-foundation"),
+      expect.stringContaining(
+        "git worktree add -b feat/001-platform-foundation",
+      ),
       expect.any(Object),
     );
   });
@@ -288,7 +292,9 @@ describe("SandboxManager (Git Worktree)", () => {
     ).rejects.toThrow(/is already used by worktree at '\/test\/root'/);
 
     expect(execSync).not.toHaveBeenCalledWith(
-      expect.stringContaining("git worktree add -b feat/001-platform-foundation"),
+      expect.stringContaining(
+        "git worktree add -b feat/001-platform-foundation",
+      ),
       expect.any(Object),
     );
   });

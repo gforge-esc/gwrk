@@ -48,7 +48,9 @@ disabled: true
 
     // Disabled by default when includeDisabled is true
     const allWithDisabled = await loader.listPlugins({ includeDisabled: true });
-    const foundDisabled = allWithDisabled.find((p) => p.name === "opt-in-skill");
+    const foundDisabled = allWithDisabled.find(
+      (p) => p.name === "opt-in-skill",
+    );
     expect(foundDisabled?.status).toBe("disabled");
 
     // Excluded from activeOnly list
@@ -65,7 +67,9 @@ disabled: true
       }),
     );
 
-    const activeAfterGlobalEnable = await loader.listPlugins({ activeOnly: true });
+    const activeAfterGlobalEnable = await loader.listPlugins({
+      activeOnly: true,
+    });
     expect(
       activeAfterGlobalEnable.find((p) => p.name === "opt-in-skill")?.status,
     ).toBe("active");
@@ -80,16 +84,24 @@ disabled: true
       }),
     );
 
-    const activeAfterProjectDisable = await loader.listPlugins({ activeOnly: true });
+    const activeAfterProjectDisable = await loader.listPlugins({
+      activeOnly: true,
+    });
     expect(
       activeAfterProjectDisable.find((p) => p.name === "opt-in-skill"),
     ).toBeUndefined();
-    await expect(loader.resolvePlugin("opt-in-skill")).rejects.toThrow(/disabled/i);
+    await expect(loader.resolvePlugin("opt-in-skill")).rejects.toThrow(
+      /disabled/i,
+    );
   });
 
   it("supports .gwrk/plugins.json entries discovery and inherits: false isolation", async () => {
     // 1. Global skill
-    const globalSkillDir = path.join(globalPluginsDir, "skills", "global-skill");
+    const globalSkillDir = path.join(
+      globalPluginsDir,
+      "skills",
+      "global-skill",
+    );
     await fsp.mkdir(globalSkillDir, { recursive: true });
     await fsp.writeFile(
       path.join(globalSkillDir, "manifest.yaml"),

@@ -21,8 +21,8 @@
  * deliberately — rather than shipping as another flag that silently does nothing.
  */
 
-import { describe, expect, it } from "vitest";
 import type { Command } from "commander";
+import { describe, expect, it } from "vitest";
 
 /**
  * Collisions that are known, and handled by `withParentFlags` in the

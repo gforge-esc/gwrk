@@ -34,23 +34,28 @@ export class ResearchScaffolder {
    * Idempotent: if a directory matching the initiative slug already exists,
    * returns that directory instead of creating a new one.
    */
-  async scaffold(initiative: string, options: ScaffoldOptions = {}): Promise<ResearchScaffoldResult> {
+  async scaffold(
+    initiative: string,
+    options: ScaffoldOptions = {},
+  ): Promise<ResearchScaffoldResult> {
     if (!initiative) {
       throw new Error("Initiative name is required");
     }
 
     const researchDir = path.join(process.cwd(), "docs", "research");
-    
+
     // Ensure docs/research exists
     await fs.mkdir(researchDir, { recursive: true });
 
     // 1. Read existing directories
     const existing = await fs.readdir(researchDir);
-    const researchDirs = existing.filter(d => d.startsWith("R") && /R\d{3}-/.test(d));
+    const researchDirs = existing.filter(
+      (d) => d.startsWith("R") && /R\d{3}-/.test(d),
+    );
 
     // 2. Check for existing directory matching this initiative (idempotency)
     const slug = this.slugify(initiative);
-    const existingMatch = researchDirs.find(d => {
+    const existingMatch = researchDirs.find((d) => {
       // Extract slug portion after R0XX-
       const dirSlug = d.replace(/^R\d{3}-/, "");
       return dirSlug === slug;
@@ -61,25 +66,25 @@ export class ResearchScaffolder {
         directory: path.join("docs", "research", existingMatch),
       };
     }
-    
+
     // 3. Determine next R0XX number
     let nextNum = 1;
     if (researchDirs.length > 0) {
-      const numbers = researchDirs.map(d => {
+      const numbers = researchDirs.map((d) => {
         const match = d.match(/^R(\d{3})-/);
-        return match ? parseInt(match[1], 10) : 0;
+        return match ? Number.parseInt(match[1], 10) : 0;
       });
       nextNum = Math.max(...numbers) + 1;
     }
-    
+
     const prefix = `R${nextNum.toString().padStart(3, "0")}`;
-    
+
     const targetDirName = `${prefix}-${slug}`;
     const targetPath = path.join(researchDir, targetDirName);
-    
+
     // 4. Create directory
     await fs.mkdir(targetPath, { recursive: true });
-    
+
     // 5. Create brief.md
     const methodology = options.methodology || "technical";
     const briefContent = `---
@@ -108,7 +113,7 @@ created: ${new Date().toISOString().split("T")[0]}
     await fs.writeFile(path.join(targetPath, "brief.md"), briefContent);
 
     return {
-      directory: path.join("docs", "research", targetDirName)
+      directory: path.join("docs", "research", targetDirName),
     };
   }
 
@@ -122,10 +127,14 @@ created: ${new Date().toISOString().split("T")[0]}
     const existing = await fs.readdir(researchDir);
 
     const normalizedPrefix = prefix.toUpperCase();
-    const match = existing.find(d => d.toUpperCase().startsWith(`${normalizedPrefix}-`));
+    const match = existing.find((d) =>
+      d.toUpperCase().startsWith(`${normalizedPrefix}-`),
+    );
 
     if (!match) {
-      throw new Error(`Research initiative ${prefix} not found in docs/research/`);
+      throw new Error(
+        `Research initiative ${prefix} not found in docs/research/`,
+      );
     }
 
     return {
@@ -133,4 +142,3 @@ created: ${new Date().toISOString().split("T")[0]}
     };
   }
 }
-

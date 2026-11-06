@@ -18,7 +18,8 @@ function findCommand(pathStr: string): Command {
     const next = cmd.commands.find(
       (c) => c.name() === name || c.aliases().includes(name),
     );
-    if (!next) throw new Error(`command not found: "${pathStr}" (at "${name}")`);
+    if (!next)
+      throw new Error(`command not found: "${pathStr}" (at "${name}")`);
     cmd = next;
   }
   return cmd;

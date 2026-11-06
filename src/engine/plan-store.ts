@@ -113,7 +113,10 @@ export class PlanStore {
       if (existing) {
         skipped.push(res.featureId);
         // Reconcile name if it was seeded with wrong name (e.g., from plan seed YAML)
-        if (existing.name !== res.featureId && existing.name !== res.featureId) {
+        if (
+          existing.name !== res.featureId &&
+          existing.name !== res.featureId
+        ) {
           db.updateFeatureName(res.featureId, res.featureId, this.projectId);
         }
         // Refresh status from disk readiness when the docs have advanced the
@@ -124,7 +127,9 @@ export class PlanStore {
         const disk = DEFINITION_RANK[res.status];
         if (cur !== undefined && disk !== undefined && disk > cur) {
           db.updateFeatureStatus(res.featureId, res.status, this.projectId);
-          reconciled.push(`${res.featureId}: ${existing.status} → ${res.status}`);
+          reconciled.push(
+            `${res.featureId}: ${existing.status} → ${res.status}`,
+          );
         }
         // Refresh sp_total from disk (tasks.json). Only when we have an
         // estimate — absent tasks.json must not zero an existing total.
@@ -227,12 +232,10 @@ export class PlanStore {
           }
 
           if (newStatus !== feature.status) {
-            db.updateFeatureStatus(
-              res.featureId,
-              newStatus,
-              this.projectId,
+            db.updateFeatureStatus(res.featureId, newStatus, this.projectId);
+            reconciled.push(
+              `${res.featureId}: ${feature.status} → ${newStatus}`,
             );
-            reconciled.push(`${res.featureId}: ${feature.status} → ${newStatus}`);
           }
         }
       }

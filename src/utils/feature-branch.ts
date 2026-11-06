@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export interface ParsedFeatureBranch {
-	featureId: string;
-	/** Canonical zero-padded phase, e.g. `phase-01`. Absent for feature branches. */
-	phaseId?: string;
+  featureId: string;
+  /** Canonical zero-padded phase, e.g. `phase-01`. Absent for feature branches. */
+  phaseId?: string;
 }
 
 /**
@@ -20,19 +20,19 @@ export interface ParsedFeatureBranch {
  * (FR-H11). Returns null for branches that aren't ship branches.
  */
 export function parseFeatureBranch(
-	headRef: string | undefined | null,
+  headRef: string | undefined | null,
 ): ParsedFeatureBranch | null {
-	if (!headRef) return null;
-	const match = headRef.match(/^(?:feat|phase)\/(.+)$/);
-	if (!match) return null;
+  if (!headRef) return null;
+  const match = headRef.match(/^(?:feat|phase)\/(.+)$/);
+  if (!match) return null;
 
-	const rest = match[1];
-	const phaseMatch = rest.match(/^(.+)-phase-(\d+)$/);
-	if (phaseMatch) {
-		return {
-			featureId: phaseMatch[1],
-			phaseId: `phase-${phaseMatch[2].padStart(2, "0")}`,
-		};
-	}
-	return { featureId: rest };
+  const rest = match[1];
+  const phaseMatch = rest.match(/^(.+)-phase-(\d+)$/);
+  if (phaseMatch) {
+    return {
+      featureId: phaseMatch[1],
+      phaseId: `phase-${phaseMatch[2].padStart(2, "0")}`,
+    };
+  }
+  return { featureId: rest };
 }

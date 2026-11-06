@@ -134,7 +134,8 @@ describe("ClaudeAdapter", () => {
 
       expect(claudePlugin.manifest.type).toBe("agent");
       expect(claudePlugin.manifest.name).toBe("claude");
-      const claudeCaps = (claudePlugin.manifest as any).capabilities as string[];
+      const claudeCaps = (claudePlugin.manifest as any)
+        .capabilities as string[];
       const agyCaps = (agyPlugin.manifest as any).capabilities as string[];
       expect(claudeCaps).toEqual(expect.arrayContaining(agyCaps));
     });

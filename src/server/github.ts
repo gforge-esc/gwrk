@@ -6,13 +6,13 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { type IssueRecord, updateIssue, upsertIssue } from "../db/issues.js";
 import { harvestFeature } from "../engine/harvest.js";
-import { parseFeatureBranch } from "../utils/feature-branch.js";
 import {
   associateIssueWithFeature,
   notifyIssueOpened,
 } from "../engine/issues.js";
 import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { parseFeatureBranch } from "../utils/feature-branch.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
 import { resolveProjectId } from "../utils/project-id.js";
 
@@ -65,7 +65,7 @@ export async function githubWebhookPlugin(
         // FR-H13: Issue-to-feature association
         const featureId = associateIssueWithFeature({
           title: issue.title,
-          labels: issue.labels?.map((l: any) => l.name) || [],
+          labels: issue.labels?.map((l: { name: string }) => l.name) || [],
         });
 
         if (!featureId) {

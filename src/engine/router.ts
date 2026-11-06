@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { getRoutingHistory } from "../db/plugins.js";
-import { resolveProjectId } from "../utils/project-id.js";
 import type { AgentBackend } from "../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../plugins/agent-registry.js";
 import { loadConfig } from "../utils/config.js";
+import { resolveProjectId } from "../utils/project-id.js";
 import { quotaProbe } from "./quota.js";
 
 interface RoutingTask {
@@ -98,7 +98,9 @@ export async function selectBackend(
   }
 
   // 3. Task-specific mapping from config (e.g. agents.define: "agy")
-  const agentsConfig = config.agents as any;
+  const agentsConfig = config.agents as
+    | { fallbackOrder?: string[]; [key: string]: unknown }
+    | undefined;
   let taskBackendName = agentsConfig?.[task.type];
 
   // 4. Task-type default (Autonomous implementation defaults to agy)

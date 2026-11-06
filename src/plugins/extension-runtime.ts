@@ -4,9 +4,9 @@
 
 import path from "node:path";
 import { loadConfig } from "../utils/config.js";
+import type { ContextProvider, ContextResult } from "./context-provider.js";
 import { PluginLoader } from "./loader.js";
 import type { ExtensionManifest } from "./manifest.js";
-import type { ContextProvider, ContextResult } from "./context-provider.js";
 
 /**
  * Maximum character limit for aggregated external context (TC-017)
@@ -31,7 +31,7 @@ const CLI_PROBE_ONLY_EXTENSIONS = new Set(["github", "docker", "slack"]);
 export async function discoverExtensions(
   projectRoot: string,
 ): Promise<ActiveExtension[]> {
-  let config: any;
+  let config: ReturnType<typeof loadConfig> | undefined;
   try {
     config = loadConfig(projectRoot);
   } catch {
@@ -49,7 +49,11 @@ export async function discoverExtensions(
 
   for (const name of extensionNames) {
     const extConfig = enabledExtensions[name];
-    if (extConfig && typeof extConfig === "object" && extConfig.enabled === false) {
+    if (
+      extConfig &&
+      typeof extConfig === "object" &&
+      extConfig.enabled === false
+    ) {
       continue;
     }
     const pluginName = EXTENSION_ALIASES[name] ?? name;
@@ -74,7 +78,10 @@ export async function discoverExtensions(
           });
         }
       } catch (err) {
-        console.error(`Failed to load adapter for extension '${pluginName}':`, err);
+        console.error(
+          `Failed to load adapter for extension '${pluginName}':`,
+          err,
+        );
       }
     } catch {
       // Skip CLI tool probe keys (github, docker, slack) written by legacy init

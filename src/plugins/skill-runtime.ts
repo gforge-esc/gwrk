@@ -43,11 +43,15 @@ export async function assemblePrompt(
   options: SkillOptions = {},
   skillDir?: string,
 ): Promise<string> {
-  const readSkillMarkdown = async (dir?: string): Promise<string | undefined> => {
+  const readSkillMarkdown = async (
+    dir?: string,
+  ): Promise<string | undefined> => {
     if (!dir) return undefined;
     try {
       const md = await fs.readFile(path.join(dir, "SKILL.md"), "utf-8");
-      return typeof md === "string" && md.trim().length > 0 ? md.trim() : undefined;
+      return typeof md === "string" && md.trim().length > 0
+        ? md.trim()
+        : undefined;
     } catch {
       return undefined;
     }
@@ -61,7 +65,9 @@ export async function assemblePrompt(
 
   if (manifest.tier === "enforcement") {
     const mdBody = await readSkillMarkdown(skillDir);
-    const body = mdBody ? `Enforcement Skill: ${manifest.description}\n\n${mdBody}` : `Enforcement Skill: ${manifest.description}`;
+    const body = mdBody
+      ? `Enforcement Skill: ${manifest.description}\n\n${mdBody}`
+      : `Enforcement Skill: ${manifest.description}`;
     return `${body}\n\nInput:\n${input}`;
   }
 
@@ -136,7 +142,13 @@ export async function executeSkill(
   }
 
   const input = options.input || "";
-  const prompt = await assemblePrompt(manifest, input, loader, options, loaded.path);
+  const prompt = await assemblePrompt(
+    manifest,
+    input,
+    loader,
+    options,
+    loaded.path,
+  );
 
   // FR-006: Determine agent and model via router
   const projectRoot = loaderOptions.projectDir || process.cwd();

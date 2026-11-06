@@ -7,19 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { parse, stringify } from "yaml";
-import {
-  ManifestValidationError,
-  PluginLoader,
-  PluginNotFoundError,
-  type PluginSummary,
-} from "../plugins/loader.js";
-import { AnyManifestSchema, type PluginBase, type SkillManifest } from "../plugins/manifest.js";
 import { detectProfile } from "../engine/profile-detector.js";
-import { migrateSkills } from "../plugins/migrate.js";
-import { seedSkills } from "../plugins/seed.js";
-import { color } from "../utils/format.js";
-import { withSignal } from "../utils/signal.js";
-import { syncContextCommand } from "./sync-context.js";
 import {
   doctorPlugins,
   generateRegistryIndex,
@@ -27,6 +15,22 @@ import {
   searchPlugins,
   updatePlugin,
 } from "../engine/registry.js";
+import {
+  ManifestValidationError,
+  PluginLoader,
+  PluginNotFoundError,
+  type PluginSummary,
+} from "../plugins/loader.js";
+import {
+  AnyManifestSchema,
+  type PluginBase,
+  type SkillManifest,
+} from "../plugins/manifest.js";
+import { migrateSkills } from "../plugins/migrate.js";
+import { seedSkills } from "../plugins/seed.js";
+import { color } from "../utils/format.js";
+import { withSignal } from "../utils/signal.js";
+import { syncContextCommand } from "./sync-context.js";
 
 const { BOLD, DIM, CYAN, GREEN, YELLOW, RED, RESET } = color;
 
@@ -97,8 +101,8 @@ export async function listPlugins(
   });
 
   // Filter by profile language if --project is used (Phase 15 requirement)
-  if (options.project) {
-    const profile = await detectProfile(projectRoot!);
+  if (options.project && projectRoot) {
+    const profile = await detectProfile(projectRoot);
     if (profile.stack?.language) {
       const lang = profile.stack.language.toLowerCase();
 
@@ -107,7 +111,11 @@ export async function listPlugins(
       for (const p of plugins) {
         try {
           const loaded = await loader.resolvePlugin(p.name);
-          const manifest = loaded.manifest as any;
+          const manifest = loaded.manifest as {
+            type?: string;
+            tier?: string;
+            language?: string;
+          };
 
           if (
             manifest.type === "skill" &&
@@ -174,9 +182,10 @@ export async function togglePlugin(
   if (options.global) {
     const globalConfigPath = path.join(os.homedir(), ".gwrk", "config.json");
     await fs.mkdir(path.dirname(globalConfigPath), { recursive: true });
-    let globalCfg: Record<string, any> = {};
+    let globalCfg: { plugins?: Record<string, { enabled: boolean }> } = {};
     try {
-      globalCfg = JSON.parse(await fs.readFile(globalConfigPath, "utf-8")) || {};
+      globalCfg =
+        JSON.parse(await fs.readFile(globalConfigPath, "utf-8")) || {};
     } catch {
       globalCfg = {};
     }
@@ -195,7 +204,9 @@ export async function togglePlugin(
   const configPath = path.join(configDir, "plugins.yaml");
 
   // Check if in a gwrk project
-  if (!(await fs.stat(path.join(projectRoot, ".gwrkrc.json")).catch(() => null))) {
+  if (
+    !(await fs.stat(path.join(projectRoot, ".gwrkrc.json")).catch(() => null))
+  ) {
     throw new Error(
       "Not a gwrk project. Run 'gwrk init' to add gwrk to this project.",
     );
@@ -255,7 +266,9 @@ export const pluginCommand = new Command("plugin")
         await withSignal("plugin search", async () => {
           const results = await searchPlugins(query);
           if (results.length === 0) {
-            console.log(`${YELLOW}No plugins found matching '${query}'.${RESET}`);
+            console.log(
+              `${YELLOW}No plugins found matching '${query}'.${RESET}`,
+            );
             return;
           }
           console.log(`\n${BOLD}${CYAN}SEARCH RESULTS${RESET}\n`);
@@ -312,9 +325,15 @@ export const pluginCommand = new Command("plugin")
       .description("List installed plugins")
       .option("--format <type>", "Output format (json)")
       .option("--project", "Show resolution for current project")
-      .option("--type <type>", "Filter by plugin type (agent, skill, workflow, extension, review)")
+      .option(
+        "--type <type>",
+        "Filter by plugin type (agent, skill, workflow, extension, review)",
+      )
       .option("--tier <tier>", "Filter by tier (atomic, compound, enforcement)")
-      .option("--category <cat>", "Filter by category (reasoning, evaluative, etc.)")
+      .option(
+        "--category <cat>",
+        "Filter by category (reasoning, evaluative, etc.)",
+      )
       .action(async (options) => {
         await withSignal("plugin list", async () => {
           const output = await listPlugins(options);
@@ -352,7 +371,9 @@ export const pluginCommand = new Command("plugin")
   )
   .addCommand(
     new Command("index")
-      .description("Generate registry.json catalog with SemVer and SHA-256 digests")
+      .description(
+        "Generate registry.json catalog with SemVer and SHA-256 digests",
+      )
       .argument("[dir]", "Path to registry root directory")
       .action(async (dir) => {
         await withSignal("plugin index", async () => {
@@ -367,26 +388,30 @@ export const pluginCommand = new Command("plugin")
   )
   .addCommand(
     new Command("doctor")
-      .description("Verify installed plugin manifests and SHA-256 lockfile digests")
+      .description(
+        "Verify installed plugin manifests and SHA-256 lockfile digests",
+      )
       .action(async () => {
         await withSignal("plugin doctor", async () => {
           const report = await doctorPlugins();
           if (report.entries.length === 0) {
-            console.log(`${DIM}No installed plugins found in ~/.gwrk/plugins.${RESET}`);
+            console.log(
+              `${DIM}No installed plugins found in ~/.gwrk/plugins.${RESET}`,
+            );
             return;
           }
           for (const entry of report.entries) {
             const badge =
-              entry.status === "ok"
-                ? `${GREEN}✓${RESET}`
-                : `${RED}✗${RESET}`;
+              entry.status === "ok" ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`;
             const detail = entry.message ? ` (${entry.message})` : "";
             console.log(
               `  ${badge} ${entry.name.padEnd(22)} v${entry.version} [${entry.status}]${detail}`,
             );
           }
           if (!report.healthy) {
-            throw new Error("One or more installed plugins failed integrity verification.");
+            throw new Error(
+              "One or more installed plugins failed integrity verification.",
+            );
           }
         });
       }),

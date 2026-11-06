@@ -215,7 +215,8 @@ export class PluginLoader {
             try {
               const manifest = await this.loadManifest(pluginPath);
               visitedPaths.add(pluginPath);
-              if (visitedNames.has(`${manifest.type}:${manifest.name}`)) continue;
+              if (visitedNames.has(`${manifest.type}:${manifest.name}`))
+                continue;
               visitedNames.add(`${manifest.type}:${manifest.name}`);
 
               const isDisabled = this.evaluateDisabledStatus(

@@ -666,7 +666,11 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     ...task,
     stdin: stdinPayload || task.stdin,
   });
-  if (stdinPayload && dispatch.stdin && !dispatch.stdin.includes(stdinPayload)) {
+  if (
+    stdinPayload &&
+    dispatch.stdin &&
+    !dispatch.stdin.includes(stdinPayload)
+  ) {
     dispatch.stdin = `${stdinPayload}\n${dispatch.stdin}`;
   } else if (!dispatch.stdin && stdinPayload) {
     dispatch.stdin = stdinPayload;

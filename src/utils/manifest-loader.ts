@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
-import { AnyManifestSchema, type AnyManifest } from "../plugins/manifest.js";
+import { type AnyManifest, AnyManifestSchema } from "../plugins/manifest.js";
 
 export class ManifestValidationError extends Error {
   constructor(name: string, details: string) {
@@ -32,6 +32,8 @@ export async function loadManifest(pluginDir: string): Promise<AnyManifest> {
     return result.data;
   } catch (e) {
     if (e instanceof ManifestValidationError) throw e;
-    throw new Error(`Could not load manifest from ${manifestPath}: ${(e as Error).message}`);
+    throw new Error(
+      `Could not load manifest from ${manifestPath}: ${(e as Error).message}`,
+    );
   }
 }

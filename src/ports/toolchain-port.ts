@@ -46,7 +46,7 @@ export function createToolchainAdapter(profile: ProjectProfile): ToolchainPort {
     colocatedTestCandidates: (src) =>
       getColocatedTestCandidates(src, testExtension),
     getBuildCommand: (cwd) => getBuildCommand(profile, cwd),
-    getTestCommand: (files = [], grepPattern) =>
-      getTestCommand(profile, files, grepPattern),
+    getTestCommand: (files, grepPattern) =>
+      getTestCommand(profile, files ?? [], grepPattern),
   };
 }

@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { discoverExtensions, resolveExtensionContext } from "./extension-runtime.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../utils/config.js";
+import {
+  discoverExtensions,
+  resolveExtensionContext,
+} from "./extension-runtime.js";
 import { PluginLoader } from "./loader.js";
 import { AnyManifestSchema } from "./manifest.js";
 
@@ -51,9 +54,12 @@ describe("TR-017: Extension Schema and Runtime (Phase 19)", () => {
 
     // Mock resolvePlugin to fail to just test discovery up to loader call
     const mockResolvePlugin = vi.fn().mockRejectedValue(new Error("Stop here"));
-    vi.mocked(PluginLoader).mockImplementation(() => ({
-      resolvePlugin: mockResolvePlugin,
-    }) as any);
+    vi.mocked(PluginLoader).mockImplementation(
+      () =>
+        ({
+          resolvePlugin: mockResolvePlugin,
+        }) as any,
+    );
 
     await discoverExtensions(projectRoot);
     expect(mockResolvePlugin).toHaveBeenCalledWith("test-ext");
@@ -71,9 +77,12 @@ describe("TR-017: Extension Schema and Runtime (Phase 19)", () => {
     } as any);
 
     const mockResolvePlugin = vi.fn().mockRejectedValue(new Error("Not found"));
-    vi.mocked(PluginLoader).mockImplementation(() => ({
-      resolvePlugin: mockResolvePlugin,
-    }) as any);
+    vi.mocked(PluginLoader).mockImplementation(
+      () =>
+        ({
+          resolvePlugin: mockResolvePlugin,
+        }) as any,
+    );
 
     await discoverExtensions(projectRoot);
     expect(mockResolvePlugin).toHaveBeenCalledWith("obsidian-vault");

@@ -27,15 +27,22 @@ function walkTsFiles(dir: string): string[] {
   return results;
 }
 
-function getStaticImports(filePath: string): { spec: string; targetPkg: string; targetRel: string }[] {
+function getStaticImports(
+  filePath: string,
+): { spec: string; targetPkg: string; targetRel: string }[] {
   const content = fs.readFileSync(filePath, "utf-8");
   const re =
     /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["'](\.[^"']+)["']/gm;
   const out: { spec: string; targetPkg: string; targetRel: string }[] = [];
   for (const match of content.matchAll(re)) {
     const spec = match[1];
-    const resolved = path.resolve(path.dirname(filePath), spec.replace(/\.js$/, ".ts"));
-    const rel = path.relative(path.resolve("src"), resolved).replace(/\\/g, "/");
+    const resolved = path.resolve(
+      path.dirname(filePath),
+      spec.replace(/\.js$/, ".ts"),
+    );
+    const rel = path
+      .relative(path.resolve("src"), resolved)
+      .replace(/\\/g, "/");
     const targetPkg = rel.includes("/") ? rel.split("/")[0] : "(root)";
     out.push({ spec, targetPkg, targetRel: rel });
   }
@@ -103,7 +110,11 @@ describe("034-hexagonal-architecture: 4-Layer Boundary Gate (ADR-011)", () => {
     for (const file of dbFiles) {
       const relFile = path.relative(path.resolve("src"), file);
       for (const imp of getStaticImports(file)) {
-        if (imp.targetPkg !== "db" && imp.targetPkg !== "domain" && imp.targetPkg !== "ports") {
+        if (
+          imp.targetPkg !== "db" &&
+          imp.targetPkg !== "domain" &&
+          imp.targetPkg !== "ports"
+        ) {
           violations.push(`${relFile} -> ${imp.targetRel}`);
         }
       }
@@ -143,8 +154,16 @@ describe("034-hexagonal-architecture: 4-Layer Boundary Gate (ADR-011)", () => {
 describe("034-hexagonal-architecture: Decomposed Ship Stage Handlers", () => {
   it("extracts open task errors and builds review-aware diagnosis prompts", () => {
     const errors = extractOpenTaskErrors([
-      { id: "T001", status: "completed", description: "BUILD_CHECK FAILED: old" },
-      { id: "T002", status: "open", description: "Impl\n\nREVIEW FINDING: missing null guard" },
+      {
+        id: "T001",
+        status: "completed",
+        description: "BUILD_CHECK FAILED: old",
+      },
+      {
+        id: "T002",
+        status: "open",
+        description: "Impl\n\nREVIEW FINDING: missing null guard",
+      },
     ]);
     expect(errors).toEqual(["Task T002: REVIEW FINDING: missing null guard"]);
 
@@ -158,7 +177,9 @@ describe("034-hexagonal-architecture: Decomposed Ship Stage Handlers", () => {
       type: "result",
       result: "FIX: src/foo.ts — Add null check\nNotes: done",
     });
-    expect(extractFixLines(streamOut)).toEqual(["FIX: src/foo.ts — Add null check"]);
+    expect(extractFixLines(streamOut)).toEqual([
+      "FIX: src/foo.ts — Add null check",
+    ]);
   });
 
   it("evaluates review verdict as a one-way ratchet and detects divergence", () => {
@@ -176,13 +197,16 @@ describe("034-hexagonal-architecture: Decomposed Ship Stage Handlers", () => {
 
   it("evaluates scoped test liveness and baseline regressions", () => {
     expect(
-      evaluateScopedTestOutcome({ testsRun: 0, failed: 0, baselineFailed: 0 }).passed,
+      evaluateScopedTestOutcome({ testsRun: 0, failed: 0, baselineFailed: 0 })
+        .passed,
     ).toBe(false);
     expect(
-      evaluateScopedTestOutcome({ testsRun: 5, failed: 1, baselineFailed: 0 }).passed,
+      evaluateScopedTestOutcome({ testsRun: 5, failed: 1, baselineFailed: 0 })
+        .passed,
     ).toBe(false);
     expect(
-      evaluateScopedTestOutcome({ testsRun: 5, failed: 0, baselineFailed: 0 }).passed,
+      evaluateScopedTestOutcome({ testsRun: 5, failed: 0, baselineFailed: 0 })
+        .passed,
     ).toBe(true);
   });
 });

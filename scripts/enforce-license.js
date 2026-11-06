@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
 
 const HEADER_BODY = `/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -13,11 +13,12 @@ const files = process.argv.slice(2);
 let changed = false;
 
 for (const file of files) {
-  if (!file.endsWith('.ts') && !file.endsWith('.tsx') && !file.endsWith('.js')) continue;
-  
+  if (!file.endsWith(".ts") && !file.endsWith(".tsx") && !file.endsWith(".js"))
+    continue;
+
   try {
     const content = fs.readFileSync(file, "utf8");
-    
+
     // Already has the MPL header — skip
     if (content.includes(HEADER_MARKER)) continue;
 
@@ -27,9 +28,9 @@ for (const file of files) {
       const firstNewline = content.indexOf("\n");
       const shebang = content.substring(0, firstNewline + 1);
       const rest = content.substring(firstNewline + 1);
-      result = shebang + HEADER_BODY + "\n\n" + rest;
+      result = `${shebang + HEADER_BODY}\n\n${rest}`;
     } else {
-      result = HEADER_BODY + "\n\n" + content;
+      result = `${HEADER_BODY}\n\n${content}`;
     }
 
     fs.writeFileSync(file, result, "utf8");
@@ -47,5 +48,5 @@ for (const file of files) {
 }
 
 if (changed) {
-  console.log(`[License] Headers injected and staged.`);
+  console.log("[License] Headers injected and staged.");
 }

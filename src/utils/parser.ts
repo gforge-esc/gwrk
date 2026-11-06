@@ -87,9 +87,7 @@ export function parsePlan(planPath: string): { phases: ParsedPhase[] } {
     // Fallback: Table-based file listings (| File | Change | format)
     // Matches rows like: | `path/to/file.ts` | [NEW] Description |
     if (tasks.length === 0) {
-      const tableRows = section.matchAll(
-        /^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|/gm,
-      );
+      const tableRows = section.matchAll(/^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|/gm);
       for (const row of tableRows) {
         const filePath = row[1];
         let description = row[2].trim();
@@ -205,15 +203,12 @@ export function extractPhaseSection(
  * @returns Array of requirement IDs (e.g. ["FR-L25-003", "TC-011", "US-011"])
  */
 export function extractPhaseRequirements(phaseSection: string): string[] {
-  const reqLine = phaseSection.match(
-    /\*\*Requirements Addressed:\*\*\s*(.*)/,
-  );
+  const reqLine = phaseSection.match(/\*\*Requirements Addressed:\*\*\s*(.*)/);
   if (!reqLine) return [];
 
   const ids: string[] = [];
   const pattern = /\b(FR-[\w-]+|TC-\d+|US-\d+|TR-[\w-]+|ADR-\d+)\b/g;
-  let m: RegExpExecArray | null;
-  while ((m = pattern.exec(reqLine[1])) !== null) {
+  for (const m of reqLine[1].matchAll(pattern)) {
     ids.push(m[1]);
   }
   return ids;
@@ -281,7 +276,9 @@ export function extractPhaseFiles(phaseSection: string): string[] {
   const files: string[] = [];
 
   // Bullet-list format: - `src/engine/profile-detector.ts` (MODIFY: ...)
-  const filesMatch = phaseSection.match(/\*\*Files \(\d+\):\*\*\n((?:- .*\n?)+)/);
+  const filesMatch = phaseSection.match(
+    /\*\*Files \(\d+\):\*\*\n((?:- .*\n?)+)/,
+  );
   if (filesMatch) {
     const fileLines = filesMatch[1].trim().split("\n");
     for (const line of fileLines) {
@@ -292,9 +289,7 @@ export function extractPhaseFiles(phaseSection: string): string[] {
 
   // Table format fallback: | `path/to/file.ts` | [NEW] Description |
   if (files.length === 0) {
-    const tableRows = phaseSection.matchAll(
-      /^\|\s*`([^`]+)`\s*\|/gm,
-    );
+    const tableRows = phaseSection.matchAll(/^\|\s*`([^`]+)`\s*\|/gm);
     for (const row of tableRows) {
       if (!row[1].includes("---")) files.push(row[1]);
     }

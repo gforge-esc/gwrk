@@ -166,11 +166,7 @@ export class ClaudeAdapter implements AgentBackend {
     return updatedContent;
   }
 
-  parseResult(
-    stdout: string,
-    stderr: string,
-    rawExitCode: number,
-  ): TaskResult {
+  parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
     const unwrapped = unwrapStreamJson(stdout);
     let errorType: TaskResult["errorType"];
     let exitCode = rawExitCode;

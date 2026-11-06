@@ -8,15 +8,19 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { Phase, Task } from "./state.js";
 import type { ProjectProfile } from "../domain/types.js";
-import { getTestCommand, getLintCommand, TEST_INVOCATION_VERBS } from "./toolchain-mapper.js";
-import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
 import {
   getColocatedTestCandidates,
   isPolyglotSourceFile,
   isPolyglotTestFile,
 } from "../ports/toolchain-port.js";
+import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
+import type { Phase, Task } from "./state.js";
+import {
+  TEST_INVOCATION_VERBS,
+  getLintCommand,
+  getTestCommand,
+} from "./toolchain-mapper.js";
 
 // ─── GateBrief interfaces (ADR-005) ──────────────────────────────────────────
 // The brief is a structured manifest of what needs gating.
@@ -559,7 +563,7 @@ export function generateDeterministicGates(
   featureDir: string,
   gapMatrixPath: string,
   phases: Phase[],
-  profile: ProjectProfile = { type: "unknown" }
+  profile: ProjectProfile = { type: "unknown" },
 ): GateGenResult {
   const rows = parseGapMatrix(gapMatrixPath);
   const gatesDir = path.join(featureDir, "gates");
@@ -589,7 +593,9 @@ export function generateDeterministicGates(
       const text = `${task.title} ${task.description ?? ""}`;
       const rawFile =
         text.match(/(?:src|tests|docs|scripts|packages)\/[^\s),]+/)?.[0] ??
-        text.match(/\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md|py|go|rs))\b/)?.[0] ??
+        text.match(
+          /\b([\w./-]+\.(?:ts|js|sql|sh|yml|yaml|json|md|py|go|rs))\b/,
+        )?.[0] ??
         null;
       const primaryFile = rawFile?.replace(/[,;.]$/, "") ?? null;
       if (primaryFile) {
@@ -609,7 +615,10 @@ export function generateDeterministicGates(
     let sourceFile = row.testFile.replace(/\.test\.(ts|js)$/, ".$1");
     sourceFile = sourceFile.replace(/_test\.go$/, ".go");
     if (path.basename(sourceFile).startsWith("test_")) {
-      sourceFile = path.join(path.dirname(sourceFile), path.basename(sourceFile).replace(/^test_/, ""));
+      sourceFile = path.join(
+        path.dirname(sourceFile),
+        path.basename(sourceFile).replace(/^test_/, ""),
+      );
     }
 
     const taskId = sourceFileToTaskId.get(sourceFile);
@@ -618,9 +627,16 @@ export function generateDeterministicGates(
     }
 
     // Fallback: try matching test file basename to any task
-    const testBasename = path.basename(row.testFile).replace(/\.test\.(ts|js)$/, "").replace(/_test\.go$/, "").replace(/^test_/, "").replace(/\.(py|rs)$/, "");
+    const testBasename = path
+      .basename(row.testFile)
+      .replace(/\.test\.(ts|js)$/, "")
+      .replace(/_test\.go$/, "")
+      .replace(/^test_/, "")
+      .replace(/\.(py|rs)$/, "");
     for (const [file, id] of sourceFileToTaskId) {
-      if (path.basename(file).replace(/\.(ts|js|py|go|rs)$/, "") === testBasename) {
+      if (
+        path.basename(file).replace(/\.(ts|js|py|go|rs)$/, "") === testBasename
+      ) {
         return { ...row, gate: id };
       }
     }
@@ -706,14 +722,17 @@ export function generateDeterministicGates(
         let sourceFile = testFile.replace(/\.test\.(ts|js)$/, ".$1");
         sourceFile = sourceFile.replace(/_test\.go$/, ".go");
         if (path.basename(sourceFile).startsWith("test_")) {
-          sourceFile = path.join(path.dirname(sourceFile), path.basename(sourceFile).replace(/^test_/, ""));
+          sourceFile = path.join(
+            path.dirname(sourceFile),
+            path.basename(sourceFile).replace(/^test_/, ""),
+          );
         }
         return sourceFile;
       })
       .filter((f) => fs.existsSync(path.resolve(f)));
 
     const lintCmd = getLintCommand(profile, sourceFiles);
-    const lintInvocations = lintCmd 
+    const lintInvocations = lintCmd
       ? `${lintCmd} \\
   || { echo "FAIL: ${gateId} — lint errors" >&2; exit 1; }`
       : "";
