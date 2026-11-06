@@ -1,11 +1,16 @@
 {
   "name": "@gwrk/cli",
-  "version": "1.6.0-beta.1",
+  "version": "1.4.0-alpha.2",
   "type": "module",
   "bin": {
     "gwrk": "./dist/cli.js"
   },
-  "files": ["dist/", "package.json", "README.md", "LICENSE"],
+  "files": [
+    "dist/",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
