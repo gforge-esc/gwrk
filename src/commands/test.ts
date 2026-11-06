@@ -6,110 +6,160 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
-import { banner, fail, success } from "../utils/format.js";
-import { loadTaskState } from "../utils/state.js";
-
-import { resolveFeature } from "../utils/resolve-feature.js";
 import { detectProfile } from "../engine/profile-detector.js";
-import { getTestExtension } from "../utils/toolchain-mapper.js";
+import {
+  isPolyglotSourceFile,
+  isPolyglotTestFile,
+} from "../ports/toolchain-port.js";
 import { extractFilePaths } from "../utils/file-extract.js";
-import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
+import { banner, blocked, fail, success } from "../utils/format.js";
+import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { loadTaskState } from "../utils/state.js";
+import {
+  discoverTestsForSources,
+  listTestsTree,
+} from "../utils/test-discovery.js";
+import {
+  getTestCommand,
+  getTestExtension,
+} from "../utils/toolchain-mapper.js";
 
 /**
- * gwrk test <feature> [--phase <N>]
+ * gwrk test — Run the project's test runner scoped to a feature or phase's test files.
  *
- * Runs vitest scoped to the test files of a feature or phase.
+ * Reads tasks.json to discover test files referenced by the feature's tasks,
+ * resolves co-located and tests/ tree test files using the detected project profile,
+ * and invokes the configured polyglot test harness (Vitest, Pytest, Go test, Cargo test).
  */
 export const testCommand = new Command("test")
-  .description("Run vitest scoped to feature test files")
+  .description("Run the project test suite scoped to feature test files")
   .addHelpText(
     "after",
     `
+Type: query
+Mutates: none
+Format: use gwrk --format json for structured output
+Exit codes:
+  0: All tests pass
+  1: One or more tests failed, or no test files found
+  2: Usage error
+
 Examples:
   gwrk test 001
-  gwrk test 001-cli-core --phase 1
+  gwrk test 001 1
+  gwrk test 013-agent-native-interface
 `,
   )
-  .argument("<feature>", "Feature ID (e.g. 001-cli-core)")
-  .option("-p, --phase <n>", "Phase number")
-  .action(async (featureInput: string, options: { phase?: string }) => {
-    await withSignal("test", async () => {
-      const projectRoot = process.cwd();
-      const feature = resolveFeature(featureInput, projectRoot);
-      const featureDir = path.join(projectRoot, "specs", feature);
+  .argument("<feature>", "Feature ID or prefix (e.g. '001' or '001-cli-core')")
+  .argument("[phase]", "Optional phase number (e.g. '1' or '01')")
+  .option("-p, --phase <phase>", "Scope to a specific phase")
+  .action(
+    async (
+      featureInput: string,
+      phaseArg: string | undefined,
+      opts: { phase?: string },
+    ) => {
+      await withSignal("test", async () => {
+        const phase = phaseArg || opts?.phase;
+        const cwd = process.cwd();
+      const feature = resolveFeature(featureInput, cwd);
+      const specDir = path.join(cwd, "specs", feature);
 
-      if (!fs.existsSync(featureDir)) {
-        throw new CommandError(`Feature directory not found: ${featureDir}`, 1);
+      let taskState: ReturnType<typeof loadTaskState>;
+      try {
+        taskState = loadTaskState(specDir);
+      } catch {
+        throw new CommandError(
+          `No tasks.json found for ${feature}. Run 'gwrk define tasks ${feature}' first.`,
+          1,
+        );
       }
 
-      const startTime = Date.now();
-      banner("test", { Feature: feature, Phase: options.phase ?? "all" });
+      const phases = phase
+        ? taskState.phases.filter(
+            (p) => p.id === `phase-${phase.padStart(2, "0")}`,
+          )
+        : taskState.phases;
 
-      try {
-        const taskState = loadTaskState(featureDir);
-        const profile = await detectProfile(projectRoot);
-        const testExt = getTestExtension(profile);
-        const mentionedTests: string[] = [];
-        const sourceFiles: string[] = [];
+      if (phases.length === 0) {
+        throw new CommandError(`Phase ${phase} not found in ${feature}.`, 1);
+      }
 
-        for (const phase of taskState.phases) {
-          if (
-            options.phase &&
-            phase.id !== `phase-${options.phase.padStart(2, "0")}`
-          ) {
-            continue;
-          }
+      const profile = await detectProfile(cwd);
+      const testExt = getTestExtension(profile);
 
-          for (const task of phase.tasks) {
-            for (const f of extractFilePaths(
-              `${task.title} ${task.description ?? ""}`,
-            )) {
-              if (f.includes(".test.")) mentionedTests.push(f);
-              else if (f.endsWith(".ts") || f.endsWith(".js"))
-                sourceFiles.push(f);
+      const mentionedTests: string[] = [];
+      const sourceFiles: string[] = [];
+      const declaredTargets: string[] = [];
+
+      for (const p of phases) {
+        if (p.testTargets) {
+          declaredTargets.push(...p.testTargets);
+        }
+        for (const task of p.tasks) {
+          const paths = extractFilePaths(
+            `${task.title} ${task.description ?? ""}`,
+          );
+          for (const f of paths) {
+            if (isPolyglotTestFile(f, testExt)) {
+              mentionedTests.push(f);
+            } else if (isPolyglotSourceFile(f, testExt)) {
+              sourceFiles.push(f);
             }
           }
         }
+      }
 
-        // Same discovery the ship gate uses: mentioned + co-located + tests/ tree.
-        const testFiles = new Set(
-          discoverTestsForSources({
-            sourceFiles,
-            mentionedTests,
-            testExt,
-            fileExists: (rel) => fs.existsSync(path.join(projectRoot, rel)),
-            testsTreeFiles: listTestsTree(projectRoot),
-          }),
+      const discovered = discoverTestsForSources({
+        sourceFiles,
+        mentionedTests,
+        testExt,
+        fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
+        testsTreeFiles: listTestsTree(cwd),
+        declaredTargets,
+      });
+
+      if (discovered.length === 0) {
+        console.log(
+          `  No tests found for ${feature}${phase ? ` phase ${phase}` : ""}.`,
         );
+        blocked(
+          `No test files found for ${feature}${phase ? ` phase ${phase}` : ""}`,
+        );
+        throw new CommandError(
+          `No test files found for ${feature}. Run 'gwrk define tests ${feature}' first.`,
+          1,
+        );
+      }
 
-        if (testFiles.size === 0) {
-          // FR-009 / liveness (ADR-005 §10): nothing verified is NOT success.
-          console.log("  ✗ No tests found for this feature/phase.");
-          const durationS = Math.round((Date.now() - startTime) / 1000);
-          fail("test", 1, durationS);
-          process.exitCode = 1;
-          return;
-        }
+      const cmd =
+        getTestCommand(profile, discovered) ??
+        `pnpm vitest run ${discovered.join(" ")}`;
 
-        const testFilesArray = Array.from(testFiles);
-        console.log(`  Found ${testFilesArray.length} test files`);
+      banner("test", {
+        Feature: feature,
+        Phase: phase ? `phase-${phase.padStart(2, "0")}` : "all",
+        Files: `${discovered.length} test file(s)`,
+      });
 
-        execSync(`pnpm vitest run ${testFilesArray.join(" ")}`, {
-          cwd: projectRoot,
+      for (const tf of discovered) {
+        console.log(`    • ${tf}`);
+      }
+      console.log("");
+
+      const startTime = Date.now();
+      try {
+        execSync(cmd, {
+          cwd,
           stdio: "inherit",
         });
-
         const durationS = Math.round((Date.now() - startTime) / 1000);
         success("test", durationS);
-      } catch (error) {
+      } catch {
         const durationS = Math.round((Date.now() - startTime) / 1000);
-        const exitCode =
-          error instanceof Error && "status" in error
-            ? (error as { status: number }).status
-            : 1;
-        fail("test", exitCode, durationS);
-        process.exitCode = exitCode || 1;
+        fail("test", 1, durationS);
+        throw new CommandError("Tests failed", 1);
       }
     });
   });

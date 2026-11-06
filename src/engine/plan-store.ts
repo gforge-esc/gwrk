@@ -145,14 +145,29 @@ export class PlanStore {
       }
 
       // Always populate phases (additive — new phases get inserted, existing stay)
+      const diskShippedSeqs = new Set(res.shippedPhaseSeqs ?? []);
+      if (res.phases.length > 0) {
+        const validPhaseIds = new Set(
+          res.phases.map(
+            (p) =>
+              `${res.featureId}/phase-${String(p.number).padStart(2, "0")}`,
+          ),
+        );
+        for (const ep of db.listPhases(res.featureId, this.projectId)) {
+          if (!validPhaseIds.has(ep.id)) {
+            db.deletePhase(ep.id, this.projectId);
+          }
+        }
+      }
       for (const phase of res.phases) {
         const phaseSeq = `phase-${String(phase.number).padStart(2, "0")}`;
         const phaseId = `${res.featureId}/${phaseSeq}`;
         const existingPhase = db.getPhase(phaseId, this.projectId);
 
-        // Determine status: check if this feature+phase has a ship run
+        // Determine status: check if this feature+phase has a ship run or completed tasks
         const shipKey = `${res.featureId}:${phaseSeq}`;
-        const shippedByRun = shippedPhases.has(shipKey);
+        const shippedByRun =
+          shippedPhases.has(shipKey) || diskShippedSeqs.has(phase.number);
 
         if (existingPhase) {
           // Idempotent-but-not-static: doc-derived fields (name/sp/seq) track

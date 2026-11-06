@@ -25,8 +25,9 @@ import {
   dispatchToAgent,
 } from "../utils/agent.js";
 import { runGate } from "../utils/gate-runner.js";
-import { createBranch, getCurrentBranch, isDirty, syncBranch } from "../utils/git.js";
-import { assembleDigest } from "../utils/manifest.js";
+import { createBranch, getCurrentBranch, getCurrentCommit, getDiffStats, isDirty, syncBranch } from "../utils/git.js";
+import { loadDevice } from "../utils/device.js";
+import { assembleDigest, generateRunId, writeManifest } from "../utils/manifest.js";
 import {
   type Phase,
   type Task,
@@ -51,6 +52,11 @@ import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { discoverTestsForSources, listTestsTree } from "../utils/test-discovery.js";
 import { startProgress } from "../utils/progress.js";
+import {
+  buildDiagnosisPrompt,
+  extractFixLines,
+  extractOpenTaskErrors,
+} from "../application/ship/index.js";
 
 /**
  * Start the progress indicator shared by both spinner wrappers. Animates on a
@@ -273,23 +279,10 @@ const ABSENCE_POLL_MS = 15_000;
  * scans stdout for a line prefix sees nothing at all under stream-json, so
  * unwrap first and fall back to the raw text.
  */
+import { unwrapStreamJson } from "../ports/agent-port.js";
+
 function agentAnswerText(stdout: string): string {
-  let answer: string | undefined;
-
-  for (const line of stdout.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) continue;
-    try {
-      const event = JSON.parse(trimmed) as { type?: string; result?: unknown };
-      if (event.type === "result" && typeof event.result === "string") {
-        answer = event.result;
-      }
-    } catch {
-      // A partial or non-JSON line is not an event. Keep scanning.
-    }
-  }
-
-  return answer ?? stdout;
+  return unwrapStreamJson(stdout).text;
 }
 
 /** `phase-04` → `4`. */
@@ -394,6 +387,7 @@ export class ShipOrchestrator extends EventEmitter {
     stage: ShipStage;
     gateResult?: "PASS" | "FAIL";
     reviewVerdict?: "GO" | "NO-GO";
+    usage?: ShipState["usage"];
   } {
     return {
       prNumber: this.state.prNumber,
@@ -401,6 +395,7 @@ export class ShipOrchestrator extends EventEmitter {
       stage: this.state.stage,
       gateResult: this.state.gateResult,
       reviewVerdict: this.state.reviewVerdict,
+      usage: this.state.usage,
     };
   }
 
@@ -2178,6 +2173,52 @@ ${marker}`;
     const branchName = this.state.branchName;
     const specName = this.config.featureId;
 
+    // Write pre-PR execution manifest so the PR commit carries it for remote harvest
+    try {
+      const featureDir = path.join(this.config.cwd, "specs", this.config.featureId);
+      if (fs.existsSync(featureDir)) {
+        const finishedAt = new Date().toISOString();
+        const durationS = Math.max(
+          0,
+          Math.round((Date.now() - new Date(this.state.startedAt).getTime()) / 1000),
+        );
+        const gitCommit = getCurrentCommit(this.config.cwd);
+        const gitBranch = branchName || getCurrentBranch(this.config.cwd);
+        const diff = getDiffStats(this.config.cwd, `${gitCommit}~1`);
+        const phaseNum = this.config.phaseId.replace("phase-", "").replace(/^0+/, "");
+        const device = loadDevice();
+
+        writeManifest(featureDir, {
+          runId: generateRunId(this.state.startedAt, "ship", this.config.phaseId),
+          feature: this.config.featureId,
+          phase: this.config.phaseId,
+          command: "ship",
+          agent: this.config.backend,
+          model: this.config.selectedModel || "unknown",
+          ...(device?.id ? { deviceId: device.id } : {}),
+          ...(device?.hostname ? { hostname: device.hostname } : {}),
+          ...(this.state.usage ? { usage: this.state.usage } : {}),
+          startedAt: this.state.startedAt,
+          finishedAt,
+          durationS,
+          exitCode: 0,
+          attempt: this.state.iteration,
+          gateResult: this.state.gateResult ?? "PASS",
+          reviewVerdict: this.state.reviewVerdict ?? "GO",
+          filesChanged: diff.filesChanged,
+          linesAdded: diff.linesAdded,
+          linesDeleted: diff.linesDeleted,
+          gitCommit,
+          gitBranch,
+          digest: assembleDigest(
+            path.join(this.config.cwd, ".runs", `${this.config.featureId}_p${phaseNum}.events`),
+          ),
+        });
+      }
+    } catch {
+      // Non-fatal: ship.ts post-run fallback also writes manifest
+    }
+
     // ── Git housekeeping: commit any uncommitted changes and push ──
     // Review agents may modify files via native tools without committing.
     // The orchestrator must own this boundary deterministically.
@@ -2541,22 +2582,7 @@ ${marker}`;
     }
 
     // Collect error context from open tasks (appended by BUILD_CHECK/TEST_GATE)
-    const errorContext: string[] = [];
-    for (const task of phase.tasks) {
-      if (task.status === "open" && task.description) {
-        // Review findings count as context too. On the review path BUILD_CHECK
-        // and TEST_GATE have both passed — that is the entire point of the
-        // divergence warning — so matching only build/test failures meant
-        // DIAGNOSE printed "no error context" on every review-driven NO-GO and
-        // spent a stage contributing nothing.
-        const errorMatch = task.description.match(
-          /(?:BUILD_CHECK FAILED|TEST_GATE REGRESSION|POST-FLIGHT GATE FAIL|REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL)[\s\S]*$/,
-        );
-        if (errorMatch) {
-          errorContext.push(`Task ${task.id}: ${errorMatch[0]}`);
-        }
-      }
-    }
+    const errorContext = extractOpenTaskErrors(phase.tasks);
 
     if (errorContext.length === 0) {
       console.log("    ⏭ no error context to diagnose");
@@ -2566,11 +2592,15 @@ ${marker}`;
     // Run a fresh build/test to capture current error state
     let currentErrors = "";
     try {
-      execSync("pnpm build", {
-        cwd: this.config.cwd,
-        stdio: "pipe",
-        timeout: 60_000,
-      });
+      const diagProfile = await detectProfile(this.config.cwd);
+      const buildCmd = getBuildCommand(diagProfile, this.config.cwd);
+      if (buildCmd) {
+        execSync(buildCmd, {
+          cwd: this.config.cwd,
+          stdio: "pipe",
+          timeout: 60_000,
+        });
+      }
       // Build passes now? Some iteration may have partially fixed things.
       // Still run diagnosis on test failures if any.
     } catch (err: unknown) {
@@ -2578,43 +2608,7 @@ ${marker}`;
       currentErrors = stderr;
     }
 
-    // A review-driven NO-GO reaches here with the build green — the finding is
-    // something no gate covers. Say so, or the diagnostician looks for compiler
-    // errors that do not exist and returns nothing.
-    const reviewDriven = errorContext.some((c) =>
-      /REVIEW\/GATE DIVERGENCE|REVIEW FINDING|REVIEW FAIL/.test(c),
-    );
-
-    // Build the diagnosis prompt — concise, targeted, no agent narration
-    const diagnosisPrompt = [
-      "You are a build and code-review diagnostician. Analyze the findings below and produce SPECIFIC fix instructions.",
-      "",
-      "## Current Build/Test Errors",
-      currentErrors || "(build passes — the findings below are what failed)",
-      "",
-      reviewDriven ? "## Review Findings (build and gates are GREEN)" : "## Error Context from Failed Gates",
-      ...(reviewDriven
-        ? [
-            "A reviewer reproduced these defects while every gate passed, so no gate covers them.",
-            "Each FIX must repair the defect the reviewer named. Where a gate or test would have caught",
-            "it, add one — a finding that survives its own fix is a finding that will recur.",
-            "",
-          ]
-        : []),
-      ...errorContext,
-      "",
-      "## Instructions",
-      "For each error, produce ONE line in this exact format:",
-      "FIX: <file_path> — <what to do>",
-      "",
-      "Examples:",
-      "FIX: src/commands/plugin.ts — Add missing import: `import { type PluginSummary } from '../plugins/loader.js'`",
-      "FIX: src/utils/config.ts — Change `extensions` type from `string[]` to `Record<string, ExtensionConfig>`",
-      "FIX: src/engine/profile-detector.ts — Remove duplicate export of `detectProfile`",
-      "",
-      "Be SPECIFIC. Name the exact file, the exact import, the exact type. Do NOT explain why.",
-      "Do NOT produce code blocks. Just FIX: lines.",
-    ].join("\n");
+    const diagnosisPrompt = buildDiagnosisPrompt(errorContext, currentErrors);
 
     try {
       // Dispatch to thinking model — no tool access, reasoning only
@@ -2626,13 +2620,7 @@ ${marker}`;
       });
 
       if (result.exitCode === 0 && result.stdout) {
-        // Extract FIX: lines from the diagnosis output. Unwrap first: under
-        // stream-json every stdout line is a JSON event, so a raw prefix scan
-        // matches nothing and discards a complete answer.
-        const fixLines = agentAnswerText(result.stdout)
-          .split("\n")
-          .filter((line: string) => line.trim().startsWith("FIX:"))
-          .map((line: string) => line.trim());
+        const fixLines = extractFixLines(result.stdout);
 
         if (fixLines.length > 0) {
           const fixBlock = `\n\nDIAGNOSIS (iteration ${this.state.iteration}):\n${fixLines.join("\n")}`;
@@ -2700,6 +2688,20 @@ ${marker}`;
       );
       await this.sleep(wait);
       result = await dispatchToAgent({ ...task, model, env, workDir });
+    }
+
+    if (result.usage) {
+      const prev = this.state.usage ?? {};
+      const inTok = (prev.inputTokens ?? 0) + (result.usage.tokensIn ?? 0);
+      const outTok = (prev.outputTokens ?? 0) + (result.usage.tokensOut ?? 0);
+      this.state.usage = {
+        inputTokens: inTok,
+        outputTokens: outTok,
+        totalTokens: inTok + outTok,
+        ...(result.usage.costUsd !== undefined || prev.costUsd !== undefined
+          ? { costUsd: (prev.costUsd ?? 0) + (result.usage.costUsd ?? 0) }
+          : {}),
+      };
     }
 
     return result;

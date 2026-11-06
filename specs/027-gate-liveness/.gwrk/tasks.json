@@ -1,0 +1,21 @@
+{
+  "featureId": "027-gate-liveness",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Conservative Liveness in Inline Gate Runner",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "hasRecognizedTestSummary and runInlineGate liveness check",
+          "status": "completed",
+          "sp": 3,
+          "classification": "change",
+          "description": "hasRecognizedTestSummary and runInlineGate liveness check",
+          "gateScript": "pnpm build"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-02T22:20:00.000Z"
+}

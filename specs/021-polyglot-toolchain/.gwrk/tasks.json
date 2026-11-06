@@ -1,0 +1,51 @@
+{
+  "featureId": "021-polyglot-toolchain",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Spec Reconciliation and Toolchain Config Schema",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "ToolchainConfigSchema and detectProfile merge",
+          "status": "completed",
+          "sp": 3,
+          "classification": "change",
+          "description": "ToolchainConfigSchema and detectProfile merge",
+          "gateScript": "pnpm build"
+        }
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Toolchain Mapper and Build/Test Commands",
+      "tasks": [
+        {
+          "id": "T002",
+          "title": "getTestCommand, getBuildCommand, and declaredTargets",
+          "status": "completed",
+          "sp": 5,
+          "classification": "change",
+          "description": "getTestCommand, getBuildCommand, and declaredTargets",
+          "gateScript": "pnpm build"
+        }
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Ship Orchestrator and Gate Quality Integration",
+      "tasks": [
+        {
+          "id": "T003",
+          "title": "Route BUILD_CHECK and TEST_GATE through toolchain mapper",
+          "status": "completed",
+          "sp": 5,
+          "classification": "change",
+          "description": "Route BUILD_CHECK and TEST_GATE through toolchain mapper",
+          "gateScript": "pnpm build"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-02T22:20:00.000Z"
+}

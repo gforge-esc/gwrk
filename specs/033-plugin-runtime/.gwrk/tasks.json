@@ -1,0 +1,21 @@
+{
+  "featureId": "033-plugin-runtime",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Skill Seeding, SKILL.md Loading, Dynamic Agent Plugins, and NotificationPort",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Fix skill manifest seeding, SKILL.md loading, dynamic agent loading, plugin registry install/update, and NotificationPort",
+          "status": "completed",
+          "sp": 8,
+          "classification": "change",
+          "gateScript": "pnpm vitest run src/plugins/ src/engine/registry.test.ts",
+          "description": "Fix skill manifest seeding, SKILL.md loading, dynamic agent loading, plugin registry install/update, and NotificationPort"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-11-02T22:20:00.000Z"
+}

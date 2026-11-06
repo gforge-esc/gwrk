@@ -125,6 +125,10 @@ Examples:
 
           exitCode = await orchestrator.run();
 
+          if (opts.dryRun) {
+            return;
+          }
+
           const durationS = Math.round((Date.now() - startTime) / 1000);
           finishRun(runId, { exit_code: exitCode, duration_s: durationS });
           if (exitCode === 0) {

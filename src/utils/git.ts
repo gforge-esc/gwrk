@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -316,6 +317,38 @@ export async function syncBranch(
     cwd: repoPath,
     stdio: ["ignore", "ignore", "pipe"],
   });
+}
+
+/**
+ * Fetches origin/<baseBranch> and fast-forwards the local checkout when clean
+ * on baseBranch, or updates the local baseBranch ref otherwise. Non-fatal when
+ * offline or running in a non-git test fixture.
+ */
+export function syncTrunkForHarvest(
+  repoPath: string,
+  baseBranch = "develop",
+): void {
+  if (!fs.existsSync(path.join(repoPath, ".git"))) return;
+  try {
+    execFileSync("git", ["fetch", "origin", baseBranch], {
+      cwd: repoPath,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    const current = getCurrentBranch(repoPath);
+    if (current === baseBranch && isWorkingTreeClean(repoPath)) {
+      execFileSync("git", ["merge", "--ff-only", `origin/${baseBranch}`], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    } else if (current !== baseBranch) {
+      execFileSync("git", ["fetch", "origin", `${baseBranch}:${baseBranch}`], {
+        cwd: repoPath,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    }
+  } catch {
+    // Non-fatal: offline or local repository without origin remote
+  }
 }
 
 /**

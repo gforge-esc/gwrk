@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.5.1-alpha.2...cli-v1.5.2-alpha.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* **tasks:** support inline gateScript execution in gwrk tasks done ([04a2d3a](https://github.com/gforge-esc/gwrk/commit/04a2d3a1f7f30f3799a228054b79b7b4376a327a))
+
 ## [1.5.1-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.5.0-alpha.2...cli-v1.5.1-alpha.2) (2026-10-26)
 
 

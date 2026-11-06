@@ -17,6 +17,10 @@ import {
 } from "../db/runs.js";
 import { PlanStore } from "../engine/plan-store.js";
 import { detectProfile } from "../engine/profile-detector.js";
+import {
+  isPolyglotSourceFile,
+  isPolyglotTestFile,
+} from "../ports/toolchain-port.js";
 import { getTestExtension } from "../utils/toolchain-mapper.js";
 import { phaseHasTests, listTestsTree } from "../utils/test-discovery.js";
 import { getPhaseVerificationGate } from "../utils/gate-quality.js";
@@ -27,6 +31,7 @@ import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import { ShipBridge } from "../server/ship-bridge.js";
 import { type TaskResult, dispatchToAgent } from "../utils/agent.js";
 import { type AgentBackendId, loadConfig } from "../utils/config.js";
+import { loadDevice } from "../utils/device.js";
 import { run } from "../utils/exec.js";
 import {
   banner,
@@ -154,24 +159,19 @@ async function shipPhase(
         );
       }
 
-      const mentionedTests = files.filter(
-        (f) => f.includes(".test.ts") || f.includes(".test.js"),
-      );
-      const sourceFiles = files.filter(
-        (f) =>
-          (f.endsWith(".ts") || f.endsWith(".js")) &&
-          !f.includes(".test.") &&
-          !f.includes(".d.ts"),
-      );
-
       // FR-008 (ADR-005 §10.2.4): existence-based, profile-aware discovery.
-      // A *mentioned* test only counts if it exists; tests in a separate
-      // tests/ tree count too (no false block for out-of-tree suites).
       const profile = await detectProfile(cwd);
+      const testExt = getTestExtension(profile);
+      const mentionedTests = files.filter((f) =>
+        isPolyglotTestFile(f, testExt),
+      );
+      const sourceFiles = files.filter((f) =>
+        isPolyglotSourceFile(f, testExt),
+      );
       const hasTests = phaseHasTests({
         sourceFiles,
         mentionedTests,
-        testExt: getTestExtension(profile),
+        testExt,
         fileExists: (rel) => fs.existsSync(path.join(cwd, rel)),
         testsTreeFiles: listTestsTree(cwd),
         declaredTargets: phaseData.testTargets ?? [],
@@ -364,6 +364,7 @@ async function shipPhase(
     const manifestId = generateRunId(startedAt, "ship", phaseId);
     const featureDir = path.join(cwd, "specs", feature);
     const result = orchestrator?.getResult();
+    const device = loadDevice();
 
     writeManifest(featureDir, {
       runId: manifestId,
@@ -372,6 +373,9 @@ async function shipPhase(
       command: "ship",
       agent: backend,
       model: selectedModel || "unknown",
+      ...(device?.id ? { deviceId: device.id } : {}),
+      ...(device?.hostname ? { hostname: device.hostname } : {}),
+      ...(result?.usage ? { usage: result.usage } : {}),
       startedAt,
       finishedAt,
       durationS,
@@ -597,7 +601,7 @@ Examples:
           const phaseData = taskState.phases.find((p) => p.id === phaseId);
 
           // --force: always clear stale orchestrator state, regardless of task status
-          if (opts.force) {
+          if (opts.force && !opts.dryRun) {
             const statePath = path.join(
               cwd,
               ".runs",
@@ -608,7 +612,7 @@ Examples:
             }
           }
 
-          if (phaseData && isPhaseComplete(phaseData)) {
+          if (phaseData && isPhaseComplete(phaseData) && !opts.dryRun) {
             if (!opts.force) {
               console.error(
                 `${YELLOW}⚠${RESET} Phase ${phase} is already complete. Use --force to re-ship.`,
@@ -623,7 +627,7 @@ Examples:
             saveTaskState(specDir, taskState);
             // Commit the reset so the orchestrator sees a clean working tree
             execSync(
-              `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
+              `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phase} tasks for re-ship"`,
               {
                 cwd,
                 env: { ...process.env, GWRK_SHIP: "1" },
@@ -645,7 +649,7 @@ Examples:
             const phaseId = `phase-${phaseNum.padStart(2, "0")}`;
             const phaseData = taskState.phases.find((p) => p.id === phaseId);
             if (!phaseData) return true;
-            if (isPhaseComplete(phaseData)) {
+            if (isPhaseComplete(phaseData) && !opts.dryRun) {
               if (opts.force) {
                 const statePath = path.join(
                   cwd,
@@ -661,7 +665,7 @@ Examples:
                 saveTaskState(specDir, taskState);
                 // Commit the reset so the orchestrator sees a clean working tree
                 execSync(
-                  `git add ${specDir}/.gwrk/tasks.json && git commit -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
+                  `git add ${specDir}/.gwrk/tasks.json && git commit --author="$(git config user.name) <$(git config user.email)>" -m "chore(${feature}): reset phase ${phaseNum} tasks for re-ship"`,
                   {
                     cwd,
                     env: { ...process.env, GWRK_SHIP: "1" },
@@ -694,7 +698,7 @@ Examples:
           // authoritative enough to overrule the other (the graph's SHIPPED is
           // promoted from ship-run existence, not a passing gate), so surface
           // the conflict instead of silently believing one side.
-          if (!opts.force) {
+          if (!opts.force && !opts.dryRun) {
             try {
               const graphStatuses = new Map<string, string>(
                 new PlanStore(resolveProjectId(cwd))

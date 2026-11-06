@@ -95,10 +95,15 @@ exitCodeMap: {}
         `
       );
       
+      await fsp.mkdir(path.join(localPath, "nested", "templates"), { recursive: true });
+      await fsp.writeFile(path.join(localPath, "nested", "templates", "prompt.md"), "# Prompt");
+
       const manifest = await installPlugin(localPath);
       expect(manifest.name).toBe("local-agent");
       expect(fs.existsSync(path.join(pluginsPath, "agents", "local-agent", "manifest.yaml"))).toBe(true);
-      
+      expect(fs.existsSync(path.join(pluginsPath, "agents", "local-agent", "nested", "templates", "prompt.md"))).toBe(true);
+      expect(fs.existsSync(path.join(pluginsPath, "agents", "local-agent", ".gwrk-source.json"))).toBe(true);
+
       await fsp.rm(localPath, { recursive: true, force: true });
     });
 
@@ -116,6 +121,12 @@ exitCodeMap: {}
       const updated = await updatePlugin();
       expect(execSync).toHaveBeenCalledWith("git pull", expect.objectContaining({ cwd: pluginDir }));
       expect(updated).toContain("git-skill");
+    });
+
+    it("updates plugins installed via .gwrk-source.json metadata", async () => {
+      await installPlugin("test-skill");
+      const updated = await updatePlugin();
+      expect(updated).toContain("test-skill");
     });
   });
 });

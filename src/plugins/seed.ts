@@ -89,6 +89,7 @@ async function createAtomicSkill(
     },
     runtime: {
       preferredAgent: "agy",
+      preferredModel: "default",
     },
   };
 

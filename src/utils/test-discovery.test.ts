@@ -300,3 +300,69 @@ describe("FR-002 (US-001): phaseHasTests does not count non-test declared target
     ).toBe(true);
   });
 });
+
+describe("032-polyglot-toolchain: Python, Go, and Rust test discovery", () => {
+  it("Python source file does NOT match itself as its own test when testExt is .py", () => {
+    expect(isTestFile("src/service.py", ".py")).toBe(false);
+    expect(isTestFile("src/test_service.py", ".py")).toBe(true);
+    expect(isTestFile("src/service_test.py", ".py")).toBe(true);
+
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/service.py"],
+        mentionedTests: [],
+        testExt: ".py",
+        fileExists: exists(["src/service.py"]),
+        testsTreeFiles: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it("discovers Python co-located test_foo.py and out-of-tree tests/test_foo.py", () => {
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/service.py"],
+        mentionedTests: [],
+        testExt: ".py",
+        fileExists: exists(["src/test_service.py"]),
+        testsTreeFiles: [],
+      }),
+    ).toEqual(["src/test_service.py"]);
+
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/service.py"],
+        mentionedTests: [],
+        testExt: ".py",
+        fileExists: exists([]),
+        testsTreeFiles: ["tests/test_service.py"],
+      }),
+    ).toEqual(["tests/test_service.py"]);
+  });
+
+  it("discovers Go co-located foo_test.go", () => {
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["pkg/router/router.go"],
+        mentionedTests: [],
+        testExt: "_test.go",
+        fileExists: exists(["pkg/router/router_test.go"]),
+        testsTreeFiles: [],
+      }),
+    ).toEqual(["pkg/router/router_test.go"]);
+  });
+
+  it("discovers Rust integration tests under tests/*.rs without treating src/*.rs as test files", () => {
+    expect(isTestFile("src/parser.rs", "_test.rs")).toBe(false);
+    expect(isTestFile("tests/parser.rs", "_test.rs")).toBe(true);
+    expect(
+      discoverTestsForSources({
+        sourceFiles: ["src/parser.rs"],
+        mentionedTests: [],
+        testExt: "_test.rs",
+        fileExists: exists(["src/parser.rs"]),
+        testsTreeFiles: ["tests/parser.rs"],
+      }),
+    ).toEqual(["tests/parser.rs"]);
+  });
+});

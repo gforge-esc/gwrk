@@ -54,8 +54,8 @@ const PluginInterfaceSchema = z.object({
  * Skill Runtime
  */
 const SkillRuntimeSchema = z.object({
-  preferredAgent: z.string(),
-  preferredModel: z.string(),
+  preferredAgent: z.string().default("agy"),
+  preferredModel: z.string().default("default"),
   fallbackAgent: z.string().optional(),
   maxInputTokens: z.number().optional(),
   expectedLatency: z.string().optional(),
@@ -152,6 +152,7 @@ const InvocationSchema = z.object({
  */
 const AgentManifestSchema = PluginBaseSchema.extend({
   type: z.literal("agent"),
+  adapter: z.string().optional(),
   dispatchMode: z.enum(["local-cli", "github-integration"]),
   contextFileName: z.string(),
   invocation: InvocationSchema.optional(),
@@ -226,7 +227,7 @@ export type ReviewStep = z.infer<typeof ReviewStepSchema>;
 
 const ReviewManifestSchema = PluginBaseSchema.extend({
   type: z.literal("review"),
-  projectType: z.enum(["cli", "webapp"]),
+  projectType: z.enum(["cli", "webapp", "api", "library", "service"]),
   codeReviewWorkflow: z.string(),
   uatReviewWorkflow: z.string(),
   steps: z.object({

@@ -3,7 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { isIntegrationTestCommand, parseTestOutput } from "./test-runner.js";
+import {
+  hasRecognizedTestSummary,
+  isIntegrationTestCommand,
+  parseTestOutput,
+} from "./test-runner.js";
 
 describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
   it("parses a vitest summary and ignores the 'Test Files' line", () => {
@@ -55,6 +59,26 @@ describe("parseTestOutput — structured {testsRun, passed, failed}", () => {
       passed: 0,
       failed: 0,
     });
+  });
+
+  it("parses go test -v output and recognizes go test package summary lines", () => {
+    const goOut = [
+      "=== RUN   TestAdd",
+      "--- PASS: TestAdd (0.00s)",
+      "=== RUN   TestSub",
+      "--- FAIL: TestSub (0.01s)",
+      "FAIL",
+      "FAIL\texample.com/pkg/math\t0.012s",
+    ].join("\n");
+    expect(parseTestOutput(goOut)).toEqual({ testsRun: 2, passed: 1, failed: 1 });
+    expect(hasRecognizedTestSummary(goOut)).toBe(true);
+    expect(hasRecognizedTestSummary("ok  \texample.com/pkg/math\t0.004s")).toBe(true);
+  });
+
+  it("parses cargo test summary line", () => {
+    const cargoOut = "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s";
+    expect(parseTestOutput(cargoOut)).toEqual({ testsRun: 5, passed: 5, failed: 0 });
+    expect(hasRecognizedTestSummary(cargoOut)).toBe(true);
   });
 });
 

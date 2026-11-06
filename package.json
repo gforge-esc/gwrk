@@ -1,6 +1,6 @@
 {
   "name": "@gwrk/cli",
-  "version": "1.5.1-alpha.2",
+  "version": "1.5.2-alpha.2",
   "type": "module",
   "bin": {
     "gwrk": "./dist/cli.js"
@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/ && mkdir -p dist/plugins/builtins && cp -r src/plugins/builtins/* dist/plugins/builtins/",
+    "postbuild": "mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp src/slack-manifest.yml dist/ && mkdir -p dist/plugins/builtins && cp -r src/plugins/builtins/* dist/plugins/builtins/ && find dist/plugins/builtins -name '*.ts' ! -name '*.d.ts' -delete",
     "test": "vitest run",
     "test:ci": "GWRK_SKIP_INTEGRATION=1 vitest run",
     "test:coverage": "vitest run --coverage",

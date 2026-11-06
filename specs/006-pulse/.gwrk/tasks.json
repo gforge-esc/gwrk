@@ -18,7 +18,7 @@
           "description": "MODIFY: Update `detectDefaultBranch` to support overrides; Replace slow `gitLineCount` loop with a single `git rev-list --objects --all` or `git ls-tree` based approach for better performance; Implement `gitDraftLineCount` correctly.",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T14:57:48.904Z"
         },
         {
@@ -27,7 +27,7 @@
           "description": "MODIFY: Update `scanRepository` and `bucketByWeek` signatures to accept `branch` override; Implement `totalDrafts` calculation in `bucketByWeek`.",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T14:57:49.098Z"
         },
         {
@@ -36,7 +36,7 @@
           "description": "MODIFY: Ensure Zod schemas align with DM-001/DM-002; remove hardcoded stubs.",
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T14:57:49.292Z"
         },
         {
@@ -45,7 +45,7 @@
           "description": "MODIFY: Verify `pulse.repos` Zod validation.",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T14:57:49.487Z"
         },
         {
@@ -54,7 +54,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T14:57:52.803Z"
         }
       ],
@@ -74,7 +74,7 @@
           "description": "MODIFY: Implement `renderPulseTable` and `renderSnapshotTable` using Unicode box-drawing; Support `--branch` and `--json` flags; Implement `gwrk pulse` multi-repo logic.",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T15:46:09Z"
         },
         {
@@ -83,7 +83,7 @@
           "description": "MODIFY: Complete `generatePulseReport` and `scanSpecProgress` implementation.",
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T15:46:09Z"
         },
         {
@@ -92,7 +92,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T15:46:09Z"
         }
       ],
@@ -112,7 +112,7 @@
           "description": "MODIFY: Add E2E scenarios for `pulse` and `pulse scan`.",
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T17:15:00Z"
         },
         {
@@ -121,7 +121,7 @@
           "description": "MODIFY: Add performance benchmark and large-repo simulation.",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T17:15:00Z"
         },
         {
@@ -130,7 +130,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
-          "sp": 0,
+          "sp": 2,
           "completedAt": "2026-05-07T17:15:00Z"
         }
       ],

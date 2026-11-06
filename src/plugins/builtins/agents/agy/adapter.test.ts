@@ -134,5 +134,57 @@ describe("AgyAdapter", () => {
       expect(result.args).not.toContain("--sandbox");
       expect(result.args).not.toContain("false");
     });
+
+    it("delivers expanded multi-line prompts via stdin without slash-command prefix", async () => {
+      const result = await adapter.dispatch({
+        workflow: "gwrk-plan",
+        featureDir: "specs/031-unified-agent-port",
+        prompt: "# Workflow Prompt\nStep 1: Read spec.md\nStep 2: Write plan.md",
+        stdin: "<command_safety>Rules</command_safety>",
+        model: "claude-sonnet-4-6",
+        agent: "agy",
+      });
+
+      expect(result.args).toContain("-p");
+      expect(result.args).toContain(
+        "Execute gwrk-plan instructions from stdin",
+      );
+      expect(result.args).toContain("--model");
+      expect(result.args).toContain("claude-sonnet-4-6");
+      expect(result.stdin).toContain("# Workflow Prompt");
+      expect(result.stdin).toContain("<command_safety>Rules</command_safety>");
+      expect(result.stdin).not.toContain("/gwrk-plan");
+    });
+
+    it("unwraps stream-json output and detects turn_limit in parseResult", () => {
+      const stream = [
+        JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "text", text: "Partial" }] },
+        }),
+        JSON.stringify({
+          type: "result",
+          result: "Final Answer",
+          structured_output: { ok: true },
+          usage: { input_tokens: 100, output_tokens: 50 },
+        }),
+      ].join("\n");
+
+      const parsed = adapter.parseResult(stream, "", 0);
+      expect(parsed.unwrappedStdout).toBe("Final Answer");
+      expect(parsed.structuredOutput).toEqual({ ok: true });
+      expect(parsed.usage).toEqual({
+        tokensIn: 100,
+        tokensOut: 50,
+        costUsd: undefined,
+      });
+
+      const turnLimit = adapter.parseResult(
+        '{"type":"result","subtype":"error_max_turns"}',
+        "",
+        1,
+      );
+      expect(turnLimit.errorType).toBe("turn_limit");
+    });
   });
 });

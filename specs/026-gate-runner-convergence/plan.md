@@ -9,18 +9,19 @@ shipped through the gates it fixes).
 
 ## Phases
 
-- **Phase 02 — execution port.** `src/utils/gate-exec.ts`: `runTaskGate` (3-strategy resolve +
-  inline `set -e`/bash + hollow/unauthored reject) and `runInlineGate`. Tests: `gate-exec.test.ts`;
-  `gate-quality.test.ts` gains `getPhaseVerificationGate` + `isUnauthoredGate` coverage.
-- **Phase 03 — migrate drivers.** `gate.ts runGateCheck`, ship `runPostFlightGates` / `readVerdict` /
-  `runGateScript`, and harvest `reconcileGates` all route through `runTaskGate` (per-phase dedupe).
-  New `reconcile-gates.test.ts`. `stageImplement` pre-flight stays file-only (documented exception).
-- **Phase 04 — read unification.** Seam test (`parsePlanMarkdown → task.gateScript → runTaskGate`).
-  `runIntegrationGate` / `generateGateBrief` need no repoint (documented in spec §7).
-- **Phase 05 — DEFERRED (OQ-001).** Gate-invoked-test liveness; rationale in spec §8.
-- **Phase 01 — spec de-drift.** This spec + the drift ledger (§9). Bug-seeding lies fixed in place
-  (023 §5, 025 banner, ADR-007, 011 + 004 addenda); wording/status/line-ref drift ledgered.
-- **Phase 06 — verify + PR.** Build + `test:ci` green; parity check (TR-005); PR to develop.
+### Phase 1 — Spec De-Drift and Gate Quality Accessors (2 SP)
+- `src/utils/gate-quality.ts` (MODIFY: Add `getPhaseVerificationGate` and `isUnauthoredGate`)
+
+### Phase 2 — Unified Gate Execution Port (3 SP)
+- `src/utils/gate-exec.ts` (NEW: Implement `runTaskGate` and `runInlineGate`)
+
+### Phase 3 — Migrate Verdict Drivers (3 SP)
+- `src/commands/gate.ts` (MODIFY: Route `runGateCheck` through `runTaskGate`)
+- `src/engine/ship-orchestrator.ts` (MODIFY: Route `runPostFlightGates` and `readVerdict` through `runTaskGate`)
+- `src/engine/reconcile-gates.ts` (MODIFY: Route `reconcileGates` through `runTaskGate`)
+
+### Phase 4 — Read Unification and Seam Verification (2 SP)
+- `src/utils/gate-exec.test.ts` (NEW: Seam test for `parsePlanMarkdown -> task.gateScript -> runTaskGate`)
 
 ## Critical files
 

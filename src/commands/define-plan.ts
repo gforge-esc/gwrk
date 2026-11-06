@@ -24,6 +24,7 @@ import { resolveFeature } from "../utils/resolve-feature.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { withParentFlags } from "../utils/command-flags.js";
+import { readRefsContent } from "../utils/read-refs.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
 
 export const definePlanCommand = new Command("plan")
@@ -105,7 +106,7 @@ Examples:
         if (!fs.existsSync(resolvedRefs)) {
           throw new CommandError(`Reference file not found: ${opts.refs}`);
         }
-        const refsContent = fs.readFileSync(resolvedRefs, "utf-8");
+        const refsContent = readRefsContent(resolvedRefs);
         effectivePrompt = [
           `<reference_document source="${opts.refs}" authority="primary">`,
           refsContent,

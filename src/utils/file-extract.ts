@@ -7,10 +7,12 @@
  * gwrk's own `define tasks` output) wrap paths in markdown backticks and
  * trailing punctuation — `(`src/lib/db/auth.js`)` — which must be stripped or
  * the path fails extension matching and test discovery silently no-ops.
+ * Supports polyglot directory roots (`src/`, `tests/`, `cmd/`, `internal/`,
+ * `pkg/`, `crates/`, `app/`, `lib/`, `docs/`, `scripts/`, `packages/`).
  */
 export function extractFilePaths(text: string): string[] {
   const matches = text.matchAll(
-    /(?:src|tests|docs|scripts|packages)\/[^\s"'`),]+/g,
+    /(?:src|tests|docs|scripts|packages|cmd|internal|pkg|crates|app|lib)\/[^\s"'`),]+/g,
   );
   const out: string[] = [];
   for (const m of matches) {

@@ -202,6 +202,13 @@ serverCommand
   )
   .action(async () => {
     await withSignal("server install", async () => {
+      if (isRemote()) {
+        throw new CommandError(
+          "This machine is registered as a remote device. The daemon runs on the server only.\n" +
+            "To change this machine's role: gwrk init --server",
+          1,
+        );
+      }
       if (process.platform !== "darwin") {
         throw new CommandError(
           "LaunchAgent install is only supported on macOS. On Linux, use systemd.",

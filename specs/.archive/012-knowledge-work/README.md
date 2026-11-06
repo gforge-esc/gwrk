@@ -6,7 +6,7 @@
 
 ## Architecture
 
-012 is implemented as a **plugin bundle** in `gwrk-org/gwrk-plugins`:
+012 is implemented as a **plugin bundle** in `gforge-esc/gwrk-plugins`:
 
 | Plugin Type | Name | Purpose |
 |---|---|---|

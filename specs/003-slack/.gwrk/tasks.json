@@ -18,7 +18,7 @@
           "description": "MODIFY: Add `define` subcommand handler",
           "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T21:38:08.338Z",
           "classification": "greenfield"
         },
@@ -28,7 +28,7 @@
           "description": "MODIFY: Add `specReady` and `planReady` Block Kit builders",
           "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T21:38:08.345Z",
           "classification": "greenfield"
         },
@@ -38,7 +38,7 @@
           "description": "MODIFY: Add `approve_spec`, `approve_plan`, `revise_spec` handlers",
           "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T21:38:08.353Z",
           "classification": "greenfield"
         },
@@ -48,7 +48,7 @@
           "description": "MODIFY: Handle `define_spec_ready` and `define_plan_ready` event types",
           "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T21:38:08.360Z",
           "classification": "greenfield"
         },
@@ -58,7 +58,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-05-18T21:38:09.386Z",
           "classification": "noop"
         }
@@ -79,7 +79,7 @@
           "description": "NEW: Handle app mentions and threaded context",
           "status": "completed",
           "gateScript": "gates/T006-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-21T20:51:21.172Z",
           "classification": "greenfield"
         },
@@ -89,7 +89,7 @@
           "description": "MODIFY: Register `app_mention` and `message.channels` handlers",
           "status": "completed",
           "gateScript": "gates/T007-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-21T20:51:21.185Z",
           "classification": "greenfield"
         },
@@ -99,7 +99,7 @@
           "description": "NEW: Utility to build project context for the agent from local files and SQLite",
           "status": "completed",
           "gateScript": "gates/T008-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-21T20:51:21.194Z",
           "classification": "greenfield"
         },
@@ -109,7 +109,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T009-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-05-21T20:51:22.098Z",
           "classification": "noop"
         }
@@ -130,7 +130,7 @@
           "description": "NEW: Extracted webhook logic for use in ship loop without Fastify\n\nREVIEW FAIL (code): Type Safety — ADR-004.\n  WHERE: src/utils/slack-webhook.ts:9\n  EXPECTED: payload: Record<string, any> or specific type\n  ACTUAL: payload: any\n  FIX: Replace 'any' with a more specific type or 'Record<string, unknown>'. Also, refactor src/server/slack-notify.ts to use this extracted utility for consistency.\n  REF: plan.md Phase 3 > Files > src/utils/slack-webhook.ts",
           "status": "completed",
           "gateScript": "gates/T010-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T22:17:13.861Z",
           "classification": "greenfield"
         },
@@ -140,7 +140,7 @@
           "description": "MODIFY: Refine routing logic to respect `opsChannelId`\n\nREVIEW FAIL (code): Build Error — FR-013.\n  WHERE: src/server/slack-presence.ts:7-18\n  EXPECTED: type: | ... | \"pulse\"\n  ACTUAL: Missing \"pulse\" in SlackEvent type union\n  FIX: Add \"pulse\" to the SlackEvent.type union in src/server/slack-presence.ts to allow pulse notifications in notify.ts.\n  GATE: run-all-gates.sh (pnpm build)\n  REF: plan.md Phase 3 > Webhook Hardening & Topology (P1)",
           "status": "completed",
           "gateScript": "gates/T011-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T22:17:13.868Z",
           "classification": "greenfield"
         },
@@ -150,7 +150,7 @@
           "description": "MODIFY: Ensure ship loop uses `SLACK_WEBHOOK_URL` directly if set",
           "status": "completed",
           "gateScript": "gates/T012-gate.sh",
-          "sp": 0,
+          "sp": 3,
           "completedAt": "2026-05-18T22:06:09.142Z",
           "classification": "greenfield"
         },
@@ -160,7 +160,7 @@
           "description": "Implement all unit and integration tests defined in the phase test strategy.",
           "status": "completed",
           "gateScript": "gates/T013-gate.sh",
-          "sp": 0,
+          "sp": 1,
           "completedAt": "2026-05-18T22:05:00.000Z",
           "classification": "noop"
         }

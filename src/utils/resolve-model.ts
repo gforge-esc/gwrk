@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { loadConfig } from "./config.js";
-import { loadRegistry } from "../server/agent-registry.js";
-import type { ModelEntry } from "../server/agent-registry.js";
-import { ModelSelector } from "../server/model-selector.js";
-import { classifyTask } from "../server/task-classifier.js";
+import {
+  type ModelEntry,
+  ModelSelector,
+  loadRegistry,
+} from "../domain/agent-config.js";
+import { classifyTask } from "../domain/types.js";
 
 /**
  * Resolves the preferred model for a task type from the agent registry.

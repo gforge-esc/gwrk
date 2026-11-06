@@ -28,6 +28,7 @@ import {
 } from "../utils/git.js";
 import { generateRunId, writeManifest } from "../utils/manifest.js";
 import { CommandError, withSignal } from "../utils/signal.js";
+import { isPolyglotTestFile } from "../ports/toolchain-port.js";
 import { withParentFlags } from "../utils/command-flags.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
 
@@ -98,7 +99,8 @@ Examples:
             // Look for tests that match the feature ID or are generally feature tests
             return allFiles.some(
               (f) =>
-                f.includes(feature) && f.endsWith(".test.ts"),
+                f.includes(feature) &&
+                (f.endsWith(".test.ts") || isPolyglotTestFile(f)),
             );
           } catch {
             return false;

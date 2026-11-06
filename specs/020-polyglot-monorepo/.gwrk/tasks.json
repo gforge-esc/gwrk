@@ -16,17 +16,19 @@
           "id": "T001",
           "title": "Modify config.ts",
           "description": "Modify src/utils/config.ts. Add `workspaces` to `GwrkConfigSchema` and validation logic. Tests: src/utils/config.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/utils/config.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T002",
           "title": "Modify profile-detector.ts",
           "description": "Modify src/engine/profile-detector.ts. Add workspace resolution — `cwd` matching against workspace keys. Extends existing root-level detection from R007.. Tests: src/engine/profile-detector.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/engine/profile-detector.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 2,
@@ -43,17 +45,19 @@
           "id": "T003",
           "title": "Modify cli.ts",
           "description": "Modify src/cli.ts. Add global `--workspace <name>` flag parsing and propagation. Tests: src/cli.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/cli.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         },
         {
           "id": "T004",
           "title": "Modify init.ts",
           "description": "Modify src/commands/init.ts. Detect existing project root and append workspace instead of new root config. Tests: src/commands/init.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "pnpm vitest run src/commands/init.test.ts",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-10-26T00:00:00.000Z"
         }
       ],
       "sp_estimate": 2,

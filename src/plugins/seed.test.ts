@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { seedSkills } from "./seed.js";
+import { AnyManifestSchema } from "./manifest.js";
 import { parse } from "yaml";
 
 vi.mock("node:fs/promises");
@@ -45,6 +46,7 @@ Evaluative Modes
     expect(analyticalCall).toBeDefined();
     const analyticalManifest = parse(analyticalCall![1] as string);
     expect(analyticalManifest.category).toBe("reasoning");
+    expect(() => AnyManifestSchema.parse(analyticalManifest)).not.toThrow();
 
     // Check evaluative skill
     const adversarialManifestPath = path.join(mockHome, ".gwrk", "plugins", "skills", "adversarial", "manifest.yaml");
@@ -52,5 +54,6 @@ Evaluative Modes
     expect(adversarialCall).toBeDefined();
     const adversarialManifest = parse(adversarialCall![1] as string);
     expect(adversarialManifest.category).toBe("evaluative");
+    expect(() => AnyManifestSchema.parse(adversarialManifest)).not.toThrow();
   });
 });

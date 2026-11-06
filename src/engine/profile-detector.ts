@@ -102,12 +102,16 @@ export async function detectProfile(
       const pkg = JSON.parse(
         fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"),
       );
-      if (pkg.devDependencies?.typescript || pkg.dependencies?.typescript) {
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (deps.typescript) {
         signal.language = "TypeScript";
       }
-      if (pkg.dependencies?.react) signal.framework = "React";
-      if (pkg.dependencies?.next) signal.framework = "Next.js";
-      if (pkg.dependencies?.express) signal.framework = "Express";
+      if (deps.next) signal.framework = "Next.js";
+      else if (deps.react) signal.framework = "React";
+      else if (deps.fastify) signal.framework = "Fastify";
+      else if (deps.express) signal.framework = "Express";
+      else if (deps["@nestjs/core"]) signal.framework = "NestJS";
+      else if (deps.hono) signal.framework = "Hono";
     } catch {
       // Ignore parse errors
     }
@@ -117,11 +121,21 @@ export async function detectProfile(
 
   // Rust detection
   if (files.includes("Cargo.toml")) {
-    signals.push({
+    const rustSignal: LanguageSignal = {
       language: "Rust",
       type: "rust",
       buildSystem: "cargo",
-    });
+    };
+    try {
+      const cargoContent = fs.readFileSync(
+        path.join(projectRoot, "Cargo.toml"),
+        "utf-8",
+      );
+      if (/\baxum\b/.test(cargoContent)) rustSignal.framework = "Axum";
+      else if (/\bactix-web\b/.test(cargoContent)) rustSignal.framework = "Actix";
+      else if (/\bclap\b/.test(cargoContent)) rustSignal.framework = "Clap";
+    } catch {}
+    signals.push(rustSignal);
   }
 
   // Python detection
@@ -137,16 +151,35 @@ export async function detectProfile(
     if (files.includes("poetry.lock")) signal.buildSystem = "Poetry";
     else if (files.includes("uv.lock")) signal.buildSystem = "uv";
     else if (files.includes("requirements.txt")) signal.buildSystem = "pip";
+
+    try {
+      const pyManifest = files.includes("pyproject.toml")
+        ? fs.readFileSync(path.join(projectRoot, "pyproject.toml"), "utf-8")
+        : files.includes("requirements.txt")
+          ? fs.readFileSync(path.join(projectRoot, "requirements.txt"), "utf-8")
+          : "";
+      if (/\bfastapi\b/i.test(pyManifest)) signal.framework = "FastAPI";
+      else if (/\bdjango\b/i.test(pyManifest)) signal.framework = "Django";
+      else if (/\bflask\b/i.test(pyManifest)) signal.framework = "Flask";
+    } catch {}
     signals.push(signal);
   }
 
   // Go detection
   if (files.includes("go.mod")) {
-    signals.push({
+    const goSignal: LanguageSignal = {
       language: "Go",
       type: "go",
       buildSystem: "go",
-    });
+    };
+    try {
+      const goMod = fs.readFileSync(path.join(projectRoot, "go.mod"), "utf-8");
+      if (goMod.includes("github.com/gin-gonic/gin")) goSignal.framework = "Gin";
+      else if (goMod.includes("github.com/go-chi/chi")) goSignal.framework = "Chi";
+      else if (goMod.includes("github.com/labstack/echo")) goSignal.framework = "Echo";
+      else if (goMod.includes("github.com/gofiber/fiber")) goSignal.framework = "Fiber";
+    } catch {}
+    signals.push(goSignal);
   }
 
   // 3. Resolve profile from collected signals

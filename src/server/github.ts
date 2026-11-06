@@ -13,6 +13,7 @@ import {
 } from "../engine/issues.js";
 import type { HarvestRecord } from "../engine/types.js";
 import type { GwrkConfig } from "../utils/config.js";
+import { syncTrunkForHarvest } from "../utils/git.js";
 import { resolveProjectId } from "../utils/project-id.js";
 
 export async function githubWebhookPlugin(
@@ -160,6 +161,7 @@ export async function githubWebhookPlugin(
     };
 
     // 5. Trigger Harvest (FR-H01)
+    syncTrunkForHarvest(projectRoot, baseRef);
     harvestFeature(projectRoot, record)
       .then(async (_report) => {
         fastify.log.info(`Harvest complete for ${featureId}`);

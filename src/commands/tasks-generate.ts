@@ -34,6 +34,7 @@ import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 import { withParentFlags } from "../utils/command-flags.js";
+import { isPolyglotTestFile } from "../ports/toolchain-port.js";
 import { loadTaskState } from "../utils/state.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
 
@@ -111,7 +112,7 @@ Examples:
             return allFiles.some(
               (f) =>
                 f.includes(feature) &&
-                f.endsWith(".test.ts") &&
+                (f.endsWith(".test.ts") || isPolyglotTestFile(f)) &&
                 !f.startsWith("cli.e2e"),
             );
           } catch {
