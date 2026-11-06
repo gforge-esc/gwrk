@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
+import { loadManifestFromSkillMarkdown } from "../utils/manifest-loader.js";
 import { type AnyManifest, AnyManifestSchema } from "./manifest.js";
 
 export class PluginNotFoundError extends Error {
@@ -417,6 +418,8 @@ export class PluginLoader {
         e instanceof PluginDisabledError
       )
         throw e;
+      const fromSkillMd = await loadManifestFromSkillMarkdown(pluginDir);
+      if (fromSkillMd) return fromSkillMd;
       throw new Error(`Could not load manifest from ${manifestPath}`);
     }
   }

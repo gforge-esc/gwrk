@@ -219,6 +219,8 @@ export async function generateRegistryIndex(
       const pluginPath = path.join(typePath, dir);
       const stat = await fsp.stat(pluginPath).catch(() => null);
       if (!stat?.isDirectory()) continue;
+      const children = await fsp.readdir(pluginPath).catch(() => []);
+      if (children.length === 0) continue;
       try {
         const manifest = await loadManifest(pluginPath);
         const sha256 = await computePluginDigest(pluginPath);
@@ -623,6 +625,8 @@ export async function doctorPlugins(): Promise<PluginDoctorReport> {
       const pluginPath = path.join(typePath, dir);
       const stat = await fsp.stat(pluginPath).catch(() => null);
       if (!stat?.isDirectory()) continue;
+      const children = await fsp.readdir(pluginPath).catch(() => []);
+      if (children.length === 0) continue;
 
       try {
         const manifest = await loadManifest(pluginPath);

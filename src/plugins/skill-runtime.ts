@@ -57,9 +57,10 @@ export async function assemblePrompt(
     }
   };
 
-  if (manifest.tier === "atomic") {
+  if (manifest.tier === "atomic" || manifest.tier === "domain") {
     const mdBody = await readSkillMarkdown(skillDir);
-    const body = mdBody ? `${manifest.prompt}\n\n${mdBody}` : manifest.prompt;
+    const basePrompt = manifest.prompt ?? manifest.description;
+    const body = mdBody ? `${basePrompt}\n\n${mdBody}` : basePrompt;
     return `${body}\n\nInput:\n${input}`;
   }
 

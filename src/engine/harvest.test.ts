@@ -33,6 +33,13 @@ vi.mock("../db/runs.js", () => ({
   listRuns: vi.fn(() => []),
   finishRun: vi.fn(),
   recordRun: vi.fn(() => 999),
+  getFeatureRunTelemetry: vi.fn(() => ({
+    tokensIn: 0,
+    tokensOut: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    devices: [],
+  })),
 }));
 
 vi.mock("../db/compression.js", () => ({
@@ -50,6 +57,7 @@ vi.mock("../utils/parser.js", () => ({
 
 vi.mock("./compression.js", () => ({
   computeCompression: vi.fn(),
+  computeTelemetryMetrics: vi.fn(),
   gatherDeliveryActuals: vi.fn(),
 }));
 

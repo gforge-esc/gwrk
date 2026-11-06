@@ -1,6 +1,6 @@
 # 000 Build Plan — gwrk
 
-> **Status:** Authoritative · **Date:** 2026-11-02
+> **Status:** Authoritative · **Date:** 2026-11-06
 > **Anchored to:** [architecture.md](docs/grounding/architecture.md), [GWRK-PRD-PRFAQ.md](docs/product/GWRK-PRD-PRFAQ.md)
 > **Decisions:** [Decision Index](.gwrk/decisions/index.md)
 
@@ -63,6 +63,10 @@ graph TD
     style 032-polyglot-toolchain fill:#22cc22,stroke:#118811,color:#fff
     style 033-plugin-runtime fill:#22cc22,stroke:#118811,color:#fff
     style 034-hexagonal-architecture fill:#22cc22,stroke:#118811,color:#fff
+    style 035-polyglot-canary-e2e fill:#22cc22,stroke:#118811,color:#fff
+    style 036-plugin-registry-versioning fill:#22cc22,stroke:#118811,color:#fff
+    style 037-biome-lint-zero fill:#22cc22,stroke:#118811,color:#fff
+    style 038-telemetry-cost-ledger fill:#22cc22,stroke:#118811,color:#fff
 ```
 
 ---
@@ -424,13 +428,45 @@ gantt
 |---|---|---|---|
 | 1 | Four-Layer Hexagonal Structure, Cycle Elimination, and Architecture Gate | SHIPPED ✅ | 13 |
 
+### Feature 035-polyglot-canary-e2e ✅
+
+**Status:** SHIPPED ✅
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 |  | SHIPPED ✅ | 3 |
+
+### Feature 036-plugin-registry-versioning ✅
+
+**Status:** SHIPPED ✅
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 |  | SHIPPED ✅ | 8 |
+
+### Feature 037-biome-lint-zero ✅
+
+**Status:** SHIPPED ✅
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 |  | SHIPPED ✅ | 5 |
+
+### Feature 038-telemetry-cost-ledger ✅
+
+**Status:** SHIPPED ✅
+
+| Phase | Name | Status | SP |
+|---|---|---|---|
+| 1 |  | SHIPPED ✅ | 3 |
+
 ---
 
 ## Wave Strategy
 
 | Wave | Features | Theme |
 |---|---|---|
-| Wave 1 | 001-cli-core, 008-agent-router, 018-build-plan-orchestrator, 019-agy-agent-migration, 020-polyglot-monorepo, 021-polyglot-toolchain, 023-plan-format-contract, 024-gate-assertion-contract, 025-gate-only-phases, 026-gate-runner-convergence, 027-gate-liveness, 028-review-finding-liveness, 029-decision-records, 030-dogfood-spine | TBD |
+| Wave 1 | 001-cli-core, 008-agent-router, 018-build-plan-orchestrator, 019-agy-agent-migration, 020-polyglot-monorepo, 021-polyglot-toolchain, 023-plan-format-contract, 024-gate-assertion-contract, 025-gate-only-phases, 026-gate-runner-convergence, 027-gate-liveness, 028-review-finding-liveness, 029-decision-records, 030-dogfood-spine, 035-polyglot-canary-e2e, 036-plugin-registry-versioning, 037-biome-lint-zero, 038-telemetry-cost-ledger | TBD |
 | Wave 2 | 001-cli-core, 008-agent-router, 018-build-plan-orchestrator, 019-agy-agent-migration, 020-polyglot-monorepo, 021-polyglot-toolchain, 023-plan-format-contract, 024-gate-assertion-contract, 025-gate-only-phases, 026-gate-runner-convergence, 028-review-finding-liveness, 029-decision-records, 031-unified-agent-port | TBD |
 | Wave 3 | 001-cli-core, 008-agent-router, 018-build-plan-orchestrator, 021-polyglot-toolchain, 023-plan-format-contract, 026-gate-runner-convergence, 028-review-finding-liveness, 029-decision-records, 032-polyglot-toolchain | TBD |
 | Wave 4 | 001-cli-core, 008-agent-router, 018-build-plan-orchestrator, 026-gate-runner-convergence, 028-review-finding-liveness, 029-decision-records, 033-plugin-runtime | TBD |
@@ -503,7 +539,11 @@ gantt
 | 032-polyglot-toolchain | 8 | SHIPPED |
 | 033-plugin-runtime | 8 | SHIPPED |
 | 034-hexagonal-architecture | 13 | SHIPPED |
-| **Total** | **781** | |
+| 035-polyglot-canary-e2e | 3 | SHIPPED |
+| 036-plugin-registry-versioning | 8 | SHIPPED |
+| 037-biome-lint-zero | 5 | SHIPPED |
+| 038-telemetry-cost-ledger | 3 | SHIPPED |
+| **Total** | **800** | |
 
 ---
 
@@ -517,4 +557,4 @@ gantt
 
 ## Changelog
 
-- **2026-11-02:** Regenerated from graph state via `gwrk plan render`.
+- **2026-11-06:** Regenerated from graph state via `gwrk plan render`.

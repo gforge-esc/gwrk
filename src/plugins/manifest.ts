@@ -131,12 +131,26 @@ const EnforcementSkillManifestSchema = PluginBaseSchema.extend({
 });
 
 /**
+ * Domain Skill Manifest
+ */
+const DomainSkillManifestSchema = PluginBaseSchema.extend({
+  type: z.literal("skill"),
+  tier: z.literal("domain"),
+  category: z.string().optional(),
+  prompt: z.string().optional(),
+  interface: PluginInterfaceSchema.optional(),
+  runtime: SkillRuntimeSchema.optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+/**
  * Unified Skill Manifest (Discriminated Union on 'tier')
  */
 export const SkillManifestSchema = z.discriminatedUnion("tier", [
   AtomicSkillManifestSchema,
   CompoundSkillManifestSchema,
   EnforcementSkillManifestSchema,
+  DomainSkillManifestSchema,
 ]);
 
 /**

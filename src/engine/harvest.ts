@@ -357,17 +357,24 @@ export async function harvestFeature(
             forecast,
             projectId,
           );
-          const rawTelemetry = getFeatureRunTelemetry(
-            featureId,
-            projectId,
-            phaseId,
-          );
-          const telemetry =
-            rawTelemetry.totalTokens > 0 ||
-            rawTelemetry.costUsd > 0 ||
-            rawTelemetry.devices.length > 0
-              ? computeTelemetryMetrics(forecast, rawTelemetry)
-              : undefined;
+          let telemetry: CompressionReport["telemetry"];
+          try {
+            const rawTelemetry = getFeatureRunTelemetry(
+              featureId,
+              projectId,
+              phaseId,
+            );
+            if (
+              rawTelemetry &&
+              (rawTelemetry.totalTokens > 0 ||
+                rawTelemetry.costUsd > 0 ||
+                rawTelemetry.devices.length > 0)
+            ) {
+              telemetry = computeTelemetryMetrics(forecast, rawTelemetry);
+            }
+          } catch {
+            // Non-fatal if telemetry aggregation or partial mock is unavailable
+          }
 
           report = {
             featureId,
