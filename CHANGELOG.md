@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0-beta.1](https://github.com/gforge-esc/gwrk/compare/cli-v1.5.2-alpha.2...cli-v1.6.0-beta.1) (2026-11-06)
+
+
+### Features
+
+* cut 1.6.0-beta.1 (hexagonal architecture, polyglot toolchain, versioned plugin registry, hub-and-spoke telemetry) ([f802900](https://github.com/gforge-esc/gwrk/commit/f8029005313e377af9c183327bcd3ed7a1dc4134))
+
 ## [1.5.2-alpha.2](https://github.com/gforge-esc/gwrk/compare/cli-v1.5.1-alpha.2...cli-v1.5.2-alpha.2) (2026-10-28)
 
 
