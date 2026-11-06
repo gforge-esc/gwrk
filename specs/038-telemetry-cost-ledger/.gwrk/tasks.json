@@ -1,0 +1,39 @@
+{
+  "featureId": "038-telemetry-cost-ledger",
+  "createdAt": "2026-11-05T19:32:00.000Z",
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "SQLite Telemetry Schema and Compression Cost Metrics",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Add migration 013-run-telemetry.sql and update src/db/runs.ts for telemetry columns",
+          "description": "Add device_id, hostname, tokens_in, tokens_out, and cost_usd columns to runs table and persist them in startRun, finishRun, and recordRun.",
+          "status": "completed",
+          "sp": 1,
+          "classification": "greenfield",
+          "gateScript": "pnpm test:ci src/db/telemetry.test.ts"
+        },
+        {
+          "id": "T002",
+          "title": "Wire usage and device fields in src/commands/ship.ts and src/engine/harvest.ts",
+          "description": "Pass device and usage fields during ship and backfill them from execution manifests during harvest.",
+          "status": "completed",
+          "sp": 1,
+          "classification": "change",
+          "gateScript": "pnpm test:ci src/db/telemetry.test.ts"
+        },
+        {
+          "id": "T003",
+          "title": "Add telemetry cost per SP to src/engine/compression.ts and src/db/telemetry.test.ts",
+          "description": "Calculate tokensPerSp and costPerSp in computeTelemetryMetrics and aggregate telemetry totals in generateSummary.",
+          "status": "completed",
+          "sp": 1,
+          "classification": "change",
+          "gateScript": "pnpm test:ci src/db/telemetry.test.ts"
+        }
+      ]
+    }
+  ]
+}

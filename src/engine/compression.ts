@@ -13,6 +13,7 @@ import type {
   CompressionSummary,
   DeliveryActuals,
   EffortForecast,
+  TelemetryMetrics,
 } from "./types.js";
 
 /**
@@ -167,6 +168,29 @@ export function computeCompression(
   };
 }
 
+export function computeTelemetryMetrics(
+  forecast: EffortForecast,
+  raw: {
+    tokensIn: number;
+    tokensOut: number;
+    totalTokens?: number;
+    costUsd: number;
+    devices?: string[];
+  },
+): TelemetryMetrics {
+  const totalTokens = raw.totalTokens ?? raw.tokensIn + raw.tokensOut;
+  const sp = forecast.totalSP;
+  return {
+    tokensIn: raw.tokensIn,
+    tokensOut: raw.tokensOut,
+    totalTokens,
+    costUsd: raw.costUsd,
+    tokensPerSp: sp > 0 ? totalTokens / sp : 0,
+    costPerSp: sp > 0 ? raw.costUsd / sp : 0,
+    ...(raw.devices ? { devices: raw.devices } : {}),
+  };
+}
+
 export function generateSummary(
   reports: CompressionReport[],
 ): CompressionSummary {
@@ -190,6 +214,11 @@ export function generateSummary(
       avgToolCallsPerSP: 0,
       totalContracts: 0,
       totalGates: 0,
+      totalTokensIn: 0,
+      totalTokensOut: 0,
+      totalCostUsd: 0,
+      avgTokensPerSP: 0,
+      avgCostPerSP: 0,
     },
     best: { featureId: "", pointCompression: 0 },
     worst: { featureId: "", pointCompression: Number.POSITIVE_INFINITY },
@@ -208,6 +237,11 @@ export function generateSummary(
   let totalFiles = 0;
   let totalToolCalls = 0;
   let totalSPForIndicators = 0;
+
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
+  let totalCostUsd = 0;
+  let totalSPForTelemetry = 0;
 
   for (const r of reports) {
     summary.totals.totalSP += r.forecast.totalSP;
@@ -233,6 +267,13 @@ export function generateSummary(
         r.indicators.specQuality.contractCount;
       summary.totals.totalGates =
         (summary.totals.totalGates || 0) + r.indicators.specQuality.gateCount;
+    }
+
+    if (r.telemetry) {
+      totalTokensIn += r.telemetry.tokensIn;
+      totalTokensOut += r.telemetry.tokensOut;
+      totalCostUsd += r.telemetry.costUsd;
+      totalSPForTelemetry += r.forecast.totalSP;
     }
 
     if (r.compression.pointCompression > summary.best.pointCompression) {
@@ -262,6 +303,15 @@ export function generateSummary(
       summary.totals.avgFilesPerSP = totalFiles / totalSPForIndicators;
       summary.totals.avgToolCallsPerSP = totalToolCalls / totalSPForIndicators;
     }
+  }
+
+  summary.totals.totalTokensIn = totalTokensIn;
+  summary.totals.totalTokensOut = totalTokensOut;
+  summary.totals.totalCostUsd = totalCostUsd;
+  if (totalSPForTelemetry > 0) {
+    summary.totals.avgTokensPerSP =
+      (totalTokensIn + totalTokensOut) / totalSPForTelemetry;
+    summary.totals.avgCostPerSP = totalCostUsd / totalSPForTelemetry;
   }
 
   const sorted = [...reports].sort(

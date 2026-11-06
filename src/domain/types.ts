@@ -186,6 +186,16 @@ export interface LeadingIndicators {
   };
 }
 
+export interface TelemetryMetrics {
+  tokensIn: number;
+  tokensOut: number;
+  totalTokens: number;
+  costUsd: number;
+  tokensPerSp: number;
+  costPerSp: number;
+  devices?: string[];
+}
+
 export interface CompressionReport {
   featureId: string;
   phaseId?: string;
@@ -194,6 +204,7 @@ export interface CompressionReport {
   actuals: DeliveryActuals;
   compression: CompressionRatios;
   indicators?: LeadingIndicators;
+  telemetry?: TelemetryMetrics;
 }
 
 export interface HarvestRecord {
@@ -225,6 +236,11 @@ export interface CompressionSummary {
     avgToolCallsPerSP?: number;
     totalContracts?: number;
     totalGates?: number;
+    totalTokensIn?: number;
+    totalTokensOut?: number;
+    totalCostUsd?: number;
+    avgTokensPerSP?: number;
+    avgCostPerSP?: number;
   };
   best: { featureId: string; pointCompression: number };
   worst: { featureId: string; pointCompression: number };

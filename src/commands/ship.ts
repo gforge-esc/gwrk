@@ -200,13 +200,17 @@ async function shipPhase(
 
   const startedAt = new Date().toISOString();
   const startCommit = getCurrentCommit(cwd);
+  const runDevice = loadDevice();
 
   const runId = startRun({
     feature_id: feature,
     phase_id: phaseId,
     command: "ship",
     agent_backend: backend,
+    model: selectedModel,
     workflow: "work-until-done",
+    device_id: runDevice?.id,
+    hostname: runDevice?.hostname,
   });
 
   banner("ship", {
@@ -305,6 +309,15 @@ async function shipPhase(
         status: "shipped",
         ...(result.prNumber ? { pr_number: result.prNumber } : {}),
         ...(result.prUrl ? { pr_url: result.prUrl } : {}),
+        ...(result.usage?.inputTokens !== undefined
+          ? { tokens_in: result.usage.inputTokens }
+          : {}),
+        ...(result.usage?.outputTokens !== undefined
+          ? { tokens_out: result.usage.outputTokens }
+          : {}),
+        ...(result.usage?.costUsd !== undefined
+          ? { cost_usd: result.usage.costUsd }
+          : {}),
         files_changed: stats.filesChanged,
         lines_added: stats.linesAdded,
         lines_deleted: stats.linesDeleted,
@@ -335,9 +348,19 @@ async function shipPhase(
       typeof (err as { code?: unknown }).code === "number"
         ? (err as { code: number }).code
         : 1;
+    const failedUsage = orchestrator?.getResult().usage;
     finishRun(runId, {
       exit_code: exitCode,
       duration_s: durationS,
+      ...(failedUsage?.inputTokens !== undefined
+        ? { tokens_in: failedUsage.inputTokens }
+        : {}),
+      ...(failedUsage?.outputTokens !== undefined
+        ? { tokens_out: failedUsage.outputTokens }
+        : {}),
+      ...(failedUsage?.costUsd !== undefined
+        ? { cost_usd: failedUsage.costUsd }
+        : {}),
       files_changed: stats.filesChanged,
       lines_added: stats.linesAdded,
       lines_deleted: stats.linesDeleted,

@@ -5,13 +5,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getCompressionRecord, recordCompression } from "../db/compression.js";
-import { finishRun, listRuns, recordRun } from "../db/runs.js";
+import {
+  finishRun,
+  getFeatureRunTelemetry,
+  listRuns,
+  recordRun,
+} from "../db/runs.js";
 import { loadConfig } from "../utils/config.js";
 import { commitFiles, deleteRemoteBranch } from "../utils/git.js";
 import { loadManifests } from "../utils/manifest.js";
 import { parsePlan } from "../utils/parser.js";
 import { resolveProjectId } from "../utils/project-id.js";
-import { computeCompression, gatherDeliveryActuals } from "./compression.js";
+import {
+  computeCompression,
+  computeTelemetryMetrics,
+  gatherDeliveryActuals,
+} from "./compression.js";
 import { computeLeadingIndicators } from "./indicators.js";
 import { reconcileGates } from "./reconcile-gates.js";
 import { resolveRoleMultipliers } from "./roles.js";
@@ -239,6 +248,11 @@ export async function harvestFeature(
         merge_commit_sha: mergeCommitSha,
         pr_number: prNumber || undefined,
         pr_url: record.prUrl || undefined,
+        device_id: latestManifest?.deviceId,
+        hostname: latestManifest?.hostname,
+        tokens_in: latestManifest?.usage?.inputTokens,
+        tokens_out: latestManifest?.usage?.outputTokens,
+        cost_usd: latestManifest?.usage?.costUsd,
       });
       console.log(
         `Backfilled run record for ${featureId} ${phaseId} (Run ID: ${backfillId})`,
@@ -343,6 +357,17 @@ export async function harvestFeature(
             forecast,
             projectId,
           );
+          const rawTelemetry = getFeatureRunTelemetry(
+            featureId,
+            projectId,
+            phaseId,
+          );
+          const telemetry =
+            rawTelemetry.totalTokens > 0 ||
+            rawTelemetry.costUsd > 0 ||
+            rawTelemetry.devices.length > 0
+              ? computeTelemetryMetrics(forecast, rawTelemetry)
+              : undefined;
 
           report = {
             featureId,
@@ -352,6 +377,7 @@ export async function harvestFeature(
             actuals,
             compression,
             indicators,
+            ...(telemetry ? { telemetry } : {}),
           };
 
           recordCompression(report, projectId);
