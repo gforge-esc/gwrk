@@ -508,16 +508,13 @@ function isHeaderTupleList(entries: unknown[]): boolean {
 }
 
 function findJsonTokenEnd(text: string, start: number): number | undefined {
-  let quote = text[start] === '"' ? '"' : null;
-  const closers = quote ? [] : [text[start] === "{" ? "}" : "]"];
+  let quote: string | null = null;
+  const closers = [text[start] === "{" ? "}" : "]"];
   for (let index = start + 1; index < text.length; index += 1) {
     const char = text[index];
     if (quote) {
       if (char === "\\") index += 1;
-      else if (char === quote) {
-        if (closers.length === 0) return index + 1;
-        quote = null;
-      }
+      else if (char === quote) quote = null;
     } else if (char === '"' || char === "'" || char === "\x60") {
       quote = char;
     } else if (char === "{" || char === "[") {
@@ -731,8 +728,8 @@ function scanEmbeddedJson(
     throw new Error(secretMaterialMessage);
   }
   const openings = /["'\x60[{]/g;
-  const fragments = new RegExp(
-    String.raw`(?:${inspectedStringLiteral.source})(?:\s*\+\s*(?:${inspectedStringLiteral.source}))+`,
+  const stringToken = new RegExp(
+    String.raw`(?:${inspectedStringLiteral.source})(?:\s*\+\s*(?:${inspectedStringLiteral.source}))*`,
     "y",
   );
   for (
@@ -742,26 +739,23 @@ function scanEmbeddedJson(
   ) {
     const [opener] = opening;
     const isRecord = opener === "{" || opener === "[";
-    fragments.lastIndex = opening.index;
-    const concatenation = !isRecord && fragments.test(text);
-    if (!isRecord && !concatenation && opener !== '"') continue;
-
-    const end = concatenation
-      ? fragments.lastIndex
-      : findJsonTokenEnd(text, opening.index);
-    if (end === undefined) continue;
+    stringToken.lastIndex = opening.index;
+    const end = isRecord
+      ? findJsonTokenEnd(text, opening.index)
+      : stringToken.exec(text) && stringToken.lastIndex;
+    if (end == null) continue;
     let token = text.slice(opening.index, end);
     let decoded: unknown;
     let inspectedRecord: string | undefined;
     try {
-      decoded = JSON.parse(
-        concatenation ? inspectedRecordAsJson(token) : token,
-      );
+      decoded = JSON.parse(token);
     } catch {
-      if (!isRecord) continue;
       try {
-        inspectedRecord = inspectedRecordAsJson(token);
-        token = normalizeInspectedArrayEntries(inspectedRecord);
+        const normalized = inspectedRecordAsJson(token);
+        if (isRecord) inspectedRecord = normalized;
+        token = isRecord
+          ? normalizeInspectedArrayEntries(normalized)
+          : normalized;
         decoded = JSON.parse(token);
         inspectedRecord = undefined;
       } catch {

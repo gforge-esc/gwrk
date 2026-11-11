@@ -1018,6 +1018,36 @@ describe("credential guard", () => {
     },
   );
 
+  describe.each<[string, (text: string) => unknown]>([
+    ["standalone output", (text) => text],
+    [
+      "a record with undefined metadata",
+      (text) => ({ data: text, other: undefined }),
+    ],
+  ])("single inspected string in %s", (_shape, wrap) => {
+    const secret = "fixture-private-first\nfixture-private-second";
+
+    it("rejects a known secret", () => {
+      const sanitizedOutput = inspect(wrap(secret));
+      expect(sanitizedOutput).toContain(String.raw`\n`);
+      expect(sanitizedOutput).not.toMatch(/\+\s*['"`]/);
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput }, [secret]),
+      ).toThrow(/secret material/i);
+    });
+
+    it("allows ordinary multiline text", () => {
+      const sanitizedOutput = inspect(
+        wrap("ordinary first line\nordinary second line"),
+      );
+      expect(sanitizedOutput).toContain(String.raw`\n`);
+      expect(sanitizedOutput).not.toMatch(/\+\s*['"`]/);
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput }, [secret]),
+      ).not.toThrow();
+    });
+  });
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [
