@@ -115,6 +115,49 @@ describe("FR-002 harvest identity and target verification", () => {
     );
   });
 
+  it("converges a manually requested phase with webhook and poller coverage", () => {
+    const fact = {
+      prNumber: 42,
+      terminalEvent: "merged",
+      mergeCommitSha: sha,
+    } as const;
+    const base = { ...fact, headBranch: `feat/${featureId}` };
+    const phaseIds = ["phase-1", "phase-02"];
+    const manual = verifyHarvestTarget(
+      project,
+      candidate({
+        ...base,
+        source: "manual_cli",
+        explicitPhaseId: "phase-2",
+      }),
+    );
+    if (!manual.ok) throw new Error(manual.reason);
+    const expected = {
+      featureId,
+      phaseId: "phase-02",
+      workKey: computeHarvestWorkKey({
+        ...fact,
+        featureId,
+        phaseId: "phase-02",
+      }),
+    };
+    expect(scopeVerifiedMergeToPhases(manual, fact, phaseIds)).toEqual([
+      expected,
+    ]);
+    expect(scopeVerifiedMergeToPhases(manual, fact, ["phase-01"])).toEqual([]);
+    expect(scopeVerifiedMergeToPhases(manual, fact, [])).toEqual([]);
+    for (const source of ["github_webhook", "github_poller"] as const) {
+      const verified = verifyHarvestTarget(
+        project,
+        candidate({ ...base, source }),
+      );
+      if (!verified.ok) throw new Error(verified.reason);
+      expect(
+        scopeVerifiedMergeToPhases(verified, fact, phaseIds),
+      ).toContainEqual(expected);
+    }
+  });
+
   it.each([
     ["merged", `feat/${featureId}-${phaseId}`],
     ["closed_unmerged", `feat/${featureId}`],

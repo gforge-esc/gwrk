@@ -11,6 +11,9 @@ flowchart LR
   Project -->|scopes| Delivery["Transport Delivery"]
   Project -->|tracks| Cursor["Harvest Cursor"]
   Project -->|scopes| Harvest["Harvest Operation"]
+  Delivery -->|orders| Link["Delivery Operation"]
+  Link -->|references| Harvest
+  Alias["Work Key Alias"] -->|references| Harvest
   Harvest -->|splits into| Stage["Stage Receipt"]
   Dispatch -->|queues| Outbox["Notification Outbox"]
   Harvest -->|queues| Outbox
@@ -22,9 +25,11 @@ flowchart LR
 |---|---|---|---|
 | `dispatch_operations` | `operation_id`, active `(project_id, work_key)` | Durable dispatch acceptance, lease fencing and PR linkage | Operational queue ledger |
 | `dispatch_attempts` | `(operation_id, attempt_number)` | Per-attempt worker lease, run ID and exit outcome | Operational attempt log |
-| `harvest_deliveries` | `(source, delivery_id)` | Transport deduplication for webhook, poller and CLI | Ingress audit log |
+| `harvest_deliveries` | `(source, delivery_id)` | Repository and payload identity for transport replay | Ingress audit log |
+| `harvest_delivery_operations` | `(source, delivery_id, position)` | Ordered operations accepted for a delivery | Transport replay |
+| `harvest_work_key_aliases` | `(project_id, work_key)` | Local and verified pull request work keys for one operation | Work deduplication |
 | `harvest_cursors` | `project_id` | Per-project GitHub polling watermark and last error | Poller catch-up cursor |
-| `harvest_operations` | `operation_id`, `(project_id, work_key)` | Single harvest record per repository PR terminal event | Operational harvest ledger |
+| `harvest_operations` | `operation_id`, `(project_id, work_key)` | Single harvest record per verified work scope | Operational harvest ledger |
 | `harvest_stage_receipts` | `(operation_id, phase_key, stage)` | Independent progress for sync, gates, learning, Slack and cleanup | Stage recovery state |
 | `notification_outbox` | `outbox_id`, `(project_id, dedupe_key)` | Durable recipient routing and uncertain-send reconciliation | Outbound delivery ledger |
 
@@ -86,12 +91,14 @@ CREATE TABLE IF NOT EXISTS harvest_deliveries (
   source       TEXT NOT NULL,
   delivery_id  TEXT NOT NULL,
   project_id   TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  repo_slug    TEXT,
+  payload_digest TEXT NOT NULL,
   event_type   TEXT NOT NULL,
   outcome      TEXT NOT NULL,
-  operation_id TEXT,
   reason       TEXT,
   received_at  TEXT NOT NULL,
-  PRIMARY KEY (source, delivery_id)
+  PRIMARY KEY (source, delivery_id),
+  UNIQUE (source, delivery_id, project_id)
 );
 
 CREATE TABLE IF NOT EXISTS harvest_cursors (
@@ -107,6 +114,7 @@ CREATE TABLE IF NOT EXISTS harvest_operations (
   project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   work_key          TEXT NOT NULL,
   repo_slug         TEXT,
+  head_repo_slug    TEXT,
   trunk_branch      TEXT NOT NULL,
   feature_id        TEXT NOT NULL,
   phase_id          TEXT,
@@ -127,7 +135,31 @@ CREATE TABLE IF NOT EXISTS harvest_operations (
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL,
   completed_at      TEXT,
-  UNIQUE (project_id, work_key)
+  UNIQUE (project_id, work_key),
+  UNIQUE (project_id, operation_id)
+);
+
+CREATE TABLE IF NOT EXISTS harvest_delivery_operations (
+  source        TEXT NOT NULL,
+  delivery_id   TEXT NOT NULL,
+  project_id    TEXT NOT NULL,
+  position      INTEGER NOT NULL CHECK (position >= 0),
+  operation_id  TEXT NOT NULL,
+  PRIMARY KEY (source, delivery_id, position),
+  UNIQUE (source, delivery_id, operation_id),
+  FOREIGN KEY (source, delivery_id, project_id)
+    REFERENCES harvest_deliveries(source, delivery_id, project_id) ON DELETE CASCADE,
+  FOREIGN KEY (project_id, operation_id)
+    REFERENCES harvest_operations(project_id, operation_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS harvest_work_key_aliases (
+  project_id    TEXT NOT NULL,
+  work_key      TEXT NOT NULL,
+  operation_id  TEXT NOT NULL,
+  PRIMARY KEY (project_id, work_key),
+  FOREIGN KEY (project_id, operation_id)
+    REFERENCES harvest_operations(project_id, operation_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_harvest_operations_project_pr
@@ -175,6 +207,8 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
 CREATE INDEX IF NOT EXISTS idx_notification_outbox_pending
   ON notification_outbox(project_id, status, created_at);
 ```
+
+Record the delivery, operations, links and aliases in one transaction. Store the normalized repository and payload digest with the original delivery. Replay the linked operations in position order after checking both values. Rejected deliveries have no operation links. Resolve the primary work key and alias before inserting a work key in either table.
 
 ## Domain Zod schemas
 

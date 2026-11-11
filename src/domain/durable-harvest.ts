@@ -105,6 +105,8 @@ type HarvestPullRequestIdentity = {
 
 type HarvestWorkScope = HarvestTarget & { workKey: string };
 
+type VerifiedHarvestTarget = HarvestWorkScope & { requestedPhaseId?: string };
+
 export function computeHarvestWorkKey(
   input: HarvestTarget & HarvestPullRequestIdentity,
 ): string {
@@ -160,14 +162,20 @@ export function scopeManualHarvestToPhases(
 
 /** Use phase IDs discovered at the verified merge checkout. */
 export function scopeVerifiedMergeToPhases(
-  { featureId, phaseId, workKey }: HarvestWorkScope,
+  { featureId, phaseId, workKey, requestedPhaseId }: VerifiedHarvestTarget,
   fact: HarvestPullRequestIdentity,
   phaseIds: readonly string[],
 ): HarvestWorkScope[] {
-  if (phaseId !== null || fact.terminalEvent !== "merged" || !phaseIds.length) {
+  const covered = [...new Set(phaseIds.map(normalizePhaseId))];
+  if (requestedPhaseId !== undefined && !covered.includes(requestedPhaseId)) {
+    return [];
+  }
+  if (phaseId !== null || fact.terminalEvent !== "merged" || !covered.length) {
     return [{ featureId, phaseId, workKey }];
   }
-  return [...new Set(phaseIds.map(normalizePhaseId))].map((phaseId) => ({
+  const selected =
+    requestedPhaseId === undefined ? covered : [requestedPhaseId];
+  return selected.map((phaseId) => ({
     featureId,
     phaseId,
     workKey: computeHarvestWorkKey({ ...fact, featureId, phaseId }),
@@ -238,7 +246,7 @@ export function verifyHarvestTarget(
   project: EnrolledProject,
   candidate: HarvestCandidateInput,
 ):
-  | ({ ok: true } & HarvestWorkScope)
+  | ({ ok: true } & VerifiedHarvestTarget)
   | {
       ok: false;
       code:
@@ -367,9 +375,19 @@ export function verifyHarvestTarget(
       reason: "Pull request head does not identify the requested feature",
     };
   }
+  const requestedPhaseId =
+    candidate.explicitPhaseId === undefined
+      ? undefined
+      : normalizePhaseId(candidate.explicitPhaseId);
+  const needsCheckoutCoverage =
+    candidate.source === "manual_cli" &&
+    candidate.terminalEvent === "merged" &&
+    target.phaseId === null &&
+    requestedPhaseId !== undefined;
   if (
-    candidate.explicitPhaseId !== undefined &&
-    normalizePhaseId(candidate.explicitPhaseId) !== target.phaseId
+    requestedPhaseId !== undefined &&
+    requestedPhaseId !== target.phaseId &&
+    !needsCheckoutCoverage
   ) {
     return {
       ok: false,
@@ -398,6 +416,7 @@ export function verifyHarvestTarget(
   return {
     ok: true,
     ...target,
+    ...(needsCheckoutCoverage ? { requestedPhaseId } : {}),
     workKey: computeHarvestWorkKey({ ...candidate, ...target, prNumber }),
   };
 }

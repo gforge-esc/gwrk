@@ -302,6 +302,7 @@ export interface OperationsStorePort {
   /**
    * Commit the original delivery and all resolved operations in one transaction.
    * Resolve checkout coverage with scopeManualHarvestToPhases or scopeVerifiedMergeToPhases before intake.
+   * Reject an explicitly requested phase when verified checkout coverage is empty.
    * Replay returns every persisted operation in the original scope order.
    * Reject transport ID reuse with a different repository or payload digest.
    * Resolve work keys and their aliases within the project before matching commit scope.
