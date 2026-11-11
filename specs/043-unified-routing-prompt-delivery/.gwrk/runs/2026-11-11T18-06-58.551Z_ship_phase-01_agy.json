@@ -1,0 +1,26 @@
+{
+  "runId": "2026-11-11T18:06:58.551Z_ship_p01",
+  "feature": "043-unified-routing-prompt-delivery",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "agy",
+  "model": "gemini-3.8-flash-high",
+  "usage": {
+    "inputTokens": 668504,
+    "outputTokens": 40479,
+    "totalTokens": 708983
+  },
+  "startedAt": "2026-11-11T18:06:58.551Z",
+  "finishedAt": "2026-11-11T18:17:56.681Z",
+  "durationS": 658,
+  "exitCode": 0,
+  "attempt": 1,
+  "gateResult": "PASS",
+  "reviewVerdict": "GO",
+  "filesChanged": 1,
+  "linesAdded": 5,
+  "linesDeleted": 7,
+  "gitCommit": "0d88a90222134d31d783479b88bbc94f9514d8f1",
+  "gitBranch": "feat/043-unified-routing-prompt-delivery",
+  "digest": []
+}
