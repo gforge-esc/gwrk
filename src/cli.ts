@@ -3,6 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { existsSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { assessCommand } from "./commands/assess.js";
@@ -192,8 +194,13 @@ program.hook("preAction", (thisCommand, actionCommand) => {
   }
 });
 
-import { fileURLToPath } from "node:url";
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+const entrypoint = process.argv[1];
+const modulePath = fileURLToPath(import.meta.url);
+if (
+  entrypoint &&
+  (entrypoint === modulePath ||
+    (existsSync(entrypoint) && realpathSync(entrypoint) === modulePath))
+) {
   try {
     program.parse();
   } catch (err: unknown) {

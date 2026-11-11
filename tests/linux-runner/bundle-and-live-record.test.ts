@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = "deploy/linux-runner";
@@ -41,6 +43,23 @@ describe("Linux runner service bundle", () => {
       expect(() =>
         execFileSync("bash", ["-n", `${root}/${file}`]),
       ).not.toThrow();
+    }
+  });
+
+  it("runs the built CLI through the active release symlink", () => {
+    const fixture = mkdtempSync(join(tmpdir(), "gwrk-release-link-"));
+    try {
+      const active = join(fixture, "current");
+      symlinkSync(process.cwd(), active, "dir");
+      const { version } = JSON.parse(readFileSync("package.json", "utf8"));
+      const output = execFileSync(
+        process.execPath,
+        [join(active, "dist/cli.js"), "--version"],
+        { encoding: "utf8" },
+      );
+      expect(output.trim()).toBe(version);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
     }
   });
 

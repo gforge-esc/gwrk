@@ -3,7 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-set -euo pipefail
+set -Eeuo pipefail
+trap 'printf "Container proof stopped at line %s.\n" "$LINENO" >&2' ERR
 npm install -g pnpm@9.15.9 --no-fund --no-audit
 cd /artifacts
 version=$(node -p 'require("./release-manifest.json").version')
@@ -77,7 +78,10 @@ expect_rejection() {
     printf 'Unexpected acceptance for %s\n' "$pattern" >&2
     exit 1
   fi
-  grep -F -- "$pattern" /tmp/rejected.log
+  if ! grep -F -- "$pattern" /tmp/rejected.log; then
+    cat /tmp/rejected.log >&2
+    return 1
+  fi
 }
 expect_rejection 'Telegram variables' runuser -u gwrk -- env TELEGRAM_BOT_TOKEN=fixture bash "$preflight"
 chmod 0644 /etc/gwrk/secrets/agent-credential
@@ -96,11 +100,13 @@ sed -i 's/0.0.0.0/127.0.0.1/' .gwrkrc.json
 server_pid=""
 trap 'if [[ -n "$server_pid" ]]; then kill -TERM "$server_pid" 2>/dev/null || true; fi' EXIT
 launch() {
+  printf "Starting the installed runner.\n"
   runuser -u gwrk -- bash "$release/deploy/linux-runner/run.sh" >/tmp/server.log 2>&1 &
   launcher=$!
   for attempt in {1..30}; do
     if curl -fsS http://127.0.0.1:18790/health >/dev/null 2>&1; then
       server_pid=$(< /run/gwrk/server.pid)
+      printf "Runner healthy (pid %s).\n" "$server_pid"
       return
     fi
     if ! kill -0 "$launcher" 2>/dev/null; then
@@ -119,7 +125,7 @@ wait "$launcher" || true
 server_pid=""
 launch
 kill -TERM "$server_pid"
-wait "$launcher"
+wait "$launcher" || { cat /tmp/server.log >&2; exit 1; }
 server_pid=""
 test ! -e /run/gwrk/server.pid
 
