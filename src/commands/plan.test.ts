@@ -182,19 +182,19 @@ outputSchema:
 
     // Verify the prompt includes AMEND directive
     const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
-    expect(call.prompt).toContain("AMEND existing plan");
-    expect(call.prompt).toContain("Add phase 11 for research");
+    expect(call.stdin).toContain("AMEND existing plan");
+    expect(call.stdin).toContain("Add phase 11 for research");
   });
 
   it("should use new mode when no plan.md exists", async () => {
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
 
     const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
-    expect(call.prompt).toContain("Plan implementation for feature");
+    expect(call.stdin).toContain("Plan implementation for feature");
     // The base workflow template documents the "AMEND existing plan" trigger,
     // so assert on "Amendment instructions:" — a string unique to the injected
     // amend directive (define-plan.ts) and absent from the template.
-    expect(call.prompt).not.toContain("Amendment instructions:");
+    expect(call.stdin).not.toContain("Amendment instructions:");
   });
 
   it("should treat template-only plan.md as new (not amend)", async () => {
@@ -208,6 +208,6 @@ outputSchema:
     await program.parseAsync(["node", "test", "plan", "test-feature"]);
 
     const call = vi.mocked(agent.dispatchToAgent).mock.calls[0][0];
-    expect(call.prompt).not.toContain("Amendment instructions:");
+    expect(call.stdin).not.toContain("Amendment instructions:");
   });
 });

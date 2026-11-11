@@ -7,7 +7,7 @@ contextFileName: AGENTS.md
 
 invocation:
   command: codex
-  args: ["exec", "--full-auto"]
+  args: ["--ask-for-approval", "never", "exec", "--sandbox", "workspace-write"]
   yoloFlag: "--dangerously-bypass-approvals-and-sandbox"
 
 capabilities:
