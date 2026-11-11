@@ -7,8 +7,6 @@ import { listPlugins } from './plugin.js';
 import { PluginLoader } from '../plugins/loader.js';
 import { detectProfile } from '../engine/profile-detector.js';
 
-// Module does not exist yet (RED)
-
 vi.mock('../plugins/loader.js');
 vi.mock('../engine/profile-detector.js');
 

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "files": {
+    ".gwrk/architecture.md": "4cb8511a7f7acf9b7f96ef99c605750655e8e3b2cf06d0c0d62a501c0cb612a3",
+    "AGENTS.md": "b27ac1ff6b3eb272f1584ad2a3afe3d0b76952432434f21f273d956926f76a69",
+    "CLAUDE.md": "b27ac1ff6b3eb272f1584ad2a3afe3d0b76952432434f21f273d956926f76a69",
+    "GEMINI.md": "b27ac1ff6b3eb272f1584ad2a3afe3d0b76952432434f21f273d956926f76a69",
+    ".gwrk/plugins/gwrk/skills/gwrk-assess/SKILL.md": "6a9032d3a6ab98f1ce5ad6c82c99bd5fd87341437f3e69d37af604e6b6daeada",
+    ".gwrk/plugins/gwrk/skills/gwrk-assess/references/assessment.md": "f41f3b43cc77605e55f366a9a7fcec2fe5660472fe41068f8145e2bc0025a82d",
+    ".gwrk/plugins/gwrk/.claude-plugin/plugin.json": "9482e36042d58e9b5eac01b89289c2e952209d4c47cecc519d24e43f369a15ef",
+    ".gwrk/.claude-plugin/marketplace.json": "6501ccfcfa13eab376e2f52e2e7a29f061ae31bbcc1701e829df2b78854990d6",
+    ".gwrk/plugins/gwrk/gemini-extension.json": "59c7431a48f8dd983bc6bbf8646283c33e1ada1519efddde65ba83520ab06ed8",
+    ".gwrk/plugins/gwrk/GEMINI.md": "64613dec049cda298d207d1cabd7c48dfa5a9bd5c7746d0e85e852ca1b3d0a9c",
+    ".gwrk/plugins/gwrk/commands/gwrk/assess.toml": "8986df9f62da73034aa7cc20135a2daa5d052af6916f37bf49f1809ac734bb4a"
+  },
+  "decisions": {
+    "{\"projectName\":\"gwrk\",\"design\":{\"architecture\":\"hexagonal-functional\",\"principles\":[\"functional-core\",\"clean-code\",\"tdd\"],\"templateVersion\":\"1.0.0\"},\"language\":\"TypeScript\",\"decisionsDir\":\"docs/decisions\"}": [
+      "docs/decisions/ADR-013-desired-architecture.md"
+    ]
+  }
+}

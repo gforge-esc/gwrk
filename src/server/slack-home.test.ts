@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Module does not exist yet (RED)
- */
 import type { HeaderBlock, SectionBlock } from "@slack/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GwrkConfig } from "../utils/config.js";

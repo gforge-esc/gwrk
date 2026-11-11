@@ -191,11 +191,36 @@ export class AgyAdapter implements AgentBackend {
   }
 
   parseResult(stdout: string, stderr: string, rawExitCode: number): TaskResult {
-    const unwrapped = unwrapStreamJson(stdout);
+    let terminalFailure = false;
+    let terminalSeen = false;
+    const normalized = stdout
+      .split("\n")
+      .map((line) => {
+        try {
+          const event = JSON.parse(line);
+          if (
+            event.event !== "result" ||
+            !event.result ||
+            typeof event.result.response !== "string"
+          )
+            return line;
+          terminalSeen = true;
+          terminalFailure = event.result.status !== "SUCCESS";
+          return JSON.stringify({
+            type: "result",
+            result: event.result.response,
+            usage: event.result.usage,
+          });
+        } catch {
+          return line;
+        }
+      })
+      .join("\n");
+    const unwrapped = unwrapStreamJson(normalized);
     let errorType: TaskResult["errorType"];
-    let exitCode = rawExitCode;
+    let exitCode = terminalFailure && rawExitCode === 0 ? 1 : rawExitCode;
 
-    if (rawExitCode !== 0) {
+    if (exitCode !== 0) {
       if (rawExitCode === 127 || stderr.includes("command not found")) {
         errorType = "command_not_found";
         exitCode = 127;
@@ -229,6 +254,13 @@ export class AgyAdapter implements AgentBackend {
     return {
       exitCode,
       rawExitCode,
+      ...(terminalSeen
+        ? {
+            status: terminalFailure
+              ? ("failure" as const)
+              : ("success" as const),
+          }
+        : {}),
       stdout,
       unwrappedStdout: unwrapped.text,
       ...(unwrapped.structuredOutput

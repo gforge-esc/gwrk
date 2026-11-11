@@ -3,5 +3,5 @@ name: python-standards
 version: 1.0.0
 description: Python coding standards and toolchain compliance
 tier: enforcement
-scope: implementation
+scope: all
 language: Python

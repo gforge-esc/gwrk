@@ -1,0 +1,13 @@
+{
+  "name": "gwrk",
+  "owner": {
+    "name": "gwrk project maintainers"
+  },
+  "plugins": [
+    {
+      "name": "gwrk",
+      "source": "./plugins/gwrk",
+      "description": "Assess project architecture against its declared target"
+    }
+  ]
+}

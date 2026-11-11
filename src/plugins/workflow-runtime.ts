@@ -165,6 +165,9 @@ export function wouldShrinkExistingFile(
 }
 
 interface WorkflowOptions {
+  /** Assessment requires structured output without mutation intents. */
+  reportOnly?: boolean;
+  recordedResult?: Awaited<ReturnType<typeof dispatchToAgent>>;
   projectRoot?: string;
   agent?: string;
   model?: string;
@@ -186,6 +189,7 @@ interface WorkflowOutput {
 }
 
 interface WorkflowResult {
+  output?: unknown;
   summary: string;
   intents: JsonIntent[];
   summaries: IntentSummary[];
@@ -371,7 +375,10 @@ export class WorkflowRuntime {
       }
     })();
 
-    const result = await dispatchToAgent(task);
+    if (options.recordedResult && !options.reportOnly) {
+      throw new Error("Recorded output requires report-only execution.");
+    }
+    const result = options.recordedResult ?? (await dispatchToAgent(task));
 
     // Detect native artifacts (files the agent wrote directly). Used by both
     // the structured-output safety net and the FR-029 tolerant path below.
@@ -406,7 +413,7 @@ export class WorkflowRuntime {
       const exhaustedStructuredOutput = result.stdout.includes(
         "error_max_structured_output_retries",
       );
-      if (exhaustedStructuredOutput && hasArtifacts()) {
+      if (!options.reportOnly && exhaustedStructuredOutput && hasArtifacts()) {
         console.warn(
           "[workflow-runtime] Agent exhausted structured-output retries but wrote artifacts natively — recovering as native success.",
         );
@@ -425,12 +432,15 @@ export class WorkflowRuntime {
     // Parse the JSON output from the agent
     let parsedOutput: unknown;
     try {
-      parsedOutput = extractJsonFromOutput(result.stdout);
+      parsedOutput =
+        result.structuredOutput ??
+        extractJsonFromOutput(result.unwrappedStdout ?? result.stdout);
     } catch (e) {
       // FR-029: Tolerate agents that do native work and return prose.
       // If the agent exited 0, treat prose output as synthetic success.
       // T019: Detect agent-native success by checking for committed artifacts
       if (
+        !options.reportOnly &&
         result.exitCode === 0 &&
         (result.nativeWriter || options.tolerant || hasArtifacts())
       ) {
@@ -463,6 +473,10 @@ export class WorkflowRuntime {
       throw new Error(
         `Workflow output failed schema constraint: Missing 'intents' array.`,
       );
+    }
+
+    if (options.reportOnly && output.intents.length > 0) {
+      throw new Error("Report-only workflow cannot execute mutation intents.");
     }
 
     // FR-L25-001: Filter direct FS edit attempts in RUN_COMMAND intents.
@@ -562,6 +576,7 @@ export class WorkflowRuntime {
       intents: output.intents,
       summaries,
       logPath: result.logPath,
+      output: parsedOutput,
     };
   }
 }

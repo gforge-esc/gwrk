@@ -27,6 +27,80 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     vi.clearAllMocks();
   });
 
+  it("039: report-only workflows reject mutation intents before executing them", async () => {
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: {
+        name: "assessment",
+        type: "workflow",
+        outputSchema: { type: "object", required: ["summary", "intents"] },
+      } as any,
+      path: "/mock/plugin",
+    });
+    vi.mocked(fs.readFile).mockResolvedValue("Assessment");
+    vi.mocked(detector.detectProfile).mockResolvedValue({ type: "generic" });
+    vi.mocked(conditioner.conditionPrompt).mockReturnValue("Read only");
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        summary: "Mutation",
+        intents: [{ action: "RUN_COMMAND", command: "touch unexpected" }],
+      }),
+      stderr: "",
+      durationS: 1,
+    });
+    await expect(
+      new WorkflowRuntime().executeWorkflow("assessment", "input", {
+        reportOnly: true,
+      }),
+    ).rejects.toThrow(/cannot execute mutation/);
+    vi.mocked(agentUtils.dispatchToAgent).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Done natively",
+      nativeWriter: true,
+      stderr: "",
+      durationS: 1,
+    });
+    await expect(
+      new WorkflowRuntime().executeWorkflow("assessment", "input", {
+        reportOnly: true,
+      }),
+    ).rejects.toThrow(/schema constraint/);
+  });
+
+  it("039: consumes normalized recorded output without another dispatch", async () => {
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: {
+        name: "assessment",
+        type: "workflow",
+        outputSchema: { type: "object", required: ["summary", "intents"] },
+      } as any,
+      path: "/mock/plugin",
+    });
+    vi.mocked(fs.readFile).mockResolvedValue("Assessment");
+    vi.mocked(detector.detectProfile).mockResolvedValue({ type: "generic" });
+    vi.mocked(conditioner.conditionPrompt).mockReturnValue("Read only");
+    const recordedResult = {
+      exitCode: 0,
+      stdout: "event wrapper",
+      unwrappedStdout:
+        '{"summary":"Recorded assessment","intents":[],"assessment":{"overview":"Evidence"}}',
+      stderr: "",
+      durationS: 1,
+    };
+    const result = await new WorkflowRuntime().executeWorkflow(
+      "assessment",
+      "input",
+      { reportOnly: true, recordedResult },
+    );
+    expect(result.summary).toBe("Recorded assessment");
+    expect(agentUtils.dispatchToAgent).not.toHaveBeenCalled();
+    await expect(
+      new WorkflowRuntime().executeWorkflow("assessment", "input", {
+        recordedResult,
+      }),
+    ).rejects.toThrow(/report-only/);
+  });
+
   it("TR-033: should call detectProfile and conditionPrompt during executeWorkflow", async () => {
     const mockManifest = {
       name: "test-workflow",

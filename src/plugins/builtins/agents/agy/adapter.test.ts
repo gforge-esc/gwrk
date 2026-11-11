@@ -188,4 +188,30 @@ describe("AgyAdapter", () => {
       expect(turnLimit.errorType).toBe("turn_limit");
     });
   });
+  it("unwraps the observed Antigravity result event and rejects failed terminal status", () => {
+    const adapter = new AgyAdapter();
+    const stdout = JSON.stringify({
+      event: "result",
+      result: {
+        status: "SUCCESS",
+        response: '{"summary":"Assessment","intents":[]}',
+        usage: { input_tokens: 12, output_tokens: 8 },
+      },
+    });
+    const result = adapter.parseResult(stdout, "", 0);
+    expect(result.unwrappedStdout).toBe(
+      '{"summary":"Assessment","intents":[]}',
+    );
+    expect(result.usage?.tokensIn).toBe(12);
+    expect(
+      adapter.parseResult(
+        JSON.stringify({
+          event: "result",
+          result: { status: "FAILED", response: "Incomplete" },
+        }),
+        "",
+        0,
+      ).exitCode,
+    ).toBe(1);
+  });
 });

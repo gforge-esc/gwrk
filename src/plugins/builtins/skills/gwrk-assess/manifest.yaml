@@ -1,0 +1,6 @@
+type: skill
+name: gwrk-assess
+version: 1.0.0
+description: Assess declared architecture and propose dependency-ordered feature specs
+tier: domain
+category: architecture

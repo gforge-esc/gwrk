@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Module does not exist yet (RED)
- */
 import { type Mocked, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchQueue } from "./dispatch.js";
 import type { GitManager } from "./git-manager.js";

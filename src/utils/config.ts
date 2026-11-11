@@ -7,6 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { z } from "zod";
 import { AgentBackendConfigSchema } from "../domain/agent-config.js";
+import { DesignSchema } from "../domain/architecture-context.js";
 import { DEFAULT_LOC_RATES, resolveRoleMultipliers } from "../domain/effort.js";
 
 const AgentBackendSchema = z.string();
@@ -86,6 +87,7 @@ export const GwrkConfigSchema = z.object({
         }),
       ])
       .optional(),
+    design: DesignSchema.optional(),
     architecture: z
       .union([
         z.string(),
