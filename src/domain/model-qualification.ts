@@ -440,7 +440,10 @@ const headersKeyPattern =
   /^(?:(?:raw|request|response)?headers|headersDistinct)$/i;
 
 function isCredentialHeaderName(value: unknown): boolean {
-  return typeof value === "string" && credentialHeaderNamePattern.test(value);
+  return (
+    typeof value === "string" &&
+    credentialHeaderNamePattern.test(stripTerminalControls(value))
+  );
 }
 
 function isCredentialHeaderRecord(
@@ -615,12 +618,16 @@ const terminalControlPattern =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: Terminal escape bytes are intentional.
   /(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|(?:\x1b\]|\x9d)[^\x07\x1b\x9c]*(?:\x07|\x1b\\|\x9c)/g;
 
+function stripTerminalControls(text: string): string {
+  return text.replace(terminalControlPattern, "");
+}
+
 function scanEmbeddedJson(
   raw: string,
   knownSecrets: readonly string[],
   isHeaderCollection = false,
 ): void {
-  const text = raw.replace(terminalControlPattern, "");
+  const text = stripTerminalControls(raw);
   if (
     text !== raw &&
     (headerPattern.test(text) ||
@@ -734,6 +741,7 @@ function scanEvidence(
         }
       }
       if (
+        isCredentialHeaderName(key) ||
         headerPattern.test(key) ||
         containsSensitiveText(key) ||
         isCredentialHeaderRecord(entry, "name") ||

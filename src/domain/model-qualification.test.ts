@@ -645,6 +645,41 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  describe.each([
+    { form: "structured evidence", wrap: (payload: unknown) => payload },
+    {
+      form: "JSON fixture output",
+      wrap: (payload: unknown) => ({
+        sanitizedOutput: JSON.stringify(payload),
+      }),
+    },
+  ])("colored header names in $form", ({ wrap }) => {
+    const authorization = "\u001b[33mAuthorization\u001b[39m";
+    const setCookie = "\u001b[33mSet-Cookie\u001b[39m";
+    const contentType = "\u001b[33mContent-Type\u001b[39m";
+
+    it.each([
+      { shape: "map", headers: { [authorization]: "Basic Zml4dHVyZQ==" } },
+      {
+        shape: "record",
+        headers: [{ name: authorization, value: "Basic Zml4dHVyZQ==" }],
+      },
+      { shape: "tuple", headers: [[setCookie, "session=fixture-session"]] },
+    ])("rejects a credential header in a $shape", ({ headers }) => {
+      expect(() => assertNoSecretMaterial(wrap({ headers }))).toThrow(
+        /secret material/i,
+      );
+    });
+
+    it("allows a Content-Type header", () => {
+      expect(() =>
+        assertNoSecretMaterial(
+          wrap({ headers: [[contentType, "text/plain"]] }),
+        ),
+      ).not.toThrow();
+    });
+  });
+
   it("rejects a colored inline credential header", () => {
     const sanitizedOutput = "\u001b[32mSet-Cookie\u001b[39m: session=fixture";
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
