@@ -1,0 +1,450 @@
+{
+  "featureId": "048-project-identity-slack",
+  "createdAt": "2026-11-11T18:19:09.390Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "8a6c9f1aad0e769bce543e8b18563701004b42e28c597b8ac01120156baaa8ed",
+      "modifiedAt": "2026-11-11T18:05:25.132Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Identity and routing policy",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Modify project-id.ts",
+          "description": "MODIFY src/domain/project-id.ts. Add `computeLegacyProjectIds` alongside canonical `computeProjectId`. Tests: src/domain/project-id.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T002",
+          "title": "Create project-registry.ts",
+          "description": "NEW src/domain/project-registry.ts. Define pure enrollment and role schemas plus thread and action receipt types",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T003",
+          "title": "Create slack-routing.ts",
+          "description": "NEW src/domain/slack-routing.ts. Implement pure Slack and HTTP routing policy with thread and replay checks. Tests: src/domain/slack-routing.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T004",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/domain/index.ts. Export project registry and Slack routing contracts from the domain barrel",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T005",
+          "title": "Modify store-port.ts",
+          "description": "MODIFY src/ports/store-port.ts. Add `ProjectRegistryPort` to the existing persistence port module",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T006",
+          "title": "Modify notification-port.ts",
+          "description": "MODIFY src/ports/notification-port.ts. Add project and recipient fields plus receipt, presence and status contracts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T007",
+          "title": "Modify vcs-port.ts",
+          "description": "MODIFY src/ports/vcs-port.ts. Add identity discovery, pull request lookup and pull request merge methods",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/domain/project-id.test.ts src/domain/slack-routing.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 9,
+      "testTargets": [
+        "src/domain/project-id.test.ts",
+        "src/domain/slack-routing.test.ts",
+        "src/domain/slack-routing.test.ts",
+        "src/architecture.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "SQLite registry and keys",
+      "tasks": [
+        {
+          "id": "T008",
+          "title": "Create 014-project-registry-and-composite-keys.sql",
+          "description": "NEW src/db/migrations/014-project-registry-and-composite-keys.sql. Add registry tables and rebuild six composite `project_id` tables",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T009",
+          "title": "Create project-registry.ts",
+          "description": "NEW src/db/project-registry.ts. Implement SQLite enrollment and alias lookup plus role bindings, threads and receipts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T010",
+          "title": "Modify runs.ts",
+          "description": "MODIFY src/db/runs.ts. Remove `#projectId` path hack and read canonical plus alias project IDs",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T011",
+          "title": "Modify plan.ts",
+          "description": "MODIFY src/db/plan.ts. Scope feature and phase writes plus edge, proposal and alias queries by `project_id`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T012",
+          "title": "Modify gates.ts",
+          "description": "MODIFY src/db/gates.ts. Scope gate upserts and alias reads by composite `project_id` key",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T013",
+          "title": "Modify issues.ts",
+          "description": "MODIFY src/db/issues.ts. Scope issue upserts and alias reads by `(project_id, issue_number)`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T014",
+          "title": "Modify compression.ts",
+          "description": "MODIFY src/db/compression.ts. Match canonical and alias project IDs when reading compression history",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T015",
+          "title": "Modify routing-decisions.ts",
+          "description": "MODIFY src/server/routing-decisions.ts. Record and query `project_id` on `routing_decisions` rows",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T016",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/adapters/sqlite/index.ts. Export `createSqliteProjectRegistryAdapter` over injected database handles",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/db/scoping.test.ts src/db/db.test.ts src/db/plan.test.ts src/db/runs.test.ts src/db/issues.test.ts src/db/compression.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 11,
+      "testTargets": [
+        "src/db/scoping.test.ts",
+        "src/db/scoping.test.ts",
+        "src/db/scoping.test.ts",
+        "src/db/db.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Slack commands and receipts",
+      "tasks": [
+        {
+          "id": "T017",
+          "title": "Create index.ts",
+          "description": "NEW src/application/project-routing/index.ts. Coordinate project resolution and role checks plus action receipts and thread delivery",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T018",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/adapters/git/index.ts. Implement identity discovery, pull request URL lookup and pull request merge on `VcsPort`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T019",
+          "title": "Modify slack-messages.ts",
+          "description": "MODIFY src/server/slack-messages.ts. Stamp `projectId`, project slug and `rootTs` into Slack blocks and action values",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T020",
+          "title": "Modify slack-commands.ts",
+          "description": "MODIFY src/server/slack-commands.ts. Parse `--project`, authorize via `ProjectRoutingService` and thread replies per project",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T021",
+          "title": "Modify slack-actions.ts",
+          "description": "MODIFY src/server/slack-actions.ts. Re-authorize clicks, enforce replay receipts and merge pull requests via `VcsPort`. Tests: src/server/slack-actions.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T022",
+          "title": "Modify slack-agent.ts",
+          "description": "MODIFY src/server/slack-agent.ts. Require authorized project resolution for mentions, direct messages and reactions",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T023",
+          "title": "Modify slack-home.ts",
+          "description": "MODIFY src/server/slack-home.ts. Render only enrolled projects where the Slack viewer holds a role",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T024",
+          "title": "Modify slack.ts",
+          "description": "MODIFY src/server/slack.ts. Remove single-project startup context and resolve workspace, channel and user per event. Tests: src/server/slack-actions.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T025",
+          "title": "Create synthetic-slack.ts",
+          "description": "NEW tests/helpers/synthetic-slack.ts. Provide deterministic synthetic Slack fixtures with zero network calls",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-actions.test.ts src/server/slack-messages.test.ts src/server/slack-agent.test.ts src/server/slack-home.test.ts src/server/slack.test.ts src/architecture.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 11,
+      "testTargets": [
+        "src/server/slack-actions.test.ts",
+        "src/server/slack-messages.test.ts",
+        "src/server/slack-agent.test.ts",
+        "src/server/slack-home.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Presence and pilot guards",
+      "tasks": [
+        {
+          "id": "T026",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/adapters/notifications/index.ts. Implement scoped `NotificationPort` receipts, presence lookup and delivery status",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T027",
+          "title": "Modify slack-notify.ts",
+          "description": "MODIFY src/server/slack-notify.ts. Route by enrolled project and stored feature thread without `process.cwd()` fallback. Tests: src/server/slack-notify.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T028",
+          "title": "Modify slack-presence.ts",
+          "description": "MODIFY src/server/slack-presence.ts. Batch away notifications per `(projectId, recipientUserId)` instead of global `users.list`. Tests: src/server/slack-presence.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T029",
+          "title": "Modify telegram.ts",
+          "description": "MODIFY src/server/telegram.ts. Disable Telegram transport in hosted pilot mode with zero outbound calls. Tests: src/server/telegram.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/slack-notify.test.ts src/server/slack-presence.test.ts src/server/telegram.test.ts src/server/slack-commands.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "src/server/slack-notify.test.ts",
+        "src/server/slack-presence.test.ts",
+        "src/server/telegram.test.ts",
+        "src/server/slack-commands.test.ts"
+      ]
+    },
+    {
+      "id": "phase-05",
+      "title": "Scoped dispatch and server routes",
+      "tasks": [
+        {
+          "id": "T030",
+          "title": "Modify types.ts",
+          "description": "MODIFY src/server/types.ts. Add `projectId` and `trunkBranch` plus `recipient` and structured readiness types",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T031",
+          "title": "Modify dispatch.ts",
+          "description": "MODIFY src/server/dispatch.ts. Key dispatches by `(projectId, featureId, phaseId)` and branch from enrolled `trunkBranch`. Tests: src/server/dispatch.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T032",
+          "title": "Modify persistence.ts",
+          "description": "MODIFY src/server/persistence.ts. Persist `projectId`, `trunkBranch` and `recipient` in dispatch snapshots",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T033",
+          "title": "Modify github.ts",
+          "description": "MODIFY src/server/github.ts. Resolve pull requests through `VcsPort` inside the enrolled project checkout",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T034",
+          "title": "Modify harvest-watcher.ts",
+          "description": "MODIFY src/server/harvest-watcher.ts. Watch enrolled project roots and attach project and thread recipients",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T035",
+          "title": "Modify heartbeat.ts",
+          "description": "MODIFY src/server/heartbeat.ts. Emit per-project ops health without global single-channel assumptions",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T036",
+          "title": "Modify notify.ts",
+          "description": "MODIFY src/server/routes/notify.ts. Require authorized project scope and keep `done_done` on feature threads",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T037",
+          "title": "Modify health.ts",
+          "description": "MODIFY src/server/routes/health.ts. Report separate `daemonLiveness` and `projectReadiness` plus `slackDelivery` and disabled Telegram",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T038",
+          "title": "Modify status.ts",
+          "description": "MODIFY src/server/routes/status.ts. Filter dispatch history and active work by authorized `projectId`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/server/dispatch.test.ts src/server/routes/notify.test.ts src/server/routes/health.test.ts src/server/routes/status.test.ts src/server/github.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 9,
+      "testTargets": [
+        "src/server/dispatch.test.ts",
+        "src/server/routes/notify.test.ts",
+        "src/server/routes/health.test.ts",
+        "src/server/routes/status.test.ts"
+      ]
+    },
+    {
+      "id": "phase-06",
+      "title": "Enrollment CLI and isolation proof",
+      "tasks": [
+        {
+          "id": "T039",
+          "title": "Modify dispatch.ts",
+          "description": "MODIFY src/server/routes/dispatch.ts. Enforce `evaluateHttpProjectAccess` and pass `projectId` and `recipient` to `DispatchQueue`",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T040",
+          "title": "Modify index.ts",
+          "description": "MODIFY src/server/index.ts. Wire `ProjectRegistryPort` and `ProjectRoutingService` plus `VcsPort` and multi-project watchers",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T041",
+          "title": "Create project-enroll.ts",
+          "description": "NEW src/commands/project-enroll.ts. Implement `gwrk project enroll`, `list` and `show` with ADR-004 output",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T042",
+          "title": "Modify project.ts",
+          "description": "MODIFY src/commands/project.ts. Register `enroll`, `list` and `show` subcommands on `gwrk project`. Tests: src/commands/project.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T043",
+          "title": "Modify init.ts",
+          "description": "MODIFY src/commands/init.ts. Enroll or update the local repository with legacy alias preservation",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T044",
+          "title": "Modify status.ts",
+          "description": "MODIFY src/commands/status.ts. Surface daemon liveness and server reachability plus project readiness and Slack delivery. Tests: src/commands/status.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts",
+          "sp": 1
+        },
+        {
+          "id": "T045",
+          "title": "Modify server.ts",
+          "description": "MODIFY src/commands/server.ts. Start the server against the project registry while keeping local single-repo defaults. Tests: src/server/two-repo-isolation.test.ts",
+          "status": "open",
+          "gateScript": "pnpm build\npnpm exec vitest run src/commands/project.test.ts src/commands/status.test.ts src/commands/init.test.ts src/commands/server.test.ts src/server/routes/dispatch.test.ts src/server/two-repo-isolation.test.ts src/architecture.test.ts",
+          "sp": 1
+        }
+      ],
+      "sp_estimate": 8,
+      "testTargets": [
+        "src/commands/project.test.ts",
+        "src/commands/status.test.ts",
+        "src/server/routes/dispatch.test.ts",
+        "src/server/two-repo-isolation.test.ts"
+      ]
+    }
+  ]
+}
