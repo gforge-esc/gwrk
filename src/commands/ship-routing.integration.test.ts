@@ -554,22 +554,30 @@ describe("ship with the real AgentPort router", () => {
     },
   );
 
-  it("previews the legacy model environment used by the script", async () => {
-    vi.stubEnv("GEMINI_MODEL", "configured-legacy-model");
-    await ship("--dry-run", "--legacy", "--agent", "agy");
+  it.each([
+    { backend: "agy", expectedModel: "configured-legacy-model" },
+    { backend: "codex", expectedModel: "codex-primary" },
+  ])(
+    "previews the legacy model passed to the script for $backend",
+    async ({ backend, expectedModel }) => {
+      vi.stubEnv("GEMINI_MODEL", "configured-legacy-model");
+      await ship("--dry-run", "--legacy", "--agent", backend);
 
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("backend: agy, model: configured-legacy-model"),
-    );
-    expect(run).not.toHaveBeenCalled();
+      const previewOutput = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(run).not.toHaveBeenCalled();
 
-    await ship("--legacy", "--agent", "agy");
-    const call = vi.mocked(run).mock.calls.find(([command]) =>
-      command.endsWith("/work-until-done.sh"),
-    );
-    expect(call?.[1]).toEqual([feature, "01"]);
-    expect(call?.[2]?.env?.GEMINI_MODEL).toBe("configured-legacy-model");
-  });
+      await ship("--legacy", "--agent", backend);
+      const call = vi.mocked(run).mock.calls.find(([command]) =>
+        command.endsWith("/work-until-done.sh"),
+      );
+      expect(call?.[1]).toEqual([feature, "01"]);
+      const scriptModel = call?.[2]?.env?.GEMINI_MODEL;
+      expect(scriptModel).toBe(expectedModel);
+      expect(previewOutput).toContain(
+        `backend: ${backend}, model: ${scriptModel}, effort:`,
+      );
+    },
+  );
 
   it("uses the alternate model during cooldown and records model failover", async () => {
     seedQuota(90);
