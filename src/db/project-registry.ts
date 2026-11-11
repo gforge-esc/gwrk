@@ -328,18 +328,26 @@ export function createProjectRegistry(
       SELECT path, local_root, mirror_path, github_repo, updated_at
       FROM projects WHERE id = ? AND repo_slug IS NULL
     `);
-    for (const root of [project.localRoot, project.mirrorPath]) {
+    for (const [root, discover] of [
+      [project.localRoot, discoverVerifiedCheckout],
+      [
+        project.mirrorPath,
+        (path: string) =>
+          discoverVerifiedCheckout(path) ?? discoverVerifiedMirror(path),
+      ],
+    ] as const) {
       if (!root) continue;
-      const facts =
-        discoverVerifiedCheckout(root) ??
-        (root === project.mirrorPath ? discoverVerifiedMirror(root) : null);
-      if (!facts) continue;
-      const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
-      if (computeProjectId(facts) !== projectId || origin !== projectRepo) {
+      const facts = discover(root);
+      if (
+        !facts ||
+        computeProjectId(facts) !== projectId ||
+        normalizeRegistryRepo(facts.remoteOriginUrl ?? null) !== projectRepo
+      ) {
         throw new Error(
           `Project ID belongs to a different repository or checkout: ${projectId}`,
         );
       }
+      const origin = projectRepo;
 
       const localId = computeProjectId({ ...facts, remoteOriginUrl: null });
       for (const id of computeLegacyProjectIds(facts)) {

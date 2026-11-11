@@ -71,36 +71,14 @@ CREATE TABLE slack_action_receipts (
 );
 CREATE INDEX idx_slack_action_receipts_project ON slack_action_receipts(project_id);
 
--- Use the original plan rows so synthesized parents cannot supply ownership evidence.
+-- Synthetic ship IDs never identified a specific run.
 ALTER TABLE routing_decisions ADD COLUMN project_id TEXT;
-WITH ship_ids AS (
-  SELECT id, substr(run_id, length('ship-' || feature || '-') + 1) AS epoch_ms
-  FROM routing_decisions
-  WHERE substr(run_id, 1, length('ship-' || feature || '-')) = 'ship-' || feature || '-'
-)
 UPDATE routing_decisions AS d SET project_id = COALESCE(
   (
     SELECT r.project_id FROM runs r
     WHERE r.id = CAST(d.run_id AS INTEGER) AND CAST(r.id AS TEXT) = d.run_id
       AND r.feature_id = d.feature AND r.phase_id = d.phase
   ),
-  CASE WHEN EXISTS (
-    SELECT 1 FROM ship_ids s
-    WHERE s.id = d.id AND s.epoch_ms <> '' AND s.epoch_ms NOT GLOB '*[^0-9]*'
-  ) THEN (
-    SELECT MIN(project_id)
-    FROM (
-      SELECT f.project_id FROM plan_features f WHERE f.id = d.feature
-      UNION ALL
-      SELECT ph.project_id FROM plan_phases ph
-      WHERE ph.feature_id = d.feature AND ph.id IN (d.phase, d.feature || '/' || d.phase)
-      UNION ALL
-      SELECT r.project_id FROM runs r
-      WHERE r.command = 'ship' AND r.feature_id = d.feature
-        AND r.phase_id IN (d.phase, d.feature || '/' || d.phase)
-    )
-    HAVING COUNT(DISTINCT project_id) = 1
-  ) END,
   'legacy-local'
 );
 CREATE INDEX idx_routing_decisions_project_run ON routing_decisions(project_id, run_id);

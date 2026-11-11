@@ -147,7 +147,7 @@ describe("Project registry upgrade", () => {
     }
   });
 
-  it("recovers legacy ship routing owners only when the evidence agrees", () => {
+  it("keeps legacy ship decisions without a linked run in legacy-local", () => {
     const upgraded = upgrade((legacy) => {
       legacy.exec(`
         INSERT INTO projects (id, name, path) VALUES
@@ -169,7 +169,7 @@ describe("Project registry upgrade", () => {
           (45, 'beta', 'feature-one', 'phase-02', 'ship'),
           (46, 'beta', 'runs-only', 'phase-01', 'ship');
         INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status) VALUES
-          ('ship-feature-one-1700000000000', 'feature-one', 'phase-01', 'fixture', 'agreement', 'fresh'),
+          ('ship-feature-one-1700000000000', 'feature-one', 'phase-01', 'fixture', 'unlinked decision after an older run', 'fresh'),
           ('ship-conflict-1700000000000', 'conflict', 'phase-01', 'fixture', 'phase conflict', 'fresh'),
           ('ship-run-conflict-1700000000000', 'run-conflict', 'phase-01', 'fixture', 'run conflict', 'fresh'),
           ('ship-missing-1700000000000', 'missing', 'phase-01', 'fixture', 'missing', 'fresh'),
@@ -182,12 +182,12 @@ describe("Project registry upgrade", () => {
     });
     try {
       const cases = [
-        ["ship-feature-one-1700000000000", "alpha", "agreement"],
+        ["ship-feature-one-1700000000000", "legacy-local", "unlinked decision after an older run"],
         ["ship-conflict-1700000000000", "legacy-local", "phase conflict"],
         ["ship-run-conflict-1700000000000", "legacy-local", "run conflict"],
         ["ship-missing-1700000000000", "legacy-local", "missing"],
-        ["ship-placeholder-1700000000000", "alpha", "explicit phase"],
-        ["ship-runs-only-1700000000000", "beta", "ship run only"],
+        ["ship-placeholder-1700000000000", "legacy-local", "explicit phase"],
+        ["ship-runs-only-1700000000000", "legacy-local", "ship run only"],
         ["ship-feature-one-1700000000000x", "legacy-local", "invalid suffix"],
         ["ship-other-1700000000000", "legacy-local", "invalid prefix"],
         ["42", "beta", "exact run"],

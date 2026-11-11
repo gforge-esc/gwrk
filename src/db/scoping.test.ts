@@ -374,6 +374,55 @@ describe("Project registry storage", () => {
     }
   });
 
+  it("rejects a foreign local path even with a verified mirror", () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-mixed-enrollment-"));
+    const db = getTestDb();
+    try {
+      const mirrorPath = join(root, "alpha.git");
+      const beta = join(root, "beta");
+      for (const [checkout, name, flags] of [
+        [mirrorPath, "alpha", ["--bare"]],
+        [beta, "beta", []],
+      ] as const) {
+        execFileSync("git", ["init", "--quiet", ...flags, checkout]);
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "add",
+          "origin",
+          `https://github.com/example/${name}.git`,
+        ]);
+      }
+      const localRoot = join(beta, "nested");
+      mkdirSync(localRoot);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const enrollment = {
+        ...project,
+        projectId: resolveProjectId(mirrorPath),
+        repoSlug: "example/alpha",
+        localRoot,
+        mirrorPath,
+        legacyProjectIds: [],
+      };
+
+      expect
+        .soft(() => registry.enrollProject(enrollment))
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.findByLocalRoot(localRoot)).toBeNull();
+      expect.soft(db.prepare("SELECT id FROM projects").all()).toEqual([]);
+      expect
+        .soft(db.prepare("SELECT alias_id FROM project_aliases").all())
+        .toEqual([]);
+      expect(
+        registry.enrollProject({ ...enrollment, localRoot: null }).projectId,
+      ).toBe(enrollment.projectId);
+    } finally {
+      db.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a foreign canonical ID claimed from a missing checkout", () => {
     const root = mkdtempSync(join(tmpdir(), "gwrk-unverified-canonical-"));
     const db = getTestDb();
@@ -887,12 +936,15 @@ describe("Project registry storage", () => {
       expect(listRuns("shared", projectId, db)).toMatchObject([
         { id: run, command: "alpha-history" },
       ]);
-      expect(
+      expect(() =>
         registry.enrollProject({
           ...project,
           localRoot: join(root, "unavailable"),
           legacyProjectIds: [],
-        }).repoSlug,
+        }),
+      ).toThrow(/different repository or checkout/);
+      expect(
+        registry.enrollProject({ ...project, legacyProjectIds: [] }).repoSlug,
       ).toBe(repoSlug);
     } finally {
       db.close();
