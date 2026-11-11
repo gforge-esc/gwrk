@@ -236,6 +236,119 @@ describe("durable operations migration", () => {
     }
   });
 
+  it("reopens accepted dispatches in order and fences a superseded worker", async () => {
+    const { createSqliteOperationsStoreAdapter } = await import(
+      "../adapters/sqlite/operations.js"
+    );
+    const firstExpiry = "2026-11-11T12:00:10.000Z";
+    const secondExpiry = "2026-11-11T12:01:10.000Z";
+    const request = {
+      projectId: "alpha",
+      featureId: "001-fixture",
+      phaseId: "phase-01",
+      trunkBranch: "develop",
+      backend: "codex",
+      newOperationId: "first",
+      nowIso: now,
+    };
+    const initial = openDatabase({ dbPath });
+    let staleFence: {
+      operationId: string;
+      leaseOwner: string;
+      leaseEpoch: number;
+    };
+    try {
+      registerProject(
+        { id: "alpha", name: "Alpha", path: "/fixture/alpha" },
+        initial,
+      );
+      const store = createSqliteOperationsStoreAdapter({ db: initial });
+      expect(store.acceptDispatch(request)).toMatchObject({
+        operationId: "first",
+        status: "accepted",
+        deduplicated: false,
+      });
+      expect(
+        store.acceptDispatch({ ...request, newOperationId: "duplicate" }),
+      ).toMatchObject({
+        operationId: "first",
+        deduplicated: true,
+      });
+      store.acceptDispatch({
+        ...request,
+        phaseId: "phase-02",
+        newOperationId: "second",
+        nowIso: "2026-11-11T12:00:01.000Z",
+      });
+      const claim = store.claimDispatchLease({
+        operationId: "first",
+        leaseOwner: "old-worker",
+        nowIso: now,
+        leaseExpiresAt: firstExpiry,
+      });
+      if (!claim) throw new Error("Expected first dispatch lease");
+      staleFence = claim.fence;
+      expect(
+        store
+          .listRecoverableDispatches({ nowIso: now })
+          .map(({ operationId }) => operationId),
+      ).toEqual(["second"]);
+    } finally {
+      initial.close();
+    }
+
+    const reopened = openDatabase({ dbPath });
+    try {
+      const store = createSqliteOperationsStoreAdapter({ db: reopened });
+      const recovered = store.listRecoverableDispatches({
+        nowIso: firstExpiry,
+        projectId: "alpha",
+      });
+      expect(recovered.map(({ operationId }) => operationId)).toEqual([
+        "first",
+        "second",
+      ]);
+      const claim = store.claimDispatchLease({
+        operationId: "first",
+        leaseOwner: "new-worker",
+        nowIso: firstExpiry,
+        leaseExpiresAt: secondExpiry,
+      });
+      if (!claim) throw new Error("Expected successor dispatch lease");
+      expect(claim.fence.leaseEpoch).toBe(staleFence.leaseEpoch + 1);
+      expect(
+        store.completeDispatchAttempt({
+          fence: staleFence,
+          nowIso: firstExpiry,
+          operationStatus: "failed",
+          attemptStatus: "failed",
+          exitCode: 1,
+        }),
+      ).toEqual({ ok: false, code: "LEASE_FENCED" });
+      expect(store.getDispatchOperation(request)).toMatchObject({
+        operationId: "first",
+        leaseOwner: "new-worker",
+        leaseEpoch: claim.fence.leaseEpoch,
+      });
+      expect(
+        store.completeDispatchAttempt({
+          fence: claim.fence,
+          nowIso: firstExpiry,
+          operationStatus: "completed",
+          attemptStatus: "completed",
+          exitCode: 0,
+        }),
+      ).toEqual({ ok: true });
+      expect(store.getDispatchOperation(request)).toMatchObject({
+        operationId: "first",
+        status: "completed",
+      });
+      expect(reopened.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      reopened.close();
+    }
+  });
+
   it("enforces active dispatch uniqueness per project across connections", () => {
     const first = openDatabase({ dbPath });
     const second = openDatabase({ dbPath });
