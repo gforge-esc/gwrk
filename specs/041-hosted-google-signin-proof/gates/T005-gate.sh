@@ -1,9 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
 # AUTHORED
-# Gate: T005 — Create compose.test.yaml
-# Generated from filesystem convention (no test file found)
-
-test -f tests/hosted-auth-proof/compose.test.yaml || { echo "FAIL: T005 — file not found: tests/hosted-auth-proof/compose.test.yaml" >&2; exit 1; }
-
-echo "PASS: T005 — Create compose.test.yaml"
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+node tests/hosted-auth-proof/gateway-proof.mjs
