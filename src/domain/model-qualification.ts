@@ -420,7 +420,7 @@ const secretPattern = new RegExp(
   "i",
 );
 const mailboxPattern =
-  /(?:[\p{L}\p{M}\p{N}!#$%&'*+/=?^_\x60{|}~.-]{1,64}|"(?:[^"\\\r\n]|\\.){1,64}")@(?:\[[^\]\r\n]{1,255}\]|(?:[\p{L}\p{M}\p{N}-]+\.)+[\p{L}][\p{L}\p{M}\p{N}-]*)/u;
+  /(?:[\p{L}\p{M}\p{N}!#$%&'*+/=?^_\x60{|}~.-]{1,64}|"(?:[^"\\\r\n]|\\.){0,64}")@(?:\[[^\]\r\n]{1,255}\]|(?:[\p{L}\p{M}\p{N}-]+\.)+[\p{L}][\p{L}\p{M}\p{N}-]*)/u;
 
 function containsSensitiveText(text: string): boolean {
   return (
@@ -430,7 +430,7 @@ function containsSensitiveText(text: string): boolean {
 }
 
 const headerPattern = new RegExp(
-  String.raw`\b${credentialHeaders}[ \t]*:`,
+  String.raw`(?:\b${credentialHeaders}|(["'])${credentialHeaders}\1)[ \t]*:`,
   "i",
 );
 const credentialHeaderNamePattern = new RegExp(`^${credentialHeaders}$`, "i");

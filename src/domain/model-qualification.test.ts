@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { inspect } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   type AdapterDiscoveryReport,
@@ -584,6 +585,23 @@ describe("credential guard", () => {
     expect(() =>
       assertNoSecretMaterial({ rawHeaders: ["Proxy-Status", "fixture-proxy"] }),
     ).not.toThrow();
+  });
+
+  it.each([
+    ["Set-Cookie", ["session=fixture"]],
+    ["Proxy-Authorization", "Basic Zml4dHVyZQ=="],
+  ])("rejects quoted %s headers in inspected fixture output", (name, value) => {
+    const sanitizedOutput = inspect({ headers: { [name]: value } });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+      /secret material/i,
+    );
+  });
+
+  it("allows quoted Content-Type headers in inspected fixture output", () => {
+    const sanitizedOutput = inspect({
+      headers: { "Content-Type": "text/plain" },
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
   it("rejects Set-Cookie headers in doubly encoded JSON fixture output", () => {
@@ -1524,6 +1542,7 @@ describe("model qualification policy", () => {
     "operator@[192.0.2.1]",
     "operator@[IPv6:2001:db8::1]",
     '"Fixture Operator"@[192.0.2.1]',
+    '""@[192.0.2.1]',
     "operatör@example.invalid",
   ])("mailbox %s", (mailbox) => {
     it("rejects the mailbox in a property value", () => {
