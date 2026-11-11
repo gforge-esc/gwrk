@@ -1,0 +1,19 @@
+{
+  "runId": "2026-11-11T19:56:27.738Z_define_p00",
+  "feature": "046-hermetic-ci",
+  "phase": "p00",
+  "command": "define plan",
+  "agent": "codex",
+  "model": "gpt-6.1-sol",
+  "startedAt": "2026-11-11T19:56:27.738Z",
+  "finishedAt": "2026-11-11T20:01:35.414Z",
+  "durationS": 308,
+  "exitCode": 0,
+  "attempt": 1,
+  "filesChanged": 4,
+  "linesAdded": 618,
+  "linesDeleted": 0,
+  "gitCommit": "bdf222705c52208cd25b1b77dea3af93e066e265",
+  "gitBranch": "codex/hermetic-ci-plan",
+  "digest": []
+}
