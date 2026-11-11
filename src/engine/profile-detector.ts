@@ -496,9 +496,14 @@ function resolveDetectedProfile(
     workspaceRoot?.config === undefined
       ? undefined
       : { directory: workspaceRoot.directory, config: workspaceRoot.config };
-  const designSource = findNearestAncestorDesign(
-    suppliedRoot ? [...ancestors, suppliedRoot] : ancestors,
-    start,
+  const policyAncestors = suppliedRoot
+    ? [...ancestors, suppliedRoot]
+    : ancestors;
+  const designSource = findNearestAncestorDesign(policyAncestors, start);
+  const toolchainSource = policyAncestors.find(
+    ({ config }) =>
+      ToolchainConfigSchema.safeParse(config?.project?.toolchain).data !==
+      undefined,
   );
   const ancestorDesign = designSource?.design;
   for (const { directory, config } of ancestors) {
@@ -511,6 +516,7 @@ function resolveDetectedProfile(
       configuredLookup: workspaceRoot?.configuredLookup,
       localProject,
       ancestorDesign,
+      toolchainSource,
       workspaces,
     });
     if (scoped !== detected.profile) return scoped;
@@ -531,6 +537,7 @@ function resolveDetectedProfile(
         {
           localProject,
           ancestorDesign,
+          toolchainSource,
           requireDesign: workspaceRoot?.configuredLookup,
           configuredLookup: workspaceRoot?.configuredLookup,
           workspaces,
@@ -556,7 +563,7 @@ function resolveDetectedProfile(
     start,
     detected,
     policySource.config,
-    { requireDesign: true, localProject, ancestorDesign },
+    { requireDesign: true, localProject, ancestorDesign, toolchainSource },
   );
   return scoped === detected.profile ? undefined : scoped;
 }
@@ -668,6 +675,7 @@ function applyWorkspaceConfig(
     configuredLookup?: boolean;
     localProject?: WorkspaceProfileConfig;
     ancestorDesign?: WorkspaceProfileConfig["design"];
+    toolchainSource?: WorkspaceConfigSource;
     workspaces?: Record<string, WorkspaceProfileConfig>;
   },
 ): ProjectProfile | undefined {
@@ -723,20 +731,22 @@ function applyWorkspaceConfig(
     }
   }
 
+  const toolchainSource = options?.toolchainSource;
+  const toolchainProject = toolchainSource?.config?.project;
   const toolchain = ToolchainConfigSchema.safeParse(
-    config?.project?.toolchain,
+    toolchainProject?.toolchain,
   ).data;
   let stack = GwrkConfigSchema.shape.project.shape.stack.safeParse(
-    config?.project?.stack,
+    toolchainProject?.stack,
   ).data;
   if (
-    toolchain &&
+    toolchainSource &&
     (!stack?.buildSystem ||
       !stack.framework ||
       (!stack.language && !stack.languages?.[0]))
   ) {
     try {
-      const rootDetection = detectFilesystemProfile(root);
+      const rootDetection = detectFilesystemProfile(toolchainSource.directory);
       stack = resolveProfileStack(
         rootDetection.profile.stack,
         [stack],

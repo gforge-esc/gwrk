@@ -1053,6 +1053,55 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("inherits compatible root tools through a nearer registration", async () => {
+    const layered = {
+      ...design,
+      architecture: "layered",
+      principles: ["clean-code"],
+    };
+    const toolchain = {
+      test: "pytest",
+      testCommand: "uv run pytest {files}",
+      build: null,
+    };
+    const config = {
+      project: { name: "fixture", design: layered, toolchain },
+    };
+    write(".git", "gitdir: /unused/worktree\n");
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("pyproject.toml", "[project]\n");
+    write("uv.lock", "");
+    write(
+      "services/.gwrkrc.json",
+      JSON.stringify({
+        project: { name: "services", stack: { language: "TypeScript" } },
+        workspaces: { api: { stack: { framework: "Django" } } },
+      }),
+    );
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write("services/api/uv.lock", "");
+
+    const cwd = path.join(root, "services/api");
+    const profiles = {
+      direct: await detectProfile(cwd),
+      explicit: await resolveWorkspaceProfile(root, "services/api"),
+      configured: resolveWorkspaceProfile(cwd, root, config),
+    };
+    for (const [entryPoint, profile] of Object.entries(profiles)) {
+      expect.soft(profile, entryPoint).toMatchObject({
+        design: layered,
+        stack: { language: "Python", framework: "Django", buildSystem: "uv" },
+      });
+      expect.soft(profile?.toolchain, entryPoint).toStrictEqual(toolchain);
+      expect.soft(getTestCommand(profile, ["test_api.py"]), entryPoint).toBe(
+        "uv run pytest test_api.py",
+      );
+      if (profile) {
+        expect.soft(resolveBuildCommand(profile, { hasCargoToml: true }), entryPoint).toBeNull();
+      }
+    }
+  });
+
   it("inherits outer workspace design while retaining the nearest registered stack", async () => {
     const layered = { ...design, architecture: "layered", principles: ["clean-code"] };
     const outer = {
