@@ -19,7 +19,7 @@ import { classifyTask } from "../domain/types.js";
  * @param taskType - The task type string (e.g. "define", "implement", "review")
  * @param backendName - The backend name from config (e.g. "agy")
  * @param projectRoot - The project root directory
- * @returns The resolved model name, or undefined if no model matched
+ * @returns The provider model ID, or undefined if no model matched
  */
 export function resolveModelForTask(
   taskType: string,
@@ -41,19 +41,16 @@ export function resolveModelForTask(
     // Use a no-cooldown prober for define commands (no state to track)
     const noCooldownProber = {
       isModelInCooldown: () => false,
-      probeQuota: async () => ({ percent: 100, status: "available" as const }),
     };
 
     const { model } = selector.selectModel(
       backendConfig,
       classification,
       taskType,
-      noCooldownProber as unknown as Parameters<
-        ModelSelector["selectModel"]
-      >[3],
+      noCooldownProber,
     );
 
-    return model?.name ?? undefined;
+    return model?.modelFlag || model?.name;
   } catch {
     // Registry not configured or backend not found — fall back to default
     return undefined;
