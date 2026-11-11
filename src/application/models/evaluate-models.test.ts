@@ -3,13 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, vi } from "vitest";
-import type {
-  JudgeVerdict,
-  ModelCandidate,
-} from "../../domain/model-qualification.js";
+import type { ModelCandidate } from "../../domain/model-qualification.js";
 import type {
   FixtureRepeatRequest,
   JudgeVerdictPacket,
+  StructuredJudgeVerdict,
 } from "../../ports/model-qualification-port.js";
 import { evaluateModels } from "./evaluate-models.js";
 
@@ -30,7 +28,7 @@ function setup({ gatePasses = true } = {}) {
   const runFixtureRepeat = vi.fn(async (request: FixtureRepeatRequest) => ({
     fixtureId: request.fixtureId,
     repeatIndex: request.repeatIndex,
-    requested: request.route,
+    requestedModel: request.route.modelId,
     observedModel: "unknown",
     deterministicGatesPassed: gatePasses,
     gateChecks: [
@@ -44,8 +42,11 @@ function setup({ gatePasses = true } = {}) {
     async (
       judge: ModelCandidate,
       _packet: JudgeVerdictPacket,
-    ): Promise<JudgeVerdict> => ({
-      judge,
+    ): Promise<StructuredJudgeVerdict> => ({
+      judgeBackend: judge.backend,
+      judgeProvider: judge.provider,
+      judgeFamily: judge.family,
+      judgeModelId: judge.modelId,
       observedJudgeModel: "unknown",
       winner: "tie",
       optionARegression: false,
