@@ -61,6 +61,7 @@ export interface AgentTaskResult {
 
 export interface RoutingContext {
   type: string;
+  preview?: boolean;
   runId?: string;
   skillName?: string;
   feature?: string;

@@ -5,4 +5,14 @@
 
 set -euo pipefail
 pnpm build
-pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/ship-orchestrator.review-gate-divergence.test.ts src/architecture.test.ts
+pnpm exec vitest run \
+  src/commands/ship.test.ts \
+  src/commands/ship-routing.integration.test.ts \
+  src/commands/ship-preflight.test.ts \
+  src/engine/model-routing.test.ts \
+  src/server/agent-registry.test.ts \
+  src/server/agent-registry.integration.test.ts \
+  src/server/backend-selector.test.ts \
+  src/server/backend-selector.integration.test.ts \
+  src/engine/ship-orchestrator.review-gate-divergence.test.ts \
+  src/architecture.test.ts

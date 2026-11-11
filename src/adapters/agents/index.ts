@@ -4,14 +4,18 @@
 
 import { getRoutingHistory } from "../../db/plugins.js";
 import {
+  type BackendQuotaSnapshot,
   type HistoricalBackendStat,
   type RoutingFacts,
   selectAgentRoute,
 } from "../../domain/agent-routing.js";
+import { classifyTask } from "../../domain/types.js";
 import { quotaProbe } from "../../engine/quota.js";
 import { AgentBackendRegistry } from "../../plugins/agent-registry.js";
 import { PluginLoader } from "../../plugins/loader.js";
 import type { AgentPort, RoutingContext } from "../../ports/agent-port.js";
+import { QuotaProber, type QuotaReading } from "../../server/quota-prober.js";
+import { recordDecision } from "../../server/routing-decisions.js";
 import { loadConfig } from "../../utils/config.js";
 import { resolveProjectId } from "../../utils/project-id.js";
 import { tryLoadRegistry } from "./registry-loader.js";
@@ -51,10 +55,26 @@ async function selectAvailableRoute(
   context: RoutingContext,
   projectRoot: string,
   registry: AgentBackendRegistry,
+  getQuotaProber: () => QuotaProber,
 ) {
-  const config = loadConfig(projectRoot);
   const registered = tryLoadRegistry(projectRoot);
-  const history = routingHistory(context.type, projectRoot);
+  const agentRegistry = registered.ok ? registered.value : undefined;
+  const requestedRoute = {
+    explicitBackend: context.explicitBackend,
+    explicitModel: context.explicitModel,
+    registry: agentRegistry,
+  };
+  if (context.preview && context.explicitBackend) {
+    return selectAgentRoute(context, {
+      ...requestedRoute,
+      availableBackends: [context.explicitBackend],
+    });
+  }
+
+  const config = loadConfig(projectRoot);
+  const history = context.explicitBackend
+    ? []
+    : routingHistory(context.type, projectRoot);
   const configured = (config.agents as Record<string, unknown>)?.[context.type];
   const preferredAgent =
     context.preferredAgent ??
@@ -68,16 +88,15 @@ async function selectAvailableRoute(
     "codex",
   ];
   const facts: RoutingFacts = {
-    explicitBackend: context.explicitBackend,
-    explicitModel: context.explicitModel,
-    registry: registered.ok ? registered.value : undefined,
+    ...requestedRoute,
     history,
     fallbackOrder,
     pillarConfig:
       typeof configured === "string"
         ? { [context.type]: configured }
         : undefined,
-    defaultBackend: context.type === "implement" ? "agy" : undefined,
+    defaultBackend:
+      context.type === "implement" && !agentRegistry ? "agy" : undefined,
   };
   const candidates = new Set(
     [
@@ -90,6 +109,40 @@ async function selectAvailableRoute(
       ...Object.keys(facts.registry?.backends ?? {}),
     ].filter((backend): backend is string => Boolean(backend)),
   );
+  const readings: Record<string, QuotaReading> = {};
+  const quotas: Record<string, BackendQuotaSnapshot> = {};
+  const cooledDownModels: Record<string, string[]> = {};
+  if (agentRegistry) {
+    const prober = getQuotaProber();
+    for (const backend of Object.values(agentRegistry.backends)) {
+      const { name } = backend;
+      if (context.explicitBackend && name !== context.explicitBackend) continue;
+      const reading = await prober.probeQuota(backend, agentRegistry.backends);
+      readings[name] = reading;
+      quotas[name] = {
+        percent: reading.percent,
+        probeStatus:
+          reading.status === "timeout-assumed-available"
+            ? "optimistic"
+            : reading.status === "cached"
+              ? "cached"
+              : "fresh",
+      };
+      const models = [
+        "default",
+        ...backend.models.flatMap((entry) =>
+          entry.modelFlag ? [entry.name, entry.modelFlag] : [entry.name],
+        ),
+        ...(backend.reviewModel
+          ? [backend.reviewModel, "review-model-override"]
+          : []),
+        ...(context.explicitModel ? [context.explicitModel] : []),
+      ];
+      cooledDownModels[name] = [...new Set(models)].filter((model) =>
+        prober.isModelInCooldown(name, model),
+      );
+    }
+  }
   const probed = new Set<string>();
   let loadedAll = false;
   while (candidates.size > 0 || !loadedAll) {
@@ -104,7 +157,12 @@ async function selectAvailableRoute(
     try {
       route = selectAgentRoute(
         { ...context, preferredAgent },
-        { ...facts, availableBackends: [...candidates] },
+        {
+          ...facts,
+          availableBackends: [...candidates],
+          quotas: agentRegistry ? quotas : undefined,
+          cooledDownModels,
+        },
       );
     } catch (error) {
       if (!loadedAll && !context.explicitBackend) {
@@ -115,16 +173,36 @@ async function selectAvailableRoute(
     }
     probed.add(route.backend);
     candidates.delete(route.backend);
+    let available = false;
     try {
       const backend = await registry.getAgentBackend(route.backend);
-      if ((await quotaProbe(backend)).status === "available") {
-        return {
-          ...route,
-          fallbackUsed: route.fallbackUsed || probed.size > 1,
-        };
-      }
+      available = (await quotaProbe(backend)).status === "available";
     } catch {
       // The next candidate can still satisfy the requested role.
+    }
+    if (available) {
+      const selected = {
+        ...route,
+        fallbackUsed: route.fallbackUsed || probed.size > 1,
+      };
+      const { type, preview, runId, feature, phase, taskSP } = context;
+      if (type === "implement" && !preview && runId && feature && phase) {
+        recordDecision({
+          runId,
+          feature,
+          phase,
+          selectedBackend: selected.backend,
+          selectedModel: selected.model,
+          taskClassification: classifyTask(type),
+          reason: selected.reason,
+          quotaPercent: selected.quotaPercent,
+          probeStatus: readings[selected.backend]?.status ?? "available",
+          taskSp: taskSP,
+          fallbackUsed: selected.fallbackUsed,
+          modelFailoverUsed: selected.modelFailoverUsed,
+        });
+      }
+      return selected;
     }
     if (context.explicitBackend) break;
   }
@@ -136,6 +214,7 @@ async function selectAvailableRoute(
 export function createAgentPortAdapter(
   options: AgentPortAdapterOptions = {},
 ): AgentPort {
+  const quotaProbers = new Map<string, QuotaProber>();
   return {
     async execute(task) {
       const { dispatchToAgent } = await import("../../utils/agent.js");
@@ -145,7 +224,14 @@ export function createAgentPortAdapter(
       const registry =
         options.registry ??
         new AgentBackendRegistry(new PluginLoader({ projectDir: projectRoot }));
-      return selectAvailableRoute(context, projectRoot, registry);
+      return selectAvailableRoute(context, projectRoot, registry, () => {
+        let prober = quotaProbers.get(projectRoot);
+        if (!prober) {
+          prober = new QuotaProber(projectRoot);
+          quotaProbers.set(projectRoot, prober);
+        }
+        return prober;
+      });
     },
   };
 }

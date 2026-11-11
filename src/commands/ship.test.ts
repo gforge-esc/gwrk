@@ -558,7 +558,7 @@ describe("AgentPort routing", () => {
           projectRoot: process.cwd(),
         });
         expect(selectRoute).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({ type: "implement", explicitBackend }),
+          expect.objectContaining({ type: "implement", explicitBackend, preview: true }),
         );
         expect(consoleSpy).toHaveBeenCalledWith(
           expect.stringContaining(
@@ -592,11 +592,19 @@ describe("AgentPort routing", () => {
       expect(selectRoute).toHaveBeenCalledTimes(2);
       expect(selectRoute).toHaveBeenNthCalledWith(
         1,
-        expect.objectContaining({ type: "implement", explicitBackend }),
+        {
+          type: "implement",
+          explicitBackend,
+          feature: "001-cli-core",
+          phase: "phase-01",
+          runId: expect.stringMatching(/^ship-001-cli-core-/),
+          taskSP: 1,
+          language: "typescript",
+        },
       );
       expect(selectRoute).toHaveBeenNthCalledWith(
         2,
-        expect.objectContaining({ type: "review", explicitBackend: backend }),
+        { type: "review", explicitBackend: backend },
       );
       expect(ShipOrchestrator).toHaveBeenCalledTimes(1);
       expect(vi.mocked(ShipOrchestrator).mock.calls[0]?.[0]).toMatchObject({

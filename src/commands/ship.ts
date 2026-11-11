@@ -629,7 +629,8 @@ Examples:
           const taskState = loadTaskState(specDir);
 
           if (phase) {
-            const phaseId = `phase-${phase.padStart(2, "0")}`;
+            const phaseNumber = phase.replace(/^phase-/, "");
+            const phaseId = `phase-${phaseNumber.padStart(2, "0")}`;
             const phaseData = taskState.phases.find((p) => p.id === phaseId);
 
             // --force: always clear stale orchestrator state, regardless of task status
@@ -670,7 +671,7 @@ Examples:
                 `${YELLOW}⚠${RESET} Force mode: resetting Phase ${phase} tasks to open`,
               );
             }
-            phases = [phase];
+            phases = [phaseNumber];
           } else {
             const allPhases = taskState.phases.map((p) =>
               p.id.replace("phase-", ""),
@@ -786,11 +787,9 @@ Examples:
           if (opts.dryRun) {
             try {
               const implementation = await agentPort.selectRoute({
-                ...routeContext,
                 type: "implement",
                 explicitBackend,
-                runId: `ship-dryrun-${feature}`,
-                phase: `phase-${phases[0].padStart(2, "0")}`,
+                preview: true,
               });
               logCliOutput(
                 `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
@@ -869,7 +868,6 @@ Examples:
                 `  🤖 Router selected backend: ${implementation.backend} (${implementation.reason})`,
               );
               const review = await agentPort.selectRoute({
-                ...phaseContext,
                 type: "review",
                 explicitBackend: implementation.backend,
               });
