@@ -23,7 +23,7 @@ Feature `041-hosted-google-signin-proof` owns the browser edge at `https://gwrk.
 
 | Area | Current file | Observed state | Planned change |
 |---|---|---|---|
-| Release tarball | `package.json` | Excludes `pnpm-lock.yaml` and runner bundle | Pack lockfile and Linux deployment scripts |
+| Release tarball | `package.json` | Excludes `pnpm-lock.yaml` and runner bundle | Add the lockfile in the release builder and allowlist deployment scripts in the package |
 | Release workflow | `.github/workflows/release.yml` | Uploads tarball without digest or manifest | Emit `release-manifest.json` and SHA-256 file |
 | Installer | `scripts/install.sh` | Falls back to unpinned install in `$HOME/.gwrk` | Add digest-verified atomic Linux release installer |
 | SQLite path | `src/db/index.ts` | Reads `GWRK_DIR` and ignores `GWRK_HOME` | Honor `GWRK_DIR` and `GWRK_HOME` consistently |
@@ -62,8 +62,8 @@ Governance follows `ADR-005` and `.gwrk/rules/workspace.md` with pinned lockfile
 
 #### Files
 
-- `package.json` (MODIFY: Include `pnpm-lock.yaml` and `deploy/linux-runner` in packed release files)
-- `scripts/release/build-linux-release.mjs` (NEW: Build versioned tarball with `release-manifest.json` and Secure Hash Algorithm 256 digest)
+- `package.json` (MODIFY: Allowlist the Linux deployment bundle)
+- `scripts/release/build-linux-release.mjs` (NEW: Build from the pinned commit, add the lockfile to the npm archive and emit the manifest and digest)
 - `deploy/linux-runner/install-release.sh` (NEW: Verify digest and Node runtime plus native SQLite load before switching `current`)
 - `.github/workflows/release.yml` (MODIFY: Build and upload `release-manifest.json` and SHA-256 digest with each release)
 - `tests/linux-runner/release-packaging.test.ts` (NEW: Verify manifest provenance and lockfile inclusion plus tamper rejection)

@@ -4,7 +4,7 @@ Linux releases build from a pinned Git commit. Clean Linux hosts verify and inst
 
 ## Release artifact and manifest
 
-`scripts/release/build-linux-release.mjs` writes `gwrk-<version>.tgz`, `release-manifest.json` and `gwrk-<version>.tgz.sha256` from a clean build. `package.json` packs `dist/` and `pnpm-lock.yaml` with `deploy/linux-runner/`. It also includes `package.json`, `README.md` and `LICENSE`.
+`scripts/release/build-linux-release.mjs` writes `gwrk-<version>.tgz`, `release-manifest.json` and `gwrk-<version>.tgz.sha256` from a clean build. `npm pack` supplies the files listed in `package.json`. The builder adds `pnpm-lock.yaml` to the final archive because npm excludes it. GitHub assets keep the `gwrk-<release-tag>.tgz` name used by the existing installer.
 
 | Field | Type | Requirement | Phase |
 |---|---|---|---|
