@@ -854,6 +854,29 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each([
+    { name: "Cookie", value: "session=fixture-cookie", reject: true },
+    { name: "Content-Type", value: "text/plain", reject: false },
+  ])(
+    "scans inspected $name headers with grouped lengths",
+    ({ name, value, reject }) => {
+      const rawHeaders = [
+        name,
+        value,
+        ...Array.from({ length: 499 }, () => ["Vary", "Origin"]).flat(),
+      ];
+      const sanitizedOutput = inspect(
+        { rawHeaders },
+        { showHidden: true, numericSeparator: true, maxArrayLength: 2 },
+      );
+      expect(sanitizedOutput).toContain("[length]: 1_000");
+      expect(sanitizedOutput).toContain(value);
+      const scan = () => assertNoSecretMaterial({ sanitizedOutput });
+      if (reject) expect(scan).toThrow(/secret material/i);
+      else expect(scan).not.toThrow();
+    },
+  );
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [
