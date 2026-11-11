@@ -17,6 +17,46 @@ export interface ProfileOverrideInput {
   workspaceConfig?: WorkspaceProfileConfig;
 }
 
+const runnerLanguages = {
+  vitest: "javascript",
+  jest: "javascript",
+  "node-test": "javascript",
+  pytest: "python",
+  "cargo-test": "rust",
+  "go-test": "go",
+} satisfies Record<
+  NonNullable<NonNullable<ProjectProfile["toolchain"]>["test"]>,
+  string
+>;
+
+function languageFamily(stack: ProjectProfile["stack"]): string | undefined {
+  const language =
+    stack?.language?.toLowerCase() || stack?.languages?.[0]?.toLowerCase();
+  return language === "typescript" ? "javascript" : language;
+}
+
+function compatibleRootToolchain(
+  toolchain: ProjectProfile["toolchain"],
+  rootStack: ProjectProfile["stack"],
+  workspaceStack: ProjectProfile["stack"],
+): ProjectProfile["toolchain"] {
+  if (!toolchain) return undefined;
+
+  const rootLanguage = languageFamily(rootStack);
+  const workspaceLanguage = languageFamily(workspaceStack);
+  const { test, testCommand: _command, ...defaults } = toolchain;
+  const runnerLanguage = test ? runnerLanguages[test] : undefined;
+
+  if (
+    workspaceLanguage &&
+    ((rootLanguage && rootLanguage !== workspaceLanguage) ||
+      (runnerLanguage && runnerLanguage !== workspaceLanguage))
+  ) {
+    return Object.keys(defaults).length ? defaults : undefined;
+  }
+  return toolchain;
+}
+
 function mergeToolchain(
   base: ProjectProfile["toolchain"],
   override: ProjectProfile["toolchain"],
@@ -63,6 +103,7 @@ export function resolveWorkspacePolicyProfile(
   rootConfig?: {
     project?: {
       design?: ProjectDesign;
+      stack?: ProjectProfile["stack"];
       toolchain?: ProjectProfile["toolchain"];
     };
     workspaces?: Readonly<Record<string, WorkspaceProfileConfig>>;
@@ -93,7 +134,13 @@ export function resolveWorkspacePolicyProfile(
     return detectedWorkspace;
   }
 
-  const rootToolchain = hasDesign ? rootConfig?.project?.toolchain : undefined;
+  const rootToolchain = hasDesign
+    ? compatibleRootToolchain(
+        rootConfig?.project?.toolchain,
+        rootConfig?.project?.stack,
+        { ...detectedWorkspace.stack, ...workspaceConfig?.stack },
+      )
+    : undefined;
   const detected = rootToolchain
     ? {
         ...detectedWorkspace,

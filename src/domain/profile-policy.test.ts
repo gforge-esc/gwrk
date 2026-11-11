@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DesignSchema } from "./architecture-context.js";
 import { mergeProfileOverrides, resolveWorkspacePolicyProfile } from "./profile-policy.js";
+import { getTestCommand } from "./toolchain.js";
 import type { ProjectProfile } from "./types.js";
 
 const design = DesignSchema.parse({
@@ -69,13 +70,66 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
 
   it("TR-005: inherits root design and toolchain with workspace field overrides", () => {
     expect(resolveWorkspacePolicyProfile("services/api", detected, {
-      project: { design, toolchain: { test: "vitest", formatter: "black" } },
+      project: {
+        design,
+        stack: { language: "TypeScript" },
+        toolchain: { test: "vitest", formatter: "black" },
+      },
       workspaces: { "services/api": { toolchain: { build: null } } },
     })).toEqual({
       ...detected,
       design,
       toolchain: { primary: "ruff", test: "pytest", formatter: "black", build: null },
     });
+  });
+
+  it("uses the Python fallback when the root runner is incompatible", () => {
+    const result = resolveWorkspacePolicyProfile(
+      "services/api",
+      { type: "python", stack: { language: "Python" } },
+      {
+        project: { design, toolchain: { test: "vitest" } },
+        workspaces: { "services/api": { toolchain: { build: null } } },
+      },
+    );
+
+    expect(result).toMatchObject({ design, toolchain: { build: null } });
+    expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
+
+  it("checks root test defaults against the workspace language override", () => {
+    const result = resolveWorkspacePolicyProfile(
+      "services/api",
+      { type: "unknown", stack: { language: "TypeScript" } },
+      {
+        project: {
+          design,
+          stack: { language: "TypeScript" },
+          toolchain: { testCommand: "pnpm exec vitest run {files}" },
+        },
+        workspaces: { "services/api": { stack: { language: "Python" } } },
+      },
+    );
+
+    expect(getTestCommand(result, ["test_api.py"])).toBe("pytest test_api.py -v");
+  });
+
+  it("shares test defaults between JavaScript and TypeScript", () => {
+    const result = resolveWorkspacePolicyProfile(
+      "apps/web",
+      { type: "nodejs", stack: { language: "JavaScript" } },
+      {
+        project: {
+          design,
+          stack: { language: "TypeScript" },
+          toolchain: { test: "jest", testCommand: "pnpm exec jest {files}" },
+        },
+      },
+    );
+
+    expect(getTestCommand(result, ["app.test.js"])).toBe(
+      "pnpm exec jest app.test.js",
+    );
   });
 
   it("TR-005: selects the longest workspace ancestor for a nested path", () => {

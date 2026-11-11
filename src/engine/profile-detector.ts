@@ -464,7 +464,7 @@ function applyWorkspaceConfig(
   workspace: string,
   detected: ProjectProfile,
   config: {
-    project?: { design?: unknown; toolchain?: unknown };
+    project?: { design?: unknown; stack?: unknown; toolchain?: unknown };
     workspaces?: Record<string, unknown>;
   } | null,
   options?: { requireDesign: boolean },
@@ -480,14 +480,27 @@ function applyWorkspaceConfig(
     if (parsed.success) workspaces[workspacePath] = parsed.data;
   }
 
+  const toolchain = ToolchainConfigSchema.safeParse(config?.project?.toolchain)
+    .data;
+  let stack = GwrkConfigSchema.shape.project.shape.stack.safeParse(
+    config?.project?.stack,
+  ).data;
+  if (
+    (toolchain?.test !== undefined || toolchain?.testCommand !== undefined) &&
+    !stack?.language &&
+    !stack?.languages?.[0]
+  ) {
+    stack = detectProfileInDirectory(root, false).stack;
+  }
+
   return resolveWorkspacePolicyProfile(
     path.relative(root, workspace).split(path.sep).join("/"),
     detected,
     {
       project: {
         design: DesignSchema.safeParse(config?.project?.design).data,
-        toolchain: ToolchainConfigSchema.safeParse(config?.project?.toolchain)
-          .data,
+        stack,
+        toolchain,
       },
       workspaces,
     },

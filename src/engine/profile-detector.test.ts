@@ -463,6 +463,48 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     });
   });
 
+  it.each([
+    {
+      rootStack: undefined,
+      toolchain: { test: "vitest" },
+      setting: "Vitest runner",
+    },
+    {
+      rootStack: undefined,
+      toolchain: { testCommand: "pnpm exec vitest run {files}" },
+      setting: "custom command with detected root language",
+    },
+    {
+      rootStack: { language: "TypeScript" },
+      toolchain: { testCommand: "pnpm exec vitest run {files}" },
+      setting: "custom command with configured root language",
+    },
+  ])(
+    "uses the Python fallback through both workspace paths under a root $setting",
+    async ({ rootStack, toolchain }) => {
+      if (!rootStack) write("pnpm-workspace.yaml", "");
+      write("services/api/pyproject.toml", '[project]\ndependencies = ["django"]\n');
+      write(
+        ".gwrkrc.json",
+        JSON.stringify({
+          project: { name: "fixture", design, stack: rootStack, toolchain },
+          workspaces: { "services/api": { toolchain: { build: null } } },
+        }),
+      );
+
+      const profiles = await Promise.all([
+        detectProfile(path.join(root, "services/api")),
+        resolveWorkspaceProfile(root, "services/api"),
+      ]);
+      expect(profiles).toMatchObject([
+        { design, stack: { language: "Python", framework: "Django" }, toolchain: { build: null } },
+        { design, stack: { language: "Python", framework: "Django" }, toolchain: { build: null } },
+      ]);
+      expect(profiles.map((profile) => getTestCommand(profile, ["test_api.py"])))
+        .toEqual(["pytest test_api.py -v", "pytest test_api.py -v"]);
+    },
+  );
+
   it("keeps the detected workspace language when its framework is overridden", async () => {
     const { resolveWorkspaceProfile } = await import("./profile-detector.js");
     write(
