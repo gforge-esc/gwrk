@@ -10,6 +10,7 @@ import {
   mkdtemp,
   open,
   readFile,
+  realpath,
   rename,
   rm,
   writeFile,
@@ -27,7 +28,10 @@ import {
 import type { AppliedMigration } from "../../domain/release-packaging.js";
 import {
   type LedgerBackupPort,
+  type LedgerBackupRequest,
+  type LedgerRestoreRequest,
   PendingLedgerRestoreError,
+  type VerifiedLedgerBackup,
 } from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
 import { readRepositoryEvidence } from "../release/repository-evidence.js";
@@ -152,7 +156,38 @@ function summarizeLedger(
 export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
   input,
 ) => {
-  const pending = join(dirname(resolve(input.dbPath)), PENDING_LEDGER_RESTORE);
+  const dbPath = await realpath(input.dbPath);
+  const state = dirname(dbPath);
+  return withMaintenanceLock(state, () => captureLedgerBackup(input, dbPath));
+};
+
+async function withMaintenanceLock<T>(state: string, run: () => Promise<T>) {
+  // A separate database keeps the maintenance lock independent of server writes.
+  const lock = new Database(join(state, ".ledger-maintenance.db"), {
+    timeout: 0,
+  });
+  try {
+    try {
+      lock.exec("BEGIN IMMEDIATE");
+    } catch (error) {
+      if (
+        error instanceof Database.SqliteError &&
+        error.code === "SQLITE_BUSY"
+      ) {
+        throw new Error(
+          `A backup or restore is in progress at ${state}. Retry after it finishes.`,
+        );
+      }
+      throw error;
+    }
+    return await run();
+  } finally {
+    lock.close();
+  }
+}
+
+async function captureLedgerBackup(input: LedgerBackupRequest, dbPath: string) {
+  const pending = join(dirname(dbPath), PENDING_LEDGER_RESTORE);
   if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
 
   const destination = resolve(input.destination);
@@ -174,7 +209,7 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
     }
 
     const snapshot = join(staging, DB_FILE);
-    const source = new Database(input.dbPath, {
+    const source = new Database(dbPath, {
       readonly: true,
       fileMustExist: true,
     });
@@ -192,7 +227,7 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
       standalone.close();
     }
     const metadata = LedgerBackupMetadataSchema.parse({
-      device: input.metadata.device,
+      device: input.collectDevice(),
       projects,
       repositories: input.collectRepositories(projects),
     });
@@ -214,8 +249,6 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
       { mode: 0o600 },
     );
 
-    if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
-
     // The manifest commits the backup after both verified payload files exist.
     for (const filename of [DB_FILE, METADATA_FILE, MANIFEST_FILE]) {
       await syncPath(join(staging, filename));
@@ -230,7 +263,7 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
-};
+}
 
 export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   directory,
@@ -331,9 +364,20 @@ async function exists(path: string): Promise<boolean> {
 export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
   input,
 ) => {
-  const state = resolve(input.stateDirectory);
-  const pending = join(state, PENDING_LEDGER_RESTORE);
   const source = await verifyLedgerBackup(input.source);
+  await mkdir(resolve(input.stateDirectory), { recursive: true, mode: 0o700 });
+  const state = await realpath(input.stateDirectory);
+  return withMaintenanceLock(state, () =>
+    installLedgerBackup(input, state, source),
+  );
+};
+
+async function installLedgerBackup(
+  input: LedgerRestoreRequest,
+  state: string,
+  source: VerifiedLedgerBackup,
+) {
+  const pending = join(state, PENDING_LEDGER_RESTORE);
   const resuming = await exists(pending);
   const targets = [
     DB_FILE,
@@ -354,7 +398,6 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
     );
   }
 
-  // The hosted instance lock keeps writers out during validation and installation.
   for (const file of targets) {
     const target = join(state, file);
     const info = await statIfPresent(target);
@@ -364,7 +407,6 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
   }
 
   if (!resuming) {
-    await mkdir(state, { recursive: true, mode: 0o700 });
     const staging = await mkdtemp(join(state, ".restore-stage-"));
     try {
       for (const file of [DB_FILE, METADATA_FILE, MANIFEST_FILE]) {
@@ -430,4 +472,4 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
   await syncPath(state);
   await rm(retired, { recursive: true, force: true });
   return verified;
-};
+}

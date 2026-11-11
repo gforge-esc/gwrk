@@ -6,7 +6,10 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import fastify from "fastify";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
-import { acquireInstanceLock, acquireLedgerLock } from "../adapters/server/instance-lock.js";
+import {
+  acquireInstanceLock,
+  acquireLedgerLock,
+} from "../adapters/server/instance-lock.js";
 import { closeDb, getDbPath } from "../db/index.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";

@@ -10,6 +10,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -42,7 +43,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 let root: string;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "gwrk-ledger-proof-"));
+  root = await realpath(await mkdtemp(join(tmpdir(), "gwrk-ledger-proof-")));
 });
 
 afterEach(async () => {
@@ -126,6 +127,27 @@ function runLedgerCommand(...args: string[]) {
   return runCli("db", ...args);
 }
 
+function runInstalledBackup(ledger: string, destination: string) {
+  return spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("../../dist/cli.js", import.meta.url)),
+      "db",
+      "backup",
+      "--out",
+      destination,
+      "--format",
+      "json",
+    ],
+    {
+      cwd: root,
+      env: { ...process.env, GWRK_HOME: root, GWRK_DB_PATH: ledger },
+      encoding: "utf8",
+      timeout: 10_000,
+    },
+  );
+}
+
 function expectUsageFailure(result: ReturnType<typeof runCli>) {
   expect(result.status, result.stderr).toBe(2);
   const signals = result.stderr.match(/^\[exit:.*$/gm) ?? [];
@@ -144,31 +166,53 @@ describe("installed ledger commands outside a checkout", () => {
       destination: original,
       createdAt: "2026-11-11T12:00:00.000Z",
       gwrkVersion: "1.6.0-beta.1",
-      metadata: { device: null },
+      collectDevice: () => ({
+        id: "restored-device",
+        hostname: "fixture",
+        role: "server",
+        createdAt: "2026-11-11T12:00:00.000Z",
+      }),
       collectRepositories: () => [],
     });
 
-    await cp(original, join(root, ".restore-pending"), { recursive: true });
+    const live = new Database(ledger);
+    live.prepare("UPDATE projects SET path = ?").run(join(root, "old"));
+    live.close();
+    const devicePath = join(root, "device.json");
+    const oldDevice = {
+      id: "old-device",
+      hostname: "fixture",
+      role: "server",
+      createdAt: "2026-11-11T12:00:00.000Z",
+    };
+    await writeFile(devicePath, JSON.stringify(oldDevice));
+    const realFs =
+      await vi.importActual<typeof import("node:fs/promises")>(
+        "node:fs/promises",
+      );
+    vi.mocked(rename).mockImplementation(async (from, to) => {
+      if (to === devicePath)
+        throw new Error("Fixture interrupted device installation");
+      await realFs.rename(from, to);
+    });
+    try {
+      await expect(
+        restoreLedgerBackup({
+          source: original,
+          stateDirectory: root,
+          force: true,
+        }),
+      ).rejects.toThrow("Fixture interrupted device installation");
+    } finally {
+      vi.mocked(rename).mockReset();
+    }
+    expect(await readFile(ledger)).toEqual(
+      await readFile(join(original, "gwrk.db")),
+    );
+    expect(JSON.parse(await readFile(devicePath, "utf8"))).toEqual(oldDevice);
 
     const destination = join(root, "new-backup");
-    const result = spawnSync(
-      process.execPath,
-      [
-        fileURLToPath(new URL("../../dist/cli.js", import.meta.url)),
-        "db",
-        "backup",
-        "--out",
-        destination,
-        "--format",
-        "json",
-      ],
-      {
-        cwd: root,
-        env: { ...process.env, GWRK_HOME: root, GWRK_DB_PATH: ledger },
-        encoding: "utf8",
-        timeout: 10_000,
-      },
-    );
+    const result = runInstalledBackup(ledger, destination);
 
     expect.soft(result.status, result.stderr).toBe(1);
     expect.soft(result.stdout).toBe("");
@@ -178,7 +222,80 @@ describe("installed ledger commands outside a checkout", () => {
         expect.stringMatching(/^\[exit:1 .*gwrk db restore.*original backup/),
       ]);
     await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const restored = await restoreLedgerBackup({
+      source: original,
+      stateDirectory: root,
+      force: false,
+    });
+    const retried = runInstalledBackup(ledger, destination);
+    expect(retried.status, retried.stderr).toBe(0);
+    expect((await verifyLedgerBackup(destination)).metadata).toEqual({
+      ...restored.metadata,
+      repositories: [readRepositoryEvidence("pilot-repo", root)],
+    });
   });
+
+  it.each(["backup", "restore"] as const)(
+    "excludes the other maintenance operation while %s holds the state",
+    async (operation) => {
+      const ledger = join(root, "gwrk.db");
+      seedLedger(ledger).close();
+      const original = join(root, "original-backup");
+      const destination = join(root, "new-backup");
+      const request = {
+        dbPath: ledger,
+        destination: original,
+        createdAt: "2026-11-11T12:00:00.000Z",
+        gwrkVersion: "1.6.0-beta.1",
+        collectDevice: () => null,
+        collectRepositories: () => [],
+      };
+      await createLedgerBackup(request);
+
+      const backup = () => createLedgerBackup({ ...request, destination });
+      const restore = () =>
+        restoreLedgerBackup({
+          source: original,
+          stateDirectory: root,
+          force: true,
+        });
+      const [first, second, checkpoint] =
+        operation === "backup"
+          ? [backup, restore, join(destination, "gwrk.db")]
+          : [restore, backup, join(root, ".restore-pending")];
+      const realFs =
+        await vi.importActual<typeof import("node:fs/promises")>(
+          "node:fs/promises",
+        );
+      let overlapped = false;
+      vi.mocked(rename).mockImplementation(async (from, to) => {
+        if (to === checkpoint) {
+          overlapped = true;
+          if (operation === "restore") {
+            const result = runInstalledBackup(ledger, destination);
+            expect(result.status, result.stderr).toBe(1);
+            expect(result.stderr).toContain("backup or restore is in progress");
+            await expect(stat(destination)).rejects.toMatchObject({
+              code: "ENOENT",
+            });
+          } else {
+            await expect(second()).rejects.toThrow(
+              /backup or restore is in progress/,
+            );
+          }
+        }
+        await realFs.rename(from, to);
+      });
+      try {
+        await first();
+        expect(overlapped).toBe(true);
+      } finally {
+        vi.mocked(rename).mockReset();
+      }
+      await second();
+    },
+  );
 
   it.skipIf(process.platform !== "linux").each([
     { mode: "force", lock: "runtime" },
@@ -195,7 +312,7 @@ describe("installed ledger commands outside a checkout", () => {
         destination: backup,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null },
+        collectDevice: () => null,
         collectRepositories: () => [],
       });
 
@@ -600,7 +717,7 @@ describe("ledger backup", () => {
           destination,
           createdAt: "2026-11-11T12:00:00.000Z",
           gwrkVersion: "1.6.0-beta.1",
-          metadata: { device: null },
+          collectDevice: () => null,
           collectRepositories: () => [
             {
               projectId: "pilot-repo",
@@ -627,7 +744,7 @@ describe("ledger backup", () => {
         destination,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null },
+        collectDevice: () => null,
         collectRepositories: () => [],
       });
       db.prepare("INSERT INTO projects VALUES (?, ?)").run(
@@ -662,7 +779,7 @@ describe("ledger backup", () => {
           destination,
           createdAt: "2026-11-11T12:00:00.000Z",
           gwrkVersion: "1.6.0-beta.1",
-          metadata: { device: null },
+          collectDevice: () => null,
           collectRepositories: () => [],
         }),
       ).rejects.toThrow(/already exists/);
@@ -688,7 +805,7 @@ describe("ledger backup", () => {
         destination,
         createdAt: device.createdAt,
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device },
+        collectDevice: () => device,
         collectRepositories: () => [],
       });
       const request = { source: destination, stateDirectory, force: false };
@@ -783,7 +900,7 @@ describe("ledger backup", () => {
         destination,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null },
+        collectDevice: () => null,
         collectRepositories: () => [],
       });
       await expect(
@@ -833,7 +950,7 @@ describe("ledger backup", () => {
         destination,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null },
+        collectDevice: () => null,
         collectRepositories: (projects) =>
           projects.map(({ id, path }) => readRepositoryEvidence(id, path)),
       });
@@ -858,7 +975,7 @@ describe("ledger backup", () => {
         destination,
         createdAt: "2026-11-11T12:00:00.000Z",
         gwrkVersion: "1.6.0-beta.1",
-        metadata: { device: null },
+        collectDevice: () => null,
         collectRepositories: () => [],
       });
       const metadata = join(destination, "repo-metadata.json");

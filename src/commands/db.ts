@@ -100,7 +100,7 @@ const backupCommand = new Command("backup")
             destination,
             createdAt: new Date().toISOString(),
             gwrkVersion: command.parent?.parent?.version() ?? "unknown",
-            metadata: { device: loadDevice() },
+            collectDevice: loadDevice,
             collectRepositories(projects) {
               const selected = projectRoot
                 ? projects.filter(({ path }) => resolve(path) === projectRoot)
