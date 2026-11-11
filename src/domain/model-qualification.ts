@@ -397,6 +397,17 @@ export function assertNoSecretMaterial(
               ))))
       ) {
         secretInText = true;
+      } else if (typeof entry === "string") {
+        const json = entry.trim();
+        if (json.startsWith("{") || json.startsWith("[")) {
+          let decoded: unknown;
+          try {
+            decoded = JSON.parse(json);
+          } catch {
+            return entry;
+          }
+          assertNoSecretMaterial(decoded, knownSecrets);
+        }
       }
       return entry;
     }) ?? "";

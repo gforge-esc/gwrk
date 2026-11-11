@@ -148,6 +148,32 @@ describe("credential guard", () => {
       }),
     ).not.toThrow();
   });
+
+  it.each([
+    {
+      headers: [["Set-Cookie", ["session=fixture", "theme=dark"]]],
+    },
+    {
+      rawHeaders: [
+        "Content-Type",
+        "application/json",
+        "Cookie",
+        "session=fixture",
+      ],
+    },
+  ])("rejects credential headers in JSON fixture output %j", (payload) => {
+    expect(() =>
+      assertNoSecretMaterial({ sanitizedOutput: JSON.stringify(payload) }),
+    ).toThrow(/secret material/i);
+  });
+
+  it("allows Content-Type headers in JSON fixture output", () => {
+    const sanitizedOutput = JSON.stringify({
+      headers: [["Content-Type", "application/json"]],
+      rawHeaders: ["Content-Type", "application/json"],
+    });
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
 });
 
 describe("model qualification policy", () => {
