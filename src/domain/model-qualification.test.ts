@@ -820,6 +820,40 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each([
+    {
+      headers: [
+        "Content-Type",
+        "text/plain",
+        "Cookie",
+        "session=fixture-cookie",
+      ],
+    },
+    { headers: [["Set-Cookie", "session=fixture-cookie"]] },
+  ])(
+    "rejects inspected credential arrays with hidden length annotations",
+    (input) => {
+      const sanitizedOutput = inspect(input, { showHidden: true });
+      expect(sanitizedOutput).toContain("[length]");
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+        /secret material/i,
+      );
+    },
+  );
+
+  it("allows inspected noncredential arrays with hidden length annotations", () => {
+    const sanitizedOutput = inspect(
+      {
+        headers: [
+          ["Content-Type", "text/plain"],
+          ["Vary", "[length]: 4"],
+        ],
+      },
+      { showHidden: true },
+    );
+    expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+  });
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [
