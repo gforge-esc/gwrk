@@ -119,6 +119,47 @@ describe("FR-002 harvest identity and target verification", () => {
       inputs.reverse().map((input) => verifyHarvestTarget(project, input)),
     ).toEqual([expected, expected, expected]);
   });
+  it.each([null, "acme/a"])(
+    "accepts an enrolled local commit without a pull request for %j",
+    (repoSlug) => {
+      const local = candidate({
+        source: "manual_cli",
+        deliveryId: "local-1",
+        repoSlug: null,
+        headRepoSlug: null,
+        headBranch: null,
+        expectedHeadSha: null,
+        prNumber: null,
+        prUrl: null,
+        explicitFeatureId: featureId,
+        explicitPhaseId: "phase-1",
+      });
+      const enrolled = { ...project, repoSlug };
+      const result = verifyHarvestTarget(enrolled, local);
+
+      expect(result).toMatchObject({ ok: true, featureId, phaseId });
+      expect(
+        verifyHarvestTarget(enrolled, {
+          ...local,
+          deliveryId: "local-2",
+          mergeCommitSha: sha.toUpperCase(),
+        }),
+      ).toEqual(result);
+      expect(
+        verifyHarvestTarget({ ...enrolled, projectId: "project-b" }, local),
+      ).not.toEqual(result);
+      expect(
+        verifyHarvestTarget(enrolled, { ...local, explicitPhaseId: undefined }),
+      ).toMatchObject({ ok: true, featureId, phaseId: null });
+      expect(
+        verifyHarvestTarget(enrolled, { ...local, mergeCommitSha: "aabbcc" }),
+      ).toMatchObject({ ok: false, code: "INVALID_MERGE_SHA" });
+      expect(
+        verifyHarvestTarget(enrolled, { ...local, source: "github_webhook" }),
+      ).toMatchObject({ ok: false });
+    },
+  );
+
   it("TR-002 distinguishes terminal events and separate merges", () => {
     const input = {
       prNumber: 42,

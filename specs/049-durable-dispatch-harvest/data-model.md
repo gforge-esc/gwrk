@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS harvest_operations (
   trunk_branch      TEXT NOT NULL,
   feature_id        TEXT NOT NULL,
   phase_id          TEXT,
-  pr_number         INTEGER NOT NULL,
+  pr_number         INTEGER,
   pr_url            TEXT,
   head_branch       TEXT,
   expected_head_sha TEXT,

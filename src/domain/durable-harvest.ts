@@ -69,7 +69,7 @@ export interface HarvestCandidateInput {
   baseBranch: string;
   headBranch: string | null;
   expectedHeadSha: string | null;
-  prNumber: number;
+  prNumber: number | null;
   prUrl: string | null;
   terminalEvent: HarvestTerminalEvent;
   mergeCommitSha: string | null;
@@ -168,6 +168,8 @@ function matchesPullRequestUrl(
   }
 }
 
+const fullGitObjectId = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+
 export function verifyHarvestTarget(
   project: EnrolledProject,
   candidate: HarvestCandidateInput,
@@ -177,6 +179,7 @@ export function verifyHarvestTarget(
       ok: false;
       code:
         | "REPO_MISMATCH"
+        | "LOCAL_CHECKOUT_REQUIRED"
         | "INVALID_PR_NUMBER"
         | "PR_URL_MISMATCH"
         | "NOT_CONFIGURED_TRUNK"
@@ -186,6 +189,58 @@ export function verifyHarvestTarget(
         | "PHASE_MISMATCH";
       reason: string;
     } {
+  if (candidate.source === "manual_cli" && candidate.prNumber === null) {
+    if (!project.localRoot) {
+      return {
+        ok: false,
+        code: "LOCAL_CHECKOUT_REQUIRED",
+        reason: "Local harvest requires an enrolled checkout",
+      };
+    }
+    if (candidate.prUrl !== null || candidate.terminalEvent !== "merged") {
+      return {
+        ok: false,
+        code: "INVALID_PR_NUMBER",
+        reason: "Pull request URL or closure requires a pull request number",
+      };
+    }
+    const featureId = candidate.explicitFeatureId;
+    if (!featureId || !/^[a-z0-9][a-z0-9_-]*$/i.test(featureId)) {
+      return {
+        ok: false,
+        code: "NOT_FEATURE_BRANCH",
+        reason: "Local harvest requires an explicit feature ID",
+      };
+    }
+    const requestedPhase = candidate.explicitPhaseId;
+    if (requestedPhase !== undefined && !/^phase-\d+$/.test(requestedPhase)) {
+      return { ok: false, code: "PHASE_MISMATCH", reason: "Invalid phase ID" };
+    }
+    const commit = candidate.mergeCommitSha?.trim().toLowerCase();
+    if (!commit) {
+      return {
+        ok: false,
+        code: "MISSING_MERGE_SHA",
+        reason: "Local harvest requires a commit",
+      };
+    }
+    if (!fullGitObjectId.test(commit)) {
+      return {
+        ok: false,
+        code: "INVALID_MERGE_SHA",
+        reason: "Commit must be a full hexadecimal Git object ID",
+      };
+    }
+    const phaseId =
+      requestedPhase === undefined ? null : normalizePhaseId(requestedPhase);
+    return {
+      ok: true,
+      featureId,
+      phaseId,
+      workKey: `harvest-local:${JSON.stringify([project.projectId, commit, featureId, phaseId])}`,
+    };
+  }
+
   if (!isSameRepository(project.repoSlug, candidate.repoSlug)) {
     return {
       ok: false,
@@ -193,7 +248,8 @@ export function verifyHarvestTarget(
       reason: "Pull request repository differs from enrollment",
     };
   }
-  if (!Number.isSafeInteger(candidate.prNumber) || candidate.prNumber <= 0) {
+  const prNumber = candidate.prNumber;
+  if (prNumber === null || !Number.isSafeInteger(prNumber) || prNumber <= 0) {
     return {
       ok: false,
       code: "INVALID_PR_NUMBER",
@@ -202,11 +258,7 @@ export function verifyHarvestTarget(
   }
   if (
     candidate.prUrl !== null &&
-    !matchesPullRequestUrl(
-      candidate.prUrl,
-      project.repoSlug,
-      candidate.prNumber,
-    )
+    !matchesPullRequestUrl(candidate.prUrl, project.repoSlug, prNumber)
   ) {
     return {
       ok: false,
@@ -253,7 +305,7 @@ export function verifyHarvestTarget(
         reason: "Merged pull request requires a merge commit",
       };
     }
-    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(mergeSha)) {
+    if (!fullGitObjectId.test(mergeSha)) {
       return {
         ok: false,
         code: "INVALID_MERGE_SHA",
@@ -265,7 +317,7 @@ export function verifyHarvestTarget(
   return {
     ok: true,
     ...target,
-    workKey: computeHarvestWorkKey({ ...candidate, ...target }),
+    workKey: computeHarvestWorkKey({ ...candidate, ...target, prNumber }),
   };
 }
 

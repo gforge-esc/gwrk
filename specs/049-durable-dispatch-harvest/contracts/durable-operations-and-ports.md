@@ -170,7 +170,7 @@ export interface HarvestCandidateInput {
   baseBranch: string;
   headBranch: string | null;
   expectedHeadSha: string | null;
-  prNumber: number;
+  prNumber: number | null;
   prUrl: string | null;
   terminalEvent: HarvestTerminalEvent;
   mergeCommitSha: string | null;
@@ -215,6 +215,7 @@ export function verifyHarvestTarget(
       ok: false;
       code:
         | "REPO_MISMATCH"
+        | "LOCAL_CHECKOUT_REQUIRED"
         | "NOT_CONFIGURED_TRUNK"
         | "NOT_FEATURE_BRANCH"
         | "MISSING_MERGE_SHA"
@@ -361,6 +362,7 @@ export interface HarvestExecutionPort {
 | `claimHarvestLease` | Claim or renew harvest operation lease | Increments `lease_epoch` atomically |
 | `transitionHarvestStage` | Update one `harvest_stage_receipts` row | Requires matching owner and epoch on every stage and effect receipt write |
 | `enqueueOutbox` | Insert idempotent `notification_outbox` item | Unique `(project_id, dedupe_key)` |
+| `getOutboxItem` | Read accepted delivery context by outbox ID | Leaves the send claim untouched |
 | `claimOutboxItem` | Mark pending or retryable item `sending` | Captures `client_metadata_key` with a fenced delivery claim |
 | `markOutboxUncertain` | Persist `uncertain` after send timeout or error | Blocks blind resend before reconcile |
 | `completeOutboxItem` | Store `delivered` receipt with `message_ts` and `thread_ts` | Requires the current delivery claim |

@@ -21,6 +21,7 @@ type RecoveryStore = Pick<
   | "listRecoverableHarvests"
   | "claimHarvestLease"
   | "heartbeatHarvestLease"
+  | "getOutboxItem"
   | "listRecoverableOutboxItems"
   | "claimOutboxItem"
 >;
@@ -144,6 +145,11 @@ function restoreRecoveryStore(persisted: {
       row.leaseExpiresAt = leaseExpiresAt;
       row.updatedAt = nowIso;
       return result;
+    },
+    getOutboxItem(outboxId) {
+      return structuredClone(
+        outboxItems.find((item) => item.outboxId === outboxId) ?? null,
+      );
     },
     listRecoverableOutboxItems({ projectId, nowIso }) {
       // The fixture treats a send as abandoned after one minute.
@@ -342,6 +348,45 @@ describe("durable recovery store contract", () => {
       null,
       null,
     ]);
+  });
+
+  it("resolves a pending delivery by ID before claiming its destination", () => {
+    const outboxId = "resumed-notification";
+    const store = restoreRecoveryStore({
+      harvests: [],
+      stages: [],
+      outboxItems: [outbox(outboxId, "pending")],
+    });
+    const pending = store.getOutboxItem(outboxId);
+    expect(pending).toMatchObject({
+      projectId,
+      featureId,
+      status: "pending",
+      recipient: { channelId: "C1", threadTs: "1.2" },
+    });
+    if (!pending) throw new Error("Expected an outbox item");
+    const featureThreads = new Map([
+      [`${projectId}/${featureId}`, destination],
+    ]);
+    const resolved = featureThreads.get(
+      `${pending.projectId}/${pending.featureId}`,
+    );
+    expect(resolved).toEqual(destination);
+    expect(store.getOutboxItem(outboxId)).toMatchObject({
+      status: "pending",
+      attemptCount: 0,
+    });
+    expect(
+      store.claimOutboxItem({
+        outboxId,
+        nowIso,
+        destination: resolved ?? null,
+      }),
+    ).toMatchObject({
+      action: "send",
+      item: { ...destination, status: "sending" },
+    });
+    expect(store.getOutboxItem("missing")).toBeNull();
   });
 
   it("reconciles at the persisted destination after the feature thread changes", () => {

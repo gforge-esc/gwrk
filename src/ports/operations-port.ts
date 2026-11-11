@@ -158,7 +158,7 @@ export interface DurableHarvestOperation {
   trunkBranch: string;
   featureId: string;
   phaseId: string | null;
-  prNumber: number;
+  prNumber: number | null;
   prUrl: string | null;
   headBranch: string | null;
   expectedHeadSha: string | null;
@@ -337,6 +337,8 @@ export interface OperationsStorePort {
   }): FencedWrite;
 
   enqueueOutbox(input: OutboxMessage & { nowIso: string }): OutboxItem;
+  /** Read the accepted delivery context without acquiring a send claim. */
+  getOutboxItem(outboxId: string): OutboxItem | null;
   /** List pending, uncertain and abandoned sending items for the project in creation order. */
   listRecoverableOutboxItems(input: {
     nowIso: string;
