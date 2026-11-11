@@ -10,6 +10,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -422,6 +423,85 @@ describe("Project registry storage", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    {
+      storedBinding: "localRoot",
+      incomingBinding: "localRoot",
+      symlink: false,
+    },
+    {
+      storedBinding: "localRoot",
+      incomingBinding: "mirrorPath",
+      symlink: true,
+    },
+    {
+      storedBinding: "mirrorPath",
+      incomingBinding: "localRoot",
+      symlink: true,
+    },
+    {
+      storedBinding: "mirrorPath",
+      incomingBinding: "mirrorPath",
+      symlink: false,
+    },
+  ] as const)(
+    "rejects a reused checkout from $storedBinding to $incomingBinding with symlink=$symlink",
+    ({ storedBinding, incomingBinding, symlink }) => {
+      const db = getTestDb();
+      try {
+        const checkout = initCheckout(root, "shared-checkout", "example/alpha");
+        const alternatePath = join(root, "checkout-link");
+        symlinkSync(checkout, alternatePath, "dir");
+        const registry = createSqliteProjectRegistryAdapter({ db });
+        const alpha = registry.enrollProject({
+          ...project,
+          projectId: resolveProjectId(checkout),
+          slug: "alpha",
+          repoSlug: "example/alpha",
+          localRoot: null,
+          mirrorPath: null,
+          [storedBinding]: checkout,
+          slack: { workspaceId: "W1", channelId: "C1", sharedChannel: false },
+          legacyProjectIds: [],
+        });
+
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "set-url",
+          "origin",
+          "https://github.com/example/beta.git",
+        ]);
+        const betaId = resolveProjectId(checkout);
+        expect
+          .soft(() =>
+            registry.enrollProject({
+              ...alpha,
+              projectId: betaId,
+              slug: "beta",
+              repoSlug: "example/beta",
+              localRoot: null,
+              mirrorPath: null,
+              [incomingBinding]: symlink ? alternatePath : checkout,
+              slack: {
+                workspaceId: "W1",
+                channelId: "C2",
+                sharedChannel: false,
+              },
+            }),
+          )
+          .toThrow(/already bound/);
+
+        expect.soft(registry.getProject(betaId)).toBeNull();
+        expect.soft(registry.listBySlackChannel("W1", "C2")).toEqual([]);
+        expect(registry.listBySlackChannel("W1", "C1")).toEqual([alpha]);
+      } finally {
+        db.close();
+      }
+    },
+  );
 
   it("rejects a foreign canonical ID claimed from a missing checkout", () => {
     const root = mkdtempSync(join(tmpdir(), "gwrk-unverified-canonical-"));

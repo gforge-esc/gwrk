@@ -88,7 +88,9 @@ SELECT 'legacy-local', 'Legacy local records', '', 'legacy-local'
 WHERE EXISTS (SELECT 1 FROM plan_features UNION ALL SELECT 1 FROM plan_phases
               UNION ALL SELECT 1 FROM plan_proposals UNION ALL SELECT 1 FROM plan_edges
               UNION ALL SELECT 1 FROM gate_results UNION ALL SELECT 1 FROM issues
-              UNION ALL SELECT 1 FROM routing_decisions);
+              UNION ALL SELECT 1 FROM routing_decisions
+              UNION ALL SELECT 1 FROM runs WHERE project_id IS NULL
+              UNION ALL SELECT 1 FROM history WHERE project_id IS NULL);
 
 INSERT OR IGNORE INTO projects (id, name, path, slug)
 SELECT project_id, project_id, '', project_id
@@ -275,6 +277,13 @@ UPDATE history SET legacy_run_id = run_id, run_id = NULL
 WHERE run_id IS NOT NULL AND NOT EXISTS (
   SELECT 1 FROM runs WHERE runs.id = history.run_id
 );
+
+UPDATE runs SET project_id = 'legacy-local' WHERE project_id IS NULL;
+UPDATE history SET project_id = COALESCE(
+  (SELECT r.project_id FROM runs r WHERE r.id = history.run_id),
+  'legacy-local'
+)
+WHERE project_id IS NULL;
 
 CREATE TEMP TABLE migration_014_fk_guard (violations INTEGER CHECK (violations = 0));
 INSERT INTO migration_014_fk_guard SELECT count(*) FROM pragma_foreign_key_check;

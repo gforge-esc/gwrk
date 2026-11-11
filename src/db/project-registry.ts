@@ -324,6 +324,7 @@ export function createProjectRegistry(
     const transitions = new Set<string>();
     const projectRepo = normalizeRegistryRepo(project.repoSlug);
     const verifiedIds = new Set<string>();
+    const verifiedPaths = new Set<string>();
     const findLocal = db.prepare(`
       SELECT path, local_root, mirror_path, github_repo, updated_at
       FROM projects WHERE id = ? AND repo_slug IS NULL
@@ -347,6 +348,7 @@ export function createProjectRegistry(
           `Project ID belongs to a different repository or checkout: ${projectId}`,
         );
       }
+      verifiedPaths.add(realpathSync(root));
       const origin = projectRepo;
 
       const localId = computeProjectId({ ...facts, remoteOriginUrl: null });
@@ -482,6 +484,33 @@ export function createProjectRegistry(
       if (conflictingRepo || !ownsLegacy) {
         throw new Error(
           `Project alias belongs to a different repository or checkout: ${alias}`,
+        );
+      }
+    }
+
+    const activeBindings = db.prepare<
+      [string, string],
+      { id: string; path: string }
+    >(`
+      SELECT id, local_root AS path FROM projects
+      WHERE updated_at IS NOT NULL AND id <> ? AND local_root IS NOT NULL
+      UNION
+      SELECT id, mirror_path AS path FROM projects
+      WHERE updated_at IS NOT NULL AND id <> ? AND mirror_path IS NOT NULL
+    `);
+    for (const { id, path } of activeBindings.iterate(projectId, projectId)) {
+      if (transitions.has(id)) continue;
+      let realPath: string;
+      try {
+        realPath = realpathSync(path);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT" || code === "ENOTDIR") continue;
+        throw error;
+      }
+      if (verifiedPaths.has(realPath)) {
+        throw new Error(
+          `Project checkout is already bound to project ${id}: ${path}`,
         );
       }
     }

@@ -147,6 +147,85 @@ describe("Project registry upgrade", () => {
     }
   });
 
+  it("assigns unattributed runs and history to their legacy scopes", () => {
+    const upgraded = upgrade((legacy) => {
+      legacy.exec(`
+        INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
+        INSERT INTO runs (id, project_id, feature_id, command) VALUES
+          (41, NULL, 'fixture', 'ship'), (42, 'alpha', 'fixture', 'ship');
+        INSERT INTO history (id, project_id, feature_id, run_id) VALUES
+          (1, NULL, 'fixture', 41), (2, NULL, 'fixture', 42),
+          (3, NULL, 'fixture', NULL), (4, 'alpha', 'fixture', 41);
+      `);
+    });
+    try {
+      expect
+        .soft(listRuns("fixture", "legacy-local", upgraded))
+        .toMatchObject([{ id: 41, project_id: "legacy-local" }]);
+      expect(listRuns("fixture", "alpha", upgraded)).toMatchObject([
+        { id: 42, project_id: "alpha" },
+      ]);
+      expect(
+        upgraded
+          .prepare("SELECT project_id, run_id FROM history ORDER BY id")
+          .all(),
+      ).toEqual([
+        { project_id: "legacy-local", run_id: 41 },
+        { project_id: "alpha", run_id: 42 },
+        { project_id: "legacy-local", run_id: null },
+        { project_id: "alpha", run_id: 41 },
+      ]);
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("creates legacy-local for unattributed history without any runs", () => {
+    const upgraded = upgrade((legacy) => {
+      legacy.exec("INSERT INTO history (feature_id) VALUES ('fixture')");
+    });
+    try {
+      expect(
+        upgraded.prepare("SELECT project_id FROM history").pluck().get(),
+      ).toBe("legacy-local");
+      expect(upgraded.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("keeps an unlinked ship decision outside the older run's project scope", () => {
+    const runId = "ship-shared-1700000000000";
+    const upgraded = upgrade((legacy) => {
+      legacy.exec(`
+        INSERT INTO projects (id, name, path) VALUES ('alpha', 'Alpha', '/alpha');
+        INSERT INTO plan_features (id, name, project_id) VALUES ('shared', 'Shared', 'alpha');
+        INSERT INTO plan_phases (id, feature_id, name, seq, project_id)
+          VALUES ('shared/phase-01', 'shared', 'Phase 1', 1, 'alpha');
+        INSERT INTO runs (project_id, feature_id, phase_id, command, started_at, finished_at)
+          VALUES ('alpha', 'shared', 'phase-01', 'ship', '2023-11-13 22:13:20', '2023-11-13 22:14:20');
+      `);
+      legacy
+        .prepare(`
+          INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status, created_at)
+          VALUES (?, 'shared', 'phase-01', 'beta-backend', 'decision before startRun', 'fresh',
+            datetime(1700000000, 'unixepoch'))
+        `)
+        .run(runId);
+    });
+    try {
+      expect.soft(listRoutingDecisions("alpha", runId, upgraded)).toEqual([]);
+      expect(
+        listRoutingDecisions("legacy-local", runId, upgraded),
+      ).toMatchObject([
+        { projectId: "legacy-local", selectedBackend: "beta-backend" },
+      ]);
+    } finally {
+      upgraded.close();
+    }
+  });
+
   it("keeps legacy ship decisions without a linked run in legacy-local", () => {
     const upgraded = upgrade((legacy) => {
       legacy.exec(`
@@ -161,17 +240,12 @@ describe("Project registry upgrade", () => {
           ('feature-one/phase-01', 'feature-one', 'Phase 1', 1, 'alpha'),
           ('conflict/phase-01', 'conflict', 'Phase 1', 1, 'beta'),
           ('placeholder/phase-01', 'placeholder', 'Phase 1', 1, 'alpha');
-        INSERT INTO runs (id, project_id, feature_id, phase_id, command, started_at, finished_at)
-        VALUES (41, 'alpha', 'feature-one', 'phase-01', 'ship', '2023-11-13 22:13:20', '2023-11-13 22:14:20');
         INSERT INTO runs (id, project_id, feature_id, phase_id, command) VALUES
           (42, 'beta', 'conflict', 'phase-01', 'ship'),
           (43, 'beta', 'run-conflict', 'phase-01', 'ship'),
           (44, 'beta', 'feature-one', 'phase-01', 'research'),
           (45, 'beta', 'feature-one', 'phase-02', 'ship'),
           (46, 'beta', 'runs-only', 'phase-01', 'ship');
-        INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status, created_at)
-        VALUES ('ship-feature-one-1700000000000', 'feature-one', 'phase-01', 'beta-backend',
-          'unlinked decision after an older run', 'fresh', datetime(1700000000, 'unixepoch'));
         INSERT INTO routing_decisions (run_id, feature, phase, selected_backend, reason, probe_status) VALUES
           ('ship-conflict-1700000000000', 'conflict', 'phase-01', 'fixture', 'phase conflict', 'fresh'),
           ('ship-run-conflict-1700000000000', 'run-conflict', 'phase-01', 'fixture', 'run conflict', 'fresh'),
@@ -185,7 +259,6 @@ describe("Project registry upgrade", () => {
     });
     try {
       const cases = [
-        ["ship-feature-one-1700000000000", "legacy-local", "unlinked decision after an older run"],
         ["ship-conflict-1700000000000", "legacy-local", "phase conflict"],
         ["ship-run-conflict-1700000000000", "legacy-local", "run conflict"],
         ["ship-missing-1700000000000", "legacy-local", "missing"],
