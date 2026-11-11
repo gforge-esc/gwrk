@@ -308,6 +308,7 @@ export interface OperationsStorePort {
    * Commit the original delivery and all resolved operations in one transaction.
    * For a new delivery, verify the entire operation batch against enrollment and
    * checkout coverage with verifyHarvestIntakeOperations before any write.
+   * Reject duplicate operation IDs across phase scopes.
    * Require accepted status and lease epoch zero on every proposed new row.
    * Require null lease owner, lease expiry, completion time, linked run, last error and planned Slack recipient.
    * Return HARVEST_IDENTITY_MISMATCH before any write if a proposed row fails these checks.

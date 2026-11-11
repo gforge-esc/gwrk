@@ -54,11 +54,7 @@ export function resolveHarvestSlackRecipient(input: {
     surface: "slack",
     workspaceId: binding.workspaceId,
     channelId: binding.channelId,
-    threadTs: threadMatches
-      ? thread.rootTs
-      : recipient.channelId === binding.channelId
-        ? recipient.threadTs
-        : undefined,
+    threadTs: threadMatches ? thread.rootTs : undefined,
   };
 }
 
@@ -574,6 +570,7 @@ export function verifyHarvestTarget(
 }
 
 interface HarvestIntakeIdentity extends HarvestWorkScope {
+  operationId: string;
   projectId: string;
   repoSlug: string | null;
   trunkBranch: string;
@@ -594,6 +591,15 @@ export function verifyHarvestIntakeOperations(
   checkoutPhaseIds: readonly string[] | undefined,
   operations: readonly HarvestIntakeIdentity[],
 ): boolean {
+  const operationIds = new Set(
+    operations.map(({ operationId }) => operationId),
+  );
+  if (
+    operationIds.size !== operations.length ||
+    operations.some(({ operationId }) => !operationId.trim())
+  ) {
+    return false;
+  }
   const verified = verifyHarvestTarget(project, candidate);
   if (!verified.ok) return false;
 

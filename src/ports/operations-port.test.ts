@@ -1543,6 +1543,44 @@ describe("persisted harvest intake contract", () => {
     expect(initial.snapshot()).toEqual(before);
   });
 
+  it("rejects duplicate operation IDs for distinct verified phases before writing", () => {
+    const valid = wholeFeatureMergeIntake("verified-merge", 42, [
+      "phase-01",
+      "phase-02",
+    ]);
+    if (!valid.target.accepted) throw new Error("Expected verified intake");
+    const [first, second] = valid.target.operations;
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+    const empty = initial.snapshot();
+    expect(
+      initial.store.recordHarvestIntake({
+        ...valid,
+        target: {
+          ...valid.target,
+          operations: [first, { ...second, operationId: first.operationId }],
+        },
+      }),
+    ).toEqual({ ok: false, code: "HARVEST_IDENTITY_MISMATCH" });
+    expect(initial.snapshot()).toEqual(empty);
+    const restarted = restoreHarvestIntake(empty);
+    expect(restarted.store.recordHarvestIntake(valid)).toMatchObject({
+      ok: true,
+      operations: [
+        { phaseId: "phase-01", operationId: first.operationId },
+        { phaseId: "phase-02", operationId: second.operationId },
+      ],
+    });
+    expect(
+      restoreHarvestIntake(restarted.snapshot()).store.recordHarvestIntake(
+        valid,
+      ),
+    ).toMatchObject({
+      ok: true,
+      deduplicatedTransport: true,
+      operations: [{ phaseId: "phase-01" }, { phaseId: "phase-02" }],
+    });
+  });
+
   it.each<Partial<DurableHarvestOperation>>([
     { projectId: "unverified-project" },
     { repoSlug: "acme/other" },
@@ -2248,7 +2286,11 @@ it.each([
             channelId: thread.channelId,
             threadTs: thread.rootTs,
           }
-        : { ...acceptedNotice.recipient, workspaceId: "W1" },
+        : {
+            ...acceptedNotice.recipient,
+            workspaceId: "W1",
+            threadTs: undefined,
+          },
     };
     const initial = restoreRecoveryStore({
       featureThreads: hasFeatureThread ? [thread] : [],
@@ -2320,7 +2362,7 @@ it.each([
       const before = beforeGate.snapshot();
       for (const failureNotice of [
         null,
-        ...(hasFeatureThread ? [acceptedNotice] : []),
+        acceptedNotice,
         { ...notice, phaseId: "phase-02" },
         {
           ...notice,
@@ -2400,7 +2442,7 @@ it.each([
       const savedDestination = {
         workspaceId: notice.recipient.workspaceId,
         channelId: notice.recipient.channelId,
-        threadTs: notice.recipient.threadTs,
+        threadTs: notice.recipient.threadTs ?? null,
       };
       const changedDestination = {
         workspaceId: "W3",
@@ -2458,6 +2500,42 @@ it.each([null, "C1"])(
     expect(store.snapshot().outboxItems).toEqual([notice]);
   },
 );
+
+it("uses only the enrolled thread for the requested feature in a shared channel", () => {
+  const route = {
+    projectId,
+    featureId,
+    recipient: {
+      projectId,
+      surface: "slack" as const,
+      workspaceId: "W1",
+      channelId: "C1",
+      threadTs: "9.9",
+    },
+    binding: { workspaceId: "W1", channelId: "C1", sharedChannel: true },
+  };
+  const otherThread = {
+    projectId,
+    featureId: "other-feature",
+    workspaceId: "W1",
+    channelId: "C1",
+    rootTs: "9.9",
+    updatedAt: nowIso,
+  };
+  expect(resolveHarvestSlackRecipient(route)?.threadTs).toBeUndefined();
+  expect(
+    resolveHarvestSlackRecipient({ ...route, thread: otherThread }),
+  ).toEqual({
+    ...route.recipient,
+    threadTs: undefined,
+  });
+  expect(
+    resolveHarvestSlackRecipient({
+      ...route,
+      thread: { ...otherThread, featureId, rootTs: "1.2" },
+    })?.threadTs,
+  ).toBe("1.2");
+});
 
 it("rejects a saved recipient outside the enrolled Slack binding", () => {
   const recipient = outbox("foreign", "pending").recipient;
