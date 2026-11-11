@@ -16,73 +16,82 @@
           "id": "T001",
           "title": "Modify toolchain-port.ts",
           "description": "MODIFY src/ports/toolchain-port.ts. Retain only the `ToolchainPort` interface",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:08:57.196Z"
         },
         {
           "id": "T002",
           "title": "Modify index.ts",
           "description": "MODIFY src/adapters/toolchain/index.ts. Build `ToolchainPort` from domain policy and manifest discovery",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:08:58.148Z"
         },
         {
           "id": "T003",
           "title": "Modify ship.ts",
           "description": "MODIFY src/commands/ship.ts. Import polyglot file predicates from `src/domain/test-rules.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:08:59.067Z"
         },
         {
           "id": "T004",
           "title": "Modify tasks-generate.ts",
           "description": "MODIFY src/commands/tasks-generate.ts. Import `isPolyglotTestFile` from `src/domain/test-rules.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:08:59.978Z"
         },
         {
           "id": "T005",
           "title": "Modify test.ts",
           "description": "MODIFY src/commands/test.ts. Import polyglot file predicates from `src/domain/test-rules.js`. Tests: src/utils/toolchain-mapper.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:09:00.919Z"
         },
         {
           "id": "T006",
           "title": "Modify tests-generate.ts",
           "description": "MODIFY src/commands/tests-generate.ts. Import `isPolyglotTestFile` from `src/domain/test-rules.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:09:01.903Z"
         },
         {
           "id": "T007",
           "title": "Modify define-orchestrator.ts",
           "description": "MODIFY src/engine/define-orchestrator.ts. Import `isPolyglotTestFile` from `src/domain/test-rules.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:09:02.888Z"
         },
         {
           "id": "T008",
           "title": "Modify gate-gen.ts",
           "description": "MODIFY src/utils/gate-gen.ts. Import polyglot test helpers from `src/domain/test-rules.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:09:03.941Z"
         },
         {
           "id": "T009",
           "title": "Modify test-discovery.ts",
           "description": "MODIFY src/utils/test-discovery.ts. Import polyglot test helpers from `src/domain/test-rules.js`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-01.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T17:09:04.947Z"
         }
       ],
       "sp_estimate": 9,
