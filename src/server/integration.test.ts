@@ -65,10 +65,14 @@ vi.mock("./telegram.js", () => ({
 vi.mock("../engine/ship-orchestrator.js", () => ({
   ShipOrchestrator: vi.fn(),
 }));
-vi.mock("../engine/compression.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../engine/compression.js")>()),
-  gatherDeliveryActuals: vi.fn(),
-}));
+vi.mock("../engine/compression.js", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../engine/compression.js")>();
+  return {
+    ...original,
+    gatherDeliveryActuals: vi.fn(original.gatherDeliveryActuals),
+  };
+});
 vi.mock("../db/index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../db/index.js")>()),
   getDb: vi.fn(() => {
@@ -571,7 +575,7 @@ describe("Server E2E Integration", () => {
       let returnPullRequests: (() => void) | undefined;
       const featureId = "scoped-sync";
       const phaseId = "phase-01";
-      const mergedAt = "2026-01-01T00:00:00Z";
+      const mergedAt = "2026-12-01T00:00:00Z";
       const headRef = `feat/${featureId}-${phaseId}`;
       try {
         const origin = await createServerFixture("routes", {
@@ -585,6 +589,21 @@ describe("Server E2E Integration", () => {
         vi.stubEnv("GIT_DIR", join(external.projectRoot, ".git"));
         vi.stubEnv("GIT_WORK_TREE", external.projectRoot);
         vi.stubEnv("GH_REPO", "external/repo");
+        const binDir = join(external.projectRoot, ".git", "fixture-bin");
+        mkdirSync(binDir);
+        writeFileSync(
+          join(binDir, "gh"),
+          [
+            "#!/bin/sh",
+            'test "$1 $2 $3" = "pr view 9" || exit 1',
+            'test -z "${GIT_DIR-}${GIT_WORK_TREE-}${GH_REPO-}" || exit 1',
+            `printf '%s\\n' '${mergedAt}'`,
+            "",
+          ].join("\n"),
+          { mode: 0o755 },
+        );
+        vi.stubEnv("PATH", `${binDir}:${process.env.PATH}`);
+
         stubListener();
         const watcher = vi.spyOn(HarvestWatcher.prototype, "runCheck");
         if (entryPoint === "watcher") {
@@ -610,6 +629,7 @@ describe("Server E2E Integration", () => {
         }
         const fixture = await createServerFixture("listen");
         fixtures.push(fixture);
+        vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
         for (const { projectRoot } of [fixture, external]) {
           mkdirSync(join(projectRoot, ".git", "info"), { recursive: true });
           writeFileSync(
@@ -632,6 +652,55 @@ describe("Server E2E Integration", () => {
           fixtureGit(external.projectRoot, "rev-parse", "HEAD"),
           fixtureGit(external.projectRoot, "show-ref"),
         ];
+        const featureDir = join(origin.projectRoot, "specs", featureId);
+        writeFileSync(
+          join(origin.projectRoot, ".gwrkrc.json"),
+          JSON.stringify({ project: { name: fixture.projectId } }),
+        );
+        mkdirSync(join(featureDir, ".gwrk"), { recursive: true });
+        mkdirSync(join(featureDir, "gates"));
+        writeFileSync(
+          join(featureDir, "plan.md"),
+          "## Phase 1: Merge (1 SP)\n",
+        );
+        const gitGate = 'test "$(git log -1 --format=%s)" = "Advance origin"';
+        writeFileSync(
+          join(featureDir, "gates", "T002-gate.sh"),
+          `#!/bin/sh\n${gitGate}\n`,
+          {
+            mode: 0o755,
+          },
+        );
+        writeFileSync(
+          join(featureDir, ".gwrk", "tasks.json"),
+          JSON.stringify({
+            featureId,
+            createdAt: mergedAt,
+            phases: [
+              {
+                id: phaseId,
+                title: "Merge",
+                tasks: [
+                  {
+                    id: "T001",
+                    title: "Verify inline gate",
+                    description: "",
+                    status: "open",
+                    gateScript: gitGate,
+                  },
+                  {
+                    id: "T002",
+                    title: "Verify file gate",
+                    description: "",
+                    status: "open",
+                    gateScript: "gates/T002-gate.sh",
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        fixtureGit(origin.projectRoot, "add", "--", ".gwrkrc.json", "specs");
         fixtureGit(
           origin.projectRoot,
           "-c",
@@ -641,7 +710,7 @@ describe("Server E2E Integration", () => {
           "commit",
           "--author=Gwrk Test <gwrk-test@example.invalid>",
           "--no-gpg-sign",
-          "--allow-empty",
+          "--date=2026-11-01T00:00:00Z",
           "-m",
           "Advance origin",
         );
@@ -686,6 +755,28 @@ describe("Server E2E Integration", () => {
             merge_commit_sha: "abcdef",
           }),
         ]);
+        expect
+          .soft(
+            getGateResults(featureId, phaseId, fixture.projectId, fixture.db),
+          )
+          .toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ task_id: "T001", passed: 1 }),
+              expect.objectContaining({ task_id: "T002", passed: 1 }),
+            ]),
+          );
+        expect
+          .soft(
+            getCompressionRecord(
+              featureId,
+              phaseId,
+              fixture.projectId,
+              fixture.db,
+            ),
+          )
+          .toMatchObject({
+            merge_timestamp: mergedAt,
+          });
         expect(getDb).not.toHaveBeenCalled();
       } finally {
         returnPullRequests?.();

@@ -12,7 +12,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type Database from "better-sqlite3";
 import fastify, { type FastifyInstance } from "fastify";
@@ -49,7 +49,7 @@ interface FixtureOptions {
 function fixtureGitEnv(root: string): NodeJS.ProcessEnv {
   return {
     ...repositoryGitEnv(root),
-    GIT_CONFIG_GLOBAL: join(root, "no-global-config"),
+    GIT_CONFIG_GLOBAL: devNull,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_EDITOR: "true",
     EDITOR: "true",

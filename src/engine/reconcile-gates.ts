@@ -31,6 +31,7 @@ export async function reconcileGates(
   featureId: string,
   phaseId?: string,
   scope?: { projectId: string; db: Database.Database },
+  env?: NodeJS.ProcessEnv,
 ): Promise<ReconcileResult> {
   const featureDir = path.join(projectPath, "specs", featureId);
   const projectId = scope?.projectId ?? resolveProjectId(projectPath);
@@ -74,6 +75,7 @@ export async function reconcileGates(
         gateResult = await runTaskGate(task, {
           featureDir,
           cwd: projectPath,
+          env,
         });
         gateCache.set(task.gateScript, gateResult);
       }

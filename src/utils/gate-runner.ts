@@ -27,11 +27,12 @@ interface GateResult {
  */
 export async function runGate(
   scriptPath: string,
-  opts?: { cwd?: string },
+  opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
 ): Promise<GateResult> {
   try {
     const { stdout, stderr } = await execFilePromise(scriptPath, [], {
       cwd: opts?.cwd,
+      env: opts?.env,
     });
     const output = [stdout, stderr]
       .filter(Boolean)

@@ -349,6 +349,7 @@ export function gatherDeliveryActuals(
   featureDir: string,
   sessionGapMinutes = 30,
   prNumber?: number,
+  env?: NodeJS.ProcessEnv,
 ): DeliveryActuals {
   const specPath = path.join(featureDir, "spec.md");
   if (!fs.existsSync(featureDir)) {
@@ -371,6 +372,7 @@ export function gatherDeliveryActuals(
       ["log", "--reverse", "--format=%aI", "--", featureDir],
       {
         cwd: parentDir,
+        env,
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "ignore"],
       },
@@ -430,6 +432,7 @@ export function gatherDeliveryActuals(
 
     const ghOut = execFileSync("gh", args, {
       cwd: parentDir,
+      env,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
     })

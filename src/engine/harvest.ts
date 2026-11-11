@@ -342,6 +342,7 @@ export async function harvestFeature(
         featureId,
         phaseId,
         scope,
+        env,
       );
       logCliOutput(
         `Gate reconciliation: ${result.passed}/${result.total} passed${result.failed > 0 ? ` (${result.failed} failed)` : ""}`,
@@ -384,7 +385,7 @@ export async function harvestFeature(
             estimatedDays,
           };
 
-          const actuals = gatherDeliveryActuals(featureDir, 30, prNumber);
+          const actuals = gatherDeliveryActuals(featureDir, 30, prNumber, env);
           const compression = computeCompression(forecast, actuals);
           const indicators = computeLeadingIndicators(
             featureId,
