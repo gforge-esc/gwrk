@@ -21,7 +21,7 @@ import { recordRun } from "../db/runs.js";
 import { evaluateRollbackCompatibility } from "../domain/release-packaging.js";
 import { loadDevice } from "../utils/device.js";
 import { success } from "../utils/format.js";
-import { resolveFormat } from "../utils/output.js";
+import { createOutput, resolveFormat } from "../utils/output.js";
 import { runsCommand } from "./runs.js";
 import { statsCommand } from "./stats.js";
 
@@ -63,8 +63,14 @@ const backupPort = {
   restoreBackup: restoreLedgerBackup,
 };
 
+function ledgerOutput(command: Command) {
+  const format = command.opts<{ format?: string }>().format;
+  return format ? createOutput(format) : resolveFormat(command);
+}
+
 const backupCommand = new Command("backup")
   .description("Create and verify an online execution ledger backup")
+  .option("--format <type>", "Output format (json)")
   .requiredOption("--out <dir>", "New backup directory")
   .option(
     "--project-root <dir>",
@@ -73,7 +79,7 @@ const backupCommand = new Command("backup")
   .action(
     async (opts: { out: string; projectRoot?: string }, command: Command) => {
       await withSignal("db backup", async () => {
-        const output = resolveFormat(command);
+        const output = ledgerOutput(command);
         const dbPath = getDbPath();
         const projects = readBackupProjects(dbPath);
         const selected = opts.projectRoot
@@ -111,6 +117,7 @@ const backupCommand = new Command("backup")
 
 const restoreCommand = new Command("restore")
   .description("Verify a backup and restore an offline Linux ledger")
+  .option("--format <type>", "Output format (json)")
   .requiredOption("--from <dir>", "Verified backup directory")
   .requiredOption("--state-dir <dir>", "Target state directory")
   .option("--force", "Replace existing ledger and device files", false)
@@ -120,7 +127,7 @@ const restoreCommand = new Command("restore")
       command: Command,
     ) => {
       await withSignal("db restore", async () => {
-        const output = resolveFormat(command);
+        const output = ledgerOutput(command);
         if (!usesHostedRuntime()) {
           throw new CommandError(
             "Set GWRK_RUNTIME_DIR to the Linux server's runtime directory before restoring.",
@@ -179,12 +186,13 @@ const restoreCommand = new Command("restore")
 
 const rollbackCheckCommand = new Command("rollback-check")
   .description("Verify installed releases against the ledger migration history")
+  .option("--format <type>", "Output format (json)")
   .requiredOption("--current <dir>", "Current release directory")
   .requiredOption("--target <dir>", "Target release directory")
   .action(
     async (opts: { current: string; target: string }, command: Command) => {
       await withSignal("db rollback-check", async () => {
-        const output = resolveFormat(command);
+        const output = ledgerOutput(command);
         const [current, target] = await Promise.all([
           verifyInstalledRelease(resolve(opts.current)),
           verifyInstalledRelease(resolve(opts.target)),
