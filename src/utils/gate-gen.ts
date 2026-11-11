@@ -13,7 +13,7 @@ import {
   getColocatedTestCandidates,
   isPolyglotSourceFile,
   isPolyglotTestFile,
-} from "../ports/toolchain-port.js";
+} from "../domain/test-rules.js";
 import { isHollowGate, isUnauthoredGate } from "./gate-quality.js";
 import type { Phase, Task } from "./state.js";
 import {

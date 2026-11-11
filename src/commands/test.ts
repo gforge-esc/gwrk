@@ -10,7 +10,7 @@ import { detectProfile } from "../engine/profile-detector.js";
 import {
   isPolyglotSourceFile,
   isPolyglotTestFile,
-} from "../ports/toolchain-port.js";
+} from "../domain/test-rules.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import { resolveFeature } from "../utils/resolve-feature.js";

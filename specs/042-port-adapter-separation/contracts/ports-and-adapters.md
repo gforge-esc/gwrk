@@ -22,7 +22,6 @@ export interface ToolchainPort {
 
 export function createToolchainAdapter(
   profile: ProjectProfile,
-  resolveBuild?: (cwd: string) => string | null,
 ): ToolchainPort;
 ```
 

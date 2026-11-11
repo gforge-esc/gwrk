@@ -21,7 +21,7 @@ import { resolveProjectId } from "../utils/project-id.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
 import { loadTaskState } from "../utils/state.js";
 
-import { isPolyglotTestFile } from "../ports/toolchain-port.js";
+import { isPolyglotTestFile } from "../domain/test-rules.js";
 import { withParentFlags } from "../utils/command-flags.js";
 import {
   getCurrentBranch,

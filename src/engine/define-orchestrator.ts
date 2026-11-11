@@ -11,7 +11,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { WorkflowRuntime } from "../plugins/workflow-runtime.js";
-import { isPolyglotTestFile } from "../ports/toolchain-port.js";
+import { isPolyglotTestFile } from "../domain/test-rules.js";
 import { dryRun as dryRunFmt } from "../utils/format.js";
 import {
   type GateGenResult,

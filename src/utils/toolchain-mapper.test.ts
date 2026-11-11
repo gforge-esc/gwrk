@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import * as toolchainPort from "../ports/toolchain-port.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createToolchainAdapter } from "../adapters/toolchain/index.js";
 import type { ProjectProfile } from "../engine/prompt-conditioner.js";
+import * as toolchainPort from "../ports/toolchain-port.js";
 import {
   getBuildCommand,
   getSourceExtension,

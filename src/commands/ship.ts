@@ -22,7 +22,7 @@ import type { ShipStage, ShipState } from "../engine/ship-types.js";
 import {
   isPolyglotSourceFile,
   isPolyglotTestFile,
-} from "../ports/toolchain-port.js";
+} from "../domain/test-rules.js";
 import { extractFilePaths } from "../utils/file-extract.js";
 import { getPhaseVerificationGate } from "../utils/gate-quality.js";
 import { listTestsTree, phaseHasTests } from "../utils/test-discovery.js";

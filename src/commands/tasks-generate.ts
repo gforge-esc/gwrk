@@ -18,7 +18,7 @@ import { finishRun, startRun } from "../db/runs.js";
 import { DefineOrchestrator } from "../engine/define-orchestrator.js";
 import { DefineStage } from "../engine/define-types.js";
 import { PlanStore } from "../engine/plan-store.js";
-import { isPolyglotTestFile } from "../ports/toolchain-port.js";
+import { isPolyglotTestFile } from "../domain/test-rules.js";
 import { withParentFlags } from "../utils/command-flags.js";
 import { banner, blocked, fail, success } from "../utils/format.js";
 import {
