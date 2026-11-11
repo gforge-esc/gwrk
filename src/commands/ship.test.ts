@@ -6,7 +6,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import * as runsModule from "../db/runs.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
+import type { AgentPort } from "../ports/agent-port.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
 import * as stateModule from "../utils/state.js";
@@ -492,65 +495,119 @@ describe("shipCommand", () => {
 
 });
 
-vi.mock("../server/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../server/index.js")>();
-  return {
-    ...actual,
-    getBackendSelector: vi.fn().mockReturnValue({
-      selectBackend: vi.fn().mockResolvedValue({
-        backend: "router-selected-agent",
-        model: "router-selected-model",
-        reason: "highest quota",
-        quotaPercent: 99,
-        probeStatus: "fresh",
-        fallbackUsed: false,
-        modelFailoverUsed: false,
-      }),
-    }),
-  };
-});
+vi.mock("../adapters/agents/index.js", () => ({
+  createAgentPortAdapter: vi.fn(),
+}));
 
-describe("BackendSelector Integration", () => {
+const execute = vi.fn<AgentPort["execute"]>();
+const selectRoute = vi.fn<AgentPort["selectRoute"]>(
+  async ({ type, explicitBackend }) => {
+    const backend = explicitBackend ?? "codex";
+    return {
+      backend,
+      model: `${backend}-${type}-model`,
+      effort: type === "review" ? "high" : "medium",
+      mode: "selected",
+      reason: "configured model",
+      fallbackUsed: false,
+      modelFailoverUsed: false,
+    };
+  },
+);
+vi.mocked(createAgentPortAdapter).mockReturnValue({ execute, selectRoute });
+
+describe("AgentPort routing", () => {
   let program: Command;
+  const routes = [
+    {
+      override: "without --agent",
+      agentArgs: [],
+      explicitBackend: undefined,
+      backend: "codex",
+    },
+    {
+      override: "with --agent",
+      agentArgs: ["--agent", "claude"],
+      explicitBackend: "claude",
+      backend: "claude",
+    },
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
     program = new Command();
     program.addCommand(shipCommand);
-    vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit unexpectedly called with "${code}"`);
-    });
   });
 
-  it("should use selectBackend() when no --agent override is provided", async () => {
-    const { getBackendSelector } = await import("../server/index.js");
-    const mockSelector = getBackendSelector() as any;
-    
-    // Legacy ship to keep it simple for this test
-    vi.mocked(execModule.run).mockResolvedValue(undefined);
+  it.each(routes)(
+    "prints the configured dry-run route $override without dispatching",
+    async ({ agentArgs, explicitBackend, backend }) => {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        await program.parseAsync([
+          "node",
+          "test",
+          "ship",
+          "001-cli-core",
+          "1",
+          "--dry-run",
+          ...agentArgs,
+        ]);
 
-    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--legacy"]);
+        expect(createAgentPortAdapter).toHaveBeenCalledWith({
+          projectRoot: process.cwd(),
+        });
+        expect(selectRoute).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ type: "implement", explicitBackend }),
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            `backend: ${backend}, model: ${backend}-implement-model, effort: medium`,
+          ),
+        );
+        expect(execute).not.toHaveBeenCalled();
+        expect(ShipOrchestrator).not.toHaveBeenCalled();
+        expect(execModule.run).not.toHaveBeenCalled();
+      } finally {
+        consoleSpy.mockRestore();
+      }
+    },
+  );
 
-    expect(mockSelector.selectBackend).toHaveBeenCalled();
-    
-    const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
-    expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("router-selected-agent");
-    expect(wudCalls[0][2].env.GEMINI_MODEL).toBe("router-selected-model");
-  });
+  it.each(routes)(
+    "passes implementation and review routes to the orchestrator $override",
+    async ({ agentArgs, explicitBackend, backend }) => {
+      await program.parseAsync([
+        "node",
+        "test",
+        "ship",
+        "001-cli-core",
+        "1",
+        ...agentArgs,
+      ]);
 
-  it("should skip selectBackend() when --agent override IS provided", async () => {
-    const { getBackendSelector } = await import("../server/index.js");
-    const mockSelector = getBackendSelector() as any;
-    
-    vi.mocked(execModule.run).mockResolvedValue(undefined);
-
-    await program.parseAsync(["node", "test", "ship", "001-cli-core", "1", "--agent", "forced-agent", "--legacy"]);
-
-    expect(mockSelector.selectBackend).not.toHaveBeenCalled();
-    
-    const wudCalls = vi.mocked(execModule.run).mock.calls.filter(call => typeof call[0] === "string" && call[0].includes("work-until-done.sh"));
-    expect(wudCalls[0][2].env.AGENT_BACKEND).toBe("forced-agent");
-  });
+      expect(createAgentPortAdapter).toHaveBeenCalledWith({
+        projectRoot: process.cwd(),
+      });
+      expect(selectRoute).toHaveBeenCalledTimes(2);
+      expect(selectRoute).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ type: "implement", explicitBackend }),
+      );
+      expect(selectRoute).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ type: "review", explicitBackend: backend }),
+      );
+      expect(ShipOrchestrator).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(ShipOrchestrator).mock.calls[0]?.[0]).toMatchObject({
+        backend,
+        selectedModel: `${backend}-implement-model`,
+        selectedEffort: "medium",
+        reviewModel: `${backend}-review-model`,
+        reviewEffort: "high",
+      });
+    },
+  );
 });
 
 describe("FR-014: Phase Skip", () => {

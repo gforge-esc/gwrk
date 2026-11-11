@@ -148,6 +148,78 @@ describe("Hexagonal boundary gates (ADR-011)", () => {
   });
 });
 
+function inspectFileImports(file: string) {
+  const source = fs.readFileSync(file, "utf-8");
+  return inspectArchitectureSource(file, source).imports;
+}
+
+function importsFromServerShims(
+  file: string,
+  imports: ReturnType<typeof inspectFileImports>,
+  shims: readonly string[],
+) {
+  return imports.filter(({ specifier }) => {
+    if (!specifier?.startsWith(".")) return false;
+    const target = path.posix.join(path.posix.dirname(file), specifier);
+    return shims.includes(target.replace(/\.js$/, ""));
+  });
+}
+
+describe("Unified agent routing dependencies", () => {
+  const registryShim = "src/server/agent-registry";
+
+  it.each([
+    "src/engine/model-routing.test.ts",
+    "src/server/backend-selector.test.ts",
+    "src/server/backend-selector.integration.test.ts",
+  ])("%s does not depend on server routing shims", (file) => {
+    expect(
+      importsFromServerShims(file, inspectFileImports(file), [
+        registryShim,
+        "src/server/model-selector",
+        "src/server/task-classifier",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("uses domain types in the quota prober", () => {
+    const file = "src/server/quota-prober.ts";
+    const imports = inspectFileImports(file);
+    expect
+      .soft(importsFromServerShims(file, imports, [registryShim]))
+      .toEqual([]);
+    expect(imports).toContainEqual({
+      kind: "static",
+      specifier: "../domain/agent-config.js",
+      typeOnly: true,
+    });
+  });
+
+  it.each([
+    "src/server/index.ts",
+    "src/server/agent-registry.test.ts",
+    "src/server/agent-registry.integration.test.ts",
+  ])("%s uses the adapter registry loader", (file) => {
+    const imports = inspectFileImports(file);
+    const specifier = "../adapters/agents/registry-loader.js";
+    expect
+      .soft(importsFromServerShims(file, imports, [registryShim]))
+      .toEqual([]);
+    expect.soft(imports).toContainEqual({
+      kind: "static",
+      specifier,
+      typeOnly: false,
+    });
+    if (file === "src/server/index.ts") {
+      expect(imports).toContainEqual({
+        kind: "re-export",
+        specifier,
+        typeOnly: false,
+      });
+    }
+  });
+});
+
 describe("034-hexagonal-architecture: Decomposed Ship Stage Handlers", () => {
   it("extracts open task errors and builds review-aware diagnosis prompts", () => {
     const errors = extractOpenTaskErrors([

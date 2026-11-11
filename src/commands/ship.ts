@@ -10,6 +10,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
+import { createAgentPortAdapter } from "../adapters/agents/index.js";
 import {
   logCliError,
   logCliOutput,
@@ -66,12 +67,10 @@ import {
   saveTaskState,
 } from "../utils/state.js";
 
-import { getBackendSelector } from "../server/index.js";
 import { SandboxManager } from "../server/sandbox.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { pillarBackend } from "../utils/resolve-agent.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
-import { resolveRegisteredRoute } from "../utils/resolve-model.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -617,8 +616,7 @@ Examples:
           }
 
           // FR-022: Workstation setup pre-flight check.
-          // A dry-run only prints what would happen — it never touches git or the
-          // agent, so it must not require a provisioned workstation.
+          // Dry-run previews routing without dispatching work.
           const setupState = loadSetupState();
           if (!opts.dryRun && !isSetupComplete(setupState)) {
             blocked("Run gwrk init first");
@@ -781,33 +779,24 @@ Examples:
             );
           }
 
+          const agentPort = createAgentPortAdapter({ projectRoot: cwd });
+          const explicitBackend = opts.agent as string | undefined;
+          const routeContext = { feature, language: "typescript", taskSP: 1 };
+
           if (opts.dryRun) {
-            // Report the backend that would build without invoking the agent.
-            // With --agent it's authoritative; otherwise the router selects at
-            // run time by quota — resolve it through the real selector so the
-            // dry-run matches the actual run.
-            if (opts.agent) {
+            try {
+              const implementation = await agentPort.selectRoute({
+                ...routeContext,
+                type: "implement",
+                explicitBackend,
+                runId: `ship-dryrun-${feature}`,
+                phase: `phase-${phases[0].padStart(2, "0")}`,
+              });
               logCliOutput(
-                `  🤖 Would build with backend: ${opts.agent} (--agent override)`,
+                `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
-            } else {
-              try {
-                const selection = await getBackendSelector(cwd).selectBackend({
-                  runId: `ship-dryrun-${feature}`,
-                  feature,
-                  phase: `phase-${phases[0].padStart(2, "0")}`,
-                  taskType: "implement",
-                  language: "typescript",
-                  taskSP: 1,
-                });
-                logCliOutput(
-                  `  🤖 Would build with backend: ${selection.backend} (router: ${selection.reason})`,
-                );
-              } catch {
-                logCliOutput(
-                  `  🤖 Router default: ${pillarBackend(config, "implement")} (agents.implement)`,
-                );
-              }
+            } catch (error) {
+              logCliOutput(`  🤖 Could not select an implementation route: ${error}`);
             }
             if (opts.worktree) {
               dryRunFmt(
@@ -866,57 +855,37 @@ Examples:
 
           try {
             for (const p of phases) {
-              let currentBackend = opts.agent as string as AgentBackendId;
-              let selectedModel: string | undefined;
-              let selectedEffort: string | undefined;
-
-              if (!currentBackend) {
-                // Select on the primary checkout so the quota cache/cooldown is
-                // shared, not scattered across ephemeral worktrees.
-                const selector = getBackendSelector(cwd);
-                const selection = await selector.selectBackend({
-                  runId: `ship-${feature}-${Date.now()}`,
-                  feature,
-                  phase: `phase-${p.padStart(2, "0")}`,
-                  taskType: "implement",
-                  language: "typescript",
-                  taskSP: 1, // Default for orchestrator
-                });
-                currentBackend = selection.backend as AgentBackendId;
-                selectedModel = selection.model;
-                selectedEffort = selection.effort;
-                logCliOutput(
-                  `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
-                );
-              }
-
-              if (opts.agent) {
-                const implementation = resolveRegisteredRoute(
-                  "implement",
-                  currentBackend,
-                  cwd,
-                );
-                selectedModel = implementation?.model;
-                selectedEffort = implementation?.effort;
-              }
-              const review = resolveRegisteredRoute(
-                "review",
-                currentBackend,
-                cwd,
+              const phaseContext = {
+                ...routeContext,
+                runId: `ship-${feature}-${Date.now()}`,
+                phase: `phase-${p.padStart(2, "0")}`,
+              };
+              const implementation = await agentPort.selectRoute({
+                ...phaseContext,
+                type: "implement",
+                explicitBackend,
+              });
+              logCliOutput(
+                `  🤖 Router selected backend: ${implementation.backend} (${implementation.reason})`,
               );
+              const review = await agentPort.selectRoute({
+                ...phaseContext,
+                type: "review",
+                explicitBackend: implementation.backend,
+              });
 
               const exitCode = await shipPhase(
                 feature,
                 p,
-                currentBackend,
+                implementation.backend,
                 opts,
                 shipCwd,
-                selectedModel,
+                implementation.model,
                 {
                   ...overrides,
-                  selectedEffort,
-                  reviewModel: review?.model,
-                  reviewEffort: review?.effort,
+                  selectedEffort: implementation.effort,
+                  reviewModel: review.model,
+                  reviewEffort: review.effort,
                 },
               );
               if (exitCode !== 0) {

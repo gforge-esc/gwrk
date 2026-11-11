@@ -3,9 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { TaskClassification, classifyTask, TaskType } from "../server/task-classifier.js";
-import type { AgentBackendConfig, ModelEntry } from "../server/agent-registry.js";
-import { ModelSelector } from "../server/model-selector.js";
+import {
+  type AgentBackendConfig,
+  type ModelEntry,
+  ModelSelector,
+} from "../domain/agent-config.js";
+import { classifyTask, TaskClassification, TaskType } from "../domain/types.js";
 
 /**
  * Model Tier Routing Tests
