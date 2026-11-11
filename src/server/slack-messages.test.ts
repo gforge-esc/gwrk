@@ -46,6 +46,25 @@ describe("MessageBuilder", () => {
     }
   });
 
+  it("stamps every review action with its project and feature thread", () => {
+    const routing = { projectId: "project-a", projectSlug: "alpha", rootTs: "3.1" };
+    const dispatch = { ...mockDispatch, ...routing };
+    const actions = MessageBuilder.reviewReady(dispatch).blocks.find(
+      (block): block is ActionsBlock => block.type === "actions",
+    );
+    expect(actions?.elements).toHaveLength(3);
+    for (const button of actions?.elements ?? []) {
+      if (button.type !== "button" || !button.value) {
+        throw new Error("Expected an interactive review button");
+      }
+      expect(JSON.parse(button.value)).toMatchObject({
+        ...routing,
+        featureId: dispatch.featureId,
+        phaseId: dispatch.phaseId,
+      });
+    }
+  });
+
   it("should build phaseFail message with error", () => {
     const msg = MessageBuilder.phaseFail(mockDispatch, "Build failed");
     expect(msg.text).toContain("Phase phase-01 failed");

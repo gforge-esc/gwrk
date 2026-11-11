@@ -74,6 +74,43 @@ describe("slack-actions (FR-007, US-004, US-005)", () => {
     };
   });
 
+  it.each(["merge_pr", "request_changes"])(
+    "refuses project-scoped %s when authorization cannot be resolved",
+    async (actionId) => {
+      const { execSync } = await import("node:child_process");
+      const { findOpenPr } = await import("../db/runs.js");
+      await registerSlackActions(mockApp as App, mockContext);
+      const ack = vi.fn();
+      const chat = { postMessage: vi.fn(), postEphemeral: vi.fn() };
+      await actionHandlers[actionId]({
+        ack,
+        body: {
+          team: { id: "W1" },
+          channel: { id: "C123" },
+          user: { id: "U123" },
+          message: { ts: "3.2", thread_ts: "3.1" },
+          actions: [{
+            value: JSON.stringify({
+              projectId: "enrolled-project",
+              projectSlug: "fixture",
+              featureId: "003-slack",
+              phaseId: "phase-01",
+              rootTs: "3.1",
+            }),
+          }],
+        },
+        client: { chat },
+        logger: { error: vi.fn() },
+      });
+
+      expect(ack).toHaveBeenCalledOnce();
+      expect(findOpenPr).not.toHaveBeenCalled();
+      expect(execSync).not.toHaveBeenCalled();
+      expect(mockContext.queue.enqueue).not.toHaveBeenCalled();
+      expect(chat.postMessage).not.toHaveBeenCalled();
+    },
+  );
+
   it("registers all required actions", async () => {
     await registerSlackActions(mockApp as App, mockContext);
     const expectedActions = [
