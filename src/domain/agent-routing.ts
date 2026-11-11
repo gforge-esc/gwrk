@@ -113,6 +113,7 @@ export function selectAgentRoute(
     if (quota && quota.percent <= 0) continue;
 
     const backend = facts.registry?.backends[name];
+    if (!facts.availableBackends && facts.registry && !backend) continue;
     const cooldown = new Set(facts.cooledDownModels?.[name] ?? []);
     const modelId = (label: string) =>
       backend?.models.find((entry) => entry.name === label)?.modelFlag ?? label;
@@ -120,18 +121,25 @@ export function selectAgentRoute(
       cooldown.has(label) || cooldown.has(modelId(label));
 
     if (requestedModel) {
-      const entry = backend?.models.find(
-        (model) =>
-          model.name === requestedModel || model.modelFlag === requestedModel,
-      );
+      const providerDefault = requestedModel === "default";
+      const entry = providerDefault
+        ? undefined
+        : backend?.models.find(
+            (model) =>
+              model.name === requestedModel ||
+              model.modelFlag === requestedModel,
+          );
       // An explicit request may use an unlisted provider ID on the selected
       // backend. Changing backend requires evidence it supports the same ID.
-      if ((index > 0 && !entry) || unavailable(entry?.name ?? requestedModel))
+      if (
+        (index > 0 && !entry && !providerDefault) ||
+        unavailable(entry?.name ?? requestedModel)
+      )
         continue;
       return {
         backend: name,
         model: entry?.modelFlag || requestedModel,
-        mode: requestedModel === "default" ? "provider-default" : "selected",
+        mode: providerDefault ? "provider-default" : "selected",
         effort: entry?.effort,
         reason: "explicit model",
         quotaPercent: quota?.percent,

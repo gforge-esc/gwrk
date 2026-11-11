@@ -94,4 +94,16 @@ describe("agent route policy", () => {
       mode: "provider-default",
     });
   });
+
+  it("requires evidence that an explicitly selected backend is available", () => {
+    expect(() =>
+      selectAgentRoute(
+        { type: "define" },
+        {
+          explicitBackend: "missing",
+          registry,
+        },
+      ),
+    ).toThrow(/missing/);
+  });
 });
