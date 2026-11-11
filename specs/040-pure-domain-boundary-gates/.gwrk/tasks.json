@@ -1,10 +1,10 @@
 {
   "featureId": "040-pure-domain-boundary-gates",
-  "createdAt": "2026-11-11T16:07:11.018Z",
+  "createdAt": "2026-11-11T16:11:32.751Z",
   "generatedFrom": {
     "plan": {
-      "hash": "beef3b25fdf0ce02d5704bfdf3983fa9a37fabf748891f1c8f2be9ea82e90815",
-      "modifiedAt": "2026-11-11T16:07:10.748Z"
+      "hash": "61b5bb3f0c95bb2ba03b759e3bcd09719ef28740883161fcf0e15c2e50304f08",
+      "modifiedAt": "2026-11-11T16:11:29.986Z"
     }
   },
   "phases": [
@@ -17,7 +17,7 @@
           "title": "Create architecture-boundary.ts",
           "description": "NEW tests/helpers/architecture-boundary.ts. Check TypeScript syntax and layer rules",
           "status": "open",
-          "gateScript": "pnpm exec vitest run src/architecture.test.ts",
+          "gateScript": "pnpm exec vitest run src/architecture.test.ts src/engine/harvest.test.ts src/engine/issues.test.ts",
           "sp": 2
         }
       ],
