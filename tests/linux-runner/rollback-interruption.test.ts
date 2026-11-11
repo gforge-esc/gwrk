@@ -92,12 +92,8 @@ it.each([
         realpath: 'cd -P -- "$3" && pwd -P',
         flock: "exit 0",
         runuser: `shift 5
-if [[ "\${3:-}" == --version ]]; then
-  if [[ "$FIXTURE_STAGE" == "target CLI version mismatch" ]]; then
-    printf '1.1.0\\n'
-  else
-    printf '1.0.0\\n'
-  fi
+if [[ "\${3:-}" == --version && "$FIXTURE_STAGE" != "target CLI version mismatch" ]]; then
+  printf '1.0.0\\n'
   exit 0
 fi
 if [[ "\${3:-}" == db ]]; then
@@ -183,8 +179,12 @@ esac`,
             expect(output).toContain("Fixture backup failed");
             expect(await readFile(calls, "utf8"), output).toBe("stop\n");
           } else {
-            expect(output).toContain("does not match");
-            expect(existsSync(calls)).toBe(false);
+            expect(existsSync(calls), output).toBe(false);
+            expect(output).toContain(
+              stage === "target CLI version mismatch"
+                ? "Rollback target CLI version does not match"
+                : "Rollback target manifest version 1.1.0 does not match",
+            );
           }
           expect(existsSync(pidFile)).toBe(false);
           expect(await readlink(current)).toBe(active);

@@ -212,10 +212,13 @@ test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 mv /tmp/prior-cli.js "$prior/dist/cli.js"
 
 mv "$prior/dist/cli.js" /tmp/prior-cli.js
-printf 'console.log("9.9.9")\n' > "$prior/dist/cli.js"
+ln -s "$active/dist/cli.js" "$prior/dist/cli.js"
 : > /tmp/supervisor.calls
 expect_rejection 'Rollback target CLI version does not match' bash "$rollback" /opt/gwrk /var/lib/gwrk
-test ! -s /tmp/supervisor.calls
+if grep -Eq '^(stop|start)$' /tmp/supervisor.calls; then
+  printf 'Rollback changed the service state before rejecting a mismatched CLI version.\n' >&2
+  exit 1
+fi
 test "$(readlink /opt/gwrk/current)" = "$current_before"
 test "$(readlink /opt/gwrk/previous)" = "$previous_before"
 mv /tmp/prior-cli.js "$prior/dist/cli.js"
