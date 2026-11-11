@@ -71,6 +71,7 @@ import { SandboxManager } from "../server/sandbox.js";
 import { resolveProjectId } from "../utils/project-id.js";
 import { pillarBackend } from "../utils/resolve-agent.js";
 import { resolveFeature } from "../utils/resolve-feature.js";
+import { resolveRegisteredRoute } from "../utils/resolve-model.js";
 import { isSetupComplete, loadSetupState } from "../utils/setup-state.js";
 import { CommandError, withSignal } from "../utils/signal.js";
 
@@ -114,7 +115,13 @@ async function shipPhase(
   opts: Record<string, string | boolean | undefined>,
   cwd: string,
   selectedModel?: string,
-  overrides: { stateRoot?: string; branchName?: string } = {},
+  overrides: {
+    stateRoot?: string;
+    branchName?: string;
+    selectedEffort?: string;
+    reviewModel?: string;
+    reviewEffort?: string;
+  } = {},
 ): Promise<number> {
   // Resolve prefix: "003" → "003-slack"
   const feature = resolveFeature(featureInput, cwd);
@@ -287,6 +294,9 @@ async function shipPhase(
           branchName: overrides.branchName,
           dryRun: !!opts.dryRun,
           selectedModel,
+          selectedEffort: overrides.selectedEffort,
+          reviewModel: overrides.reviewModel,
+          reviewEffort: overrides.reviewEffort,
         },
         existingState,
       );
@@ -858,6 +868,7 @@ Examples:
             for (const p of phases) {
               let currentBackend = opts.agent as string as AgentBackendId;
               let selectedModel: string | undefined;
+              let selectedEffort: string | undefined;
 
               if (!currentBackend) {
                 // Select on the primary checkout so the quota cache/cooldown is
@@ -873,10 +884,26 @@ Examples:
                 });
                 currentBackend = selection.backend as AgentBackendId;
                 selectedModel = selection.model;
+                selectedEffort = selection.effort;
                 logCliOutput(
                   `  🤖 Router selected backend: ${selection.backend} (${selection.reason})`,
                 );
               }
+
+              if (opts.agent) {
+                const implementation = resolveRegisteredRoute(
+                  "implement",
+                  currentBackend,
+                  cwd,
+                );
+                selectedModel = implementation?.model;
+                selectedEffort = implementation?.effort;
+              }
+              const review = resolveRegisteredRoute(
+                "review",
+                currentBackend,
+                cwd,
+              );
 
               const exitCode = await shipPhase(
                 feature,
@@ -885,7 +912,12 @@ Examples:
                 opts,
                 shipCwd,
                 selectedModel,
-                overrides,
+                {
+                  ...overrides,
+                  selectedEffort,
+                  reviewModel: review?.model,
+                  reviewEffort: review?.effort,
+                },
               );
               if (exitCode !== 0) {
                 finalExitCode = exitCode;

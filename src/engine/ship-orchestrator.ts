@@ -628,6 +628,8 @@ export class ShipOrchestrator extends EventEmitter {
       const conditionedPrompt = conditionPrompt(reviewPrompt, profile);
 
       const result = await this.dispatchWithFailback({
+        type: "review",
+        workflow: workflowName,
         prompt: conditionedPrompt,
         featureDir: `specs/${this.config.featureId}`,
         agent: this.config.backend,
@@ -2787,14 +2789,15 @@ ${marker}`;
    */
   private async dispatchWithFailback(task: TaskDispatch): Promise<TaskResult> {
     const env: Record<string, string> = { ...task.env };
-    const model = this.config.selectedModel;
-
-    // 1. Use Router-selected model if available (FR-008/009)
-    if (model) {
-      if (this.config.backend === "claude") env.CLAUDE_MODEL = model;
-      if (this.config.backend === "codex") env.CODEX_MODEL = model;
-      logCliOutput(`    🤖 Router model: ${model}`);
-    }
+    const review = task.type === "review";
+    const model =
+      task.model ??
+      (review ? this.config.reviewModel : this.config.selectedModel);
+    const effort = review
+      ? this.config.reviewEffort
+      : this.config.selectedEffort;
+    if (effort) env.GWRK_EFFORT = effort;
+    if (model) logCliOutput(`    🤖 Router model: ${model}`);
 
     // 2. Dispatch — run the agent in the ship working tree (cwd), not
     // process.cwd(). Identical for the primary checkout; under worktree-isolated

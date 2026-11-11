@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { tryLoadRegistry } from "../adapters/agents/registry-loader.js";
-import { selectAgentRoute } from "../domain/agent-routing.js";
+import {
+  type RouteSelectionDecision,
+  selectAgentRoute,
+} from "../domain/agent-routing.js";
 
 /**
  * Resolves the preferred model for a task type from the agent registry.
@@ -25,25 +28,22 @@ export function resolveModelForTask(
   backendName: string,
   projectRoot: string = process.cwd(),
 ): string | undefined {
-  try {
-    const result = tryLoadRegistry(projectRoot);
-    if (!result.ok) return undefined;
-    const backendConfig = result.value.backends[backendName];
+  const route = resolveRegisteredRoute(taskType, backendName, projectRoot);
+  return route?.mode === "selected" ? route.model : undefined;
+}
 
-    if (!backendConfig || backendConfig.models.length === 0) {
-      return undefined;
-    }
-
-    const selection = selectAgentRoute(
-      { type: taskType },
-      {
-        explicitBackend: backendName,
-        registry: result.value,
-      },
-    );
-    return selection.mode === "selected" ? selection.model : undefined;
-  } catch {
-    // Registry not configured or backend not found — fall back to default
-    return undefined;
-  }
+export function resolveRegisteredRoute(
+  taskType: string,
+  backendName: string,
+  projectRoot: string,
+): RouteSelectionDecision | undefined {
+  const result = tryLoadRegistry(projectRoot);
+  if (!result.ok || !result.value.backends[backendName]) return undefined;
+  return selectAgentRoute(
+    { type: taskType },
+    {
+      explicitBackend: backendName,
+      registry: result.value,
+    },
+  );
 }
