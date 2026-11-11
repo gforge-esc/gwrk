@@ -90,7 +90,7 @@ export function checkCandidate(
   if (
     reports.length !== 1 ||
     report.status !== "available" ||
-    !report.supportsModelForwarding
+    report.supportsModelForwarding !== true
   ) {
     return { ok: false, reason: "model-unavailable" };
   }
@@ -100,12 +100,19 @@ export function checkCandidate(
       model.modelId === candidate.modelId &&
       model.provider === candidate.provider &&
       model.family === candidate.family &&
-      !model.hidden,
+      model.hidden === false,
   );
   if (models.length !== 1) return { ok: false, reason: "model-unavailable" };
+  const { supportedEfforts } = models[0];
+  if (
+    !Array.isArray(supportedEfforts) ||
+    supportedEfforts.some((effort) => typeof effort !== "string")
+  ) {
+    return { ok: false, reason: "model-unavailable" };
+  }
   if (
     candidate.effort !== undefined &&
-    !models[0].supportedEfforts.includes(candidate.effort)
+    !supportedEfforts.includes(candidate.effort)
   ) {
     return { ok: false, reason: "effort-unavailable" };
   }

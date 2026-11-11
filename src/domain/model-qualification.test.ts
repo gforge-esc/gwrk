@@ -108,6 +108,59 @@ describe("model qualification policy", () => {
     });
   });
 
+  const report = snapshot.adapters[0];
+  const model = report.models[0];
+  it.each([
+    {
+      field: "string model forwarding",
+      report: { ...report, supportsModelForwarding: "false" },
+      route: candidate,
+    },
+    {
+      field: "omitted hidden flag",
+      report: { ...report, models: [{ ...model, hidden: undefined }] },
+      route: candidate,
+    },
+    {
+      field: "string effort list",
+      report: {
+        ...report,
+        models: [{ ...model, supportedEfforts: "highlight" }],
+      },
+      route: candidate,
+    },
+    {
+      field: "omitted effort list with a requested effort",
+      report: {
+        ...report,
+        models: [{ ...model, supportedEfforts: undefined }],
+      },
+      route: candidate,
+    },
+    {
+      field: "omitted effort list without a requested effort",
+      report: {
+        ...report,
+        models: [{ ...model, supportedEfforts: undefined }],
+      },
+      route: { ...candidate, effort: undefined },
+    },
+    {
+      field: "non-string effort entry",
+      report: {
+        ...report,
+        models: [{ ...model, supportedEfforts: ["high", 1] }],
+      },
+      route: candidate,
+    },
+  ])("rejects a persisted catalog with $field", ({ report, route }) => {
+    const persisted = JSON.parse(JSON.stringify({ scope, adapters: [report] }));
+    expect(checkCandidate(persisted, scope, route)).toEqual({
+      ok: false,
+      reason: "model-unavailable",
+    });
+  });
+
   it("keeps the incumbent after failed gates, dependent judges or unverifiable references", () => {
     const input = passingEvidence;
     expect(evaluatePromotion(input)).toEqual({ promote: true });
