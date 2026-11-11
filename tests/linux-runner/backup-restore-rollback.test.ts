@@ -211,37 +211,61 @@ describe("installed ledger commands outside a checkout", () => {
     },
   );
 
-  it("preserves an absent device record with separate state and home", async () => {
-    const home = join(root, "identity");
-    const state = join(root, "ledger-state");
-    await mkdir(home);
-    await mkdir(state);
-    const ledger = join(state, "gwrk.db");
-    seedLedger(ledger).close();
-    const device = join(home, "device.json");
-    const result = runInstalledLedgerCommandAtHome(
-      ledger,
-      home,
-      "backup",
-      "--out",
-      join(device, "copy"),
-    );
-    expect.soft(result.status, result.stderr).toBe(1);
-    expect.soft(result.stderr).toContain(device);
-    await expect(stat(device)).rejects.toMatchObject({ code: "ENOENT" });
-    const clean = runInstalledLedgerCommandAtHome(
-      ledger,
-      home,
-      "backup",
-      "--out",
-      join(root, "safe-backup"),
-    );
-    expect(clean.status, clean.stderr).toBe(0);
-  });
+  it.each([
+    { alias: false, child: false },
+    { alias: false, child: true },
+    { alias: true, child: false },
+    { alias: true, child: true },
+  ])(
+    "preserves an absent device in a separate home with alias=$alias and child=$child",
+    async ({ alias, child }) => {
+      const home = join(root, "identity");
+      const state = join(root, "ledger-state");
+      await mkdir(home);
+      await mkdir(state);
+      const ledger = join(state, "gwrk.db");
+      seedLedger(ledger).close();
+      const homeAlias = join(root, "identity-alias");
+      await symlink(home, homeAlias);
+      const device = join(home, "device.json");
+      const result = runInstalledLedgerCommandAtHome(
+        ledger,
+        home,
+        "backup",
+        "--out",
+        join(
+          alias ? homeAlias : home,
+          "device.json",
+          ...(child ? ["copy"] : []),
+        ),
+      );
+      expect.soft(result.status, result.stderr).toBe(1);
+      expect.soft(result.stderr).toContain(`reserved device path ${device}`);
+      await expect(stat(device)).rejects.toMatchObject({ code: "ENOENT" });
 
-  it.each([false, true])(
-    "does not create a second ledger's restore marker via symlink=%s",
-    async (alias) => {
+      const destination = join(root, "safe-backup");
+      const clean = runInstalledLedgerCommandAtHome(
+        ledger,
+        home,
+        "backup",
+        "--out",
+        destination,
+      );
+      expect(clean.status, clean.stderr).toBe(0);
+      expect(
+        (await verifyLedgerBackup(destination)).metadata.device,
+      ).toBeNull();
+    },
+  );
+
+  it.each([
+    { alias: false, child: false },
+    { alias: false, child: true },
+    { alias: true, child: false },
+    { alias: true, child: true },
+  ])(
+    "preserves a second ledger's absent restore marker with alias=$alias and child=$child",
+    async ({ alias, child }) => {
       const first = join(root, "first-state");
       const second = join(root, "second-state");
       await mkdir(first);
@@ -255,16 +279,23 @@ describe("installed ledger commands outside a checkout", () => {
       const marker = join(second, ".restore-pending");
       const result = runInstalledBackup(
         sourceLedger,
-        join(alias ? link : second, ".restore-pending"),
+        join(
+          alias ? link : second,
+          ".restore-pending",
+          ...(child ? ["copy"] : []),
+        ),
       );
       expect.soft(result.status, result.stderr).toBe(1);
-      expect.soft(result.stderr).toContain("reserved restore path");
+      expect.soft(result.stderr).toContain(`reserved restore path ${marker}`);
       await expect(stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
-      const clean = runInstalledBackup(
-        otherLedger,
-        join(root, "second-backup"),
-      );
+
+      const destination = join(root, "second-backup");
+      const clean = runInstalledBackup(otherLedger, destination);
       expect(clean.status, clean.stderr).toBe(0);
+      expect(
+        (await verifyLedgerBackup(destination)).manifest.summary
+          .completedRunIds,
+      ).toEqual([42]);
     },
   );
 
