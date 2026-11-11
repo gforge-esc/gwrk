@@ -25,7 +25,7 @@ import type { ProjectRegistryPort } from "../ports/store-port.js";
 
 const LEGACY_LOCAL = "legacy-local";
 
-function normalizeRegistryRepo(repo: string | null): string | null {
+export function normalizeRegistryRepo(repo: string | null): string | null {
   return repo
     ? (normalizeGitRemoteSlug(repo)?.replace(/^github\.com\//, "") ?? null)
     : null;
@@ -188,51 +188,71 @@ export function createProjectRegistry(
     const aliases = new Set(project.legacyProjectIds);
     const transitions = new Set<string>();
     const projectRepo = normalizeRegistryRepo(project.repoSlug);
-    let checkoutConflicts = false;
+    const verifiedIds = new Set<string>();
     const findLocal = db.prepare(`
-      SELECT local_root, mirror_path, updated_at
+      SELECT path, local_root, mirror_path, updated_at
       FROM projects WHERE id = ? AND repo_slug IS NULL
     `);
     for (const root of [project.localRoot, project.mirrorPath]) {
       if (!root) continue;
-      for (const id of computeLegacyProjectIds({ projectRoot: root })) {
-        if (
-          db
-            .prepare("SELECT 1 FROM projects WHERE id = ? AND path = ?")
-            .get(id, root)
-        ) {
-          aliases.add(id);
-        }
-      }
-
       const facts =
         discoverVerifiedCheckout(root) ??
         (root === project.mirrorPath ? discoverVerifiedMirror(root) : null);
       if (!facts) continue;
       const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
       if (computeProjectId(facts) !== projectId || origin !== projectRepo) {
-        checkoutConflicts = true;
-        continue;
+        throw new Error(
+          `Project ID belongs to a different repository or checkout: ${projectId}`,
+        );
       }
+
       const localId = computeProjectId({ ...facts, remoteOriginUrl: null });
       for (const id of computeLegacyProjectIds(facts)) {
+        verifiedIds.add(id);
         if (id === projectId || canonicalProjectId(db, id) !== id) continue;
         const prior = findLocal.get(id) as
-          | Pick<ProjectRow, "local_root" | "mirror_path" | "updated_at">
+          | (Pick<ProjectRow, "local_root" | "mirror_path" | "updated_at"> & {
+              path: string;
+            })
           | undefined;
         if (!prior || (prior.updated_at !== null && id !== localId)) continue;
-        const sameCheckout = [prior.local_root, prior.mirror_path].some(
+        const priorRoots = [prior.local_root, prior.mirror_path];
+        if (prior.updated_at === null) priorRoots.push(prior.path);
+        const sameRepository = priorRoots.some(
           (priorRoot) =>
-            priorRoot === root ||
-            (priorRoot &&
-              discoverVerifiedCheckout(priorRoot)?.gitCommonDir ===
-                facts.gitCommonDir),
+            priorRoot &&
+            (
+              discoverVerifiedCheckout(priorRoot) ??
+              discoverVerifiedMirror(priorRoot)
+            )?.gitCommonDir === facts.gitCommonDir,
         );
-        if (!sameCheckout) continue;
+        if (!sameRepository) continue;
         transitions.add(id);
         aliases.add(id);
       }
     }
+
+    const enrolled = db
+      .prepare(`
+      SELECT repo_slug, local_root, mirror_path FROM projects
+      WHERE id = ? AND updated_at IS NOT NULL
+    `)
+      .get(projectId) as
+      | Pick<ProjectRow, "repo_slug" | "local_root" | "mirror_path">
+      | undefined;
+    if (
+      enrolled &&
+      (normalizeRegistryRepo(enrolled.repo_slug) !== projectRepo ||
+        (projectRepo === null &&
+          verifiedIds.size === 0 &&
+          (enrolled.local_root !== project.localRoot ||
+            enrolled.mirror_path !== project.mirrorPath)))
+    ) {
+      throw new Error(
+        `Project ID belongs to a different repository or checkout: ${projectId}`,
+      );
+    }
+
     const currentOwner = canonicalProjectId(db, projectId);
     if (currentOwner !== projectId && !transitions.has(currentOwner)) {
       throw new Error(
@@ -241,13 +261,28 @@ export function createProjectRegistry(
     }
     aliases.delete(projectId);
     const findAlias = db.prepare(
-      "SELECT path, github_repo, updated_at FROM projects WHERE id = ?",
+      "SELECT path, repo_slug, github_repo, updated_at FROM projects WHERE id = ?",
     );
+    const hasRecords = db.prepare(`
+      SELECT 1 FROM runs WHERE project_id = @id
+      UNION ALL SELECT 1 FROM history WHERE project_id = @id
+      UNION ALL SELECT 1 FROM plan_features WHERE project_id = @id
+      UNION ALL SELECT 1 FROM plan_phases WHERE project_id = @id
+      UNION ALL SELECT 1 FROM plan_proposals WHERE project_id = @id
+      UNION ALL SELECT 1 FROM plan_edges WHERE project_id = @id
+      UNION ALL SELECT 1 FROM gate_results WHERE project_id = @id
+      UNION ALL SELECT 1 FROM issues WHERE project_id = @id
+      UNION ALL SELECT 1 FROM compression WHERE project_id = @id
+      UNION ALL SELECT 1 FROM routing_history WHERE project_id = @id
+      UNION ALL SELECT 1 FROM routing_decisions WHERE project_id = @id
+      LIMIT 1
+    `);
     for (const alias of aliases) {
       const owner = canonicalProjectId(db, alias);
       const legacy = findAlias.get(alias) as
         | {
             path: string;
+            repo_slug: string | null;
             github_repo: string | null;
             updated_at: string | null;
           }
@@ -259,26 +294,39 @@ export function createProjectRegistry(
       ) {
         throw new Error(`Project alias is reserved or already owned: ${alias}`);
       }
-      if (legacy && owner === alias) {
-        const legacyRepo = normalizeRegistryRepo(legacy.github_repo);
-        const legacyFacts =
-          discoverVerifiedCheckout(legacy.path) ??
-          discoverVerifiedMirror(legacy.path);
-        const legacyOriginConflicts =
-          legacyFacts?.remoteOriginUrl &&
-          computeProjectId(legacyFacts) !== projectId;
-        const ownsLegacy =
-          !checkoutConflicts &&
-          !legacyOriginConflicts &&
-          (legacyRepo
-            ? legacyRepo === projectRepo
-            : transitions.has(alias) ||
-              [project.localRoot, project.mirrorPath].includes(legacy.path));
-        if (!ownsLegacy) {
-          throw new Error(
-            `Project alias belongs to a different repository or checkout: ${alias}`,
-          );
-        }
+      if (owner !== alias || (!legacy && !hasRecords.get({ id: alias })))
+        continue;
+
+      const storedRepos = legacy
+        ? [legacy.repo_slug, legacy.github_repo]
+            .map(normalizeRegistryRepo)
+            .filter((repo) => repo !== null)
+        : [];
+      const legacyFacts = legacy
+        ? (discoverVerifiedCheckout(legacy.path) ??
+          discoverVerifiedMirror(legacy.path))
+        : null;
+      const storedOrigin = normalizeRegistryRepo(
+        legacyFacts?.remoteOriginUrl ?? null,
+      );
+      const legacyCheckoutId = legacyFacts && computeProjectId(legacyFacts);
+      const matchesLegacyCheckout =
+        legacyFacts !== null &&
+        legacyCheckoutId === projectId &&
+        computeLegacyProjectIds(legacyFacts).includes(alias);
+      const conflictingRepo =
+        storedRepos.some((repo) => repo !== projectRepo) ||
+        (storedOrigin !== null &&
+          (storedOrigin !== projectRepo || legacyCheckoutId !== projectId));
+      const ownsLegacy =
+        transitions.has(alias) ||
+        verifiedIds.has(alias) ||
+        matchesLegacyCheckout ||
+        (projectRepo !== null && storedRepos.includes(projectRepo));
+      if (conflictingRepo || !ownsLegacy) {
+        throw new Error(
+          `Project alias belongs to a different repository or checkout: ${alias}`,
+        );
       }
     }
 

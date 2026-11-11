@@ -366,25 +366,44 @@ export function insertProposal(
 ): void {
   const conn = db ?? getDb();
   conn
-    .prepare(
-      `INSERT INTO plan_proposals (
-         id, target_phase_id, proposal_type, detail, source, status, project_id, updated_at
-       )
-       VALUES (
-         @id, @target_phase_id, @proposal_type, @detail, @source, @status, @project_id, datetime('now')
-       )
-       ON CONFLICT(project_id, id) DO UPDATE SET target_phase_id = excluded.target_phase_id,
-         proposal_type = excluded.proposal_type, detail = excluded.detail, source = excluded.source,
-         status = excluded.status, updated_at = excluded.updated_at`,
-    )
-    .run({
-      ...proposal,
-      project_id:
+    .transaction(() => {
+      const existing = getProposal(proposal.id, projectId, conn);
+      const { canonical, ids, placeholders } = projectScope(conn, projectId);
+      const owner =
         getPhase(proposal.target_phase_id, projectId, conn)?.project_id ??
-        canonicalProjectId(conn, projectId),
-      detail: proposal.detail ?? null,
-      source: proposal.source ?? null,
-    });
+        canonical;
+
+      conn
+        .prepare(`
+      INSERT INTO plan_proposals (
+        id, target_phase_id, proposal_type, detail, source, status, project_id,
+        created_at, resolved_at, updated_at
+      ) VALUES (
+        @id, @target_phase_id, @proposal_type, @detail, @source, @status, @project_id,
+        COALESCE(@created_at, datetime('now')), @resolved_at, datetime('now')
+      )
+      ON CONFLICT(project_id, id) DO UPDATE SET target_phase_id = excluded.target_phase_id,
+        proposal_type = excluded.proposal_type, detail = excluded.detail, source = excluded.source,
+        status = excluded.status, created_at = excluded.created_at, resolved_at = excluded.resolved_at,
+        updated_at = excluded.updated_at
+    `)
+        .run({
+          ...proposal,
+          project_id: owner,
+          detail: proposal.detail ?? null,
+          source: proposal.source ?? null,
+          created_at: existing?.created_at ?? null,
+          resolved_at: existing?.resolved_at ?? null,
+        });
+
+      conn
+        .prepare(`
+      DELETE FROM plan_proposals WHERE id = ? AND project_id IN (${placeholders})
+        AND project_id <> ?
+    `)
+        .run(proposal.id, ...ids, owner);
+    })
+    .immediate();
 }
 
 /**

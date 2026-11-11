@@ -16,6 +16,7 @@ import {
   insertPhase,
   insertProposal,
   listPhases,
+  listProposals,
 } from "./plan.js";
 
 describe("src/db/plan.ts (DM-018-001/002/003)", () => {
@@ -138,6 +139,65 @@ describe("src/db/plan.ts (DM-018-001/002/003)", () => {
       expect.soft(listPhases(phase.feature_id, id, db)).toEqual([]);
       expect.soft(listPhases("destination", id, db)).toEqual([moved]);
       expect.soft(getProposal(proposal.id, id, db)).toMatchObject(proposal);
+    }
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+  });
+
+  it("retargets a proposal between canonical and alias phases", () => {
+    const phase = {
+      feature_id: "shared",
+      name: "Phase",
+      status: "PLANNED",
+      health: "CLEAN",
+      sp_estimate: 0,
+      seq: 1,
+    };
+    for (const [id, phaseId] of [
+      [projectId, "current-phase"],
+      ["alpha-old", "old-phase"],
+    ]) {
+      insertFeature(
+        { id: "shared", name: "Feature", status: "PLANNED", sp_total: 0 },
+        id,
+        db,
+      );
+      insertPhase({ ...phase, id: phaseId }, id, db);
+    }
+    const proposal = {
+      id: "P1",
+      target_phase_id: "current-phase",
+      proposal_type: "ADD_TASK",
+      status: "PENDING",
+    };
+    insertProposal(proposal, projectId, db);
+    db.exec(`
+      UPDATE plan_proposals SET created_at = '2026-11-10', resolved_at = '2026-11-11';
+      INSERT INTO project_aliases (alias_id, project_id) VALUES ('alpha-old', 'test-project');
+    `);
+
+    for (const [target, owner] of [
+      ["old-phase", "alpha-old"],
+      ["current-phase", projectId],
+    ]) {
+      insertProposal({ ...proposal, target_phase_id: target }, "alpha-old", db);
+      for (const id of [projectId, "alpha-old"]) {
+        const effective = getProposal(proposal.id, id, db);
+        expect.soft(effective).toMatchObject({
+          target_phase_id: target,
+          project_id: owner,
+          created_at: "2026-11-10",
+          resolved_at: "2026-11-11",
+        });
+        expect.soft(listProposals(id, db)).toEqual([effective]);
+      }
+      expect
+        .soft(
+          db
+            .prepare("SELECT COUNT(*) FROM plan_proposals WHERE id = 'P1'")
+            .pluck()
+            .get(),
+        )
+        .toBe(1);
     }
     expect(db.pragma("foreign_key_check")).toEqual([]);
   });

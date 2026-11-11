@@ -98,6 +98,9 @@ describe("FR-H06: Compression recording", () => {
       },
     };
 
+    db.prepare(
+      "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)",
+    ).run("test-project", "Checkout", "/fixtures/previous", "example/checkout");
     recordCompression(report, "test-project", db);
 
     const records = listCompressionRecords("list-feat", "test-project", db);
@@ -109,7 +112,7 @@ describe("FR-H06: Compression recording", () => {
       projectId: "canonical",
       slug: "checkout",
       name: "Checkout",
-      repoSlug: null,
+      repoSlug: "example/checkout",
       trunkBranch: "develop",
       localRoot: "/fixtures/checkout",
       mirrorPath: null,

@@ -136,36 +136,83 @@ describe("runs db", () => {
     expect(historyId).toBeGreaterThan(0);
   });
 
-  it("startRun reconciles by path when a stale project id occupies cwd (changed remote)", () => {
-    // Regression: the repo's `origin` remote changed, so resolveProjectId(cwd)
-    // now returns a NEW id, but the projects table still holds a row for the
-    // SAME path under the OLD id. `INSERT OR IGNORE` can't add the new id
-    // (projects.path is UNIQUE), so the runs insert used to fail the FK.
-    const STALE_ID = "stale-remote-id-0000000000000000";
-    registerProject(
-      { id: STALE_ID, name: "cwd-project", path: process.cwd() },
-      db,
-    );
-
-    // No explicit project_id → startRun resolves one from cwd. Must not throw,
-    // and must record the run under the existing (path-bound) project.
-    let runId = 0;
-    expect(() => {
-      runId = startRun(
-        { feature_id: "reconcile-feat", command: "define tests" },
-        db,
+  it.each([false, true])(
+    "isolates implicit runs after an origin change with a legacy owner: %s",
+    (legacyOwner) => {
+      const checkout = realpathSync(
+        mkdtempSync(join(tmpdir(), "gwrk-run-origin-")),
       );
-    }).not.toThrow();
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(checkout);
+      try {
+        execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "add",
+          "origin",
+          "https://github.com/org/alpha.git",
+        ]);
+        const alphaFacts = discoverGitIdentityFacts(checkout);
+        const [legacyId] = computeLegacyProjectIds(alphaFacts);
+        const alphaId = legacyOwner ? legacyId : computeProjectId(alphaFacts);
+        if (legacyOwner) {
+          registerProject(
+            {
+              id: legacyId,
+              name: "Alpha",
+              path: checkout,
+              github_repo: "org/alpha",
+            },
+            db,
+          );
+        }
+        const alphaRun = startRun(
+          { feature_id: "shared", command: "alpha" },
+          db,
+        );
+        expect
+          .soft(
+            db
+              .prepare("SELECT github_repo FROM projects WHERE id = ?")
+              .pluck()
+              .get(alphaId),
+          )
+          .toMatch(/org\/alpha$/);
 
-    expect(runId).toBeGreaterThan(0);
-    const runs = listRuns("reconcile-feat", STALE_ID, db);
-    expect(runs.length).toBe(1);
-  });
+        execFileSync("git", [
+          "-C",
+          checkout,
+          "remote",
+          "set-url",
+          "origin",
+          "https://github.com/org/beta.git",
+        ]);
+        const betaId = computeProjectId(discoverGitIdentityFacts(checkout));
+        const betaRun = startRun({ feature_id: "shared", command: "beta" }, db);
+
+        expect
+          .soft(listRuns("shared", alphaId, db).map(({ id }) => id))
+          .toEqual([alphaRun]);
+        expect(listRuns("shared", betaId, db).map(({ id }) => id)).toEqual([
+          betaRun,
+        ]);
+      } finally {
+        cwd.mockRestore();
+        rmSync(checkout, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("keeps implicit runs with the checkout after a write for another project", () => {
     const checkoutId = TEST_PROJECT_ID;
     registerProject(
-      { id: checkoutId, name: "Checkout", path: process.cwd() },
+      {
+        id: checkoutId,
+        name: "Checkout",
+        path: process.cwd(),
+        github_repo: discoverGitIdentityFacts(process.cwd()).remoteOriginUrl,
+      },
       db,
     );
 

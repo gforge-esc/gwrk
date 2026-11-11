@@ -261,7 +261,12 @@ describe("Project registry storage", () => {
     const db = getTestDb();
     try {
       registerProject(
-        { id: "legacy-project", name: "Pilot", path: "/fixtures/pilot" },
+        {
+          id: "legacy-project",
+          name: "Pilot",
+          path: "/fixtures/pilot",
+          github_repo: project.repoSlug,
+        },
         db,
       );
       insertFeature(
@@ -364,6 +369,7 @@ describe("Project registry storage", () => {
     { path: "/fixtures/other", repo: "example/other" },
     { path: "/fixtures/pilot", repo: "example/other" },
     { path: "/fixtures/other", repo: null },
+    { path: "/fixtures/pilot", repo: null },
   ])(
     "rejects a legacy alias owned by another checkout at $path",
     ({ path, repo }) => {
@@ -398,6 +404,76 @@ describe("Project registry storage", () => {
       }
     },
   );
+
+  it("rejects an alias claim over a gate without a project row", () => {
+    const db = getTestDb();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      recordGateResult(
+        {
+          feature_id: "shared",
+          phase_id: "phase",
+          task_id: "task",
+          gate_script: "beta.sh",
+          passed: 1,
+          exit_code: 0,
+          output: "",
+        },
+        "beta",
+        db,
+      );
+
+      expect(
+        db.prepare("SELECT id FROM projects WHERE id = 'beta'").get(),
+      ).toBeUndefined();
+      expect
+        .soft(() =>
+          registry.enrollProject({ ...project, legacyProjectIds: ["beta"] }),
+        )
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.getProject(project.projectId)).toBeNull();
+      expect
+        .soft(getGateResult("shared", "phase", "task", project.projectId, db))
+        .toBeFalsy();
+      expect(
+        getGateResult("shared", "phase", "task", "beta", db)?.gate_script,
+      ).toBe("beta.sh");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects a canonical ID rebind and preserves its maintainer", () => {
+    const db = getTestDb();
+    try {
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      registry.enrollProject(project);
+      const binding = {
+        projectId: project.projectId,
+        principalType: "slack_user",
+        principalId: "U123",
+        role: "maintainer",
+      } as const;
+      registry.setRoleBinding(binding);
+
+      expect
+        .soft(() =>
+          registry.enrollProject({
+            ...project,
+            repoSlug: "example/beta",
+            localRoot: "/fixtures/beta",
+          }),
+        )
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.getProject(project.projectId)).toMatchObject({
+        repoSlug: project.repoSlug,
+        localRoot: project.localRoot,
+      });
+      expect(registry.listRoleBindings(project.projectId)).toEqual([binding]);
+    } finally {
+      db.close();
+    }
+  });
 
   it.each([true, false])(
     "rejects ambiguous alias and slug lookup when the alias is enrolled first: %s",
@@ -527,6 +603,49 @@ describe("Project registry storage", () => {
       );
     } finally {
       db.close();
+    }
+  });
+
+  it("accepts a verified legacy hash from another checkout of the same origin", () => {
+    const root = mkdtempSync(join(tmpdir(), "gwrk-moved-checkout-"));
+    const db = getTestDb();
+    try {
+      const previous = join(root, "previous");
+      const checkout = join(root, "current");
+      for (const path of [previous, checkout]) {
+        execFileSync("git", ["init", "--quiet", path], { stdio: "ignore" });
+        execFileSync("git", [
+          "-C",
+          path,
+          "remote",
+          "add",
+          "origin",
+          "https://github.com/example/pilot.git",
+        ]);
+      }
+      const [legacyId] = computeLegacyProjectIds({ projectRoot: previous });
+      registerProject({ id: legacyId, name: "Previous", path: previous }, db);
+      insertFeature(
+        { id: "shared", name: "Previous feature", status: "open", sp_total: 1 },
+        legacyId,
+        db,
+      );
+
+      const projectId = resolveProjectId(checkout);
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      registry.enrollProject({
+        ...project,
+        projectId,
+        localRoot: checkout,
+        legacyProjectIds: [legacyId],
+      });
+      expect(registry.getProject(legacyId)?.projectId).toBe(projectId);
+      expect(getFeature("shared", projectId, db)?.name).toBe(
+        "Previous feature",
+      );
+    } finally {
+      db.close();
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
@@ -675,7 +794,7 @@ describe("Migration 014", () => {
       const old = openDatabase({ dbPath, migrationsDir });
       try {
         old.exec(`
-          INSERT INTO projects (id, name, path) VALUES ('local', 'Legacy checkout', '/fixtures/legacy');
+          INSERT INTO projects (id, name, path, github_repo) VALUES ('local', 'Legacy checkout', '/fixtures/legacy', 'fixtures/legacy');
           INSERT INTO runs (id, feature_id, phase_id, project_id, command)
             VALUES (1, 'feature', 'phase', 'local', 'ship');
           INSERT INTO history (project_id, feature_id, run_id) VALUES ('local', 'feature', 1);
@@ -749,7 +868,12 @@ describe("Migration 014", () => {
         const checkout = "/fixtures/legacy";
         const [pathAlias] = computeLegacyProjectIds({ projectRoot: checkout });
         registerProject(
-          { id: pathAlias, name: "Legacy path key", path: checkout },
+          {
+            id: pathAlias,
+            name: "Legacy path key",
+            path: checkout,
+            github_repo: "fixtures/legacy",
+          },
           upgraded,
         );
         const registry = createSqliteProjectRegistryAdapter({ db: upgraded });
@@ -763,7 +887,7 @@ describe("Migration 014", () => {
           mirrorPath: null,
           runnerPolicy: { allowedKinds: ["local"] },
           slack: null,
-          legacyProjectIds: ["local"],
+          legacyProjectIds: ["local", pathAlias],
           createdAt: "2026-11-11T12:00:00.000Z",
           updatedAt: "2026-11-11T12:00:00.000Z",
         });

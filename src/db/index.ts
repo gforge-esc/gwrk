@@ -178,12 +178,17 @@ function backfillCheckoutRoots(db: Database.Database): void {
     ON CONFLICT(alias_id) DO NOTHING
   `);
   for (const { id, path: checkout } of projects) {
-    const facts = discoverVerifiedCheckout(checkout);
+    const suffix = `#${id}`;
+    const facts =
+      discoverVerifiedCheckout(checkout) ??
+      (checkout.endsWith(suffix)
+        ? discoverVerifiedCheckout(checkout.slice(0, -suffix.length))
+        : null);
     if (!facts) continue;
     const aliases = computeLegacyProjectIds(facts);
     if (id !== computeProjectId(facts) && !aliases.includes(id)) continue;
 
-    setRoot.run(checkout, id);
+    setRoot.run(facts.projectRoot, id);
     for (const alias of aliases) addAlias.run({ alias, id });
   }
 }

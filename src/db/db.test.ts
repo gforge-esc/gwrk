@@ -218,9 +218,14 @@ describe("Project registry upgrade", () => {
 
   it("backfills checkout roots and path aliases for verified projects", () => {
     const checkout = join(root, "checkout");
+    const suffixed = join(root, "suffixed");
     const missing = join(root, "missing");
     mkdirSync(checkout);
     execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+    execFileSync("git", ["init", "--quiet", suffixed], { stdio: "ignore" });
+    const suffixedFacts = discoverGitIdentityFacts(suffixed);
+    const suffixedId = computeProjectId(suffixedFacts);
+    const unrelatedId = "unrelated";
     const nested = join(checkout, "nested");
     mkdirSync(nested);
     const facts = discoverGitIdentityFacts(checkout);
@@ -234,32 +239,37 @@ describe("Project registry upgrade", () => {
       insert.run(verifiedId, "Verified", checkout);
       insert.run(missingId, "Missing", missing);
       insert.run(nestedId, "Nested", nested);
+      insert.run(suffixedId, "Suffixed", `${suffixed}#${suffixedId}`);
+      insert.run(unrelatedId, "Unrelated", `${suffixed}#${unrelatedId}`);
     });
     try {
-      expect(
-        upgraded
-          .prepare("SELECT local_root FROM projects WHERE id = ?")
-          .pluck()
-          .get(verifiedId),
-      ).toBe(checkout);
-      expect(
-        upgraded
-          .prepare("SELECT local_root FROM projects WHERE id IN (?, ?)")
-          .pluck()
-          .all(missingId, nestedId),
-      ).toEqual([null, null]);
-      expect(
-        upgraded
-          .prepare(
-            "SELECT alias_id, project_id FROM project_aliases ORDER BY alias_id",
-          )
-          .all(),
-      ).toEqual(
-        computeLegacyProjectIds(facts)
-          .filter((id) => id !== verifiedId)
-          .sort()
-          .map((alias_id) => ({ alias_id, project_id: verifiedId })),
-      );
+      const getRoot = upgraded
+        .prepare("SELECT local_root FROM projects WHERE id = ?")
+        .pluck();
+      expect.soft(getRoot.get(verifiedId)).toBe(checkout);
+      expect.soft(getRoot.get(suffixedId)).toBe(suffixed);
+      for (const id of [missingId, nestedId, unrelatedId]) {
+        expect.soft(getRoot.get(id)).toBeNull();
+      }
+
+      const getAliases = upgraded
+        .prepare(
+          "SELECT alias_id FROM project_aliases WHERE project_id = ? ORDER BY alias_id",
+        )
+        .pluck();
+      for (const [id, checkoutFacts] of [
+        [verifiedId, facts],
+        [suffixedId, suffixedFacts],
+      ] as const) {
+        expect.soft(getAliases.all(id)).toEqual(
+          computeLegacyProjectIds(checkoutFacts)
+            .filter((alias) => alias !== id)
+            .sort(),
+        );
+      }
+      for (const id of [missingId, nestedId, unrelatedId]) {
+        expect.soft(getAliases.all(id)).toEqual([]);
+      }
       const registry = createProjectRegistry(upgraded, () => {});
       const projectId = computeProjectId(facts);
       const now = "2026-11-11T12:00:00.000Z";

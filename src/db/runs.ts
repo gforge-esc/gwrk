@@ -14,7 +14,11 @@ import {
   computeProjectId,
 } from "../domain/project-id.js";
 import { getDb } from "./index.js";
-import { canonicalProjectId, projectScope } from "./project-registry.js";
+import {
+  canonicalProjectId,
+  normalizeRegistryRepo,
+  projectScope,
+} from "./project-registry.js";
 
 export interface RunRecord {
   id?: number;
@@ -63,59 +67,82 @@ function ensureProjectRow(
   conn: Database.Database,
   requestedProjectId?: string | null,
 ): string | null {
-  const exists = conn.prepare("SELECT 1 FROM projects WHERE id = ?");
-  const requested =
-    requestedProjectId == null
-      ? null
-      : canonicalProjectId(conn, requestedProjectId);
-  if (requested === "") return null;
-  if (requested && exists.get(requested)) return requested;
+  if (requestedProjectId != null) {
+    if (requestedProjectId === "") return null;
+    const id = canonicalProjectId(conn, requestedProjectId);
+    conn
+      .prepare(
+        "INSERT OR IGNORE INTO projects (id, name, path) VALUES (?, ?, '')",
+      )
+      .run(id, id);
+    return id;
+  }
 
   const cwd = process.cwd();
   const facts = discoverGitIdentityFacts(cwd);
-  const checkoutId = canonicalProjectId(conn, computeProjectId(facts));
-  const projectId = requested ?? checkoutId;
-  if (requested === null) {
-    const enrolled = conn.prepare(
-      "SELECT 1 FROM projects WHERE id = ? AND updated_at IS NOT NULL",
-    );
-    if (enrolled.get(checkoutId)) return checkoutId;
+  const computedId = computeProjectId(facts);
+  const checkoutId = canonicalProjectId(conn, computedId);
+  const origin = normalizeRegistryRepo(facts.remoteOriginUrl ?? null);
+  const enrolled = conn.prepare(
+    "SELECT 1 FROM projects WHERE id = ? AND updated_at IS NOT NULL",
+  );
+  if (enrolled.get(checkoutId)) return checkoutId;
 
-    const checkoutOwner = conn.prepare(`
-      SELECT 1 FROM projects WHERE id = @id
-      AND (path = @root OR local_root = @root OR mirror_path = @root)
-    `);
-    for (const id of computeLegacyProjectIds(facts)) {
-      if (
-        id !== checkoutId &&
-        checkoutOwner.get({ id, root: facts.projectRoot })
-      ) {
-        return canonicalProjectId(conn, id);
-      }
-    }
+  const findProject = conn.prepare(
+    "SELECT repo_slug, github_repo FROM projects WHERE id = ?",
+  );
+  function storedRepos(id: string) {
+    const row = findProject.get(id) as
+      | { repo_slug: string | null; github_repo: string | null }
+      | undefined;
+    return row
+      ? [row.repo_slug, row.github_repo]
+          .map(normalizeRegistryRepo)
+          .filter((repo) => repo !== null)
+      : [];
+  }
+  function checkoutOwner(id: string): string | null {
+    const owner = canonicalProjectId(conn, id);
+    const ownerRepos = storedRepos(owner);
+    const aliasRepos = owner === id ? [] : storedRepos(id);
+    if ([...ownerRepos, ...aliasRepos].some((repo) => repo !== origin))
+      return null;
+    if (
+      owner === checkoutId ||
+      (origin !== null && ownerRepos.includes(origin))
+    )
+      return owner;
+    return origin === null && owner === id ? owner : null;
+  }
 
-    const legacy = conn
-      .prepare(`
-      SELECT p.id FROM projects p
-      WHERE (p.path = ? OR p.local_root = ? OR p.mirror_path = ?)
-        AND NOT EXISTS (SELECT 1 FROM project_aliases a WHERE a.alias_id = p.id)
-      LIMIT 2
-    `)
-      .pluck()
-      .all(cwd, cwd, cwd) as string[];
-    if (legacy.length === 1) return legacy[0];
+  const atCheckout = conn
+    .prepare(`
+    SELECT id FROM projects WHERE path = @root OR local_root = @root OR mirror_path = @root
+  `)
+    .pluck()
+    .all({ root: facts.projectRoot }) as string[];
+  for (const id of computeLegacyProjectIds(facts)) {
+    if (id === checkoutId || !atCheckout.includes(id)) continue;
+    const owner = checkoutOwner(id);
+    if (owner) return owner;
+  }
+
+  const owners = new Set(
+    atCheckout.map(checkoutOwner).filter((id) => id !== null),
+  );
+  if (owners.size === 1) {
+    const [owner] = owners;
+    return owner;
   }
 
   conn
-    .prepare(
-      "INSERT OR IGNORE INTO projects (id, name, path) VALUES (@id, @name, @path)",
-    )
-    .run({
-      id: projectId,
-      name: projectId === checkoutId ? path.basename(cwd) : projectId,
-      path: requested === null ? cwd : "",
-    });
-  return projectId;
+    .prepare(`
+    INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET path = excluded.path, github_repo = excluded.github_repo
+    WHERE projects.path = '' AND projects.github_repo IS NULL
+  `)
+    .run(checkoutId, path.basename(cwd), facts.projectRoot, origin);
+  return checkoutId;
 }
 
 export function startRun(
