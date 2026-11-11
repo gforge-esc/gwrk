@@ -62,6 +62,15 @@ function discoverVerifiedMirror(root: string) {
   }
 }
 
+function discoverStoredRepository(root: string, projectId: string) {
+  const facts = discoverVerifiedCheckout(root) ?? discoverVerifiedMirror(root);
+  const suffix = `#${projectId}`;
+  if (facts || !root.endsWith(suffix)) return facts;
+
+  const checkout = root.slice(0, -suffix.length);
+  return discoverVerifiedCheckout(checkout) ?? discoverVerifiedMirror(checkout);
+}
+
 export function canonicalProjectId(
   db: Database.Database,
   projectId: string,
@@ -298,8 +307,7 @@ export function createProjectRegistry(
       );
       let verifiedStoredCheckout = false;
       for (const root of roots) {
-        const facts =
-          discoverVerifiedCheckout(root) ?? discoverVerifiedMirror(root);
+        const facts = discoverStoredRepository(root, projectId);
         if (!facts) continue;
         if (
           computeProjectId(facts) !== projectId ||
@@ -341,8 +349,7 @@ export function createProjectRegistry(
       ]);
       const legacyFacts = Array.from(legacyRoots).flatMap((root) => {
         if (!root) return [];
-        const facts =
-          discoverVerifiedCheckout(root) ?? discoverVerifiedMirror(root);
+        const facts = discoverStoredRepository(root, alias);
         return facts ? [facts] : [];
       });
       const matchesLegacyCheckout = legacyFacts.some(

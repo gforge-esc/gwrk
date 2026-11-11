@@ -522,6 +522,63 @@ describe("Project registry storage", () => {
     }
   });
 
+  it("checks the Git origin behind a suffixed canonical ledger path", () => {
+    const checkout = mkdtempSync(join(tmpdir(), "gwrk-canonical-origin-"));
+    const db = getTestDb();
+    try {
+      execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/alpha.git",
+      ]);
+      const projectId = "legacy-ledger";
+      registerProject(
+        {
+          id: projectId,
+          name: "Alpha",
+          path: `${checkout}#${projectId}`,
+          github_repo: "example/beta",
+        },
+        db,
+      );
+      const run = startRun(
+        {
+          feature_id: "shared",
+          command: "alpha-history",
+          project_id: projectId,
+        },
+        db,
+      );
+      const registry = createSqliteProjectRegistryAdapter({ db });
+      const getRow = db.prepare("SELECT * FROM projects WHERE id = ?");
+      const prior = getRow.get(projectId);
+
+      expect
+        .soft(() =>
+          registry.enrollProject({
+            ...project,
+            projectId,
+            repoSlug: "example/beta",
+            localRoot: "/fixtures/beta",
+            legacyProjectIds: [],
+          }),
+        )
+        .toThrow(/different repository or checkout/);
+      expect.soft(registry.getProject(projectId)).toBeNull();
+      expect.soft(getRow.get(projectId)).toEqual(prior);
+      expect(listRuns("shared", projectId, db)).toMatchObject([
+        { id: run, command: "alpha-history" },
+      ]);
+    } finally {
+      db.close();
+      rmSync(checkout, { recursive: true, force: true });
+    }
+  });
+
   it.each([true, false])(
     "rejects ambiguous alias and slug lookup when the alias is enrolled first: %s",
     (aliasFirst) => {
@@ -563,9 +620,15 @@ describe("Project registry storage", () => {
       storedOrigin: "https://github.com/example/beta.git",
       suffixedPath: true,
     },
+    {
+      mirror: false,
+      storedOrigin: "https://github.com/example/beta.git",
+      suffixedPath: true,
+      hasLocalRoot: true,
+    },
   ])(
     "rejects a legacy claim with conflicting Git origin: %j",
-    ({ mirror, storedOrigin, suffixedPath }) => {
+    ({ mirror, storedOrigin, suffixedPath, hasLocalRoot }) => {
       const checkout = mkdtempSync(join(tmpdir(), "gwrk-alias-origin-"));
       const db = getTestDb();
       try {
@@ -605,7 +668,7 @@ describe("Project registry storage", () => {
           },
           db,
         );
-        if (suffixedPath) {
+        if (hasLocalRoot) {
           db.prepare(
             "UPDATE projects SET local_root = ? WHERE id = 'beta-legacy'",
           ).run(storedPath);

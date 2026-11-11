@@ -203,7 +203,7 @@ describe("runs db", () => {
               .pluck()
               .get(alphaId),
           )
-          .toMatch(/org\/alpha$/);
+          .toEqual(expect.stringMatching(/org\/alpha$/));
         expect.soft(await checkoutHistory()).toEqual([alphaRun, explicit]);
 
         execFileSync("git", [
