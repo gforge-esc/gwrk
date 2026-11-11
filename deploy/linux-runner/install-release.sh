@@ -63,7 +63,7 @@ while IFS= read -r path; do
     *\\*|*//*|*/./*|*/../*|*/.|*/..|*/.gwrk/*|*/.ssh/*|*/.gemini/*|*/.claude/*|*/.codex/*|*/.env|*/.env.*|*/.gwrkrc.local.json)
       fail "Release archive contains a forbidden path."
       ;;
-    package/|package/package.json|package/LICENSE|package/README.md|package/pnpm-lock.yaml|package/dist/*|package/deploy/|package/deploy/linux-runner/|package/deploy/linux-runner/install-release.sh)
+    package/|package/package.json|package/LICENSE|package/README.md|package/pnpm-lock.yaml|package/dist/*|package/deploy/|package/deploy/linux-runner/|package/deploy/linux-runner/install-release.sh|package/deploy/linux-runner/rollback-release.sh)
       ;;
     *) fail "Release archive contains an unexpected path." ;;
   esac
@@ -109,17 +109,10 @@ fi
   cd "$staged_release"
   node --input-type=module <<'NODE'
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import Database from "better-sqlite3";
-import { readReleaseInventory } from "./dist/adapters/release/inventory.js";
-import { validateReleaseManifest } from "./dist/domain/release-packaging.js";
+import { verifyInstalledRelease } from "./dist/adapters/release/inventory.js";
 
-const manifest = validateReleaseManifest(JSON.parse(await readFile("release-manifest.json", "utf8")));
-if (!manifest.ok) throw new Error(manifest.errors.join("\n"));
-const inventory = await readReleaseInventory(".");
-assert.deepEqual(inventory.plugins, manifest.value.plugins, "Release plugin inventory");
-assert.deepEqual(inventory.migrations, manifest.value.migrations, "Release migration inventory");
-assert.equal(inventory.lockfileSha256, manifest.value.lockfileSha256, "Release lockfile digest");
+await verifyInstalledRelease(".");
 const db = new Database(":memory:");
 try {
   assert.equal(db.prepare("SELECT 1 AS verified").get().verified, 1);

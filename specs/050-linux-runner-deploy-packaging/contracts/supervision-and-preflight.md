@@ -40,6 +40,7 @@ Phase 3 shares path resolution across the ledger, plugin loader, global config, 
 | `ExecStartPre` | `/opt/gwrk/current/deploy/linux-runner/preflight.sh` |
 | `ExecStart` | `/usr/bin/env node /opt/gwrk/current/dist/cli.js server start --foreground` |
 | `Restart` and `RestartSec` | `on-failure` after `5s` |
+| `RuntimeDirectoryPreserve` | `yes`. Keep the instance lock inode across stop and restart. |
 | Privilege hardening | `NoNewPrivileges=true`, `ProtectSystem=strict` and `ProtectHome=true` |
 | Writable and read-only mounts | `ReadWritePaths=/var/lib/gwrk /run/gwrk` and `ReadOnlyPaths=/opt/gwrk /etc/gwrk/secrets` |
 

@@ -41,9 +41,9 @@ export interface BackupManifest {
 }
 ```
 
-`repo-metadata.json` records `device.json` and all `projects` rows. For each enrolled pilot repository, it records the credential-free remote URL and HEAD SHA. It also records the SHA-256 digest of `specs/*/.gwrk/tasks.json` and `specs/*/.gwrk/runs/` manifests. It never copies `GWRK_SECRETS_DIR` or `.gwrkrc.local.json` secrets.
+`repo-metadata.json` records `device.json` and all `projects` rows. For each available enrolled pilot repository, it records the credential-free remote URL and HEAD SHA. An unavailable checkout has a null HEAD and empty evidence. It also records the SHA-256 digest of `specs/*/.gwrk/tasks.json` and `specs/*/.gwrk/runs/` manifests. It never copies `GWRK_SECRETS_DIR` or `.gwrkrc.local.json` secrets.
 
-Stage restore into a separate directory. Leave the target intact until the restored state passes validation. Clean restore verifies `dbSha256` and `metadataSha256` before writing `gwrk.db` and `device.json` into `stateDir`. It re-opens the restored database and runs `compareLedgerSummary`. Any mismatch in seeded `projects` or completed `runs` fails closed. Mismatches in `compression` rows or `history` count also fail closed.
+Run restore as the Linux service user and use the service runtime directory. Stage verified payloads before publishing an in-progress marker. The server waits for the operator to finish an interrupted restore with the original backup. Leave the target intact until the restored state passes validation. Clean restore verifies `dbSha256` and `metadataSha256` before writing `gwrk.db` and `device.json` into `stateDir`. It re-opens the restored database and runs `compareLedgerSummary`. Any mismatch in seeded `projects` or completed `runs` fails closed. Mismatches in `compression` rows or `history` count also fail closed.
 
 ## Upgrade and rollback procedure
 

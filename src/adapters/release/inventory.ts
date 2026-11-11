@@ -3,10 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
-import type { ReleaseManifest } from "../../domain/release-packaging.js";
+import {
+  type ReleaseManifest,
+  validateReleaseManifest,
+} from "../../domain/release-packaging.js";
 
 export async function sha256(path: string): Promise<string> {
   return createHash("sha256")
@@ -53,4 +58,41 @@ export async function readReleaseInventory(
     migrations,
     lockfileSha256: await sha256(join(root, "pnpm-lock.yaml")),
   };
+}
+
+export async function verifyInstalledRelease(
+  root: string,
+): Promise<ReleaseManifest> {
+  const manifest = validateReleaseManifest(
+    JSON.parse(await readFile(join(root, "release-manifest.json"), "utf8")),
+  );
+  if (!manifest.ok) throw new Error(manifest.errors.join("\n"));
+  const release = manifest.value;
+  if (
+    release.platform !== process.platform ||
+    release.arch !== process.arch ||
+    release.nodeAbi !== process.versions.modules
+  ) {
+    throw new Error(
+      "Installed release does not match the runtime platform or Node.js ABI.",
+    );
+  }
+  const { version } = JSON.parse(
+    await readFile(join(root, "package.json"), "utf8"),
+  );
+  if (version !== release.version)
+    throw new Error(
+      "Installed package version does not match the release manifest.",
+    );
+  const inventory = await readReleaseInventory(root);
+  if (
+    inventory.lockfileSha256 !== release.lockfileSha256 ||
+    !isDeepStrictEqual(inventory.plugins, release.plugins) ||
+    !isDeepStrictEqual(inventory.migrations, release.migrations)
+  ) {
+    throw new Error(
+      "Installed release inventory does not match the release manifest.",
+    );
+  }
+  return release;
 }

@@ -1,0 +1,189 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import Database from "better-sqlite3";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createLedgerBackup,
+  restoreLedgerBackup,
+  verifyLedgerBackup,
+} from "../../src/adapters/sqlite/ledger-backup.js";
+
+let root: string;
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "gwrk-ledger-proof-"));
+});
+
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
+
+function seedLedger() {
+  const db = new Database(join(root, "active.db"));
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.exec(`
+    CREATE TABLE _migrations (name TEXT PRIMARY KEY);
+    CREATE TABLE projects (id TEXT PRIMARY KEY);
+    CREATE TABLE runs (
+      id INTEGER PRIMARY KEY,
+      project_id TEXT REFERENCES projects(id),
+      finished_at TEXT
+    );
+    CREATE TABLE compression (id INTEGER PRIMARY KEY);
+    CREATE TABLE history (id INTEGER PRIMARY KEY);
+    INSERT INTO _migrations VALUES ('001-initial.sql');
+    INSERT INTO projects VALUES ('pilot-repo');
+    INSERT INTO runs VALUES (42, 'pilot-repo', '2026-11-11T12:00:00Z');
+    INSERT INTO runs VALUES (43, 'pilot-repo', NULL);
+    INSERT INTO compression VALUES (1);
+    INSERT INTO history VALUES (1);
+  `);
+  return db;
+}
+
+describe("ledger backup", () => {
+  it("preserves committed WAL state in a standalone snapshot and verifies its summary", async () => {
+    const db = seedLedger();
+    const destination = join(root, "backup");
+    try {
+      const result = await createLedgerBackup({
+        dbPath: db.name,
+        destination,
+        createdAt: "2026-11-11T12:00:00.000Z",
+        gwrkVersion: "1.6.0-beta.1",
+        metadata: { device: null, repositories: [] },
+      });
+      db.exec("INSERT INTO projects VALUES ('after-backup')");
+      const verified = await verifyLedgerBackup(destination);
+      expect(verified.manifest).toEqual(result);
+      expect(verified.manifest.summary).toEqual({
+        migrations: ["001-initial.sql"],
+        projectIds: ["pilot-repo"],
+        completedRunIds: [42],
+        compressionCount: 1,
+        historyCount: 1,
+        enrolledRepoDigests: {},
+      });
+
+      const restored = new Database(join(destination, "gwrk.db"), {
+        readonly: true,
+      });
+      try {
+        expect(
+          restored.prepare("SELECT id FROM runs ORDER BY id").pluck().all(),
+        ).toEqual([42, 43]);
+      } finally {
+        restored.close();
+      }
+
+      await expect(
+        createLedgerBackup({
+          dbPath: db.name,
+          destination,
+          createdAt: "2026-11-11T12:00:00.000Z",
+          gwrkVersion: "1.6.0-beta.1",
+          metadata: { device: null, repositories: [] },
+        }),
+      ).rejects.toThrow(/already exists/);
+      expect(await verifyLedgerBackup(destination)).toEqual(verified);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("restores a clean target and resumes a forced restore after an interrupted publish", async () => {
+    const db = seedLedger();
+    const destination = join(root, "backup");
+    const stateDirectory = join(root, "restored");
+    const device = {
+      id: "pilot-device",
+      hostname: "pilot",
+      role: "server" as const,
+      createdAt: "2026-11-11T12:00:00.000Z",
+    };
+    try {
+      const manifest = await createLedgerBackup({
+        dbPath: db.name,
+        destination,
+        createdAt: device.createdAt,
+        gwrkVersion: "1.6.0-beta.1",
+        metadata: { device, repositories: [] },
+      });
+      const request = { source: destination, stateDirectory, force: false };
+      expect((await restoreLedgerBackup(request)).manifest).toEqual(manifest);
+      const devicePath = join(stateDirectory, "device.json");
+      expect(JSON.parse(await readFile(devicePath, "utf8"))).toEqual(device);
+      await expect(restoreLedgerBackup(request)).rejects.toThrow(
+        /already contains/,
+      );
+
+      await rm(devicePath);
+      await mkdir(devicePath);
+      await expect(
+        restoreLedgerBackup({ ...request, force: true }),
+      ).rejects.toThrow();
+      expect(
+        (await stat(join(stateDirectory, ".restore-pending"))).isDirectory(),
+      ).toBe(true);
+      await rm(devicePath, { recursive: true });
+      expect(
+        (await restoreLedgerBackup({ ...request, force: true })).manifest,
+      ).toEqual(manifest);
+      await expect(
+        stat(join(stateDirectory, ".restore-pending")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+
+      const restored = new Database(join(stateDirectory, "gwrk.db"), {
+        readonly: true,
+      });
+      try {
+        expect(
+          restored.prepare("SELECT id FROM runs ORDER BY id").pluck().all(),
+        ).toEqual([42, 43]);
+      } finally {
+        restored.close();
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects tampering and keeps the source ledger intact", async () => {
+    const db = seedLedger();
+    const destination = join(root, "backup");
+    try {
+      await createLedgerBackup({
+        dbPath: db.name,
+        destination,
+        createdAt: "2026-11-11T12:00:00.000Z",
+        gwrkVersion: "1.6.0-beta.1",
+        metadata: { device: null, repositories: [] },
+      });
+      const metadata = join(destination, "repo-metadata.json");
+      const original = await readFile(metadata);
+      await appendFile(metadata, " ");
+      await expect(verifyLedgerBackup(destination)).rejects.toThrow(
+        /metadata digest mismatch/,
+      );
+      expect(
+        db.prepare("SELECT COUNT(*) AS count FROM projects").get(),
+      ).toEqual({ count: 1 });
+      expect(await readFile(metadata)).not.toEqual(original);
+    } finally {
+      db.close();
+    }
+  });
+});

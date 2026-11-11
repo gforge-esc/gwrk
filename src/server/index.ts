@@ -2,9 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import fastify from "fastify";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
 import { acquireInstanceLock } from "../adapters/server/instance-lock.js";
+import { getDbPath } from "../db/index.js";
+import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
@@ -52,6 +56,14 @@ export async function startServer(
     ? acquireInstanceLock(gwrkRuntimeDir(), process.pid)
     : undefined;
   try {
+    if (
+      instanceLock &&
+      existsSync(join(dirname(getDbPath()), PENDING_LEDGER_RESTORE))
+    ) {
+      throw new Error(
+        "An unfinished ledger restore blocks startup. Retry 'gwrk db restore' with the original backup.",
+      );
+    }
     return await startLockedServer(config, options, instanceLock);
   } catch (error) {
     instanceLock?.release();

@@ -8,6 +8,7 @@
   "files": [
     "dist/",
     "deploy/linux-runner/install-release.sh",
+    "deploy/linux-runner/rollback-release.sh",
     "package.json",
     "README.md",
     "LICENSE"
