@@ -24,7 +24,7 @@ describe("036-plugin-registry-versioning: SemVer, registry.json catalog, lockfil
 
   beforeEach(async () => {
     tempHome = await fsp.mkdtemp(path.join(os.tmpdir(), "gwrk-reg-ver-"));
-    vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+    vi.stubEnv("GWRK_HOME", path.join(tempHome, ".gwrk"));
     registryDir = path.join(tempHome, ".gwrk", "registry");
     await fsp.mkdir(path.join(registryDir, "skills", "fastapi-standards"), {
       recursive: true,
@@ -48,7 +48,7 @@ framework: FastAPI
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await fsp.rm(tempHome, { recursive: true, force: true });
   });
 
