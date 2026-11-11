@@ -147,6 +147,10 @@ cat > /fixture-bin/systemctl <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 pid_file="$GWRK_RUNTIME_DIR/server.pid"
+hold_rollback() {
+  touch "$GWRK_RUNTIME_DIR/rollback-held"
+  while [[ ! -f "$GWRK_RUNTIME_DIR/rollback-resume" ]]; do sleep 0.05; done
+}
 printf '%s\n' "$1" >> /tmp/supervisor.calls
 case "$1" in
   stop)
@@ -154,8 +158,10 @@ case "$1" in
       kill "$(< "$pid_file")" 2>/dev/null || true
       rm "$pid_file"
     fi
+    if [[ "${GWRK_FIXTURE_HOLD_ROLLBACK:-}" == stop ]]; then hold_rollback; fi
     ;;
   start)
+    readlink /opt/gwrk/current > "$GWRK_RUNTIME_DIR/started-release"
     if [[ "${GWRK_FIXTURE_DROP_RUN:-0}" == 1 ]]; then
       runuser -u gwrk -g gwrk -- node -e 'const requireRelease=require("node:module").createRequire("/opt/gwrk/current/package.json"); const db=new (requireRelease("better-sqlite3"))(process.env.GWRK_DB_PATH); db.prepare("DELETE FROM runs WHERE id = 42").run(); db.close();'
     fi
@@ -167,10 +173,7 @@ case "$1" in
       --property=User) printf 'gwrk\n' ;;
       --property=Group) printf 'gwrk\n' ;;
       --property=MainPID)
-        if [[ "${GWRK_FIXTURE_HOLD_READINESS:-0}" == 1 ]]; then
-          touch "$GWRK_RUNTIME_DIR/checking-readiness"
-          while [[ ! -f "$GWRK_RUNTIME_DIR/release-readiness" ]]; do sleep 0.05; done
-        fi
+        if [[ "${GWRK_FIXTURE_HOLD_ROLLBACK:-}" == readiness ]]; then hold_rollback; fi
         cat "$pid_file"
         ;;
       *) exit 1 ;;
@@ -296,16 +299,21 @@ runuser -u gwrk -g gwrk -- node "$release/dist/cli.js" db restore --from "$recov
 test "$(stat -c '%U:%G %a' "$recovery_backup")" = 'gwrk:gwrk 700'
 runuser -u gwrk -g gwrk -- cmp "$recovery_backup/gwrk.db" "$recovered/gwrk.db"
 
-for signal in SIGTERM SIGINT; do
+for scenario in readiness:SIGTERM readiness:SIGINT stop:SIGTERM stop:SIGINT; do
+  stage=${scenario%:*}
+  signal=${scenario#*:}
   case "$signal" in
     SIGTERM) expected_status=143 ;;
     SIGINT) expected_status=130 ;;
   esac
   signal_current=$(readlink /opt/gwrk/current)
   signal_previous=$(readlink /opt/gwrk/previous)
-  rm -f "$GWRK_RUNTIME_DIR/"{checking-readiness,release-readiness}
+  if [[ "$stage" == stop ]] && ! systemctl is-active --quiet gwrk-runner.service; then
+    systemctl start gwrk-runner.service
+  fi
+  rm -f "$GWRK_RUNTIME_DIR/"{rollback-held,rollback-resume,started-release}
   : > /tmp/supervisor.calls
-  rollback_pid=$(timeout 30s node --input-type=module - "$rollback" "$signal" "$expected_status" "$signal_previous" <<'NODE'
+  rollback_pid=$(timeout 30s node --input-type=module - "$rollback" "$signal" "$expected_status" "$stage" "$signal_current" "$signal_previous" <<'NODE'
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -313,38 +321,48 @@ import { existsSync, readlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-const [script, signal, expectedStatus, target] = process.argv.slice(2);
+const [script, signal, expectedStatus, stage, original, target] = process.argv.slice(2);
 const runtime = process.env.GWRK_RUNTIME_DIR;
 const child = spawn("bash", [script, "/opt/gwrk", "/var/lib/gwrk"], {
-  env: { ...process.env, GWRK_FIXTURE_HOLD_READINESS: "1" },
+  env: { ...process.env, GWRK_FIXTURE_HOLD_ROLLBACK: stage },
   stdio: ["ignore", 2, 2],
 });
 const exited = once(child, "exit");
 try {
   const deadline = Date.now() + 15_000;
-  while (!existsSync(join(runtime, "checking-readiness"))) {
+  while (!existsSync(join(runtime, "rollback-held"))) {
     assert.equal(child.exitCode, null);
-    assert(Date.now() < deadline, "Rollback did not reach readiness");
+    assert(Date.now() < deadline, `Rollback did not reach ${stage}`);
     await delay(25);
   }
-  assert(existsSync(join(runtime, "server.pid")));
-  assert.equal(readlinkSync("/opt/gwrk/current"), target);
+  assert.equal(existsSync(join(runtime, "server.pid")), stage === "readiness");
+  assert.equal(readlinkSync("/opt/gwrk/current"), stage === "readiness" ? target : original);
+  assert.equal(readlinkSync("/opt/gwrk/previous"), stage === "readiness" ? original : target);
   assert(child.kill(signal));
-  writeFileSync(join(runtime, "release-readiness"), "");
+  writeFileSync(join(runtime, "rollback-resume"), "");
   assert.deepEqual(await exited, [Number(expectedStatus), null]);
   console.log(child.pid);
 } finally {
+  writeFileSync(join(runtime, "rollback-resume"), "");
   if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 }
 NODE
   )
-  test "$(grep -E '^(stop|start)$' /tmp/supervisor.calls)" = $'stop\nstart\nstop'
-  test ! -e "$GWRK_RUNTIME_DIR/server.pid"
   test "$(readlink /opt/gwrk/current)" = "$signal_current"
   test "$(readlink /opt/gwrk/previous)" = "$signal_previous"
   signal_backups=(/var/lib/gwrk/backups/rollback-*-"$rollback_pid")
+  if [[ "$stage" == stop ]]; then
+    test "$(grep -E '^(stop|start)$' /tmp/supervisor.calls)" = $'stop\nstart'
+    systemctl is-active --quiet gwrk-runner.service
+    test "$(< "$GWRK_RUNTIME_DIR/started-release")" = "$signal_current"
+    test ! -e "${signal_backups[0]}"
+    continue
+  fi
+  test "$(grep -E '^(stop|start)$' /tmp/supervisor.calls)" = $'stop\nstart\nstop'
+  test ! -e "$GWRK_RUNTIME_DIR/server.pid"
   test "${#signal_backups[@]}" -eq 1
   runuser -u gwrk -g gwrk -- node "$release/dist/cli.js" db restore \
     --from "${signal_backups[0]}" --state-dir "/var/lib/gwrk/recovered-$signal"
 done
+systemctl stop gwrk-runner.service
 printf 'Verified install, credential revocation, process restart, clean restore and guarded rollback.\n'
