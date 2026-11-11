@@ -525,12 +525,12 @@ export function assertNoSecretMaterial(
         (typeof entry === "string" &&
           (headerPattern.test(entry) || secretPattern.test(entry))) ||
         (Array.isArray(entry) &&
-          ((entry.length === 2 && isCredentialHeaderName(entry[0])) ||
-            (headersKeyPattern.test(key) &&
-              entry.some(
-                (header, index) =>
-                  index % 2 === 0 && isCredentialHeaderName(header),
-              ))))
+          entry.some(
+            (header, index) =>
+              index % 2 === 0 &&
+              (index + 1 < entry.length || headersKeyPattern.test(key)) &&
+              isCredentialHeaderName(header),
+          ))
       ) {
         secretInText = true;
       } else {

@@ -141,6 +141,27 @@ describe("credential guard", () => {
     },
   );
 
+  it("rejects flat credential headers decoded from fixture stdout", () => {
+    const evidence = (headers: string[]) => ({
+      sanitizedOutput: `stdout: ${JSON.stringify(headers)}`,
+    });
+    expect(() =>
+      assertNoSecretMaterial(
+        evidence([
+          "Content-Type",
+          "text/plain",
+          "Set-Cookie",
+          "session=fixture-only",
+        ]),
+      ),
+    ).toThrow(/secret material/i);
+    expect(() =>
+      assertNoSecretMaterial(
+        evidence(["Content-Type", "text/plain", "Vary", "Cookie"]),
+      ),
+    ).not.toThrow();
+  });
+
   it("allows ordinary flat headers and header arrays", () => {
     expect(() =>
       assertNoSecretMaterial({
@@ -918,13 +939,7 @@ describe("model qualification policy", () => {
       "provider-b/model-v1",
       { promote: true },
     ],
-    [
-      "native-cli",
-      "aggregator-cli",
-      "model-v1",
-      "model-v1",
-      { promote: true },
-    ],
+    ["native-cli", "aggregator-cli", "model-v1", "model-v1", { promote: true }],
   ])(
     "checks judge independence on %s and %s with models %s and %s",
     (firstBackend, secondBackend, firstModelId, secondModelId, expected) => {
