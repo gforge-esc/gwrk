@@ -220,7 +220,7 @@ export type LeaseRejectionCode = "LEASE_FENCED" | "LEASE_EXPIRED";
 
 export function validateLeaseFence(
   current: {
-    operationId?: string;
+    operationId: string;
     leaseOwner: string | null;
     leaseEpoch: number;
     leaseExpiresAt: string | null;
@@ -229,8 +229,7 @@ export function validateLeaseFence(
   nowIso: string,
 ): { ok: true } | { ok: false; code: LeaseRejectionCode } {
   if (
-    (current.operationId !== undefined &&
-      current.operationId !== candidate.operationId) ||
+    current.operationId !== candidate.operationId ||
     current.leaseOwner !== candidate.leaseOwner ||
     current.leaseEpoch !== candidate.leaseEpoch
   ) {

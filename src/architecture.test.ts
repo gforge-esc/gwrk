@@ -340,13 +340,31 @@ describe("FR-006 durable operation boundaries", () => {
           (node) => ts.isInterfaceDeclaration(node) && node.name.text === name,
         );
         expect(declaration, `${file} must declare ${name}`).toBeDefined();
-        if (!declaration) throw new Error(`Missing interface ${name}`);
+        if (!declaration || !ts.isInterfaceDeclaration(declaration))
+          throw new Error(`Missing interface ${name}`);
         expect(
           checker
             .getTypeAtLocation(declaration)
             .getProperties()
             .map((symbol) => symbol.name),
         ).toEqual(expect.arrayContaining(methods));
+        const requiredInputs: Record<string, string> = {
+          launchPhaseShip: "taskIds",
+          claimOutboxItem: "destination",
+        };
+        for (const member of declaration.members) {
+          if (!ts.isMethodSignature(member) || !ts.isIdentifier(member.name))
+            continue;
+          const field = requiredInputs[member.name.text];
+          if (!field) continue;
+          const property = checker
+            .getTypeAtLocation(member.parameters[0])
+            .getProperty(field);
+          expect(
+            property && (property.flags & ts.SymbolFlags.Optional) === 0,
+            `${name}.${member.name.text} must require ${field}`,
+          ).toBe(true);
+        }
       }
     }
   });

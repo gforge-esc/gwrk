@@ -84,6 +84,8 @@ export interface WorkerExecutionPort {
     featureId: string;
     phaseId: string;
     backend: string;
+    /** Persisted task IDs. An empty list runs the whole phase. */
+    taskIds: readonly string[];
   }): Promise<{
     exitCode: number;
     stderr: string;
@@ -214,6 +216,12 @@ export interface OutboxClaim {
   clientMetadataKey: string;
 }
 
+export interface OutboxDestination {
+  workspaceId: string;
+  channelId: string;
+  threadTs: string | null;
+}
+
 export interface DurableOperationsStatus {
   projectId: string;
   queue: {
@@ -326,8 +334,17 @@ export interface OperationsStorePort {
     nowIso: string;
     projectId: string;
   }): OutboxItem[];
-  /** Claim atomically. Route abandoned sending and uncertain items to reconciliation. */
-  claimOutboxItem(input: { outboxId: string; nowIso: string }): {
+  /**
+   * Bind the resolved destination and existing metadata key in the atomic send claim.
+   * A null destination on a first claim permits a skip without sending.
+   * Reconcile abandoned sending and uncertain items at the stored destination.
+   * Keep the stored destination on later claims.
+   */
+  claimOutboxItem(input: {
+    outboxId: string;
+    nowIso: string;
+    destination: OutboxDestination | null;
+  }): {
     claim: OutboxClaim;
     item: OutboxItem;
     action: "send" | "reconcile";
@@ -337,6 +354,7 @@ export interface OperationsStorePort {
     nowIso: string;
     error: string;
   }): FencedWrite;
+  /** Record the outcome under the current claim and preserve the bound destination. */
   completeOutboxItem(input: {
     claim: OutboxClaim;
     nowIso: string;

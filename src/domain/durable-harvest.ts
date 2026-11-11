@@ -304,6 +304,7 @@ function stageFinished({ stage, status }: HarvestStageReceipt): boolean {
 
 export function deriveHarvestTerminalStatus(input: {
   terminalEvent: HarvestTerminalEvent;
+  phaseIds: readonly string[];
   stages: readonly HarvestStageReceipt[];
 }): HarvestOperationStatus {
   const closed = input.terminalEvent === "closed_unmerged";
@@ -324,19 +325,26 @@ export function deriveHarvestTerminalStatus(input: {
   )
     return "accepted";
   if (!stages.every(stageFinished)) return "running";
-  if (closed) return "closed_unmerged";
 
+  const phaseKeys =
+    closed && !input.phaseIds.length ? ["feature"] : input.phaseIds;
+  const requiredStageCount = closed ? 1 : HarvestStageNameSchema.options.length;
   const stageNamesByPhase = new Map<string, Set<HarvestStageName>>();
   for (const { phaseKey, stage } of stages) {
     const stageNames = stageNamesByPhase.get(phaseKey) ?? new Set();
     stageNames.add(stage);
     stageNamesByPhase.set(phaseKey, stageNames);
   }
-  return [...stageNamesByPhase.values()].every(
-    (names) => names.size === HarvestStageNameSchema.options.length,
-  )
-    ? "completed"
-    : "running";
+  if (
+    !phaseKeys.length ||
+    !phaseKeys.every(
+      (phaseKey) =>
+        stageNamesByPhase.get(phaseKey)?.size === requiredStageCount,
+    )
+  ) {
+    return "running";
+  }
+  return closed ? "closed_unmerged" : "completed";
 }
 
 export function evaluateBranchCleanupSafety(input: {

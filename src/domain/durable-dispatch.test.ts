@@ -213,6 +213,7 @@ describe("FR-001 dispatch work identity and acceptance", () => {
 
 describe("FR-003 lease fencing", () => {
   const current = {
+    operationId: "old-op",
     leaseOwner: "worker-a",
     leaseEpoch: 4,
     leaseExpiresAt: "2026-11-11T12:01:00.000Z",
@@ -224,6 +225,12 @@ describe("FR-003 lease fencing", () => {
   };
   it("TR-003 accepts the current owner before expiry", () => {
     expect(validateLeaseFence(current, fence, now)).toEqual({ ok: true });
+  });
+  it("fences a persisted lease projection with missing operation identity", () => {
+    const { operationId: _operationId, ...projection } = current;
+    expect(
+      validateLeaseFence(projection as typeof current, fence, now),
+    ).toEqual({ ok: false, code: "LEASE_FENCED" });
   });
   it.each([{ leaseEpoch: 3 }, { leaseEpoch: 5 }, { leaseOwner: "worker-b" }])(
     "TR-003 fences a mismatched claim %j",
@@ -382,7 +389,7 @@ describe("FR-006 pure dispatch policy", () => {
     ).toEqual(first);
   });
 
-  it("binds a fence to the operation when its identity is available", () => {
+  it("fences another operation with the same owner and epoch", () => {
     const current = operation({
       leaseOwner: "worker-a",
       leaseEpoch: 1,

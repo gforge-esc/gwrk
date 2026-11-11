@@ -276,14 +276,48 @@ describe("FR-003 independent harvest stages", () => {
   it("TR-003 completes only when all stage receipts have succeeded", () => {
     const stages = stageNames.map((stage) => receipt(stage));
     expect(
-      deriveHarvestTerminalStatus({ terminalEvent: "merged", stages }),
+      deriveHarvestTerminalStatus({
+        terminalEvent: "merged",
+        phaseIds: [phaseId],
+        stages,
+      }),
     ).toBe("completed");
     stages[4] = receipt("branch_cleanup", "skipped_no_target");
     stages[3] = receipt("slack_delivery", "skipped_no_target");
     expect(
-      deriveHarvestTerminalStatus({ terminalEvent: "merged", stages }),
+      deriveHarvestTerminalStatus({
+        terminalEvent: "merged",
+        phaseIds: [phaseId],
+        stages,
+      }),
     ).toBe("completed");
   });
+  it.each(["merged", "closed_unmerged"] as const)(
+    "keeps a %s harvest resumable until every planned phase has receipts",
+    (terminalEvent) => {
+      const phaseIds = [phaseId, "phase-02"];
+      const plan = planHarvestStages({
+        terminalEvent,
+        phaseIds,
+        hasSlackTarget: true,
+        hasRemoteBranchTarget: true,
+      });
+      const stages = plan.map(({ phaseKey, stage }) => ({
+        ...receipt(stage),
+        phaseKey,
+      }));
+      expect(
+        deriveHarvestTerminalStatus({
+          terminalEvent,
+          phaseIds,
+          stages: stages.filter(({ phaseKey }) => phaseKey === phaseId),
+        }),
+      ).toBe("running");
+      expect(
+        deriveHarvestTerminalStatus({ terminalEvent, phaseIds, stages }),
+      ).toBe(terminalEvent === "merged" ? "completed" : "closed_unmerged");
+    },
+  );
   it.each([
     ["gate_verify", "gate_failed", "gate_failed"],
     ["slack_delivery", "uncertain", "delivery_pending"],
@@ -296,7 +330,11 @@ describe("FR-003 independent harvest stages", () => {
         receipt(name, name === stage ? status : "succeeded"),
       );
       expect(
-        deriveHarvestTerminalStatus({ terminalEvent: "merged", stages }),
+        deriveHarvestTerminalStatus({
+          terminalEvent: "merged",
+          phaseIds: [phaseId],
+          stages,
+        }),
       ).toBe(expected);
     },
   );
@@ -306,6 +344,7 @@ describe("FR-003 independent harvest stages", () => {
       expect(
         deriveHarvestTerminalStatus({
           terminalEvent: "merged",
+          phaseIds: [phaseId],
           stages: stageNames.map((stage) =>
             receipt(stage, stage === "gate_verify" ? status : "succeeded"),
           ),
@@ -330,12 +369,14 @@ describe("FR-005 closed attempts and branch cleanup", () => {
     expect(
       deriveHarvestTerminalStatus({
         terminalEvent: "closed_unmerged",
+        phaseIds: [phaseId],
         stages: [receipt("learning_record")],
       }),
     ).toBe("closed_unmerged");
     expect(
       deriveHarvestTerminalStatus({
         terminalEvent: "merged",
+        phaseIds: [phaseId],
         stages: [receipt("gate_verify", "gate_failed")],
       }),
     ).toBe("gate_failed");

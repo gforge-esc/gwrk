@@ -2,12 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  type DurableDispatchOperation,
+  evaluateDispatchAcceptance,
+} from "../domain/durable-dispatch.js";
 import type { HarvestStageReceipt } from "../domain/durable-harvest.js";
 import type {
   DurableHarvestOperation,
   OperationsStorePort,
   OutboxItem,
+  WorkerExecutionPort,
 } from "./operations-port.js";
 
 type RecoveryStore = Pick<
@@ -25,6 +30,7 @@ const createdAt = "2026-11-11T11:58:00.000Z";
 const nowIso = "2026-11-11T12:00:00.000Z";
 const leaseExpiresAt = "2026-11-11T12:01:00.000Z";
 const sha = "a".repeat(40);
+const destination = { workspaceId: "W1", channelId: "C2", threadTs: "2.1" };
 
 function harvest(
   operationId: string,
@@ -141,7 +147,7 @@ function restoreRecoveryStore(persisted: {
         )
         .sort(byCreation);
     },
-    claimOutboxItem({ outboxId, nowIso }) {
+    claimOutboxItem({ outboxId, nowIso, destination }) {
       const candidate = outboxItems.find((row) => row.outboxId === outboxId);
       if (!candidate) return null;
       const row = store
@@ -149,6 +155,9 @@ function restoreRecoveryStore(persisted: {
         .find((row) => row.outboxId === outboxId);
       if (!row) return null;
       const action = row.status === "pending" ? "send" : "reconcile";
+      if (action === "send" && row.channelId === null && destination) {
+        Object.assign(row, destination);
+      }
       row.status = "sending";
       row.updatedAt = nowIso;
       row.attemptCount += 1;
@@ -250,7 +259,11 @@ describe("durable recovery store contract", () => {
       "abandoned",
       "uncertain",
     ]);
-    const claims = candidates.map(({ outboxId }) => ({ outboxId, nowIso }));
+    const claims = candidates.map(({ outboxId }) => ({
+      outboxId,
+      nowIso,
+      destination,
+    }));
     expect(claims.map((claim) => store.claimOutboxItem(claim)?.action)).toEqual(
       ["send", "reconcile", "reconcile"],
     );
@@ -261,4 +274,100 @@ describe("durable recovery store contract", () => {
       null,
     ]);
   });
+
+  it("reconciles at the persisted destination after the feature thread changes", () => {
+    const store = restoreRecoveryStore({
+      harvests: [],
+      stages: [],
+      outboxItems: [outbox("notification", "pending")],
+    });
+    const [pending] = store.listRecoverableOutboxItems({ nowIso, projectId });
+    const send = store.claimOutboxItem({
+      outboxId: pending.outboxId,
+      nowIso,
+      destination,
+    });
+    expect(send).toMatchObject({ action: "send", item: destination });
+    if (!send) throw new Error("Expected a send claim");
+    const deliveryKey = ({
+      workspaceId,
+      channelId,
+      threadTs,
+      clientMetadataKey,
+    }: OutboxItem) =>
+      JSON.stringify([workspaceId, channelId, threadTs, clientMetadataKey]);
+    const providerMessages = new Map([[deliveryKey(send.item), "message-1"]]);
+
+    const restartAt = leaseExpiresAt;
+    const restarted = restoreRecoveryStore({
+      harvests: [],
+      stages: [],
+      outboxItems: store.listRecoverableOutboxItems({
+        nowIso: restartAt,
+        projectId,
+      }),
+    });
+    const [abandoned] = restarted.listRecoverableOutboxItems({
+      nowIso: restartAt,
+      projectId,
+    });
+    expect(abandoned).toMatchObject({ status: "sending", messageTs: null });
+    const changedDestination = {
+      workspaceId: "W2",
+      channelId: "C3",
+      threadTs: "3.1",
+    };
+    const recovery = restarted.claimOutboxItem({
+      outboxId: abandoned.outboxId,
+      nowIso: restartAt,
+      destination: changedDestination,
+    });
+    expect(recovery).toMatchObject({
+      action: "reconcile",
+      claim: { clientMetadataKey: pending.clientMetadataKey },
+      item: destination,
+    });
+    if (!recovery) throw new Error("Expected a reconciliation claim");
+    expect(providerMessages.get(deliveryKey(recovery.item))).toBe("message-1");
+  });
+});
+
+it("launches each persisted dispatch with its accepted task scope after restart", async () => {
+  const rows = [["T001"], ["T002"], []].map((taskIds, index) => {
+    const accepted = evaluateDispatchAcceptance({
+      projectId,
+      featureId,
+      phaseId,
+      backend: "test-worker",
+      trunkBranch: "develop",
+      taskIds,
+      newOperationId: `dispatch-${index}`,
+      nowIso,
+      existingActive: null,
+    });
+    if (accepted.kind !== "create_new")
+      throw new Error("Expected new dispatch");
+    return JSON.stringify(accepted.operation);
+  });
+  const worker: Pick<WorkerExecutionPort, "launchPhaseShip"> = {
+    launchPhaseShip: vi.fn(async () => ({ exitCode: 0, stderr: "" })),
+  };
+  for (const row of rows) {
+    const { trunkBranch, branchName, featureId, phaseId, backend, taskIds } =
+      JSON.parse(row) as DurableDispatchOperation;
+    await worker.launchPhaseShip({
+      projectRoot: "/repos/a",
+      trunkBranch,
+      branchName,
+      featureId,
+      phaseId,
+      backend,
+      taskIds,
+    });
+  }
+  expect(
+    vi
+      .mocked(worker.launchPhaseShip)
+      .mock.calls.map(([input]) => input.taskIds),
+  ).toEqual([["T001"], ["T002"], []]);
 });
