@@ -88,6 +88,8 @@ it.each([
   { signal: null, status: 1, stage: "running release differs from current" },
   { signal: null, status: 1, stage: "running release uses current alias" },
   { signal: null, status: 1, stage: "applied migration digest mismatch" },
+  { signal: null, status: 1, stage: "current migration digest mismatch" },
+  { signal: null, status: 1, stage: "current migration missing" },
   { signal: null, status: 1, stage: "legacy applied migration without digest" },
   { signal: null, status: 0, stage: "restarted service stays ready" },
   { signal: null, status: 1, stage: "restarted service runs the wrong CLI" },
@@ -137,13 +139,11 @@ it.each([
     const verifiesRestart = stage.startsWith("restarted service ");
     const provenance =
       stage.startsWith("running release ") || stage.includes("migration");
-    const usesRealCheck = pathMismatch || provenance;
-    const running = Boolean(
-      signal ||
-        malformedFile ||
-        usesRealCheck ||
-        stage === "target launcher uses current alias",
-    );
+    const oldLauncher = stage === "target launcher uses current alias";
+    const currentMismatch = stage === "current migration digest mismatch";
+    const currentMissing = stage === "current migration missing";
+    const usesRealCheck = pathMismatch || provenance || oldLauncher;
+    const running = Boolean(signal || malformedFile || usesRealCheck);
     const pidFile = join(runtime, "server.pid");
     const ready = join(runtime, "checking-readiness");
     const releaseReadiness = join(runtime, "release-readiness");
@@ -195,7 +195,7 @@ it.each([
           await writeFile(join(service, name), body, { mode: 0o755 });
         }
       }
-      if (stage === "target launcher uses current alias") {
+      if (oldLauncher) {
         await writeFile(
           join(root, target, "deploy/linux-runner/run.sh"),
           [
@@ -233,7 +233,9 @@ it.each([
             );
           } else {
             const digest = createHash("sha256")
-              .update(differentSql)
+              .update(
+                currentMismatch || currentMissing ? matchingSql : differentSql,
+              )
               .digest("hex");
             db.exec("ALTER TABLE _migrations ADD COLUMN sha256 TEXT");
             db.prepare(
@@ -272,10 +274,13 @@ it.each([
             recursive: true,
           });
           await mkdir(join(release, "dist/db/migrations"), { recursive: true });
-          if (provenance) {
+          if (provenance && !(currentMissing && version === active)) {
             await writeFile(
               join(release, "dist/db/migrations", migration),
-              version === otherRelease ? differentSql : matchingSql,
+              version === otherRelease ||
+                (currentMismatch && version === active)
+                ? differentSql
+                : matchingSql,
             );
           }
           await writeFile(join(release, "pnpm-lock.yaml"), "");
@@ -333,6 +338,9 @@ it.each([
           const rejected = check(ledger, join(root, otherRelease));
           expect(rejected.status, rejected.stderr).toBe(1);
           expect(rejected.stderr).toContain(migration);
+        } else if (oldLauncher) {
+          const accepted = check(ledger);
+          expect(accepted.status, accepted.stderr).toBe(0);
         }
       }
 
@@ -518,7 +526,7 @@ esac`,
             expect(restored.manifest.summary.completedRunIds).toEqual([42]);
           } else {
             expect(existsSync(calls), output).toBe(false);
-            if (stage === "target launcher uses current alias") {
+            if (oldLauncher) {
               expect(output).toContain(
                 "Rollback target launcher could not prove release identity",
               );
@@ -533,11 +541,17 @@ esac`,
               );
               expect(existsSync(join(state, "backups"))).toBe(false);
             } else if (provenance) {
-              const diagnostic = stage.startsWith("running release ")
-                ? "The running service does not match the current release"
-                : stage === "legacy applied migration without digest"
-                  ? "Unknown applied migration digest: 001-review.sql"
-                  : "Mismatched applied migration digest: 001-review.sql";
+              let diagnostic = `Mismatched applied migration digest in target release: ${migration}`;
+              if (stage.startsWith("running release ")) {
+                diagnostic =
+                  "The running service does not match the current release";
+              } else if (stage === "legacy applied migration without digest") {
+                diagnostic = `Unknown applied migration digest: ${migration}`;
+              } else if (currentMismatch) {
+                diagnostic = `Mismatched applied migration digest in current release: ${migration}`;
+              } else if (currentMissing) {
+                diagnostic = `Current release is missing applied migration: ${migration}`;
+              }
               expect(output).toContain(diagnostic);
               expect(existsSync(join(state, "backups"))).toBe(false);
             } else if (malformedPath) {

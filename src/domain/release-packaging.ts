@@ -211,8 +211,9 @@ export function validateRunnerLayout(
 
 export function evaluateRollbackCompatibility(
   appliedMigrations: readonly string[],
-  provenance: { readonly migrations: readonly AppliedMigration[] },
+  current: ReleaseManifest,
   target: ReleaseManifest,
+  provenance: { readonly migrations: readonly AppliedMigration[] } = current,
 ): RollbackCompatibility {
   const appliedDigests = new Map(
     provenance.migrations.map(({ name, sha256 }) => [name, sha256]),
@@ -220,12 +221,16 @@ export function evaluateRollbackCompatibility(
   const targetDigests = new Map(
     target.migrations.map(({ name, sha256 }) => [name, sha256]),
   );
+  const currentDigests = new Map(
+    current.migrations.map(({ name, sha256 }) => [name, sha256]),
+  );
   const applied = new Set(appliedMigrations);
   const blockingMigrations = [
     ...[...applied].filter(
       (name) =>
         !appliedDigests.get(name) ||
-        appliedDigests.get(name) !== targetDigests.get(name),
+        appliedDigests.get(name) !== targetDigests.get(name) ||
+        appliedDigests.get(name) !== currentDigests.get(name),
     ),
     ...[...targetDigests.keys()].filter((name) => !applied.has(name)),
   ];

@@ -135,9 +135,13 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
-  it.skipIf(process.platform !== "linux").each(["force", "resume"])(
-    "blocks %s restore through an alternate runtime while the ledger is active",
-    async (mode) => {
+  it.skipIf(process.platform !== "linux").each([
+    { mode: "force", lock: "runtime" },
+    { mode: "force", lock: "ledger" },
+    { mode: "resume", lock: "ledger" },
+  ])(
+    "blocks $mode restore when the $lock lock is held",
+    async ({ mode, lock }) => {
       const ledger = join(root, "gwrk.db");
       seedLedger(ledger).close();
       const backup = join(root, "backup");
@@ -150,10 +154,8 @@ describe("installed ledger commands outside a checkout", () => {
         collectRepositories: () => [],
       });
 
-      const serviceLock = acquireInstanceLock(
-        join(root, "service"),
-        process.pid,
-      );
+      const serviceRuntime = join(root, "service");
+      const serviceLock = acquireInstanceLock(serviceRuntime, process.pid);
       let ledgerLock: ReturnType<typeof acquireLedgerLock> | undefined;
       let live: Database.Database | undefined;
       try {
@@ -185,14 +187,24 @@ describe("installed ledger commands outside a checkout", () => {
             ...process.env,
             GWRK_HOME: root,
             GWRK_DB_PATH: ledger,
-            GWRK_RUNTIME_DIR: join(root, "alternate-runtime"),
+            GWRK_RUNTIME_DIR:
+              lock === "runtime"
+                ? serviceRuntime
+                : join(root, "alternate-runtime"),
           },
           encoding: "utf8",
           timeout: 10_000,
         });
 
         expect(result.status, result.stderr).toBe(1);
-        expect(result.stderr).toContain(".gwrk.db.lock");
+        expect(result.stderr).toContain(`Cannot restore ledger at ${root}.`);
+        expect(result.stderr).toContain(`PID ${process.pid}`);
+        expect(result.stderr).toContain(
+          lock === "runtime" ? "server.lock" : ".gwrk.db.lock",
+        );
+        expect(result.stderr).toContain(
+          "Run 'gwrk server stop' before 'gwrk db restore'",
+        );
         expect(await Promise.all(files.map((file) => readFile(file)))).toEqual(
           original,
         );

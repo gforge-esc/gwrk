@@ -11,16 +11,37 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readSync,
   realpathSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import type {
-  InstanceLockHandle,
-  InstanceLockPort,
+import {
+  InstanceLockBusyError,
+  type InstanceLockHandle,
+  type InstanceLockPort,
 } from "../../ports/release-ops-port.js";
 
 const LOCK_BUSY = 75;
+
+function readHolderPid(fd: number): number | undefined {
+  const buffer = Buffer.alloc(32);
+  try {
+    const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+    const value = buffer.toString("utf8", 0, bytes).trim();
+    const pid = Number(value);
+    if (
+      bytes < buffer.length &&
+      /^[1-9]\d*$/.test(value) &&
+      Number.isSafeInteger(pid)
+    ) {
+      return pid;
+    }
+  } catch {
+    // The lock holder may release or rewrite the file during inspection.
+  }
+  return undefined;
+}
 
 export const acquireInstanceLock: InstanceLockPort["acquireInstanceLock"] = (
   runtimeDir,
@@ -75,7 +96,7 @@ function acquireExclusiveLock(
       },
     );
     if (result.status === LOCK_BUSY) {
-      throw new Error(`A gwrk server already holds ${lockPath}`);
+      throw new InstanceLockBusyError(lockPath, readHolderPid(fd));
     }
     if (result.error || result.status !== 0) {
       throw new Error(

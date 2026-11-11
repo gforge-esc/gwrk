@@ -7,7 +7,10 @@ import { Command, Option } from "commander";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
 import { verifyInstalledRelease } from "../adapters/release/inventory.js";
 import { readRepositoryEvidence } from "../adapters/release/repository-evidence.js";
-import { acquireInstanceLock, acquireLedgerLock } from "../adapters/server/instance-lock.js";
+import {
+  acquireInstanceLock,
+  acquireLedgerLock,
+} from "../adapters/server/instance-lock.js";
 import {
   createLedgerBackup,
   readAppliedMigrations,
@@ -19,6 +22,7 @@ import { restoreOfflineLedger } from "../application/release/backup-restore.js";
 import { getDbPath } from "../db/index.js";
 import { recordRun } from "../db/runs.js";
 import { evaluateRollbackCompatibility } from "../domain/release-packaging.js";
+import { InstanceLockBusyError } from "../ports/release-ops-port.js";
 import { loadDevice } from "../utils/device.js";
 import { success } from "../utils/format.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
@@ -166,7 +170,16 @@ const restoreCommand = new Command("restore")
             force: opts.force,
             pid: process.pid,
           },
-        );
+        ).catch((error: unknown) => {
+          if (!(error instanceof InstanceLockBusyError)) throw error;
+          const holder = error.holderPid
+            ? ` by server PID ${error.holderPid}`
+            : "";
+          throw new CommandError(
+            `Cannot restore ledger at ${stateDirectory}. The lock ${error.lockPath} is held${holder}. Run 'gwrk server stop' before 'gwrk db restore'.`,
+            1,
+          );
+        });
         output.write(
           output.isJson
             ? { stateDirectory, manifest: restored.manifest }
@@ -193,7 +206,7 @@ const rollbackCheckCommand = new Command("rollback-check")
     ) => {
       await withSignal("db rollback-check", async () => {
         const output = ledgerOutput(command);
-        const [, target] = await Promise.all([
+        const [current, target] = await Promise.all([
           verifyInstalledRelease(resolve(opts.current)),
           verifyInstalledRelease(resolve(opts.target)),
         ]);
@@ -203,21 +216,29 @@ const rollbackCheckCommand = new Command("rollback-check")
         );
         const result = evaluateRollbackCompatibility(
           [...appliedDigests.keys()],
-          { migrations },
+          current,
           target,
+          { migrations },
         );
         if (!result.allowed) {
-          const targetNames = new Set(
-            target.migrations.map(({ name }) => name),
+          const targetDigests = new Map(
+            target.migrations.map(({ name, sha256 }) => [name, sha256]),
+          );
+          const currentNames = new Set(
+            current.migrations.map(({ name }) => name),
           );
           const reasons = result.blockingMigrations.map((name) => {
             if (!appliedDigests.has(name))
               return `Unapplied target migration: ${name}`;
-            if (!appliedDigests.get(name))
-              return `Unknown applied migration digest: ${name}`;
-            if (!targetNames.has(name))
-              return `Target is missing applied migration: ${name}`;
-            return `Mismatched applied migration digest: ${name}`;
+            const digest = appliedDigests.get(name);
+            if (!digest) return `Unknown applied migration digest: ${name}`;
+            if (!targetDigests.has(name))
+              return `Target release is missing applied migration: ${name}`;
+            if (targetDigests.get(name) !== digest)
+              return `Mismatched applied migration digest in target release: ${name}`;
+            if (!currentNames.has(name))
+              return `Current release is missing applied migration: ${name}`;
+            return `Mismatched applied migration digest in current release: ${name}`;
           });
           throw new CommandError(
             `Rollback blocked by migrations: ${reasons.join(". ")}.`,

@@ -129,15 +129,25 @@ ledger_inode=$(stat -c '%i' /var/lib/gwrk/gwrk.db)
 for sidecar in /var/lib/gwrk/gwrk.db-wal /var/lib/gwrk/gwrk.db-shm; do
   test -f "$sidecar"
 done
+stop_hint="Run 'gwrk server stop' before 'gwrk db restore'"
+expect_rejection "$stop_hint" runuser -u gwrk -- \
+  node "$release/dist/cli.js" db restore --from /var/lib/gwrk/lock-fixture-backup \
+  --state-dir /var/lib/gwrk --force
+grep -F -- "PID $server_pid" /tmp/rejected.log
+grep -F -- '/run/gwrk/server.lock' /tmp/rejected.log
 expect_rejection '.gwrk.db.lock' runuser -u gwrk -- \
   env GWRK_RUNTIME_DIR=/var/lib/gwrk/alternate-runtime \
   node "$release/dist/cli.js" db restore --from /var/lib/gwrk/lock-fixture-backup \
   --state-dir /var/lib/gwrk --force
+grep -F -- "$stop_hint" /tmp/rejected.log
+grep -F -- "PID $server_pid" /tmp/rejected.log
 runuser -u gwrk -- cp -R /var/lib/gwrk/lock-fixture-backup /var/lib/gwrk/.restore-pending
 expect_rejection '.gwrk.db.lock' runuser -u gwrk -- \
   env GWRK_RUNTIME_DIR=/var/lib/gwrk/alternate-runtime \
   node "$release/dist/cli.js" db restore --from /var/lib/gwrk/lock-fixture-backup \
   --state-dir /var/lib/gwrk
+grep -F -- "$stop_hint" /tmp/rejected.log
+grep -F -- "PID $server_pid" /tmp/rejected.log
 cmp /var/lib/gwrk/lock-fixture-backup/gwrk.db /var/lib/gwrk/.restore-pending/gwrk.db
 rm -r -- /var/lib/gwrk/.restore-pending
 test "$(stat -c '%i' /var/lib/gwrk/gwrk.db)" = "$ledger_inode"

@@ -7,6 +7,16 @@ import type {
   LedgerBackupMetadata,
 } from "../domain/ledger-backup.js";
 
+export class InstanceLockBusyError extends Error {
+  constructor(
+    readonly lockPath: string,
+    readonly holderPid?: number,
+  ) {
+    super(`A gwrk server already holds ${lockPath}`);
+    this.name = "InstanceLockBusyError";
+  }
+}
+
 export interface InstanceLockHandle {
   readonly pid: number;
   readonly lockPath: string;
