@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from "node:child_process";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DefineOrchestrator } from "./define-orchestrator.js";
 import { DefineStage } from "./define-types.js";
@@ -84,6 +85,38 @@ describe("DefineOrchestrator (Integration)", () => {
 
     const orchestrator = new DefineOrchestrator(config);
     expect((orchestrator as any).state.stage).toBe(DefineStage.PLAN);
+  });
+
+  it("commits only plan outputs in a worktree with unrelated changes", async () => {
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: tempDir, encoding: "utf-8" }).trim();
+    git("init", "-q");
+    git("config", "user.name", "Fixture");
+    git("config", "user.email", "fixture@example.invalid");
+    git("config", "commit.gpgsign", "false");
+    const featurePath = path.join("specs", config.featureId);
+    const featureDir = path.join(tempDir, featurePath);
+    fs.mkdirSync(featureDir, { recursive: true });
+    fs.writeFileSync(path.join(featureDir, "spec.md"), "A complete specification for the planning fixture. ".repeat(4));
+    git("add", featurePath);
+    git("commit", "-q", "-m", "Seed plan fixture");
+    fs.writeFileSync(path.join(tempDir, "staged.txt"), "Developer edit");
+    git("add", "staged.txt");
+    vi.mocked(agent.dispatchToAgent).mockImplementationOnce(async () => {
+      fs.writeFileSync(path.join(featureDir, "plan.md"), "# Plan");
+      fs.writeFileSync(path.join(featureDir, "data-model.md"), "# Data model");
+      fs.mkdirSync(path.join(featureDir, "contracts"));
+      fs.writeFileSync(path.join(featureDir, "contracts", "inputs.md"), "# Inputs");
+      return { exitCode: 0, stdout: JSON.stringify({ summary: "Plan created", intents: [] }), stderr: "", durationS: 1, logPath: "mock.log" };
+    });
+
+    const orchestrator = new DefineOrchestrator(config);
+    expect(await orchestrator.runLoop(undefined, { stopAfterOne: true })).toBe(0);
+    expect(git("show", "--format=", "--name-only", "HEAD").split("\n").sort()).toEqual(
+      ["contracts/inputs.md", "data-model.md", "plan.md"].map((file) => path.join(featurePath, file)),
+    );
+    expect(git("diff", "--cached", "--name-only")).toBe("staged.txt");
+    expect(git("status", "--porcelain")).toContain("?? .gwrk/");
   });
 
   it("should transition through full lifecycle and persist state", async () => {

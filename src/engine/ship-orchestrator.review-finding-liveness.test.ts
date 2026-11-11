@@ -231,6 +231,9 @@ describe("D5 — DIAGNOSE reads review findings as error context", () => {
     // @ts-ignore private
     await orchestrator.stageDiagnose();
 
+    expect(agentUtils.dispatchToAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ workDir: mockConfig.cwd }),
+    );
     expect(dispatchedPrompts().join("\n")).toMatch(/DIVERGENCE/);
   });
 

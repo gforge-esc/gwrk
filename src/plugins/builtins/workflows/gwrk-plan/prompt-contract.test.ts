@@ -32,6 +32,15 @@ import { describe, expect, it } from "vitest";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROMPT = fs.readFileSync(path.join(HERE, "PROMPT.md"), "utf-8");
 
+describe("planning worktree contract", () => {
+  it("uses the supplied feature specification in the current worktree", () => {
+    expect(PROMPT).toContain("{feature_dir}/spec.md");
+    expect(PROMPT).toMatch(/current worktree/i);
+    expect(PROMPT).not.toMatch(/git (?:checkout|switch) develop/);
+    expect(PROMPT).not.toMatch(/\.specify\/(?:scripts|templates)\//);
+  });
+});
+
 describe("FR-005: gwrk-plan prompt documents the canonical format", () => {
   it("documents the fenced-bash Done-When block as the executable gate form", () => {
     // A `#### Done When`/`Done When` section whose body is a fenced ```bash

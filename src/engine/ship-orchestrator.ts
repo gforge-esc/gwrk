@@ -2743,6 +2743,7 @@ ${marker}`;
         agent: this.config.backend,
         prompt: diagnosisPrompt,
         featureDir: `specs/${this.config.featureId}`,
+        workDir: this.config.cwd,
         quiet: true,
       });
 
