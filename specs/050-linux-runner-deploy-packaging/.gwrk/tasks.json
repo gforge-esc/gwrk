@@ -17,14 +17,12 @@
           "title": "Create release-packaging.ts",
           "description": "NEW src/domain/release-packaging.ts. Validate release manifests and check layout separation plus rollback migration compatibility. Tests: src/domain/release-packaging.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run src/domain/release-packaging.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         }
       ],
       "sp_estimate": 2,
       "testTargets": [
-        "src/domain/release-packaging.test.ts",
-        "src/domain/release-packaging.test.ts",
         "src/domain/release-packaging.test.ts"
       ]
     },
@@ -37,7 +35,7 @@
           "title": "Modify package.json",
           "description": "MODIFY package.json. Allowlist the Linux deployment bundle",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -45,7 +43,7 @@
           "title": "Create build-linux-release.mjs",
           "description": "NEW scripts/release/build-linux-release.mjs. Build from the pinned commit, add the lockfile to the npm archive and emit the manifest and digest",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -53,7 +51,7 @@
           "title": "Create install-release.sh",
           "description": "NEW deploy/linux-runner/install-release.sh. Verify digest and Node runtime plus native SQLite load before switching `current`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -61,13 +59,12 @@
           "title": "Modify release.yml",
           "description": "MODIFY .github/workflows/release.yml. Build and upload `release-manifest.json` and SHA-256 digest with each release. Tests: tests/linux-runner/release-packaging.test.ts",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/release-packaging.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         }
       ],
       "sp_estimate": 6,
       "testTargets": [
-        "tests/linux-runner/release-packaging.test.ts",
         "tests/linux-runner/release-packaging.test.ts"
       ]
     },
@@ -80,7 +77,7 @@
           "title": "Create release-ops-port.ts",
           "description": "NEW src/ports/release-ops-port.ts. Declare the instance lock boundary",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -88,7 +85,7 @@
           "title": "Create instance-lock.ts",
           "description": "NEW src/adapters/server/instance-lock.ts. Hold a Linux instance lock for the server lifetime",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 2
         },
         {
@@ -96,7 +93,7 @@
           "title": "Modify pid.ts",
           "description": "MODIFY src/server/pid.ts. Resolve `GWRK_RUNTIME_DIR` and `GWRK_HOME` paths and expose single-instance lock helpers",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -104,7 +101,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/db/index.ts. Resolve default database directory from `GWRK_DIR` or `GWRK_HOME` before `~/.gwrk`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -112,7 +109,7 @@
           "title": "Modify loader.ts",
           "description": "MODIFY src/plugins/loader.ts. Resolve global plugin and config paths from `GWRK_HOME` before `~/.gwrk`",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -120,7 +117,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Claim exclusive instance lock before binding HTTP or starting `DispatchQueue` and Slack",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         },
         {
@@ -128,13 +125,12 @@
           "title": "Modify server.ts",
           "description": "MODIFY src/commands/server.ts. Honor `GWRK_RUNTIME_DIR` and `GWRK_HOME` for daemon logs and stop cleanup",
           "status": "open",
-          "gateScript": "pnpm run build\npnpm exec vitest run tests/linux-runner/single-instance-recovery.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-03.sh",
           "sp": 1
         }
       ],
       "sp_estimate": 9,
       "testTargets": [
-        "tests/linux-runner/single-instance-recovery.test.ts",
         "tests/linux-runner/single-instance-recovery.test.ts"
       ]
     },
@@ -177,7 +173,6 @@
       ],
       "sp_estimate": 7,
       "testTargets": [
-        "tests/linux-runner/backup-restore-rollback.test.ts",
         "tests/linux-runner/backup-restore-rollback.test.ts"
       ]
     },
@@ -236,9 +231,6 @@
       ],
       "sp_estimate": 12,
       "testTargets": [
-        "tests/linux-runner/container-harness.mjs",
-        "tests/linux-runner/container-harness.mjs",
-        "tests/linux-runner/bundle-and-live-record.test.ts",
         "tests/linux-runner/bundle-and-live-record.test.ts"
       ]
     }
