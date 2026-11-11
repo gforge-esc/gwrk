@@ -123,6 +123,8 @@ export interface HarvestCandidateInput {
   source: DeliverySource;
   deliveryId: string;
   repoSlug: string | null;
+  /** Repository established by checkout verification for a manual commit. */
+  checkoutRepoSlug?: string | null;
   headRepoSlug: string | null;
   baseBranch: string;
   headBranch: string | null;
@@ -397,9 +399,14 @@ export function verifyHarvestTarget(
         reason: "Local harvest requires an enrolled checkout",
       };
     }
+    const suppliedRepositories = [
+      candidate.repoSlug,
+      candidate.checkoutRepoSlug,
+    ];
     if (
-      candidate.repoSlug !== null &&
-      !isSameRepository(project.repoSlug, candidate.repoSlug)
+      suppliedRepositories.some(
+        (slug) => slug != null && !isSameRepository(repoSlug, slug),
+      )
     ) {
       return {
         ok: false,
@@ -450,13 +457,15 @@ export function verifyHarvestTarget(
     }
     const phaseId =
       requestedPhase === undefined ? null : normalizePhaseId(requestedPhase);
+    const checkoutRepoSlug =
+      (candidate.checkoutRepoSlug ?? candidate.repoSlug)?.toLowerCase() ?? null;
     return {
       ok: true,
       kind: "local_commit",
       featureId,
       phaseId,
-      repoSlug,
-      workKey: `harvest-local:${JSON.stringify([project.projectId, repoSlug, project.trunkBranch, commit, featureId, phaseId])}`,
+      repoSlug: checkoutRepoSlug,
+      workKey: `harvest-local:${JSON.stringify([project.projectId, checkoutRepoSlug, project.trunkBranch, commit, featureId, phaseId])}`,
     };
   }
 
@@ -592,11 +601,11 @@ export function verifyHarvestIntakeOperations(
   let scopes: HarvestWorkScope[] = [verified];
   if (verified.kind === "pull_request") {
     scopes = scopeVerifiedMergeToPhases(verified, checkoutPhaseIds ?? []);
-  } else if (checkoutPhaseIds !== undefined) {
+  } else if (verified.phaseId === null) {
     scopes = [];
     for (const scoped of scopeManualHarvestToPhases(
       candidate,
-      checkoutPhaseIds,
+      checkoutPhaseIds ?? [],
     )) {
       const result = verifyHarvestTarget(project, scoped);
       if (!result.ok) return false;

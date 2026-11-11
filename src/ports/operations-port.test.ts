@@ -102,10 +102,12 @@ function harvest(
 }
 
 type HarvestIntake = Parameters<OperationsStorePort["recordHarvestIntake"]>[0];
+type HarvestIntakeFacts = Partial<DurableHarvestOperation> &
+  Pick<HarvestCandidateInput, "checkoutRepoSlug">;
 
 function harvestIntake(
   operationId: string,
-  overrides: Partial<DurableHarvestOperation> = {},
+  { checkoutRepoSlug, ...overrides }: HarvestIntakeFacts = {},
   source?: HarvestCandidateInput["source"],
   checkoutPhaseIds?: readonly string[],
 ): HarvestIntake {
@@ -115,6 +117,7 @@ function harvestIntake(
       source ?? (operation.prNumber === null ? "manual_cli" : "github_webhook"),
     deliveryId: operationId,
     repoSlug: operation.repoSlug,
+    checkoutRepoSlug,
     headRepoSlug: operation.headRepoSlug,
     baseBranch: operation.trunkBranch,
     headBranch: operation.headBranch,
@@ -216,6 +219,7 @@ const offline = {
   headBranch: null,
   expectedHeadSha: null,
 };
+const verifiedOffline = { ...offline, checkoutRepoSlug: "Acme/A" };
 
 function learningReceipt(operationId: string): HarvestStageReceipt {
   return {
@@ -925,7 +929,10 @@ describe("durable recovery store contract", () => {
   it.each([true, false])(
     "reuses phase receipts for a whole-feature manual harvest after PR first: %s",
     (prFirst) => {
-      const manual = harvestIntake("manual", { ...offline, phaseId: null });
+      const manual = harvestIntake("manual", {
+        ...verifiedOffline,
+        phaseId: null,
+      });
       const children = scopeManualHarvestToPhases(manual.candidate, [
         "phase-1",
         "phase-02",
@@ -937,7 +944,7 @@ describe("durable recovery store contract", () => {
       ]);
       const inputs = children.map((candidate) => ({
         ...harvestIntake(candidate.deliveryId, {
-          ...offline,
+          ...verifiedOffline,
           phaseId: candidate.explicitPhaseId,
         }),
         candidate,
@@ -1455,6 +1462,71 @@ describe("durable recovery store contract", () => {
 });
 
 describe("persisted harvest intake contract", () => {
+  it.each(["local", "pull request"])(
+    "keeps an unknown checkout separate across restart when %s arrives first",
+    (firstSource) => {
+      const local = harvestIntake("unknown-checkout", offline);
+      const pull = harvestIntake("verified-pull");
+      const [first, second] =
+        firstSource === "local" ? [local, pull] : [pull, local];
+      const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+      expect(initial.store.recordHarvestIntake(first)).toMatchObject({
+        ok: true,
+      });
+      const restarted = restoreHarvestIntake(initial.snapshot());
+      expect(restarted.store.recordHarvestIntake(second)).toMatchObject({
+        ok: true,
+        deduplicatedWork: false,
+      });
+      const saved = restarted.snapshot();
+      expect(saved.harvests).toHaveLength(2);
+      expect(saved.aliases).toEqual([]);
+      const replay = restoreHarvestIntake(saved).store;
+      expect(replay.recordHarvestIntake(local)).toMatchObject({
+        ok: true,
+        deduplicatedTransport: true,
+        operations: [{ operationId: "unknown-checkout", repoSlug: null }],
+      });
+      expect(replay.recordHarvestIntake(pull)).toMatchObject({
+        ok: true,
+        deduplicatedTransport: true,
+        operations: [{ operationId: "verified-pull", repoSlug: "acme/a" }],
+      });
+    },
+  );
+
+  it("rejects an enrolled repository substituted for unknown checkout evidence", () => {
+    const local = harvestIntake("unknown-checkout", offline);
+    if (!local.target.accepted) throw new Error("Expected local intake");
+    const [operation] = local.target.operations;
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+    const before = initial.snapshot();
+    expect(
+      initial.store.recordHarvestIntake({
+        ...local,
+        target: {
+          ...local.target,
+          operations: [{ ...operation, repoSlug: "acme/a" }],
+        },
+      }),
+    ).toEqual({ ok: false, code: "HARVEST_IDENTITY_MISMATCH" });
+    expect(initial.snapshot()).toEqual(before);
+  });
+
+  it("rejects an accepted unscoped manual batch without checkout coverage", () => {
+    const local = harvestIntake("missing-coverage", {
+      ...offline,
+      phaseId: null,
+    });
+    const initial = restoreHarvestIntake({ harvests: [], stages: [] });
+    const before = initial.snapshot();
+    expect(initial.store.recordHarvestIntake(local)).toEqual({
+      ok: false,
+      code: "HARVEST_IDENTITY_MISMATCH",
+    });
+    expect(initial.snapshot()).toEqual(before);
+  });
+
   it.each<Partial<DurableHarvestOperation>>([
     { projectId: "unverified-project" },
     { repoSlug: "acme/other" },
@@ -1509,7 +1581,7 @@ describe("persisted harvest intake contract", () => {
     "keeps local work with delivery repository $localRepoSlug separate from $repoSlug $trunkBranch",
     ({ localRepoSlug, repoSlug, trunkBranch }) => {
       const local = harvestIntake("local-scope", {
-        ...offline,
+        ...verifiedOffline,
         repoSlug: localRepoSlug,
       });
       const pull = harvestIntake("pull-scope", {
@@ -1678,7 +1750,7 @@ describe("persisted harvest intake contract", () => {
     (firstSource) => {
       const phaseIds = ["phase-1", "phase-02", "phase-01"];
       const local = harvestIntake("local-feature", {
-        ...offline,
+        ...verifiedOffline,
         phaseId: null,
       });
       const localScopes = scopeManualHarvestToPhases(
@@ -1686,7 +1758,7 @@ describe("persisted harvest intake contract", () => {
         phaseIds,
       ).map((candidate) => {
         const scoped = harvestIntake(candidate.deliveryId, {
-          ...offline,
+          ...verifiedOffline,
           phaseId: candidate.explicitPhaseId,
         });
         if (!scoped.target.accepted)
@@ -1784,7 +1856,10 @@ describe("persisted harvest intake contract", () => {
       expect(replay.snapshot()).toEqual(persisted);
       expect(
         replay.store.recordHarvestIntake(
-          harvestIntake("uncovered", { ...offline, phaseId: "phase-03" }),
+          harvestIntake("uncovered", {
+            ...verifiedOffline,
+            phaseId: "phase-03",
+          }),
         ),
       ).toMatchObject({
         ok: true,
@@ -1816,7 +1891,7 @@ describe("persisted harvest intake contract", () => {
     "preserves the first operation and receipts when %s arrives first",
     (firstSource) => {
       const local = harvestIntake("local", {
-        ...offline,
+        ...verifiedOffline,
         mergeCommitSha: ` ${sha.toUpperCase()} `,
       });
       const pull = harvestIntake("pull");
@@ -1862,10 +1937,10 @@ describe("persisted harvest intake contract", () => {
   it.each([
     ["project", { projectId: "project-b" }],
     ["feature", { featureId: "other-feature" }],
-    ["phase", { phaseId: null }],
+    ["phase", { phaseId: "phase-02" }],
     ["commit", { mergeCommitSha: "b".repeat(40) }],
   ] as const)("keeps different %s scopes separate", (_field, override) => {
-    const local = harvestIntake("local", { ...offline, ...override });
+    const local = harvestIntake("local", { ...verifiedOffline, ...override });
     if (!local.target.accepted)
       throw new Error("Expected accepted local intake");
     const restarted = restoreHarvestIntake({
@@ -1891,7 +1966,9 @@ describe("persisted harvest intake contract", () => {
       stages: [],
     });
     expect(
-      restarted.store.recordHarvestIntake(harvestIntake("local", offline)),
+      restarted.store.recordHarvestIntake(
+        harvestIntake("local", verifiedOffline),
+      ),
     ).toMatchObject({
       ok: true,
       deduplicatedWork: true,
@@ -2028,7 +2105,7 @@ it("resumes a persisted retryable sync failure after lease expiry", () => {
 });
 
 it("rejects a stale cleanup skip when pull request evidence arrives after lease claim", () => {
-  const local = harvestIntake("offline-claimed", offline);
+  const local = harvestIntake("offline-claimed", verifiedOffline);
   if (!local.target.accepted) throw new Error("Expected offline operation");
   const initial = restoreRecoveryStore({
     harvests: [...local.target.operations],
@@ -2416,11 +2493,11 @@ it("enriches a completed pull request harvest when a later delivery verifies its
 });
 
 it.each([
-  { source: "offline commit", facts: offline },
+  { source: "offline commit", facts: verifiedOffline },
   {
     source: "offline commit with unverified head facts",
     facts: {
-      ...offline,
+      ...verifiedOffline,
       headRepoSlug: "acme/a",
       headBranch: `feat/${featureId}-${phaseId}`,
       expectedHeadSha: sha,
@@ -2438,7 +2515,7 @@ it.each([
 );
 
 async function verifyLateCleanupAfterRestart(
-  facts: Partial<DurableHarvestOperation>,
+  facts: HarvestIntakeFacts,
   attachIncompletePull = false,
 ) {
   const first = harvestIntake("completed-harvest", facts);

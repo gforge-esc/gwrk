@@ -385,6 +385,47 @@ describe("FR-002 harvest identity and target verification", () => {
       expect(canCorrelateHarvestIntake(conflict, local)).toBe(false);
     }
   });
+  it.each([
+    [undefined, null, false],
+    ["ACME/A", "acme/a", true],
+  ] as const)(
+    "uses checkout repository evidence %j for manual correlation",
+    (checkoutRepoSlug, repoSlug, correlates) => {
+      const localCandidate = {
+        ...candidate({
+          source: "manual_cli",
+          repoSlug: null,
+          prNumber: null,
+          prUrl: null,
+          headRepoSlug: null,
+          headBranch: null,
+          expectedHeadSha: null,
+          explicitFeatureId: featureId,
+          explicitPhaseId: phaseId,
+        }),
+        checkoutRepoSlug,
+      };
+      const verified = verifyHarvestTarget(project, localCandidate);
+      expect(verified).toMatchObject({
+        ok: true,
+        kind: "local_commit",
+        repoSlug,
+      });
+      if (!verified.ok) throw new Error("Expected valid local target");
+
+      const local = {
+        ...verified,
+        projectId: project.projectId,
+        trunkBranch: project.trunkBranch,
+        prNumber: null,
+        terminalEvent: localCandidate.terminalEvent,
+        mergeCommitSha: sha,
+      };
+      const pull = { ...local, repoSlug: "acme/a", prNumber: 42 };
+      expect(canCorrelateHarvestIntake(local, pull)).toBe(correlates);
+      expect(canCorrelateHarvestIntake(pull, local)).toBe(correlates);
+    },
+  );
   it("TR-002 keeps matching PR numbers scoped to their enrolled repository", () => {
     const other = { ...project, projectId: "project-b", repoSlug: "acme/b" };
     const a = verifyHarvestTarget(project, candidate());
