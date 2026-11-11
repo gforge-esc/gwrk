@@ -110,7 +110,7 @@ function shipModel(
   legacy: boolean,
 ): string | undefined {
   if (legacy) {
-    return route.mode === "provider-default"
+    return route.useAdapterModelDefaults
       ? process.env.GEMINI_MODEL
       : route.model;
   }

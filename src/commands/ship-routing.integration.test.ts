@@ -574,10 +574,24 @@ describe("ship with the real AgentPort router", () => {
   it.each([
     { backend: "agy", expectedModel: "configured-legacy-model" },
     { backend: "codex", expectedModel: "codex-primary" },
+    { backend: "codex", expectedModel: "default" },
   ])(
-    "previews the legacy model passed to the script for $backend",
+    "previews $expectedModel passed to the legacy script for $backend",
     async ({ backend, expectedModel }) => {
       vi.stubEnv("GEMINI_MODEL", "configured-legacy-model");
+      if (expectedModel === "default") {
+        fs.writeFileSync(
+          path.join(root, ".gwrkrc.json"),
+          JSON.stringify({
+            project: { name: "Routing fixture" },
+            agents: {
+              implement: backend,
+              fallbackOrder: [backend],
+              registry: { [backend]: { ...backendConfig(backend), models: [] } },
+            },
+          }),
+        );
+      }
       await ship("--dry-run", "--legacy", "--agent", backend);
 
       const previewOutput = vi.mocked(console.log).mock.calls.flat().join("\n");
