@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { Command, Option } from "commander";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
 import { verifyInstalledRelease } from "../adapters/release/inventory.js";
 import { readRepositoryEvidence } from "../adapters/release/repository-evidence.js";
-import { acquireInstanceLock } from "../adapters/server/instance-lock.js";
+import { acquireInstanceLock, acquireLedgerLock } from "../adapters/server/instance-lock.js";
 import {
   createLedgerBackup,
   readAppliedMigrations,
@@ -155,27 +155,14 @@ const restoreCommand = new Command("restore")
         const restored = await restoreOfflineLedger(
           backupPort,
           {
-            acquireInstanceLock(directory, pid) {
-              try {
-                return acquireInstanceLock(directory, pid);
-              } catch (error) {
-                if (
-                  error instanceof Error &&
-                  error.message.includes("already holds")
-                ) {
-                  throw new CommandError(
-                    "The server holds the runtime lock. Run 'gwrk server stop' before restoring.",
-                    1,
-                  );
-                }
-                throw error;
-              }
-            },
+            acquireInstanceLock,
+            acquireLedgerLock,
           },
           {
             source: resolve(opts.from),
             stateDirectory,
             runtimeDirectory,
+            dbPath: join(stateDirectory, "gwrk.db"),
             force: opts.force,
             pid: process.pid,
           },

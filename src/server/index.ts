@@ -6,8 +6,8 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import fastify from "fastify";
 import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
-import { acquireInstanceLock } from "../adapters/server/instance-lock.js";
-import { getDbPath } from "../db/index.js";
+import { acquireInstanceLock, acquireLedgerLock } from "../adapters/server/instance-lock.js";
+import { closeDb, getDbPath } from "../db/index.js";
 import { PENDING_LEDGER_RESTORE } from "../domain/ledger-backup.js";
 import { isPrivateRunnerBind } from "../domain/release-packaging.js";
 import type { InstanceLockHandle } from "../ports/release-ops-port.js";
@@ -60,7 +60,9 @@ export async function startServer(
   const instanceLock = hosted
     ? acquireInstanceLock(gwrkRuntimeDir(), process.pid)
     : undefined;
+  let ledgerLock: InstanceLockHandle | undefined;
   try {
+    if (instanceLock) ledgerLock = acquireLedgerLock(getDbPath(), process.pid);
     if (
       instanceLock &&
       existsSync(join(dirname(getDbPath()), PENDING_LEDGER_RESTORE))
@@ -69,8 +71,9 @@ export async function startServer(
         "An unfinished ledger restore blocks startup. Retry 'gwrk db restore' with the original backup.",
       );
     }
-    return await startLockedServer(config, options, instanceLock);
+    return await startLockedServer(config, options, instanceLock, ledgerLock);
   } catch (error) {
+    ledgerLock?.release();
     instanceLock?.release();
     throw error;
   }
@@ -80,6 +83,7 @@ async function startLockedServer(
   config: GwrkConfig,
   options: { handleSignals?: boolean },
   instanceLock: InstanceLockHandle | undefined,
+  ledgerLock: InstanceLockHandle | undefined,
 ) {
   const projectRoot = process.cwd();
   const server = fastify({
@@ -181,8 +185,13 @@ async function startLockedServer(
         if (result.status === "rejected") server.log.error(result.reason);
       }
     } finally {
-      if (pidWritten) removePid();
-      instanceLock?.release();
+      try {
+        if (ledgerLock) closeDb();
+        if (pidWritten) removePid();
+      } finally {
+        ledgerLock?.release();
+        instanceLock?.release();
+      }
     }
   });
 

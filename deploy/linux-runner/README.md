@@ -31,7 +31,7 @@ Revoke a GitHub token or agent credential at its provider. Replace the credentia
 ## Backup and rollback
 
 - Run `gwrk db backup --out BACKUP_DIR --format json` as the service user. Store the verified backup outside the release tree.
-- Stop the runner before restore. Set `GWRK_RUNTIME_DIR` to the service runtime directory. Run `gwrk db restore --from BACKUP_DIR --state-dir STATE_DIR` as the service user. Retry an interrupted restore with the same backup.
+- Stop the runner before restore. Set `GWRK_RUNTIME_DIR` to the service runtime directory. Run `gwrk db restore --from BACKUP_DIR --state-dir STATE_DIR` as the service user. Retry an interrupted restore with the same backup. Startup and restore hold the same lock next to the ledger. Keep the lock file with the state directory.
 - Run `GWRK_RUNTIME_DIR=/run/gwrk /opt/gwrk/current/deploy/linux-runner/rollback-release.sh /opt/gwrk /var/lib/gwrk` as the operator. It checks applied migrations, saves a backup and switches the release under the runtime lock. Check the service and ledger after restart.
 
 Record the real systemd start, unattended worker run and credential revocation in a copy of [live-pilot-record.example.md](live-pilot-record.example.md).

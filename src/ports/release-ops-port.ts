@@ -15,6 +15,7 @@ export interface InstanceLockHandle {
 
 export interface InstanceLockPort {
   acquireInstanceLock(runtimeDir: string, pid: number): InstanceLockHandle;
+  acquireLedgerLock(dbPath: string, pid: number): InstanceLockHandle;
 }
 
 export interface LedgerBackupRequest {

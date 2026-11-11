@@ -8,12 +8,17 @@ import {
   closeSync,
   fstatSync,
   ftruncateSync,
+  lstatSync,
   mkdirSync,
   openSync,
+  realpathSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
-import type { InstanceLockPort } from "../../ports/release-ops-port.js";
+import { basename, dirname, join, resolve } from "node:path";
+import type {
+  InstanceLockHandle,
+  InstanceLockPort,
+} from "../../ports/release-ops-port.js";
 
 const LOCK_BUSY = 75;
 
@@ -22,7 +27,33 @@ export const acquireInstanceLock: InstanceLockPort["acquireInstanceLock"] = (
   pid,
 ) => {
   mkdirSync(runtimeDir, { recursive: true, mode: 0o750 });
-  const lockPath = join(runtimeDir, "server.lock");
+  return acquireExclusiveLock(join(runtimeDir, "server.lock"), pid);
+};
+
+export const acquireLedgerLock: InstanceLockPort["acquireLedgerLock"] = (
+  dbPath,
+  pid,
+) => {
+  const absolute = resolve(dbPath);
+  const parent = dirname(absolute);
+  mkdirSync(parent, { recursive: true, mode: 0o700 });
+  const database = join(realpathSync(parent), basename(absolute));
+  const existing = lstatSync(database, { throwIfNoEntry: false });
+  if (existing && (!existing.isFile() || existing.nlink !== 1)) {
+    throw new Error(
+      `Hosted ledger must be a regular file with a single link: ${database}`,
+    );
+  }
+  return acquireExclusiveLock(
+    join(dirname(database), `.${basename(database)}.lock`),
+    pid,
+  );
+};
+
+function acquireExclusiveLock(
+  lockPath: string,
+  pid: number,
+): InstanceLockHandle {
   const fd = openSync(
     lockPath,
     constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW,
@@ -68,4 +99,4 @@ export const acquireInstanceLock: InstanceLockPort["acquireInstanceLock"] = (
       released = true;
     },
   };
-};
+}

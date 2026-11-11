@@ -195,6 +195,11 @@ cli_version=$(timeout --kill-after=5s 15s "${as_service[@]}" node "$target/dist/
   fail "Rollback target CLI version does not match verified release $verified_version."
 [[ "$(realpath -e -- "$target/dist/cli.js")" == "$target/dist/cli.js" ]] ||
   fail "Rollback target CLI must resolve within the selected release: $target/dist/cli.js"
+launch_command=$(timeout --kill-after=5s 15s "${as_service[@]}" env -i PATH="$PATH" \
+  "$target/deploy/linux-runner/run.sh" --print-launch-command </dev/null 2>/dev/null) ||
+  fail "Rollback target launcher could not prove release identity: $target"
+[[ "$launch_command" == "$(printf '%s\n' node "$target/dist/cli.js" server start --foreground)" ]] ||
+  fail "Rollback target launcher does not run the selected release: $target"
 timeout --kill-after=5s 15s "${as_service[@]}" node -e '
   const { createRequire } = require("node:module");
   const Database = createRequire(process.argv[1])("better-sqlite3");
@@ -203,10 +208,14 @@ timeout --kill-after=5s 15s "${as_service[@]}" node -e '
 ' "$target/package.json" </dev/null >/dev/null 2>&1 ||
   fail "Rollback target SQLite could not open as $service_user: $target"
 
+[[ -f "$state/.gwrk.db.lock" && ! -L "$state/.gwrk.db.lock" ]] ||
+  fail "The installed service ledger lock is missing: $state/.gwrk.db.lock"
+
 scratch=$(mktemp -d "$release_root/.rollback.XXXXXXXX")
 recover_pointers=false
 stop_attempted=false
 lock_held=false
+ledger_lock_held=false
 target_started=false
 point() {
   ln -sfn -- "$1" "$scratch/pointer"
@@ -215,6 +224,7 @@ point() {
 on_exit() {
   local status=$? current_state
   trap '' TERM INT
+  if $ledger_lock_held; then flock -u 7; fi
   if $lock_held; then flock -u 9; fi
   if ((status != 0)); then
     if $recover_pointers; then
@@ -265,6 +275,11 @@ systemctl stop "$unit"
 exec 9<>"$runtime/server.lock"
 flock -xn 9 || fail "Another process holds the server runtime lock."
 lock_held=true
+[[ -f "$state/.gwrk.db.lock" && ! -L "$state/.gwrk.db.lock" ]] ||
+  fail "Preserve the service ledger lock file across stop."
+exec 7<>"$state/.gwrk.db.lock"
+flock -xn 7 || fail "Another process holds the ledger lock."
+ledger_lock_held=true
 [[ ! -e "$state/.restore-pending" ]] || fail "Complete the unfinished ledger restore before rollback."
 check_rollback
 backup_root="$state/backups"
@@ -281,6 +296,8 @@ backup="$backup_root/rollback-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 recover_pointers=true
 point "$new_target" "$current"
 point "$old_target" "$previous"
+flock -u 7
+ledger_lock_held=false
 flock -u 9
 lock_held=false
 target_started=true

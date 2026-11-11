@@ -78,6 +78,7 @@ it.each([
   { signal: "SIGINT", status: 130, stage: "initial stop" },
   { signal: null, status: 1, stage: "backup with an inactive unit" },
   { signal: null, status: 1, stage: "target CLI version mismatch" },
+  { signal: null, status: 1, stage: "target launcher uses current alias" },
   { signal: null, status: 1, stage: "target manifest version mismatch" },
   { signal: null, status: 1, stage: "service ledger mismatch" },
   { signal: null, status: 1, stage: "service runtime mismatch" },
@@ -137,7 +138,12 @@ it.each([
     const provenance =
       stage.startsWith("running release ") || stage.includes("migration");
     const usesRealCheck = pathMismatch || provenance;
-    const running = Boolean(signal || malformedFile || usesRealCheck);
+    const running = Boolean(
+      signal ||
+        malformedFile ||
+        usesRealCheck ||
+        stage === "target launcher uses current alias",
+    );
     const pidFile = join(runtime, "server.pid");
     const ready = join(runtime, "checking-readiness");
     const releaseReadiness = join(runtime, "release-readiness");
@@ -149,6 +155,7 @@ it.each([
       await mkdir(state);
       await mkdir(join(root, "other release root"));
       await writeFile(join(runtime, "server.lock"), "");
+      await writeFile(join(state, ".gwrk.db.lock"), "");
       if (running) {
         await writeFile(pidFile, String(process.pid));
       }
@@ -181,10 +188,24 @@ it.each([
           join(release, "dist/domain/gwrk-paths.js"),
         );
         for (const name of serviceScripts) {
-          await writeFile(join(service, name), "#!/usr/bin/env bash\n", {
-            mode: 0o755,
-          });
+          const body =
+            name === "run.sh"
+              ? await readFile(join(repo, "deploy/linux-runner", name), "utf8")
+              : "#!/usr/bin/env bash\n";
+          await writeFile(join(service, name), body, { mode: 0o755 });
         }
+      }
+      if (stage === "target launcher uses current alias") {
+        await writeFile(
+          join(root, target, "deploy/linux-runner/run.sh"),
+          [
+            "#!/usr/bin/env bash",
+            "set -eu",
+            'cd -- "${GWRK_PILOT_REPO:?Set GWRK_PILOT_REPO.}"',
+            'exec node "$GWRK_RELEASE_ROOT/current/dist/cli.js" server start --foreground',
+            "",
+          ].join("\n"),
+        );
       }
       const malformedPath = malformedFile
         ? join(root, target, "deploy/linux-runner", malformedFile)
@@ -320,7 +341,7 @@ it.each([
         realpath: `exec node -e 'console.log(require("node:fs").realpathSync(process.argv[1]))' "$3"`,
         flock: "exit 0",
         runuser: `shift 5
-if [[ "$1" == env ]]; then
+if [[ "$1" == env && "\${2:-}" != -i ]]; then
   shift
   while [[ "$1" == GWRK_*=* ]]; do export "$1"; shift; done
 fi
@@ -497,7 +518,12 @@ esac`,
             expect(restored.manifest.summary.completedRunIds).toEqual([42]);
           } else {
             expect(existsSync(calls), output).toBe(false);
-            if (pathMismatch) {
+            if (stage === "target launcher uses current alias") {
+              expect(output).toContain(
+                "Rollback target launcher could not prove release identity",
+              );
+              expect(existsSync(join(state, "backups"))).toBe(false);
+            } else if (pathMismatch) {
               expect(output).toContain(
                 stage.endsWith("release root mismatch")
                   ? "release root mismatch"

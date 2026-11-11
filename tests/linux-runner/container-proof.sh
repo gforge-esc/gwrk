@@ -123,6 +123,27 @@ launch() {
 }
 launch
 expect_rejection 'already holds' runuser -u gwrk -- bash "$release/deploy/linux-runner/run.sh"
+runuser -u gwrk -- node "$release/dist/cli.js" db backup --out /var/lib/gwrk/lock-fixture-backup
+runuser -u gwrk -- mkdir /var/lib/gwrk/alternate-runtime
+ledger_inode=$(stat -c '%i' /var/lib/gwrk/gwrk.db)
+for sidecar in /var/lib/gwrk/gwrk.db-wal /var/lib/gwrk/gwrk.db-shm; do
+  test -f "$sidecar"
+done
+expect_rejection '.gwrk.db.lock' runuser -u gwrk -- \
+  env GWRK_RUNTIME_DIR=/var/lib/gwrk/alternate-runtime \
+  node "$release/dist/cli.js" db restore --from /var/lib/gwrk/lock-fixture-backup \
+  --state-dir /var/lib/gwrk --force
+runuser -u gwrk -- cp -R /var/lib/gwrk/lock-fixture-backup /var/lib/gwrk/.restore-pending
+expect_rejection '.gwrk.db.lock' runuser -u gwrk -- \
+  env GWRK_RUNTIME_DIR=/var/lib/gwrk/alternate-runtime \
+  node "$release/dist/cli.js" db restore --from /var/lib/gwrk/lock-fixture-backup \
+  --state-dir /var/lib/gwrk
+cmp /var/lib/gwrk/lock-fixture-backup/gwrk.db /var/lib/gwrk/.restore-pending/gwrk.db
+rm -r -- /var/lib/gwrk/.restore-pending
+test "$(stat -c '%i' /var/lib/gwrk/gwrk.db)" = "$ledger_inode"
+test -f /var/lib/gwrk/gwrk.db-wal
+test -f /var/lib/gwrk/gwrk.db-shm
+kill -0 "$server_pid"
 kill -KILL "$server_pid"
 wait "$launcher" || true
 server_pid=""

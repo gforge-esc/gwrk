@@ -12,14 +12,23 @@ import type {
 export async function restoreOfflineLedger(
   backup: LedgerBackupPort,
   instances: InstanceLockPort,
-  request: LedgerRestoreRequest & { runtimeDirectory: string; pid: number },
+  request: LedgerRestoreRequest & {
+    runtimeDirectory: string;
+    dbPath: string;
+    pid: number;
+  },
 ): Promise<VerifiedLedgerBackup> {
   const lock = instances.acquireInstanceLock(
     request.runtimeDirectory,
     request.pid,
   );
   try {
-    return await backup.restoreBackup(request);
+    const ledger = instances.acquireLedgerLock(request.dbPath, request.pid);
+    try {
+      return await backup.restoreBackup(request);
+    } finally {
+      ledger.release();
+    }
   } finally {
     lock.release();
   }

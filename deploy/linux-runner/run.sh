@@ -6,7 +6,12 @@
 set -euo pipefail
 script_dir=$(dirname -- "$(realpath -e -- "${BASH_SOURCE[0]}")")
 cli=$(realpath -e -- "$script_dir/../../dist/cli.js")
+command=(node "$cli" server start --foreground)
+if [[ $# == 1 && "$1" == --print-launch-command ]]; then
+  printf '%s\n' "${command[@]}"
+  exit 0
+fi
 source "$script_dir/credentials.sh"
 load_runner_credentials
 cd -- "${GWRK_PILOT_REPO:?Set GWRK_PILOT_REPO.}"
-exec node "$cli" server start --foreground
+exec "${command[@]}"
