@@ -6,6 +6,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   appendFile,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -20,6 +21,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  acquireInstanceLock,
+  acquireLedgerLock,
+} from "../../src/adapters/server/instance-lock.js";
 import {
   createLedgerBackup,
   restoreLedgerBackup,
@@ -44,8 +49,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function seedLedger() {
-  const db = new Database(join(root, "active.db"));
+function seedLedger(path = join(root, "active.db")) {
+  const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(`
@@ -130,6 +135,87 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
+  it.skipIf(process.platform !== "linux").each(["force", "resume"])(
+    "blocks %s restore through an alternate runtime while the ledger is active",
+    async (mode) => {
+      const ledger = join(root, "gwrk.db");
+      seedLedger(ledger).close();
+      const backup = join(root, "backup");
+      await createLedgerBackup({
+        dbPath: ledger,
+        destination: backup,
+        createdAt: "2026-11-11T12:00:00.000Z",
+        gwrkVersion: "1.6.0-beta.1",
+        metadata: { device: null },
+        collectRepositories: () => [],
+      });
+
+      const serviceLock = acquireInstanceLock(
+        join(root, "service"),
+        process.pid,
+      );
+      let ledgerLock: ReturnType<typeof acquireLedgerLock> | undefined;
+      let live: Database.Database | undefined;
+      try {
+        ledgerLock = acquireLedgerLock(ledger, process.pid);
+        live = new Database(ledger);
+        live.pragma("journal_mode = WAL");
+        live.prepare("UPDATE runs SET id = 99 WHERE id = 42").run();
+        const files = [ledger, `${ledger}-wal`, `${ledger}-shm`];
+        const original = await Promise.all(files.map((file) => readFile(file)));
+        const pending = join(root, ".restore-pending");
+        if (mode === "resume") await cp(backup, pending, { recursive: true });
+
+        const cli = fileURLToPath(
+          new URL("../../dist/cli.js", import.meta.url),
+        );
+        const args = [
+          cli,
+          "db",
+          "restore",
+          "--from",
+          backup,
+          "--state-dir",
+          root,
+        ];
+        if (mode === "force") args.push("--force");
+        const result = spawnSync(process.execPath, args, {
+          cwd: root,
+          env: {
+            ...process.env,
+            GWRK_HOME: root,
+            GWRK_DB_PATH: ledger,
+            GWRK_RUNTIME_DIR: join(root, "alternate-runtime"),
+          },
+          encoding: "utf8",
+          timeout: 10_000,
+        });
+
+        expect(result.status, result.stderr).toBe(1);
+        expect(result.stderr).toContain(".gwrk.db.lock");
+        expect(await Promise.all(files.map((file) => readFile(file)))).toEqual(
+          original,
+        );
+        expect(
+          live.prepare("SELECT id FROM runs ORDER BY id").pluck().all(),
+        ).toEqual([43, 99]);
+        if (mode === "resume") {
+          expect(await verifyLedgerBackup(pending)).toEqual(
+            await verifyLedgerBackup(backup),
+          );
+        } else {
+          await expect(stat(pending)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+        }
+      } finally {
+        live?.close();
+        ledgerLock?.release();
+        serviceLock.release();
+      }
+    },
+  );
+
   it.each([
     { args: ["backup"], missing: "--out" },
     { args: ["backup", "--out"], missing: "--out value" },
