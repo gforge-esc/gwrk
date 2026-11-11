@@ -936,6 +936,60 @@ describe("credential guard", () => {
     );
   });
 
+  describe.each([false, true])(
+    "inspected arrays with showHidden=%s",
+    (showHidden) => {
+      const output = (name: string, value: string) =>
+        inspect(
+          {
+            headers: Object.assign(new Array(4), {
+              2: name,
+              3: value,
+              extra: 1n,
+            }),
+          },
+          { showHidden },
+        );
+
+      it("rejects a Cookie pair after two holes with BigInt metadata", () => {
+        const sanitizedOutput = output("Cookie", "session=fixture-only");
+        expect(sanitizedOutput).toContain("<2 empty items>");
+        expect(sanitizedOutput).toContain("extra: 1n");
+        expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+          /secret material/i,
+        );
+      });
+
+      it("allows a Content-Type pair with BigInt metadata", () => {
+        const sanitizedOutput = output("Content-Type", "text/plain");
+        expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+      });
+
+      it("allows Cookie as a Vary value with BigInt metadata", () => {
+        const headers = Object.assign(["Vary", ["Cookie", "Accept-Encoding"]], {
+          extra: 1n,
+        });
+        const sanitizedOutput = inspect({ headers }, { showHidden });
+        expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
+      });
+
+      it("still scans unparseable metadata for credentials", () => {
+        const sanitizedOutput = inspect(
+          {
+            headers: Object.assign(["Content-Type", "text/plain"], {
+              extra: 1n,
+              detail: { name: "Set-Cookie", value: "session=fixture-only" },
+            }),
+          },
+          { showHidden, depth: 5 },
+        );
+        expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+          /secret material/i,
+        );
+      });
+    },
+  );
+
   it("allows ordinary inspected tuples and multi-value Vary field names", () => {
     const sanitizedOutput = inspect({
       headers: [
@@ -1496,6 +1550,77 @@ describe("model qualification policy", () => {
         judges: [input.judges[0], { ...input.judges[1], winner: "tie" }],
       }),
     ).toMatchObject({ promote: false, reason: "judge-non-regression" });
+  });
+
+  describe.each(["input", "output", "gate", "requiredFixtures"] as const)(
+    "evidence identifiers in %s",
+    (kind) => {
+      const evidenceWith = (identifiers: string[]): PromotionEvidence => {
+        if (kind === "requiredFixtures") {
+          return {
+            ...passingEvidence,
+            requiredFixtures: identifiers,
+            repeats: identifiers.flatMap((fixtureId) =>
+              passingEvidence.repeats.map((repeat) => ({
+                ...repeat,
+                fixtureId,
+              })),
+            ),
+          };
+        }
+        const refField = {
+          input: "inputRef",
+          output: "outputRef",
+          gate: "gateRef",
+        }[kind];
+        return {
+          ...passingEvidence,
+          refs: { ...passingEvidence.refs, [kind]: identifiers },
+          judges: passingEvidence.judges.map((verdict) => ({
+            ...verdict,
+            citations: verdict.citations.map((citation) => ({
+              ...citation,
+              [refField]: identifiers[0],
+            })),
+          })),
+        };
+      };
+
+      it.each([
+        ["cookie", "README.md"],
+        ["README.md", "cookie"],
+      ])(
+        "allows %s followed by %s in a passing comparison",
+        (first, second) => {
+          const evidence = evidenceWith([first, second]);
+          expect(evaluatePromotion(evidence)).toEqual({ promote: true });
+          expect(() => assertNoSecretMaterial(evidence)).not.toThrow();
+        },
+      );
+
+      it("rejects credentials in identifiers", () => {
+        expect(() =>
+          assertNoSecretMaterial(
+            evidenceWith(["README.md", "Bearer\tfixture-token"]),
+          ),
+        ).toThrow(/secret material/i);
+      });
+    },
+  );
+
+  it("rejects real Cookie headers alongside citation lists", () => {
+    const headers = ["Cookie", "session=fixture-only"];
+    for (const evidence of [
+      { ...passingEvidence, headers },
+      {
+        ...passingEvidence,
+        sanitizedOutput: `stdout: ${JSON.stringify({ headers })}`,
+      },
+    ]) {
+      expect(() => assertNoSecretMaterial(evidence)).toThrow(
+        /secret material/i,
+      );
+    }
   });
 
   it("keeps the incumbent when persisted evidence has malformed decisions", () => {

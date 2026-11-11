@@ -600,6 +600,47 @@ function normalizeInspectedArrayEntries(record: string): string {
   });
 }
 
+function scanInspectedArray(
+  record: string,
+  knownSecrets: readonly string[],
+  isHeaderCollection: boolean,
+): void {
+  const entries: unknown[] = [];
+  const properties: string[] = [];
+  const body = `${record.slice(1, -1)},`;
+  const tokens = /"(?:[^"\\]|\\[\s\S])*"|[{}[\](),]/g;
+  const property = /^"(?:[^"\\]|\\[\s\S])*"\s*:/;
+  let start = 0;
+  let depth = 0;
+  for (const { 0: token, index } of body.matchAll(tokens)) {
+    if (token === "{" || token === "[" || token === "(") depth += 1;
+    if (token === "}" || token === "]" || token === ")") depth -= 1;
+    if (token !== "," || depth !== 0) continue;
+
+    const entry = body.slice(start, index).trim();
+    start = index + 1;
+    if (property.test(entry)) {
+      properties.push(entry);
+      continue;
+    }
+    const normalized = normalizeInspectedArrayEntries(`[${entry}]`);
+    let decoded: unknown[];
+    try {
+      decoded = JSON.parse(normalized);
+    } catch {
+      scanEvidence(entry, knownSecrets, false);
+      entries.push(null);
+      continue;
+    }
+    assertUniqueJsonKeys(normalized);
+    entries.push(...decoded);
+  }
+  scanEvidence(entries, knownSecrets, isHeaderCollection);
+  if (properties.length > 0) {
+    scanEvidence(`{${properties.join(",")}}`, knownSecrets, false);
+  }
+}
+
 function isInspectedCredentialHeader(record: string): boolean {
   const tokens = /"(?:[^"\\]|\\[\s\S])*"|[{}[\](),]/g;
   const property = /\s*"(name|key|value)"\s*:\s*("(?:[^"\\]|\\[\s\S])*")?/y;
@@ -684,22 +725,25 @@ function scanEmbeddedJson(
     if (end === undefined) continue;
     let token = text.slice(opening.index, end);
     let decoded: unknown;
-    let inspectedObject: string | undefined;
+    let inspectedRecord: string | undefined;
     try {
       decoded = JSON.parse(token);
     } catch {
       if (!token.startsWith("[") && !token.startsWith("{")) continue;
       try {
-        token = normalizeInspectedArrayEntries(inspectedRecordAsJson(token));
-        if (token.startsWith("{")) inspectedObject = token;
+        inspectedRecord = inspectedRecordAsJson(token);
+        token = normalizeInspectedArrayEntries(inspectedRecord);
         decoded = JSON.parse(token);
-        inspectedObject = undefined;
+        inspectedRecord = undefined;
       } catch {
-        if (inspectedObject === undefined) continue;
+        if (inspectedRecord === undefined) continue;
       }
     }
-    if (inspectedObject !== undefined) {
-      if (isInspectedCredentialHeader(inspectedObject)) {
+    if (inspectedRecord !== undefined) {
+      if (inspectedRecord.startsWith("[")) {
+        scanInspectedArray(inspectedRecord, knownSecrets, isHeaderCollection);
+        openings.lastIndex = end;
+      } else if (isInspectedCredentialHeader(inspectedRecord)) {
         throw new Error(secretMaterialMessage);
       }
       continue;
@@ -731,6 +775,7 @@ function scanEvidence(
   const headerTupleParents = new WeakSet<unknown[]>();
   const headerMaps = new WeakSet<object>();
   const headerRecords = new WeakSet<object>();
+  const citationRefs = new WeakSet<object>();
   const serialized =
     JSON.stringify(value, function (this: unknown, key, entry: unknown) {
       const isHeaderCollection = isRoot
@@ -754,11 +799,19 @@ function scanEvidence(
               isVaryFieldNameList(Reflect.get(this, "name"), entry) ||
               isVaryFieldNameList(Reflect.get(this, "key"), entry))));
       const isHeaderValue = isFlatHeaderValue || isStructuredHeaderValue;
+      const isIdentifierList =
+        Array.isArray(entry) &&
+        entry.every((value) => typeof value === "string") &&
+        (key === "requiredFixtures" ||
+          (typeof this === "object" &&
+            this !== null &&
+            citationRefs.has(this) &&
+            (key === "input" || key === "output" || key === "gate")));
       if (Array.isArray(entry)) {
         // The same array can appear under both a header field and ordinary evidence.
         flatHeaderLists.delete(entry);
         headerTupleParents.delete(entry);
-        if (!isHeaderValue) {
+        if (!isHeaderValue && !isIdentifierList) {
           if (isHeaderCollection || isHeaderTupleList(entry)) {
             headerTupleParents.add(entry);
           }
@@ -773,6 +826,8 @@ function scanEvidence(
       } else if (typeof entry === "object" && entry !== null) {
         headerMaps.delete(entry);
         headerRecords.delete(entry);
+        citationRefs.delete(entry);
+        if (key === "refs") citationRefs.add(entry);
         if (isHeaderCollection) headerMaps.add(entry);
         if (isHeaderTupleOrRecord && hasHeaderName(entry)) {
           headerRecords.add(entry);
@@ -788,6 +843,7 @@ function scanEvidence(
           (headerPattern.test(entry) || containsSensitiveText(entry))) ||
         (Array.isArray(entry) &&
           !isHeaderValue &&
+          !isIdentifierList &&
           entry.some(
             (header, index) =>
               index % 2 === 0 &&
