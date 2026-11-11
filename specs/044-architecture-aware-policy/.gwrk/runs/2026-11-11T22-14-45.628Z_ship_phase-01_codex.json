@@ -1,0 +1,20 @@
+{
+  "runId": "2026-11-11T22:14:45.628Z_ship_p01",
+  "feature": "044-architecture-aware-policy",
+  "phase": "phase-01",
+  "command": "ship",
+  "agent": "codex",
+  "model": "unknown",
+  "startedAt": "2026-11-11T22:14:45.628Z",
+  "finishedAt": "2026-11-11T22:26:05.953Z",
+  "durationS": 680,
+  "exitCode": 1,
+  "attempt": 1,
+  "reviewVerdict": "NO-GO",
+  "filesChanged": 4,
+  "linesAdded": 67,
+  "linesDeleted": 4,
+  "gitCommit": "8088199e3a56bdd8ec182d8e878a8281dc6b0395",
+  "gitBranch": "feat/044-architecture-aware-policy",
+  "digest": []
+}
