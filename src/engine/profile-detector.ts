@@ -479,10 +479,6 @@ function resolveDetectedProfile(
   ) {
     const config = readWorkspaceRootConfig(start);
     if (config === undefined) return undefined;
-    return mergeProfileOverrides({
-      detected: detected.profile,
-      projectDesign: DesignSchema.safeParse(config?.project?.design).data,
-    });
   }
   let nearestConfig:
     | { directory: string; config: WorkspaceRootConfig }
@@ -516,13 +512,14 @@ function resolveDetectedProfile(
   }
 
   if (localProject?.design || !nearestConfig) return undefined;
-  return applyWorkspaceConfig(
+  const scoped = applyWorkspaceConfig(
     nearestConfig.directory,
     start,
     detected,
     nearestConfig.config,
     { requireDesign: true, localProject },
   );
+  return scoped === detected.profile ? undefined : scoped;
 }
 
 type WorkspaceRootConfig = {

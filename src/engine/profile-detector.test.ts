@@ -905,6 +905,40 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it("keeps workspace-local toolchain settings under an ancestor without design", async () => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    write("services/.gwrkrc.json", JSON.stringify({ project: { name: "services" } }));
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", stack: { framework: "Django" }, toolchain: { test: null } },
+    }));
+
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect.soft(direct).toMatchObject({
+      stack: { framework: "Django" },
+      toolchain: { test: null },
+    });
+    expect(explicit).toEqual(direct);
+  });
+
+  it("inherits registered workspace policy through a workspace-only config", async () => {
+    const target = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design: target },
+      workspaces: { "services/api": { stack: { framework: "Django" }, toolchain: { build: null } } },
+    }));
+    write("services/api/.gwrkrc.json", JSON.stringify({ workspaces: { tests: {} } }));
+
+    const direct = await detectProfile(path.join(root, "services/api"));
+    const explicit = await resolveWorkspaceProfile(root, "services/api");
+    expect.soft(direct).toMatchObject({
+      design: target,
+      stack: { framework: "Django" },
+      toolchain: { build: null },
+    });
+    expect(explicit).toEqual(direct);
+  });
+
   it("finds the registered workspace under a nearer local design", async () => {
     const localDesign = { ...design, architecture: "layered" };
     const config = {
