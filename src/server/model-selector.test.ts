@@ -3,8 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type AgentBackendConfig, ModelSelector } from "../domain/agent-config.js";
-import type { QuotaProber } from "./quota-prober.js";
+import type { QuotaProber } from "../adapters/agents/quota-prober.js";
+import {
+  type AgentBackendConfig,
+  ModelSelector,
+} from "../domain/agent-config.js";
 import { TaskClassification, TaskType } from "../domain/types.js";
 
 describe("ModelSelector", () => {

@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QuotaProber } from "../adapters/agents/quota-prober.js";
 import { getDb, getTestDb } from "../db/index.js";
 import type { AgentRegistry } from "../domain/agent-config.js";
 import { TaskClassification, TaskType } from "../domain/types.js";
 import { BackendSelector, type TaskContext } from "./backend-selector.js";
-import { QuotaProber } from "./quota-prober.js";
 
 vi.mock("../db/index.js", async () => {
   const actual = (await vi.importActual("../db/index.js")) as any;

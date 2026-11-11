@@ -1012,7 +1012,7 @@ describe("ship with the real AgentPort router", () => {
 
   it("uses the alternate model during cooldown and records model failover", async () => {
     seedQuota(90);
-    const { QuotaProber } = await import("../server/quota-prober.js");
+    const { QuotaProber } = await import("../adapters/agents/quota-prober.js");
     const probeQuota = QuotaProber.prototype.probeQuota;
     vi.spyOn(QuotaProber.prototype, "probeQuota").mockImplementation(function (
       this: QuotaProber,

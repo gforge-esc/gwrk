@@ -133,7 +133,11 @@ const layers = [
 
 describe("Hexagonal boundary gates (ADR-011)", () => {
   it("keeps routing definitions and registry loading out of server shims", () => {
-    const removedShims = ["agent-registry", "model-selector", "task-classifier"];
+    const removedShims = [
+      "agent-registry",
+      "model-selector",
+      "task-classifier",
+    ];
     const retained = removedShims.filter((name) =>
       fs.existsSync(path.resolve("src/server", `${name}.ts`)),
     );
@@ -190,15 +194,25 @@ describe("Unified agent routing dependencies", () => {
     ).toEqual([]);
   });
 
+  it("keeps routing effects in adapters", () => {
+    const file = "src/adapters/agents/index.ts";
+    expect(
+      importsFromServerShims(file, inspectFileImports(file), [
+        "src/server/quota-prober",
+        "src/server/routing-decisions",
+      ]),
+    ).toEqual([]);
+  });
+
   it("uses domain types in the quota prober", () => {
-    const file = "src/server/quota-prober.ts";
+    const file = "src/adapters/agents/quota-prober.ts";
     const imports = inspectFileImports(file);
     expect
       .soft(importsFromServerShims(file, imports, [registryShim]))
       .toEqual([]);
     expect(imports).toContainEqual({
       kind: "static",
-      specifier: "../domain/agent-config.js",
+      specifier: "../../domain/agent-config.js",
       typeOnly: true,
     });
   });

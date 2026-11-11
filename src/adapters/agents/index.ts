@@ -15,10 +15,10 @@ import type { AgentBackend } from "../../plugins/agent-backend.js";
 import { AgentBackendRegistry } from "../../plugins/agent-registry.js";
 import { PluginLoader } from "../../plugins/loader.js";
 import type { AgentPort, RoutingContext } from "../../ports/agent-port.js";
-import { QuotaProber, type QuotaReading } from "../../server/quota-prober.js";
-import { recordDecision } from "../../server/routing-decisions.js";
 import { loadConfig } from "../../utils/config.js";
 import { resolveProjectId } from "../../utils/project-id.js";
+import { recordDecision } from "../sqlite/routing-decisions.js";
+import { QuotaProber, type QuotaReading } from "./quota-prober.js";
 import {
   InvalidAgentRegistryError,
   tryLoadRegistry,

@@ -105,6 +105,10 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 #### Files
 
+- `src/adapters/agents/quota-prober.ts` (NEW: Move quota probing from the server module into its adapter)
+- `src/adapters/sqlite/routing-decisions.ts` (NEW: Move SQLite route decision recording into its adapter)
+- `src/server/quota-prober.ts` and `src/server/routing-decisions.ts` (DELETE: Update callers to use the adapters)
+
 - `src/server/index.ts` (MODIFY: Load the routing registry directly through its adapter)
 - `src/server/quota-prober.ts` (MODIFY: Import quota policy types from the domain)
 - `src/engine/model-routing.test.ts` (MODIFY: Exercise canonical model selection and classification)
@@ -136,7 +140,7 @@ pnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts 
 
 ```bash
 pnpm build
-pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/model-routing.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/model-routing.test.ts src/commands/ship-routing.integration.test.ts src/server/routing-decisions.test.ts src/architecture.test.ts
 ```
 
 ### Phase 4: Workflow runtime and prompt transport

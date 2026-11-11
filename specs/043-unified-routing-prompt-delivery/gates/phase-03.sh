@@ -5,4 +5,4 @@
 
 set -euo pipefail
 pnpm build
-pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/model-routing.test.ts src/architecture.test.ts
+pnpm exec vitest run src/server/model-selector.test.ts src/server/quota-prober.test.ts src/server/task-classifier.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/engine/model-routing.test.ts src/commands/ship-routing.integration.test.ts src/server/routing-decisions.test.ts src/architecture.test.ts

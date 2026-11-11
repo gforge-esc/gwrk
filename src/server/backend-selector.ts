@@ -2,7 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type {
+  QuotaProber,
+  QuotaReading,
+} from "../adapters/agents/quota-prober.js";
 import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
+import { recordDecision } from "../adapters/sqlite/routing-decisions.js";
 import { getBackendSuccessRate } from "../db/plugins.js";
 import type { AgentRegistry } from "../domain/agent-config.js";
 import {
@@ -10,8 +15,6 @@ import {
   selectAgentRoute,
 } from "../domain/agent-routing.js";
 import { classifyTask } from "../domain/types.js";
-import type { QuotaProber, QuotaReading } from "./quota-prober.js";
-import { recordDecision } from "./routing-decisions.js";
 
 export interface TaskContext {
   runId: string;
