@@ -16,9 +16,10 @@
           "id": "T001",
           "title": "Create architecture-boundary.ts",
           "description": "NEW tests/helpers/architecture-boundary.ts. Check TypeScript syntax and layer rules",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T001-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:17:27.162Z"
         }
       ],
       "sp_estimate": 2,
