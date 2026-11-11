@@ -111,6 +111,32 @@ describe("BackendSelector Integration", () => {
     expect(listRoutingDecisions("legacy-local", context.runId, db)).toEqual([]);
   });
 
+  it("skips history and decision writes when the ledger is unavailable", async () => {
+    mockRegistry.backends.alternate = {
+      ...mockRegistry.backends.gemini,
+      name: "alternate",
+    };
+    vi.mocked(getDb).mockClear();
+
+    const selection = await selector.selectBackend({
+      ...context,
+      ledgerAvailable: false,
+    });
+
+    expect(selection.backend).toBe("gemini");
+    expect(getDb).not.toHaveBeenCalled();
+    expect(listRoutingDecisions("alpha", context.runId, db)).toEqual([]);
+  });
+
+  it("returns the selected backend when recording the decision fails", async () => {
+    db.exec("DROP TABLE routing_decisions");
+
+    await expect(selector.selectBackend(context)).resolves.toMatchObject({
+      backend: "gemini",
+      model: "gemini-flash",
+    });
+  });
+
   it("handles model failover and records it (TR-009)", async () => {
     // Mark gemini-flash as failed — it's the preferred FAST model for IMPLEMENT tasks.
     // Failover should fall back to gemini-pro (the only remaining model).

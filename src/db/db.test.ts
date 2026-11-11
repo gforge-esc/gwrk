@@ -35,6 +35,7 @@ import { createProjectRegistry } from "./project-registry.js";
 import {
   finishRun,
   getStats,
+  listCheckoutRuns,
   listProjects,
   listRuns,
   registerProject,
@@ -322,6 +323,48 @@ describe("Project registry upgrade", () => {
       for (const alias of computeLegacyProjectIds(facts)) {
         expect(registry.getProject(alias)?.projectId).toBe(projectId);
       }
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("backfills the local checkout owner when the first origin predates the upgrade", () => {
+    const checkout = join(root, "first-origin");
+    execFileSync("git", ["init", "--quiet", checkout], { stdio: "ignore" });
+    const facts = discoverGitIdentityFacts(checkout);
+    const localId = computeProjectId(facts);
+    const upgraded = upgrade((legacy) => {
+      legacy
+        .prepare("INSERT INTO projects (id, name, path) VALUES (?, ?, ?)")
+        .run(localId, "Local", checkout);
+      legacy
+        .prepare("INSERT INTO runs (project_id, feature_id, command) VALUES (?, ?, ?)")
+        .run(localId, "fixture", "ship");
+      execFileSync("git", [
+        "-C",
+        checkout,
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/first-origin.git",
+      ]);
+    });
+    try {
+      expect(listCheckoutRuns("fixture", checkout, upgraded)).toMatchObject([
+        { project_id: localId, command: "ship" },
+      ]);
+      const getRoot = upgraded
+        .prepare("SELECT local_root FROM projects WHERE id = ?")
+        .pluck();
+      const getAliases = upgraded
+        .prepare(
+          "SELECT alias_id FROM project_aliases WHERE project_id = ? ORDER BY alias_id",
+        )
+        .pluck();
+      expect.soft(getRoot.get(localId)).toBe(checkout);
+      expect(getAliases.all(localId)).toEqual(
+        computeLegacyProjectIds(facts).filter((alias) => alias !== localId).sort(),
+      );
     } finally {
       upgraded.close();
     }

@@ -12,6 +12,8 @@ import { discoverGitIdentityFacts } from "../adapters/git/project-id.js";
 import { getDb, getTestDb } from "../db/index.js";
 import { normalizeRegistryRepo } from "../db/project-registry.js";
 import * as runsModule from "../db/runs.js";
+import { PlanStore } from "../engine/plan-store.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import {
   listRoutingDecisions,
   recordDecision,
@@ -629,6 +631,63 @@ describe("BackendSelector Integration", () => {
       fs.rmSync(checkout, { recursive: true, force: true });
     }
   });
+
+  it.each(["SQLITE_CANTOPEN", "SQLITE_CANTOPEN_ISDIR"])(
+    "ships with the default backend when the ledger open fails with %s",
+    async (code) => {
+      const { getBackendSelector } = await import("../server/index.js");
+      const selector = getBackendSelector();
+      vi.mocked(getDb).mockImplementation(() => {
+        throw Object.assign(new Error("unable to open database file"), { code });
+      });
+      process.exitCode = 0;
+
+      await program.parseAsync(["node", "test", "ship", "001-cli-core", "7"]);
+
+      expect(process.exitCode).toBe(0);
+      expect(selector.selectBackend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: resolveProjectId(process.cwd()),
+          ledgerAvailable: false,
+        }),
+      );
+      expect(
+        vi.mocked(ShipOrchestrator).mock.results[0]?.value.run,
+      ).toHaveBeenCalledOnce();
+      expect(getDb).toHaveBeenCalledOnce();
+      expect(runsModule.startRun).not.toHaveBeenCalled();
+      expect(runsModule.finishRun).not.toHaveBeenCalled();
+      expect(runsModule.recordHistory).not.toHaveBeenCalled();
+      expect(PlanStore).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { backend: "default", agentArgs: [] },
+    { backend: "explicit", agentArgs: ["--agent", "forced-agent"] },
+  ])(
+    "rejects conflicting checkout ownership with the $backend backend",
+    async ({ agentArgs }) => {
+      const { getBackendSelector } = await import("../server/index.js");
+      const selector = getBackendSelector();
+      const id = resolveProjectId(process.cwd());
+      routingDb
+        .prepare(
+          "INSERT INTO projects (id, name, path, github_repo) VALUES (?, ?, '', ?)",
+        )
+        .run(id, "Different repository", "other.example/conflicting/repo");
+      process.exitCode = 0;
+
+      await program.parseAsync([
+        "node", "test", "ship", "001-cli-core", "7", ...agentArgs,
+      ]);
+
+      expect(process.exitCode).toBe(1);
+      expect(selector.selectBackend).not.toHaveBeenCalled();
+      expect(ShipOrchestrator).not.toHaveBeenCalled();
+      expect(runsModule.startRun).not.toHaveBeenCalled();
+    },
+  );
 
   it("forwards the canonical checkout ID in a dry run", async () => {
     const { getBackendSelector } = await import("../server/index.js");

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { exitCli, logCliError } from "../adapters/cli/output-scope.js";
+import { exitCli, logCliError, warnCli } from "../adapters/cli/output-scope.js";
 import { getDb } from "../db/index.js";
 import type { AgentBackendConfig, AgentRegistry } from "./agent-registry.js";
 import { ModelSelector } from "./model-selector.js";
@@ -13,6 +13,7 @@ import { TaskClassification, classifyTask } from "./task-classifier.js";
 interface TaskContext {
   runId: string;
   projectId: string;
+  ledgerAvailable?: boolean;
   feature: string;
   phase: string;
   taskType: string;
@@ -81,7 +82,7 @@ export class BackendSelector {
       const qB = readings.get(b.name)?.percent ?? 0;
 
       // If within 20%, use tiebreaker
-      if (Math.abs(qA - qB) <= 20) {
+      if (context.ledgerAvailable !== false && Math.abs(qA - qB) <= 20) {
         const successA = this.getSuccessRate(a.name);
         const successB = this.getSuccessRate(b.name);
         if (successA !== successB) {
@@ -129,22 +130,27 @@ export class BackendSelector {
           modelFailoverUsed,
         };
 
-        // Record decision
-        recordDecision({
-          runId: context.runId,
-          projectId: context.projectId,
-          feature: context.feature,
-          phase: context.phase,
-          selectedBackend: selection.backend,
-          selectedModel: selection.model,
-          taskClassification: selection.taskClassification,
-          reason: selection.reason,
-          quotaPercent: selection.quotaPercent,
-          probeStatus: selection.probeStatus,
-          taskSp: context.taskSP,
-          fallbackUsed: selection.fallbackUsed,
-          modelFailoverUsed: selection.modelFailoverUsed,
-        });
+        if (context.ledgerAvailable !== false) {
+          try {
+            recordDecision({
+              runId: context.runId,
+              projectId: context.projectId,
+              feature: context.feature,
+              phase: context.phase,
+              selectedBackend: selection.backend,
+              selectedModel: selection.model,
+              taskClassification: selection.taskClassification,
+              reason: selection.reason,
+              quotaPercent: selection.quotaPercent,
+              probeStatus: selection.probeStatus,
+              taskSp: context.taskSP,
+              fallbackUsed: selection.fallbackUsed,
+              modelFailoverUsed: selection.modelFailoverUsed,
+            });
+          } catch (error) {
+            warnCli(`Routing decision recording skipped: ${error}`);
+          }
+        }
 
         return selection;
       }

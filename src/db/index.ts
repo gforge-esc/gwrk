@@ -196,8 +196,14 @@ function backfillCheckoutRoots(db: Database.Database): void {
     if (storedRepo !== null && storedRepo !== origin) continue;
 
     const aliases = computeLegacyProjectIds(facts);
+    const matchesPreOriginId =
+      github_repo === null &&
+      origin !== null &&
+      facts.gitCommonDir &&
+      id === computeProjectId({ ...facts, remoteOriginUrl: null });
     if (
       id !== computeProjectId(facts) &&
+      !matchesPreOriginId &&
       (!aliases.includes(id) || storedRepo !== origin)
     ) {
       continue;
