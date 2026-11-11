@@ -421,7 +421,11 @@ export function evaluateHttpProjectAccess(input: {
     (transport === "trusted_local" ? input.localDefaultProjectId : undefined);
   let project: EnrolledProject;
   if (selector !== undefined) {
-    const selection = selectProject(projects, selector);
+    const matches =
+      input.requestedProject !== undefined
+        ? matchesProjectSelector
+        : (entry: EnrolledProject, id: string) => entry.projectId === id;
+    const selection = selectProject(projects, selector, matches);
     if (!selection.ok) return selection;
     project = selection.project;
   } else {

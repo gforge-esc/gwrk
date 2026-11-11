@@ -1191,6 +1191,42 @@ describe("FR-002 / FR-003: Pure HTTP and local CLI project access policy", () =>
       expect(singleLocalEnrollment.project.projectId).toBe("proj-local");
     }
   });
+
+  it("FR-004: selects the trusted local default by project ID despite a colliding slug", async () => {
+    const { evaluateHttpProjectAccess } = await loadSlackRouting();
+    const betaWithCollidingSlug = {
+      ...PROJECT_BETA,
+      slug: PROJECT_ALPHA.projectId,
+    };
+
+    expect(
+      evaluateHttpProjectAccess({
+        projects: [PROJECT_ALPHA, betaWithCollidingSlug],
+        roles: [],
+        localDefaultProjectId: PROJECT_ALPHA.projectId,
+        transport: "trusted_local",
+        requiredAccess: "operate",
+      }),
+    ).toMatchObject({ ok: true, project: PROJECT_ALPHA });
+  });
+
+  it("FR-004: denies a missing trusted local default despite a colliding slug", async () => {
+    const { evaluateHttpProjectAccess } = await loadSlackRouting();
+    const betaWithCollidingSlug = {
+      ...PROJECT_BETA,
+      slug: PROJECT_ALPHA.projectId,
+    };
+
+    expect(
+      evaluateHttpProjectAccess({
+        projects: [betaWithCollidingSlug],
+        roles: [],
+        localDefaultProjectId: PROJECT_ALPHA.projectId,
+        transport: "trusted_local",
+        requiredAccess: "operate",
+      }),
+    ).toMatchObject({ ok: false, code: "UNKNOWN_PROJECT" });
+  });
 });
 
 describe("FR-003 / TR-004: Phase 1 domain purity and NotificationPort contract", () => {
