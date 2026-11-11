@@ -170,6 +170,31 @@ function matchesPullRequestUrl(
 
 const fullGitObjectId = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 
+type HarvestCommitScope = HarvestTarget & {
+  projectId: string;
+  prNumber: number | null;
+  terminalEvent: HarvestTerminalEvent;
+  mergeCommitSha: string | null;
+};
+
+export function canCorrelateHarvestIntake(
+  existing: HarvestCommitScope,
+  incoming: HarvestCommitScope,
+): boolean {
+  const commit = existing.mergeCommitSha?.trim().toLowerCase();
+  return (
+    existing.terminalEvent === "merged" &&
+    incoming.terminalEvent === "merged" &&
+    (existing.prNumber === null) !== (incoming.prNumber === null) &&
+    existing.projectId === incoming.projectId &&
+    existing.featureId === incoming.featureId &&
+    existing.phaseId === incoming.phaseId &&
+    commit !== undefined &&
+    fullGitObjectId.test(commit) &&
+    commit === incoming.mergeCommitSha?.trim().toLowerCase()
+  );
+}
+
 export function verifyHarvestTarget(
   project: EnrolledProject,
   candidate: HarvestCandidateInput,
@@ -195,6 +220,23 @@ export function verifyHarvestTarget(
         ok: false,
         code: "LOCAL_CHECKOUT_REQUIRED",
         reason: "Local harvest requires an enrolled checkout",
+      };
+    }
+    if (
+      candidate.repoSlug !== null &&
+      !isSameRepository(project.repoSlug, candidate.repoSlug)
+    ) {
+      return {
+        ok: false,
+        code: "REPO_MISMATCH",
+        reason: "Local checkout repository differs from enrollment",
+      };
+    }
+    if (candidate.baseBranch !== project.trunkBranch) {
+      return {
+        ok: false,
+        code: "NOT_CONFIGURED_TRUNK",
+        reason: "Local checkout does not target the configured trunk",
       };
     }
     if (candidate.prUrl !== null || candidate.terminalEvent !== "merged") {

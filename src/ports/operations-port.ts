@@ -125,7 +125,7 @@ export interface HarvestExecutionPort {
     projectId: string;
     featureId: string;
     phaseId: string | null;
-    prNumber: number;
+    prNumber: number | null;
     prUrl: string | null;
     terminalEvent: HarvestTerminalEvent;
     mergeCommitSha: string | null;
@@ -299,7 +299,14 @@ export interface OperationsStorePort {
   }): DurableDispatchOperation | null;
 
   /**
-   * Commit the delivery and operation together with the verified head repository.
+   * Commit the delivery and operation in one transaction.
+   * Resolve work keys and their aliases within the project before matching commit scope.
+   * Use canCorrelateHarvestIntake to match local commits to verified merged pull requests.
+   * If several verified pull requests match a local commit, use the earliest operation.
+   * Break creation-time ties by least operation ID.
+   * Preserve the first operation ID, work key and stage receipts.
+   * Attach verified pull request facts, including the head repository, when they arrive.
+   * Persist both work keys for replay and keep distinct verified pull requests separate.
    * Preserve a verified merge on a later close.
    */
   recordHarvestIntake(input: {

@@ -125,7 +125,7 @@ describe("FR-002 harvest identity and target verification", () => {
       const local = candidate({
         source: "manual_cli",
         deliveryId: "local-1",
-        repoSlug: null,
+        repoSlug,
         headRepoSlug: null,
         headBranch: null,
         expectedHeadSha: null,
@@ -157,6 +157,31 @@ describe("FR-002 harvest identity and target verification", () => {
       expect(
         verifyHarvestTarget(enrolled, { ...local, source: "github_webhook" }),
       ).toMatchObject({ ok: false });
+    },
+  );
+
+  it.each([
+    [{ repoSlug: "acme/b" }, "REPO_MISMATCH"],
+    [{ baseBranch: "foreign" }, "NOT_CONFIGURED_TRUNK"],
+  ] as const)(
+    "rejects conflicting local checkout evidence %j",
+    (override, code) => {
+      expect(
+        verifyHarvestTarget(
+          project,
+          candidate({
+            source: "manual_cli",
+            repoSlug: "Acme/A",
+            prNumber: null,
+            prUrl: null,
+            headRepoSlug: null,
+            headBranch: null,
+            expectedHeadSha: null,
+            explicitFeatureId: featureId,
+            ...override,
+          }),
+        ),
+      ).toMatchObject({ ok: false, code });
     },
   );
 

@@ -322,6 +322,7 @@ describe("FR-006 durable operation boundaries", () => {
     const program = ts.createProgram(files, {
       noEmit: true,
       skipLibCheck: true,
+      strictNullChecks: true,
     });
     const checker = program.getTypeChecker();
     for (const [file, interfaces] of Object.entries(required)) {
@@ -359,6 +360,20 @@ describe("FR-006 durable operation boundaries", () => {
         for (const member of declaration.members) {
           if (!ts.isMethodSignature(member) || !ts.isIdentifier(member.name))
             continue;
+          if (
+            name === "HarvestExecutionPort" &&
+            member.name.text === "recordLearningAtCheckout"
+          ) {
+            const parameter = checker.getTypeAtLocation(member.parameters[0]);
+            const prNumber = parameter.getProperty("prNumber");
+            expect(prNumber).toBeDefined();
+            if (!prNumber) throw new Error("Missing prNumber");
+            expect(
+              checker.typeToString(
+                checker.getTypeOfSymbolAtLocation(prNumber, member),
+              ),
+            ).toBe("number | null");
+          }
           const field = requiredInputs[member.name.text];
           if (!field) continue;
           const property = checker

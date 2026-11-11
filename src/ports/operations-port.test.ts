@@ -8,9 +8,15 @@ import {
   evaluateDispatchAcceptance,
   validateLeaseFence,
 } from "../domain/durable-dispatch.js";
-import type { HarvestStageReceipt } from "../domain/durable-harvest.js";
+import {
+  type HarvestCandidateInput,
+  type HarvestStageReceipt,
+  canCorrelateHarvestIntake,
+  verifyHarvestTarget,
+} from "../domain/durable-harvest.js";
 import type {
   DurableHarvestOperation,
+  HarvestExecutionPort,
   OperationsStorePort,
   OutboxItem,
   WorkerExecutionPort,
@@ -22,6 +28,7 @@ type RecoveryStore = Pick<
   | "listRecoverableHarvests"
   | "claimHarvestLease"
   | "heartbeatHarvestLease"
+  | "transitionHarvestStage"
   | "getOutboxItem"
   | "listRecoverableOutboxItems"
   | "claimOutboxItem"
@@ -68,6 +75,150 @@ function harvest(
     completedAt: null,
     ...overrides,
   };
+}
+
+type HarvestIntake = Parameters<OperationsStorePort["recordHarvestIntake"]>[0];
+
+function harvestIntake(
+  operationId: string,
+  overrides: Partial<DurableHarvestOperation> = {},
+): HarvestIntake {
+  const operation = harvest(operationId, overrides);
+  const candidate: HarvestCandidateInput = {
+    source: operation.prNumber === null ? "manual_cli" : "github_webhook",
+    deliveryId: operationId,
+    repoSlug: operation.repoSlug,
+    headRepoSlug: operation.headRepoSlug,
+    baseBranch: operation.trunkBranch,
+    headBranch: operation.headBranch,
+    expectedHeadSha: operation.expectedHeadSha,
+    prNumber: operation.prNumber,
+    prUrl: operation.prUrl,
+    terminalEvent: operation.terminalEvent,
+    mergeCommitSha: operation.mergeCommitSha,
+    terminalAt: operation.terminalAt,
+    explicitFeatureId: operation.featureId,
+    explicitPhaseId: operation.phaseId ?? undefined,
+  };
+  const verified = verifyHarvestTarget(
+    {
+      projectId: operation.projectId,
+      slug: "a",
+      name: "A",
+      repoSlug: "acme/a",
+      trunkBranch: "develop",
+      localRoot: "/repos/a",
+      mirrorPath: null,
+      runnerPolicy: { allowedKinds: ["local"] },
+      slack: null,
+      legacyProjectIds: [],
+      createdAt,
+      updatedAt: createdAt,
+    },
+    candidate,
+  );
+  if (!verified.ok) throw new Error(verified.reason);
+  operation.workKey = verified.workKey;
+  return {
+    candidate,
+    payloadDigest: operationId,
+    receivedAt: nowIso,
+    target: { accepted: true, operation },
+  };
+}
+
+const offline = {
+  prNumber: null,
+  prUrl: null,
+  repoSlug: null,
+  headRepoSlug: null,
+  headBranch: null,
+  expectedHeadSha: null,
+};
+
+function learningReceipt(operationId: string): HarvestStageReceipt {
+  return {
+    operationId,
+    phaseKey: phaseId,
+    stage: "learning_record",
+    status: "succeeded",
+    leaseEpoch: 1,
+    attemptCount: 1,
+    evidenceJson: null,
+    error: null,
+    updatedAt: nowIso,
+    completedAt: nowIso,
+  };
+}
+
+function restoreHarvestIntake(persisted: {
+  harvests: DurableHarvestOperation[];
+  stages: HarvestStageReceipt[];
+  aliases?: { projectId: string; workKey: string; operationId: string }[];
+}) {
+  const rows = structuredClone(persisted);
+  const aliases = rows.aliases ?? [];
+  const store: Pick<OperationsStorePort, "recordHarvestIntake"> = {
+    recordHarvestIntake({ target }) {
+      if (!target.accepted) throw new Error("Expected accepted intake");
+      const incoming = target.operation;
+      const alias = aliases.find(
+        (row) =>
+          row.projectId === incoming.projectId &&
+          row.workKey === incoming.workKey,
+      );
+      const existing =
+        rows.harvests.find(
+          (row) =>
+            row.projectId === incoming.projectId &&
+            (row.workKey === incoming.workKey ||
+              row.operationId === alias?.operationId),
+        ) ??
+        rows.harvests
+          .filter((row) => canCorrelateHarvestIntake(row, incoming))
+          .sort(
+            (a, b) =>
+              a.createdAt.localeCompare(b.createdAt) ||
+              a.operationId.localeCompare(b.operationId),
+          )[0];
+      if (!existing) {
+        rows.harvests.push(incoming);
+      } else if (!alias && existing.workKey !== incoming.workKey) {
+        aliases.push({
+          projectId: incoming.projectId,
+          workKey: incoming.workKey,
+          operationId: existing.operationId,
+        });
+        if (existing.prNumber === null && incoming.prNumber !== null) {
+          const {
+            repoSlug,
+            headRepoSlug,
+            prNumber,
+            prUrl,
+            headBranch,
+            expectedHeadSha,
+            terminalAt,
+          } = incoming;
+          Object.assign(existing, {
+            repoSlug,
+            headRepoSlug,
+            prNumber,
+            prUrl,
+            headBranch,
+            expectedHeadSha,
+            terminalAt,
+          });
+        }
+      }
+      return {
+        ok: true,
+        operation: existing ?? incoming,
+        deduplicatedTransport: false,
+        deduplicatedWork: Boolean(existing),
+      };
+    },
+  };
+  return { store, snapshot: () => structuredClone({ ...rows, aliases }) };
 }
 
 function outbox(
@@ -165,6 +316,30 @@ function restoreRecoveryStore(persisted: {
       if (!result.ok) return result;
       row.leaseExpiresAt = leaseExpiresAt;
       row.updatedAt = nowIso;
+      return result;
+    },
+    transitionHarvestStage({
+      fence,
+      nowIso,
+      phaseKey,
+      stage,
+      status,
+      evidenceJson,
+    }) {
+      const row = harvests.find((row) => row.operationId === fence.operationId);
+      if (!row) return { ok: false, code: "LEASE_FENCED" };
+      const result = validateLeaseFence(row, fence, nowIso);
+      if (!result.ok) return result;
+      stages.push({
+        ...learningReceipt(fence.operationId),
+        phaseKey,
+        stage,
+        status,
+        leaseEpoch: fence.leaseEpoch,
+        evidenceJson: evidenceJson ?? null,
+        updatedAt: nowIso,
+        completedAt: nowIso,
+      });
       return result;
     },
     getOutboxItem(outboxId) {
@@ -522,6 +697,176 @@ describe("durable recovery store contract", () => {
     if (!recovery) throw new Error("Expected a reconciliation claim");
     expect(providerMessages.get(deliveryKey(recovery.item))).toBe("message-1");
   });
+});
+
+describe("persisted harvest intake contract", () => {
+  it.each(["local", "pull request"])(
+    "preserves the first operation and receipts when %s arrives first",
+    (firstSource) => {
+      const local = harvestIntake("local", {
+        ...offline,
+        mergeCommitSha: ` ${sha.toUpperCase()} `,
+      });
+      const pull = harvestIntake("pull");
+      const [first, second] =
+        firstSource === "local" ? [local, pull] : [pull, local];
+      if (!first.target.accepted) throw new Error("Expected accepted intake");
+      const firstOperation = first.target.operation;
+      const receipt = learningReceipt(firstOperation.operationId);
+      const restarted = restoreHarvestIntake({
+        harvests: [firstOperation],
+        stages: [receipt],
+      });
+      const result = restarted.store.recordHarvestIntake(second);
+      const expected = {
+        operationId: firstOperation.operationId,
+        workKey: firstOperation.workKey,
+        repoSlug: "acme/a",
+        headRepoSlug: "acme/a",
+        prNumber: 42,
+        prUrl: "https://github.com/acme/a/pull/42",
+        headBranch: `feat/${featureId}-${phaseId}`,
+        expectedHeadSha: sha,
+      };
+      expect(result).toMatchObject({
+        ok: true,
+        deduplicatedWork: true,
+        operation: expected,
+      });
+      const persisted = restarted.snapshot();
+      expect(persisted.harvests).toHaveLength(1);
+      expect(persisted.stages).toEqual([receipt]);
+      const replay = restoreHarvestIntake(persisted).store;
+      for (const intake of [first, second]) {
+        expect(replay.recordHarvestIntake(intake)).toMatchObject({
+          ok: true,
+          deduplicatedWork: true,
+          operation: expected,
+        });
+      }
+    },
+  );
+
+  it.each([
+    ["project", { projectId: "project-b" }],
+    ["feature", { featureId: "other-feature" }],
+    ["phase", { phaseId: null }],
+    ["commit", { mergeCommitSha: "b".repeat(40) }],
+  ] as const)("keeps different %s scopes separate", (_field, override) => {
+    const local = harvestIntake("local", { ...offline, ...override });
+    if (!local.target.accepted)
+      throw new Error("Expected accepted local intake");
+    const restarted = restoreHarvestIntake({
+      harvests: [local.target.operation],
+      stages: [],
+    });
+    expect(
+      restarted.store.recordHarvestIntake(harvestIntake("pull")),
+    ).toMatchObject({
+      ok: true,
+      deduplicatedWork: false,
+      operation: { operationId: "pull" },
+    });
+    expect(restarted.snapshot().harvests).toHaveLength(2);
+  });
+
+  it("keeps distinct verified pull requests at the same commit separate", () => {
+    const first = harvestIntake("first-pull");
+    if (!first.target.accepted)
+      throw new Error("Expected accepted pull request");
+    const restarted = restoreHarvestIntake({
+      harvests: [first.target.operation],
+      stages: [],
+    });
+    expect(
+      restarted.store.recordHarvestIntake(harvestIntake("local", offline)),
+    ).toMatchObject({
+      ok: true,
+      deduplicatedWork: true,
+      operation: { operationId: "first-pull" },
+    });
+    const replay = restoreHarvestIntake(restarted.snapshot());
+    expect(
+      replay.store.recordHarvestIntake(
+        harvestIntake("second-pull", {
+          prNumber: 43,
+          prUrl: "https://github.com/acme/a/pull/43",
+        }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      deduplicatedWork: false,
+      operation: { operationId: "second-pull" },
+    });
+    expect(replay.snapshot().harvests).toHaveLength(2);
+  });
+});
+
+it("records learning for an offline harvest after restart", async () => {
+  const restarted = restoreRecoveryStore({
+    harvests: [harvest("offline", offline)],
+    stages: [],
+    outboxItems: [],
+  });
+  const [discovered] = restarted.listRecoverableHarvests({ projectId, nowIso });
+  const claim = restarted.claimHarvestLease({
+    operationId: discovered.operationId,
+    leaseOwner: "learning-worker",
+    nowIso,
+    leaseExpiresAt,
+  });
+  if (!claim) throw new Error("Expected a learning claim");
+  const { operation, fence } = claim;
+  const execution: Pick<HarvestExecutionPort, "recordLearningAtCheckout"> = {
+    recordLearningAtCheckout: vi.fn(async () => ({
+      linkedRunId: null,
+      forecastMissing: false,
+      summaryText: "Recorded offline learning",
+    })),
+  };
+  const result = await execution.recordLearningAtCheckout({
+    checkoutDir: "/repos/a/checkout",
+    projectId: operation.projectId,
+    featureId: operation.featureId,
+    phaseId: operation.phaseId,
+    prNumber: operation.prNumber,
+    prUrl: operation.prUrl,
+    terminalEvent: operation.terminalEvent,
+    mergeCommitSha: operation.mergeCommitSha,
+    terminalAt: operation.terminalAt,
+    gatePassed: true,
+  });
+  expect(
+    restarted.transitionHarvestStage({
+      fence,
+      nowIso,
+      phaseKey: phaseId,
+      stage: "learning_record",
+      status: "succeeded",
+      evidenceJson: JSON.stringify(result),
+    }),
+  ).toEqual({ ok: true });
+  expect(execution.recordLearningAtCheckout).toHaveBeenCalledWith(
+    expect.objectContaining({
+      prNumber: null,
+      prUrl: null,
+      mergeCommitSha: sha,
+    }),
+  );
+  const replay = restarted.claimHarvestLease({
+    operationId: operation.operationId,
+    leaseOwner: "replay-worker",
+    nowIso: leaseExpiresAt,
+    leaseExpiresAt: "2026-11-11T12:02:00.000Z",
+  });
+  expect(replay?.stages).toEqual([
+    expect.objectContaining({
+      operationId: "offline",
+      stage: "learning_record",
+      status: "succeeded",
+      evidenceJson: expect.stringContaining(result.summaryText),
+    }),
+  ]);
 });
 
 it("launches each persisted dispatch with its accepted task scope after restart", async () => {
