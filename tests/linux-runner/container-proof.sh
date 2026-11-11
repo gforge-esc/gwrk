@@ -16,6 +16,7 @@ groupadd gwrk
 useradd -g gwrk -d /var/lib/gwrk gwrk
 mkdir -p /var/lib/gwrk/repos/pilot /run/gwrk /etc/gwrk/secrets /fixture-bin
 chown -R gwrk:gwrk /var/lib/gwrk /run/gwrk
+chmod 0750 /var/lib/gwrk
 chgrp gwrk /etc/gwrk/secrets
 chmod 0750 /etc/gwrk/secrets
 
@@ -162,7 +163,12 @@ case "$1" in
     printf '%s\n' "$!" > "$pid_file"
     ;;
   show)
-    cat "$pid_file"
+    case "$2" in
+      --property=User) printf 'gwrk\n' ;;
+      --property=Group) printf 'gwrk\n' ;;
+      --property=MainPID) cat "$pid_file" ;;
+      *) exit 1 ;;
+    esac
     ;;
   is-active)
     [[ -f "$pid_file" ]] && kill -0 "$(< "$pid_file")"
@@ -189,11 +195,23 @@ test ! -e /tmp/supervisor.calls
 test "$(realpath /opt/gwrk/current)" = "$active"
 rm "$prior/dist/db/migrations/999-fixture.sql"
 write_prior_manifest
+mkdir -m 0700 /var/lib/gwrk/backups
 bash "$rollback" /opt/gwrk /var/lib/gwrk
 test "$(realpath /opt/gwrk/current)" = "$prior"
+first_backups=(/var/lib/gwrk/backups/rollback-*)
+test "${#first_backups[@]}" -eq 1
 node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const [dir]=fs.readdirSync(root); assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'
 expect_rejection 'does not match the pre-rollback backup' env GWRK_FIXTURE_DROP_RUN=1 bash "$rollback" /opt/gwrk /var/lib/gwrk
 test "$(realpath /opt/gwrk/current)" = "$prior"
 test ! -e "$GWRK_RUNTIME_DIR/server.pid"
 node -e 'const assert=require("node:assert/strict"); const fs=require("node:fs"); const root="/var/lib/gwrk/backups/"; const dirs=fs.readdirSync(root); assert.equal(dirs.length,2); for(const dir of dirs) assert.deepEqual(require(root+dir+"/backup-manifest.json").summary.completedRunIds,[42]);'
+for backup in /var/lib/gwrk/backups/rollback-*; do
+  if [[ "$backup" != "${first_backups[0]}" ]]; then
+    recovery_backup="$backup"
+  fi
+done
+recovered=/var/lib/gwrk/rollback-recovered
+runuser -u gwrk -g gwrk -- node "$release/dist/cli.js" db restore --from "$recovery_backup" --state-dir "$recovered"
+test "$(stat -c '%U:%G %a' "$recovery_backup")" = 'gwrk:gwrk 700'
+runuser -u gwrk -g gwrk -- cmp "$recovery_backup/gwrk.db" "$recovered/gwrk.db"
 printf 'Verified install, credential revocation, process restart, clean restore and guarded rollback.\n'

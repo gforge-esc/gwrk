@@ -4,6 +4,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { LedgerBackupMetadata } from "../../domain/ledger-backup.js";
 
@@ -36,13 +37,29 @@ export function readRepositoryEvidence(
     maxBuffer: 8 * 1024 * 1024,
     env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
   };
+  const unavailable = {
+    projectId,
+    root,
+    remote: null,
+    head: null,
+    evidence: [],
+  };
+  const topLevel = spawnSync("git", ["rev-parse", "--show-toplevel"], options);
+  if (topLevel.status !== 0) return unavailable;
+  try {
+    const gitRoot = topLevel.stdout.toString("utf8").replace(/\n$/, "");
+    if (realpathSync(root) !== realpathSync(gitRoot)) return unavailable;
+  } catch {
+    return unavailable;
+  }
+
   const headResult = spawnSync(
     "git",
     ["rev-parse", "--verify", "HEAD^{commit}"],
     options,
   );
   if (headResult.status !== 0) {
-    return { projectId, root, remote: null, head: null, evidence: [] };
+    return unavailable;
   }
 
   const head = headResult.stdout.toString("utf8").trim();

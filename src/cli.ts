@@ -4,6 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { existsSync, realpathSync } from "node:fs";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
@@ -28,6 +29,7 @@ import { testCommand } from "./commands/test.js";
 import { processForAgent } from "./utils/agent-layer.js";
 import { loadConfig } from "./utils/config.js";
 import { color } from "./utils/format.js";
+import { writeSignal } from "./utils/signal.js";
 
 const { BOLD, DIM, CYAN, MAGENTA, YELLOW, GREEN, RED, RESET } = color;
 
@@ -203,6 +205,7 @@ if (
   (entrypoint === modulePath ||
     (existsSync(entrypoint) && realpathSync(entrypoint) === modulePath))
 ) {
+  const start = performance.now();
   try {
     program.parse();
   } catch (err: unknown) {
@@ -222,17 +225,24 @@ if (
     }
     if (
       error.code === "commander.missingArgument" ||
-      error.code === "commander.unknownOption" ||
-      error.code === "commander.missingMandatoryOptionValue"
+      error.code === "commander.unknownOption"
     ) {
       process.exit(2);
     }
-    // Non-commander errors (e.g. config validation in the preAction hook)
-    // would otherwise exit silently — surface the message so the failure is
-    // debuggable instead of producing zero output.
-    if (!error.code?.startsWith("commander.")) {
-      console.error(error.message ?? String(err));
+    if (
+      error.code === "commander.missingMandatoryOptionValue" ||
+      error.code === "commander.optionMissingArgument"
+    ) {
+      writeSignal(2, performance.now() - start);
+      process.exitCode = 2;
+    } else {
+      // Non-commander errors (e.g. config validation in the preAction hook)
+      // would otherwise exit silently — surface the message so the failure is
+      // debuggable instead of producing zero output.
+      if (!error.code?.startsWith("commander.")) {
+        console.error(error.message ?? String(err));
+      }
+      process.exit(error.exitCode || 1);
     }
-    process.exit(error.exitCode || 1);
   }
 }

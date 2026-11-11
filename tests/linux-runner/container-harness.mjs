@@ -31,6 +31,42 @@ try {
     "HEAD",
   ]);
   run("git", ["-C", source, "checkout", "--quiet", "--detach", "FETCH_HEAD"]);
+  const changes = execFileSync(
+    "git",
+    ["diff", "--binary", "--no-ext-diff", "--no-color", "HEAD", "--"],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (changes.length > 0) {
+    execFileSync("git", ["-C", source, "apply", "--index"], { input: changes });
+    const tree = execFileSync("git", ["-C", source, "write-tree"], {
+      encoding: "utf8",
+    }).trim();
+    // The release builder packages HEAD via git archive.
+    const candidate = execFileSync(
+      "git",
+      [
+        "-C",
+        source,
+        "commit-tree",
+        tree,
+        "-p",
+        "HEAD",
+        "-m",
+        "Container proof candidate",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "Container proof",
+          GIT_AUTHOR_EMAIL: "container-proof@example.invalid",
+          GIT_COMMITTER_NAME: "Container proof",
+          GIT_COMMITTER_EMAIL: "container-proof@example.invalid",
+        },
+      },
+    ).trim();
+    run("git", ["-C", source, "update-ref", "HEAD", candidate]);
+  }
   copyFileSync(
     "tests/linux-runner/container-proof.sh",
     join(fixtures, "proof.sh"),

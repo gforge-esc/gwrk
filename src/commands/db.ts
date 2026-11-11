@@ -70,7 +70,9 @@ function ledgerOutput(command: Command) {
 }
 
 const backupCommand = new Command("backup")
-  .description("Create and verify an online execution ledger backup")
+  .description(
+    "Create and verify an online execution ledger backup (generator)",
+  )
   .option("--format <type>", "Output format (json)")
   .requiredOption("--out <dir>", "New backup directory")
   .option(
@@ -117,7 +119,7 @@ const backupCommand = new Command("backup")
   );
 
 const restoreCommand = new Command("restore")
-  .description("Verify a backup and restore an offline Linux ledger")
+  .description("Verify a backup and restore an offline Linux ledger (mutator)")
   .option("--format <type>", "Output format (json)")
   .requiredOption("--from <dir>", "Verified backup directory")
   .requiredOption("--state-dir <dir>", "Target state directory")

@@ -75,63 +75,65 @@ function projectRows(db: Database.Database): unknown[] {
   return db.prepare("SELECT * FROM projects ORDER BY id").all();
 }
 
-function summarizeLedger(
-  dbPath: string,
-  metadata: LedgerBackupMetadata,
-): LedgerSummary {
+function readLedger<T>(dbPath: string, read: (db: Database.Database) => T): T {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
-    if (db.pragma("integrity_check", { simple: true }) !== "ok") {
-      throw new Error("Ledger integrity check failed.");
-    }
-    const foreignKeys = db.pragma("foreign_key_check") as unknown[];
-    if (foreignKeys.length > 0)
-      throw new Error("Ledger foreign key check failed.");
-
-    if (!isDeepStrictEqual(projectRows(db), metadata.projects)) {
-      throw new Error("Backup project metadata does not match the ledger.");
-    }
-    const projectIds = metadata.projects.map(({ id }) => id);
-    const knownProjects = new Set(projectIds);
-    const repoIds = new Set(
-      metadata.repositories.map(({ projectId }) => projectId),
-    );
-    if (
-      repoIds.size !== metadata.repositories.length ||
-      [...repoIds].some((id) => !knownProjects.has(id))
-    ) {
-      throw new Error(
-        "Repository metadata has duplicate or unknown project IDs.",
-      );
-    }
-
-    return {
-      migrations: appliedMigrations(db),
-      projectIds,
-      completedRunIds: db
-        .prepare(
-          "SELECT id FROM runs WHERE finished_at IS NOT NULL ORDER BY id",
-        )
-        .pluck()
-        .all() as number[],
-      compressionCount: db
-        .prepare("SELECT count(*) FROM compression")
-        .pluck()
-        .get() as number,
-      historyCount: db
-        .prepare("SELECT count(*) FROM history")
-        .pluck()
-        .get() as number,
-      enrolledRepoDigests: Object.fromEntries(
-        metadata.repositories.map((repository) => [
-          repository.projectId,
-          createHash("sha256").update(JSON.stringify(repository)).digest("hex"),
-        ]),
-      ),
-    };
+    return db.transaction(() => read(db))();
   } finally {
     db.close();
   }
+}
+
+function summarizeLedger(
+  db: Database.Database,
+  metadata: LedgerBackupMetadata,
+): LedgerSummary {
+  if (db.pragma("integrity_check", { simple: true }) !== "ok") {
+    throw new Error("Ledger integrity check failed.");
+  }
+  const foreignKeys = db.pragma("foreign_key_check") as unknown[];
+  if (foreignKeys.length > 0)
+    throw new Error("Ledger foreign key check failed.");
+
+  if (!isDeepStrictEqual(projectRows(db), metadata.projects)) {
+    throw new Error("Backup project metadata does not match the ledger.");
+  }
+  const projectIds = metadata.projects.map(({ id }) => id);
+  const knownProjects = new Set(projectIds);
+  const repoIds = new Set(
+    metadata.repositories.map(({ projectId }) => projectId),
+  );
+  if (
+    repoIds.size !== metadata.repositories.length ||
+    [...repoIds].some((id) => !knownProjects.has(id))
+  ) {
+    throw new Error(
+      "Repository metadata has duplicate or unknown project IDs.",
+    );
+  }
+
+  return {
+    migrations: appliedMigrations(db),
+    projectIds,
+    completedRunIds: db
+      .prepare("SELECT id FROM runs WHERE finished_at IS NOT NULL ORDER BY id")
+      .pluck()
+      .all() as number[],
+    compressionCount: db
+      .prepare("SELECT count(*) FROM compression")
+      .pluck()
+      .get() as number,
+    historyCount: db
+      .prepare("SELECT count(*) FROM history")
+      .pluck()
+      .get() as number,
+    enrolledRepoDigests: Object.fromEntries(
+      metadata.repositories.map((repository) => [
+        repository.projectId,
+        createHash("sha256").update(JSON.stringify(repository)).digest("hex"),
+      ]),
+    ),
+  };
 }
 
 export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
@@ -187,7 +189,7 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
       gwrkVersion: input.gwrkVersion,
       dbSha256: await sha256(snapshot),
       metadataSha256: await sha256(metadataPath),
-      summary: summarizeLedger(snapshot, metadata),
+      summary: readLedger(snapshot, (db) => summarizeLedger(db, metadata)),
     });
     await writeFile(
       join(staging, MANIFEST_FILE),
@@ -248,18 +250,40 @@ export const verifyLedgerBackup: LedgerBackupPort["verifyBackup"] = async (
   const metadata = LedgerBackupMetadataSchema.parse(
     JSON.parse(metadataBytes.toString("utf8")),
   );
-  if (!isDeepStrictEqual(summarizeLedger(dbPath, metadata), manifest.summary)) {
+  const summary = readLedger(dbPath, (db) => summarizeLedger(db, metadata));
+  if (!isDeepStrictEqual(summary, manifest.summary)) {
     throw new Error("Backup ledger summary does not match the manifest.");
   }
   return { manifest, metadata };
 };
 
+function acceptedWorkRows(db: Database.Database) {
+  return {
+    completedRuns: db
+      .prepare("SELECT * FROM runs WHERE finished_at IS NOT NULL ORDER BY id")
+      .safeIntegers()
+      .all(),
+    history: db
+      .prepare("SELECT * FROM history ORDER BY id")
+      .safeIntegers()
+      .all(),
+  };
+}
+
 export async function verifyLedgerAgainstBackup(
   dbPath: string,
   backupDirectory: string,
 ): Promise<void> {
-  const { manifest, metadata } = await verifyLedgerBackup(backupDirectory);
-  if (!isDeepStrictEqual(summarizeLedger(dbPath, metadata), manifest.summary)) {
+  const directory = resolve(backupDirectory);
+  const { manifest, metadata } = await verifyLedgerBackup(directory);
+  const backupRows = readLedger(join(directory, DB_FILE), acceptedWorkRows);
+  const matches = readLedger(
+    dbPath,
+    (db) =>
+      isDeepStrictEqual(summarizeLedger(db, metadata), manifest.summary) &&
+      isDeepStrictEqual(acceptedWorkRows(db), backupRows),
+  );
+  if (!matches) {
     throw new Error("Live ledger does not match the pre-rollback backup.");
   }
 }
@@ -367,7 +391,7 @@ export const restoreLedgerBackup: LedgerBackupPort["restoreBackup"] = async (
   }
   if (
     !isDeepStrictEqual(
-      summarizeLedger(installedDb, verified.metadata),
+      readLedger(installedDb, (db) => summarizeLedger(db, verified.metadata)),
       verified.manifest.summary,
     )
   ) {

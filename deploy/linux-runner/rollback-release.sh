@@ -85,8 +85,21 @@ flock -xn 9 || fail "Another process holds the server runtime lock."
 lock_held=true
 [[ ! -e "$state/.restore-pending" ]] || fail "Complete the unfinished ledger restore before rollback."
 check_rollback
-backup="$state/backups/rollback-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-node "$active/dist/cli.js" db backup --out "$backup"
+service_user=$(systemctl show --property=User --value "$unit")
+service_group=$(systemctl show --property=Group --value "$unit")
+[[ -n "$service_user" && -n "$service_group" ]] || fail "Set User and Group on $unit before rollback."
+as_service=(runuser -u "$service_user" -g "$service_group" --)
+backup_root="$state/backups"
+"${as_service[@]}" test -x "$state" || fail "$service_user cannot traverse $state."
+# Earlier operator rollbacks could create this directory as root.
+if [[ -d "$backup_root" && ! -L "$backup_root" && "$(stat -c %u -- "$backup_root")" == 0 ]]; then
+  chown -h -- "$service_user:$service_group" "$backup_root"
+fi
+"${as_service[@]}" mkdir -p -m 0700 -- "$backup_root"
+"${as_service[@]}" test -w "$backup_root" && "${as_service[@]}" test -x "$backup_root" ||
+  fail "$service_user cannot write backups in $backup_root."
+backup="$backup_root/rollback-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+"${as_service[@]}" node "$active/dist/cli.js" db backup --out "$backup"
 point "$new_target" "$current"
 switched=true
 point "$old_target" "$previous"

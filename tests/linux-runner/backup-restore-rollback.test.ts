@@ -10,6 +10,7 @@ import {
   readFile,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -44,16 +45,17 @@ function seedLedger() {
     CREATE TABLE runs (
       id INTEGER PRIMARY KEY,
       project_id TEXT REFERENCES projects(id),
-      finished_at TEXT
+      finished_at TEXT,
+      exit_code INTEGER
     );
     CREATE TABLE compression (id INTEGER PRIMARY KEY);
-    CREATE TABLE history (id INTEGER PRIMARY KEY);
+    CREATE TABLE history (id INTEGER PRIMARY KEY, metadata TEXT);
     INSERT INTO _migrations VALUES ('001-initial.sql');
     INSERT INTO projects VALUES ('pilot-repo');
-    INSERT INTO runs VALUES (42, 'pilot-repo', '2026-11-11T12:00:00Z');
-    INSERT INTO runs VALUES (43, 'pilot-repo', NULL);
+    INSERT INTO runs VALUES (42, 'pilot-repo', '2026-11-11T12:00:00Z', 0);
+    INSERT INTO runs VALUES (43, 'pilot-repo', NULL, NULL);
     INSERT INTO compression VALUES (1);
-    INSERT INTO history VALUES (1);
+    INSERT INTO history VALUES (1, '{"result":"accepted"}');
   `);
   return db;
 }
@@ -83,6 +85,101 @@ function runLedgerCommand(...args: string[]) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
+  it.each([
+    { args: ["backup"], missing: "--out" },
+    { args: ["backup", "--out"], missing: "--out value" },
+    { args: ["restore", "--state-dir", "restored"], missing: "--from" },
+    { args: ["restore", "--from", "backup"], missing: "--state-dir" },
+  ])("reports a usage failure for db $args without $missing", ({ args }) => {
+    const result = runLedgerCommand(...args);
+    expect(result.status, result.stderr).toBe(2);
+    expect(
+      result.stderr.match(/^\[exit:2 \| \d+(?:\.\d+)?m?s\]$/gm) ?? [],
+    ).toHaveLength(1);
+    expect(result.stdout).not.toContain("[exit:");
+  });
+
+  it.each([
+    ["backup", "generator"],
+    ["restore", "mutator"],
+  ])("lists db %s as a %s in help", (command, classification) => {
+    const result = runLedgerCommand(command, "--help");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(classification);
+  });
+
+  it("does not collect evidence from a repository above an empty enrolled checkout", async () => {
+    const parent = join(root, "parent-repo");
+    const enrolled = join(parent, "empty-checkout");
+    const evidenceDirectory = join(parent, "specs/pilot/.gwrk");
+    await mkdir(enrolled, { recursive: true });
+    await mkdir(evidenceDirectory, { recursive: true });
+    await writeFile(join(evidenceDirectory, "tasks.json"), "[]\n");
+    for (const args of [
+      ["init", "--quiet"],
+      ["add", "-f", "specs/pilot/.gwrk/tasks.json"],
+      [
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "commit",
+        "--quiet",
+        "--no-edit",
+        "-m",
+        "Add parent task evidence",
+      ],
+      ["remote", "add", "origin", "https://example.com/parent.git"],
+    ]) {
+      const result = spawnSync("git", args, {
+        cwd: parent,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "Fixture",
+          GIT_AUTHOR_EMAIL: "fixture@example.invalid",
+          GIT_COMMITTER_NAME: "Fixture",
+          GIT_COMMITTER_EMAIL: "fixture@example.invalid",
+        },
+      });
+      expect(result.status, result.stderr).toBe(0);
+    }
+
+    const db = seedLedger();
+    try {
+      db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
+      db.prepare("UPDATE projects SET path = ?").run(enrolled);
+      db.prepare("INSERT INTO projects VALUES (?, ?)").run(
+        "parent-repo",
+        parent,
+      );
+      const result = runLedgerCommand("backup", "--out", "backup");
+      expect(result.status, result.stderr).toBe(0);
+      const { metadata } = await verifyLedgerBackup(join(root, "backup"));
+      expect(metadata.repositories).toEqual([
+        expect.objectContaining({
+          projectId: "parent-repo",
+          head: expect.stringMatching(/^[a-f0-9]+$/),
+          evidence: [
+            {
+              path: "specs/pilot/.gwrk/tasks.json",
+              sha256: expect.any(String),
+            },
+          ],
+        }),
+        {
+          projectId: "pilot-repo",
+          root: enrolled,
+          remote: null,
+          head: null,
+          evidence: [],
+        },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
   it("backs up all snapshot projects while scoping checkout evidence", async () => {
     const db = seedLedger();
     db.exec("ALTER TABLE projects ADD COLUMN path TEXT");
@@ -249,7 +346,14 @@ describe("ledger backup", () => {
     }
   });
 
-  it("rejects accepted work lost after a rollback restart", async () => {
+  it.each([
+    ["a deleted completed run", "DELETE FROM runs WHERE id = 42"],
+    ["a changed completed run", "UPDATE runs SET exit_code = 1 WHERE id = 42"],
+    [
+      "a changed history row",
+      `UPDATE history SET metadata = '{"result":"changed"}' WHERE id = 1`,
+    ],
+  ])("rejects %s after a rollback restart", async (_change, statement) => {
     const db = seedLedger();
     const destination = join(root, "before-rollback");
     try {
@@ -263,7 +367,7 @@ describe("ledger backup", () => {
       await expect(
         verifyLedgerAgainstBackup(db.name, destination),
       ).resolves.toBeUndefined();
-      db.prepare("DELETE FROM runs WHERE id = 42").run();
+      db.prepare(statement).run();
       await expect(
         verifyLedgerAgainstBackup(db.name, destination),
       ).rejects.toThrow(/does not match the pre-rollback backup/);

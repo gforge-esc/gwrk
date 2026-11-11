@@ -8,3 +8,4 @@ bash -n deploy/linux-runner/install-release.sh
 bash -n deploy/linux-runner/rollback-release.sh
 pnpm build
 pnpm exec vitest run tests/linux-runner/backup-restore-rollback.test.ts src/domain/release-packaging.test.ts src/architecture.test.ts
+node tests/linux-runner/container-harness.mjs
