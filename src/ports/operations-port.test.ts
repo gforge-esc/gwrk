@@ -144,6 +144,7 @@ function harvestIntake(
   if (!verified.ok) throw new Error(verified.reason);
   Object.assign(operation, {
     workKey: verified.workKey,
+    repoSlug: verified.repoSlug,
     featureId: verified.featureId,
     phaseId: verified.phaseId,
   });
@@ -1429,14 +1430,15 @@ describe("durable recovery store contract", () => {
 
 describe("persisted harvest intake contract", () => {
   it.each([
-    { repoSlug: "acme/b", trunkBranch: "develop" },
-    { repoSlug: "acme/a", trunkBranch: "main" },
+    { localRepoSlug: "acme/a", repoSlug: "acme/b", trunkBranch: "develop" },
+    { localRepoSlug: null, repoSlug: "acme/b", trunkBranch: "develop" },
+    { localRepoSlug: "acme/a", repoSlug: "acme/a", trunkBranch: "main" },
   ])(
-    "keeps local and pull work separate when scope changes to $repoSlug $trunkBranch",
-    ({ repoSlug, trunkBranch }) => {
+    "keeps local work with delivery repository $localRepoSlug separate from $repoSlug $trunkBranch",
+    ({ localRepoSlug, repoSlug, trunkBranch }) => {
       const local = harvestIntake("local-scope", {
         ...offline,
-        repoSlug: "acme/a",
+        repoSlug: localRepoSlug,
       });
       const pull = harvestIntake("pull-scope", {
         repoSlug,
@@ -1449,21 +1451,29 @@ describe("persisted harvest intake contract", () => {
       ]) {
         const store = restoreHarvestIntake({ harvests: [], stages: [] });
         store.store.recordHarvestIntake(first);
-        expect(store.store.recordHarvestIntake(second)).toMatchObject({
+        const restarted = restoreHarvestIntake(store.snapshot());
+        expect(restarted.store.recordHarvestIntake(second)).toMatchObject({
           ok: true,
           deduplicatedWork: false,
           operations: [{ operationId: second.candidate.deliveryId }],
         });
-        const saved = store.snapshot();
+        const saved = restarted.snapshot();
         expect(saved.harvests).toHaveLength(2);
+        expect(saved.harvests).toContainEqual(
+          expect.objectContaining({
+            operationId: "local-scope",
+            repoSlug: "acme/a",
+          }),
+        );
         expect(saved.aliases).toEqual([]);
-        expect(
-          restoreHarvestIntake(saved).store.recordHarvestIntake(second),
-        ).toMatchObject({
-          ok: true,
-          deduplicatedTransport: true,
-          operations: [{ operationId: second.candidate.deliveryId }],
-        });
+        const replay = restoreHarvestIntake(saved).store;
+        for (const intake of [first, second]) {
+          expect(replay.recordHarvestIntake(intake)).toMatchObject({
+            ok: true,
+            deduplicatedTransport: true,
+            operations: [{ operationId: intake.candidate.deliveryId }],
+          });
+        }
       }
     },
   );
@@ -1499,9 +1509,14 @@ describe("persisted harvest intake contract", () => {
     ).toMatchObject({ ok: true, operations: [], deduplicatedTransport: true });
   });
 
-  it.each(["phase", "whole feature"] as const)(
-    "keeps a verified %s merge on a later stale close",
-    (scope) => {
+  it.each([
+    ["phase", "develop"],
+    ["whole feature", "develop"],
+    ["phase", "main"],
+    ["whole feature", "main"],
+  ] as const)(
+    "keeps a verified %s merge on a later stale close targeting %s",
+    (scope, trunkBranch) => {
       const merge =
         scope === "phase"
           ? harvestIntake("merge")
@@ -1509,6 +1524,7 @@ describe("persisted harvest intake contract", () => {
       const closed = {
         terminalEvent: "closed_unmerged" as const,
         mergeCommitSha: null,
+        trunkBranch,
       };
       const stale = harvestIntake(
         "stale",

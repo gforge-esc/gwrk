@@ -165,7 +165,10 @@ type HarvestPullRequestIdentity = {
 
 type HarvestWorkScope = HarvestTarget & { workKey: string };
 
-type VerifiedHarvestTarget = HarvestWorkScope & { requestedPhaseId?: string };
+type VerifiedHarvestTarget = HarvestWorkScope & {
+  repoSlug: string | null;
+  requestedPhaseId?: string;
+};
 
 export function computeHarvestWorkKey(
   input: HarvestTarget & HarvestPullRequestIdentity,
@@ -223,7 +226,12 @@ export function scopeManualHarvestToPhases(
 
 /** Use phase IDs discovered at the verified merge checkout. */
 export function scopeVerifiedMergeToPhases(
-  { featureId, phaseId, workKey, requestedPhaseId }: VerifiedHarvestTarget,
+  {
+    featureId,
+    phaseId,
+    workKey,
+    requestedPhaseId,
+  }: Omit<VerifiedHarvestTarget, "repoSlug">,
   fact: HarvestPullRequestIdentity,
   phaseIds: readonly string[],
 ): HarvestWorkScope[] {
@@ -298,8 +306,7 @@ export function sharesHarvestRepositoryScope(
   return (
     existing.projectId === incoming.projectId &&
     existing.trunkBranch === incoming.trunkBranch &&
-    (existing.repoSlug === null ||
-      incoming.repoSlug === null ||
+    ((existing.repoSlug === null && incoming.repoSlug === null) ||
       isSameRepository(existing.repoSlug, incoming.repoSlug))
   );
 }
@@ -312,6 +319,7 @@ function sharesMergedCommitScope(
   return (
     existing.terminalEvent === "merged" &&
     incoming.terminalEvent === "merged" &&
+    existing.repoSlug !== null &&
     sharesHarvestRepositoryScope(existing, incoming) &&
     existing.featureId === incoming.featureId &&
     existing.phaseId === incoming.phaseId &&
@@ -334,8 +342,7 @@ export function canCorrelateHarvestIntake(
 type HarvestRepositoryPull = Pick<
   HarvestCandidateInput,
   "repoSlug" | "prNumber" | "terminalEvent"
-> &
-  HarvestRepositoryScope;
+> & { projectId: string };
 
 export function isStaleHarvestClose(
   existing: HarvestRepositoryPull,
@@ -344,7 +351,7 @@ export function isStaleHarvestClose(
   return (
     existing.terminalEvent === "merged" &&
     incoming.terminalEvent === "closed_unmerged" &&
-    sharesHarvestRepositoryScope(existing, incoming) &&
+    existing.projectId === incoming.projectId &&
     existing.prNumber !== null &&
     existing.prNumber === incoming.prNumber &&
     isSameRepository(existing.repoSlug, incoming.repoSlug)
@@ -370,6 +377,7 @@ export function verifyHarvestTarget(
         | "PHASE_MISMATCH";
       reason: string;
     } {
+  const repoSlug = project.repoSlug?.toLowerCase() ?? null;
   if (candidate.source === "manual_cli" && candidate.prNumber === null) {
     if (!project.localRoot) {
       return {
@@ -435,7 +443,8 @@ export function verifyHarvestTarget(
       ok: true,
       featureId,
       phaseId,
-      workKey: `harvest-local:${JSON.stringify([project.projectId, project.repoSlug?.toLowerCase() ?? null, project.trunkBranch, commit, featureId, phaseId])}`,
+      repoSlug,
+      workKey: `harvest-local:${JSON.stringify([project.projectId, repoSlug, project.trunkBranch, commit, featureId, phaseId])}`,
     };
   }
 
@@ -525,8 +534,14 @@ export function verifyHarvestTarget(
   return {
     ok: true,
     ...target,
+    repoSlug,
     ...(needsCheckoutCoverage ? { requestedPhaseId } : {}),
-    workKey: computeHarvestWorkKey({ ...candidate, ...target, prNumber }),
+    workKey: computeHarvestWorkKey({
+      ...candidate,
+      ...target,
+      repoSlug,
+      prNumber,
+    }),
   };
 }
 
@@ -703,7 +718,6 @@ export function mergeVerifiedHarvestFacts(
     verified.prNumber <= 0 ||
     (prior.prNumber !== null && prior.prNumber !== verified.prNumber) ||
     !sharesMergedCommitScope(prior, verified) ||
-    (prior.repoSlug && !isSameRepository(prior.repoSlug, verified.repoSlug)) ||
     (priorPull?.headRepoSlug &&
       verified.headRepoSlug &&
       !isSameRepository(priorPull.headRepoSlug, verified.headRepoSlug)) ||
@@ -718,7 +732,6 @@ export function mergeVerifiedHarvestFacts(
     return null;
   }
   const facts = {
-    repoSlug: prior.repoSlug ?? verified.repoSlug,
     headRepoSlug: priorPull?.headRepoSlug ?? verified.headRepoSlug,
     prNumber: verified.prNumber,
     prUrl: prior.prUrl ?? verified.prUrl,

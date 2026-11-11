@@ -12,6 +12,7 @@ import {
   HarvestStageStatusSchema,
   HarvestTerminalEventSchema,
   OutboxStatusSchema,
+  canCorrelateHarvestIntake,
   computeHarvestWorkKey,
   deriveHarvestTerminalStatus,
   evaluateBranchCleanupSafety,
@@ -201,6 +202,7 @@ describe("FR-002 harvest identity and target verification", () => {
       ok: true,
       featureId,
       phaseId,
+      repoSlug: "acme/a",
       workKey: computeHarvestWorkKey({
         repoSlug: "acme/a",
         baseBranch: "develop",
@@ -234,7 +236,7 @@ describe("FR-002 harvest identity and target verification", () => {
       const enrolled = { ...project, repoSlug };
       const result = verifyHarvestTarget(enrolled, local);
 
-      expect(result).toMatchObject({ ok: true, featureId, phaseId });
+      expect(result).toMatchObject({ ok: true, featureId, phaseId, repoSlug });
       expect(
         verifyHarvestTarget(enrolled, {
           ...local,
@@ -311,6 +313,25 @@ describe("FR-002 harvest identity and target verification", () => {
         mergeCommitSha: null,
       }),
     );
+  });
+  it("requires an established repository for commit correlation", () => {
+    const local = {
+      projectId: project.projectId,
+      repoSlug: "ACME/A",
+      trunkBranch: project.trunkBranch,
+      featureId,
+      phaseId,
+      terminalEvent: "merged" as const,
+      mergeCommitSha: sha,
+      prNumber: null,
+    };
+    const pull = { ...local, repoSlug: "acme/a", prNumber: 42 };
+    expect(canCorrelateHarvestIntake(local, pull)).toBe(true);
+    expect(canCorrelateHarvestIntake(pull, local)).toBe(true);
+
+    const unknownLocal = { ...local, repoSlug: null };
+    expect(canCorrelateHarvestIntake(unknownLocal, pull)).toBe(false);
+    expect(canCorrelateHarvestIntake(pull, unknownLocal)).toBe(false);
   });
   it("TR-002 keeps matching PR numbers scoped to their enrolled repository", () => {
     const other = { ...project, projectId: "project-b", repoSlug: "acme/b" };

@@ -309,7 +309,8 @@ export interface OperationsStorePort {
    * Reject transport ID reuse with a different repository or payload digest.
    * Scope verified work keys to the normalized repository and configured trunk.
    * Verify compatible repository and trunk before matching a key or saving an alias.
-   * Use a null local repository only for work verified through the enrolled checkout.
+   * Persist the repository from verifyHarvestTarget even if a manual delivery omits it.
+   * A checkout with no verified repository can harvest locally without pull request correlation.
    * Use canCorrelateHarvestIntake to match local commits to verified merged pull requests.
    * If several verified pull requests match a local commit, use the earliest operation.
    * Break creation-time ties by least operation ID.
