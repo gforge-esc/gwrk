@@ -81,10 +81,17 @@ export function resolveWorkspacePolicyProfile(
     return detectedWorkspace;
   }
 
+  const rootToolchain = rootConfig?.project?.toolchain;
+  const detected = rootToolchain
+    ? {
+        ...detectedWorkspace,
+        toolchain: { ...rootToolchain, ...detectedWorkspace.toolchain },
+      }
+    : detectedWorkspace;
+
   return mergeProfileOverrides({
-    detected: detectedWorkspace,
+    detected,
     projectDesign: detectedWorkspace.design ?? rootDesign,
-    projectToolchain: rootConfig?.project?.toolchain,
     workspaceConfig,
   });
 }

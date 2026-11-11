@@ -69,7 +69,7 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
 
   it("TR-005: inherits root design and toolchain with workspace field overrides", () => {
     expect(resolveWorkspacePolicyProfile("services/api", detected, {
-      project: { design, toolchain: { formatter: "black" } },
+      project: { design, toolchain: { test: "vitest", formatter: "black" } },
       workspaces: { "services/api": { toolchain: { build: null } } },
     })).toEqual({
       ...detected,

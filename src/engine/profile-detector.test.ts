@@ -369,6 +369,33 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     });
   });
 
+  it("keeps the workspace-local runner under a TypeScript root with a design", async () => {
+    write(
+      ".gwrkrc.json",
+      JSON.stringify({
+        project: {
+          name: "fixture",
+          design,
+          stack: { language: "TypeScript" },
+          toolchain: { test: "vitest" },
+        },
+        workspaces: { "services/api": { toolchain: { build: null } } },
+      }),
+    );
+    write("services/api/pyproject.toml", '[project]\ndependencies = ["fastapi"]\n');
+    write(
+      "services/api/.gwrkrc.json",
+      JSON.stringify({ project: { name: "api", toolchain: { test: "pytest" } } }),
+    );
+
+    const result = await resolveWorkspaceProfile(root, "services/api");
+    expect(result).toMatchObject({
+      design,
+      stack: { language: "Python" },
+      toolchain: { test: "pytest", build: null },
+    });
+  });
+
   it("keeps the detected workspace language when its framework is overridden", async () => {
     const { resolveWorkspaceProfile } = await import("./profile-detector.js");
     write(
