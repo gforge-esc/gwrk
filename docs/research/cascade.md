@@ -1,4 +1,16 @@
-# Cascade Plan — Wave 4 Research → Specification → Implementation
+# Research and implementation cascade
+
+The self-assessment supplies the core feature sequence. Model qualification depends on unified dispatch. Hosted rollout depends on project isolation and durable harvest. Blocked: none for preparation.
+
+## November 2026 implementation preparation
+
+- [Self-assessment and proposed features](../architecture/assessments/2026-11-11-self-assessment/report.md)
+- [Model discovery and qualification](2026-11-11-model-qualification.md)
+- [Daily-driver audit and implementation sequence](2026-11-11-daily-driver-audit.md)
+- [R013, hosted gwrk server](R013-hosted-gwrk-server/brief.md)
+- [Beta repository readiness](2026-11-11-beta-readiness.md)
+
+## Wave 4 record
 
 > **Status:** Active — Stages 1–3 complete, R004 decisions locked, F004-R P5 landed
 > **Initiatives:** R001 ✅, R002 ✅, R003 ✅, **R004 (Shareability Readiness) ✅**
