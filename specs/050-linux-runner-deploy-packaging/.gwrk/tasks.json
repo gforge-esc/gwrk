@@ -237,7 +237,7 @@
           "title": "Create container-harness.mjs",
           "description": "NEW tests/linux-runner/container-harness.mjs. Run clean Linux containers without source checkout to test install and restart plus restore and rollback",
           "status": "open",
-          "gateScript": "node tests/linux-runner/container-harness.mjs",
+          "gateScript": "gates/phase-05-container.sh",
           "sp": 2
         }
       ],
