@@ -234,16 +234,13 @@ async function selectAvailableRoute(
         const availabilityOnly = context.preview || installedOnly;
         const requireInstalled = restrictToRegistry || availabilityOnly;
         backend = requireInstalled
-          ? await boundNativeShipProbe(
-              async (signal) => {
-                const candidate = await registry.getAgentBackend(route.backend);
-                if (signal.aborted || !(await candidate.isAvailable(signal))) {
-                  return undefined;
-                }
-                return candidate;
-              },
-              undefined,
-            )
+          ? await boundNativeShipProbe(async (signal) => {
+              const candidate = await registry.getAgentBackend(route.backend);
+              if (signal.aborted || !(await candidate.isAvailable(signal))) {
+                return undefined;
+              }
+              return candidate;
+            }, undefined)
           : await registry.getAgentBackend(route.backend);
         if (backend) {
           const candidate = backend;

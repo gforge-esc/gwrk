@@ -812,12 +812,11 @@ Examples:
               explicitBackend === undefined
                 ? ("quota-tiebreak" as const)
                 : undefined,
-            backendEligibility:
-              opts.legacy
-                ? ("script-owned" as const)
-                : explicitBackend === undefined
-                  ? undefined
-                  : ("installed" as const),
+            backendEligibility: opts.legacy
+              ? ("script-owned" as const)
+              : explicitBackend === undefined
+                ? undefined
+                : ("installed" as const),
           };
 
           if (opts.dryRun) {

@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type {
-  AgentBackend,
   QuotaStatus as AdapterQuotaStatus,
+  AgentBackend,
 } from "../plugins/agent-backend.js";
 
 type QuotaStatus = Omit<AdapterQuotaStatus, "status"> & {
