@@ -37,17 +37,19 @@
           "id": "T002",
           "title": "Modify project-id.ts",
           "description": "MODIFY src/domain/project-id.ts. Compute the existing identity from supplied facts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T002-gate.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T16:28:53.057Z"
         },
         {
           "id": "T003",
           "title": "Create project-id.ts",
           "description": "NEW src/adapters/git/project-id.ts. Discover the remote and main worktree through bounded Git commands",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T003-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:28:54.778Z"
         }
       ],
       "sp_estimate": 3,
