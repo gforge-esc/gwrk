@@ -118,11 +118,12 @@ function compatibleToolchain(
     !workspaceLanguage ||
     sourceLanguage === workspaceLanguage;
   const isLocal = source === "local";
+  const configuredBuildSkip = source !== "detected" && toolchain.build === null;
 
   if (!workspaceLanguage) {
     if (buildSystemsMatch) return toolchain;
     const { build, testCommand: _command, ...compatible } = toolchain;
-    if (isLocal && build === null) return { ...compatible, build };
+    if (configuredBuildSkip) return { ...compatible, build };
     return Object.keys(compatible).length ? compatible : undefined;
   }
 
@@ -157,7 +158,7 @@ function compatibleToolchain(
     ...(runnerFits &&
       buildFits &&
       testCommand !== undefined && { testCommand }),
-    ...((buildFits || (isLocal && build === null)) &&
+    ...((buildFits || (configuredBuildSkip && (isLocal || !differentFamily))) &&
       build !== undefined && { build }),
     ...(extensionsFit && testExtension !== undefined && { testExtension }),
     ...(extensionsFit && sourceExtension !== undefined && { sourceExtension }),

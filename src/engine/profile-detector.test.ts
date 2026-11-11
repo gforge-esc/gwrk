@@ -853,6 +853,58 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(explicit).toEqual(direct);
   });
 
+  it.each([
+    { localToolchain: undefined },
+    { localToolchain: { testCommand: "uv run pytest {files}" } },
+  ])("inherits an unregistered ancestor design with local tools $localToolchain", async ({ localToolchain }) => {
+    fs.rmSync(path.join(root, ".gwrkrc.json"));
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+    }));
+    write("services/api/.gwrkrc.json", JSON.stringify({
+      project: { name: "api", toolchain: localToolchain },
+    }));
+    const profiles = [
+      await detectProfile(path.join(root, "services/api")),
+      await resolveWorkspaceProfile(root, "services/api"),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile.design).toEqual(nearerDesign);
+      expect.soft(profile.stack).toMatchObject({ language: "Python", framework: "FastAPI" });
+      expect.soft(getTestCommand(profile, ["test_api.py"])).toBe(
+        localToolchain ? "uv run pytest test_api.py" : "pytest test_api.py -v",
+      );
+    }
+  });
+
+  it.each([true, false])("applies the nearest registered workspace with nearer registration %s", async (registered) => {
+    const nearerDesign = { ...design, architecture: "layered", principles: ["clean-code"] };
+    write("services/.gwrkrc.json", JSON.stringify({
+      project: { name: "services", design: nearerDesign },
+      workspaces: registered
+        ? { api: { stack: { framework: "Django" }, toolchain: { build: null } } }
+        : undefined,
+    }));
+    write(".gwrkrc.json", JSON.stringify({
+      project: { name: "fixture", design },
+      workspaces: {
+        "services/api": { stack: { framework: "Flask" }, toolchain: { build: "uv build" } },
+      },
+    }));
+    const profiles = [
+      await detectProfile(path.join(root, "services/api")),
+      await resolveWorkspaceProfile(root, "services/api"),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile).toMatchObject({
+        design: nearerDesign,
+        stack: { language: "Python", framework: registered ? "Django" : "Flask" },
+        toolchain: { build: registered ? null : "uv build" },
+      });
+    }
+  });
+
   it("finds the registered workspace under a nearer local design", async () => {
     const localDesign = { ...design, architecture: "layered" };
     const config = {

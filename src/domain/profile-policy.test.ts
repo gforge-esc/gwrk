@@ -295,6 +295,45 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     );
   });
 
+  it.each([
+    { workspaceBuild: undefined, expected: null },
+    { workspaceBuild: "npm run bundle", expected: "npm run bundle" },
+  ])(
+    "keeps compatible root skips across package managers ($expected)",
+    ({ workspaceBuild, expected }) => {
+      const profile = resolveWorkspacePolicyProfile(
+        "apps/web",
+        {
+          type: "nodejs",
+          stack: { language: "TypeScript", buildSystem: "npm" },
+        },
+        {
+          project: {
+            design,
+            stack: { language: "TypeScript", buildSystem: "pnpm" },
+            toolchain: { test: null, build: null },
+          },
+          workspaces: {
+            "apps/web": {
+              toolchain:
+                workspaceBuild === undefined
+                  ? undefined
+                  : { build: workspaceBuild },
+            },
+          },
+        },
+      );
+      expect(profile.design).toEqual(design);
+      expect(getTestCommand(profile, ["app.test.ts"])).toBeNull();
+      expect(
+        resolveBuildCommand(profile, {
+          hasPackageJson: true,
+          hasPackageBuildScript: true,
+        }),
+      ).toBe(expected);
+    },
+  );
+
   it("keeps npm build selection under a pnpm root with the same language family", () => {
     const result = resolveWorkspacePolicyProfile(
       "apps/web",
@@ -737,15 +776,12 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
   );
 
   it.each([
-    { runner: undefined, expected: null, command: null },
-    {
-      runner: "pytest" as const,
-      expected: "pytest",
-      command: "pytest test_api.py -v",
-    },
+    { override: "none", expected: null, command: null },
+    { override: "local", expected: "pytest", command: "pytest test_api.py -v" },
+    { override: "entry", expected: "pytest", command: "pytest test_api.py -v" },
   ])(
-    "keeps the root test skip unless the workspace sets a runner ($runner)",
-    ({ runner, expected, command }) => {
+    "keeps the root test skip with runner override from $override",
+    ({ override, expected, command }) => {
       const stack = { language: "Python", buildSystem: "uv" };
       const profile = resolveWorkspacePolicyProfile(
         "services/api",
@@ -754,11 +790,18 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
           project: { design, stack, toolchain: { test: null } },
           workspaces: {
             "services/api": {
-              toolchain: runner
-                ? { build: null, test: runner }
-                : { build: null },
+              toolchain:
+                override === "entry"
+                  ? { build: null, test: "pytest" }
+                  : { build: null },
             },
           },
+        },
+        {
+          localProject:
+            override === "local"
+              ? { toolchain: { test: "pytest" } }
+              : undefined,
         },
       );
       expect

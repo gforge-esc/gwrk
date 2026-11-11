@@ -55,21 +55,11 @@ function detectProfileInDirectory(
 ): ProjectProfile {
   const detected = detectFilesystemProfile(projectRoot);
   const localProject = readLocalProject(projectRoot);
-  if (workspaceRoot?.config !== undefined) {
-    return applyWorkspaceConfig(
-      workspaceRoot.directory,
-      projectRoot,
-      detected,
-      workspaceRoot.config,
-      { localProject },
-    );
-  }
-
   const scoped = resolveDetectedProfile(
     projectRoot,
     detected,
     localProject,
-    workspaceRoot?.directory,
+    workspaceRoot,
   );
   if (scoped) return scoped;
   return localProject
@@ -478,11 +468,15 @@ function resolveDetectedProfile(
   detectedRoot: string,
   detected: FilesystemProfile,
   localProject?: WorkspaceProfileConfig,
-  workspaceRoot?: string,
+  workspaceRoot?: { directory: string; config?: WorkspaceRootConfig },
 ): ProjectProfile | undefined {
   const start = path.resolve(detectedRoot);
   const configPath = path.join(start, ".gwrkrc.json");
-  if (!localProject && fs.existsSync(configPath)) {
+  if (
+    workspaceRoot?.config === undefined &&
+    !localProject &&
+    fs.existsSync(configPath)
+  ) {
     const config = readWorkspaceRootConfig(start);
     if (config === undefined) return undefined;
     return mergeProfileOverrides({
@@ -493,7 +487,10 @@ function resolveDetectedProfile(
   let nearestConfig:
     | { directory: string; config: WorkspaceRootConfig }
     | undefined;
-  for (const ancestor of ancestorWorkspaceConfigs(start, workspaceRoot)) {
+  for (const ancestor of ancestorWorkspaceConfigs(
+    start,
+    workspaceRoot?.directory,
+  )) {
     nearestConfig ??= ancestor;
     const { directory, config } = ancestor;
     const matchedWorkspace = matchWorkspacePath(
@@ -508,13 +505,23 @@ function resolveDetectedProfile(
     if (scoped !== detected.profile) return scoped;
   }
 
-  if (localProject || !nearestConfig) return undefined;
+  if (workspaceRoot?.config !== undefined) {
+    return applyWorkspaceConfig(
+      workspaceRoot.directory,
+      start,
+      detected,
+      workspaceRoot.config,
+      { localProject },
+    );
+  }
+
+  if (localProject?.design || !nearestConfig) return undefined;
   return applyWorkspaceConfig(
     nearestConfig.directory,
     start,
     detected,
     nearestConfig.config,
-    { requireDesign: true },
+    { requireDesign: true, localProject },
   );
 }
 
