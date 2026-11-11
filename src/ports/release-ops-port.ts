@@ -17,6 +17,13 @@ export class InstanceLockBusyError extends Error {
   }
 }
 
+export class PendingLedgerRestoreError extends Error {
+  constructor(readonly markerPath: string) {
+    super(`An unfinished restore exists at ${markerPath}.`);
+    this.name = "PendingLedgerRestoreError";
+  }
+}
+
 export interface InstanceLockHandle {
   readonly pid: number;
   readonly lockPath: string;

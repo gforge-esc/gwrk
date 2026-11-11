@@ -22,7 +22,10 @@ import { restoreOfflineLedger } from "../application/release/backup-restore.js";
 import { getDbPath } from "../db/index.js";
 import { recordRun } from "../db/runs.js";
 import { evaluateRollbackCompatibility } from "../domain/release-packaging.js";
-import { InstanceLockBusyError } from "../ports/release-ops-port.js";
+import {
+  InstanceLockBusyError,
+  PendingLedgerRestoreError,
+} from "../ports/release-ops-port.js";
 import { loadDevice } from "../utils/device.js";
 import { success } from "../utils/format.js";
 import { createOutput, resolveFormat } from "../utils/output.js";
@@ -91,27 +94,37 @@ const backupCommand = new Command("backup")
         const output = ledgerOutput(command);
         const projectRoot = opts.projectRoot && resolve(opts.projectRoot);
         const destination = resolve(opts.out);
-        const manifest = await backupPort.createBackup({
-          dbPath: getDbPath(),
-          destination,
-          createdAt: new Date().toISOString(),
-          gwrkVersion: command.parent?.parent?.version() ?? "unknown",
-          metadata: { device: loadDevice() },
-          collectRepositories(projects) {
-            const selected = projectRoot
-              ? projects.filter(({ path }) => resolve(path) === projectRoot)
-              : projects;
-            if (projectRoot && selected.length === 0) {
+        const manifest = await backupPort
+          .createBackup({
+            dbPath: getDbPath(),
+            destination,
+            createdAt: new Date().toISOString(),
+            gwrkVersion: command.parent?.parent?.version() ?? "unknown",
+            metadata: { device: loadDevice() },
+            collectRepositories(projects) {
+              const selected = projectRoot
+                ? projects.filter(({ path }) => resolve(path) === projectRoot)
+                : projects;
+              if (projectRoot && selected.length === 0) {
+                throw new CommandError(
+                  "Project root is not enrolled in this ledger. Run 'gwrk init' in that checkout.",
+                  1,
+                );
+              }
+              return selected.map(({ id, path }) =>
+                readRepositoryEvidence(id, path),
+              );
+            },
+          })
+          .catch((error: unknown) => {
+            if (error instanceof PendingLedgerRestoreError) {
               throw new CommandError(
-                "Project root is not enrolled in this ledger. Run 'gwrk init' in that checkout.",
+                `${error.message} Finish 'gwrk db restore' with the original backup before creating a new backup.`,
                 1,
               );
             }
-            return selected.map(({ id, path }) =>
-              readRepositoryEvidence(id, path),
-            );
-          },
-        });
+            throw error;
+          });
         output.write(
           output.isJson
             ? { destination, manifest }

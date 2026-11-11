@@ -25,7 +25,10 @@ import {
   PENDING_LEDGER_RESTORE,
 } from "../../domain/ledger-backup.js";
 import type { AppliedMigration } from "../../domain/release-packaging.js";
-import type { LedgerBackupPort } from "../../ports/release-ops-port.js";
+import {
+  type LedgerBackupPort,
+  PendingLedgerRestoreError,
+} from "../../ports/release-ops-port.js";
 import { sha256 } from "../release/inventory.js";
 import { readRepositoryEvidence } from "../release/repository-evidence.js";
 
@@ -149,6 +152,9 @@ function summarizeLedger(
 export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
   input,
 ) => {
+  const pending = join(dirname(resolve(input.dbPath)), PENDING_LEDGER_RESTORE);
+  if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
+
   const destination = resolve(input.destination);
   const parent = dirname(destination);
   await mkdir(parent, { recursive: true, mode: 0o700 });
@@ -207,6 +213,8 @@ export const createLedgerBackup: LedgerBackupPort["createBackup"] = async (
       `${JSON.stringify(manifest, null, 2)}\n`,
       { mode: 0o600 },
     );
+
+    if (await exists(pending)) throw new PendingLedgerRestoreError(pending);
 
     // The manifest commits the backup after both verified payload files exist.
     for (const filename of [DB_FILE, METADATA_FILE, MANIFEST_FILE]) {

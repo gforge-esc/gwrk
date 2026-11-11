@@ -193,7 +193,7 @@ cat > /fixture-bin/systemd-run <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$*" == *"--property=EnvironmentFile=/etc/gwrk/runner.env"* ]]
-printf '%s\0' HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk GWRK_RELEASE_ROOT=/opt/gwrk
+printf '%s\0' HOME=/var/lib/gwrk GWRK_HOME=/var/lib/gwrk GWRK_RUNTIME_DIR=/run/gwrk GWRK_RELEASE_ROOT=/opt/gwrk "PATH=$PATH"
 SCRIPT
 cat > /fixture-bin/cat <<'SCRIPT'
 #!/usr/bin/env bash

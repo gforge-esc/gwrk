@@ -86,7 +86,7 @@ try {
   ).trim().split("\n").map((line) => JSON.parse(line).data);
   const [environment, files, pass, unset] = properties;
   const pathVariables = new Set([
-    "HOME", "GWRK_HOME", "GWRK_DIR", "GWRK_DB_PATH", "GWRK_RUNTIME_DIR", "GWRK_RELEASE_ROOT",
+    "HOME", "PATH", "GWRK_HOME", "GWRK_DIR", "GWRK_DB_PATH", "GWRK_RUNTIME_DIR", "GWRK_RELEASE_ROOT",
   ]);
   const affectsPath = (entry) => pathVariables.has(entry.split("=", 1)[0]);
   // Let the manager apply environment-file syntax and precedence.
@@ -114,7 +114,7 @@ resolve_service_paths() {
     import { isAbsolute, join } from "node:path";
     import { pathToFileURL } from "node:url";
 
-    const [active, state, runtime, releaseRoot, source] = process.argv.slice(1);
+    const [active, state, runtime, releaseRoot, source, output] = process.argv.slice(1);
     try {
       const { resolveGwrkPaths } = await import(pathToFileURL(join(active, "dist/domain/gwrk-paths.js")).href);
       const env = Object.create(null);
@@ -134,11 +134,17 @@ resolve_service_paths() {
       verify("state directory", paths.home, state);
       if (env.GWRK_DIR) verify("state directory", env.GWRK_DIR, state);
       verify("runtime", paths.runtimeDir, runtime);
+      if (output === "path") {
+        if (!env.PATH || !env.PATH.split(":").every(isAbsolute)) {
+          throw new Error("The unit PATH must contain absolute directories.");
+        }
+        process.stdout.write(env.PATH);
+      }
     } catch (error) {
       console.error("Could not verify paths for " + source + ": " + error.message);
       process.exitCode = 1;
     }
-  ' "$active" "$state" "$runtime" "$release_root" "$1"
+  ' "$active" "$state" "$runtime" "$release_root" "$@"
 }
 
 verify_running_paths() {
@@ -156,7 +162,11 @@ verify_running_release() {
     [[ "$(realpath -e -- "${args[1]}")" == "$release/dist/cli.js" ]]
 }
 
-read_unit_environment | resolve_service_paths "loaded unit $unit"
+service_path=$(read_unit_environment | resolve_service_paths "loaded unit $unit" path)
+service_node=$(timeout --kill-after=5s 15s "${as_service[@]}" env -i PATH="$service_path" \
+  /bin/sh -c 'command -v node') ||
+  fail "Could not find Node in the loaded PATH for $unit."
+[[ "$service_node" == /* ]] || fail "The loaded unit Node path must be absolute."
 original_state=$(systemctl show --property=ActiveState --value "$unit") ||
   fail "Could not read the service state for $unit before rollback."
 main_pid=$(systemctl show --property=MainPID --value "$unit") ||
@@ -175,13 +185,14 @@ case "$main_pid" in
     ;;
 esac
 ledger_service=("${as_service[@]}" env GWRK_HOME="$state" GWRK_DIR="$state"
-  GWRK_DB_PATH="$state/gwrk.db" GWRK_RUNTIME_DIR="$runtime")
+  GWRK_DB_PATH="$state/gwrk.db" GWRK_RUNTIME_DIR="$runtime" PATH="$service_path")
 check_rollback() {
   # Older CLIs reject this flag instead of inferring digests from the current manifest.
-  "${ledger_service[@]}" node "$active/dist/cli.js" db rollback-check --require-ledger-digests \
+  "${ledger_service[@]}" "$service_node" "$active/dist/cli.js" db rollback-check --require-ledger-digests \
     --current "$active" --target "$target" "$@"
 }
-compatibility=$(check_rollback --format json)
+compatibility=$(check_rollback --format json) ||
+  fail "Rollback compatibility check failed with Node from $unit."
 verified_version=$(node -e '
   const result = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
   if (result.allowed !== true || typeof result.targetVersion !== "string") process.exit(1);
@@ -189,18 +200,18 @@ verified_version=$(node -e '
 ' <<< "$compatibility") || fail "Could not read the verified rollback target version."
 [[ "$verified_version" == "${new_target#releases/}" ]] ||
   fail "Rollback target manifest version $verified_version does not match $new_target."
-cli_version=$(timeout --kill-after=5s 15s "${as_service[@]}" node "$target/dist/cli.js" --version </dev/null 2>/dev/null) ||
+cli_version=$(timeout --kill-after=5s 15s "${ledger_service[@]}" "$service_node" "$target/dist/cli.js" --version </dev/null 2>/dev/null) ||
   fail "Rollback target CLI could not start as $service_user: $target/dist/cli.js"
 [[ "$cli_version" == "$verified_version" ]] ||
   fail "Rollback target CLI version does not match verified release $verified_version."
 [[ "$(realpath -e -- "$target/dist/cli.js")" == "$target/dist/cli.js" ]] ||
   fail "Rollback target CLI must resolve within the selected release: $target/dist/cli.js"
-launch_command=$(timeout --kill-after=5s 15s "${as_service[@]}" env -i PATH="$PATH" \
+launch_command=$(timeout --kill-after=5s 15s "${as_service[@]}" env -i PATH="$service_path" \
   "$target/deploy/linux-runner/run.sh" --print-launch-command </dev/null 2>/dev/null) ||
   fail "Rollback target launcher could not prove release identity: $target"
 [[ "$launch_command" == "$(printf '%s\n' node "$target/dist/cli.js" server start --foreground)" ]] ||
   fail "Rollback target launcher does not run the selected release: $target"
-timeout --kill-after=5s 15s "${as_service[@]}" node -e '
+timeout --kill-after=5s 15s "${ledger_service[@]}" "$service_node" -e '
   const { createRequire } = require("node:module");
   const Database = createRequire(process.argv[1])("better-sqlite3");
   const database = new Database(":memory:");
@@ -292,7 +303,7 @@ fi
 "${as_service[@]}" test -w "$backup_root" && "${as_service[@]}" test -x "$backup_root" ||
   fail "$service_user cannot write backups in $backup_root."
 backup="$backup_root/rollback-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-"${ledger_service[@]}" node "$active/dist/cli.js" db backup --out "$backup"
+"${ledger_service[@]}" "$service_node" "$active/dist/cli.js" db backup --out "$backup"
 recover_pointers=true
 point "$new_target" "$current"
 point "$old_target" "$previous"

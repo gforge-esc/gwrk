@@ -78,6 +78,7 @@ it.each([
   { signal: "SIGINT", status: 130, stage: "initial stop" },
   { signal: null, status: 1, stage: "backup with an inactive unit" },
   { signal: null, status: 1, stage: "target CLI version mismatch" },
+  { signal: null, status: 1, stage: "unit Node fails target startup" },
   { signal: null, status: 1, stage: "target launcher uses current alias" },
   { signal: null, status: 1, stage: "target manifest version mismatch" },
   { signal: null, status: 1, stage: "service ledger mismatch" },
@@ -152,6 +153,15 @@ it.each([
     try {
       await mkdir(bin);
       await mkdir(runtime);
+      const unitBin = join(root, "unit-bin");
+      await mkdir(unitBin);
+      await writeFile(
+        join(unitBin, "node"),
+        `#!/bin/sh
+exit 43
+`,
+        { mode: 0o755 },
+      );
       await mkdir(state);
       await mkdir(join(root, "other release root"));
       await writeFile(join(runtime, "server.lock"), "");
@@ -352,9 +362,9 @@ it.each([
         runuser: `shift 5
 if [[ "$1" == env && "\${2:-}" != -i ]]; then
   shift
-  while [[ "$1" == GWRK_*=* ]]; do export "$1"; shift; done
+  while [[ "$1" == GWRK_*=* || "$1" == PATH=* ]]; do export "$1"; shift; done
 fi
-if [[ "\${3:-}" == --version && "$FIXTURE_STAGE" != "target CLI version mismatch" ]]; then
+if [[ "\${3:-}" == --version && "$1" != "$FIXTURE_ROOT/unit-bin/node" && "$FIXTURE_STAGE" != "target CLI version mismatch" ]]; then
   printf '1.0.0\\n'
   exit 0
 fi
@@ -410,7 +420,9 @@ case "$FIXTURE_STAGE" in
   "service runtime mismatch") runtime="$FIXTURE_ROOT/other runtime" ;;
   "service release root mismatch") release_root="$FIXTURE_ROOT/other release root" ;;
 esac
-printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime" "GWRK_RELEASE_ROOT=$release_root"`,
+unit_path="$PATH"
+if [[ "$FIXTURE_STAGE" == "unit Node fails target startup" ]]; then unit_path="$FIXTURE_ROOT/unit-bin:$PATH"; fi
+printf '%s\\0' "GWRK_HOME=$state" "GWRK_DB_PATH=$database" "GWRK_RUNTIME_DIR=$runtime" "GWRK_RELEASE_ROOT=$release_root" "PATH=$unit_path"`,
         cat: `
 if [[ "$1" == -- && "$2" == "/proc/$FIXTURE_PID/cmdline" ]]; then
   cli="$FIXTURE_ROOT/$(readlink "$FIXTURE_ROOT/current")/dist/cli.js"
@@ -532,6 +544,8 @@ esac`,
                 "Rollback target launcher could not prove release identity",
               );
               expect(existsSync(join(state, "backups"))).toBe(false);
+            } else if (stage === "unit Node fails target startup") {
+              expect(output).toContain("Rollback target CLI could not start");
             } else if (pathMismatch) {
               expect(output).toContain(
                 stage.endsWith("release root mismatch")

@@ -135,6 +135,51 @@ function expectUsageFailure(result: ReturnType<typeof runCli>) {
 }
 
 describe("installed ledger commands outside a checkout", () => {
+  it("rejects JSON backup while a restore is unfinished", async () => {
+    const ledger = join(root, "gwrk.db");
+    seedLedger(ledger).close();
+    const original = join(root, "original-backup");
+    await createLedgerBackup({
+      dbPath: ledger,
+      destination: original,
+      createdAt: "2026-11-11T12:00:00.000Z",
+      gwrkVersion: "1.6.0-beta.1",
+      metadata: { device: null },
+      collectRepositories: () => [],
+    });
+
+    await cp(original, join(root, ".restore-pending"), { recursive: true });
+
+    const destination = join(root, "new-backup");
+    const result = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL("../../dist/cli.js", import.meta.url)),
+        "db",
+        "backup",
+        "--out",
+        destination,
+        "--format",
+        "json",
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, GWRK_HOME: root, GWRK_DB_PATH: ledger },
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    );
+
+    expect.soft(result.status, result.stderr).toBe(1);
+    expect.soft(result.stdout).toBe("");
+    expect
+      .soft(result.stderr.match(/^\[exit:.*$/gm))
+      .toEqual([
+        expect.stringMatching(/^\[exit:1 .*gwrk db restore.*original backup/),
+      ]);
+    await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it.skipIf(process.platform !== "linux").each([
     { mode: "force", lock: "runtime" },
     { mode: "force", lock: "ledger" },
