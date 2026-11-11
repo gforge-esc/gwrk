@@ -68,17 +68,19 @@
           "id": "T004",
           "title": "Modify agent-config.ts",
           "description": "MODIFY src/domain/agent-config.ts. Validate and merge supplied registry layers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T004-gate.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T16:40:32.267Z"
         },
         {
           "id": "T005",
           "title": "Create registry-loader.ts",
           "description": "NEW src/adapters/agents/registry-loader.ts. Read registry files and keep startup failure handling at the boundary",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/T005-gate.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T16:40:33.459Z"
         }
       ],
       "sp_estimate": 3,
