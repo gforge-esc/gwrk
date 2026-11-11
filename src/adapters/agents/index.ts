@@ -225,6 +225,9 @@ async function selectAvailableRoute(
         context.explicitBackend !== undefined &&
         context.explicitModel === undefined &&
         !agentRegistry?.backends[route.backend];
+      const effectiveModel = useAdapterModelDefaults
+        ? context.legacyModelDefault
+        : undefined;
       const ambientEnv =
         useAdapterModelDefaults && context.useAmbientModelDefaults
           ? process.env
@@ -242,6 +245,7 @@ async function selectAvailableRoute(
       const selection = {
         ...route,
         ...(useAdapterModelDefaults && { useAdapterModelDefaults }),
+        ...(effectiveModel !== undefined && { effectiveModel }),
         ...(adapterModel !== undefined && { adapterModel }),
         fallbackUsed: route.fallbackUsed || probed.size > 1,
       };
@@ -277,12 +281,14 @@ async function selectAvailableRoute(
             feature,
             phase,
             selectedBackend: selected.backend,
-            selectedModel: adapterDefault ?? selected.model,
+            selectedModel: effectiveModel ?? adapterDefault ?? selected.model,
             taskClassification: classifyTask(type),
             reason:
-              adapterDefault !== undefined
-                ? "adapter model default"
-                : selected.reason,
+              effectiveModel !== undefined
+                ? "legacy model default"
+                : adapterDefault !== undefined
+                  ? "adapter model default"
+                  : selected.reason,
             quotaPercent: selected.quotaPercent,
             probeStatus: readings[selected.backend]?.status ?? "available",
             taskSp: taskSP,

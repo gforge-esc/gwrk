@@ -572,12 +572,16 @@ describe("ship with the real AgentPort router", () => {
   );
 
   it.each([
-    { backend: "agy", expectedModel: "configured-legacy-model" },
+    {
+      backend: "agy",
+      expectedModel: "configured-legacy-model",
+      reason: "legacy model default",
+    },
     { backend: "codex", expectedModel: "codex-primary" },
     { backend: "codex", expectedModel: "default" },
   ])(
-    "previews $expectedModel passed to the legacy script for $backend",
-    async ({ backend, expectedModel }) => {
+    "previews and records $expectedModel passed to the legacy script for $backend",
+    async ({ backend, expectedModel, reason }) => {
       vi.stubEnv("GEMINI_MODEL", "configured-legacy-model");
       if (expectedModel === "default") {
         fs.writeFileSync(
@@ -596,6 +600,7 @@ describe("ship with the real AgentPort router", () => {
 
       const previewOutput = vi.mocked(console.log).mock.calls.flat().join("\n");
       expect(run).not.toHaveBeenCalled();
+      expect(fs.existsSync(dbPath)).toBe(false);
 
       await ship("--legacy", "--agent", backend);
       const call = vi.mocked(run).mock.calls.find(([command]) =>
@@ -607,6 +612,13 @@ describe("ship with the real AgentPort router", () => {
       expect(previewOutput).toContain(
         `backend: ${backend}, model: ${scriptModel}, effort:`,
       );
+      expect(await decisions()).toMatchObject([
+        {
+          selected_backend: backend,
+          selected_model: scriptModel,
+          ...(reason && { reason }),
+        },
+      ]);
     },
   );
 

@@ -110,9 +110,7 @@ function shipModel(
   legacy: boolean,
 ): string | undefined {
   if (legacy) {
-    return route.useAdapterModelDefaults
-      ? process.env.GEMINI_MODEL
-      : route.model;
+    return route.useAdapterModelDefaults ? route.effectiveModel : route.model;
   }
   return route.useAdapterModelDefaults
     ? (route.adapterModel ?? undefined)
@@ -804,6 +802,10 @@ Examples:
             explicitBackend,
             useAmbientModelDefaults:
               !opts.legacy && explicitBackend !== undefined,
+            legacyModelDefault:
+              opts.legacy && explicitBackend !== undefined
+                ? process.env.GEMINI_MODEL
+                : undefined,
             requireRegistry: explicitBackend === undefined,
             historyMode:
               explicitBackend === undefined

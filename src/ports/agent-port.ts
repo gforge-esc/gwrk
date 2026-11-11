@@ -71,6 +71,7 @@ export interface RoutingContext {
   includeReviewModel?: boolean;
   /** Allow an explicit backend outside the registry to resolve ambient model defaults. */
   useAmbientModelDefaults?: boolean;
+  legacyModelDefault?: string;
   runId?: string;
   skillName?: string;
   feature?: string;
@@ -84,6 +85,7 @@ export interface RoutingContext {
 
 export interface SelectedAgentRoute extends RouteSelectionDecision {
   useAdapterModelDefaults?: boolean;
+  effectiveModel?: string;
   /** Null means the adapter omits the model flag. */
   adapterModel?: string | null;
   reviewModel?: string;
