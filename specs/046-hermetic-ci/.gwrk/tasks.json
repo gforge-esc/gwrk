@@ -15,7 +15,7 @@
         {
           "id": "T001",
           "title": "Modify index.ts",
-          "description": "MODIFY src/server/index.ts. Accept explicit server scope and clean up owned effects on close and failed startup. FR-002, FR-003.",
+          "description": "MODIFY src/server/index.ts. Accept explicit server scope and clean up owned effects on close and failed startup. FR-002, FR-003. Tests: src/server/server-scope.test.ts",
           "status": "open",
           "gateScript": "gates/phase-01.sh",
           "sp": 1
@@ -31,7 +31,7 @@
         {
           "id": "T003",
           "title": "Create server-fixture.ts",
-          "description": "NEW tests/helpers/server-fixture.ts. Compose isolated Fastify instances and own their temporary project roots and SQLite handles. FR-002.",
+          "description": "NEW tests/helpers/server-fixture.ts. Compose isolated Fastify instances and own their temporary project roots and SQLite handles. Convert every server and route suite in the phase gate before running that gate with the quarantine lifted. Stub external calls and verify Git operations use only fixture repositories. FR-002.",
           "status": "open",
           "gateScript": "gates/phase-01.sh",
           "sp": 2
@@ -39,6 +39,7 @@
       ],
       "sp_estimate": 4,
       "testTargets": [
+        "src/server/server-scope.test.ts",
         "src/server/integration.test.ts",
         "src/server/routes/dispatch.test.ts",
         "src/server/routes/notify.test.ts",
