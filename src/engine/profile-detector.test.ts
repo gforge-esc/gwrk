@@ -731,6 +731,28 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     expect(getTestCommand(profile, ["test_api.py"])).toBeNull();
   });
 
+  it.each([false, true])("resolves a nested design in all entry points with entry override %s", async (override) => {
+    const childDesign = { ...design, architecture: "clean-architecture" };
+    const parentDesign = { ...design, architecture: "layered" };
+    const config = {
+      project: { name: "fixture" },
+      workspaces: { "apps/web": { ...(override && { design }), stack: { language: "TypeScript" } } },
+    };
+    write(".gwrkrc.json", JSON.stringify(config));
+    write("apps/web/.gwrkrc.json", JSON.stringify({ project: { name: "web", design: parentDesign } }));
+    write("apps/web/sub/.gwrkrc.json", JSON.stringify({ project: { name: "sub", design: childDesign } }));
+
+    const child = path.join(root, "apps/web/sub");
+    const profiles = [
+      await detectProfile(child),
+      await resolveWorkspaceProfile(root, "apps/web/sub"),
+      resolveWorkspaceProfile(child, root, config),
+    ];
+    for (const profile of profiles) {
+      expect.soft(profile?.design).toEqual(override ? design : childDesign);
+    }
+  });
+
   it("detects the longest matching workspace directory for design-aware resolution", async () => {
     const config = {
       project: {

@@ -295,6 +295,27 @@ describe("FR-001: profile design inheritance (044 phase p01)", () => {
     },
   );
 
+  it("uses detected npm as the source of local commands with no stack override", () => {
+    const profile = resolveWorkspacePolicyProfile(
+      "apps/web",
+      { type: "nodejs", stack: { language: "JavaScript", buildSystem: "npm" } },
+      {
+        project: { design },
+        workspaces: { "apps/web": { stack: { buildSystem: "pnpm" } } },
+      },
+      {
+        localProject: {
+          toolchain: { test: "jest", build: "npm run build", testCommand: "npm test -- {files}" },
+        },
+      },
+    );
+    expect(profile.stack?.buildSystem).toBe("pnpm");
+    expect(resolveBuildCommand(profile, {
+      hasPackageJson: true, hasPackageBuildScript: true, hasPnpmLock: true,
+    })).toBe("pnpm build");
+    expect(getTestCommand(profile, ["app.test.js"])).toBe("npx jest app.test.js");
+  });
+
   it.each([
     {
       localToolchain: { test: "jest", build: "npm run build", testCommand: "npm test -- {files}" },

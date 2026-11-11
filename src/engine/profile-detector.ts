@@ -486,24 +486,21 @@ function resolveDetectedProfile(
         }
 
         if (
-          localProject &&
-          !matchWorkspacePath(
+          !localProject ||
+          matchWorkspacePath(
             relativeWorkspacePath(directory, start),
             Object.keys(config?.workspaces ?? {}),
           )
-        )
-          return undefined;
-        const scoped = applyWorkspaceConfig(
-          directory,
-          start,
-          detected,
-          config,
-          {
-            requireDesign: true,
-            localProject,
-          },
-        );
-        return localProject && scoped === detected.profile ? undefined : scoped;
+        ) {
+          const scoped = applyWorkspaceConfig(
+            directory,
+            start,
+            detected,
+            config,
+            { requireDesign: true, localProject },
+          );
+          return localProject && scoped === detected.profile ? undefined : scoped;
+        }
       } catch {
         return undefined;
       }
@@ -559,9 +556,11 @@ function applyWorkspaceConfig(
   const detectMatched =
     matchedRoot &&
     (options?.detectMatchedWorkspace || matchedPath !== relativePath);
-  const localProject =
-    (detectMatched ? readLocalProject(matchedRoot) : undefined) ??
-    options?.localProject;
+  const matchedProject = detectMatched ? readLocalProject(matchedRoot) : undefined;
+  const requestedProject = options?.localProject;
+  const localProject = matchedProject
+    ? { ...matchedProject, design: requestedProject?.design ?? matchedProject.design }
+    : requestedProject;
   const hasDesign =
     design ||
     (matchedPath && workspaces[matchedPath].design) ||
@@ -682,7 +681,11 @@ export function resolveWorkspaceProfile(
       cwd,
       { profile: workspace, signals: [] },
       config,
-      { requireDesign: true, detectMatchedWorkspace: true },
+      {
+        requireDesign: true,
+        detectMatchedWorkspace: true,
+        localProject: readLocalProject(cwd),
+      },
     );
   }
 

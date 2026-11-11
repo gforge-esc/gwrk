@@ -290,9 +290,16 @@ export function resolveWorkspacePolicyProfile(
       ? options?.detectedToolchains?.[workspaceFamily]
       : undefined,
   );
+  const localStack = localProject?.stack;
+  const localSourceStack = resolveWorkspaceStack(
+    rawStack,
+    localStack,
+    undefined,
+    options?.detectedStacks,
+  );
   const localToolchain = compatibleToolchain(
     localProject?.toolchain,
-    localProject?.stack,
+    { buildSystem: localSourceStack?.buildSystem, ...localStack },
     workspaceStack,
     "local",
   );
