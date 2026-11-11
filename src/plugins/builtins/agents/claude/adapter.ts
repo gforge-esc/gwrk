@@ -193,7 +193,9 @@ export class ClaudeAdapter implements AgentBackend {
       } else if (
         stderr.includes("401") ||
         stderr.includes("403") ||
-        stderr.includes("auth")
+        stderr.includes("auth") ||
+        (unwrapped.terminalStatus === "failure" &&
+          /failed to authenticate|oauth session expired/i.test(unwrapped.text))
       ) {
         errorType = "auth_failure";
         exitCode = 1;

@@ -142,6 +142,21 @@ describe("ClaudeAdapter", () => {
       });
     });
 
+    it("classifies the expired OAuth terminal as an authentication failure", () => {
+      const stdout = JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "Failed to authenticate: OAuth session expired and could not be refreshed",
+      });
+      expect(adapter.parseResult(stdout, "", 1)).toMatchObject({
+        exitCode: 1,
+        status: "failure",
+        terminalStatus: "failure",
+        errorType: "auth_failure",
+      });
+    });
+
     it("registers a valid agent manifest in PluginLoader with matching capabilities to agy", async () => {
       const loader = new PluginLoader({ projectDir: process.cwd() });
       const claudePlugin = await loader.resolvePlugin("claude");
