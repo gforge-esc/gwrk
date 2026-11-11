@@ -416,9 +416,19 @@ export function qualificationStaleness(
 const credentialHeaders =
   "(?:authorization|proxy-authorization|cookie|set-cookie)";
 const secretPattern = new RegExp(
-  String.raw`(?:^|[^a-z0-9])(?:bearer\s+[^\s"]+|sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"(?:${credentialHeaders}|api[_-]?key|access[_-]?token|password)"\s*:`,
+  String.raw`(?:^|[^a-z0-9])(?:bearer\s+[^\s"]+|sk-|AIza|gh[pousr]_|github_pat_|xox[baprs]-|xapp-)|"(?:${credentialHeaders}|api[_-]?key|access[_-]?token|password)"\s*:`,
   "i",
 );
+const mailboxPattern =
+  /(?:[\p{L}\p{M}\p{N}!#$%&'*+/=?^_\x60{|}~.-]{1,64}|"(?:[^"\\\r\n]|\\.){1,64}")@(?:\[[^\]\r\n]{1,255}\]|(?:[\p{L}\p{M}\p{N}-]+\.)+[\p{L}][\p{L}\p{M}\p{N}-]*)/u;
+
+function containsSensitiveText(text: string): boolean {
+  return (
+    secretPattern.test(text) ||
+    (text.includes("@") && mailboxPattern.test(text))
+  );
+}
+
 const headerPattern = new RegExp(
   String.raw`\b${credentialHeaders}[ \t]*:`,
   "i",
@@ -634,11 +644,11 @@ function scanEvidence(
       }
       if (
         headerPattern.test(key) ||
-        secretPattern.test(key) ||
+        containsSensitiveText(key) ||
         isCredentialHeaderRecord(entry, "name") ||
         isCredentialHeaderRecord(entry, "key") ||
         (typeof entry === "string" &&
-          (headerPattern.test(entry) || secretPattern.test(entry))) ||
+          (headerPattern.test(entry) || containsSensitiveText(entry))) ||
         (Array.isArray(entry) &&
           !isHeaderValue &&
           entry.some(
@@ -659,7 +669,7 @@ function scanEvidence(
     }) ?? "";
   if (
     secretInText ||
-    secretPattern.test(serialized) ||
+    containsSensitiveText(serialized) ||
     knownSecrets.some(
       (secret) =>
         Boolean(secret) &&

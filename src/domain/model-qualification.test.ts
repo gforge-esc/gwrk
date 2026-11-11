@@ -1520,6 +1520,30 @@ describe("model qualification policy", () => {
     expect(blindCandidate("fixture-key", "comparison-0")).toBe(options[0]);
   });
 
+  it.each([
+    "operator@[192.0.2.1]",
+    "operator@[IPv6:2001:db8::1]",
+    '"Fixture Operator"@[192.0.2.1]',
+    "operatör@example.invalid",
+  ])("rejects mailbox %s in keys, values and encoded evidence", (mailbox) => {
+    for (const evidence of [
+      { contact: mailbox },
+      { [mailbox]: "fixture" },
+      { sanitizedOutput: JSON.stringify({ contact: mailbox }) },
+    ]) {
+      expect(() => assertNoSecretMaterial(evidence)).toThrow(/Secret material/);
+    }
+  });
+
+  it("allows network addresses and versioned model names", () => {
+    expect(() =>
+      assertNoSecretMaterial({
+        endpoints: ["[192.0.2.1]", "[2001:db8::1]"],
+        modelId: "fixture@1.0",
+      }),
+    ).not.toThrow();
+  });
+
   it("rejects credentials without echoing their value", () => {
     expect(() =>
       assertNoSecretMaterial({ header: "Authorization: Bearer fixture-token" }),
