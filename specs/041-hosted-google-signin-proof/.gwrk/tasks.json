@@ -1,0 +1,141 @@
+{
+  "featureId": "041-hosted-google-signin-proof",
+  "createdAt": "2026-11-11T16:25:13.889Z",
+  "generatedFrom": {
+    "plan": {
+      "hash": "db8091b4e4e600b7daf49d56dafa8841af795135912fcc2519e764d24e63aa9c",
+      "modifiedAt": "2026-11-11T16:24:18.225Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-01",
+      "title": "Deployment input validation",
+      "tasks": [
+        {
+          "id": "T001",
+          "title": "Create preflight.sh",
+          "description": "NEW deploy/hosted-auth-proof/preflight.sh. Reject missing credentials, placeholders and wildcard allowlist entries. Tests: tests/hosted-auth-proof/preflight.test.ts",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/preflight.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T002",
+          "title": "Create .env.example",
+          "description": "NEW deploy/hosted-auth-proof/.env.example. Name the public host inputs",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/preflight.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "tests/hosted-auth-proof/preflight.test.ts"
+      ]
+    },
+    {
+      "id": "phase-02",
+      "title": "Isolated OpenID Connect fixture",
+      "tasks": [
+        {
+          "id": "T003",
+          "title": "Create oidc-issuer.mjs",
+          "description": "NEW tests/hosted-auth-proof/oidc-issuer.mjs. Issue signed identity tokens and verify the proof key for code exchange",
+          "status": "open",
+          "gateScript": "node tests/hosted-auth-proof/gateway-proof.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T004",
+          "title": "Create gateway-proof.mjs",
+          "description": "NEW tests/hosted-auth-proof/gateway-proof.mjs. Run the real gateway and private origin on isolated networks",
+          "status": "open",
+          "gateScript": "node tests/hosted-auth-proof/gateway-proof.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T005",
+          "title": "Create compose.test.yaml",
+          "description": "NEW tests/hosted-auth-proof/compose.test.yaml. Bind loopback test ports and select the synthetic issuer",
+          "status": "open",
+          "gateScript": "node tests/hosted-auth-proof/gateway-proof.mjs",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 6,
+      "testTargets": [
+        "tests/hosted-auth-proof/production-bundle.test.ts",
+        "tests/hosted-auth-proof/preflight.test.ts"
+      ]
+    },
+    {
+      "id": "phase-03",
+      "title": "Google gateway bundle",
+      "tasks": [
+        {
+          "id": "T006",
+          "title": "Create compose.yaml",
+          "description": "NEW deploy/hosted-auth-proof/compose.yaml. Pin images and publish the edge ports",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T007",
+          "title": "Create dynamic.yaml",
+          "description": "NEW deploy/hosted-auth-proof/traefik/dynamic.yaml. Require an authenticated session before proxying status",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T008",
+          "title": "Create oauth2-proxy.cfg",
+          "description": "NEW deploy/hosted-auth-proof/oauth2-proxy/oauth2-proxy.cfg. Require Google issuer, verified email and a secure cookie",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "sp": 2
+        },
+        {
+          "id": "T009",
+          "title": "Create default.conf",
+          "description": "NEW deploy/hosted-auth-proof/status/default.conf. Serve the fixed read-only response",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/production-bundle.test.ts\nnode tests/hosted-auth-proof/gateway-proof.mjs",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 8,
+      "testTargets": [
+        "tests/hosted-auth-proof/production-bundle.test.ts"
+      ]
+    },
+    {
+      "id": "phase-04",
+      "title": "Operations and live acceptance",
+      "tasks": [
+        {
+          "id": "T010",
+          "title": "Create README.md",
+          "description": "NEW deploy/hosted-auth-proof/README.md. Describe deployment, acceptance, allowlist revocation and teardown",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/production-bundle.test.ts tests/hosted-auth-proof/preflight.test.ts",
+          "sp": 2
+        },
+        {
+          "id": "T011",
+          "title": "Create live-acceptance.example.md",
+          "description": "NEW deploy/hosted-auth-proof/live-acceptance.example.md. Record the proof host and acceptance evidence",
+          "status": "open",
+          "gateScript": "pnpm exec vitest run tests/hosted-auth-proof/production-bundle.test.ts tests/hosted-auth-proof/preflight.test.ts",
+          "sp": 2
+        }
+      ],
+      "sp_estimate": 4,
+      "testTargets": [
+        "tests/hosted-auth-proof/production-bundle.test.ts"
+      ]
+    }
+  ]
+}
