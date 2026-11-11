@@ -429,6 +429,38 @@ describe("model qualification policy", () => {
     },
   );
 
+  it.each([
+    ["provider-a/model-v1", { promote: false, reason: "judge-dependence" }],
+    ["provider-b/model-v1", { promote: true }],
+  ])(
+    "checks judge independence on a shared backend with second model %s",
+    (modelId, expected) => {
+      const [first, second] = passingEvidence.judges;
+      const input = JSON.parse(
+        JSON.stringify({
+          ...passingEvidence,
+          judges: [
+            {
+              ...first,
+              judge: {
+                ...first.judge,
+                backend: "aggregator",
+                modelId: "provider-a/model-v1",
+              },
+              observedJudgeModel: "provider-a/model-v1",
+            },
+            {
+              ...second,
+              judge: { ...second.judge, backend: "aggregator", modelId },
+              observedJudgeModel: modelId,
+            },
+          ],
+        }),
+      );
+      expect(evaluatePromotion(input)).toEqual(expected);
+    },
+  );
+
   describe.each(["input", "output", "gate"] as const)("%s citation", (kind) => {
     it.each([null, "", " ", 42])(
       "rejects a persisted reference of %j even when the artifact matches",

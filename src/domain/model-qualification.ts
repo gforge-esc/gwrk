@@ -261,6 +261,13 @@ export function evaluatePromotion(input: PromotionEvidence): PromotionDecision {
   ) {
     return { promote: false, reason: "judge-dependence" };
   }
+  const [firstJudge, secondJudge] = input.judges;
+  if (
+    firstJudge.judge.backend === secondJudge.judge.backend &&
+    firstJudge.judge.modelId === secondJudge.judge.modelId
+  ) {
+    return { promote: false, reason: "judge-dependence" };
+  }
 
   if (
     !Array.isArray(input.refs?.input) ||
