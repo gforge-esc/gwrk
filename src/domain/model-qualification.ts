@@ -530,10 +530,15 @@ function findJsonTokenEnd(text: string, start: number): number | undefined {
   return undefined;
 }
 
+const inspectedStringLiteral =
+  /"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60/;
+
 // Normalize inspect's visible values before JSON parsing.
 function inspectedRecordAsJson(token: string): string {
-  const tokens =
-    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\x60(?:[^\x60\\]|\\[\s\S])*\x60)(?:\.\.\. \d+ more characters?)?|([A-Za-z_$][\w$]*)(?=\s*:)|((?:,\s*(?:\.\.\. \d+ more items?|\[length\]\s*:\s*\d+(?:_\d{3})*)(?=\s*[,\]])|\[length\]\s*:\s*\d+(?:_\d{3})*\s*,?))/g;
+  const tokens = new RegExp(
+    String.raw`(${inspectedStringLiteral.source})(?:\.\.\. \d+ more characters?)?|([A-Za-z_$][\w$]*)(?=\s*:)|((?:,\s*(?:\.\.\. \d+ more items?|\[length\]\s*:\s*\d+(?:_\d{3})*)(?=\s*[,\]])|\[length\]\s*:\s*\d+(?:_\d{3})*\s*,?))`,
+    "g",
+  );
   const escapes: Record<string, string> = {
     "0": "\0",
     b: "\b",
@@ -725,21 +730,35 @@ function scanEmbeddedJson(
   ) {
     throw new Error(secretMaterialMessage);
   }
-  const openings = /["[{]/g;
+  const openings = /["'\x60[{]/g;
+  const fragments = new RegExp(
+    String.raw`(?:${inspectedStringLiteral.source})(?:\s*\+\s*(?:${inspectedStringLiteral.source}))+`,
+    "y",
+  );
   for (
     let opening = openings.exec(text);
     opening !== null;
     opening = openings.exec(text)
   ) {
-    const end = findJsonTokenEnd(text, opening.index);
+    const [opener] = opening;
+    const isRecord = opener === "{" || opener === "[";
+    fragments.lastIndex = opening.index;
+    const concatenation = !isRecord && fragments.test(text);
+    if (!isRecord && !concatenation && opener !== '"') continue;
+
+    const end = concatenation
+      ? fragments.lastIndex
+      : findJsonTokenEnd(text, opening.index);
     if (end === undefined) continue;
     let token = text.slice(opening.index, end);
     let decoded: unknown;
     let inspectedRecord: string | undefined;
     try {
-      decoded = JSON.parse(token);
+      decoded = JSON.parse(
+        concatenation ? inspectedRecordAsJson(token) : token,
+      );
     } catch {
-      if (!token.startsWith("[") && !token.startsWith("{")) continue;
+      if (!isRecord) continue;
       try {
         inspectedRecord = inspectedRecordAsJson(token);
         token = normalizeInspectedArrayEntries(inspectedRecord);

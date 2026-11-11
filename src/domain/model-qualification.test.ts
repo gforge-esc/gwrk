@@ -990,17 +990,18 @@ describe("credential guard", () => {
     },
   );
 
-  it.each(["object", "array"] as const)(
-    "detects a known multiline secret split across inspected %s strings",
-    (container) => {
+  it.each<[string, (text: string) => unknown]>([
+    ["object", (text) => ({ data: text })],
+    ["array", (text) => [text]],
+    ["standalone", (text) => text],
+    ["object with BigInt metadata", (text) => ({ data: text, timestamp: 1n })],
+    ["map", (text) => new Map([["data", text]])],
+  ])(
+    "detects a known multiline secret in inspected output for %s",
+    (_container, wrap) => {
       const secret = "fixture-private-first-line\nfixture-private-second-line";
-      const wrap = (text: string) =>
-        container === "object" ? { data: text } : [text];
       const sanitizedOutput = inspect(wrap(secret), { breakLength: 35 });
       expect(sanitizedOutput).toMatch(/\+\s*['"`]/);
-      expect(() =>
-        assertNoSecretMaterial({ sanitizedOutput }, [secret]),
-      ).toThrow(/secret material/i);
       const control = inspect(
         wrap(
           "ordinary text on the first line\nordinary text on the second line",
@@ -1011,6 +1012,9 @@ describe("credential guard", () => {
       expect(() =>
         assertNoSecretMaterial({ sanitizedOutput: control }, [secret]),
       ).not.toThrow();
+      expect(() =>
+        assertNoSecretMaterial({ sanitizedOutput }, [secret]),
+      ).toThrow(/secret material/i);
     },
   );
 
