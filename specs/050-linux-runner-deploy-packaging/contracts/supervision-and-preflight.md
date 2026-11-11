@@ -14,7 +14,7 @@ Linux supervision runs one foreground `gwrk` server on a private interface under
 
 ## Environment variable precedence
 
-Phase 3 aligns path resolution in `src/db/index.ts` and `src/plugins/loader.ts`. It applies the same rules in `src/server/pid.ts` and `src/commands/server.ts`.
+Phase 3 shares path resolution across the ledger, plugin loader, global config, device state and daemon commands. The hosted Linux unit sets `GWRK_RUNTIME_DIR` to activate the instance lock.
 
 | Concern | Primary variable | Fallback chain |
 |---|---|---|
@@ -25,7 +25,7 @@ Phase 3 aligns path resolution in `src/db/index.ts` and `src/plugins/loader.ts`.
 
 ## Single-instance lock and supervised recovery
 
-`src/adapters/server/instance-lock.ts` claims `<runtimeRoot>/server.lock` before `startServer` binds Fastify. The same lock guards `DispatchQueue`, `HarvestWatcher` and `startSlackApp`. Use a kernel-held lock that releases when its owner exits. Keep the lockfile inode in place while the service can restart. Treat PID metadata as diagnostic output.
+`src/adapters/server/instance-lock.ts` claims `<runtimeRoot>/server.lock` before `startServer` binds Fastify. The same lock guards `DispatchQueue`, `HarvestWatcher` and `startSlackApp`. Use a kernel-held lock that releases when its owner exits. Keep the lockfile inode in place across restarts. Treat PID metadata as diagnostic output. The supervisor stops the whole process group. Feature 049 owns durable work recovery and checks for unfinished effects after restart.
 
 | Scenario | Lock state | Required behavior |
 |---|---|---|

@@ -3,6 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fastify from "fastify";
+import { gwrkRuntimeDir, usesHostedRuntime } from "../adapters/config/paths.js";
+import { acquireInstanceLock } from "../adapters/server/instance-lock.js";
+import type { InstanceLockHandle } from "../ports/release-ops-port.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
@@ -45,6 +48,22 @@ export async function startServer(
   config: GwrkConfig,
   options: { handleSignals?: boolean } = { handleSignals: true },
 ) {
+  const instanceLock = usesHostedRuntime()
+    ? acquireInstanceLock(gwrkRuntimeDir(), process.pid)
+    : undefined;
+  try {
+    return await startLockedServer(config, options, instanceLock);
+  } catch (error) {
+    instanceLock?.release();
+    throw error;
+  }
+}
+
+async function startLockedServer(
+  config: GwrkConfig,
+  options: { handleSignals?: boolean },
+  instanceLock: InstanceLockHandle | undefined,
+) {
   const projectRoot = process.cwd();
   const server = fastify({
     logger: true,
@@ -58,7 +77,6 @@ export async function startServer(
   }
 
   const monitor = new SystemMonitor(config);
-  monitor.startPolling();
   const sandbox = new SandboxManager();
 
   const git = new GitManager(projectRoot);
@@ -110,53 +128,72 @@ export async function startServer(
     await reconnect();
   });
 
-  lifecycle.start();
-  network.start();
-
   // FR-015: Build Plan Heartbeat
   const slackApp = getSlackApp();
   const planHeartbeat = new PlanHeartbeat(config, slackApp, projectRoot);
-  planHeartbeat.start();
 
   // Poll-based HarvestWatcher
   const harvestWatcher = new HarvestWatcher(config, slackApp, projectRoot);
-  harvestWatcher.start();
 
-  await healthRoutes(server, lifecycle, network, sandbox);
-  await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
-  await dispatchRoutes(server, queue);
-  await githubWebhookPlugin(server, { config, projectRoot });
-  await notifyRoutes(server);
-
-  const shutdown = async () => {
+  let pidWritten = false;
+  const shutdown = () => {
     server.log.info("Shutting down server...");
+    void server.close().then(
+      () => process.exit(0),
+      (error) => {
+        server.log.error(error);
+        process.exit(1);
+      },
+    );
+  };
+  server.addHook("onClose", async () => {
+    process.off("SIGTERM", shutdown);
+    process.off("SIGINT", shutdown);
+    queue.pause();
     planHeartbeat.stop();
     harvestWatcher.stop();
-    await stopSlackApp();
-    await stopTelegramBot();
     lifecycle.stop();
     network.stop();
     monitor.stopPolling();
-    await server.close();
-    removePid();
-    server.log.info("Server shut down.");
-    if (options.handleSignals) {
-      process.exit(0);
+    try {
+      const results = await Promise.allSettled([
+        stopSlackApp(),
+        stopTelegramBot(),
+      ]);
+      for (const result of results) {
+        if (result.status === "rejected") server.log.error(result.reason);
+      }
+    } finally {
+      if (pidWritten) removePid();
+      instanceLock?.release();
     }
-  };
-
-  if (options.handleSignals) {
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
-  }
+  });
 
   try {
+    await healthRoutes(server, lifecycle, network, sandbox);
+    await statusRoutes(server, monitor, queue, sandbox, lifecycle, network);
+    await dispatchRoutes(server, queue);
+    await githubWebhookPlugin(server, { config, projectRoot });
+    await notifyRoutes(server);
+
+    monitor.startPolling();
+    lifecycle.start();
+    network.start();
+    planHeartbeat.start();
+    harvestWatcher.start();
+
+    if (options.handleSignals) {
+      process.once("SIGTERM", shutdown);
+      process.once("SIGINT", shutdown);
+    }
+
     const address = await server.listen({
       port: config.server.port,
       host: config.server.host,
     });
     console.log(`gwrk server listening on ${address}`);
     writePid(process.pid);
+    pidWritten = true;
 
     // FR-002: Prune worktrees on startup
     await sandbox.pruneSandboxes();
@@ -183,8 +220,8 @@ export async function startServer(
     });
 
     return server;
-  } catch (err) {
-    server.log.error(err);
-    process.exit(1);
+  } catch (error) {
+    await server.close().catch((closeError) => server.log.error(closeError));
+    throw error;
   }
 }

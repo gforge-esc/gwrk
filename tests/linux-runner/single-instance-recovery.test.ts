@@ -8,8 +8,11 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { acquireInstanceLock } from "../../src/adapters/server/instance-lock.js";
+import { closeDb, getDb } from "../../src/db/index.js";
+import { startServer } from "../../src/server/index.js";
+import { GwrkConfigSchema } from "../../src/utils/config.js";
 
 describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
   it("blocks an independent process and recovers after SIGKILL without replacing the inode", async () => {
@@ -63,6 +66,60 @@ describe.skipIf(process.platform !== "linux")("Linux instance lock", () => {
         await exited;
       }
       await rm(runtimeDir, { recursive: true, force: true });
+    }
+  });
+
+  it("guards actual server startup and reopens the same isolated ledger after close", async () => {
+    const root = await mkdtemp(join(tmpdir(), "gwrk-server-test-"));
+    const runtime = join(root, "runtime");
+    const state = join(root, "state");
+    vi.stubEnv("GWRK_RUNTIME_DIR", runtime);
+    vi.stubEnv("GWRK_HOME", state);
+    for (const key of [
+      "GWRK_DIR",
+      "GWRK_DB_PATH",
+      "SLACK_BOT_TOKEN",
+      "SLACK_APP_TOKEN",
+      "TELEGRAM_BOT_TOKEN",
+      "TELEGRAM_CHAT_ID",
+    ]) {
+      vi.stubEnv(key, undefined);
+    }
+    const config = GwrkConfigSchema.parse({
+      project: { name: "linux-test" },
+      server: { host: "127.0.0.1", port: 0 },
+    });
+    let server: Awaited<ReturnType<typeof startServer>> | undefined;
+    try {
+      server = await startServer(config, { handleSignals: false });
+      expect(await readFile(join(runtime, "server.pid"), "utf8")).toBe(
+        String(process.pid),
+      );
+      await expect(
+        startServer(config, { handleSignals: false }),
+      ).rejects.toThrow(/already holds/);
+
+      const db = getDb();
+      db.exec("CREATE TABLE recovery_fixture (marker TEXT NOT NULL)");
+      db.prepare("INSERT INTO recovery_fixture VALUES (?)").run("persisted");
+      await server.close();
+      server = undefined;
+      await expect(stat(join(runtime, "server.pid"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      closeDb();
+      expect((await stat(join(state, "gwrk.db"))).isFile()).toBe(true);
+
+      server = await startServer(config, { handleSignals: false });
+      expect(
+        getDb().prepare("SELECT marker FROM recovery_fixture").get(),
+      ).toEqual({ marker: "persisted" });
+      expect((await server.inject("/health")).statusCode).toBe(200);
+    } finally {
+      await server?.close();
+      closeDb();
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

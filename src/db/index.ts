@@ -3,12 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fs from "node:fs";
-import os from "node:os";
+import { homedir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 
-const GWRK_DIR = process.env.GWRK_DIR || path.join(os.homedir(), ".gwrk");
-const DB_PATH = process.env.GWRK_DB_PATH || path.join(GWRK_DIR, "gwrk.db");
+import { resolveGwrkPaths } from "../domain/gwrk-paths.js";
 const MIGRATIONS_DIR = path.join(
   path.dirname(new URL(import.meta.url).pathname),
   "migrations",
@@ -23,9 +22,10 @@ let _db: Database.Database | undefined;
 export function getDb(): Database.Database {
   if (_db) return _db;
 
-  fs.mkdirSync(GWRK_DIR, { recursive: true });
+  const dbPath = getDbPath();
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-  _db = new Database(DB_PATH);
+  _db = new Database(dbPath);
 
   // WAL mode for better concurrent read performance
   _db.pragma("journal_mode = WAL");
@@ -146,5 +146,5 @@ function safeAddColumn(
  * Get the database file path (for display).
  */
 export function getDbPath(): string {
-  return DB_PATH;
+  return _db?.name ?? resolveGwrkPaths(process.env, homedir()).database;
 }

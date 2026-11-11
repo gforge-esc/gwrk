@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { gwrkHome } from "../adapters/config/paths.js";
 
 export interface DeviceRecord {
   id: string;
@@ -19,8 +20,7 @@ export interface DeviceRecord {
  * GWRK_HOME overrides ~/.gwrk for testing.
  */
 function devicePath(): string {
-  const gwrkHome = process.env.GWRK_HOME || path.join(os.homedir(), ".gwrk");
-  return path.join(gwrkHome, "device.json");
+  return path.join(gwrkHome(), "device.json");
 }
 
 /** Read the device record, or null if this machine has never run init. */
