@@ -398,6 +398,29 @@ function findJsonRecordEnd(text: string, start: number): number | undefined {
   return undefined;
 }
 
+function assertUniqueJsonKeys(record: string): void {
+  const tokens = /("(?:[^"\\]|\\.)*")(\s*:)?|[{}[\]]/g;
+  const scopes: Array<Set<string> | null> = [];
+  for (const [token, quoted, colon] of record.matchAll(tokens)) {
+    if (token === "{") {
+      scopes.push(new Set());
+    } else if (token === "[") {
+      scopes.push(null);
+    } else if (token === "}" || token === "]") {
+      scopes.pop();
+    } else if (colon) {
+      const keys = scopes.at(-1);
+      const key = JSON.parse(quoted) as string;
+      if (keys?.has(key)) {
+        throw new Error(
+          "Duplicate object keys in model qualification evidence.",
+        );
+      }
+      keys?.add(key);
+    }
+  }
+}
+
 function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
   const openings = /[[{]/g;
   for (
@@ -407,12 +430,14 @@ function scanEmbeddedJson(text: string, knownSecrets: readonly string[]): void {
   ) {
     const end = findJsonRecordEnd(text, opening.index);
     if (end === undefined) continue;
+    const record = text.slice(opening.index, end);
     let decoded: unknown;
     try {
-      decoded = JSON.parse(text.slice(opening.index, end));
+      decoded = JSON.parse(record);
     } catch {
       continue;
     }
+    assertUniqueJsonKeys(record);
     assertNoSecretMaterial(decoded, knownSecrets);
     openings.lastIndex = end;
   }

@@ -175,6 +175,25 @@ describe("credential guard", () => {
     expect(() => assertNoSecretMaterial({ sanitizedOutput })).not.toThrow();
   });
 
+  it.each(["rawHeaders", String.raw`raw\u0048eaders`])(
+    "rejects duplicate embedded header keys with spelling %s",
+    (key) => {
+      const sanitizedOutput = `response: {"rawHeaders":["Cookie","session=fixture-only"],"${key}":[]}`;
+      expect(() => assertNoSecretMaterial({ sanitizedOutput })).toThrow(
+        /duplicate object keys/i,
+      );
+    },
+  );
+
+  it("allows the same JSON key in separate embedded objects", () => {
+    expect(() =>
+      assertNoSecretMaterial({
+        sanitizedOutput:
+          'response: {"nested":[{"header":"first"},{"header":"second"}]}',
+      }),
+    ).not.toThrow();
+  });
+
   it("rejects Set-Cookie headers in fenced JSON fixture output", () => {
     const sanitizedOutput = [
       "Response headers",
