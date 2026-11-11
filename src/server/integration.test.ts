@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
 import fastify from "fastify";
@@ -13,8 +13,11 @@ import {
   createServerFixture,
   fixtureGit,
 } from "../../tests/helpers/server-fixture.js";
+import { getCompressionRecord } from "../db/compression.js";
+import { getGateResults } from "../db/gates.js";
 import { getDb } from "../db/index.js";
 import { listRuns, startRun } from "../db/runs.js";
+import { gatherDeliveryActuals } from "../engine/compression.js";
 import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import { execCommand } from "../utils/exec.js";
 import { syncTrunkForHarvest } from "../utils/git.js";
@@ -53,6 +56,10 @@ vi.mock("./telegram.js", () => ({
 vi.mock("../engine/ship-orchestrator.js", () => ({
   ShipOrchestrator: vi.fn(),
 }));
+vi.mock("../engine/compression.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/compression.js")>()),
+  gatherDeliveryActuals: vi.fn(),
+}));
 vi.mock("../db/index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../db/index.js")>()),
   getDb: vi.fn(() => {
@@ -65,6 +72,7 @@ vi.mock("../utils/exec.js", async (importOriginal) => ({
 }));
 vi.mock("../utils/git.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/git.js")>()),
+  deleteRemoteBranch: vi.fn(),
   syncTrunkForHarvest: vi.fn(),
 }));
 
@@ -113,6 +121,7 @@ describe("Server E2E Integration", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("keeps two live servers on separate roots and closes their listeners and pollers", async () => {
@@ -283,7 +292,7 @@ describe("Server E2E Integration", () => {
     }
   });
 
-  it("uses scoped compression and run records when the startup watcher sees closed pull requests", async () => {
+  it("uses scoped persistence when the startup watcher sees terminal pull requests", async () => {
     stubListener();
     const watcher = vi.spyOn(HarvestWatcher.prototype, "runCheck");
     let returnPullRequests!: (
@@ -296,17 +305,26 @@ describe("Server E2E Integration", () => {
     );
     const fixture = await createServerFixture("listen");
     const closedAt = "2026-01-01T00:00:00Z";
-    const pullRequests = ["already-harvested", "pending-harvest"].map(
-      (featureId, index) => ({
-        number: index + 1,
-        headRefName: `feat/${featureId}-phase-01`,
-        state: "CLOSED",
-        closedAt,
-        url: `https://example.invalid/pr/${index + 1}`,
-      }),
-    );
+    const features = [
+      { id: "already-harvested", state: "CLOSED" },
+      { id: "pending-harvest", state: "CLOSED" },
+      { id: "merged-feature", state: "MERGED" },
+    ];
+    const pullRequests = features.map(({ id, state }, index) => ({
+      number: index + 1,
+      headRefName: `feat/${id}-phase-01`,
+      state,
+      closedAt,
+      mergedAt: state === "MERGED" ? closedAt : null,
+      url: `https://example.invalid/pr/${index + 1}`,
+    }));
     try {
       try {
+        vi.stubEnv("GWRK_HOME", join(fixture.projectRoot, ".gwrk"));
+        writeFileSync(
+          join(fixture.projectRoot, ".gwrkrc.json"),
+          JSON.stringify({ project: { name: fixture.projectId } }),
+        );
         fixture.db
           .prepare(`
         INSERT INTO compression (
@@ -315,10 +333,10 @@ describe("Server E2E Integration", () => {
         ) VALUES ('already-harvested', 'phase-01', ?, 1, 1, 1, 1, 1, 1, ?)
       `)
           .run(fixture.projectId, closedAt);
-        for (const featureId of ["already-harvested", "pending-harvest"]) {
+        for (const { id } of features) {
           startRun(
             {
-              feature_id: featureId,
+              feature_id: id,
               phase_id: "phase-01",
               project_id: fixture.projectId,
               command: "ship",
@@ -326,6 +344,45 @@ describe("Server E2E Integration", () => {
             fixture.db,
           );
         }
+        const featureDir = join(fixture.projectRoot, "specs", "merged-feature");
+        const featureStateDir = join(featureDir, ".gwrk");
+        mkdirSync(featureStateDir, { recursive: true });
+        writeFileSync(
+          join(featureDir, "plan.md"),
+          "## Phase 1: Merge (1 SP)\n",
+        );
+        writeFileSync(
+          join(featureStateDir, "tasks.json"),
+          JSON.stringify({
+            featureId: "merged-feature",
+            createdAt: closedAt,
+            phases: [
+              {
+                id: "phase-01",
+                title: "Merge",
+                tasks: [
+                  {
+                    id: "T001",
+                    title: "Verify merged phase",
+                    description: "",
+                    status: "open",
+                    gateScript: "true",
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        vi.mocked(gatherDeliveryActuals).mockReturnValueOnce({
+          specCreatedAt: closedAt,
+          firstImplCommit: closedAt,
+          lastImplCommit: closedAt,
+          prMergedAt: closedAt,
+          dormancyDays: 0,
+          activeCodingMinutes: 60,
+          sessionCount: 1,
+          deliveryWindowHours: 1,
+        });
       } finally {
         returnPullRequests({
           exitCode: 0,
@@ -336,7 +393,7 @@ describe("Server E2E Integration", () => {
       }
       expect(watcher).toHaveBeenCalledOnce();
       expect(getDb).not.toHaveBeenCalled();
-      expect(syncTrunkForHarvest).toHaveBeenCalledOnce();
+      expect(syncTrunkForHarvest).toHaveBeenCalledTimes(2);
       expect(
         listRuns("pending-harvest", fixture.projectId, fixture.db),
       ).toEqual([
@@ -345,6 +402,22 @@ describe("Server E2E Integration", () => {
       expect(
         listRuns("already-harvested", fixture.projectId, fixture.db),
       ).toEqual([expect.objectContaining({ finished_at: null })]);
+      expect(
+        getGateResults(
+          "merged-feature",
+          "phase-01",
+          fixture.projectId,
+          fixture.db,
+        ),
+      ).toEqual([expect.objectContaining({ task_id: "T001", passed: 1 })]);
+      expect(
+        getCompressionRecord(
+          "merged-feature",
+          "phase-01",
+          fixture.projectId,
+          fixture.db,
+        ),
+      ).toMatchObject({ feature_id: "merged-feature" });
     } finally {
       await fixture.close();
     }
