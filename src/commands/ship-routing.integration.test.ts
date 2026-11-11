@@ -332,6 +332,20 @@ describe("ship with the real AgentPort router", () => {
     expect(await decisions()).toEqual([]);
   });
 
+  it("previews phase commands when all configured quota is exhausted", async () => {
+    seedQuota(0, 0);
+    await ship("--dry-run");
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("All backends quota-exhausted. Retry after reset."),
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining(`work-until-done.sh ${feature} 01`),
+    );
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
+    expect(await decisions()).toEqual([]);
+  });
+
   it.each([false, true])(
     "stops at three automatic backend attempts with native refusal %s",
     async (nativeRefusal) => {

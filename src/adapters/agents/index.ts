@@ -18,7 +18,10 @@ import { QuotaProber, type QuotaReading } from "../../server/quota-prober.js";
 import { recordDecision } from "../../server/routing-decisions.js";
 import { loadConfig } from "../../utils/config.js";
 import { resolveProjectId } from "../../utils/project-id.js";
-import { tryLoadRegistry } from "./registry-loader.js";
+import {
+  InvalidAgentRegistryError,
+  tryLoadRegistry,
+} from "./registry-loader.js";
 
 interface AgentPortAdapterOptions {
   projectRoot?: string;
@@ -59,7 +62,9 @@ async function selectAvailableRoute(
 ) {
   const registered = tryLoadRegistry(projectRoot);
   if (context.requireRegistry && !registered.ok) {
-    throw new Error(registered.error.message, { cause: registered.error });
+    throw new InvalidAgentRegistryError(registered.error.message, {
+      cause: registered.error,
+    });
   }
   const agentRegistry = registered.ok ? registered.value : undefined;
   const requestedRoute = {

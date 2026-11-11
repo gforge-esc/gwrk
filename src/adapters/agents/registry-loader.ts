@@ -13,6 +13,8 @@ import {
 } from "../../domain/agent-config.js";
 import { exitCli, logCliError } from "../cli/output-scope.js";
 
+export class InvalidAgentRegistryError extends Error {}
+
 function readLayer(filePath: string): string | null {
   if (!fs.existsSync(filePath)) return null;
   try {

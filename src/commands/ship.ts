@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { createAgentPortAdapter } from "../adapters/agents/index.js";
+import { InvalidAgentRegistryError } from "../adapters/agents/registry-loader.js";
 import {
   logCliError,
   logCliOutput,
@@ -807,7 +808,7 @@ Examples:
                 `  🤖 Would build with backend: ${implementation.backend}, model: ${implementation.model}, effort: ${implementation.effort ?? "default"} (router: ${implementation.reason})`,
               );
             } catch (error) {
-              if (implementationRoute.requireRegistry) throw error;
+              if (error instanceof InvalidAgentRegistryError) throw error;
               logCliOutput(
                 `  🤖 Could not select an implementation route: ${error}`,
               );
