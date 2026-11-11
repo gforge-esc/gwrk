@@ -313,8 +313,9 @@ export interface OperationsStorePort {
    * Attach verified pull request facts, including the head repository, when they arrive.
    * Persist both work keys for replay and keep distinct verified pull requests separate.
    * Preserve a verified merge on a later close.
-   * Enrich missing facts from a later delivery for the same pull request and merge scope.
-   * Never replace an existing head repository, branch or expected tip with conflicting facts.
+   * Take head facts only from the verified pull request on first attachment.
+   * Fill missing head facts from later verified deliveries for the same pull request and merge scope.
+   * Reject enrichment that conflicts with existing verified head facts.
    * Use planLateBranchCleanup when verified facts enrich a matching local or pull request harvest.
    * Persist activated cleanup receipts with the new facts and rederive status atomically.
    * Clear completedAt when a prior completion becomes recoverable. Preserve its lease fence.
@@ -361,6 +362,7 @@ export interface OperationsStorePort {
   /**
    * Persist the full, nonempty set of initial receipts in one fenced write.
    * Require all stages for the supplied phase IDs and the operation's terminal event.
+   * Derive Slack eligibility from the saved recipient and its project feature thread under the fence.
    * Derive cleanup eligibility from current stored pull request facts under the fence.
    * Use hasVerifiedBranchCleanupTarget and validate the plan with isCompleteHarvestStagePlan.
    * If the operation names a phase, require that phase alone.
@@ -371,6 +373,7 @@ export interface OperationsStorePort {
     fence: LeaseFence;
     nowIso: string;
     phaseIds: readonly string[];
+    /** Target used to build the proposed plan. Stored routing decides eligibility. */
     hasSlackTarget: boolean;
     /** Target used to build the proposed plan. Stored facts decide eligibility. */
     hasRemoteBranchTarget: boolean;

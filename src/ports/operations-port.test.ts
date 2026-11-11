@@ -400,6 +400,25 @@ function restoreRecoveryStore(persisted: {
   const byCreation = (a: { createdAt: string }, b: { createdAt: string }) =>
     a.createdAt.localeCompare(b.createdAt);
 
+  function resolveHarvestSlackRecipient(row: DurableHarvestOperation) {
+    const { recipient } = row;
+    if (recipient?.surface !== "slack" || recipient.projectId !== row.projectId)
+      return null;
+    const thread = featureThreads.find(
+      (entry) =>
+        entry.projectId === row.projectId && entry.featureId === row.featureId,
+    );
+    if (thread) {
+      return {
+        ...recipient,
+        workspaceId: thread.workspaceId,
+        channelId: thread.channelId,
+        threadTs: thread.rootTs,
+      };
+    }
+    return recipient.channelId ? recipient : null;
+  }
+
   const store: RecoveryStore = {
     getDispatchOperation({ projectId, featureId, phaseId }) {
       const [operation] = dispatches
@@ -445,13 +464,7 @@ function restoreRecoveryStore(persisted: {
       row.updatedAt = nowIso;
       return result;
     },
-    initializeHarvestStages({
-      fence,
-      nowIso,
-      phaseIds,
-      hasSlackTarget,
-      stages: plan,
-    }) {
+    initializeHarvestStages({ fence, nowIso, phaseIds, stages: plan }) {
       const row = harvests.find((row) => row.operationId === fence.operationId);
       if (!row) return { ok: false, code: "LEASE_FENCED" };
       const lease = validateLeaseFence(row, fence, nowIso);
@@ -462,7 +475,7 @@ function restoreRecoveryStore(persisted: {
         !isCompleteHarvestStagePlan({
           terminalEvent: row.terminalEvent,
           phaseIds,
-          hasSlackTarget,
+          hasSlackTarget: resolveHarvestSlackRecipient(row) !== null,
           hasRemoteBranchTarget: hasVerifiedBranchCleanupTarget(row),
           stages: plan,
         })
@@ -552,21 +565,8 @@ function restoreRecoveryStore(persisted: {
           (item) =>
             item.projectId === row.projectId && item.dedupeKey === dedupeKey,
         );
-        const thread = featureThreads.find(
-          (entry) =>
-            entry.projectId === row.projectId &&
-            entry.featureId === row.featureId,
-        );
         const recipient =
-          savedNotice?.recipient ??
-          (row.recipient && thread
-            ? {
-                ...row.recipient,
-                workspaceId: thread.workspaceId,
-                channelId: thread.channelId,
-                threadTs: thread.rootTs,
-              }
-            : row.recipient);
+          savedNotice?.recipient ?? resolveHarvestSlackRecipient(row);
         if (
           failureNotice &&
           (failureNotice.eventType !== "harvest_gate_failed" ||
@@ -928,7 +928,11 @@ describe("durable recovery store contract", () => {
   it("persists a complete phase plan before work and preserves progress after takeover", () => {
     const store = restoreRecoveryStore({
       harvests: [
-        harvest("planned", { phaseId: null, headBranch: `feat/${featureId}` }),
+        harvest("planned", {
+          phaseId: null,
+          headBranch: `feat/${featureId}`,
+          recipient: outbox("notice", "pending").recipient,
+        }),
       ],
       stages: [],
       outboxItems: [],
@@ -1133,7 +1137,11 @@ describe("durable recovery store contract", () => {
     "rejects an initial plan that skips %s when required",
     (skippedStage) => {
       const store = restoreRecoveryStore({
-        harvests: [harvest("planned")],
+        harvests: [
+          harvest("planned", {
+            recipient: outbox("notice", "pending").recipient,
+          }),
+        ],
         stages: [],
         outboxItems: [],
       });
@@ -1791,6 +1799,19 @@ it.each([
       hasSlackTarget,
       hasRemoteBranchTarget: true,
     };
+    if (hasSlackTarget) {
+      const before = initial.snapshot();
+      const stalePlan = { ...plan, hasSlackTarget: false };
+      expect(
+        initial.initializeHarvestStages({
+          ...stalePlan,
+          fence: claim.fence,
+          nowIso,
+          stages: planHarvestStages(stalePlan),
+        }),
+      ).toEqual({ ok: false, code: "HARVEST_PLAN_CONFLICT" });
+      expect(initial.snapshot()).toEqual(before);
+    }
     expect(
       initial.initializeHarvestStages({
         ...plan,
@@ -1954,16 +1975,28 @@ it("enriches a completed pull request harvest when a later delivery verifies its
 it.each([
   { source: "offline commit", facts: offline },
   {
+    source: "offline commit with unverified head facts",
+    facts: {
+      ...offline,
+      headRepoSlug: "acme/a",
+      headBranch: `feat/${featureId}-${phaseId}`,
+      expectedHeadSha: sha,
+    },
+    attachIncompletePull: true,
+  },
+  {
     source: "pull request with an unknown head repository",
     facts: { headRepoSlug: null },
   },
 ])(
   "runs one tip-checked cleanup after verified facts enrich a completed $source harvest",
-  ({ facts }) => verifyLateCleanupAfterRestart(facts),
+  ({ facts, attachIncompletePull }) =>
+    verifyLateCleanupAfterRestart(facts, attachIncompletePull),
 );
 
 async function verifyLateCleanupAfterRestart(
   facts: Partial<DurableHarvestOperation>,
+  attachIncompletePull = false,
 ) {
   const first = harvestIntake("completed-harvest", facts);
   if (!first.target.accepted) throw new Error("Expected harvest operation");
@@ -1987,7 +2020,7 @@ async function verifyLateCleanupAfterRestart(
       status: initialStatus === "pending" ? "succeeded" : initialStatus,
     }),
   );
-  const intake = restoreHarvestIntake({
+  let intake = restoreHarvestIntake({
     harvests: [
       {
         ...operation,
@@ -1998,6 +2031,35 @@ async function verifyLateCleanupAfterRestart(
     ],
     stages: receipts,
   });
+  if (attachIncompletePull) {
+    expect(
+      intake.store.recordHarvestIntake(
+        harvestIntake("incomplete-pull", {
+          headRepoSlug: null,
+          expectedHeadSha: null,
+        }),
+      ),
+    ).toMatchObject({ ok: true, deduplicatedWork: true });
+    const saved = intake.snapshot();
+    expect(saved.harvests).toMatchObject([
+      {
+        operationId: operation.operationId,
+        prNumber: 42,
+        headRepoSlug: null,
+        expectedHeadSha: null,
+        status: "completed",
+        completedAt: nowIso,
+      },
+    ]);
+    expect(saved.stages).toEqual(receipts);
+    expect(
+      restoreRecoveryStore({
+        ...saved,
+        outboxItems: [],
+      }).listRecoverableHarvests({ nowIso: leaseExpiresAt }),
+    ).toEqual([]);
+    intake = restoreHarvestIntake(saved);
+  }
   const pull = harvestIntake("verified-pull");
   expect(intake.store.recordHarvestIntake(pull)).toMatchObject({
     ok: true,

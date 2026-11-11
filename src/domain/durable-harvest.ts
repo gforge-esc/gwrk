@@ -597,6 +597,7 @@ export function mergeVerifiedHarvestFacts(
   prior: VerifiedHarvestFacts,
   verified: VerifiedHarvestFacts,
 ) {
+  const priorPull = prior.prNumber === null ? null : prior;
   if (
     verified.prNumber === null ||
     !Number.isSafeInteger(verified.prNumber) ||
@@ -605,26 +606,26 @@ export function mergeVerifiedHarvestFacts(
     !sharesMergedCommitScope(prior, verified) ||
     prior.trunkBranch !== verified.trunkBranch ||
     (prior.repoSlug && !isSameRepository(prior.repoSlug, verified.repoSlug)) ||
-    (prior.headRepoSlug &&
+    (priorPull?.headRepoSlug &&
       verified.headRepoSlug &&
-      !isSameRepository(prior.headRepoSlug, verified.headRepoSlug)) ||
-    (prior.headBranch &&
+      !isSameRepository(priorPull.headRepoSlug, verified.headRepoSlug)) ||
+    (priorPull?.headBranch &&
       verified.headBranch &&
-      prior.headBranch !== verified.headBranch) ||
-    (prior.expectedHeadSha &&
+      priorPull.headBranch !== verified.headBranch) ||
+    (priorPull?.expectedHeadSha &&
       verified.expectedHeadSha &&
-      prior.expectedHeadSha.toLowerCase() !==
+      priorPull.expectedHeadSha.toLowerCase() !==
         verified.expectedHeadSha.toLowerCase())
   ) {
     return null;
   }
   const facts = {
     repoSlug: prior.repoSlug ?? verified.repoSlug,
-    headRepoSlug: prior.headRepoSlug ?? verified.headRepoSlug,
+    headRepoSlug: priorPull?.headRepoSlug ?? verified.headRepoSlug,
     prNumber: verified.prNumber,
     prUrl: prior.prUrl ?? verified.prUrl,
-    headBranch: prior.headBranch ?? verified.headBranch,
-    expectedHeadSha: prior.expectedHeadSha ?? verified.expectedHeadSha,
+    headBranch: priorPull?.headBranch ?? verified.headBranch,
+    expectedHeadSha: priorPull?.expectedHeadSha ?? verified.expectedHeadSha,
     terminalAt:
       prior.prNumber === null ? verified.terminalAt : prior.terminalAt,
   };
