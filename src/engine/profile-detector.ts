@@ -12,6 +12,7 @@ import { DesignSchema } from "../domain/architecture-context.js";
 import {
   matchWorkspacePath,
   mergeProfileOverrides,
+  resolveProfileStack,
   resolveWorkspacePolicyProfile,
 } from "../domain/profile-policy.js";
 import type { WorkspaceProfileConfig } from "../domain/types.js";
@@ -296,7 +297,8 @@ function detectFilesystemProfile(projectRoot: string): FilesystemProfile {
     }
   }
 
-  const hasRuffConfig = files.includes("ruff.toml") || files.includes(".ruff.toml");
+  const hasRuffConfig =
+    files.includes("ruff.toml") || files.includes(".ruff.toml");
   if (hasRuffConfig) {
     toolchain.primary = python.primary = "ruff";
   }
@@ -499,7 +501,9 @@ function resolveDetectedProfile(
             config,
             { requireDesign: true, localProject },
           );
-          return localProject && scoped === detected.profile ? undefined : scoped;
+          return localProject && scoped === detected.profile
+            ? undefined
+            : scoped;
         }
       } catch {
         return undefined;
@@ -556,10 +560,15 @@ function applyWorkspaceConfig(
   const detectMatched =
     matchedRoot &&
     (options?.detectMatchedWorkspace || matchedPath !== relativePath);
-  const matchedProject = detectMatched ? readLocalProject(matchedRoot) : undefined;
+  const matchedProject = detectMatched
+    ? readLocalProject(matchedRoot)
+    : undefined;
   const requestedProject = options?.localProject;
   const localProject = matchedProject
-    ? { ...matchedProject, design: requestedProject?.design ?? matchedProject.design }
+    ? {
+        ...matchedProject,
+        design: requestedProject?.design ?? matchedProject.design,
+      }
     : requestedProject;
   const hasDesign =
     design ||
@@ -592,10 +601,18 @@ function applyWorkspaceConfig(
   ).data;
   if (
     toolchain &&
-    (!stack?.buildSystem || (!stack.language && !stack.languages?.[0]))
+    (!stack?.buildSystem ||
+      !stack.framework ||
+      (!stack.language && !stack.languages?.[0]))
   ) {
     try {
-      stack = { ...detectFilesystemProfile(root).profile.stack, ...stack };
+      const rootDetection = detectFilesystemProfile(root);
+      stack = resolveProfileStack(
+        rootDetection.profile.stack,
+        stack,
+        undefined,
+        rootDetection.signals,
+      );
     } catch {
       // The configured resolver also accepts paths that are unavailable on disk.
     }

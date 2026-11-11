@@ -50,7 +50,7 @@ function languageFamily(language: string | undefined): string | undefined {
   return language === "typescript" ? "javascript" : language;
 }
 
-function resolveWorkspaceStack(
+export function resolveProfileStack(
   detectedStack: ProjectProfile["stack"],
   localStack: ProjectProfile["stack"],
   entryStack: ProjectProfile["stack"],
@@ -58,9 +58,15 @@ function resolveWorkspaceStack(
 ): ProjectProfile["stack"] {
   if (!detectedStack && !localStack && !entryStack) return undefined;
 
-  const mergedStack = { ...detectedStack, ...localStack, ...entryStack };
+  const selectedLanguage =
+    entryStack?.language ||
+    entryStack?.languages?.[0] ||
+    localStack?.language ||
+    localStack?.languages?.[0];
   const detectedFamily = languageFamily(profileLanguage(detectedStack));
-  const workspaceFamily = languageFamily(profileLanguage(mergedStack));
+  const workspaceFamily = languageFamily(
+    selectedLanguage?.toLowerCase() ?? profileLanguage(detectedStack),
+  );
   const localFamily = languageFamily(profileLanguage(localStack));
   const {
     framework: localFramework,
@@ -92,6 +98,7 @@ function resolveWorkspaceStack(
     ...(compatibleLocal &&
       localBuildSystem !== undefined && { buildSystem: localBuildSystem }),
     ...entryStack,
+    ...(selectedLanguage && { language: selectedLanguage }),
   };
 }
 
@@ -99,7 +106,7 @@ function compatibleToolchain(
   toolchain: ProjectProfile["toolchain"],
   sourceStack: ProjectProfile["stack"],
   workspaceStack: ProjectProfile["stack"],
-  source: "root" | "detected" | "local",
+  source: "root" | "detected" | { localStack: ProjectProfile["stack"] },
 ): ProjectProfile["toolchain"] {
   if (!toolchain) return undefined;
 
@@ -113,15 +120,34 @@ function compatibleToolchain(
   const sourceLanguage = profileLanguage(sourceStack);
   const workspaceFamily = languageFamily(workspaceLanguage);
   const configuredSourceFamily = languageFamily(sourceLanguage);
+  const extensionsMatch =
+    !sourceLanguage ||
+    !workspaceLanguage ||
+    sourceLanguage === workspaceLanguage;
+  const isLocal = typeof source === "object";
+  const localFamily = isLocal
+    ? languageFamily(profileLanguage(source.localStack))
+    : undefined;
   if (
-    source === "local" &&
-    (!configuredSourceFamily ||
-      !workspaceFamily ||
-      configuredSourceFamily === workspaceFamily)
+    isLocal &&
+    (!localFamily || !workspaceFamily || localFamily === workspaceFamily)
   ) {
-    if (buildSystemsMatch) return toolchain;
-    const { build, testCommand: _command, ...shared } = toolchain;
-    const compatible = { ...shared, ...(build === null && { build }) };
+    const commandsFit =
+      buildSystemsMatch &&
+      (!configuredSourceFamily ||
+        !workspaceFamily ||
+        configuredSourceFamily === workspaceFamily);
+    if (commandsFit && extensionsMatch) return toolchain;
+    const { build, testCommand, sourceExtension, testExtension, ...shared } =
+      toolchain;
+    const compatible: Toolchain = {
+      ...shared,
+      ...((commandsFit || build === null) && build !== undefined && { build }),
+      ...(commandsFit && testCommand !== undefined && { testCommand }),
+      ...(extensionsMatch &&
+        sourceExtension !== undefined && { sourceExtension }),
+      ...(extensionsMatch && testExtension !== undefined && { testExtension }),
+    };
     return Object.keys(compatible).length ? compatible : undefined;
   }
 
@@ -151,11 +177,9 @@ function compatibleToolchain(
   const runnerFits =
     (!differentFamily ||
       (source !== "root" && test != null) ||
-      (source === "local" && test === null)) &&
+      (isLocal && test === null)) &&
     (!test || toolLanguages[test] === workspaceFamily);
-  const extensionsFit =
-    !differentFamily &&
-    (!sourceLanguage || sourceLanguage === workspaceLanguage);
+  const extensionsFit = !differentFamily && extensionsMatch;
   const compatible: Toolchain = {
     ...(primary && toolLanguages[primary] === workspaceFamily && { primary }),
     ...(formatter &&
@@ -164,7 +188,7 @@ function compatibleToolchain(
     ...(runnerFits &&
       buildFits &&
       testCommand !== undefined && { testCommand }),
-    ...((buildFits || (source === "local" && build === null)) &&
+    ...((buildFits || (isLocal && build === null)) &&
       build !== undefined && { build }),
     ...(extensionsFit && testExtension !== undefined && { testExtension }),
     ...(extensionsFit && sourceExtension !== undefined && { sourceExtension }),
@@ -266,7 +290,7 @@ export function resolveWorkspacePolicyProfile(
   }
 
   const { stack: entryStack, ...workspaceOverrides } = workspaceConfig ?? {};
-  const workspaceStack = resolveWorkspaceStack(
+  const workspaceStack = resolveProfileStack(
     detectedWorkspace.stack,
     localProject?.stack,
     entryStack,
@@ -291,7 +315,7 @@ export function resolveWorkspacePolicyProfile(
       : undefined,
   );
   const localStack = localProject?.stack;
-  const localSourceStack = resolveWorkspaceStack(
+  const localSourceStack = resolveProfileStack(
     rawStack,
     localStack,
     undefined,
@@ -299,9 +323,9 @@ export function resolveWorkspacePolicyProfile(
   );
   const localToolchain = compatibleToolchain(
     localProject?.toolchain,
-    { buildSystem: localSourceStack?.buildSystem, ...localStack },
+    localSourceStack,
     workspaceStack,
-    "local",
+    { localStack },
   );
 
   return mergeProfileOverrides({

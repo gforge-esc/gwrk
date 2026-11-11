@@ -579,6 +579,46 @@ describe("FR-001: architecture-aware workspace profiles (044 phase p01)", () => 
     }
   });
 
+  it.each([{ language: "python" }, { languages: ["Python", "JavaScript"] }])(
+    "inherits the polyglot root build command only for a compatible workspace with stack %j",
+    async (stack) => {
+      const config = {
+        project: {
+          name: "fixture",
+          design,
+          stack,
+          toolchain: { build: "uv build" },
+        },
+        workspaces: { "services/worker": {}, "services/package": {} },
+      };
+      write(".gwrkrc.json", JSON.stringify(config));
+      write("package.json", "{}");
+      write("pyproject.toml", "[project]\n");
+      write("uv.lock", "");
+      write("services/worker/requirements.txt", "django\n");
+      write("services/package/pyproject.toml", "[project]\n");
+      write("services/package/uv.lock", "");
+
+      const workspaces = [
+        { relative: "services/worker", buildSystem: "pip", command: null },
+        { relative: "services/package", buildSystem: "uv", command: "uv build" },
+      ];
+      for (const { relative, buildSystem, command } of workspaces) {
+        const workspace = path.join(root, relative);
+        const profiles = [
+          await detectProfile(workspace),
+          await resolveWorkspaceProfile(root, relative),
+          resolveWorkspaceProfile(workspace, root, config),
+        ];
+        for (const profile of profiles) {
+          expect(profile).toMatchObject({ design, stack: { buildSystem } });
+          if (!profile) throw new Error("Expected workspace profile");
+          expect.soft(resolveBuildCommand(profile)).toBe(command);
+        }
+      }
+    },
+  );
+
   it("keeps the selected TypeScript runner and linter in a mixed workspace", async () => {
     const config = {
       project: { name: "fixture", design },
