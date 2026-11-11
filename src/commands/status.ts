@@ -140,6 +140,9 @@ async function printAgents() {
       case "exhausted":
         statusStr = `${RED}Exhausted${RESET}`;
         break;
+      case "unknown":
+        statusStr = `${DIM}Unknown quota${RESET}`;
+        break;
       case "unavailable":
         statusStr = `${RED}Unavailable${RESET}`;
         break;

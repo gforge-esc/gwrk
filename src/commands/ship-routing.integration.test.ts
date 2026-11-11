@@ -320,6 +320,26 @@ describe("ship with the real AgentPort router", () => {
     );
   });
 
+  it("keeps an installed backend with positive configured quota and unknown native quota", async () => {
+    configureAgents("codex", ["codex"]);
+    seedQuota(100);
+    vi.mocked(codex.checkQuota).mockResolvedValue({ status: "unknown" });
+
+    await ship();
+
+    expect(codex.isAvailable).toHaveBeenCalledOnce();
+    expect(codex.checkQuota).toHaveBeenCalledOnce();
+    expect(ShipOrchestrator).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ backend: "codex", selectedModel: "codex-primary" }),
+      undefined,
+    );
+    expect(await decisions()).toMatchObject([{
+      selected_backend: "codex",
+      selected_model: "codex-primary",
+      quota_percent: 100,
+    }]);
+  });
+
   it("previews an installed backend without calling its native quota hook", async () => {
     configureAgents("goose", ["goose"]);
     const goose = provider("goose");

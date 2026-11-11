@@ -216,9 +216,15 @@ async function selectAvailableRoute(
           !(restrictToRegistry || availabilityOnly) ||
           (await backend.isAvailable())
         ) {
+          const nativeQuota = availabilityOnly
+            ? undefined
+            : await quotaProbe(backend);
           available =
             availabilityOnly ||
-            (await quotaProbe(backend)).status === "available";
+            nativeQuota?.status === "available" ||
+            (restrictToRegistry &&
+              nativeQuota?.status === "unknown" &&
+              (route.quotaPercent ?? 0) > 0);
         }
       } catch {
         // Treat backend lookup and eligibility errors as unavailability.

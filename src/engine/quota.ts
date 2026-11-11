@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { AgentBackend } from "../plugins/agent-backend.js";
+import type {
+  AgentBackend,
+  QuotaStatus as AdapterQuotaStatus,
+} from "../plugins/agent-backend.js";
 
-interface QuotaStatus {
-  status: "available" | "rate-limited" | "exhausted" | "unavailable";
-  backoffS?: number;
-  remainingRequests?: number;
-  resetAt?: Date;
-}
+type QuotaStatus = Omit<AdapterQuotaStatus, "status"> & {
+  status: AdapterQuotaStatus["status"] | "unavailable";
+};
 
 /**
  * Probes the current quota status of a backend.
@@ -17,13 +17,9 @@ interface QuotaStatus {
  */
 export async function quotaProbe(backend: AgentBackend): Promise<QuotaStatus> {
   // 1. Native checkQuota if implemented by the adapter
-  const backendWithQuota = backend as unknown as {
-    checkQuota?: () => Promise<QuotaStatus>;
-  };
-
-  if (typeof backendWithQuota.checkQuota === "function") {
+  if (typeof backend.checkQuota === "function") {
     try {
-      return await backendWithQuota.checkQuota();
+      return await backend.checkQuota();
     } catch (err) {
       // If native check fails, fall back to basic availability
     }
