@@ -683,31 +683,46 @@ describe("ship with the real AgentPort router", () => {
     },
   );
 
-  it("routes a registered script-owned backend without a native adapter", async () => {
-    configureAgents("legacy-wrapper", ["legacy-wrapper"]);
-    const { AgentBackendRegistry } = await import("../plugins/agent-registry.js");
+  it("routes automatic legacy ship to a script-owned backend with quota", async () => {
+    configureAgents("claude", ["claude", "legacy-wrapper"]);
+    seedQuota(0, 0);
+    const { AgentBackendRegistry } = await import(
+      "../plugins/agent-registry.js"
+    );
     const lookup = vi.mocked(AgentBackendRegistry.prototype.getAgentBackend);
+    lookup.mockRejectedValue(new Error("Unexpected native adapter lookup"));
 
     await ship("--dry-run", "--legacy");
     expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("backend: legacy-wrapper, model: legacy-wrapper-primary"),
+      expect.stringContaining(
+        "backend: legacy-wrapper, model: legacy-wrapper-primary",
+      ),
     );
+    expect(run).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
     expect(await decisions()).toEqual([]);
+
     await ship("--legacy");
 
     const scriptCalls = vi.mocked(run).mock.calls.filter(([command]) =>
       command.endsWith("/work-until-done.sh"),
     );
     expect(scriptCalls).toHaveLength(1);
-    expect(scriptCalls[0][2]?.env).toMatchObject({
+    const [, args, options] = scriptCalls[0];
+    expect(args).toEqual([feature, "01"]);
+    expect(options?.env).toMatchObject({
       AGENT_BACKEND: "legacy-wrapper",
       GEMINI_MODEL: "legacy-wrapper-primary",
     });
-    expect(await decisions()).toMatchObject([{
-      selected_backend: "legacy-wrapper",
-      selected_model: "legacy-wrapper-primary",
-    }]);
+    expect(await decisions()).toMatchObject([
+      {
+        selected_backend: "legacy-wrapper",
+        selected_model: "legacy-wrapper-primary",
+        quota_percent: 100,
+      },
+    ]);
     expect(lookup).not.toHaveBeenCalled();
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
   });
 
   it("previews and ships an explicit backend owned by the legacy script", async () => {
