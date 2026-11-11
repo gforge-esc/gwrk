@@ -2,60 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GwrkConfig } from "../../utils/config.js";
-import * as slackClient from "../../utils/slack-client.js";
-import * as dockerUtils from "../docker.js";
-import { startServer } from "../index.js";
-import { removePid } from "../pid.js";
-import * as slackNotify from "../slack-notify.js";
+import fastify from "fastify";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { notifySlack } from "../slack-notify.js";
+import { notifyRoutes } from "./notify.js";
 
-// Mock dependencies
-vi.mock("dockerode");
-vi.mock("../slack-notify.js");
-vi.mock("../../utils/slack-client.js", () => ({
-  loadSlackConfig: vi.fn().mockReturnValue(null),
-}));
-vi.mock("../docker.js", () => ({
-  ensureDocker: vi.fn().mockResolvedValue({ installed: true, running: true }),
-}));
+vi.mock("../slack-notify.js", () => ({ notifySlack: vi.fn() }));
 
-const mockConfig: GwrkConfig = {
-  project: {
-    name: "test",
-    slack: {
-      channelId: "C123",
-      channelName: "test-channel",
-    },
-  },
-  agents: { define: "gemini", implement: "codex-cloud" },
-  server: {
-    githubWebhookSecret: "mock_secret",
-    port: 0,
-    host: "localhost",
-    heartbeatIntervalMs: 1000,
-    networkCheckIntervalMs: 1000,
-  },
-  parallelism: {
-    local: { maxCpu: 80, maxMem: 80, minDiskGb: 10, maxClones: 2 },
-    cloud: { maxConcurrent: 10 },
-  },
-};
+function createServer() {
+  const server = fastify();
+  server.register(notifyRoutes);
+  return server;
+}
 
 describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
   beforeEach(() => {
-    removePid();
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    removePid();
+    vi.resetAllMocks();
   });
 
   it("US-003, US-007: should post a notification via POST /api/notify", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = createServer();
     try {
-      const spy = vi.spyOn(slackNotify, "notifySlack");
+      const spy = vi.mocked(notifySlack);
 
       const response = await server.inject({
         method: "POST",
@@ -84,7 +52,7 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
   });
 
   it("FR-003, US-003: should return 400 for missing required fields", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = createServer();
     try {
       const response = await server.inject({
         method: "POST",
@@ -102,10 +70,30 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
     }
   });
 
-  it("FR-004, US-004: should handle opsOnly flag", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+  it("returns a 500 response when notification delivery fails", async () => {
+    const server = createServer();
+    vi.mocked(notifySlack).mockRejectedValueOnce(new Error("fixture failure"));
     try {
-      const spy = vi.spyOn(slackNotify, "notifySlack");
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/notify",
+        payload: { type: "phase_start", feature: "test-feature" },
+      });
+
+      expect(response.statusCode).toBe(500);
+      expect(response.json()).toEqual({
+        ok: false,
+        error: "Failed to dispatch notification: fixture failure",
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("FR-004, US-004: should handle opsOnly flag", async () => {
+    const server = createServer();
+    try {
+      const spy = vi.mocked(notifySlack);
 
       await server.inject({
         method: "POST",
@@ -126,9 +114,9 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
   });
 
   it("FR-016: should handle define_spec_ready notification", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = createServer();
     try {
-      const spy = vi.spyOn(slackNotify, "notifySlack");
+      const spy = vi.mocked(notifySlack);
 
       await server.inject({
         method: "POST",
@@ -150,9 +138,9 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
   });
 
   it("FR-016: should handle define_plan_ready notification", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = createServer();
     try {
-      const spy = vi.spyOn(slackNotify, "notifySlack");
+      const spy = vi.mocked(notifySlack);
 
       await server.inject({
         method: "POST",
@@ -178,9 +166,9 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
     "TR-005: should route done_done to ops channel",
     { timeout: 15_000 },
     async () => {
-      const server = await startServer(mockConfig, { handleSignals: false });
+      const server = createServer();
       try {
-        const spy = vi.spyOn(slackNotify, "notifySlack");
+        const spy = vi.mocked(notifySlack);
 
         await server.inject({
           method: "POST",
@@ -201,9 +189,9 @@ describe("notify routes (FR-003, FR-007, US-003, US-007)", () => {
   );
 
   it("TR-005: should route pulse to ops channel", async () => {
-    const server = await startServer(mockConfig, { handleSignals: false });
+    const server = createServer();
     try {
-      const spy = vi.spyOn(slackNotify, "notifySlack");
+      const spy = vi.mocked(notifySlack);
 
       await server.inject({
         method: "POST",

@@ -7,6 +7,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as runsModule from "../db/runs.js";
+import { ShipOrchestrator } from "../engine/ship-orchestrator.js";
 import * as execModule from "../utils/exec.js";
 import * as uiModule from "../utils/format.js";
 import * as stateModule from "../utils/state.js";
@@ -29,6 +30,14 @@ vi.mock("../utils/setup-state.js", () => ({
 
 vi.mock("../server/slack-notify.js", () => ({
   notifySlack: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../engine/ship-orchestrator.js", () => ({
+  ShipOrchestrator: vi.fn(() => ({
+    on: vi.fn(),
+    run: vi.fn().mockResolvedValue(0),
+    getResult: vi.fn().mockReturnValue({}),
+  })),
 }));
 
 vi.mock("../engine/plan-store.js", () => ({
@@ -742,17 +751,11 @@ describe("FR-009/T010: Agent config fail-fast", () => {
     program.addCommand(shipCommand);
   });
 
-  it("FR-009/T010: crashes with exit 1 when agents.implement is missing from config", async () => {
-    // Override config mock to return missing agents.implement
-    const configModule = await import("../utils/config.js");
-    vi.mocked(configModule.loadConfig).mockReturnValueOnce({
-      project: {
-        name: "test",
-        slack: { channelId: "C123", channelName: "test" },
-      },
-      agents: {},
-      server: { port: 18790, host: "localhost" },
-    } as ReturnType<typeof configModule.loadConfig>);
+  it("FR-009/T010: exits 1 when routing rejects the agent configuration", async () => {
+    const { getBackendSelector } = await import("../server/index.js");
+    vi.mocked(getBackendSelector).mockImplementationOnce(() => {
+      throw new Error("Invalid agent configuration");
+    });
 
     process.exitCode = 0;
     try {
@@ -762,6 +765,7 @@ describe("FR-009/T010: Agent config fail-fast", () => {
     }
 
     expect(process.exitCode).toBe(1);
+    expect(ShipOrchestrator).not.toHaveBeenCalled();
   });
 });
 
