@@ -17,7 +17,7 @@
           "title": "Create agent-routing.ts",
           "description": "NEW src/domain/agent-routing.ts. Implement pure `selectAgentRoute` over supplied overrides, quotas, cooldowns and fallback order. Tests: src/domain/agent-routing.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -25,7 +25,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export pure routing contracts and `selectAgentRoute`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -33,7 +33,7 @@
           "title": "Modify agent-port.ts",
           "description": "MODIFY src/ports/agent-port.ts. Extend `RoutingContext` and `SelectedAgentRoute` with typed route mode, effort, quota and failover fields. Tests: src/adapters/agents/agent-port.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -41,7 +41,7 @@
           "title": "Create index.ts",
           "description": "NEW src/adapters/agents/index.ts. Implement `createAgentPortAdapter` binding `AgentPort` to `selectAgentRoute`, quota probing and `dispatchToAgent`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 2
         },
         {
@@ -49,7 +49,7 @@
           "title": "Modify resolve-model.ts",
           "description": "MODIFY src/utils/resolve-model.ts. Delegate registry model selection to `src/domain/agent-routing.js`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -57,7 +57,7 @@
           "title": "Modify resolve-agent.ts",
           "description": "MODIFY src/utils/resolve-agent.ts. Delegate synchronous pillar resolution and fallback selection to `src/domain/agent-routing.js`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -65,7 +65,7 @@
           "title": "Modify router.ts",
           "description": "MODIFY src/engine/router.ts. Delegate `selectBackend` decision logic to `src/domain/agent-routing.js` over history and config facts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         },
         {
@@ -73,7 +73,7 @@
           "title": "Modify skill-runtime.ts",
           "description": "MODIFY src/plugins/skill-runtime.ts. Route skill backend selection through `createAgentPortAdapter` while preserving `SkillResult` pipe semantics",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/domain/agent-routing.test.ts src/adapters/agents/agent-port.test.ts src/utils/resolve-agent.test.ts src/utils/resolve-model.test.ts src/utils/config-resolution.conformance.test.ts src/engine/router.test.ts src/plugins/skill-runtime.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-01.sh",
           "sp": 1
         }
       ],
@@ -94,7 +94,7 @@
           "title": "Modify ship.ts",
           "description": "MODIFY src/commands/ship.ts. Route backend and model selection through `createAgentPortAdapter` instead of `getBackendSelector`. Tests: src/commands/ship.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -102,7 +102,7 @@
           "title": "Modify backend-selector.ts",
           "description": "MODIFY src/server/backend-selector.ts. Import domain config, task classifier and `ModelSelector` directly and delegate selection to `selectAgentRoute`. Tests: src/server/backend-selector.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -110,7 +110,7 @@
           "title": "Modify quota-prober.ts",
           "description": "MODIFY src/server/quota-prober.ts. Import `AgentBackendConfig` and `QuotaProbe` from `src/domain/agent-config.js`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -118,7 +118,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Import `loadRegistry` from `src/adapters/agents/registry-loader.js`",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/commands/ship.test.ts src/engine/model-routing.test.ts src/server/agent-registry.test.ts src/server/agent-registry.integration.test.ts src/server/backend-selector.test.ts src/server/backend-selector.integration.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         }
       ],
