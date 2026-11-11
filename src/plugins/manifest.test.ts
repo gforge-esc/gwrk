@@ -21,6 +21,35 @@ describe("FR-013 / US-016: SkillManifestSchema Enforcement Tier", () => {
     expect(result.scope).toBe("implementation");
   });
 
+  it("keeps architecture and principle selectors on definition skills", () => {
+    const manifest = {
+      name: "hexagonal-policy",
+      type: "skill",
+      tier: "enforcement",
+      version: "1.0.0",
+      description: "Hexagonal project policy",
+      scope: "define",
+      language: "TypeScript",
+      architectures: ["hexagonal-functional"],
+      principles: ["functional-core", "tdd"],
+      projectScope: "gwrk",
+    };
+
+    expect(SkillManifestSchema.parse(manifest)).toMatchObject(manifest);
+    expect(
+      SkillManifestSchema.safeParse({ ...manifest, principles: ["unknown"] })
+        .success,
+    ).toBe(false);
+    const legacy = SkillManifestSchema.parse({
+      name: "legacy-policy",
+      type: "skill",
+      tier: "enforcement",
+      version: "1.0.0",
+      description: "Legacy policy",
+    });
+    expect(legacy.scope).toBe("all");
+  });
+
   it("rejects invalid scope for enforcement skills", () => {
     const manifest = {
       name: "bad-skill",

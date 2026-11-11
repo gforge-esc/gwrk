@@ -82,7 +82,7 @@
           "title": "Modify manifest.ts",
           "description": "MODIFY src/plugins/manifest.ts. Add optional `architectures` and `principles` and `projectScope` selectors plus `\"define\"` scope. Tests: src/plugins/manifest.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -90,7 +90,7 @@
           "title": "Modify architecture-context.ts",
           "description": "MODIFY src/domain/architecture-context.ts. Export pure `lookupLanguageGuidance` and `lookupFrameworkGuidance` helpers",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         },
         {
@@ -98,7 +98,7 @@
           "title": "Create policy-selection.ts",
           "description": "NEW src/domain/policy-selection.ts. Implement pure `evaluateEnforcementCandidate` and `composeEffectivePolicy` with override precedence and gap records. Tests: src/domain/policy-selection.test.ts",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 2
         },
         {
@@ -106,7 +106,7 @@
           "title": "Modify index.ts",
           "description": "MODIFY src/domain/index.ts. Export policy selection contracts and pure helpers",
           "status": "open",
-          "gateScript": "pnpm build\npnpm exec vitest run src/plugins/manifest.test.ts src/domain/policy-selection.test.ts src/application/architecture/context.test.ts src/architecture.test.ts",
+          "gateScript": "gates/phase-02.sh",
           "sp": 1
         }
       ],
