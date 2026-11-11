@@ -6,7 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -475,6 +475,27 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
   return workflowName;
 }
 
+function resolvePrimaryCheckout(executionDir: string): string {
+  try {
+    const [firstField] = execFileSync(
+      "git",
+      ["worktree", "list", "--porcelain", "-z"],
+      {
+        cwd: executionDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ).split("\0", 1);
+    const prefix = "worktree ";
+    if (firstField.startsWith(prefix)) {
+      return firstField.slice(prefix.length) || executionDir;
+    }
+  } catch {
+    return executionDir;
+  }
+  return executionDir;
+}
+
 /**
  * FR-019: Dispatch agent work via a single facade.
  * FR-020: Normalizes exit codes — proprietary codes mapped to gwrk standard.
@@ -485,11 +506,12 @@ async function resolveWorkflowPath(workflowName: string): Promise<string> {
 export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   const projectRoot = task.workDir ?? process.cwd();
   try {
-    const config = loadConfig(projectRoot);
+    const primaryCheckout = resolvePrimaryCheckout(projectRoot);
+    const config = loadConfig(primaryCheckout);
     const throttleMs = config.agents.throttleMs ?? 0;
 
     if (throttleMs > 0) {
-      const runsDir = path.join(projectRoot, ".runs");
+      const runsDir = path.join(primaryCheckout, ".runs");
       if (!fs.existsSync(runsDir)) {
         fs.mkdirSync(runsDir, { recursive: true });
       }
@@ -529,10 +551,12 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
     .join("\n\n");
 
   // FR-014: Inject enforcement skills
-  const hasEnforcementPlaceholder = stdinPayload.includes("{{enforcement}}");
-  const hasCodeQualitySection = stdinPayload.includes("<code_quality>");
+  const inputStart = stdinPayload.indexOf("<user_input>");
+  const templateEnd = inputStart === -1 ? stdinPayload.length : inputStart;
+  const template = stdinPayload.slice(0, templateEnd);
+  const codeQuality = template.match(/<code_quality>[\s\S]*?<\/code_quality>/);
 
-  if (hasEnforcementPlaceholder || hasCodeQualitySection) {
+  if (codeQuality) {
     const scope =
       task.workflow?.includes("review") || task.type?.includes("review")
         ? "review"
@@ -548,17 +572,13 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
       profile,
     );
 
-    if (hasEnforcementPlaceholder) {
-      stdinPayload = stdinPayload.replaceAll(
-        "{{enforcement}}",
-        () => enforcement,
-      );
-    } else if (hasCodeQualitySection) {
-      stdinPayload = stdinPayload.replace(
-        /<code_quality>([\s\S]*?)<\/code_quality>/,
-        `<code_quality>\n${enforcement}\n</code_quality>`,
-      );
-    }
+    const section = codeQuality[0];
+    const expandedSection = section.includes("{{enforcement}}")
+      ? section.replaceAll("{{enforcement}}", () => enforcement)
+      : `<code_quality>\n${enforcement}\n</code_quality>`;
+    stdinPayload =
+      template.replace(section, () => expandedSection) +
+      stdinPayload.slice(templateEnd);
   }
 
   // ADR-009: Inject project knowledge documents (grounding)
@@ -639,7 +659,7 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   // ADR-008 Layer 1: Inject <command_safety> block into prompt stdin
   if (
     (stdinPayload || task.prompt) &&
-    !stdinPayload.includes("<command_safety>")
+    !stdinPayload.includes(COMMAND_SAFETY_BLOCK)
   ) {
     stdinPayload = stdinPayload
       ? `${COMMAND_SAFETY_BLOCK}\n\n${stdinPayload}`

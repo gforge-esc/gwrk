@@ -188,7 +188,7 @@
         {
           "id": "T016",
           "title": "Modify workflow-runtime.ts",
-          "description": "MODIFY src/plugins/workflow-runtime.ts. Populate `task.stdin` before dispatch and support `nativeOnly` execution with an injected `dispatcher`. Tests: src/plugins/workflow-runtime.test.ts",
+          "description": "MODIFY src/plugins/workflow-runtime.ts. Populate `task.stdin` before dispatch and support `nativeOnly` execution with an injected `dispatcher`. Tests: src/plugins/workflow-runtime.test.ts\n\nREVIEW FAIL (code): Native input preservation — FR-002, FR-003\n  WHERE: src/plugins/workflow-runtime.ts:381-389\n  EXPECTED: Condition only the workflow template and append <user_input> verbatim.\n  ACTUAL: conditionPrompt receives the template and user input together. On a pnpm-monorepo profile it deletes critical task text inside a literal [type: unrelated] fixture.\n  FIX: Append the scoped input after template conditioning. Capture native stdin with a task that contains a literal profile guard.\n\nREVIEW/GATE DIVERGENCE (T016, gate: gates/phase-04.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/plugins/workflow-runtime.ts — In `executeWorkflow`, call `conditionPrompt(basePrompt, profile)` before assembling native stdin. Append the `<user_input>` block unchanged.\nFIX: specs/043-unified-routing-prompt-delivery/gates/phase-04.sh — Add the native-input regression to the existing `src/plugins/workflow-runtime.test.ts` suite. Use the real `conditionPrompt` with a `pnpm-monorepo` profile. Put `[type: unrelated]` guards in both the template and the task. Assert that captured dispatcher stdin drops the guarded template text and preserves the entire `<user_input>` block byte for byte. Confirm the gate fails before the fix and passes afterward.\nFIX: src/utils/agent.ts — Replace the opening-tag check with `stdinPayload.includes(COMMAND_SAFETY_BLOCK)`. Prepend the full policy when the payload lacks that exact block.\nFIX: src/utils/agent.ts — Scope enforcement detection and replacement to the template’s `<code_quality>` section before `<user_input>`. Preserve the existing empty-section fallback and append the scoped input unchanged.\nFIX: src/utils/agent.ts — Resolve the primary checkout from `task.workDir ?? process.cwd()` using the first record from `git worktree list --porcelain -z`. Use that root for `loadConfig` and `.runs/last-dispatch.state`. Fall back to the execution directory outside Git. Keep `task.workDir` as the root for grounding and execution.\nFIX: specs/043-unified-routing-prompt-delivery/gates/phase-04.sh — Add three regressions to the existing `src/utils/agent.test.ts` suite. Capture spawned stdin and assert it contains `COMMAND_SAFETY_BLOCK` when the task quotes only `<command_safety>`. Use the full constant in the deduplication fixture and assert it appears once. Capture implementation stdin and assert the `<code_quality>` marker expands while the literal `{{enforcement}}` in `<user_input>` survives. Use a linked worktree with `agents.throttleMs` set only in the primary checkout’s `.gwrkrc.local.json`. Seed the primary timestamp and assert dispatch waits, updates that file, and spawns in the worktree. Confirm each new regression fails before its fix and passes afterward.",
           "status": "open",
           "gateScript": "gates/phase-04.sh",
           "sp": 1
@@ -197,14 +197,15 @@
           "id": "T017",
           "title": "Modify ship-orchestrator.ts",
           "description": "MODIFY src/engine/ship-orchestrator.ts. Route `stageImplement` and `executeReviewWorkflow` through `WorkflowRuntime` in `nativeOnly` mode using `dispatchWithFailback`. Tests: src/engine/ship-orchestrator.review.test.ts, src/engine/ship-orchestrator.test.ts",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T23:14:06.954Z"
         },
         {
           "id": "T018",
           "title": "Modify agent.ts",
-          "description": "MODIFY src/utils/agent.ts. Combine prompt and stdin before enforcement resolution, grounding and `<command_safety>` injection without duplicating prompts. Tests: src/utils/agent.test.ts",
+          "description": "MODIFY src/utils/agent.ts. Combine prompt and stdin before enforcement resolution, grounding and `<command_safety>` injection without duplicating prompts. Tests: src/utils/agent.test.ts\n\nREVIEW FAIL (code): Command safety transport — FR-003, ADR-008\n  WHERE: src/utils/agent.ts:639-646\n  EXPECTED: The payload contains a complete command-safety block even when a task quotes the opening tag.\n  ACTUAL: The opening-tag substring check suppresses the block for the original T018 description. The same native dispatch with plain task text includes the block.\n  FIX: Check for the complete policy block. Verify that quoting only the opening tag still sends the full policy.\n\nREVIEW FAIL (code): Enforcement expansion — FR-003\n  WHERE: src/utils/agent.ts:531-559\n  EXPECTED: Expand the template marker and preserve literal {{enforcement}} in task instructions.\n  ACTUAL: replaceAll rewrites the template marker and the same token inside <user_input>. A captured implementation dispatch lost the literal token from a fixture instruction.\n  FIX: Limit expansion to the template enforcement section. Capture final stdin with both a template marker and a literal task marker.\n\nREVIEW FAIL (code): Worktree dispatch throttling — FR-003\n  WHERE: src/utils/agent.ts:485-511\n  EXPECTED: Worktree dispatches honor the primary checkout's configured throttle and shared dispatch timestamp.\n  ACTUAL: task.workDir now controls both loadConfig and last-dispatch.state. A worktree without the ignored local config bypasses the primary checkout's throttle. The same-directory control wrote the throttle state.\n  FIX: Keep throttle config and state rooted at the primary checkout. Use workDir for prompt grounding and execution. Test a worktree with throttleMs set only in the primary checkout.\n\nREVIEW/GATE DIVERGENCE (T018, gate: gates/phase-04.sh, re-opened by review):\nThe review agent raised a finding on this task and its gate still passes, so the gate does not cover what review found. Add a test that fails on it, then fix, before completing.\n\nDIAGNOSIS (iteration 2):\nFIX: src/plugins/workflow-runtime.ts — In `executeWorkflow`, call `conditionPrompt(basePrompt, profile)` before assembling native stdin. Append the `<user_input>` block unchanged.\nFIX: specs/043-unified-routing-prompt-delivery/gates/phase-04.sh — Add the native-input regression to the existing `src/plugins/workflow-runtime.test.ts` suite. Use the real `conditionPrompt` with a `pnpm-monorepo` profile. Put `[type: unrelated]` guards in both the template and the task. Assert that captured dispatcher stdin drops the guarded template text and preserves the entire `<user_input>` block byte for byte. Confirm the gate fails before the fix and passes afterward.\nFIX: src/utils/agent.ts — Replace the opening-tag check with `stdinPayload.includes(COMMAND_SAFETY_BLOCK)`. Prepend the full policy when the payload lacks that exact block.\nFIX: src/utils/agent.ts — Scope enforcement detection and replacement to the template’s `<code_quality>` section before `<user_input>`. Preserve the existing empty-section fallback and append the scoped input unchanged.\nFIX: src/utils/agent.ts — Resolve the primary checkout from `task.workDir ?? process.cwd()` using the first record from `git worktree list --porcelain -z`. Use that root for `loadConfig` and `.runs/last-dispatch.state`. Fall back to the execution directory outside Git. Keep `task.workDir` as the root for grounding and execution.\nFIX: specs/043-unified-routing-prompt-delivery/gates/phase-04.sh — Add three regressions to the existing `src/utils/agent.test.ts` suite. Capture spawned stdin and assert it contains `COMMAND_SAFETY_BLOCK` when the task quotes only `<command_safety>`. Use the full constant in the deduplication fixture and assert it appears once. Capture implementation stdin and assert the `<code_quality>` marker expands while the literal `{{enforcement}}` in `<user_input>` survives. Use a linked worktree with `agents.throttleMs` set only in the primary checkout’s `.gwrkrc.local.json`. Seed the primary timestamp and assert dispatch waits, updates that file, and spawns in the worktree. Confirm each new regression fails before its fix and passes afterward.",
           "status": "open",
           "gateScript": "gates/phase-04.sh",
           "sp": 1
@@ -213,17 +214,19 @@
           "id": "T019",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-plan/PROMPT.md. Add `<code_quality>` enforcement placeholder while preserving canonical plan format rules",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T23:14:17.868Z"
         },
         {
           "id": "T020",
           "title": "Modify PROMPT.md",
           "description": "MODIFY src/plugins/builtins/workflows/gwrk-implement/PROMPT.md. Add `<code_quality>` enforcement placeholder for implementation dispatches",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-04.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T23:14:23.074Z"
         }
       ],
       "sp_estimate": 5,

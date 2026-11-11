@@ -379,14 +379,12 @@ export class WorkflowRuntime {
     }
 
     const profile = await detectProfile(projectRoot);
+    const conditionedPrompt = conditionPrompt(basePrompt, profile);
     const userInput = `<user_input>\n${input}\n</user_input>`;
     const outputSchema = manifest?.outputSchema;
     const stdin = options.nativeOnly
-      ? conditionPrompt(
-          [basePrompt, userInput].filter(Boolean).join("\n\n"),
-          profile,
-        )
-      : `${conditionPrompt(basePrompt, profile)}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>\n\n${userInput}`;
+      ? [conditionedPrompt, userInput].filter(Boolean).join("\n\n")
+      : `${conditionedPrompt}\n\n<output_contract>\nYour output MUST be a single JSON object matching this schema:\n${JSON.stringify(outputSchema, null, 2)}\n</output_contract>\n\n${userInput}`;
 
     const task: TaskDispatch = {
       type: options.taskType ?? "workflow",

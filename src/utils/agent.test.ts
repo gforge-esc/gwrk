@@ -6,15 +6,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { dispatchToAgent, SAFE_AGENT_ENV, COMMAND_SAFETY_BLOCK } from './agent.js';
 import * as skillRuntime from '../plugins/skill-runtime.js';
 import * as extensionRuntime from '../plugins/extension-runtime.js';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { PassThrough } from 'node:stream';
+import { loadConfig } from './config.js';
 
 vi.mock('../plugins/skill-runtime.js');
 vi.mock('../plugins/extension-runtime.js', () => ({
   resolveExtensionContext: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('node:child_process');
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:child_process')>(),
+  spawn: vi.fn(),
+}));
 vi.mock('../engine/profile-detector.js', () => ({
   detectProfile: vi.fn().mockResolvedValue({
     type: 'nodejs',
@@ -31,6 +38,26 @@ vi.mock('./config.js', () => ({
     }
   })
 }));
+
+function mockAgentStdin(onSpawn?: () => void) {
+  let capturedStdin = '';
+  vi.mocked(spawn).mockImplementation(() => {
+    onSpawn?.();
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    });
+    child.stdin.on('data', (chunk) => { capturedStdin += chunk.toString(); });
+    setImmediate(() => {
+      child.stdout.end();
+      child.stderr.end();
+      child.emit('close', 0);
+    });
+    return child as ReturnType<typeof spawn>;
+  });
+  return () => capturedStdin;
+}
 
 describe('US-016: Enforcement Skills Dispatch Injection', () => {
   beforeEach(() => {
@@ -91,6 +118,23 @@ describe('US-016: Enforcement Skills Dispatch Injection', () => {
     );
     expect(capturedStdin).toContain('# Strict Typing Rule');
   });
+
+  it('expands template enforcement and preserves the marker in scoped input', async () => {
+    vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('# Strict Typing Rule');
+    const capturedStdin = mockAgentStdin();
+    const input = '<user_input>\n  Keep {{enforcement}} in <code_quality>{{enforcement}}</code_quality>.\r\n</user_input>';
+
+    await dispatchToAgent({
+      workflow: 'gwrk-implement',
+      workDir: '/fake/root',
+      agent: 'agy',
+      stdin: `Keep {{enforcement}} outside the section.\n<code_quality>\n{{enforcement}}\n</code_quality>\n\n${input}`,
+    });
+
+    expect(capturedStdin()).toContain('<code_quality>\n# Strict Typing Rule\n</code_quality>');
+    expect(capturedStdin()).toContain(input);
+    expect(capturedStdin()).toContain('Keep {{enforcement}} outside the section.');
+  });
 });
 
 describe('ADR-008: Command Safety Posture', () => {
@@ -112,67 +156,31 @@ describe('ADR-008: Command Safety Posture', () => {
       expect(COMMAND_SAFETY_BLOCK).toContain('NEVER run: vim');
     });
 
-    it('injects <command_safety> block into dispatch stdin', async () => {
-      vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('');
-
-      let capturedStdin = '';
-      vi.mocked(spawn).mockImplementation(() => {
-        const mockChild = new EventEmitter() as any;
-        const stdin = new PassThrough();
-        stdin.on('data', (chunk) => { capturedStdin += chunk.toString(); });
-        mockChild.stdin = stdin;
-        mockChild.stdout = new PassThrough();
-        mockChild.stderr = new PassThrough();
-        setTimeout(() => {
-          mockChild.stdout.end();
-          mockChild.stderr.end();
-          mockChild.emit('close', 0);
-        }, 50);
-        return mockChild;
-      });
+    it('injects the full policy when scoped input quotes only the opening tag', async () => {
+      const capturedStdin = mockAgentStdin();
+      const input = '<user_input>\nQuote the opening tag <command_safety>.\n</user_input>';
 
       await dispatchToAgent({
         workflow: 'gwrk-implement',
         workDir: '/fake/root',
         agent: 'agy',
-        stdin: 'Implement this feature'
+        stdin: input,
       });
 
-      expect(capturedStdin).toContain('<command_safety>');
-      expect(capturedStdin).toContain('</command_safety>');
-      expect(capturedStdin.indexOf('<command_safety>')).toBeLessThan(
-        capturedStdin.indexOf('Implement this feature')
-      );
+      expect(capturedStdin()).toContain(`${COMMAND_SAFETY_BLOCK}\n\n${input}`);
     });
 
-    it('does not double-inject if <command_safety> already present', async () => {
-      vi.mocked(skillRuntime.resolveEnforcementSkills).mockResolvedValue('');
-
-      let capturedStdin = '';
-      vi.mocked(spawn).mockImplementation(() => {
-        const mockChild = new EventEmitter() as any;
-        const stdin = new PassThrough();
-        stdin.on('data', (chunk) => { capturedStdin += chunk.toString(); });
-        mockChild.stdin = stdin;
-        mockChild.stdout = new PassThrough();
-        mockChild.stderr = new PassThrough();
-        setTimeout(() => {
-          mockChild.stdout.end();
-          mockChild.stderr.end();
-          mockChild.emit('close', 0);
-        }, 50);
-        return mockChild;
-      });
+    it('sends a single copy when the full policy is already present', async () => {
+      const capturedStdin = mockAgentStdin();
 
       await dispatchToAgent({
         workflow: 'gwrk-implement',
         workDir: '/fake/root',
         agent: 'agy',
-        stdin: '<command_safety>Custom rules</command_safety>\nDo the work'
+        stdin: `${COMMAND_SAFETY_BLOCK}\nDo the work`,
       });
 
-      const matches = capturedStdin.match(/<command_safety>/g);
-      expect(matches).toHaveLength(1);
+      expect(capturedStdin().split(COMMAND_SAFETY_BLOCK)).toHaveLength(2);
     });
   });
 
@@ -217,6 +225,64 @@ describe('ADR-008: Command Safety Posture', () => {
       }
     });
   });
+});
+
+it('uses the primary checkout throttle for a dispatch in a linked worktree', async () => {
+  const actualConfig = await vi.importActual<typeof import('./config.js')>('./config.js');
+  const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gwrk-throttle-')));
+  const primary = path.join(fixture, 'primary checkout');
+  const workDir = path.join(fixture, 'linked worktree');
+  const runsDir = path.join(primary, '.runs');
+  const statePath = path.join(runsDir, 'last-dispatch.state');
+  const throttleMs = 300;
+  const git = (...args: string[]) => execFileSync('git', args, {
+    cwd: primary,
+    stdio: 'pipe',
+    env: { ...process.env, ...SAFE_AGENT_ENV },
+  });
+
+  try {
+    fs.mkdirSync(primary);
+    git('init');
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+      '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
+      'commit', '--author=Test <test@example.com>', '--no-edit', '--allow-empty', '-m', 'Fixture');
+    git('worktree', 'add', '--detach', workDir, 'HEAD');
+    for (const checkout of [primary, workDir]) {
+      fs.writeFileSync(path.join(checkout, '.gwrkrc.json'), JSON.stringify({ project: { name: 'fixture' } }));
+    }
+    fs.writeFileSync(path.join(primary, '.gwrkrc.local.json'), JSON.stringify({ agents: { throttleMs } }));
+    fs.mkdirSync(runsDir);
+    vi.stubEnv('GWRK_HOME', path.join(fixture, 'home'));
+    expect(actualConfig.loadConfig(primary).agents.throttleMs).toBe(throttleMs);
+    expect(actualConfig.loadConfig(workDir).agents.throttleMs).toBeUndefined();
+    vi.mocked(loadConfig).mockImplementationOnce(actualConfig.loadConfig);
+
+    let timestampAtSpawn = 0;
+    const capturedStdin = mockAgentStdin(() => {
+      timestampAtSpawn = Number(fs.readFileSync(statePath, 'utf8'));
+    });
+    fs.mkdirSync(path.join(workDir, '.gwrk'));
+    fs.writeFileSync(path.join(workDir, '.gwrk', 'architecture.md'), 'Worktree grounding');
+    const lastDispatch = Date.now();
+    fs.writeFileSync(statePath, String(lastDispatch));
+
+    await dispatchToAgent({
+      workflow: 'gwrk-implement',
+      workDir,
+      agent: 'agy',
+      stdin: 'Implement the task',
+    });
+
+    expect(timestampAtSpawn - lastDispatch).toBeGreaterThanOrEqual(throttleMs);
+    expect(fs.readFileSync(statePath, 'utf8')).toBe(String(timestampAtSpawn));
+    expect(spawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), expect.objectContaining({ cwd: workDir }));
+    expect(capturedStdin()).toContain('Worktree grounding');
+    expect(fs.existsSync(path.join(workDir, '.runs', 'last-dispatch.state'))).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
 });
 
 describe("TR-018: Context Injection in Dispatch (Phase 21)", () => {

@@ -68,6 +68,45 @@ describe("WorkflowRuntime Phase 13: Project Awareness", () => {
     expect(agentUtils.dispatchToAgent).not.toHaveBeenCalled();
   });
 
+  it("conditions the native template and preserves literal profile guards in the task", async () => {
+    const { conditionPrompt } = await vi.importActual<typeof conditioner>(
+      "../engine/prompt-conditioner.js",
+    );
+    vi.mocked(conditioner.conditionPrompt).mockImplementationOnce(conditionPrompt);
+    vi.mocked(detector.detectProfile).mockResolvedValue({
+      type: "pnpm-monorepo",
+      stack: { language: "TypeScript", buildSystem: "pnpm" },
+      layout: "monorepo",
+    });
+    vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
+      manifest: { name: "native", type: "workflow" } as any,
+      path: "/mock/plugin",
+    });
+    vi.mocked(fs.readFile).mockResolvedValue(
+      "Native rules\n[type: unrelated]\nExcluded template text\n[/type]",
+    );
+    const input = "Keep this fixture:\r\n[type: unrelated]\r\n  Task text  \r\n[/type]\r\n";
+    const dispatcher = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationS: 0,
+    });
+
+    await new WorkflowRuntime().executeWorkflow("native", input, {
+      nativeOnly: true,
+      dispatcher,
+    });
+
+    const { stdin } = dispatcher.mock.calls[0][0];
+    expect(stdin).toContain('<project_profile type="pnpm-monorepo">');
+    expect(stdin).toContain("Native rules");
+    expect(stdin).not.toContain("Excluded template text");
+    expect(stdin.slice(stdin.indexOf("<user_input>"))).toBe(
+      `<user_input>\n${input}\n</user_input>`,
+    );
+  });
+
   it("039: report-only workflows reject mutation intents before executing them", async () => {
     vi.mocked(PluginLoader.prototype.resolvePlugin).mockResolvedValue({
       manifest: {
