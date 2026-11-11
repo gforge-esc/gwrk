@@ -537,8 +537,9 @@ export async function dispatchToAgent(task: TaskDispatch): Promise<TaskResult> {
   }
 
   const agentName = (task.agent ?? "agy") as string;
+  // Discover the adapter in the same project that selected the route.
   const registry = new AgentBackendRegistry(
-    new PluginLoader({ projectDir: projectRoot }),
+    new PluginLoader({ projectDir: process.cwd() }),
   );
   const adapter = await registry.getAgentBackend(agentName);
 
