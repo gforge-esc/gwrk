@@ -3,6 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import fastify from "fastify";
+import {
+  exitCli,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { DispatchQueue } from "./dispatch.js";
 import { GitManager } from "./git-manager.js";
@@ -52,7 +57,7 @@ export async function startServer(
 
   // GitHub webhook is optional — plugin handles the missing case gracefully
   if (!config.server.githubWebhookSecret) {
-    console.warn(
+    warnCli(
       "GitHub webhook secret not configured. Webhook endpoint will be disabled. Set GITHUB_WEBHOOK_SECRET to enable.",
     );
   }
@@ -155,7 +160,7 @@ export async function startServer(
       port: config.server.port,
       host: config.server.host,
     });
-    console.log(`gwrk server listening on ${address}`);
+    logCliOutput(`gwrk server listening on ${address}`);
     writePid(process.pid);
 
     // FR-002: Prune worktrees on startup
@@ -185,6 +190,6 @@ export async function startServer(
     return server;
   } catch (err) {
     server.log.error(err);
-    process.exit(1);
+    exitCli(1);
   }
 }

@@ -3,6 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { performance } from "node:perf_hooks";
+import {
+  CliExit,
+  getCliExitCode,
+  setCliExitCode,
+  writeScopedStderr,
+} from "../adapters/cli/output-scope.js";
 
 /**
  * Custom error class for gwrk commands that allows specifying an exit code.
@@ -33,16 +39,15 @@ export async function withSignal(
   let errorMsg = "";
 
   // Reset exitCode before running
-  process.exitCode = 0;
+  setCliExitCode(0);
 
   try {
     await fn();
-    // If the function set process.exitCode, use it
-    if (process.exitCode !== undefined && process.exitCode !== 0) {
-      exitCode = process.exitCode;
-    }
+    exitCode = getCliExitCode();
   } catch (err: unknown) {
-    if (err instanceof CommandError) {
+    if (err instanceof CliExit) {
+      exitCode = err.exitCode;
+    } else if (err instanceof CommandError) {
       exitCode = err.exitCode;
       errorMsg = err.message;
     } else if (err instanceof Error) {
@@ -65,8 +70,8 @@ export async function withSignal(
     }
 
     // Ensure it starts on a new line and ends with a newline
-    process.stderr.write(`\n${signal}\n`);
-    process.exitCode = exitCode;
+    writeScopedStderr(`\n${signal}\n`);
+    setCliExitCode(exitCode);
   }
 }
 

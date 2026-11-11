@@ -3,6 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { App } from "@slack/bolt";
+import {
+  logCliError,
+  logCliOutput,
+  warnCli,
+} from "../adapters/cli/output-scope.js";
 import type { GwrkConfig } from "../utils/config.js";
 import { MessageBuilder, type SlackMessage } from "./slack-messages.js";
 import { getSlackApp } from "./slack.js";
@@ -61,11 +66,11 @@ class PresenceManager {
       );
       if (human?.id) {
         this.userId = human.id;
-        console.log(
+        logCliOutput(
           `Presence polling started for user: ${human.name} (${this.userId})`,
         );
       } else {
-        console.warn(
+        warnCli(
           "Could not find a human user for presence detection. Falling back to immediate delivery.",
         );
         return;
@@ -78,11 +83,11 @@ class PresenceManager {
 
       this.pollerInterval = setInterval(() => {
         this.checkPresence(app).catch((err) => {
-          console.error("Error checking Slack presence:", err);
+          logCliError("Error checking Slack presence:", err);
         });
       }, interval);
     } catch (error) {
-      console.warn("Presence detection initialization failed:", error);
+      warnCli("Presence detection initialization failed:", error);
     }
   }
 
@@ -103,7 +108,7 @@ class PresenceManager {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.warn(`Presence API unavailable: ${errorMessage}`);
+      warnCli(`Presence API unavailable: ${errorMessage}`);
     }
   }
 
@@ -114,7 +119,7 @@ class PresenceManager {
     if (this.currentPresence === "active") {
       await this.sendImmediately(message);
     } else {
-      console.log(
+      logCliOutput(
         `User away. Queuing event: ${event.type} for ${event.feature}`,
       );
       this.queuedEvents.push(event);
@@ -130,7 +135,7 @@ class PresenceManager {
   private async flushQueue(): Promise<void> {
     if (this.queuedEvents.length === 0) return;
 
-    console.log(`User returned. Flushing ${this.queuedEvents.length} events.`);
+    logCliOutput(`User returned. Flushing ${this.queuedEvents.length} events.`);
 
     // Group by feature/project if needed, but for now simple list
     const batchedEvents = this.queuedEvents.map((e) => ({
