@@ -81,57 +81,64 @@
           "id": "T006",
           "title": "Create release-ops-port.ts",
           "description": "NEW src/ports/release-ops-port.ts. Declare the instance lock boundary",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T18:06:48.706Z"
         },
         {
           "id": "T007",
           "title": "Create instance-lock.ts",
           "description": "NEW src/adapters/server/instance-lock.ts. Hold a Linux instance lock for the server lifetime",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 2
+          "sp": 2,
+          "completedAt": "2026-11-11T18:06:59.183Z"
         },
         {
           "id": "T008",
           "title": "Modify pid.ts",
           "description": "MODIFY src/server/pid.ts. Resolve `GWRK_RUNTIME_DIR` and `GWRK_HOME` paths and expose single-instance lock helpers",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:12.704Z"
         },
         {
           "id": "T009",
           "title": "Modify index.ts",
           "description": "MODIFY src/db/index.ts. Resolve default database directory from `GWRK_DIR` or `GWRK_HOME` before `~/.gwrk`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:23.896Z"
         },
         {
           "id": "T010",
           "title": "Modify loader.ts",
           "description": "MODIFY src/plugins/loader.ts. Resolve global plugin and config paths from `GWRK_HOME` before `~/.gwrk`",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:36.006Z"
         },
         {
           "id": "T011",
           "title": "Modify index.ts",
           "description": "MODIFY src/server/index.ts. Claim exclusive instance lock before binding HTTP or starting `DispatchQueue` and Slack",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:07:48.930Z"
         },
         {
           "id": "T012",
           "title": "Modify server.ts",
           "description": "MODIFY src/commands/server.ts. Honor `GWRK_RUNTIME_DIR` and `GWRK_HOME` for daemon logs and stop cleanup",
-          "status": "open",
+          "status": "completed",
           "gateScript": "gates/phase-03.sh",
-          "sp": 1
+          "sp": 1,
+          "completedAt": "2026-11-11T18:08:02.451Z"
         }
       ],
       "sp_estimate": 9,
